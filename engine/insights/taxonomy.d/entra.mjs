@@ -75,6 +75,7 @@ export default Object.freeze({
     multiTenantOrganization: { name: 'Multitenant organization' },
     b2xIdentityUserFlow: { name: 'Guest sign-up user flow' },
     identityApiConnector: { name: 'User flow API connector' },
+    customAuthenticationExtension: { name: 'Custom authentication extension' },
     crossTenantIdentitySyncPolicyPartner: { name: 'Cross-tenant sync partner' },
     synchronizationJob: { name: 'Provisioning or cross-tenant sync job' },
     accessPackageResourceRoleScope: { name: 'Access package resource role' },

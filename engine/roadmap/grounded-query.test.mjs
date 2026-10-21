@@ -552,7 +552,9 @@ test('a coverage question counts service settings and content backups for a read
   assert.equal(mail.outcome, 'succeeded');
   assert.equal(mail.count, 1);
   assert.ok(central.records.some((record) => record.backup === 'settings'));
-  assert.equal(central.total, central.records.length);
+  // The answer lists at most BUDGET.maxRows records and counts the rest; the service
+  // records come first, so a long list of settings types never cuts them out.
+  assert.equal(central.records.length, Math.min(central.total, BUDGET.maxRows));
   assert.ok(central.known.from <= mail.window.to, 'the answer covers the content run too');
 
   // Service backups have no owner, so an entity-scoped reader and a typed question leave them out.

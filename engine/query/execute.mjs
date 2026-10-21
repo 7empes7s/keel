@@ -199,7 +199,10 @@ const TEMPLATES = Object.freeze({
     }
     // Service settings and content backups have no owning entity, so only a reader of the
     // whole tenant sees them, and a question about one Entra ID or Intune type leaves them out.
+    // They come first: there are a dozen or so, while the settings types run past the
+    // row budget, so listing them after the types would cut them from the answer.
     if (scope.central === true && !params.entity && !params.resourceType) {
+      const typeRecords = records.splice(0);
       const services = await loadServiceBackups(client, { tenantRef });
       for (const entry of services.settings) {
         const good = entry.lastGood;
@@ -238,7 +241,8 @@ const TEMPLATES = Object.freeze({
           source: { kind: 'collection', id: good?.id ?? entry.latest?.id ?? `content/${entry.workload}`, href: '/protect' },
         });
       }
-      const times = records.filter((record) => record.backup !== 'settings').map((record) => record.window.to).filter(Boolean).sort();
+      const times = records.map((record) => record.window.to).filter(Boolean).sort();
+      records.push(...typeRecords);
       if (times.length) {
         known = known
           ? { from: [known.from, times[0]].sort()[0], to: [known.to, times.at(-1)].sort().at(-1) }

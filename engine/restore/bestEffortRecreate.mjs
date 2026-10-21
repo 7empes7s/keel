@@ -73,6 +73,7 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   agreement: at(ENTRA, 'Identity Governance', 'Terms of use'),
   b2xIdentityUserFlow: at(ENTRA, 'External Identities', 'User flows'),
   identityApiConnector: at(ENTRA, 'External Identities', 'API connectors'),
+  customAuthenticationExtension: at(ENTRA, 'Identity', 'External Identities', 'Custom authentication extensions'),
   synchronizationJob: at(ENTRA, 'Enterprise apps', '<app>', 'Provisioning'),
   // sign-in and security policies
   authenticationStrengthPolicy: at(ENTRA, 'Protection', 'Conditional Access', 'Authentication strengths'),
@@ -118,6 +119,15 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   notificationMessageTemplate: at(INTUNE, 'Devices', 'Compliance', 'Notifications'),
   windowsAutopilotDeviceIdentity: at(INTUNE, 'Devices', 'Enrollment', 'Windows', 'Devices'),
   deviceManagementRoleAssignment: at(INTUNE, 'Tenant administration', 'Roles', '<role>', 'Assignments'),
+  applePushNotificationCertificate: at(INTUNE, 'Devices', 'Enrollment', 'Apple', 'Apple MDM Push certificate'),
+  mobileThreatDefenseConnector: at(INTUNE, 'Tenant administration', 'Connectors and tokens', 'Mobile Threat Defense'),
+  deviceManagementPartner: at(INTUNE, 'Tenant administration', 'Connectors and tokens', 'Partner device management'),
+  complianceManagementPartner: at(INTUNE, 'Tenant administration', 'Connectors and tokens', 'Partner compliance management'),
+  remoteAssistancePartner: at(INTUNE, 'Tenant administration', 'Remote help'),
+  deviceManagementExchangeConnector: at(INTUNE, 'Tenant administration', 'Connectors and tokens', 'Exchange on-premises connector'),
+  onPremisesConditionalAccessSettings: at(INTUNE, 'Tenant administration', 'Exchange on-premises access'),
+  mobileAppCategory: at(INTUNE, 'Apps', 'App categories'),
+  intuneBrandingProfile: at(INTUNE, 'Tenant administration', 'Customization'),
 });
 
 export function adminCenterPathFor(resourceType) {

@@ -4644,7 +4644,7 @@ item that needs it stays untouched.
   `/mnt/project-files/handoff/backup-coverage/REPORT.md` (the thread writes it, not you).
 - Needs: nothing. Run from your own clone checked out at the commit `/opt/keel-live` is deployed at (never `/opt/keel`),
   with `npm ci` in `engine/` if needed. No tenant calls, no job, schedule or config changes, no reruns.
-- Status: todo
+- Status: in-progress
 - Do (all with `set -a; . /etc/keel/db.env; set +a`):
   1. Deployed build of `/opt/keel-live`, and every `schedule` row: job_kind, tier, enabled, last run time and status, next_due_at.
   2. Coverage report as the portal builds it. Save as `<clone>/engine/q99-coverage.mjs` (scratch, never commit) and run
@@ -4700,7 +4700,16 @@ item that needs it stays untouched.
   can read but Keel doesn't back up yet. The thread needs the list itself (path, version, object count) to plan and
   prioritise them. Only the counts are in the queue so far (Q82).
 - Needs: nothing. No tenant calls, no job, schedule or config changes, no reruns. Can run before Q99; it is one SELECT.
-- Status: in-progress
+- Status: done
+- Result: done (2026-10-21). DB reads only, nothing written to the tenant or the DB.
+  - **Step 1:** `summary->'counts'` is null for both runs, so here is `summary`:
+    - run 2, finished 2026-10-19 04:06:13 UTC: types 1004, catalogued 83 (catalogue: covered 82, under-item 6, unreadable 6),
+      **uncatalogued 275**, unreadable 574, not-listed 72; containers sites 1, teams 11, users 104, groups 57 (all exact).
+    - run 1, finished 2026-10-15 18:29:10 UTC: the same, except uncatalogued 276 and unreadable 573.
+  - **Step 2 (run 2): 380 rows** (`COPY 380`): 272 `graph:beta` + 108 `graph:v1.0`. That is **275 distinct paths**, matching
+    the summary, because a path readable on both v1.0 and beta has one row per source. 242 distinct entity types.
+    No GUIDs or tenant names in the file.
+  - **Commit:** `ops/q100/uncatalogued.tsv` on `claude/q100-uncatalogued` @ 95a915d, pushed. No PR.
 - Do (with `set -a; . /etc/keel/db.env; set +a`):
   1. ```sql
      SELECT r.id, r.finished_at, r.summary->'counts' AS counts FROM discovery_run r ORDER BY r.finished_at DESC LIMIT 3;

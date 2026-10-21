@@ -3,6 +3,6 @@ import { test } from "node:test";
 
 import { BACKUP_JOB_KINDS } from "@/app/protect/page";
 
-test("What's protected lists on-demand backups and the scheduled tier runs", () => {
-  assert.deepEqual(BACKUP_JOB_KINDS, ["backup", "collect"]);
+test("What's protected lists on-demand backups, the scheduled tier runs and the service settings runs", () => {
+  assert.deepEqual(BACKUP_JOB_KINDS, ["backup", "collect", "workload-collect"]);
 });

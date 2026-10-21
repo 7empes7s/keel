@@ -19,7 +19,7 @@ const DAY = 86_400_000;
 export type ActivityKind = "backup" | "restore" | "rollback" | "setup" | "approval" | "policy" | "drill" | "copy" | "other";
 
 export const ACTIVITY_KINDS: Record<ActivityKind, { label: string; one: string; icon: IconName; jobs: string[]; records: string[] }> = {
-  backup: { label: "Backups", one: "Backup", icon: "backup", jobs: ["backup", "collect", "workload-collect", "prune", "discover"], records: ["collection.completed", "job.started"] },
+  backup: { label: "Backups", one: "Backup", icon: "backup", jobs: ["backup", "collect", "workload-collect", "content-collect", "prune", "discover"], records: ["collection.completed", "job.started"] },
   restore: { label: "Restores", one: "Restore", icon: "restore", jobs: ["restore", "restore-dry-run"], records: ["recovery-completion", "content-effect-approval", "incident-recovery", "incident-recovery-check"] },
   rollback: { label: "Roll backs", one: "Roll back", icon: "swap", jobs: ["remediate"], records: ["automation-execution"] },
   setup: { label: "Approved setups", one: "Approved setup", icon: "baselines", jobs: ["baseline-create", "baseline-activate"], records: ["baseline-resnapshot"] },

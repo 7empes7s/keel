@@ -42,7 +42,8 @@ test("job details preserve the full error and expose params, result, worker and 
   const job = normalizeJob(row);
   const html = renderToStaticMarkup(createElement(JobDetail, { job }));
   // Task-130: the full error, params, result, worker and heartbeat are in the record.
-  assert.ok(html.includes(`Full error</dt><dd><code>${row.error}</code>`));
+  // A multi-line error keeps its line breaks in a block.
+  assert.ok(html.includes(`Full error</dt><dd><pre class="technical-block"><code>${row.error}</code></pre>`));
   assert.ok(html.includes("What went wrong"), "the error block renders because there is an error");
   assert.ok(!renderToStaticMarkup(createElement(JobDetail, { job: normalizeJob({ ...row, status: "succeeded", error: null }) })).includes("What went wrong"),
     "no error block without an error");

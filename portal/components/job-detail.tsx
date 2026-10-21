@@ -58,13 +58,6 @@ export function JobDetail({ job, now = new Date().toISOString() }: { job: JobRec
 
       <TechnicalDetails>
         <JobRecordFields job={job} />
-        <RecordField label="Worker ID" value={job.workerId ?? null} />
-        <RecordField copy={false} label="Heartbeat" value={job.heartbeatAt} />
-        <RecordField label="Idempotency key" value={job.idempotencyKey ?? null} />
-        <RecordField copy={false} label="Params" value={JSON.stringify(job.params, null, 2)} />
-        <RecordField copy={false} label="Result" value={JSON.stringify(job.result, null, 2)} />
-        {failed ? <RecordField copy={false} label="Full error" value={String(job.error)} /> : null}
-        {plan ? <RecordField label="Dry run ID" usage={plan.readable ? "the plan this job acts on" : "no longer readable"} value={plan.id} /> : null}
       </TechnicalDetails>
     </div>
   );

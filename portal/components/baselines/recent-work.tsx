@@ -3,7 +3,7 @@ import Link from "next/link";
 import { RiskChip, SectionHead } from "@/components/baselines/parts";
 import { JobRecordFields } from "@/components/job-table";
 import { Icon } from "@/components/shell/icons";
-import { TechnicalDetails } from "@/components/technical-details";
+import { RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import type { RiskTone } from "@/lib/menu-status";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { formatTimestamp } from "@/lib/presentation";
@@ -45,7 +45,7 @@ export function RecentWork({ jobs, now }: { jobs: JobRecord[]; now: string }) {
       ) : <p className="bl-help">Nothing yet. Creating an approved setup shows here while it runs.</p>}
       {jobs.length ? (
         <TechnicalDetails summary="Technical details: recent work">
-          {jobs.map((job) => <JobRecordFields job={job} key={job.id} />)}
+          {jobs.map((job) => <RecordGroup key={job.id} note={`${job.kind} · ${job.status}`} title={jobName(job)}><JobRecordFields job={job} /></RecordGroup>)}
         </TechnicalDetails>
       ) : null}
     </section>

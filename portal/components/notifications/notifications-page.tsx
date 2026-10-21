@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import { useMemo, useState, type FormEvent, type MouseEvent } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
@@ -10,7 +10,7 @@ import { SelectableList, type Grouping, type ListGroup } from "@/components/list
 import { OptionPicker } from "@/components/pickers/option-picker";
 import { Segmented, type ChoiceOption } from "@/components/pickers/segmented";
 import { Icon, type IconName } from "@/components/shell/icons";
-import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Verdict } from "@/components/verdict";
@@ -485,25 +485,45 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
         )}
 
         <TechnicalDetails summary="Technical details for channels, rules and sends">
-          {channels.map((channel) => <RecordFieldGroup key={channel.id}>
-            <RecordField label={`Channel ID (${channelName(channel)})`} value={channel.id} />
-            <RecordField copy={false} label="Channel kind, state and config" value={`${channel.kind} · ${channel.enabled ? "enabled" : "disabled"} · ${JSON.stringify(channel.config)}`} />
-          </RecordFieldGroup>)}
-          {subscriptions.map((rule) => <RecordFieldGroup key={rule.id}>
-            <RecordField label="Subscription ID" value={rule.id} />
-            <RecordField copy={false} label="Channel ID, event pattern and minimum severity" value={`${rule.channel_id} · ${rule.event_glob} · ${rule.min_severity}`} />
-          </RecordFieldGroup>)}
-          {escalationRules.map((rule) => <RecordFieldGroup key={rule.id}>
-            <RecordField label="Escalation rule ID" value={rule.id} />
-            <RecordField copy={false} label="Escalation rule" value={`${rule.enabled ? "enabled" : "disabled"} · min ${rule.min_severity} · ${rule.ack_within_ms} ms · control ${rule.control ?? "any"} · channel ${rule.escalate_channel_id ?? "none"} · owner ${rule.owner_principal_id ?? "none"}`} />
-          </RecordFieldGroup>)}
-          {allDeliveries.map((delivery) => <RecordFieldGroup key={delivery.id}>
-            <RecordField label="Delivery ID" value={delivery.id} />
-            <RecordField copy={false} label="Channel ID, event, status and attempts" value={`${delivery.channel_id} · ${delivery.event.kind} · ${delivery.event.severity} · ${delivery.status} · ${delivery.attempts} attempts${delivery.event.alertId ? ` · alert ${delivery.event.alertId}` : ""}`} />
-            {delivery.last_error ? <RecordField copy={false} label="Last error" value={delivery.last_error} /> : null}
-            {delivery.next_attempt_at ? <RecordField copy={false} label="Next attempt" value={delivery.next_attempt_at} /> : null}
-            {delivery.provider_receipt ? <RecordField copy={false} label="Provider reply" value={JSON.stringify(delivery.provider_receipt, null, 2)} /> : null}
-          </RecordFieldGroup>)}
+          {channels.map((channel) => (
+            <RecordGroup key={channel.id} note={`channel · ${channel.kind}`} title={channelName(channel)}>
+              <ChannelRecordFields channel={channel} />
+            </RecordGroup>
+          ))}
+          {subscriptions.map((rule) => {
+            const channel = channels.find((item) => item.id === rule.channel_id) ?? null;
+            return (
+              <RecordGroup key={rule.id} note="alert rule" title={ruleSentence(rule, channel)}>
+                <RecordField label="Subscription ID" value={rule.id} />
+                <RecordField label="Channel ID" usage={channel ? channelName(channel) : "channel no longer exists"} value={rule.channel_id} />
+                <RecordField copy={false} label="Event pattern" value={rule.event_glob} />
+                <RecordField copy={false} label="Minimum severity" value={rule.min_severity} />
+                <RecordField copy={false} label="Created" value={rule.created_at} />
+              </RecordGroup>
+            );
+          })}
+          {escalationRules.map((rule) => (
+            <RecordGroup key={rule.id} note="escalation rule" title={escalationTitle(rule)}>
+              <EscalationRecordFields rule={rule} />
+            </RecordGroup>
+          ))}
+          {allDeliveries.map((delivery) => (
+            <RecordGroup key={delivery.id} note={`send · ${delivery.channel_kind} · ${delivery.status}`} title={deliveryTitle(delivery)}>
+              <RecordField label="Delivery ID" value={delivery.id} />
+              <RecordField label="Channel ID" value={delivery.channel_id} />
+              <RecordField copy={false} label="Status" value={delivery.status} />
+              <RecordField copy={false} label="Attempts" value={delivery.attempts} />
+              <RecordField copy={false} label="Event kind" value={delivery.event.kind} />
+              <RecordField copy={false} label="Severity" value={delivery.event.severity} />
+              {delivery.event.alertId ? <RecordField label="Alert ID" value={delivery.event.alertId} /> : null}
+              <RecordField copy={false} label="Queued" value={delivery.created_at} />
+              {delivery.delivered_at ? <RecordField copy={false} label="Delivered" value={delivery.delivered_at} /> : null}
+              {delivery.next_attempt_at ? <RecordField copy={false} label="Next attempt" value={delivery.next_attempt_at} /> : null}
+              {delivery.last_error ? <RecordField label="Last error" value={delivery.last_error} /> : null}
+              <RecordField label="Event" value={delivery.event as RecordValue} />
+              {delivery.provider_receipt ? <RecordField label="Provider reply" value={delivery.provider_receipt as RecordValue} /> : null}
+            </RecordGroup>
+          ))}
         </TechnicalDetails>
       </div>
 
@@ -591,8 +611,27 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
   );
 }
 
-function RecordFieldGroup({ children }: { children: ReactNode }) {
-  return <>{children}</>;
+function ChannelRecordFields({ channel }: { channel: Channel }) {
+  return <>
+    <RecordField label="Channel ID" value={channel.id} />
+    <RecordField copy={false} label="Kind" value={channel.kind} />
+    <RecordField copy={false} label="State" value={channel.enabled ? "enabled" : "disabled"} />
+    <RecordField label="Config" usage="secrets are never stored; a setting name points to where the server reads them" value={channel.config as RecordValue} />
+    <RecordField copy={false} label="Created" value={channel.created_at} />
+  </>;
+}
+
+function EscalationRecordFields({ rule }: { rule: EscalationRule }) {
+  return <>
+    <RecordField label="Escalation rule ID" value={rule.id} />
+    <RecordField copy={false} label="State" value={rule.enabled ? "enabled" : "disabled"} />
+    <RecordField copy={false} label="Minimum severity" value={rule.min_severity} />
+    <RecordField copy={false} label="Acknowledge within (ms)" usage={durationWords(rule.ack_within_ms)} value={rule.ack_within_ms} />
+    <RecordField copy={false} label="Control" value={rule.control ?? "any"} />
+    <RecordField label="Escalates to channel ID" usage={rule.channel_kind ? `${rule.channel_kind}${rule.channel_enabled === false ? " · turned off" : ""}` : undefined} value={rule.escalate_channel_id} />
+    <RecordField label="Owner (account ID)" usage={[rule.owner_name, rule.owner_email, rule.owner_disabled_at ? `disabled ${rule.owner_disabled_at}` : null].filter(Boolean).join(" · ") || undefined} value={rule.owner_principal_id} />
+    <RecordField copy={false} label="Created" value={rule.created_at} />
+  </>;
 }
 
 function fromNowShort(value: string, now: string): string {
@@ -702,11 +741,10 @@ function ChannelPanel({ channel, health, rules, deliveries, now, busy, error, re
         </section>
         {setting ? <p className="nf-plain nf-muted">Its secret is read from the server setting <code>{setting}</code> each time Keel sends; Keel never stores the value.</p> : null}
         <TechnicalDetails>
-          <RecordField label="Channel ID" value={channel.id} />
-          <RecordField copy={false} label="Config" value={JSON.stringify(channel.config, null, 2)} />
-          {health.latest?.last_error ? <RecordField copy={false} label="Last error" value={health.latest.last_error} /> : null}
-          {health.latest?.provider_receipt ? <RecordField copy={false} label="Last provider reply" value={JSON.stringify(health.latest.provider_receipt, null, 2)} /> : null}
-          {channel.created_at ? <RecordField copy={false} label="Created" value={channel.created_at} /> : null}
+          <ChannelRecordFields channel={channel} />
+          {health.latest ? <RecordField label="Last send ID" value={health.latest.id} /> : null}
+          {health.latest?.last_error ? <RecordField label="Last error" value={health.latest.last_error} /> : null}
+          {health.latest?.provider_receipt ? <RecordField label="Last provider reply" value={health.latest.provider_receipt as RecordValue} /> : null}
         </TechnicalDetails>
       </div>
     </DetailsSheet>
@@ -830,8 +868,7 @@ function EscalationBody({ rule, channels }: { rule: EscalationRule; channels: Ch
       <p className="nf-plain">{rule.min_severity === "notice" ? "Any alert" : rule.min_severity === "critical" ? "A critical alert" : "A warning or critical alert"} that nobody acknowledges within {durationWords(rule.ack_within_ms)} is {target ? `also sent to ${channelName(target)}` : "meant to be sent on, but no channel is set"}{owner ? `, and ${owner} is named as its owner` : ""}.</p>
       {!target ? <div className="nf-note" data-tone="urgent"><Icon name="alert" /><div><b>No channel to send to.</b><p>Turn this rule off and add one with a channel, so an escalation has somewhere to go.</p></div></div> : !target.enabled ? <div className="nf-note" data-tone="urgent"><Icon name="alert" /><div><b>{channelName(target)} is turned off.</b><p>Turn it back on, or add a rule with another channel.</p></div></div> : null}
       <TechnicalDetails>
-        <RecordField label="Escalation rule ID" value={rule.id} />
-        <RecordField copy={false} label="Rule" value={`min ${rule.min_severity} · ${rule.ack_within_ms} ms · control ${rule.control ?? "any"} · channel ${rule.escalate_channel_id ?? "none"} · owner ${rule.owner_principal_id ?? "none"}`} />
+        <EscalationRecordFields rule={rule} />
       </TechnicalDetails>
     </div>
   );

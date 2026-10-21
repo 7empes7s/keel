@@ -7,7 +7,7 @@ import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "rea
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { Segmented } from "@/components/pickers/segmented";
 import { Icon } from "@/components/shell/icons";
-import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { RecordField, RecordGroup, ReferenceFields, refUsage, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import { Badge } from "@/components/ui/badge";
 import { Person } from "@/components/ui/person";
 import { Verdict } from "@/components/verdict";
@@ -50,10 +50,6 @@ import { useViewState } from "@/lib/use-view-state";
 
 const NOUN = { one: "request", many: "requests" };
 
-function displayParams(params: unknown): string {
-  return JSON.stringify(params, null, 2) ?? "{}";
-}
-
 /**
  * Q45: a restore whose dry run carries content effects needs a separate approval of
  * them, whether the dry run was made in the portal or with the command line.
@@ -86,17 +82,27 @@ export function ContentEffectsNote({ request, primary = false }: { request: Appr
 }
 
 function RequestRecordFields({ request }: { request: ApprovalRequestRecord }) {
+  const people = request.references?.people ?? {};
   return (
-    <>
+    <RecordGroup note={`approval request · ${request.action} · ${request.status}`} title={approvalTitle(request)}>
       <RecordField label="Request ID" usage={<>use with <code>POST /api/approvals/&lt;id&gt;/approve</code></>} value={request.id} />
-      <RecordField copy={false} label="Action code" value={`${request.action} · status ${request.status}`} />
-      <RecordField copy={false} label="Params" value={displayParams(request.params)} />
-      <RecordField label="Requested by (principal ID)" value={request.requestedBy} />
-      {request.decidedBy ? <RecordField label="Decided by (principal ID)" value={request.decidedBy} /> : null}
-      {request.signoffs?.length ? <RecordField copy={false} label="Signed off by (principal IDs)" value={request.signoffs.map((person) => person.id).join(", ")} /> : null}
-      {request.references?.plan ? <RecordField label="Dry run ID" usage={request.references.plan.readable ? "the immutable plan this approval promotes" : "no longer readable"} value={request.references.plan.id} /> : null}
-      <RecordField copy={false} label="Times" value={`created ${request.createdAt ?? "unknown"} · expires ${request.expiresAt ?? "unknown"}${request.decidedAt ? ` · decided ${request.decidedAt}` : ""}`} />
-    </>
+      <RecordField copy={false} label="Action code" value={request.action} />
+      <RecordField copy={false} label="Status" value={request.status} />
+      <RecordField copy={false} label="Carried out by" usage={request.executor === "cli" ? "an operator runs it with the command line" : "Keel queues the job once approved"} value={request.executor ?? "worker"} />
+      <RecordField label="Requested by (account ID)" usage={refUsage(people.requested_by)} value={request.requestedBy} />
+      {request.justification ? <RecordField copy={false} label="Why it was asked for" value={request.justification} /> : null}
+      <RecordField copy={false} label="Approvals needed" value={request.requiredApprovals ?? 1} />
+      {request.signoffs?.length ? request.signoffs.map((person, index) => (
+        <RecordField key={person.id} label={`Sign-off ${index + 1} (account ID)`} usage={refUsage(person)} value={person.id} />
+      )) : null}
+      {request.decidedBy ? <RecordField label="Decided by (account ID)" usage={refUsage(people.decided_by)} value={request.decidedBy} /> : null}
+      {request.reason ? <RecordField copy={false} label="Decision reason" value={request.reason} /> : null}
+      <RecordField copy={false} label="Created" value={request.createdAt} />
+      <RecordField copy={false} label="Expires" value={request.expiresAt} />
+      {request.decidedAt ? <RecordField copy={false} label="Decided" value={request.decidedAt} /> : null}
+      <RecordField label="Params" value={(request.params ?? {}) as RecordValue} />
+      <ReferenceFields references={request.references} skipPeople={["requested_by", "decided_by"]} />
+    </RecordGroup>
   );
 }
 

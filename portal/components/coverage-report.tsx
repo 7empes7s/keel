@@ -164,6 +164,10 @@ export function TypeRecordFields({ item }: { item: CoverageType }) {
       <RecordField label="Blast radius" value={item.blastRadius ?? "unknown"} copy={false} />
       <RecordField label="Remappable" value={item.remappable === null ? "unknown" : String(item.remappable)} copy={false} />
       <RecordField label="Last collected" value={item.lastCollectedAt ?? "never"} copy={false} />
+      <RecordField label="Items in the last backup" value={item.itemCount ?? "unknown"} copy={false} />
+      <RecordField label="Stale" value={item.stale ? "yes, older than its schedule allows" : "no"} copy={false} />
+      {detail?.startedAt ? <RecordField label="Last read started" value={detail.startedAt} copy={false} /> : null}
+      {detail?.completedAt ? <RecordField label="Last read completed" value={detail.completedAt} copy={false} /> : null}
       {item.observation ? (
         <>
           <RecordField

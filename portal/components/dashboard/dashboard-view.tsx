@@ -5,7 +5,7 @@ import { CoverageRing } from "@/components/dashboard/coverage-ring";
 import { Sparkline } from "@/components/dashboard/sparkline";
 import { OverviewVerdict } from "@/components/dashboard/status-hero";
 import { PageHeader } from "@/components/page-header";
-import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { ago, displayEnum, formatTimestamp } from "@/lib/presentation";
 import type { DashboardData, DashboardWaiting } from "@/lib/types";
 
@@ -162,16 +162,50 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
       </div>
 
       <TechnicalDetails summary="Technical details for this overview">
-        <RecordField copy={false} label="Checked" value="active baseline, latest collection, coverage report per catalog type, evidence chain integrity, fidelity-drill evidence" />
-        <RecordField copy={false} label="Not checked" value="live restorability of types without fidelity-drill evidence; content (KEEL backs up configuration only)" />
-        <RecordField copy={false} label="Headline state" value={`${data.headline.state} · backed up ${data.headline.counts.backedUp} · restorable ${data.headline.counts.restorable} · failing ${data.headline.counts.failing} (failed ${data.headline.counts.failed}, stale ${data.headline.counts.stale}, never collected ${data.headline.counts.neverCollected})`} />
-        <RecordField copy={false} label="Last fidelity drill" value={data.headline.lastProvenRestoreAt} />
-        <RecordField copy={false} label="Latest snapshot" value={`${data.lastCollection?.status ?? "missing"} · completed ${data.lastCollection?.completedAt ?? "never"}`} />
-        <RecordField copy={false} label="Last completed snapshot" value={data.lastCompletedCollectionAt} />
-        <RecordField copy={false} label="Evidence chain" value={`${data.evidence.ok ? "valid" : "FAILED"} · ${data.evidence.chainLength} records`} />
-        <RecordField copy={false} label="Coverage summary" value={`covered ${data.coverage.covered} · failed ${data.coverage.failed} · stale ${data.coverage.stale} · not covered ${data.coverage.notCovered} · never collected ${data.coverage.neverCollected} · total ${data.coverage.total}`} />
-        {data.activeBaseline ? <RecordField label="Active baseline ID" usage={<>use with <code>GET /api/baselines</code></>} value={data.activeBaseline.id} /> : null}
-        <RecordField copy={false} label="Read at" value={data.generatedAt} />
+        <RecordGroup title="What this overview reads">
+          <RecordField copy={false} label="Checked" value="active baseline, latest collection, coverage report per catalog type, evidence chain integrity, fidelity-drill evidence" />
+          <RecordField copy={false} label="Not checked" value="live restorability of types without fidelity-drill evidence; content (KEEL backs up configuration only)" />
+          <RecordField copy={false} label="Read at" value={data.generatedAt} />
+        </RecordGroup>
+        <RecordGroup note={data.headline.state} title="Headline">
+          <RecordField copy={false} label="State" value={data.headline.state} />
+          <RecordField copy={false} label="Backed up" value={data.headline.counts.backedUp} />
+          <RecordField copy={false} label="Restorable" value={data.headline.counts.restorable} />
+          <RecordField copy={false} label="Failing" usage="failed + stale + never collected" value={data.headline.counts.failing} />
+          <RecordField copy={false} label="Failed" value={data.headline.counts.failed} />
+          <RecordField copy={false} label="Stale" value={data.headline.counts.stale} />
+          <RecordField copy={false} label="Never collected" value={data.headline.counts.neverCollected} />
+          <RecordField copy={false} label="Last fidelity drill" value={data.headline.lastProvenRestoreAt} />
+        </RecordGroup>
+        <RecordGroup title="Snapshots">
+          <RecordField copy={false} label="Latest snapshot status" value={data.lastCollection?.status ?? "missing"} />
+          <RecordField copy={false} label="Latest snapshot completed" value={data.lastCollection?.completedAt ?? "never"} />
+          <RecordField copy={false} label="Last completed snapshot" value={data.lastCompletedCollectionAt} />
+        </RecordGroup>
+        {data.activeBaseline ? (
+          <RecordGroup note="approved setup" title={data.activeBaseline.label ?? "Active baseline"}>
+            <RecordField label="Active baseline ID" usage={<>use with <code>GET /api/baselines</code></>} value={data.activeBaseline.id} />
+            <RecordField copy={false} label="Set at" value={data.activeBaseline.setAt} />
+            <RecordField label="Set by (account ID)" usage={data.activeBaseline.setByRef?.name ?? undefined} value={data.activeBaseline.setBy} />
+            <RecordField copy={false} label="Settings captured" value={data.activeBaseline.resourceCount} />
+          </RecordGroup>
+        ) : null}
+        <RecordGroup title="Open changes">
+          <RecordField copy={false} label="Open changes" value={data.openDriftTotal} />
+          {data.openDriftByBlastRadius.map((row) => <RecordField copy={false} key={row.blastRadius} label={`Reach: ${row.blastRadius}`} value={row.count} />)}
+        </RecordGroup>
+        <RecordGroup title="Coverage">
+          <RecordField copy={false} label="Covered" value={data.coverage.covered} />
+          <RecordField copy={false} label="Failed" value={data.coverage.failed} />
+          <RecordField copy={false} label="Stale" value={data.coverage.stale} />
+          <RecordField copy={false} label="Not covered" value={data.coverage.notCovered} />
+          <RecordField copy={false} label="Never collected" value={data.coverage.neverCollected} />
+          <RecordField copy={false} label="Total types" value={data.coverage.total} />
+        </RecordGroup>
+        <RecordGroup title="Audit record">
+          <RecordField copy={false} label="Evidence chain" value={data.evidence.ok ? "valid" : "FAILED"} />
+          <RecordField copy={false} label="Records in the chain" value={data.evidence.chainLength} />
+        </RecordGroup>
       </TechnicalDetails>
     </>
   );

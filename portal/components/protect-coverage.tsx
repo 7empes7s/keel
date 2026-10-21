@@ -10,7 +10,7 @@ import { BaselinesStyles } from "@/components/baselines/styles";
 import { coverageWindows, TypeDetails, TypeRecordFields } from "@/components/coverage-report";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { Icon, type IconName } from "@/components/shell/icons";
-import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { plainKind, typeService } from "@/lib/baselines-view";
@@ -430,7 +430,11 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip }: {
         {feedback}
         <TechnicalDetails summary="Technical details for every kind">
           {windows.length > 1 ? <RecordField copy={false} label="Observation windows differ" value={windows.join("; ")} /> : null}
-          {data.types.map((item) => <TypeRecordFields item={item} key={item.type} />)}
+          {data.types.map((item) => (
+            <RecordGroup key={item.type} note={`${typeService(item.type).name} · ${item.type}`} title={kindName(item)}>
+              <TypeRecordFields item={item} />
+            </RecordGroup>
+          ))}
         </TechnicalDetails>
       </section>
 

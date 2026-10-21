@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { JobStatusBadge } from "@/components/job-status-badge";
 import { Icon, type IconName } from "@/components/shell/icons";
-import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { RecordField, RecordGroup, ReferenceFields, refUsage, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import { Person } from "@/components/ui/person";
 import { jobErrorLine } from "@/lib/job-names";
 import type { JobRecord } from "@/lib/portal-jobs";
@@ -17,9 +17,19 @@ export function JobRecordFields({ job }: { job: JobRecord }) {
   return (
     <>
       <RecordField label="Job ID" usage={<>use with <code>GET /api/jobs/&lt;id&gt;</code></>} value={job.id} />
-      <RecordField copy={false} label="Kind and status" value={`${job.kind} · ${job.status}`} />
-      <RecordField label="Requested by (principal ID)" value={job.requestedBy} />
-      <RecordField copy={false} label="Times" value={`created ${job.createdAt ?? "never"} · started ${job.startedAt ?? "never"} · finished ${job.finishedAt ?? "never"}`} />
+      <RecordField copy={false} label="Kind" value={job.kind} />
+      <RecordField copy={false} label="Status" value={job.status} />
+      <RecordField label="Requested by (account ID)" usage={refUsage(job.references?.people.requested_by)} value={job.requestedBy} />
+      <RecordField copy={false} label="Created" value={job.createdAt} />
+      <RecordField copy={false} label="Started" value={job.startedAt} />
+      <RecordField copy={false} label="Finished" value={job.finishedAt} />
+      <RecordField label="Worker ID" value={job.workerId} />
+      <RecordField copy={false} label="Heartbeat" value={job.heartbeatAt} />
+      <RecordField label="Idempotency key" value={job.idempotencyKey} />
+      <RecordField label="Params" value={job.params as RecordValue} />
+      <RecordField label="Result" value={job.result as RecordValue} />
+      {job.status === "failed" && job.error !== null && job.error !== undefined ? <RecordField label="Full error" value={typeof job.error === "string" ? job.error : (job.error as RecordValue)} /> : null}
+      <ReferenceFields references={job.references} skipPeople={["requested_by"]} />
     </>
   );
 }
@@ -74,10 +84,9 @@ export function JobRow({ job, now }: { job: JobRecord; now: string }) {
  *  kind, status, who asked by account id, and the raw error of a failed job. */
 function JobListRecord({ job }: { job: JobRecord }) {
   return (
-    <>
-      <RecordField label={jobName(job)} usage={`${job.kind} · ${job.status} · requested by ${job.requestedBy}`} value={job.id} />
-      {job.status === "failed" && job.error ? <RecordField copy={false} label={`Error of ${jobName(job)}`} value={String(job.error)} /> : null}
-    </>
+    <RecordGroup note={`${job.kind} · ${job.status}`} title={jobName(job)}>
+      <JobRecordFields job={job} />
+    </RecordGroup>
   );
 }
 

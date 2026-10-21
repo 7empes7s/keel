@@ -234,6 +234,12 @@ export const TYPE_DECISIONS = Object.freeze({
   enterpriseCodeSigningCertificate: manual('no writer yet; beta only'),
   symantecCodeSigningCertificate: manual('the certificate file and its password are secrets and are not backed up'),
   userExperienceAnalyticsBaseline: manual('no writer yet; built-in baselines are Microsoft-managed'),
+  // Remaining kinds, batch 7: Microsoft 365 settings, backed up read-only; no writer is built yet.
+  sharepointSettings: manual('no writer for the whole object yet; the sharing fields are restored by the SharePoint workload'),
+  itemInsightsSettings: manual('no writer yet'),
+  externalConnection: manual('no writer yet; the schema and items are read per connection'),
+  simulationAutomation: manual('no writer yet; automations are created in the Defender portal'),
+  attackSimulation: manual('no writer yet; a simulation is launched again, not restored'),
 });
 
 // Why a retried operation can never double-apply — each names the mechanism in
@@ -1105,6 +1111,17 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'backed up without the certificate file or password'),
   userExperienceAnalyticsBaseline: byHand('device-management', 'POST /deviceManagement/userExperienceAnalyticsBaselines (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
     'backed up; built-in baselines are listed beside custom ones'),
+  // Remaining kinds, batch 7: Microsoft 365 settings, backed up read-only; manual until a writer is built.
+  sharepointSettings: byHand('administrative-configuration', 'PATCH /admin/sharepoint/settings', 'SharePointTenantSettings.ReadWrite.All',
+    'backed up whole; only the sharing fields have a writer, in the SharePoint workload'),
+  itemInsightsSettings: byHand('administrative-configuration', 'PATCH /admin/people/itemInsights', 'PeopleSettings.ReadWrite.All',
+    'backed up; no writer yet'),
+  externalConnection: byHand('administrative-configuration', 'POST /external/connections', 'ExternalConnection.ReadWrite.OwnedBy',
+    'backed up without schema or items; no writer yet'),
+  simulationAutomation: byHand('policy', null, 'AttackSimulation.ReadWrite.All',
+    'backed up; Graph cannot create an automation'),
+  attackSimulation: byHand('policy', 'POST /security/attackSimulation/simulations', 'AttackSimulation.ReadWrite.All',
+    'backed up without results; no writer yet'),
 });
 
 const INVENTORY_FIELDS = new Set(['batch', 'status', 'api', 'permission', 'reason']);
@@ -1232,6 +1249,18 @@ export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
     lost('configuration', 'shorter lifetime, wider scope or fewer notice addresses', 'could expire and delete groups, so the restore is refused and left to a person'),
     lost('relationship', 'selected groups', 'which groups a Selected policy covers is changed through addGroup and removeGroup, which are not written'),
     lost('configuration', 'missing policy', 'create and delete are not qualified; a missing policy is recreated by hand'),
+  ]),
+  // Remaining kinds, batch 7.
+  sharepointSettings: Object.freeze([
+    lost('configuration', 'settings other than sharing', 'backed up whole, but only the five sharing fields have a writer (the SharePoint workload); the rest is set by hand'),
+  ]),
+  itemInsightsSettings: Object.freeze([
+    lost('configuration', 'item insights setting', 'no writer yet; set by hand from the backup'),
+    lost('relationship', 'disabledForGroup', 'names a group by id; the group is rebuilt first'),
+  ]),
+  externalConnection: Object.freeze([
+    lost('configuration', 'connection', 'no writer yet; recreated by hand from the backup'),
+    lost('relationship', 'schema and items', 'read per connection and not backed up; the connector syncs its items again'),
   ]),
 });
 

@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 114 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 63 at least in part; the other 85 are restored by hand from the backup.
+KEEL tracks 153 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 119 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 63 at least in part; the other 90 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -211,6 +211,8 @@ KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it
 | Multitenant organization sync template | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Multitenant organization access template | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Guest SAML or WS-Fed sign-in | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| Attack simulation automations | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Attack simulations | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -282,6 +284,12 @@ KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it
 - **Guest SAML or WS-Fed sign-in.** Puts back each partner's sign-in addresses, protocol and public signing certificate.
   - *Not brought back:* its domains (stored separately and not in the backup yet).
   - *You do:* A deleted partner is set up again in the Entra admin center, under External Identities, All identity providers, with its domains. Check the partner's certificate is still current.
+- **Attack simulation automations** (not built yet). KEEL backs up each automation's name and status but does not restore it yet.
+  - *Not brought back:* each run of the automation (stored separately and not in the backup yet).
+  - *You do:* Recreate the automation in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Automations, from the backup.
+- **Attack simulations** (not built yet). KEEL backs up each simulation's settings and targets but not its results, and does not restore it yet.
+  - *Not brought back:* the payload, landing page and login page the simulation uses (stored separately and not in the backup yet).
+  - *You do:* Launch the simulation again in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Simulations, with the same technique, payload and targets from the backup.
 
 ## Tenant settings
 
@@ -296,6 +304,9 @@ KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it
 | Company branding per language | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Group expiration policy | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Administrative units | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| SharePoint and OneDrive tenant settings | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
+| Item insights setting | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Copilot connectors | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -323,6 +334,13 @@ KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it
 - **Administrative units.** Puts the name and description back.
   - *Not brought back:* members and admins scoped to the unit (stored separately and not in the backup yet); dynamic membership rules and a deleted unit (in the backup, but KEEL does not write it yet).
   - *You do:* Members, admins scoped to the unit, dynamic membership rules and a deleted unit are restored by hand from the backup.
+- **SharePoint and OneDrive tenant settings** (not built yet). KEEL backs up every tenant-wide SharePoint and OneDrive setting, such as site creation, sync app limits, idle session sign-out and storage limits. It restores only the sharing settings, through the SharePoint service backup.
+  - *You do:* Set the same values in the SharePoint admin center, under Settings and Policies, from the backup.
+- **Item insights setting** (not built yet). KEEL backs up whether people cards and search show the documents a person worked on, and the group it is turned off for, but does not restore it yet.
+  - *You do:* Set the same value in the Microsoft 365 admin center, under Settings, Org settings, Search and intelligence, from the backup, and pick the same group again.
+- **Copilot connectors** (not built yet). KEEL backs up each connection's name, description and allowed apps but not its schema or the items pushed into it, and does not restore it yet.
+  - *Not brought back:* the connection schema and the items pushed into it (stored separately and not in the backup yet).
+  - *You do:* Recreate the connector in the Microsoft 365 admin center, under Copilot, Connectors, from the backup, then let it sync its items again.
 
 ## Intune device management
 

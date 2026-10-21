@@ -4949,7 +4949,7 @@ item that needs it stays untouched.
 - Needs: `/opt/keel-live` deployed at 0210b24 or later (`git -C /opt/keel-live log -1` or the deploy log), and the
   `10-discovery.sql` schema reapplied by the deploy (the `discovery_item_status_check` constraint accepts `skipped`):
   `SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'discovery_item_status_check';`
-- Status: todo
+- Status: in-progress
 - Do (same as Q82 step 1; no tenant writes, no approvals, no new grants):
   1. `set -a; . /etc/keel/db.env; set +a; cd /opt/keel-live && time node cli/keel-discover.mjs run --config /etc/keel/tenant.json`
      Report the exit code, the first summary line (it now names `skipped`), source lines that are not `complete`, and the

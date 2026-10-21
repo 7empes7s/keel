@@ -44,6 +44,10 @@ export const ID_KEY_TYPES = new Set([
   // Read per parent: a sync job id embeds its template and service principal,
   // and a resource role scope id is a GUID.
   'synchronizationJob', 'accessPackageResourceRoleScope',
+  // Remaining kinds, batch 1: names are unmeasured, and built-in app categories
+  // carry the same name in every tenant.
+  'mobileThreatDefenseConnector', 'deviceManagementPartner', 'complianceManagementPartner', 'remoteAssistancePartner',
+  'deviceManagementExchangeConnector', 'mobileAppCategory', 'intuneBrandingProfile', 'customAuthenticationExtension',
 ]);
 
 // Tenant singletons: exactly one object per tenant, so the type name is the
@@ -59,6 +63,8 @@ export const CONSTANT_KEY_TYPES = new Set([
   // Wave 1 CAT-ENTRA: Entra governance singletons.
   'lifecycleManagementSettings', 'entitlementManagementSettings', 'tenantAppManagementPolicy',
   'multiTenantOrganization',
+  // Remaining kinds, batch 1: Intune tenant singletons.
+  'applePushNotificationCertificate', 'onPremisesConditionalAccessSettings',
 ]);
 
 const PARTNER_KEY_TYPES = new Set(['crossTenantAccessPolicyPartner', 'crossTenantIdentitySyncPolicyPartner']);

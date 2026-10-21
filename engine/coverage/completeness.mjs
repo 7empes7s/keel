@@ -210,6 +210,17 @@ export const COMPLETENESS = Object.freeze({
   notificationMessageTemplate: {},
   windowsAutopilotDeviceIdentity: { whole: 'secret', missing: [part('The device hardware hash', 'secret')] },
   deviceManagementRoleAssignment: { whole: 'not-written' },
+  // Remaining kinds, batch 1.
+  applePushNotificationCertificate: { whole: 'not-written', missing: [part('The certificate file', 'secret')] },
+  mobileThreatDefenseConnector: { whole: 'not-written', missing: [part('The connection made from the partner console', 'other-route')] },
+  deviceManagementPartner: { whole: 'not-written', missing: [part('The connection made from the partner console', 'other-route')] },
+  complianceManagementPartner: { whole: 'not-written', missing: [part('The connection made from the partner console', 'other-route')] },
+  remoteAssistancePartner: { whole: 'not-written', missing: [part('The onboarding made from the partner console', 'other-route')] },
+  deviceManagementExchangeConnector: { whole: 'not-written', missing: [part('The connector installed on the Exchange server', 'other-route')] },
+  onPremisesConditionalAccessSettings: { whole: 'not-written' },
+  mobileAppCategory: { whole: 'not-written', missing: [part('Built-in categories', 'microsoft-managed')] },
+  intuneBrandingProfile: { whole: 'not-written', missing: [part('Logo images', 'other-route'), part('Who the profile is assigned to', 'other-route')] },
+  customAuthenticationExtension: { whole: 'not-written' },
 });
 
 const RECORD_FIELDS = new Set(['managed', 'unreadable', 'whole', 'missing']);

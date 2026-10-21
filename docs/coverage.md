@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 20 are full, 67 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 51 at least in part; the other 43 are restored by hand from the backup.
+KEEL tracks 104 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 20 are full, 77 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 51 at least in part; the other 53 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -56,6 +56,7 @@ KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it 
 | API connectors for user flows | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Provisioning and cross-tenant sync jobs | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Access package resource roles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Custom authentication extensions | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -141,6 +142,8 @@ KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it 
   - *You do:* Set up provisioning again on the enterprise app using the backup as a guide, check its mappings, then start it.
 - **Access package resource roles** (not built yet). A role can only be added once its group, app or site is in the package's catalog, and access packages are not restored yet.
   - *You do:* Recreate the access package first, then add the same groups, apps and sites with the roles in the backup.
+- **Custom authentication extensions** (not built yet). KEEL backs these up but does not restore them yet.
+  - *You do:* Recreate the extension in the Entra admin center from the backup, then check that its endpoint still answers. Sign-ins and workflows that call it need it back first.
 
 ## Sign-in and security policies
 
@@ -299,6 +302,15 @@ KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it 
 | Compliance notification emails | Yes (Tier 3, low impact, weekly) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Windows Autopilot devices | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | Intune admin role assignments | Yes (Tier 1, critical, every hour) | Incomplete | By hand (KEEL choice) | None |
+| Apple push certificate | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
+| Mobile threat defense connectors | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Device management partners | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Compliance partners | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Remote help partners | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Exchange on-premises connectors | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
+| Exchange on-premises access settings | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| App categories | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Company Portal branding | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -377,6 +389,32 @@ KEEL tracks 94 kinds of Entra ID and Intune settings and backs up everything it 
   - *You do:* Use the backup as the list of devices. Import each device again from its hardware hash, taken on the device or from your vendor.
 - **Intune admin role assignments** (KEEL choice). These decide who can manage devices, so a change needs a person to review it.
   - *You do:* Review who held each Intune admin role in the backup and assign the roles again in the Intune admin center.
+- **Apple push certificate** (Microsoft limit). Apple issues this certificate. No tool can upload it from a backup, and a new certificate from a different Apple ID cuts off every Apple device.
+  - *Not brought back:* the certificate file (Microsoft never returns it).
+  - *You do:* Use the backup for the Apple ID and expiry date. Renew the certificate at Apple with that same Apple ID and upload it in the Intune admin center before it expires.
+- **Mobile threat defense connectors** (not built yet). KEEL backs these up but does not restore them yet. The connection is completed from the partner's console.
+  - *Not brought back:* the connection made from the partner console (stored separately and not in the backup yet).
+  - *You do:* Set up the connector again from the partner's console, then turn on the settings the backup shows. Compliance policies that use the partner's threat level need it back first.
+- **Device management partners** (not built yet). KEEL backs these up but does not restore them yet. The connection is completed from the partner's console.
+  - *Not brought back:* the connection made from the partner console (stored separately and not in the backup yet).
+  - *You do:* Connect the partner again from its console, using the backup for the settings.
+- **Compliance partners** (not built yet). KEEL backs these up but does not restore them yet. The connection is completed from the partner's console.
+  - *Not brought back:* the connection made from the partner console (stored separately and not in the backup yet).
+  - *You do:* Connect the partner again from its console, using the backup for the settings and the groups it applies to.
+- **Remote help partners** (not built yet). KEEL backs these up but does not restore them yet. Onboarding is completed from the partner's console.
+  - *Not brought back:* the onboarding made from the partner console (stored separately and not in the backup yet).
+  - *You do:* Onboard the partner again from its console, using the backup for the settings.
+- **Exchange on-premises connectors** (Microsoft limit). The connector is a program installed on an Exchange server. No tool can install it from a backup.
+  - *Not brought back:* the connector installed on the Exchange server (stored separately and not in the backup yet).
+  - *You do:* Use the backup for the server and settings. Download the connector from the Intune admin center and install it on that server again.
+- **Exchange on-premises access settings** (not built yet). KEEL backs these up but does not restore them yet.
+  - *You do:* Put the settings back in the Intune admin center from the backup.
+- **App categories** (not built yet). KEEL backs these up but does not restore them yet. The built-in categories come with every tenant.
+  - *Not brought back:* built-in categories (set by Microsoft).
+  - *You do:* Recreate your own categories in the Intune admin center from the backup, then add the apps to them again.
+- **Company Portal branding** (not built yet). KEEL backs up the branding settings but does not restore them yet. The logo images are not backed up.
+  - *Not brought back:* logo images (stored separately and not in the backup yet); who the profile is assigned to (stored separately and not in the backup yet).
+  - *You do:* Recreate the branding in the Intune admin center from the backup, upload the logos from your own copy, and assign it again.
 
 ## Microsoft 365 workloads
 

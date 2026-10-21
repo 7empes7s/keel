@@ -175,6 +175,17 @@ export const TYPE_DECISIONS = Object.freeze({
   notificationMessageTemplate: automated('intune-notification-notificationmessagetemplate', 'Wave 2: create and update with the message text per language'),
   windowsAutopilotDeviceIdentity: manual('the hardware hash is never returned, so a registration is imported again from the device'),
   deviceManagementRoleAssignment: manual('Intune admin access needs a privilege review before it is granted again'),
+  // Remaining kinds, batch 1: backed up read-only; no writer is built yet.
+  applePushNotificationCertificate: manual('the certificate is renewed with Apple under the same Apple ID; no tool can upload it from a backup'),
+  mobileThreatDefenseConnector: manual('no writer yet; a connector is set up from the partner\'s console'),
+  deviceManagementPartner: manual('no writer yet; a partner connection is set up from the partner\'s console'),
+  complianceManagementPartner: manual('no writer yet; a partner connection is set up from the partner\'s console'),
+  remoteAssistancePartner: manual('no writer yet; the partner onboarding is completed in the partner\'s console'),
+  deviceManagementExchangeConnector: manual('the connector is installed on an Exchange server, not configured through Graph'),
+  onPremisesConditionalAccessSettings: manual('no writer yet'),
+  mobileAppCategory: manual('no writer yet; built-in categories are Microsoft-managed'),
+  intuneBrandingProfile: manual('no writer yet; beta only, and logo images are read per profile'),
+  customAuthenticationExtension: manual('no writer yet; the endpoint\'s own sign-in settings are checked by hand'),
 });
 
 // Why a retried operation can never double-apply — each names the mechanism in
@@ -933,6 +944,27 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'the hardware hash is never returned, so a registration is imported again from the device'),
   deviceManagementRoleAssignment: byHand('device-management', 'POST /deviceManagement/roleAssignments', 'DeviceManagementRBAC.ReadWrite.All',
     'Intune admin access needs a privilege review before it is granted again'),
+  // Remaining kinds, batch 1: backed up read-only; manual until a writer is built.
+  applePushNotificationCertificate: byHand('device-management', null, 'DeviceManagementServiceConfig.ReadWrite.All',
+    'the certificate is renewed with Apple and uploaded in the Intune admin center; the backup keeps the Apple ID, topic and expiry'),
+  mobileThreatDefenseConnector: byHand('device-management', 'POST /deviceManagement/mobileThreatDefenseConnectors', 'DeviceManagementServiceConfig.ReadWrite.All',
+    'backed up; the connection is completed from the partner console'),
+  deviceManagementPartner: byHand('device-management', 'POST /deviceManagement/deviceManagementPartners', 'DeviceManagementServiceConfig.ReadWrite.All',
+    'backed up; the connection is completed from the partner console'),
+  complianceManagementPartner: byHand('device-management', 'POST /deviceManagement/complianceManagementPartners', 'DeviceManagementServiceConfig.ReadWrite.All',
+    'backed up; the connection is completed from the partner console'),
+  remoteAssistancePartner: byHand('device-management', 'POST /deviceManagement/remoteAssistancePartners', 'DeviceManagementServiceConfig.ReadWrite.All',
+    'backed up; onboarding is completed from the partner console'),
+  deviceManagementExchangeConnector: byHand('device-management', null, 'DeviceManagementServiceConfig.ReadWrite.All',
+    'backed up; the connector is installed on an Exchange server'),
+  onPremisesConditionalAccessSettings: byHand('device-management', 'PATCH /deviceManagement/conditionalAccessSettings', 'DeviceManagementConfiguration.ReadWrite.All',
+    'backed up; no writer yet'),
+  mobileAppCategory: byHand('device-management', 'POST /deviceAppManagement/mobileAppCategories', 'DeviceManagementApps.ReadWrite.All',
+    'backed up; no writer yet'),
+  intuneBrandingProfile: byHand('device-management', 'POST /deviceManagement/intuneBrandingProfiles (beta)', 'DeviceManagementServiceConfig.ReadWrite.All',
+    'backed up; logo images are read per profile'),
+  customAuthenticationExtension: byHand('identity-application', 'POST /identity/customAuthenticationExtensions', 'CustomAuthenticationExtension.ReadWrite.All',
+    'backed up; the endpoint and its sign-in settings are checked by hand before a recreate'),
 });
 
 const INVENTORY_FIELDS = new Set(['batch', 'status', 'api', 'permission', 'reason']);

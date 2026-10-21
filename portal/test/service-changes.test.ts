@@ -1,0 +1,144 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import { recordSharePointRun } from "../../engine/collect/workloads/sharepoint.mjs";
+import { detectWorkloadDrift } from "../../engine/govern/workloadDrift.mjs";
+import { schemaSql } from "../../engine/store/loadSchema.mjs";
+import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
+import { typeService, plainKind } from "@/lib/baselines-view";
+import { changesVerdict } from "@/lib/changes-view";
+import { loadServiceChanges } from "@/lib/service-changes";
+import { serviceChangeFrom, serviceChangeName } from "@/lib/service-changes-view";
+import type { DriftRecord } from "@/lib/types";
+
+// Service setting changes: a change a service read finds against the read before it
+// (workload_drift) is listed on the Changes page in the same list as the approved-setup
+// changes, so the service filter and grouping cover every service, not only Entra ID
+// and Intune.
+
+const TENANT = "service-changes-portal-test";
+const HOST = "contoso.sharepoint.com";
+const FINANCE = `${HOST},11111111-1111-4111-8111-111111111111,22222222-2222-4222-8222-222222222222`;
+const ARCHIVE = `${HOST},33333333-3333-4333-8333-333333333333,44444444-4444-4444-8444-444444444444`;
+const observed = (operation: string) => ({ status: "observed", operation });
+const GRANT = { id: "aTowaS50fG1zLnNwLmV4dGVybmFs", roles: ["write"], applications: [{ id: "a0a00000-0000-4000-8000-0000000000a1", displayName: "Payroll connector" }] };
+
+const site = (siteId: string, displayName: string, grants: unknown[]) => ({
+  siteId,
+  fields: { displayName, webUrl: `https://${HOST}/sites/${displayName.toLowerCase()}`, appPermissionGrants: grants },
+  fieldCoverage: { displayName: observed("sharepoint.site-properties"), webUrl: observed("sharepoint.site-properties"), appPermissionGrants: observed("sharepoint.site-permissions") },
+});
+
+const run = (at: string, sites: ReturnType<typeof site>[]) => ({
+  workload: "sharepoint-site-settings", tenantHost: HOST, outcome: "complete", observedFrom: at, observedTo: at, sites,
+  tenant: { fields: {}, fieldCoverage: {} }, discovery: null, fieldCounts: {}, outOfScope: [],
+});
+
+test("the loader lists the newest open change per resource in every service, with its name", async () => {
+  const database = await createIsolatedTestDatabase(import.meta.url);
+  const client = await database.connect();
+  try {
+    await client.query(schemaSql());
+    const now = new Date("2026-10-15T12:00:00.000Z");
+    assert.deepEqual(await loadServiceChanges(client, { tenantRef: TENANT, now }), []);
+
+    const record = async (tenantRef: string, at: string, sites: ReturnType<typeof site>[]) => {
+      const stored = await recordSharePointRun(client, { tenantRef, result: run(at, sites) });
+      await detectWorkloadDrift(client, { collectionId: stored.id, hysteresis: undefined });
+      return stored.id;
+    };
+    const mailFlow = async (at: string, state: string) => {
+      const { rows: [collection] } = await client.query(
+        `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to, created_at)
+         VALUES ($1, 'exchange-mail-flow', 'complete', $2, $2, $2) RETURNING id`,
+        [TENANT, at],
+      );
+      await client.query(
+        `INSERT INTO workload_observation (collection_id, resource_key, fields) VALUES ($1, 'transport-rule:KEEL-RT-rule', $2)`,
+        [collection.id, { identity: "KEEL-RT-rule", kind: "transportRule", Name: "KEEL-RT-rule", State: state }],
+      );
+      await detectWorkloadDrift(client, { collectionId: collection.id, hysteresis: undefined });
+      return String(collection.id);
+    };
+    // Too old for the window: Archive's grant changed 40 days ago.
+    await record(TENANT, "2026-09-04T02:00:00.000Z", [site(FINANCE, "Finance", []), site(ARCHIVE, "Archive", [])]);
+    await record(TENANT, "2026-09-05T02:00:00.000Z", [site(FINANCE, "Finance", []), site(ARCHIVE, "Archive", [GRANT])]);
+    // An app is given access to Finance, then Finance is renamed and Archive is gone.
+    await record(TENANT, "2026-10-13T02:00:00.000Z", [site(FINANCE, "Finance", [GRANT]), site(ARCHIVE, "Archive", [GRANT])]);
+    const renamed = await record(TENANT, "2026-10-14T02:00:00.000Z", [site(FINANCE, "Finance team", [GRANT])]);
+    // A mail flow rule is switched on.
+    await mailFlow("2026-10-13T03:00:00.000Z", "Disabled");
+    const enabled = await mailFlow("2026-10-14T03:00:00.000Z", "Enabled");
+    // Another tenant's change is never shown here.
+    await record("other-tenant", "2026-10-13T02:00:00.000Z", [site(FINANCE, "Elsewhere", [])]);
+    await record("other-tenant", "2026-10-14T02:00:00.000Z", [site(FINANCE, "Elsewhere", [GRANT])]);
+
+    const all = await loadServiceChanges(client, { tenantRef: TENANT, now });
+    assert.deepEqual(all.map((item) => [item.resourceType, item.name, item.changeType]), [
+      ["exchange-mail-flow", "KEEL-RT-rule", "modified"],
+      ["sharepoint-site-settings", "Finance team", "modified"],
+      ["sharepoint-site-settings", "Archive", "removed"],
+    ]);
+    // Grouped by service, they land in Exchange and SharePoint, not only Entra ID and Intune.
+    assert.deepEqual([...new Set(all.map((item) => typeService(item.resourceType).name))], ["Exchange Online", "SharePoint and OneDrive"]);
+    const [rule, finance, archive] = all;
+    assert.deepEqual([rule.before, rule.after], [{ State: "Disabled" }, { State: "Enabled" }]);
+    assert.equal(rule.blastRadius, "access-affecting");
+    assert.equal(rule.naturalKey, "exchange-mail-flow:transport-rule:KEEL-RT-rule");
+    assert.equal(rule.serviceRead?.collectionId, enabled);
+    assert.equal(rule.serviceRead?.alertState, "open");
+    assert.equal(rule.detectedAt, "2026-10-14T03:00:00.000Z");
+    // A removed site keeps the name it had in the read before, and its last copy.
+    assert.equal(archive.after, null);
+    assert.equal((archive.before as { displayName?: string }).displayName, "Archive");
+    assert.equal(finance.serviceRead?.collectionId, renamed);
+    assert.equal(finance.blastRadius, "cosmetic");
+
+    // Acknowledged changes no longer wait for review.
+    await client.query(
+      `UPDATE alert SET state = 'acknowledged' WHERE tenant_ref = $1 AND resource_key = $2`,
+      [TENANT, `sharepoint-site-settings:site:${FINANCE}`],
+    );
+    assert.deepEqual((await loadServiceChanges(client, { tenantRef: TENANT, now })).map((item) => item.name), ["KEEL-RT-rule", "Archive"]);
+    assert.equal((await loadServiceChanges(client, { tenantRef: TENANT, now, limit: 1 })).length, 1);
+  } finally {
+    await client.end();
+    await database.cleanup();
+  }
+});
+
+const NOW = "2026-10-15T12:00:00.000Z";
+const serviceRow = (over: Record<string, unknown> = {}) => serviceChangeFrom({
+  id: "d1a00000-0000-4000-8000-0000000000d1", workload: "teams-org-policies", resource_key: "external-access:Global",
+  change_type: "modified", fields: [{ path: "AllowFederatedUsers", kind: "changed", before: false, after: true }], blast_radius: "access-affecting",
+  collection_id: "c0110000-0000-4000-8000-0000000000c2", previous_collection_id: "c0110000-0000-4000-8000-0000000000c1",
+  observed_to: "2026-10-15T02:00:00.000Z", current_fields: { identity: "Global" }, previous_fields: { identity: "Global" },
+  alert_id: "a1e70000-0000-4000-8000-0000000000a1", alert_state: "open", ...over,
+});
+
+test("each service change is named and placed in its service", () => {
+  const row = serviceRow();
+  assert.equal(row.name, "Global");
+  assert.equal(typeService(row.resourceType).name, "Teams");
+  assert.equal(plainKind(row.resourceType), "Teams organization policy");
+  assert.equal(serviceChangeName("tenant", null), "Sharing settings");
+  assert.equal(serviceChangeName("organization", {}), "Organization settings");
+  assert.equal(serviceChangeName("site:x", { webUrl: "https://contoso.sharepoint.com/sites/hr" }), "contoso.sharepoint.com/sites/hr");
+  assert.equal(serviceChangeName("dlp-policy:Block social", {}), "Block social");
+  assert.equal(serviceRow({ change_type: "added", fields: [] }).before, null);
+});
+
+test("the Changes verdict counts service setting changes apart from approved-setup changes", () => {
+  const two: DriftRecord[] = [serviceRow(), serviceRow({ id: "d1a00000-0000-4000-8000-0000000000d2" })];
+  assert.deepEqual(changesVerdict(two, "2026-10-01T00:00:00.000Z", NOW), {
+    text: "Nothing has changed since the approved setup of 14 days ago, but 2 service setting changes wait for review.", tone: "attention",
+  });
+  assert.equal(changesVerdict([], "2026-10-01T00:00:00.000Z", NOW).tone, "good");
+  assert.match(changesVerdict(two.slice(0, 1), null, NOW).text, /; 1 service setting change waits for review\.$/);
+  for (const waiting of [0, 1, 12]) {
+    for (const baseline of [null, "2026-10-01T00:00:00.000Z"]) {
+      const items = Array.from({ length: waiting }, (_, index) => serviceRow({ id: `id-${index}` }));
+      assert.ok(changesVerdict(items, baseline, NOW).text.split(/\s+/).length <= 25);
+    }
+  }
+});

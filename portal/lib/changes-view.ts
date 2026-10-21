@@ -82,22 +82,26 @@ export function changeSentence(item: Pick<DriftRecord, "naturalKey" | "changeTyp
 }
 
 /** "37 changes since the approved setup of 2 days ago; 2 could lock out administrators." */
-export function changesVerdict(items: DriftRecord[], baselineSetAt: string | null, now: string, siteChangesWaiting = 0): { text: string; tone: "good" | "attention" | "critical" } {
-  const sites = `${siteChangesWaiting} site permission ${siteChangesWaiting === 1 ? "change waits" : "changes wait"} for review`;
+/** The Changes page verdict. Service setting changes (`serviceRead`) have no approved
+ * setup, so they are counted apart: they wait for review, they did not move away from it. */
+export function changesVerdict(all: DriftRecord[], baselineSetAt: string | null, now: string): { text: string; tone: "good" | "attention" | "critical" } {
+  const items = all.filter((item) => !item.serviceRead);
+  const waiting = all.length - items.length;
+  const services = `${waiting} service setting ${waiting === 1 ? "change waits" : "changes wait"} for review`;
   if (baselineSetAt === null) {
-    return { text: `No setup is approved yet, so Keel cannot tell what changed${siteChangesWaiting ? `; ${sites}` : ""}.`, tone: "critical" };
+    return { text: `No setup is approved yet, so Keel cannot tell what changed${waiting ? `; ${services}` : ""}.`, tone: "critical" };
   }
   const since = `since the approved setup of ${ago(baselineSetAt, now)}`;
   if (items.length === 0) {
-    return siteChangesWaiting
-      ? { text: `Nothing has changed ${since}, but ${sites}.`, tone: "attention" }
+    return waiting
+      ? { text: `Nothing has changed ${since}, but ${services}.`, tone: "attention" }
       : { text: `Nothing has changed ${since}.`, tone: "good" };
   }
   const lockout = items.filter((item) => item.blastRadius === "tenant-lockout").length;
   const count = `${items.length} ${items.length === 1 ? "change" : "changes"} ${since}`;
-  if (lockout) return { text: `${count}; ${lockout} could lock out administrators.`, tone: "critical" };
+  const tail = waiting ? `, and ${services}` : "";
+  if (lockout) return { text: `${count}; ${lockout} could lock out administrators${tail}.`, tone: "critical" };
   const access = items.filter((item) => item.blastRadius === "access-affecting").length;
-  const tail = siteChangesWaiting ? `, and ${sites}` : "";
   return access
     ? { text: `${count}; ${access} ${access === 1 ? "affects" : "affect"} access${tail}.`, tone: "attention" }
     : { text: `${count}; none affects access${tail}.`, tone: "attention" };

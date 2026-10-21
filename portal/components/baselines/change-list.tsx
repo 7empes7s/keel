@@ -19,6 +19,7 @@ import {
   changedBy, decisionWords, impactTone, impactWords, kindLine, plainKind, setupName, typeService, whyItMatters, type Decision,
 } from "@/lib/baselines-view";
 import { changeLabel, changeName } from "@/lib/changes-view";
+import { workloadLabel } from "@/lib/compare-view";
 import { toDay } from "@/lib/date-range";
 import { driftActionControls } from "@/lib/drift-actions";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
@@ -31,6 +32,8 @@ import type { BaselineRecord, DriftRecord, SemanticSummary } from "@/lib/types";
 import { useViewState } from "@/lib/use-view-state";
 
 const toneOf = (item: DriftRecord): RiskTone => impactTone(item.blastRadius);
+
+const listWords = (names: string[]): string => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
 
 function ordered(items: DriftRecord[]): DriftRecord[] {
   return smartOrder(items, toneOf, (item) => item.detectedAt);
@@ -78,7 +81,10 @@ const GROUPINGS: Grouping<DriftRecord>[] = [
 ];
 
 /** The Changes page body: count tiles by risk, the shared list grouped by service, a
- * details panel per change, and accept, ignore or undo on the chosen changes. */
+ * details panel per change, and accept, ignore or undo on the chosen changes. Service
+ * setting changes (`serviceRead`) sit in the same list, so its filters and grouping
+ * cover every service; they have no approved setup, so decisions skip them and their
+ * details point to the Alerts page. */
 export function ChangeList({
   baseline,
   capabilities,
@@ -86,7 +92,8 @@ export function ChangeList({
   now,
   summary,
 }: {
-  baseline: BaselineRecord;
+  // Null when no setup is approved yet: the list then holds service setting changes only.
+  baseline: BaselineRecord | null;
   capabilities: string[];
   items: DriftRecord[];
   now: string;
@@ -105,6 +112,12 @@ export function ChangeList({
   const shown = useMemo(() => open.filter((item) => (!service || typeService(item.resourceType).code === service) && (!risk || item.blastRadius === risk)), [open, service, risk]);
   const opened = open.find((item) => item.id === view.get("open")) ?? null;
   const deciding_items = deciding ? open.filter((item) => deciding.ids.includes(item.id)) : [];
+  const serviceIds = useMemo(() => new Set(open.filter((item) => item.serviceRead).map((item) => item.id)), [open]);
+  const decidable = (ids: string[]) => ids.filter((id) => !serviceIds.has(id));
+  const skipped = (ids: string[]) => {
+    const count = ids.filter((id) => serviceIds.has(id)).length;
+    return count ? ` ${count === 1 ? "1 service setting change is" : `${count} service setting changes are`} left out: review ${count === 1 ? "it" : "them"} on the Alerts page.` : "";
+  };
 
   const href = (changes: Record<string, string | null>) => {
     const next = new URLSearchParams(params?.toString() ?? "");
@@ -124,20 +137,23 @@ export function ChangeList({
     summary.unknownBefore ? `${summary.unknownBefore} ${summary.unknownBefore === 1 ? "change has" : "changes have"} no copy in the approved setup, so the earlier values are not known.` : null,
   ].filter((note): note is string => note !== null) : [];
 
+  // Service setting changes have no approved setup to accept into or undo back to.
   function decide(decision: Decision, ids: string[]) {
-    setDeciding({ decision, ids });
+    const chosen = decidable(ids);
+    if (chosen.length) setDeciding({ decision, ids: chosen });
+    else if (ids.length) view.set({ open: ids[0] });
   }
 
   const primary = canDispose
     ? {
       label: (count: number) => decisionWords("accept", count).confirm,
-      detail: (count: number) => `Adds ${count === 1 ? "it" : "them"} to the approved setup. Nothing in Microsoft 365 changes.`,
+      detail: (count: number, ids: string[]) => `Adds ${count === 1 ? "it" : "them"} to the approved setup. Nothing in Microsoft 365 changes.${skipped(ids)}`,
       run: (ids: string[]) => decide("accept", ids),
     }
     : canRemediate
       ? {
         label: (count: number) => decisionWords("undo", count).title,
-        detail: () => "Puts the approved values back once someone else approves.",
+        detail: (_count: number, ids: string[]) => `Puts the approved values back once someone else approves.${skipped(ids)}`,
         run: (ids: string[]) => decide("undo", ids),
       }
       : {
@@ -151,6 +167,7 @@ export function ChangeList({
   ];
 
   const serviceName = service ? serviceFor(service).name : null;
+  const serviceReads = [...new Set(open.flatMap((item) => (item.serviceRead ? [serviceFor(typeService(item.resourceType).code).name] : [])))];
   return (
     <div className="bl-page">
       <BaselinesStyles />
@@ -169,15 +186,23 @@ export function ChangeList({
         <Link aria-current={!risk || undefined} className="bl-card bl-tile bl-link" href={href({ risk: null, open: null })} onClick={(event) => follow(event, { risk: null, open: null })}>
           <span className="bl-tile-label"><Icon name="baselines" />All open changes</span>
           <b className="bl-tile-count">{open.length}</b>
-          <small>Everything that differs from the approved setup</small>
+          <small>{baseline && !serviceReads.length ? "Everything that differs from the approved setup" : "Everything waiting for review"}</small>
         </Link>
       </section>
 
       <div className="bl-context">
-        <p>
-          <Icon name="baselines" />
-          <span>Measured against <Link href="/baselines">{setupName(baseline)}</Link>, approved <time dateTime={baseline.setAt} title={formatTimestamp(baseline.setAt)}>{ago(baseline.setAt, now)}</time>.</span>
-        </p>
+        {baseline ? (
+          <p>
+            <Icon name="baselines" />
+            <span>Measured against <Link href="/baselines">{setupName(baseline)}</Link>, approved <time dateTime={baseline.setAt} title={formatTimestamp(baseline.setAt)}>{ago(baseline.setAt, now)}</time>.</span>
+          </p>
+        ) : null}
+        {serviceReads.length ? (
+          <p className="bl-note">
+            <Icon name="info" />
+            <span>{`${listWords(serviceReads)} ${serviceReads.length === 1 ? "has" : "have"} no approved setup yet, so Keel compares each read with the one before it. Review those changes on the `}<Link href="/alerts">Alerts page</Link>.</span>
+          </p>
+        ) : null}
         {notes.map((note) => <p className="bl-note" key={note}><Icon name="info" /><span>{note}</span></p>)}
       </div>
 
@@ -229,16 +254,21 @@ export function ChangeList({
         {open.length ? (
           <TechnicalDetails summary="Technical details: these changes">
             {open.map((item) => (
-              <RecordField key={item.id} label={`Drift ID · ${item.naturalKey}`} usage={`Natural key ${item.naturalKey}, detected ${item.detectedAt}`} value={item.id} />
+              <RecordField key={item.id} label={`${item.serviceRead ? "Service change ID" : "Drift ID"} · ${item.naturalKey}`} usage={`Natural key ${item.naturalKey}, detected ${item.detectedAt}`} value={item.id} />
             ))}
-            <RecordField label="Baseline ID" usage={<code>GET /api/baselines</code>} value={baseline.id} />
+            {baseline ? <RecordField label="Baseline ID" usage={<code>GET /api/baselines</code>} value={baseline.id} /> : null}
           </TechnicalDetails>
         ) : null}
       </section>
 
       {opened && !deciding ? (
         <DetailsSheet
-          footer={canDispose || canRemediate ? (
+          footer={opened.serviceRead ? (
+            <>
+              <Link className="btn btn-primary" href="/alerts">Review on the Alerts page</Link>
+              <p className="bl-help">{workloadLabel(opened.serviceRead.workload)} has no approved setup, so there is nothing to accept or undo. Acknowledge or resolve its alert once someone has checked the change.</p>
+            </>
+          ) : canDispose || canRemediate ? (
             <>
               {canDispose ? <button className="btn btn-primary" onClick={() => decide("accept", [opened.id])} type="button">Accept this change</button> : null}
               {canRemediate ? <button className="btn" onClick={() => decide("undo", [opened.id])} type="button">Undo this change</button> : null}
@@ -255,17 +285,30 @@ export function ChangeList({
             <h3>Why it matters</h3>
             <p>{whyItMatters(opened.resourceType)}</p>
             <p className="bl-help">
-              {changedBy(opened) ? `${changedBy(opened)} made it` : "Keel does not know who made it yet"}; Keel found it {ago(opened.detectedAt, now)}, in {typeService(opened.resourceType).name}.
+              {opened.serviceRead
+                ? `Keel found it ${ago(opened.detectedAt, now)}, when it compared the newest ${workloadLabel(opened.serviceRead.workload).toLowerCase()} read in ${typeService(opened.resourceType).name} with the one before. It does not know who made it.`
+                : `${changedBy(opened) ? `${changedBy(opened)} made it` : "Keel does not know who made it yet"}; Keel found it ${ago(opened.detectedAt, now)}, in ${typeService(opened.resourceType).name}.`}
             </p>
           </section>
           {opened.semantic ? <SemanticDiff change={opened.semantic} item={opened} /> : <DriftDiff item={opened} />}
           {opened.evidence !== undefined ? <ChangeEvidencePanel attribution={opened.attribution} evidence={opened.evidence} now={now} /> : null}
           {opened.attribution !== undefined ? <ChangeAttributionPanel attribution={opened.attribution} now={now} /> : null}
-          <TechnicalDetails>
-            <RecordField label="Natural key" value={opened.naturalKey} />
-            <RecordField label="Drift ID" value={opened.id} />
-            <RecordField copy={false} label="Detected at" value={opened.detectedAt} />
-          </TechnicalDetails>
+          {opened.serviceRead ? (
+            <TechnicalDetails>
+              <RecordField label="Resource" value={opened.serviceRead.resourceKey} />
+              <RecordField label="Service change ID" value={opened.id} />
+              <RecordField copy={false} label="Service read" value={`${opened.serviceRead.workload} · ${opened.serviceRead.collectionId}`} />
+              <RecordField label="Compared with read" value={opened.serviceRead.previousCollectionId} />
+              <RecordField label="Alert" value={opened.serviceRead.alertId} />
+              <RecordField copy={false} label="Seen at" value={opened.detectedAt} />
+            </TechnicalDetails>
+          ) : (
+            <TechnicalDetails>
+              <RecordField label="Natural key" value={opened.naturalKey} />
+              <RecordField label="Drift ID" value={opened.id} />
+              <RecordField copy={false} label="Detected at" value={opened.detectedAt} />
+            </TechnicalDetails>
+          )}
         </DetailsSheet>
       ) : null}
 

@@ -10,7 +10,7 @@ const PAGES = [
   { name: "protect", hash: "/protect" },
   { name: "schedules", hash: "/schedules" },
   { name: "drift", hash: "/drift" },
-  { name: "drift-sites", hash: "/drift/sites" },
+  { name: "drift-services", hash: "/drift/services" },
   { name: "restore", hash: "/restore" },
   { name: "incidents", hash: "/incidents" },
   { name: "resilience", hash: "/resilience" },
@@ -1215,20 +1215,28 @@ test("site permissions fit a phone without sideways scrolling", async ({ page })
   expect(await overflow()).toBeLessThanOrEqual(0);
 });
 
-// Site permissions audit: site setting changes are listed on the Changes page, fit a
-// phone, and each site's name opens its own page.
-test("site permission changes show on the Changes page and fit a phone", async ({ page }) => {
+// Service setting changes sit in the Changes list beside the approved-setup changes, so
+// grouping and filtering by service cover every service, not only Entra ID and Intune.
+// They fit a phone, and their details point to the Alerts page instead of accept or undo.
+test("the Changes list groups and filters every service, and service changes point to Alerts", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  await open(page, "/drift/sites", "dark");
-  const list = page.locator(".site-change-list .site-change");
-  await expect(list).toHaveCount(2);
-  await expect(list.nth(0)).toContainText("App access changed.");
-  await expect(list.nth(0)).toContainText("Alert: open");
-  await expect(list.nth(1)).toContainText("Name and web address changed.");
-  await expect(page.getByRole("link", { name: "Review the open alert on the Alerts page" })).toHaveAttribute("href", /alerts/);
+  await open(page, "/drift/services", "dark");
+  await expect(page.locator('[data-layer="verdict"]')).toContainText("5 service setting changes wait for review");
+  const groups = page.locator(".sel-group-name");
+  for (const service of ["Entra ID", "Exchange Online", "SharePoint and OneDrive", "Teams", "Purview", "Power Platform"]) {
+    await expect(page.locator(".sel-group-head", { hasText: service }).first()).toBeVisible();
+  }
+  expect(await groups.count()).toBeGreaterThanOrEqual(6);
+  await expect(page.getByText("have no approved setup yet, so Keel compares each read with the one before it")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
-  await list.nth(0).getByRole("link", { name: "Finance" }).click();
-  await expect(page.locator("main#main-content h1")).toHaveText("Finance");
+
+  await page.getByRole("link", { name: "Forward finance mail" }).click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet).toContainText("Exchange mail flow or protection rule · changed");
+  await expect(sheet).toContainText("Previous read → newest read");
+  await expect(sheet).toContainText("1 setting changed since the previous read.");
+  await expect(sheet.getByRole("link", { name: "Review on the Alerts page" })).toHaveAttribute("href", /alerts/);
+  await expect(sheet.getByRole("button", { name: "Accept this change" })).toHaveCount(0);
 });
 
 // Portal experience contract, mechanical checks (roadmap task-129). They run on every
@@ -1260,7 +1268,7 @@ const RECORD_IDS: Record<string, string[]> = {
   "policy-activation": ["9a0c0000-0000-4000-8000-000000000092", "7a1d0f3e-0000-4000-8000-000000000004", "d9200000-0000-4000-8000-000000000001", "d9200000-0000-4000-8000-000000000002", "group:Privileged approvers tenant-lockout over-ceiling", "6a000000-0000-4000-8000-000000000092", "0e900000-0000-4000-8000-000000000092", "e7a10000-0000-4000-8000-0000000000e1", "2e".repeat(32)],
   restore: ["a3"],
   drift: ["conditionalAccessPolicy:Block legacy auth", "group:Old project team", "dr6", "b1180000-0000-4000-8000-000000000118"],
-  "drift-sites": ["conditionalAccessPolicy:Block legacy auth", "d1a00000-0000-4000-8000-0000000000d1", "a1e70000-0000-4000-8000-0000000000a5", "site:contoso.sharepoint.com,5e170000-0000-4000-8000-000000000001,5e170000-0000-4000-8000-000000000002"],
+  "drift-services": ["conditionalAccessPolicy:Block legacy auth", "d1a00000-0000-4000-8000-0000000000d1", "exchange-mail-flow:transport-rule:Forward finance mail"],
   approvals: ["a9e10000-0000-4000-8000-000000000100", "8c1e0000-0000-4000-8000-0000000000a1"],
   "baselines-new": ["0b5e0000-0000-4000-8000-0000000000d6"],
   baselines: ["b1180000-0000-4000-8000-000000000118", "b1170000-0000-4000-8000-000000000117", "b1160000-0000-4000-8000-000000000116", "0b5e0000-0000-4000-8000-0000000000c8"],

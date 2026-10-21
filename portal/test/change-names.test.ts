@@ -122,7 +122,7 @@ test("the Changes data names each change and the objects its settings point to",
   assert.equal(policy.refNames?.[ROLE_TEMPLATE_ID], "Global Administrator");
   assert.equal(policy.refNames?.[MISSING_ID], undefined);
   const groups = valueWords(policyAfter.conditions.users.excludeGroups, policy.refNames);
-  assert.equal(groups, "Finance approvers, 1 other object KEEL has no name for");
+  assert.equal(groups, "Finance approvers, 1 other object Keel has no name for");
   assert.equal(valueWords(policyAfter.conditions.users.excludeRoles, policy.refNames), "Global Administrator");
 
   const script = byKey.get(SCRIPT_ID)!;
@@ -139,7 +139,7 @@ test("the Changes data names each change and the objects its settings point to",
   const reviewAfter = changes[3].after as { reviewed: string; note: string };
   assert.equal(review.refNames?.[GRANT_ID.toLowerCase()], "Contoso HR to Microsoft Graph");
   assert.equal(valueWords(reviewAfter.reviewed, review.refNames), "Contoso HR to Microsoft Graph");
-  assert.equal(valueWords(UNKNOWN_GRANT_ID, review.refNames), "an object KEEL has no name for");
+  assert.equal(valueWords(UNKNOWN_GRANT_ID, review.refNames), "an object Keel has no name for");
   assert.equal(valueWords(reviewAfter.note, review.refNames), "Covers Contoso HR to Microsoft Graph and (unnamed object)");
 });
 
@@ -149,10 +149,10 @@ test("names fall back to words, never to an id", () => {
   assert.doesNotMatch(changeName({ naturalKey: SCRIPT_ID, resourceType: SCRIPT_ID }), GUID);
   assert.equal(changeName({ naturalKey: "group:Finance", resourceType: "group" }), "Finance");
   assert.equal(changeName({ naturalKey: "group:Finance", resourceType: "group", name: "Finance team" }), "Finance team");
-  assert.equal(valueWords(MISSING_ID, {}), "an object KEEL has no name for");
-  assert.equal(valueWords([MISSING_ID, MISSING_ID.replace("0000", "0001")], {}), "2 objects KEEL has no name for");
+  assert.equal(valueWords(MISSING_ID, {}), "an object Keel has no name for");
+  assert.equal(valueWords([MISSING_ID, MISSING_ID.replace("0000", "0001")], {}), "2 objects Keel has no name for");
   assert.equal(valueWords(["All"], {}), "All");
-  assert.equal(valueWords([GRANT_ID, UNKNOWN_GRANT_ID], {}), "2 objects KEEL has no name for");
+  assert.equal(valueWords([GRANT_ID, UNKNOWN_GRANT_ID], {}), "2 objects Keel has no name for");
   assert.equal(valueWords(`Job AD2AADProvisioning.0123456789abcdef0123456789abcdef.fedcba9876543210fedcba9876543210`, {}), "Job AD2AADProvisioning.(unnamed object).(unnamed object)");
   // Without a name book the words are as before.
   assert.equal(valueWords(["a", "b"]), "a, b");

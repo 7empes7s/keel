@@ -62,7 +62,9 @@ export function TechnicalDetails({ children, summary = "Technical details" }: { 
     if (!open) return;
     // Esc closes this panel only, not the sheet or page behind it.
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      // The panel may already be closed while React has not yet run the toggle
+      // handler; a second Esc then belongs to the sheet behind it.
+      if (event.key !== "Escape" || !panelRef.current?.matches(":popover-open")) return;
       event.stopPropagation();
       hide();
       detailsRef.current?.querySelector<HTMLElement>("summary")?.focus();

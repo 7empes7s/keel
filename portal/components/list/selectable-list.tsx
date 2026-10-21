@@ -27,8 +27,9 @@ export interface Grouping<T> {
 }
 
 export interface ListAction {
-  // Names the action with the count, in plain words: "Restore 12 settings".
-  label: (count: number) => string;
+  // Names the action with the count, in plain words: "Restore 12 settings". `ids` are
+  // the chosen rows, for a list whose action depends on which rows they are.
+  label: (count: number, ids: string[]) => string;
   // What happens, before it happens. `ids` are the chosen rows, for a detail that
   // depends on which rows they are.
   detail: (count: number, ids: string[]) => string;
@@ -286,7 +287,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
           <span className="sel-bar-count"><b>{plural(count, noun)}</b> selected</span>
           <span className="sel-bar-detail">{action.detail(count, selectedIds)}</span>
           <span className="sel-bar-actions">
-            <button className="btn btn-primary" onClick={() => action.run(selectedIds)} type="button">{action.label(count)}</button>
+            <button className="btn btn-primary" onClick={() => action.run(selectedIds)} type="button">{action.label(count, selectedIds)}</button>
             {more.length ? (
               <Popover button={<>More<Icon name="chevron-down" /></>} buttonClassName="btn" label="More actions" title="More actions">
                 {(close) => (

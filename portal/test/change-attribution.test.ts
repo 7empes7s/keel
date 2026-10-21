@@ -118,7 +118,7 @@ test("without an audit log the reader says unknown, and still routes the roll ba
   const creos = byKey(data.items, CREOS_KEY);
   assert.equal(creos.verdict, "unknown");
   assert.equal(creos.reason, "audit-log-not-configured");
-  assert.equal(attributionSentence(creos), "KEEL does not read this tenant's audit log, so it cannot say who made this change.");
+  assert.equal(attributionSentence(creos), "Keel does not read this tenant's audit log, so it cannot say who made this change.");
   assert.deepEqual(creos.route && [creos.route.route, creos.route.entityCode, creos.route.approverCount], ["entity", "CREOS", 1]);
   assert.equal(routeSentence(creos.route!), "A roll back goes to CREOS approvers (1 person).");
   const enovos = byKey(data.items, ENOVOS_KEY);

@@ -1,3 +1,4 @@
+import { DecisionStyles } from "@/components/decision-styles";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import type { ChangeAttribution } from "@/lib/types";
@@ -16,21 +17,21 @@ export const ATTRIBUTION_HEADLINES: Record<ChangeAttribution["verdict"], string>
 };
 
 const UNKNOWN_SENTENCES: Record<string, string> = {
-  "resource-identity-unresolved": "KEEL cannot tell which object this is, so it cannot match it to the audit log.",
-  "audit-log-not-configured": "KEEL does not read this tenant's audit log, so it cannot say who made this change.",
-  "audit-retention-gap": "The audit log for that time is no longer available, so KEEL cannot say who made this change.",
-  "audit-read-scope-revoked": "KEEL lost permission to read the audit log, so it cannot say who made this change.",
-  "audit-read-failed": "KEEL could not read the audit log for that time, so it cannot say who made this change.",
-  "audit-window-not-read": "KEEL has not read the audit log for that time yet.",
-  "audit-in-organization-archive": "This tenant's audit log is kept in your organization's archive, which KEEL does not read.",
+  "resource-identity-unresolved": "Keel cannot tell which object this is, so it cannot match it to the audit log.",
+  "audit-log-not-configured": "Keel does not read this tenant's audit log, so it cannot say who made this change.",
+  "audit-retention-gap": "The audit log for that time is no longer available, so Keel cannot say who made this change.",
+  "audit-read-scope-revoked": "Keel lost permission to read the audit log, so it cannot say who made this change.",
+  "audit-read-failed": "Keel could not read the audit log for that time, so it cannot say who made this change.",
+  "audit-window-not-read": "Keel has not read the audit log for that time yet.",
+  "audit-in-organization-archive": "This tenant's audit log is kept in your organization's archive, which Keel does not read.",
   "several-nearby-sign-ins": "No audit entry names this change, and several people signed in while it happened.",
-  "no-audit-record-names-resource": "No audit entry names this change, so KEEL cannot say who made it.",
+  "no-audit-record-names-resource": "No audit entry names this change, so Keel cannot say who made it.",
 };
 
 function actorName(actor: Actor): string {
   if (actor.name) return actor.kind === "servicePrincipal" ? `the app ${actor.name}` : actor.name;
   if (!actor.id) return "an account outside your entities";
-  return actor.kind === "servicePrincipal" ? "an app KEEL does not back up" : "an account KEEL does not back up";
+  return actor.kind === "servicePrincipal" ? "an app Keel does not back up" : "an account Keel does not back up";
 }
 
 function capitalized(text: string): string {
@@ -54,7 +55,7 @@ export function attributionSentence(attribution: ChangeAttribution): string {
     case "sign-in-proximity-only":
       return `Possibly ${who}, who signed in while it changed. No audit entry names this change.`;
     default:
-      return UNKNOWN_SENTENCES[attribution.reason] ?? "KEEL cannot say who made this change.";
+      return UNKNOWN_SENTENCES[attribution.reason] ?? "Keel cannot say who made this change.";
   }
 }
 
@@ -63,7 +64,7 @@ const CENTRAL_BECAUSE: Record<string, string> = {
   "shared-or-unattributed": "because this resource is shared or has no single owner",
   "ownership-expired": "because its owner record is out of date",
   "no-entity-approver": "because its owner has no approver",
-  "no-captured-scope": "because KEEL could not tell who owns it",
+  "no-captured-scope": "because Keel could not tell who owns it",
 };
 
 export function routeSentence(route: NonNullable<ChangeAttribution["route"]>): string {
@@ -78,15 +79,17 @@ export function ChangeAttributionPanel({ attribution, now }: { attribution: Chan
   if (!attribution) {
     return (
       <section className="change-attribution" aria-label="Who made this change">
-        <p className="section-kicker">Who made this change</p>
-        <p className="field-help">KEEL did not check who made this change.</p>
+        <DecisionStyles />
+        <h3 className="decision-heading">Who made this change</h3>
+        <p className="field-help">Keel did not check who made this change.</p>
       </section>
     );
   }
   const when = attribution.verdict === "exact" ? attribution.evidence[0]?.occurredAt ?? null : null;
   return (
     <section className={`change-attribution change-attribution-${attribution.verdict}`} aria-label="Who made this change">
-      <p className="section-kicker">Who made this change</p>
+      <DecisionStyles />
+      <h3 className="decision-heading">Who made this change</h3>
       <p className="change-attribution-headline">
         <strong>{ATTRIBUTION_HEADLINES[attribution.verdict]}.</strong>{" "}
         <span className="change-attribution-sentence">{attributionSentence(attribution)}</span>

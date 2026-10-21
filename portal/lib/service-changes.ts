@@ -12,13 +12,14 @@ interface KeelClient {
   end(): Promise<void>;
 }
 
-// An alert in these states still waits for someone; acknowledged and resolved ones do not.
-const WAITING = ["open", "reopened"];
+// An alert in these states is still open: waiting for someone, or seen (acknowledged)
+// and not yet resolved. Resolved and muted ones leave the list.
+const LISTED = ["open", "reopened", "acknowledged"];
 
 /**
- * Service setting changes still waiting for review: the newest change per resource
- * found within `days`, in every service, whose alert is still open (or that raised
- * none). Newest first. Each carries the resource's name from the read that found it,
+ * Service setting changes still open: the newest change per resource found within
+ * `days`, in every service, whose alert is open, reopened or acknowledged (or that
+ * raised none). Newest first. Each carries the resource's name from the read that found it,
  * or from the read before it when the resource is gone.
  */
 export async function loadServiceChanges(
@@ -42,7 +43,7 @@ export async function loadServiceChanges(
      ) newest
      WHERE alert_state IS NULL OR alert_state = ANY($3::text[])
      ORDER BY observed_to DESC, workload, resource_key LIMIT $4`,
-    [tenant, since, WAITING, limit],
+    [tenant, since, LISTED, limit],
   );
   return rows.map(serviceChangeFrom);
 }

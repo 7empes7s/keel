@@ -100,6 +100,31 @@ export async function createSubscription(client, { channelId, eventGlob, minSeve
   return rows[0];
 }
 
+// Portal audit, Notifications: "Send test" on a channel queues one notice-level
+// delivery of kind "test" to that channel alone, through the same durable path a real
+// alert takes, so the Sent list proves the channel works (or shows why it does not).
+export const TEST_EVENT_KIND = 'test';
+export const CHANNEL_NOT_FOUND = 'channel not found';
+export const CHANNEL_OFF = 'channel is turned off';
+
+export async function sendTestAlert(client, { channelId, requestedBy, maxAttempts = DEFAULT_DELIVERY_MAX_ATTEMPTS }) {
+  requireNonEmptyString(channelId, 'channelId');
+  requireNonEmptyString(requestedBy, 'requestedBy');
+  const requester = await findPrincipalById(client, requestedBy);
+  if (!(await can(client, requester, 'configuration', new Date()))) {
+    throw new Error('requester is not authorized to dispatch notifications');
+  }
+  const { rows: [channel] } = await client.query('SELECT id, kind, enabled FROM channel WHERE id = $1', [channelId]);
+  if (!channel) throw new Error(CHANNEL_NOT_FOUND);
+  if (!channel.enabled) throw new Error(CHANNEL_OFF);
+  return queueDelivery(client, {
+    channelId: channel.id,
+    requestedBy,
+    maxAttempts,
+    event: { kind: TEST_EVENT_KIND, severity: 'notice', requestedBy, sentAt: new Date().toISOString() },
+  });
+}
+
 // Create the durable delivery rows before enqueuing the jobs. The transaction ensures
 // an event cannot be recorded as queued without a corresponding notify job (or the
 // reverse). Multiple matching subscriptions for one channel produce one delivery.

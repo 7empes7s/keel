@@ -17,7 +17,7 @@ import { protectStatus, protectVerdict, protectVerdictDetail, tierSummaries } fr
 import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
-import { DeliveryTable, NotificationConsole } from "@/components/notification-console";
+import { NotificationsPage } from "@/components/notifications/notifications-page";
 import { IntegrationConsole } from "@/components/integration-console";
 import { ActivityTimeline, IntegrityNote, activityVerdict, mergeActivity } from "@/components/activity-timeline";
 import { ApprovedSetup } from "@/components/baselines/approved-setup";
@@ -47,7 +47,6 @@ import { ComplianceReport } from "@/components/compliance-report";
 import { complianceVerdict } from "@/lib/compliance-view";
 import { accessSummary } from "@/lib/presentation";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
-import { notificationsVerdict } from "@/lib/notifications-view";
 import { integrationsPageVerdict } from "@/lib/integrations-view";
 import { ServiceNowPanel } from "@/components/servicenow-panel";
 import type { ServiceNowStatus } from "@/lib/servicenow";
@@ -123,8 +122,14 @@ const HARNESS_DELIVERIES = [
   { id: "d-3", channel_id: "c-teams", channel_kind: "teams", status: "delivered", event: { kind: "job.failed", severity: "medium" }, attempts: 1, last_error: null, next_attempt_at: null },
 ];
 
+// Every call the pages make, for tests: fetch is answered in-page, so Playwright never
+// sees a network request.
+const HARNESS_CALLS: { url: string; method: string; body: string | null }[] = [];
+(window as unknown as { __harnessCalls: typeof HARNESS_CALLS }).__harnessCalls = HARNESS_CALLS;
+
 window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
+  HARNESS_CALLS.push({ url: url.replace(/^https?:\/\/[^/]+/, ""), method: init?.method ?? "GET", body: typeof init?.body === "string" ? init.body : null });
   // The menu's section statuses read the Overview's data; answer at once so every
   // screenshot shows them.
   if (url.endsWith("/api/dashboard")) return json(dashboard(0));
@@ -201,6 +206,18 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         { parentNaturalKey, family: "member", action: "remove", targetNaturalKey: "user:former.contractor@contoso.example", targetId: "u-2" },
       ]) } });
   }
+  // Notifications: a test send answers with its queued delivery; the other writes just succeed.
+  if (/\/api\/channels\/[^/]+\/test$/.test(url)) {
+    const channelId = url.split("/").at(-2) ?? "";
+    const channel = CHANNELS.find((entry) => entry.id === channelId);
+    return json({ delivery: { id: `d0e10000-0000-4000-8000-00000000${String(Date.now()).slice(-4)}`, event: { kind: "test", severity: "notice" }, channel_id: channelId, channel_kind: channel?.kind ?? "webhook", status: "queued", attempts: 0, last_error: null, next_attempt_at: now, created_at: now } }, 202);
+  }
+  if (/\/api\/channels\/[^/]+\/(enable|disable)$/.test(url)) return json({ id: url.split("/").at(-2) });
+  if (url.endsWith("/api/channels") && init?.method === "POST") return json({ channel: { id: "c4e10000-0000-4000-8000-0000000000c9", ...JSON.parse(String(init.body)), enabled: true } }, 201);
+  if (url.endsWith("/api/subscriptions") && init?.method === "POST") return json({ subscription: { id: "5b500000-0000-4000-8000-0000000000f9", ...JSON.parse(String(init.body)) } }, 201);
+  if (/\/api\/subscriptions\/[^/]+$/.test(url)) return json(init?.method === "DELETE" ? { id: url.split("/").at(-1) } : { subscription: { id: url.split("/").at(-1) } });
+  if (url.endsWith("/api/escalation-rules") && init?.method === "POST") return json({ escalationRule: { id: "e5c10000-0000-4000-8000-0000000000e9" } }, 201);
+  if (/\/api\/escalation-rules\/[^/]+\/(enable|disable)$/.test(url)) return json({ escalationRule: { id: url.split("/").at(-2) } });
   if (url.endsWith("/api/actions/restore/content-effects")) { contentEffectsApproved = true; return json({ approval: { id: "cea-1" } }); }
   // Approvals: the two-person restore records a first sign-off; everything else starts.
   if (/\/api\/approvals\/[^/]+\/approve$/.test(url)) return json(url.includes(TWO_PERSON_REQUEST) ? { job: null, signoffs: 1, requiredApprovals: 2 } : { job: { id: "a3" }, signoffs: 1, requiredApprovals: 1 }, 202);
@@ -438,12 +455,39 @@ const INTENT_CHANGES: IntentCandidate[] = [{
     { field: "description", before: { present: false, value: null }, after: { present: true, value: "Archived" } },
   ],
 }];
-const CHANNELS = [{ id: "c4e10000-0000-4000-8000-0000000000c1", kind: "webhook", config: { url: "https://hooks.contoso.com/keel" }, enabled: true }, { id: "c4e10000-0000-4000-8000-0000000000c2", kind: "email", config: { to: "secops@contoso.com", from: "keel@contoso.com" }, enabled: true }, { id: "c4e10000-0000-4000-8000-0000000000c3", kind: "pagerduty", config: { routingKeyRef: "env:KEEL_PAGERDUTY_KEY", region: "eu" }, enabled: true }, { id: "c4e10000-0000-4000-8000-0000000000c4", kind: "slack", config: { endpointRef: "env:KEEL_SLACK_WEBHOOK" }, enabled: true }];
+const CHANNELS = [
+  { id: "c4e10000-0000-4000-8000-0000000000c1", kind: "webhook", config: { url: "https://hooks.contoso.com/keel" }, enabled: true, created_at: "2026-09-01T08:00:00Z" },
+  { id: "c4e10000-0000-4000-8000-0000000000c2", kind: "email", config: { to: "secops@contoso.com", from: "keel@contoso.com" }, enabled: true, created_at: "2026-09-01T08:05:00Z" },
+  { id: "c4e10000-0000-4000-8000-0000000000c3", kind: "pagerduty", config: { routingKeyRef: "env:KEEL_PAGERDUTY_KEY", region: "eu" }, enabled: true, created_at: "2026-09-02T08:00:00Z" },
+  { id: "c4e10000-0000-4000-8000-0000000000c4", kind: "slack", config: { endpointRef: "env:KEEL_SLACK_WEBHOOK" }, enabled: true, created_at: "2026-09-03T08:00:00Z" },
+  // Turned off three days ago; its history is kept.
+  { id: "c4e10000-0000-4000-8000-0000000000c5", kind: "teams", config: { endpointRef: "env:KEEL_TEAMS_WEBHOOK" }, enabled: false, created_at: "2026-08-20T08:00:00Z" },
+];
+const SIGN_IN_ALERT = { alertId: "a1e70000-0000-4000-8000-000000000001", resourceKey: "conditionalAccessPolicy:Block legacy auth", control: "baseline", condition: "drift", occurrence: 1 };
+const DEVICE_ALERT = { alertId: "a1e70000-0000-4000-8000-000000000002", resourceKey: "deviceConfiguration:Corporate laptops", control: "baseline", condition: "drift", occurrence: 1 };
 const DELIVERIES = [
-  { id: "d0e10000-0000-4000-8000-0000000000d1", event: { kind: "drift.detected", severity: "critical" }, channel_id: CHANNELS[0].id, channel_kind: "webhook", status: "retrying", attempts: 2, last_error: "the webhook did not answer in time", next_attempt_at: "2026-10-02T09:45:00Z" },
-  { id: "d0e10000-0000-4000-8000-0000000000d2", event: { kind: "drift.detected", severity: "notice" }, channel_id: CHANNELS[1].id, channel_kind: "email", status: "delivered", attempts: 1, last_error: null, next_attempt_at: null },
-  { id: "d0e10000-0000-4000-8000-0000000000d3", event: { kind: "drift.detected", severity: "critical" }, channel_id: CHANNELS[2].id, channel_kind: "pagerduty", status: "delivered", attempts: 2, last_error: null, next_attempt_at: null, provider_receipt: { channel: "pagerduty", provider: "pagerduty", outcome: "delivered", httpStatus: 202, semantics: "Accepted by PagerDuty. Events with the same dedup key join one incident.", endpointHost: "events.eu.pagerduty.com", dedupKey: "keel:alert:6f1c2a54-1d3b-4c8e-9a51-3e0d7c1b2a90:1" } },
-  { id: "d0e10000-0000-4000-8000-0000000000d4", event: { kind: "drift.detected", severity: "warning" }, channel_id: CHANNELS[3].id, channel_kind: "slack", status: "failed", attempts: 1, last_error: "Slack refused the message (HTTP 404): the webhook was removed or turned off", next_attempt_at: null, provider_receipt: { channel: "slack", provider: "slack", outcome: "rejected", httpStatus: 404, endpointHost: "hooks.slack.com", providerStatus: "no_service" } },
+  { id: "d0e10000-0000-4000-8000-0000000000d1", event: { kind: "alert.opened", severity: "critical", ...SIGN_IN_ALERT }, channel_id: CHANNELS[0].id, channel_kind: "webhook", status: "retrying", attempts: 2, last_error: "the webhook did not answer in time", next_attempt_at: "2026-10-02T09:45:00Z", created_at: "2026-10-02T09:38:00Z" },
+  { id: "d0e10000-0000-4000-8000-0000000000d2", event: { kind: "alert.opened", severity: "critical", ...SIGN_IN_ALERT }, channel_id: CHANNELS[1].id, channel_kind: "email", status: "delivered", attempts: 1, last_error: null, next_attempt_at: null, created_at: "2026-10-02T09:38:00Z", delivered_at: "2026-10-02T09:38:04Z" },
+  { id: "d0e10000-0000-4000-8000-0000000000d3", event: { kind: "alert.opened", severity: "critical", ...SIGN_IN_ALERT }, channel_id: CHANNELS[2].id, channel_kind: "pagerduty", status: "delivered", attempts: 2, last_error: null, next_attempt_at: null, created_at: "2026-10-02T09:38:00Z", delivered_at: "2026-10-02T09:38:40Z", provider_receipt: { channel: "pagerduty", provider: "pagerduty", outcome: "delivered", httpStatus: 202, semantics: "Accepted by PagerDuty. Events with the same dedup key join one incident.", endpointHost: "events.eu.pagerduty.com", dedupKey: "keel:alert:6f1c2a54-1d3b-4c8e-9a51-3e0d7c1b2a90:1" } },
+  { id: "d0e10000-0000-4000-8000-0000000000d4", event: { kind: "alert.reopened", severity: "warning", ...DEVICE_ALERT, occurrence: 2 }, channel_id: CHANNELS[3].id, channel_kind: "slack", status: "failed", attempts: 1, last_error: "Slack refused the message (HTTP 404): the webhook was removed or turned off", next_attempt_at: null, created_at: "2026-10-02T09:12:00Z", provider_receipt: { channel: "slack", provider: "slack", outcome: "rejected", httpStatus: 404, endpointHost: "hooks.slack.com", providerStatus: "no_service" } },
+  { id: "d0e10000-0000-4000-8000-0000000000d5", event: { kind: "alert.reopened", severity: "warning", ...DEVICE_ALERT, occurrence: 2 }, channel_id: CHANNELS[3].id, channel_kind: "slack", status: "failed", attempts: 1, last_error: "Slack refused the message (HTTP 404): the webhook was removed or turned off", next_attempt_at: null, created_at: "2026-10-02T09:12:30Z", provider_receipt: { channel: "slack", provider: "slack", outcome: "rejected", httpStatus: 404, endpointHost: "hooks.slack.com", providerStatus: "no_service" } },
+  { id: "d0e10000-0000-4000-8000-0000000000d6", event: { kind: "test", severity: "notice", requestedBy: "8c1e0000-0000-4000-8000-0000000000a1" }, channel_id: CHANNELS[3].id, channel_kind: "slack", status: "delivered", attempts: 1, last_error: null, next_attempt_at: null, created_at: "2026-10-01T16:02:00Z", delivered_at: "2026-10-01T16:02:01Z" },
+  { id: "d0e10000-0000-4000-8000-0000000000d7", event: { kind: "alert.opened", severity: "warning", ...DEVICE_ALERT }, channel_id: CHANNELS[1].id, channel_kind: "email", status: "delivered", attempts: 1, last_error: null, next_attempt_at: null, created_at: "2026-10-02T03:10:00Z", delivered_at: "2026-10-02T03:10:03Z" },
+  { id: "d0e10000-0000-4000-8000-0000000000d8", event: { kind: "alert.opened", severity: "warning", ...DEVICE_ALERT }, channel_id: CHANNELS[0].id, channel_kind: "webhook", status: "delivered", attempts: 1, last_error: null, next_attempt_at: null, created_at: "2026-10-02T03:10:00Z", delivered_at: "2026-10-02T03:10:01Z" },
+  { id: "d0e10000-0000-4000-8000-0000000000d9", event: { kind: "alert.opened", severity: "notice", resourceKey: "group:Finance", control: "baseline", condition: "drift", alertId: "a1e70000-0000-4000-8000-000000000003", occurrence: 1 }, channel_id: CHANNELS[4].id, channel_kind: "teams", status: "delivered", attempts: 1, last_error: null, next_attempt_at: null, created_at: "2026-09-29T11:00:00Z", delivered_at: "2026-09-29T11:00:02Z" },
+];
+const SUBSCRIPTIONS = [
+  { id: "5b500000-0000-4000-8000-0000000000f1", channel_id: CHANNELS[0].id, event_glob: "*", min_severity: "warning", created_at: "2026-09-01T08:10:00Z" },
+  { id: "5b500000-0000-4000-8000-0000000000f2", channel_id: CHANNELS[1].id, event_glob: "alert.opened", min_severity: "critical", created_at: "2026-09-01T08:12:00Z" },
+  { id: "5b500000-0000-4000-8000-0000000000f3", channel_id: CHANNELS[3].id, event_glob: "alert.reopened", min_severity: "warning", created_at: "2026-09-03T08:10:00Z" },
+];
+const ESCALATION_RULES = [
+  { id: "e5c10000-0000-4000-8000-0000000000e1", control: null, min_severity: "critical", ack_within_ms: 30 * 60_000, enabled: true, created_at: "2026-09-02T08:30:00Z", owner_principal_id: "8c1e0000-0000-4000-8000-0000000000b3", owner_name: "Sam Ortiz", owner_email: "sam.ortiz@contoso.example", owner_disabled_at: null, escalate_channel_id: CHANNELS[2].id, channel_kind: "pagerduty", channel_enabled: true },
+];
+const PEOPLE_CHOICES = [
+  { id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane Defili", email: "marouanedefili@gmail.com" },
+  { id: "8c1e0000-0000-4000-8000-0000000000a2", name: "Amara Okafor", email: "amara.okafor@contoso.example" },
+  { id: "8c1e0000-0000-4000-8000-0000000000b3", name: "Sam Ortiz", email: "sam.ortiz@contoso.example" },
 ];
 const DESTINATIONS = [{ id: "de570000-0000-4000-8000-0000000000e1", tenant_ref: "t", name: "Sentinel CEF", kind: "cef", config: { transport: "https", url: "https://siem.contoso.com/cef", acknowledgement: "http-response" }, enabled: true, revoked_at: null, created_by: "marouanedefili@gmail.com", created_at: now }];
 const DESTINATION_STATUSES = [{ destinationId: DESTINATIONS[0].id, tenantRef: "t", kind: "cef", paused: false, pending: 14, delivering: 2, acknowledged: 18190, quarantined: 3, oldestPendingObservedAt: now, lagMs: 41000 }] as never[];
@@ -1531,13 +1575,10 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       ]} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/content-effects": return <>{header("Inbox", "Changes to kept or shared content", "A restore that shortens how long content is kept, releases a hold, widens sharing or deletes content needs its own approval.", undefined, { tone: "soon", label: "Waiting for you" })}
       <ContentEffectsReviewHarness /></>;
-    case "/notifications": return <>{header("Settings", "Notifications", "Where KEEL sends alerts, which alerts go where, and what was sent.")}
-      <Verdict text={notificationsVerdict(CHANNELS, DELIVERIES)} />
-      <div data-layer="explanation">
-        <NotificationConsole canConfiguration channels={CHANNELS}
-          subscriptions={[{ id: "5b500000-0000-4000-8000-0000000000f1", channel_id: CHANNELS[0].id, event_glob: "drift.detected", min_severity: "warning" }, { id: "5b500000-0000-4000-8000-0000000000f2", channel_id: CHANNELS[1].id, event_glob: "*", min_severity: "critical" }]} />
-        <DeliveryTable channels={CHANNELS} deliveries={DELIVERIES} now={now} />
-      </div></>;
+    case "/notifications": return <>{header("Settings", "Notifications", "Where Keel sends alerts, who gets which alerts, and what was sent.", undefined, { tone: "urgent", label: "Slack is failing" })}
+      <NotificationsPage canConfiguration channels={CHANNELS} deliveries={DELIVERIES} escalationRules={ESCALATION_RULES} now={now} people={PEOPLE_CHOICES} subscriptions={SUBSCRIPTIONS} /></>;
+    case "/notifications/viewer": return <>{header("Settings", "Notifications", "Where Keel sends alerts, who gets which alerts, and what was sent.")}
+      <NotificationsPage canConfiguration={false} channels={[]} deliveries={DELIVERIES} now={now} subscriptions={[]} /></>;
     case "/integrations": case "/integrations/servicenow-off": {
       const servicenow = path === "/integrations" ? SERVICENOW_ON : SERVICENOW_OFF;
       const verdict = integrationsPageVerdict(DESTINATIONS, DESTINATION_STATUSES, servicenow);

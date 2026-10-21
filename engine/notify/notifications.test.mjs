@@ -8,6 +8,9 @@ import {
   eventMatches,
   listDeliveries,
   retryDelayMs,
+  sendTestAlert,
+  CHANNEL_NOT_FOUND,
+  CHANNEL_OFF,
 } from './notifications.mjs';
 import { claimNext } from '../jobs/queue.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
@@ -273,6 +276,31 @@ try {
     failedForChannel.map((delivery) => delivery.id),
     [newestListed.id],
     'delivery history accepts the documented failed status filter',
+  );
+
+  // Portal audit, Notifications: "Send test" queues one notice-level test delivery to
+  // one channel, through the durable path, and refuses a channel that is off or missing.
+  const testChannel = await createChannel(client, { kind: 'webhook', config: { url: 'https://hooks.example.test/test-send' } });
+  const { delivery: testDelivery, job: testJob } = await sendTestAlert(client, { channelId: testChannel.id, requestedBy: requester });
+  assert.equal(testDelivery.event.kind, 'test');
+  assert.equal(testDelivery.event.severity, 'notice');
+  assert.equal(testDelivery.channel_id, testChannel.id);
+  assert.equal(testDelivery.status, 'queued');
+  assert.equal(testJob.kind, 'notify');
+  assert.deepEqual(testJob.params, { deliveryId: testDelivery.id });
+  assert.deepEqual(
+    (await listDeliveries(client, { channelId: testChannel.id })).map((delivery) => delivery.id),
+    [testDelivery.id],
+    'a test send reaches its channel alone',
+  );
+  await client.query('UPDATE channel SET enabled = false WHERE id = $1', [testChannel.id]);
+  await assert.rejects(sendTestAlert(client, { channelId: testChannel.id, requestedBy: requester }), { message: CHANNEL_OFF });
+  await assert.rejects(sendTestAlert(client, { channelId: '00000000-0000-4000-8000-000000000000', requestedBy: requester }), { message: CHANNEL_NOT_FOUND });
+  await client.query(`INSERT INTO principal (id, email) VALUES ($1, 'alerts-viewer@example.com')`, ['22222222-2222-2222-2222-222222222222']);
+  await assert.rejects(
+    sendTestAlert(client, { channelId: testChannel.id, requestedBy: '22222222-2222-2222-2222-222222222222' }),
+    /not authorized/,
+    'a test send needs the configuration capability, like a real dispatch',
   );
 
   let defaultListOptions;

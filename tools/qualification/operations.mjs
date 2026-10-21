@@ -243,6 +243,10 @@ const FIXTURE_PAYLOADS = Object.freeze({
   directoryRoleAccessReviewPolicy: { settings: { mailNotificationsEnabled: true, reminderNotificationsEnabled: true, justificationRequiredOnApproval: true, defaultDecisionEnabled: false, defaultDecision: 'None', instanceDurationInDays: 14, recommendationsEnabled: true } },
   multiTenantOrganizationIdentitySyncPolicyTemplate: { templateApplicationLevel: 'newPartners', userSyncInbound: { isSyncAllowed: true } },
   multiTenantOrganizationPartnerConfigurationTemplate: { templateApplicationLevel: 'newPartners', automaticUserConsentSettings: { inboundAllowed: true, outboundAllowed: true } },
+  // Restore gaps, batch 3: guest and app consent settings.
+  b2bManagementPolicy: { displayName: 'B2B management policy', definition: ['{"B2BManagementPolicy":{"InvitationsAllowedAndBlockedDomainsPolicy":{"BlockedDomains":["keel-rt-blocked.example"]}}}'], isOrganizationDefault: true },
+  permissionGrantPreApprovalPolicy: { conditions: [{ scopeType: 'chat', sensitivityLabels: { '@odata.type': '#microsoft.graph.allScopeSensitivityLabels', labelKind: 'all' }, permissions: { '@odata.type': '#microsoft.graph.enumeratedPreApprovedPermissions', permissionKind: 'enumerated', permissionType: 'application', resourceApplicationId: '00000003-0000-0000-c000-000000000000', permissionIds: ['00000000-0000-0000-0000-000000000001'] } }] },
+  externalDomainFederation: { displayName: 'Fixture federation', issuerUri: 'https://keel-rt-fed.example/issuer', passiveSignInUri: 'https://keel-rt-fed.example/sso', preferredAuthenticationProtocol: 'saml', signingCertificate: 'MIIFixture' },
 });
 
 // Roadmap task-109: the drift an update fixture reverts, for a type whose
@@ -300,6 +304,10 @@ const FIXTURE_DRIFT = Object.freeze({
   directoryRoleAccessReviewPolicy: (payload) => ({ settings: { ...payload.settings, instanceDurationInDays: 3 } }),
   multiTenantOrganizationIdentitySyncPolicyTemplate: () => ({ userSyncInbound: { isSyncAllowed: false } }),
   multiTenantOrganizationPartnerConfigurationTemplate: () => ({ automaticUserConsentSettings: { inboundAllowed: false, outboundAllowed: false } }),
+  // Restore gaps, batch 3: each drifts the setting its restore puts back.
+  b2bManagementPolicy: () => ({ definition: ['{"B2BManagementPolicy":{"InvitationsAllowedAndBlockedDomainsPolicy":{"BlockedDomains":[]}}}'] }),
+  permissionGrantPreApprovalPolicy: (payload) => ({ conditions: payload.conditions.map((condition) => ({ ...condition, scopeType: 'group' })) }),
+  externalDomainFederation: () => ({ passiveSignInUri: 'https://keel-rt-fed.example/drifted' }),
 });
 
 // Roadmap task-149: lockout-sensitive tenant policies need a lockout gate; the

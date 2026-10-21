@@ -85,6 +85,10 @@ const REGISTERED = Object.freeze({
   directoryRoleAccessReviewPolicy: ['update'],
   multiTenantOrganizationIdentitySyncPolicyTemplate: ['update'],
   multiTenantOrganizationPartnerConfigurationTemplate: ['update'],
+  // Restore gaps, batch 3: guest and app consent settings.
+  b2bManagementPolicy: ['update'],
+  permissionGrantPreApprovalPolicy: ['create', 'update'],
+  externalDomainFederation: ['update'],
   // Wave 2 IDO: Intune app protection and configuration, filters, scope tags,
   // Windows update profiles and notification templates.
   managedAppPolicy: ['create', 'update', 'delete'],

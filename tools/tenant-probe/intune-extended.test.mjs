@@ -103,3 +103,36 @@ test('each extended Intune type reads a KEEL-RT- fixture with GET only, across p
     globalThis.fetch = originalFetch;
   }
 });
+
+test('each administrative template setting is read with the values entered for it', async () => {
+  const list = '/beta/deviceManagement/groupPolicyConfigurations?$expand=definitionValues($expand=definition)';
+  const urls = [];
+  const template = (id, settings) => ({ id, displayName: `KEEL-RT-${id}`, definitionValues: settings.map((setting) => ({ id: setting, enabled: true, definition: { id: `def-${setting}` } })) });
+  const reader = {
+    async collect(version, path) {
+      urls.push(`/${version}${path}`);
+      if (`/${version}${path}` === list) return { items: [template('t-1', ['s-1', 's-2']), template('t-2', [])], pages: 1, status: 200, capped: false, error: null };
+      const setting = path.split('/').at(-2);
+      return { items: [{ id: `v-${setting}`, '@odata.type': '#microsoft.graph.groupPolicyPresentationValueText', value: 'x', presentation: { id: `p-${setting}` } }], pages: 1, status: 200, capped: false, error: null };
+    },
+  };
+  const result = await get('groupPolicyConfiguration').adapter.collectRaw(reader, {});
+  const values = (setting) => `/beta/deviceManagement/groupPolicyConfigurations/t-1/definitionValues/${setting}/presentationValues?$expand=presentation`;
+  assert.deepEqual(urls, [list, values('s-1'), values('s-2')], 'the list, then one read per setting');
+  assert.equal(result.error, null);
+  assert.equal(result.pages, 3);
+  assert.deepEqual(result.items[0].definitionValues.map((setting) => setting.presentationValues.map((value) => value.presentation.id)), [['p-s-1'], ['p-s-2']]);
+  assert.deepEqual(result.items[1].definitionValues, []);
+});
+
+test('a failed read of a setting\'s values fails the administrative template backup, never hides the values', async () => {
+  const reader = {
+    async collect(version, path) {
+      if (path.includes('/presentationValues')) return { items: [], pages: 0, status: 403, capped: false, error: { status: 403, error: 'denied' } };
+      return { items: [{ id: 't-1', definitionValues: [{ id: 's-1', enabled: true, definition: { id: 'd-1' } }] }], pages: 1, status: 200, capped: false, error: null };
+    },
+  };
+  const result = await get('groupPolicyConfiguration').adapter.collectRaw(reader, {});
+  assert.equal(result.error.status, 403);
+  assert.deepEqual(result.items, []);
+});

@@ -207,7 +207,8 @@ export const COMPLETENESS = Object.freeze({
   windowsFeatureUpdateProfile: { missing: [part('Who the profile is assigned to', 'not-written')] },
   windowsQualityUpdateProfile: { missing: [part('Who the profile is assigned to', 'not-written')] },
   windowsDriverUpdateProfile: { missing: [part('Approved drivers', 'other-route'), part('Who the profile is assigned to', 'not-written')] },
-  groupPolicyConfiguration: { whole: 'not-written', missing: [part('The values entered for each setting', 'other-route')] },
+  // Restore gaps batch 5: the values of each setting are read per setting and written back.
+  groupPolicyConfiguration: { missing: [part('Who the template is assigned to', 'not-written')] },
   groupPolicyUploadedDefinitionFile: { whole: 'not-written', missing: [part('The template file content', 'binary-route')] },
   notificationMessageTemplate: {},
   windowsAutopilotDeviceIdentity: { whole: 'secret', missing: [part('The device hardware hash', 'secret')] },
@@ -233,7 +234,8 @@ export const COMPLETENESS = Object.freeze({
   managedDeviceCleanupRule: { missing: [part('A deleted rule, and a shorter wait before devices are retired', 'not-written')] },
   windowsQualityUpdatePolicy: { missing: [part('Who the policy is assigned to', 'other-route')] },
   operationApprovalPolicy: { whole: 'not-written' },
-  deviceCustomAttributeShellScript: { whole: 'not-written', missing: [part('The script body', 'other-route'), part('Who the script is assigned to', 'other-route')] },
+  // Restore gaps batch 5: the script body is read per script and written back.
+  deviceCustomAttributeShellScript: { missing: [part('Who the script is assigned to', 'other-route')] },
   // Remaining kinds, batch 4.
   externalIdentitiesPolicy: {},
   b2bManagementPolicy: {},

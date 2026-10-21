@@ -372,9 +372,11 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates profiles, puts their settings back, and removes an unassigned profile added since the backup.',
     todo: 'Driver approvals are not backed up yet, so approve the drivers again by hand. Who a profile is assigned to is backed up but not put back yet, so assign it again by hand from the backup.',
   }),
-  groupPolicyConfiguration: manual('Administrative templates', NOT_BUILT,
-    'KEEL backs up each template and its settings but does not restore them yet. The values entered for each setting are not backed up.',
-    'Recreate the template in the Intune admin center, using the backup for which settings were turned on and who it was assigned to.'),
+  // Restore gaps batch 5: the values of each setting are backed up per setting.
+  groupPolicyConfiguration: auto('Administrative templates', {
+    keeps: 'Recreates templates and puts back which settings are turned on or off and the values entered for them.',
+    todo: 'Who a template is assigned to is not put back yet, so assign it again by hand from the backup. A setting from an imported template file needs that file imported first. A backup taken before setting values were read is refused; take a new backup.',
+  }),
   groupPolicyUploadedDefinitionFile: manual('Imported administrative template files', NOT_BUILT,
     'KEEL backs up the list of imported files but does not restore them yet. The file content is not backed up.',
     'Import the files again in the Intune admin center from your own copy.'),
@@ -444,9 +446,11 @@ export const TYPE_GUIDE = Object.freeze({
   operationApprovalPolicy: manual('Multi admin approval policies', NOT_BUILT,
     'KEEL backs these up but does not restore them yet. They decide which changes need a second admin, so a person should review them.',
     'Recreate each policy in the Intune admin center from the backup, with the same approver groups.'),
-  deviceCustomAttributeShellScript: manual('macOS custom attribute scripts', NOT_BUILT,
-    'KEEL backs up the script settings but not yet the script body or who it is assigned to.',
-    'Recreate the script in the Intune admin center from your own copy of the script, using the backup for its settings, and assign it again.'),
+  // Restore gaps batch 5: the script body is backed up per script.
+  deviceCustomAttributeShellScript: auto('macOS custom attribute scripts', {
+    keeps: 'Recreates scripts and puts the script and its settings back.',
+    todo: 'Who a script is assigned to is not backed up yet, so assign it again by hand. A backup taken before scripts were read in full holds only the settings; take a new backup.',
+  }),
   externalIdentitiesPolicy: auto('External user leave settings', {
     keeps: 'Puts back whether external users can leave your organization themselves, and whether their data is removed when they do.',
   }),

@@ -10,9 +10,8 @@ import { schemaSql } from "../../engine/store/loadSchema.mjs";
 import { getRestoreWorkloads } from "@/lib/restore-workloads";
 import {
   groupWorkloadsByService,
+  hasBackupData,
   workloadBackupLine,
-  workloadRestoreChip,
-  workloadWriteNote,
 } from "@/lib/restore-workloads-view";
 import { tenantRef } from "@/lib/runtime-config";
 import { serviceOrder } from "@/lib/services";
@@ -81,23 +80,27 @@ test("every workload is listed under its service, with its newest backup", async
   assert.equal(mailFlow.lastRun, null);
   assert.ok(mailFlow.writes.length > 0, "mail flow rules can be put back");
   assert.deepEqual(workloadBackupLine(mailFlow, "2026-10-02T09:00:00Z"), { tone: "fine", text: "Backed up 3 hours ago · 3 items" });
-  assert.deepEqual(workloadRestoreChip(mailFlow), { tone: "fine", text: "KEEL can put back" });
+  assert.equal(hasBackupData(mailFlow), true);
 
   const teams = workloads.find((workload) => workload.workload === "teams-org-policies")!;
   assert.equal(teams.backup?.items, 1);
   assert.equal(teams.lastRun?.outcome, "failed");
   assert.equal(workloadBackupLine(teams, "2026-10-02T09:00:00Z").tone, "soon");
   assert.match(workloadBackupLine(teams, "2026-10-02T09:00:00Z").text, /newest backup failed/);
+  assert.equal(hasBackupData(teams), true);
+  // A failed run with no backup before it is still shown, so the failure is visible.
+  assert.equal(hasBackupData({ backup: null, lastRun: teams.lastRun }), true);
 
   const power = workloads.find((workload) => workload.workload === "power-platform-settings")!;
   assert.equal(power.backup, null);
-  assert.deepEqual(workloadRestoreChip(power), { tone: "muted", text: "No backup yet" });
-  assert.deepEqual(workloadRestoreChip({ ...power, backup: { collectionId: "x", takenAt: null, items: 1, partial: false } }), { tone: "soon", text: "By hand only" });
+  // Not switched on and never backed up: the page leaves it out.
+  assert.equal(hasBackupData(power), false);
   assert.match(workloadBackupLine(power, "2026-10-02T09:00:00Z").text, /^Not switched on for this tenant yet/);
 
   const labels = workloads.find((workload) => workload.workload === "purview-labels")!;
   assert.equal(labels.backup, null, "another tenant's backup is not shown");
   assert.equal(workloadBackupLine(labels, "2026-10-02T09:00:00Z").text, "Not backed up yet");
+  assert.equal(hasBackupData(labels), false);
 });
 
 test("services follow the portal's order and no stored code reaches the words", async () => {
@@ -109,10 +112,6 @@ test("services follow the portal's order and no stored code reaches the words", 
     for (const workload of group.workloads) {
       assert.notEqual(workload.name, workload.workload, `${workload.workload} reads as a code`);
       assert.doesNotMatch(workload.name, /^[a-z]+(-[a-z]+)+$/, `${workload.workload} reads as a code`);
-      for (const write of workload.writes) {
-        const note = workloadWriteNote(write);
-        if (note) assert.match(note, /^Switched on once the restore of .+ is proven on this tenant\.$/);
-      }
     }
   }
 });

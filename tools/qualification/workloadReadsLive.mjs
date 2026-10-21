@@ -1,0 +1,200 @@
+#!/usr/bin/env node
+/**
+ * Live read proof for the Wave 2 cmdlet workloads (mail flow, Exchange settings, Teams
+ * org-wide, Teams voice and live events, Purview retention and DLP, retention labels).
+ *
+ * Their reads ship disabled until each one is live-qualified in the task-101 ledger, and
+ * the scheduled `workload-collect` job builds that ledger only from signed records it
+ * imports. Until now no record carried these reads, so the groups stayed off on live.
+ * This tool is read-only: it runs the workload's own collector once with the collector
+ * credential, through the bounded job transport and the production allowlists, and
+ * records which reads answered. It sends no Set-, New- or Remove- cmdlet.
+ *
+ *   node tools/qualification/workloadReadsLive.mjs plan --workload exchange-mail-flow
+ *     Offline. Prints the cmdlets a capture would send. No network.
+ *
+ *   KEEL_QUALIFICATION_HMAC_KEY=... node tools/qualification/workloadReadsLive.mjs capture \
+ *        --workload <workload> --tenant-ref sha256:... --collector-ref app:<collector app id> \
+ *        --collector-config /etc/keel/<collector>.json --build <sha> \
+ *        --out docs/release/qualifications/workload-reads-<workload>-live-acceptance.json \
+ *        [--powershell-image <tag>]
+ *
+ * The record keeps, per read: its operation, family, status, object count, the module
+ * version and the error code when it failed. No object, field value, name or tenant id
+ * is kept. A read is proof only when its family answered in full (`read`); an empty
+ * answer counts. Signed as `keel-release-runner` with KEEL_QUALIFICATION_HMAC_KEY.
+ *
+ * ledgerEvidenceFromWorkloadReadsAcceptance() is the import seam: a record that passes
+ * `verify --require-live` becomes one live capture per read that answered, bound to the
+ * module version the image pins. The collector's grants are left as the other records
+ * stored them.
+ */
+import { readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+import { structuredFailure } from '../../engine/collect/workloads/exchange.mjs';
+import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
+import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
+import {
+  READ_FAMILIES, WORKLOAD_READS_CREDENTIAL_MODE, WORKLOAD_READS_LIVE_GATE, WORKLOAD_READS_LIVE_OPERATION, WORKLOAD_READS_TRANSPORT,
+  knownWorkload, provenReads, workloadReads, workloadReadsCapturePlan, workloadReadsRecordFile,
+} from './workloadReadsAcceptance.mjs';
+import { WRITTEN_WORKLOADS } from './workloadWritesAcceptance.mjs';
+import { WORKLOAD_READERS, pinnedModuleVersions } from './workloadWritesLive.mjs';
+
+export { READ_FAMILIES, WORKLOAD_READS_LIVE_GATE, workloadReadsCapturePlan, workloadReadsRecordFile };
+
+const MODULE_VERSION_RE = /^\d+\.\d+\.\d+(\.\d+)?$/;
+
+/**
+ * Runs the workload's collector once with the collector's PowerShell options. Returns the
+ * unsigned record and, for the operator only, each failed read's error message (messages
+ * can name the tenant, so they stay out of the record). It never signs or writes files.
+ */
+export async function captureWorkloadReads({
+  workload, collector, read = WORKLOAD_READERS[workload], tenantRef, build, credential, moduleVersion, now = () => new Date(),
+}) {
+  knownWorkload(workload);
+  const { module } = WRITTEN_WORKLOADS[workload];
+  const problems = [];
+  if (!tenantRef || !build) problems.push('a capture needs --tenant-ref and a build');
+  if (typeof credential !== 'string' || !credential.trim()) problems.push('a capture needs --collector-ref');
+  if (typeof moduleVersion !== 'string' || !MODULE_VERSION_RE.test(moduleVersion)) problems.push(`the ${module} version is unknown`);
+  if (problems.length) throw new Error(problems.join('; '));
+
+  const declared = workloadReads(workload);
+  let result = null;
+  let error = null;
+  try {
+    result = await read({ powershell: collector, families: declared.map((item) => item.family) });
+  } catch (failure) {
+    error = failure;
+  }
+  const capturedAt = now().toISOString();
+  const diagnostics = [];
+  const failureOf = (family) => [...(result?.failures ?? []), ...(result?.unavailable ?? [])].find((item) => item.family === family) ?? null;
+  const reads = declared.map(({ family, operationId }) => {
+    const summary = result?.discovery?.families?.[family] ?? null;
+    const status = summary?.status ?? 'failed';
+    const failed = failureOf(family);
+    const detail = failed?.error ?? (error ? structuredFailure(error).error : null);
+    const code = [detail?.code, detail?.errorId].filter(Boolean).join(':') || null;
+    if (status !== 'read') diagnostics.push({ operationId, status, message: detail?.message ?? (summary ? null : 'the collector did not read this family') });
+    return {
+      operationId, family, version: moduleVersion, synthetic: false, capturedAt,
+      ok: status === 'read', status, objects: summary?.objects ?? 0, error: status === 'read' ? null : (code ?? status),
+    };
+  });
+  const record = {
+    contractVersion: QUALIFICATION_CONTRACT_VERSION,
+    gate: WORKLOAD_READS_LIVE_GATE,
+    tenantRef,
+    build,
+    operation: WORKLOAD_READS_LIVE_OPERATION,
+    credentialMode: WORKLOAD_READS_CREDENTIAL_MODE,
+    observedAt: capturedAt,
+    evidenceLevel: 'live-qualified',
+    synthetic: false,
+    subject: {
+      workload,
+      execution: { transport: WORKLOAD_READS_TRANSPORT, module, moduleVersion },
+      credentials: { collector: credential },
+      outcome: result?.outcome ?? 'failed',
+      reads,
+    },
+  };
+  return { record, diagnostics };
+}
+
+/**
+ * The import seam: a record that passes the gate with --require-live becomes one live
+ * capture per read that answered, and the module version they are bound to. Anything
+ * else becomes nothing. Grants are not changed here.
+ */
+export function ledgerEvidenceFromWorkloadReadsAcceptance(evidence, options = {}) {
+  const result = verifyEvidence(evidence, { ...options, gate: WORKLOAD_READS_LIVE_GATE, requireLive: true });
+  if (!result.ok) return { ok: false, failures: result.failures, reads: [], writes: [], grants: null, restorerGrants: null, runtime: null };
+  const { subject, tenantRef } = evidence;
+  const proofRef = `${WORKLOAD_READS_LIVE_GATE}/${subject.workload}@${evidence.observedAt}`;
+  return {
+    ok: true,
+    failures: [],
+    reads: provenReads(subject).map((item) => ({
+      operationId: item.operationId, kind: 'live-capture', synthetic: false, tenantRef, capturedAt: item.capturedAt,
+      version: item.version, ok: true, error: null, observed: { objects: item.objects }, proofRef,
+    })),
+    writes: [],
+    grants: null,
+    restorerGrants: null,
+    runtime: { modules: { [subject.execution.module]: subject.execution.moduleVersion } },
+  };
+}
+
+function parseArgs(argv) {
+  const [command = 'plan', ...rest] = argv;
+  const options = { command };
+  const names = {
+    '--workload': 'workload', '--tenant-ref': 'tenantRef', '--collector-ref': 'collectorRef', '--collector-config': 'collectorConfig',
+    '--out': 'out', '--build': 'build', '--powershell-image': 'image',
+  };
+  for (let index = 0; index < rest.length; index += 1) {
+    if (!names[rest[index]]) throw new Error(`unknown argument: ${rest[index]}`);
+    options[names[rest[index]]] = rest[++index];
+  }
+  return options;
+}
+
+const POWERSHELL_DOCKERFILE = new URL('../../ops/powershell/Dockerfile', import.meta.url);
+
+export async function main(argv = process.argv.slice(2), {
+  out = console.log, env = process.env, readFile = (path) => readFileSync(path, 'utf8'), capture = captureWorkloadReads,
+  powershell = (tenantConfigPath, image) => ({ tenantConfigPath, ...(image ? { image } : {}) }),
+  pins = () => pinnedModuleVersions(readFileSync(POWERSHELL_DOCKERFILE, 'utf8')), write = writeFileSync,
+} = {}) {
+  const options = parseArgs(argv);
+  if (options.command === 'plan') {
+    out(JSON.stringify(workloadReadsCapturePlan(options), null, 2));
+    return 0;
+  }
+  if (options.command !== 'capture') throw new Error('usage: workloadReadsLive.mjs plan|capture --workload <workload> ...');
+  for (const [flag, key] of [['--workload', 'workload'], ['--tenant-ref', 'tenantRef'], ['--collector-ref', 'collectorRef'], ['--collector-config', 'collectorConfig'], ['--out', 'out']]) {
+    if (!options[key]) throw new Error(`capture needs ${flag}`);
+  }
+  knownWorkload(options.workload);
+  if (basename(options.out) !== workloadReadsRecordFile(options.workload)) {
+    throw new Error(`--out must be named ${workloadReadsRecordFile(options.workload)}, where the import looks for it`);
+  }
+  const build = options.build ?? env.KEEL_QUALIFICATION_BUILD;
+  if (!build) throw new Error('capture needs --build (or KEEL_QUALIFICATION_BUILD): the build this capture qualifies');
+  const { tenantId } = JSON.parse(readFile(options.collectorConfig));
+  if (typeof tenantId !== 'string' || options.tenantRef !== tenantRefFor(tenantId)) {
+    throw new Error('--tenant-ref is not the tenant the collector config names; nothing was sent');
+  }
+  const { module } = WRITTEN_WORKLOADS[options.workload];
+  const moduleVersion = pins()[module];
+  if (!moduleVersion) throw new Error(`ops/powershell/Dockerfile pins no ${module} version; nothing was sent`);
+  const { record, diagnostics } = await capture({
+    workload: options.workload, collector: powershell(options.collectorConfig, options.image),
+    tenantRef: options.tenantRef, build, credential: options.collectorRef, moduleVersion,
+  });
+  const hmacKey = env.KEEL_QUALIFICATION_HMAC_KEY ?? null;
+  const evidence = hmacKey ? signEvidence(record, hmacKey, 'keel-release-runner') : record;
+  const outPath = resolve(options.out);
+  write(outPath, `${JSON.stringify(evidence, null, 2)}\n`);
+  const result = verifyEvidence(evidence, { gate: WORKLOAD_READS_LIVE_GATE, tenantRef: options.tenantRef, build, requireLive: true, evidenceDir: dirname(outPath), hmacKey });
+  out(JSON.stringify({
+    evidence: outPath,
+    outcome: evidence.subject.outcome,
+    proven: provenReads(evidence.subject).map((item) => item.operationId),
+    notProven: evidence.subject.reads.filter((item) => !item.ok).map(({ operationId, status, error }) => ({
+      operationId, status, error, message: diagnostics.find((entry) => entry.operationId === operationId)?.message ?? null,
+    })),
+    verify: result,
+  }, null, 2));
+  return result.ok ? 0 : 1;
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  main().then((code) => { process.exitCode = code; }, (error) => { console.error(error.message); process.exitCode = 2; });
+}

@@ -25,6 +25,7 @@ import { TEAMS_LIVE_GATE, validateTeamsLiveSubject } from '../qualification/team
 import { EXCHANGE_LIVE_GATE, validateExchangeLiveSubject } from '../qualification/exchangeAcceptance.mjs';
 import { ONEDRIVE_PURVIEW_LIVE_GATE, validateOneDrivePurviewLiveSubject } from '../qualification/onedrivePurviewAcceptance.mjs';
 import { WORKLOAD_WRITES_LIVE_GATE, validateWorkloadWritesLiveSubject } from '../qualification/workloadWritesAcceptance.mjs';
+import { WORKLOAD_READS_LIVE_GATE, validateWorkloadReadsLiveSubject } from '../qualification/workloadReadsAcceptance.mjs';
 import { SENTINEL_LIVE_GATE, validateSentinelLiveSubject } from '../qualification/sentinelAcceptance.mjs';
 import { SERVICENOW_LIVE_GATE, validateServiceNowLiveSubject } from '../qualification/servicenowAcceptance.mjs';
 import { NATIVE_LIVE_GATE, validateNativeLiveAcceptance } from '../../engine/restore/nativeRecoveryEvidence.mjs';
@@ -741,6 +742,9 @@ const GATE_VALIDATORS = {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context), verifyEvidence }),
   // Wave 2 WKLD: one live write per writer family; needs both proofs (runner signature and capture log).
   [WORKLOAD_WRITES_LIVE_GATE]: (evidence, context) => validateWorkloadWritesLiveSubject(evidence, {
+    ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
+  // The Wave 2 cmdlet workloads' reads, captured read-only with the collector; needs the runner signature.
+  [WORKLOAD_READS_LIVE_GATE]: (evidence, context) => validateWorkloadReadsLiveSubject(evidence, {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
   // Task-117: Sentinel workspace ingestion; needs both proofs (runner signature and capture log).
   [SENTINEL_LIVE_GATE]: (evidence, context) => validateSentinelLiveSubject(evidence, {

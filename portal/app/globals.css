@@ -10167,6 +10167,7 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .ir-service-name { font-weight: 600; }
 @media (min-width: 48rem) {
   .ir-service-row { grid-template-columns: minmax(12rem, 1fr) minmax(0, 2fr); align-items: baseline; }
+}
 
 /* --- Setup (portal audit, pick A: two checklists side by side) ------------- */
 .su-page, .su-body { display: grid; gap: var(--space-md); min-width: 0; }

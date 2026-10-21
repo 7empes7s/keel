@@ -5299,3 +5299,43 @@ item that needs it stays untouched.
   1 `deviceManagementSettings`, 1 `androidForWorkSettings`, 13 `microsoftTunnelHealthThreshold`,
   0 or 1 `symantecCodeSigningCertificate` (absent when none was uploaded), 0 for the rest. Step 3 returns no rows.
 - **Report:** step 1 exit code and error lines, steps 2 and 3 verbatim.
+
+### Q113: Live backup and restore of Intune scripts and remediations (restore gaps batch 4, after #435)
+- Drafted by the "Restore batch 4" thread (2026-10-21). Code: PR #435. The backup now lists each script kind, then reads each
+  script on its own so it holds the script body (Graph returns the body only on a single-script GET). New record writers,
+  fixture-tested only, beta, create + update: Windows PowerShell scripts (`deviceManagementScript`), macOS shell scripts
+  (`deviceShellScript`), remediations (`deviceHealthScript`, Microsoft-published ones are never written) and custom compliance
+  scripts (`deviceComplianceScript`). Who a script runs on is **not** written; fixtures stay unassigned.
+- Needs: /opt/keel-live at the #435 merge or later (`grep -q scriptRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission
+  to add: the Restorer and collector hold DeviceManagementConfiguration.ReadWrite.All / .Read.All. If Graph answers 403 (or 400
+  on a licence: remediations need Windows Enterprise E3/E5 or equivalent), report blocked with what Graph names; grant nothing.
+  Never touch CA policies, break-glass or Marouane's account. **Never assign any fixture script to a group, user or device.**
+- **Fixtures** (the reviewed guidance in `live-gate-plan.mjs` at B says the same; bodies are harmless and nothing runs them):
+  - Windows PowerShell script `KEEL-RT-script`, body `Write-Output 'KEEL-RT'`, run as system, assigned to nobody;
+  - macOS shell script `KEEL-RT-shell`, body `echo KEEL-RT`, assigned to nobody;
+  - remediation `KEEL-RT-remediation`, detection and fix scripts both `exit 0`, assigned to nobody;
+  - custom compliance script `KEEL-RT-compliance-script`, body `return @{}`, used by no compliance policy.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/live-gate-plan.mjs > ~/keel-rg4/plan-B.md`. Use its steps for these four types (collect, restore
+     dry run, approve, `--enforce`, `entraLive.mjs capture`, promote).
+  2. Create the fixtures, then take snapshot S (one tier run that reads all four types). **Backup check:** confirm all four are in S
+     and that each payload holds its body (`scriptContent` or `detectionScriptContent`, non-empty). Report the four types' read
+     outcome (complete / failed) and, if the tenant lists Microsoft-published remediations, how many.
+  3. **Create round** (PowerShell script, remediation): delete each, restore from S selecting them, approve, enforce, capture each
+     `create`. Read back equal to the backup (name, description, script body, run-as account).
+  4. **Update round:** change the description of all four, and change the body of `KEEL-RT-shell` to `echo drifted`. Restore from
+     S, approve, enforce, capture each `update`. Expect the shell body back to `echo KEEL-RT` (base64 `ZWNobyBLRUVMLVJU` if the
+     fixture used exactly that text).
+  5. **Refusal check (no write expected):** if the tenant lists a Microsoft-published remediation (`isGlobalScript: true`), dry run
+     a restore selecting one. Expect it skipped as "Microsoft publishes this remediation", 0 writes. Do not promote.
+  6. **Re-run check:** dry run from S again after step 4. Expect 0 planned writes for the four.
+  7. Cleanup: delete all four fixtures. Report anything left.
+  8. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-4`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / blocked; the step 5 and 6
+  results; approval ids; the evidence branch and commit; anything left in the tenant.

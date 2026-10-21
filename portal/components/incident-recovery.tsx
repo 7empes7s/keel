@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 
-import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import type { IncidentDetail, IncidentExclusion, IncidentRecoveryPoint, IncidentSummary } from "@/lib/portal-data";
 import {
   ASSESSMENT_VERDICT_LABELS, RECOVERY_POINT_LABELS, ago, formatTimestamp, words,
@@ -133,29 +133,42 @@ function PointExplanation({ point, now }: { point: IncidentRecoveryPoint; now: s
   );
 }
 
-function PointRecord({ point, pinId }: { point: IncidentRecoveryPoint; pinId: string | null }) {
+function PointRecord({ point, pin }: { point: IncidentRecoveryPoint; pin: IncidentDetail["pins"][number] | null }) {
+  const assessment = point.assessment;
   return (
     <TechnicalDetails>
       <RecordField label="Snapshot ID" usage={<>use with <code>keel-restore --snapshot-id &lt;id&gt;</code></>} value={point.snapshotId} />
-      <RecordField copy={false} label="Collected between" value={`${point.observedFrom ?? "unknown"} and ${point.observedTo ?? "unknown"}`} />
-      <RecordField copy={false} label="Recovery point state" value={`${point.status}${point.stale ? " (stale assessment)" : ""}`} />
-      <RecordField copy={false} label="Engine reasons" value={point.reasons.join("; ")} />
-      {point.assessment ? (
-        <>
-          <RecordField copy={false} label="Assessment version" value={`v${point.assessment.version} · ${point.assessment.verdict} · ${point.assessment.assessedAt ?? "unknown time"}`} />
-          <RecordField label="Assessment fingerprint" usage="bound into every restore plan made from this snapshot" value={point.assessment.fingerprint} />
-          {point.assessment.assessedBy ? <RecordField label="Assessed by (principal ID)" value={point.assessment.assessedBy.id} /> : null}
-          {point.assessment.exclusions.map((exclusion) => (
-            <RecordField
-              copy={false}
-              key={`${exclusion.naturalKey}#${exclusion.field ?? ""}`}
-              label="Exclusion"
-              value={`${exclusion.naturalKey}${exclusion.field ? ` field ${exclusion.field}` : ""}`}
-            />
-          ))}
-        </>
+      <RecordField copy={false} label="Collected from" value={point.observedFrom} />
+      <RecordField copy={false} label="Collected to" value={point.observedTo} />
+      <RecordField copy={false} label="Recovery point state" value={point.status} />
+      <RecordField copy={false} label="Check is stale" value={point.stale} />
+      <RecordField copy={false} label="Inside the attack window" value={point.inCompromiseWindow} />
+      <RecordField copy={false} label="Kept for this incident" value={point.pinned} />
+      {point.reasons.map((reason, index) => <RecordField copy={false} key={`${index}:${reason}`} label="Engine reason" value={reason} />)}
+      {assessment ? (
+        <RecordGroup note={`version ${assessment.version}`} title="Investigator's check">
+          <RecordField copy={false} label="Assessment version" value={assessment.version} />
+          <RecordField copy={false} label="Verdict" value={assessment.verdict} />
+          <RecordField copy={false} label="Assessed at" value={assessment.assessedAt} />
+          <RecordField label="Assessed by (principal ID)" usage={assessment.assessedBy?.name} value={assessment.assessedBy?.id} />
+          <RecordField label="Assessment fingerprint" usage="bound into every restore plan made from this snapshot" value={assessment.fingerprint} />
+        </RecordGroup>
       ) : null}
-      {pinId ? <RecordField label="Retention pin ID" usage={<>release with <code>POST /api/actions/incidents</code> (op release)</>} value={pinId} /> : null}
+      {assessment?.exclusions.map((exclusion) => (
+        <RecordGroup key={`${exclusion.naturalKey}#${exclusion.field ?? ""}`} note="left out of the restore" title={exclusion.displayName ?? exclusion.naturalKey}>
+          <RecordField label="Exclusion" value={exclusion.naturalKey} />
+          <RecordField copy={false} label="Field path" value={exclusion.field} />
+          <RecordField copy={false} label="Reason" value={exclusion.reason} />
+        </RecordGroup>
+      ))}
+      {pin ? (
+        <RecordGroup title="Retention pin">
+          <RecordField label="Retention pin ID" usage={<>release with <code>POST /api/actions/incidents</code> (op release)</>} value={pin.id} />
+          <RecordField label="Pinned by (principal ID)" usage={pin.pinnedBy?.name} value={pin.pinnedBy.id} />
+          <RecordField copy={false} label="Pinned at" value={pin.pinnedAt} />
+          <RecordField copy={false} label="Reason" value={pin.reason} />
+        </RecordGroup>
+      ) : null}
     </TechnicalDetails>
   );
 }
@@ -222,7 +235,7 @@ export function RecoveryPointTable({
               <tr className={`incident-point incident-point-${point.status}${recommended ? " incident-point-recommended" : ""}`} key={point.snapshotId}>
                 <th scope="row">
                   <span className="incident-point-name">{point.snapshot.name}</span>
-                  <PointRecord pinId={pin?.id ?? null} point={point} />
+                  <PointRecord pin={pin ?? null} point={point} />
                 </th>
                 <td>
                   <span className={`pill pill-${STATUS_TONES[point.status]}`}>{recoveryPointStatusLabel(point.status)}</span>
@@ -377,26 +390,37 @@ export function IncidentQualificationSummary({ context, view }: {
       </div>
       <TechnicalDetails>
         <RecordField label="Incident ID" usage={<>use with <code>keel-restore --incident &lt;id&gt;</code></>} value={context.incidentId} />
-        <RecordField copy={false} label="Recovery point state" value={`${context.status} · ${context.qualification} · ${context.reasons.join("; ")}`} />
+        <RecordField copy={false} label="Recovery point state" value={context.status} />
+        <RecordField copy={false} label="Qualification" value={context.qualification} />
+        {context.reasons.map((reason, index) => <RecordField copy={false} key={`${index}:${reason}`} label="Engine reason" value={reason} />)}
         {context.assessment ? (
-          <>
-            <RecordField copy={false} label="Assessment version" value={`v${context.assessment.version} · ${context.assessment.verdict}`} />
+          <RecordGroup note={`version ${context.assessment.version}`} title="Investigator's check">
+            <RecordField label="Assessment ID" value={context.assessment.id} />
+            <RecordField copy={false} label="Assessment version" value={context.assessment.version} />
+            <RecordField copy={false} label="Verdict" value={context.assessment.verdict} />
             {context.assessment.fingerprint ? <RecordField label="Assessment fingerprint" usage="bound into this plan's digest" value={context.assessment.fingerprint} /> : null}
-          </>
+          </RecordGroup>
         ) : null}
+        {context.exclusions.map((exclusion) => (
+          <RecordGroup key={`exclusion:${exclusion.naturalKey}#${exclusion.field ?? ""}`} note="left out of the restore" title={exclusion.naturalKey}>
+            <RecordField label="Exclusion" value={exclusion.naturalKey} />
+            <RecordField copy={false} label="Field path" value={exclusion.field} />
+            <RecordField copy={false} label="Reason" value={exclusion.reason} />
+          </RecordGroup>
+        ))}
         {context.override ? (
-          <>
+          <RecordGroup title="Override">
             {context.override.id ? <RecordField label="Override ID" value={context.override.id} /> : null}
             <RecordField label="Authorized by (principal ID)" value={context.override.authorizedBy} />
-          </>
+            <RecordField copy={false} label="Reason" value={context.override.reason} />
+          </RecordGroup>
         ) : null}
         {context.postRestoreChecks.map((check) => (
-          <RecordField
-            copy={false}
-            key={`${check.naturalKey}#${check.field ?? ""}`}
-            label="Post-restore check"
-            value={`${check.naturalKey}${check.field ? ` field ${check.field}` : ""} → ${check.expectation}`}
-          />
+          <RecordGroup key={`check:${check.naturalKey}#${check.field ?? ""}`} note="post-restore check" title={check.naturalKey}>
+            <RecordField label="Stored key" value={check.naturalKey} />
+            <RecordField copy={false} label="Field path" value={check.field} />
+            <RecordField copy={false} label="Expectation" value={check.expectation} />
+          </RecordGroup>
         ))}
       </TechnicalDetails>
     </section>
@@ -545,15 +569,28 @@ export function IncidentRecovery({
       {selected ? (
         <TechnicalDetails summary="Technical details for this incident">
           <RecordField label="Incident ID" usage={<>use with <code>keel-restore --snapshot-id &lt;id&gt; --select &lt;key&gt; --incident &lt;id&gt;</code></>} value={selected.incident.id} />
-          <RecordField label="Owner (principal ID)" value={selected.incident.owner.id || null} />
+          <RecordField label="Owner (principal ID)" usage={selected.incident.owner?.name} value={selected.incident.owner.id || null} />
+          <RecordField copy={false} label="Status" value={selected.incident.status} />
           <RecordField copy={false} label="Opened" value={selected.incident.openedAt} />
+          <RecordField copy={false} label="Closed" value={selected.incident.closedAt} />
+          <RecordField label="Recommended snapshot ID" value={selected.recommended} />
           {selected.intervals.map((interval) => (
-            <RecordField
-              copy={false}
-              key={interval.id}
-              label="Compromise interval"
-              value={`${interval.startsAt ?? "unknown"} → ${interval.endsAt ?? "ongoing"} · ${interval.id}`}
-            />
+            <RecordGroup key={interval.id} note={interval.endsAt ? "ended" : "ongoing"} title="Attack window">
+              <RecordField label="Interval ID" value={interval.id} />
+              <RecordField copy={false} label="Access started" value={interval.startsAt} />
+              <RecordField copy={false} label="Access ended" value={interval.endsAt ?? "ongoing"} />
+              <RecordField copy={false} label="How it is known" value={interval.reason} />
+              {interval.recordedBy ? <RecordField label="Recorded by (principal ID)" usage={interval.recordedBy?.name} value={interval.recordedBy.id} /> : null}
+            </RecordGroup>
+          ))}
+          {selected.pins.map((pin) => (
+            <RecordGroup key={pin.id} note="kept from pruning" title="Retention pin">
+              <RecordField label="Retention pin ID" value={pin.id} />
+              <RecordField label="Snapshot ID" value={pin.snapshotId} />
+              <RecordField label="Pinned by (principal ID)" usage={pin.pinnedBy?.name} value={pin.pinnedBy.id} />
+              <RecordField copy={false} label="Pinned at" value={pin.pinnedAt} />
+              <RecordField copy={false} label="Reason" value={pin.reason} />
+            </RecordGroup>
           ))}
           <RecordField copy={false} label="Changes" value="POST /api/actions/incidents (requires investigate)" />
         </TechnicalDetails>

@@ -52,10 +52,15 @@ export function SiteChanges({ data, now }: { data: SiteChangesData; now: string 
               <TechnicalDetails>
                 <RecordField label="Change" value={change.id} />
                 <RecordField label="Resource" value={change.resourceKey} />
-                <RecordField copy={false} label="Fields as stored" value={change.fields.join(", ") || null} />
+                <RecordField label="Site ID" value={change.siteId} />
+                <RecordField copy={false} label="Change type" value={change.changeType} />
+                <RecordField copy={false} label="Blast radius" value={change.blastRadius} />
+                {change.fields.length ? change.fields.map((field) => <RecordField copy={false} key={field} label="Field as stored" value={field} />) : <RecordField copy={false} label="Field as stored" value={null} />}
+                <RecordField copy={false} label="Seen" value={change.seenAt} />
                 <RecordField label="SharePoint read" value={change.collectionId} />
                 <RecordField label="Compared with read" value={change.previousCollectionId} />
                 <RecordField label="Alert" value={change.alertId} />
+                <RecordField copy={false} label="Alert state" value={change.alertState} />
               </TechnicalDetails>
             </li>
           ))}

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { namedResource } from "@/lib/job-names";
 import { formatTimestamp, words } from "@/lib/presentation";
 import { toast } from "@/lib/toast";
@@ -155,6 +155,27 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
           <TechnicalDetails summary="Technical details for this resource">
             <RecordField label="Stored key" value={resource.naturalKey} />
             <RecordField copy={false} label="Type" value={resource.resourceType} />
+            <RecordField copy={false} label="Recovery mechanism" value={resource.mechanism} />
+            <RecordField copy={false} label="Completion state" value={resource.state} />
+            {resource.items.map((item) => (
+              <RecordGroup key={item.id} note={`${item.kind}, ${item.state}`} title={item.requirement}>
+                <RecordField label="Step ID" value={item.id} />
+                <RecordField copy={false} label="Kind" value={item.kind} />
+                <RecordField copy={false} label="Requirement" value={item.requirement} />
+                <RecordField copy={false} label="State" value={item.state} />
+                <RecordField label="Owner" value={item.owner} />
+                <RecordField copy={false} label="Closed" value={item.closedAt} />
+                <RecordField copy={false} label="Times reopened" value={item.reopenCount} />
+                {item.evidence.map((evidence, index) => (
+                  <RecordField
+                    key={`${evidence.type}:${evidence.reference}:${index}`}
+                    label={`Evidence (${evidence.type})`}
+                    usage={[evidence.recordedBy ? `recorded by ${evidence.recordedBy}` : null, evidence.recordedAt ? `at ${evidence.recordedAt}` : null].filter(Boolean).join(" ") || undefined}
+                    value={evidence.reference}
+                  />
+                ))}
+              </RecordGroup>
+            ))}
           </TechnicalDetails>
         </section>
       ))}

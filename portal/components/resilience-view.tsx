@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import {
   attemptName,
@@ -16,6 +16,7 @@ import {
   recoverablePointSentence,
   recoveryTimeSentence,
   storageSentence,
+  type DependencyRef,
   type ResilienceData,
 } from "@/lib/resilience-view";
 
@@ -44,6 +45,19 @@ function Card({ id, title, state, children }: { id: string; title: string; state
       </div>
       {children}
     </section>
+  );
+}
+
+/** What one required item is: its key, kind and type (or parent type and relationship). */
+function DependencyFields({ dependency }: { dependency: DependencyRef }) {
+  return (
+    <>
+      <RecordField label="Key" value={dependency.key} />
+      <RecordField copy={false} label="Kind" value={dependency.kind} />
+      {dependency.type ? <RecordField copy={false} label="Type" value={dependency.type} /> : null}
+      {dependency.parentType ? <RecordField copy={false} label="Parent type" value={dependency.parentType} /> : null}
+      {dependency.family ? <RecordField copy={false} label="Relationship" value={dependency.family} /> : null}
+    </>
   );
 }
 
@@ -85,16 +99,42 @@ export function ResilienceView({ data }: { data: ResilienceData }) {
         ) : <p className="field-help">No backup timetable is set.</p>}
         <p className="field-help">This is the plan, not a result. The age above comes only from backups that finished.</p>
         <TechnicalDetails>
-          <RecordField label="Achieved recovery point age (ms)" value={freshness.achievedRpoMs === null ? "unmeasured" : String(freshness.achievedRpoMs)} usage={<>from <code>{REPORT_CLI}</code></>} />
+          <RecordField label="Achieved recovery point age (ms)" value={freshness.achievedRpoMs ?? "unmeasured"} usage={<>from <code>{REPORT_CLI}</code></>} />
           <RecordField label="Freshness state" value={freshness.state} copy={false} />
-          <RecordField label="Required items" value={String(freshness.required)} copy={false} />
-          <RecordField label="Oldest required item" value={freshness.oldestDependency ? `${freshness.oldestDependency.key} since ${freshness.oldestDependency.since}` : null} />
-          {freshness.gaps.length ? <RecordField label="Never backed up" value={freshness.gaps.map((gap) => gap.key).join(", ")} /> : null}
+          <RecordField label="Required items" value={freshness.required} copy={false} />
+          <RecordField copy={false} label="Report version" value={metrics.version} />
+          <RecordField copy={false} label="Report generated" value={metrics.generatedAt} />
+          {freshness.oldestDependency ? (
+            <RecordGroup note="oldest required item" title={freshness.oldestDependency.key}>
+              <DependencyFields dependency={freshness.oldestDependency} />
+              <RecordField copy={false} label="Backed up since" value={freshness.oldestDependency.since} />
+              <RecordField copy={false} label="Age (ms)" value={freshness.oldestDependency.ageMs} />
+            </RecordGroup>
+          ) : null}
+          {freshness.gaps.map((gap) => (
+            <RecordGroup key={`gap:${gap.key}`} note="never backed up" title={gap.key}>
+              <DependencyFields dependency={gap} />
+              <RecordField copy={false} label="Last attempt" value={gap.lastAttempt?.at} />
+              <RecordField copy={false} label="Last attempt outcome" value={gap.lastAttempt?.outcome} />
+            </RecordGroup>
+          ))}
           {freshness.latestFailures.map((failure) => (
-            <RecordField copy={false} key={failure.key} label={`Latest failure · ${failure.key}`} value={`${failure.outcome ?? "unknown"} at ${failure.failedAt ?? "unknown"}; last success ${failure.lastSuccessAt}`} />
+            <RecordGroup key={`failure:${failure.key}`} note="latest failure" title={failure.key}>
+              <DependencyFields dependency={failure} />
+              <RecordField copy={false} label="Outcome" value={failure.outcome} />
+              <RecordField copy={false} label="Failed at" value={failure.failedAt} />
+              <RecordField copy={false} label="Last success" value={failure.lastSuccessAt} />
+            </RecordGroup>
           ))}
           {configured.cadence.map((entry) => (
-            <RecordField key={entry.id} label={`Schedule ${entry.jobKind}${entry.tier ? ` ${entry.tier}` : ""}`} value={`${entry.id} · ${entry.cron ?? JSON.stringify(entry.cadence)}${entry.enabled ? "" : " · disabled"}`} usage={<><code>GET /api/schedules</code></>} />
+            <RecordGroup key={entry.id} note={entry.enabled ? "enabled" : "disabled"} title={`Schedule: ${entry.jobKind}${entry.tier ? ` ${entry.tier}` : ""}`}>
+              <RecordField label="Schedule ID" usage={<><code>GET /api/schedules</code></>} value={entry.id} />
+              <RecordField copy={false} label="Job kind" value={entry.jobKind} />
+              <RecordField copy={false} label="Tier" value={entry.tier} />
+              <RecordField copy={false} label="Cron" value={entry.cron} />
+              <RecordField copy={false} label="Cadence" value={entry.cadence} />
+              <RecordField copy={false} label="Enabled" value={entry.enabled} />
+            </RecordGroup>
           ))}
           <RecordField label="Recovery objectives" value="not set (KEEL stores no recovery objective)" copy={false} />
         </TechnicalDetails>
@@ -119,14 +159,22 @@ export function ResilienceView({ data }: { data: ResilienceData }) {
         <p className="field-help"><Link href="/activity">See off-site copies in Activity</Link></p>
         <TechnicalDetails>
           <RecordField label="Recoverable point" value={recoverablePoint.point ?? "unmeasured"} copy={false} />
-          <RecordField label="Recoverable point age (ms)" value={recoverablePoint.ageMs === null ? "unmeasured" : String(recoverablePoint.ageMs)} copy={false} usage={<>from <code>{REPORT_CLI}</code></>} />
-          {recoverablePoint.copies.map((copy) => (
-            <RecordField
-              key={copy.seq ?? copy.recordedAt}
-              label={`Evidence sequence ${copy.seq ?? "unknown"} · off-site copy`}
-              value={`${copy.counts ? "counted" : copy.reason} · shipped ${copy.shippedAt ?? "unknown"} · dump sha256 ${copy.dumpSha256 ?? "none"}${copy.missing.length ? ` · missing ${copy.missing.join(", ")}` : ""}`}
-              usage={<>record with <code>node cli/keel-recovery-metrics.mjs record-offsite</code>; read with <code>GET /api/evidence</code></>}
-            />
+          <RecordField copy={false} label="State" value={recoverablePoint.state} />
+          <RecordField label="Recoverable point age (ms)" value={recoverablePoint.ageMs ?? "unmeasured"} copy={false} usage={<>from <code>{REPORT_CLI}</code></>} />
+          <RecordField label="Counted from evidence sequence" value={recoverablePoint.fromCopy?.seq} />
+          <RecordField label="Newest copy evidence sequence" value={recoverablePoint.latestCopy?.seq} />
+          {recoverablePoint.copies.map((copy, index) => (
+            <RecordGroup key={copy.seq ?? copy.recordedAt ?? index} note={copy.counts ? "counted" : "not counted"} title={`Off-site copy, evidence sequence ${copy.seq ?? "unknown"}`}>
+              <RecordField label="Evidence sequence" usage={<>record with <code>node cli/keel-recovery-metrics.mjs record-offsite</code>; read with <code>GET /api/evidence</code></>} value={copy.seq} />
+              <RecordField copy={false} label="Counts" value={copy.counts} />
+              <RecordField copy={false} label="Reason" value={copy.reason} />
+              <RecordField copy={false} label="Recovery point" value={copy.point} />
+              <RecordField copy={false} label="Shipped" value={copy.shippedAt} />
+              <RecordField copy={false} label="Recorded" value={copy.recordedAt} />
+              <RecordField copy={false} label="Manifest generated" value={copy.manifestGeneratedAt} />
+              <RecordField label="Dump SHA-256" value={copy.dumpSha256} />
+              {copy.missing.length ? <RecordField label="Missing" value={copy.missing} /> : null}
+            </RecordGroup>
           ))}
         </TechnicalDetails>
       </Card>
@@ -148,17 +196,25 @@ export function ResilienceView({ data }: { data: ResilienceData }) {
         ) : null}
         <p className="field-help">No recovery time target is set in KEEL, so nothing is compared against one.</p>
         <TechnicalDetails>
-          <RecordField label="Samples" value={String(recoveryTime.samples)} copy={false} />
-          <RecordField label="Latest (ms)" value={recoveryTime.latestMs === null ? "unmeasured" : String(recoveryTime.latestMs)} copy={false} />
-          <RecordField label="Slowest (ms)" value={recoveryTime.worstMs === null ? "unmeasured" : String(recoveryTime.worstMs)} copy={false} />
-          <RecordField label="Median (ms)" value={recoveryTime.medianMs === null ? "unmeasured" : String(recoveryTime.medianMs)} copy={false} />
-          {recoveryTime.attempts.map((attempt) => (
-            <RecordField
-              key={`${attempt.source}-${attempt.ref ?? attempt.at}`}
-              label={attempt.source === "restore" ? "Job ID · restore" : "Evidence sequence · recovery drill"}
-              value={`${attempt.ref ?? "unknown"} · ${attempt.counts ? `counted ${attempt.elapsedMs} ms` : attempt.reason} · ${attempt.at ?? "unknown"}`}
-              usage={attempt.source === "restore" ? <><code>GET /api/jobs/{attempt.ref ?? "<id>"}</code></> : <><code>GET /api/evidence</code></>}
-            />
+          <RecordField copy={false} label="State" value={recoveryTime.state} />
+          <RecordField label="Samples" value={recoveryTime.samples} copy={false} />
+          <RecordField label="Latest (ms)" value={recoveryTime.latestMs ?? "unmeasured"} copy={false} />
+          <RecordField copy={false} label="Latest at" value={recoveryTime.latestAt} />
+          <RecordField label="Slowest (ms)" value={recoveryTime.worstMs ?? "unmeasured"} copy={false} />
+          <RecordField label="Median (ms)" value={recoveryTime.medianMs ?? "unmeasured"} copy={false} />
+          {recoveryTime.attempts.map((attempt, index) => (
+            <RecordGroup key={`${attempt.source}-${attempt.ref ?? attempt.at ?? index}`} note={attempt.counts ? "counted" : "not counted"} title={attempt.source === "restore" ? "Restore" : "Recovery drill"}>
+              <RecordField
+                label={attempt.source === "restore" ? "Job ID" : "Evidence sequence"}
+                usage={attempt.source === "restore" ? <><code>GET /api/jobs/{attempt.ref ?? "<id>"}</code></> : <><code>GET /api/evidence</code></>}
+                value={attempt.ref}
+              />
+              <RecordField copy={false} label="At" value={attempt.at} />
+              <RecordField copy={false} label="Outcome" value={attempt.outcome} />
+              <RecordField copy={false} label="Counts" value={attempt.counts} />
+              <RecordField copy={false} label="Elapsed (ms)" value={attempt.elapsedMs} />
+              <RecordField copy={false} label="Reason" value={attempt.reason} />
+            </RecordGroup>
           ))}
         </TechnicalDetails>
       </Card>
@@ -175,9 +231,27 @@ export function ResilienceView({ data }: { data: ResilienceData }) {
         ) : null}
         <TechnicalDetails>
           <RecordField label="Drill state" value={readiness.state} copy={false} />
-          <RecordField label="Counted drills" value={String(readiness.countedDrills)} copy={false} />
-          {readiness.notCounted.map((entry) => <RecordField copy={false} key={`${entry.at}-${entry.reason}`} label={`Not counted · ${entry.at}`} value={entry.reason} />)}
-          {readiness.cleanupFailures.map((failure) => <RecordField key={failure.at} label={`Residual objects · ${failure.at}`} value={failure.objects.join(", ")} />)}
+          <RecordField label="Counted drills" value={readiness.countedDrills} copy={false} />
+          {readiness.lastCountedDrill ? (
+            <RecordGroup note="counted" title="Newest counted drill">
+              <RecordField copy={false} label="At" value={readiness.lastCountedDrill.at} />
+              <RecordField copy={false} label="Elapsed (ms)" value={readiness.lastCountedDrill.elapsedMs} />
+              <RecordField label="Objects" value={readiness.lastCountedDrill.objects} />
+            </RecordGroup>
+          ) : null}
+          {readiness.notCounted.map((entry) => (
+            <RecordGroup key={`${entry.at}-${entry.reason}`} note="not counted" title="Drill">
+              <RecordField copy={false} label="At" value={entry.at} />
+              <RecordField copy={false} label="Reason" value={entry.reason} />
+            </RecordGroup>
+          ))}
+          {readiness.cleanupFailures.map((failure) => (
+            <RecordGroup key={failure.at} note="clean-up left objects behind" title="Drill clean-up">
+              <RecordField copy={false} label="At" value={failure.at} />
+              <RecordField label="Residual objects" value={failure.objects} />
+              {failure.residuals.length ? <RecordField label="Residual details" value={failure.residuals} /> : null}
+            </RecordGroup>
+          ))}
           <RecordField label="Scope" value={readiness.scope} copy={false} usage={<>run with <code>node tools/rehearsal/qualification.mjs</code></>} />
         </TechnicalDetails>
       </Card>
@@ -195,7 +269,12 @@ export function ResilienceView({ data }: { data: ResilienceData }) {
         {data.incidents.length ? (
           <TechnicalDetails>
             {data.incidents.map((summary) => (
-              <RecordField key={summary.incident.id} label={`Incident ID · ${summary.incident.title}`} value={`${summary.incident.id}${summary.recommended ? ` · cleared snapshot ${summary.recommended.snapshotId}` : ""} · pins ${summary.pins}`} usage={<><code>/incidents?incident={summary.incident.id}</code></>} />
+              <RecordGroup key={summary.incident.id} note={summary.incident.status} title={summary.incident.title}>
+                <RecordField label="Incident ID" usage={<><code>/incidents?incident={summary.incident.id}</code></>} value={summary.incident.id} />
+                <RecordField copy={false} label="Opened" value={summary.incident.openedAt} />
+                <RecordField label="Cleared snapshot ID" usage={summary.recommended?.collectedAt ? `collected ${summary.recommended.collectedAt}` : undefined} value={summary.recommended?.snapshotId} />
+                <RecordField copy={false} label="Retention pins" value={summary.pins} />
+              </RecordGroup>
             ))}
           </TechnicalDetails>
         ) : null}
@@ -208,7 +287,10 @@ export function ResilienceView({ data }: { data: ResilienceData }) {
         ) : null}
         <TechnicalDetails>
           <RecordField label="Provider" value={data.storage.provider} copy={false} />
+          <RecordField label="Region" value={data.storage.region} copy={false} />
+          <RecordField label="Boundary" value={data.storage.boundary} copy={false} />
           <RecordField label="Immutability claim" value={data.storage.immutability} copy={false} />
+          <RecordField label="Manifest generated" value={data.storage.generatedAt} copy={false} />
           <RecordField label="Recovery manifest" value={data.storage.source} usage={<>set with <code>KEEL_RECOVERY_MANIFEST_PATH</code></>} />
           <RecordField label="Tenant reference" value={metrics.tenantRef} />
         </TechnicalDetails>

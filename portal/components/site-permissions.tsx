@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import {
   appName, partProblem, rolesLabel, siteAddress, siteLine, siteName,
@@ -58,6 +58,16 @@ export function SiteList({ data }: { data: SitePermissionsData }) {
         <TechnicalDetails>
           <RecordField label="SharePoint read" value={run.id} />
           <RecordField copy={false} label="Read outcome" value={run.outcome} />
+          <RecordField copy={false} label="Read finished" value={run.observedTo} />
+          <RecordField copy={false} label="Stopped at the site limit" value={run.capped ?? false} />
+          {data.latest ? (
+            <RecordGroup note={data.latest.outcome} title="Newer read">
+              <RecordField label="SharePoint read" value={data.latest.id} />
+              <RecordField copy={false} label="Read outcome" value={data.latest.outcome} />
+              <RecordField copy={false} label="Read finished" value={data.latest.observedTo} />
+            </RecordGroup>
+          ) : null}
+          <RecordField copy={false} label="Sites listed" value={sites.length} />
         </TechnicalDetails>
       ) : null}
     </section>
@@ -87,7 +97,8 @@ function PartSection<T>({ id, kicker, title, part, what, children }: {
       {part.entries?.length ? children(part.entries) : null}
       {part.httpStatus !== null ? (
         <TechnicalDetails>
-          <RecordField copy={false} label="Microsoft answered" value={`HTTP ${part.httpStatus}`} />
+          <RecordField copy={false} label="Read status" value={part.status} />
+          <RecordField copy={false} label="Microsoft answered (HTTP status)" value={part.httpStatus} />
         </TechnicalDetails>
       ) : null}
     </section>
@@ -111,7 +122,7 @@ export function SiteDetail({ site, run, latest, now }: { site: SitePermissions; 
                   {grant.applications.map((application, position) => (
                     <RecordField key={application.id ?? position} label="App" value={application.id} />
                   ))}
-                  <RecordField copy={false} label="Roles as stored" value={grant.roles.join(", ") || null} />
+                  <RecordField copy={false} label="Roles as stored" value={grant.roles.length ? grant.roles : null} />
                 </TechnicalDetails>
               </li>
             ))}
@@ -139,7 +150,13 @@ export function SiteDetail({ site, run, latest, now }: { site: SitePermissions; 
                     {rolesLabel(group.roles)}
                     {group.members !== null ? ` · ${group.members.toLocaleString("en-GB")} ${group.members === 1 ? "member" : "members"}` : null}
                   </p>
-                  {group.id ? <TechnicalDetails><RecordField label="Group" value={group.id} /></TechnicalDetails> : null}
+                  {group.id ? (
+                    <TechnicalDetails>
+                      <RecordField label="Group" value={group.id} />
+                      <RecordField copy={false} label="Roles as stored" value={group.roles.length ? group.roles : null} />
+                      <RecordField copy={false} label="Members" value={group.members} />
+                    </TechnicalDetails>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -152,7 +169,13 @@ export function SiteDetail({ site, run, latest, now }: { site: SitePermissions; 
                 <li className="item-card" key={assignment.id ?? index}>
                   <div className="item-card-head"><strong>{assignment.name ?? "Someone KEEL could not name"}</strong></div>
                   <p className="site-line">{rolesLabel(assignment.roles)}</p>
-                  {assignment.id ? <TechnicalDetails><RecordField label="Assignment" value={assignment.id} /></TechnicalDetails> : null}
+                  {assignment.id ? (
+                    <TechnicalDetails>
+                      <RecordField label="Assignment" value={assignment.id} />
+                      <RecordField copy={false} label="Kind" value={assignment.kind} />
+                      <RecordField copy={false} label="Roles as stored" value={assignment.roles.length ? assignment.roles : null} />
+                    </TechnicalDetails>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -171,7 +194,17 @@ export function SiteDetail({ site, run, latest, now }: { site: SitePermissions; 
         <TechnicalDetails>
           <RecordField label="Site" value={site.siteId} />
           <RecordField label="Web address" value={site.webUrl} />
+          <RecordField copy={false} label="Name as stored" value={site.displayName} />
           <RecordField label="SharePoint read" value={run.id} />
+          <RecordField copy={false} label="Read outcome" value={run.outcome} />
+          <RecordField copy={false} label="Read finished" value={run.observedTo} />
+          {([["App grants", site.appGrants], ["SharePoint groups", site.groups], ["Role assignments", site.roleAssignments]] as const).map(([title, part]) => (
+            <RecordGroup key={title} note={part.status} title={title}>
+              <RecordField copy={false} label="Read status" value={part.status} />
+              <RecordField copy={false} label="Microsoft answered (HTTP status)" value={part.httpStatus} />
+              <RecordField copy={false} label="Entries" value={part.entries?.length ?? null} />
+            </RecordGroup>
+          ))}
         </TechnicalDetails>
       </section>
     </>

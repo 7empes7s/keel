@@ -4644,7 +4644,100 @@ item that needs it stays untouched.
   `/mnt/project-files/handoff/backup-coverage/REPORT.md` (the thread writes it, not you).
 - Needs: nothing. Run from your own clone checked out at the commit `/opt/keel-live` is deployed at (never `/opt/keel`),
   with `npm ci` in `engine/` if needed. No tenant calls, no job, schedule or config changes, no reruns.
-- Status: in-progress
+- Status: done
+- Result: done (2026-10-21). Deployed build **1a7df63** (my clone was detached at it). DB reads only: nothing written to the tenant
+  or the DB.
+  - **1. Schedules** (all enabled; last run, then next due):
+
+    | job_kind | tier | cadence | last run (UTC) | status | next due |
+    |---|---|---|---|---|---|
+    | collect | tier1 | hourly | 10-21 19:00 | succeeded | 10-21 20:00 |
+    | collect | tier2 | daily 00:00 | 10-21 00:01 | succeeded | 10-22 00:00 |
+    | collect | tier3 | weekly 00:00 | 10-19 00:01 | succeeded | 10-26 00:00 |
+    | content-collect | | daily 01:00 | 10-21 01:02 | succeeded | 10-22 01:00 |
+    | workload-collect | | daily 02:00 | 10-21 02:01 | succeeded | 10-22 02:00 |
+    | prune | | daily 00:00 | 10-21 00:02 | succeeded | 10-22 00:00 |
+    | discover | | weekly 04:00 | 10-19 04:01 | succeeded | 10-26 04:00 |
+    | api-drift | | weekly 03:00 | 10-19 03:01 | succeeded | 10-26 03:00 |
+  - **2. Coverage report:** exit 0. Full JSON (masked) at `ops/q99/coverage.json` on `claude/q99-coverage-numbers` @ 01e6050.
+    - 1 tenant. Summary: **covered 90** (62 complete, 28 complete-empty), failed 0, **unavailable 4**, notCovered 0,
+      **neverCollected 10**, stale 0. Newest snapshot complete at 10-21 19:00.
+    - Unavailable: lifecycleWorkflow, lifecycleWorkflowCustomTaskExtension and lifecycleManagementSettings (403, "Insufficient
+      license ... Entra ID Governance"); identityApiConnector (400 AADB2C99039, "self service sign up is not enabled").
+    - Never collected (`not-requested`): applePushNotificationCertificate, mobileThreatDefenseConnector,
+      deviceManagementPartner, complianceManagementPartner, remoteAssistancePartner, deviceManagementExchangeConnector,
+      onPremisesConditionalAccessSettings, mobileAppCategory, intuneBrandingProfile, customAuthenticationExtension.
+  - **3. Config workloads**, newest run each (10-21 02:02):
+
+    | workload | outcome | resources |
+    |---|---|---|
+    | exchange-mailbox-settings | complete | 2 |
+    | onedrive-site-settings | complete | 1 |
+    | purview-labels | complete | 21 |
+    | sharepoint-site-settings | complete | 21 |
+    | teams-settings | complete | 11 |
+    | exchange-extended | disabled | 0 |
+    | exchange-mail-flow | disabled | 0 |
+    | power-platform-settings | disabled | 0 |
+    | purview-governance | disabled | 0 |
+    | purview-retention-dlp | disabled | 0 |
+    | teams-org-policies | disabled | 0 |
+    | teams-voice-policies | disabled | 0 |
+    - Last 7 days: 11 runs each. Every disabled workload was disabled in all 11. The five complete workloads were complete in
+      all 11, except teams-settings (9 complete, 2 partial). No failures.
+    - Reasons for each non-complete newest run (verbatim, masked):
+      - exchange-mail-flow: "mailflow.{accepted-domains, remote-domains, transport-rules, inbound-connectors,
+        outbound-connectors, anti-spam-policies, anti-phish-policies, anti-malware-policies, dkim-signing} is disabled".
+      - exchange-extended: "exchange-extended.{outbound-spam-policies, outbound-spam-rules, connection-filter-policies,
+        anti-spam-rules, anti-phish-rules, anti-malware-rules, eop-preset-rules, quarantine-policies,
+        quarantine-global-settings, journal-rules, mobile-device-policies, device-access-rules, activesync-settings,
+        address-lists, global-address-lists, offline-address-books, ...} is disabled".
+      - purview-retention-dlp: "purview.retention-policies is disabled", "purview.retention-rules is disabled".
+      - purview-governance: "purview.retention-labels is disabled", "purview.adaptive-scopes is disabled"; and
+        "purview.ediscovery-cases / case-holds / case-hold-rules is pending-prerequisite: ... assign it the eDiscovery Manager
+        role."
+      - teams-org-policies and teams-voice-policies: every operation "is pending-prerequisite: To read teams ..., assign it the
+        Teams Administrator role."
+      - power-platform-settings: "powerplatform.environments is pending-prerequisite: To read power platform environments,
+        assign it the Power Platform Administrator role."
+    - **Two findings:**
+      - **purview-labels reports `complete`, but both of its reads failed.** Get-Label and Get-LabelPolicy failed with
+        `ConnectFailed`: "could not connect (ipps): Value cannot be null. (Parameter 'Organization cannot be null for
+        certificate based connections.')". Its discovery shows labels 0 and policies 0.
+      - **sharepoint-site-settings reports `complete` with every operation disabled.** Its reasons list
+        "sharepoint.tenant-settings / site-discovery / site-properties / site-permissions is disabled".
+  - **4. Content backup:**
+
+    | workload | containers | items | versions | bytes | stored new bytes | newest |
+    |---|---|---|---|---|---|---|
+    | exchange-mail | 7 | 19 | 23 | 15 468 | 16 076 | 10-15 |
+    | group-conversations | 1 | 3 | 3 | 9 496 | 9 592 | 10-15 |
+    | onedrive | 1 | 1 | 2 | 1 771 | 1 835 | 10-15 |
+    | planner | 1 | 5 | 5 | 2 479 | 2 639 | 10-15 |
+    | sharepoint-sites | 4 | 751 | 896 | 7 740 745 | 7 173 223 | 10-19 |
+    | teams | 11 | 1 | 12 | 303 318 | 303 702 | 10-17 |
+    - Chunks: 887, holding 7 507 067 stored bytes.
+    - Only 6 content-collect jobs exist (10-16 to 10-21), each taking about 90 s. 5 succeeded and 1 failed, on 10-17. The
+      10-21 job's lines are typical: "exchange-mail: succeeded (0 items, 0 bytes) ; onedrive: succeeded (0 items, 0 bytes) ;
+      sharepoint-sites: succeeded (0 items, 0 bytes) ; teams: succeeded (11 items, 271885 bytes) ; planner: succeeded
+      (8 items, 11975 bytes)". sharepoint-sites read 7 items on 10-16 and 8 on 10-19.
+    - The 10-17 job failed with exit 1: "teams: partial (11 items, 271684 bytes): KEEL-RT-20260908 Collaboration Hub: 1
+      part(s) not read, first channel KEEL-RT-20260908 Finance Private member...".
+  - **5. Config snapshots:** 412 in total.
+    - Newest completed: tier1 10-21 19:00, tier2 10-21 00:02, tier3 10-19 00:01, plus 13 manual collects (newest 10-20 16:41).
+    - Collect jobs in the last 7 days: tier1 160 ok / 8 failed, tier2 6 / 1, tier3 1 / 0.
+    - The failures are on 10-15, 10-16, 10-17 and 10-19. Most exited 1 after the snapshot completed; that is the
+      unavailable-types error in #309. Two tier1 runs exited with code null mid-collect (10-15 14:00, 10-17 21:00).
+  - **6. Tenant size**, from the newest snapshots: users 104, groups 57, enterprise apps (service principals) 577, app
+    registrations 49, managed devices 0 (none in any snapshot). Discovery run 2 found 104 users, 57 groups, 11 teams and
+    1 site.
+    - Content backup reads only what `namePrefix: KEEL-RT-` allows: mail from 7 mailboxes, 1 OneDrive, 4 sites, 11 teams.
+    - The workload backups read 1 mailbox, 1 OneDrive and 11 teams.
+  - **7. Scope files:**
+    - `content-scope.json` (root 600): `namePrefix: KEEL-RT-`, `tenantHost: <org>.sharepoint.com`.
+    - `workload-scope.json` (root 644): `sharepointHost` and `onedriveHost` (masked); `mailboxes` (1 entry, keel-rt);
+      `onedriveSites` (1 entry, a keel-rt personal site URL); `powershellConfigs` (exchange: exchange-collector.json;
+      onedrive and purview: purview-collector.json).
 - Do (all with `set -a; . /etc/keel/db.env; set +a`):
   1. Deployed build of `/opt/keel-live`, and every `schedule` row: job_kind, tier, enabled, last run time and status, next_due_at.
   2. Coverage report as the portal builds it. Save as `<clone>/engine/q99-coverage.mjs` (scratch, never commit) and run
@@ -4730,7 +4823,7 @@ item that needs it stays untouched.
 - **Marouane's decision (2026-10-21 17:29 UTC, comment on the executive deck): "get everything in the scope".** Content
   backup covers the whole tenant, not only the `KEEL-RT-` test fixtures.
 - Needs: nothing (Q99 and Q100 can run first or after; it does not change anything).
-- Status: todo
+- Status: in-progress
 - **Read-only toward the tenant.** The collectors only read. No tenant writes, no fixtures, no permission grants: if the
   Collector cannot read some mailboxes, drives or sites (403), report the count and the reason verbatim (masked) and do not
   grant anything. That is a separate decision.

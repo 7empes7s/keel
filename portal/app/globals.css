@@ -9317,6 +9317,102 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .technical-field[data-block] .technical-copy { position: absolute; top: 0.3125rem; right: 0.3125rem; background: var(--surface); }
 .technical-field[data-block] .technical-block { padding-right: 4.5rem; }
 
+/* The record as a side panel. The trigger is a compact link-style button that sits on
+   the content's left edge wherever it appears (cards, tables, sheets), so it lines up
+   with the text around it. The record opens as a popover panel from the right (full
+   screen on a phone), on top of any details sheet, with each field as a label over its
+   full-width value. Without popover support the <details> opens in place as before. */
+.technical-details[data-layer="record"] {
+  width: fit-content;
+  max-width: 100%;
+  border: 0;
+  background: none;
+}
+.technical-details[data-layer="record"] > summary {
+  display: inline-flex;
+  min-height: 2rem;
+  padding: var(--space-2xs) var(--space-sm);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  font-size: 0.8125rem;
+}
+.technical-details[data-layer="record"] > summary::before { content: none; }
+.technical-details[data-layer="record"] > summary:hover { border-color: var(--line-strong); }
+.technical-details[data-layer="record"] .technical-summary-hint { margin-left: var(--space-2xs); }
+.technical-summary-icon { flex: none; width: 0.875rem; height: 0.875rem; color: var(--text-muted); }
+.technical-details[data-layer="record"][open] > summary { border-bottom: 1px solid var(--line); border-radius: 999px; }
+.technical-panel-head { display: none; }
+
+.technical-body:popover-open {
+  position: fixed;
+  inset: 0 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: min(40rem, 100vw);
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-left: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-overlay);
+  font-size: 0.875rem;
+  animation: technical-panel-in var(--duration-slow) var(--ease-spring) both;
+}
+.technical-body:popover-open::backdrop { background: var(--scrim); }
+.technical-body:popover-open > .technical-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid var(--line);
+}
+.technical-body:popover-open > .technical-fields {
+  flex: 1;
+  align-content: start;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: var(--space-xs) var(--space-lg) var(--space-lg);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.technical-body:popover-open .technical-field {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2xs);
+  padding: var(--space-sm) 0;
+  border-top: 1px solid var(--line);
+}
+.technical-body:popover-open .technical-fields > .technical-field:first-child { border-top: 0; }
+.technical-body:popover-open .technical-field > dt { font-size: 0.8125rem; }
+.technical-body:popover-open .technical-field > dd > code { font-size: 0.8125rem; padding: 0.125rem 0.5rem; }
+.technical-body:popover-open .technical-block { max-height: 28rem; font-size: 0.8125rem; }
+.technical-body:popover-open .technical-group {
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+.technical-body:popover-open .technical-group .technical-field:first-child { border-top: 0; padding-top: 0; }
+.technical-body:popover-open .technical-group .technical-field > dd > code,
+.technical-body:popover-open .technical-group .technical-block { background: var(--surface); }
+.technical-panel-kicker { margin: 0; color: var(--text-soft); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.technical-panel-title { margin: var(--space-2xs) 0 0; font-size: 1.125rem; font-weight: 650; overflow-wrap: anywhere; }
+@keyframes technical-panel-in { from { transform: translateX(2.5rem); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .technical-body:popover-open { animation: none; }
+}
+@media (max-width: 46rem) {
+  .technical-body:popover-open { width: 100vw; border-left: 0; }
+  .technical-body:popover-open > .technical-panel-head,
+  .technical-body:popover-open > .technical-fields { padding-inline: var(--space-md); }
+}
+
 /* Compliance (portal audit, pick A on a desktop, B on a phone): context line, tiles,
    the phone scorecard per service, control rows, storage card, the control panel and
    the exception sheet. Tokens only; `.cp-` prefix. */
@@ -9435,6 +9531,14 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
   .cp-facts > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .cp-form .picker-button { width: 100%; min-width: 0; }
 }
+
+/* A changed value that holds several settings reads as one line per setting in the
+   comparison table, without a strike-through across the whole block. */
+.diff-table .diff-before:has(.cv-lines),
+.diff-table .diff-after:has(.cv-lines) { display: block; padding: var(--space-2xs) var(--space-xs); border-radius: 4px; text-decoration: none; }
+.diff-table .cv-value, .diff-table .cv-lines { font-family: inherit; overflow-wrap: anywhere; }
+.diff-table .cv-lines { font-size: 0.8125rem; }
+.diff-table .cv-lines b { color: inherit; opacity: 0.8; }
 
 /* Value report (portal audit, pick A: dashboard of charts): toolbar, tiles, the results
    chart, cards, request and check rows, the Download menu and print. Tokens only;

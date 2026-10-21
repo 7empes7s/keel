@@ -11,9 +11,13 @@ import { test } from "node:test";
 // This happened to Restore, What's protected, Baselines and the job pages when the
 // job list (a server component) called refUsage() from components/technical-details.
 //
-// So: a module without "use client" may import components (Capitalised) and types
-// from a "use client" module, never a lowercase value such as a helper or a hook.
-// Shared helpers belong in a plain module under lib/.
+// Constants fail the same way, only silently: a server component that reads
+// SECTION_ICONS from the "use client" nav-links module gets undefined, so the page
+// actions icon was missing on every page.
+//
+// So: a module without "use client" may import components (PascalCase) and types
+// from a "use client" module, never a plain value such as a helper, a hook or a
+// constant. Shared helpers and constants belong in a plain module under lib/.
 
 const PORTAL = resolve(__dirname, "..");
 const SOURCE_DIRS = ["app", "components", "lib"];
@@ -44,7 +48,13 @@ function resolveImport(from: string, specifier: string): string | null {
   return null;
 }
 
-/** Every lowercase value a non-client module imports from a "use client" module. */
+// A component name is PascalCase: a capital, then at least one lowercase letter.
+// Everything else (helpers, hooks, SCREAMING_CASE constants) is a plain value.
+function isComponentName(name: string): boolean {
+  return /^[A-Z][A-Za-z0-9]*$/.test(name) && /[a-z]/.test(name);
+}
+
+/** Every non-component value a non-client module imports from a "use client" module. */
 function serverCallsIntoClient(files: string[]): string[] {
   const found: string[] = [];
   for (const file of files) {
@@ -59,15 +69,15 @@ function serverCallsIntoClient(files: string[]): string[] {
         .map((part) => part.trim())
         .filter((part) => part && !part.startsWith("type "))
         .map((part) => part.split(/\s+as\s+/)[0]);
-      for (const name of names.filter((value) => /^[a-z_$]/.test(value))) {
-        found.push(`${relative(PORTAL, file)} imports ${name}() from "use client" ${relative(PORTAL, target)}`);
+      for (const name of names.filter((value) => !isComponentName(value))) {
+        found.push(`${relative(PORTAL, file)} imports ${name} from "use client" ${relative(PORTAL, target)}`);
       }
     }
   }
   return found;
 }
 
-test("server components never call a function from a \"use client\" module", () => {
+test("server components never import a plain value from a \"use client\" module", () => {
   const files = SOURCE_DIRS.flatMap((directory) => sourceFiles(join(PORTAL, directory)));
   assert.ok(files.length > 50, "found the portal sources");
   assert.deepEqual(serverCallsIntoClient(files), []);
@@ -79,4 +89,12 @@ test("the job list reads refUsage from a plain module, not the client panel", ()
   assert.equal(isClientModule(join(PORTAL, "components", "technical-details.tsx")), true);
   assert.equal(isClientModule(join(PORTAL, "lib", "record-refs.ts")), false);
   assert.match(readFileSync(jobTable, "utf8"), /import \{ refUsage \} from "@\/lib\/record-refs"/);
+});
+
+test("the page header reads SECTION_ICONS from a plain module, not the client menu", () => {
+  const header = join(PORTAL, "components", "page-header.tsx");
+  assert.equal(isClientModule(header), false, "the page header is a server component");
+  assert.equal(isClientModule(join(PORTAL, "components", "nav-links.tsx")), true);
+  assert.equal(isClientModule(join(PORTAL, "lib", "nav-sections.ts")), false);
+  assert.match(readFileSync(header, "utf8"), /import \{ SECTION_ICONS, type NavSection \} from "@\/lib\/nav-sections"/);
 });

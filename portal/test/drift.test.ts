@@ -14,6 +14,7 @@ import { driftActionControls, remediationParams } from "@/lib/drift-actions";
 import { getDashboardData, getDriftData } from "@/lib/portal-data";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
+import { detectWorkloadDrift } from "../../engine/govern/workloadDrift.mjs";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
 
 // Global constraint 6: the isolated schema is created only from KEEL_DB_TEST_URL.
@@ -312,4 +313,28 @@ test("a change seen by several detect runs is one change, shown as its newest re
   );
   const after = await getDriftData();
   assert.equal(after.items.some((item) => item.naturalKey === first.naturalKey), false);
+});
+
+test("the Overview counts open service setting changes beside the approved-setup changes", async () => {
+  const before = await getDashboardData();
+  const mailFlow = async (at: Date, state: string) => {
+    const { rows: [collection] } = await client.query(
+      `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to, created_at)
+       VALUES ($1, 'exchange-mail-flow', 'complete', $2, $2, $2) RETURNING id`,
+      [currentTenantRef, at],
+    );
+    await client.query(
+      `INSERT INTO workload_observation (collection_id, resource_key, fields) VALUES ($1, 'transport-rule:KEEL-RT-overview', $2)`,
+      [collection.id, { identity: "KEEL-RT-overview", kind: "transportRule", Name: "KEEL-RT-overview", State: state }],
+    );
+    await detectWorkloadDrift(client, { collectionId: collection.id, hysteresis: undefined });
+  };
+  const now = Date.now();
+  await mailFlow(new Date(now - 2 * 3_600_000), "Disabled");
+  await mailFlow(new Date(now - 3_600_000), "Enabled");
+
+  const after = await getDashboardData();
+  assert.equal(after.openDriftTotal, before.openDriftTotal + 1, "the mail flow rule change counts");
+  const accessAffecting = (data: typeof after) => data.openDriftByBlastRadius.find((item) => item.blastRadius === "access-affecting")?.count ?? 0;
+  assert.equal(accessAffecting(after), accessAffecting(before) + 1);
 });

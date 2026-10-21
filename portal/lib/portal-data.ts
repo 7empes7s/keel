@@ -39,7 +39,8 @@ import { NAME_FIELDS, objectIds, payloadName } from "@/lib/changes-view";
 import { DERIVED_NAME_TYPES, derivedName, edgeKeyType, referencedIds } from "@/lib/app-names";
 import { idNames, savedNames } from "@/lib/saved-names";
 import { getLiveRecords } from "@/lib/live-records";
-import { workloadKinds } from "@/lib/workload-kinds";
+import { headlineEntries, withWorkloadCoverage, workloadKinds } from "@/lib/workload-kinds";
+import { loadServiceChanges } from "@/lib/service-changes";
 import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
 import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
@@ -1290,12 +1291,19 @@ export async function getDashboardData(): Promise<DashboardData> {
     const evidenceRaw = (await getEvidenceIntegrity(client, {
       tenantRef: ref,
     })) as { ok: boolean; chainLength: number };
-    const drift = await activeDriftFor(client, ref, activeBaseline?.id ?? null);
+    const generatedAt = new Date();
+    // Open changes in every service: the approved-setup changes (Entra ID and Intune)
+    // and the service setting changes the Changes page lists beside them.
+    const serviceChanges = await loadServiceChanges(client, { tenantRef: ref, now: generatedAt }).catch((error) => {
+      console.error("[keel-portal] overview service changes unavailable", error);
+      return [] as DriftRecord[];
+    });
+    const drift = [...await activeDriftFor(client, ref, activeBaseline?.id ?? null), ...serviceChanges];
     const rawCoverage = await rawCoverageReport(client, ref);
     const coverageData = await coverageFor(client, ref, rawCoverage);
     // Task-129: the Overview sentence comes from this same report, never a constant.
-    const headline = protectionHeadline(rawCoverage.types as never) as ProtectionHeadline;
-    const generatedAt = new Date();
+    // The workloads join the Entra ID and Intune types, as on What's protected.
+    const headline = protectionHeadline([...(rawCoverage.types as unknown[]), ...headlineEntries(coverageData.workloads)] as never) as ProtectionHeadline;
     const driftTrend = await driftTrendFor(client, ref, activeBaseline?.id ?? null, generatedAt);
 
     const openDriftByBlastRadius = [...new Set([
@@ -1321,7 +1329,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       openDriftByBlastRadius,
       openDriftTotal: drift.length,
       driftTrend,
-      coverage: coverageData.summary,
+      coverage: withWorkloadCoverage(coverageData.summary, coverageData.workloads),
       evidence: {
         ok: Boolean(evidenceRaw.ok),
         chainLength: Number(evidenceRaw.chainLength),

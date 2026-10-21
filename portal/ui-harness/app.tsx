@@ -12,6 +12,8 @@ import { JobRefresher } from "@/components/job-refresher";
 import { PageSkeleton } from "@/components/ui/skeleton";
 import { BackUpNow, TierStrip } from "@/components/backup-controls";
 import { ProtectCoverage } from "@/components/protect-coverage";
+import { ContentBackupsView } from "@/components/content-backups";
+import type { ContentBackupsData } from "@/lib/content-backups-view";
 import { SchedulesPage } from "@/components/schedules/schedules-page";
 import { scheduleCounts, schedulesStatus } from "@/lib/schedules-view";
 import { protectStatus, protectVerdict, protectVerdictDetail, tierSummaries } from "@/lib/protect-view";
@@ -727,6 +729,25 @@ const TWO_PERSON_REQUEST = "a9e10000-0000-4000-8000-000000000101";
 // drawers. Each type carries the full evidence its record must keep.
 const PROOF = { update: "engine/restore/updatePath.test.mjs", create: "engine/restore/createPath.test.mjs" };
 const write = (claim: string, proof: string | null, credentialMode: string | null = "restorer") => ({ claim, credentialMode, idOutcome: null, handler: null, proofRef: proof, projection: "reviewed-empty" });
+// Content backups on What's protected, shaped like engine/coverage/serviceBackups.mjs
+// (numbers from the 2026-10-16 nightly run on the test tenant; Planner failed here).
+const contentRun = (workload: string, outcome: string, items: number, bytes: number, reasons: string[] = []) => ({
+  workload,
+  latest: { id: `0c0n0000-${workload}`, outcome, at: "2026-10-01T01:12:00Z", reasons, namePrefix: "KEEL-RT-" },
+  lastGood: outcome === "succeeded" ? { id: `0c0n0000-${workload}`, from: "2026-10-01T01:00:00Z", at: "2026-10-01T01:12:00Z", items, bytes } : null,
+});
+const CONTENT_BACKUPS: ContentBackupsData = {
+  generatedAt: "2026-10-01T12:00:00Z",
+  content: [
+    { ...contentRun("exchange-mail", "succeeded", 3, 2048), stored: { items: 23, versions: 25, containers: 2, bytes: 15468, storedBytes: 15000, newestAt: "2026-10-01T01:02:00Z" } },
+    { ...contentRun("group-conversations", "succeeded", 0, 0), latest: null, lastGood: null, stored: { items: 3, versions: 3, containers: 1, bytes: 9496, storedBytes: 9496, newestAt: "2026-09-30T01:10:00Z" } },
+    { ...contentRun("onedrive", "succeeded", 0, 0), stored: { items: 2, versions: 2, containers: 1, bytes: 1771, storedBytes: 1771, newestAt: "2026-09-29T01:03:00Z" } },
+    { ...contentRun("planner", "failed", 0, 0, ["KEEL-RT-Planner group: HTTP 503 from Microsoft"]), stored: { items: 5, versions: 5, containers: 1, bytes: 2479, storedBytes: 2479, newestAt: "2026-09-30T01:10:00Z" } },
+    { ...contentRun("sharepoint-sites", "succeeded", 12, 81920), stored: { items: 888, versions: 901, containers: 1, bytes: 7733964, storedBytes: 6100000, newestAt: "2026-10-01T01:06:00Z" } },
+    { ...contentRun("teams", "succeeded", 0, 0), stored: { items: 11, versions: 11, containers: 11, bytes: 271885, storedBytes: 271885, newestAt: "2026-09-30T01:08:00Z" } },
+  ],
+};
+
 const ct = (type: string, protectionState: string, extra: Partial<CoverageType> = {}): CoverageType => ({
   type, reportStatus: protectionState === "failed" ? "failed" : protectionState === "not-covered" ? "not-covered" : "covered", protectionState, stale: false, itemCount: 42,
   lastCollectedAt: "2026-10-02T09:12:00Z", adapter: "graph-v1-" + type, outcome: "complete",
@@ -1781,11 +1802,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/protect": {
       const verdict = protectVerdict(COVERAGE, now);
       return <>
-        <PageHeader actions={<BackUpNow disabled={false} urgent={verdict.tone !== "good"} />} description="Whether every kind of setting is backed up, how often, and whether Keel can put it back."
+        <PageHeader actions={<BackUpNow disabled={false} urgent={verdict.tone !== "good"} />} description="Whether every kind of setting and content is backed up, how often, and whether Keel can put it back."
           generatedAt={now} section="Backup" status={protectStatus(COVERAGE)} title="What's protected" />
         <Verdict detail={protectVerdictDetail(COVERAGE.types, (type) => typeService(type).name, now)} text={verdict.text} tone={verdict.tone} />
         <div data-layer="explanation">
           <ProtectCoverage canBackup data={COVERAGE} now={now} tierStrip={<TierStrip canEditSchedules disabled={false} tiers={tierSummaries(SCHEDULES, now)} />} />
+          <ContentBackupsView data={CONTENT_BACKUPS} now={now} />
           <div className="pt-recent">
             <JobTable headingId="backup-jobs" jobs={jobs.filter((item) => item.kind === "backup" || item.kind === "collect")} now={now} title="Recent backups" />
           </div>

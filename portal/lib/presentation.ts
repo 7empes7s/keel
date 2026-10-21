@@ -217,7 +217,7 @@ export const DISPLAY_ENUMS = {
     "policy-evaluate": "Policy run",
     notify: "Notification",
     "api-drift": "Microsoft API check",
-    "workload-collect": "Backup of SharePoint, Teams, Exchange and Purview settings",
+    "workload-collect": "Backup of Exchange, SharePoint, OneDrive, Teams, Purview and Power Platform settings",
     discover: "Check of what the tenant holds",
     "content-collect": "Backup of mail, files and Teams content",
   },

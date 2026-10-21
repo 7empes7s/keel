@@ -91,6 +91,14 @@ export interface RecoverySection {
   recoverablePoint: { state: "measured" | "unmeasured"; ageMs: number | null; asOf: string };
 }
 
+/** Backups that finished well in the period, per family (engine/reports/value.mjs). */
+export interface BackupSection {
+  withheld: false;
+  settings: { backups: number; lastAt: string | null };
+  serviceSettings: { runs: number; workloads: number; expected: number; lastAt: string | null };
+  content: { runs: number; workloads: number; expected: number; lastAt: string | null; itemsStored: number; bytesStored: number };
+}
+
 export interface HoursSaved {
   hours: number;
   byFamily: { family: "restore" | "remediation" | "finding"; verified: number; minutesEach: number; hours: number }[];
@@ -115,6 +123,8 @@ export interface ValueReport {
   };
   findings: FindingsSection | Withheld;
   recovery: RecoverySection | Withheld;
+  // Absent on a report made before every service was counted.
+  backups?: BackupSection | Withheld;
   estimate: { state: "configured" | "not-configured" | "invalid"; source: string | null; problems?: string[] };
   hoursSaved: HoursSaved | null;
   complianceClaim: null;
@@ -294,9 +304,33 @@ export function recoverySentence(recovery: RecoverySection | Withheld): string {
 
 export function freshnessSentence(recovery: RecoverySection): string {
   if (recovery.freshness.state !== "measured" || recovery.freshness.achievedRpoMs === null) {
-    return "Backup age: not measured, because some settings have never been backed up successfully.";
+    return "Backup age: not measured, because something Keel backs up has never been backed up successfully.";
   }
-  return `Backup age at the end of the period: the oldest setting was last backed up ${formatDuration(recovery.freshness.achievedRpoMs)} before.`;
+  return `Backup age at the end of the period: the oldest backup of any service was ${formatDuration(recovery.freshness.achievedRpoMs)} old.`;
+}
+
+function bytesShort(bytes: number): string {
+  const units = ["bytes", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
+  return unit === 0 ? `${value} bytes` : `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
+}
+
+/** The backups card's lines, one per family. */
+export function backupLines(backups: BackupSection | Withheld | undefined): string[] {
+  if (!backups) return ["This report was made before backups of every service were counted."];
+  if (isWithheld(backups)) return ["Backups cover the whole tenant, so they are shown only to people who can read all of it."];
+  const { settings, serviceSettings, content } = backups;
+  return [
+    `Entra ID and Intune settings: ${plural(settings.backups, "complete backup")}.`,
+    serviceSettings.expected
+      ? `Service settings (Exchange, SharePoint, OneDrive, Teams, Purview, Power Platform): ${serviceSettings.workloads} of ${serviceSettings.expected} areas backed up, ${plural(serviceSettings.runs, "good run")}.`
+      : "Service settings: none switched on yet.",
+    content.expected
+      ? `Content (mail, files, sites, Teams, Planner): ${content.workloads} of ${content.expected} areas backed up, ${plural(content.runs, "good run")}; ${plural(content.itemsStored, "new item")} stored (${bytesShort(content.bytesStored)} after removing duplicates).`
+      : "Content: no content backup has run yet.",
+  ];
 }
 
 const ESTIMATE_PROBLEMS: Record<string, string> = {

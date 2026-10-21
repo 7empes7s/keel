@@ -16,6 +16,8 @@
  * - A period KEEL has no comparison for is answered as unknown, never as "no changes".
  */
 import { scopePredicate } from '../authz/entityScope.mjs';
+import { contentWorkloadInfo, loadServiceBackups } from '../coverage/serviceBackups.mjs';
+import { typeInfo } from '../insights/taxonomy.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { BUDGET, PLAN_VERSION, QueryRefusal, describePlan, isValidatedPlan, planQuestion, validateRequest } from './intent.mjs';
 
@@ -155,40 +157,96 @@ const TEMPLATES = Object.freeze({
         LIMIT 1`,
       [tenantRef],
     );
-    if (!latest) return { total: 0, known: null, records: [] };
-    const where = filters({
-      tenantRef, scope, entity: params.entity, at: now,
-      typeExpr: 'rv.resource_type', keyExpr: 'rv.natural_key', asOfExpr: 's.completed_at', nextParam: 3,
-    });
-    const { rows } = await client.query(
-      `SELECT rv.resource_type, count(*)::int AS count
-         FROM resource_version rv
-         JOIN snapshot s ON s.id = rv.snapshot_id AND s.tenant_ref = $1
-        WHERE rv.snapshot_id = $2::uuid AND ${where.sql}
-        GROUP BY rv.resource_type`,
-      [tenantRef, latest.id, ...where.values],
-    );
-    const counts = new Map(rows.map((row) => [row.resource_type, Number(row.count)]));
-    const digest = latest.coverage_digest && typeof latest.coverage_digest === 'object' && !Array.isArray(latest.coverage_digest)
-      ? latest.coverage_digest : {};
-    const types = params.resourceType
-      ? [params.resourceType]
-      : [...new Set([...Object.keys(digest), ...counts.keys()])].sort();
-    const records = types.slice(0, BUDGET.maxRows).map((type) => {
-      const outcome = typeof digest[type]?.outcome === 'string' ? digest[type].outcome : 'not-recorded';
-      const read = outcome === 'complete' || outcome === 'complete-empty';
-      return {
-        kind: 'coverage',
-        id: `${latest.id}/${type}`,
-        resourceType: type,
-        outcome,
-        // A count from a read that did not finish is not a count of what exists.
-        count: read ? (counts.get(type) ?? 0) : null,
-        window: { from: iso(latest.started_at), to: iso(latest.completed_at) },
-        source: { kind: 'collection', id: latest.id, href: '/protect' },
-      };
-    });
-    return { total: types.length, known: { from: iso(latest.completed_at), to: iso(latest.completed_at) }, records };
+    const records = [];
+    let known = null;
+    if (latest) {
+      const where = filters({
+        tenantRef, scope, entity: params.entity, at: now,
+        typeExpr: 'rv.resource_type', keyExpr: 'rv.natural_key', asOfExpr: 's.completed_at', nextParam: 3,
+      });
+      const { rows } = await client.query(
+        `SELECT rv.resource_type, count(*)::int AS count
+           FROM resource_version rv
+           JOIN snapshot s ON s.id = rv.snapshot_id AND s.tenant_ref = $1
+          WHERE rv.snapshot_id = $2::uuid AND ${where.sql}
+          GROUP BY rv.resource_type`,
+        [tenantRef, latest.id, ...where.values],
+      );
+      const counts = new Map(rows.map((row) => [row.resource_type, Number(row.count)]));
+      const digest = latest.coverage_digest && typeof latest.coverage_digest === 'object' && !Array.isArray(latest.coverage_digest)
+        ? latest.coverage_digest : {};
+      const types = params.resourceType
+        ? [params.resourceType]
+        : [...new Set([...Object.keys(digest), ...counts.keys()])].sort();
+      for (const type of types) {
+        const outcome = typeof digest[type]?.outcome === 'string' ? digest[type].outcome : 'not-recorded';
+        const read = outcome === 'complete' || outcome === 'complete-empty';
+        records.push({
+          kind: 'coverage',
+          backup: 'settings',
+          id: `${latest.id}/${type}`,
+          resourceType: type,
+          name: null,
+          service: typeInfo(type).service ?? null,
+          outcome,
+          // A count from a read that did not finish is not a count of what exists.
+          count: read ? (counts.get(type) ?? 0) : null,
+          window: { from: iso(latest.started_at), to: iso(latest.completed_at) },
+          source: { kind: 'collection', id: latest.id, href: '/protect' },
+        });
+      }
+      known = { from: iso(latest.completed_at), to: iso(latest.completed_at) };
+    }
+    // Service settings and content backups have no owning entity, so only a reader of the
+    // whole tenant sees them, and a question about one Entra ID or Intune type leaves them out.
+    if (scope.central === true && !params.entity && !params.resourceType) {
+      const services = await loadServiceBackups(client, { tenantRef });
+      for (const entry of services.settings) {
+        const good = entry.lastGood;
+        const outcome = entry.switchedOn ? entry.latest.outcome : 'disabled';
+        records.push({
+          kind: 'coverage',
+          backup: 'service-settings',
+          id: `workload/${entry.workload}`,
+          resourceType: entry.workload,
+          name: typeInfo(entry.workload).name ?? null,
+          service: typeInfo(entry.workload).service ?? null,
+          outcome,
+          // The settings the last good read holds; none is known until one finished.
+          count: good ? good.settings : null,
+          lastGoodAt: good?.at ?? null,
+          window: { from: good?.from ?? null, to: good?.at ?? entry.latest.at },
+          source: { kind: 'collection', id: good?.id ?? entry.latest.id, href: '/protect' },
+        });
+      }
+      for (const entry of services.content) {
+        const info = contentWorkloadInfo(entry.workload);
+        const good = entry.lastGood;
+        records.push({
+          kind: 'coverage',
+          backup: 'content',
+          id: `content/${entry.workload}`,
+          resourceType: entry.workload,
+          name: info.name,
+          service: info.service,
+          outcome: entry.latest?.outcome ?? 'not-recorded',
+          // Distinct items held in the content store, across every run.
+          count: entry.stored ? entry.stored.items : null,
+          bytes: entry.stored ? entry.stored.bytes : null,
+          lastGoodAt: good?.at ?? null,
+          window: { from: good?.from ?? null, to: good?.at ?? entry.latest?.at ?? entry.stored?.newestAt ?? null },
+          source: { kind: 'collection', id: good?.id ?? entry.latest?.id ?? `content/${entry.workload}`, href: '/protect' },
+        });
+      }
+      const times = records.filter((record) => record.backup !== 'settings').map((record) => record.window.to).filter(Boolean).sort();
+      if (times.length) {
+        known = known
+          ? { from: [known.from, times[0]].sort()[0], to: [known.to, times.at(-1)].sort().at(-1) }
+          : { from: times[0], to: times.at(-1) };
+      }
+    }
+    if (records.length === 0) return { total: 0, known: null, records: [] };
+    return { total: records.length, known, records: records.slice(0, BUDGET.maxRows) };
   },
 
   async 'failed-jobs'(client, { tenantRef, params }) {
@@ -248,7 +306,7 @@ function sentenceFor({ intent, status, total, shown, gaps, known }) {
     return 'Not known: KEEL has not compared any collection in this period, so it cannot say whether anything changed.';
   }
   const listed = shown < total ? ` Showing the newest ${shown}.` : '';
-  if (intent === 'coverage') return `The latest complete backup holds ${plural(total, 'kind')} of resource you may see.${listed}`;
+  if (intent === 'coverage') return `The latest backups hold ${plural(total, 'kind')} of resource you may see.${listed}`;
   const noun = intent === 'failed-jobs' ? 'failed job' : 'matching change';
   const found = total === 0 ? `No ${noun}s were found` : `${plural(total, noun)} found`;
   if (status === 'answered') return `${found} in this period.${listed}`;

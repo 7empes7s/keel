@@ -42,10 +42,17 @@ export interface ChangeRecord {
 
 export interface CoverageRecord {
   kind: "coverage";
+  // settings: the Entra ID and Intune backup; service-settings: Exchange, SharePoint,
+  // Teams, Purview and Power Platform settings; content: mail, files, sites, Teams, Planner.
+  backup?: "settings" | "service-settings" | "content";
   id: string;
   resourceType: string;
+  name?: string | null;
+  service?: string | null;
   outcome: string;
   count: number | null;
+  bytes?: number | null;
+  lastGoodAt?: string | null;
   window: AnswerWindow;
   source: AnswerSource;
 }
@@ -159,11 +166,11 @@ export function askVerdict(answer: GroundedAnswer | null): { text: string; tone:
       ? { text: "Not known: KEEL has no record covering this, so it cannot say either way.", tone: "attention" }
       : { text: "KEEL cannot answer this question. It answers questions about changes, coverage and failed jobs.", tone: "attention" };
   }
-  const noun = answer.intent === "failed-jobs" ? "failed job" : answer.intent === "coverage" ? "kind of resource" : "matching change";
+  const noun = answer.intent === "failed-jobs" ? "failed job" : answer.intent === "coverage" ? "kind of backup" : "matching change";
   const found = answer.total === 0 ? `No ${noun}s found` : `${plural(answer.total, noun)} found`;
   if (answer.status === "partial") return { text: `${found}, but part of this period is not known yet.`, tone: "attention" };
   if (answer.intent === "failed-jobs" && answer.total > 0) return { text: `${found} in this period.`, tone: "critical" };
-  return { text: answer.intent === "coverage" ? `${found} in the latest complete backup.` : `${found} in this period.`, tone: answer.total > 0 && answer.intent === "changes" ? "attention" : "good" };
+  return { text: answer.intent === "coverage" ? `${found} across the latest backups of every service.` : `${found} in this period.`, tone: answer.total > 0 && answer.intent === "changes" ? "attention" : "good" };
 }
 
 /** "Understood as" in words, from the validated plan. */
@@ -172,7 +179,11 @@ export function understoodAs(answer: GroundedAnswer): string | null {
   const { intent, params } = answer.plan;
   const owner = params.entity ? ` owned by ${params.entity}` : "";
   const type = params.resourceType ? resourceTypeLabel(params.resourceType) : null;
-  if (intent === "coverage") return `What the latest complete backup holds${type ? ` for each ${type}` : ""}${owner}.`;
+  if (intent === "coverage") {
+    return type || owner
+      ? `What the latest complete backup holds${type ? ` for each ${type}` : ""}${owner}.`
+      : "What the latest backups of every service hold: settings and content.";
+  }
   const period = `from ${formatTimestamp(params.from)} to ${formatTimestamp(params.to)}`;
   if (intent === "failed-jobs") return `Jobs that failed ${period}.`;
   const kind = params.changeType ? `${displayEnum("changeType", params.changeType).toLowerCase()} ` : "";
@@ -191,7 +202,13 @@ export function gapSentence(gap: AnswerGap): string {
 export function recordTitle(record: AnswerRecord): string {
   switch (record.kind) {
     case "change": return namedSubject(record.naturalKey, { [record.naturalKey]: { name: record.name, resourceType: record.resourceType } }, record.resourceType);
-    case "coverage": return `${resourceTypeLabel(record.resourceType)[0].toUpperCase()}${resourceTypeLabel(record.resourceType).slice(1)}`;
+    case "coverage": {
+      const label = record.name ?? resourceTypeLabel(record.resourceType);
+      const title = `${label[0].toUpperCase()}${label.slice(1)}`;
+      if (record.backup === "content") return `${title} (content)`;
+      if (record.backup === "service-settings") return `${title} (settings)`;
+      return title;
+    }
     default: return displayEnum("jobKind", record.jobKind);
   }
 }
@@ -204,6 +221,8 @@ const OUTCOME_LABEL: Record<string, string> = {
   "not-requested": "Not part of this backup",
   unavailable: "Not available on this tenant",
   "not-recorded": "Not recorded",
+  succeeded: "Backed up",
+  disabled: "Switched off until a live check passes",
 };
 
 export function recordSentence(record: AnswerRecord): string {
@@ -215,6 +234,14 @@ export function recordSentence(record: AnswerRecord): string {
     }
     case "coverage": {
       const outcome = OUTCOME_LABEL[record.outcome] ?? "Not recorded";
+      if (record.backup === "content") {
+        return record.count === null ? `${outcome}. Nothing is stored yet.` : `${outcome}. ${plural(record.count, "item")} stored.`;
+      }
+      if (record.backup === "service-settings") {
+        if (record.count === null) return `${outcome}. No read has finished yet.`;
+        const older = record.outcome !== "complete" && record.outcome !== "complete-empty" && record.lastGoodAt ? ` from the last good read, ${formatTimestamp(record.lastGoodAt)}` : "";
+        return `${outcome}. ${plural(record.count, "setting")}${older}.`;
+      }
       return record.count === null ? `${outcome}. How many exist is not known.` : `${outcome}. ${plural(record.count, "resource")} you may see.`;
     }
     default: return `Failed ${formatTimestamp(record.window.to)}.`;
@@ -227,7 +254,11 @@ export function windowSentence(record: AnswerRecord): string {
       ? `Happened between ${formatTimestamp(record.window.from)} and ${formatTimestamp(record.window.to)}.`
       : `Happened before ${formatTimestamp(record.window.to)}; the earlier backup is not known.`;
   }
-  if (record.kind === "coverage") return `Backup from ${formatTimestamp(record.window.from)} to ${formatTimestamp(record.window.to)}.`;
+  if (record.kind === "coverage") {
+    if (!record.window.from && !record.window.to) return "No backup time recorded.";
+    if (!record.window.from) return `Backup finished ${formatTimestamp(record.window.to)}.`;
+    return `Backup from ${formatTimestamp(record.window.from)} to ${formatTimestamp(record.window.to)}.`;
+  }
   return `Ran from ${formatTimestamp(record.window.from)} to ${formatTimestamp(record.window.to)}.`;
 }
 

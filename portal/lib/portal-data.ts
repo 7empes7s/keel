@@ -988,6 +988,19 @@ export interface IncidentDetail {
   overrides?: { id: string; snapshotId: string; reason: string; authorizedBy: Ref | null; authorizedAt: string | null }[];
   points: IncidentRecoveryPoint[];
   recommended: string | null;
+  // Service settings and content backups placed against the attack window. Not checked
+  // by an investigator: that check covers the Entra ID and Intune backups above.
+  serviceBackups?: IncidentServiceBackup[];
+}
+
+export interface IncidentServiceBackup {
+  kind: "service-settings" | "content";
+  workload: string;
+  name: string;
+  service: string | null;
+  newestGood: { id: string; from: string | null; at: string | null; inCompromiseWindow: boolean } | null;
+  beforeWindow: { id: string; from: string | null; at: string | null; inCompromiseWindow: boolean } | null;
+  assessed: false;
 }
 
 export interface IncidentRecoveryData {
@@ -1047,6 +1060,7 @@ export async function getIncidentRecoveryData(requestedId?: string): Promise<Inc
         pins: { id: string; snapshotId: string; reason: string; pinnedBy: string; pinnedAt: string | null }[];
         points: RawPoint[];
         recommended: string | null;
+        serviceBackups?: IncidentServiceBackup[];
       }
       : null;
     const overrideRows = chosen
@@ -1129,6 +1143,7 @@ export async function getIncidentRecoveryData(requestedId?: string): Promise<Inc
         } : null,
       })),
       recommended: listing.recommended,
+      serviceBackups: listing.serviceBackups ?? [],
     } : null;
     return { generatedAt: new Date().toISOString(), incidents, selected };
   });

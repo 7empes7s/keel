@@ -2,7 +2,7 @@
 // page header (a server component), the page body and the tests all read the same
 // sentences from here. The engine decides which backup is cleared; nothing here
 // re-ranks or re-qualifies a backup.
-import type { IncidentDetail, IncidentExclusion, IncidentRecoveryPoint, IncidentSummary } from "@/lib/portal-data";
+import type { IncidentDetail, IncidentExclusion, IncidentRecoveryPoint, IncidentServiceBackup, IncidentSummary } from "@/lib/portal-data";
 import { namedSubject } from "@/lib/job-names";
 import type { RiskTone } from "@/lib/menu-status";
 import { RESOURCE_TYPE_LABELS, ago, formatTimestamp, words } from "@/lib/presentation";
@@ -276,4 +276,14 @@ export function failureWords(status: number, message?: string | null): string {
   if (/title is required/.test(text)) return "Give the incident a title.";
   if (status === 404) return "It was not found. Someone may have changed it; reload the page.";
   return "The change was not saved. Try again in a moment.";
+}
+
+/** One service backup against the attack window, in words. */
+export function serviceBackupLine(entry: IncidentServiceBackup, now: string): string {
+  const newest = entry.newestGood;
+  if (!newest) return "No good backup yet.";
+  const latest = `Newest good backup ${ago(newest.at, now)}${newest.inCompromiseWindow ? ", taken during the attack" : ""}.`;
+  if (!newest.inCompromiseWindow) return latest;
+  const before = entry.beforeWindow;
+  return before ? `${latest} The newest from before the attack is ${ago(before.at, now)}.` : `${latest} None was taken before the attack started.`;
 }

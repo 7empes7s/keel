@@ -522,6 +522,7 @@ test('an entity-scoped reader sees only its own outcomes; tenant-wide sections a
   assert.equal(fin.outcomes.rows[0].planId, finance);
   assert.deepEqual(fin.findings, { withheld: true });
   assert.deepEqual(fin.recovery, { withheld: true });
+  assert.deepEqual(fin.backups, { withheld: true });
   assert.equal(fin.outcomes.undoRunsExcluded, null);
   assertConsistent(fin.outcomes);
 
@@ -556,4 +557,45 @@ test('measured recovery comes from the recovery metrics, and the CLI prints JSON
   assert.equal(await run(['--tenant-ref', tenantRef, '--format', 'csv']), 0);
   assert.match(lines.pop(), /^# report,keel-value-report/);
   assert.equal(await run(['--tenant-ref', tenantRef, '--format', 'xml']), 2);
+});
+
+test('backups in the period count every service: settings, service settings and content', async () => {
+  const tenantRef = 'sha256:value-backups';
+  await snapshot(tenantRef, { completedAt: '2026-09-20T03:00:00Z' });
+  await snapshot(tenantRef, { completedAt: '2026-08-01T03:00:00Z' });
+  const workload = (name, outcome, at) => client.query(
+    `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to, created_at)
+     VALUES ($1, $2, $3, $4, $4, $4)`,
+    [tenantRef, name, outcome, at],
+  );
+  await workload('exchange-mail-flow', 'complete', '2026-09-21T02:00:00Z');
+  await workload('exchange-mail-flow', 'complete', '2026-09-22T02:00:00Z');
+  await workload('teams-org-policies', 'failed', '2026-09-22T02:00:00Z');
+  await workload('power-platform-settings', 'disabled', '2026-09-22T02:00:00Z');
+  await client.query(
+    `INSERT INTO content_run (tenant_ref, workload, outcome, items, bytes, started_at, completed_at)
+     VALUES ($1, 'exchange-mail', 'succeeded', 2, 20, '2026-09-22T01:00:00Z', '2026-09-22T01:05:00Z'),
+            ($1, 'planner', 'failed', 0, 0, '2026-09-22T01:06:00Z', '2026-09-22T01:07:00Z')`,
+    [tenantRef],
+  );
+  await client.query(
+    `INSERT INTO content_item (tenant_ref, workload, container, item_key, version, sha256, bytes, chunks, key_id, new_bytes, created_at)
+     VALUES ($1, 'exchange-mail', 'mailbox:KEEL-RT-a', 'm1', 'v1', $2, 30, '[]'::jsonb, 'k1', 25, '2026-09-22T01:01:00Z'),
+            ($1, 'exchange-mail', 'mailbox:KEEL-RT-a', 'm0', 'v1', $2, 30, '[]'::jsonb, 'k1', 25, '2026-08-01T01:01:00Z')`,
+    [tenantRef, 'd'.repeat(64)],
+  );
+
+  const result = await report(tenantRef);
+  assert.equal(result.backups.withheld, false);
+  assert.equal(result.backups.settings.backups, 1, 'only the settings backup inside the period');
+  assert.deepEqual(result.backups.serviceSettings, { runs: 2, workloads: 1, expected: 2, lastAt: '2026-09-22T02:00:00.000Z' },
+    'a failed run never counts; a switched-off workload is not expected');
+  assert.equal(result.backups.content.runs, 1);
+  assert.equal(result.backups.content.workloads, 1);
+  assert.equal(result.backups.content.expected, 2);
+  assert.equal(result.backups.content.itemsStored, 1);
+  assert.equal(result.backups.content.bytesStored, 25);
+  const csv = valueReportCsv(result);
+  assert.match(csv, /# service_settings_workloads,1 of 2/);
+  assert.match(csv, /# content_items_stored,1/);
 });

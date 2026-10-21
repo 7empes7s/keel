@@ -30,6 +30,7 @@
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { classifyDrillRecord, loadRecoveryReadiness, RECOVERY_DRILL_EVIDENCE_KIND } from './recoveryReadiness.mjs';
 import { readCoverageOutcome } from './snapshots.mjs';
+import { loadServiceBackups, loadServiceObservations } from './serviceBackups.mjs';
 
 export const RECOVERY_METRICS_VERSION = 1;
 export const OFFSITE_COPY_EVIDENCE_KIND = 'offsite-copy';
@@ -134,14 +135,14 @@ export function computeFreshness({ required, observations, now }) {
     state,
     // The achieved RPO exists only when every required dependency has a success.
     achievedRpoMs: state === 'measured' ? oldest.ageMs : null,
-    oldestDependency: oldest ? { key: oldest.key, kind: oldest.kind, type: oldest.type ?? null, parentType: oldest.parentType ?? null, family: oldest.family ?? null, ageMs: oldest.ageMs, since: oldest.lastSuccess.startedAt } : null,
-    gaps: gaps.map(({ key, kind, type, parentType, family, latestAttempt }) => ({
-      key, kind, type: type ?? null, parentType: parentType ?? null, family: family ?? null,
+    oldestDependency: oldest ? { key: oldest.key, kind: oldest.kind, type: oldest.type ?? null, parentType: oldest.parentType ?? null, family: oldest.family ?? null, workload: oldest.workload ?? null, ageMs: oldest.ageMs, since: oldest.lastSuccess.startedAt } : null,
+    gaps: gaps.map(({ key, kind, type, parentType, family, workload, latestAttempt }) => ({
+      key, kind, type: type ?? null, parentType: parentType ?? null, family: family ?? null, workload: workload ?? null,
       lastAttempt: latestAttempt ? { at: latestAttempt.completedAt ?? latestAttempt.startedAt, outcome: latestAttempt.outcome } : null,
     })),
     latestFailures: dependencies.filter((dependency) => dependency.latestFailed && dependency.lastSuccess !== null)
-      .map(({ key, kind, type, parentType, family, latestAttempt, lastSuccess }) => ({
-        key, kind, type: type ?? null, parentType: parentType ?? null, family: family ?? null,
+      .map(({ key, kind, type, parentType, family, workload, latestAttempt, lastSuccess }) => ({
+        key, kind, type: type ?? null, parentType: parentType ?? null, family: family ?? null, workload: workload ?? null,
         failedAt: latestAttempt.completedAt ?? latestAttempt.startedAt, outcome: latestAttempt.outcome,
         lastSuccessAt: lastSuccess.startedAt,
       })),
@@ -446,6 +447,12 @@ async function loadRequiredRelationships(client, { tenantRef }) {
  * The tenant's recovery metrics. requiredTypes are the configuration types KEEL
  * collects (the collector descriptors); required relationship families are every
  * family KEEL has read for this tenant (an unsupported-only family is not one).
+ *
+ * Freshness also requires every service-settings workload that has run (not only
+ * `disabled`) and every content workload with a recorded run (serviceBackups.mjs), so
+ * the oldest good backup is the oldest across every service. The recoverable point is
+ * still measured over the Entra ID and Intune settings only: an off-site copy's manifest
+ * lists settings-backup observations, never service settings or content runs.
  */
 export async function loadRecoveryMetrics(client, { tenantRef, requiredTypes, now = new Date() }) {
   assertTenantRef(tenantRef);
@@ -455,9 +462,11 @@ export async function loadRecoveryMetrics(client, { tenantRef, requiredTypes, no
     ...[...new Set(requiredTypes)].sort().map(typeDependency),
     ...await loadRequiredRelationships(client, { tenantRef }),
   ];
+  const services = await loadServiceObservations(client, { tenantRef });
   const observations = [
     ...await loadTypeObservations(client, { tenantRef }),
     ...await loadRelationshipObservations(client, { tenantRef }),
+    ...services.observations,
   ];
   const copies = await loadOffsiteCopies(client, { tenantRef });
   const listed = copies.flatMap((copy) => (Array.isArray(copy.subject?.observationIds) ? copy.subject.observationIds : []));
@@ -477,8 +486,13 @@ export async function loadRecoveryMetrics(client, { tenantRef, requiredTypes, no
     version: RECOVERY_METRICS_VERSION,
     tenantRef,
     generatedAt: generatedAt.toISOString(),
-    freshness: computeFreshness({ required, observations, now: generatedAt }),
-    recoverablePoint: computeRecoverablePoint({ required, copies, observationsById, relationshipsBySnapshot, tenantRef, now: generatedAt }),
+    freshness: computeFreshness({ required: [...required, ...services.required], observations, now: generatedAt }),
+    recoverablePoint: {
+      ...computeRecoverablePoint({ required, copies, observationsById, relationshipsBySnapshot, tenantRef, now: generatedAt }),
+      scope: 'entra-intune-settings',
+    },
+    // The latest and last good run of every service-settings and content workload.
+    services: await loadServiceBackups(client, { tenantRef }),
     recoveryTime: computeRecoveryTime({ drills, restores, tenantRef }),
     readiness: await loadRecoveryReadiness(client, { tenantRef }),
     configured: {

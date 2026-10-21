@@ -12,7 +12,10 @@
  * backup already holds); `microsoft-published` is a catalogue Microsoft ships the same
  * in every tenant (templates, setting definitions, ADMX definitions, app gallery).
  * Discovery reports them as `skipped`, so they do not count as readable but not
- * backed up.
+ * backed up. A path that can hold something the tenant made (schema extensions,
+ * uploaded GPO files, eSIM pools, custom analytics baselines, device templates,
+ * attack simulations, Tunnel health thresholds) stays a gap even when the export
+ * filed it as a catalogue or a log.
  */
 
 export const SKIP_REASONS = Object.freeze(['not-configuration', 'microsoft-published']);
@@ -79,7 +82,6 @@ export const SKIPPED_PATHS = Object.freeze({
   '/deviceManagement/advancedThreatProtectionOnboardingStateSummary': 'not-configuration',
   '/deviceManagement/auditEvents': 'not-configuration',
   '/deviceManagement/autopilotEvents': 'not-configuration',
-  '/deviceManagement/cartToClassAssociations': 'microsoft-published',
   '/deviceManagement/categories': 'microsoft-published',
   '/deviceManagement/cloudPCConnectivityIssues': 'not-configuration',
   '/deviceManagement/comanagedDevices': 'not-configuration',
@@ -97,17 +99,14 @@ export const SKIPPED_PATHS = Object.freeze({
   '/deviceManagement/deviceConfigurationUserStateSummaries': 'not-configuration',
   '/deviceManagement/domainJoinConnectors': 'not-configuration',
   '/deviceManagement/elevationRequests': 'not-configuration',
-  '/deviceManagement/embeddedSIMActivationCodePools': 'not-configuration',
   '/deviceManagement/endpointPrivilegeManagementProvisioningStatus': 'not-configuration',
   '/deviceManagement/groupPolicyCategories': 'microsoft-published',
   '/deviceManagement/groupPolicyDefinitionFiles': 'microsoft-published',
   '/deviceManagement/groupPolicyDefinitions': 'microsoft-published',
   '/deviceManagement/groupPolicyMigrationReports': 'not-configuration',
-  '/deviceManagement/groupPolicyObjectFiles': 'microsoft-published',
   '/deviceManagement/importedDeviceIdentities': 'not-configuration',
   '/deviceManagement/importedWindowsAutopilotDeviceIdentities': 'not-configuration',
   '/deviceManagement/macOSSoftwareUpdateAccountSummaries': 'not-configuration',
-  '/deviceManagement/microsoftTunnelHealthThresholds': 'microsoft-published',
   '/deviceManagement/microsoftTunnelServerLogCollectionResponses': 'not-configuration',
   '/deviceManagement/ndesConnectors': 'not-configuration',
   '/deviceManagement/operationApprovalRequests': 'not-configuration',
@@ -129,7 +128,6 @@ export const SKIPPED_PATHS = Object.freeze({
   '/deviceManagement/userExperienceAnalyticsAppHealthDevicePerformanceDetails': 'not-configuration',
   '/deviceManagement/userExperienceAnalyticsAppHealthOSVersionPerformance': 'not-configuration',
   '/deviceManagement/userExperienceAnalyticsAppHealthOverview': 'not-configuration',
-  '/deviceManagement/userExperienceAnalyticsBaselines': 'not-configuration',
   '/deviceManagement/userExperienceAnalyticsBatteryHealthAppImpact': 'not-configuration',
   '/deviceManagement/userExperienceAnalyticsBatteryHealthCapacityDetails': 'not-configuration',
   '/deviceManagement/userExperienceAnalyticsBatteryHealthDeviceAppImpact': 'not-configuration',
@@ -160,7 +158,6 @@ export const SKIPPED_PATHS = Object.freeze({
   '/directory/externalUserProfiles': 'not-configuration',
   '/directory/pendingExternalUserProfiles': 'not-configuration',
   '/directory/subscriptions': 'not-configuration',
-  '/directory/templates/deviceTemplates': 'not-configuration',
   '/drives': 'not-configuration',
   '/identity/conditionalAccess/authenticationStrength/authenticationMethodModes': 'microsoft-published',
   '/identity/conditionalAccess/authenticationStrengths/authenticationMethodModes': 'microsoft-published',
@@ -202,8 +199,6 @@ export const SKIPPED_PATHS = Object.freeze({
   '/roleManagement/directory/roleAssignmentScheduleInstances': 'not-configuration',
   '/roleManagement/directory/roleEligibilityScheduleInstances': 'not-configuration',
   '/roleManagement/entitlementManagement/deletedItems/roleDefinitions': 'not-configuration',
-  '/schemaExtensions': 'microsoft-published',
-  '/security/attackSimulation/simulations': 'not-configuration',
   '/security/attackSimulation/trainingCampaigns': 'not-configuration',
   '/security/attackSimulation/trainings': 'not-configuration',
   '/security/secureScoreControlProfiles': 'not-configuration',
@@ -211,7 +206,6 @@ export const SKIPPED_PATHS = Object.freeze({
   '/sites': 'not-configuration',
   '/subscriptions': 'not-configuration',
   '/teamwork/deletedTeams': 'not-configuration',
-  '/templates/deviceTemplates': 'not-configuration',
   '/tenantRelationships/delegatedAdminCustomers': 'not-configuration',
   '/workplace/sensorDevices': 'not-configuration',
 });

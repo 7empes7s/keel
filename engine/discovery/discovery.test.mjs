@@ -85,7 +85,7 @@ ${types.join('\n')}
 ${roots.join('\n')}
 <EntitySet Name="bookingBusinesses" EntityType="microsoft.graph.bookingBusiness" />
 <EntitySet Name="agreements" EntityType="microsoft.graph.entity" />
-<EntitySet Name="schemaExtensions" EntityType="microsoft.graph.entity" />
+<EntitySet Name="applicationTemplates" EntityType="microsoft.graph.entity" />
 <EntitySet Name="subscriptions" EntityType="microsoft.graph.entity" />
 <EntitySet Name="teams" EntityType="microsoft.graph.entity" />
 <Singleton Name="print" Type="microsoft.graph.print" />
@@ -219,7 +219,7 @@ test('an alias path counts as its backed-up kind and a skipped path is not a gap
   const byName = new Map(run.items.map((item) => [item.name, item]));
 
   assert.deepEqual([byName.get('/agreements').status, byName.get('/agreements').catalogTypes], ['catalogued', ['agreement']]);
-  assert.deepEqual([byName.get('/schemaExtensions').status, byName.get('/schemaExtensions').reason], ['skipped', 'microsoft-published']);
+  assert.deepEqual([byName.get('/applicationTemplates').status, byName.get('/applicationTemplates').reason], ['skipped', 'microsoft-published']);
   assert.deepEqual([byName.get('/subscriptions').status, byName.get('/subscriptions').reason], ['skipped', 'not-configuration']);
   // A skipped path is still read and counted; it just is not a gap.
   assert.equal(byName.get('/subscriptions').objects, 1);
@@ -237,7 +237,7 @@ test('an alias path counts as its backed-up kind and a skipped path is not a gap
   // The schema takes the new status and reasons.
   const runId = await saveDiscoveryRun(client, { tenantRef: 'sha256:discovery-skip-test', run });
   const stored = await client.query("SELECT name, status, reason FROM discovery_item WHERE run_id = $1 AND status = 'skipped' ORDER BY name", [runId]);
-  assert.deepEqual(stored.rows, [{ name: '/schemaExtensions', status: 'skipped', reason: 'microsoft-published' }, { name: '/subscriptions', status: 'skipped', reason: 'not-configuration' }]);
+  assert.deepEqual(stored.rows, [{ name: '/applicationTemplates', status: 'skipped', reason: 'microsoft-published' }, { name: '/subscriptions', status: 'skipped', reason: 'not-configuration' }]);
 });
 
 test('every alias names a backed-up kind, and no alias or skipped path is itself catalogued', () => {

@@ -75,23 +75,43 @@ export function changedBy(item: Pick<DriftRecord, "attribution">): string | null
 
 export interface ServiceSummary {
   service: CloudService;
-  // Kinds of setting the approved setup holds that match it today.
+  // What the service is measured against. Entra ID and Intune settings sit in the
+  // approved setup. Exchange, SharePoint and OneDrive, Teams, Purview and Power Platform
+  // settings are service reads: an approved setup cannot hold them yet, so each read is
+  // compared with the one before it (engine/govern/workloadDrift.mjs).
+  basis: "approved-setup" | "previous-backup";
+  // Kinds of setting the approved setup holds that match it today; for a service read,
+  // the kinds read in the latest backup with no change since the one before.
   inLine: string[];
   // Open changes (settings) in this service, and the kinds they touch.
   changed: number;
   changedKinds: string[];
-  // Kinds Keel backs up that the approved setup does not hold yet.
+  // Kinds Keel backs up that the approved setup does not hold yet; for a service read,
+  // the kinds whose latest read failed or has not run.
   notCovered: string[];
   tone: RiskTone;
 }
 
+/** A service read Keel lists on What's protected: the workload code, and whether its
+ * latest read succeeded. */
+export interface ServiceReadKind {
+  type: string;
+  read: boolean;
+}
+
 /** One line per service: in line, changed, not covered. Services that need action come
- * first, then Microsoft's own order. */
+ * first, then Microsoft's own order. Service reads (`serviceReads`, and changes that
+ * carry `serviceRead`) join the Entra ID and Intune kinds, so every service shows. */
 export function serviceSummaries(
   baseline: Pick<BaselineRecord, "capture"> | null,
-  items: Pick<DriftRecord, "resourceType" | "blastRadius">[],
+  items: (Pick<DriftRecord, "resourceType" | "blastRadius"> & Partial<Pick<DriftRecord, "serviceRead">>)[],
   backedUp: string[],
+  serviceReads: ServiceReadKind[] = [],
 ): ServiceSummary[] {
+  const reads = new Set([
+    ...serviceReads.map((read) => read.type),
+    ...items.filter((item) => item.serviceRead).map((item) => item.resourceType),
+  ]);
   const captured = new Set(baseline?.capture?.types ?? []);
   const changedTypes = new Set(items.map((item) => item.resourceType));
   const byCode = new Map<string, ServiceSummary>();
@@ -99,9 +119,11 @@ export function serviceSummaries(
     const service = typeService(type);
     let summary = byCode.get(service.code);
     if (!summary) {
-      summary = { service, inLine: [], changed: 0, changedKinds: [], notCovered: [], tone: "fine" };
+      summary = { service, basis: "previous-backup", inLine: [], changed: 0, changedKinds: [], notCovered: [], tone: "fine" };
       byCode.set(service.code, summary);
     }
+    // One kind held in the approved setup makes the service measured against it.
+    if (!reads.has(type)) summary.basis = "approved-setup";
     return summary;
   };
   for (const type of captured) if (!changedTypes.has(type)) entry(type).inLine.push(type);
@@ -112,7 +134,13 @@ export function serviceSummaries(
     summary.tone = worstTone([summary.tone, impactTone(item.blastRadius)]) ?? summary.tone;
   }
   for (const type of new Set(backedUp)) {
-    if (!captured.has(type) && !changedTypes.has(type)) entry(type).notCovered.push(type);
+    if (!reads.has(type) && !captured.has(type) && !changedTypes.has(type)) entry(type).notCovered.push(type);
+  }
+  for (const read of serviceReads) {
+    if (changedTypes.has(read.type)) continue;
+    const summary = entry(read.type);
+    const bucket = read.read ? summary.inLine : summary.notCovered;
+    if (!bucket.includes(read.type)) bucket.push(read.type);
   }
   const rank: Record<RiskTone, number> = { urgent: 0, soon: 1, low: 2, fine: 3 };
   return [...byCode.values()]

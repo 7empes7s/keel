@@ -33,11 +33,16 @@ export default [
   { type: 'windowsQualityUpdateProfile', path: '/deviceManagement/windowsQualityUpdateProfiles', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting' },
   { type: 'windowsDriverUpdateProfile', path: '/deviceManagement/windowsDriverUpdateProfiles', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic' },
   // Administrative templates (ADMX). A policy's configured settings are a
-  // separate collection, listed only when expanded; each setting's
-  // presentation values sit one level further down and are not expanded.
+  // separate collection, listed only when expanded; the values entered for
+  // each setting (its presentation values) sit one level further down and are
+  // read per setting (restore gaps batch 5), so a restore can put them back.
   { type: 'groupPolicyConfiguration', path: '/deviceManagement/groupPolicyConfigurations', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
     query: '$expand=definitionValues($expand=definition)',
-    note: 'Presentation values of each setting are on a per-setting route.' },
+    childReads: {
+      field: 'definitionValues', as: 'presentationValues', query: '$expand=presentation',
+      path: '/deviceManagement/groupPolicyConfigurations/{item}/definitionValues/{child}/presentationValues',
+    },
+    note: 'The values of each setting are read per setting.' },
   { type: 'groupPolicyUploadedDefinitionFile', path: '/deviceManagement/groupPolicyUploadedDefinitionFiles', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic',
     note: 'Imported custom ADMX files. The file content is returned only per file.' },
   // Compliance notification emails. The message text per language is a

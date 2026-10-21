@@ -242,6 +242,16 @@ const FIXTURE_PAYLOADS = Object.freeze({
   deviceShellScript: { displayName: 'Fixture shell script', description: 'Fixture', fileName: 'fixture.sh', scriptContent: 'ZWNobyBmaXh0dXJl', runAsAccount: 'system', executionFrequency: 'PT0S', retryCount: 0, blockExecutionNotifications: true, roleScopeTagIds: ['0'] },
   deviceHealthScript: { displayName: 'Fixture remediation', description: 'Fixture', publisher: 'Fixture', detectionScriptContent: 'ZXhpdCAw', remediationScriptContent: 'ZXhpdCAw', runAsAccount: 'system', enforceSignatureCheck: false, runAs32Bit: false, roleScopeTagIds: ['0'] },
   deviceComplianceScript: { displayName: 'Fixture compliance script', description: 'Fixture', publisher: 'Fixture', detectionScriptContent: 'cmV0dXJuIEB7fQ==', runAsAccount: 'system', enforceSignatureCheck: false, runAs32Bit: false, roleScopeTagIds: ['0'] },
+  // Restore gaps, batch 5: a custom attribute script, and a template with one
+  // setting that has one value (ids as Graph returns them, expanded).
+  deviceCustomAttributeShellScript: { displayName: 'Fixture attribute', description: 'Fixture', customAttributeName: 'FixtureAttribute', customAttributeType: 'string', fileName: 'fixture.sh', scriptContent: 'ZWNobyBmaXh0dXJl', runAsAccount: 'system', roleScopeTagIds: ['0'] },
+  groupPolicyConfiguration: {
+    displayName: 'Fixture template', description: 'Fixture', roleScopeTagIds: ['0'],
+    definitionValues: [{
+      id: 'fixture-setting', enabled: true, configurationType: 'policy', definition: { id: 'fixture-definition', displayName: 'Fixture setting' },
+      presentationValues: [{ '@odata.type': '#microsoft.graph.groupPolicyPresentationValueText', id: 'fixture-value', value: 'fixture', presentation: { id: 'fixture-presentation' } }],
+    }],
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons.
   externalIdentitiesPolicy: { allowExternalIdentitiesToLeave: true, allowDeletedIdentitiesDataRemoval: false },
   accessReviewPolicy: { isGroupOwnerManagementEnabled: true },
@@ -422,6 +432,26 @@ export function fakeGraph() {
         objects.set(targetApps[1], { ...objects.get(targetApps[1]), apps: body.apps.map((app, index) => ({ ...app, id: `app-${index}` })) });
         return { ok: true, status: 204, body: null };
       }
+      // Restore gaps batch 5: updateDefinitionValues removes, then adds, an
+      // administrative template's settings with their values.
+      const definitionValues = /^(\/deviceManagement\/groupPolicyConfigurations\/[^/]+)\/updateDefinitionValues$/.exec(path);
+      if (definitionValues && method === 'POST') {
+        if (!objects.has(definitionValues[1])) return { ok: false, status: 404, body: { error: { code: 'ResourceNotFound' } } };
+        const base = `${definitionValues[1]}/definitionValues`;
+        const removed = new Set(body.deletedIds ?? []);
+        const kept = (objects.get(base)?.value ?? []).filter((setting) => !removed.has(setting.id));
+        const idOf = (bind) => /\('([^']+)'\)$/.exec(bind)?.[1];
+        for (const setting of body.added ?? []) {
+          next += 1;
+          const id = `fixture-setting-${next}`;
+          kept.push({ id, enabled: setting.enabled, definition: { id: idOf(setting['definition@odata.bind']) } });
+          objects.set(`${base}/${id}/presentationValues`, {
+            value: (setting.presentationValues ?? []).map(({ 'presentation@odata.bind': bind, ...value }, index) => ({ ...value, id: `${id}-${index}`, presentation: { id: idOf(bind) } })),
+          });
+        }
+        objects.set(base, { value: kept });
+        return { ok: true, status: 204, body: null };
+      }
       const actions = /^(\/deviceManagement\/deviceCompliancePolicies\/[^/]+)\/scheduleActionsForRules$/.exec(path);
       if (actions && method === 'POST') {
         if (!objects.has(actions[1])) return { ok: false, status: 404, body: { error: { code: 'ResourceNotFound' } } };
@@ -491,6 +521,11 @@ export function fakeGraph() {
       // Issue #155: an Intune policy that exists and was never assigned lists no assignments.
       const assignments = /^(\/device(?:Management|AppManagement)\/[^/]+\/[^/]+)\/assignments$/.exec(path);
       if (assignments && !objects.has(path) && objects.has(assignments[1])) return { ok: true, status: 200, body: { value: [] } };
+      // Restore gaps batch 5: every built-in administrative template setting
+      // exists in every tenant, and a template that exists starts with no settings.
+      if (/^\/deviceManagement\/groupPolicyDefinitions\/[^/]+$/.test(path)) return { ok: true, status: 200, body: { id: decodeURIComponent(path.split('/').pop()) } };
+      const settings = /^(\/deviceManagement\/groupPolicyConfigurations\/[^/]+)\/definitionValues$/.exec(path);
+      if (settings && !objects.has(path) && objects.has(settings[1])) return { ok: true, status: 200, body: { value: [] } };
       if (DIRECTORY_POLICY_COLLECTIONS.has(path)) {
         const clientId = /clientId eq '([^']*)'/.exec(decodeURIComponent(requested.split('?')[1] ?? ''))?.[1];
         const value = [...objects.entries()]

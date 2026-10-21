@@ -49,6 +49,23 @@ export function idoFakeGraph({ seed = {}, failWrites = () => null } = {}) {
         setCollection(`${owner}/apps`, (body.apps ?? []).map((app, index) => ({ ...app, id: `app-${index}` })));
         return ok(204, null);
       }
+      if (method === 'POST' && action === 'updateDefinitionValues') {
+        // An administrative template's settings: removed by id, then added
+        // with their values (each bound to its setting and field by URL).
+        if (!objects.has(owner)) return notFound();
+        const idOf = (bind) => /\('([^']+)'\)$/.exec(String(bind))?.[1];
+        const removed = new Set(body.deletedIds ?? []);
+        const settings = collectionOf(`${owner}/definitionValues`).filter((setting) => !removed.has(setting.id));
+        for (const setting of body.added ?? []) {
+          next += 1;
+          const id = `setting-${next}`;
+          settings.push({ id, enabled: setting.enabled, definition: { id: idOf(setting['definition@odata.bind']) } });
+          collections.set(`${owner}/definitionValues/${id}/presentationValues`, (setting.presentationValues ?? [])
+            .map(({ 'presentation@odata.bind': bind, ...value }, index) => ({ ...value, id: `${id}-value-${index}`, presentation: { id: idOf(bind) } })));
+        }
+        setCollection(`${owner}/definitionValues`, settings);
+        return ok(204, null);
+      }
       if (method === 'POST' && action === 'createNewVersion') {
         if (!objects.has(owner)) return notFound();
         const { tasks, ...fields } = body.workflow;

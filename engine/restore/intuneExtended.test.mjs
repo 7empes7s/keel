@@ -270,6 +270,8 @@ const SCRIPT_CASES = Object.freeze([
   ['deviceShellScript', { scriptContent: 'ZWNobyBLRUVMLVJU', fileName: 'keel-rt.sh', runAsAccount: 'system', executionFrequency: 'PT0S', retryCount: 0, blockExecutionNotifications: true }],
   ['deviceHealthScript', { detectionScriptContent: 'ZXhpdCAw', remediationScriptContent: 'ZXhpdCAw', publisher: 'KEEL-RT', runAsAccount: 'system', isGlobalScript: false, highestAvailableVersion: '1' }],
   ['deviceComplianceScript', { detectionScriptContent: 'cmV0dXJuIEB7fQ==', publisher: 'KEEL-RT', runAsAccount: 'system' }],
+  // Restore gaps, batch 5.
+  ['deviceCustomAttributeShellScript', { scriptContent: 'ZWNobyBLRUVMLVJU', fileName: 'keel-rt.sh', runAsAccount: 'system', customAttributeName: 'KEELRTAttribute', customAttributeType: 'string' }],
 ]);
 
 test('scripts and remediations are created with their script body, without run results or assignments', async () => {
@@ -319,6 +321,88 @@ test('a script backed up without its body, and a Microsoft-published remediation
   }), 'create', FAST);
   assert.match(result.skipped?.reason ?? '', /Microsoft publishes this remediation/);
   assert.equal(graph.calls.length, 0);
+});
+
+// ------------------------------------------- restore gaps, batch 5
+
+const TEMPLATE_PATH = '/deviceManagement/groupPolicyConfigurations';
+const definitionsSeed = (...ids) => Object.fromEntries(ids.map((id) => [`/deviceManagement/groupPolicyDefinitions/${id}`, { id }]));
+const textValue = (presentation, value, id = `v-${presentation}`) => ({
+  '@odata.type': '#microsoft.graph.groupPolicyPresentationValueText', id, value, createdDateTime: 'x', presentation: { id: presentation, label: 'Home page' },
+});
+const setting = (definition, enabled, values, id = `s-${definition}`) => ({
+  id, enabled, configurationType: 'policy', createdDateTime: 'x', definition: { id: definition, displayName: `Setting ${definition}` }, presentationValues: values,
+});
+const template = Object.freeze({
+  id: 'gp-src', displayName: 'KEEL-RT-admx', description: 'Fixture', roleScopeTagIds: ['0'], createdDateTime: 'x', lastModifiedDateTime: 'x',
+  policyConfigurationIngestionType: 'builtIn',
+  definitionValues: [setting('d-1', true, [textValue('p-1', 'https://example.com')]), setting('d-2', false, [])],
+});
+const bind = (definition, presentation) => `https://graph.microsoft.com/beta/deviceManagement/groupPolicyDefinitions('${definition}')${presentation ? `/presentations('${presentation}')` : ''}`;
+
+test('an administrative template is created, then its settings are added with the values entered for them', async () => {
+  const graph = idoFakeGraph({ seed: definitionsSeed('d-1', 'd-2') });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('groupPolicyConfiguration', template), 'create', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = graph.calls.filter((call) => call.method === 'POST');
+  assert.equal(writes.length, 2);
+  assert.equal(writes[0].path, TEMPLATE_PATH);
+  assert.equal(writes[0].version, 'beta');
+  assert.deepEqual(writes[0].body, { displayName: 'KEEL-RT-admx', description: 'Fixture', roleScopeTagIds: ['0'] });
+  assert.equal(writes[1].path, `${TEMPLATE_PATH}/${result.applied.targetId}/updateDefinitionValues`);
+  assert.deepEqual(writes[1].body, {
+    added: [
+      {
+        enabled: true, 'definition@odata.bind': bind('d-1'),
+        presentationValues: [{ '@odata.type': '#microsoft.graph.groupPolicyPresentationValueText', value: 'https://example.com', 'presentation@odata.bind': bind('d-1', 'p-1') }],
+      },
+      { enabled: false, 'definition@odata.bind': bind('d-2'), presentationValues: [] },
+    ],
+    updated: [],
+    deletedIds: [],
+  });
+  assert.deepEqual(result.applied.changes.settings, { removed: 0, added: 2 });
+});
+
+test('an administrative template update removes changed and extra settings, then adds the backup ones', async () => {
+  const path = `${TEMPLATE_PATH}/gp-1`;
+  const live = { id: 'gp-1', displayName: 'KEEL-RT-admx', description: 'Changed', roleScopeTagIds: ['0'] };
+  const graph = idoFakeGraph({
+    seed: {
+      ...definitionsSeed('d-1', 'd-2'),
+      [path]: { ...live, definitionValues: [setting('d-1', true, [], 'live-1'), setting('d-2', false, [], 'live-2'), setting('d-3', true, [], 'live-3')] },
+      [`${path}/definitionValues/live-1`]: { id: 'live-1', presentationValues: [textValue('p-1', 'https://tampered.example')] },
+      [`${path}/definitionValues/live-2`]: { id: 'live-2', presentationValues: [] },
+      [`${path}/definitionValues/live-3`]: { id: 'live-3', presentationValues: [] },
+    },
+  });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('groupPolicyConfiguration', template, {
+    live: { state: 'present', targetId: 'gp-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(graph.calls.find((call) => call.method === 'PATCH').body, { description: 'Fixture' });
+  const updates = graph.calls.filter((call) => call.path.endsWith('/updateDefinitionValues'));
+  // d-2 already matches and stays; d-1's value drifted and d-3 is not in the backup.
+  assert.deepEqual(updates.map((call) => call.body.deletedIds), [['live-1', 'live-3'], []]);
+  assert.deepEqual(updates[1].body.added.map((entry) => entry['definition@odata.bind']), [bind('d-1')]);
+  assert.deepEqual(result.applied.changes.settings, { removed: 2, added: 1 });
+});
+
+test('an administrative template without its setting values, or with a setting the target lacks, is never written', async () => {
+  const valueless = { ...template, definitionValues: template.definitionValues.map(({ presentationValues, ...rest }) => rest) };
+  let graph = idoFakeGraph({ seed: definitionsSeed('d-1', 'd-2') });
+  let result = await applyIntuneExtendedWrite(graph, resourceOf('groupPolicyConfiguration', valueless), 'create', FAST);
+  assert.match(result.skipped?.reason ?? '', /not the values entered for them/);
+  assert.equal(graph.calls.length, 0);
+
+  const { definitionValues, ...settingsless } = template;
+  result = await applyIntuneExtendedWrite(idoFakeGraph(), resourceOf('groupPolicyConfiguration', settingsless), 'create', FAST);
+  assert.match(result.skipped?.reason ?? '', /does not hold the template's settings/);
+
+  graph = idoFakeGraph({ seed: definitionsSeed('d-1') });
+  result = await applyIntuneExtendedWrite(graph, resourceOf('groupPolicyConfiguration', template), 'create', FAST);
+  assert.match(result.failed?.error ?? '', /dependency: the setting d-2 this template uses does not exist in the target/);
+  assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
 });
 
 // ------------------------------------------------------------------- delete

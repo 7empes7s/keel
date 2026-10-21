@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 114 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 67 at least in part; the other 81 are restored by hand from the backup.
+KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 114 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 69 at least in part; the other 79 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -351,7 +351,7 @@ KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it
 | Windows feature update profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Windows quality update profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Windows driver update profiles | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
-| Administrative templates | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Administrative templates | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Imported administrative template files | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Compliance notification emails | Yes (Tier 3, low impact, weekly) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Windows Autopilot devices | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
@@ -374,7 +374,7 @@ KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it
 | Device cleanup rules | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Windows hotpatch update policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Multi admin approval policies | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
-| macOS custom attribute scripts | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| macOS custom attribute scripts | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Intune tenant settings | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
 | Android Enterprise enrollment profiles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Android work profile enrollment profiles | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
@@ -458,9 +458,9 @@ KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it
 - **Windows driver update profiles.** Recreates profiles, puts their settings back, and removes an unassigned profile added since the backup.
   - *Not brought back:* approved drivers (stored separately and not in the backup yet); who the profile is assigned to (in the backup, but KEEL does not write it yet).
   - *You do:* Driver approvals are not backed up yet, so approve the drivers again by hand. Who a profile is assigned to is backed up but not put back yet, so assign it again by hand from the backup.
-- **Administrative templates** (not built yet). KEEL backs up each template and its settings but does not restore them yet. The values entered for each setting are not backed up.
-  - *Not brought back:* the values entered for each setting (stored separately and not in the backup yet).
-  - *You do:* Recreate the template in the Intune admin center, using the backup for which settings were turned on and who it was assigned to.
+- **Administrative templates.** Recreates templates and puts back which settings are turned on or off and the values entered for them.
+  - *Not brought back:* who the template is assigned to (in the backup, but KEEL does not write it yet).
+  - *You do:* Who a template is assigned to is not put back yet, so assign it again by hand from the backup. A setting from an imported template file needs that file imported first. A backup taken before setting values were read is refused; take a new backup.
 - **Imported administrative template files** (not built yet). KEEL backs up the list of imported files but does not restore them yet. The file content is not backed up.
   - *Not brought back:* the template file content (a file the backup does not hold).
   - *You do:* Import the files again in the Intune admin center from your own copy.
@@ -521,9 +521,9 @@ KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Who a policy is assigned to is not backed up yet, so assign it again by hand.
 - **Multi admin approval policies** (not built yet). KEEL backs these up but does not restore them yet. They decide which changes need a second admin, so a person should review them.
   - *You do:* Recreate each policy in the Intune admin center from the backup, with the same approver groups.
-- **macOS custom attribute scripts** (not built yet). KEEL backs up the script settings but not yet the script body or who it is assigned to.
-  - *Not brought back:* the script body (stored separately and not in the backup yet); who the script is assigned to (stored separately and not in the backup yet).
-  - *You do:* Recreate the script in the Intune admin center from your own copy of the script, using the backup for its settings, and assign it again.
+- **macOS custom attribute scripts.** Recreates scripts and puts the script and its settings back.
+  - *Not brought back:* who the script is assigned to (stored separately and not in the backup yet).
+  - *You do:* Who a script is assigned to is not backed up yet, so assign it again by hand. A backup taken before scripts were read in full holds only the settings; take a new backup.
 - **Intune tenant settings** (not built yet). KEEL backs up the tenant-wide Intune settings, such as how devices with no compliance policy are marked and the Company Portal contact details, but does not restore them yet.
   - *You do:* Set the same values in the Intune admin center, under Endpoint security, Device compliance, Compliance settings, and under Tenant administration, Customization, from the backup.
 - **Android Enterprise enrollment profiles** (not built yet). KEEL backs up each profile's settings but not its enrollment token, QR code or Wi-Fi password, and does not restore it yet.

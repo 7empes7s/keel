@@ -38,6 +38,14 @@ function graphNativeAdapter(type) {
       pageCap: entry.pageCap ?? Infinity,
       ...(entry.acceptLanguage ? { acceptLanguage: entry.acceptLanguage } : {}),
     });
+    // Restore gaps batch 5: a kind whose objects hold children with one more
+    // collection each (an administrative template's settings and their values)
+    // reads that collection per child.
+    if (entry.childReads && !result?.error && !result?.capped && Array.isArray(result?.items)) {
+      const children = await withChildReads(reader, entry, result.items);
+      if (children.error) return { entry, path, startedAt, completedAt: new Date(), items: [], pages: result.pages ?? null, status: children.error.status ?? null, capped: false, error: children.error };
+      result.pages = (Number.isSafeInteger(result.pages) ? result.pages : 0) + children.pages;
+    }
     const completedAt = new Date();
     // Issue #156: a type Graph answers with 404 when the tenant never set it
     // up (company branding) is an observed absence, not a failed read. Only a
@@ -116,6 +124,31 @@ async function collectPerParent(reader, entry) {
     }
   }
   return { items, pages, status, capped: false, error: null };
+}
+
+/**
+ * Restore gaps batch 5: for each object, each child in `childReads.field`
+ * gets the collection at `childReads.path` ({item} and {child} filled with
+ * their ids, `childReads.query` appended) as its `childReads.as`. Any failed
+ * read fails the kind, so a backup never holds a setting without its values.
+ */
+async function withChildReads(reader, entry, items) {
+  const { field, path, query, as } = entry.childReads;
+  let pages = 0;
+  for (const item of items) {
+    const children = item?.[field] ?? [];
+    if (!Array.isArray(children)) return { error: { error: `reading ${entry.type}: ${field} is not a list` } };
+    for (const child of children) {
+      if (typeof item?.id !== 'string' || typeof child?.id !== 'string') return { error: { error: `reading ${entry.type}: an object in ${field} has no id` } };
+      const childPath = path.replace('{item}', encodeURIComponent(item.id)).replace('{child}', encodeURIComponent(child.id));
+      const result = await reader.collect(entry.version, query ? `${childPath}?${query}` : childPath, { pageCap: Infinity });
+      if (result?.error) return { error: result.error };
+      if (result?.capped || !Array.isArray(result?.items)) return { error: { error: `reading ${entry.type}: ${as} under ${child.id} was incomplete` } };
+      pages += Number.isSafeInteger(result.pages) ? result.pages : 0;
+      child[as] = result.items;
+    }
+  }
+  return { pages, error: null };
 }
 
 for (const descriptor of DESCRIPTORS) {

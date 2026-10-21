@@ -201,6 +201,17 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     kind: 'named-object', fixture: `custom compliance script ${FIXTURE_PREFIX}-compliance-script (body: return @{}), used by no compliance policy`,
     select: `${FIXTURE_PREFIX}-compliance-script`, drift: 'change its description',
   },
+  // Restore gaps, batch 5: a custom attribute script and an administrative
+  // template, each assigned to nobody, so no device runs or applies them.
+  deviceCustomAttributeShellScript: {
+    kind: 'named-object', fixture: `macOS custom attribute script ${FIXTURE_PREFIX}-attribute (attribute ${FIXTURE_PREFIX}Attribute, type string, body: echo KEEL-RT), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-attribute`, drift: 'delete it: the restore recreates it with the same script body',
+  },
+  groupPolicyConfiguration: {
+    kind: 'named-object', fixture: `administrative template ${FIXTURE_PREFIX}-admx with one setting turned on that has a text value (for example a Microsoft Edge home page set to https://example.com), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-admx`, drift: 'delete it: the restore recreates it with the same setting and value',
+    note: 'Use a built-in setting, not one from an imported template file.',
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons. None touches sign-in,
   // Conditional Access or any account; each is set back to its value after the run.
   externalIdentitiesPolicy: {

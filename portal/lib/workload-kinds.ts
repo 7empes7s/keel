@@ -1,4 +1,4 @@
-import type { CoverageType } from "@/lib/types";
+import type { CoverageSummary, CoverageType } from "@/lib/types";
 
 // The coverage report lists the Microsoft 365 workloads (Exchange, SharePoint and
 // OneDrive, Teams, Purview, Power Platform) beside the Entra ID and Intune types, never
@@ -58,4 +58,47 @@ export function workloadKinds(workloads: unknown, restorable: ReadonlySet<string
   return (workloads as UnknownRecord[])
     .filter((raw) => raw && typeof raw.workload === "string")
     .map((raw) => workloadKind(raw, restorable.has(String(raw.workload))));
+}
+
+/**
+ * The Overview's coverage counts with the workloads added, counted the way What's
+ * protected shows them: a workload that ran and was usable is backed up, a failed one
+ * failed, and one never read or switched off is not backed up yet (it waits for a live
+ * read check, so it is not "never backed up").
+ */
+export function withWorkloadCoverage(summary: CoverageSummary, workloads: readonly CoverageType[] | undefined): CoverageSummary {
+  const list = workloads ?? [];
+  const count = (status: CoverageType["reportStatus"]) => list.filter((kind) => kind.reportStatus === status).length;
+  return {
+    ...summary,
+    covered: summary.covered + count("covered"),
+    failed: summary.failed + count("failed"),
+    notCovered: summary.notCovered + count("not-covered") + count("never-collected"),
+    total: summary.total + list.length,
+  };
+}
+
+/**
+ * Workloads in the shape the engine's protection headline reads, so the Overview
+ * sentence counts every service. A workload never read is left out of the failing
+ * count, as on What's protected.
+ */
+export function headlineEntries(workloads: readonly CoverageType[] | undefined): HeadlineEntry[] {
+  return (workloads ?? []).map((kind) => ({
+    type: kind.type,
+    status: kind.reportStatus === "covered" ? "covered" : kind.reportStatus === "failed" ? "failed" : "not-covered",
+    outcome: kind.outcome,
+    stale: false,
+    lastCollectedAt: kind.lastCollectedAt,
+    fidelity: { declared: kind.fidelity?.declared ?? null, verifiedBy: null },
+  }));
+}
+
+export interface HeadlineEntry {
+  type: string;
+  status: "covered" | "failed" | "not-covered";
+  outcome: CoverageType["outcome"];
+  stale: boolean;
+  lastCollectedAt: string | null;
+  fidelity: { declared: string | null; verifiedBy: null };
 }

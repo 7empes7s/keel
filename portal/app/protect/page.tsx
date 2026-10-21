@@ -19,8 +19,9 @@ import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { Schedule } from "@/lib/schedules";
 import type { CoverageData } from "@/lib/types";
 
-// On-demand backups and the scheduled tier runs both read the tenant into a backup.
-export const BACKUP_JOB_KINDS = ["backup", "collect"];
+// On-demand backups, the scheduled tier runs and the service settings runs (Exchange,
+// SharePoint, Teams, Purview, Power Platform) all read the tenant into a backup.
+export const BACKUP_JOB_KINDS = ["backup", "collect", "workload-collect"];
 const TITLE = "What's protected";
 const DESCRIPTION = "Whether every kind of setting is backed up, how often, and whether Keel can put it back.";
 

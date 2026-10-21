@@ -39,6 +39,7 @@ const KIND_ICONS: Record<string, IconName> = {
   collect: "backup",
   backup: "backup",
   "workload-collect": "backup",
+  "content-collect": "backup",
   prune: "backup",
   offsite: "cloud",
   restore: "restore",

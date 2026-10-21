@@ -46,6 +46,7 @@ import {
   periodWords,
   reasonSentence,
   recoverySentence,
+  backupLines,
   scopeSentence,
   shortDuration,
   valueVerdict,
@@ -225,6 +226,14 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
         </div>
 
         <div className="vr-grid">
+          <section aria-labelledby="vr-backups-heading" className="vr-card">
+            <div className="vr-card-head"><h2 id="vr-backups-heading"><Icon name="backup" />What we backed up</h2></div>
+            <ul className="vr-lines">
+              {backupLines(report.backups).map((line) => <li className="vr-muted" key={line}>{line}</li>)}
+            </ul>
+            <Link className="vr-link" href="/protect">Open What&apos;s protected</Link>
+          </section>
+
           <section aria-labelledby="vr-recovery-heading" className="vr-card">
             <div className="vr-card-head"><h2 id="vr-recovery-heading"><Icon name="restore" />How fast we recovered</h2></div>
             {shownRecovery ? (

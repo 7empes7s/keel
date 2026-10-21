@@ -15,9 +15,12 @@ import {
   readinessSentence,
   recoverablePointSentence,
   recoveryTimeSentence,
+  serviceBackupSentence,
+  servicesSentence,
   storageSentence,
   type DependencyRef,
   type ResilienceData,
+  type ServiceBackup,
 } from "@/lib/resilience-view";
 
 // Roadmap task-73: the Resilience page's explanation and record layers. Each card
@@ -57,11 +60,26 @@ function DependencyFields({ dependency }: { dependency: DependencyRef }) {
       {dependency.type ? <RecordField copy={false} label="Type" value={dependency.type} /> : null}
       {dependency.parentType ? <RecordField copy={false} label="Parent type" value={dependency.parentType} /> : null}
       {dependency.family ? <RecordField copy={false} label="Relationship" value={dependency.family} /> : null}
+      {dependency.workload ? <RecordField copy={false} label="Workload" value={dependency.workload} /> : null}
     </>
   );
 }
 
 const REPORT_CLI = "node cli/keel-recovery-metrics.mjs report";
+
+function ServiceList({ title, entries, now }: { title: string; entries: ServiceBackup[]; now: string }) {
+  if (entries.length === 0) return null;
+  return (
+    <>
+      <h3>{title}</h3>
+      <ul className="resilience-list">
+        {entries.map((entry) => (
+          <li key={`${entry.kind}:${entry.workload}`}><strong>{entry.name}</strong>: {serviceBackupSentence(entry, now)}</li>
+        ))}
+      </ul>
+    </>
+  );
+}
 
 export function ResilienceView({ data }: { data: ResilienceData }) {
   const { metrics, generatedAt: now } = data;
@@ -140,6 +158,34 @@ export function ResilienceView({ data }: { data: ResilienceData }) {
         </TechnicalDetails>
       </Card>
 
+      <Card
+        id="services"
+        state={(() => {
+          const all = [...(metrics.services?.settings ?? []), ...(metrics.services?.content ?? [])].filter((entry) => entry.switchedOn);
+          if (all.length === 0) return { tone: "warn" as Tone, label: "Not measured" };
+          return all.every((entry) => entry.lastGood && entry.latest?.id === entry.lastGood.id) ? { tone: "ok" as Tone, label: "All good" } : { tone: "warn" as Tone, label: "Needs attention" };
+        })()}
+        title="Every service"
+      >
+        <p className="resilience-sentence">{servicesSentence(metrics)}</p>
+        <ServiceList entries={metrics.services?.settings ?? []} now={now} title="Service settings (nightly at 02:00 UTC)" />
+        <ServiceList entries={metrics.services?.content ?? []} now={now} title="Content (nightly at 01:00 UTC)" />
+        <p className="field-help">Entra ID and Intune settings are counted in the card above, type by type.</p>
+        <TechnicalDetails>
+          {[...(metrics.services?.settings ?? []), ...(metrics.services?.content ?? [])].map((entry) => (
+            <RecordGroup key={`${entry.kind}:${entry.workload}`} note={entry.kind} title={entry.workload}>
+              <RecordField copy={false} label="Switched on" value={entry.switchedOn} />
+              <RecordField label="Latest run" value={entry.latest?.id} />
+              <RecordField copy={false} label="Latest outcome" value={entry.latest?.outcome} />
+              <RecordField copy={false} label="Latest at" value={entry.latest?.at} />
+              <RecordField label="Last good run" value={entry.lastGood?.id} />
+              <RecordField copy={false} label="Last good at" value={entry.lastGood?.at} />
+              {entry.stored ? <RecordField copy={false} label="Stored" value={`${entry.stored.items} items, ${entry.stored.versions} versions, ${entry.stored.containers} containers, ${entry.stored.bytes} bytes`} /> : null}
+            </RecordGroup>
+          ))}
+        </TechnicalDetails>
+      </Card>
+
       <Card id="point" state={measuredPill(recoverablePoint.state)} title="Recovery point if this server were lost">
         <p className="resilience-sentence">{recoverablePointSentence(metrics, now)}</p>
         {recoverablePoint.fromCopy ? (
@@ -156,6 +202,7 @@ export function ResilienceView({ data }: { data: ResilienceData }) {
             ))}
           </ul>
         ) : null}
+        <p className="field-help">An off-site copy is checked for the Entra ID and Intune settings backup. Service settings and content are not part of that check yet.</p>
         <p className="field-help"><Link href="/activity">See off-site copies in Activity</Link></p>
         <TechnicalDetails>
           <RecordField label="Recoverable point" value={recoverablePoint.point ?? "unmeasured"} copy={false} />

@@ -28,7 +28,8 @@ import { createHash } from 'node:crypto';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from './evidence.mjs';
-import { loadGoodServiceRuns } from '../coverage/serviceBackups.mjs';
+import { contentWorkloadInfo, loadGoodServiceRuns } from '../coverage/serviceBackups.mjs';
+import { typeInfo } from '../insights/taxonomy.mjs';
 
 export const INCIDENT_EVIDENCE_KIND = 'incident-recovery';
 export const INCIDENT_CHECK_EVIDENCE_KIND = 'incident-recovery-check';
@@ -411,9 +412,12 @@ export function serviceBackupsForIncident(runs, intervals) {
     const newest = ordered[0];
     const before = windowOpens === null ? newest : ordered.find((run) => new Date(run.at).getTime() < windowOpens) ?? null;
     const place = (run) => (run ? { id: run.id, from: run.from, at: run.at, inCompromiseWindow: inCompromiseWindow({ startedAt: run.from, completedAt: run.at }, intervals) } : null);
+    const info = newest.kind === 'content' ? contentWorkloadInfo(newest.workload) : { name: typeInfo(newest.workload).name, service: typeInfo(newest.workload).service ?? null };
     return {
       kind: newest.kind,
       workload: newest.workload,
+      name: info.name,
+      service: info.service,
       newestGood: place(newest),
       beforeWindow: place(before),
       assessed: false,

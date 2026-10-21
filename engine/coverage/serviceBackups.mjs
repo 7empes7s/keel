@@ -14,6 +14,7 @@
  * off (it waits on a live proof) and is not required. Every read is pinned to one
  * tenant_ref, and a database without the tables reads as no backups.
  */
+import { typeInfo } from '../insights/taxonomy.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 
 const SETTINGS_SUCCESS = new Set(['complete', 'complete-empty']);
@@ -166,6 +167,8 @@ export async function loadServiceBackups(client, { tenantRef }) {
       settings.push({
         kind: 'service-settings',
         workload: row.workload,
+        name: typeInfo(row.workload).name,
+        service: typeInfo(row.workload).service ?? null,
         switchedOn: row.switched_on === true,
         latest: { id: row.latest_id, outcome: row.latest_outcome, at: iso(row.latest_at) },
         lastGood: row.good_id
@@ -195,6 +198,7 @@ export async function loadServiceBackups(client, { tenantRef }) {
       content.push({
         kind: 'content',
         workload: row.workload,
+        ...contentWorkloadInfo(row.workload),
         switchedOn: true,
         latest: { id: row.latest_id, outcome: row.latest_outcome, at: iso(row.latest_at), reasons: Array.isArray(row.latest_reasons) ? row.latest_reasons : [], namePrefix: row.latest_prefix ?? null },
         lastGood: row.good_id
@@ -220,7 +224,7 @@ export async function loadServiceBackups(client, { tenantRef }) {
       const entry = content.find((candidate) => candidate.workload === row.workload);
       // Items stored before runs were recorded: the workload has content but no run on record.
       if (entry) entry.stored = stored;
-      else content.push({ kind: 'content', workload: row.workload, switchedOn: true, latest: null, lastGood: null, stored });
+      else content.push({ kind: 'content', workload: row.workload, ...contentWorkloadInfo(row.workload), switchedOn: true, latest: null, lastGood: null, stored });
     }
     content.sort((a, b) => a.workload.localeCompare(b.workload));
   }

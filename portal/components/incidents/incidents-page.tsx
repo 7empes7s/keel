@@ -21,7 +21,7 @@ import { Verdict } from "@/components/verdict";
 import { incidentAction } from "@/lib/incident-calls";
 import {
   ALLOW_EFFECT, CLOSE_EFFECT, HISTORY_HREF, KEPT_HELP, READ_ONLY_LINE, STATES, WINDOW_HELP,
-  backupAge, backupName, backupsWord, checkLine, incidentCounts, incidentVerdict, isStateFilter, orderBackups,
+  backupAge, backupName, backupsWord, checkLine, serviceBackupLine, incidentCounts, incidentVerdict, isStateFilter, orderBackups,
   personOf, restoreHref, stateChip, stateOf, type BackupState, type StateFilter,
 } from "@/lib/incidents-view";
 import type { IncidentDetail, IncidentRecoveryPoint, IncidentSummary } from "@/lib/portal-data";
@@ -264,6 +264,21 @@ export function IncidentsPage({ incidents, selected, canInvestigate, now }: {
             )}
             <p className="ir-muted">{KEPT_HELP} Kept backups are removed by routine clean-up only after you let them go.</p>
           </section>
+
+          {selected.serviceBackups?.length ? (
+            <section aria-labelledby="ir-services-heading" className="ir-section">
+              <h2 id="ir-services-heading">Other services&apos; backups</h2>
+              <p className="ir-muted">Exchange, SharePoint, OneDrive, Teams, Purview and Power Platform settings, and content. The check above covers Entra ID and Intune only, so check these by hand before you restore from them.</p>
+              <ul className="ir-service-list">
+                {selected.serviceBackups.map((entry) => (
+                  <li className="ir-service-row" key={`${entry.kind}:${entry.workload}`}>
+                    <span className="ir-service-name">{entry.name}{entry.kind === "content" ? " (content)" : " (settings)"}</span>
+                    <span className="ir-muted">{serviceBackupLine(entry, now)}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           <IncidentRecord detail={selected} />
         </> : null}

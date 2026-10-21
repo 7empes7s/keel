@@ -11,10 +11,26 @@ export type MeasuredState = "measured" | "gaps" | "unmeasured";
 
 export interface DependencyRef {
   key: string;
-  kind: "type" | "relationship";
+  // type and relationship: the Entra ID and Intune settings backup. workload: a service
+  // settings read (Exchange, SharePoint, Teams, Purview, Power Platform). content: a
+  // content backup (mail, files, sites, Teams, Planner).
+  kind: "type" | "relationship" | "workload" | "content";
   type: string | null;
   parentType: string | null;
   family: string | null;
+  workload?: string | null;
+}
+
+/** One service-settings or content workload's backups (engine/coverage/serviceBackups.mjs). */
+export interface ServiceBackup {
+  kind: "service-settings" | "content";
+  workload: string;
+  name: string;
+  service: string | null;
+  switchedOn: boolean;
+  latest: { id: string; outcome: string; at: string | null; reasons?: string[]; namePrefix?: string | null } | null;
+  lastGood: { id: string; from: string | null; at: string | null; settings?: number; items?: number; bytes?: number; outcome?: string } | null;
+  stored?: { items: number; versions: number; containers: number; bytes: number; storedBytes: number; newestAt: string | null } | null;
 }
 
 export interface OffsiteCopy {
@@ -58,7 +74,10 @@ export interface RecoveryMetrics {
     fromCopy: OffsiteCopy | null;
     latestCopy: OffsiteCopy | null;
     copies: OffsiteCopy[];
+    // The settings an off-site copy is checked for: the Entra ID and Intune backup only.
+    scope?: string;
   };
+  services?: { settings: ServiceBackup[]; content: ServiceBackup[] };
   recoveryTime: {
     state: "measured" | "unmeasured";
     samples: number;
@@ -119,10 +138,27 @@ export function dependencyName(dependency: DependencyRef | string): string {
   if (ref.kind === "relationship") {
     return `${capitalize(words(ref.family).toLowerCase())} of each ${resourceTypeLabel(ref.parentType ?? "")}`;
   }
+  if (ref.kind === "workload") return `${capitalize(resourceTypeLabel(ref.workload ?? ""))} settings`;
+  if (ref.kind === "content") return `${CONTENT_NAMES[ref.workload ?? ""] ?? capitalize(words(ref.workload ?? "").toLowerCase())} (content)`;
   return capitalize(resourceTypeLabel(ref.type ?? ""));
 }
 
+// Content workloads as Microsoft names them (engine/coverage/serviceBackups.mjs).
+const CONTENT_NAMES: Record<string, string> = {
+  "exchange-mail": "Mail, calendars and contacts",
+  "group-conversations": "Group conversations",
+  onedrive: "OneDrive files",
+  sharepoint: "SharePoint document libraries",
+  "sharepoint-sites": "SharePoint sites, lists and files",
+  teams: "Teams, channels and tabs",
+  planner: "Planner plans and tasks",
+};
+
 function parseDependencyKey(key: string): DependencyRef {
+  if (key.startsWith("workload:") || key.startsWith("content:")) {
+    const kind = key.startsWith("workload:") ? "workload" : "content";
+    return { key, kind, type: null, parentType: null, family: null, workload: key.slice(kind.length + 1) };
+  }
   if (key.startsWith("relationship:")) {
     const [parentType, family] = key.slice("relationship:".length).split("/");
     return { key, kind: "relationship", type: null, parentType: parentType ?? null, family: family ?? null };
@@ -266,6 +302,39 @@ export function recoverablePointSentence(metrics: RecoveryMetrics, now: string):
   }
   if (point.copies.length === 0) return "Not measured: no off-site copy has been recorded and checked yet.";
   return "Not measured: no off-site copy has passed its check with a good backup of everything required.";
+}
+
+/** Bytes in words: "7.4 MB". */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes === null || bytes === undefined || !Number.isFinite(bytes)) return "unknown size";
+  const units = ["bytes", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
+  return unit === 0 ? `${value} bytes` : `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
+}
+
+/** One service backup's line: when it last backed up well, and what that holds. */
+export function serviceBackupSentence(entry: ServiceBackup, now: string): string {
+  if (!entry.switchedOn) return "Switched off until a live check on this tenant passes.";
+  const holds = entry.kind === "content"
+    ? (entry.stored ? ` Holds ${entry.stored.items} item${entry.stored.items === 1 ? "" : "s"} (${formatBytes(entry.stored.bytes)}).` : "")
+    : (typeof entry.lastGood?.settings === "number" ? ` ${entry.lastGood.settings} setting${entry.lastGood.settings === 1 ? "" : "s"} read.` : "");
+  const scope = entry.kind === "content" && entry.latest?.namePrefix ? ` Limited to names starting ${entry.latest.namePrefix}.` : "";
+  if (!entry.lastGood) {
+    return entry.latest ? `Never backed up successfully; the latest try ${entry.latest.outcome === "partial" ? "stopped part way" : "failed"}.${holds}${scope}` : `No backup run recorded yet.${holds}${scope}`;
+  }
+  const failedSince = entry.latest && entry.latest.id !== entry.lastGood.id ? " The latest try failed." : "";
+  return `Last good backup ${ago(entry.lastGood.at, now)}.${failedSince}${holds}${scope}`;
+}
+
+/** The services card's sentence. */
+export function servicesSentence(metrics: RecoveryMetrics): string {
+  const all = [...(metrics.services?.settings ?? []), ...(metrics.services?.content ?? [])];
+  if (all.length === 0) return "Only the Entra ID and Intune settings backup has run so far.";
+  const on = all.filter((entry) => entry.switchedOn);
+  const good = on.filter((entry) => entry.lastGood);
+  return `${good.length} of ${on.length} service backups beyond Entra ID and Intune have a good copy; each counts toward the age above.`;
 }
 
 export function recoveryTimeSentence(metrics: RecoveryMetrics): string {

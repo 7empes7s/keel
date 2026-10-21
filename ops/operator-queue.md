@@ -4898,3 +4898,45 @@ item that needs it stays untouched.
      site-permissions is disabled", and the row it came from (workload, outcome, created_at).
 - **Report:** steps 1 to 3 verbatim (masked). Say plainly whether any `complete` sharepoint-site-settings run has non-empty
   reasons. Nothing is written to the tenant or the DB.
+
+### Q103: Live read check for four service settings groups, then turn them on (read-only toward the tenant)
+- Drafted by the "Exchange and Purview live read checks" thread (2026-10-21). Source: Q99 section 3.
+- Q99 shows `exchange-mail-flow`, `exchange-extended`, `purview-retention-dlp` and `purview-governance` as `disabled` every
+  night: their reads have no live proof in the ledger. PR #425 adds the read-only capture that records it
+  (`tools/qualification/workloadReadsLive.mjs`, gate `workload-reads-live-acceptance`; steps in
+  `docs/roadmap/workload-reads-live-acceptance.md`).
+- Needs: PR #425 live (`git -C /opt/keel-live log --oneline | grep -c "#425"` is 1, or `/opt/keel-live/tools/qualification/workloadReadsLive.mjs` exists).
+- Status: todo
+- **Tenant:** reads only. Each capture sends only the workload's declared `Get-` cmdlets with the collector credential.
+  Nothing is created, changed or deleted in the tenant. No grant or role changes.
+- Do, from your clone checked out at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. From `/etc/keel/workload-scope.json`, note which config `powershellConfigs.exchange` and `powershellConfigs.purview`
+     name. For each, report whether it has a non-empty `organization` field (yes/no only, never the value).
+     Q99 found purview-labels failing with "Organization cannot be null for certificate based connections" on the purview
+     config. If the purview config has no `organization`: copy it to `<file>.bak-q103` (same owner, mode), add
+     `organization` with the value the exchange config holds (same tenant), keep owner and mode, and report it. That is a
+     host config change only; undo is restoring the `.bak-q103` file.
+  2. Four captures, one per workload, each with the config the scheduled job uses for it (exchange config for
+     `exchange-mail-flow` and `exchange-extended`, purview config for `purview-retention-dlp` and `purview-governance`):
+     ```bash
+     node tools/qualification/workloadReadsLive.mjs capture --workload <workload> --tenant-ref <tenant ref> \
+       --collector-ref app:<that config's clientId> --collector-config <that config> \
+       --build "$(git -C /opt/keel-live rev-parse HEAD)" \
+       --out docs/release/qualifications/workload-reads-<workload>-live-acceptance.json
+     ```
+     Report each exit code and its `proven` / `notProven` JSON verbatim (mask tenant or org names in `message`).
+  3. Copy the four records into `/opt/keel-live/docs/release/qualifications/` (the default `--dir` of the import), or pass
+     `--dir <clone>/docs/release/qualifications`. Then `node cli/keel-workload-collect.mjs import`; report exit code and the
+     `imported` / `refused` / `absent` lists.
+  4. `node cli/keel-workload-collect.mjs run` once by hand. Report each of the four workloads' outcome and resources
+     (`SELECT workload, outcome, jsonb_array_length(COALESCE(digest->'reasons','[]'::jsonb)) AS n_reasons, left((digest->'reasons')::text, 400)
+     FROM workload_collection WHERE created_at > now() - interval '15 minutes' ORDER BY workload;`) plus each one's
+     observation count.
+  5. Evidence: commit the four records to `claude/live-evidence-q103` (from `origin/master`, files under
+     `docs/release/qualifications/` only, checked for secrets). No PR.
+- **Expected:** mail flow and Exchange settings turn on if their core reads answer. Defender families (Safe Links, Safe
+  Attachments, Defender presets) may be `not-licensed`; those are optional and only skipped. Purview retention and DLP turns
+  on if the two retention reads answer (DLP is optional). Purview retention labels stays off while the collector lacks the
+  eDiscovery Manager role (its eDiscovery reads are core); report its reasons, do not grant the role.
+- **Report:** per step, the result; per workload, on / off with the reason.

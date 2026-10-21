@@ -4906,7 +4906,7 @@ item that needs it stays untouched.
   (`tools/qualification/workloadReadsLive.mjs`, gate `workload-reads-live-acceptance`; steps in
   `docs/roadmap/workload-reads-live-acceptance.md`).
 - Needs: PR #425 live (`git -C /opt/keel-live log --oneline | grep -c "#425"` is 1, or `/opt/keel-live/tools/qualification/workloadReadsLive.mjs` exists).
-- Status: todo
+- Status: in-progress
 - **Tenant:** reads only. Each capture sends only the workload's declared `Get-` cmdlets with the collector credential.
   Nothing is created, changed or deleted in the tenant. No grant or role changes.
 - Do, from your clone checked out at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
@@ -4949,7 +4949,19 @@ item that needs it stays untouched.
 - Needs: `/opt/keel-live` deployed at 0210b24 or later (`git -C /opt/keel-live log -1` or the deploy log), and the
   `10-discovery.sql` schema reapplied by the deploy (the `discovery_item_status_check` constraint accepts `skipped`):
   `SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'discovery_item_status_check';`
-- Status: in-progress
+- Status: done
+- Result: done (2026-10-21). Deployed build 9429f45, which includes #424 (0210b24) and #425. The constraint accepts `skipped`:
+  `CHECK ((status = ANY (ARRAY['catalogued', 'uncatalogued', 'skipped', 'unreadable', 'not-listed'])))`. Graph reads with the
+  Collector only; nothing changed in the tenant.
+  - **Step 1:** `keel-discover.mjs run` **exit 0** in 189.8 s. 1648 Graph GET requests, 8 of them throttled.
+    - Summary: `1004 types; 126 catalogued, 74 uncatalogued, 158 skipped (not worth backing up), 574 unreadable, 72 not listed.`
+      That is down from 275 uncatalogued in run 2.
+    - Sources that are not complete: `powershell:ExchangeOnlineManagement`, `powershell:MicrosoftTeams` and
+      `powershell:PnP.PowerShell`, each "unknown (no command list was supplied for this module)".
+    - Containers: users 104, groups 57, teams 11, sites 1. Catalogue: 99 covered, 6 under-item, 9 unreadable.
+    - `Stored discovery run 3.`
+  - **Step 2:** 101 rows, **74 distinct paths** (a path readable on both v1.0 and beta has one row per source). No GUIDs or
+    tenant names. `ops/q104/uncatalogued.tsv` on `claude/q104-uncatalogued` @ b27d58c, pushed. No PR.
 - Do (same as Q82 step 1; no tenant writes, no approvals, no new grants):
   1. `set -a; . /etc/keel/db.env; set +a; cd /opt/keel-live && time node cli/keel-discover.mjs run --config /etc/keel/tenant.json`
      Report the exit code, the first summary line (it now names `skipped`), source lines that are not `complete`, and the

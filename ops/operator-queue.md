@@ -4849,3 +4849,32 @@ item that needs it stays untouched.
   `content-scope.json.bak-q101` back over the scope file and say so. A `partial` outcome from 403s alone is not a rollback
   reason; report it.
 - **Report:** A1-A3, the new scope file (masked), and C. Open an issue labelled `operator-report` only if a rollback happened.
+
+### Q102: Recheck the SharePoint site settings finding from Q99 (read-only, DB only)
+- Drafted by the "SharePoint site settings never read" thread (2026-10-21).
+- Q99 finding 2 says sharepoint-site-settings reports `complete` while its reasons say "sharepoint.tenant-settings /
+  site-discovery / site-properties / site-permissions is disabled". The Q99 JSON (`ops/q99/coverage.json` @ 01e6050) does
+  not show that: its newest sharepoint-site-settings run is `complete`, 20 sites, 24 out of scope, reasons `[]`. In the code
+  (`engine/collect/workloads/sharepoint.mjs`, `collectSharePointSites`) a run refused by the ledger is always written as
+  `disabled`, never `complete`. This item finds out which rows the finding came from.
+- Needs: nothing. No tenant calls, no job, schedule or config changes, no reruns.
+- Status: todo
+- Do (with `set -a; . /etc/keel/db.env; set +a`), tenant_ref masked to its last 4 characters:
+  1. ```sql
+     SELECT right(wc.tenant_ref::text, 4) AS tenant, wc.workload, wc.outcome, wc.created_at,
+            wc.digest->'discovery'->>'sites' AS sites, jsonb_array_length(COALESCE(wc.digest->'reasons','[]'::jsonb)) AS n_reasons,
+            left((wc.digest->'reasons')::text, 300) AS reasons,
+            (SELECT count(*) FROM workload_observation o WHERE o.collection_id = wc.id) AS observations
+       FROM workload_collection wc
+      WHERE wc.created_at > now() - interval '8 days'
+        AND (wc.workload = 'sharepoint-site-settings' OR (wc.digest->'reasons')::text LIKE '%sharepoint.%')
+      ORDER BY wc.created_at DESC;
+     ```
+  2. ```sql
+     SELECT right(tenant_ref::text, 4) AS tenant, workload, outcome, count(*), max(created_at)
+       FROM workload_collection GROUP BY 1, 2, 3 ORDER BY 2, 1, 3;
+     ```
+  3. The exact query or command that produced the Q99 line "sharepoint.tenant-settings / site-discovery / site-properties /
+     site-permissions is disabled", and the row it came from (workload, outcome, created_at).
+- **Report:** steps 1 to 3 verbatim (masked). Say plainly whether any `complete` sharepoint-site-settings run has non-empty
+  reasons. Nothing is written to the tenant or the DB.

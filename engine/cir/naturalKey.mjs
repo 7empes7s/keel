@@ -48,6 +48,9 @@ export const ID_KEY_TYPES = new Set([
   // carry the same name in every tenant.
   'mobileThreatDefenseConnector', 'deviceManagementPartner', 'complianceManagementPartner', 'remoteAssistancePartner',
   'deviceManagementExchangeConnector', 'mobileAppCategory', 'intuneBrandingProfile', 'customAuthenticationExtension',
+  // Remaining kinds, batch 3: names are unmeasured and Apple tokens carry no name.
+  'deviceManagementCompliancePolicy', 'deviceManagementReusablePolicySetting', 'policySet', 'vppToken', 'depOnboardingSetting',
+  'managedDeviceCleanupRule', 'windowsQualityUpdatePolicy', 'operationApprovalPolicy', 'deviceCustomAttributeShellScript',
 ]);
 
 // Tenant singletons: exactly one object per tenant, so the type name is the
@@ -65,6 +68,8 @@ export const CONSTANT_KEY_TYPES = new Set([
   'multiTenantOrganization',
   // Remaining kinds, batch 1: Intune tenant singletons.
   'applePushNotificationCertificate', 'onPremisesConditionalAccessSettings',
+  // Remaining kinds, batch 3: the Managed Google Play binding.
+  'androidManagedStoreAccountEnterpriseSettings',
 ]);
 
 const PARTNER_KEY_TYPES = new Set(['crossTenantAccessPolicyPartner', 'crossTenantIdentitySyncPolicyPartner']);

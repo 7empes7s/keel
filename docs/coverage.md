@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 104 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 20 are full, 77 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 51 at least in part; the other 53 are restored by hand from the backup.
+KEEL tracks 114 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 20 are full, 87 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 51 at least in part; the other 63 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -311,6 +311,16 @@ KEEL tracks 104 kinds of Entra ID and Intune settings and backs up everything it
 | Exchange on-premises access settings | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | App categories | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Company Portal branding | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Settings catalog compliance policies | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
+| Reusable settings groups | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Policy sets | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Apple Volume Purchase tokens | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
+| Apple automated enrollment tokens | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
+| Managed Google Play connection | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
+| Device cleanup rules | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Windows hotpatch update policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Multi admin approval policies | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
+| macOS custom attribute scripts | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -415,6 +425,33 @@ KEEL tracks 104 kinds of Entra ID and Intune settings and backs up everything it
 - **Company Portal branding** (not built yet). KEEL backs up the branding settings but does not restore them yet. The logo images are not backed up.
   - *Not brought back:* logo images (stored separately and not in the backup yet).
   - *You do:* Recreate the branding in the Intune admin center from the backup, upload the logos from your own copy, and assign it to the groups in the backup.
+- **Settings catalog compliance policies** (not built yet). KEEL backs up the settings but does not restore them yet. The actions for noncompliance and who the policy is assigned to are not backed up yet.
+  - *Not brought back:* actions for noncompliance (stored separately and not in the backup yet); who the policy is assigned to (stored separately and not in the backup yet).
+  - *You do:* Recreate the policy in the Intune admin center from the backup, add its actions for noncompliance, and assign it again. Conditional Access that requires compliant devices needs it back first.
+- **Reusable settings groups** (not built yet). KEEL backs these up but does not restore them yet.
+  - *You do:* Recreate each group in the Intune admin center from the backup before the policies that use it.
+- **Policy sets** (not built yet). KEEL backs up each set's name and settings but not yet the apps and policies in it.
+  - *Not brought back:* the apps and policies in each set (stored separately and not in the backup yet); who the set is assigned to (stored separately and not in the backup yet).
+  - *You do:* Recreate the set in the Intune admin center, add the same apps and policies, and assign it again.
+- **Apple Volume Purchase tokens** (Microsoft limit). Apple issues the token. No tool can upload it from a backup, and the token itself is never read.
+  - *Not brought back:* the token file (Microsoft never returns it).
+  - *You do:* Use the backup for the Apple ID, organization and expiry. Download a new token from Apple Business Manager with that Apple ID and upload it in the Intune admin center.
+- **Apple automated enrollment tokens** (Microsoft limit). Apple issues the token. No tool can upload it from a backup, and Microsoft never returns the token file.
+  - *Not brought back:* the token file (Microsoft never returns it); enrollment profiles under each token (stored separately and not in the backup yet).
+  - *You do:* Use the backup for the Apple ID and expiry. Download a new token from Apple Business Manager with that Apple ID, upload it in the Intune admin center, then recreate its enrollment profiles.
+- **Managed Google Play connection** (Microsoft limit). The connection is made by signing in to Google. No tool can make it from a backup, and the enrollment codes are not backed up.
+  - *Not brought back:* enrollment company codes and QR codes (Microsoft never returns it).
+  - *You do:* Use the backup for the Google account and settings. Connect Managed Google Play again in the Intune admin center with that account, then turn on the same enrollment options.
+- **Device cleanup rules** (not built yet). KEEL backs these up but does not restore them yet.
+  - *You do:* Set the same cleanup rules in the Intune admin center from the backup.
+- **Windows hotpatch update policies** (not built yet). KEEL backs these up but does not restore them yet. Who a policy is assigned to is not backed up yet.
+  - *Not brought back:* who the policy is assigned to (stored separately and not in the backup yet).
+  - *You do:* Recreate the policy in the Intune admin center from the backup and assign it again.
+- **Multi admin approval policies** (not built yet). KEEL backs these up but does not restore them yet. They decide which changes need a second admin, so a person should review them.
+  - *You do:* Recreate each policy in the Intune admin center from the backup, with the same approver groups.
+- **macOS custom attribute scripts** (not built yet). KEEL backs up the script settings but not yet the script body or who it is assigned to.
+  - *Not brought back:* the script body (stored separately and not in the backup yet); who the script is assigned to (stored separately and not in the backup yet).
+  - *You do:* Recreate the script in the Intune admin center from your own copy of the script, using the backup for its settings, and assign it again.
 
 ## Microsoft 365 workloads
 

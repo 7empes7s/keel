@@ -2,7 +2,8 @@ import Link from "next/link";
 
 import { JobStatusBadge } from "@/components/job-status-badge";
 import { Icon, type IconName } from "@/components/shell/icons";
-import { RecordField, RecordGroup, ReferenceFields, refUsage, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { RecordField, RecordGroup, ReferenceFields, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { refUsage } from "@/lib/record-refs";
 import { Person } from "@/components/ui/person";
 import { jobErrorLine } from "@/lib/job-names";
 import type { JobRecord } from "@/lib/portal-jobs";

@@ -2,6 +2,8 @@
 
 import { useState, type ReactNode } from "react";
 
+import { refUsage, type RefLike } from "@/lib/record-refs";
+
 // Portal experience contract, the record layer: every identifier, hash and raw value
 // lives here, collapsed under "Technical details", each labelled with what it is and
 // where it is accepted, with a copy control.
@@ -79,7 +81,6 @@ export function RecordField({ label, value, usage, copy = true }: { label: strin
   );
 }
 
-type RefLike = { kind: string; id: string; name: string | null; readable: boolean; email?: string | null };
 type ReferencesLike = {
   people?: Record<string, RefLike | undefined>;
   baseline?: RefLike | null;
@@ -97,14 +98,6 @@ const ROLE_WORDS: Record<string, string> = {
   owner: "Owner",
   actor: "Done by",
 };
-
-/** What a linked record resolved to, for a field's usage line. */
-export function refUsage(ref: RefLike | null | undefined, extra?: string | null): string | undefined {
-  if (!ref) return extra ?? undefined;
-  const name = ref.readable ? ref.name : "no longer readable";
-  const parts = [name !== ref.id ? name : null, ref.email && ref.email !== name && ref.email !== ref.id ? ref.email : null, extra].filter(Boolean);
-  return parts.length ? parts.join(" · ") : undefined;
-}
 
 /** Every record a row links to (people, approved setup, dry run, snapshot, changes),
  *  each with its id and what it resolved to. */

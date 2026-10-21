@@ -4940,3 +4940,25 @@ item that needs it stays untouched.
   on if the two retention reads answer (DLP is optional). Purview retention labels stays off while the collector lacks the
   eDiscovery Manager role (its eDiscovery reads are core); report its reasons, do not grant the role.
 - **Report:** per step, the result; per workload, on / off with the reason.
+
+### Q104: Rerun discovery after PR #424 deploys, so the gap count drops (read-only)
+- Drafted by the "Stop counting non-backup kinds as gaps" thread (2026-10-21). PR #424 (master 0210b24) teaches discovery
+  that 26 paths are other names for kinds Keel already backs up and that 158 paths are logs, reports, runtime state or
+  Microsoft catalogues (new status `skipped`). The stored run (run 2, 2026-10-19) predates it, so the Protect page still
+  says 275 readable but not backed up. Expected after a rerun: about 75 uncatalogued, about 158 skipped.
+- Needs: `/opt/keel-live` deployed at 0210b24 or later (`git -C /opt/keel-live log -1` or the deploy log), and the
+  `10-discovery.sql` schema reapplied by the deploy (the `discovery_item_status_check` constraint accepts `skipped`):
+  `SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'discovery_item_status_check';`
+- Status: todo
+- Do (same as Q82 step 1; no tenant writes, no approvals, no new grants):
+  1. `set -a; . /etc/keel/db.env; set +a; cd /opt/keel-live && time node cli/keel-discover.mjs run --config /etc/keel/tenant.json`
+     Report the exit code, the first summary line (it now names `skipped`), source lines that are not `complete`, and the
+     `Stored discovery run <id>` line.
+  2. For the new run, as tab-separated output with a header, the paths still counted as gaps:
+     ```sql
+     \copy (SELECT source, name, kind, entity_type, objects, objects_exact FROM discovery_item
+             WHERE run_id = (SELECT id FROM discovery_run ORDER BY finished_at DESC, id DESC LIMIT 1)
+               AND status = 'uncatalogued' ORDER BY name, source) TO '/tmp/q104-uncatalogued.tsv' WITH (FORMAT csv, DELIMITER E'\t', HEADER)
+     ```
+     Commit it as `ops/q104/uncatalogued.tsv` on a new branch `claude/q104-uncatalogued` (never master) and push.
+- **Report:** step 1, the distinct path count of step 2, and the branch commit. Nothing in the tenant changes; one stored run.

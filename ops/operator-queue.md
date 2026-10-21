@@ -5145,3 +5145,40 @@ item that needs it stays untouched.
      ```
 - **Expected:** both `complete`, `field_counts` with no `unknown`, `unknown_fields` `{}`, about 35 and 40 observations.
 - **Report:** step 1 exit code, step 2 verbatim.
+
+### Q109: Live restore of four Intune settings kinds (restore gaps batch 1, after #430)
+- Drafted by the "Make backed-up kinds restorable" thread (2026-10-21). Code: PR #430. New record writers, fixture-tested only:
+  reusable settings groups (`deviceManagementReusablePolicySetting`, beta, create + update), Windows hotpatch policies
+  (`windowsQualityUpdatePolicy`, beta, create + update), device categories (`deviceCategory`, v1.0, create + update),
+  device cleanup rules (`managedDeviceCleanupRule`, beta, **update only**, refused when the backup retires devices sooner than now).
+- Needs: /opt/keel-live at the #430 merge or later (`grep -q cleanupRuleRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission
+  to add: the Restorer holds DeviceManagementConfiguration.ReadWrite.All and DeviceManagementManagedDevices.ReadWrite.All. If Graph
+  answers 403, report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.
+- **Fixtures** (the reviewed guidance in `live-gate-plan.mjs` at B says the same):
+  - device category `KEEL-RT-category` (no devices are in it);
+  - firewall reusable settings group `KEEL-RT-addresses` (one address 203.0.113.10), used by no policy;
+  - Windows hotpatch quality update policy `KEEL-RT-hotpatch`, assigned to nobody;
+  - device cleanup rule `KEEL-RT-cleanup`, platform macOS (the tenant has 0 managed devices), 270 days. If the tenant already has a
+    cleanup rule for every platform, report that and skip the cleanup rule part.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/live-gate-plan.mjs > ~/keel-rg1/plan-B.md`. Use its steps for these four types (collect, restore
+     dry run, approve, `--enforce`, `entraLive.mjs capture`, promote).
+  2. Create the fixtures, then take snapshot S (one tier run that reads all four types; deviceCategory and the cleanup rule are tier 3).
+     Confirm all four fixtures are in S.
+  3. **Create round** (category, reusable group, hotpatch): delete each, restore from S selecting them, approve, enforce, capture
+     each `create`. Read back equal to the backup (name, description, the reusable group's address, hotpatchEnabled).
+  4. **Update round:** change each description (all four), and lower the cleanup rule to 180 days. Restore from S, approve,
+     enforce, capture each `update`. Expect the cleanup rule back at 270 days.
+  5. **Refusal check (no write expected):** set the cleanup rule to 365 days, dry run from S. Expect it listed as manual with
+     "sooner than the 365 days set now", 0 writes for it. Do not promote.
+  6. **Re-run check:** dry run from S again after step 4 (rule back at 270 first). Expect 0 planned writes for the four.
+  7. Cleanup: delete all four fixtures. Report anything left.
+  8. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-1`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; per type and operation: promoted / refused (exact message) / blocked; the step 5 and 6 results; approval ids;
+  the evidence branch and commit; anything left in the tenant.

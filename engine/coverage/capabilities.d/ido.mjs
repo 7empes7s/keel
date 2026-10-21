@@ -80,6 +80,15 @@ export default [
   { resourceType: 'deviceCategory', operation: 'create', path: '/deviceManagement/deviceCategories', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
   { resourceType: 'deviceCategory', operation: 'update', path: '/deviceManagement/deviceCategories', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   { resourceType: 'managedDeviceCleanupRule', operation: 'update', path: '/deviceManagement/managedDeviceCleanupRules', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  // Restore gaps, batch 4: scripts and remediations.
+  { resourceType: 'deviceManagementScript', operation: 'create', path: '/deviceManagement/deviceManagementScripts', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'deviceManagementScript', operation: 'update', path: '/deviceManagement/deviceManagementScripts', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'deviceShellScript', operation: 'create', path: '/deviceManagement/deviceShellScripts', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'deviceShellScript', operation: 'update', path: '/deviceManagement/deviceShellScripts', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'deviceHealthScript', operation: 'create', path: '/deviceManagement/deviceHealthScripts', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'deviceHealthScript', operation: 'update', path: '/deviceManagement/deviceHealthScripts', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'deviceComplianceScript', operation: 'create', path: '/deviceManagement/deviceComplianceScripts', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'deviceComplianceScript', operation: 'update', path: '/deviceManagement/deviceComplianceScripts', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   // Add-only identity edges: an edge is never removed, so edge-remove is not registered.
   { resourceType: 'application#appOwner', operation: 'edge-add', path: '/applications/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },
   { resourceType: 'servicePrincipal#servicePrincipalOwner', operation: 'edge-add', path: '/servicePrincipals/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },

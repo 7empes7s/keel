@@ -105,6 +105,11 @@ const REGISTERED = Object.freeze({
   windowsQualityUpdatePolicy: ['create', 'update'],
   deviceCategory: ['create', 'update'],
   managedDeviceCleanupRule: ['update'],
+  // Restore gaps, batch 4: scripts and remediations.
+  deviceManagementScript: ['create', 'update'],
+  deviceShellScript: ['create', 'update'],
+  deviceHealthScript: ['create', 'update'],
+  deviceComplianceScript: ['create', 'update'],
   // Wave 2 ENTRA: directory policies and delegated consents.
   tokenLifetimePolicy: ['create', 'update'],
   tokenIssuancePolicy: ['create', 'update'],

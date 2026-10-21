@@ -113,7 +113,7 @@ test("the page body: tiles filter by link, ids stay in the record, the scheduler
   const html = await renderPeopleAt("role=approver", { people: PEOPLE, canUsers: true, canRoles: true, now: NOW });
   assert.match(html, /Showing approvers only: 2 of 5\./);
   assert.match(html, /href="\/principals\?role=admin"/);
-  assert.match(html, /href="\/principals"[^>]*>.*?Can approve/s, "the active tile clears its filter");
+  assert.match(html, /href="\/principals"[^>]*>[\s\S]*?Can approve/, "the active tile clears its filter");
   const record = html.indexOf('data-layer="record"');
   const visible = html.slice(0, record).replace(/ (data-row-id|href|title|id|for|aria-labelledby)="[^"]*"/g, "");
   assert.doesNotMatch(visible, /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);

@@ -9,6 +9,7 @@ import {
 import { DERIVED_NAME_TYPES } from "@/lib/app-names";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 import { savedNames } from "@/lib/saved-names";
+import { idNames } from "@/lib/value-names";
 
 interface KeelClient {
   query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
@@ -27,7 +28,7 @@ export async function getCompareData(input: CompareInput | null, now: Date = new
     if (chosen.from === chosen.to) return { ...base, result: null, problem: "same-snapshot" };
     try {
       const result = (await compareSnapshots(client, { leftSnapshotId: chosen.from, rightSnapshotId: chosen.to, now })) as CompareResult;
-      return { ...base, result: await withAppNames(client, result), problem: null };
+      return { ...base, result: await withValueNames(client, await withAppNames(client, result)), problem: null };
     } catch (error) {
       if (error instanceof CompareError && (error.code === "snapshot-not-found" || error.code === "snapshot-incomplete")) {
         return { ...base, result: null, problem: error.code as CompareProblem };
@@ -70,4 +71,15 @@ async function withAppNames(client: KeelClient, result: CompareResult): Promise<
         : group),
     },
   };
+}
+
+// Ids inside the values ("excluded groups: <id>") read as the names the two backups
+// hold for them.
+async function withValueNames(client: KeelClient, result: CompareResult): Promise<CompareResult> {
+  const values = [
+    ...(result.settings?.groups ?? []).flatMap((group) => group.items.flatMap((item) => (item.fields ?? []).flatMap((field) => [field.before, field.after]))),
+    ...(result.workloads?.groups ?? []).flatMap((group) => (group.items ?? []).flatMap((item) => (item.fields ?? []).flatMap((field) => [field.before, field.after]))),
+  ];
+  const names = await idNames(client, [result.left.snapshotId, result.right.snapshotId], values);
+  return Object.keys(names).length ? { ...result, names } : result;
 }

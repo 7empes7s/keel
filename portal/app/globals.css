@@ -8952,6 +8952,11 @@ body[data-sheet-open] .popover-panel { z-index: 80; }
 .ac-note[data-tone="urgent"] > .icon { color: var(--urgent); }
 .ac-note[data-tone="soon"] { border-color: color-mix(in srgb, var(--check-soon) 45%, var(--line)); background: var(--check-soon-bg); }
 .ac-note[data-tone="soon"] > .icon { color: var(--check-soon); }
+.ac-changes { display: grid; gap: var(--space-sm); min-width: 0; }
+.ac-changes > p { margin: 0; }
+.ac-changes > .btn { justify-self: start; }
+.ac-changes-heading { margin: 0; font-size: 0.9375rem; font-weight: 650; }
+button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; cursor: pointer; }
 .ac-note b { display: block; overflow-wrap: anywhere; }
 .ac-note p { margin: 0.125rem 0 0; color: var(--text-soft); }
 .ac-plain { margin: 0; color: var(--text); font-size: 0.9375rem; line-height: 1.45; }

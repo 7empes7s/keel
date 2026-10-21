@@ -70,6 +70,7 @@ import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
 import { ApproveIntentForm, IntentCard } from "@/components/change-intent";
 import { CompareView } from "@/components/compare-view";
 import { compareVerdict, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
+import type { ActivityChanges } from "@/lib/changed-values";
 import { changeIntentsVerdict, type ChangeIntent, type IntentCandidate } from "@/lib/change-intents-view";
 import { SiteDetail, SiteList } from "@/components/site-permissions";
 import { SiteChanges } from "@/components/site-changes";
@@ -141,6 +142,8 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.endsWith("/api/principals")) return json({ principals: HARNESS_PEOPLE, generatedAt: "2026-10-04T09:00:00Z" });
   if (url.includes("/api/deliveries")) return json({ deliveries: HARNESS_DELIVERIES, generatedAt: "2026-10-04T09:00:00Z" });
   if (url.endsWith("/api/coverage")) return json({ types: [{ type: "authenticationMethodsPolicy" }, { type: "conditionalAccessPolicy" }] });
+  // Activity: what a row changed, setting by setting.
+  if (url.includes("/api/activity/changes?")) return json({ changes: ACTIVITY_CHANGES[new URL(url, "http://harness").searchParams.get("job") ?? ""] ?? null });
   await new Promise((resolve) => setTimeout(resolve, url.includes("/selection") || url.includes("/completion") ? 350 : 800));
   if (url.includes("/api/actions/restore/completion/")) return json({ restoreRef: "r9", resources: completionResources() });
   // Task-92: the activation preview of policy p2, and a turn-on refused because the
@@ -563,6 +566,36 @@ const ACTIVITY_PEOPLE = {
   "sam.ortiz@contoso.example": personRef("8c1e0000-0000-4000-8000-0000000000b3", "sam.ortiz@contoso.example"),
   scheduler: personRef("scheduler", "scheduler"),
   "policy-automation": personRef("policy-automation", "policy-automation"),
+};
+const ACTIVITY_CHANGES: Record<string, ActivityChanges> = {
+  y2: {
+    basis: "backup", sides: { before: "Previous backup", after: "This backup" },
+    about: "Each setting as the backup before this one read it, and as this backup read it.",
+    total: 3, compare: { from: "0b5e0000-0000-4000-8000-0000000000c8", to: "0b5e0000-0000-4000-8000-0000000000d5" },
+    names: { "b1ea0000-0000-4000-8000-000000000001": "Break-glass admins" },
+    changes: [
+      { name: "Old project team", resourceType: "group", change: "removed", fieldsTotal: 2, fields: [
+        { path: "description", before: "Project Atlas, closed in September", after: null },
+        { path: "securityEnabled", before: true, after: null },
+      ] },
+      { name: "Block legacy auth", resourceType: "conditionalAccessPolicy", change: "changed", fieldsTotal: 2, fields: [
+        { path: "state", before: "enabled", after: "enabledForReportingButNotEnforced" },
+        { path: "conditions.users.excludeGroups", before: ["b1ea0000-0000-4000-8000-000000000001"], after: ["b1ea0000-0000-4000-8000-000000000001", "f1aa0000-0000-4000-8000-000000000002"] },
+      ] },
+      { name: "Windows compliance", resourceType: "deviceCompliancePolicy", change: "added", fieldsTotal: 2, fields: [
+        { path: "passwordRequired", before: null, after: true },
+        { path: "scheduledActionsForRule", before: null, after: [{ ruleName: "PasswordRequired", gracePeriodHours: 24 }] },
+      ] },
+    ],
+  },
+  y1: {
+    basis: "restore", sides: { before: "Before the restore", after: "Would restore to" },
+    about: "Each setting as the last backup before the restore read it, and as the restored backup has it.",
+    total: 1, compare: null, names: {},
+    changes: [
+      { name: "Finance", resourceType: "group", change: "changed", fieldsTotal: 1, fields: [{ path: "securityEnabled", before: false, after: true }] },
+    ],
+  },
 };
 const activityJobs = (jobs: Job[]): Job[] => [
   ...jobs,
@@ -1265,9 +1298,17 @@ const COMPARE_SNAPSHOTS: CompareResult = {
         ] },
       ] },
       { service: "Entra ID", resourceType: "group", added: 1, removed: 1, changed: 1, unchanged: 210, total: 3, items: [
-        { naturalKey: "group:Old project team", name: "Old project team", changeType: "removed", blastRadius: "access-affecting" },
+        { naturalKey: "group:Old project team", name: "Old project team", changeType: "removed", blastRadius: "access-affecting", fieldsTotal: 3, fields: [
+          { path: "description", kind: "removed", before: "Project Atlas, closed in September", after: null },
+          { path: "displayName", kind: "removed", before: "Old project team", after: null },
+          { path: "securityEnabled", kind: "removed", before: true, after: null },
+        ] },
         { naturalKey: "group:Finance", name: "Finance", changeType: "changed", blastRadius: "access-affecting", fieldsTotal: 1, fields: [{ path: "securityEnabled", kind: "changed", before: true, after: false }] },
-        { naturalKey: "group:KEEL-RT-Contractors", name: "KEEL-RT-Contractors", changeType: "added", blastRadius: "access-affecting" },
+        { naturalKey: "group:KEEL-RT-Contractors", name: "KEEL-RT-Contractors", changeType: "added", blastRadius: "access-affecting", fieldsTotal: 3, fields: [
+          { path: "displayName", kind: "added", before: null, after: "KEEL-RT-Contractors" },
+          { path: "membershipRule", kind: "added", before: null, after: { rule: "user.companyName -eq \"Contoso Contractors\"", processingState: "On" } },
+          { path: "securityEnabled", kind: "added", before: null, after: true },
+        ] },
       ] },
     ],
     notCompared: [{ resourceType: "deviceConfiguration", service: "Intune", left: "complete", right: "failed" }],
@@ -1324,7 +1365,7 @@ const COMPARE_TENANTS_RESULT: CompareResult = {
     { service: "SharePoint", workload: "sharepoint-sites", leftItems: 843, rightItems: 816, leftBytes: 912_334_120, rightBytes: 880_102_400, inBoth: 812, onlyLeft: 31, onlyRight: 4 },
   ] },
 };
-const COMPARE: CompareData = { generatedAt: now, tenants: COMPARE_TENANTS, input: { from: CMP_SNAP_OLD, to: CMP_SNAP_NEW }, result: COMPARE_SNAPSHOTS, problem: null };
+const COMPARE: CompareData = { generatedAt: now, tenants: COMPARE_TENANTS, input: { from: CMP_SNAP_OLD, to: CMP_SNAP_NEW }, result: { ...COMPARE_SNAPSHOTS, names: { "b1ea0000-0000-4000-8000-000000000001": "Break-glass admins" } }, problem: null };
 const COMPARE_ACROSS: CompareData = { generatedAt: now, tenants: COMPARE_TENANTS, input: { from: CMP_SNAP_NEW, to: CMP_SNAP_OTHER }, result: COMPARE_TENANTS_RESULT, problem: null };
 
 function comparePage(data: CompareData) {

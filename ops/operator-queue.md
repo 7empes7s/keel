@@ -5017,7 +5017,7 @@ item that needs it stays untouched.
   family read. A field is `unknown` when the cmdlet's answer did not carry a declared property at all. The fields were
   declared from Microsoft's docs, not measured live, so this item lists which ones the live module does not return.
 - Needs: nothing. No tenant calls, no job, schedule or config changes, no reruns.
-- Status: todo
+- Status: in-progress
 - Do (with `set -a; . /etc/keel/db.env; set +a`). Field names and family kinds only; no values are selected:
   1. ```sql
      WITH latest AS (

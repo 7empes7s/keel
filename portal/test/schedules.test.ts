@@ -5,12 +5,14 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { createElement, type ReactElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import type { ReactElement } from "react";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { GET, POST } from "@/app/api/schedules/route";
 import SchedulesPage from "@/app/schedules/page";
-import { ScheduleTable, schedulesVerdict } from "@/components/schedule-table";
+import { SchedulesPage as SchedulesBody } from "@/components/schedules/schedules-page";
+import { forecastSentence, warningSentence } from "@/lib/schedule-forecast-view";
+import { schedulesVerdict } from "@/lib/schedules-view";
+import { renderSchedulesAt } from "./render-schedules";
 import { visibleNavLinks } from "@/components/nav-links";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import type { Schedule, SchedulesData } from "@/lib/schedules";
@@ -113,13 +115,13 @@ test("read-only GET exposes exactly five local schedules, verbatim failures and 
   assert.equal(failed.last_error, failure);
   assert.equal(failed.last_run_at, failedStartedAt.toISOString());
   assert.deepEqual(data.deferrals.map((d) => d.error), [deferral]);
-  const html = renderToStaticMarkup(createElement(ScheduleTable, { ...data, canEdit: false }));
+  const html = await renderSchedulesAt("", { ...data, canEdit: false, canRun: false, now: data.generatedAt, timeZone: "UTC" });
   // Task-131: the failure is kept verbatim, in the schedule's record layer.
   assert.ok(html.includes(`<dt>Last error</dt><dd><pre class="technical-block"><code>${failure}</code></pre>`), "a multi-line error keeps its line breaks");
   assert.ok(html.includes(deferral));
   assert.ok(html.includes(`href="/jobs/${failedJobId}"`));
   assert.ok(html.includes("Every day at 05:00 UTC"));
-  assert.ok(!html.includes("Change schedule"));
+  assert.ok(!html.includes("sel-check"), "viewers get no selection");
   assert.ok(!html.includes("foreign secret"));
 });
 
@@ -196,14 +198,14 @@ test("the actual schedules page gives viewers data and configuration principals 
         resumeDataCache: null, isHmrRefresh: false, fallbackParams: null,
       } as never, () => SchedulesPage()),
     );
-    // Task-131: the table sits in the page's explanation layer, under the verdict.
-    const explanation = (page.props.children as ReactElement<{ children: ReactElement }>[]).find((child) => (child.props as Record<string, unknown>)["data-layer"] === "explanation")!;
-    const table = explanation.props.children as ReactElement<{ schedules: Schedule[]; canEdit: boolean }>;
-    assert.equal(table.type, ScheduleTable);
-    assert.ok(table);
+    // The body sits under the page header, with the edit and run rights the viewer holds.
+    const body = (page.props.children as ReactElement[]).find((child) => child.type === SchedulesBody) as ReactElement<{ schedules: Schedule[]; canEdit: boolean; canRun: boolean }>;
+    assert.ok(body);
+    const table = body;
     assert.equal(table.props.canEdit, capabilities.includes("configuration"));
+    assert.equal(table.props.canRun, false);
     assert.equal(table.props.schedules.length, 5);
-    if (!table.props.canEdit) assert.ok(renderToStaticMarkup(page).includes(failure));
+    if (!table.props.canEdit) assert.ok((await renderSchedulesAt("", table.props as never)).includes(failure));
   }
 });
 
@@ -239,11 +241,13 @@ test("roadmap task-110: GET carries measured load forecasts; acknowledging a war
   assert.equal(data.forecasts!.find((forecast) => forecast.scheduleId === ids[1])!.status, "unknown");
   assert.equal(data.forecasts!.some((forecast) => forecast.scheduleId === ids[3]), false, "prune does not call Microsoft");
 
-  const html = renderToStaticMarkup(createElement(ScheduleTable, { ...data, canEdit: false }));
-  assert.ok(html.includes("Microsoft slowed down 20% of its requests in the last 14 days."));
-  assert.ok(html.includes("No measured runs yet, so KEEL cannot estimate its load."));
-  assert.ok(!html.includes("Accept warning"), "only configuration principals see the accept control");
+  const html = await renderSchedulesAt("", { ...data, canEdit: false, canRun: false, now: data.generatedAt, timeZone: "UTC" });
+  assert.ok(html.includes("Heavy load"), "the row's load chip");
+  assert.ok(html.includes("Load not measured"));
+  assert.ok(!html.includes("Accept warning"), "the accept control is in the panel, for configuration principals only");
   assert.ok(html.includes("<dt>Warning codes</dt><dd><code>throttle-heavy</code>"));
+  assert.equal(warningSentence(tier1.warnings[0], tier1), "Microsoft slowed down 20% of its requests in the last 14 days.");
+  assert.equal(forecastSentence(data.forecasts!.find((forecast) => forecast.scheduleId === ids[1])), "No measured runs yet, so Keel cannot estimate its load.");
   const healthy = data.schedules.map((schedule) => ({ ...schedule, last_status: null }));
   assert.equal(schedulesVerdict(healthy, data.generatedAt, data.forecasts).text, "Backup of Tier 1 puts heavy load on Microsoft; a slower schedule is suggested.");
 

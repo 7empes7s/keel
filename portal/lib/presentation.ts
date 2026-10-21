@@ -206,7 +206,7 @@ export const DISPLAY_ENUMS = {
   jobKind: {
     collect: "Backup of every type",
     backup: "Backup",
-    prune: "Clean-up of old snapshots",
+    prune: "Clean-up of old backups",
     "drift-detect": "Change check",
     offsite: "Off-site copy",
     restore: "Restore",
@@ -219,6 +219,7 @@ export const DISPLAY_ENUMS = {
     "api-drift": "Microsoft API check",
     "workload-collect": "Backup of SharePoint, Teams, Exchange and Purview settings",
     discover: "Check of what the tenant holds",
+    "content-collect": "Backup of mail, files and Teams content",
   },
   jobStatus: {
     queued: "Waiting to start",

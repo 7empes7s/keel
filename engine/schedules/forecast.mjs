@@ -378,12 +378,13 @@ export async function loadScheduleForecasts(client, principal, { tenantRef, now 
   });
   const people = [...new Set(forecasts.map((forecast) => forecast.acknowledgement?.acknowledgedBy).filter((id) => UUID.test(id ?? '')))];
   const { rows: names } = people.length
-    ? await client.query('SELECT id::text AS id, email FROM principal WHERE id = ANY($1::uuid[])', [people])
+    ? await client.query("SELECT id::text AS id, COALESCE(NULLIF(display_name, ''), email) AS name FROM principal WHERE id = ANY($1::uuid[])", [people])
     : { rows: [] };
-  const emailById = new Map(names.map((row) => [row.id, row.email]));
+  // The person's name when Keel knows one, else their sign-in address.
+  const nameById = new Map(names.map((row) => [row.id, row.name]));
   for (const forecast of forecasts) {
     if (forecast.acknowledgement) {
-      forecast.acknowledgement = { ...forecast.acknowledgement, acknowledgedByName: emailById.get(forecast.acknowledgement.acknowledgedBy) ?? null };
+      forecast.acknowledgement = { ...forecast.acknowledgement, acknowledgedByName: nameById.get(forecast.acknowledgement.acknowledgedBy) ?? null };
     }
   }
   return { generatedAt: new Date(now).toISOString(), windowMs, minSamples: MIN_SAMPLES, timeZone, forecasts };

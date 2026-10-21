@@ -13,7 +13,7 @@ import { Verdict } from "@/components/verdict";
 import { getDiscoveryInventory } from "@/lib/discovery";
 import { getCoverageData } from "@/lib/portal-data";
 import { getRecentJobs, type JobRecord } from "@/lib/portal-jobs";
-import { protectStatus, protectVerdict, protectVerdictDetail, tierSummaries } from "@/lib/protect-view";
+import { protectStatus, protectVerdict, protectVerdictDetail, tierSummaries, withWorkloadKinds } from "@/lib/protect-view";
 import { typeService } from "@/lib/baselines-view";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { Schedule } from "@/lib/schedules";
@@ -36,7 +36,7 @@ export default async function ProtectPage() {
 
   let data: CoverageData;
   try {
-    data = await getCoverageData();
+    data = withWorkloadKinds(await getCoverageData());
   } catch {
     return (
       <>

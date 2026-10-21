@@ -193,6 +193,9 @@ export interface CoverageData {
   } | null;
   summary: CoverageSummary;
   types: CoverageType[];
+  // The Microsoft 365 workloads (Exchange, SharePoint, Teams, Purview, Power Platform),
+  // one kind each, reported beside the Entra ID and Intune types (lib/workload-kinds.ts).
+  workloads?: CoverageType[];
   // Gap P2: whether the committed live records were checked, and with a key.
   liveEvidence?: { keyConfigured: boolean; workloads: WorkloadLiveRecord[] } | null;
 }

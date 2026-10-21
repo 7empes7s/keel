@@ -266,7 +266,8 @@ test('coverage portal: report survives normalization, authorization and page ren
       const html = renderToStaticMarkup(createElement(AppRouterContext.Provider, { value: router },
         await render(new Headers([[PRINCIPAL_ID_HEADER, 'viewer'], [CAPABILITIES_HEADER, 'read']]))));
       assert.ok(reads > 0, 'authorized positive control reaches the loader');
-      assert.equal((html.match(/<dt>Configuration type<\/dt>/g) || []).length, data.types.length);
+      // Protect lists the Microsoft 365 workloads beside the catalogue types.
+      assert.equal((html.match(/<dt>Configuration type<\/dt>/g) || []).length, data.types.length + data.workloads.length);
       for (const item of data.types) {
         assert.ok(html.includes(item.type));
         if (item.observation) assert.ok(html.includes(item.observation.observationId));

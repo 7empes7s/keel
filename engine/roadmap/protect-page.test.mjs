@@ -117,9 +117,12 @@ test('Protect: the verdict comes from the coverage reader, the tier strip from t
       assert.ok(html.includes('>' + plainKind('roleAssignment') + '</a>'));
       assert.match(html, /Back up Tier 1 again/);
 
-      // One record per kind under the list, each with its proof reference; the details
-      // panel states the standing and keeps the same record.
-      assert.equal((html.match(/<dt>Configuration type<\/dt>/g) || []).length, data.types.length);
+      // One record per kind under the list (the Microsoft 365 workloads too, so every
+      // service shows), each with its proof reference; the details panel states the
+      // standing and keeps the same record.
+      assert.ok(data.workloads.length > 0, 'the coverage reader reports the workloads');
+      assert.equal((html.match(/<dt>Configuration type<\/dt>/g) || []).length, data.types.length + data.workloads.length);
+      for (const item of data.workloads) assert.ok(html.includes('<dt>Configuration type</dt><dd><code>' + item.type + '</code>'), item.type);
       for (const item of data.types) {
         if (!item.writeCapability) continue;
         assert.ok(html.includes('Proof reference · update</dt><dd><code>' + (item.writeCapability.operations.update.proofRef ?? 'unknown')), item.type);

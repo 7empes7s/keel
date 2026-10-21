@@ -55,6 +55,9 @@ export const ID_KEY_TYPES = new Set([
   // attributes carry the same name in every tenant.
   'b2bManagementPolicy', 'servicePrincipalCreationPolicy', 'permissionGrantPreApprovalPolicy',
   'identityUserFlowAttribute', 'authenticationEventListener', 'externalDomainFederation',
+  // Remaining kinds, batch 5: built-in Exchange roles carry the same name in every tenant.
+  'exchangeRoleDefinition', 'exchangeRoleAssignment', 'exchangeCustomAppScope',
+  'defenderRoleDefinition', 'defenderRoleAssignment', 'defenderCustomAppScope',
 ]);
 
 // Tenant singletons: exactly one object per tenant, so the type name is the

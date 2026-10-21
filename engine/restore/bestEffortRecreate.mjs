@@ -31,6 +31,8 @@ export const BEST_EFFORT_CONTRACT_VERSION = 1;
 const ENTRA = 'Microsoft Entra admin center';
 const INTUNE = 'Microsoft Intune admin center';
 const M365 = 'Microsoft 365 admin center';
+const EXCHANGE = 'Exchange admin center';
+const DEFENDER = 'Microsoft Defender portal';
 const at = (center, ...steps) => [center, ...steps].join(' > ');
 
 /**
@@ -87,6 +89,13 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   multiTenantOrganizationIdentitySyncPolicyTemplate: 'Microsoft Graph: /policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization (no admin center page)',
   multiTenantOrganizationPartnerConfigurationTemplate: 'Microsoft Graph: /policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration (no admin center page)',
   authenticationEventListener: 'Microsoft Graph: /identity/authenticationEventListeners, set per app with a custom authentication extension (no admin center page)',
+  // Exchange and Defender admin roles (remaining kinds, batch 5).
+  exchangeRoleDefinition: 'Exchange Online PowerShell: New-ManagementRole from the same parent role (no admin center page for custom roles)',
+  exchangeRoleAssignment: at(EXCHANGE, 'Roles', 'Admin roles', '<role group>', 'Permissions'),
+  exchangeCustomAppScope: 'Exchange Online PowerShell: New-ManagementScope (no admin center page)',
+  defenderRoleDefinition: at(DEFENDER, 'System', 'Permissions', 'Microsoft Defender XDR', 'Roles'),
+  defenderRoleAssignment: at(DEFENDER, 'System', 'Permissions', 'Microsoft Defender XDR', 'Roles', '<role>', 'Assignments'),
+  defenderCustomAppScope: 'Microsoft Graph: /roleManagement/defender/customAppScopes (beta, no admin center page)',
   synchronizationJob: at(ENTRA, 'Enterprise apps', '<app>', 'Provisioning'),
   // sign-in and security policies
   authenticationStrengthPolicy: at(ENTRA, 'Protection', 'Conditional Access', 'Authentication strengths'),

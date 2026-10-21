@@ -34,6 +34,7 @@ import intuneExtended from './catalog.d/intune-extended.mjs';
 import tenantConnectors from './catalog.d/tenant-connectors.mjs';
 import intuneTenantSettings from './catalog.d/intune-tenant-settings.mjs';
 import entraTenantSettings from './catalog.d/entra-tenant-settings.mjs';
+import otherRoleProviders from './catalog.d/other-role-providers.mjs';
 
 export const CATALOG = [
   ...tenant,
@@ -49,6 +50,7 @@ export const CATALOG = [
   ...tenantConnectors,
   ...intuneTenantSettings,
   ...entraTenantSettings,
+  ...otherRoleProviders,
 ];
 
 /** Directory object types whose ids other resources reference by GUID. */

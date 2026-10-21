@@ -309,6 +309,16 @@ export async function readMailFlow({ powershell = {}, families = FAMILY_NAMES, s
   const unidentified = reads.reduce((sum, read) => sum + read.unidentified, 0);
   const statuses = resources.flatMap((entry) => Object.values(entry.fieldCoverage).map((coverage) => coverage.status));
   const fieldCounts = statuses.reduce((counts, status) => ({ ...counts, [status]: (counts[status] ?? 0) + 1 }), {});
+  // Which declared fields an answer did not carry, per family, so a partial run says
+  // what it is missing (names only, never values).
+  const unknownFields = {};
+  for (const entry of resources) {
+    for (const [field, coverage] of Object.entries(entry.fieldCoverage)) {
+      if (coverage.status !== 'unknown') continue;
+      const family = (unknownFields[entry.kind] ??= {});
+      family[field] = (family[field] ?? 0) + 1;
+    }
+  }
   const perFamily = Object.fromEntries(families.map((family, index) => {
     const read = reads[index];
     const status = read.failure ? read.failure.status : read.unavailable ? read.unavailable.status : 'read';
@@ -340,6 +350,7 @@ export async function readMailFlow({ powershell = {}, families = FAMILY_NAMES, s
     unavailable,
     skipped,
     fieldCounts,
+    unknownFields,
   };
 }
 
@@ -375,6 +386,7 @@ export async function recordMailFlowRun(client, { tenantRef, result }) {
       [tenantRef, MAIL_FLOW_WORKLOAD, result.outcome, result.observedFrom, result.observedTo, {
         discovery: result.discovery ?? null,
         fieldCounts: result.fieldCounts ?? {},
+        unknownFields: result.unknownFields ?? {},
         failures: result.failures ?? [],
         unavailable: result.unavailable ?? [],
         skipped: result.skipped ?? [],

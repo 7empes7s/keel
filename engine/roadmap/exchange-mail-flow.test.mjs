@@ -311,6 +311,14 @@ test('every object is one observation under a stable identity, with declared fie
   const clean = await readMailFlow({ powershell: fakeExchange().powershell, now: () => NOW });
   assert.equal(clean.outcome, 'complete');
   assert.equal(clean.resources.length, 12);
+  assert.deepEqual(clean.unknownFields, {});
+
+  // A declared property the answer does not carry is a gap, and the run names it.
+  const { TestModeAction, ...withoutTestMode } = SAMPLE['Get-HostedContentFilterPolicy'][0];
+  const missing = await readMailFlow({ powershell: fakeExchange({ answers: { 'Get-HostedContentFilterPolicy': [withoutTestMode] } }).powershell, now: () => NOW });
+  assert.equal(missing.outcome, 'partial');
+  assert.equal(missing.fieldCounts.unknown, 1);
+  assert.deepEqual(missing.unknownFields, { antiSpamPolicy: { TestModeAction: 1 } });
   assert.ok(Object.values(clean.discovery.families).every((family) => family.status === 'read'));
 });
 
@@ -393,6 +401,7 @@ test('collection stays off until Exchange and every core read are qualified; Def
   exchange.calls.length = 0;
   const full = await collectMailFlow(client, { tenantRef, ledger: ledgerWith(tenantRef, ALL_READS), powershell: exchange.powershell, now: () => NOW });
   assert.equal(full.run.outcome, 'complete');
+  assert.deepEqual(full.run.digest.unknownFields, {}, 'the stored run says which fields were missing: none');
   assert.equal(exchange.calls.length, FAMILY_NAMES.length);
   const { rows } = await client.query(`SELECT resource_key, fields, field_coverage FROM workload_observation WHERE collection_id = $1 ORDER BY resource_key`, [full.run.id]);
   assert.equal(rows.length, 12);

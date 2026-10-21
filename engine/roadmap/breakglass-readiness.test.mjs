@@ -27,7 +27,7 @@ import { createEscalationRule } from '../notify/escalation.mjs';
 import { assertBreakGlassCoverage, policyTreatment } from '../safety/breakGlassInvariant.mjs';
 import {
   BREAKGLASS_CONTROL, BreakGlassAuthorizationError, GLOBAL_ADMINISTRATOR, USAGE_CONDITION, VALIDATION_DUE_CONDITION,
-  createFixtureMethodReader, evaluateAccountReadiness, loadBreakGlassReadiness, observeBreakGlassMethods,
+  createFixtureMethodReader, evaluateAccountReadiness, findBreakGlassCandidate, loadBreakGlassReadiness, observeBreakGlassMethods,
   recordBreakGlassLifecycle, registerBreakGlassAccount, retireBreakGlassAccount, runBreakGlassCanary, sweepBreakGlassCanaries,
 } from '../safety/breakGlassReadiness.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
@@ -469,4 +469,21 @@ test('lifecycle writes need a configuration grant; a legacy install reads as not
   assert.deepEqual([legacy.overall, legacy.configured, legacy.canary.status], ['not-configured', false, 'not-configured']);
   assert.equal((await runBreakGlassCanary(ctx.client, { tenantRef: A })).status, 'not-configured');
   assert.equal(await sweepBreakGlassCanaries(ctx.client, { log: () => {} }), null);
+});
+
+test('the report names each account from the user backup, and a sign-in name finds an account to register', async (t) => {
+  const ctx = await setup(t);
+  assert.equal(await findBreakGlassCandidate(ctx.client, { tenantRef: A, signInName: EMAILS.bg1 }), null, 'no user backup yet');
+  await ctx.collect(A, [user(ID.bg1, EMAILS.bg1, { displayName: 'Emergency admin 1' }), ...healthyInventory().slice(1)]);
+  assert.deepEqual(
+    await findBreakGlassCandidate(ctx.client, { tenantRef: A, signInName: 'BG1@Contoso.onmicrosoft.com ' }),
+    { accountId: ID.bg1, displayName: 'Emergency admin 1', signInName: EMAILS.bg1 },
+  );
+  assert.equal(await findBreakGlassCandidate(ctx.client, { tenantRef: A, signInName: 'nobody@contoso.onmicrosoft.com' }), null);
+  assert.equal(await findBreakGlassCandidate(ctx.client, { tenantRef: B, signInName: EMAILS.bg1 }), null, 'another tenant sees nothing');
+  await ctx.register(A, 'bg1');
+  await ctx.register(A, 'bg2');
+  const [bg1, bg2] = (await ctx.readiness()).accounts;
+  assert.deepEqual([bg1.displayName, bg1.signInName], ['Emergency admin 1', EMAILS.bg1]);
+  assert.deepEqual([bg2.displayName, bg2.signInName], [null, EMAILS.bg2]);
 });

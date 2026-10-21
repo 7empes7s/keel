@@ -21,6 +21,7 @@ const PAGES = [
   { name: "reports-scoped", hash: "/reports/scoped" },
   { name: "readiness", hash: "/readiness" },
   { name: "readiness-ready", hash: "/readiness/ready" },
+  { name: "readiness-empty", hash: "/readiness/empty" },
   { name: "activity", hash: "/activity" },
   { name: "job-failed", hash: "/jobs/a4" },
   { name: "job-restore-completion", hash: "/jobs/r9" },
@@ -1266,22 +1267,143 @@ test("the value report fits 390 and 1440 in both themes, and every tile, chart a
 // own state, checks KEEL cannot make stay listed, and a use leads the verdict.
 test("emergency access shows each check, keeps unknown and unchecked visible, and leads with a use", async ({ page }) => {
   await open(page, "/readiness");
-  await expect(page.locator(".verdict-headline")).toHaveText("An emergency account was used");
-  await expect(page.locator(".readiness-account-0 .readiness-check")).toHaveCount(5);
-  const second = page.locator(".readiness-account-1");
-  await expect(second.locator(".item-card-head .pill")).toHaveText("Not ready");
-  await expect(second.locator(".readiness-check-unknown")).toContainText("Not known");
-  await expect(second.locator(".readiness-check-fail")).toContainText("Block legacy auth");
-  await expect(second.locator(".readiness-check-due")).toContainText("a new test has been due since");
-  await expect(page.locator(".readiness-alerts")).toContainText("was used 1 hour ago, and made 2 changes after it.");
-  await expect(page.locator(".readiness-surface-unsupported")).toHaveCount(4);
-  await expect(page.locator(".readiness-surface-unsupported").first()).toContainText("KEEL cannot check this");
+  await expect(page.locator(".page-header .status-pill")).toHaveText("Account used");
+  await expect(page.locator(".verdict-sentence")).toHaveText("An emergency account was used: check that the use was planned, then acknowledge the alert.");
+  await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "Review the sign-in" })).toHaveAttribute("href", /alerts\?open=a1e70000-0000-4000-8000-000000000094/);
+  await expect(page.locator("#ea-account-0 .ea-check")).toHaveCount(5);
+  const second = page.locator("#ea-account-1");
+  await expect(second.locator("h3")).toHaveText("Emergency admin 2");
+  await expect(second.locator(".ea-who small")).toHaveText("bg2@contoso.onmicrosoft.com");
+  await expect(second.locator(".ea-account-head .badge")).toHaveText("Not ready");
+  // Problems first: the rule that reaches it, then the overdue test, then what is not known.
+  await expect(second.locator(".ea-check").first()).toHaveAttribute("data-status", "fail");
+  await expect(second.locator('.ea-check[data-status="unknown"]')).toContainText("Not known");
+  await expect(second.locator('.ea-check[data-status="fail"]')).toContainText("Block legacy auth");
+  await expect(second.getByRole("link", { name: "Open Block legacy auth" })).toHaveAttribute("href", /drift\?q=Block%20legacy%20auth/);
+  await expect(second.locator('.ea-check[data-status="due"]')).toContainText("a new test has been due since");
+  await expect(page.locator(".ea-alerts")).toContainText("Emergency admin 2 was used 1 hour ago, and made 2 changes after it.");
+  await expect(page.locator(".ea-changes li")).toHaveCount(2);
+  await expect(page.locator('.ea-surface[data-status="unsupported"]')).toHaveCount(4);
+  await expect(page.locator('.ea-surface[data-status="unsupported"]').first()).toContainText("Check by hand");
+  // "Checked" is closed; the hand checks are open.
+  await expect(page.locator('.ea-group[data-group="evaluated"]')).not.toHaveAttribute("open", "");
+  await expect(page.locator('.ea-group[data-group="unsupported"]')).toHaveAttribute("open", "");
+  await expect(page.locator(".ea-tile")).toHaveCount(4);
+  await expect(page.locator(".ea-tile", { hasText: "Tests due" }).locator(".ea-tile-count")).toHaveText("1");
+  await expect(page.locator(".ea-tile", { hasText: "Unplanned uses" }).locator(".ea-tile-count")).toHaveText("1");
 
   await open(page, "/readiness/ready");
-  await expect(page.locator(".verdict-headline")).toHaveText("Ready");
+  await expect(page.locator(".page-header .status-pill")).toHaveText("Ready");
   await expect(page.locator(".verdict-sentence")).toContainText("4 areas need a manual check");
-  await expect(page.locator(".readiness-surface-unsupported")).toHaveCount(4);
+  await expect(page.locator('.ea-surface[data-status="unsupported"]')).toHaveCount(4);
+  await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
 });
+
+test("Emergency access · record a test sign-in, acknowledge a use, retire asks first", async ({ page }) => {
+  type Call = { url: string; method: string; body: string | null };
+  const posts = async (url: string) => (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
+    .filter((call) => call.url === url).map((call) => JSON.parse(call.body ?? "{}"));
+  await open(page, "/readiness");
+  const second = page.locator("#ea-account-1");
+  await expect(second.locator('.ea-check[data-check="lastValidation"] .badge')).toHaveText("Due");
+
+  // Record a test sign-in: a sheet with a day (today by default), a time and a note.
+  await second.getByRole("link", { name: "Record a test sign-in" }).click();
+  await expect(page).toHaveURL(/do=record/);
+  const sheet = page.getByRole("dialog", { name: "Record a test sign-in" });
+  await expect(sheet).toContainText("KEEL only records it; it does not sign in.");
+  await expect(sheet.locator(".picker-button")).toBeVisible();
+  await sheet.getByLabel("Time (24-hour)").fill("25:00");
+  await sheet.getByRole("button", { name: "Save test sign-in" }).click();
+  await expect(sheet.getByRole("alert")).toHaveText("Write the time as hours and minutes, such as 09:30.");
+  await sheet.getByLabel("Time (24-hour)").fill("08:00");
+  await sheet.getByLabel("Note (optional)").fill("Quarterly test with the service desk");
+  await sheet.getByRole("button", { name: "Save test sign-in" }).click();
+  await expect(sheet).toBeHidden();
+  await expect(page.locator(".toast", { hasText: "Test sign-in recorded" })).toBeVisible();
+  const [recorded] = await posts("/api/actions/breakglass");
+  expect(recorded).toMatchObject({ op: "record", accountId: "b9000000-0000-4000-8000-000000000002", kind: "validated", note: "Quarterly test with the service desk" });
+  expect(recorded.occurredAt).toMatch(/T08:00:00\.000Z$/);
+  await expect(second.locator('.ea-check[data-check="lastValidation"] .badge')).toHaveText("Passes");
+  await expect(page.locator(".ea-tile", { hasText: "Tests due" }).locator(".ea-tile-count")).toHaveText("0");
+
+  // Acknowledge the unplanned use in place.
+  await page.locator(".ea-alert").getByRole("button", { name: "Acknowledge" }).click();
+  await expect(page.locator(".toast", { hasText: "Alert acknowledged" })).toBeVisible();
+  expect((await posts("/api/actions/alerts")).at(-1)).toEqual({ alertId: "a1e70000-0000-4000-8000-000000000094", action: "acknowledge" });
+  await expect(page.locator(".ea-alert").getByRole("button", { name: "Acknowledge" })).toHaveCount(0);
+
+  // Retire asks first, names the consequence and needs a reason.
+  await second.getByRole("button", { name: /More/ }).click();
+  await page.locator(".ea-more-list").getByRole("link", { name: "Retire…" }).click();
+  const retire = page.getByRole("dialog", { name: "Retire this emergency account?" });
+  await expect(retire).toContainText("KEEL stops checking this account and stops watching its sign-ins. Its history stays.");
+  await retire.getByRole("button", { name: "Retire account" }).click();
+  await expect(retire.getByRole("alert")).toHaveText("Write why. It is kept with the record.");
+  await retire.getByLabel("Why retire it?").fill("Replaced by a new account");
+  await retire.getByRole("button", { name: "Retire account" }).click();
+  await expect(retire).toBeHidden();
+  expect((await posts("/api/actions/breakglass")).at(-1)).toEqual({ op: "retire", accountId: "b9000000-0000-4000-8000-000000000002", reason: "Replaced by a new account" });
+});
+
+test("Emergency access · a viewer sees the checks but no changes", async ({ page }) => {
+  await open(page, "/readiness/viewer");
+  await expect(page.locator(".ea-note")).toHaveText("Only people who manage configuration can change emergency accounts.");
+  await expect(page.locator(".ea-account")).toHaveCount(2);
+  await expect(page.locator("main").getByRole("link", { name: /Record|Add an emergency account|Edit|Resolve/ })).toHaveCount(0);
+  await expect(page.locator("main").getByRole("button", { name: /Acknowledge|More/ })).toHaveCount(0);
+  await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
+});
+
+test("Emergency access · with no accounts, the one action adds one", async ({ page }) => {
+  await open(page, "/readiness/empty");
+  await expect(page.locator(".page-header .status-pill")).toHaveText("Not set up");
+  await expect(page.locator(".ea-empty")).toContainText("No emergency accounts yet. Add two cloud-only accounts so one failure does not lock everyone out.");
+  await page.locator('[data-layer="verdict"]').getByRole("button", { name: "Add an emergency account" }).click();
+  const sheet = page.getByRole("dialog", { name: "Add an emergency account" });
+  await sheet.getByLabel("Sign-in name").fill("bg3@contoso.onmicrosoft.com");
+  await sheet.getByRole("button", { name: "Add account" }).click();
+  await expect(sheet).toBeHidden();
+  type Call = { url: string; method: string; body: string | null };
+  const added = (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls)).filter((call) => call.url === "/api/actions/breakglass").map((call) => JSON.parse(call.body ?? "{}"));
+  expect(added).toEqual([{ op: "register", signInName: "bg3@contoso.onmicrosoft.com", validationIntervalDays: 90 }]);
+});
+
+for (const theme of ["dark", "light"] as const) {
+  for (const width of [390, 1440]) {
+    for (const hash of ["/readiness", "/readiness/empty", "/readiness?account=b9000000-0000-4000-8000-000000000002&do=record"]) {
+      test(`Emergency access · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles and cards`, async ({ page }) => {
+        await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+        await open(page, hash, theme);
+        await expect(page.locator('[data-layer="verdict"]')).toBeVisible();
+        expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+        const clipped = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>(".ea-page *, .page-header *, .bl-sheet *")]
+          .filter((element) => element.children.length === 0 && element.clientWidth > 1 && element.scrollWidth > element.clientWidth + 1 && getComputedStyle(element).overflow !== "visible" && getComputedStyle(element).textOverflow !== "ellipsis")
+          .map((element) => element.textContent));
+        expect(clipped).toEqual([]);
+        const tiles = await page.locator(".ea-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+        expect(tiles.length).toBe(4);
+        expect(new Set(tiles).size).toBe(1);
+        if (width === 1440 && hash !== "/readiness/empty") {
+          const cards = await page.locator(".ea-account").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
+          expect(cards.length).toBe(2);
+          expect(new Set(cards).size).toBe(1);
+        }
+        // Rule 12: everything styled as clickable is a link with a target or a button.
+        const dead = await page.locator("main#main-content").evaluate((main) => [...main.querySelectorAll<HTMLElement>("a, .btn, .ea-tile")]
+          .filter((element) => (element.tagName === "A" && !(element as HTMLAnchorElement).getAttribute("href")) || (element.tagName !== "A" && element.tagName !== "BUTTON" && !element.closest("a, button")))
+          .map((element) => element.outerHTML.slice(0, 80)));
+        expect(dead).toEqual([]);
+        expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
+        if (hash.includes("do=record")) {
+          const sheet = page.getByRole("dialog", { name: "Record a test sign-in" });
+          await expect(sheet).toBeVisible();
+          await expect(sheet.getByRole("button", { name: "Save test sign-in" })).toBeInViewport();
+        }
+      });
+    }
+  }
+}
 
 // Polish pass 1: the recovery surfaces added by tasks 63–66 get their own
 // baselines and a phone-width check that nothing scrolls sideways.

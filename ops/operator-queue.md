@@ -4824,6 +4824,26 @@ item that needs it stays untouched.
   backup covers the whole tenant, not only the `KEEL-RT-` test fixtures.
 - Needs: nothing (Q99 and Q100 can run first or after; it does not change anything).
 - Status: in-progress
+- Result: in progress (2026-10-21 19:30 UTC). A and B are done; C waits for the 2026-10-22 01:00 UTC run. Read-only toward the tenant.
+  - **A1.** `storage.root` is not in `tenant.json`; it is in `content-reader.json`: `/var/lib/keel/content`.
+    - `/var/lib/keel/content`: on `/dev/sda1` (150G, 51G used, **94G free**, 35 %); `du -sh` 14M.
+    - Postgres data (`keel-postgres-data` volume): the same `/` volume; `du -sh` 2.2G.
+  - **A2.** Read with the Collector (Graph) and the Exchange collector, nothing else:
+    - users 104 (32 licensed, 65 with mail); 53 Exchange mailboxes: 35 user, 5 shared, 10 room, 1 equipment, 1 scheduling.
+    - **OneDrive: 14 drives, 47 632 839 070 bytes used.** 80 users have none (404). **10 answered 423 (locked)**, so their
+      size is unknown and they are not in the estimate.
+    - SharePoint: 44 sites from `getAllSites`, 20 of them non-personal, using 24 120 023 bytes (2 answered 404 on `drive`).
+    - Teams: 11.
+    - Mailboxes: `getMailboxUsageDetail(period='D7')` works only as CSV and returned just 2 rows (77 071 103 bytes), so I
+      read `Get-EXOMailboxStatistics` for all 53 instead: **305 785 795 bytes**, 3 412 items, 1 mailbox not readable.
+  - **A3. Gate: passed, narrowly.** Estimated first run 47 962 744 888 bytes (about 47.96 GB) against 50 % of the free
+    space (100 343 046 144 / 2 = 50 171 523 072). Headroom is about 2.2 GB, and the 10 locked OneDrives are not counted.
+    The six-hour job timeout may also be tight for about 48 GB.
+  - **B.** Saved `content-scope.json.bak-q101` (`cp -p`), then rewrote the file without `namePrefix`; root 600 kept, parse
+    check exit 0. New file: `{ "tenantHost": "<org>.sharepoint.com" }`. Content chunks before the run: 887, holding
+    7 507 067 bytes.
+  - **C.** Pending. A watcher logs free space every 5 minutes to `/root/q101-watch.log` and puts the backup scope file back
+    automatically if free space drops below 20 %.
 - **Read-only toward the tenant.** The collectors only read. No tenant writes, no fixtures, no permission grants: if the
   Collector cannot read some mailboxes, drives or sites (403), report the count and the reason verbatim (masked) and do not
   grant anything. That is a separate decision.

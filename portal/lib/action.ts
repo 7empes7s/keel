@@ -12,6 +12,8 @@ import {
   requestApproval,
 } from "../../engine/govern/approvals.mjs";
 import { applyDisposition } from "../../engine/govern/disposition.mjs";
+import { acceptServiceChange } from "../../engine/govern/workloadApproved.mjs";
+import { resolveAlert } from "../../engine/notify/alerts.mjs";
 import { appendEvidence } from "../../engine/govern/evidence.mjs";
 import { approveBootstrapPlan, executeBootstrap } from "../../engine/bootstrap/execute.mjs";
 import { BootstrapJournal, migrateBootstrapJournal } from "../../engine/bootstrap/journal.mjs";
@@ -462,9 +464,33 @@ export function guardedDispose(
 ): (request: Request) => Promise<Response> {
   return guarded(
     { action: "dispose", capability: "dispose-accept", recordAttempt: true },
-    async ({ client, principalId, request }) => {
+    async ({ client, principalId, tenantRef: tenant, request }) => {
       const body = await readActionParams(request);
-      const { driftId, action, reason, expiresAt } = body;
+      const { driftId, serviceChangeId, action, reason, expiresAt } = body;
+
+      // A service setting change (Exchange, SharePoint, Teams, ...) is accepted into
+      // that service's approved setup; it has no ignore. Its alert is settled with it.
+      if (serviceChangeId !== undefined) {
+        if (typeof serviceChangeId !== "string" || serviceChangeId.length === 0 || driftId !== undefined) {
+          throw new InvalidActionRequest("serviceChangeId is a change id, and is sent without driftId");
+        }
+        if (action !== "accept") throw new InvalidActionRequest("a service setting change can only be accepted");
+        if (typeof reason !== "string" || reason.trim().length === 0) throw new InvalidActionRequest("reason is required");
+        let accepted: { alertId: string | null };
+        try {
+          accepted = await acceptServiceChange(client, { tenantRef: tenant, changeId: serviceChangeId, actor: principalId, reason });
+        } catch {
+          return Response.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
+        }
+        if (accepted.alertId) {
+          try {
+            await resolveAlert(client, { tenantRef: tenant, alertId: accepted.alertId, actor: principalId, reason: `Accepted into the approved setup: ${reason.trim()}` });
+          } catch {
+            // The next read matches the approved setup and resolves it.
+          }
+        }
+        return Response.json({ accepted }, { headers: NO_STORE });
+      }
 
       if (typeof driftId !== "string" || driftId.length === 0) {
         throw new InvalidActionRequest("driftId is required");

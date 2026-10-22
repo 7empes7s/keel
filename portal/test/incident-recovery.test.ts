@@ -23,6 +23,7 @@ import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
 import { renderIncidentsAt } from "./render-incidents";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
+import { recordValues } from "./record-fields";
 
 // ------------------------------------------------------------------ rendering
 
@@ -114,8 +115,8 @@ test("rows name backups and people; every id stays in Technical details", async 
   assert.match(html, /class="btn btn-sm" href="\/restore\?snapshot=aaaaaaaa-[^"]*">Restore from this backup</);
   assert.doesNotMatch(html, />Record your check<|>Record a new check<|>Close incident<|>Add attack window<|>New incident</, "read-only without investigate");
   // Record completeness: each id is still there, labelled.
-  assert.match(html, new RegExp(`Recommended snapshot ID</dt><dd><code>${OLD_ID}</code>`));
-  assert.match(html, /Retention pin ID<\/dt><dd><code>44444444-/);
+  assert.ok(recordValues(html, "Recommended snapshot ID").some((value) => value.startsWith(`<code>${OLD_ID}</code>`)));
+  assert.ok(recordValues(html, "Retention pin ID").some((value) => value.startsWith("<code>44444444-")));
 
   const actionable = await renderIncidentsAt("", { incidents: [detail.incident], selected: detail, now: NOW, canInvestigate: true });
   assert.match(actionable, />Record a new check</);
@@ -131,9 +132,11 @@ test("rows name backups and people; every id stays in Technical details", async 
 
 test("a tile filters the list by state and keeps it in the URL", async () => {
   const html = await renderIncidentsAt("state=unsafe", { incidents: [detail.incident], selected: detail, now: NOW, canInvestigate: true });
-  assert.match(html, /Showing unsafe backups only: 1 of 2\./);
+  assert.match(html, /Showing <b>1<\/b> of 2 backups/);
   assert.equal(html.split('class="ir-row"').length - 1, 1);
-  assert.match(html, /href="\/incidents\?state=cleared"/);
+  assert.match(html, /href="\/incidents\?state=cleared%2Cunsafe"/, "Cleared adds to the picked state");
+  const both = await renderIncidentsAt("state=unsafe,cleared", { incidents: [detail.incident], selected: detail, now: NOW, canInvestigate: true });
+  assert.match(both, /Showing <b>2<\/b> of 2 backups/);
 });
 
 test("engine refusals become plain sentences, with no key or id in them", () => {
@@ -218,7 +221,7 @@ test("the restore review names the incident, the approver and the checked resour
   assert.match(visible, /not checked for “Admin consent phishing”; an override allows it/);
   assert.match(visible, /Override approved by\s+Ines Investigator\s*: only point with the new membership/);
   assert.match(visible, /Helpdesk Tier 0 \(group\) must be gone/);
-  assert.match(html, /Authorized by \(principal ID\)<\/dt><dd><code>3f9c2b1e-/);
+  assert.ok(recordValues(html, "Authorized by (principal ID)").some((value) => value.startsWith("<code>3f9c2b1e-")));
 });
 
 test("incident recovery is a page inside Restore, not a new navigation entry", () => {

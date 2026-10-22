@@ -43,7 +43,8 @@ test("an emergency change names its resource and people, never their ids or emai
   const html = renderToStaticMarkup(createElement(IntentCard, { intent, now: NOW }));
   const shown = visible(html);
   assert.match(shown, /Disable USB storage \(device management script\)/);
-  assert.match(shown, /Approved by Ops Lead for Maro Defili/);
+  assert.match(shown, /Approved by<\/dt><dd>Ops Lead/);
+  assert.match(shown, /Change made by<\/dt><dd>Maro Defili/);
   assert.doesNotMatch(shown, GUID);
   assert.doesNotMatch(shown, /@contoso\.com/);
   assert.match(html, new RegExp(SCRIPT_ID), "the key stays in Technical details");

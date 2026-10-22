@@ -20,7 +20,15 @@ export function FindingRecordFields({ finding }: { finding: ComplianceFinding })
           copy={false}
           key={`${entry.resourceType}-${entry.window.startedAt}`}
           label={`Observation window · ${entry.resourceType}`}
-          value={`${entry.window.startedAt ?? "unknown"} → ${entry.window.endedAt ?? "unknown"} · snapshot ${entry.snapshotId ?? "no match"}`}
+          value={`${entry.window.startedAt ?? "unknown"} → ${entry.window.endedAt ?? "unknown"} · ${entry.collectionId ? `service read ${entry.collectionId}` : `snapshot ${entry.snapshotId ?? "no match"}`}`}
+        />
+      ))}
+      {(finding.details ?? []).map((line, index) => (
+        <RecordField
+          copy={false}
+          key={`detail-${index}`}
+          label={`Failing setting · ${line.subject}`}
+          value={`${line.setting} = ${JSON.stringify(line.value)} (expected ${JSON.stringify(line.expected)})`}
         />
       ))}
       {links.change.linked.map((change) => (
@@ -64,6 +72,7 @@ export function StorageRecordFields({ storage }: { storage: StorageResidency }) 
       <RecordField copy={false} label="Boundary" value={storage.boundary} />
       <RecordField copy={false} label="Immutability claim" value={storage.immutability} />
       <RecordField copy={false} label="Recovery manifest" usage={<>set with <code>KEEL_RECOVERY_MANIFEST_PATH</code></>} value={storage.source} />
+      <RecordField copy={false} label="Read from" value={storage.basis === "database-location" ? "where Keel's database runs (no recovery manifest set)" : storage.basis === "recovery-manifest" ? "the recovery manifest" : null} />
       <RecordField copy={false} label="Manifest generated at" value={storage.generatedAt} />
       <RecordField copy={false} label="Certifies" value="nothing: configuration statement only" />
     </>

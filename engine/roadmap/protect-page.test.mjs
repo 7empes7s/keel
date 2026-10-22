@@ -121,14 +121,17 @@ test('Protect: the verdict comes from the coverage reader, the tier strip from t
       // service shows), each with its proof reference; the details panel states the
       // standing and keeps the same record.
       assert.ok(data.workloads.length > 0, 'the coverage reader reports the workloads');
-      assert.equal((html.match(/<dt>Configuration type<\/dt>/g) || []).length, data.types.length + data.workloads.length);
-      for (const item of data.workloads) assert.ok(html.includes('<dt>Configuration type</dt><dd><code>' + item.type + '</code>'), item.type);
+      // A record field is found by the label the page passes (data-field), then its value.
+      const field = (label, value) => new RegExp('data-field="' + label + '"[^>]*>(?:(?!</dd>)[^])*?<dd>(?:(?!</dd>)[^])*?<code>' + value);
+      assert.equal((html.match(/data-field="Configuration type"/g) || []).length, data.types.length + data.workloads.length);
+      for (const item of data.workloads) assert.match(html, field('Configuration type', item.type + '</code>'), item.type);
       for (const item of data.types) {
         if (!item.writeCapability) continue;
-        assert.ok(html.includes('Proof reference · update</dt><dd><code>' + (item.writeCapability.operations.update.proofRef ?? 'unknown')), item.type);
+        assert.ok(html.includes('data-field="Proof reference · update"'), item.type);
+        assert.ok(html.includes('<code>' + (item.writeCapability.operations.update.proofRef ?? 'unknown')), item.type);
         const details = withRouter(createElement(TypeDetails, { item, now: data.generatedAt, name: plainKind(item.type) }));
         assert.match(details, /<p class="pt-details-standing">/);
-        assert.ok(details.includes('Proof reference · update</dt><dd><code>'), item.type);
+        assert.match(details, field('Proof reference · update', ''), item.type);
         assertPlain(visibleText(details), 'Protect details ' + item.type);
       }
       assertPlain(visibleText(html), 'Protect');

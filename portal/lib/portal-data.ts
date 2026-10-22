@@ -25,7 +25,7 @@ import { changeObjectIds } from "../../engine/identity/auditSources.mjs";
 import { loadBreakGlassReadiness } from "../../engine/safety/breakGlassReadiness.mjs";
 import { withoutScriptBodies } from "../../engine/safety/scriptBodies.mjs";
 import { changeBlastRadius, itemBlastRadius } from "../../engine/safety/blastRadius.mjs";
-import { comparedSettings, driftEvidence, semanticChange, summarizeSemanticDrift } from "../../engine/govern/semanticDrift.mjs";
+import { comparedSettings, driftEvidence, MAX_EVIDENCE_CHANGES, semanticChange, summarizeSemanticDrift } from "../../engine/govern/semanticDrift.mjs";
 import { answerQuestion, knownEntities } from "../../engine/query/execute.mjs";
 import {
   getEvidenceIntegrity,
@@ -48,7 +48,7 @@ import { loadServiceChanges } from "@/lib/service-changes";
 import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
 import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
-import { databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
+import { databaseIsLocal, databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
 import type {
   BaselineCapture,
   BaselineChanges,
@@ -486,22 +486,36 @@ async function baselinesWithCapture(client: KeelClient, ref: string, now: Date):
   });
 }
 
-function readRecoveryManifest(): { manifest: UnknownRecord | null; source: string | null } {
+type StorageBasis = NonNullable<StorageResidency["basis"]>;
+
+function readRecoveryManifest(): { manifest: UnknownRecord | null; source: string | null; basis: StorageBasis | null } {
   const path = recoveryManifestPath();
-  if (!path) return { manifest: null, source: null };
+  if (!path) {
+    // No recovery manifest set: backups are kept in Keel's own database, so when that
+    // database runs on this server, that is where they are. A remote database stays
+    // unknown rather than guessed.
+    return databaseIsLocal(databaseUrl())
+      ? { manifest: { residency: { provider: "local-disk" } }, source: null, basis: "database-location" }
+      : { manifest: null, source: null, basis: null };
+  }
   try {
-    return { manifest: JSON.parse(readFileSync(/* turbopackIgnore: true */ path, "utf8")) as UnknownRecord, source: path };
+    return { manifest: JSON.parse(readFileSync(/* turbopackIgnore: true */ path, "utf8")) as UnknownRecord, source: path, basis: "recovery-manifest" };
   } catch {
     // An unreadable manifest is reported as not configured, never guessed.
-    return { manifest: null, source: path };
+    return { manifest: null, source: path, basis: null };
   }
+}
+
+function storageFrom(): StorageResidency {
+  const { manifest, source, basis } = readRecoveryManifest();
+  const storage = { ...(storageResidency({ manifest }) as Omit<StorageResidency, "source">), source };
+  return { ...storage, basis: storage.configured ? basis : null };
 }
 
 export async function getComplianceData(): Promise<ComplianceData> {
   const ref = tenantRef();
   const now = new Date();
-  const { manifest, source } = readRecoveryManifest();
-  const storage = { ...(storageResidency({ manifest }) as Omit<StorageResidency, "source">), source };
+  const storage = storageFrom();
   return withClient(async (client) => {
     const [{ findings, summary }, baselines] = await Promise.all([
       complianceFindings(client, { tenantRef: ref, now }) as Promise<{ findings: ComplianceFinding[]; summary: ComplianceSummary }>,
@@ -769,15 +783,24 @@ async function withDecisionEvidence(client: KeelClient, ref: string, items: Drif
     return change as SemanticChange;
   });
   let evidence: Map<string, ChangeEvidence> | null = null;
+  // The engine reads the records of a bounded number of changes: the riskiest first, so
+  // a change that could lock administrators out always has its records.
+  const rank = (radius: string) => { const index = BLAST_RADIUS_ORDER.indexOf(radius); return index === -1 ? 99 : index; };
+  const byRisk = [...items].sort((a, b) => rank(a.blastRadius) - rank(b.blastRadius) || b.detectedAt.localeCompare(a.detectedAt));
+  const read = new Set(byRisk.slice(0, MAX_EVIDENCE_CHANGES).map((item) => item.id));
   try {
     evidence = (await driftEvidence(client, {
       tenantRef: ref, scope,
-      items: items.map(({ id, naturalKey, resourceType, changeType, detectedAt }) => ({ id, naturalKey, resourceType, changeType, detectedAt })),
+      items: byRisk.map(({ id, naturalKey, resourceType, changeType, detectedAt }) => ({ id, naturalKey, resourceType, changeType, detectedAt })),
     })) as Map<string, ChangeEvidence>;
   } catch (error) {
     console.error("[keel-portal] change evidence unavailable", error);
   }
-  return items.map((item, index) => ({ ...item, semantic: semantic[index], evidence: evidence?.get(item.id) ?? null }));
+  return items.map((item, index) => {
+    const found = evidence?.get(item.id) ?? null;
+    const evidenceGap: DriftRecord["evidenceGap"] = found ? undefined : !evidence ? "read-failed" : read.has(item.id) ? "not-found" : "over-limit";
+    return { ...item, semantic: semantic[index], evidence: found, ...(evidenceGap ? { evidenceGap } : {}) };
+  });
 }
 
 /**
@@ -1387,8 +1410,7 @@ export async function getDashboardData(): Promise<DashboardData> {
 export async function getResilienceData(): Promise<ResilienceData> {
   const ref = tenantRef();
   const now = new Date();
-  const { manifest, source } = readRecoveryManifest();
-  const storage = { ...(storageResidency({ manifest }) as Omit<StorageResidency, "source">), source };
+  const storage = storageFrom();
   return withClient(async (client) => {
     const metrics = (await loadRecoveryMetrics(client, {
       tenantRef: ref,
@@ -1431,7 +1453,8 @@ export async function getAskData(scope: EntityScope = CENTRAL_SCOPE, input: AskI
     const request = input.question ? null : {
       intent: input.intent,
       params: Object.fromEntries(Object.entries({
-        entity: input.entity, period: input.period, resourceType: input.resourceType, changeType: input.changeType,
+        entity: input.entity, period: input.period, from: input.from, to: input.to, resourceType: input.resourceType,
+        resourceTypes: input.resourceTypes, name: input.name, changeType: input.changeType,
       }).filter(([, value]) => value !== undefined)),
     };
     const answer = (await answerQuestion(client, {

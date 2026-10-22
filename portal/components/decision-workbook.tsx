@@ -7,7 +7,10 @@ import { ago, displayEnum, formatTimestamp } from "@/lib/presentation";
 import {
   approvalSentence, baselineSentence, findingSentence, ownerSentence, planSentence, seenSentence,
 } from "@/lib/semantic-drift";
-import type { ChangeAttribution, ChangeEvidence, SemanticSummary } from "@/lib/types";
+import type { ChangeAttribution, ChangeEvidence, DriftRecord, SemanticSummary } from "@/lib/types";
+
+// engine/govern/semanticDrift.mjs MAX_EVIDENCE_CHANGES: changes whose records are read at once.
+const MAX_LINKED = 200;
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
@@ -77,12 +80,21 @@ function Row({ label, mismatch = false, children }: { label: string; mismatch?: 
 }
 
 // The records one decision rests on, each with whether it matches the others.
-export function ChangeEvidencePanel({ evidence, attribution, now }: { evidence: ChangeEvidence | null | undefined; attribution: ChangeAttribution | null | undefined; now: string }) {
+// Why the records behind a change are missing, and what to do about it.
+const GAP_WORDS: Record<NonNullable<DriftRecord["evidenceGap"]>, { why: string; next: string }> = {
+  "read-failed": { why: "Keel could not read its own records just now.", next: "Reload the page to try again. The comparison above is still correct." },
+  "over-limit": { why: `There are too many open changes: Keel reads the records of the ${MAX_LINKED} riskiest first, and this one is not among them.`, next: "Accept, undo or ignore the changes you have checked; this one's records show once fewer are open. The comparison above is still correct." },
+  "not-found": { why: "This change was settled or replaced after the page loaded.", next: "Reload the page to see where it stands now." },
+};
+
+export function ChangeEvidencePanel({ evidence, attribution, now, gap }: { evidence: ChangeEvidence | null | undefined; attribution: ChangeAttribution | null | undefined; now: string; gap?: DriftRecord["evidenceGap"] }) {
   if (!evidence) {
+    const words = GAP_WORDS[gap ?? "read-failed"];
     return (
       <section aria-label="What this decision rests on" className="decision-evidence">
+        <DecisionStyles />
         <h3 className="decision-heading">What this decision rests on</h3>
-        <p className="field-help">Keel could not read the records behind this change.</p>
+        <p className="decision-gap" role="note"><strong>{words.why}</strong> {words.next}</p>
       </section>
     );
   }

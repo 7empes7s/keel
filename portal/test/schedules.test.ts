@@ -17,6 +17,7 @@ import { visibleNavLinks } from "@/components/nav-links";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import type { Schedule, SchedulesData } from "@/lib/schedules";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
+import { recordValues } from "./record-fields";
 
 interface Client { query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>; end(): Promise<void> }
 interface Database { url: string; connect(): Promise<Client>; cleanup(): Promise<void> }
@@ -117,7 +118,7 @@ test("read-only GET exposes exactly five local schedules, verbatim failures and 
   assert.deepEqual(data.deferrals.map((d) => d.error), [deferral]);
   const html = await renderSchedulesAt("", { ...data, canEdit: false, canRun: false, now: data.generatedAt, timeZone: "UTC" });
   // Task-131: the failure is kept verbatim, in the schedule's record layer.
-  assert.ok(html.includes(`<dt>Last error</dt><dd><pre class="technical-block"><code>${failure}</code></pre>`), "a multi-line error keeps its line breaks");
+  assert.ok(recordValues(html, "Last error").some((value) => value.includes(`<pre class="technical-block"><code>${failure}</code></pre>`)), "a multi-line error keeps its line breaks");
   assert.ok(html.includes(deferral));
   assert.ok(html.includes(`href="/jobs/${failedJobId}"`));
   assert.ok(html.includes("Every day at 05:00 UTC"));
@@ -245,7 +246,7 @@ test("roadmap task-110: GET carries measured load forecasts; acknowledging a war
   assert.ok(html.includes("Heavy load"), "the row's load chip");
   assert.ok(html.includes("Load not measured"));
   assert.ok(!html.includes("Accept warning"), "the accept control is in the panel, for configuration principals only");
-  assert.ok(html.includes("<dt>Warning codes</dt><dd><code>throttle-heavy</code>"));
+  assert.ok(recordValues(html, "Warning codes").some((value) => value.startsWith("<code>throttle-heavy</code>")));
   assert.equal(warningSentence(tier1.warnings[0], tier1), "Microsoft slowed down 20% of its requests in the last 14 days.");
   assert.equal(forecastSentence(data.forecasts!.find((forecast) => forecast.scheduleId === ids[1])), "No measured runs yet, so Keel cannot estimate its load.");
   const healthy = data.schedules.map((schedule) => ({ ...schedule, last_status: null }));

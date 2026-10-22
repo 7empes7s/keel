@@ -9,6 +9,7 @@ import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { coverageWindows, TypeDetails, TypeRecordFields } from "@/components/coverage-report";
 import { type ListSort } from "@/components/list/list-paging";
+import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
@@ -16,6 +17,7 @@ import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { plainKind, typeService } from "@/lib/baselines-view";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
+import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { ago } from "@/lib/presentation";
 import {
   HEALTH_BADGE,
@@ -26,7 +28,6 @@ import {
   backupPlanSentence,
   backupSentence,
   healthRisk,
-  isHealthFilter,
   matchesHealth,
   protectCounts,
   restoreStanding,
@@ -216,6 +217,7 @@ const TILES: { key: HealthFilter; label: string; icon: IconName }[] = [
   { key: "out-of-date", label: "Out of date or never", icon: "clock" },
   { key: "proven", label: "Restore proven", icon: "restore" },
 ];
+const HEALTH_TILES: FilterTile<CoverageType>[] = TILES.map((tile) => ({ key: tile.key, test: (item: CoverageType) => matchesHealth(item, tile.key) }));
 
 export function ProtectCoverage({ data, now, canBackup, tierStrip }: {
   data: CoverageData;
@@ -229,12 +231,15 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip }: {
   const { backUp, busy, feedback } = useBackup();
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
 
-  const health = view.get("health");
-  const healthFilter = isHealthFilter(health) ? health : null;
+  // The health tiles add up: `health=failed,out-of-date` shows kinds in either. Service narrows.
+  const healthFilter = readPicked(HEALTH_TILES, view.get("health"));
+  const pickedKey = healthFilter.join(",");
   const service = view.get("service");
   const counts = useMemo(() => protectCounts(data.types), [data.types]);
   const services = useMemo(() => serviceSummaries(data.types), [data.types]);
-  const shown = useMemo(() => data.types.filter((item) => (!service || serviceCode(item) === service) && (!healthFilter || matchesHealth(item, healthFilter))), [data.types, service, healthFilter]);
+  const others = useMemo(() => (service ? [(item: CoverageType) => serviceCode(item) === service] : []), [service]);
+  const shown = useMemo(() => applyFilters(data.types, HEALTH_TILES, pickedKey ? pickedKey.split(",") : [], others), [data.types, pickedKey, others]);
+  const tileTotals = useMemo(() => new Map(tileCounts(data.types, HEALTH_TILES, pickedKey ? pickedKey.split(",") : [], others).map((entry) => [entry.key, entry])), [data.types, pickedKey, others]);
   const opened = data.types.find((item) => item.type === view.get("open")) ?? null;
   const windows = coverageWindows(data);
   const liveLines = workloadLiveLines(data);
@@ -278,28 +283,32 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip }: {
     "out-of-date": counts.stale + counts.never ? "soon" : undefined,
   };
 
-  const filterWords = [
-    healthFilter ? TILES.find((tile) => tile.key === healthFilter)!.label.toLowerCase() : null,
-    service ? `in ${serviceFor(service).name}` : null,
-  ].filter(Boolean).join(" ");
+  const activeFilters: ActiveFilter[] = [
+    ...healthFilter.map((key) => ({ key: `health:${key}`, label: TILES.find((tile) => tile.key === key)!.label, clear: { health: withoutTile(healthFilter, key) } })),
+    ...(service ? [{ key: "service", label: `In ${serviceFor(service).name}`, clear: { service: null } }] : []),
+  ];
 
   return (
     <div className="pt-page">
       <section aria-label="Backup health" className="pt-tiles">
         {TILES.map((tile) => {
-          const active = healthFilter === tile.key;
+          const active = healthFilter.includes(tile.key);
+          const adds = addsWords(tileTotals.get(tile.key), healthFilter.length);
+          const changes = { health: tileParam(HEALTH_TILES, healthFilter, tile.key), open: null };
           return (
             <Link
               aria-current={active || undefined}
               className="pt-tile"
               data-tone={tileTone[tile.key]}
-              href={href({ health: active ? null : tile.key, open: null })}
+              href={href(changes)}
               key={tile.key}
-              onClick={(event) => follow(event, { health: active ? null : tile.key, open: null })}
+              onClick={(event) => follow(event, changes)}
+              title={active ? "Picked: click to remove it from the view" : "Click to add these to the view"}
             >
-              <span className="pt-tile-label"><Icon name={tile.icon} />{tile.label}</span>
+              <span className="pt-tile-label"><Icon name={tile.icon} />{tile.label}{active ? <Icon className="tile-check" name="check" /> : null}</span>
               <b className="pt-tile-count">{tileValue[tile.key]}</b>
               <small>{tileSmall[tile.key]}</small>
+              {adds ? <small className="tile-adds">{adds}</small> : null}
             </Link>
           );
         })}
@@ -387,12 +396,7 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip }: {
         </div>
         {windows.length > 1 ? <p className="pt-note"><Icon name="info" /><span>These kinds were read at different times, so treat each one as its own copy, not one picture of the tenant at a single moment.</span></p> : null}
         {liveLines.map((line) => <p className="pt-note" key={line}><Icon name="info" /><span>{line}</span></p>)}
-        {filterWords ? (
-          <p className="pt-filter-note" role="status">
-            Showing {filterWords} only: {shown.length} of {data.types.length}.
-            <Link className="pt-inline-link" href={href({ service: null, health: null })} onClick={(event) => follow(event, { service: null, health: null })}>Show every kind</Link>
-          </p>
-        ) : null}
+        <ActiveFilters extra={{ open: null }} filters={activeFilters} noun={NOUN} shown={shown.length} total={data.types.length} />
         <SelectableList
           action={{
             label: (count) => `Back up ${count} ${count === 1 ? "kind" : "kinds"}`,
@@ -402,6 +406,7 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip }: {
               if (canBackup && plan.tiers.length) void backUp(plan.tiers, "kinds");
             },
           }}
+          empty={activeFilters.length ? <NoMatches extra={{ open: null }} filters={activeFilters} noun={NOUN} /> : undefined}
           getId={(item) => item.type}
           groupings={GROUPINGS}
           items={shown}

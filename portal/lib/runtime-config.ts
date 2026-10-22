@@ -82,11 +82,29 @@ export function businessTimeZone(): string {
 }
 
 // Roadmap task-87: the recovery manifest written by ops/keel-dump-manifest.mjs
-// --recovery, whose residency names where backups are stored. Unset means the
-// storage location is reported as not configured.
+// --recovery, whose residency names where backups are stored. Unset, the location is
+// read from where Keel's database runs (databaseIsLocal), else reported as not set.
 export function recoveryManifestPath(): string | null {
   const configured = process.env.KEEL_RECOVERY_MANIFEST_PATH;
   return configured && configured.length > 0 ? configured : null;
+}
+
+// With no recovery manifest, backups are known to sit on this server only when Keel's
+// own database (where settings backups are kept) runs here.
+const LOCAL_HOSTS = new Set(["", "localhost", "127.0.0.1", "[::1]", "::1"]);
+
+/** True when the database URL names this machine (a loopback host or a local socket). */
+export function databaseIsLocal(url: string): boolean {
+  // Read by hand: Postgres accepts URLs with an empty host ("postgres://keel@/keel")
+  // that the URL parser refuses.
+  const match = /^postgres(?:ql)?:\/\/(?:[^@/?]*@)?(\[[^\]]*\]|[^/?:]*)/i.exec(url);
+  if (!match) return false;
+  const socketHost = /[?&]host=([^&]*)/.exec(url)?.[1];
+  if (socketHost !== undefined) {
+    const host = decodeURIComponent(socketHost);
+    return host.startsWith("/") || LOCAL_HOSTS.has(host.toLowerCase());
+  }
+  return LOCAL_HOSTS.has(match[1].toLowerCase());
 }
 
 // Gap P2: the key that verifies the signed live records in docs/release/qualifications.

@@ -23,8 +23,11 @@ export function JobPageBody({ job, now, capabilities }: { job: JobRecord; now: s
   return (
     <>
       <Verdict text={jobVerdict(job, now)} tone={job.status === "failed" ? "critical" : jobDisplayStatus(job) === "succeeded" ? "good" : "attention"} />
-      <Link className="text-link back-link" href="/activity"><span aria-hidden="true">←</span> All activity</Link>
       <JobDetail job={job} now={now} />
+      {restoreRef && job.status === "failed" && String(job.error ?? "").includes("blocked-content-effect") ? (
+        // Q45: the refusal names where its content effects are approved; link straight there.
+        <Link className="text-link" href={`/approvals/content-effects/${encodeURIComponent(restoreRef)}`}>Review content effects</Link>
+      ) : null}
       {restoreRef && !compensates && job.status === "succeeded" ? <RecoveryCompletion canComplete={canRestore} restoreRef={restoreRef} /> : null}
       {enforced && restoreRef ? (
         <CompensationPanel canApprove={capabilities.includes("approve")} canRestore={canRestore} failed={job.status === "failed"} restoreArtifactId={restoreRef} />

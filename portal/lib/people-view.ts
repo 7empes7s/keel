@@ -195,26 +195,36 @@ export function peopleVerdict(counts: PeopleCounts): PeopleVerdict {
   return { text, tone: "fine" };
 }
 
-export interface PeopleFilters { role: Role | null; state: "active" | "disabled" | null }
+// The tiles are one set and add up: `role=admin,approver&state=disabled` shows admins,
+// approvers and disabled people together. Both keys take a comma list.
+export type PeopleState = "active" | "disabled";
+export interface PeopleFilters { roles: Role[]; states: PeopleState[] }
 
 export function parseFilters(get: (key: string) => string | null): PeopleFilters {
-  const role = get("role");
-  const state = get("state");
-  return { role: isRole(role) ? role : null, state: state === "active" || state === "disabled" ? state : null };
+  const roles = (get("role") ?? "").split(",");
+  const states = (get("state") ?? "").split(",");
+  return { roles: ROLE_ORDER.filter((role) => roles.includes(role)), states: (["active", "disabled"] as const).filter((state) => states.includes(state)) };
+}
+
+/** True when the person has the role now; Approver counts everyone who can approve. */
+export function hasRole(person: PrincipalView, role: Role, now: string): boolean {
+  return role === "approver" ? canApprove(person) : liveRoles(person, now).includes(role);
+}
+
+/** True when the person is in that state tile. */
+export function inState(person: PrincipalView, state: PeopleState, now: string): boolean {
+  return state === "active" ? personState(person, now) === "active" : Boolean(person.disabled_at);
 }
 
 export function personMatches(person: PrincipalView, filters: PeopleFilters, now: string): boolean {
-  if (filters.role === "approver" && !canApprove(person)) return false;
-  if (filters.role && filters.role !== "approver" && !liveRoles(person, now).includes(filters.role)) return false;
-  if (filters.state === "active" && personState(person, now) !== "active") return false;
-  if (filters.state === "disabled" && !person.disabled_at) return false;
-  return true;
+  if (!filters.roles.length && !filters.states.length) return true;
+  return filters.roles.some((role) => hasRole(person, role, now)) || filters.states.some((state) => inState(person, state, now));
 }
 
-/** "approvers", "disabled people", "active admins". */
+/** "approvers", "disabled people", "admins or approvers". */
 export function filterWords(filters: PeopleFilters): string {
-  const who = filters.role ? ROLES[filters.role].plural.toLowerCase() : "people";
-  return filters.state === "disabled" ? `disabled ${who}` : filters.state === "active" ? `${filters.role ? "" : "active "}${who}`.trim() : who;
+  const parts = [...filters.states.map((state) => (state === "active" ? "people who can use Keel" : "disabled people")), ...filters.roles.map((role) => ROLES[role].plural.toLowerCase())];
+  return parts.join(" or ") || "people";
 }
 
 /** The group a person sits in under "Role": their highest role now. */

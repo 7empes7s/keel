@@ -10,6 +10,8 @@ import { CAPABILITIES_HEADER } from "@/lib/principal";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 
+const PARENTS = [{ href: "/activity", label: "Activity" }];
+
 export default async function JobPage({ params }: { params: Promise<{ id: string }> }) {
   await connection();
   await requireReadAccess(DATA_SURFACES.jobPage);
@@ -24,14 +26,14 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       job = (await response.json() as { job: JobRecord }).job;
     }
   } catch {
-    return <><PageHeader section="Audit log" title="Job" description="What this job did and how it ended." /><DataUnavailable surface="This job" /></>;
+    return <><PageHeader parents={PARENTS} section="Audit log" title="Job" description="What this job did and how it ended." /><DataUnavailable surface="This job" /></>;
   }
   if (!job) notFound();
   const now = new Date().toISOString();
   const capabilities = ((await headers()).get(CAPABILITIES_HEADER) ?? "").split(" ");
   return (
     <>
-      <PageHeader section="Audit log" title="Job" description="What this job did and how it ended." generatedAt={now} />
+      <PageHeader parents={PARENTS} section="Audit log" title="Job" description="What this job did and how it ended." generatedAt={now} />
       <JobPageBody capabilities={capabilities} job={job} now={now} />
     </>
   );

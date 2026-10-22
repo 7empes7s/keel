@@ -10,7 +10,7 @@ import { Icon, type IconName } from "@/components/shell/icons";
 import { Popover } from "@/components/shell/popover";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
 import { byRisk, byText, pageGroups, sortRows, type PageSize } from "@/lib/paging";
-import { groupCheck, NO_SELECTION, prune, selectRange, setMany, span, toggleOne, type Selection } from "@/lib/selection";
+import { groupCheck, NO_SELECTION, picksTray, prune, selectRange, setMany, span, toggleOne, type PickGroup, type Selection } from "@/lib/selection";
 import { readList, useViewState } from "@/lib/use-view-state";
 
 export interface ListGroup<T> {
@@ -72,6 +72,11 @@ interface Props<T> {
   // Shown instead of the plain line when no row matches, such as a page's filter chips
   // with Clear all. Without it the list still offers to clear its own find.
   empty?: ReactNode;
+  // Picks that outlive the view: a row picked from `pool` stays picked when a filter,
+  // a tile or the find hides it, and the bar becomes a tray that counts the picks by
+  // `groupOf` (such as the service), says how many the view hides, and lists them with
+  // a remove button each. The actions run on every pick, shown or not.
+  keepPicks?: { pool: T[]; groupOf: (item: T) => PickGroup };
 }
 
 // What paging counts: a group, or one part of a group that has parts.
@@ -92,7 +97,7 @@ function plural(count: number, noun: { one: string; many: string }) {
  * +click toggles, Ctrl or Cmd+A and Esc, select all or a whole group, long-press and
  * drag on a phone, and a bar that names the action with its count. Grouping, find and
  * closed groups live in the URL. */
-export function SelectableList<T>({ label, items, getId, rowName, renderRow, groupings, toneOf, noun, action, more = [], matches, sorts = [], pageSize = "25", groupAction, closedByDefault = [], empty }: Props<T>) {
+export function SelectableList<T>({ label, items, getId, rowName, renderRow, groupings, toneOf, noun, action, more = [], matches, sorts = [], pageSize = "25", groupAction, closedByDefault = [], empty, keepPicks }: Props<T>) {
   const view = useViewState();
   const groupKey = view.get("group", groupings[0]?.key ?? "");
   const grouping = groupings.find((entry) => entry.key === groupKey) ?? groupings[0];
@@ -124,7 +129,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
     });
   }, [grouping, filtered, sort, dir]);
   const allIds = useMemo(() => groups.flatMap((group) => group.items.map(getId)), [groups, getId]);
-  const partsOf = (group: ListGroup<T>) => (group.parts && group.parts.length > 1 ? group.parts.map((part) => ({ ...part, key: `${group.key}.${part.key}` })) : null);
+  const partsOf = (group: ListGroup<T>) => (group.parts && group.parts.length ? group.parts.map((part) => ({ ...part, key: `${group.key}.${part.key}` })) : null);
   // Paging counts rows in open groups and open parts; a page shows a slice of each.
   const units = useMemo<ListUnit<T>[]>(() => groups.flatMap((group): ListUnit<T>[] => {
     const parts = closed.includes(group.key) ? null : partsOf(group);
@@ -177,8 +182,13 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
     );
   }
 
-  // A filter that hides rows also drops them from the selection.
-  useEffect(() => { setSelection((current) => prune(current, allIds)); }, [allIds]);
+  // Rows the selection may hold: what the list shows, or the whole pool when picks
+  // outlive the view. A filter that hides rows drops them from the selection unless
+  // picks are kept; a row that leaves the pool (accepted, resolved) always drops out.
+  const pool = keepPicks?.pool;
+  const poolIds = useMemo(() => (pool ? pool.map(getId) : null), [pool, getId]);
+  const keptIds = poolIds ?? allIds;
+  useEffect(() => { setSelection((current) => prune(current, keptIds)); }, [keptIds]);
   useEffect(() => { if (selection.ids.size === 0) setTouchMode(false); }, [selection.ids.size]);
 
   useEffect(() => {
@@ -260,8 +270,13 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
     };
   }, [visibleIds]);
 
-  const count = selection.ids.size;
-  const selectedIds = allIds.filter((id) => selection.ids.has(id));
+  const shownSet = useMemo(() => new Set(allIds), [allIds]);
+  // Picks the current view hides, in the pool's order, after the shown ones.
+  const hiddenIds = poolIds ? poolIds.filter((id) => selection.ids.has(id) && !shownSet.has(id)) : [];
+  const selectedIds = [...allIds.filter((id) => selection.ids.has(id)), ...hiddenIds];
+  const count = selectedIds.length;
+  const allShownPicked = allIds.length > 0 && allIds.every((id) => selection.ids.has(id));
+  const tray = keepPicks && pool && count ? picksTray(pool, getId, keepPicks.groupOf, selection.ids) : null;
 
   return (
     <div className="sel-list" data-touch-mode={touchMode || undefined}>
@@ -288,13 +303,13 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
       </div>
       <div className="sel-summary">
         <button
-          aria-pressed={count > 0 && count === allIds.length}
+          aria-pressed={allShownPicked}
           className="btn btn-sm"
           disabled={!allIds.length}
-          onClick={() => setSelection((current) => setMany(current, allIds, count !== allIds.length))}
+          onClick={() => setSelection((current) => setMany(current, allIds, !allShownPicked))}
           type="button"
         >
-          {count > 0 && count === allIds.length ? "Clear selection" : `Select all ${plural(allIds.length, noun)}`}
+          {!allShownPicked ? `Select all ${plural(allIds.length, noun)}` : hiddenIds.length ? `Unselect these ${plural(allIds.length, noun)}` : "Clear selection"}
         </button>
         <span className="sel-help">
           Shift+click selects a range. On a phone, hold a row, then drag.
@@ -391,8 +406,20 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
       </div>
       <ListPager label={label} noun={noun} paging={paging} total={openRows} />
       {count ? (
-        <div aria-label="Selection" className="sel-bar" role="region">
+        <div aria-label="Selection" className="sel-bar" data-tray={tray ? true : undefined} role="region">
           <span className="sel-bar-count"><b>{plural(count, noun)}</b> selected</span>
+          {tray ? (
+            <span className="sel-tray-sum">
+              {tray.groups.map((group) => (
+                <span className="sel-tray-chip" key={group.key}>{group.icon ? <Icon name={group.icon} /> : null}{group.label}{" "}<b>{group.items.length}</b></span>
+              ))}
+              {hiddenIds.length ? (
+                <span className="sel-tray-chip" data-tone="soon" title="Picked earlier; the current filters hide them. They stay picked.">
+                  <Icon name="filter" />{hiddenIds.length} not shown here
+                </span>
+              ) : null}
+            </span>
+          ) : null}
           <span className="sel-bar-detail">{action.detail(count, selectedIds)}</span>
           <span className="sel-bar-actions">
             <button className="btn btn-primary" onClick={() => action.run(selectedIds)} type="button">{action.label(count, selectedIds)}</button>
@@ -407,8 +434,27 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
                 )}
               </Popover>
             ) : null}
-            <button aria-label="Clear selection" className="icon-button" onClick={() => setSelection(NO_SELECTION)} title="Clear selection (Esc)" type="button"><Icon name="close" /></button>
+            {tray
+              ? <button className="btn" onClick={() => setSelection(NO_SELECTION)} title="Clear every pick (Esc)" type="button"><Icon name="close" />Clear</button>
+              : <button aria-label="Clear selection" className="icon-button" onClick={() => setSelection(NO_SELECTION)} title="Clear selection (Esc)" type="button"><Icon name="close" /></button>}
           </span>
+          {tray ? (
+            <details className="sel-tray-picks">
+              <summary>See every pick<Icon className="sel-group-chevron" name="chevron-down" /></summary>
+              <ul aria-label="Picked" className="sel-tray-list">
+                {tray.groups.flatMap((group) => group.items.map((item) => {
+                  const id = getId(item);
+                  return (
+                    <li data-hidden={!shownSet.has(id) || undefined} data-tone={toneOf?.(item) ?? undefined} key={id}>
+                      <span className="sel-tray-name">{rowName(item)}</span>
+                      <small>{group.label}{shownSet.has(id) ? "" : " · not shown here"}</small>
+                      <button aria-label={`Remove ${rowName(item)} from the picks`} className="icon-button" onClick={() => setSelection((current) => toggleOne(current, id))} title="Remove from the picks" type="button"><Icon name="close" /></button>
+                    </li>
+                  );
+                }))}
+              </ul>
+            </details>
+          ) : null}
         </div>
       ) : null}
     </div>

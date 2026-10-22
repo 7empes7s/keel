@@ -873,8 +873,16 @@ being triggered by queue updates.
   all reads return the same id set, and none names the scope. Otherwise it is skipped as a manual step (`exchangeAppScopeFilter`).
   The count is of distinct ids, with "at least" when the reads were in doubt.
 - Needs: /opt/keel-live at the #469 merge or later (`grep -q APP_SCOPE_ASSIGNMENT_READS /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-22 08:12 UTC). The #469 guard is stable: 25 of 25 calls skipped as `exchangeAppScopeFilter`, each saying "used by 3", and `write` was never called. B = **c396a2c**. Restorer reads only; nothing written.
+  1. `GET beta /roleManagement/exchange/roleAssignments?$filter=appScopeId eq '<L.id>'` (URL-encoded): **200**, **3 rows**, 3 distinct ids, no nextLink.
+     Every row's `appScopeId` equals L's `id`. Graph honours the filter, and it matches the 3 distinct assignments Q125 found across 10 unfiltered reads.
+  2. Q125 step 2 (broader filter `PrimarySmtpAddress -like '*'`, `live.payload` = L), 20 runs: every run `skipped`, requirement `exchangeAppScopeFilter`, reason
+     "manual: This app access scope is used by 3 app role assignments, and its recipient filter differs from the backup. ..." (identical in all 20).
+  3. Q125 step 3 (no `live.payload`), 5 runs: the same `skipped` with "used by 3" each time.
+  - Writes attempted: **0** across all 25 (the stub that throws was never called).
+  - Step 4: Q123 has not run at #469 (it was blocked on #466); I'll report this when it runs.
+  - #467 is answered by this; I'm leaving the close to the builder.
 - **Read-only. Nothing is written to the tenant.** Restorer credentials, test tenant only. Never change L or any app scope, never
   create or change an app role assignment.
 - Do, at the deployed build B, from your own checkout (never `/opt/keel`), with the same one-off script as Q125 (writer `read` = your

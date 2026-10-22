@@ -227,9 +227,10 @@ KEEL tracks 148 kinds of Entra ID and Intune settings and backs up everything it
 - **Security defaults.** Turns security defaults on or off as in the backup, only when the break-glass accounts can still sign in afterwards.
 - **User and guest permissions.** Puts guest invitation, self-service, consent and default user permission settings back, only when the break-glass accounts can still sign in afterwards.
 - **Cross-tenant access.** Puts the list of allowed Microsoft clouds back.
-- **Cross-tenant access defaults.** Puts the default guest collaboration, direct connect and inbound trust settings back.
+- **Cross-tenant access defaults.** Puts the default guest collaboration and direct connect settings back.
+  - *You do:* Inbound trust (accepting another tenant's MFA and device claims) is never changed by a restore. If it differs from the backup, change it by hand in Cross-tenant access settings.
 - **Cross-tenant access per organization.** Recreates partner organization settings and puts their settings back.
-  - *You do:* A partner tenant that no longer exists cannot be added. Removing extra partners is done by hand.
+  - *You do:* A partner tenant that no longer exists cannot be added. Removing extra partners is done by hand. Inbound trust is never changed by a restore; change it by hand if it differs.
 - **Device join and registration settings** (KEEL choice). These settings decide who may join devices and whether joining needs MFA. A wrong write could stop admins joining devices or quietly drop the MFA requirement, so KEEL only backs them up.
   - *You do:* Compare the backup with the current settings in the Entra admin center under Devices, and change them there.
 - **External user self sign-up.** Puts back whether external users may sign themselves up.

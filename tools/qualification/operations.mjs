@@ -114,6 +114,7 @@ const FIXTURE_PAYLOADS = Object.freeze({
   crossTenantAccessPolicyPartner: {
     tenantId: 'fixture-partner-tenant',
     inboundTrust: { isMfaAccepted: true, isCompliantDeviceAccepted: false, isHybridAzureADJoinedDeviceAccepted: false },
+    b2bCollaborationInbound: { usersAndGroups: { accessType: 'allowed', targets: [{ target: 'AllUsers', targetType: 'user' }] } },
   },
   adminConsentRequestPolicy: {
     isEnabled: true, notifyReviewers: true, remindersEnabled: true, requestDurationInDays: 30,
@@ -279,8 +280,9 @@ const FIXTURE_DRIFT = Object.freeze({
   }),
   identitySecurityDefaultsEnforcementPolicy: () => ({ isEnabled: true }),
   crossTenantAccessPolicy: () => ({ allowedCloudEndpoints: ['microsoftonline.us'] }),
-  crossTenantAccessPolicyConfigurationDefault: (payload) => ({ inboundTrust: { ...payload.inboundTrust, isMfaAccepted: false } }),
-  crossTenantAccessPolicyPartner: (payload) => ({ inboundTrust: { ...payload.inboundTrust, isMfaAccepted: false } }),
+  // Inbound trust is never written, so the cross-tenant settings drift B2B collaboration.
+  crossTenantAccessPolicyConfigurationDefault: (payload) => ({ b2bCollaborationInbound: { usersAndGroups: { ...payload.b2bCollaborationInbound.usersAndGroups, accessType: 'blocked' } } }),
+  crossTenantAccessPolicyPartner: (payload) => ({ b2bCollaborationInbound: { usersAndGroups: { ...payload.b2bCollaborationInbound.usersAndGroups, accessType: 'blocked' } } }),
   adminConsentRequestPolicy: () => ({ isEnabled: false }),
   // Issue #156: the restore reverts defaced text, a shortened group lifetime
   // (a longer one is restored; a shorter one would be refused) and an enabled

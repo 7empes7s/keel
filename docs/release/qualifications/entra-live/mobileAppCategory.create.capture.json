@@ -1,0 +1,22 @@
+{
+  "restoreRef": "c6161cbc-4e56-854b-ba12-b5f83e0ff2b0",
+  "entry": {
+    "naturalKey": "mobileAppCategory:8eef235a-7573-8923-b41a-117a90402e0c",
+    "resourceType": "mobileAppCategory",
+    "operation": "create",
+    "targetId": "0f52bfbc-0954-89e5-9006-cd99f449f5f2",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T08:26:38.363Z",
+    "priorState": null,
+    "intendedState": {
+      "displayName": "KEEL-RT-apps"
+    },
+    "postState": {
+      "id": "0f52bfbc-0954-89e5-9006-cd99f449f5f2",
+      "displayName": "KEEL-RT-apps",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceAppManagement/mobileAppCategories/$entity",
+      "lastModifiedDateTime": "2026-10-22T08:26:38Z"
+    }
+  }
+}

@@ -7,8 +7,9 @@ import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fullSuccessfulCoverageDigest } from '../test/fullSuccessfulCoverage.mjs';
 import {
   CompareError, compareContentHoldings, compareContentItems, compareSettings, compareSnapshots, compareTenants, compareWithLive, compareWorkloads,
-  differenceCount, listCompareSources, portablePayload,
+  differenceCount, listCompareSources, portablePayload, presenceFields,
 } from './compare.mjs';
+import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 const admin = await database.connect();
@@ -323,4 +324,47 @@ test('issue #296: an unscheduled automatic reply\'s moving schedule is not a cha
   assert.deepEqual(mailbox.items.map((item) => [item.resourceKey, item.fields.map((field) => field.path)]), [
     ['mailbox:keel-rt-2@contoso.example', ['mailboxSettings.automaticRepliesSetting']],
   ]);
+});
+
+test('an added or removed Intune script never shows its text, in Compare or Activity', () => {
+  for (const [resourceType, bodyFields] of Object.entries(SCRIPT_BODY_FIELDS)) {
+    const secrets = bodyFields.map((field) => `$password = 'KEEL-RT-${resourceType}-${field}'`);
+    const payload = { id: guid(9), displayName: `KEEL-RT-${resourceType}`, ...Object.fromEntries(bodyFields.map((field, i) => [field, Buffer.from(secrets[i]).toString('base64')])) };
+    const leaks = (value) => {
+      const text = JSON.stringify(value);
+      return secrets.some((secret) => text.includes(secret) || text.includes(Buffer.from(secret).toString('base64')) || text.includes('KEEL-RT-' + resourceType + '-'));
+    };
+    const assertHidden = (fields, side, where) => {
+      for (const field of bodyFields) {
+        const shown = fields.find((entry) => entry.path === field);
+        assert.ok(shown, `${where}: ${resourceType}.${field} is still listed`);
+        assert.match(shown[side], /^Script text hidden \(\d+ characters, fingerprint [0-9a-f]{12}\)$/, `${where}: ${resourceType}.${field}`);
+      }
+    };
+
+    // Activity (portal/lib/activity-changes.ts) calls presenceFields directly.
+    for (const changeType of ['added', 'removed']) {
+      const result = presenceFields(resourceType, payload, changeType);
+      assert.ok(!leaks(result), `presenceFields ${changeType} ${resourceType} leaks script text`);
+      assertHidden(result.fields, changeType === 'added' ? 'after' : 'before', `presenceFields ${changeType}`);
+    }
+
+    // Compare, in one tenant and across two (portable).
+    const row = { natural_key: `${resourceType}:KEEL-RT`, resource_type: resourceType, payload, payload_hash: 'h', hash_version: 2, blast_radius: null, references: [] };
+    for (const portable of [false, true]) {
+      const added = compareSettings({ rows: [], coverage: null }, { rows: [row], coverage: null }, { portable });
+      const removed = compareSettings({ rows: [row], coverage: null }, { rows: [], coverage: null }, { portable });
+      for (const [result, changeType] of [[added, 'added'], [removed, 'removed']]) {
+        assert.ok(!leaks(result), `compareSettings ${changeType} ${resourceType} (portable ${portable}) leaks script text`);
+        if (portable && result.groups.length === 0) {
+          // Script ids are tenant-bound: across tenants the script is only counted as unmatched.
+          assert.equal(result.unmatched[0]?.resourceType, resourceType);
+          continue;
+        }
+        const item = result.groups[0].items[0];
+        assert.equal(item.changeType, changeType);
+        assertHidden(item.fields, changeType === 'added' ? 'after' : 'before', `compareSettings ${changeType} portable=${portable}`);
+      }
+    }
+  }
 });

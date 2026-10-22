@@ -1116,8 +1116,19 @@ being triggered by queue updates.
     setting child whose definition ends in `_{id}_id` (the key guid Graph regenerates on every write). Every other value, such as the
     addresses, is still compared. The PUT body is unchanged: the backup's values are sent whole, key child included.
 - Needs: /opt/keel-live at the #482 merge or later (`grep -q withoutRegeneratedKeys /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 11:37 UTC). **#482 works: update and create both verify, and both are promoted.** The re-run and negative checks are still hit by **#485** (another create is planned). B = 905d075 → **22fbc27** (captures at 22fbc27). Restorer only; global admin not used; nothing granted.
+  1. Recreated `KEEL-RT-155-addresses`; S = `1e0d4066`. The payload holds `settingInstance` with 203.0.113.10.
+  2. Update: drifted the description to `drift` and the address to .20 (PUT 204). Dry run `0a5aff4d` (description, settingInstance; no content effects), approval **5960812f**, job `9d365d96`:
+     journal `update | succeeded` (**verified**, no longer `uncertain`). Tenant back at "KEEL restore fixture" and 203.0.113.10. Captured and **promoted**.
+  3. Create: deleted the group. Dry run `80ac6a39`, approval **ebd95f22**, job `137b892f`: journal `create | succeeded` (verified), target id recorded (`ecf164a2…`). Back with 203.0.113.10.
+     Captured and **promoted**.
+  4. Re-run (`785daee5` from S): **still plans a create** (no targetId; description, displayName, settingInstance, settingDefinitionId), although step 3 recorded the target id. Reported on #485.
+  5. Negative check: set the address to .30 only, then dry run `6e0847b9` from S: it also plans a **create** (same fields, because of #485), not an update with `settingInstance`. Not enforced.
+  6. Cleanup: deleted the group. No KEEL-RT-155 object is left. **Nothing left.**
+  7. Evidence: `claude/live-evidence-reusable-settings` rebased onto origin/master @ **1712cea**: the update and create records with captures; both Q135 demotions removed. pseudonymize check exit 0; my scan is clean.
+     `live evidence`: `deviceManagementReusablePolicySetting.create.json: fixture-tested -> live-qualified`, `deviceManagementReusablePolicySetting.update.json: fixture-tested -> live-qualified`.
+     (Q109's older reusable demotions remain on `claude/live-evidence-restore-gaps-1`; the builder can drop them.)
 - **Test tenant only.** Same hard rules, capture tooling, requester/approver split and standing approval as Q135. Restorer only;
   global admin not used. If Graph answers 403, report blocked with what Graph names; grant nothing. Never touch CA policies,
   break-glass or Marouane's account. The group is used by no policy.

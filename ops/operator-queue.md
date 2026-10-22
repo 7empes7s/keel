@@ -7565,7 +7565,7 @@ item that needs it stays untouched.
   `/policies/roleManagementPolicies` and `/policies/roleManagementPolicyAssignments` without the scope filter Graph requires.
   Discovery now sends the catalogue's `$filter=scopeId eq '/' and scopeType eq 'DirectoryRole'` on those reads.
 - Needs: PR #547 live (`grep -q requiredFilter /opt/keel-live/engine/discovery/catalogue.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** Graph GETs only (discovery is read-only by design and refuses anything else). Nothing is written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:

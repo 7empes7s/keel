@@ -7187,8 +7187,13 @@ item that needs it stays untouched.
     "Check now" (`POST /api/actions/compliance/check`). With no `KEEL_RECOVERY_MANIFEST_PATH`, the portal reads the storage
     location from where its database runs: a loopback or socket host means "this server's disk".
 - Needs: /opt/keel-live at the #505 merge or later (`test -f /opt/keel-live/engine/benchmarks/runChecks.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 18:28 UTC), steps 1–3; step 4 not possible from this box. Reads only.
+  1. Newest drift-detect `f33509f5` (18:05 UTC): `succeeded`, `compliance checks: 9 run (5 pass, 4 fail, 0 could not check)` (9, not the expected 3).
+  2. `benchmark_evaluation`, newest 6 (all 18:05:03): group.role-assignable-not-synced **pass**; defender-email.anti-spam-phish-quarantined **fail**; role-assignment.admin-count-at-most **fail**;
+     named-location.no-untrusted-all-countries **pass**; defender-email.anti-phish-spoof-protection **pass**; defender-email.anti-spam-no-allowed-domains **fail**. Reason empty on all; no `unknown` rows.
+  3. `keel-portal` loads `/etc/keel/db.env` and `/etc/keel/portal.env`. Database host: **127.0.0.1** (local). `KEEL_RECOVERY_MANIFEST_PATH`: **not set** (in neither file nor the unit).
+  4. `curl http://127.0.0.1:3600/benchmarks`: **401**. The portal requires the Cloudflare Access login even locally, and keel-operator has no Access token, so the verdict sentence, pill and storage row could not be read.
 - **Tenant:** none. Reads and writes Keel's own database only.
 - Do:
   1. Wait for the next `drift-detect` job after a backup (or run one collect by hand as usual). Report its job id, status and the

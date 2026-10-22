@@ -25,6 +25,7 @@ import { ingestAudit, migrateAuditIngestion, readAuditEvidence, createFixtureAud
 import { resolveOwnership, readOwnership } from '../engine/identity/ownership.mjs';
 import { createFixtureCmdbAdapter } from '../engine/identity/adapters/cmdb.mjs';
 import { connect } from '../engine/store/db.mjs';
+import { INCOMPLETE_TYPES_PREFIX, PARTIAL_EXIT_CODE } from '../engine/collect/incomplete.mjs';
 import { can } from '../engine/authz/can.mjs';
 import { capabilityForJobKind } from '../engine/authz/jobCapabilities.mjs';
 import { findPrincipalById } from '../engine/authz/principals.mjs';
@@ -192,6 +193,26 @@ export function startJobChild(file, args, { env = process.env, timeoutMs, execut
   return { child, completed, terminate };
 }
 
+/**
+ * Issue #447: the result of a child that exited with its handler's partial exit
+ * code and named, on one stdout line, the types it did not read in full. Any
+ * other exit, or a partial exit without a readable list, stays a failure.
+ */
+export function partialResult(handler, err, durationMs) {
+  if (handler?.partialExitCode === undefined || err?.code !== handler.partialExitCode || err.signal) return null;
+  const line = String(err.stdout ?? '').split('\n').reverse().find((text) => text.startsWith(INCOMPLETE_TYPES_PREFIX));
+  if (!line) return null;
+  let incompleteTypes;
+  try {
+    incompleteTypes = JSON.parse(line.slice(INCOMPLETE_TYPES_PREFIX.length));
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(incompleteTypes) || incompleteTypes.length === 0
+      || !incompleteTypes.every((entry) => typeof entry?.type === 'string' && entry.type && typeof entry.outcome === 'string')) return null;
+  return { stdout: err.stdout, stderr: err.stderr ?? '', durationMs, partial: true, incompleteTypes };
+}
+
 function requireString(value, label) {
   if (typeof value !== 'string' || value.length === 0) {
     throw new Error(`${label} must be a non-empty string`);
@@ -243,6 +264,7 @@ export const JOB_HANDLERS = {
   },
   collect: {
     script: join(__dirname, 'keel-collect.mjs'),
+    partialExitCode: PARTIAL_EXIT_CODE,
     argsFor(params = {}) {
       const args = [];
       if (params.tier !== undefined) {
@@ -361,6 +383,7 @@ export const JOB_HANDLERS = {
   // no shell is involved: job params are never trusted.
   backup: {
     script: join(__dirname, 'keel-collect.mjs'),
+    partialExitCode: PARTIAL_EXIT_CODE,
     argsFor(params = {}) {
       const tier = params.tier ?? 'tier1';
       if (!['tier1', 'tier2', 'tier3'].includes(tier)) {
@@ -712,6 +735,16 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
       await recordAutoRemediationTerminalOutcome(client, { job, status: 'succeeded' });
       console.log(`job ${job.id}: succeeded (${Date.now() - startedAt}ms)`);
     } catch (err) {
+      // Issue #447: a collect that saved its snapshot but could not read some types
+      // in full ends as a finished job that names those types, not as a failure.
+      const partial = partialResult(handler, err, Date.now() - startedAt);
+      if (partial) {
+        const completed = await complete(client, { id: job.id, result: partial });
+        emitJobEvent(completed ?? job, 'job.succeeded', eventSink);
+        await recordAutoRemediationTerminalOutcome(client, { job, status: 'succeeded' });
+        console.log(`job ${job.id}: partly done (${partial.durationMs}ms), not read in full: ${partial.incompleteTypes.map((entry) => entry.type).join(', ')}`);
+        return;
+      }
       const message = [
         err.code !== undefined ? `exit code ${err.code}` : err.message,
         err.stderr ? `stderr: ${err.stderr}` : null,

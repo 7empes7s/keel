@@ -236,6 +236,7 @@ export function cadenceSentence(schedule: Pick<Schedule, "cadence" | "cron_overr
 export function lastRunSentence(schedule: Pick<Schedule, "last_status" | "last_run_at">, now: string): string {
   if (!schedule.last_status || !schedule.last_run_at) return "Has not run yet.";
   if (schedule.last_status === "failed") return `Last run failed ${ago(schedule.last_run_at, now)}.`;
+  if (schedule.last_status === "partial") return `Last run partly done ${ago(schedule.last_run_at, now)}: some types were not backed up.`;
   if (schedule.last_status === "running" || schedule.last_status === "queued") return `Running now, started ${ago(schedule.last_run_at, now)}.`;
   return `Last run ${displayEnum("jobStatus", schedule.last_status).toLowerCase()} ${ago(schedule.last_run_at, now)}.`;
 }

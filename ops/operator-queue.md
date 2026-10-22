@@ -5843,3 +5843,44 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / skipped (fixture could not be
   created) / blocked; step 5; approval ids; the evidence branch and commit; anything left in the tenant.
+
+### Q128: Live backup and restore of app dependencies, and the apps app protection policies cover (restore gaps batch 13, after #459)
+- Drafted by the "Restore batch 13" thread (2026-10-22). Code: PR #459. **Backup change:** `managedAppPolicy` (iOS and Android
+  app protection) and `targetedManagedAppConfiguration` now read the apps each policy covers, one read per policy:
+  `/v1.0/deviceAppManagement/{iosManagedAppProtections|androidManagedAppProtections|targetedManagedAppConfigurations}/{id}/apps`.
+  A failed apps read fails the whole kind (so watch the first backup after deploy). New record writer, fixture-tested only, beta:
+  - `mobileAppRelationship`: create (POST `/beta/deviceAppManagement/mobileAppRelationships` with `@odata.type`, sourceId, targetId,
+    targetType, dependencyType or supersedenceType) + update (PATCH `.../{id}`, dependencyType / supersedenceType only). Preflight reads
+    both apps and `/beta/deviceAppManagement/mobileApps/{sourceId}/relationships`; a link already there to the same target is skipped.
+    A supersedence set to `replace` is a content effect (never use one here).
+- Needs: /opt/keel-live at the #459 merge or later (`grep -q appRelationshipPreflight /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
+  needs DeviceManagementApps.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing.
+  Never touch CA policies, break-glass or Marouane's account. **Never assign any fixture app or policy.** No tenant-wide setting is changed.
+- **Fixtures** (the reviewed guidance in `live-gate-plan.mjs` at B says the same; nothing applies them):
+  - Two web link apps `KEEL-RT-148-app-main` and `KEEL-RT-148-app-dep`, neither assigned, with `KEEL-RT-148-app-main` depending on
+    `KEEL-RT-148-app-dep` (detect only). If Intune refuses a dependency on web link apps, use two unassigned test line-of-business
+    apps, or report the exact message and skip this kind. Never a supersedence set to replace.
+  - iOS app protection policy `KEEL-RT-148-ios-mam` protecting Microsoft Outlook (`com.microsoft.office.outlook`), PIN required,
+    no wipe settings, assigned to nobody.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/live-gate-plan.mjs > ~/keel-rg13/plan-B.md`. Use its steps for `mobileAppRelationship` and
+     `managedAppPolicy` (collect, restore dry run, approve, `--enforce`, `entraLive.mjs capture`, promote).
+  2. Create the fixtures, then take snapshot S. **Backup check:** report the read outcome of `managedAppPolicy`,
+     `targetedManagedAppConfiguration` and `mobileAppRelationship`; whether `KEEL-RT-148-ios-mam` in S has `apps` with Outlook; and how
+     many rows S holds for the fixture link and their `targetType` (child, parent or both). If `managedAppPolicy` failed to read, stop and report.
+  3. **Create round:** remove the dependency (keep both apps) and delete `KEEL-RT-148-ios-mam`. Restore from S selecting both types,
+     approve, enforce, capture both `create`s. Expect the dependency back (detect) and the policy back with Outlook as its app.
+     If the backup holds a parent row too, expect it skipped as "already set".
+  4. **Update round:** set the dependency to install automatically and turn the policy's PIN off. Restore from S, approve, enforce,
+     capture both `update`s. Expect both back. Report the exact Graph answer for any refused write (the relationship routes are unmeasured).
+  5. **Re-run check:** dry run from S after step 4. Expect 0 planned writes, or the link create skipped as "already set" (its id changes on recreate).
+  6. Cleanup: delete the policy, the dependency and both apps. Report anything left.
+  7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-13`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / skipped (fixture could not be
+  created) / blocked; step 5; approval ids; the evidence branch and commit; anything left in the tenant.

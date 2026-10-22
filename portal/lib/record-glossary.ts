@@ -436,6 +436,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Restore plan ID": support("Restore plan reference", ID),
   "Refusal": fact("Safety check said", "Why a safety check stopped this change."),
   "Message": fact("Error message", "What went wrong, as Keel recorded it."),
+  "Not listed": fact("Could not be listed", "Why discovery could not list this PowerShell area this run."),
   "Failing setting": fact("Failing setting", "A setting that fails this check: its value now, and the value expected."),
   "Observation evidence": fact("How complete the read was", "Whether Keel read everything, and the proof."),
 

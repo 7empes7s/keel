@@ -60,7 +60,7 @@ function PowerShellNote({ data }: { data: DiscoveryInventoryData }) {
         <p>{sentence}</p>
         {reasons.length ? (
           <TechnicalDetails>
-            {reasons.map((note) => <RecordField copy={false} key={note.area} label={note.area} value={note.reason ?? ""} />)}
+            {reasons.map((note) => <RecordField copy={false} key={note.area} label={`Not listed · ${note.area}`} value={note.reason ?? ""} />)}
           </TechnicalDetails>
         ) : null}
       </div>

@@ -9,6 +9,7 @@ import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared
 import { ProtectCoverage } from "@/components/protect-coverage";
 import { buildAlerts } from "@/lib/portal-data";
 import type { CoverageData, CoverageType, DashboardData } from "@/lib/types";
+import { recordValues } from "./record-fields";
 
 function coverageType(overrides: Partial<CoverageType> = {}): CoverageType {
   return {
@@ -90,7 +91,7 @@ test("a stale type renders as out of date and not as failed", () => {
 
   assert.match(html, /Out of date: last backed up 1 hour ago, longer ago than its tier allows\./);
   assert.match(html, /health-stale/);
-  assert.match(html, /<dt>Last collected<\/dt><dd><code>2026-09-08T12:00:00/);
+  assert.ok(recordValues(html, "Last collected").some((value) => value.includes("<code>2026-09-08T12:00:00")));
   assert.doesNotMatch(html, /health-failed/);
 });
 

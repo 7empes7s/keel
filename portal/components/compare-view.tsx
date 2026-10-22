@@ -2,7 +2,7 @@ import { CompareForm, type QuickPick } from "@/components/baselines/compare-form
 import { ChangedFieldList, ChangedValuesStyles } from "@/components/changed-values";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { Icon } from "@/components/shell/icons";
-import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { RecordCompare, RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import {
   CHANGE_WORDS, bytesWords, containerWords, contentItemWords, countsWords, differenceTotals, notComparedSentence,
   sideWords, workloadLabel, workloadNotComparedSentence,
@@ -198,7 +198,7 @@ function FieldRecords({ fields, prefix }: { fields?: CompareField[]; prefix?: st
   return (
     <>
       {(fields ?? []).map((field) => (
-        <RecordField copy={false} key={`${prefix ?? ""}#${field.path}`} label={`Field ${field.path}`} usage={prefix} value={{ kind: field.kind, before: field.before, after: field.after } as RecordValue} />
+        <RecordCompare after={field.kind === "removed" ? undefined : field.after} before={field.kind === "added" ? undefined : field.before} key={`${prefix ?? ""}#${field.path}`} label={`Field ${field.path}`} sides={{ before: "Earlier backup", after: "Later backup" }} />
       ))}
     </>
   );

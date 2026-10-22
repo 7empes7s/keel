@@ -5309,7 +5309,7 @@ item that needs it stays untouched.
   (`windowsQualityUpdatePolicy`, beta, create + update), device categories (`deviceCategory`, v1.0, create + update),
   device cleanup rules (`managedDeviceCleanupRule`, beta, **update only**, refused when the backup retires devices sooner than now).
 - Needs: /opt/keel-live at the #430 merge or later (`grep -q cleanupRuleRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission

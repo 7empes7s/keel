@@ -98,7 +98,7 @@ const TEMPLATES = Object.freeze({
     const condition = `d.tenant_ref = $1 AND ${SEEN_AT} >= $2 AND ${SEEN_AT} < $3
          AND ($4::text IS NULL OR d.resource_type = $4) AND ($5::text IS NULL OR d.change_type = $5)
          AND ($6::text[] IS NULL OR d.resource_type = ANY($6::text[]))
-         AND ($7::text IS NULL OR COALESCE(d.after_payload->>'displayName', d.before_payload->>'displayName', d.natural_key) ILIKE $7
+         AND ($7::text IS NULL OR COALESCE(${objectNameSql('d.after_payload', 'd.resource_type')}, ${objectNameSql('d.before_payload', 'd.resource_type')}, d.natural_key) ILIKE $7
               OR d.natural_key ILIKE $7)
          AND ${where.sql}`;
     const limitParam = 8 + where.values.length;

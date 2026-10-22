@@ -12,7 +12,8 @@ import '../../engine/collect/entraAdapter.mjs';
 const VPP_SELECT = 'id,organizationName,vppTokenAccountType,appleId,expirationDateTime,lastSyncDateTime,lastModifiedDateTime,state,lastSyncStatus,automaticallyUpdateApps,countryOrRegionCode';
 const PLAY_SELECT = 'id,bindStatus,lastAppSyncDateTime,lastAppSyncStatus,ownerUserPrincipalName,ownerOrganizationName,lastModifiedDateTime,enrollmentTarget,targetGroupIds,deviceOwnerManagementEnabled,androidDeviceAdministratorEnrollmentEnabled';
 const EXPECTED = [
-  ['deviceManagementCompliancePolicy', '/beta/deviceManagement/compliancePolicies?$expand=settings', 'tier1', 'list'],
+  // Listed, then each policy read on its own with its settings and actions for noncompliance.
+  ['deviceManagementCompliancePolicy', '/beta/deviceManagement/compliancePolicies', 'tier1', 'per-policy'],
   ['deviceManagementReusablePolicySetting', '/beta/deviceManagement/reusablePolicySettings', 'tier2', 'list'],
   // Listed, then each set read on its own with its items expanded.
   ['policySet', '/beta/deviceAppManagement/policySets', 'tier3', 'per-set'],
@@ -133,4 +134,28 @@ test('each policy set is listed, then read on its own with the apps and policies
   assert.equal(result.error, null);
   // A set deleted between the list and its own read is absent, not a failure.
   assert.deepEqual(result.items, [{ id: 'set-1', displayName: 'KEEL-RT-set', items: [item] }]);
+});
+
+test('each settings catalog compliance policy is listed, then read on its own with its settings and actions for noncompliance', async () => {
+  const entry = catalogEntryFor('deviceManagementCompliancePolicy');
+  const list = '/beta/deviceManagement/compliancePolicies';
+  assert.equal(`/${entry.version}${entry.parent.path}`, list);
+  const expand = '$expand=settings,scheduledActionsForRule($expand=scheduledActionConfigurations)';
+  const urls = [];
+  const settings = [{ id: '0', settingInstance: { settingDefinitionId: 'linux_distribution_alloweddistros' } }];
+  const scheduledActionsForRule = [{ id: 'r-1', ruleName: null, scheduledActionConfigurations: [{ id: 'a-1', actionType: 'block', gracePeriodHours: 0 }] }];
+  const reader = {
+    async collect(version, path) {
+      urls.push(`/${version}${path}`);
+      if (path.startsWith(`${entry.parent.path}?`)) return { items: [{ id: 'cp-1' }, { id: 'cp-2' }], pages: 1, status: 200, capped: false, error: null };
+      const id = path.split('?')[0].split('/').pop();
+      if (id === 'cp-2') return { items: [], pages: 0, status: 404, capped: false, error: { status: 404, error: 'gone' } };
+      return { items: [{ id, name: 'KEEL-RT-compliance', settings, scheduledActionsForRule }], pages: 1, status: 200, capped: false, error: null };
+    },
+  };
+  const result = await get('deviceManagementCompliancePolicy').adapter.collectRaw(reader, {});
+  assert.deepEqual(urls, [`${list}?$select=id`, `${list}/cp-1?${expand}`, `${list}/cp-2?${expand}`], 'list, then one GET per policy');
+  assert.equal(result.error, null);
+  // A policy deleted between the list and its own read is absent, not a failure.
+  assert.deepEqual(result.items, [{ id: 'cp-1', name: 'KEEL-RT-compliance', settings, scheduledActionsForRule }]);
 });

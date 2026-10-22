@@ -954,6 +954,75 @@ async function groupPolicySettingsAfterWrite(io, { payload, verb, targetId }) {
 }
 
 /** The Wave 2 Intune records (resourceType -> record). */
+// ------------------------------------------- restore gaps, batch 7
+
+const COMPLIANCE_POLICIES = '/deviceManagement/compliancePolicies';
+const COMPLIANCE_EXPAND = '$expand=settings,scheduledActionsForRule($expand=scheduledActionConfigurations)';
+
+/** The whole policy with its settings; a create also carries its actions for noncompliance. */
+function complianceBody(body, { verb, payload }) {
+  const out = { ...body, settings: settingsBody(payload?.settings) };
+  if (verb === 'create') out.scheduledActionsForRule = scheduledActionsBody(payload?.scheduledActionsForRule);
+  return out;
+}
+
+/** Settings and actions compare without the ids and annotations Intune adds. */
+function sameComplianceField(field, left, right) {
+  if (field === 'settings') return sameValue(settingsBody(left), settingsBody(right));
+  if (field === 'scheduledActionsForRule') return sameValue(scheduledActionsBody(left), scheduledActionsBody(right));
+  return null;
+}
+
+/**
+ * A compliance policy is written only from a backup that holds all of its
+ * settings (the write replaces the whole policy, so a short list deletes
+ * settings), and created only with its actions for noncompliance, which Graph
+ * needs (at least the block action). Secret settings are never written.
+ */
+function compliancePolicyRefusal(resource, verb) {
+  const payload = resource.payload ?? {};
+  const secrets = intuneSecretFields(payload);
+  if (secrets.length > 0) {
+    return { outcome: 'skipped', reason: `manual: the policy holds values Graph never returns at ${secrets.join(', ')}; restore it by hand so they are never written as blanks` };
+  }
+  const newBackup = 'take a new backup, then restore';
+  if (!Array.isArray(payload.settings)) return { outcome: 'failed', reason: `the backup does not hold this compliance policy's settings; writing it would empty the policy, so ${newBackup}` };
+  const count = payload.settingCount;
+  if (typeof count === 'number' && payload.settings.length !== count) {
+    return { outcome: 'failed', reason: `the backup holds ${payload.settings.length} of this compliance policy's ${count} settings; writing it would delete the rest, so ${newBackup}` };
+  }
+  const actions = payload.scheduledActionsForRule;
+  if (Array.isArray(actions) && !actions.some((rule) => (rule?.scheduledActionConfigurations ?? []).some((action) => action?.actionType === 'block'))) {
+    return { outcome: 'failed', reason: 'the backup lists no block action for noncompliance for this compliance policy, and Graph needs one; restore it by hand' };
+  }
+  if (verb === 'create' && !Array.isArray(actions)) {
+    return { outcome: 'failed', reason: `the backup does not hold this compliance policy's actions for noncompliance (backups before they were read), and Graph needs them to create it; ${newBackup}` };
+  }
+  return null;
+}
+
+/**
+ * Puts a policy's actions for noncompliance back. A create sent them with the
+ * policy, so they are only checked. An update from a backup without them leaves
+ * the live actions as they are; otherwise changed actions are replaced through
+ * setScheduledActions and read back.
+ */
+async function complianceActionsAfterWrite(io, { payload, verb, targetId, live }) {
+  const want = scheduledActionsBody(payload.scheduledActionsForRule);
+  if (verb === 'update' && !Array.isArray(payload.scheduledActionsForRule)) {
+    return { changes: { scheduledActions: 'left as they are: the backup was taken before actions for noncompliance were backed up' } };
+  }
+  const path = `${COMPLIANCE_POLICIES}/${encodeURIComponent(targetId)}`;
+  const differ = (body) => !sameValue(want, scheduledActionsBody(body?.scheduledActionsForRule));
+  if (!differ(live)) return verb === 'create' ? null : { changes: { scheduledActions: 'already as in the backup' } };
+  if (verb === 'create') return { error: 'post-state: the actions for noncompliance did not read back as written' };
+  const result = await io.retryOperation(() => io.writer.write('beta', `${path}/setScheduledActions`, { method: 'POST', body: { scheduledActions: want } }));
+  if (!result.ok) return { error: `writing the actions for noncompliance failed: ${outcomeDetail(result)}` };
+  const check = await readUntil(io, 'beta', `${path}?${COMPLIANCE_EXPAND}`, (r) => recordNotFound(r) || (r?.ok === true && differ(r.body)), io.readOptions);
+  if (check?.ok !== true || differ(check.body)) return { error: 'post-state: the actions for noncompliance did not read back as written' };
+  return { live: check.body, changes: { scheduledActions: 'written' } };
+}
+
 export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // Delete only: create and update stay on the built-in path above.
   ...Object.fromEntries(Object.values(INTUNE_RECORDS).map((entry) => [entry.resourceType, defineRecord({
@@ -1060,6 +1129,18 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     excluded: ['items', 'assignments', 'status', 'errorCode'],
     refusal: policySetRefusal, preflight: policySetItemsExist, afterWrite: policySetItemsAfterWrite,
     permission: 'DeviceManagementApps.ReadWrite.All',
+  }),
+  // Restore gaps, batch 7: settings catalog compliance policies. The backup
+  // reads each policy with its settings and actions for noncompliance. The
+  // policy is written whole (PUT, like a settings catalog policy); a create
+  // carries its actions, and on update changed actions go through the
+  // policy's setScheduledActions action. Who it is assigned to is not written.
+  deviceManagementCompliancePolicy: defineRecord({
+    resourceType: 'deviceManagementCompliancePolicy', version: 'beta', collection: COMPLIANCE_POLICIES, operations: ['create', 'update'],
+    updateMethod: 'PUT', readQuery: COMPLIANCE_EXPAND,
+    excluded: ['creationSource', 'isAssigned', 'settingCount', 'settings', 'scheduledActionsForRule', ...POLICY_NAVIGATION],
+    transform: complianceBody, sameField: sameComplianceField, refusal: compliancePolicyRefusal, afterWrite: complianceActionsAfterWrite,
+    permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
 });
 

@@ -8,10 +8,15 @@
 export default [
   // Compliance policies built in the settings catalog (Linux and newer platforms).
   // Like configurationPolicy, the settings are a separate collection, listed
-  // only when expanded; without them the backup holds only the name.
-  { type: 'deviceManagementCompliancePolicy', path: '/deviceManagement/compliancePolicies', version: 'beta', criticality: 'tier1', blastRadius: 'access-affecting',
-    query: '$expand=settings',
-    note: 'Compliance feeds Conditional Access. Actions for noncompliance are read per policy and not backed up yet.' },
+  // only when expanded. The actions for noncompliance are returned only when one
+  // policy is read with them expanded, so each policy is listed, then read on its
+  // own with both (restore gaps batch 7).
+  { type: 'deviceManagementCompliancePolicy', path: '/deviceManagement/compliancePolicies/{parent}', version: 'beta', criticality: 'tier1', blastRadius: 'access-affecting',
+    parent: { path: '/deviceManagement/compliancePolicies', select: 'id', key: 'id', as: 'id' },
+    query: '$expand=settings,scheduledActionsForRule($expand=scheduledActionConfigurations)',
+    // A policy deleted between the list and its own read is gone, not a failed read.
+    absentWhenNotFound: true,
+    note: 'Compliance feeds Conditional Access. The settings and actions for noncompliance are read per policy.' },
   // Reusable settings groups (for example firewall rule addresses) that settings
   // catalog policies reference by id.
   { type: 'deviceManagementReusablePolicySetting', path: '/deviceManagement/reusablePolicySettings', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',

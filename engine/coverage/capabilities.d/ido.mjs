@@ -101,6 +101,9 @@ export default [
   { resourceType: 'windowsAutopilotDeploymentProfile', operation: 'update', path: '/deviceManagement/windowsAutopilotDeploymentProfiles', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   { resourceType: 'policySet', operation: 'create', path: '/deviceAppManagement/policySets', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
   { resourceType: 'policySet', operation: 'update', path: '/deviceAppManagement/policySets', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  // Restore gaps, batch 7: settings catalog compliance policies.
+  { resourceType: 'deviceManagementCompliancePolicy', operation: 'create', path: '/deviceManagement/compliancePolicies', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'deviceManagementCompliancePolicy', operation: 'update', path: '/deviceManagement/compliancePolicies', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   // Add-only identity edges: an edge is never removed, so edge-remove is not registered.
   { resourceType: 'application#appOwner', operation: 'edge-add', path: '/applications/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },
   { resourceType: 'servicePrincipal#servicePrincipalOwner', operation: 'edge-add', path: '/servicePrincipals/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },

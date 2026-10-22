@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 133 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 72 at least in part; the other 95 are restored by hand from the backup.
+KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 133 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 73 at least in part; the other 94 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -429,7 +429,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Exchange on-premises access settings | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | App categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Company Portal branding | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Settings catalog compliance policies | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
+| Settings catalog compliance policies | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Reusable settings groups | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Policy sets | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Apple Volume Purchase tokens | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
@@ -561,9 +561,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 - **Company Portal branding** (not built yet). KEEL backs up the branding settings but does not restore them yet. The logo images are not backed up.
   - *Not brought back:* logo images (stored separately and not in the backup yet).
   - *You do:* Recreate the branding in the Intune admin center from the backup, upload the logos from your own copy, and assign it to the groups in the backup.
-- **Settings catalog compliance policies** (not built yet). KEEL backs up the settings but does not restore them yet. The actions for noncompliance and who the policy is assigned to are not backed up yet.
-  - *Not brought back:* actions for noncompliance (stored separately and not in the backup yet); who the policy is assigned to (stored separately and not in the backup yet).
-  - *You do:* Recreate the policy in the Intune admin center from the backup, add its actions for noncompliance, and assign it again. Conditional Access that requires compliant devices needs it back first.
+- **Settings catalog compliance policies.** Recreates policies and puts back their settings and actions for noncompliance (block, emails, grace periods).
+  - *Not brought back:* who the policy is assigned to (stored separately and not in the backup yet).
+  - *You do:* Who a policy is assigned to is not backed up yet, so assign it again by hand; Conditional Access that requires compliant devices needs it assigned first. A backup taken before the actions for noncompliance were read cannot recreate a policy; take a new backup.
 - **Reusable settings groups.** Recreates groups and puts their settings back, before the settings catalog policies that use them.
   - *You do:* A group is never moved to another setting definition; recreate it by hand if that changed.
 - **Policy sets.** Recreates sets and puts back their names and the apps and policies in them.

@@ -576,6 +576,114 @@ test('a policy set without its items, with an unknown item, or with an item miss
   assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
 });
 
+// ------------------------------------------- restore gaps, batch 7
+
+const CP_PATH = '/deviceManagement/compliancePolicies';
+const linuxSetting = (id, value) => ({
+  id,
+  settingInstance: {
+    '@odata.type': '#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance',
+    settingDefinitionId: 'linux_deviceencryption_required', settingInstanceTemplateReference: null,
+    choiceSettingValue: { value, settingValueTemplateReference: null, children: [] },
+  },
+});
+const actionsFor = (graceHours) => [{
+  id: 'rule-src', ruleName: null,
+  scheduledActionConfigurations: [
+    { id: 'act-block', actionType: 'block', gracePeriodHours: graceHours, notificationTemplateId: '', notificationMessageCCList: [] },
+    { id: 'act-mail', actionType: 'notification', gracePeriodHours: 24, notificationTemplateId: 'tpl-1', notificationMessageCCList: [] },
+  ],
+}];
+const compliance = Object.freeze({
+  id: 'cp-src', name: 'KEEL-RT-compliance', description: 'Fixture', platforms: 'linux', technologies: 'linuxMdm', roleScopeTagIds: ['0'],
+  settingCount: 1, creationSource: null, isAssigned: false, createdDateTime: 'x', lastModifiedDateTime: 'x',
+  settings: [linuxSetting('0', 'linux_deviceencryption_required_true')],
+  scheduledActionsForRule: actionsFor(0),
+});
+
+test('a settings catalog compliance policy is created with its settings and actions for noncompliance, never its assignments', async () => {
+  const graph = idoFakeGraph();
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementCompliancePolicy', { ...compliance, assignments: [{ id: 'a-1' }] }), 'create', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = graph.calls.filter((call) => call.method !== 'GET');
+  assert.deepEqual(writes.map((call) => `${call.method} ${call.path}`), [`POST ${CP_PATH}`], 'one create; the actions go with it');
+  const [post] = writes;
+  assert.equal(post.version, 'beta');
+  for (const field of ['id', 'settingCount', 'creationSource', 'isAssigned', 'assignments', 'createdDateTime', 'lastModifiedDateTime']) assert.equal(field in post.body, false, field);
+  assert.equal(post.body.settings.length, 1);
+  assert.equal('id' in post.body.settings[0], false, 'setting ids are Intune\'s');
+  assert.deepEqual(post.body.scheduledActionsForRule, [{
+    ruleName: null,
+    scheduledActionConfigurations: [
+      { actionType: 'block', gracePeriodHours: 0, notificationTemplateId: '', notificationMessageCCList: [] },
+      { actionType: 'notification', gracePeriodHours: 24, notificationTemplateId: 'tpl-1', notificationMessageCCList: [] },
+    ],
+  }]);
+  const read = graph.calls.filter((call) => call.method === 'GET').at(-1);
+  assert.match(read.path, /\$expand=settings,scheduledActionsForRule/, 'read back with settings and actions');
+});
+
+test('a compliance policy update puts the whole policy back, then its changed actions through setScheduledActions', async () => {
+  const path = `${CP_PATH}/cp-1`;
+  const live = { ...compliance, id: 'cp-1', description: 'Changed', settings: [linuxSetting('live-0', 'linux_deviceencryption_required_false')], scheduledActionsForRule: actionsFor(72) };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementCompliancePolicy', { ...compliance, id: 'cp-1' }, {
+    live: { state: 'present', targetId: 'cp-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = graph.calls.filter((call) => call.method !== 'GET');
+  assert.deepEqual(writes.map((call) => `${call.method} ${call.path}`), [`PUT ${path}`, `POST ${path}/setScheduledActions`]);
+  assert.equal(writes[0].body.description, 'Fixture');
+  assert.equal(writes[0].body.settings[0].settingInstance.choiceSettingValue.value, 'linux_deviceencryption_required_true');
+  assert.equal('scheduledActionsForRule' in writes[0].body, false, 'actions are never sent with an update');
+  assert.equal(writes[1].body.scheduledActions[0].scheduledActionConfigurations[0].gracePeriodHours, 0);
+  assert.deepEqual(result.applied.changes.fields.sort(), ['description', 'settings']);
+  assert.equal(result.applied.changes.scheduledActions, 'written');
+});
+
+test('a compliance policy that matches the backup is not written, and an older backup leaves the live actions alone', async () => {
+  const path = `${CP_PATH}/cp-1`;
+  const live = { ...compliance, id: 'cp-1', settings: [linuxSetting('live-0', 'linux_deviceencryption_required_true')], scheduledActionsForRule: actionsFor(0) };
+  const same = idoFakeGraph({ seed: { [path]: live } });
+  const unchanged = await applyIntuneExtendedWrite(same, resourceOf('deviceManagementCompliancePolicy', { ...compliance, id: 'cp-1' }, {
+    live: { state: 'present', targetId: 'cp-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(unchanged.failed, undefined, unchanged.failed?.error);
+  assert.equal(same.calls.filter((call) => call.method !== 'GET').length, 0);
+  assert.equal(unchanged.applied.changes.scheduledActions, 'already as in the backup');
+
+  const { scheduledActionsForRule, ...older } = compliance;
+  const drifted = { ...live, description: 'Changed' };
+  const graph = idoFakeGraph({ seed: { [path]: drifted } });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementCompliancePolicy', { ...older, id: 'cp-1' }, {
+    live: { state: 'present', targetId: 'cp-1', payload: drifted },
+  }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(graph.calls.filter((call) => call.method !== 'GET').map((call) => call.method), ['PUT']);
+  assert.match(result.applied.changes.scheduledActions, /left as they are/);
+});
+
+test('a compliance policy without all its settings, without actions to create it, without a block action, or with a secret is never written', async () => {
+  const { settings, ...noSettings } = compliance;
+  const { scheduledActionsForRule, ...noActions } = compliance;
+  const noBlock = { ...compliance, scheduledActionsForRule: [{ ruleName: null, scheduledActionConfigurations: [{ actionType: 'notification', gracePeriodHours: 0 }] }] };
+  const secret = { ...compliance, settings: [{ id: '0', settingInstance: { '@odata.type': '#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance', simpleSettingValue: { '@odata.type': '#microsoft.graph.deviceManagementConfigurationSecretSettingValue', value: null } } }] };
+  for (const [payload, verb, pattern] of [
+    [noSettings, 'create', /does not hold this compliance policy's settings/],
+    [{ ...compliance, settingCount: 3 }, 'update', /holds 1 of this compliance policy's 3 settings/],
+    [noActions, 'create', /does not hold this compliance policy's actions for noncompliance/],
+    [noBlock, 'create', /no block action/],
+    [secret, 'create', /manual: the policy holds values Graph never returns/],
+  ]) {
+    const graph = idoFakeGraph({ seed: { [`${CP_PATH}/cp-1`]: { ...compliance, id: 'cp-1' } } });
+    const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementCompliancePolicy', { ...payload, id: 'cp-1' }, {
+      live: { state: 'present', targetId: 'cp-1', payload: { ...compliance, id: 'cp-1' } },
+    }), verb, FAST);
+    assert.match(result.failed?.error ?? result.skipped?.reason ?? '', pattern, String(pattern));
+    assert.equal(graph.calls.length, 0, String(pattern));
+  }
+});
+
 test('a policy delete passes the deletion guard and refuses a policy that is still assigned', async () => {
   for (const type of ['deviceCompliancePolicy', 'deviceConfiguration', 'configurationPolicy']) {
     const collection = INTUNE_RECORDS[type].collection;

@@ -419,9 +419,10 @@ export const TYPE_GUIDE = Object.freeze({
   intuneBrandingProfile: manual('Company Portal branding', NOT_BUILT,
     'KEEL backs up the branding settings but does not restore them yet. The logo images are not backed up.',
     'Recreate the branding in the Intune admin center from the backup, upload the logos from your own copy, and assign it to the groups in the backup.'),
-  deviceManagementCompliancePolicy: manual('Settings catalog compliance policies', NOT_BUILT,
-    'KEEL backs up the settings but does not restore them yet. The actions for noncompliance and who the policy is assigned to are not backed up yet.',
-    'Recreate the policy in the Intune admin center from the backup, add its actions for noncompliance, and assign it again. Conditional Access that requires compliant devices needs it back first.'),
+  deviceManagementCompliancePolicy: auto('Settings catalog compliance policies', {
+    keeps: 'Recreates policies and puts back their settings and actions for noncompliance (block, emails, grace periods).',
+    todo: 'Who a policy is assigned to is not backed up yet, so assign it again by hand; Conditional Access that requires compliant devices needs it assigned first. A backup taken before the actions for noncompliance were read cannot recreate a policy; take a new backup.',
+  }),
   deviceManagementReusablePolicySetting: auto('Reusable settings groups', {
     keeps: 'Recreates groups and puts their settings back, before the settings catalog policies that use them.',
     todo: 'A group is never moved to another setting definition; recreate it by hand if that changed.',

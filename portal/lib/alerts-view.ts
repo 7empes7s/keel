@@ -286,10 +286,10 @@ export function alertsStatus(counts: AlertCounts): { tone: RiskTone; label: stri
 }
 
 export type AlertFilter = "waiting" | "overdue" | "acknowledged" | "resolved" | "muted";
-const FILTERS: AlertFilter[] = ["waiting", "overdue", "acknowledged", "resolved", "muted"];
+export const ALERT_FILTERS: AlertFilter[] = ["waiting", "overdue", "acknowledged", "resolved", "muted"];
 
 export function parseAlertFilter(value: string | null | undefined): AlertFilter | null {
-  return FILTERS.includes(value as AlertFilter) ? (value as AlertFilter) : null;
+  return ALERT_FILTERS.includes(value as AlertFilter) ? (value as AlertFilter) : null;
 }
 
 export function alertMatches(alert: AlertItem, filter: AlertFilter | null, now: string): boolean {

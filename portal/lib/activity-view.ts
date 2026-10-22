@@ -61,6 +61,12 @@ export function outcomeOf(value: string | null | undefined): Outcome | null {
   return value && value in OUTCOMES ? (value as Outcome) : null;
 }
 
+/** A comma list of outcomes from the address, in their usual order, unknowns dropped. */
+export function outcomesOf(value: string | null | undefined): Outcome[] {
+  const picked = (value ?? "").split(",");
+  return OUTCOME_ORDER.filter((key) => picked.includes(key));
+}
+
 export function jobOutcome(status: string): Outcome {
   return OUTCOME_ORDER.find((key) => OUTCOMES[key].jobStatuses.includes(status)) ?? "recorded";
 }
@@ -352,7 +358,8 @@ export interface ActivityFilters {
   range: DayRange | null;
   who: string | null;
   what: ActivityKind | null;
-  outcome: Outcome | null;
+  // Outcomes add up: `outcome=failed,running` shows either.
+  outcomes: Outcome[];
 }
 
 export function parseFilters(get: (key: string) => string | null): ActivityFilters {
@@ -362,7 +369,7 @@ export function parseFilters(get: (key: string) => string | null): ActivityFilte
     range: rangeFromParam(get("range")),
     who: get("who") || null,
     what: activityKind(get("what")),
-    outcome: outcomeOf(get("outcome")),
+    outcomes: outcomesOf(get("outcome")),
   };
 }
 
@@ -377,7 +384,7 @@ export function rowMatches(row: ActivityRow, filters: ActivityFilters): boolean 
   if (filters.show === "jobs" && row.type !== "job") return false;
   if (filters.show === "records" && row.type !== "record") return false;
   if (filters.what && row.kind !== filters.what) return false;
-  if (filters.outcome && row.outcome !== filters.outcome) return false;
+  if (filters.outcomes.length && !filters.outcomes.includes(row.outcome)) return false;
   if (filters.who && row.who !== filters.who) return false;
   if (filters.range) {
     const bounds = rangeBounds(filters.range)!;
@@ -390,7 +397,7 @@ export function rowMatches(row: ActivityRow, filters: ActivityFilters): boolean 
 /** "failed backups by Amara Okafor, today": the filters as one phrase, for the note. */
 export function filterWords(filters: ActivityFilters, people: ActivityPeople, today: Day): string {
   const parts: string[] = [];
-  if (filters.outcome) parts.push(OUTCOMES[filters.outcome].plural.toLowerCase());
+  if (filters.outcomes.length) parts.push(filters.outcomes.map((key) => OUTCOMES[key].plural.toLowerCase()).join(" or "));
   parts.push(filters.what ? ACTIVITY_KINDS[filters.what].label.toLowerCase() : filters.show === "jobs" ? "jobs" : filters.show === "records" ? "audit entries" : "entries");
   if (filters.who) {
     const ref = personFor(filters.who, people);
@@ -401,6 +408,26 @@ export function filterWords(filters: ActivityFilters, people: ActivityPeople, to
     parts.push(!to && from === today ? "today" : to ? `from ${shortDate(from)} to ${shortDate(to)}` : `on ${shortDate(from)}`);
   }
   return parts.join(" ");
+}
+
+/** Each filter on as a removable chip: its words and the address change that drops it. */
+export function filterChips(filters: ActivityFilters, people: ActivityPeople, today: Day): { key: string; label: string; clear: Record<string, string | null> }[] {
+  const chips: { key: string; label: string; clear: Record<string, string | null> }[] = [];
+  for (const key of filters.outcomes) {
+    const rest = filters.outcomes.filter((entry) => entry !== key);
+    chips.push({ key: `outcome:${key}`, label: OUTCOMES[key].plural, clear: { outcome: rest.join(",") || null } });
+  }
+  if (filters.show !== "all") chips.push({ key: "show", label: filters.show === "jobs" ? "Jobs only" : "Audit record only", clear: { show: null } });
+  if (filters.what) chips.push({ key: "what", label: ACTIVITY_KINDS[filters.what].label, clear: { what: null } });
+  if (filters.who) {
+    const ref = personFor(filters.who, people);
+    chips.push({ key: "who", label: `By ${ref ? capital(personLabel(ref)) : "one account"}`, clear: { who: null } });
+  }
+  if (filters.range) {
+    const { from, to } = normalise(filters.range);
+    chips.push({ key: "range", label: !to && from === today ? "Today" : to ? `${shortDate(from)} to ${shortDate(to)}` : `On ${shortDate(from)}`, clear: { range: null } });
+  }
+  return chips;
 }
 
 /** The account behind a "Who" value: keyed by the actor as recorded, or by its id. */

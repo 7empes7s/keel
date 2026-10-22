@@ -6,6 +6,7 @@ import { useMemo, type MouseEvent } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
+import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { DatePicker } from "@/components/pickers/date-picker";
 import { OptionPicker } from "@/components/pickers/option-picker";
@@ -55,6 +56,7 @@ import {
   type OutcomeSummary,
   type ValueReportData,
 } from "@/lib/value-report-view";
+import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { formatTimestamp } from "@/lib/presentation";
 import { pushUrl } from "@/lib/url-history";
 import { useViewState } from "@/lib/use-view-state";
@@ -72,9 +74,9 @@ const FILTERS: Record<ResultFilter, { label: string; test: (state: OutcomeState)
   attention: { label: "failed or changed again", test: (state) => state === "failed" || state === "reopened" },
 };
 
-function isFilter(value: string | null): value is ResultFilter {
-  return value === "verified" || value === "open" || value === "attention";
-}
+// The result tiles add up: `result=verified,attention` shows requests in either.
+const RESULT_TILES: FilterTile<OutcomeRow>[] = (Object.keys(FILTERS) as ResultFilter[]).map((key) => ({ key, test: (row: OutcomeRow) => FILTERS[key].test(row.state) }));
+const FILTER_LABELS: Record<ResultFilter, string> = { verified: "Put back and checked", open: "Still open", attention: "Failed or changed again" };
 
 function plural(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
@@ -91,9 +93,17 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
   const verdict = valueVerdict(report);
   const look = needsLook(outcomes);
   const resultParam = params?.get("result") ?? null;
-  const filter = isFilter(resultParam) ? resultParam : null;
+  const filter = readPicked(RESULT_TILES, resultParam) as ResultFilter[];
+  const filterKey = filter.join(",");
   const rows = useMemo(() => orderOutcomes(outcomes.rows), [outcomes.rows]);
-  const shown = useMemo(() => (filter ? rows.filter((row) => FILTERS[filter].test(row.state)) : rows), [rows, filter]);
+  const shown = useMemo(() => applyFilters(rows, RESULT_TILES, filterKey ? filterKey.split(",") : []), [rows, filterKey]);
+  const tileTotals = useMemo(() => new Map(tileCounts(rows, RESULT_TILES, filterKey ? filterKey.split(",") : []).map((entry) => [entry.key, entry])), [rows, filterKey]);
+  const activeFilters: ActiveFilter[] = filter.map((key) => ({ key: `result:${key}`, label: FILTER_LABELS[key], clear: { result: withoutTile(filter, key) } }));
+  const tileAdds = (key: ResultFilter) => {
+    const words = addsWords(tileTotals.get(key), filter.length);
+    return words ? <small className="tile-adds">{words}</small> : null;
+  };
+  const tileTitle = (key: ResultFilter) => (filter.includes(key) ? "Picked: click to remove it from the view" : "Click to add these to the view");
   const chartOpen = view.get("chart") === "full";
   const shownFindings = isWithheld(findings) ? null : findings;
   const shownRecovery = isWithheld(recovery) ? null : recovery;
@@ -178,17 +188,19 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
 
       <div className="vr-explain" data-layer="explanation">
         <section aria-label="Results at a glance" className="vr-tiles">
-          <Link aria-current={filter === "verified" || undefined} className="vr-tile" data-tone={outcomes.states.verified ? "fine" : undefined} href={href({ result: filter === "verified" ? null : "verified" })}>
-            <span className="vr-tile-label"><Icon name="check-circle" />Put back and checked</span>
+          <Link aria-current={filter.includes("verified") || undefined} className="vr-tile" data-tone={outcomes.states.verified ? "fine" : undefined} href={href({ result: tileParam(RESULT_TILES, filter, "verified") })} title={tileTitle("verified")}>
+            <span className="vr-tile-label"><Icon name="check-circle" />Put back and checked{filter.includes("verified") ? <Icon className="tile-check" name="check" /> : null}</span>
             <b className="vr-tile-count">{outcomes.states.verified}<small> of {outcomes.total}</small></b>
             <small>Read back after writing</small>
             <Meter parts={[{ tone: "fine", value: outcomes.states.verified }]} total={outcomes.total} />
+            {tileAdds("verified")}
           </Link>
-          <Link aria-current={filter === "open" || undefined} className="vr-tile" data-tone={look ? "soon" : undefined} href={href({ result: filter === "open" ? null : "open" })}>
-            <span className="vr-tile-label"><Icon name="clock" />Still open</span>
+          <Link aria-current={filter.includes("open") || undefined} className="vr-tile" data-tone={look ? "soon" : undefined} href={href({ result: tileParam(RESULT_TILES, filter, "open") })} title={tileTitle("open")}>
+            <span className="vr-tile-label"><Icon name="clock" />Still open{filter.includes("open") ? <Icon className="tile-check" name="check" /> : null}</span>
             <b className="vr-tile-count">{outcomes.total - outcomes.states.verified}</b>
             <small>{stillOpenWords(outcomes)}</small>
             <Meter parts={[{ tone: "urgent", value: outcomes.states.failed }, { tone: "soon", value: outcomes.states.reopened }, { tone: "neutral", value: outcomes.states.queued + outcomes.states.unconfirmed }]} total={outcomes.total} />
+            {tileAdds("open")}
           </Link>
           <button className="vr-tile" data-tone={shownFindings?.states.open ? "urgent" : undefined} onClick={() => scrollTo("vr-checks")} type="button">
             <span className="vr-tile-label"><Icon name="baselines" />Security checks fixed</span>
@@ -285,16 +297,11 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
             <h2 id="vr-requests-heading">What was asked</h2>
             <small>{plural(outcomes.total, "request")} · each opens its job</small>
           </div>
-          {filter ? (
-            <p className="vr-filter-note" role="status">
-              Showing {FILTERS[filter].label} only: {shown.length} of {rows.length}.
-              <Link className="vr-inline-link" href={href({ result: null })}>Show every request</Link>
-            </p>
-          ) : null}
+          <ActiveFilters filters={activeFilters} noun={{ one: "request", many: "requests" }} shown={shown.length} total={rows.length} />
           {outcomes.total === 0 ? (
             <p className="sel-empty">Keel was not asked to put anything back in this period.</p>
           ) : shown.length === 0 ? (
-            <p className="sel-empty">No request matches this filter.</p>
+            <NoMatches filters={activeFilters} noun={{ one: "request", many: "requests" }} />
           ) : (
             <SelectableList
               action={{

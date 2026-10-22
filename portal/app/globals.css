@@ -10600,3 +10600,7 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
   .rs-table tbody tr[data-tone="soon"]:not(.rs-group) { box-shadow: inset 3px 0 0 var(--check-soon); }
   .rs-table tr.rs-group th { padding: var(--space-xs) var(--space-sm); }
 }
+/* Summary tiles that filter a list add up (OR): a picked tile shows a check, and the
+   others say what they would add. */
+.tile-check { width: 1rem; height: 1rem; margin-left: auto; color: var(--accent); }
+.tile-adds { color: var(--text) !important; font-weight: 600; font-variant-numeric: tabular-nums; }

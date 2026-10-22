@@ -161,8 +161,9 @@ test("Approvals · tiles filter, a request opens in place, Back closes it, two-p
   await tiles.filter({ hasText: "Expiring within 4 hours" }).click();
   await expect(page).toHaveURL(/soon=1/);
   await expect(page.locator(".sel-row")).toHaveCount(1);
-  await expect(page.locator(".ap-filter-note")).toContainText("Showing requests expiring within 4 hours only: 1 of 4.");
-  await page.getByRole("link", { name: "Show every request" }).click();
+  await expect(page.locator(".filter-count")).toHaveText("Showing 1 of 4 requests");
+  await expect(page.getByRole("button", { name: "Remove filter: Expiring within 4 hours" })).toBeVisible();
+  await page.getByRole("button", { name: "Clear all" }).click();
   await expect(page.locator(".sel-row")).toHaveCount(4);
   // Soonest to expire first, grouped by kind; every title opens its card.
   await expect(page.locator(".sel-group .sel-group-name b").first()).toHaveText("Restores");
@@ -286,12 +287,12 @@ test("Notifications · tiles, tabs, send test, turn back on, real-event rules, e
   await toast.getByRole("link", { name: "Show under Sent" }).click();
   await expect(page).toHaveURL(/tab=sent/);
   await expect(page).toHaveURL(/channel=c4e10000-0000-4000-8000-0000000000c4/);
-  await expect(page.locator(".nf-filter-note")).toContainText("Showing to Slack only");
+  await expect(page.getByRole("button", { name: "Remove filter: To Slack" })).toBeVisible();
   await expect(page.locator(".nf-sent").first()).toContainText("Test alert");
   await expect(page.locator(".nf-sent").first().locator(".badge")).toHaveText("Waiting to send");
   // (4) A sent row about an alert links to it.
   await expect(page.locator(".nf-sent .nf-row-link", { hasText: "Alert came back: Corporate laptops" }).first()).toHaveAttribute("href", /^#?\/alerts\?open=a1e70000-0000-4000-8000-000000000002$/);
-  await page.getByRole("link", { name: "Show every send" }).click();
+  await page.getByRole("button", { name: "Clear all" }).click();
   await expect(page.locator(".sel-row")).toHaveCount(10);
 
   // (3) The Failed tile sets status=failed and Sent shows failures only.
@@ -299,7 +300,12 @@ test("Notifications · tiles, tabs, send test, turn back on, real-event rules, e
   await expect(page).toHaveURL(/status=failed/);
   await expect(page.locator(".sel-row")).toHaveCount(2);
   for (const badge of await page.locator(".sel-row .badge").all()) await expect(badge).toHaveText("Failed");
-  await expect(page.locator(".nf-filter-note")).toContainText("Showing failed only: 2 of 10.");
+  await expect(page.locator(".filter-count")).toHaveText("Showing 2 of 10 sends");
+  // Outcomes add up: Trying again adds to Failed.
+  await page.locator(".nf-chip", { hasText: "Trying again" }).click();
+  await expect(page).toHaveURL(/status=retrying%2Cfailed|status=retrying,failed/);
+  await expect(page.locator(".nf-chip[aria-pressed='true']")).toHaveCount(2);
+  await expect.poll(() => page.locator(".sel-row").count()).toBeGreaterThan(2);
 
   // (5) Turn back on: the off channel's row offers it, and it posts to the enable route.
   await tiles.filter({ hasText: "Channels on" }).click();
@@ -403,8 +409,8 @@ test("Activity · tiles, day groups, panel, run again, who filter, one amber act
   await expect(page).toHaveURL(/outcome=failed/);
   await expect(page.locator(".sel-row")).toHaveCount(2);
   for (const badge of await page.locator(".sel-row .badge").all()) await expect(badge).toHaveText("Failed");
-  await expect(page.locator(".ac-filter-note")).toContainText("Showing failed jobs only: 2 of 18 loaded.");
-  await page.getByRole("link", { name: "Show everything" }).click();
+  await expect(page.locator(".filter-count")).toHaveText("Showing 2 of 18 entries loaded");
+  await page.getByRole("button", { name: "Clear all" }).click();
   await expect(page).not.toHaveURL(/outcome=/);
   await expect(page.locator(".sel-row")).toHaveCount(18);
 
@@ -413,7 +419,7 @@ test("Activity · tiles, day groups, panel, run again, who filter, one amber act
   await page.locator(".option-panel [role='option']", { hasText: "Amara Okafor" }).click();
   await expect(page).toHaveURL(/who=8c1e0000-0000-4000-8000-0000000000a2/);
   await expect(page.locator(".sel-row")).toHaveCount(2);
-  await expect(page.locator(".ac-filter-note")).toContainText("Showing entries by Amara Okafor only");
+  await expect(page.getByRole("button", { name: "Remove filter: By Amara Okafor" })).toBeVisible();
   // Group by outcome: failed first.
   await page.getByRole("radio", { name: "Outcome" }).click();
   await expect(page.locator(".sel-group .sel-group-name b").first()).toHaveText("Failed");
@@ -1060,11 +1066,16 @@ test("What's protected · tiles filter in the address, selection names its tiers
   await tiles.filter({ hasText: "Failed" }).click();
   await expect(page).toHaveURL(/health=failed/);
   await expect(page.locator(".sel-row")).toHaveCount(2);
-  await expect(page.locator(".pt-filter-note")).toContainText("Showing failed only: 2 of 15.");
+  await expect(page.locator(".filter-count")).toHaveText("Showing 2 of 15 kinds");
+  // Health tiles add up: Out of date adds to Failed.
+  await tiles.filter({ hasText: "Out of date" }).click();
+  await expect(page).toHaveURL(/health=failed%2Cout-of-date|health=failed,out-of-date/);
+  await expect.poll(() => page.locator(".sel-row").count()).toBeGreaterThan(2);
+  await expect(tiles.filter({ hasText: "Failed" })).toHaveAttribute("aria-current", "true");
   await page.goto(`${HARNESS}#/protect?health=failed&group=service`);
   await page.locator("main#main-content h1").waitFor();
   await expect(page.locator(".sel-row")).toHaveCount(2);
-  await page.getByRole("link", { name: "Show every kind" }).click();
+  await page.getByRole("button", { name: "Clear all" }).click();
   await expect(page.locator(".sel-row")).toHaveCount(15);
   // Shift+click picks a range; the bar says which tiers run before anything runs.
   const rows = page.locator(".sel-part", { hasText: "Sign-in rules and methods" }).locator(".sel-row");
@@ -1244,7 +1255,7 @@ test("the value report adds up, shows hours only with an estimate, and withholds
 
   // The result tile filters the list; the chart opens full screen and Back closes it.
   await page.locator(".vr-tile", { hasText: "Still open" }).click();
-  await expect(page.locator(".vr-filter-note")).toContainText("Showing still open only: 4 of 5.");
+  await expect(page.locator(".filter-count")).toHaveText("Showing 4 of 5 requests");
   await page.getByRole("link", { name: "Results by kind: open full screen" }).click();
   const sheet = page.getByRole("dialog", { name: "Results by kind" });
   await expect(sheet).toBeVisible();
@@ -1845,7 +1856,11 @@ test("Incidents · verdict, tiles and rows name the cleared backup, people by na
   await page.locator(".ir-tile", { hasText: "Not checked yet" }).click();
   await expect(page).toHaveURL(/state=unchecked/);
   await expect(page.locator(".sel-row")).toHaveCount(3);
-  await page.getByRole("link", { name: "Show every backup" }).click();
+  // Tiles add up: Cleared adds to Not checked yet.
+  await page.locator(".ir-tile", { hasText: "Cleared backups" }).click();
+  await expect(page).toHaveURL(/state=cleared%2Cunchecked|state=cleared,unchecked/);
+  await expect.poll(() => page.locator(".sel-row").count()).toBeGreaterThan(3);
+  await page.getByRole("button", { name: "Clear all" }).click();
   await expect(page.locator(".sel-row")).toHaveCount(5);
 });
 
@@ -2328,8 +2343,12 @@ test("Policies · tiles, groups, Resume, bulk turn off, New rule", async ({ page
   await tiles.filter({ hasText: "Paused or stopped" }).click();
   await expect(page).toHaveURL(/state=paused/);
   await expect(page.locator(".sel-row")).toHaveCount(2);
-  await expect(page.locator(".po-filter-note")).toContainText("Showing paused or stopped rules only: 2 of 5.");
-  await page.getByRole("link", { name: "Show everything" }).click();
+  await expect(page.locator(".filter-count")).toHaveText("Showing 2 of 5 rules");
+  // State tiles add up: Off adds to Paused or stopped.
+  await tiles.filter({ hasText: /^Off/ }).click();
+  await expect(page).toHaveURL(/state=paused%2Coff|state=paused,off/);
+  await expect(page.locator(".sel-row")).toHaveCount(3);
+  await page.getByRole("button", { name: "Clear all" }).click();
   await expect(page).not.toHaveURL(/state=/);
   await expect(page.locator(".sel-row")).toHaveCount(5);
 
@@ -2482,8 +2501,13 @@ test("People · tiles, groups, Add person, Add Viewer to several, the last admin
   await tiles.filter({ hasText: "Can approve" }).click();
   await expect(page).toHaveURL(/role=approver/);
   await expect(page.locator(".sel-row")).toHaveCount(2);
-  await expect(page.locator(".pe-filter-note")).toContainText("Showing approvers only: 2 of 6.");
-  await page.getByRole("link", { name: "Show everyone" }).click();
+  await expect(page.locator(".filter-count")).toHaveText("Showing 2 of 6 people");
+  // Tiles add up: Disabled adds to Can approve.
+  await tiles.filter({ has: page.locator(".pe-tile-label", { hasText: /^Disabled$/ }) }).click();
+  await expect(page).toHaveURL(/role=approver/);
+  await expect(page).toHaveURL(/state=disabled/);
+  await expect.poll(() => page.locator(".sel-row").count()).toBeGreaterThan(2);
+  await page.getByRole("button", { name: "Clear all" }).click();
   await expect(page.locator(".sel-row")).toHaveCount(6);
 
   // Shift+click a range of 3, then "Add Viewer to 3 people" posts a grant per person who lacks it.
@@ -2619,8 +2643,12 @@ test("Compliance · tiles filter, a control opens its panel, renew an exception,
   await tiles.filter({ hasText: "Failing" }).click();
   await expect(page).toHaveURL(/result=failing/);
   await expect(page.locator(".sel-row")).toHaveCount(1);
-  await expect(page.locator(".cp-filter-note")).toContainText("Showing failing only: 1 of 4.");
-  await page.getByRole("link", { name: "Show every control" }).click();
+  await expect(page.locator(".filter-count")).toHaveText("Showing 1 of 4 controls");
+  // Result tiles add up: Passing adds to Failing.
+  await tiles.filter({ hasText: "Passing" }).click();
+  await expect(page).toHaveURL(/result=failing%2Cpassing|result=failing,passing/);
+  await expect.poll(() => page.locator(".sel-row").count()).toBeGreaterThan(1);
+  await page.getByRole("button", { name: "Clear all" }).click();
   await expect(page.locator(".sel-row")).toHaveCount(4);
 
   // (2) A control's name opens its panel with open=<evaluationId>; Esc closes it and focus returns.
@@ -2913,8 +2941,14 @@ test("Alerts · tiles, groups, panel, bulk acknowledge, resolve with a reason, m
   await tiles.filter({ hasText: "Past deadline" }).click();
   await expect(page).toHaveURL(/state=overdue/);
   await expect(page.locator(".sel-row")).toHaveCount(1);
-  await expect(page.locator(".al-filter-note")).toContainText("Showing alerts past their deadline only: 1 of 6.");
-  await page.getByRole("link", { name: "Show everything" }).click();
+  await expect(page.locator(".filter-count")).toHaveText("Showing 1 of 6 alerts");
+  // Tiles add up: Acknowledged adds to Past deadline.
+  await tiles.filter({ has: page.locator(".al-tile-label", { hasText: /^Acknowledged$/ }) }).click();
+  await expect(page).toHaveURL(/state=overdue%2Cacknowledged|state=overdue,acknowledged/);
+  await expect.poll(() => page.locator(".sel-row").count()).toBeGreaterThan(1);
+  await page.getByRole("button", { name: "Remove filter: Past deadline" }).click();
+  await expect(page).toHaveURL(/state=acknowledged/);
+  await page.getByRole("button", { name: "Clear all" }).click();
   await expect(page).not.toHaveURL(/state=/);
 
   // The panel: cause, link to the change, owner, history, Technical details last.
@@ -3030,11 +3064,14 @@ test("Schedules · tiles, groups, panel, editor refusal, suggested timetable, Ru
   await tiles.filter({ hasText: "Failed last run" }).click();
   await expect(page).toHaveURL(/status=failed/);
   await expect(page.locator(".sel-row")).toHaveCount(1);
-  await page.getByRole("link", { name: "Show everything" }).click();
+  // Tiles add up: Load warnings adds to Failed last run.
   await tiles.filter({ hasText: "Load warnings" }).click();
-  await expect(page).toHaveURL(/load=warning/);
+  await expect(page).toHaveURL(/status=failed%2Cwarning|status=failed,warning/);
+  await expect(page.locator(".sel-row")).toHaveCount(2);
+  await page.getByRole("button", { name: "Clear all" }).click();
+  await tiles.filter({ hasText: "Load warnings" }).click();
   await expect(page.locator(".sel-row")).toHaveCount(1);
-  await page.getByRole("link", { name: "Show everything" }).click();
+  await page.getByRole("button", { name: "Clear all" }).click();
 
   // The panel opens from the row name, with the time in Paris and UTC.
   type Call = { url: string; method: string; body: string | null };

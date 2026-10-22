@@ -903,8 +903,14 @@ being triggered by queue updates.
   registration (Q61: environments 200) and Power BI through the Fabric read-only admin API group (Q61: 200). Not yet seen live:
   `GET /v1/admin/tenantsettings` (403 in Q57, before the Fabric setting took effect), the DLP policies read and the connectors read.
 - Needs: nothing.
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 09:34 UTC). All four reads answer **200** with the Collector's own setup; no admin role is needed. Collector token only, GETs only; nothing granted, registered or changed.
+  1. Fabric (audience `https://api.fabric.microsoft.com/`): `GET /v1/admin/tenantsettings`: **200**, 178 settings (`value`). (Q57's 403 is gone now that the Fabric setting is in effect.)
+  2. Power Platform (audience `https://service.powerapps.com/`):
+     - `GET .../Microsoft.BusinessAppPlatform/scopes/admin/environments?api-version=2020-10-01`: **200**, 2 environments.
+     - `GET .../PowerPlatform.Governance/v2/policies`: **200**, 1 DLP policy.
+     - `GET api.powerapps.com/.../scopes/admin/environments/<first>/apis?api-version=2016-11-01`: **200**, 0 items in `value` (empty list for that environment).
+  3. No read was 403, so the Fabric group membership check was not needed.
 - **Read-only. Nothing is written to the tenant.** Collector token only, GETs only. **Grant, register or change nothing**, whatever
   is refused. Never touch CA policies, break-glass or Marouane's account.
 - Do, from your own checkout (never `/opt/keel`), with the Collector credential from `/etc/keel/tenant.json`:

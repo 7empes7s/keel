@@ -5582,3 +5582,45 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; the step 2 backup check; per operation: promoted / refused (exact message) / blocked; the step 5 result;
   approval ids; the evidence branch and commit; anything left in the tenant.
+
+### Q122: Live backup and restore of e-book categories, Microsoft Tunnel configurations and Apple user enrollment profiles (restore gaps batch 8, after #453)
+- Drafted by the "Restore batch 8" thread (2026-10-22). Code: PR #453 (merged 2026-10-22 02:06 UTC, merge 3edc50d). No backup change: all three kinds were already read
+  (list reads in `tools/tenant-probe/catalog.d/intune-leftovers.mjs`). New record writers, fixture-tested only, create + update, beta:
+  `managedEBookCategory` (name), `microsoftTunnelConfiguration` (network, DNS, `routeIncludes`/`routeExcludes`, port, advanced
+  settings; the deprecated `routesInclude`/`routesExclude` and `lastUpdateDateTime` are never sent) and
+  `appleUserInitiatedEnrollmentProfile` (name, description, enrollment type options, default type; `platform` on create only;
+  `priority` and assignments are **not** written). Fixtures stay unassigned and unused.
+- Needs: /opt/keel-live at the #453 merge or later (`grep -q appleUserInitiatedEnrollmentProfile: /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
+  needs DeviceManagementApps.ReadWrite.All (e-book categories), DeviceManagementConfiguration.ReadWrite.All (Tunnel) and
+  DeviceManagementServiceConfig.ReadWrite.All (Apple enrollment). If Graph answers 403, report blocked with what Graph names;
+  grant nothing. Never touch CA policies, break-glass or Marouane's account. **Never assign any fixture to a group, user or
+  device, and never create a Tunnel site or server.** No tenant-wide setting is changed.
+- **Fixtures** (the reviewed guidance in `live-gate-plan.mjs` at B says the same; nothing applies them):
+  - e-book category `KEEL-RT-books`, no book in it;
+  - Microsoft Tunnel server configuration `KEEL-RT-tunnel`: network `10.99.0.0/24`, DNS server `10.99.0.1`, port 443, one
+    included route `10.98.0.0/16`, used by no site;
+  - Apple user enrollment profile `KEEL-RT-apple-enroll`: iOS/iPadOS, company devices device enrollment, personal devices
+    account driven user enrollment, default device, assigned to nobody. If Intune refuses to create it (for example no Apple
+    MDM push certificate in the tenant), report the exact message and skip this kind; do not upload a certificate.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/live-gate-plan.mjs > ~/keel-rg8/plan-B.md`. Use its steps for these three types (collect, restore
+     dry run, approve, `--enforce`, `entraLive.mjs capture`, promote).
+  2. Create the fixtures, then take snapshot S (a run that reads all three types). **Backup check:** all three are in S; report
+     each type's read outcome and the stored Tunnel payload's field names (are both `routesInclude` and `routeIncludes` there?).
+  3. **Create round:** delete all three, restore from S selecting the three, approve, enforce, capture each `create`. Read back
+     equal to the backup (category name; Tunnel network, DNS, route, port; profile name, description, platform, options, default).
+  4. **Update round:** rename the category to `KEEL-RT-books-drift`, change the Tunnel port to 8443 and DNS server to `10.99.0.2`,
+     change the profile's description to `drift` and its default type to account driven user enrollment. Restore from S,
+     approve, enforce, capture each `update`. Expect all three back as in S. Report the exact Graph answer for any refused
+     PATCH (all routes are unmeasured live).
+  5. **Re-run check:** dry run from S again after step 4. Expect 0 planned writes for the three.
+  6. Cleanup: delete the three fixtures. Report anything left.
+  7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-8`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / blocked; the step 5
+  result; approval ids; the evidence branch and commit; anything left in the tenant.

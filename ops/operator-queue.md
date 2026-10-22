@@ -1005,6 +1005,34 @@ being triggered by queue updates.
   tenant settings". Step 3: which routes answer 200 decides the #447 fix.
 - **Report:** steps 1 to 3 verbatim. Comment the step 3 table on #447.
 
+### Q144: Check the "not used in this tenant" split on Discovery and Resilience (read-only, after #495)
+- Drafted by the "Backed-up types not found" thread (2026-10-22). Code: PR #495. Discovery said "9 types KEEL backs up were
+  not found or could not be read", and Resilience listed lifecycle workflows, API connectors and the Intune Exchange connector
+  as "never backed up successfully". Those are now "Not used in this tenant" when Graph refuses them for a missing licence
+  (403 "Insufficient license"), a feature that is off or not offered (501 NotSupported, AADB2C99039), or a singleton never
+  set up (404 on an `absentWhenNotFound` entry). Anything else stays a problem with its reason and permission. Stored runs
+  are re-judged on load, so no new discovery run is needed.
+- Needs: PR #495 live (`grep -q notUsedReason /opt/keel-live/engine/discovery/discover.mjs`).
+- Status: todo
+- **Tenant:** nothing read or written. DB and portal reads only.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. `node cli/keel-discover.mjs show --config /etc/keel/tenant.json | sed -n '1,/^Uncatalogued/p'`. Report the
+     `Catalogue:` line and every indented line under it (one per backed-up type not covered: coverage, type, reason, permission).
+  2. For each type step 1 still lists as `unreadable` or `not-in-metadata`, the stored refusal:
+     ```sql
+     SELECT source, name, http_status, reason, missing_grant, left(message, 200) AS message FROM discovery_item
+      WHERE run_id = (SELECT id FROM discovery_run ORDER BY finished_at DESC, id DESC LIMIT 1) AND status = 'unreadable'
+        AND name IN (<the paths from step 1>) ORDER BY name, source;
+     ```
+  3. Open https://keel.techinsiderbytes.com/protect (Discovery section) and /resilience. Report the catalogue sentence, the
+     "Backed-up types not found (N)" list, the "Not used in this tenant (N)" list, and on Resilience the "How recent the
+     backups are" sentence plus its "never been backed up successfully" and "Not used" lists.
+- **Expected:** lifecycleWorkflow, lifecycleWorkflowCustomTaskExtension, lifecycleManagementSettings (not-licensed),
+  identityApiConnector, deviceManagementExchangeConnector, onPremisesConditionalAccessSettings (feature-off) are `not-used`.
+  Still a problem: deviceManagementSettings (#447, Q143) and anything step 2 shows as a missing permission or a wrong path.
+  Resilience no longer lists the not-used types as never backed up.
+- **Report:** steps 1 to 3 verbatim (mask tenant ids). Comment the step 1 and 2 output on PR #495.
+
 ### Q137: Check that retention labels and eDiscovery cases land in a collect (read-only, after #481)
 - Drafted by the "Turn on retention labels backup" thread (2026-10-22). Code: PR #481. The four eDiscovery reads in
   `purview-governance` now declare Compliance Administrator (which Q106 showed carries Case Management and Hold) instead of

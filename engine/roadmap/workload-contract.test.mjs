@@ -240,3 +240,17 @@ test('the PowerShell probe reads configuration only and records its version', ()
   assert.match(script, /capturedAt\s+= \$capturedAt/);
   assert.doesNotMatch(script, /\b(Set|New|Remove|Add|Update|Grant|Revoke)-(PnP|Cs|Label|Mailbox|CASMailbox|Team)/, 'the probe never writes');
 });
+
+test('the collector\'s stored roles satisfy every Purview governance read', () => {
+  // Stored collector record (Q106): Compliance Administrator carries Case Management and Hold,
+  // so the eDiscovery reads need no eDiscovery Manager role group membership.
+  const grants = { permissions: ['Exchange.ManageAsApp'], roles: ['Compliance Administrator', 'Exchange Administrator', 'SharePoint Administrator'] };
+  const purview = WORKLOAD_DESCRIPTORS.filter((descriptor) => descriptor.workload === 'purview-governance');
+  assert.ok(purview.some((descriptor) => descriptor.id === 'purview.ediscovery-cases'));
+  assert.ok(purview.some((descriptor) => descriptor.id === 'purview.case-hold-rules'));
+  for (const descriptor of purview) {
+    const row = workloadRow(descriptor, { evidence: [liveCapture(descriptor.id, { version: '3.5.0' })], grants, runtime: { modules: { ExchangeOnlineManagement: '3.5.0' } }, tenantRef: TENANT, now: NOW });
+    assert.equal(row.state, 'live-qualified', `${descriptor.id}: ${row.prerequisite?.message ?? row.reasons.join('; ')}`);
+    assert.equal(row.enabled, true, descriptor.id);
+  }
+});

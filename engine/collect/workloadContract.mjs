@@ -359,16 +359,18 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
   // Wave 1 READ-TEAMS-PV: Purview retention labels, adaptive scopes, auto-labeling and
   // eDiscovery cases with their holds, in the Security & Compliance session.
   // engine/collect/workloads/purviewExtended.mjs holds the fields, parents and licences.
+  // The eDiscovery reads declare Compliance Administrator: that role group carries the
+  // Case Management and Hold roles these cmdlets need (checked live in Q106).
   ...[
     ['purview.retention-labels', 'Retention labels', 'Get-ComplianceTag', {}, ['Compliance Administrator']],
     ['purview.adaptive-scopes', 'Adaptive scopes', 'Get-AdaptiveScope', {}, ['Compliance Administrator']],
     ['purview.auto-label-policies', 'Auto-labeling policies', 'Get-AutoSensitivityLabelPolicy', {}, ['Compliance Administrator']],
     ['purview.auto-label-rules', 'Auto-labeling rules', 'Get-AutoSensitivityLabelRule', {}, ['Compliance Administrator']],
-    ['purview.ediscovery-cases', 'eDiscovery (Standard) cases', 'Get-ComplianceCase', {}, ['eDiscovery Manager']],
+    ['purview.ediscovery-cases', 'eDiscovery (Standard) cases', 'Get-ComplianceCase', {}, ['Compliance Administrator']],
     ['purview.ediscovery-premium-cases', 'eDiscovery (Premium) cases', 'Get-ComplianceCase',
-      { parameters: ['-CaseType AdvancedEdiscovery'], probeName: 'Get-ComplianceCase -CaseType AdvancedEdiscovery' }, ['eDiscovery Manager']],
-    ['purview.case-holds', 'eDiscovery case holds', 'Get-CaseHoldPolicy', { parameters: ['-Case'], probeName: 'Get-CaseHoldPolicy -Case' }, ['eDiscovery Manager']],
-    ['purview.case-hold-rules', 'eDiscovery case hold queries', 'Get-CaseHoldRule', { parameters: ['-Policy'], probeName: 'Get-CaseHoldRule -Policy' }, ['eDiscovery Manager']],
+      { parameters: ['-CaseType AdvancedEdiscovery'], probeName: 'Get-ComplianceCase -CaseType AdvancedEdiscovery' }, ['Compliance Administrator']],
+    ['purview.case-holds', 'eDiscovery case holds', 'Get-CaseHoldPolicy', { parameters: ['-Case'], probeName: 'Get-CaseHoldPolicy -Case' }, ['Compliance Administrator']],
+    ['purview.case-hold-rules', 'eDiscovery case hold queries', 'Get-CaseHoldRule', { parameters: ['-Policy'], probeName: 'Get-CaseHoldRule -Policy' }, ['Compliance Administrator']],
   ].map(([id, resource, name, options, roles]) => ({
     id, workload: 'purview-governance', resource,
     operation: cmdlet(name, 'ExchangeOnlineManagement', options),

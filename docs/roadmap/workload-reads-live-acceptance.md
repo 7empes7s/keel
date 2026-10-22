@@ -21,7 +21,7 @@ that proof, one record per workload.
 
 The import seam stores one live capture per read that answered, bound to the module version
 the PowerShell image pins. It leaves the collector's grants as the other records stored them,
-so a read that needs a role the collector lacks (eDiscovery Manager, Teams Administrator)
+so a read that needs a role the collector lacks (Teams Administrator, Power Platform Administrator)
 stays `pending-prerequisite`.
 
 ## Operator steps

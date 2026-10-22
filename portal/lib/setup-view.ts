@@ -52,8 +52,45 @@ export interface SetupScope {
   steps: SetupStep[];
 }
 
+export type SetupIdentity = SetupStep["identity"];
+
+// One permission a Keel app uses (engine/bootstrap/permissionCatalog.mjs). `identity`
+// names the app; today the backup reader and the restore writer, later more apps.
+export interface PermissionEntry {
+  identity: string;
+  // "application" (admin consent) or "delegated" (acts as a signed-in account).
+  type?: "application" | "delegated";
+  // "graph", "exchange" or "sharepoint": the Microsoft API the permission belongs to.
+  api: string;
+  name: string;
+  service: string;
+  kind: string;
+  words: string;
+  usedFor: string;
+  need: "required" | "optional";
+}
+
+export interface PermissionGrant {
+  api: string;
+  name: string;
+}
+
+export interface SetupPermissions {
+  permissions: PermissionEntry[];
+  services: { key: string; label: string }[];
+  kinds: string[];
+  apis: Record<string, string>;
+  // What each app holds now and what its registration asks for; null when the server
+  // could not look. `complete` is false when an API's permission names could not be read.
+  observed: {
+    byIdentity: Partial<Record<string, { granted: PermissionGrant[]; requested: PermissionGrant[] }>>;
+    complete: boolean;
+  } | null;
+}
+
 export interface SetupState {
   generatedAt: string;
+  permissions?: SetupPermissions;
   // The tenant's Entra id, for Microsoft links and Technical details only.
   tenantId?: string | null;
   scopes: SetupScope[];
@@ -145,16 +182,12 @@ export function permissionWords(scope: string): string {
 export interface PermissionChip {
   words: string;
   code: string;
-  extra: boolean;
 }
 
-/** What the step asks for, then anything extra the app already holds. */
+/** What the step asks for. What the app holds beyond it is in the permission table. */
 export function permissionChips(step: SetupStep): PermissionChip[] {
   const asked = step.kind === "graph-permission" && step.missingScopes.length ? step.missingScopes : step.requiredScopes;
-  return [
-    ...asked.map((code) => ({ words: permissionWords(code), code, extra: false })),
-    ...(step.excessScopes ?? []).map((code) => ({ words: permissionWords(code), code, extra: true })),
-  ];
+  return asked.map((code) => ({ words: permissionWords(code), code }));
 }
 
 const APP_ROLES: Record<SetupStep["identity"], string> = {
@@ -232,15 +265,9 @@ export function stepLink(step: SetupStep, tenantId: string | null | undefined): 
   }
 }
 
-/** Where to review permissions an app holds beyond what setup asks for. */
-export function permissionsLink(step: SetupStep): string | null {
-  const appId = step.app?.appId;
-  return appId ? `${ENTRA}/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/CallAnAPI/appId/${encodeURIComponent(appId)}` : null;
-}
-
 /** What "Copy permission list" puts on the clipboard: the Microsoft names, one a line. */
 export function permissionList(step: SetupStep): string {
-  return permissionChips(step).filter((chip) => !chip.extra).map((chip) => chip.code).join("\n");
+  return permissionChips(step).map((chip) => chip.code).join("\n");
 }
 
 const NEEDS_YOU = new Set<StepProgress>(["waiting-for-you", "needs-consent", "unclear"]);
@@ -288,6 +315,8 @@ export function setupVerdict(state: SetupState): { text: string; tone: "good" | 
 export function setupStatus(state: SetupState): { tone: RiskTone; label: string } {
   const waiting = state.scopes.reduce((sum, scope) => sum + progressCounts(scope.steps).waitingForYou, 0);
   if (waiting) return { tone: "soon", label: `Waiting on you: ${waiting} ${waiting === 1 ? "step" : "steps"}` };
+  const missing = permissionCounts(permissionRows(state)).missing;
+  if (missing) return { tone: "urgent", label: `${missing} ${missing === 1 ? "permission" : "permissions"} missing` };
   if (state.collect.allowed) return { tone: "fine", label: "Connected" };
   if (state.checkFailed) return { tone: "urgent", label: "Keel cannot read the tenant" };
   return { tone: "low", label: "Not connected yet" };
@@ -334,4 +363,174 @@ export function runSentence(run: SetupRun, when: string): string {
     case "interrupted": return "Did not finish. Continue to check what is in place and pick up from there.";
     case "ready": return "Approved and ready to start.";
   }
+}
+
+// ---- The permission table ---------------------------------------------------------
+
+export type PermissionStatus = "missing" | "optional" | "not-checked" | "granted" | "unused";
+
+// Most urgent first: what blocks a backup or restore, then what would add a feature.
+export const PERMISSION_STATUS_ORDER: readonly PermissionStatus[] = ["missing", "optional", "not-checked", "granted", "unused"];
+
+export const PERMISSION_STATUS_LABELS: Record<PermissionStatus, string> = {
+  missing: "Missing",
+  optional: "Optional",
+  "not-checked": "Not checked",
+  granted: "Granted",
+  unused: "Not used by Keel",
+};
+
+export const PERMISSION_STATUS_TONES: Record<PermissionStatus, "urgent" | "low" | "neutral" | "fine"> = {
+  missing: "urgent",
+  optional: "low",
+  "not-checked": "neutral",
+  granted: "fine",
+  unused: "neutral",
+};
+
+export const APP_NAMES: Record<string, string> = {
+  collector: "Backup reader app",
+  restorer: "Restore writer app",
+};
+
+export function appName(identity: string): string {
+  return APP_NAMES[identity] ?? `${identity.charAt(0).toUpperCase()}${identity.slice(1).replace(/-/g, " ")} app`;
+}
+
+export interface PermissionRow {
+  id: string;
+  identity: string;
+  type: "application" | "delegated";
+  api: string;
+  apiLabel: string;
+  name: string;
+  words: string;
+  usedFor: string;
+  service: string;
+  serviceLabel: string;
+  serviceOrder: number;
+  kind: string;
+  kindOrder: number;
+  status: PermissionStatus;
+  // Whether the app registration lists it, so admin consent can grant it; null when unknown.
+  requested: boolean | null;
+}
+
+const KNOWN_APPS: readonly string[] = ["collector", "restorer"];
+
+/** Every app the catalogue names: the known ones in order, then any new one as listed. */
+export function permissionApps(catalog: SetupPermissions | undefined): string[] {
+  const listed = [...new Set((catalog?.permissions ?? []).map((entry) => entry.identity))];
+  return [...KNOWN_APPS.filter((identity) => listed.includes(identity)), ...listed.filter((identity) => !KNOWN_APPS.includes(identity))];
+}
+const key = (api: string, name: string) => `${api}:${name}`;
+
+/** The Graph grants a setup step saw, for a page whose server could not look just now. */
+function grantsFromSteps(state: SetupState, identity: string): { held: Set<string>; known: Set<string> } | null {
+  const step = state.scopes.flatMap((scope) => scope.steps).find((candidate) => candidate.kind === "graph-permission" && candidate.identity === identity);
+  if (!step || step.progress === "not-checked") return null;
+  const missing = new Set(step.missingScopes);
+  const held = new Set([...step.requiredScopes.filter((name) => !missing.has(name)), ...(step.excessScopes ?? [])].map((name) => key("graph", name)));
+  return { held, known: new Set([...step.requiredScopes, ...(step.excessScopes ?? [])].map((name) => key("graph", name))) };
+}
+
+/**
+ * One row per permission each app uses, plus any it holds that Keel never uses. With a
+ * fresh look at the tenant every row has a status; without one, only what the setup
+ * steps saw is known and everything else is "not checked", never "missing".
+ */
+export function permissionRows(state: SetupState): PermissionRow[] {
+  const catalog = state.permissions;
+  if (!catalog) return [];
+  const serviceOrder = new Map(catalog.services.map((service, index) => [service.key, index]));
+  const serviceLabel = new Map(catalog.services.map((service) => [service.key, service.label]));
+  const wordsByName = new Map(catalog.permissions.map((entry) => [entry.name, entry.words]));
+  const rows: PermissionRow[] = [];
+  const apps = permissionApps(catalog);
+  for (const identity of apps) {
+    const observed = catalog.observed?.byIdentity[identity] ?? null;
+    const fallback = observed ? null : grantsFromSteps(state, identity);
+    const held = observed ? new Set(observed.granted.map((grant) => key(grant.api, grant.name))) : fallback?.held ?? new Set<string>();
+    const requested = observed ? new Set(observed.requested.map((grant) => key(grant.api, grant.name))) : null;
+    const entries = catalog.permissions.filter((entry) => entry.identity === identity);
+    const listed = new Set(entries.map((entry) => key(entry.api, entry.name)));
+    const statusOf = (entry: PermissionEntry): PermissionStatus => {
+      const id = key(entry.api, entry.name);
+      if (held.has(id)) return "granted";
+      if (observed) {
+        if (!catalog.observed!.complete && entry.api !== "graph") return "not-checked";
+        return entry.need === "optional" ? "optional" : "missing";
+      }
+      return fallback?.known.has(id) ? (entry.need === "optional" ? "optional" : "missing") : "not-checked";
+    };
+    for (const entry of entries) {
+      rows.push({
+        id: `${identity}:${entry.type ?? "application"}:${key(entry.api, entry.name)}`, identity, type: entry.type ?? "application", api: entry.api, apiLabel: catalog.apis[entry.api] ?? entry.api,
+        name: entry.name, words: entry.words, usedFor: entry.usedFor, service: entry.service,
+        serviceLabel: serviceLabel.get(entry.service) ?? entry.service, serviceOrder: serviceOrder.get(entry.service) ?? catalog.services.length,
+        kind: entry.kind, kindOrder: Math.max(0, catalog.kinds.indexOf(entry.kind)), status: statusOf(entry),
+        requested: requested ? requested.has(key(entry.api, entry.name)) : null,
+      });
+    }
+    for (const id of [...held].filter((candidate) => !listed.has(candidate)).sort()) {
+      const [api, ...rest] = id.split(":");
+      const name = rest.join(":");
+      rows.push({
+        id: `${identity}:application:${id}`, identity, type: "application", api, apiLabel: catalog.apis[api] ?? "Another Microsoft API", name,
+        words: wordsByName.get(name) ?? PERMISSION_WORDS[name] ?? name,
+        usedFor: "Nothing in Keel uses this. The app holds it anyway; you can remove it in Entra ID.",
+        service: "unused", serviceLabel: "Not used by Keel", serviceOrder: catalog.services.length,
+        kind: "", kindOrder: 0, status: "unused", requested: requested ? requested.has(id) : null,
+      });
+    }
+  }
+  return sortPermissionRows(rows, apps);
+}
+
+/** The app with something missing first (errors first), then the backup reader before the
+ * restore writer; inside an app, services in order, kinds in order, the most urgent
+ * first, then name. */
+export function sortPermissionRows(rows: PermissionRow[], apps: readonly string[] = [...new Set(rows.map((row) => row.identity))]): PermissionRow[] {
+  const missing = (identity: string) => rows.filter((row) => row.identity === identity && row.status === "missing").length;
+  const order = [...apps].sort((a, b) => Number(missing(b) > 0) - Number(missing(a) > 0));
+  return [...rows].sort((a, b) => order.indexOf(a.identity) - order.indexOf(b.identity)
+    || a.serviceOrder - b.serviceOrder
+    || a.kindOrder - b.kindOrder
+    || PERMISSION_STATUS_ORDER.indexOf(a.status) - PERMISSION_STATUS_ORDER.indexOf(b.status)
+    || a.words.localeCompare(b.words));
+}
+
+export type PermissionCounts = Record<PermissionStatus, number>;
+
+export function permissionCounts(rows: PermissionRow[]): PermissionCounts {
+  const counts = Object.fromEntries(PERMISSION_STATUS_ORDER.map((status) => [status, 0])) as PermissionCounts;
+  for (const row of rows) counts[row.status] += 1;
+  return counts;
+}
+
+/** The app Keel signs in as for one identity: from the setup steps that saw it. */
+export function appFor(state: SetupState, identity: string): SetupApp | null {
+  return state.scopes.flatMap((scope) => scope.steps).find((step) => step.identity === identity && step.app)?.app ?? null;
+}
+
+/**
+ * Microsoft's admin consent page for one app: a Global Administrator (or Privileged
+ * Role Administrator) signs in once and grants every permission the app registration
+ * lists. Keel writes nothing through it. Null while the tenant or app id is unknown.
+ */
+export function consentLink(tenantId: string | null | undefined, appId: string | null | undefined): string | null {
+  return tenantId && appId ? `https://login.microsoftonline.com/${encodeURIComponent(tenantId)}/adminconsent?client_id=${encodeURIComponent(appId)}` : null;
+}
+
+/** The app's API permissions page in Entra ID, where a permission is added or removed. */
+export function apiPermissionsLink(appId: string | null | undefined): string | null {
+  return appId ? `${ENTRA}/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/CallAnAPI/appId/${encodeURIComponent(appId)}` : null;
+}
+
+/** "2 permissions are missing", in plain words for the page and its alerts. */
+export function missingSentence(identity: string, missing: PermissionRow[]): string {
+  const count = missing.length;
+  const it = count === 1 ? "it" : "them";
+  const what = identity === "collector" ? `Backups that need ${it} stay incomplete` : identity === "restorer" ? `Restores that need ${it} stop` : `What needs ${it} stops`;
+  return `The ${appName(identity).toLowerCase()} is missing ${count === 1 ? "1 permission" : `${count} permissions`}. ${what} until an admin approves ${it}.`;
 }

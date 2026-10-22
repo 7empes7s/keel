@@ -94,7 +94,7 @@ import {
 import { planMechanism, selectRecoveryMechanism } from '../engine/restore/recoveryMechanism.mjs';
 import { assignmentTargetResolver, attachIntuneAssignments, writesIntuneAssignments } from '../engine/restore/intuneOperations.mjs';
 import { closeEnforcementItem, emitCompletionItems, findEnforcementItem } from '../engine/restore/completion.mjs';
-import { listJournal } from '../engine/restore/rollbackJournal.mjs';
+import { listJournal, loadCreatedTargetIds } from '../engine/restore/rollbackJournal.mjs';
 import { loadSnapshotBrandingAssets } from '../engine/store/brandingAssets.mjs';
 import {
   BRANDING_RESOURCE_TYPES, applyBrandingAssetUploads, brandingLocaleFor, brandingUploadDigestInput, planBrandingAssetUploads,
@@ -326,6 +326,7 @@ export async function runRestore({
     emitCompletionItems: emitCompletionItemsFn = emitCompletionItems,
     assertContentEffectApproval: assertContentEffectApprovalFn = assertContentEffectApproval,
     listJournal: listJournalFn = listJournal,
+    loadCreatedTargetIds: loadCreatedTargetIdsFn = loadCreatedTargetIds,
     resolveIncidentRecovery: resolveIncidentRecoveryFn = resolveIncidentRecovery,
     incidentsCoveringSnapshot: incidentsCoveringSnapshotFn = incidentsCoveringSnapshot,
     loadLockoutGateInputs: loadLockoutGateInputsFn = loadLockoutGateInputs,
@@ -653,7 +654,10 @@ export async function runRestore({
     // Same-tenant restore: a live object is matched by its object id before its
     // natural key, so a renamed policy is updated (name put back), not recreated.
     const sameTenant = sourceTenantRef === tenantRefFor(collectorConfig.tenantId);
-    const reconciliation = await buildReconciliationPlanFn(targetReader, resources, { targetResources, sameTenant });
+    // Issue #485: what earlier restores created into this tenant, by backup key,
+    // so a re-run from the same snapshot finds a recreated object by its new id.
+    const createdTargetIds = await loadCreatedTargetIdsFn(client, { targetTenantId: targetConfig?.tenantId ?? collectorConfig.tenantId });
+    const reconciliation = await buildReconciliationPlanFn(targetReader, resources, { targetResources, sameTenant, createdTargetIds });
     resources = reconciliation.resources;
     // An object matched by id under another name is known to the plan alone: its
     // snapshot key resolves to the live id for references and relationship edges.

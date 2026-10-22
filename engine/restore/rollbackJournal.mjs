@@ -97,6 +97,41 @@ export async function listJournal(client, { restoreRef }) {
   }));
 }
 
+/** Issue #485: the objects earlier restores created in one target tenant, by
+ * the backup key each create was for. Microsoft gives a recreated object a new
+ * id, so a backup keyed by its old id no longer matches anything live; planning
+ * uses this map to find the object a create already made, and plans an update
+ * or a noop instead of a second create beside it.
+ *
+ * A create counts unless Graph definitely rejected it ('failed'): an uncertain
+ * or interrupted create may have landed. `targetIds` lists every id a create
+ * recorded for the key, newest first. `unknownIdCreates` counts creates that may
+ * have landed but recorded no id (a lost response), so planning may adopt a
+ * live object by its unique name instead. Scoped to the target tenant through
+ * the dry-run artifact the run was promoted from. */
+export async function loadCreatedTargetIds(client, { targetTenantId }) {
+  if (!client || !targetTenantId) return new Map();
+  const { rows } = await client.query(
+    `SELECT e.natural_key, e.resource_type, e.target_id
+       FROM rollback_entry e
+       JOIN restore_dry_run d ON d.id::text = e.restore_ref
+      WHERE d.target_tenant_id = $1
+        AND e.operation = 'create'
+        AND COALESCE(e.outcome, 'pending') <> 'failed'
+      ORDER BY e.recorded_at DESC, e.id`,
+    [targetTenantId],
+  );
+  const created = new Map();
+  for (const row of rows) {
+    const entry = created.get(row.natural_key) ?? { resourceType: row.resource_type ?? null, targetIds: [], unknownIdCreates: 0 };
+    const id = typeof row.target_id === 'string' && row.target_id.length > 0 ? row.target_id : null;
+    if (id === null) entry.unknownIdCreates += 1;
+    else if (!entry.targetIds.some((known) => known.toLowerCase() === id.toLowerCase())) entry.targetIds.push(id);
+    created.set(row.natural_key, entry);
+  }
+  return created;
+}
+
 export async function buildRollbackPlan(client, { runId }) {
   const { rows } = await client.query(
     `SELECT natural_key, prior_state FROM rollback_entry WHERE run_id = $1 ORDER BY recorded_at DESC`,

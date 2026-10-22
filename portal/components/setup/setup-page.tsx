@@ -7,6 +7,7 @@ import { useState } from "react";
 import { useBackup } from "@/components/backup-controls";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
+import { PermissionsPanel } from "@/components/setup/permissions-panel";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Verdict } from "@/components/verdict";
@@ -14,7 +15,7 @@ import { ago, formatTimestamp } from "@/lib/presentation";
 import { TIERS } from "@/lib/protect-view";
 import {
   PROGRESS_LABELS, PROGRESS_TONES, SCOPE_PURPOSE, SCOPE_TITLES,
-  appRole, canContinue, canStartScope, currentStep, nextSentence, permissionChips, permissionList, permissionsLink,
+  appRole, canContinue, canStartScope, currentStep, nextSentence, permissionChips, permissionCounts, permissionList, permissionRows,
   progressCounts, runSentence, setupPrimary, setupVerdict, stepHelp, stepLink, stepTitle, workloadChip, workloadLabel,
   type SetupPrimary, type SetupScope, type SetupState, type SetupStep,
 } from "@/lib/setup-view";
@@ -34,7 +35,7 @@ export function SetupPage({ state, canStart, canBackup }: { state: SetupState; c
   const { backUp, busy: backingUp, feedback } = useBackup();
   const read = state.scopes.find((scope) => scope.scope === "read") ?? null;
   const restore = state.scopes.find((scope) => scope.scope === "restore") ?? null;
-  const chosen = [...new Set((read?.run?.workloads ?? read?.workloads ?? []).map((workload) => workloadChip(workload).label))];
+  const permissions = permissionCounts(permissionRows(state));
   const first = state.firstCollection;
 
   const jump = (scope: SetupScope["scope"]) => document.getElementById(`setup-${scope}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -58,11 +59,13 @@ export function SetupPage({ state, canStart, canBackup }: { state: SetupState; c
               <small>{scope.scope === "read" ? "Needed for backups" : "Needed for restores"}</small>
             </button>
           ) : null)}
-          <div className="su-tile">
-            <span className="su-tile-label"><Icon name="cloud" />Services chosen</span>
-            <b className="su-tile-count">{chosen.length}</b>
-            <small>{chosen.join(" and ") || "None yet"}</small>
-          </div>
+          <button className="su-tile" data-tone={permissions.missing ? "urgent" : undefined} onClick={() => document.getElementById("setup-permissions")?.scrollIntoView({ behavior: "smooth", block: "start" })} type="button">
+            <span className="su-tile-label"><Icon name="settings" />Permissions</span>
+            <b className="su-tile-count">{permissions.missing ? `${permissions.missing} missing` : permissions.granted ? "All granted" : "Not checked"}</b>
+            <small>
+              {permissions.granted} granted{permissions.optional ? `, ${permissions.optional} optional` : ""}{permissions.unused ? `, ${permissions.unused} not used by Keel` : ""}
+            </small>
+          </button>
           <Link className="su-tile" data-tone={first?.notRead ? "soon" : undefined} href="/protect">
             <span className="su-tile-label"><Icon name="calendar" />First backup</span>
             <b className="su-tile-count">{first ? "Done" : "Not yet"}</b>
@@ -85,6 +88,7 @@ export function SetupPage({ state, canStart, canBackup }: { state: SetupState; c
             />
           ))}
         </div>
+        <PermissionsPanel state={state} />
       </div>
     </div>
   );
@@ -282,9 +286,7 @@ function SetupStepRow({ step, index, current, continuable, amber, busy, onContin
 }) {
   const done = step.progress === "done";
   const chips = permissionChips(step);
-  const extra = chips.filter((chip) => chip.extra);
   const link = stepLink(step, tenantId);
-  const review = permissionsLink(step);
   const state = done ? "done" : current ? "current" : "later";
 
   return (
@@ -299,8 +301,8 @@ function SetupStepRow({ step, index, current, continuable, amber, busy, onContin
       {current ? (
         <div className="su-step-body">
           <p>{stepHelp(step)}</p>
-          {(step.kind === "graph-permission" || step.kind === "registration") && chips.some((chip) => !chip.extra) ? (
-            <PermissionChips chips={chips.filter((chip) => !chip.extra)} />
+          {(step.kind === "graph-permission" || step.kind === "registration") && chips.length ? (
+            <PermissionChips chips={chips} />
           ) : null}
           {link || continuable || step.kind === "graph-permission" ? (
             <div className="su-step-actions">
@@ -309,7 +311,7 @@ function SetupStepRow({ step, index, current, continuable, amber, busy, onContin
                   <Icon name="link" />{link.label}<span className="visually-hidden"> (opens in a new tab)</span>
                 </a>
               ) : null}
-              {step.kind === "graph-permission" && chips.some((chip) => !chip.extra) ? <CopyList text={permissionList(step)} /> : null}
+              {step.kind === "graph-permission" && chips.length ? <CopyList text={permissionList(step)} /> : null}
               {continuable ? (
                 <button className={amber ? "btn btn-primary" : "btn"} disabled={busy} onClick={onContinue} type="button">Continue setup</button>
               ) : null}
@@ -318,14 +320,10 @@ function SetupStepRow({ step, index, current, continuable, amber, busy, onContin
           {step.manual ? <p className="su-step-hint">When you have done it, press Continue setup: Keel checks it in your tenant. Steps are never ticked by hand.</p> : null}
         </div>
       ) : null}
-      {extra.length ? (
-        <div className="su-step-extra">
-          <PermissionChips chips={extra} />
-          <p className="su-step-hint">
-            The app also holds {extra.length === 1 ? "a permission" : "permissions"} this setup does not ask for. Keel does not need {extra.length === 1 ? "it" : "them"} and does not remove {extra.length === 1 ? "it" : "them"}; review {extra.length === 1 ? "it" : "them"} in Entra ID.
-            {review ? <> <a className="su-inline-link" href={review} rel="noreferrer" target="_blank">Review in Entra ID<span className="visually-hidden"> (opens in a new tab)</span></a></> : null}
-          </p>
-        </div>
+      {step.kind === "graph-permission" && done ? (
+        <p className="su-step-extra su-step-hint">
+          Every permission this app holds, and any still missing, is in <a className="su-inline-link" href="#setup-permissions">Permissions</a> below.
+        </p>
       ) : null}
     </li>
   );
@@ -335,9 +333,8 @@ function PermissionChips({ chips }: { chips: ReturnType<typeof permissionChips> 
   return (
     <ul aria-label="Permissions" className="su-perms">
       {chips.map((chip) => (
-        <li className="su-perm" data-extra={chip.extra || undefined} key={chip.code}>
-          {chip.extra ? <Icon name="alert" /> : null}
-          <span className="su-perm-words">{chip.extra ? `Extra: ${chip.words}` : chip.words}</span>
+        <li className="su-perm" key={chip.code}>
+          <span className="su-perm-words">{chip.words}</span>
           {chip.words !== chip.code ? <code className="su-perm-code">{chip.code}</code> : null}
         </li>
       ))}

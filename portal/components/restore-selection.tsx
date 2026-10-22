@@ -28,6 +28,9 @@ import {
   changeTone,
   dayWords,
   impactWords,
+  madeInSharePoint,
+  restoreService,
+  rowImpact,
   itemName,
   nameBook,
   plainLabel,
@@ -347,7 +350,8 @@ export function RestoreSelection({
   const items = useMemo<RestoreItem[]>(() => resources.map((resource) => {
     const change = changeByKey.get(resource.naturalKey);
     const label = itemName(resource.naturalKey, names);
-    return change ? { ...resource, change, label } : { ...resource, label };
+    const placed = { ...resource, service: restoreService(resource, label), label };
+    return change ? { ...placed, change } : placed;
   }), [resources, changeByKey, names]);
 
   useEffect(() => () => {
@@ -933,23 +937,25 @@ function RestoreRow({ item, undo, compared }: { item: RestoreItem; undo: ReactNo
   const service = serviceFor(item.service);
   const change = item.change;
   const tone = changeTone(change);
+  const impact = rowImpact(item.blastRadius, compared);
+  const madeBy = madeInSharePoint(item, item.label) ? "made in SharePoint admin center" : service.name;
   return (
     <div className="restore-row" data-changed={change ? change.kind : undefined}>
       <span className="restore-row-name">
         <b>{item.label}</b>
-        <small title={`Microsoft calls it ${resourceTypeLabel(item.resourceType)}`}>{plainType(item.resourceType)} · {service.name}</small>
+        <small title={`Microsoft calls it ${resourceTypeLabel(item.resourceType)}`}>{plainType(item.resourceType)} · {madeBy}</small>
       </span>
       {change ? (
         <span className="restore-row-change">
           <span>{tone ? <span className="restore-chip" data-tone={tone}>{TONE_WORDS[tone]}</span> : null}{changeLine(change)}</span>
           <small title={`Changed ${whenWords(change)} UTC`}>{whoWords(change)} · {whenWords(change)}</small>
         </span>
-      ) : (
-        <span className="restore-row-impact" data-impact={item.blastRadius} title="How much a wrong restore of it could break">
-          <Icon name={item.blastRadius === "tenant-lockout" ? "alert" : item.blastRadius === "cosmetic" ? "page" : "info"} />
-          {impactWords(item.blastRadius)}
+      ) : impact ? (
+        <span className="restore-row-impact" data-impact={impact} title="How much a wrong restore of it could break">
+          <Icon name={impact === "tenant-lockout" ? "alert" : impact === "cosmetic" ? "page" : "info"} />
+          {impactWords(impact)}
         </span>
-      )}
+      ) : <span />}
       <span className="restore-row-action">
         {undo ?? (compared ? <span className="restore-row-same"><Icon name="check" />Same now</span> : null)}
       </span>

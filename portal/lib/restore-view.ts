@@ -175,6 +175,31 @@ export function impactWords(blastRadius: string): string {
   return displayEnum("blastRadius", blastRadius);
 }
 
+/**
+ * The impact a row shows when nothing changed since the backup. Once KEEL has compared the
+ * backup with the tenant, an unchanged item is "Same now" and a restore writes nothing to
+ * it, so a lockout warning there would only alarm. Before the comparison the impact stays,
+ * since KEEL cannot yet tell what a restore would write.
+ */
+export function rowImpact(blastRadius: string, compared: boolean): string | null {
+  return compared ? null : blastRadius;
+}
+
+// SharePoint admin center makes these Conditional Access policies when someone limits
+// access from unmanaged devices (Policies > Access control). They are stored in Entra ID
+// but are SharePoint settings, so the Restore page files them under SharePoint.
+const SHAREPOINT_MADE = /^\s*\[SharePoint admin center\]/i;
+
+export function madeInSharePoint(resource: { resourceType: string; name?: string | null }, label?: string): boolean {
+  if (resource.resourceType !== "conditionalAccessPolicy") return false;
+  return SHAREPOINT_MADE.test(resource.name ?? "") || SHAREPOINT_MADE.test(label ?? "");
+}
+
+/** The service a restore row sits under: SharePoint for the sign-in rules SharePoint made. */
+export function restoreService(resource: { resourceType: string; service: string | null; name?: string | null }, label?: string): string | null {
+  return madeInSharePoint(resource, label) ? "SharePoint" : resource.service;
+}
+
 export const IMPACT_ORDER = ["tenant-lockout", "access-affecting", "cosmetic"];
 
 export const IMPACT_ABOUT: Record<string, string> = {

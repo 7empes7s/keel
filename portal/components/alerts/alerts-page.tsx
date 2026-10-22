@@ -8,7 +8,9 @@ import { AlertRecord } from "@/components/alerts/alert-record";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { ConfirmSheet } from "@/components/incidents/confirm-sheet";
+import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
+import { byTime } from "@/lib/paging";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +51,7 @@ import {
   type StateGroup,
 } from "@/lib/alerts-view";
 import { ago, formatTimestamp, fromNow } from "@/lib/presentation";
+import { serviceOrder } from "@/lib/services";
 import type { EngineRef } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
@@ -66,6 +69,11 @@ import { readList, useViewState } from "@/lib/use-view-state";
 type Step = "resolve" | "mute";
 
 const ownerRef = (alert: AlertItem): EngineRef | null => (alert.owner ? { kind: "principal", id: alert.owner.id, name: alert.owner.name, readable: true } : null);
+// Alerts can also be ordered by when they last fired or first opened.
+const ALERT_SORTS: ListSort<AlertItem>[] = [
+  { key: "fired", label: "Last fired", desc: true, compare: (a, b) => byTime(a.lastFiringAt, b.lastFiringAt) },
+  { key: "opened", label: "First opened", desc: true, compare: (a, b) => byTime(a.firstOpenedAt, b.firstOpenedAt) },
+];
 const plural = (count: number) => `${count} ${count === 1 ? "alert" : "alerts"}`;
 
 export function AlertsPage({ alerts, now, canRespond, canMute }: {
@@ -171,7 +179,8 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
 
   const groupings = useMemo<Grouping<AlertItem>[]>(() => [
     { key: "state", label: "State", groupsOf: (list) => groupBy(list, (alert) => stateGroup(alert), (key, group) => ({ label: STATE_GROUPS[key as StateGroup].label, icon: STATE_GROUPS[key as StateGroup].icon, about: STATE_GROUPS[key as StateGroup].about + ` · ${plural(group.length)}` }), (key) => STATE_GROUP_ORDER.indexOf(key as StateGroup)) },
-    { key: "service", label: "Service", groupsOf: (list) => groupBy(list, (alert) => alertService(alert).name, (key, group) => ({ label: key, icon: alertService(group[0]).icon, about: plural(group.length) })) },
+    // Microsoft's services in the portal's order (Entra ID first), not by name.
+    { key: "service", label: "Service", groupsOf: (list) => groupBy(list, (alert) => alertService(alert).name, (key, group) => ({ label: key, icon: alertService(group[0]).icon, about: plural(group.length) }), (key) => serviceOrder(list.map(alertService).find((service) => service.name === key)?.code)) },
     { key: "severity", label: "Severity", groupsOf: (list) => groupBy(list, (alert) => alert.severity, (key, group) => ({ label: SEVERITY[key as AlertItem["severity"]].label, icon: SEVERITY[key as AlertItem["severity"]].icon, about: plural(group.length) }), (key) => SEVERITY_ORDER.indexOf(key as AlertItem["severity"])) },
     { key: "owner", label: "Owner", groupsOf: (list) => groupBy(list, (alert) => alert.owner?.name ?? "No owner", (key, group) => ({ label: key, icon: "bell", about: plural(group.length) }), (key) => (key === "No owner" ? 1 : 0)) },
   ], []);
@@ -252,6 +261,7 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
               noun={{ one: "alert", many: "alerts" }}
               renderRow={renderRow}
               rowName={(alert) => alertTitle(alert)}
+              sorts={ALERT_SORTS}
               toneOf={alertTone}
             />
           )}

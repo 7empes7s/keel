@@ -11,7 +11,7 @@ import { resolveOwnership } from "../../engine/identity/ownership.mjs";
 import { recordLineage } from "../../engine/store/resourceLineage.mjs";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 
-import { attributionSentence, routeSentence } from "@/components/change-attribution";
+import { attributionNextStep, attributionSentence, attributionSummary, attributionWhen, routeSentence } from "@/components/change-attribution";
 import { getDriftData } from "@/lib/portal-data";
 import { tenantRef } from "@/lib/runtime-config";
 import type { ChangeAttribution, DriftRecord } from "@/lib/types";
@@ -156,4 +156,68 @@ test("an audit entry naming the resource is exact; an entity reader is not told 
   assert.equal(mine.verdict, "exact");
   assert.deepEqual(mine.actors, [{ kind: "user", id: null, name: null }]);
   assert.equal(attributionSentence(mine), "An account outside your entities made this change, according to the audit log.");
+});
+
+test("without lineage the saved copy's object id matches, the app is named from the backup, and other services say what to do", async () => {
+  const CA = "33333333-3333-4333-8333-333333333333";
+  const SYNC_APP = "44444444-4444-4444-8444-444444444444";
+  const CA_KEY = "conditionalAccessPolicy:Block legacy sign-in";
+  const SP_KEY = "sharepointSettings:tenant";
+  const { rows: [baseline] } = await client.query("SELECT id FROM baseline WHERE tenant_ref = $1 AND active", [ref]);
+  const { rows: [baselineSnapshot] } = await client.query(
+    "SELECT id FROM snapshot WHERE tenant_ref = $1 ORDER BY started_at ASC LIMIT 1", [ref],
+  );
+  const { rows: [observed] } = await client.query(
+    "SELECT observed_snapshot AS id FROM drift WHERE tenant_ref = $1 LIMIT 1", [ref],
+  );
+  // A backup an hour ago still held the approved version: the change came after it.
+  const { rows: [previous] } = await client.query(
+    "INSERT INTO snapshot (tenant_ref, status, started_at, completed_at) VALUES ($1, 'complete', now() - interval '61 minutes', now() - interval '60 minutes') RETURNING id, completed_at", [ref],
+  );
+  const version = async (snapshotId: unknown, key: string, type: string, payload: unknown, hash: string) => (await client.query(
+    `INSERT INTO resource_version (snapshot_id, natural_key, resource_type, payload, payload_hash, criticality, blast_radius, fidelity, provenance)
+     VALUES ($1, $2, $3, $4::jsonb, $5, 'normal', 'access-affecting', 'full', '{}'::jsonb) RETURNING id`,
+    [snapshotId, key, type, JSON.stringify(payload), hash],
+  )).rows[0];
+  const approved = await version(baselineSnapshot.id, CA_KEY, "conditionalAccessPolicy", { id: CA, state: "enabled" }, "h-ca-old");
+  await version(previous.id, CA_KEY, "conditionalAccessPolicy", { id: CA, state: "enabled" }, "h-ca-old");
+  await version(observed.id, "servicePrincipal:Contoso Sync", "servicePrincipal", { id: SYNC_APP, displayName: "Contoso Sync" }, "h-sp");
+  const sharepoint = await version(baselineSnapshot.id, SP_KEY, "sharepointSettings", { sharingCapability: "disabled" }, "h-sp-old");
+  for (const [key, row, type, hash, before, after] of [
+    [CA_KEY, approved, "conditionalAccessPolicy", "h-ca-old", { id: CA, state: "enabled" }, { id: CA, state: "disabled" }],
+    [SP_KEY, sharepoint, "sharepointSettings", "h-sp-old", { sharingCapability: "disabled" }, { sharingCapability: "externalUserSharingOnly" }],
+  ] as const) {
+    await client.query("INSERT INTO baseline_resource (baseline_id, natural_key, resource_version_id) VALUES ($1, $2, $3)", [baseline.id, key, (row as { id: string }).id]);
+    await client.query(
+      `INSERT INTO drift (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type, blast_radius, before_hash, after_hash, before_payload, after_payload)
+       VALUES ($1, $2, $3, $4, $5, 'modified', 'access-affecting', $6, 'h-new', $7::jsonb, $8::jsonb)`,
+      [ref, baseline.id, observed.id, key, type, hash, JSON.stringify(before), JSON.stringify(after)],
+    );
+  }
+  // Alice touched the policy two hours ago, before the backup that still held it; the
+  // sync app changed it half an hour ago. Only the second is inside the change window.
+  for (const [id, minutes, kind, actor] of [["entra:alice-ca:0", 120, "user", ALICE], ["entra:sync-ca:0", 30, "servicePrincipal", SYNC_APP]] as const) {
+    await client.query(
+      `INSERT INTO audit_change_fact (tenant_ref, source_event_id, occurred_at, target_type, target_id, operation, activity, fields, actor_kind, actor_id)
+       VALUES ($1, $2, now() - $3 * interval '1 minute', 'policy', $4, 'update', 'Update conditional access policy', '{}', $5, $6)`,
+      [ref, id, minutes, CA, kind, actor],
+    );
+  }
+
+  const data = await getDriftData();
+  const ca = byKey(data.items, CA_KEY);
+  assert.equal(ca.window.from, (previous.completed_at as Date).toISOString(), "the window starts at the last backup that still held it");
+  assert.deepEqual([ca.verdict, ca.reason, ca.source], ["exact", "audit-record-names-resource", "audit"]);
+  assert.deepEqual(ca.actors, [{ kind: "servicePrincipal", id: SYNC_APP, name: "Contoso Sync" }]);
+  assert.equal(ca.resourceObjectId, CA);
+  assert.equal(attributionSentence(ca), "The app Contoso Sync made this change, according to the audit log.");
+  assert.match(attributionWhen(ca).sentence, /^Changed .+, from the Microsoft Entra audit log\.$/);
+  assert.equal(attributionNextStep(ca), null);
+  assert.equal(attributionSummary(ca), "The app Contoso Sync, confirmed by the Microsoft Entra audit log.");
+
+  const sp = byKey(data.items, SP_KEY);
+  assert.deepEqual([sp.verdict, sp.reason, sp.source, sp.service], ["unknown", "audit-source-not-read", null, "SharePoint"]);
+  assert.equal(attributionSentence(sp), "Microsoft keeps SharePoint's changes in the Purview audit log, which Keel does not read yet.");
+  assert.match(attributionNextStep(sp) ?? "", /search the Purview audit log .* AuditLogsQuery\.Read\.All/);
+  assert.match(attributionWhen(sp).sentence, /^Changed between .+ and .+, between two backups\.$/);
 });

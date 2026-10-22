@@ -564,7 +564,6 @@ test("a queued backup confirms with a toast linking to the job", async ({ page }
 test("the restore wizard walks select → dry run → review → confirm → track", async ({ page }) => {
   await open(page, "/restore");
   await expect(page.locator('[data-layer="verdict"]')).toHaveText("5 settings changed since the backup of Wed, 30 Sept 2026. Undo the ones nobody expected.");
-  await page.getByRole("button", { name: "Show all 11 settings" }).click();
   await page.getByLabel("Select Require MFA for admins (sign-in rule)").click();
   await page.getByRole("button", { name: "Put back 1 setting" }).click();
   await expect(page.getByText("Ready to send for approval")).toBeVisible({ timeout: 15_000 });
@@ -617,10 +616,24 @@ test("restore leads with what changed, by service, and undoes a change or a grou
   await expect(page.locator(".restore-point-age")).toHaveText("2 days old · 19 settings saved · 3 backups taken after it");
   await expect(page.locator(".restore-tile").nth(0)).toContainText("Changed since4");
   await expect(page.locator(".restore-tile").nth(3).getByRole("link")).toHaveAttribute("href", "#/jobs/a3");
-  // Long groups show their first rows and say how many more.
-  await expect(groups.nth(1).locator(".sel-row")).toHaveCount(8);
-  await groups.nth(1).getByRole("button", { name: "Show all 11 settings" }).click();
+  // 19 settings fit on one page of 25, so every row shows and there is no pager.
   await expect(groups.nth(1).locator(".sel-row")).toHaveCount(11);
+  await expect(page.locator(".list-pager")).toHaveCount(0);
+  // Inside a service, settings sit under their kind, in the service's order, each kind
+  // with its count, its own select-all and its own open and close.
+  const entraParts = groups.nth(1).locator(".sel-part");
+  await expect(entraParts.locator(".sel-part-name")).toHaveText(["Groups and administrative units", "Sign-in rules and methods", "Tenant and directory settings"]);
+  await expect(entraParts.nth(0).locator(".sel-group-count")).toHaveText("7 settings");
+  await expect(entraParts.nth(0).locator(".sel-row").first()).toContainText("All managed devices");
+  await page.getByRole("checkbox", { name: "Select all 3 settings in Entra ID: Sign-in rules and methods" }).check();
+  await expect(page.locator(".sel-bar")).toContainText("3 settings selected");
+  await expect(groups.nth(1).locator(".sel-group-head .sel-check")).toHaveJSProperty("indeterminate", true);
+  await page.keyboard.press("Escape");
+  await entraParts.nth(0).getByRole("button", { name: /Groups and administrative units/ }).click();
+  await expect(entraParts.nth(0).locator(".sel-row")).toHaveCount(0);
+  await expect(page).toHaveURL(/closed=Entra\.groups/);
+  await entraParts.nth(0).getByRole("button", { name: /Groups and administrative units/ }).click();
+  await expect(entraParts.nth(0).locator(".sel-row")).toHaveCount(7);
   // Unchanged rows say "Same now" and carry no lockout warning: a restore writes nothing to them.
   await expect(groups.nth(1).locator(".restore-row-same")).toHaveCount(11);
   await expect(groups.nth(1).locator(".restore-row-impact")).toHaveCount(0);
@@ -811,6 +824,9 @@ test("a change says who made it from the audit log and where an undo goes", asyn
   let sheet = await openChange(page, "Block legacy auth");
   const panel = sheet.locator(".change-attribution");
   await expect(panel.locator(".change-attribution-headline")).toContainText("Confirmed by the Microsoft audit log. Amara Okafor made this change, according to the audit log.");
+  await expect(panel.locator(".change-attribution-headline .pill")).toHaveText("Confirmed");
+  await expect(panel.locator(".change-attribution-when")).toContainText("from the Microsoft Entra audit log");
+  await expect(panel.locator(".change-attribution-next")).toHaveCount(0);
   await expect(panel.locator(".change-attribution-route")).toHaveText("A roll back goes to a central approver (2 people), because it touches more than one entity.");
   expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
   const record = panel.locator('[data-layer="record"]');
@@ -830,6 +846,8 @@ test("a change says who made it from the audit log and where an undo goes", asyn
   await expect(page.locator(".bl-row-link", { hasText: /^Block legacy auth$/ })).toBeFocused();
   sheet = await openChange(page, "Finance");
   await expect(sheet.locator(".change-attribution-headline")).toContainText("Not known. The audit log for that time is no longer available");
+  await expect(sheet.locator(".change-attribution-when")).toContainText("between two backups");
+  await expect(sheet.locator(".change-attribution-next")).toHaveText("Microsoft no longer keeps that part of the Microsoft Entra audit log. Ask the people who manage this setting, or check your own log archive.");
   await expect(sheet.locator(".change-attribution-route")).toHaveText("A roll back goes to CREOS approvers (1 person).");
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(results.violations.map((violation) => violation.id)).toEqual([]);
@@ -930,8 +948,8 @@ test("changes · Shift+click range, select a service, select all, filter by risk
   await page.locator(".bl-tile", { hasText: "Could lock out admins" }).click();
   await expect(page).toHaveURL(/risk=tenant-lockout/);
   await expect(page.locator(".sel-row")).toHaveCount(2);
-  await expect(page.locator(".bl-filter-note")).toContainText("Showing could lock out admins only: 2 of 7.");
-  await page.getByRole("link", { name: "Show every change" }).click();
+  await expect(page.locator(".filter-bar")).toContainText("Showing 2 of 7 changes");
+  await page.locator(".filter-bar").getByRole("button", { name: "Clear all" }).click();
   await expect(page.locator(".sel-row")).toHaveCount(7);
 });
 
@@ -1017,8 +1035,10 @@ test("What's protected sorts failed and out-of-date kinds first, each with a run
   await open(page, "/protect");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("2 types failed their last backup.");
   const entra = page.locator(".sel-group", { hasText: "Entra ID" }).first();
-  await expect(entra.locator(".pt-row-link").first()).toHaveText("Authentication methods policy");
-  const failed = entra.locator(".sel-row").first();
+  // Kinds sit under their kind group; inside a group, failures come first.
+  const signIn = entra.locator(".sel-part", { hasText: "Sign-in rules and methods" });
+  await expect(signIn.locator(".pt-row-link").first()).toHaveText("Authentication methods policy");
+  const failed = signIn.locator(".sel-row").first();
   await expect(failed.locator(".badge")).toHaveText("Failed");
   await failed.getByRole("button", { name: "Back up Tier 1 again" }).click();
   await expect(page.locator(".toast").first()).toContainText("Tier 1 backup queued");
@@ -1050,7 +1070,7 @@ test("What's protected · tiles filter in the address, selection names its tiers
   await page.getByRole("link", { name: "Show every kind" }).click();
   await expect(page.locator(".sel-row")).toHaveCount(15);
   // Shift+click picks a range; the bar says which tiers run before anything runs.
-  const rows = page.locator(".sel-row");
+  const rows = page.locator(".sel-part", { hasText: "Sign-in rules and methods" }).locator(".sel-row");
   await rows.nth(0).locator("input").click();
   await rows.nth(2).locator(".pt-row-name small").click({ modifiers: ["Shift"] });
   await expect(page.locator(".sel-row[data-selected]")).toHaveCount(3);
@@ -1521,7 +1541,7 @@ test("Changes · acknowledge and resolve service setting changes in place", asyn
   await tile.click();
   await expect(page).toHaveURL(/from=services/);
   await expect(page.locator(".sel-row")).toHaveCount(5);
-  await expect(page.locator(".bl-filter-note")).toContainText("Showing service setting changes only: 5 of");
+  await expect(page.locator(".filter-bar")).toContainText("Showing 5 of 12 changes");
 
   await page.getByLabel(/^Select Forward finance mail/).check();
   await page.getByLabel(/^Select Global/).check();
@@ -1537,8 +1557,9 @@ test("Changes · acknowledge and resolve service setting changes in place", asyn
   for (const name of ["Forward finance mail", "Global"]) {
     await expect(page.locator(".sel-row", { has: page.locator(".bl-row-link", { hasText: new RegExp(`^${name}$`) }) }).locator(".bl-row-who")).toContainText("Seen, not resolved");
   }
-  await expect(tile.locator(".bl-tile-count")).toHaveText("3");
-  await expect(tile).toContainText("2 seen");
+  // The count is what the tile shows; seen ones still show until resolved.
+  await expect(tile.locator(".bl-tile-count")).toHaveText("5");
+  await expect(tile).toContainText("3 waiting for review; 2 seen");
 
   // Resolve one from its panel: a note is required, then it leaves the list.
   const sheet = await openChange(page, "Global");
@@ -1555,10 +1576,66 @@ test("Changes · acknowledge and resolve service setting changes in place", asyn
   await expect(page.locator(".sel-row")).toHaveCount(4);
 });
 
+// Summary tiles add up (OR): Cosmetic and Service settings together show both sets.
+// Service, kind and find narrow them (AND). Each active filter is a chip that removes
+// it, the counts follow the view, the view lives in the address, and nothing matching
+// is never a dead end.
+test("Changes · tiles add up, other filters narrow, chips and no dead ends", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/drift/services");
+  const tile = (name: string) => page.locator(".bl-tile", { hasText: name });
+  const rows = page.locator(".sel-row");
+  await expect(rows).toHaveCount(12);
+
+  await tile("Cosmetic").click();
+  await expect(page).toHaveURL(/risk=cosmetic/);
+  await expect(rows).toHaveCount(3);
+  // Unpicked tiles say what they would add; one service setting change is cosmetic too, so it adds 4 of its 5.
+  await expect(tile("Service settings")).toContainText("+4 if added");
+  await expect(tile("Affects access")).toContainText("+7 if added");
+
+  await tile("Service settings").click();
+  await expect(page).toHaveURL(/risk=cosmetic&from=services/);
+  await expect(rows).toHaveCount(7);
+  await expect(tile("Cosmetic")).toHaveAttribute("aria-current", "true");
+  await expect(tile("Service settings")).toHaveAttribute("aria-current", "true");
+  await expect(page.locator(".filter-bar")).toContainText("Showing 7 of 12 changes");
+
+  // A find narrows what the tiles show, and every count follows it.
+  await page.getByPlaceholder("Find changes").fill("Forward finance mail");
+  await expect(rows).toHaveCount(1);
+  await expect(tile("Service settings").locator(".bl-tile-count")).toHaveText("1");
+  await expect(tile("Cosmetic").locator(".bl-tile-count")).toHaveText("0");
+  await expect(page.getByRole("button", { name: "Remove filter: Find: “Forward finance mail”" })).toBeVisible();
+
+  // Removing one chip drops only that filter.
+  await page.locator(".filter-bar").getByRole("button", { name: "Remove filter: Service settings" }).click();
+  await expect(page).not.toHaveURL(/from=services/);
+  await expect(page.locator(".filter-empty")).toContainText("No changes match these filters");
+  // The empty view offers a way out in one click.
+  await page.locator(".filter-empty").getByRole("button", { name: "Clear all filters" }).click();
+  await expect(rows).toHaveCount(12);
+  await expect(page.locator(".filter-bar")).toHaveCount(0);
+  await expect(page.getByPlaceholder("Find changes")).toHaveValue("");
+
+  // The same view comes back from the address, and from a saved filter.
+  await open(page, "/drift/services?risk=tenant-lockout,cosmetic");
+  await expect(rows).toHaveCount(5);
+  await page.getByRole("button", { name: "Save filter" }).click();
+  await page.getByLabel("Name for this filter").fill("Lockout and cosmetic");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.locator(".filter-bar").getByRole("button", { name: "Clear all" }).click();
+  await expect(rows).toHaveCount(12);
+  await page.locator(".saved-filter a", { hasText: "Lockout and cosmetic" }).click();
+  await expect(rows).toHaveCount(5);
+  await expect(page.getByRole("button", { name: /^Remove filter: / })).toHaveCount(2);
+});
+
 // Other pages link to a filtered list by kind; the filter note says so.
 test("Changes · a kind filter in the address and plain words on the page", async ({ page }) => {
   await open(page, "/drift?kind=namedLocation");
-  await expect(page.locator(".bl-filter-note")).toContainText("Showing trusted location changes only: 2 of 7.");
+  await expect(page.locator(".filter-bar")).toContainText("Showing 2 of 7 changes");
+  await expect(page.getByRole("button", { name: /^Remove filter: / })).toHaveCount(1);
   await expect(page.locator(".sel-row")).toHaveCount(2);
   await expect(page.locator(".bl-context")).toContainText("Checked after every backup.");
   await expect(page.locator(".bl-context").getByRole("link", { name: "Run a backup now" })).toHaveAttribute("href", /protect/);
@@ -2709,10 +2786,12 @@ test("ask summarises every match, says what it did not understand, and pages a g
   const table = answer.locator(".pg-table");
   await expect(table.locator("tr.ask-record")).toHaveCount(25);
   await expect(table.locator("tr.pg-group").first()).toContainText("Entra ID");
-  await expect(answer.locator(".ak-range")).toHaveText("1–25 of 36");
-  await answer.getByRole("button", { name: "Next" }).click();
+  const pager = answer.getByRole("navigation", { name: "Pages of Records this answer rests on" });
+  await expect(pager.getByRole("status")).toHaveText("Showing 1–25 of 36 records");
+  await pager.getByRole("button", { name: "Next" }).click();
   await expect(table.locator("tr.ask-record")).toHaveCount(11);
-  await answer.getByLabel("Rows per page").selectOption("50");
+  expect(page.url()).toContain("rec-page=2");
+  await pager.getByRole("radio", { name: "50" }).click();
   await expect(table.locator("tr.ask-record")).toHaveCount(36);
   // Tiles of the same kind add up; another kind and the search narrow.
   await answer.getByRole("button", { name: /^Removed/ }).click();
@@ -2727,10 +2806,12 @@ test("ask summarises every match, says what it did not understand, and pages a g
   await expect(answer.locator(".pg-empty")).toContainText("No record matches");
   await answer.getByRole("button", { name: "Clear filters" }).click();
   await answer.getByLabel("Find").fill("");
-  await answer.getByLabel("Sort").selectOption("name");
-  await answer.getByLabel("Group by").selectOption("none");
+  await answer.getByRole("button", { name: /Order by: Suggested/ }).click();
+  await page.getByRole("option", { name: "Name", exact: true }).click();
+  await answer.getByRole("button", { name: /Group by: Service/ }).click();
+  await page.getByRole("option", { name: "No grouping" }).click();
   await expect(table.locator("tr.pg-group")).toHaveCount(0);
-  await expect(table.locator("tr.ask-record").first()).toContainText("Calling policy 14");
+  await expect(table.locator("tr.ask-record").first()).toContainText("Calling policy 2 ");
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
@@ -3247,4 +3328,62 @@ test("errors · a failed job shows a plain cause and what to do; the raw error i
   const sheet = page.locator(".ui-error-notice");
   await expect(sheet).toContainText("Run it again");
   await expect(sheet.locator(".ui-raw-error")).toBeHidden();
+});
+
+// Shared list paging: 25 rows a page by default, a choice of 25, 50, 100 or all, page
+// buttons, Order by with a direction, and all of it kept in the address so a reload
+// brings the same view back. Group headers repeat on each page that has their rows.
+test("shared list · rows per page, pages and order are kept in the address", async ({ page }) => {
+  await open(page, "/kit/many");
+  const rows = page.locator(".sel-row");
+  const pager = page.getByRole("navigation", { name: "Pages of Changed settings" });
+  await expect(rows).toHaveCount(25);
+  await expect(pager.getByRole("status")).toHaveText("Showing 1–25 of 64 settings");
+  await expect(pager).toContainText("Page 1 of 3");
+  await pager.getByRole("button", { name: "Next" }).click();
+  await expect(pager.getByRole("status")).toHaveText("Showing 26–50 of 64 settings");
+  expect(page.url()).toContain("page=2");
+  // A group that began on page 1 keeps its header here, marked as continued.
+  await expect(page.locator(".sel-group-continued").first()).toHaveText("continued");
+  // Kinds inside a service page too: the page still holds 25 rows, under their kinds.
+  await expect(rows).toHaveCount(25);
+  await expect(page.locator(".sel-part").first()).toBeVisible();
+  await pager.getByRole("button", { name: "Last page" }).click();
+  await expect(rows).toHaveCount(14);
+  // A bigger page starts again from page 1.
+  await pager.getByRole("radio", { name: "50" }).click();
+  await expect(rows).toHaveCount(50);
+  expect(page.url()).toContain("size=50");
+  expect(page.url()).not.toContain("page=");
+  await pager.getByRole("radio", { name: "All" }).click();
+  await expect(rows).toHaveCount(64);
+  await expect(pager.getByRole("button", { name: "Next" })).toHaveCount(0);
+  // Order by name, then flip it; the first row of the first group follows.
+  await page.getByRole("button", { name: /Order by: Suggested/ }).click();
+  await page.getByRole("option", { name: "Name" }).click();
+  expect(page.url()).toContain("sort=name");
+  const firstGroup = page.locator(".sel-group").first().locator(".sel-row");
+  const ascending = await firstGroup.first().innerText();
+  await page.getByRole("button", { name: /Order: ascending/ }).click();
+  expect(page.url()).toContain("dir=desc");
+  await expect(firstGroup.first()).not.toHaveText(ascending);
+  // Find narrows the list and goes back to page 1.
+  await page.getByPlaceholder("Find settings").fill("Sample setting 0");
+  await expect(rows).toHaveCount(9);
+  // A reload brings the same view back.
+  await page.reload();
+  await page.locator("main#main-content h1").waitFor();
+  await expect(rows).toHaveCount(9);
+  await expect(page.getByRole("button", { name: /Order by: Name/ })).toBeVisible();
+});
+
+test("shared list · the pager fits a phone without sideways scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await open(page, "/kit/many");
+  const pager = page.locator(".list-pager");
+  await expect(pager).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+  await pager.getByRole("button", { name: "Next" }).click();
+  await expect(pager.getByRole("status")).toHaveText("Showing 26–50 of 64 settings");
 });

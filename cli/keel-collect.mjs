@@ -9,6 +9,8 @@ import { GraphReader } from '../tools/tenant-probe/graph.mjs';
 import { collectSnapshot } from '../engine/collect/snapshot.mjs';
 import { connect } from '../engine/store/db.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
+import { ingestCollectorAudit } from '../engine/identity/auditSources.mjs';
+import { schedulerPrincipal } from './keel-scheduler.mjs';
 import {
   FULL_READ_OUTCOMES, INCOMPLETE_TYPES_PREFIX, PARTIAL_EXIT_CODE, incompleteTypesOf,
 } from '../engine/collect/incomplete.mjs';
@@ -107,12 +109,29 @@ export function exitCodeForDigest(coverageDigest) {
   return anyFullRead ? PARTIAL_EXIT_CODE : 1;
 }
 
+/**
+ * Who made each change: after the backup, read the Entra and Intune audit logs up to now
+ * with the same Collector token (engine/identity/auditSources.mjs). It runs as the job's
+ * requester, or as the scheduler for a timer-driven run. It never changes the backup's
+ * outcome: a log that cannot be read is recorded and shown on the change instead.
+ */
+export async function readAuditLogs(client, { tenantRef, reader, logger = console, env = process.env, ingest = ingestCollectorAudit }) {
+  try {
+    const requestedBy = env.KEEL_JOB_REQUESTED_BY || (await schedulerPrincipal(client)).id;
+    return await ingest(client, { tenantRef, reader, requestedBy, log: (line) => logger.log(line) });
+  } catch (error) {
+    logger.log(`audit logs not read: ${error instanceof Error ? error.message : String(error)}`);
+    return null;
+  }
+}
+
 export async function runCollect({
   config,
   dbUrl = process.env.KEEL_DB_URL,
   tier,
   dependencies = {},
   logger = console,
+  readAudit = false,
 }) {
   const {
     connect: connectFn = connect,
@@ -151,6 +170,7 @@ export async function runCollect({
     // portal can name what was not backed up.
     const incomplete = incompleteTypesOf(coverageDigest);
     if (incomplete.length) logger.log(`${INCOMPLETE_TYPES_PREFIX}${JSON.stringify(incomplete)}`);
+    if (readAudit) await readAuditLogs(client, { tenantRef, reader, logger });
     return { snapshotId, coverageDigest, exitCode: exitCodeForDigest(coverageDigest) };
   } finally {
     await client.end();
@@ -173,7 +193,7 @@ export async function main({
   }
   const config = JSON.parse(readFile(arg('config', '/etc/keel/tenant.json', argv), 'utf8'));
   const dbUrl = arg('db-url', process.env.KEEL_DB_URL, argv);
-  const { exitCode } = await runCollect({ config, dbUrl, tier, dependencies, logger });
+  const { exitCode } = await runCollect({ config, dbUrl, tier, dependencies, logger, readAudit: true });
   return exitCode;
 }
 

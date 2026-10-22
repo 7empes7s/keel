@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { postAction } from "@/lib/action-client";
+import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { RecoveryMechanismTable, type RecoveryMechanism } from "@/components/recovery-mechanism";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
@@ -43,12 +44,13 @@ import {
   whoWords,
   type NameBook,
 } from "@/lib/restore-view";
+import { byRisk, byText, byTime } from "@/lib/paging";
 import { orderGroups, smartOrder } from "@/lib/selection";
 import { madeInSharePoint, serviceFor, serviceOrder } from "@/lib/services";
 import { typeService } from "@/lib/baselines-view";
+import { kindOrder, kindParts } from "@/lib/type-groups";
 
 const DRY_RUN_POLL_MS = 3000;
-const ROWS_PER_GROUP = 8;
 
 interface AdditionReason {
   requiredBy: string;
@@ -253,10 +255,23 @@ function grouped(items: RestoreItem[], keyOf: (item: RestoreItem) => string, met
     : orderGroups(groups, (group) => worstTone(group.items.map((item) => toneOf(item) ?? undefined)));
 }
 
+function withKinds(group: ListGroup<RestoreItem>, service: string | null): ListGroup<RestoreItem> {
+  const parts = kindParts(group.items, (item) => item.resourceType, service, (x, y) => x.label.localeCompare(y.label));
+  return { ...group, items: parts.flatMap((part) => part.items), parts };
+}
+
 function serviceGroup(code: string): Omit<ListGroup<RestoreItem>, "items" | "key"> {
   const service = serviceFor(code === "other" ? null : code);
   return { label: service.name, icon: service.icon, about: service.about };
 }
+
+// Order by: name, kind of setting, risk, and when it changed.
+const SORTS: ListSort<RestoreItem>[] = [
+  { key: "name", label: "Name", compare: (a, b) => byText(a.label, b.label) },
+  { key: "kind", label: "Kind of setting", compare: (a, b) => byText(resourceTypeLabel(a.resourceType), resourceTypeLabel(b.resourceType)) || byText(a.label, b.label) },
+  { key: "risk", label: "Risk", desc: true, compare: (a, b) => byRisk(toneOf(a), toneOf(b)) },
+  { key: "changed", label: "When it changed", desc: true, compare: (a, b) => byTime(a.change?.seenAt, b.change?.seenAt) },
+];
 
 const GROUPINGS: Grouping<RestoreItem>[] = [
   {
@@ -266,7 +281,10 @@ const GROUPINGS: Grouping<RestoreItem>[] = [
     groupsOf: (items) => {
       const changed = items.filter((item) => item.change);
       const rest = items.filter((item) => !item.change);
-      const services = grouped(rest, (item) => item.service ?? "other", serviceGroup, (code) => serviceOrder(code === "other" ? null : code));
+      // Inside a service, settings sit under their kind: users, groups, roles, then
+      // policies and tenant settings.
+      const services = grouped(rest, (item) => item.service ?? "other", serviceGroup, (code) => serviceOrder(code === "other" ? null : code))
+        .map((group) => withKinds(group, group.key === "other" ? null : group.key));
       return changed.length
         ? [{ key: CHANGED_GROUP, label: "Changed recently", icon: "clock" as IconName, about: "Different now, newest first", items: ordered(changed) }, ...services]
         : services;
@@ -275,11 +293,12 @@ const GROUPINGS: Grouping<RestoreItem>[] = [
   {
     key: "type",
     label: "Type",
+    // Service by service, and inside each the same order as the Service view.
     groupsOf: (items) => grouped(items, (item) => item.resourceType, (type) => ({
       label: plainType(type),
       icon: typeService(type).icon,
       about: `${typeService(type).name}${plainType(type).toLowerCase() !== resourceTypeLabel(type).toLowerCase() ? ` · Microsoft calls it ${resourceTypeLabel(type)}` : ""}`,
-    })),
+    }), (type) => kindOrder(type)),
   },
   {
     key: "impact",
@@ -597,7 +616,7 @@ export function RestoreSelection({
                 matches={(item, query) => `${item.label} ${plainType(item.resourceType)} ${resourceTypeLabel(item.resourceType)} ${serviceFor(item.service).name}`.toLowerCase().includes(query)}
                 noun={{ one: "setting", many: "settings" }}
                 renderRow={(item) => <RestoreRow compared={changes !== null} item={item} undo={item.change ? undoButton([item.naturalKey], item.change.kind === "deleted" ? "Bring back" : "Undo change", item.label) : null} />}
-                rowLimit={ROWS_PER_GROUP}
+                sorts={SORTS}
                 rowName={(item) => plainLabel(item.naturalKey, names)}
                 toneOf={toneOf}
               />

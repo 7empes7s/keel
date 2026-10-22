@@ -5,7 +5,7 @@
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { WORKLOAD_LABELS } from "@/lib/compare-view";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
-import { ago, displayEnum } from "@/lib/presentation";
+import { RESOURCE_TYPE_LABELS, ago, displayEnum } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
 import { madeInSharePoint, serviceFor, serviceOrder, type CloudService } from "@/lib/services";
 import type { BaselineRecord, DriftRecord } from "@/lib/types";
@@ -53,7 +53,9 @@ const PLAIN_KINDS: Record<string, string> = {
  * ("Exchange mail flow or protection rule"); the catalogue name for everything else. */
 export function plainKind(type: string): string {
   if (PLAIN_KINDS[type]) return PLAIN_KINDS[type];
-  return Object.hasOwn(WORKLOAD_LABELS, type) ? typeInfo(type).name : typeName(type);
+  if (Object.hasOwn(WORKLOAD_LABELS, type)) return typeInfo(type).name;
+  // A type with no portal label reads as its taxonomy name, never as its code in words.
+  return Object.hasOwn(RESOURCE_TYPE_LABELS, type) || !typeInfo(type).known ? typeName(type) : typeInfo(type).name;
 }
 
 /** "Block legacy auth (sign-in rule)" */

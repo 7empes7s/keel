@@ -108,7 +108,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Items": count("Items", "How many items were in it."),
   "Objects": count("Objects", "How many objects it covered."),
   "Entries": count("Entries", "How many entries it holds."),
-  "Missing": fact("Missing", "What is not there yet.", { missing: "Nothing is missing." }),
+  "Missing": fact("Missing", "What is still missing.", { missing: "Nothing is missing." }),
   "Generated": fact("Made", "When this report was made."),
   "Read at": fact("Read", "When Keel read this data."),
   "As of": fact("As of", "When this figure was measured."),

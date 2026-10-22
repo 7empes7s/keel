@@ -74,7 +74,7 @@ export function SidesRow({ name, note, sides, before, after }: {
   after: ReactNode | null;
 }) {
   const side = (which: "before" | "after", value: ReactNode | null) => (
-    <span className="cv-side" data-empty={value === null || typeof value === "string" || undefined} data-side={which}><small>{sides[which]}</small>{value ?? "Not there"}</span>
+    <span className="cv-side" data-empty={value === null || typeof value === "string" || undefined} data-side={which}><small>{sides[which]}</small>{value ?? "Not set"}</span>
   );
   return (
     <li className="cv-row">

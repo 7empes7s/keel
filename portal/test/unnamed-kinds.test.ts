@@ -312,7 +312,7 @@ test("saved role assignments and partners read by the names their backup holds",
   const names = await savedNames(client, TENANT, keys);
   const labels = keys.map((key) => namedSubject(key, names));
   assert.deepEqual(labels, [
-    "Mail Recipients → Keel Restorer (scope: Finance mailboxes) (exchange role assignment)",
+    "Mail Recipients → Keel Restorer (scope: Finance mailboxes) (Exchange role assignment)",
     "Global Administrator → Helpdesk (scope: Paris office) (role assignment schedule)",
     "Global Administrator → Ada Lovelace (role assignment)",
     "Fabrikam (cross-tenant access partner)",

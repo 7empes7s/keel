@@ -6447,7 +6447,7 @@ item that needs it stays untouched.
     with "manual: this backup holds the group's name but not its values"; an update whose setting definition differs from the tenant's.
   - Expect a one-time "changed" for each group on the first drift run after deploy, because older snapshots lack the values.
 - Needs: /opt/keel-live at `471cb9b` or later (`grep -q reusableSettingRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67 and Q109. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used; it holds

@@ -114,6 +114,11 @@ silent wrong write.
 Restore needs `DeviceManagementConfiguration.ReadWrite.All`. It is declared in
 `restorer-least-privilege.md` and is not yet verified as granted.
 
+Scripts and remediations need `DeviceManagementScripts.ReadWrite.All` instead: Graph
+answers 403 to every script write without it (issue #471). A refused write names the
+missing permission in the run's failure (`missingPermission`); granting it is an
+admin-consent step on the Restorer.
+
 ## Technical details
 
 - Code: `engine/restore/intuneOperations.mjs`, with dispatch in

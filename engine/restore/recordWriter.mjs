@@ -231,6 +231,19 @@ export function graphFailure(naturalKey, result, prefix = '') {
   return failure;
 }
 
+/**
+ * A failed write. A 403 names the permission the record declares, so the run
+ * shows which grant the Restorer is missing (an admin-consent step) instead of
+ * only Graph's raw answer.
+ */
+export function writeFailure(record, naturalKey, result) {
+  const permission = result?.status === 403 && record?.permission ? record.permission : null;
+  if (!permission) return graphFailure(naturalKey, result);
+  const failure = graphFailure(naturalKey, result, `missing permission: the Restorer needs ${permission} (admin consent); Graph answered `);
+  failure.missingPermission = permission;
+  return failure;
+}
+
 export const isNotFound = (result) => result?.ok === false && result?.status === 404;
 
 /** Re-reads until `isStale` clears (Graph's read-after-write lag), bounded. */
@@ -330,7 +343,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
     const result = await io.retryOperation(() => writer.write(record.version, collection, { method: 'POST', body }));
     if (!result.ok) {
       await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
-      return { failed: graphFailure(naturalKey, result) };
+      return { failed: writeFailure(record, naturalKey, result) };
     }
     targetId = result.body?.id;
     if (typeof targetId !== 'string' || targetId.length === 0) {
@@ -344,7 +357,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
     const result = await io.retryOperation(() => writer.write(record.version, recordObjectPath(record, payload, targetId), { method: record.updateMethod, body: sent }));
     if (!result.ok) {
       await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
-      return { failed: graphFailure(naturalKey, result) };
+      return { failed: writeFailure(record, naturalKey, result) };
     }
   }
 
@@ -411,7 +424,7 @@ async function applyRecordDelete(io, record, resource, payload, ctx) {
   const result = await io.retryOperation(() => io.writer.write(record.version, path, { method: 'DELETE', body: {} }));
   if (!result.ok) {
     await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
-    return { failed: graphFailure(naturalKey, result) };
+    return { failed: writeFailure(record, naturalKey, result) };
   }
   const reRead = await readUntil(io, record.version, path, (r) => r?.ok === true && r.body?.deletedDateTime == null, io.readOptions);
   if (!isNotFound(reRead) && reRead?.body?.deletedDateTime == null) {

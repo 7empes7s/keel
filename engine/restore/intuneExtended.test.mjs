@@ -10,8 +10,9 @@ import { test } from 'node:test';
 
 import {
   INTUNE_BEST_EFFORT, INTUNE_EXTENDED_RECORDS, INTUNE_RECORDS, applyIntuneExtendedWrite, attachIntuneAssignments, buildIntuneExtendedLedger,
-  intuneExtendedOperations, targetAppsBody, writesIntuneAssignments,
+  SCRIPT_WRITE_PERMISSION, intuneExtendedOperations, targetAppsBody, writesIntuneAssignments,
 } from './intuneOperations.mjs';
+import { EXPANSION_INVENTORY } from '../coverage/qualification.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
 import { classifyContentEffects } from '../safety/contentEffects.mjs';
 
@@ -294,6 +295,26 @@ test('scripts and remediations are created with their script body, without run r
       else assert.deepEqual(post.body[field], value, `${type}.${field}`);
     }
     for (const field of ['id', 'createdDateTime', 'lastModifiedDateTime', 'assignments', 'runSummary']) assert.equal(field in post.body, false, `${type}.${field}`);
+  }
+});
+
+// Issue #471: Graph refuses every script kind with 403 unless the app holds
+// DeviceManagementScripts.ReadWrite.All; the device configuration permission is not enough.
+test('every script kind declares the scripts permission, and a refused write names it', async () => {
+  assert.equal(SCRIPT_WRITE_PERMISSION, 'DeviceManagementScripts.ReadWrite.All');
+  const ledger = buildIntuneExtendedLedger().operations;
+  for (const [type, fields] of SCRIPT_CASES) {
+    const rows = ledger.filter((row) => row.resourceType === type);
+    assert.ok(rows.length > 0, type);
+    for (const row of rows) assert.equal(row.permission, SCRIPT_WRITE_PERMISSION, `${type} ${row.operation}`);
+    assert.equal(EXPANSION_INVENTORY[type].permission, SCRIPT_WRITE_PERMISSION, `${type} inventory`);
+
+    const message = 'Application is not authorized to perform this operation. Application must have one of the following scopes: DeviceManagementScripts.ReadWrite.All';
+    const graph = idoFakeGraph({ failWrites: ({ method }) => (method === 'POST' ? { ok: false, status: 403, body: { error: { code: 'Forbidden', message } } } : null) });
+    const payload = { id: `${type}-1`, displayName: `KEEL-RT-${type}`, roleScopeTagIds: ['0'], ...fields };
+    const result = await applyIntuneExtendedWrite(graph, resourceOf(type, payload), 'create', FAST);
+    assert.equal(result.failed?.missingPermission, SCRIPT_WRITE_PERMISSION, type);
+    assert.match(result.failed.error, /^missing permission: the Restorer needs DeviceManagementScripts\.ReadWrite\.All \(admin consent\)/, type);
   }
 });
 

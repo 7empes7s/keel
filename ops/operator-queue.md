@@ -5146,6 +5146,26 @@ item that needs it stays untouched.
 - **Expected:** both `complete`, `field_counts` with no `unknown`, `unknown_fields` `{}`, about 35 and 40 observations.
 - **Report:** step 1 exit code, step 2 verbatim.
 
+### Q117: Recheck the hourly collect after the #438 fix (read-only, urgent, after #445)
+- Drafted by the "Hourly collect failing on Exchange roles" thread (2026-10-22). Code: PR #445. The beta Exchange role reads
+  returned the same object on more than one page, so `exchangeRoleAssignment` / `exchangeRoleDefinition` ids collided and every
+  hourly collect has failed since 23:00 UTC on 2026-10-21 (issue #438). Exact repeats are now dropped after each read; a repeat
+  whose content differs fails only its own kind, and the rest of the collect completes.
+- Needs: /opt/keel-live at the #445 merge or later (`grep -q dropRepeatedIds /opt/keel-live/engine/collect/entraAdapter.mjs`).
+- Status: todo
+- Result:
+- **Read-only.** Nothing is written to the tenant. Take this item before Q109–Q116: drift detection is deferring until it passes.
+- Do:
+  1. Wait for the next scheduled hourly collect after the deploy (or start one the usual way if the timer is idle). Report its
+     job id, exit code and duration, and whether a snapshot was completed.
+  2. Report the coverage digest outcome and item count for the six role-provider kinds: `exchangeRoleDefinition`,
+     `exchangeRoleAssignment`, `exchangeCustomAppScope`, `defenderRoleDefinition`, `defenderRoleAssignment`,
+     `defenderCustomAppScope`. Any kind that is not complete: its exact `error` text (a "different objects under one id" error
+     names the ids; report them).
+  3. Confirm the next drift-detect run after that collect ran instead of deferring (its id and outcome).
+  4. If the collect still fails, paste the error and stack, and comment on #438.
+- **Report:** steps 1–3; close #438 if the collect and drift-detect succeeded.
+
 ### Q109: Live restore of four Intune settings kinds (restore gaps batch 1, after #430)
 - Drafted by the "Make backed-up kinds restorable" thread (2026-10-21). Code: PR #430. New record writers, fixture-tested only:
   reusable settings groups (`deviceManagementReusablePolicySetting`, beta, create + update), Windows hotpatch policies

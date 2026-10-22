@@ -94,9 +94,11 @@ export function PeoplePage({ people, canUsers, canRoles, now = new Date().toISOS
   ], pickedTiles).map((entry) => [entry.key, entry])), [humans, now, pickedTiles.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   const toggleRole = (role: Role) => ({ role: (filters.roles.includes(role) ? filters.roles.filter((entry) => entry !== role) : ROLE_ORDER.filter((entry) => entry === role || filters.roles.includes(entry))).join(",") || null });
   const toggleState = (state: PeopleState) => ({ state: (filters.states.includes(state) ? filters.states.filter((entry) => entry !== state) : (["active", "disabled"] as const).filter((entry) => entry === state || filters.states.includes(entry))).join(",") || null });
+  // Chips in the tiles' order: Can use Keel, the roles, then Disabled.
   const activeFilters: ActiveFilter[] = [
-    ...filters.states.map((state) => ({ key: `state:${state}`, label: state === "active" ? "Can use Keel" : "Disabled", clear: toggleState(state) })),
+    ...(filters.states.includes("active") ? [{ key: "state:active", label: "Can use Keel", clear: toggleState("active") }] : []),
     ...filters.roles.map((role) => ({ key: `role:${role}`, label: role === "approver" ? "Can approve" : ROLES[role].plural, clear: toggleRole(role) })),
+    ...(filters.states.includes("disabled") ? [{ key: "state:disabled", label: "Disabled", clear: toggleState("disabled") }] : []),
   ];
   const openId = view.get("open");
   const opened = everyone.find((person) => person.id === openId) ?? null;

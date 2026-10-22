@@ -897,6 +897,30 @@ being triggered by queue updates.
      assignment reads repeat rows (the intended fail-closed side). Report the outcome.
 - **Report:** B; step 1 status/count/match; the 25 reasons; confirmation that no write was attempted.
 
+### Q136: Read-only check whether the Collector's Global Reader is enough for Teams policy reads, and a Fabric tenant settings re-check
+- Drafted by the "Power Platform and Fabric role names" thread (2026-10-22). Teams org-wide (`teams-org-policies`) and Teams
+  voice (`teams-voice-policies`) declare **Teams Administrator**, which the Collector does not hold (Q106). It holds **Global Reader**,
+  which may be enough for the `Get-Cs*` reads app-only; nobody has tested it. Also: `GET /v1/admin/tenantsettings` was 403 in Q57
+  (before the Fabric read-only admin setting took effect) and 200 has not been seen since.
+- Needs: nothing.
+- Status: todo
+- Result:
+- **Read-only. Nothing is written to the tenant.** Collector credential only. **Grant nothing**: do not assign Teams Administrator
+  or any role or permission, even if a read is refused. Never touch CA policies, break-glass or Marouane's account.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`):
+  1. `node tools/qualification/workloadReadsLive.mjs plan --workload teams-org-policies` and the same for `teams-voice-policies`.
+  2. `capture` for each of the two workloads with the Collector (`--collector-config` = the Collector's config, `--build` B),
+     `--out` under `docs/release/qualifications/` as the tool suggests, with `KEEL_QUALIFICATION_HMAC_KEY` set.
+  3. If a read is refused, report the exact error text for that cmdlet (e.g. one `Get-CsTeamsMeetingPolicy` and one
+     `Get-CsOnlineUser -ResultSize 1`), so it is clear whether the refusal is the role or something else.
+  4. Fabric: one `GET https://api.fabric.microsoft.com/v1/admin/tenantsettings` with the Collector's token (audience
+     `https://api.fabric.microsoft.com/`). Report the status and the number of `tenantSettings` only, no values. If 403, report the
+     error body's code and message, and whether the Collector is still the only member of `KEEL-RT-collector-fabric-readers`.
+  5. If any record in step 2 has reads that answered, commit it on `claude/live-evidence-teams-global-reader`, branched from
+     `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+- **Report:** B; per workload, each cmdlet's status (answered / refused with the message); the Fabric status and count;
+  the evidence branch and commit if any; confirmation that nothing was granted or written.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

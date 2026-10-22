@@ -5,8 +5,8 @@ import type { ChangeAttribution } from "@/lib/types";
 
 type Actor = ChangeAttribution["actors"][number];
 
-// Roadmap task-91: who made a change, as the audit log supports it, and where a roll back
-// would go. Sentences only; the attribution codes, audit entry ids and object ids stay
+// Roadmap task-91: who made a change, as the audit log supports it, when, how sure Keel
+// is, what to do when it cannot tell, and where a roll back would go. Sentences only; the attribution codes, audit entry ids and object ids stay
 // in the record. "Exact" is said only when the engine found one account's audit entry
 // for this very resource and the log is complete for the whole time it could have
 // happened; everything weaker says so.
@@ -14,6 +14,25 @@ export const ATTRIBUTION_HEADLINES: Record<ChangeAttribution["verdict"], string>
   exact: "Confirmed by the Microsoft audit log",
   plausible: "Likely, not confirmed",
   unknown: "Not known",
+};
+
+// The badge beside the heading: colour and one or two words.
+export const ATTRIBUTION_BADGES: Record<ChangeAttribution["verdict"], { label: string; tone: string }> = {
+  exact: { label: "Confirmed", tone: "pill-ok" },
+  plausible: { label: "Likely", tone: "pill-warn" },
+  unknown: { label: "Not known", tone: "pill-neutral" },
+};
+
+// Where Microsoft keeps the record of a change, by the audit log KEEL read.
+export const AUDIT_LOG_NAMES: Record<string, string> = {
+  audit: "Microsoft Entra audit log",
+  "intune-audit": "Intune audit log",
+};
+
+// The Collector permission each log needs, named when a read was refused.
+const AUDIT_LOG_PERMISSIONS: Record<string, string> = {
+  audit: "the Microsoft Graph permission AuditLog.Read.All",
+  "intune-audit": "the Microsoft Graph permission DeviceManagementConfiguration.Read.All and an Intune read role",
 };
 
 const UNKNOWN_SENTENCES: Record<string, string> = {
@@ -46,6 +65,8 @@ function names(actors: Actor[]): string {
 export function attributionSentence(attribution: ChangeAttribution): string {
   const who = names(attribution.actors);
   switch (attribution.reason) {
+    case "audit-source-not-read":
+      return `Microsoft keeps ${attribution.service ?? "this service"}'s changes in the Purview audit log, which Keel does not read yet.`;
     case "audit-record-names-resource":
       return `${capitalized(who)} made this change, according to the audit log.`;
     case "audit-log-incomplete":
@@ -57,6 +78,55 @@ export function attributionSentence(attribution: ChangeAttribution): string {
     default:
       return UNKNOWN_SENTENCES[attribution.reason] ?? "Keel cannot say who made this change.";
   }
+}
+
+function logName(attribution: ChangeAttribution): string {
+  return (attribution.source && AUDIT_LOG_NAMES[attribution.source]) || "audit log";
+}
+
+function between(attribution: ChangeAttribution): string {
+  return `between ${formatTimestamp(attribution.window.from)} and ${formatTimestamp(attribution.window.until)}`;
+}
+
+/** What a person can do when Keel cannot name who made the change, or null when it can. */
+export function attributionNextStep(attribution: ChangeAttribution): string | null {
+  if (attribution.verdict !== "unknown") return null;
+  const log = logName(attribution);
+  const search = `search the ${log} for this item ${between(attribution)}`;
+  switch (attribution.reason) {
+    case "audit-source-not-read":
+      return `To find out, search the Purview audit log (purview.microsoft.com, Audit) for this item ${between(attribution)}. Keel needs the permission AuditLogsQuery.Read.All to read it.`;
+    case "audit-log-not-configured":
+    case "audit-window-not-read":
+      return "Keel reads the audit log after each backup. Check again after the next backup.";
+    case "audit-retention-gap":
+      return `Microsoft no longer keeps that part of the ${log}. Ask the people who manage this setting, or check your own log archive.`;
+    case "audit-read-scope-revoked":
+      return `Give the Collector app ${(attribution.source && AUDIT_LOG_PERMISSIONS[attribution.source]) || "its audit log permission"} again, then run a backup.`;
+    case "audit-read-failed":
+      return "Keel tries again after the next backup.";
+    case "audit-in-organization-archive":
+      return `To find out, search your archive for this item ${between(attribution)}.`;
+    case "no-audit-record-names-resource":
+      return `A change Microsoft or a sync makes has no person behind it. To check, ${search}.`;
+    default:
+      return `To find out, ${search}.`;
+  }
+}
+
+/** When it changed: the audit record's time when there is one, else the window Keel saw it in. */
+export function attributionWhen(attribution: ChangeAttribution): { at: string | null; sentence: string } {
+  const at = attribution.evidence.map((entry) => entry.occurredAt).sort().at(-1) ?? null;
+  if (at) return { at, sentence: `Changed ${formatTimestamp(at)}, from the ${logName(attribution)}.` };
+  return { at: null, sentence: `Changed ${between(attribution)}, between two backups.` };
+}
+
+/** One line for a summary row: who, and how sure. */
+export function attributionSummary(attribution: ChangeAttribution): string {
+  const who = names(attribution.actors);
+  if (attribution.verdict === "exact" && who) return `${capitalized(who)}, confirmed by the ${logName(attribution)}.`;
+  if (attribution.verdict === "plausible" && who) return `Probably ${who}, not confirmed.`;
+  return "Not known.";
 }
 
 const CENTRAL_BECAUSE: Record<string, string> = {
@@ -81,25 +151,34 @@ export function ChangeAttributionPanel({ attribution, now }: { attribution: Chan
       <section className="change-attribution" aria-label="Who made this change">
         <DecisionStyles />
         <h3 className="decision-heading">Who made this change</h3>
-        <p className="field-help">Keel did not check who made this change.</p>
+        <p className="change-attribution-headline">
+          <span className="pill pill-warn">Not checked</span>{" "}
+          Keel could not check who made this change. Reload the page; if this stays, the portal log says why.
+        </p>
       </section>
     );
   }
-  const when = attribution.verdict === "exact" ? attribution.evidence[0]?.occurredAt ?? null : null;
+  const badge = ATTRIBUTION_BADGES[attribution.verdict];
+  const when = attributionWhen(attribution);
+  const next = attributionNextStep(attribution);
   return (
     <section className={`change-attribution change-attribution-${attribution.verdict}`} aria-label="Who made this change">
       <DecisionStyles />
       <h3 className="decision-heading">Who made this change</h3>
       <p className="change-attribution-headline">
+        <span className={`pill ${badge.tone}`}>{badge.label}</span>{" "}
         <strong>{ATTRIBUTION_HEADLINES[attribution.verdict]}.</strong>{" "}
         <span className="change-attribution-sentence">{attributionSentence(attribution)}</span>
-        {when ? (
-          <> Recorded <time dateTime={when} title={formatTimestamp(when)}>{ago(when, now)}</time>.</>
-        ) : null}
       </p>
+      <p className="change-attribution-when">
+        {when.sentence}
+        {when.at ? <> (<time dateTime={when.at} title={formatTimestamp(when.at)}>{ago(when.at, now)}</time>)</> : null}
+      </p>
+      {next ? <p className="change-attribution-next" role="note">{next}</p> : null}
       {attribution.route ? <p className="change-attribution-route">{routeSentence(attribution.route)}</p> : null}
       <TechnicalDetails summary="Technical details: attribution">
         <RecordField copy={false} label="Attribution" value={`${attribution.verdict} · ${attribution.reason}`} />
+        {attribution.source ? <RecordField copy={false} label="Audit log read" value={attribution.source} /> : null}
         {attribution.actors.map((actor, index) => (
           <RecordField key={`actor-${index}`} label={`Account object ID (${actor.kind})`} value={actor.id ?? "withheld: outside your entities"} copy={Boolean(actor.id)} />
         ))}

@@ -5226,8 +5226,27 @@ section.wizard-panel {
 }
 
 .change-attribution-headline,
+.change-attribution-when,
+.change-attribution-next,
 .change-attribution-route {
+  margin: 0;
   overflow-wrap: anywhere;
+}
+
+.change-attribution-headline .pill {
+  vertical-align: middle;
+}
+
+.change-attribution-when {
+  color: var(--text-soft);
+}
+
+/* What to do when Keel cannot name who made it: a highlighted next step. */
+.change-attribution-next {
+  padding: var(--space-xs) var(--space-sm);
+  border-left: 3px solid var(--partial);
+  background: var(--partial-bg);
+  border-radius: var(--radius-md);
 }
 
 /* Roadmap task-73: Resilience. One card per measurement; a sentence first, the

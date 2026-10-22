@@ -3,6 +3,7 @@
  * (engine/store/schema.d/10-discovery.sql).
  */
 import { assertTenantRef } from '../store/tenantRef.mjs';
+import { reclassifyCatalogue } from './discover.mjs';
 
 const ITEM_COLUMNS = ['run_id', 'source', 'name', 'kind', 'entity_type', 'status', 'catalog_types', 'objects', 'objects_exact',
   'http_status', 'reason', 'message', 'missing_grant', 'grant_source'];
@@ -65,11 +66,16 @@ export async function loadLatestDiscovery(client, { tenantRef, statuses = null }
       ORDER BY source, name`,
     [run.id, statuses],
   );
+  const loaded = items.rows.map(itemFromRow);
+  // Unreadable items are needed to tell a type the tenant does not use from a
+  // failed read, so they are read even when the caller did not ask for them.
+  const unreadable = !statuses || statuses.includes('unreadable') ? loaded
+    : (await client.query(`SELECT * FROM discovery_item WHERE run_id = $1 AND status = 'unreadable'`, [run.id])).rows.map(itemFromRow);
   return {
     id: String(run.id),
     startedAt: new Date(run.started_at).toISOString(),
     finishedAt: new Date(run.finished_at).toISOString(),
-    sources: run.sources, summary: run.summary, catalogue: run.catalogue,
-    items: items.rows.map(itemFromRow),
+    sources: run.sources, summary: run.summary, catalogue: reclassifyCatalogue(run.catalogue, unreadable),
+    items: loaded,
   };
 }

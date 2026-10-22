@@ -382,3 +382,27 @@ test('reads are pinned to one tenant: foreign rows never count and a raw tenant 
   await assert.rejects(() => loadRecoveryMetrics(client, { tenantRef: '00000000-0000-0000-0000-0000000000c1', requiredTypes: TYPES }), /derived tenant reference/);
   await assert.rejects(() => recordOffsiteCopy(client, { tenantRef: 'raw-tenant', manifest: {}, shippedAt: NOW, actor: 'x' }), /derived tenant reference/);
 });
+
+test('a type the tenant does not use is listed as not used, never a gap, and an off-site copy need not hold it', async () => {
+  const tenantRef = 'sha256:rm-not-used';
+  const unavailable = { outcome: 'unavailable', itemCount: null, reason: 'missing prerequisite (licence or tenant feature)', httpStatus: 403 };
+  await snapshot(tenantRef, {
+    startedAt: '2026-10-03T10:00:00Z', completedAt: '2026-10-03T10:05:00Z',
+    digest: { user: ok(), group: ok(), lifecycleWorkflow: unavailable },
+  });
+  const { freshness } = await metrics(tenantRef, [...TYPES, 'lifecycleWorkflow']);
+  assert.equal(freshness.state, 'measured');
+  assert.deepEqual(freshness.gaps, []);
+  assert.equal(freshness.required, 2);
+  assert.deepEqual(freshness.notUsed.map((entry) => entry.type), ['lifecycleWorkflow']);
+
+  // Once the tenant has the feature, a failed read is a gap again.
+  await snapshot(tenantRef, {
+    startedAt: '2026-10-03T11:00:00Z', completedAt: '2026-10-03T11:05:00Z',
+    digest: { user: ok(), group: ok(), lifecycleWorkflow: { outcome: 'failed', error: 'throttled' } },
+  });
+  const later = (await metrics(tenantRef, [...TYPES, 'lifecycleWorkflow'])).freshness;
+  assert.equal(later.state, 'gaps');
+  assert.deepEqual(later.gaps.map((gap) => gap.type), ['lifecycleWorkflow']);
+  assert.deepEqual(later.notUsed, []);
+});

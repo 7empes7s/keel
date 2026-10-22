@@ -11,8 +11,10 @@ import {
   attemptName,
   attemptReason,
   cadenceSentence,
+  dependencyName,
   formatDuration,
   freshnessSentence,
+  notUsedSentence,
   incidentSentence,
   offsiteReason,
   readinessSentence,
@@ -192,6 +194,14 @@ function Details({ data }: { data: ResilienceData }) {
           value={freshness.state === "measured" ? formatDuration(freshness.achievedRpoMs) : "Not measured"}
         >
           <p className="rs-sentence resilience-sentence">{freshnessSentence(metrics)}</p>
+          {notUsedSentence(metrics) ? (
+            <div className="resilience-not-used">
+              <p className="rs-help">{notUsedSentence(metrics)}</p>
+              <ul className="rs-rows">
+                {(freshness.notUsed ?? []).map((entry) => <li key={entry.key}><Badge tone="neutral">Not used</Badge> <span>{dependencyName(entry)}</span></li>)}
+              </ul>
+            </div>
+          ) : null}
           <h4 className="rs-mini-head">Planned timetable</h4>
           {configured.cadence.length ? (
             <ul className="rs-rows rs-plan">

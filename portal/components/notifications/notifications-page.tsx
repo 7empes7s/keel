@@ -7,6 +7,7 @@ import { useMemo, useState, type FormEvent, type MouseEvent } from "react";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { type ListSort } from "@/components/list/list-paging";
+import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { byTime } from "@/lib/paging";
 import { OptionPicker } from "@/components/pickers/option-picker";
@@ -55,6 +56,7 @@ import {
   writeError,
   type ChannelKind,
 } from "@/lib/notifications-view";
+import { applyFilters, readPicked, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { displayEnum, formatTimestamp } from "@/lib/presentation";
 import { orderGroups } from "@/lib/selection";
 import { toast } from "@/lib/toast";
@@ -88,11 +90,15 @@ const SEVERITIES: ChoiceOption<string>[] = [
 ];
 
 const STATUS_CHIPS: { value: string; label: string }[] = [
-  { value: "", label: "All" },
   { value: "delivered", label: "Delivered" },
   { value: "retrying", label: "Trying again" },
   { value: "failed", label: "Failed" },
 ];
+// Outcomes add up: `status=failed,retrying` shows sends in either. Channel narrows.
+const STATUS_TILES: FilterTile<Delivery>[] = STATUS_CHIPS.map((chip) => ({
+  key: chip.value,
+  test: (delivery: Delivery) => (chip.value === "retrying" ? !["delivered", "failed", "cancelled"].includes(delivery.status) : delivery.status === chip.value),
+}));
 
 export function NotificationsPage({ canConfiguration, channels, subscriptions, escalationRules = [], deliveries, people = [], now = new Date().toISOString() }: {
   canConfiguration: boolean;
@@ -110,7 +116,8 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
   const tab: Tab = !canConfiguration ? "sent" : view.get("tab") === "rules" ? "rules" : view.get("tab") === "sent" ? "sent" : "channels";
   const opened = view.get("open");
   const adding = view.get("add");
-  const statusFilter = view.get("status");
+  const statusFilter = readPicked(STATUS_TILES, view.get("status"));
+  const statusKey = statusFilter.join(",");
   const channelFilter = view.get("channel");
 
   // A test alert queued from this page shows under Sent at once; the next read replaces it.
@@ -229,8 +236,8 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
   const tiles: { key: string; label: string; icon: IconName; value: string; of?: string; small: string; changes: Record<string, string | null>; tone?: "urgent" | "soon"; active: boolean }[] = [
     { key: "channels", label: "Channels on", icon: "bell", value: String(counts.channelsOn), of: counts.channelsTotal !== counts.channelsOn ? `of ${counts.channelsTotal}` : undefined, small: counts.channelsTotal === 0 ? "None set up yet" : counts.offNames.length === 0 ? "All of them are on" : counts.offNames.length === 1 ? `${counts.offNames[0]} is turned off` : `${counts.offNames.length} are turned off`, changes: { ...clear, tab: null }, tone: counts.channelsTotal > 0 && counts.channelsOn === 0 ? "urgent" : undefined, active: tab === "channels" },
     { key: "rules", label: "Rules", icon: "filter", value: String(counts.rules), small: counts.escalationsOn ? `Plus ${counts.escalationsOn === 1 ? "1 rule" : `${counts.escalationsOn} rules`} for when nobody responds` : "None for when nobody responds", changes: { ...clear, tab: "rules" }, tone: counts.rules === 0 && counts.channelsTotal > 0 ? "soon" : undefined, active: tab === "rules" },
-    { key: "sent", label: "Sent in 24 h", icon: "swap", value: String(counts.sentDay), small: "Each bar is 3 hours", changes: { ...clear, tab: "sent" }, active: tab === "sent" && !statusFilter },
-    { key: "failed", label: "Failed", icon: "x-circle", value: String(counts.failedDay), small: counts.failedDay === 0 ? "Nothing failed in 24 hours" : counts.failingNames.length === 1 ? `${counts.failedDay === 1 ? "To" : "All to"} ${counts.failingNames[0]}` : `To ${counts.failingNames.length} channels`, changes: { ...clear, tab: "sent", status: statusFilter === "failed" ? null : "failed" }, tone: counts.failedDay ? "urgent" : undefined, active: tab === "sent" && statusFilter === "failed" },
+    { key: "sent", label: "Sent in 24 h", icon: "swap", value: String(counts.sentDay), small: "Each bar is 3 hours", changes: { ...clear, tab: "sent" }, active: tab === "sent" && !statusFilter.length },
+    { key: "failed", label: "Failed", icon: "x-circle", value: String(counts.failedDay), small: counts.failedDay === 0 ? "Nothing failed in 24 hours" : counts.failingNames.length === 1 ? `${counts.failedDay === 1 ? "To" : "All to"} ${counts.failingNames[0]}` : `To ${counts.failingNames.length} channels`, changes: { ...clear, tab: "sent", channel: channelFilter || null, status: tab === "sent" ? tileParam(STATUS_TILES, statusFilter, "failed") : "failed" }, tone: counts.failedDay ? "urgent" : undefined, active: tab === "sent" && statusFilter.includes("failed") },
   ];
   const shownTiles = canConfiguration ? tiles : tiles.slice(2);
 
@@ -264,10 +271,13 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
 
   const sentShown = useMemo(() => {
     const sorted = [...allDeliveries].sort((a, b) => new Date(deliveryTime(b) ?? 0).valueOf() - new Date(deliveryTime(a) ?? 0).valueOf());
-    return sorted.filter((delivery) => (!statusFilter || (statusFilter === "retrying" ? !["delivered", "failed", "cancelled"].includes(delivery.status) : delivery.status === statusFilter)) && (!channelFilter || delivery.channel_id === channelFilter));
-  }, [allDeliveries, statusFilter, channelFilter]);
+    return applyFilters(sorted, STATUS_TILES, statusKey ? statusKey.split(",") : [], channelFilter ? [(delivery: Delivery) => delivery.channel_id === channelFilter] : []);
+  }, [allDeliveries, statusKey, channelFilter]);
   const filterChannel = channelFilter ? channelById.get(channelFilter) ?? null : null;
-  const filterWords = [statusFilter ? (STATUS_CHIPS.find((chip) => chip.value === statusFilter)?.label ?? statusFilter).toLowerCase() : null, filterChannel ? `to ${channelName(filterChannel)}` : null].filter(Boolean).join(" ");
+  const sentFilters: ActiveFilter[] = [
+    ...statusFilter.map((key) => ({ key: `status:${key}`, label: STATUS_CHIPS.find((chip) => chip.value === key)?.label ?? key, clear: { status: withoutTile(statusFilter, key) } })),
+    ...(channelFilter ? [{ key: "channel", label: `To ${filterChannel ? channelName(filterChannel) : "one channel"}`, clear: { channel: null } }] : []),
+  ];
 
   const renderChannel = (channel: Channel) => {
     const state = health.get(channel.id) ?? channelHealth(channel, allDeliveries, now);
@@ -380,8 +390,8 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
       <div data-layer="explanation">
         <section aria-label="Notifications at a glance" className="nf-tiles" data-count={shownTiles.length}>
           {shownTiles.map((tile) => (
-            <Link aria-current={tile.active || undefined} className="nf-tile" data-tone={tile.tone} href={href(tile.changes)} key={tile.key} onClick={(event) => follow(event, tile.changes)}>
-              <span className="nf-tile-label"><Icon name={tile.icon} />{tile.label}</span>
+            <Link aria-current={tile.active || undefined} className="nf-tile" data-tone={tile.tone} href={href(tile.changes)} key={tile.key} onClick={(event) => follow(event, tile.changes)} title={tile.key === "failed" ? (tile.active ? "Picked: click to remove it from the view" : "Click to add these to the view") : undefined}>
+              <span className="nf-tile-label"><Icon name={tile.icon} />{tile.label}{tile.active && tile.key === "failed" ? <Icon className="tile-check" name="check" /> : null}</span>
               <b className="nf-tile-count">{tile.value}{tile.of ? <small className="nf-tile-of"> {tile.of}</small> : null}</b>
               {tile.key === "sent" ? <Spark buckets={counts.buckets} /> : null}
               <small>{tile.small}</small>
@@ -461,19 +471,16 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
               <div className="picker-field">
                 <span className="picker-label" id="nf-status-label">Outcome</span>
                 <div aria-labelledby="nf-status-label" className="nf-chips" role="group">
-                  {STATUS_CHIPS.map((chip) => <button aria-pressed={statusFilter === chip.value} className="nf-chip" key={chip.value || "all"} onClick={() => view.set({ status: chip.value || null })} type="button">{chip.label}</button>)}
+                  <button aria-pressed={!statusFilter.length} className="nf-chip" onClick={() => view.set({ status: null })} type="button">All</button>
+                  {STATUS_CHIPS.map((chip) => <button aria-pressed={statusFilter.includes(chip.value)} className="nf-chip" key={chip.value} onClick={() => view.set({ status: tileParam(STATUS_TILES, statusFilter, chip.value) })} type="button">{chip.label}</button>)}
                 </div>
               </div>
             </div>
-            {filterWords ? (
-              <p className="nf-filter-note" role="status">
-                Showing {filterWords} only: {sentShown.length} of {allDeliveries.length}.
-                <Link className="nf-inline-link" href={href({ status: null, channel: null })} onClick={(event) => follow(event, { status: null, channel: null })}>Show every send</Link>
-              </p>
-            ) : null}
+            <ActiveFilters extra={{ open: null }} filters={sentFilters} noun={{ one: "send", many: "sends" }} shown={sentShown.length} total={allDeliveries.length} />
             {allDeliveries.length ? (
               <SelectableList
                 action={{ label: (count) => `Export ${count === 1 ? "1 send" : `${count} sends`}`, detail: () => "A spreadsheet file of these sends: when, what, where to, and the outcome.", run: exportCsv }}
+                empty={sentFilters.length ? <NoMatches extra={{ open: null }} filters={sentFilters} noun={{ one: "send", many: "sends" }} /> : undefined}
                 getId={(item) => item.id}
                 groupings={sentGroupings}
                 items={sentShown}

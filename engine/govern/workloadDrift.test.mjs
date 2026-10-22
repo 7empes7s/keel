@@ -7,7 +7,9 @@
 //  - a run whose only change is a site's lastModifiedDateTime raises nothing;
 //  - an app grant added to a site is one `modified` row and one open warning alert;
 //  - detecting the same run again neither doubles the row nor refires the alert;
-//  - a later run with no further change leaves the alert open;
+//  - a later run with no further change records nothing new and leaves the alert open;
+//  - the run that matches the approved setup again (the grant was taken away, as an
+//    undo does) resolves the alert;
 //  - a failed run is skipped, and the next run compares with the last usable one;
 //  - every collected workload raises drift, not only SharePoint: a mail flow rule's
 //    setting change is an access-affecting row, a rename is cosmetic, and a move of
@@ -16,7 +18,8 @@
 // Mutation checks:
 //  - compare with any previous run instead of the last usable one;
 //  - count lastModifiedDateTime as a setting;
-//  - resolve the alert when a run shows no further change.
+//  - resolve the alert when a run shows no further change;
+//  - compare with the previous run instead of the approved setup.
 import { strict as assert } from 'node:assert';
 import { after, test } from 'node:test';
 
@@ -132,7 +135,8 @@ test('an app grant added to a site is a drift row and an open alert', async (t) 
   assert.equal(row.change_type, 'modified');
   assert.equal(row.blast_radius, 'access-affecting');
   assert.equal(row.collection_id, granted.collectionId);
-  assert.equal(row.previous_collection_id, touched.collectionId);
+  assert.equal(row.previous_collection_id, first.collectionId, 'the read that holds the approved value');
+  assert.equal(row.compared_with, 'approved');
   assert.deepEqual(row.fields.map((field) => field.path), ['appPermissionGrants']);
   assert.deepEqual(row.fields[0].before, []);
   assert.equal(row.fields[0].after[0].applications[0].displayName, 'KEEL-RT-app');
@@ -156,18 +160,21 @@ test('an app grant added to a site is a drift row and an open alert', async (t) 
   // No further change: nothing new, and the alert stays open for a person to handle.
   const quiet = await run(client, tenantRef, graph);
   assert.deepEqual(quiet.drift, { status: 'detected', changes: 0 });
+  assert.equal((await driftRows(client, tenantRef)).length, 1, 'a difference still waiting is not recorded again');
   const [still] = await alerts(client, tenantRef);
   assert.equal(still.state, 'open');
   assert.equal(still.condition_active, true);
 
-  // Removing the grant is drift again, on the same alert.
+  // Taking the grant away again (what an undo does) matches the approved setup: no new
+  // change, and the alert resolves.
   graph.state.grants = [];
-  const removed = await run(client, tenantRef, graph);
-  assert.deepEqual(removed.drift, { status: 'detected', changes: 1 });
-  assert.equal((await driftRows(client, tenantRef)).length, 2);
-  const [refired, ...none] = await alerts(client, tenantRef);
+  const putBack = await run(client, tenantRef, graph);
+  assert.deepEqual(putBack.drift, { status: 'detected', changes: 0 });
+  assert.equal((await driftRows(client, tenantRef)).length, 1);
+  const [settled, ...none] = await alerts(client, tenantRef);
   assert.equal(none.length, 0);
-  assert.equal(refired.firing_count, alert.firing_count + 1);
+  assert.equal(settled.state, 'resolved');
+  assert.equal(settled.condition_active, false);
 });
 
 test('a failed run is skipped and the next run compares with the last usable one', async (t) => {

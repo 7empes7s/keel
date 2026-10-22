@@ -212,30 +212,36 @@ export function rulesVerdict(policies: Policy[], halted: boolean, now: string): 
   };
 }
 
-export interface RuleFilters { state: "running" | "paused" | "off" | null; what: RuleKind | null }
+export type RuleStateFilter = "running" | "paused" | "off";
+export const RULE_STATE_FILTERS: RuleStateFilter[] = ["running", "paused", "off"];
+// States add up (`state=running,off` shows either); what it does narrows.
+export interface RuleFilters { states: RuleStateFilter[]; what: RuleKind | null }
 
 /** The filters in the address: `state=` (paused covers stopped too) and `what=`. */
 export function parseFilters(get: (key: string) => string | null): RuleFilters {
-  const state = get("state");
+  const picked = (get("state") ?? "").split(",");
   const what = get("what");
   return {
-    state: state === "running" || state === "paused" || state === "off" ? state : null,
+    states: RULE_STATE_FILTERS.filter((key) => picked.includes(key)),
     what: what === "undo" || what === "approval" || what === "alert" ? what : null,
   };
 }
 
 export function ruleMatches(policy: Policy, filters: RuleFilters): boolean {
   if (filters.what && ruleKind(policy) !== filters.what) return false;
-  if (filters.state) {
-    const state = ruleState(policy);
-    if (filters.state === "paused" ? state !== "paused" && state !== "stopped" : state !== filters.state) return false;
-  }
+  if (filters.states.length && !filters.states.some((key) => ruleInState(policy, key))) return false;
   return true;
 }
 
 /** "paused or stopped rules" — the filter note's words. */
+/** True when the rule is in that tile's state; Paused counts stopped rules too. */
+export function ruleInState(policy: Policy, key: RuleStateFilter): boolean {
+  const state = ruleState(policy);
+  return key === "paused" ? state === "paused" || state === "stopped" : state === key;
+}
+
 export function filterWords(filters: RuleFilters): string {
-  const state = filters.state === "paused" ? "paused or stopped" : filters.state ?? "";
+  const state = filters.states.map((key) => (key === "paused" ? "paused or stopped" : key)).join(" or ");
   const what = filters.what ? RULE_KINDS[filters.what].label.toLowerCase() : "";
   return `${[state, what].filter(Boolean).join(" ")} rules`.trim();
 }

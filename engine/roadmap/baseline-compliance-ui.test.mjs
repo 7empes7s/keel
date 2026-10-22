@@ -430,6 +430,8 @@ function inPortal(script, env) {
     // A <style> body is never on screen (the Baselines pages carry their own styles).
     const visibleText = (html) => html
       .replace(/<style[\s\S]*?<\/style>/g, '\n')
+      // The breadcrumb repeats the menu's section names, which are navigation, not page text.
+      .replace(/<nav aria-label="Breadcrumb"[\s\S]*?<\/nav>/g, '\n')
       .replace(/<details class="technical-details" data-layer="record">[\s\S]*?<\/details>/g, '\n')
       .replace(/<[^>]+>/g, '\n');
     const records = (html) => (html.match(/<details class="technical-details" data-layer="record">[\s\S]*?<\/details>/g) || []).join('\n');

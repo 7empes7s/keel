@@ -596,7 +596,7 @@ export async function restoreExecutorForArtifact(client, { artifactId }) {
       WHERE kind = 'restore'
         AND params->>'artifactId' = $1
         AND NOT (params ? 'mode')
-        AND (params ? 'snapshotId' OR params ? 'compensates')
+        AND (params ? 'snapshotId' OR params ? 'compensates' OR params ? 'complianceFix')
       LIMIT 1`,
     [artifactId],
   );

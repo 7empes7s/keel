@@ -81,6 +81,7 @@ test("policy writes and navigation retain the policies capability boundary", () 
 // Roadmap task-92: the activation preview reads in words; ids, codes and versions stay
 // in its record; a queued roll back never reads as done.
 import { ActivationPreviewView, outcomesSentence, previewSentence, refusalSentence } from "@/components/policy-preview";
+import { previewAlerts, previewTiles } from "@/lib/policy-preview-view";
 import type { ActivationPreview } from "@/lib/policies";
 
 const preview: ActivationPreview = {
@@ -115,13 +116,24 @@ test("the activation preview names what it would roll back and everything it dep
     "Cannot turn on: Keel cannot tell what undoing 1 change would affect.");
   assert.equal(previewSentence({ ...preview, verdict: "blocked", blockers: ["run-as-not-authorized"] }), "Cannot turn on: the account it acts as can no longer undo changes.");
   const html = renderToStaticMarkup(createElement(ActivationPreviewView, { preview, now: "2026-10-03T09:05:00Z" }));
-  assert.match(html, /Privileged \(group\), needed by Finance \(group\)\. Impact: could lock out admins\. Above its limit, so Keel will refuse these undos\./);
-  assert.match(html, /Finance \(group\) was changed\. Impact: low risk\.<\/li><li>Left alone: Privileged \(group\) was changed, but its impact \(could lock out admins\) is above its limit\./);
-  assert.match(html, /Deleting Payroll \(app registration\) is not supported, so it stays manual\./);
-  assert.match(html, /Policy service can undo changes now\./);
-  assert.match(html, /Groups have an owner: failing, with no exception\. Checked against a different backup than this change\./);
-  assert.match(html, /1 waiting to run, not yet undone/);
-  assert.match(html, /Keel checks again before every undo/);
+  const words = html.replace(/<details[\s\S]*?<\/details>/g, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  // Rows, not prose: each item with what changed, its impact and what happens to it.
+  assert.match(words, /Finance \(group\) Needs Privileged \(group\) Changed Low risk Will refuse/);
+  assert.match(words, /Privileged \(group\) Above its limit Changed Could lock out admins Left alone/);
+  assert.match(words, /Privileged \(group\) Needed by Finance \(group\) Could lock out admins Above its limit/);
+  assert.match(words, /Payroll \(app registration\) Delete Not rated Manual only/);
+  assert.match(words, /Policy service Can undo changes/);
+  assert.match(words, /Groups have an owner Failing No exception · Different backup than this change/);
+  assert.match(words, /1 waiting to run, not yet undone/);
+  assert.match(words, /Keel checks again before every undo/);
+  // What needs the reader comes first, worst first, each with what to do; specifics wait behind Show details.
+  assert.deepEqual(previewAlerts(preview).map((alert) => [alert.key, alert.tone]), [["refused", "soon"], ["manual", "soon"], ["left-alone", "low"]]);
+  assert.ok(html.indexOf('data-alert="refused"') < html.indexOf('class="rs-table pv-table"'), "alerts come before the table");
+  assert.match(html, /<details class="ui-alert-more"[^>]*><summary>Show details<\/summary><ul><li>Privileged \(group\) \(could lock out admins\) is needed by Finance \(group\)\.<\/li>/);
+  assert.deepEqual(previewTiles(preview).map((tile) => [tile.key, tile.value, tile.tone]), [["undo", "0", "neutral"], ["refused", "1", "soon"], ["left-alone", "2", "low"], ["checks", "1", "urgent"]]);
+  // A blocked preview leads with the blocker, in red.
+  assert.equal(previewAlerts({ ...preview, verdict: "blocked", blockers: ["run-as-not-authorized"], runAs: { ...preview.runAs, authorized: false } })[0].key, "run-as");
+  assert.equal(previewAlerts({ ...preview, verdict: "blocked", blockers: ["run-as-not-authorized"], runAs: { ...preview.runAs, authorized: false } })[0].tone, "urgent");
   // Everything outside the record is words; every id and version is inside it.
   const [outside, record] = html.split('data-layer="record"');
   assert.doesNotMatch(outside, /[0-9a-f]{8}-[0-9a-f]{4}|[0-9a-f]{32,}|group:|auto_remediate|tenant-lockout|closure|blast radius|projection/i);

@@ -129,7 +129,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
     });
   }, [grouping, filtered, sort, dir]);
   const allIds = useMemo(() => groups.flatMap((group) => group.items.map(getId)), [groups, getId]);
-  const partsOf = (group: ListGroup<T>) => (group.parts && group.parts.length > 1 ? group.parts.map((part) => ({ ...part, key: `${group.key}.${part.key}` })) : null);
+  const partsOf = (group: ListGroup<T>) => (group.parts && group.parts.length ? group.parts.map((part) => ({ ...part, key: `${group.key}.${part.key}` })) : null);
   // Paging counts rows in open groups and open parts; a page shows a slice of each.
   const units = useMemo<ListUnit<T>[]>(() => groups.flatMap((group): ListUnit<T>[] => {
     const parts = closed.includes(group.key) ? null : partsOf(group);

@@ -1,7 +1,7 @@
 // The setting that changed, with its value before and after, in words. Shared by the
 // Activity panel and Compare, so a value reads the same on both. Pure, so the UI
 // harness and the unit tests use the real code.
-import { fieldWords, valueWords } from "@/lib/changes-view";
+import { entryWords, fieldWords, valueWords } from "@/lib/changes-view";
 import { holdsObjectId, replaceObjectIds } from "@/lib/object-ids";
 import { resourceTypeLabel } from "@/lib/presentation";
 
@@ -99,6 +99,8 @@ export function valueLines(value: unknown, names: Readonly<Record<string, string
     if (isScalar(inner) || inner === undefined) { push(label, inner); return; }
     if (Array.isArray(inner)) {
       if (inner.length === 0 || inner.every(isScalar)) { push(label, inner); return; }
+      // A list of objects (grants, rules, members) reads one line per entry, by its name.
+      if (inner.every(isPlain)) { for (const entry of inner) { count += 1; if (lines.length < limit) lines.push({ label, text: entryWords(entry) }); } return; }
       inner.forEach((entry, index) => walk(entry, [...path, `#${index + 1}`]));
       return;
     }

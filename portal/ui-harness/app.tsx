@@ -40,9 +40,7 @@ import { RestoreSelection } from "@/components/restore-selection";
 import type { RestoreChange } from "@/lib/restore-changes";
 import { lastRestoreTile } from "@/lib/restore-view";
 import { changesVerdict } from "@/lib/changes-view";
-import { JobDetail, jobVerdict } from "@/components/job-detail";
-import { RecoveryCompletion } from "@/components/recovery-completion";
-import { CompensationPanel } from "@/components/compensation-panel";
+import { JobPageBody } from "@/components/job-page-body";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
 import { IncidentsPage } from "@/components/incidents/incidents-page";
 import { DESCRIPTION as INCIDENTS_DESCRIPTION, incidentStatus } from "@/lib/incidents-view";
@@ -56,7 +54,9 @@ import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 import { integrationAlerts, integrationsPageVerdict, integrationsStatus } from "@/lib/integrations-view";
 import { IntegrationsBody } from "@/components/integrations-body";
 import type { ServiceNowStatus } from "@/lib/servicenow";
+import { serviceUndo } from "@/lib/service-changes-view";
 import type { ActivationPreview, Policy, PolicyAction } from "@/lib/policies";
+import type { TypeProgress } from "@/lib/action";
 import { RULE_KINDS, RULE_STATES, ruleCounts, ruleKind, ruleState, rulesStatus } from "@/lib/policy-view";
 import { peopleCounts, peopleStatus } from "@/lib/people-view";
 import type { PrincipalView } from "@/lib/principals";
@@ -72,7 +72,7 @@ import { readinessStatus, type Dimension, type ReadinessAccount, type ReadinessD
 import { pageVerdict, resilienceAlerts, resilienceStatus, verdictAction, type ResilienceData } from "@/lib/resilience-view";
 import { DownloadMenu } from "@/components/value-report/download-menu";
 import { ValueReportPage } from "@/components/value-report/value-report-page";
-import { resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
+import { parseEntities, resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
 import { AskView } from "@/components/ask-view";
 import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
 import { EmergencyChangesView } from "@/components/change-intent";
@@ -81,7 +81,7 @@ import { compareVerdict, WORKLOAD_LABELS, type CompareData, type CompareResult, 
 import type { ActivityChanges } from "@/lib/changed-values";
 import { changeIntentsVerdict, intentAlerts, intentsStatus, type ChangeIntent, type ChangeIntentsData, type IntentCandidate } from "@/lib/change-intents-view";
 import { SiteDetail, SiteList } from "@/components/site-permissions";
-import { sitePermissionsFrom, siteName, siteVerdict, sitesVerdict, type SitePermissionsData } from "@/lib/site-permissions-view";
+import { sitePermissionsFrom, siteName, siteVerdict, sitesVerdict, type PeopleSummary, type SitePermissionsData } from "@/lib/site-permissions-view";
 import { WorkloadServices } from "@/components/restore/workload-services";
 import type { RestoreWorkload } from "@/lib/restore-workloads-view";
 
@@ -225,6 +225,9 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     }
     return json({ runs: [{ target: null, job: { id: "job-wd-1" }, artifactId: "wd000000-0000-4000-8000-000000000001" }] }, 202);
   }
+  // Compliance, "Make it pass": the fix is planned, and its dry run is ready.
+  if (url.endsWith("/api/actions/compliance/fix")) return json({ job: { id: "f1c0b000-0000-4000-8000-000000000001" }, artifactId: "f1c00000-0000-4000-8000-000000000001" }, 202);
+  if (url.includes("/api/actions/restore/dry-run/f1c00000")) return json({ artifact: { id: "f1c00000-0000-4000-8000-000000000001", status: "completed", guardRefusals: [], complianceFix: { naturalKey: "namedLocation:Branch offices", field: "includeUnknownCountriesAndRegions", from: true, to: false } } });
   if (url.includes("/api/actions/restore/dry-run/wd000000")) return json({ artifact: WORKLOAD_ARTIFACT });
   if (url.includes("/api/actions/restore/dry-run/mb000000")) return json({ artifact: mailboxArtifact(url.slice(-1)) });
   // Task-70: the undo plan of failed restore r10.
@@ -340,7 +343,11 @@ const DRIFT = [
       route: { route: "entity", entityCode: "CREOS", approverCount: 1, routedAt: "2026-10-02T10:00:00Z" } } },
   { id: "dr4", naturalKey: "namedLocation:Branch offices", resourceType: "namedLocation", changeType: "added", blastRadius: "access-affecting", detectedAt: "2026-09-30T10:00:00Z", before: null, after: { displayName: "Branch offices", ipRanges: ["203.0.113.0/24"] } },
   { id: "dr5", naturalKey: "deviceConfiguration:Windows baseline", resourceType: "deviceConfiguration", changeType: "modified", blastRadius: "cosmetic", detectedAt: "2026-09-29T08:30:00Z",
-    before: { description: "Corporate Windows baseline", passwordMinimumLength: 12 }, after: { description: "Corporate Windows baseline v2", passwordMinimumLength: 12 } },
+    // Many settings at once: the panel leads with counts and filters, not a long text.
+    before: { description: "Corporate Windows baseline", passwordMinimumLength: 12, passwordRequired: true, passwordExpirationDays: 90, storageRequireEncryption: true, defenderScanType: "full", defenderScheduledScanTime: "02:00",
+      firewall: { domainProfileEnabled: true, publicProfileEnabled: true, inboundBlocked: true }, bitLocker: { recoveryKeyBackup: true, startupAuthentication: "tpmAndPin" }, edge: { smartScreenEnabled: true, passwordManagerEnabled: false }, usbStorageBlocked: true },
+    after: { description: "Corporate Windows baseline v2", passwordMinimumLength: 8, passwordRequired: true, storageRequireEncryption: false, defenderScanType: "quick", defenderScheduledScanTime: "02:00", screenLockMinutes: 15,
+      firewall: { domainProfileEnabled: true, publicProfileEnabled: false, inboundBlocked: true }, bitLocker: { recoveryKeyBackup: true, startupAuthentication: "tpmOnly" }, edge: { smartScreenEnabled: true, passwordManagerEnabled: true, trackingPrevention: "strict" } } },
   { id: "dr6", naturalKey: "group:Old project team", resourceType: "group", changeType: "removed", blastRadius: "cosmetic", detectedAt: "2026-09-28T12:00:00Z", before: { displayName: "Old project team" }, after: null },
   // Task 98: a change whose baseline copy was not kept; its earlier values are unknown.
   { id: "dr7", naturalKey: "namedLocation:HQ egress", resourceType: "namedLocation", changeType: "modified", blastRadius: "access-affecting", detectedAt: "2026-09-27T07:15:00Z", before: null, after: { displayName: "HQ egress", ipRanges: ["198.51.100.0/24"] } },
@@ -361,7 +368,7 @@ const SEMANTIC: Record<string, NonNullable<DriftRecord["semantic"]>> = {
     { path: "owners", kind: "changed", before: ["cfo@contoso.com"], after: ["cfo@contoso.com", "temp.contractor@contoso.com"], impact: "behaviour" },
   ] },
   dr4: { state: "added", rules: "reviewed", total: 0, shown: 0, cosmetic: 0, groups: { behaviour: 0, fixed: 0, "unknown-before": 0 }, fields: [] },
-  dr5: { state: "compared", rules: "reviewed", total: 1, shown: 1, cosmetic: 0, groups: { behaviour: 1, fixed: 0, "unknown-before": 0 }, fields: [
+  dr5: { state: "compared", rules: "generic", total: 1, shown: 1, cosmetic: 0, groups: { behaviour: 1, fixed: 0, "unknown-before": 0 }, fields: [
     { path: "description", kind: "changed", before: "Corporate Windows baseline", after: "Corporate Windows baseline v2", impact: "behaviour" },
   ] },
   dr6: { state: "removed", rules: "reviewed", total: 0, shown: 0, cosmetic: 0, groups: { behaviour: 0, fixed: 0, "unknown-before": 0 }, fields: [] },
@@ -423,6 +430,29 @@ const job = (id: string, kind: string, status: string, extra: Partial<Job> = {})
   workerId: "worker-1", startedAt: "2026-10-02T09:31:00Z", heartbeatAt: "2026-10-02T09:39:40Z",
   createdAt: "2026-10-02T09:30:00Z", finishedAt: status === "running" || status === "queued" ? null : "2026-10-02T09:34:00Z", ...extra,
 } as Job);
+// Job page redesign: a tier 1 backup's progress by type, live while it runs.
+const TIER1_TYPES: [string, number][] = [
+  ["group", 214], ["administrativeUnit", 6], ["roleAssignment", 38], ["directoryRole", 12], ["roleDefinition", 96],
+  ["conditionalAccessPolicy", 18], ["namedLocation", 4], ["authenticationMethodsPolicy", 1], ["authenticationStrengthPolicy", 3],
+  ["application", 57], ["servicePrincipal", 412], ["oauth2PermissionGrant", 88],
+  ["deviceCompliancePolicy", 9], ["deviceManagementRoleDefinition", 22], ["deviceManagementRoleAssignment", 5], ["deviceManagementSettings", 1],
+];
+function tierProgress(mode: "running" | "failed" | "done") {
+  const types: Record<string, TypeProgress> = {};
+  TIER1_TYPES.forEach(([type, count], index) => {
+    const startedAt = new Date(Date.parse("2026-10-02T09:31:00Z") + index * 9_000).toISOString();
+    const completedAt = new Date(Date.parse(startedAt) + 4_000 + (count % 7) * 1_000).toISOString();
+    if (mode === "running" && index === 9) types[type] = { outcome: "reading", startedAt };
+    else if (mode === "running" && index > 9) types[type] = { outcome: "waiting" };
+    else if (mode === "failed" && index === 13) types[type] = { outcome: "reading", startedAt };
+    else if (mode === "failed" && index > 13) types[type] = { outcome: "waiting" };
+    else if (type === "deviceCompliancePolicy") types[type] = { outcome: "failed", itemCount: null, startedAt, completedAt, httpStatus: 429, error: "Graph 429: throttled after 5 retries on /deviceManagement/deviceCompliancePolicies" };
+    else if (type === "authenticationStrengthPolicy") types[type] = { outcome: "unavailable", itemCount: null, startedAt, completedAt, httpStatus: 403, error: "Tenant is not licensed for this feature" };
+    else if (type === "oauth2PermissionGrant" && mode === "done") types[type] = { outcome: "partial", itemCount: 61, startedAt, completedAt, httpStatus: 200, error: "pagination incomplete" };
+    else types[type] = { outcome: count === 0 ? "complete-empty" : "complete", itemCount: count, startedAt, completedAt, httpStatus: 200, error: null };
+  });
+  return { types, updatedAt: "2026-10-02T09:39:40Z", source: "live" as const };
+}
 const initialJobs = [
   job("a1", "backup", "running"),
   job("a2", "collect", "queued"),
@@ -711,7 +741,10 @@ const COMPLIANCE: ComplianceData = {
         backup: { state: "linked", linked: [evidenceWindow("namedLocation", "2026-10-02T09:00:00Z", "2026-10-02T09:12:00Z", "0b5e0000-0000-4000-8000-0000000000d6")], mismatched: [] },
         change: { state: "none", linked: [], mismatched: [] },
         restorePlan: { state: "none", linked: [], mismatched: [] },
-      } },
+      },
+      // Gap 6: Keel can make it pass, one object at a time.
+      fix: { resourceType: "namedLocation", field: "includeUnknownCountriesAndRegions", to: false },
+      fixCandidates: [{ naturalKey: "namedLocation:Branch offices", resourceType: "namedLocation", name: "Branch offices", field: "includeUnknownCountriesAndRegions", from: true, to: false, snapshotId: "0b5e0000-0000-4000-8000-0000000000d6", seenAt: "2026-10-02T09:12:00Z" }] },
     { id: "e7a10000-0000-4000-8000-0000000000e3", controlId: "keel-custom.group.role-assignable-not-synced", title: "Role-assignable groups are not synchronized from on-premises AD", severity: "high",
       framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "unknown", reason: "group:stale", evaluatedAt: "2026-10-01T09:20:00Z", evidenceSeq: "4101",
       exceptionState: "none", exposed: false, exception: null, evidence: [],
@@ -866,7 +899,6 @@ function ContentEffectsReviewHarness() {
   return (
     <>
       <Verdict text={approvals.length ? "These content changes are approved. The restore can run once its own request is approved." : "This restore changes kept or shared content. It cannot run until you approve those changes."} tone={approvals.length ? "fine" : "soon"} />
-      <a className="text-link back-link" href="#/approvals"><span aria-hidden="true">←</span> All approvals</a>
       <section aria-labelledby="content-effects-plan-heading" className="report-section ce-section">
         <h2 id="content-effects-plan-heading">The restore</h2>
         <p className="ce-plan">Restore of 1 setting, planned 2 Oct 2026, 09:12, asked for by Amara Okafor. Your approval covers exactly the changes below.</p>
@@ -922,8 +954,8 @@ const APPROVAL_HISTORY: ApprovalRequestRecord[] = [
     references: { ...EMPTY_REFERENCES, people: { requested_by: AMARA }, baseline: { kind: "baseline", id: BASELINES[1].id, name: "Stricter sign-in", readable: true } } },
 ];
 
-const header = (section: NavSection, title: string, description: string, marker?: string, status?: { tone: "urgent" | "soon" | "low" | "fine"; label: string }) =>
-  <PageHeader description={description} generatedAt={now} marker={marker} section={section} status={status} title={title} />;
+const header = (section: NavSection, title: string, description: string, marker?: string, status?: { tone: "urgent" | "soon" | "low" | "fine"; label: string }, parents?: { href: string; label: string }[]) =>
+  <PageHeader description={description} generatedAt={now} marker={marker} parents={parents} section={section} status={status} title={title} />;
 
 const trend = [3, 1, 0, 0, 2, 5, 4, 1, 0, 0, 0, 6, 9, 3, 2, 1, 0, 0, 4, 2, 2, 1, 0, 0, 7, 12, 5, 3, 2, 4];
 // As buildAlerts returns them: the "failed" row is the verdict's own sentence, so the
@@ -1011,6 +1043,14 @@ const INCIDENT: IncidentDetail = {
     },
   ],
   recommended: SNAP_GOOD,
+  serviceBackups: [
+    { kind: "service-settings", workload: "exchange-mail-flow", name: "Mail flow", service: "Exchange", assessed: false,
+      newestGood: { id: "w1", from: "2026-10-02T02:00:00Z", at: "2026-10-02T02:05:00Z", inCompromiseWindow: true },
+      beforeWindow: { id: "w0", from: "2026-09-30T02:00:00Z", at: "2026-09-30T02:05:00Z", inCompromiseWindow: false } },
+    { kind: "content", workload: "planner", name: "Planner plans and tasks", service: "Planner", assessed: false, newestGood: null, beforeWindow: null },
+    { kind: "content", workload: "exchange-mail", name: "Mail, calendars and contacts", service: "Exchange", assessed: false,
+      newestGood: { id: "c1", from: "2026-09-29T01:00:00Z", at: "2026-09-29T01:05:00Z", inCompromiseWindow: false }, beforeWindow: null },
+  ],
 };
 const DRILL_SNAP = "d2110000-0000-4000-8000-000000000070";
 const INCIDENT_CLOSED: IncidentDetail = {
@@ -1237,6 +1277,7 @@ const RESILIENCE: ResilienceData = {
       state: "measured", achievedRpoMs: 13_200_000, required: 54, gaps: [],
       oldestDependency: { key: "type:conditionalAccessPolicy", kind: "type", type: "conditionalAccessPolicy", parentType: null, family: null, ageMs: 13_200_000, since: "2026-10-02T06:00:00.000Z" },
       latestFailures: [{ key: "type:authenticationMethodsPolicy", kind: "type", type: "authenticationMethodsPolicy", parentType: null, family: null, failedAt: "2026-10-02T09:00:00.000Z", outcome: "failed", lastSuccessAt: "2026-10-02T06:00:00.000Z" }],
+      notUsed: [{ key: "type:lifecycleWorkflow", kind: "type", type: "lifecycleWorkflow", parentType: null, family: null, checkedAt: "2026-10-02T09:00:00.000Z" }],
     },
     recoverablePoint: {
       state: "measured", point: "2026-10-01T04:00:00.000Z", ageMs: 106_800_000,
@@ -1441,6 +1482,30 @@ const VALUE_REPORT: ValueReport = {
     freshness: { state: "measured", achievedRpoMs: 5 * 3_600_000, gaps: 0, asOf: now },
     recoverablePoint: { state: "unmeasured", ageMs: null, asOf: now },
   },
+  // As on the live report of 2026-10-22: mail content read in part by a run that stopped early.
+  backups: {
+    withheld: false,
+    settings: { backups: 420, lastAt: now },
+    serviceSettings: {
+      runs: 108, workloads: 3, expected: 4, partial: 0, failed: 1, notRun: 0, lastAt: now,
+      areas: [
+        { workload: "exchange-mail-flow", state: "good", goodRuns: 30, partialRuns: 0, failedRuns: 0, lastGoodAt: now },
+        { workload: "purview-labels", state: "good", goodRuns: 30, partialRuns: 0, failedRuns: 0, lastGoodAt: now },
+        { workload: "sharepoint-site-settings", state: "good", goodRuns: 48, partialRuns: 0, failedRuns: 0, lastGoodAt: now },
+        { workload: "teams-org-policies", state: "failed", goodRuns: 0, partialRuns: 0, failedRuns: 30, lastGoodAt: null },
+      ],
+    },
+    content: {
+      runs: 0, workloads: 0, expected: 5, partial: 1, failed: 0, notRun: 4, lastAt: null, itemsStored: 4094, bytesStored: 225_270_538,
+      areas: [
+        { workload: "exchange-mail", state: "partial", goodRuns: 0, partialRuns: 1, failedRuns: 0, lastGoodAt: null },
+        { workload: "onedrive", state: "not-run", goodRuns: 0, partialRuns: 0, failedRuns: 0, lastGoodAt: null },
+        { workload: "sharepoint-sites", state: "not-run", goodRuns: 0, partialRuns: 0, failedRuns: 0, lastGoodAt: null },
+        { workload: "teams", state: "not-run", goodRuns: 0, partialRuns: 0, failedRuns: 0, lastGoodAt: null },
+        { workload: "planner", state: "not-run", goodRuns: 0, partialRuns: 0, failedRuns: 0, lastGoodAt: null },
+      ],
+    },
+  },
   estimate: { state: "configured", source: "/etc/keel/value-estimate.json" },
   hoursSaved: {
     hours: 2, basis: "verified-outcomes-only", owner: "the IT lead", setAt: "2026-09-01T00:00:00.000Z", notEstimated: ["remediation"],
@@ -1463,6 +1528,7 @@ const VALUE_REPORT_SCOPED: ValueReport = {
   outcomes: { ...VALUE_REPORT.outcomes, ...VALUE_SUMMARY(1, 0, 0, 0, 0, 2), byFamily: { restore: VALUE_SUMMARY(1, 0, 0, 0, 0, 2), remediation: VALUE_SUMMARY(0, 0, 0, 0, 0, 0) }, rows: [VALUE_REPORT.outcomes.rows[0]], rowsShown: 1, undoRunsExcluded: null },
   findings: { withheld: true },
   recovery: { withheld: true },
+  backups: { withheld: true },
   estimate: { state: "not-configured", source: null, problems: [] },
   hoursSaved: null,
 };
@@ -1470,9 +1536,9 @@ const VALUE_REPORT_SCOPED: ValueReport = {
 // The server reads `period=` and `entity=`; here they only change what the controls show.
 function HarnessReports({ report, owners }: { report: ValueReport; owners: string[] }) {
   const params = useSearchParams();
-  const entity = params.get("entity");
+  const entities = parseEntities(params.get("entity")).filter((entity) => owners.includes(entity));
   return <><PageHeader actions={<DownloadMenu />} description="What Keel put back and checked, which security checks were fixed, and how fast recovery was, for a period you choose." generatedAt={now} section="Reports" status={valueStatus(report)} title="Value report" />
-    <ValueReportPage data={{ report, period: resolvePeriod(params.get("period"), report.period.to), entity: entity && owners.includes(entity) ? entity : null, owners }} /></>;
+    <ValueReportPage data={{ report, period: resolvePeriod(params.get("period"), report.period.to), entities, owners }} /></>;
 }
 
 // Task-99: bounded, grounded answers. A partial answer (part of the week not compared
@@ -1566,7 +1632,7 @@ const COMPARE_SNAPSHOTS: CompareResult = {
   left: { kind: "snapshot", tenantRef: "sha256:5a1e00000000c0a1", snapshotId: CMP_SNAP_OLD, at: "2026-10-01T09:10:00Z" },
   right: { kind: "snapshot", tenantRef: "sha256:5a1e00000000c0a1", snapshotId: CMP_SNAP_NEW, at: "2026-10-02T09:12:00Z" },
   settings: {
-    totals: { added: 1, removed: 1, changed: 2, unchanged: 4806, notCompared: 1, unmatched: 0 },
+    totals: { added: 1, removed: 1, changed: 2, unchanged: 4806, notCompared: 5, unmatched: 0 },
     groups: [
       { service: "Entra ID", resourceType: "conditionalAccessPolicy", added: 0, removed: 0, changed: 1, unchanged: 11, total: 1, items: [
         { naturalKey: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", changeType: "changed", blastRadius: "tenant-lockout", fieldsTotal: 2, fields: [
@@ -1588,7 +1654,13 @@ const COMPARE_SNAPSHOTS: CompareResult = {
         ] },
       ] },
     ],
-    notCompared: [{ resourceType: "deviceConfiguration", service: "Intune", left: "complete", right: "failed" }],
+    notCompared: [
+      { resourceType: "deviceConfiguration", service: "Intune", left: "complete", right: "failed" },
+      { resourceType: "accessPackage", service: "Entra ID", left: "complete", right: "not-requested" },
+      { resourceType: "accessReview", service: "Entra ID", left: "complete", right: "not-requested" },
+      { resourceType: "deviceCategory", service: "Intune", left: "complete", right: "not-requested" },
+      { resourceType: "namedLocation", service: "Entra ID", left: "partial", right: "complete" },
+    ],
     unmatched: [],
   },
   workloads: {
@@ -1659,33 +1731,65 @@ const SITE_FINANCE = `${SITE_HOST},5e170000-0000-4000-8000-000000000001,5e170000
 const SITE_ARCHIVE = `${SITE_HOST},5e170000-0000-4000-8000-000000000003,5e170000-0000-4000-8000-000000000004`;
 const SITE_INTRANET = `${SITE_HOST},5e170000-0000-4000-8000-000000000005,5e170000-0000-4000-8000-000000000006`;
 const SITE_READ = { status: "observed", operation: "sharepoint.site-permissions" };
+const SITE_TEAM = `${SITE_HOST},5e170000-0000-4000-8000-000000000007,5e170000-0000-4000-8000-000000000008`;
+const SITE_PEOPLE = (over: Partial<PeopleSummary>): PeopleSummary => ({
+  inherits: false, owners: ["Amara Okafor"], ownerCount: 1, people: 6, guests: 0, sharingLinks: 0, uniqueLists: 0, readAt: "2026-10-02T01:10:00Z",
+  groups: [
+    { name: "Owners", members: 1, roles: ["Full Control"] },
+    { name: "Members", members: 4, roles: ["Edit"] },
+    { name: "Visitors", members: 1, roles: ["Read"] },
+  ],
+  ...over,
+});
 const SITES: SitePermissionsData = {
   generatedAt: now,
   run: { id: "c0110000-0000-4000-8000-0000000000c5", outcome: "partial", observedTo: "2026-10-02T02:00:00Z" },
   latest: null,
+  contentRun: { outcome: "partial", completedAt: "2026-10-02T01:20:00Z", namePrefix: null, reasons: ["Records archive with a long name that wraps on a phone: 1 part(s) not fully read, first permissions: denied (HTTP 403 Forbidden)"] },
+  tenantSharing: "ExternalUserSharingOnly",
   sites: [
-    sitePermissionsFrom(`site:${SITE_ARCHIVE}`, { displayName: "Records archive with a long name that wraps on a phone", webUrl: `https://${SITE_HOST}/sites/records-archive-with-a-long-name-that-wraps-on-a-phone` },
+    { ...sitePermissionsFrom(`site:${SITE_ARCHIVE}`, { displayName: "Records archive with a long name that wraps on a phone", webUrl: `https://${SITE_HOST}/sites/records-archive-with-a-long-name-that-wraps-on-a-phone` },
       { appPermissionGrants: { status: "denied", httpStatus: 403, operation: "sharepoint.site-permissions" } }),
-    sitePermissionsFrom(`site:${SITE_FINANCE}`, { displayName: "Finance", webUrl: `https://${SITE_HOST}/sites/finance`, appPermissionGrants: [
+    backup: { items: 1204, bytes: 734_003_200, lastStoredAt: "2026-10-01T01:15:00Z" } },
+    { ...sitePermissionsFrom(`site:${SITE_FINANCE}`, { displayName: "Finance", webUrl: `https://${SITE_HOST}/sites/finance`, appPermissionGrants: [
       { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDE", roles: ["fullcontrol"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a1", displayName: "Payroll connector" }] },
       { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDI", roles: ["read"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a2", displayName: "Board pack reader" }] },
     ] }, { appPermissionGrants: SITE_READ }),
-    sitePermissionsFrom(`site:${SITE_INTRANET}`, { displayName: "Intranet", webUrl: `https://${SITE_HOST}/sites/intranet`, appPermissionGrants: [] }, { appPermissionGrants: SITE_READ }),
+    backup: { items: 5320, bytes: 2_254_857_830, lastStoredAt: "2026-10-02T01:12:00Z" },
+    people: SITE_PEOPLE({ owners: ["Amara Okafor", "Dev Patel", "Lena Fischer"], ownerCount: 3, people: 14, guests: 2, sharingLinks: 3, uniqueLists: 1 }) },
+    { ...sitePermissionsFrom(`site:${SITE_INTRANET}`, { displayName: "Intranet", webUrl: `https://${SITE_HOST}/sites/intranet`, appPermissionGrants: [] }, { appPermissionGrants: SITE_READ }),
+    backup: { items: 312, bytes: 48_234_496, lastStoredAt: "2026-10-01T23:40:00Z" }, people: SITE_PEOPLE({}) },
+    { ...sitePermissionsFrom(`site:${SITE_TEAM}`, { displayName: "Project Falcon", webUrl: `https://${SITE_HOST}/sites/falcon`, appPermissionGrants: [] }, { appPermissionGrants: SITE_READ }),
+    backup: { items: 88, bytes: 5_242_880, lastStoredAt: "2026-09-28T01:05:00Z" },
+    people: SITE_PEOPLE({ owners: [], ownerCount: 0, people: 3, groups: [{ name: "Project Falcon Members", members: 3, roles: ["Edit"] }] }) },
   ],
 };
 
 // Site permissions audit: site settings that changed between two daily reads.
-// Service setting changes: each service read compared with the one before it, so the
-// Changes list's service filter and grouping cover more than Entra ID and Intune.
+// Service setting changes: each service read compared with the service's approved
+// setup, so the Changes list's service filter and grouping cover more than Entra ID and
+// Intune. SharePoint and Power Platform cannot be undone from the portal yet.
 const serviceChange = (id: string, workload: string, resourceKey: string, name: string, over: Partial<DriftRecord>, alert: string): DriftRecord => ({
   id, naturalKey: `${workload}:${resourceKey}`, resourceType: workload, changeType: "modified", blastRadius: "access-affecting",
   detectedAt: "2026-10-02T02:00:00Z", before: null, after: null, name,
-  serviceRead: { workload, resourceKey, collectionId: "c0110000-0000-4000-8000-0000000000c5", previousCollectionId: "c0110000-0000-4000-8000-0000000000c4", alertId: alert, alertState: "open" },
+  serviceRead: {
+    workload, resourceKey, collectionId: "c0110000-0000-4000-8000-0000000000c5", previousCollectionId: "c0110000-0000-4000-8000-0000000000c4", previousReadAt: "2026-09-30T02:00:00Z",
+    comparedWith: "approved", alertId: alert, alertState: "open",
+    undo: serviceUndo({ workload, resourceKey, changeType: over.changeType ?? "modified" }, { restorable: true, reason: null }),
+  },
   ...over,
 });
 const SERVICE_CHANGES: DriftRecord[] = [
   serviceChange("d1a00000-0000-4000-8000-0000000000d1", "sharepoint-site-settings", `site:${SITE_FINANCE}`, "Finance", {
-    before: { appPermissionGrants: [] }, after: { appPermissionGrants: [{ roles: ["write"], applications: [{ displayName: "Payroll connector" }] }] },
+    // One app lost its write access, and one gained read access: each reads by its name.
+    before: { appPermissionGrants: [
+      { id: "aTowaS50fG1zLnNwLmV4dHxrZWVscnQxMjM0NTY3ODkw", roles: ["write"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a3", displayName: "KEEL-RT-site-grant-app" }] },
+      { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDE", roles: ["fullcontrol"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a1", displayName: "Payroll connector" }] },
+    ] },
+    after: { appPermissionGrants: [
+      { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDE", roles: ["fullcontrol"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a1", displayName: "Payroll connector" }] },
+      { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDI", roles: ["read"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a2", displayName: "Board pack reader" }] },
+    ] },
   }, "a1e70000-0000-4000-8000-0000000000a5"),
   serviceChange("d1a00000-0000-4000-8000-0000000000d2", "exchange-mail-flow", "transport-rule:Forward finance mail", "Forward finance mail", {
     before: { State: "Disabled" }, after: { State: "Enabled" }, detectedAt: "2026-10-01T22:00:00Z",
@@ -1703,7 +1807,7 @@ const SERVICE_CHANGES: DriftRecord[] = [
 
 function sitesPage() {
   const verdict = sitesVerdict(SITES);
-  return <>{header("Backup", "Sites", "Each SharePoint site and who can reach it: apps given access now, SharePoint groups and roles once KEEL reads them.")}
+  return <>{header("Backup", "Sites", "Every SharePoint site: is it backed up, who owns it, and which apps and guests can reach it. Problems first.")}
     <Verdict text={verdict.text} tone={verdict.tone} />
     <div data-layer="explanation"><SiteList data={SITES} /></div></>;
 }
@@ -1712,10 +1816,10 @@ function sitePage(path: string) {
   const id = decodeURIComponent(path.slice("/sites/".length));
   const site = SITES.sites.find((entry) => entry.siteId === id);
   if (!site) return null;
-  const verdict = siteVerdict(site);
-  return <>{header("Backup", siteName(site), "Who can reach this SharePoint site, as of KEEL's last read.")}
+  const verdict = siteVerdict(site, SITES.contentRun);
+  return <>{header("Backup", siteName(site), "This SharePoint site's backup, owners, groups, guests and apps.", undefined, undefined, [{ href: "/sites", label: "Sites" }])}
     <Verdict text={verdict.text} tone={verdict.tone} />
-    <div data-layer="explanation"><SiteDetail latest={null} now={now} run={SITES.run!} site={site} /></div></>;
+    <div data-layer="explanation"><SiteDetail contentRun={SITES.contentRun} latest={null} now={now} run={SITES.run!} site={site} tenantSharing={SITES.tenantSharing} /></div></>;
 }
 
 // Restore: four backups (two on 30 Sept, so the time picker shows), settings across
@@ -1769,7 +1873,18 @@ const WORKLOAD_BACKUPS = [
   { collectionId: "c0110000-0000-4000-8000-000000000002", takenAt: "2026-10-02T06:12:00Z", items: 7 },
   { collectionId: "c0110000-0000-4000-8000-000000000012", takenAt: "2026-09-29T06:10:00Z", items: 8 },
 ];
+// The read a service setting change's undo restores from (serviceChange above).
+const SERVICE_UNDO_READ = { collectionId: "c0110000-0000-4000-8000-0000000000c4", takenAt: "2026-09-30T02:00:00Z", items: 3 };
 function workloadChoicesFixture(collection: string | null) {
+  if (collection === SERVICE_UNDO_READ.collectionId) {
+    return {
+      workload: "exchange-mail-flow", backups: [WORKLOAD_BACKUPS[0], SERVICE_UNDO_READ], chosen: SERVICE_UNDO_READ,
+      groups: [{ kind: "transportRule", name: "Mail flow (transport) rules", restorable: true, reason: null, items: [
+        { key: "transport-rule:Forward finance mail", name: "Forward finance mail", change: "changed", restorable: true, reason: null, tenantWide: false },
+        { key: "transport-rule:KEEL-RT Quarantine executables", name: "KEEL-RT Quarantine executables", change: "same", restorable: true, reason: null, tenantWide: false },
+      ] }],
+    };
+  }
   const chosen = WORKLOAD_BACKUPS.find((backup) => backup.collectionId === collection) ?? WORKLOAD_BACKUPS[0];
   const older = chosen !== WORKLOAD_BACKUPS[0];
   const rule = (id: string, name: string, change: "changed" | "deleted" | "same" | null) => ({
@@ -1956,13 +2071,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
         <Verdict text={verdict.text} tone={verdict.tone} />
         <div data-layer="explanation">
-          <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate"]} items={items} now={now} summary={DRIFT_SUMMARY} />
+          <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} now={now} summary={DRIFT_SUMMARY} />
         </div></>;
     }
-    case "/jobs/a4": { const detail = jobs.find((item) => item.id === "a4")!; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
-    case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>; }
-    case "/jobs/r10": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010" } }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><CompensationPanel canApprove canRestore failed restoreArtifactId="7f3c0000-0000-4000-8000-000000000010" /></>; }
-    case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
+    case "/jobs/a1": { const detail = { ...jobs.find((item) => item.id === "a1")!, status: "running", finishedAt: null, progress: tierProgress("running") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
+    case "/jobs/b2": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "b2", status: "succeeded", error: null, result: { partial: true, incompleteTypes: [{ type: "deviceCompliancePolicy", outcome: "failed" }, { type: "oauth2PermissionGrant", outcome: "partial" }] }, progress: tierProgress("done") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
+    case "/jobs/a4": { const detail = { ...jobs.find((item) => item.id === "a4")!, progress: tierProgress("failed") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
+    case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
+    case "/jobs/r10": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010" } }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
+    case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/approvals": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
       <ApprovalInbox awaitingContentEffects={[APPROVAL_AWAITING_EFFECTS]} history={APPROVAL_HISTORY} now={now} pending={APPROVALS_PENDING} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/cli-restore": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "1 waiting" })}
@@ -1971,7 +2088,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
           preview: { total: 1, services: [{ name: "Entra ID", count: 1 }], changes: [{ name: "Group expiry rule", kind: "Group expiry rule", line: "Put back as the backup holds it", fields: [], moreFields: 0 }], more: 0 },
           references: { ...EMPTY_REFERENCES, people: { requested_by: personRef("8c1e0000-0000-4000-8000-0000000000b2", "ops@contoso.com") }, plan: CLI_PLAN_REF } },
       ]} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
-    case "/approvals/content-effects": return <>{header("Inbox", "Changes to kept or shared content", "A restore that shortens how long content is kept, releases a hold, widens sharing or deletes content needs its own approval.", undefined, { tone: "soon", label: "Waiting for you" })}
+    case "/approvals/content-effects": return <>{header("Inbox", "Changes to kept or shared content", "A restore that shortens how long content is kept, releases a hold, widens sharing or deletes content needs its own approval.", undefined, { tone: "soon", label: "Waiting for you" }, [{ href: "/approvals", label: "Approvals" }])}
       <ContentEffectsReviewHarness /></>;
     case "/notifications": return <>{header("Settings", "Notifications", "Where Keel sends alerts, who gets which alerts, and what was sent.", undefined, { tone: "urgent", label: "Slack is failing" })}
       <NotificationsPage canConfiguration channels={CHANNELS} deliveries={DELIVERIES} escalationRules={ESCALATION_RULES} now={now} people={PEOPLE_CHOICES} subscriptions={SUBSCRIPTIONS} /></>;
@@ -1998,7 +2115,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <RecentWork jobs={jobs.filter((item) => item.kind.startsWith("baseline"))} now={now} />
       </div></>;
     }
-    case "/baselines/new": return <>{header("Baselines", "New approved setup", "Copy how the tenant looked in one complete backup, so every later change is measured against it.")}
+    case "/baselines/new": return <>{header("Baselines", "New approved setup", "Copy how the tenant looked in one complete backup, so every later change is measured against it.", undefined, undefined, [{ href: "/baselines", label: "Approved setups" }])}
       <Verdict text="Three short steps: pick a backup, name it, then check what will happen." />
       <div data-layer="explanation">
         <BaselinesStyles />
@@ -2007,7 +2124,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/benchmarks": case "/benchmarks/viewer": {
       // The viewer variant holds read only: no exception controls and no Check now.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(COMPLIANCE.findings))} title="Compliance" />
-      <CompliancePage canCheck={path === "/benchmarks"} canConfigure={path === "/benchmarks"} data={COMPLIANCE} now={now} /></>;
+      <CompliancePage canCheck={path === "/benchmarks"} canConfigure={path === "/benchmarks"} canRestore={path === "/benchmarks"} data={COMPLIANCE} now={now} /></>;
     }
     case "/benchmarks/defender": {
       // Defender email controls beside the others: filed under Defender, failing settings in a table.
@@ -2052,7 +2169,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/policies/p1": case "/policies/p2": case "/policies/p3": {
       const policy = path === "/policies/p1" ? POLICY : path === "/policies/p2" ? OFF_POLICY : PAUSED_POLICY;
       const state = RULE_STATES[ruleState(policy)];
-      return <>{header("Automation center", policy.name, `${RULE_KINDS[ruleKind(policy)].label}: what it watches, who it acts as, and what it did.`, undefined, { tone: state.tone === "neutral" ? "low" : state.tone, label: state.label })}
+      return <>{header("Automation center", policy.name, `${RULE_KINDS[ruleKind(policy)].label}: what it watches, who it acts as, and what it did.`, undefined, { tone: state.tone === "neutral" ? "low" : state.tone, label: state.label }, [{ href: "/policies", label: "Policies" }])}
         <PolicyPage actions={policy === POLICY ? POLICY_ACTIONS : []} canEdit halted={false} initialPreview={policy === OFF_POLICY ? ACTIVATION_PREVIEW : null} now={now} policy={policy} />
       </>;
     }

@@ -13,6 +13,7 @@
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { recordException } from '../benchmarks/evaluate.mjs';
+import { fixFor, listFixCandidates } from '../benchmarks/fix.mjs';
 import { WORKLOAD_FACT_TYPES, controlFor } from '../benchmarks/registry.mjs';
 import { readObservation } from '../contracts/observation.mjs';
 import { retentionClaimFor } from '../storage/qualification.mjs';
@@ -393,9 +394,23 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
         change: partition(changes, evidenceSnapshotIds),
         restorePlan: partition(plans, evidenceSnapshotIds),
       },
+      // Gap 6, "Make it pass": the one setting this control's fix changes, and the
+      // objects in the newest backup it would change (filled in below).
+      fix: fixDescriptor(evaluation.control_id),
+      fixCandidates: [],
     };
   });
+  for (const finding of findings) {
+    if (finding.verdict === 'fail' && finding.fix) {
+      finding.fixCandidates = await listFixCandidates(client, { tenantRef, controlId: finding.controlId });
+    }
+  }
   return { findings, summary: summarize(findings) };
+}
+
+function fixDescriptor(controlId) {
+  const fix = fixFor(controlId);
+  return fix ? { resourceType: fix.resourceType, field: fix.field, to: fix.to } : null;
 }
 
 function summarize(findings) {

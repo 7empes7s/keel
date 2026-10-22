@@ -1,7 +1,7 @@
 import { DATA_SURFACES, guardedRead } from "@/lib/read";
 import { getValueReport, reportCsv } from "@/lib/value-report";
 import { valueReportXlsx } from "@/lib/value-report-export";
-import { parseEntity, resolvePeriod, type ValueReport } from "@/lib/value-report-view";
+import { parseEntities, resolvePeriod, type ValueReport } from "@/lib/value-report-view";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -14,12 +14,12 @@ const NO_STORE = { "cache-control": "no-store" } as const;
 export const GET = guardedRead(DATA_SURFACES.valueReportApi, async (request, access) => {
   const url = new URL(request.url);
   const period = resolvePeriod(url.searchParams.get("period"), new Date());
-  const entity = parseEntity(url.searchParams.get("entity"));
+  const entities = parseEntities(url.searchParams.get("entity"));
   const asked = url.searchParams.get("format");
   const format = asked === "csv" || asked === "xlsx" ? asked : "json";
   let report: ValueReport;
   try {
-    report = await getValueReport({ scope: access.scope, period, entity });
+    report = await getValueReport({ scope: access.scope, period, entities });
   } catch {
     return Response.json({ error: "unavailable" }, { status: 503, headers: NO_STORE });
   }

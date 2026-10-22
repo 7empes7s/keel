@@ -322,3 +322,59 @@ export function bytesWords(bytes: number): string {
   while (value >= 1024 && unit < units.length - 1) { value /= 1024; unit += 1; }
   return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
 }
+
+// Why a kind was left out of a comparison, worded for a person: one short phrase per
+// read outcome, so many kinds fold into a few reasons instead of one sentence each.
+const GAP_WORDS: Record<string, string> = {
+  partial: "Read only in part",
+  failed: "Could not be read",
+  disabled: "Switched off",
+  "not-requested": "Not in that backup",
+  unavailable: "Not available on that tenant",
+};
+const FULL_READS = new Set(["complete", "complete-empty", "unknown"]);
+// Problems first: a failed read before a partial one before a kind that was never asked for.
+const GAP_ORDER = ["failed", "partial", "unavailable", "disabled", "not-requested"];
+
+export type GapTone = "failed" | "partial" | "neutral";
+
+export interface NotComparedReason<T> {
+  key: string;
+  /** "Could not be read" */
+  reason: string;
+  /** Which side fell short: "before", "after" or "both". */
+  side: "before" | "after" | "both";
+  tone: GapTone;
+  entries: T[];
+}
+
+const gapWords = (outcome: string) => GAP_WORDS[outcome] ?? "Not read";
+const gapRank = (outcome: string) => { const rank = GAP_ORDER.indexOf(outcome); return rank < 0 ? GAP_ORDER.length : rank; };
+
+/** Kinds left out of a comparison, grouped by why (and which side), worst first, then
+ * by how many kinds share the reason. */
+export function notComparedReasons<T extends { left: string; right: string }>(entries: readonly T[]): NotComparedReason<T>[] {
+  const groups = new Map<string, NotComparedReason<T> & { rank: number }>();
+  for (const entry of entries) {
+    const leftGap = !FULL_READS.has(entry.left);
+    const rightGap = !FULL_READS.has(entry.right);
+    const side = leftGap && rightGap ? "both" : leftGap ? "before" : "after";
+    const outcomes = side === "both" ? [entry.left, entry.right] : [side === "before" ? entry.left : entry.right];
+    const unique = [...new Set(outcomes)];
+    const worst = unique.reduce((best, outcome) => (gapRank(outcome) < gapRank(best) ? outcome : best));
+    const key = `${side}:${unique.join("/")}`;
+    const group = groups.get(key) ?? {
+      key,
+      reason: unique.map(gapWords).join(" / "),
+      side,
+      tone: worst === "failed" ? "failed" : worst === "partial" ? "partial" : "neutral",
+      rank: gapRank(worst),
+      entries: [] as T[],
+    };
+    group.entries.push(entry);
+    groups.set(key, group);
+  }
+  return [...groups.values()]
+    .sort((a, b) => a.rank - b.rank || b.entries.length - a.entries.length || a.reason.localeCompare(b.reason))
+    .map(({ rank: _rank, ...group }) => group);
+}

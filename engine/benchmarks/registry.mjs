@@ -36,7 +36,7 @@
  *    synthetic example framework names, never asserted against real CIS
  *    content this project holds no rights to reproduce.
  */
-import { exportProjection } from '../contracts/fieldProjection.mjs';
+import { classifyForOperation, exportProjection } from '../contracts/fieldProjection.mjs';
 
 export const BENCHMARK_REGISTRY_CONTRACT_VERSION = 1;
 
@@ -57,6 +57,7 @@ export const PROVENANCE_SOURCES = Object.freeze(['original', 'licensed']);
 export const WORKLOAD_FACT_TYPES = Object.freeze(new Set(['exchange-mail-flow']));
 
 const PREDICATES = new Map();
+const FIX_MATCHERS = new Map();
 const CONTROLS = new Map();
 
 /** The only way a predicate becomes callable from a control (rule 1 above). */
@@ -77,6 +78,57 @@ export function predicateFor(name) {
   const fn = PREDICATES.get(name);
   if (!fn) throw new TypeError(`${name}: predicate is not allowlisted`);
   return fn;
+}
+
+/**
+ * A fix matcher says whether one object (its semantic facts, never the raw
+ * payload) is one the control's fix would change. Allowlisted exactly like a
+ * predicate: a control can only name a matcher this module's author shipped.
+ */
+export function registerFixMatcher(name, fn) {
+  if (typeof name !== 'string' || name.length === 0) {
+    throw new TypeError('fix matcher requires a non-empty name');
+  }
+  if (typeof fn !== 'function') {
+    throw new TypeError(`${name}: fix matcher must be a function`);
+  }
+  if (FIX_MATCHERS.has(name)) {
+    throw new TypeError(`${name}: fix matcher already registered`);
+  }
+  FIX_MATCHERS.set(name, fn);
+}
+
+export function fixMatcherFor(name) {
+  const fn = FIX_MATCHERS.get(name);
+  if (!fn) throw new TypeError(`${name}: fix matcher is not allowlisted`);
+  return fn;
+}
+
+/**
+ * "Make it pass": the one setting a failing object needs, written as a
+ * one-value restore through the normal dry run and approval. Declared, never
+ * computed: the type must be one the control reads, the field a top-level
+ * setting Keel may write on update, and the new value plain JSON.
+ */
+function frozenFix(controlId, fix, requiredObservations) {
+  if (fix === null || fix === undefined) return null;
+  const { resourceType, field, to, matcher } = fix;
+  if (!requiredObservations.some((req) => req.resourceType === resourceType)) {
+    throw new TypeError(`${controlId}: fix.resourceType must be one the control reads`);
+  }
+  if (typeof field !== 'string' || field.length === 0 || field.includes('.')) {
+    throw new TypeError(`${controlId}: fix.field must name one top-level setting`);
+  }
+  if (classifyForOperation('update', field, resourceType) !== 'writable') {
+    throw new TypeError(`${controlId}: fix.field ${field} is not a setting Keel writes on update`);
+  }
+  if (!['boolean', 'string', 'number'].includes(typeof to)) {
+    throw new TypeError(`${controlId}: fix.to must be a plain value`);
+  }
+  if (!FIX_MATCHERS.has(matcher)) {
+    throw new TypeError(`${controlId}: fix matcher '${matcher}' is not allowlisted — call registerFixMatcher() first`);
+  }
+  return Object.freeze({ resourceType, field, to, matcher });
 }
 
 function frozenFrameworkRef(ref) {
@@ -103,6 +155,7 @@ function frozenFrameworkRef(ref) {
 export function registerControl({
   controlId, title, description, framework, edition, profile, evaluatorVersion,
   requiredObservations, predicate, frameworkRefs = [], provenance = { source: 'original' }, severity = 'medium',
+  fix = null,
 }) {
   if (typeof controlId !== 'string' || controlId.length === 0) {
     throw new TypeError('control requires a non-empty controlId');
@@ -173,6 +226,7 @@ export function registerControl({
     frameworkRefs: Object.freeze((frameworkRefs ?? []).map(frozenFrameworkRef)),
     provenance: Object.freeze({ ...provenance }),
     severity,
+    fix: frozenFix(controlId, fix, frozenRequired),
   }));
 }
 
@@ -244,6 +298,10 @@ registerPredicate('named-location-no-untrusted-all-countries', (facts) => {
   return risky ? 'fail' : 'pass';
 });
 
+registerFixMatcher('named-location-trusts-unknown-countries', (fact) => (
+  fact.isTrusted === true && fact.includeUnknownCountriesAndRegions === true
+));
+
 registerControl({
   controlId: 'keel-custom.named-location.no-untrusted-all-countries',
   title: 'No named location marks unknown-country traffic as trusted',
@@ -260,6 +318,14 @@ registerControl({
   severity: 'medium',
   requiredObservations: [{ resourceType: 'namedLocation', maxAgeMs: 6 * 60 * 60 * 1000 }],
   predicate: { name: 'named-location-no-untrusted-all-countries', args: {} },
+  // Narrowing the location (no unknown countries) keeps every listed country
+  // trusted and is the smaller change than dropping the trust altogether.
+  fix: {
+    resourceType: 'namedLocation',
+    field: 'includeUnknownCountriesAndRegions',
+    to: false,
+    matcher: 'named-location-trusts-unknown-countries',
+  },
 });
 
 registerPredicate('group-role-assignable-not-synced', (facts) => {

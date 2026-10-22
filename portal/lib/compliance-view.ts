@@ -12,6 +12,7 @@ import type {
   BaselineRecord,
   ComplianceData,
   ComplianceFinding,
+  ComplianceFixCandidate,
   ComplianceSummary,
   StorageResidency,
 } from "@/lib/types";
@@ -351,7 +352,8 @@ export function complianceVerdict(data: ComplianceData): ComplianceVerdict {
       : finding.exceptionState === "incomplete"
         ? "1 control fails; its exception has no owner or end date, so it does not count."
         : "1 control fails, with no exception.";
-    return { text, detail: `${controlName(finding)}: fix it in Microsoft 365, or accept it for a while with an exception.`, tone: "urgent" };
+    const fixable = fixCandidates(finding).length > 0;
+    return { text, detail: `${controlName(finding)}: ${fixable ? "let Keel fix it after an approval" : "fix it in Microsoft 365"}, or accept it for a while with an exception.`, tone: "urgent" };
   }
   if (counts.failing > 1) {
     const ended = counts.ended ? `; ${counts.ended === 1 ? "one exception has" : `${counts.ended} exceptions have`} ended` : "";
@@ -474,6 +476,98 @@ export function exceptionRefusal(status: number, error: string | undefined): str
   if (error === "not_failing") return "Only a failing control can have an exception.";
   if (status === 0) return "Keel could not be reached. Check your connection and try again.";
   return "Keel could not save the exception. Try again.";
+}
+
+/* ------------------------------------------------------------ make it pass -- */
+
+// CoreView gap 6: a failing control that declares a fix offers "Make it pass" for each
+// object it fails on. Keel plans one setting against the live tenant; nothing changes
+// until someone else approves it, and the write can be undone like any restore.
+
+interface FixWords {
+  // The button and the panel heading.
+  action: string;
+  // The setting's plain name, as the row's "Setting" column shows it.
+  setting: string;
+  // What changes for people once it is fixed.
+  effect: string;
+}
+
+const FIX_WORDS: Record<string, FixWords> = {
+  "keel-custom.named-location.no-untrusted-all-countries": {
+    action: "Stop trusting unknown countries",
+    setting: "Takes in unknown countries",
+    effect: "The location stays trusted for the countries it lists. Sign-ins from places that cannot be told no longer count as trusted.",
+  },
+};
+
+/** The objects Keel can fix for this control: only while it fails and has a fix. */
+export function fixCandidates(finding: ComplianceFinding): ComplianceFixCandidate[] {
+  if (finding.verdict !== "fail" || !finding.fix) return [];
+  return finding.fixCandidates ?? [];
+}
+
+/** Who may ask for the fix: someone with the restore permission, on a control Keel can fix. */
+export function canFixOn(finding: ComplianceFinding, canRestore: boolean): boolean {
+  return canRestore && fixCandidates(finding).length > 0;
+}
+
+export function fixAction(finding: ComplianceFinding): string {
+  return FIX_WORDS[finding.controlId]?.action ?? "Make it pass";
+}
+
+export function fixSetting(finding: ComplianceFinding): string {
+  const field = finding.fix?.field ?? "";
+  return FIX_WORDS[finding.controlId]?.setting ?? (field.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (first) => first.toUpperCase()) || "The setting");
+}
+
+export function fixEffect(finding: ComplianceFinding): string | null {
+  return FIX_WORDS[finding.controlId]?.effect ?? null;
+}
+
+/** A setting's value in words: Yes, No, Not set, or the value itself. */
+export function fixValue(value: unknown): string {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  if (value === null || value === undefined || value === "") return "Not set";
+  return String(value);
+}
+
+/** The object by its own name; its kind when it has none (never its key or id). */
+export function fixObjectName(candidate: ComplianceFixCandidate): string {
+  return candidate.name ?? `A ${kindWords(candidate.resourceType).replace(/s$/, "")} with no name`;
+}
+
+/** "1 location can be fixed by Keel" for the row and the verdict. */
+export function fixableSentence(finding: ComplianceFinding): string | null {
+  const count = fixCandidates(finding).length;
+  if (count === 0) return null;
+  return `Keel can fix ${count === 1 ? "it" : `all ${count}`} for you, after an approval.`;
+}
+
+export const FIX_STEPS = "Keel first plans the change against the live tenant and shows it here. Nothing changes until someone else approves it, and it can be undone like any restore.";
+
+export function fixRefusal(status: number, error: string | undefined): string {
+  if (status === 403) return "You need the restore permission to fix a control.";
+  if (status === 404) return "Keel no longer holds this result. Reload the page.";
+  if (error === "not_failing") return "This control passes now, so there is nothing to fix.";
+  if (error === "not_newest") return "A newer check of this control exists. Reload the page.";
+  if (error === "no_fix") return "Keel has no fix for this control. Fix it in Microsoft 365 or grant an exception.";
+  if (error === "not_a_candidate") return "This object no longer needs the fix in the newest backup. Reload the page.";
+  if (status === 0) return "Keel could not be reached. Check your connection and try again.";
+  return "Keel could not plan the fix. Try again.";
+}
+
+/** Why a planned fix cannot go ahead, from the worker's message, in plain words. */
+export function fixPlanProblem(message: string | null | undefined): string {
+  const text = message ?? "";
+  if (/already passes/.test(text)) return "This object already passes in the live tenant. Nothing needs to change.";
+  if (/not in the tenant now/.test(text)) return "This object is no longer in the tenant, so there is nothing to fix.";
+  if (/no complete backup holds/.test(text)) return "No finished backup holds this object yet. Run a backup, then try again.";
+  if (/points to other objects/.test(text)) return "This object points to other objects, so Keel cannot change one setting on its own. Fix it in Microsoft 365.";
+  if (/not updated in place/.test(text)) return "Keel would have to recreate this object, not change one setting. Fix it in Microsoft 365.";
+  if (/incident/.test(text)) return "The backup lies inside an open incident. Plan the fix from the incident instead.";
+  return "Keel could not plan the fix. The details are below.";
 }
 
 /* ------------------------------------------------------------------ links -- */

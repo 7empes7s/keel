@@ -242,9 +242,9 @@ export function ApproveIntentForm({ changes, people, now }: { changes: IntentCan
             <input checked={fields.includes(transition.field)} onChange={(event) => setFields(event.target.checked ? [...fields, transition.field] : fields.filter((field) => field !== transition.field))} type="checkbox" />
             <span className="pg-pick-name">{words(transition.field)}</span>
             <span className="pg-pick-values">
-              <span data-empty={!transition.before.present || undefined} data-side="before">{transition.before.present ? valueText(transition.before.value) : "Not there"}</span>
+              <span data-empty={!transition.before.present || undefined} data-side="before">{transition.before.present ? valueText(transition.before.value) : "Not set"}</span>
               <Icon name="chevron" />
-              <span data-side="after">{transition.after.present ? valueText(transition.after.value) : "Not there"}</span>
+              <span data-side="after">{transition.after.present ? valueText(transition.after.value) : "Not set"}</span>
             </span>
           </label>
         ))}

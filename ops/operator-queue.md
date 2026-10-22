@@ -7667,7 +7667,7 @@ item that needs it stays untouched.
     without the `assignments` list (or with `assignments@odata.nextLink`) is `failed`, never empty. Restore writes through
     `/assign` with `deviceManagementScriptAssignments`, as before, and reads them back the same expanded way.
 - Needs: /opt/keel-live at the #551 merge or later (`grep -q "assignmentsRead: 'expand'" /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Test tenant only.** Same hard rules and standing approval as Q130: approve the restore yourself and log the approval id.
   Restorer only (it holds `DeviceManagementScripts.ReadWrite.All`, Q130 step 0); grant nothing. Never touch CA policies,

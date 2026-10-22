@@ -22,4 +22,5 @@ test("a changed item on Compare reads as one line: how many settings differ and 
   assert.equal(compareItemLine([{ path: "state" }, { path: "displayName" }]), "2 settings differ: State and Display name.");
   assert.equal(compareItemLine([{ path: "state" }, { path: "displayName" }, { path: "description" }], 9), "9 settings differ: State, Display name and 7 more.");
   assert.equal(compareItemLine([], 0), "Only settings Microsoft sets itself differ.");
+  assert.equal(compareItemLine([], 3), "3 settings differ.");
 });

@@ -132,9 +132,17 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
     });
   }, [grouping, filtered, sort, dir]);
   const allIds = useMemo(() => groups.flatMap((group) => group.items.map(getId)), [groups, getId]);
+  // Reported only when the order itself changes: `allIds` is a new array on most renders
+  // (pages pass an inline `getId`), and reporting each one re-rendered the page forever.
   const orderRef = useRef(onOrder);
   orderRef.current = onOrder;
-  useEffect(() => { orderRef.current?.(allIds); }, [allIds]);
+  const orderKey = allIds.join("\u0000");
+  const sentKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (sentKey.current === orderKey) return;
+    sentKey.current = orderKey;
+    orderRef.current?.(allIds);
+  }, [orderKey, allIds]);
   const partsOf = (group: ListGroup<T>) => (group.parts && group.parts.length ? group.parts.map((part) => ({ ...part, key: `${group.key}.${part.key}` })) : null);
   // Paging counts rows in open groups and open parts; a page shows a slice of each.
   const units = useMemo<ListUnit<T>[]>(() => groups.flatMap((group): ListUnit<T>[] => {

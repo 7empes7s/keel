@@ -401,6 +401,7 @@ export function compareItemLine(fields: readonly { path: string }[], total?: num
   if (!count) return "Only settings Microsoft sets itself differ.";
   const names = [...new Set(fields.map((field) => fieldWords(field.path)))];
   const first = names.slice(0, 2);
+  if (!first.length) return `${count === 1 ? "1 setting differs" : `${count.toLocaleString("en-GB")} settings differ`}.`;
   const rest = count - first.length;
   const list = rest > 0 ? `${first.join(", ")} and ${rest} more` : first.length === 2 ? `${first[0]} and ${first[1]}` : first[0];
   return `${count === 1 ? "1 setting differs" : `${count.toLocaleString("en-GB")} settings differ`}: ${list}.`;

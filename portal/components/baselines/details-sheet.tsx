@@ -26,9 +26,19 @@ export function DetailsSheet({ title, kicker, onClose, children, footer, wide = 
   const id = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const stepPressed = useRef<"previous" | "next" | null>(null);
   const index = step?.index;
-  // A new item opens at its top.
-  useEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = 0; }, [index]);
+  // A new item opens at its top. Reaching either end disables the button just pressed,
+  // so focus moves to the other one instead of falling out of the panel.
+  useEffect(() => {
+    if (bodyRef.current) bodyRef.current.scrollTop = 0;
+    const pressed = stepPressed.current;
+    stepPressed.current = null;
+    const nav = panelRef.current?.querySelector(".bl-sheet-step");
+    const buttons = nav ? [...nav.querySelectorAll<HTMLButtonElement>("button")] : [];
+    const own = pressed === "previous" ? buttons[0] : pressed === "next" ? buttons[1] : null;
+    if (own?.disabled) buttons.find((button) => !button.disabled)?.focus();
+  }, [index]);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
 
@@ -68,9 +78,9 @@ export function DetailsSheet({ title, kicker, onClose, children, footer, wide = 
           </div>
           {step && onStep ? (
             <nav aria-label={`Move between ${noun}s`} className="bl-sheet-step">
-              <button aria-label={`Previous ${noun}`} className="icon-button" disabled={!step.previous} onClick={() => step.previous && onStep(step.previous)} title={`Previous ${noun}`} type="button"><Icon name="chevron" /></button>
+              <button aria-label={`Previous ${noun}`} className="icon-button" disabled={!step.previous} onClick={() => { if (step.previous) { stepPressed.current = "previous"; onStep(step.previous); } }} title={`Previous ${noun}`} type="button"><Icon name="chevron" /></button>
               <span aria-live="polite">{stepWords(step)}</span>
-              <button aria-label={`Next ${noun}`} className="icon-button" disabled={!step.next} onClick={() => step.next && onStep(step.next)} title={`Next ${noun}`} type="button"><Icon name="chevron" /></button>
+              <button aria-label={`Next ${noun}`} className="icon-button" disabled={!step.next} onClick={() => { if (step.next) { stepPressed.current = "next"; onStep(step.next); } }} title={`Next ${noun}`} type="button"><Icon name="chevron" /></button>
             </nav>
           ) : null}
           <button aria-label="Close" className="icon-button bl-sheet-close" onClick={() => onClose()} title="Close (Esc)" type="button"><Icon name="close" /></button>

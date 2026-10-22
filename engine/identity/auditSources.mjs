@@ -78,30 +78,37 @@ function typeName(value) {
 // "UpdateWindowsFeatureUpdateProfileAssignmentsAsync ..." is 49 letters). redactSecrets
 // takes any 48+ character run for a token, and the stored fact refuses a redacted
 // activity, which failed the whole page (issue #552). A long word that reads as a name
-// is split into its parts: capitalised words, short acronyms ("IOS") and short numbers
-// ("Windows10"), with an optional lowercase first word ("ios..."). To stay a name and
-// not a token, at least half of its letters must be in real words (a capital and two or
-// more lowercase letters), which random tokens, hex and all-caps strings never reach.
+// is split into its parts: capitalised words, short acronyms ("IOS"), short numbers
+// ("Windows10") and an optional lowercase first word ("ios..."). A two-letter part must
+// be a known short word ("To", "By", "Id"). At least three quarters of the letters must
+// sit in words (three or more letters with a vowel, or a known short word). Random
+// tokens fail this as often as the old CamelCase-only rule did or more (letters-only
+// tokens) and always in practice for tokens with digits, hex or all-caps.
 // Anything still token-shaped drops the activity (it is optional); the event is kept.
-const NAME_PART = /[A-Z][a-z]+|[A-Z]{2,5}(?=[A-Z][a-z]|\d|$)|\d{1,4}/y;
+const SHORT_WORDS = new Set(['To', 'Of', 'In', 'On', 'By', 'Up', 'As', 'At', 'Is', 'Or', 'No', 'An', 'If', 'Me', 'My',
+  'Id', 'Do', 'Go', 'Be', 'Os', 'Ad', 'Ip', 'Pc', 'Vm', 'Ui', 'Ux', 'Ok', 'Us']);
+const NAME_PART = /[A-Z][a-z]{1,15}(?![a-z])|[A-Z]{2,5}(?=[A-Z][a-z]|\d|$)|\d{1,4}(?!\d)/y;
+const isWord = (part) => SHORT_WORDS.has(part) || (/^[A-Z]?[a-z]{2,}$/.test(part) && /[aeiouy]/i.test(part));
 function nameParts(word) {
-  const lead = /^[a-z]{2,}(?=[A-Z])/.exec(word)?.[0] ?? '';
+  const lead = /^[a-z]{2,12}(?=[A-Z])/.exec(word)?.[0] ?? '';
   const parts = lead ? [lead] : [];
   NAME_PART.lastIndex = lead.length;
   while (NAME_PART.lastIndex < word.length) {
     const match = NAME_PART.exec(word);
-    if (!match) return null;
+    if (!match || (/^[A-Z][a-z]$/.test(match[0]) && !SHORT_WORDS.has(match[0]))) return null;
     parts.push(match[0]);
   }
-  const wordLetters = parts.filter((part) => /^[A-Z]?[a-z]{2,}$/.test(part)).join('').length;
-  return wordLetters * 2 >= word.length ? parts : null;
+  return parts.filter(isWord).join('').length * 4 >= word.length * 3 ? parts : null;
 }
+// The whole name is checked for tokens before it is cut to 96 characters, so a token
+// near the end cannot be stored as a shorter prefix.
 function activityName(value) {
   if (typeof value !== 'string') return null;
   const clean = value.replace(/[^A-Za-z0-9 ._()-]/g, ' ').replace(/\s+/g, ' ').trim()
     .split(' ').map((word) => (word.length >= 48 ? nameParts(word)?.join(' ') ?? word : word))
-    .join(' ').slice(0, 96).trim();
-  return /^[A-Za-z0-9]/.test(clean) && redactSecrets(clean) === clean ? clean : null;
+    .join(' ');
+  if (!/^[A-Za-z0-9]/.test(clean) || redactSecrets(clean) !== clean) return null;
+  return clean.slice(0, 96).trim();
 }
 
 const ENTRA_OPERATIONS = Object.freeze({ add: 'create', update: 'update', delete: 'delete', assign: 'update', unassign: 'update' });

@@ -5591,8 +5591,17 @@ item that needs it stays untouched.
   `deviceCustomAttributeShellScript` and `groupPolicyConfiguration` (template, then its settings and values through
   `updateDefinitionValues`). Who either is assigned to is **not** written; fixtures stay unassigned.
 - Needs: /opt/keel-live at the #436 merge or later (`grep -q groupPolicySettingsAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
+- Status: blocked
+- Result: blocked (2026-10-22 08:18 UTC). The custom attribute script is blocked by a missing permission (**#471**); the administrative template backup holds no settings (**#472**). B = c396a2c. Restorer only; nothing granted; no restore was run.
+  - `deviceCustomAttributeShellScript`: fixture create `POST beta /deviceManagement/deviceCustomAttributeShellScripts` answered **403**: "Application is not authorized to
+    perform this operation. Application must have one of the following scopes: DeviceManagementScripts.ReadWrite.All". Create and update are **blocked** (#471).
+    Its backup read is `complete-empty` 200.
+  - `groupPolicyConfiguration`: created `KEEL-RT-admx` with Edge (machine) "Configure the home page URL" enabled = `https://example.com` (text box presentation) and
+    "Show Home button on toolbar" disabled (`updateDefinitionValues` 204; the value reads back).
+    - Snapshot S = `c468ba6c`: read outcome `complete` (2 items), but the fixture's `definitionValues` is **`[]`**, so the backup check fails.
+    - As the Collector: `?$expand=definitionValues($expand=definition)` gives 0 values; `/{id}/definitionValues` gives 2. A restore would drop every setting, so I did not
+      run the rounds. Create and update are **blocked** (#472).
+  - Cleanup: deleted `KEEL-RT-admx` (204); no `KEEL-RT` template is left. Nothing left in the tenant.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission
   to add: the Restorer and collector hold DeviceManagementConfiguration.ReadWrite.All / .Read.All. If Graph answers 403, report

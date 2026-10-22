@@ -128,6 +128,11 @@ export default [
   // Restore gaps, batch 11: imported ADMX files (create) and BIOS configurations (update).
   { resourceType: 'groupPolicyUploadedDefinitionFile', operation: 'create', path: '/deviceManagement/groupPolicyUploadedDefinitionFiles', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
   { resourceType: 'hardwareConfiguration', operation: 'update', path: '/deviceManagement/hardwareConfigurations', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  // Restore gaps, batch 12: Windows app protection policies and iOS app provisioning profiles.
+  { resourceType: 'windowsManagedAppProtection', operation: 'create', path: '/deviceAppManagement/windowsManagedAppProtections', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'windowsManagedAppProtection', operation: 'update', path: '/deviceAppManagement/windowsManagedAppProtections', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'iosLobAppProvisioningConfiguration', operation: 'create', path: '/deviceAppManagement/iosLobAppProvisioningConfigurations', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'iosLobAppProvisioningConfiguration', operation: 'update', path: '/deviceAppManagement/iosLobAppProvisioningConfigurations', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   // Add-only identity edges: an edge is never removed, so edge-remove is not registered.
   { resourceType: 'application#appOwner', operation: 'edge-add', path: '/applications/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },
   { resourceType: 'servicePrincipal#servicePrincipalOwner', operation: 'edge-add', path: '/servicePrincipals/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },

@@ -679,12 +679,14 @@ async function targetAppsAfterWrite(io, { payload, verb, targetId, live, resourc
   const out = { changes: {} };
   if (Array.isArray(payload?.apps)) {
     const path = `${recordObjectPath(resource.record, payload, targetId)}`;
-    const current = verb === 'create' ? new Set() : appSet((await io.retryOperation(() => io.writer.read('v1.0', `${path}?$expand=apps`)))?.body?.apps);
+    // Windows app protection (batch 12) lives on beta only; the others on v1.0.
+    const version = resource.record.version ?? 'v1.0';
+    const current = verb === 'create' ? new Set() : appSet((await io.retryOperation(() => io.writer.read(version, `${path}?$expand=apps`)))?.body?.apps);
     const want = appSet(payload.apps);
     if (verb === 'create' || current.size !== want.size || [...want].some((app) => !current.has(app))) {
-      const result = await io.retryOperation(() => io.writer.write('v1.0', `${path}/targetApps`, { method: 'POST', body: targetAppsBody(payload) }));
+      const result = await io.retryOperation(() => io.writer.write(version, `${path}/targetApps`, { method: 'POST', body: targetAppsBody(payload) }));
       if (!result.ok) return { error: `writing the policy's target apps failed: ${outcomeDetail(result)}` };
-      const check = await readUntil(io, 'v1.0', `${path}?$expand=apps`, (r) => recordNotFound(r)
+      const check = await readUntil(io, version, `${path}?$expand=apps`, (r) => recordNotFound(r)
         || (r?.ok === true && !sameApps(appSet(r.body?.apps), want)), io.readOptions);
       if (check?.ok !== true || !sameApps(appSet(check.body?.apps), want)) return { error: 'post-state: the target apps did not read back as written' };
       out.changes.apps = 'written';
@@ -1084,6 +1086,23 @@ function admxFileRefusal(resource) {
   return null;
 }
 
+/**
+ * Batch 12: a file is keyed by its id, and a re-imported file gets a new one,
+ * so a second restore from the same backup would plan another upload. Intune
+ * holds one file per file name: one already imported under the backup's file
+ * name is left as it is (a newer version is uploaded by hand).
+ */
+async function admxNotImported(io, { payload, verb }) {
+  if (verb !== 'create') return null;
+  const listed = await io.retryOperation(() => io.writer.read('beta', '/deviceManagement/groupPolicyUploadedDefinitionFiles?$select=id,fileName,status'));
+  if (listed?.ok !== true) return `the imported ADMX files could not be listed (${outcomeDetail(listed)})`;
+  const same = (listed.body?.value ?? []).find((file) => hasText(file?.fileName) && lower(file.fileName) === lower(payload?.fileName));
+  if (!same) return null;
+  return {
+    skipped: `already imported: Intune holds an ADMX file named ${same.fileName} (status ${same.status ?? 'unknown'}), so it is not uploaded again; if the backup holds a different version, upload it by hand in the Intune admin center, under Devices, Configuration, Import ADMX`,
+  };
+}
+
 /** Waits for Intune to finish reading an uploaded ADMX file; a failed upload fails the restore. */
 async function admxUploadAfterWrite(io, { targetId, live }) {
   const path = `/deviceManagement/groupPolicyUploadedDefinitionFiles/${encodeURIComponent(targetId)}`;
@@ -1108,6 +1127,42 @@ function biosPasswordRefusal(resource, verb) {
     return {
       outcome: 'skipped',
       reason: 'manual: the backup turns off the per-device BIOS password, which is on now; a restore never weakens BIOS passwords, so change it by hand in the Intune admin center if that is wanted',
+    };
+  }
+  return null;
+}
+
+// Batch 12: an iOS app provisioning profile is the .mobileprovision file
+// Apple issued (no private key), read per profile. A backup without the file
+// is never written as a blank, an expired file is never uploaded, and a live
+// profile is never replaced with one that expires sooner.
+const expiresAt = (payload) => {
+  const at = Date.parse(payload?.expirationDateTime ?? '');
+  return Number.isFinite(at) ? at : null;
+};
+
+function provisioningProfileRefusal(resource, verb) {
+  const payload = resource.payload ?? {};
+  const live = resource.live?.payload ?? null;
+  if (verb === 'create' && !hasText(payload.payload)) {
+    return {
+      outcome: 'skipped',
+      reason: 'manual: this backup does not hold the profile file from Apple (backups before the profile read was added), so it is not uploaded; take a new backup, or upload the file again by hand from your own copy',
+    };
+  }
+  if (!hasText(payload.payload) || (verb === 'update' && payload.payload === live?.payload)) return null;
+  const until = expiresAt(payload);
+  if (until !== null && until <= Date.now()) {
+    return {
+      outcome: 'skipped',
+      reason: `manual: the profile file in the backup expired on ${payload.expirationDateTime}, and an expired profile stops the apps it signs from opening; renew it with Apple, then upload the new file in the Intune admin center, under Apps, iOS/iPadOS, App provisioning profiles`,
+    };
+  }
+  const liveUntil = expiresAt(live);
+  if (verb === 'update' && until !== null && liveUntil !== null && until < liveUntil) {
+    return {
+      outcome: 'skipped',
+      reason: `manual: the profile file in the backup expires on ${payload.expirationDateTime}, before the one in Intune now (${live.expirationDateTime}); a restore never replaces a profile with an older one, so change it by hand if that is wanted`,
     };
   }
   return null;
@@ -1309,7 +1364,7 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     transform: (body) => ('groupPolicyUploadedLanguageFiles' in body
       ? { ...body, groupPolicyUploadedLanguageFiles: admxLanguageFiles(body.groupPolicyUploadedLanguageFiles) } : body),
     sameField: (field, left, right) => (field === 'groupPolicyUploadedLanguageFiles' ? sameValue(admxLanguageFiles(left), admxLanguageFiles(right)) : null),
-    refusal: admxFileRefusal, afterWrite: admxUploadAfterWrite, permission: 'DeviceManagementConfiguration.ReadWrite.All',
+    refusal: admxFileRefusal, preflight: admxNotImported, afterWrite: admxUploadAfterWrite, permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
   // A BIOS configuration: its name, description, scope tags and whether each
   // device gets its own BIOS password, updated in place only.
@@ -1317,6 +1372,28 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     resourceType: 'hardwareConfiguration', version: 'beta', collection: '/deviceManagement/hardwareConfigurations',
     operations: ['update'], writable: ['displayName', 'description', 'perDevicePasswordDisabled', 'roleScopeTagIds'],
     refusal: biosPasswordRefusal, permission: 'DeviceManagementConfiguration.ReadWrite.All',
+  }),
+  // Restore gaps, batch 12. Windows app protection (Edge on unmanaged Windows
+  // devices): the backup reads each policy with its apps, which are written
+  // through /targetApps like iOS and Android policies. Who it is assigned to
+  // is not backed up, so a recreated policy is assigned again by hand.
+  windowsManagedAppProtection: defineRecord({
+    resourceType: 'windowsManagedAppProtection', version: 'beta', collection: '/deviceAppManagement/windowsManagedAppProtections',
+    operations: ['create', 'update'], excluded: APP_POLICY_SERVER_FIELDS, refusal: managedAppRefusal, afterWrite: targetAppsAfterWrite,
+    permission: 'DeviceManagementApps.ReadWrite.All',
+  }),
+  // An iOS app provisioning profile: its name, description, scope tags and the
+  // profile file. Who it is assigned to is not backed up.
+  iosLobAppProvisioningConfiguration: defineRecord({
+    resourceType: 'iosLobAppProvisioningConfiguration', version: 'beta', collection: '/deviceAppManagement/iosLobAppProvisioningConfigurations',
+    operations: ['create', 'update'], writable: ['displayName', 'description', 'payloadFileName', 'payload', 'expirationDateTime', 'roleScopeTagIds'],
+    // The file name and expiry belong to the file: never sent without it.
+    transform: (body) => {
+      if (hasText(body.payload)) return body;
+      const { payload: _file, payloadFileName: _name, expirationDateTime: _expiry, ...rest } = body;
+      return rest;
+    },
+    refusal: provisioningProfileRefusal, permission: 'DeviceManagementApps.ReadWrite.All',
   }),
 });
 

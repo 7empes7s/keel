@@ -964,8 +964,10 @@ const admxFile = Object.freeze({
 });
 
 // A fake Graph whose uploaded ADMX file reads back with the status Intune gives it.
-function admxGraph(status) {
-  const graph = idoFakeGraph();
+function admxGraph(status, files = []) {
+  // The tenant's Intune object is seeded so the list of imported files reads.
+  const graph = idoFakeGraph({ seed: Object.fromEntries([['/deviceManagement', { id: 'deviceManagement' }],
+    ...files.map((file) => [`/deviceManagement/groupPolicyUploadedDefinitionFiles/${file.id}`, file])]) });
   const write = graph.write.bind(graph);
   graph.write = async (version, path, request) => {
     const result = await write(version, path, request);
@@ -1021,6 +1023,29 @@ test('an ADMX file backed up without its file content is never uploaded', async 
   }
 });
 
+test('an ADMX file already imported under the same file name is not uploaded again (batch 12)', async () => {
+  const live = { id: 'gp-new', fileName: 'KEEL-RT-FIXTURE.ADMX', status: 'available' };
+  const graph = admxGraph('available', [live]);
+  const again = await applyIntuneExtendedWrite(graph, resourceOf('groupPolicyUploadedDefinitionFile', admxFile), 'create', FAST);
+  assert.match(again.skipped.reason, /already imported: Intune holds an ADMX file named KEEL-RT-FIXTURE\.ADMX/);
+  assert.equal(writesOf(graph).length, 0);
+  // The same in a dry run, so the plan shows it.
+  const dry = await applyIntuneExtendedWrite(graph, resourceOf('groupPolicyUploadedDefinitionFile', admxFile), 'create', { ...FAST, mode: 'dry-run' });
+  assert.match(dry.skipped.reason, /already imported/);
+  // Another file name is uploaded as before.
+  const other = admxGraph('available', [{ ...live, fileName: 'other.admx' }]);
+  const created = await applyIntuneExtendedWrite(other, resourceOf('groupPolicyUploadedDefinitionFile', admxFile), 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  assert.equal(writesOf(other).filter((call) => call.method === 'POST').length, 1);
+});
+
+test('an ADMX upload whose file list cannot be read writes nothing', async () => {
+  const graph = idoFakeGraph();
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('groupPolicyUploadedDefinitionFile', admxFile), 'create', FAST);
+  assert.match(result.failed.error, /dependency: the imported ADMX files could not be listed/);
+  assert.equal(writesOf(graph).length, 0);
+});
+
 const bios = Object.freeze({
   id: 'hw-1', displayName: 'KEEL-RT-bios', description: 'Fixture', fileName: 'keel-rt.cctk', hardwareConfigurationFormat: 'dell',
   perDevicePasswordDisabled: false, roleScopeTagIds: ['0'], version: 2, createdDateTime: 'x', lastModifiedDateTime: 'x',
@@ -1051,6 +1076,129 @@ test('a restore never turns per-device BIOS passwords off', async () => {
   }), 'update', FAST);
   assert.match(result.skipped.reason, /never weakens BIOS passwords/);
   assert.equal(writesOf(graph).length, 0);
+});
+
+// ------------------------------------------- restore gaps, batch 12
+
+const edge = Object.freeze({ id: 'com.microsoft.edge.windows', mobileAppIdentifier: { '@odata.type': '#microsoft.graph.windowsAppIdentifier', windowsAppId: 'com.microsoft.edge' } });
+const windowsProtection = Object.freeze({
+  '@odata.type': '#microsoft.graph.windowsManagedAppProtection',
+  id: 'win-src', displayName: 'KEEL-RT-win-mam', description: 'Fixture', version: '"2"', createdDateTime: 'x', lastModifiedDateTime: 'x',
+  roleScopeTagIds: ['0'], isAssigned: false, deployedAppCount: 1, printBlocked: true, allowedOutboundClipboardSharingLevel: 'none',
+  appGroupType: 'selectedPublicApps', apps: [edge],
+});
+const WIN_MAM = '/deviceAppManagement/windowsManagedAppProtections';
+
+test('a Windows app protection policy is created on beta, then the apps it covers are written', async () => {
+  const graph = idoFakeGraph();
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('windowsManagedAppProtection', windowsProtection), 'create', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST' && call.path === WIN_MAM);
+  assert.equal(post.version, 'beta');
+  for (const field of ['apps', 'id', 'version', 'isAssigned', 'deployedAppCount', 'createdDateTime', '@odata.type']) assert.equal(field in post.body, false, field);
+  assert.equal(post.body.printBlocked, true);
+  const targetApps = graph.calls.find((call) => call.path.endsWith('/targetApps'));
+  assert.equal(targetApps.version, 'beta');
+  assert.equal(targetApps.path, `${WIN_MAM}/${result.applied.targetId}/targetApps`);
+  assert.deepEqual(targetApps.body, targetAppsBody(windowsProtection));
+  assert.equal(result.applied.changes.apps, 'written');
+  // Assignments are not backed up, so none is ever written.
+  assert.equal(graph.calls.some((call) => call.path.endsWith('/assign')), false);
+});
+
+test('a Windows app protection policy without its apps in the backup is never created; an update leaves matching apps', async () => {
+  const { apps: _apps, ...withoutApps } = windowsProtection;
+  const empty = idoFakeGraph();
+  const refused = await applyIntuneExtendedWrite(empty, resourceOf('windowsManagedAppProtection', withoutApps), 'create', FAST);
+  assert.match(refused.failed.error, /protects nothing/);
+  assert.equal(empty.calls.length, 0);
+
+  const path = `${WIN_MAM}/win-live`;
+  const live = { ...windowsProtection, id: 'win-live', printBlocked: false };
+  const graph = idoFakeGraph({ seed: { [path]: { ...live, apps: undefined } } });
+  await graph.write('beta', `${path}/targetApps`, { method: 'POST', body: targetAppsBody(windowsProtection) });
+  graph.calls.length = 0;
+  const updated = await applyIntuneExtendedWrite(graph, resourceOf('windowsManagedAppProtection', windowsProtection, {
+    live: { state: 'present', targetId: 'win-live', payload: live },
+  }), 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  const patch = graph.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.version, 'beta');
+  assert.deepEqual(patch.body, { printBlocked: true });
+  assert.equal(graph.calls.some((call) => call.path.endsWith('/targetApps')), false);
+  assert.equal(graph.calls.filter((call) => call.method === 'GET').every((call) => call.version === 'beta'), true);
+});
+
+test('a Windows app protection update that adds or raises a wipe needs the content approval; data rules alone do not', () => {
+  const live = { ...windowsProtection, printBlocked: false, allowedOutboundClipboardSharingLevel: 'anyDestinationAnySource', minimumWipeOsVersion: '10.0.19000' };
+  const update = (payload) => classifyContentEffects([{ naturalKey: 'windowsManagedAppProtection:KEEL-RT-win-mam', resourceType: 'windowsManagedAppProtection',
+    verb: 'update', payload, live: { state: 'present', payload: live } }]);
+  // Print and clipboard rules only restrict where work data goes: no effect, no refusal.
+  assert.deepEqual(update({ ...live, printBlocked: true, allowedOutboundClipboardSharingLevel: 'none' }), { effects: [], refusals: [] });
+  // A lower wipe version wipes fewer devices: no effect.
+  assert.deepEqual(update({ ...live, minimumWipeOsVersion: '10.0.18000' }).effects, []);
+  const raised = update({ ...live, minimumWipeOsVersion: '10.0.22000', minimumWipeAppVersion: '120.0', appActionIfUnableToAuthenticateUser: 'wipe' });
+  assert.deepEqual(raised.effects.map((effect) => [effect.field, effect.effect]), [
+    ['appActionIfUnableToAuthenticateUser', 'irreversible'], ['minimumWipeAppVersion', 'irreversible'], ['minimumWipeOsVersion', 'irreversible'],
+  ]);
+  assert.deepEqual(raised.refusals, []);
+  // A recreated policy is never assigned by a restore, so a create is not judged.
+  assert.deepEqual(classifyContentEffects([{ naturalKey: 'n', resourceType: 'windowsManagedAppProtection', verb: 'create',
+    payload: { ...windowsProtection, minimumWipeOsVersion: '10.0.22000' }, live: null }]), { effects: [], refusals: [] });
+});
+
+const profile = Object.freeze({
+  id: 'prov-src', displayName: 'KEEL-RT-ios-prov', description: 'Fixture', payloadFileName: 'keel-rt.mobileprovision', payload: 'PHBsaXN0Lz4=',
+  expirationDateTime: '2099-01-01T00:00:00Z', roleScopeTagIds: ['0'], version: 1, createdDateTime: 'x', lastModifiedDateTime: 'x',
+});
+const PROV = '/deviceAppManagement/iosLobAppProvisioningConfigurations';
+
+test('an iOS provisioning profile is uploaded again with its file, and updated in place', async () => {
+  const graph = idoFakeGraph();
+  const created = await applyIntuneExtendedWrite(graph, resourceOf('iosLobAppProvisioningConfiguration', profile), 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.path, PROV);
+  assert.equal(post.version, 'beta');
+  assert.deepEqual(post.body, {
+    displayName: 'KEEL-RT-ios-prov', description: 'Fixture', payloadFileName: 'keel-rt.mobileprovision', payload: 'PHBsaXN0Lz4=',
+    expirationDateTime: '2099-01-01T00:00:00Z', roleScopeTagIds: ['0'],
+  });
+
+  const path = `${PROV}/prov-live`;
+  const live = { ...profile, id: 'prov-live', description: 'Changed' };
+  const seeded = idoFakeGraph({ seed: { [path]: live } });
+  const updated = await applyIntuneExtendedWrite(seeded, resourceOf('iosLobAppProvisioningConfiguration', profile, {
+    live: { state: 'present', targetId: 'prov-live', payload: live },
+  }), 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  assert.deepEqual(seeded.calls.find((call) => call.method === 'PATCH').body, { description: 'Fixture' });
+});
+
+test('an iOS provisioning profile with no file, an expired file, or a file older than live is never written', async () => {
+  const { payload: _file, ...withoutFile } = profile;
+  const expired = { ...profile, expirationDateTime: '2020-01-01T00:00:00Z' };
+  for (const [payload, pattern] of [[withoutFile, /does not hold the profile file/], [expired, /expired on 2020-01-01/]]) {
+    const graph = idoFakeGraph();
+    const result = await applyIntuneExtendedWrite(graph, resourceOf('iosLobAppProvisioningConfiguration', payload), 'create', FAST);
+    assert.match(result.skipped.reason, pattern);
+    assert.equal(writesOf(graph).length, 0);
+  }
+  const path = `${PROV}/prov-live`;
+  const newer = { ...profile, id: 'prov-live', payload: 'bmV3ZXI=', expirationDateTime: '2100-01-01T00:00:00Z' };
+  const graph = idoFakeGraph({ seed: { [path]: newer } });
+  const older = await applyIntuneExtendedWrite(graph, resourceOf('iosLobAppProvisioningConfiguration', profile, {
+    live: { state: 'present', targetId: 'prov-live', payload: newer },
+  }), 'update', FAST);
+  assert.match(older.skipped.reason, /never replaces a profile with an older one/);
+  assert.equal(writesOf(graph).length, 0);
+  // A backup without the file still puts the name and description back, and never blanks the file.
+  const seeded = idoFakeGraph({ seed: { [path]: { ...newer, description: 'Changed' } } });
+  const named = await applyIntuneExtendedWrite(seeded, resourceOf('iosLobAppProvisioningConfiguration', { ...withoutFile, expirationDateTime: undefined }, {
+    live: { state: 'present', targetId: 'prov-live', payload: { ...newer, description: 'Changed' } },
+  }), 'update', FAST);
+  assert.equal(named.failed, undefined, named.failed?.error);
+  assert.deepEqual(seeded.calls.find((call) => call.method === 'PATCH').body, { description: 'Fixture' });
 });
 
 test('a policy delete passes the deletion guard and refuses a policy that is still assigned', async () => {

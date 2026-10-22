@@ -4,6 +4,8 @@ import { test } from 'node:test';
 import intuneLeftovers from './catalog.d/intune-leftovers.mjs';
 import { CATALOG, catalogEntryFor, catalogReadPath } from './catalog.mjs';
 import { GraphReader } from './graph.mjs';
+import { get } from '../../engine/collect/registry.mjs';
+import '../../engine/collect/entraAdapter.mjs';
 
 // Independent expectations: the documented Graph route for each type, written
 // out here rather than derived from the catalogue under test.
@@ -20,12 +22,12 @@ const EXPECTED = [
   ['deviceManagementDerivedCredentialSettings', '/beta/deviceManagement/derivedCredentials', 'tier2', 'list'],
   ['microsoftTunnelConfiguration', '/beta/deviceManagement/microsoftTunnelConfigurations', 'tier2', 'list'],
   ['microsoftTunnelHealthThreshold', '/beta/deviceManagement/microsoftTunnelHealthThresholds', 'tier3', 'list'],
-  ['iosLobAppProvisioningConfiguration', '/beta/deviceAppManagement/iosLobAppProvisioningConfigurations', 'tier2', 'list'],
+  ['iosLobAppProvisioningConfiguration', '/beta/deviceAppManagement/iosLobAppProvisioningConfigurations', 'tier2', 'per-object'],
   ['mobileAppRelationship', '/beta/deviceAppManagement/mobileAppRelationships', 'tier3', 'list'],
   ['managedEBook', '/beta/deviceAppManagement/managedEBooks', 'tier3', 'list'],
   ['managedEBookCategory', '/beta/deviceAppManagement/managedEBookCategories', 'tier3', 'list'],
   ['cartToClassAssociation', '/beta/deviceManagement/cartToClassAssociations', 'tier3', 'list'],
-  ['windowsManagedAppProtection', '/beta/deviceAppManagement/windowsManagedAppProtections', 'tier2', 'list'],
+  ['windowsManagedAppProtection', '/beta/deviceAppManagement/windowsManagedAppProtections', 'tier2', 'per-object'],
   ['enterpriseCodeSigningCertificate', '/beta/deviceAppManagement/enterpriseCodeSigningCertificates', 'tier3', 'list'],
   ['symantecCodeSigningCertificate', `/beta/deviceAppManagement/symantecCodeSigningCertificate?$select=${SYMANTEC_SELECT}`, 'tier3', 'singleton'],
   ['userExperienceAnalyticsBaseline', '/beta/deviceManagement/userExperienceAnalyticsBaselines', 'tier3', 'list'],
@@ -39,9 +41,11 @@ test('the Intune leftovers family holds exactly the planned types, all in CATALO
     assert.equal(entry.criticality, criticality, type);
     assert.ok(['tenant-lockout', 'access-affecting', 'cosmetic'].includes(entry.blastRadius), type);
     assert.equal(entry.singleton === true, shape === 'singleton', `${type} is a ${shape}`);
-    // A singleton never set up may answer 404; a list read never hides one.
-    assert.equal(entry.absentWhenNotFound === true, shape === 'singleton', type);
-    assert.ok(!entry.needsOrgId && !entry.parent && !entry.query, `${type} is read at a fixed path, unfiltered`);
+    // A singleton never set up, or an object deleted after the list, may answer 404; a list read never hides one.
+    assert.equal(entry.absentWhenNotFound === true, shape !== 'list', type);
+    assert.ok(!entry.needsOrgId, type);
+    assert.equal(Boolean(entry.parent), shape === 'per-object', `${type} is read at a fixed path, or per object`);
+    if (shape !== 'per-object') assert.ok(!entry.query, `${type} is read unfiltered`);
     // A page cap would leave the backup incomplete; these types are read in full.
     assert.equal(entry.pageCap, undefined, type);
   }
@@ -90,7 +94,7 @@ test('no Intune leftovers type duplicates an existing catalogue path or type', (
 test('each Intune leftovers type reads a KEEL-RT- fixture with GET only, across pages or as one object', async () => {
   const originalFetch = globalThis.fetch;
   try {
-    for (const [type, endpoint, , shape] of EXPECTED) {
+    for (const [type, endpoint, , shape] of EXPECTED.filter(([, , , kind]) => kind !== 'per-object')) {
       const entry = catalogEntryFor(type);
       const first = { id: `${type}-1`, displayName: `KEEL-RT-${type}-1` };
       const second = { id: `${type}-2`, displayName: `KEEL-RT-${type}-2` };
@@ -116,5 +120,31 @@ test('each Intune leftovers type reads a KEEL-RT- fixture with GET only, across 
     }
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('Windows app protection policies and iOS provisioning profiles are listed, then read on their own (restore gaps batch 12)', async () => {
+  for (const [type, list, query, field, value] of [
+    ['windowsManagedAppProtection', '/beta/deviceAppManagement/windowsManagedAppProtections', '?$expand=apps', 'apps',
+      [{ id: 'a-1', mobileAppIdentifier: { '@odata.type': '#microsoft.graph.windowsAppIdentifier', windowsAppId: 'com.microsoft.edge' } }]],
+    ['iosLobAppProvisioningConfiguration', '/beta/deviceAppManagement/iosLobAppProvisioningConfigurations', '', 'payload', 'S0VFTC1SVA=='],
+  ]) {
+    const entry = catalogEntryFor(type);
+    assert.equal(`/${entry.version}${entry.parent.path}`, list, type);
+    const urls = [];
+    const reader = {
+      async collect(version, path) {
+        urls.push(`/${version}${path}`);
+        if (path.startsWith(`${entry.parent.path}?`)) return { items: [{ id: 'p-1' }, { id: 'p-2' }], pages: 1, status: 200, capped: false, error: null };
+        const id = path.split('?')[0].split('/').pop();
+        if (id === 'p-2') return { items: [], pages: 0, status: 404, capped: false, error: { status: 404, error: 'gone' } };
+        return { items: [{ id, displayName: `KEEL-RT-${type}`, [field]: value }], pages: 1, status: 200, capped: false, error: null };
+      },
+    };
+    const result = await get(type).adapter.collectRaw(reader, {});
+    assert.deepEqual(urls, [`${list}?$select=id`, `${list}/p-1${query}`, `${list}/p-2${query}`], `${type}: list, then one GET per object`);
+    assert.equal(result.error, null, type);
+    // An object deleted between the list and its own read is absent, not a failure.
+    assert.deepEqual(result.items, [{ id: 'p-1', displayName: `KEEL-RT-${type}`, [field]: value }], type);
   }
 });

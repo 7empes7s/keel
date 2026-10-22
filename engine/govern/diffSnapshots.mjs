@@ -1,3 +1,12 @@
+import { changeBlastRadius } from '../safety/blastRadius.mjs';
+
+/** A change's rating: per rule where the type is rated per rule (Conditional
+ * Access), from whichever sides' payloads the rows carry. */
+function rated(before, after) {
+  const row = after ?? before;
+  return changeBlastRadius(row.resource_type, before?.payload, after?.payload, row.blast_radius);
+}
+
 /** Spec M2.6.2. Pure diff of a materialized baseline against an observed snapshot,
  * keyed by natural key. Refuses to compare differing hash_versions (spec M2.3).
  *
@@ -57,7 +66,7 @@ export function diffSnapshots(baselineRows, observedRows, { lineageOf } = {}) {
         changeType: 'modified',
         beforeHash: before.payload_hash,
         afterHash: after.payload_hash,
-        blastRadius: after.blast_radius,
+        blastRadius: rated(before, after),
         renamedFrom: removedKey,
         lineageId: beforeLineage,
       });
@@ -83,11 +92,11 @@ export function diffSnapshots(baselineRows, observedRows, { lineageOf } = {}) {
       if (beforeLineage && afterLineage && beforeLineage !== afterLineage) {
         drift.push({
           naturalKey, resourceType: before.resource_type, changeType: 'removed',
-          beforeHash: before.payload_hash, afterHash: null, blastRadius: before.blast_radius,
+          beforeHash: before.payload_hash, afterHash: null, blastRadius: rated(before, null),
         });
         drift.push({
           naturalKey, resourceType: after.resource_type, changeType: 'added',
-          beforeHash: null, afterHash: after.payload_hash, blastRadius: after.blast_radius,
+          beforeHash: null, afterHash: after.payload_hash, blastRadius: rated(null, after),
         });
         continue;
       }
@@ -100,7 +109,7 @@ export function diffSnapshots(baselineRows, observedRows, { lineageOf } = {}) {
         changeType: 'removed',
         beforeHash: before.payload_hash,
         afterHash: null,
-        blastRadius: before.blast_radius,
+        blastRadius: rated(before, null),
       });
     } else if (!before && after) {
       drift.push({
@@ -109,7 +118,7 @@ export function diffSnapshots(baselineRows, observedRows, { lineageOf } = {}) {
         changeType: 'added',
         beforeHash: null,
         afterHash: after.payload_hash,
-        blastRadius: after.blast_radius,
+        blastRadius: rated(null, after),
       });
     } else if (before.payload_hash !== after.payload_hash) {
       drift.push({
@@ -118,7 +127,7 @@ export function diffSnapshots(baselineRows, observedRows, { lineageOf } = {}) {
         changeType: 'modified',
         beforeHash: before.payload_hash,
         afterHash: after.payload_hash,
-        blastRadius: after.blast_radius,
+        blastRadius: rated(before, after),
       });
     }
   }

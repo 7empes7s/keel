@@ -12,6 +12,7 @@
 import { createHash } from 'node:crypto';
 import { appendEvidence } from '../govern/evidence.mjs';
 import { can } from '../authz/can.mjs';
+import { gateBlastRadius } from '../safety/blastRadius.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { OPEN_DRIFT_PREDICATE } from '../store/openDrift.mjs';
 import { executeAutoRemediation } from './execute.mjs';
@@ -42,7 +43,7 @@ export function policyMatches(policy, drift) {
 /** Structural guardrail (§3.4): a policy may not auto_remediate above its own
  * max_blast_radius, whatever it matched. Never configurable away. */
 export function exceedsMaxBlastRadius(drift, policy) {
-  return BLAST_RADIUS_RANK[drift.blast_radius] > BLAST_RADIUS_RANK[policy.max_blast_radius];
+  return BLAST_RADIUS_RANK[gateBlastRadius(drift.resource_type, drift.blast_radius)] > BLAST_RADIUS_RANK[policy.max_blast_radius];
 }
 
 // Roadmap task-55: the same guardrail re-applied AFTER dependency expansion. The
@@ -79,7 +80,7 @@ export function maxOperationImpact(resources, patches = []) {
       naturalKey: resource.naturalKey,
       resourceType: resource.resourceType,
       verb: resource.verb ?? 'patch',
-      blastRadius: resource.blastRadius ?? null,
+      blastRadius: gateBlastRadius(resource.resourceType, resource.blastRadius ?? null),
     }))
     .sort((left, right) => left.naturalKey.localeCompare(right.naturalKey));
 

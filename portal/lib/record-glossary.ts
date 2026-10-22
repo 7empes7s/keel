@@ -395,6 +395,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   // Change attribution and emergency changes.
   "Attribution": fact("Who made it", "Whether Keel could tell who made the change, and how."),
   "Change window": fact("When it happened", "The span in which the change was made."),
+  "Audit log read": fact("Log read", "Which Microsoft audit log Keel read to find who made it."),
   "Audit log coverage": fact("Logs checked", "Whether Microsoft's audit and sign-in logs cover that span."),
   "Approval route": fact("How it was approved", "The approval path for this change."),
   "Approved transitions": fact("Approved changes", "The values the change may move between."),

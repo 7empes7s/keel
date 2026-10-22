@@ -7716,7 +7716,7 @@ item that needs it stays untouched.
     the run log prints `completion step: <key> — Assignments not restored: ...`, the dry-run review page shows a "By hand" box,
     and an enforced run opens an owned follow-up item (kind `integration`, requirement `assignments`).
 - Needs: /opt/keel-live at the #553 merge or later (`grep -q unreadAssignmentsStep /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: open
+- Status: todo
 - Result:
 - **Test tenant only.** Restorer only; grant nothing. Never touch CA policies, break-glass or Marouane's account. No tenant-wide
   setting is changed. Approve the restore yourself under the standing approval and log the approval id.

@@ -7379,7 +7379,7 @@ item that needs it stays untouched.
     which never returns it). The actions are checked from `/compliancePolicies/{id}/scheduledActionsForRule?$expand=scheduledActionConfigurations`
     right after, and the journalled post-state now holds them. Lost or different actions still fail the create. Update is unchanged.
 - Needs: /opt/keel-live at the #531 merge or later (`grep -q checkedAfterWrite /opt/keel-live/engine/restore/recordWriter.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q120. Under the 2026-10-14 standing
   authorization, approve this restore yourself and log the approval id. Restorer only; global admin not used. If Graph answers 403,

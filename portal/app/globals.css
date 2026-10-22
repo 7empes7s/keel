@@ -19,6 +19,8 @@
   --rail-line: #2e4166;
   --rail-hover: #243659;
   --rail-active: #2a406b;
+  /* Storm sky behind the brand mark's loop. */
+  --rail-storm: #0b1322;
   /* Risk colours on the navy rail, the same in both themes because the rail is. */
   --rail-urgent: #f2675f;
   --rail-soon: #f0b85a;
@@ -3744,22 +3746,28 @@ section.wizard-panel {
 }
 
 /* --- Brand mark -------------------------------------------------------------
-   The one signature motion: on first load the hull tips and rights itself, the
-   way a keel brings a boat back level. The layout persists across navigation,
-   so it plays once per visit, not on every page. */
+   The one signature motion, a 12 s loop: a storm builds, the boat rolls and heaves
+   on the swell in the rain (lightning once), the keel rights it, the sea calms, the
+   mark glows once and holds as the plain logo, then the loop starts again.
+   - Every layer runs on the same 12 s clock, so the parts never drift apart. The
+     swell scrolls one wavelength per 1.2 s and the roll and heave peak every 0.6 s,
+     so the boat rides the waves: heave peaks on a crest, roll leads it a quarter turn.
+   - Between peaks the curve is ease-in-out sine, so the motion is a true sine with
+     no corners. Only transform and opacity animate: no layout, no repaint storms.
+   - The rest state is the logo (flat sea, no rain), so with reduced motion or no
+     animation the mark is static. */
 
 .brand-mark {
+  position: relative;
   overflow: hidden;
   border-color: color-mix(in oklab, var(--accent) 70%, var(--line));
-  background:
-    linear-gradient(180deg, transparent 49%, color-mix(in oklab, var(--accent) 12%, transparent) 49%),
-    var(--sidebar);
+  background: var(--sidebar);
 }
 
-.brand-mark svg {
-  width: 1.75rem;
-  height: 1.75rem;
-  overflow: visible;
+.brand-mark .keel-mark {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .keel-hull,
@@ -3772,27 +3780,171 @@ section.wizard-panel {
   opacity: 0.6;
 }
 
-.brand-mark svg > path {
+.keel-mark .keel-heave,
+.keel-mark .keel-roll,
+.keel-mark .keel-sea,
+.keel-mark .keel-swell,
+.keel-mark .keel-rain-fall {
   transform-box: view-box;
-  transform-origin: 16px 14.5px;
-  animation: keel-right 1.6s cubic-bezier(0.3, 1.4, 0.5, 1) 200ms both;
+  transform-origin: 0 0;
 }
 
-.brand:hover .brand-mark svg > path {
-  animation: keel-rock 1.2s var(--ease-in-out);
+.keel-mark .keel-sea {
+  transform: scaleY(0.12);
 }
 
-@keyframes keel-right {
-  0% { transform: rotate(-14deg); }
-  45% { transform: rotate(5deg); }
-  70% { transform: rotate(-2deg); }
-  100% { transform: rotate(0deg); }
+.keel-water {
+  fill: var(--rail-low);
+  fill-opacity: 0.18;
 }
 
-@keyframes keel-rock {
-  0%, 100% { transform: rotate(0deg); }
-  30% { transform: rotate(-6deg); }
-  65% { transform: rotate(3deg); }
+.keel-crest {
+  fill: none;
+  stroke: var(--rail-low);
+  stroke-opacity: 0.75;
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+
+.keel-rain-fall {
+  fill: none;
+  stroke: var(--rail-text);
+  stroke-linecap: round;
+  stroke-opacity: 0.5;
+  stroke-width: 0.9;
+}
+
+.keel-flash,
+.keel-bolt {
+  fill: var(--rail-text);
+}
+
+/* Storm clouds: the sky darkens while the storm blows. */
+.keel-gloom {
+  fill: var(--rail-storm);
+}
+
+.keel-gloom,
+.keel-rain,
+.keel-flash,
+.keel-bolt {
+  opacity: 0;
+}
+
+/* The glow when the boat settles into the logo. Inset, so the clip keeps it. */
+.brand-mark::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 0 1px var(--amber),
+    inset 0 0 0.6rem color-mix(in oklab, var(--amber) 45%, transparent);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .keel-mark .keel-roll { animation: keel-roll 12s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
+  .keel-mark .keel-heave { animation: keel-heave 12s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
+  .keel-mark .keel-sea { animation: keel-sea 12s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
+  /* One wavelength (16) per 1.2 s; the offset puts a crest under the boat on each
+     heave peak. */
+  .keel-mark .keel-swell { animation: keel-swell 1.2s linear -0.675s infinite; }
+  .keel-mark .keel-rain { animation: keel-rain 12s linear infinite; }
+  .keel-mark .keel-rain-fall { animation: keel-rain-fall 0.5s linear infinite; }
+  .keel-mark .keel-gloom { animation: keel-gloom 12s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
+  .keel-mark .keel-flash { animation: keel-flash 12s linear infinite; }
+  .keel-mark .keel-bolt { animation: keel-bolt 12s linear infinite; }
+  .brand-mark::after { animation: keel-settle 12s cubic-bezier(0.37, 0, 0.63, 1) infinite; }
+}
+
+/* Roll in degrees, peaks every 0.6 s (5%). Rising storm, peak storm, then the keel
+   damps it out in three swings and the boat sits level from 63%. */
+@keyframes keel-roll {
+  0% { transform: rotate(0deg); }
+  5% { transform: rotate(5deg); }
+  10% { transform: rotate(-10deg); }
+  15% { transform: rotate(15deg); }
+  20% { transform: rotate(-19deg); }
+  25% { transform: rotate(21deg); }
+  30% { transform: rotate(-20deg); }
+  35% { transform: rotate(21deg); }
+  40% { transform: rotate(-19deg); }
+  45% { transform: rotate(12deg); }
+  50% { transform: rotate(-6deg); }
+  55% { transform: rotate(2.5deg); }
+  59% { transform: rotate(-0.8deg); animation-timing-function: cubic-bezier(0.33, 1, 0.68, 1); }
+  63%, 100% { transform: rotate(0deg); }
+}
+
+/* Heave in viewBox units (up is negative), a quarter period after the roll. */
+@keyframes keel-heave {
+  0% { transform: translateY(0); }
+  7.5% { transform: translateY(-0.8px); }
+  12.5% { transform: translateY(1.1px); }
+  17.5% { transform: translateY(-1.6px); }
+  22.5% { transform: translateY(1.8px); }
+  27.5% { transform: translateY(-1.9px); }
+  32.5% { transform: translateY(1.8px); }
+  37.5% { transform: translateY(-1.9px); }
+  42.5% { transform: translateY(1.4px); }
+  47.5% { transform: translateY(-0.8px); }
+  52.5% { transform: translateY(0.4px); }
+  57.5% { transform: translateY(-0.1px); animation-timing-function: cubic-bezier(0.33, 1, 0.68, 1); }
+  62%, 100% { transform: translateY(0); }
+}
+
+/* Wave height: a ripple at rest, full swell through the storm. */
+@keyframes keel-sea {
+  0%, 3% { transform: scaleY(0.12); }
+  18%, 40% { transform: scaleY(1); }
+  56%, 100% { transform: scaleY(0.12); }
+}
+
+@keyframes keel-swell {
+  from { transform: translateX(0); }
+  to { transform: translateX(16px); }
+}
+
+@keyframes keel-rain {
+  0%, 5% { opacity: 0; }
+  12%, 42% { opacity: 1; }
+  52%, 100% { opacity: 0; }
+}
+
+/* Along the slant of the drops, one pattern tile per loop, so it never jumps. */
+@keyframes keel-rain-fall {
+  from { transform: translate(0, 0); }
+  to { transform: translate(-9.2px, 23px); }
+}
+
+@keyframes keel-gloom {
+  0%, 2% { opacity: 0; }
+  16%, 42% { opacity: 0.55; }
+  58%, 100% { opacity: 0; }
+}
+
+@keyframes keel-flash {
+  0%, 25.6% { opacity: 0; }
+  26% { opacity: 0.45; }
+  26.6% { opacity: 0.08; }
+  27% { opacity: 0.32; }
+  28.4%, 100% { opacity: 0; }
+}
+
+@keyframes keel-bolt {
+  0%, 25.6% { opacity: 0; }
+  26% { opacity: 1; }
+  26.6% { opacity: 0.2; }
+  27% { opacity: 0.9; }
+  28.4%, 100% { opacity: 0; }
+}
+
+@keyframes keel-settle {
+  0%, 58% { opacity: 0; }
+  66% { opacity: 1; }
+  84%, 100% { opacity: 0; }
 }
 
 /* ==========================================================================
@@ -5464,11 +5616,6 @@ section.wizard-panel {
   border-radius: var(--radius-md);
   background: var(--rail-hover);
   place-items: center;
-}
-
-.brand-mark svg {
-  width: 1.4rem;
-  height: 1.4rem;
 }
 
 .rail .keel-hull,

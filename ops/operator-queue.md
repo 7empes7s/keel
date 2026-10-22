@@ -1082,7 +1082,19 @@ being triggered by queue updates.
   Exchange Online and Security & Compliance connect with the collector certificate to list; Teams and PnP are only imported.
   Cmdlets are listed, never run.
 - Needs: PR #497 live (`test -f /opt/keel-live/ops/powershell/list-commands.ps1`).
-- Status: in-progress
+- Status: done
+- Result: done (2026-10-22 16:24 UTC), partly as expected: **Teams and PnP cmdlets are listed; Exchange Online and Purview are not** (no `organization` in the default config). Collector reads only.
+  1. Per session (`--memory 1g`, ops/powershell mounted):
+     - `exo` exit=1: `{"error":{"errorId":"ListConnectFailed","message":"could not connect: Value cannot be null. (Parameter 'Organization cannot be null for certificate based connections.')"},"session":"exo","ok":false}`
+     - `ipps` exit=1: `{"session":"ipps","ok":false,"error":{"errorId":"ListConnectFailed","message":"could not connect: Value cannot be null. (Parameter 'Organization cannot be null for certificate based connections.')"}}`
+     - `teams` exit=0: `{"commands":["Get-AIGeneratedKnowledgeContainer","Get-AllM365TeamsApps","Get-AssociatedTeam",...` (ok, **206** commands)
+     - `pnp` exit=0: `{"session":"pnp","ok":true,"commands":["Get-PnPAccessToken","Get-PnPAlert","Get-PnPApp",...` (ok, **297**)
+  2. `keel-discover.mjs run` (exit 0, stored run **5**):
+     - `PowerShell MicrosoftTeams: listed 206 Get cmdlets.` / `PowerShell PnP.PowerShell: listed 297 Get cmdlets.` / `PowerShell ExchangeOnlineManagement: not listed (Exchange Online: could not connect: Value cannot be null. (Parameter 'Organization cannot be null for certificate based connections.')).`
+     - `Discovery 2026-10-22T16:24:16.895Z: 1484 types; 210 catalogued, 480 uncatalogued, 171 skipped (not worth backing up), 574 unreadable, 49 not listed.`
+     - `powershell:ExchangeOnlineManagement: unknown (Exchange Online: could not connect: ...)`. The Teams and PnP cmdlets now appear one per line (most of the 480 uncatalogued). Log in `/tmp/q146-discover.log`.
+     - Cause: the run uses `/etc/keel/tenant.json` (no `organization`); the Exchange and Purview collectors use `exchange-collector.json` / `purview-collector.json`. Commented on PR #497.
+  3. Portal: not reachable from this box (Cloudflare Access login). Going by step 2, the Exchange line would still show as not supplied.
 - **Tenant:** reads only, with the collector credential. Nothing written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. List each session on its own and report exit code plus the first 300 characters of stdout (no secrets are printed):

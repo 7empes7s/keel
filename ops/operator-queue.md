@@ -7723,8 +7723,14 @@ item that needs it stays untouched.
     the run log prints `completion step: <key> — Assignments not restored: ...`, the dry-run review page shows a "By hand" box,
     and an enforced run opens an owned follow-up item (kind `integration`, requirement `assignments`).
 - Needs: /opt/keel-live at the #553 merge or later (`grep -q unreadAssignmentsStep /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 22:53 UTC). **#553 works: an unread assignment is now a step for a person, no longer silent.** B = **03139ab**. Restorer only; global admin not used.
+  1. Dry run **540e4c02** from Q130's S `1fa5ee87` (where the attribute script's assignment read had failed), selecting `KEEL-RT-150-attr`: a `create`, with the log line
+     `completion step: deviceCustomAttributeShellScript:<id> — Assignments not restored: the backup could not read who it is assigned to, so it is not assigned to anyone yet. Check its assignments in the Intune admin center and set them by hand`.
+     `results.applied[0].completion[0].requirement` = **`assignments`**. The review page is not reachable from this box (Cloudflare Access login).
+  2. Enforce: approval **85e08a8c**, job `4f171832`: `create | succeeded`. The script was created with **0 assignments**. `recovery_completion_item` for the artifact:
+     `064fbd55… | integration | assignments | pending` (plus the usual `ee04bb45… integration newObjectId pending` and `d5acccf5… service-validation serviceCheck pending`).
+  3. Cleanup: deleted the created script; no KEEL-RT attribute script is left. The completion items stay pending (ids above).
 - **Test tenant only.** Restorer only; grant nothing. Never touch CA policies, break-glass or Marouane's account. No tenant-wide
   setting is changed. Approve the restore yourself under the standing approval and log the approval id.
 - Uses Q150's snapshot S = `1fa5ee87`, where `KEEL-RT-150-attr` has a `failed` assignment read (the script was deleted in Q150 step 5).

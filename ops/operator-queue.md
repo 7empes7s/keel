@@ -957,6 +957,36 @@ being triggered by queue updates.
   includes `retention-label` (and `ediscovery-case` / `case-hold` if the tenant has cases).
 - **Report:** step 1 exit code, step 2 and step 3 verbatim, step 4 if run.
 
+### Q138: Live re-check of the reusable settings group restore after the key id fix (fixes #477, after #482)
+- Drafted by the "Reusable settings post-check fails" thread (2026-10-22), from your Q135 finding **#477**. Code: PR #482. Fixture-tested only.
+  - **Change:** the post-state and dry-run comparison of a reusable settings group's `settingInstance` now leaves out the simple
+    setting child whose definition ends in `_{id}_id` (the key guid Graph regenerates on every write). Every other value, such as the
+    addresses, is still compared. The PUT body is unchanged: the backup's values are sent whole, key child included.
+- Needs: /opt/keel-live at the #482 merge or later (`grep -q withoutRegeneratedKeys /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling, requester/approver split and standing approval as Q135. Restorer only;
+  global admin not used. If Graph answers 403, report blocked with what Graph names; grant nothing. Never touch CA policies,
+  break-glass or Marouane's account. The group is used by no policy.
+- **Fixture:** firewall reusable settings group `KEEL-RT-155-addresses` (keyword, autoresolve false, one address 203.0.113.10),
+  used by no policy, as in Q135. Recreate it if it is gone.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Create the fixture if needed, then take snapshot S (its payload holds `settingInstance` with 203.0.113.10).
+  2. **Update round:** in the portal change the description **and** the address to 203.0.113.20. Restore from S, approve, enforce,
+     capture the `update`. Expect a PUT, the journal `verified` (not `uncertain`), and the tenant back at 203.0.113.10.
+  3. **Create round:** delete the fixture. Restore from S, approve, enforce, capture the `create`. Expect `verified`.
+  4. **Re-run check:** dry run from S after step 3. Expect 0 planned writes for the group (Q135 step 5 planned another create).
+     If it still plans a create, report the plan and whether the step 3 job recorded a target id.
+  5. **Negative check (no write):** change only the address to 203.0.113.30, dry run from S. Expect an update planned with
+     field `settingInstance`; do not enforce. Then restore the fixture from S or delete it in cleanup.
+  6. Cleanup: delete every `KEEL-RT-155-*` fixture. Report anything left.
+  7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-reusable-settings`, rebased onto `origin/master` (secret scan and `pseudonymize.mjs check` first),
+     replacing the Q135 demotions if both writes verify. No PR. Run
+     `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; per operation: promoted / refused (exact Graph message) / blocked; step 4; step 5; approval ids; the evidence
+  branch and commit; anything left in the tenant.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

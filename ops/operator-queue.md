@@ -7153,8 +7153,15 @@ item that needs it stays untouched.
     for every kind (not only Intune). A create that recorded no id adopts the one live object of that kind with the backup's name
     (never one of two). Writers are unchanged (same as Q123 and Q135).
 - Needs: /opt/keel-live at the #502 merge or later (`grep -q loadCreatedTargetIds /opt/keel-live/engine/restore/rollbackJournal.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 18:27 UTC). **#502 works: a second dry run after a create plans no second create, and drift on the recreated object is an update of the new id.** B = **a60c774**. Restorer only; global admin not used; the default branding was never written.
+  1. Fixtures `KEEL-RT-branding` (not default; org name `KEEL-RT-IT` so the capture tool accepts it, #478) and `KEEL-RT-reusable` (address 203.0.113.10). S = `69562cbb` holds both.
+  2. Create: deleted both. Dry run `577648ab`, approval **4ac714ca**, job `7631928a`: both `create | succeeded`. New ids: branding `4329f6c9-…`, reusable `17409f56-…` (recorded as target_id in the journal). Both captured and **promoted**.
+  3. Re-run (`A2` from S, nothing changed in between): branding `applied`, targetId **4329f6c9-…**, 0 fields; reusable `applied`, targetId **17409f56-…**, 0 fields; roleScopeTag:0 0 fields. **0 planned writes** (no empty-target create).
+  4. Drift: the recreated branding's contact name set to `drift`. Dry run `cedabc71`: **update** of 4329f6c9 with `contactITName` only. Approval **3815431f**, job `f06e3b81`: `update | succeeded`, read back "KEEL-RT help desk". **Promoted.**
+     Next dry run from S: 0 changed fields.
+  5. Cleanup: deleted the recreated branding and reusable group. Left: only the default branding; no KEEL-RT reusable group; no duplicates.
+  6. Evidence: `claude/live-evidence-rerun-after-create` @ **27acc534**. pseudonymize check exit 0; my scan is clean. `live evidence`: intuneBrandingProfile.create and .update, deviceManagementReusablePolicySetting.create: `fixture-tested -> live-qualified`.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q123 and Q135. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. If Graph answers 403,
   report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.

@@ -35,7 +35,9 @@ import {
   turnOffDetail,
   type RuleKind,
   type RuleState,
+  watchedType,
 } from "@/lib/policy-view";
+import { kindOrder } from "@/lib/type-groups";
 import type { Policy } from "@/lib/policies";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import { personLabel } from "@/lib/sentences";
@@ -129,7 +131,9 @@ export function PoliciesPage({ canEdit, policies, halted, haltedAt = null, haltF
   const groupings = useMemo<Grouping<Policy>[]>(() => [
     { key: "what", label: "What it does", groupsOf: (items) => groupBy(items, (item) => ruleKind(item), (key, list) => ({ label: RULE_KINDS[key as RuleKind].label, icon: RULE_KINDS[key as RuleKind].icon, about: `${RULE_KINDS[key as RuleKind].about} · ${rules(list.length)}` }), (key) => RULE_KIND_ORDER.indexOf(key as RuleKind)) },
     { key: "state", label: "State", groupsOf: (items) => groupBy(items, (item) => ruleState(item), (key, list) => ({ label: RULE_STATES[key as RuleState].plural, icon: RULE_STATES[key as RuleState].icon, about: rules(list.length) }), (key) => RULE_STATE_ORDER.indexOf(key as RuleState)) },
-    { key: "kind", label: "Kind of thing", groupsOf: (items) => groupBy(items, (item) => kindWords(item), (key, list) => ({ label: capital(key), icon: "cloud", about: rules(list.length) })) },
+    // Service by service, and inside each by kind (users, groups, roles, then policies
+    // and settings); rules that watch anything come last.
+    { key: "kind", label: "Kind of thing", groupsOf: (items) => groupBy(items, (item) => kindWords(item), (key, list) => ({ label: capital(key), icon: "cloud", about: rules(list.length) }), (key) => { const type = watchedType(items.find((item) => kindWords(item) === key)!); return type ? kindOrder(type) : Number.MAX_SAFE_INTEGER; }) },
   ], []);
 
   const renderRow = (policy: Policy) => {

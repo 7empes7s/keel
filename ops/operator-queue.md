@@ -7297,3 +7297,47 @@ item that needs it stays untouched.
      branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR. Run
      `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; S; dry run, approval and job ids; the journal outcome and `post_state` keys; promoted or not; the evidence branch and commit; anything left in the tenant.
+
+### Q157: Capture, import and turn on the Exchange role group read (read-only toward the tenant, after #535)
+- Drafted by the "Back up Exchange role groups" thread (2026-10-22). Code: PR #535. New workload `exchange-role-groups`: one
+  `Get-RoleGroup` read, no parameters, Collector credential (Exchange Administrator, already held). It ships `disabled` until a
+  live read record is imported. Once on, Exchange role assignments that Graph names `/RoleGroups/<id>` read with the group's name.
+- Needs: /opt/keel-live at the #535 merge or later (`test -f /opt/keel-live/engine/collect/workloads/exchangeRoleGroups.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** reads only. `Get-RoleGroup` with the Collector credential. No `New-`, `Set-`, `Add-` or `Remove-` cmdlet. Grant,
+  assign or create nothing.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Capture**, with the Exchange config the workloads use (`powershellConfigs.exchange` in `/etc/keel/workload-scope.json`,
+     else `/etc/keel/tenant.json`):
+     ```bash
+     node tools/qualification/workloadReadsLive.mjs capture --workload exchange-role-groups --tenant-ref <tenant ref> \
+       --collector-ref app:<that config's clientId> --collector-config <that config> \
+       --build "$(git -C /opt/keel-live rev-parse HEAD)" \
+       --out docs/release/qualifications/workload-reads-exchange-role-groups-live-acceptance.json
+     node tools/qualification/pseudonymize.mjs check docs/release/qualifications/workload-reads-exchange-role-groups-live-acceptance.json
+     ```
+     Report the exit codes, `outcome`, `proven` and `notProven` verbatim. If the check is not exit 0, stop and file an issue.
+  2. **Evidence:** commit the record to `claude/live-evidence-exchange-role-groups` (from `origin/master`, that file only, checked
+     for secrets) and push. No PR.
+  3. **Import** with `--dir` a checkout holding this record and the other read records (as Q141 step 5):
+     `node cli/keel-workload-collect.mjs import --dir <dir>`. Report exit code and `imported` / `refused` / `absent`.
+  4. `node cli/keel-workload-collect.mjs run` once by hand. Report the per-workload table (outcome, n_reasons, observations) and,
+     for exchange-role-groups, its reasons and `fieldCounts` / unknown fields if not `complete`.
+  5. **Names check (DB only):** how many Exchange role assignments in the newest snapshot point to a role group by id, and how many
+     of those ids match a role group in the newest exchange-role-groups run:
+     ```sql
+     WITH s AS (SELECT id FROM snapshot WHERE status='complete' ORDER BY started_at DESC LIMIT 1),
+          a AS (SELECT lower(substring(payload->>'principalId' from '^/RoleGroups/(.+)$')) AS gid
+                  FROM resource_version WHERE snapshot_id IN (SELECT id FROM s) AND resource_type='exchangeRoleAssignment'
+                   AND payload->>'principalId' ~* '^/RoleGroups/[0-9a-f-]{36}$'),
+          c AS (SELECT id FROM workload_collection WHERE workload='exchange-role-groups' AND outcome IN ('complete','partial')
+                 ORDER BY observed_to DESC LIMIT 1),
+          g AS (SELECT lower(fields->>'identity') AS i, lower(fields->>'ExchangeObjectId') AS o FROM workload_observation
+                 WHERE collection_id IN (SELECT id FROM c))
+     SELECT count(*) AS by_id, count(*) FILTER (WHERE EXISTS (SELECT 1 FROM g WHERE g.i=a.gid OR g.o=a.gid)) AS named FROM a;
+     ```
+- **Expected:** the read is proven; after step 4 exchange-role-groups is `complete` (or `partial` from unknown fields only) with
+  one observation per role group (built-in ones included); in step 5 `named` equals `by_id`.
+- **Report:** per step, the result; the evidence branch and commit; on / off with the reason; step 5's two numbers.

@@ -9,7 +9,7 @@ import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 import { catalogPath, catalogedCmdlets, isUnderItem } from './catalogue.mjs';
 import { ALIAS_PATHS, SKIPPED_PATHS, SKIP_REASONS } from './notGaps.mjs';
-import { discover, discoverPowerShell, failureReason, probePath } from './discover.mjs';
+import { discover, discoverPowerShell, failureReason, notUsedReason, probePath, reclassifyCatalogue } from './discover.mjs';
 import { holdsGrant, missingGrant, tokenRoles } from './grants.mjs';
 import { discoverablePaths, parseMetadata } from './metadata.mjs';
 import { loadLatestDiscovery, saveDiscoveryRun } from './store.mjs';
@@ -453,4 +453,60 @@ test('a scheduled run for another tenant is refused before any request; the matc
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// The refusals the live tenant gives for types it does not use (Q99, Q104): a licence
+// 403, AADB2C99039 for API connectors, Intune's 501 and a 404 for a singleton never set up.
+function tenantWithout(fetchImpl) {
+  return async (url, init) => {
+    const path = new URL(url).pathname.replace(/^\/(v1\.0|beta)/, '');
+    if (path.startsWith('/identityGovernance/lifecycleWorkflows/')) {
+      return json(403, { error: { code: 'AccessDenied', message: 'Insufficient license for this tenant. Entra ID Governance is required.' } });
+    }
+    if (path === '/identity/apiConnectors') return json(400, { error: { code: 'AADB2C99039', message: 'Self service sign up is not enabled for this tenant.' } });
+    if (path === '/deviceManagement/exchangeConnectors') return json(501, { error: { code: 'NotSupported', message: 'Not supported' } });
+    if (path === '/deviceManagement/applePushNotificationCertificate') return json(404, { error: { code: 'ResourceNotFound', message: 'Not found' } });
+    if (path === '/deviceManagement/mobileThreatDefenseConnectors') {
+      return json(403, { error: { code: 'Forbidden', message: "Application is not authorized to perform this operation. Application must have one of the following scopes: DeviceManagementServiceConfig.Read.All" } });
+    }
+    return fetchImpl(url, init);
+  };
+}
+
+test('a backed-up type the tenant does not use is not-used with its reason; a refused read stays unreadable', async () => {
+  const tenant = fixtureTenant();
+  const graph = readOnlyGraph(async () => 't', { fetchImpl: tenantWithout(tenant.fetchImpl), sleep: async () => {} });
+  const run = await discover({ graph, metadata: { 'v1.0': fixtureMetadata() }, cataloguedCmdlets: CATALOGUED_CMDLETS, now: fixed });
+  const byType = new Map(run.catalogue.map((entry) => [entry.type, entry]));
+  const view = (type) => [byType.get(type).coverage, byType.get(type).reason];
+  for (const type of ['lifecycleWorkflow', 'lifecycleWorkflowCustomTaskExtension', 'lifecycleManagementSettings']) {
+    if (byType.has(type)) assert.deepEqual(view(type), ['not-used', 'not-licensed'], type);
+  }
+  assert.ok(byType.has('lifecycleWorkflow'));
+  assert.deepEqual(view('identityApiConnector'), ['not-used', 'feature-off']);
+  assert.deepEqual(view('deviceManagementExchangeConnector'), ['not-used', 'feature-off']);
+  assert.deepEqual(view('applePushNotificationCertificate'), ['not-used', 'not-set-up']);
+  // A missing permission is still a problem, and names the permission.
+  assert.deepEqual(view('mobileThreatDefenseConnector'), ['unreadable', 'missing-grant']);
+  assert.match(byType.get('mobileThreatDefenseConnector').missingGrant, /^DeviceManagement\w+\.Read\.All$/);
+  assert.equal(run.summary.catalogue.unreadable, 1);
+
+  // A run stored before the rule existed reads back with it applied.
+  const old = run.catalogue.map((entry) => (entry.coverage === 'not-used' ? { ...entry, coverage: 'unreadable', reason: 'not-listable' } : entry));
+  const id = await saveDiscoveryRun(client, { tenantRef: 'sha256:discovery-not-used', run: { ...run, catalogue: old } });
+  assert.ok(id);
+  const latest = await loadLatestDiscovery(client, { tenantRef: 'sha256:discovery-not-used', statuses: ['uncatalogued'] });
+  assert.deepEqual(latest.catalogue, run.catalogue);
+  assert.deepEqual(reclassifyCatalogue(old, []), old, 'without the refusals nothing is guessed');
+});
+
+test('notUsedReason only excuses the refusals the backup also treats as not used', () => {
+  assert.equal(notUsedReason({}, { httpStatus: 403, message: 'Forbidden: Insufficient license' }), 'not-licensed');
+  assert.equal(notUsedReason({}, { httpStatus: 400, message: 'AADB2C99039: self service sign up is not enabled' }), 'feature-off');
+  assert.equal(notUsedReason({}, { httpStatus: 501, message: 'NotSupported' }), 'feature-off');
+  assert.equal(notUsedReason({ absentWhenNotFound: true }, { httpStatus: 404, message: null }), 'not-set-up');
+  assert.equal(notUsedReason({}, { httpStatus: 404, message: null }), null, 'a 404 on a list is a wrong read');
+  assert.equal(notUsedReason({}, { httpStatus: 403, message: 'Authorization_RequestDenied' }), null);
+  assert.equal(notUsedReason({}, { httpStatus: 400, message: 'BadRequest: Resource not found for the segment' }), null);
+  assert.equal(notUsedReason({}, null), null);
 });

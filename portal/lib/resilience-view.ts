@@ -65,6 +65,8 @@ export interface RecoveryMetrics {
     oldestDependency: (DependencyRef & { ageMs: number; since: string }) | null;
     gaps: (DependencyRef & { lastAttempt: { at: string | null; outcome: string | null } | null })[];
     latestFailures: (DependencyRef & { failedAt: string | null; outcome: string | null; lastSuccessAt: string })[];
+    /** Types the tenant has no licence or feature for; absent on reports before it existed. */
+    notUsed?: (DependencyRef & { checkedAt: string | null })[];
     required: number;
   };
   recoverablePoint: {
@@ -293,6 +295,15 @@ export function freshnessSentence(metrics: RecoveryMetrics): string {
     return `Not measured: ${count} required item${count === 1 ? " has" : "s have"} never been backed up successfully.`;
   }
   return "Not measured: KEEL has no successful backup to measure from yet.";
+}
+
+/** The lead-in to the types left out because this tenant does not use them. */
+export function notUsedSentence(metrics: RecoveryMetrics): string | null {
+  const notUsed = metrics.freshness.notUsed ?? [];
+  if (!notUsed.length) return null;
+  return notUsed.length === 1
+    ? "1 type is not used in this tenant, which has no licence or feature for it, so it is not counted:"
+    : `${notUsed.length} types are not used in this tenant, which has no licence or feature for them, so they are not counted:`;
 }
 
 export function recoverablePointSentence(metrics: RecoveryMetrics, now: string): string {

@@ -1180,6 +1180,7 @@ const RESILIENCE: ResilienceData = {
       state: "measured", achievedRpoMs: 13_200_000, required: 54, gaps: [],
       oldestDependency: { key: "type:conditionalAccessPolicy", kind: "type", type: "conditionalAccessPolicy", parentType: null, family: null, ageMs: 13_200_000, since: "2026-10-02T06:00:00.000Z" },
       latestFailures: [{ key: "type:authenticationMethodsPolicy", kind: "type", type: "authenticationMethodsPolicy", parentType: null, family: null, failedAt: "2026-10-02T09:00:00.000Z", outcome: "failed", lastSuccessAt: "2026-10-02T06:00:00.000Z" }],
+      notUsed: [{ key: "type:lifecycleWorkflow", kind: "type", type: "lifecycleWorkflow", parentType: null, family: null, checkedAt: "2026-10-02T09:00:00.000Z" }],
     },
     recoverablePoint: {
       state: "measured", point: "2026-10-01T04:00:00.000Z", ageMs: 106_800_000,

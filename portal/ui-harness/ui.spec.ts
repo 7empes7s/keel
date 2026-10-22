@@ -1148,6 +1148,9 @@ test("resilience shows measured values, names what does not count, and keeps unm
   const freshness = page.locator(".resilience-freshness");
   await expect(freshness).toContainText("The oldest good backup KEEL relies on is 3 hours 40 minutes old: Conditional Access policy.");
   await expect(freshness).toContainText("This is the plan, not a result.");
+  await expect(freshness).toContainText("1 type is not used in this tenant, which has no licence or feature for it, so it is not counted:");
+  await expect(freshness.locator(".resilience-not-used li")).toHaveText("Not used Lifecycle workflow");
+  await expect(freshness).not.toContainText("Lifecycle workflow has never been backed up successfully.");
   await expect(page.locator(".resilience-incidents").getByRole("link", { name: "Admin consent phishing" })).toBeVisible();
 
   await open(page, "/resilience/unmeasured");

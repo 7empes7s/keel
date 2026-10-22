@@ -88,8 +88,16 @@ export function describeInventory(run) {
   const containers = Object.entries(summary.containers ?? {})
     .map(([name, value]) => `${name} ${value?.objects === null || value?.objects === undefined ? 'unknown' : `${value.exact === false ? '≥' : ''}${value.objects}`}`);
   if (containers.length) lines.push(`Containers: ${containers.join(', ')}.`);
-  const catalogue = Object.entries(summary.catalogue ?? {}).map(([state, count]) => `${count} ${state}`).join(', ');
+  // Counted from the entries when present, so a stored run shows the not-used rule too.
+  const counts = Array.isArray(run.catalogue)
+    ? run.catalogue.reduce((out, entry) => ({ ...out, [entry.coverage]: (out[entry.coverage] ?? 0) + 1 }), {})
+    : summary.catalogue ?? {};
+  const catalogue = Object.entries(counts).map(([state, count]) => `${count} ${state}`).join(', ');
   if (catalogue) lines.push(`Catalogue: ${catalogue}.`);
+  for (const entry of Array.isArray(run.catalogue) ? run.catalogue : []) {
+    if (entry.coverage === 'covered' || entry.coverage === 'under-item') continue;
+    lines.push(`  ${entry.coverage} ${entry.type} (${entry.version} ${entry.path})${entry.reason ? `: ${entry.reason}` : ''}${entry.missingGrant ? `, needs ${entry.missingGrant}` : ''}`);
+  }
   const uncatalogued = run.items.filter((item) => item.status === 'uncatalogued');
   if (uncatalogued.length) lines.push('Uncatalogued (readable, not backed up yet):');
   for (const item of uncatalogued) lines.push(`  ${item.source} ${item.name}${item.kind === 'cmdlet' ? '' : ` (${objects(item)})`}`);

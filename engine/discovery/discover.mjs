@@ -21,6 +21,7 @@ import { catalogPath, catalogedCmdlets, catalogedGraphPaths, isUnderItem, skippe
 import { missingGrant } from './grants.mjs';
 import { discoverablePaths, parseMetadata } from './metadata.mjs';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
+import { unavailableOnTenant } from '../collect/entraAdapter.mjs';
 
 export const GRAPH_VERSIONS = Object.freeze(['v1.0', 'beta']);
 export const DEFAULT_PAGE_CAP = 5;
@@ -196,9 +197,28 @@ export function discoverPowerShell(commands, cataloguedCmdlets) {
 }
 
 /**
+ * Why a refused read of a backed-up type means the tenant does not use it, or null
+ * when it is a read KEEL should be able to make. The same rule the backup uses
+ * (entraAdapter.unavailableOnTenant, #289/#466): `not-licensed` for a 403 that names
+ * a licence, `feature-off` for a 501 or AADB2C99039 (self-service sign-up off).
+ * A singleton the backup records as absent on 404 (`absentWhenNotFound`) is
+ * `not-set-up`.
+ */
+export function notUsedReason(entry, refused) {
+  if (!refused) return null;
+  const status = refused.httpStatus ?? null;
+  const message = refused.message ?? '';
+  if (entry?.absentWhenNotFound && status === 404) return 'not-set-up';
+  if (!unavailableOnTenant({ status, message })) return null;
+  return status === 403 ? 'not-licensed' : 'feature-off';
+}
+
+/**
  * How each catalogue entry fared: `covered` (its path was read), `under-item` (it sits
  * under one object, such as `/organization/{org}/branding`, and the collection
- * that object is listed in was read), `unreadable`, or `not-in-metadata`.
+ * that object is listed in was read), `not-used` (refused because the tenant lacks
+ * the licence or feature, or never set it up: notUsedReason), `unreadable`, or
+ * `not-in-metadata`.
  */
 export function catalogueCoverage(items, catalog = CATALOG) {
   const graphItems = items.filter((item) => item.source.startsWith('graph:'));
@@ -218,13 +238,36 @@ export function catalogueCoverage(items, catalog = CATALOG) {
     let coverage;
     if (readable) coverage = isUnderItem(path) ? 'under-item' : 'covered';
     else coverage = seen.length ? 'unreadable' : 'not-in-metadata';
-    const refused = seen.find((item) => item.status === 'unreadable');
+    // Prefer the refusal from the version the backup reads.
+    const refusals = seen.filter((item) => item.status === 'unreadable');
+    const refused = refusals.find((item) => item.source === `graph:${entry.version}`) ?? refusals[0];
+    const notUsed = coverage === 'unreadable' ? notUsedReason(entry, refused) : null;
+    if (notUsed) coverage = 'not-used';
     return {
       type: entry.type, path, version: entry.version, coverage,
       objects: readable && !isUnderItem(path) ? readable.objects : null,
-      reason: coverage === 'unreadable' ? refused?.reason ?? null : null,
+      reason: notUsed ?? (coverage === 'unreadable' ? refused?.reason ?? null : null),
       missingGrant: coverage === 'unreadable' ? refused?.missingGrant ?? null : null,
     };
+  });
+}
+
+/**
+ * A stored run's catalogue with the not-used rule applied, for runs stored before
+ * it existed: each `unreadable` entry whose refusal (from the run's items) matches
+ * notUsedReason becomes `not-used`. Entries and items are as stored.
+ */
+export function reclassifyCatalogue(catalogue, items, catalog = CATALOG) {
+  if (!Array.isArray(catalogue)) return catalogue;
+  const byType = new Map(catalog.map((entry) => [entry.type, entry]));
+  return catalogue.map((stored) => {
+    if (stored?.coverage !== 'unreadable') return stored;
+    const path = String(stored.path ?? '');
+    const lookup = (isUnderItem(path) ? path.slice(0, path.search(/\/\{/)) : path).toLowerCase();
+    const refusals = (items ?? []).filter((item) => item.status === 'unreadable' && item.source?.startsWith('graph:') && String(item.name).toLowerCase() === lookup);
+    const refused = refusals.find((item) => item.source === `graph:${stored.version}`) ?? refusals[0];
+    const reason = notUsedReason(byType.get(stored.type) ?? stored, refused);
+    return reason ? { ...stored, coverage: 'not-used', reason, missingGrant: null } : stored;
   });
 }
 

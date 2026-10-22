@@ -1,6 +1,9 @@
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
   catalogueSentence,
+  missingCatalogue,
+  notUsedCatalogue,
+  notUsedSentence,
   containerLine,
   discoveryHeadline,
   objectCount,
@@ -72,7 +75,8 @@ export function DiscoveryInventoryView({ data, now }: { data: DiscoveryInventory
   const uncatalogued = data.items.filter((item) => item.status === "uncatalogued");
   const unreadable = data.items.filter((item) => item.status === "unreadable");
   const skipped = data.items.filter((item) => item.status === "skipped");
-  const missing = data.catalogue.filter((entry) => entry.coverage === "unreadable" || entry.coverage === "not-in-metadata");
+  const missing = missingCatalogue(data);
+  const notUsed = notUsedCatalogue(data);
   const containers = containerLine(data);
   return (
     <section aria-labelledby={HEADING_ID} className="report-section">
@@ -86,14 +90,14 @@ export function DiscoveryInventoryView({ data, now }: { data: DiscoveryInventory
         </span>
       </div>
       <p>{discoveryHeadline(data)}</p>
-      <p>{catalogueSentence(data)}</p>
+      <p className={missing.length ? "action-error" : undefined}>{catalogueSentence(data)}</p>
       {containers ? <p className="activity-meta">{containers}</p> : null}
       {sourceProblems(data).map((line) => <p className="action-error" key={line}>{line}</p>)}
       <ItemList items={uncatalogued} summary={`Not backed up yet (${uncatalogued.length.toLocaleString("en-GB")})`} />
       <ItemList items={unreadable} summary={`KEEL cannot read (${unreadable.length.toLocaleString("en-GB")})`} />
       <ItemList items={skipped} summary={`Not worth backing up (${skipped.length.toLocaleString("en-GB")})`} />
       {missing.length ? (
-        <details className="technical-details">
+        <details className="technical-details" open>
           <summary>{`Backed-up types not found (${missing.length})`}</summary>
           <ul className="activity-list">
             {missing.map((entry) => (
@@ -103,6 +107,21 @@ export function DiscoveryInventoryView({ data, now }: { data: DiscoveryInventory
                   <p className="activity-meta">
                     {entry.coverage === "not-in-metadata" ? "Microsoft no longer lists this type." : unreadableSentence({ reason: entry.reason, missingGrant: entry.missingGrant, grantSource: "documented" })}
                   </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      {notUsed.length ? (
+        <details className="technical-details">
+          <summary>{`Not used in this tenant (${notUsed.length})`}</summary>
+          <ul className="activity-list">
+            {notUsed.map((entry) => (
+              <li className="activity-item" key={entry.type}>
+                <div className="activity-main">
+                  <span className="activity-title"><span className="pill pill-neutral">Not used</span> {typeLabel({ kind: "entitySet", name: entry.path, entityType: entry.type })}</span>
+                  <p className="activity-meta">{notUsedSentence(entry)}</p>
                 </div>
               </li>
             ))}

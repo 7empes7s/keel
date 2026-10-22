@@ -6,7 +6,7 @@ import {
 } from "../../engine/coverage/recoveryMetrics.mjs";
 import { summarizeRecoveryReadiness } from "../../engine/coverage/recoveryReadiness.mjs";
 import {
-  attemptReason, cadenceSentence, dependencyName, formatDuration, freshnessSentence, offsiteReason,
+  attemptReason, cadenceSentence, dependencyName, formatDuration, freshnessSentence, notUsedSentence, offsiteReason,
   recoverablePointSentence, recoveryTimeSentence, resilienceVerdict, type RecoveryMetrics,
 } from "@/lib/resilience-view";
 
@@ -98,4 +98,23 @@ test("reasons and names are words, not codes", () => {
   const gaps = metrics({ observations: [success("user", "2026-10-03T06:00:00.000Z")] });
   assert.equal(gaps.freshness.state, "gaps");
   assert.equal(freshnessSentence(gaps), "Not measured: 1 required item has never been backed up successfully.");
+});
+
+test("a type the tenant does not use is listed as not used, not as never backed up", () => {
+  const unavailable = {
+    dependency: "type:lifecycleWorkflow", observationId: "s-1:lifecycleWorkflow", snapshotId: "s-1", outcome: "unavailable", success: false,
+    startedAt: "2026-10-03T11:00:00.000Z", completedAt: "2026-10-03T11:00:00.000Z",
+  };
+  const freshness = computeFreshness({
+    required: [...required, typeDependency("lifecycleWorkflow")],
+    observations: [success("user", "2026-10-03T11:00:00.000Z"), success("group", "2026-10-03T10:00:00.000Z"), unavailable],
+    now: NOW,
+  });
+  assert.equal(freshness.state, "measured");
+  assert.equal(freshness.gaps.length, 0);
+  assert.equal(freshness.required, 2);
+  const view = { ...metrics(), freshness } as RecoveryMetrics;
+  assert.equal(notUsedSentence(view), "1 type is not used in this tenant, which has no licence or feature for it, so it is not counted:");
+  assert.equal(dependencyName(freshness.notUsed[0]), "Lifecycle workflow");
+  assert.equal(notUsedSentence(metrics()), null);
 });

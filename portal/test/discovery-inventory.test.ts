@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { DiscoveryInventoryView } from "@/components/discovery-inventory";
 import {
   catalogueSentence,
+  notUsedSentence,
   containerLine,
   discoveryHeadline,
   skippedSentence,
@@ -82,4 +83,31 @@ test("the section lists what is not backed up and what cannot be read, with path
 test("before the first run the section says discovery has not run", () => {
   const html = renderToStaticMarkup(createElement(DiscoveryInventoryView, { data: null, now: NOW }));
   assert.match(html, /Discovery has not run for this tenant yet/);
+});
+
+test("backed-up types the tenant does not use are listed apart, not as unread", () => {
+  const data: DiscoveryInventoryData = {
+    ...DATA,
+    catalogue: [
+      ...DATA.catalogue,
+      { type: "lifecycleWorkflow", path: "/identityGovernance/lifecycleWorkflows/workflows", version: "v1.0", coverage: "not-used", objects: null, reason: "not-licensed", missingGrant: null },
+      { type: "identityApiConnector", path: "/identity/apiConnectors", version: "v1.0", coverage: "not-used", objects: null, reason: "feature-off", missingGrant: null },
+    ],
+  };
+  assert.equal(catalogueSentence(data), "Every type KEEL backs up that this tenant uses was found and read (1). 2 types are not used in this tenant.");
+  assert.equal(notUsedSentence({ reason: "not-licensed" }), "Not used in this tenant: the tenant has no licence for it. Nothing to back up.");
+  assert.equal(notUsedSentence({ reason: "not-set-up" }), "Not used in this tenant: it has never been set up in this tenant. Nothing to back up.");
+  const html = renderToStaticMarkup(createElement(DiscoveryInventoryView, { data, now: NOW }));
+  assert.match(html, /Not used in this tenant \(2\)/);
+  assert.match(html, /Lifecycle workflow/);
+  assert.doesNotMatch(html, /Backed-up types not found/);
+
+  const withGap: DiscoveryInventoryData = {
+    ...data,
+    catalogue: [...data.catalogue, { type: "printer", path: "/print/printers", version: "v1.0", coverage: "unreadable", objects: null, reason: "missing-grant", missingGrant: "Printer.Read.All" }],
+  };
+  assert.equal(catalogueSentence(withGap), "1 type KEEL backs up was not found or could not be read. 2 types are not used in this tenant.");
+  const gapHtml = renderToStaticMarkup(createElement(DiscoveryInventoryView, { data: withGap, now: NOW }));
+  assert.match(gapHtml, /Backed-up types not found \(1\)/);
+  assert.match(gapHtml, /Printer.Read.All permission/);
 });

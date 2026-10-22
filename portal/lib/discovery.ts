@@ -35,7 +35,7 @@ export interface CatalogueCoverage {
   type: string;
   path: string;
   version: string;
-  coverage: "covered" | "under-item" | "unreadable" | "not-in-metadata";
+  coverage: "covered" | "under-item" | "not-used" | "unreadable" | "not-in-metadata";
   objects: number | null;
   reason: string | null;
   missingGrant: string | null;
@@ -152,13 +152,38 @@ export function discoveryHeadline(data: DiscoveryInventoryData): string {
   return `Discovery found ${plural(summary.types, "type")}: ${parts.join(", ")}.`;
 }
 
+/** Backed-up types discovery could not read, other than those the tenant does not use. */
+export function missingCatalogue(data: DiscoveryInventoryData): CatalogueCoverage[] {
+  return data.catalogue.filter((entry) => entry.coverage === "unreadable" || entry.coverage === "not-in-metadata");
+}
+
+/** Backed-up types this tenant does not use (no licence, feature off, never set up). */
+export function notUsedCatalogue(data: DiscoveryInventoryData): CatalogueCoverage[] {
+  return data.catalogue.filter((entry) => entry.coverage === "not-used");
+}
+
+const NOT_USED_REASONS: Record<string, string> = {
+  "not-licensed": "the tenant has no licence for it",
+  "feature-off": "the feature is not switched on or not offered in this tenant",
+  "not-set-up": "it has never been set up in this tenant",
+};
+
+/** Why a backed-up type is not used in this tenant. */
+export function notUsedSentence(entry: Pick<CatalogueCoverage, "reason">): string {
+  return `Not used in this tenant: ${NOT_USED_REASONS[entry.reason ?? ""] ?? "the tenant does not have this feature"}. Nothing to back up.`;
+}
+
 /** The catalogue check: whether every type KEEL backs up was found in the tenant. */
 export function catalogueSentence(data: DiscoveryInventoryData): string {
-  const missing = data.catalogue.filter((entry) => entry.coverage === "unreadable" || entry.coverage === "not-in-metadata");
+  const missing = missingCatalogue(data);
+  const notUsed = notUsedCatalogue(data).length;
+  const unused = notUsed ? ` ${plural(notUsed, "type")} ${notUsed === 1 ? "is" : "are"} not used in this tenant.` : "";
   if (!missing.length) {
-    return data.catalogue.length === 1 ? "The one type KEEL backs up was found and read." : `All ${data.catalogue.length} types KEEL backs up were found and read.`;
+    const read = data.catalogue.length - notUsed;
+    if (!notUsed) return data.catalogue.length === 1 ? "The one type KEEL backs up was found and read." : `All ${data.catalogue.length} types KEEL backs up were found and read.`;
+    return `Every type KEEL backs up that this tenant uses was found and read (${read.toLocaleString("en-GB")}).${unused}`;
   }
-  return `${plural(missing.length, "type")} KEEL backs up ${missing.length === 1 ? "was" : "were"} not found or could not be read.`;
+  return `${plural(missing.length, "type")} KEEL backs up ${missing.length === 1 ? "was" : "were"} not found or could not be read.${unused}`;
 }
 
 /** Sources that were not read in full, as sentences. */

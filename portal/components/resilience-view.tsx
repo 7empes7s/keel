@@ -10,6 +10,7 @@ import {
   dependencyName,
   formatDuration,
   freshnessSentence,
+  notUsedSentence,
   incidentSentence,
   offsiteReason,
   readinessSentence,
@@ -27,7 +28,7 @@ import {
 // says what was measured, in words; "Not measured" is shown as its own state, never
 // as zero, and the configured timetable is labelled as a plan, never as a result.
 
-type Tone = "ok" | "warn" | "bad";
+type Tone = "ok" | "warn" | "bad" | "neutral";
 
 function StatePill({ tone, label }: { tone: Tone; label: string }) {
   return <span className={`pill pill-${tone}`}>{label}</span>;
@@ -97,6 +98,16 @@ export function ResilienceView({ data }: { data: ResilienceData }) {
             ))}
             {freshness.gaps.length > 6 ? <li>And {freshness.gaps.length - 6} more.</li> : null}
           </ul>
+        ) : null}
+        {notUsedSentence(metrics) ? (
+          <div className="resilience-not-used">
+            <p className="field-help">{notUsedSentence(metrics)}</p>
+            <ul className="resilience-list">
+              {(freshness.notUsed ?? []).map((entry) => (
+                <li key={entry.key}><StatePill label="Not used" tone="neutral" /> {dependencyName(entry)}</li>
+              ))}
+            </ul>
+          </div>
         ) : null}
         {freshness.latestFailures.length ? (
           <ul className="resilience-list">

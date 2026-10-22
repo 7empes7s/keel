@@ -43,6 +43,17 @@ export function activityKind(value: string | null | undefined): ActivityKind | n
   return value && value in ACTIVITY_KINDS ? (value as ActivityKind) : null;
 }
 
+/** A comma list of kinds from the address, in their usual order, unknowns dropped. */
+export function kindsOf(value: string | null | undefined): ActivityKind[] {
+  const picked = (value ?? "").split(",");
+  return ACTIVITY_KIND_ORDER.filter((key) => picked.includes(key));
+}
+
+/** A comma list of accounts from the address ("Who"), as recorded, in the order given. */
+export function actorsOf(value: string | null | undefined): string[] {
+  return [...new Set((value ?? "").split(",").map((entry) => entry.trim()).filter(Boolean))];
+}
+
 /** How a row ended: the picker's choices under "Outcome", and the chip on each row. */
 export type Outcome = "failed" | "refused" | "running" | "waiting" | "finished" | "recorded" | "cancelled";
 
@@ -356,9 +367,10 @@ export function activityVerdict(counts: ActivityCounts, showJobs: boolean, integ
 export interface ActivityFilters {
   show: "all" | "jobs" | "records";
   range: DayRange | null;
-  who: string | null;
-  what: ActivityKind | null;
-  // Outcomes add up: `outcome=failed,running` shows either.
+  // Each filter takes several values, and they add up: `outcome=failed,running` shows
+  // either, `who=a,b` either account, `what=backup,restore` either kind.
+  who: string[];
+  what: ActivityKind[];
   outcomes: Outcome[];
 }
 
@@ -367,8 +379,8 @@ export function parseFilters(get: (key: string) => string | null): ActivityFilte
   return {
     show: show === "jobs" || show === "records" ? show : "all",
     range: rangeFromParam(get("range")),
-    who: get("who") || null,
-    what: activityKind(get("what")),
+    who: actorsOf(get("who")),
+    what: kindsOf(get("what")),
     outcomes: outcomesOf(get("outcome")),
   };
 }
@@ -383,9 +395,9 @@ export function rangeBounds(range: DayRange | null): { from: string; to: string 
 export function rowMatches(row: ActivityRow, filters: ActivityFilters): boolean {
   if (filters.show === "jobs" && row.type !== "job") return false;
   if (filters.show === "records" && row.type !== "record") return false;
-  if (filters.what && row.kind !== filters.what) return false;
+  if (filters.what.length && !filters.what.includes(row.kind)) return false;
   if (filters.outcomes.length && !filters.outcomes.includes(row.outcome)) return false;
-  if (filters.who && row.who !== filters.who) return false;
+  if (filters.who.length && !(row.who && filters.who.includes(row.who))) return false;
   if (filters.range) {
     const bounds = rangeBounds(filters.range)!;
     const at = row.at ?? "";
@@ -398,11 +410,8 @@ export function rowMatches(row: ActivityRow, filters: ActivityFilters): boolean 
 export function filterWords(filters: ActivityFilters, people: ActivityPeople, today: Day): string {
   const parts: string[] = [];
   if (filters.outcomes.length) parts.push(filters.outcomes.map((key) => OUTCOMES[key].plural.toLowerCase()).join(" or "));
-  parts.push(filters.what ? ACTIVITY_KINDS[filters.what].label.toLowerCase() : filters.show === "jobs" ? "jobs" : filters.show === "records" ? "audit entries" : "entries");
-  if (filters.who) {
-    const ref = personFor(filters.who, people);
-    parts.push(`by ${ref ? capital(personLabel(ref)) : "one account"}`);
-  }
+  parts.push(filters.what.length ? filters.what.map((key) => ACTIVITY_KINDS[key].label.toLowerCase()).join(" or ") : filters.show === "jobs" ? "jobs" : filters.show === "records" ? "audit entries" : "entries");
+  if (filters.who.length) parts.push(`by ${filters.who.map((who) => whoName(who, people)).join(" or ")}`);
   if (filters.range) {
     const { from, to } = normalise(filters.range);
     parts.push(!to && from === today ? "today" : to ? `from ${shortDate(from)} to ${shortDate(to)}` : `on ${shortDate(from)}`);
@@ -418,16 +427,18 @@ export function filterChips(filters: ActivityFilters, people: ActivityPeople, to
     chips.push({ key: `outcome:${key}`, label: OUTCOMES[key].plural, clear: { outcome: rest.join(",") || null } });
   }
   if (filters.show !== "all") chips.push({ key: "show", label: filters.show === "jobs" ? "Jobs only" : "Audit record only", clear: { show: null } });
-  if (filters.what) chips.push({ key: "what", label: ACTIVITY_KINDS[filters.what].label, clear: { what: null } });
-  if (filters.who) {
-    const ref = personFor(filters.who, people);
-    chips.push({ key: "who", label: `By ${ref ? capital(personLabel(ref)) : "one account"}`, clear: { who: null } });
-  }
+  for (const key of filters.what) chips.push({ key: `what:${key}`, label: ACTIVITY_KINDS[key].label, clear: { what: filters.what.filter((entry) => entry !== key).join(",") || null } });
+  for (const who of filters.who) chips.push({ key: `who:${who}`, label: `By ${whoName(who, people)}`, clear: { who: filters.who.filter((entry) => entry !== who).join(",") || null } });
   if (filters.range) {
     const { from, to } = normalise(filters.range);
     chips.push({ key: "range", label: !to && from === today ? "Today" : to ? `${shortDate(from)} to ${shortDate(to)}` : `On ${shortDate(from)}`, clear: { range: null } });
   }
   return chips;
+}
+
+function whoName(who: string, people: ActivityPeople): string {
+  const ref = personFor(who, people);
+  return ref ? capital(personLabel(ref)) : "one account";
 }
 
 /** The account behind a "Who" value: keyed by the actor as recorded, or by its id. */
@@ -454,11 +465,13 @@ export function activityCsv(rows: ActivityRow[]): string {
 }
 
 /** The people seen in the rows, for the "Who" picker: each once, named, people first. */
-export function peopleIn(rows: ActivityRow[], people: ActivityPeople, chosen: string | null): { id: string; name: string; system: boolean }[] {
+export function peopleIn(rows: ActivityRow[], people: ActivityPeople, chosen: readonly string[]): { id: string; name: string; system: boolean }[] {
   const seen = new Map<string, EngineRef>();
   for (const row of rows) if (row.who && row.person && !seen.has(row.who)) seen.set(row.who, row.person);
-  const chosenRef = chosen ? personFor(chosen, people) : null;
-  if (chosen && chosenRef && !seen.has(chosen)) seen.set(chosen, chosenRef);
+  for (const who of chosen) {
+    const ref = personFor(who, people);
+    if (ref && !seen.has(who)) seen.set(who, ref);
+  }
   return [...seen.entries()]
     .map(([id, ref]) => ({ id, name: capital(personLabel(ref)), system: Boolean(ref.system) }))
     .sort((a, b) => Number(a.system) - Number(b.system) || a.name.localeCompare(b.name));

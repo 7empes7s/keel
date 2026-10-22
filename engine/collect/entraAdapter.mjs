@@ -443,6 +443,19 @@ function requestCounts(before, reader) {
   return { requests: after.requests - before.requests, throttles: after.throttles - before.throttles };
 }
 
+/** One type's progress line: its outcome, count, timing and a short error, never a payload. */
+export function progressEntry(entry, startedAt) {
+  return {
+    outcome: entry?.outcome ?? 'failed',
+    itemCount: Number.isSafeInteger(entry?.itemCount) ? entry.itemCount : null,
+    startedAt: entry?.startedAt ?? startedAt.toISOString(),
+    completedAt: entry?.completedAt ?? new Date().toISOString(),
+    httpStatus: Number.isSafeInteger(entry?.httpStatus) ? entry.httpStatus : null,
+    error: typeof entry?.error === 'string' ? entry.error.slice(0, 500) : null,
+    ...(Number.isSafeInteger(entry?.throttles) ? { throttles: entry.throttles } : {}),
+  };
+}
+
 /**
  * Snapshot collection keeps an explicit outcome for every attempted type.
  * Only completed enumerations enter `collected`; a failed/partial read has
@@ -458,10 +471,20 @@ function requestCounts(before, reader) {
  * instead. An unset tier keeps full collection, unchanged.
  */
 export async function collectWithOutcomes(reader, scope = {}) {
-  const { tier, ...rest } = scope;
+  const { tier, onProgress, ...rest } = scope;
   const collected = [];
   const coverageDigest = {};
   const context = { ...rest };
+  // The Job page shows each type as it is read: every requested type starts as waiting,
+  // and the caller hears the whole picture after each read. A failed report never
+  // changes the collection.
+  const planned = M1_TYPES.filter((type) => !tier || get(type).descriptor.criticality === tier);
+  const progress = Object.fromEntries(planned.map((type) => [type, { outcome: 'waiting' }]));
+  const report = async () => {
+    if (typeof onProgress !== 'function') return;
+    try { await onProgress({ ...progress }); } catch { /* progress is best effort */ }
+  };
+  await report();
   for (const type of M1_TYPES) {
     const { descriptor, adapter } = get(type);
     if (tier && descriptor.criticality !== tier) {
@@ -469,6 +492,8 @@ export async function collectWithOutcomes(reader, scope = {}) {
       continue;
     }
     const attemptStartedAt = new Date();
+    progress[type] = { outcome: 'reading', startedAt: attemptStartedAt.toISOString() };
+    await report();
     const before = readerCounts(reader);
     try {
       const raw = await adapter.collectRaw(reader, context);
@@ -495,6 +520,8 @@ export async function collectWithOutcomes(reader, scope = {}) {
         ...requestCounts(before, reader),
       };
     }
+    progress[type] = progressEntry(coverageDigest[type], attemptStartedAt);
+    await report();
   }
   return { collected, coverageDigest };
 }

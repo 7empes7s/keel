@@ -36,7 +36,7 @@
  *    synthetic example framework names, never asserted against real CIS
  *    content this project holds no rights to reproduce.
  */
-import { exportProjection } from '../contracts/fieldProjection.mjs';
+import { classifyForOperation, exportProjection } from '../contracts/fieldProjection.mjs';
 
 export const BENCHMARK_REGISTRY_CONTRACT_VERSION = 1;
 
@@ -55,7 +55,14 @@ export const NOT_CONFIGURED = 'not-configured';
 export const CONTROL_VERDICTS = Object.freeze(['pass', 'fail', 'unknown', 'not-applicable', 'exception']);
 export const PROVENANCE_SOURCES = Object.freeze(['original', 'licensed']);
 
+// Service reads (engine/collect/workloads) a control may rest on. Their stored fields
+// are already the read's declared fields only, with credential-shaped values redacted
+// at collection (mailFlow.mjs observeObject), so a predicate sees them as stored. Each
+// stored object carries its `kind` (the family it was read from).
+export const WORKLOAD_FACT_TYPES = Object.freeze(new Set(['exchange-mail-flow']));
+
 const PREDICATES = new Map();
+const FIX_MATCHERS = new Map();
 const CONTROLS = new Map();
 
 /** The only way a predicate becomes callable from a control (rule 1 above). */
@@ -76,6 +83,57 @@ export function predicateFor(name) {
   const fn = PREDICATES.get(name);
   if (!fn) throw new TypeError(`${name}: predicate is not allowlisted`);
   return fn;
+}
+
+/**
+ * A fix matcher says whether one object (its semantic facts, never the raw
+ * payload) is one the control's fix would change. Allowlisted exactly like a
+ * predicate: a control can only name a matcher this module's author shipped.
+ */
+export function registerFixMatcher(name, fn) {
+  if (typeof name !== 'string' || name.length === 0) {
+    throw new TypeError('fix matcher requires a non-empty name');
+  }
+  if (typeof fn !== 'function') {
+    throw new TypeError(`${name}: fix matcher must be a function`);
+  }
+  if (FIX_MATCHERS.has(name)) {
+    throw new TypeError(`${name}: fix matcher already registered`);
+  }
+  FIX_MATCHERS.set(name, fn);
+}
+
+export function fixMatcherFor(name) {
+  const fn = FIX_MATCHERS.get(name);
+  if (!fn) throw new TypeError(`${name}: fix matcher is not allowlisted`);
+  return fn;
+}
+
+/**
+ * "Make it pass": the one setting a failing object needs, written as a
+ * one-value restore through the normal dry run and approval. Declared, never
+ * computed: the type must be one the control reads, the field a top-level
+ * setting Keel may write on update, and the new value plain JSON.
+ */
+function frozenFix(controlId, fix, requiredObservations) {
+  if (fix === null || fix === undefined) return null;
+  const { resourceType, field, to, matcher } = fix;
+  if (!requiredObservations.some((req) => req.resourceType === resourceType)) {
+    throw new TypeError(`${controlId}: fix.resourceType must be one the control reads`);
+  }
+  if (typeof field !== 'string' || field.length === 0 || field.includes('.')) {
+    throw new TypeError(`${controlId}: fix.field must name one top-level setting`);
+  }
+  if (classifyForOperation('update', field, resourceType) !== 'writable') {
+    throw new TypeError(`${controlId}: fix.field ${field} is not a setting Keel writes on update`);
+  }
+  if (!['boolean', 'string', 'number'].includes(typeof to)) {
+    throw new TypeError(`${controlId}: fix.to must be a plain value`);
+  }
+  if (!FIX_MATCHERS.has(matcher)) {
+    throw new TypeError(`${controlId}: fix matcher '${matcher}' is not allowlisted — call registerFixMatcher() first`);
+  }
+  return Object.freeze({ resourceType, field, to, matcher });
 }
 
 function frozenFrameworkRef(ref) {
@@ -102,6 +160,7 @@ function frozenFrameworkRef(ref) {
 export function registerControl({
   controlId, title, description, framework, edition, profile, evaluatorVersion,
   requiredObservations, predicate, frameworkRefs = [], provenance = { source: 'original' }, severity = 'medium',
+  fix = null,
 }) {
   if (typeof controlId !== 'string' || controlId.length === 0) {
     throw new TypeError('control requires a non-empty controlId');
@@ -129,6 +188,19 @@ export function registerControl({
     }
     if (!Number.isInteger(req.maxAgeMs) || req.maxAgeMs <= 0) {
       throw new TypeError(`${controlId}: requiredObservations.maxAgeMs must be a positive integer`);
+    }
+    // `parts`: for a service read that holds several kinds (the mail protection read
+    // holds anti-spam, anti-phishing, malware and Safe Links policies...), the kinds this
+    // control needs. The read counts as complete when each of these kinds was read in
+    // full, whatever happened to the others.
+    if (req.parts !== undefined) {
+      if (!WORKLOAD_FACT_TYPES.has(req.resourceType)) {
+        throw new TypeError(`${controlId}: requiredObservations.parts is only for a service read (${[...WORKLOAD_FACT_TYPES].join(', ')})`);
+      }
+      if (!Array.isArray(req.parts) || req.parts.length === 0 || req.parts.some((part) => typeof part !== 'string' || part.length === 0)) {
+        throw new TypeError(`${controlId}: requiredObservations.parts must name at least one kind`);
+      }
+      return Object.freeze({ resourceType: req.resourceType, maxAgeMs: req.maxAgeMs, parts: Object.freeze([...req.parts]) });
     }
     return Object.freeze({ resourceType: req.resourceType, maxAgeMs: req.maxAgeMs });
   });
@@ -159,6 +231,7 @@ export function registerControl({
     frameworkRefs: Object.freeze((frameworkRefs ?? []).map(frozenFrameworkRef)),
     provenance: Object.freeze({ ...provenance }),
     severity,
+    fix: frozenFix(controlId, fix, frozenRequired),
   }));
 }
 
@@ -181,6 +254,7 @@ export function listControls({ framework, edition, profile } = {}) {
  * collected payload directly.
  */
 export function semanticFacts(resourceType, rawResource) {
+  if (WORKLOAD_FACT_TYPES.has(resourceType)) return structuredClone(rawResource);
   return exportProjection(rawResource, resourceType);
 }
 
@@ -229,6 +303,10 @@ registerPredicate('named-location-no-untrusted-all-countries', (facts) => {
   return risky ? 'fail' : 'pass';
 });
 
+registerFixMatcher('named-location-trusts-unknown-countries', (fact) => (
+  fact.isTrusted === true && fact.includeUnknownCountriesAndRegions === true
+));
+
 registerControl({
   controlId: 'keel-custom.named-location.no-untrusted-all-countries',
   title: 'No named location marks unknown-country traffic as trusted',
@@ -245,6 +323,14 @@ registerControl({
   severity: 'medium',
   requiredObservations: [{ resourceType: 'namedLocation', maxAgeMs: 6 * 60 * 60 * 1000 }],
   predicate: { name: 'named-location-no-untrusted-all-countries', args: {} },
+  // Narrowing the location (no unknown countries) keeps every listed country
+  // trusted and is the smaller change than dropping the trust altogether.
+  fix: {
+    resourceType: 'namedLocation',
+    field: 'includeUnknownCountriesAndRegions',
+    to: false,
+    matcher: 'named-location-trusts-unknown-countries',
+  },
 });
 
 registerPredicate('group-role-assignable-not-synced', (facts) => {
@@ -268,6 +354,130 @@ registerControl({
   severity: 'high',
   requiredObservations: [{ resourceType: 'group', maxAgeMs: 6 * 60 * 60 * 1000 }],
   predicate: { name: 'group-role-assignable-not-synced', args: {} },
+});
+
+// --- Defender email protection ----------------------------------------------
+// Original controls over the mail protection policies Keel already backs up (the
+// exchange-mail-flow service read, engine/collect/workloads/mailFlow.mjs): anti-
+// phishing, anti-spam, malware and Safe Links. The settings checked follow
+// Microsoft's own published recommendations; the wording is Keel's. Each looks at
+// every policy of its kind, because any policy can be the one a mailbox gets, and
+// names each policy and setting that fails, with its value and what it should be.
+
+const MAIL_PROTECTION = 'exchange-mail-flow';
+// The service read runs once a day (store/scheduleSeed.mjs workload-collect), so a
+// read up to a day and a half old still counts.
+const MAIL_PROTECTION_MAX_AGE_MS = 36 * 60 * 60 * 1000;
+
+const isOn = Object.freeze({ test: (value) => value === true, expected: true });
+const isOff = Object.freeze({ test: (value) => value === false, expected: false });
+const isEmpty = Object.freeze({ test: (value) => Array.isArray(value) && value.length === 0, expected: [] });
+const is = (word) => Object.freeze({
+  test: (value) => typeof value === 'string' && value.toLowerCase() === word.toLowerCase(),
+  expected: word,
+});
+
+function policyName(fact) {
+  if (typeof fact?.Name === 'string' && fact.Name.length > 0) return fact.Name;
+  return typeof fact?.identity === 'string' ? fact.identity : 'Unnamed policy';
+}
+
+/**
+ * Checks each policy of `kind` against `settings` ({ field: rule }). Not applicable
+ * when the tenant has no policy of that kind (Safe Links without Defender for Office
+ * 365); fails when any setting of any policy misses its rule, listing each miss.
+ */
+function checkPolicies(facts, { kind, settings, applies = () => true }) {
+  const policies = facts.filter((fact) => fact?.kind === kind && applies(fact));
+  if (policies.length === 0) return { verdict: 'not-applicable', details: [] };
+  const details = [];
+  for (const policy of policies) {
+    for (const [setting, rule] of Object.entries(settings)) {
+      const value = policy[setting];
+      if (!rule.test(value)) details.push({ subject: policyName(policy), setting, value: value ?? null, expected: rule.expected });
+    }
+  }
+  return { verdict: details.length ? 'fail' : 'pass', details };
+}
+
+function mailControl({ controlId, kind, title, description, severity, settings, applies }) {
+  const predicateName = `${MAIL_PROTECTION}.${controlId.slice(controlId.lastIndexOf('.') + 1)}`;
+  registerPredicate(predicateName, (facts) => checkPolicies(facts, { kind, settings, applies }));
+  registerControl({
+    controlId,
+    title,
+    description,
+    framework: 'keel-custom',
+    edition: '1.0.0',
+    profile: 'default',
+    evaluatorVersion: 1,
+    severity,
+    requiredObservations: [{ resourceType: MAIL_PROTECTION, maxAgeMs: MAIL_PROTECTION_MAX_AGE_MS, parts: [kind] }],
+    predicate: { name: predicateName, args: {} },
+  });
+}
+
+mailControl({
+  controlId: 'keel-custom.defender-email.anti-phish-spoof-protection',
+  kind: 'antiPhishPolicy',
+  title: 'Anti-phishing policies catch spoofed senders',
+  description: 'Fails when an anti-phishing policy that is turned on (or the default '
+    + 'policy) has spoof intelligence off (EnableSpoofIntelligence), ignores the '
+    + "sender domain's DMARC policy (HonorDmarcPolicy), or does not mark unverified "
+    + 'senders (EnableUnauthenticatedSender). An original check; not applicable when '
+    + 'the tenant has no anti-phishing policy.',
+  severity: 'high',
+  settings: { EnableSpoofIntelligence: isOn, HonorDmarcPolicy: isOn, EnableUnauthenticatedSender: isOn },
+  applies: (policy) => policy.IsDefault === true || policy.Enabled !== false,
+});
+
+mailControl({
+  controlId: 'keel-custom.defender-email.anti-spam-phish-quarantined',
+  kind: 'antiSpamPolicy',
+  title: 'Anti-spam policies quarantine phishing',
+  description: 'Fails when an anti-spam policy delivers phishing or high-confidence '
+    + 'phishing anywhere but quarantine (PhishSpamAction, HighConfidencePhishAction), '
+    + 'or does not pull phishing back out of mailboxes after delivery (PhishZapEnabled). '
+    + 'An original check; not applicable when the tenant has no anti-spam policy.',
+  severity: 'high',
+  settings: { PhishSpamAction: is('Quarantine'), HighConfidencePhishAction: is('Quarantine'), PhishZapEnabled: isOn },
+});
+
+mailControl({
+  controlId: 'keel-custom.defender-email.anti-spam-no-allowed-domains',
+  kind: 'antiSpamPolicy',
+  title: 'No anti-spam policy lets whole sender domains skip filtering',
+  description: 'Fails when an anti-spam policy lists allowed sender domains '
+    + '(AllowedSenderDomains): mail from those domains, including spoofed mail, skips '
+    + 'spam filtering. An original check; not applicable when the tenant has no '
+    + 'anti-spam policy.',
+  severity: 'medium',
+  settings: { AllowedSenderDomains: isEmpty },
+});
+
+mailControl({
+  controlId: 'keel-custom.defender-email.malware-file-filter',
+  kind: 'antiMalwarePolicy',
+  title: 'Malware policies block risky attachment types',
+  description: 'Fails when a malware policy has the common attachments filter off '
+    + '(EnableFileFilter) or does not pull malware back out of mailboxes after '
+    + 'delivery (ZapEnabled). An original check; not applicable when the tenant has no '
+    + 'malware policy.',
+  severity: 'high',
+  settings: { EnableFileFilter: isOn, ZapEnabled: isOn },
+});
+
+mailControl({
+  controlId: 'keel-custom.defender-email.safe-links-email',
+  kind: 'safeLinksPolicy',
+  title: 'Safe Links checks links in email',
+  description: 'Fails when a Safe Links policy does not check links in email '
+    + '(EnableSafeLinksForEmail), does not scan them when clicked (ScanUrls), or lets '
+    + 'people click through a warning to a malicious site (AllowClickThrough). An '
+    + 'original check; not applicable when the tenant has no Safe Links policy, as '
+    + 'without Defender for Office 365.',
+  severity: 'medium',
+  settings: { EnableSafeLinksForEmail: isOn, ScanUrls: isOn, AllowClickThrough: isOff },
 });
 
 // Blocking legacy authentication: an enabled Conditional Access policy that blocks

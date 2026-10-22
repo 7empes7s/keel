@@ -8,6 +8,7 @@ import {
   activityStatus,
   activityVerdict,
   dayLabel,
+  filterChips,
   filterWords,
   integrityWords,
   jobOutcome,
@@ -62,7 +63,7 @@ test("every job and audit entry is one row with a kind, an outcome and a person,
   assert.deepEqual(rows.slice(0, 3).map((row) => row.id), ["record:18205", "job:a3000000-0000-4000-8000-000000000003", "job:a1000000-0000-4000-8000-000000000001"]);
   const failed = rows.find((row) => row.id === "job:a3000000-0000-4000-8000-000000000003")!;
   assert.equal(failed.title, "Backup of Tier 1");
-  assert.equal(failed.line, "Backup · Graph 429: throttled after 5 retries on /deviceManagement/deviceConfigurations");
+  assert.equal(failed.line, "Backup · Microsoft 365 was busy and asked Keel to slow down.");
   assert.equal(failed.outcome, "failed");
   assert.equal(failed.kind, "backup");
   assert.equal(failed.who, MARO.id);
@@ -116,7 +117,7 @@ test("tiles, status and verdict count the last day by when a job was asked for",
   const verdict = activityVerdict(counts, true, { ok: true, status: "verified" });
   assert.equal(verdict.text, "Keel ran 4 jobs in the last day; the backup of Tier 1 failed, and 1 more.");
   assert.ok(verdict.text.split(/\s+/).length <= 25);
-  assert.equal(verdict.detail, "Graph 429: throttled after 5 retries on /deviceManagement/deviceConfigurations");
+  assert.equal(verdict.detail, "Microsoft 365 was busy and asked Keel to slow down.");
   assert.deepEqual(verdict.retry, { kind: "backup", tier: "tier1" });
   assert.equal(activityVerdict(activityCounts([JOBS[0], JOBS[4]], NOW), true, null).text, "Keel ran 1 job in the last day, none failed; 1 is still running or waiting.");
   assert.equal(activityVerdict(counts, false, { ok: false, status: "broken-at-sequence" }).tone, "urgent");
@@ -131,19 +132,36 @@ test("tiles, status and verdict count the last day by when a job was asked for",
 
 test("filters live in the address, narrow the rows, and read back as words", () => {
   const filters = parseFilters((key) => ({ show: "jobs", range: "2026-10-01..2026-10-02", who: AMARA.id, what: "restore", outcome: "failed" }[key] ?? null));
-  assert.deepEqual(filters, { show: "jobs", range: { from: "2026-10-01", to: "2026-10-02" }, who: AMARA.id, what: "restore", outcomes: ["failed"] });
+  assert.deepEqual(filters, { show: "jobs", range: { from: "2026-10-01", to: "2026-10-02" }, who: [AMARA.id], what: ["restore"], outcomes: ["failed"] });
   assert.deepEqual(rangeBounds(filters.range), { from: "2026-10-01T00:00:00.000Z", to: "2026-10-02T23:59:59.999Z" });
-  assert.deepEqual(parseFilters(() => null), { show: "all", range: null, who: null, what: null, outcomes: [] });
-  assert.equal(parseFilters((key) => (key === "what" ? "nonsense" : key === "outcome" ? "exploded" : null)).what, null);
+  assert.deepEqual(parseFilters(() => null), { show: "all", range: null, who: [], what: [], outcomes: [] });
+  assert.deepEqual(parseFilters((key) => (key === "what" ? "nonsense" : key === "outcome" ? "exploded" : null)).what, []);
   const rows = activityRows(JOBS, ENTRIES, PEOPLE, NAMES, NOW);
   assert.deepEqual(rows.filter((row) => rowMatches(row, filters)).map((row) => row.id), ["job:a4000000-0000-4000-8000-000000000004"]);
-  assert.equal(rows.filter((row) => rowMatches(row, { ...filters, show: "all", what: null, outcomes: ["refused"] })).length, 0);
-  assert.equal(rows.filter((row) => rowMatches(row, { show: "records", range: null, who: null, what: null, outcomes: ["refused"] })).length, 1);
-  assert.equal(rows.filter((row) => rowMatches(row, { show: "all", range: { from: "2026-09-28" }, who: null, what: null, outcomes: [] })).length, 2);
+  assert.equal(rows.filter((row) => rowMatches(row, { ...filters, show: "all", what: [], outcomes: ["refused"] })).length, 0);
+  assert.equal(rows.filter((row) => rowMatches(row, { show: "records", range: null, who: [], what: [], outcomes: ["refused"] })).length, 1);
+  assert.equal(rows.filter((row) => rowMatches(row, { show: "all", range: { from: "2026-09-28" }, who: [], what: [], outcomes: [] })).length, 2);
   assert.equal(filterWords(filters, PEOPLE, "2026-10-02"), "failed restores by Amara Okafor from 1 Oct to 2 Oct");
-  assert.equal(filterWords({ show: "records", range: { from: "2026-10-02" }, who: null, what: null, outcomes: [] }, PEOPLE, "2026-10-02"), "audit entries today");
-  assert.deepEqual(peopleIn(rows, PEOPLE, null).map((person) => person.name), ["Amara Okafor", "Maro Defili", "Keel's scheduler"]);
+  assert.equal(filterWords({ show: "records", range: { from: "2026-10-02" }, who: [], what: [], outcomes: [] }, PEOPLE, "2026-10-02"), "audit entries today");
+  assert.deepEqual(peopleIn(rows, PEOPLE, []).map((person) => person.name), ["Amara Okafor", "Maro Defili", "Keel's scheduler"]);
   assert.equal(dayLabel("2026-10-01T16:52:00Z", NOW), "Yesterday");
+
+  // Every dropdown filter takes several values, and they add up (OR); other filters narrow (AND).
+  const several = parseFilters((key) => ({ who: `${AMARA.id},${MARO.id},${AMARA.id}`, what: "restore,backup,nonsense", outcome: "finished,failed" }[key] ?? null));
+  assert.deepEqual(several.who, [AMARA.id, MARO.id], "accounts kept as given, repeats dropped");
+  assert.deepEqual(several.what, ["backup", "restore"], "kinds kept in their usual order, unknowns dropped");
+  assert.deepEqual(several.outcomes, ["failed", "finished"]);
+  const either = rows.filter((row) => rowMatches(row, { show: "all", range: null, who: [AMARA.id, MARO.id], what: [], outcomes: [] }));
+  assert.equal(either.length, rows.filter((row) => row.who === AMARA.id).length + rows.filter((row) => row.who === MARO.id).length, "either account shows");
+  assert.ok(either.some((row) => row.who === AMARA.id) && either.some((row) => row.who === MARO.id));
+  const kinds = rows.filter((row) => rowMatches(row, { show: "all", range: null, who: [], what: ["backup", "approval"], outcomes: [] }));
+  assert.deepEqual([...new Set(kinds.map((row) => row.kind))].sort(), ["approval", "backup"]);
+  assert.equal(filterWords({ ...several, show: "all", range: null }, PEOPLE, "2026-10-02"), "failed or finished backups or restores by Amara Okafor or Maro Defili");
+  const chips = filterChips({ ...several, show: "all", range: null }, PEOPLE, "2026-10-02");
+  assert.deepEqual(chips.map((chip) => chip.label), ["Failed", "Finished", "Backups", "Restores", "By Amara Okafor", "By Maro Defili"]);
+  assert.deepEqual(chips.find((chip) => chip.label === "Backups")?.clear, { what: "restore" }, "a chip removes only its own value");
+  assert.deepEqual(chips.find((chip) => chip.label === "By Amara Okafor")?.clear, { who: MARO.id });
+  assert.deepEqual(peopleIn([], PEOPLE, [AMARA.id, MARO.id]).map((person) => person.name).sort(), ["Amara Okafor", "Maro Defili"], "picked accounts stay in the list");
   const csv = activityCsv(rows.slice(0, 2));
   assert.match(csv, /^When,What,Kind,Outcome,Who,Source,Job ID,Audit sequence,Account\n/);
   assert.match(csv, /"Amara Okafor approved a restore","Approval","Recorded","Amara Okafor","Audit record","","18205"/);

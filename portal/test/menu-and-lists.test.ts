@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { addItem, COOKIE_BUDGET, EMPTY_PREFS, isPortalHref, LIMITS, moveItem, parseMenuPrefs, removeItem, serializeMenuPrefs, toggleClosed } from "@/lib/menu-prefs";
 import { menuStatuses, worstTone } from "@/lib/menu-status";
-import { groupCheck, NO_SELECTION, orderGroups, prune, selectRange, setMany, smartOrder, span, toggleOne } from "@/lib/selection";
+import { groupCheck, NO_SELECTION, orderGroups, picksTray, prune, selectRange, setMany, smartOrder, span, toggleOne } from "@/lib/selection";
 import { addDays, addMonths, inRange, isDay, monthGrid, presets, rangeFromParam, rangeLabel, rangeToParam } from "@/lib/date-range";
 import { serviceFor, SERVICES } from "@/lib/services";
 import { SERVICES as TAXONOMY_SERVICES } from "../../engine/insights/taxonomy.mjs";
@@ -131,6 +131,19 @@ test("select a whole group, see whether it is all, some or none, and keep only r
   assert.deepEqual([...selection.ids], ["b"]);
   assert.deepEqual([...prune(selection, ["a", "c"]).ids], []);
   assert.deepEqual(span(ORDER, "d", "b"), ["b", "c", "d"]);
+});
+
+test("the picks tray gathers picks by service in service order, keeping the pool's order inside each", () => {
+  const pool = [
+    { id: "x1", service: "Intune", rank: 1 },
+    { id: "x2", service: "Entra", rank: 0 },
+    { id: "x3", service: "Intune", rank: 1 },
+    { id: "x4", service: "Exchange", rank: 2 },
+    { id: "x5", service: "Entra", rank: 0 },
+  ];
+  const tray = picksTray(pool, (item) => item.id, (item) => ({ key: item.service, label: item.service, rank: item.rank }), new Set(["x3", "x1", "x5", "gone"]));
+  assert.deepEqual(tray.groups.map((group) => [group.label, group.items.map((item) => item.id)]), [["Entra", ["x5"]], ["Intune", ["x1", "x3"]]]);
+  assert.deepEqual(picksTray(pool, (item) => item.id, (item) => ({ key: item.service, label: item.service }), new Set()).groups, []);
 });
 
 test("smart order puts urgent first, then newest; groups that need action come first", () => {

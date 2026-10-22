@@ -76,12 +76,12 @@ function CurrentSetup({ active, canBaseline, latest, now, sources }: {
   );
 }
 
-// The three counts on a service card. A service read has no approved setup, so its
-// kinds are unchanged since the previous backup, or not read, rather than in line or
-// not covered.
+// The three counts on a service card. A service read is measured against its own
+// approved setup, taken from Keel's first read, so a kind it could not read is "not
+// read" rather than "not covered".
 const STAT_WORDS: Record<ServiceSummary["basis"], { inLine: string; notCovered: string }> = {
   "approved-setup": { inLine: "In line", notCovered: "Not covered" },
-  "previous-backup": { inLine: "Unchanged", notCovered: "Not read" },
+  "previous-backup": { inLine: "In line", notCovered: "Not read" },
 };
 
 function serviceNote(summary: ServiceSummary) {
@@ -90,7 +90,7 @@ function serviceNote(summary: ServiceSummary) {
   }
   if (summary.basis === "previous-backup") {
     return summary.inLine.length
-      ? `No change since the previous backup: ${kindsWords(summary.inLine)}.`
+      ? `Matches its approved setup: ${kindsWords(summary.inLine)}.`
       : `The latest backup could not read ${kindsWords(summary.notCovered)}.`;
   }
   return summary.inLine.length
@@ -264,11 +264,10 @@ export function ApprovedSetup({
           </ul>
           <dl className="bl-legend">
             <div><dt data-part="changed">Changed</dt><dd>Kinds of setting that differ from the approved setup. The colour shows the worst risk among them.</dd></div>
-            <div><dt data-part="in-line">In line</dt><dd>Matches the approved setup.</dd></div>
+            <div><dt data-part="in-line">In line</dt><dd>Matches the approved setup. Exchange, SharePoint, Teams, Purview and Power Platform each have their own, taken from Keel&apos;s first read and kept up to date by Accept.</dd></div>
             <div><dt data-part="not-covered">Not covered</dt><dd>Keel backs it up, but the approved setup does not hold it yet. Capture a new version to add it.</dd></div>
             {anyRead ? (
               <>
-                <div><dt data-part="in-line">Unchanged</dt><dd>Read in the latest backup, with no change since the one before.</dd></div>
                 <div><dt data-part="not-covered">Not read</dt><dd>The latest backup could not read it, or has not read it yet. <Link href="/protect">What&apos;s protected</Link> says why.</dd></div>
               </>
             ) : null}

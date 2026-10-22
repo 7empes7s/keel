@@ -10,13 +10,17 @@
  * snapshot's rows of the type. A type no snapshot read in full is passed as
  * missing, so the control is recorded as 'unknown', never a guessed pass.
  *
+ * A control resting on a service read (registry.mjs WORKLOAD_FACT_TYPES, such as the
+ * Exchange mail protection policies) reads the newest run of that service read whose
+ * kinds the control needs were read in full (newestWorkloadRead).
+ *
  * Read-only toward the tenant: it reads Keel's own database and writes only
  * benchmark_evaluation rows and their evidence entries.
  */
 import { readObservation } from '../contracts/observation.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { evaluateControl, recordEvaluation } from './evaluate.mjs';
-import { listControls } from './registry.mjs';
+import { WORKLOAD_FACT_TYPES, listControls } from './registry.mjs';
 
 // How many recent snapshots are searched for a complete read of a type. A type
 // read only further back would be stale for every shipped control anyway.
@@ -47,6 +51,66 @@ async function newestCompleteRead(client, { tenantRef, resourceType, snapshots }
   return null;
 }
 
+const USABLE_RUNS = ['complete', 'complete-empty', 'partial'];
+
+/**
+ * Whether one service-read run read every kind in `parts` in full. A complete run read
+ * everything. A partial run counts for a kind it read with no missing field, or found
+ * not licensed (Safe Links without Defender for Office 365: there is nothing to read,
+ * so the kind is empty, not unknown). A run that hit its object cap, or got objects it
+ * could not identify, may be missing objects of any kind, so it counts for none.
+ */
+function readsInFull(run, parts) {
+  if (run.outcome === 'complete' || run.outcome === 'complete-empty') return true;
+  if (run.outcome !== 'partial') return false;
+  const digest = run.digest ?? {};
+  const discovery = digest.discovery ?? {};
+  if (discovery.capped || discovery.unidentified) return false;
+  return parts.every((part) => ['read', 'not-licensed'].includes(discovery.families?.[part]?.status)
+    && Object.keys(digest.unknownFields?.[part] ?? {}).length === 0);
+}
+
+function workloadObservation(run, { tenantRef, resourceType, completeness }) {
+  return {
+    resourceType,
+    tenantRef,
+    window: { startedAt: new Date(run.observed_from).toISOString(), endedAt: new Date(run.observed_to).toISOString() },
+    completeness,
+  };
+}
+
+/**
+ * The newest run of a service read that read the kinds a control needs in full, with
+ * its stored objects of those kinds. When runs exist but none read them in full, the
+ * newest is returned as partial (or failed) with no objects, so the control says the
+ * read did not finish. Runs refused for lack of qualification read nothing and count
+ * as no read at all.
+ */
+async function newestWorkloadRead(client, { tenantRef, resourceType, parts, now }) {
+  const { rows: runs } = await client.query(
+    `SELECT id, outcome, observed_from, observed_to, digest
+       FROM workload_collection
+      WHERE tenant_ref = $1 AND workload = $2 AND outcome <> 'disabled' AND observed_to <= $3
+      ORDER BY observed_to DESC, created_at DESC
+      LIMIT ${SNAPSHOT_LOOKBACK}`,
+    [tenantRef, resourceType, now],
+  );
+  const run = runs.find((candidate) => USABLE_RUNS.includes(candidate.outcome) && (!parts || readsInFull(candidate, parts)));
+  if (!run) {
+    if (!runs.length) return null;
+    const completeness = runs[0].outcome === 'failed' ? 'failed' : 'partial';
+    return { observation: workloadObservation(runs[0], { tenantRef, resourceType, completeness }), resources: [] };
+  }
+  const { rows } = await client.query(
+    'SELECT resource_key, fields FROM workload_observation WHERE collection_id = $1 ORDER BY resource_key',
+    [run.id],
+  );
+  const resources = rows
+    .filter((row) => !parts || parts.includes(row.fields?.kind))
+    .map((row) => ({ ...row.fields, id: row.resource_key }));
+  return { observation: workloadObservation(run, { tenantRef, resourceType, completeness: 'complete' }), resources };
+}
+
 /**
  * @returns {Promise<{ checked: number, pass: number, fail: number, unknown: number, notApplicable: number, notConfigured: number, evaluations: object[] }>}
  */
@@ -66,9 +130,14 @@ export async function runComplianceChecks(client, { tenantRef, actor, now = new 
   const evaluations = [];
   for (const control of controls) {
     const observations = {};
-    for (const { resourceType } of control.requiredObservations) {
-      if (!reads.has(resourceType)) reads.set(resourceType, await newestCompleteRead(client, { tenantRef, resourceType, snapshots }));
-      const read = reads.get(resourceType);
+    for (const { resourceType, parts } of control.requiredObservations) {
+      const key = parts ? `${resourceType}:${parts.join(',')}` : resourceType;
+      if (!reads.has(key)) {
+        reads.set(key, WORKLOAD_FACT_TYPES.has(resourceType)
+          ? await newestWorkloadRead(client, { tenantRef, resourceType, parts, now })
+          : await newestCompleteRead(client, { tenantRef, resourceType, snapshots }));
+      }
+      const read = reads.get(key);
       if (read) observations[resourceType] = { observation: read.observation, resources: read.resources };
     }
     const result = evaluateControl({ controlId: control.controlId, tenantRef, observations, now });

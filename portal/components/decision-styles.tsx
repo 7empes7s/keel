@@ -31,6 +31,7 @@ const CSS = `
 .decision-row-mismatch { border-left-color: var(--failed); }
 .decision-mismatch { color: var(--failed); font-weight: 600; }
 .decision-mismatch-note { margin: 0; color: var(--failed); font-weight: 600; }
+.decision-gap { margin: 0; padding: var(--space-sm) var(--space-md); border-left: 4px solid var(--check-soon); border-radius: var(--radius-md); background: var(--check-soon-bg); font-size: 0.875rem; }
 .decision-items { margin: 0; padding-left: var(--space-md); display: grid; gap: var(--space-2xs); }
 @media (max-width: 40rem) {
   .decision-row { grid-template-columns: minmax(0, 1fr); gap: var(--space-2xs); }

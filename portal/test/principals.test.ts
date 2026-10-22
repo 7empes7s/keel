@@ -6,10 +6,11 @@ import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { capabilitiesForPrincipal } from "../../engine/authz/principals.mjs";
 import { grantRole } from "../../engine/authz/administration.mjs";
 import { guardedPrincipalCreate, guardedPrincipalList, guardedPrincipalWrite, type PrincipalView } from "@/lib/principals";
-import { resolveIdentity, CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
+import { resolveIdentity, resetNameAttempts, CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { DATA_SURFACES, guardedRead } from "@/lib/read";
 import { renderInPeopleRoute, renderPeopleAt } from "./render-people";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
+import { recordValues } from "./record-fields";
 
 
 const id = "00000000-0000-0000-0000-000000000001";
@@ -94,13 +95,15 @@ test("live portal requests see role writes immediately and display the engine ca
     }, () => page()));
     const pageMarkup = await renderInPeopleRoute(rendered as ReactElement);
     // Task-130: the engine's capability answer and the raw times live in the record layer.
-    assert.ok(pageMarkup.includes(`effective capabilities</dt><dd><code>${(await capabilitiesForPrincipal(client, disabled)).join(", ") || "none"}</code>`));
+    const disabledCapabilities = (await capabilitiesForPrincipal(client, disabled)).join(", ");
+    assert.ok(recordValues(pageMarkup, ": effective capabilities", { endsWith: true }).some((value) => value.replace(/<[^>]+>/g, "").includes(disabledCapabilities || "None")));
     assert.ok(pageMarkup.includes(disabled.disabled_at));
     for (const view of [active, disabled]) {
       const markup = await renderPeopleAt("", { people: [view], canUsers: true, canRoles: true, now: new Date().toISOString() });
       const expected = await capabilitiesForPrincipal(client, view);
       // Active snapshot predates disable; use its captured engine answer for rendering.
-      assert.ok(markup.includes(`effective capabilities</dt><dd><code>${view === active ? active.capabilities.join(", ") : expected.join(", ") || "none"}</code>`));
+      const shownCapabilities = view === active ? active.capabilities.join(", ") : expected.join(", ");
+      assert.ok(recordValues(markup, ": effective capabilities", { endsWith: true }).some((value) => value.replace(/<[^>]+>/g, "").includes(shownCapabilities || "None")));
       assert.ok(markup.includes(view.role_grants[0].active_from));
     }
     assert.equal((await list(await liveRequest())).status, 403);
@@ -139,5 +142,43 @@ test("Add person creates a person with a first role; Enable again lets a disable
     assert.deepEqual(attempts.rows.map((row: { action: string }) => row.action).filter((action: string) => /create|enable/.test(action)), ["principals:create", "principals:create", "principals:create", "principals:create", "principals:enable"]);
   } finally {
     await client.end(); await db.cleanup();
+  }
+});
+
+test("signing in fills a missing display name once, without overwriting a set one or blocking sign-in", async () => {
+  const db = await createIsolatedTestDatabase(import.meta.url);
+  const client = await db.connect();
+  const previous = process.env.KEEL_DB_URL;
+  try {
+    await client.query(schemaSql());
+    await client.query("INSERT INTO principal(id,email) VALUES ($1,'marouanedefili@test.example')", [id]);
+    await client.query("INSERT INTO principal(email,display_name) VALUES ('named@test.example','Set By Admin')");
+    process.env.KEEL_DB_URL = db.url;
+    resetNameAttempts();
+    const nameOf = async (email: string) => (await client.query("SELECT display_name FROM principal WHERE email = $1", [email])).rows[0].display_name;
+
+    // Without hints (internal callers) nothing is learned.
+    await resolveIdentity("marouanedefili@test.example");
+    assert.equal(await nameOf("marouanedefili@test.example"), null);
+
+    // The identity service has no name and then fails: sign-in still resolves, and it is
+    // asked once, not on every request.
+    let lookups = 0;
+    const failing = { claims: {}, lookupIdentity: async () => { lookups += 1; throw new Error("offline"); } };
+    assert.equal((await resolveIdentity("marouanedefili@test.example", failing)).principalId, id);
+    assert.equal((await resolveIdentity("marouanedefili@test.example", failing)).principalId, id);
+    assert.equal(lookups, 1);
+
+    resetNameAttempts();
+    await resolveIdentity("marouanedefili@test.example", { claims: {}, lookupIdentity: async () => ({ name: "Marouane Defili" }) });
+    assert.equal(await nameOf("marouanedefili@test.example"), "Marouane Defili");
+
+    await resolveIdentity("named@test.example", { claims: { name: "Someone Else" } });
+    assert.equal(await nameOf("named@test.example"), "Set By Admin");
+  } finally {
+    resetNameAttempts();
+    if (previous === undefined) delete process.env.KEEL_DB_URL; else process.env.KEEL_DB_URL = previous;
+    await client.end();
+    await db.cleanup();
   }
 });

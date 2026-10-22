@@ -34,12 +34,12 @@ export default async function ActivityPage({ searchParams }: {
   const requestHeaders = await headers();
 
   const jobQuery = new URLSearchParams({ limit: "100" });
-  if (filters.what) jobQuery.set("kind", ACTIVITY_KINDS[filters.what].jobs.join(",") || "none");
+  if (filters.what.length) jobQuery.set("kind", filters.what.flatMap((key) => ACTIVITY_KINDS[key].jobs).join(",") || "none");
   if (filters.outcomes.length) jobQuery.set("status", filters.outcomes.flatMap((key) => OUTCOMES[key].jobStatuses).join(",") || "none");
   const evidenceQuery = new URLSearchParams();
-  if (filters.what) evidenceQuery.set("kind", ACTIVITY_KINDS[filters.what].records.join(",") || "none");
+  if (filters.what.length) evidenceQuery.set("kind", filters.what.flatMap((key) => ACTIVITY_KINDS[key].records).join(",") || "none");
   if (bounds) { evidenceQuery.set("from", bounds.from); evidenceQuery.set("to", bounds.to); }
-  if (filters.who) evidenceQuery.set("actor", filters.who);
+  if (filters.who.length) evidenceQuery.set("actor", filters.who.join(","));
   if (before) evidenceQuery.set("before", before);
   // A job filter with no job kinds (drills) or an outcome only jobs have skips that side.
   const wantJobs = filters.show !== "records" && !before && jobQuery.get("kind") !== "none" && jobQuery.get("status") !== "none";
@@ -70,7 +70,7 @@ export default async function ActivityPage({ searchParams }: {
   try {
     const entries = evidence?.entries ?? [];
     const actors = new Set(entries.map((entry) => entry.actor));
-    if (filters.who) actors.add(filters.who);
+    for (const who of filters.who) actors.add(who);
     names = await getActivityNames([...actors], entries.map((entry) => entrySubjectKey(entry.subject)));
   } catch { /* Actors and objects are then named in general words. */ }
   const allJobs = jobs?.jobs ?? [];

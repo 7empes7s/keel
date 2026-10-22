@@ -8,10 +8,10 @@ import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import { getSitePermissions } from "@/lib/site-permissions";
 import { sitesVerdict, type SitePermissionsData } from "@/lib/site-permissions-view";
 
-const DESCRIPTION = "Each SharePoint site and who can reach it: apps given access now, SharePoint groups and roles once KEEL reads them.";
+const DESCRIPTION = "Every SharePoint site: is it backed up, who owns it, and which apps and guests can reach it. Problems first.";
 
-// Gap 2 of the site permissions audit: needs `read`, tenant-wide; the guard runs before
-// any loader. Nothing on this page can change anything.
+// Every SharePoint site with its backup, owners, apps and guests. Needs `read`,
+// tenant-wide; the guard runs before any loader. Nothing on this page can change anything.
 export default async function SitesPage() {
   await connection();
   await requireReadAccess(DATA_SURFACES.sitesPage);

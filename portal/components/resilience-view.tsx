@@ -3,14 +3,18 @@ import type { ReactNode } from "react";
 
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
+import { AlertList } from "@/components/ui/alert-list";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
+import { StatTiles } from "@/components/ui/stat-tiles";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import {
   attemptName,
   attemptReason,
   cadenceSentence,
+  dependencyName,
   formatDuration,
   freshnessSentence,
+  notUsedSentence,
   incidentSentence,
   offsiteReason,
   readinessSentence,
@@ -54,21 +58,8 @@ function badgeTone(tone: ResilienceTone): BadgeTone {
 }
 
 function Tiles({ data, groups }: { data: ResilienceData; groups: ServiceGroup[] }) {
-  const tiles = resilienceTiles(data, groups);
-  return (
-    <section aria-label="At a glance" className="rs-tiles">
-      {tiles.map((tile) => (
-        <a className="rs-tile" data-tile={tile.key} data-tone={tile.tone} href={tile.href} key={tile.key}>
-          <span className="rs-tile-label"><Icon name={tile.icon} />{tile.label}</span>
-          <b className="rs-tile-value">{tile.value}</b>
-          <small>{tile.about}</small>
-        </a>
-      ))}
-    </section>
-  );
+  return <StatTiles tiles={resilienceTiles(data, groups)} />;
 }
-
-const ALERT_WORDS: Record<ResilienceAlert["tone"], string> = { urgent: "Act now", soon: "Fix soon", low: "Good to know" };
 
 function Alerts({ alerts }: { alerts: ResilienceAlert[] }) {
   const urgent = alerts.filter((alert) => alert.tone === "urgent").length;
@@ -78,28 +69,7 @@ function Alerts({ alerts }: { alerts: ResilienceAlert[] }) {
         <h2 id="rs-attention-heading"><Icon name="alert" />Needs your attention</h2>
         {alerts.length ? <Badge tone={urgent ? "urgent" : "soon"}>{`${alerts.length} item${alerts.length === 1 ? "" : "s"}`}</Badge> : null}
       </div>
-      {alerts.length ? (
-        <ul className="rs-alerts">
-          {alerts.map((alert) => (
-            <li className="rs-alert" data-alert={alert.key} data-tone={alert.tone} key={alert.key}>
-              <span aria-hidden="true" className="rs-alert-icon"><Icon name={alert.icon} /></span>
-              <div className="rs-alert-body">
-                <p className="rs-alert-title"><span className="rs-alert-tone">{ALERT_WORDS[alert.tone]}</span>{alert.title}</p>
-                <p className="rs-alert-todo"><b>What to do:</b> {alert.todo}</p>
-                {alert.more.length ? (
-                  <details className="rs-alert-more">
-                    <summary>Show details</summary>
-                    <ul>{alert.more.map((line, index) => <li key={`${index}:${line}`}>{line}</li>)}</ul>
-                  </details>
-                ) : null}
-              </div>
-              {alert.action ? <Link className="btn btn-sm rs-alert-action" href={alert.action.href}>{alert.action.label}<Icon name="chevron" /></Link> : null}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="rs-calm"><Icon name="check-circle" />Nothing needs you right now.</p>
-      )}
+      <AlertList items={alerts} />
     </section>
   );
 }
@@ -224,6 +194,14 @@ function Details({ data }: { data: ResilienceData }) {
           value={freshness.state === "measured" ? formatDuration(freshness.achievedRpoMs) : "Not measured"}
         >
           <p className="rs-sentence resilience-sentence">{freshnessSentence(metrics)}</p>
+          {notUsedSentence(metrics) ? (
+            <div className="resilience-not-used">
+              <p className="rs-help">{notUsedSentence(metrics)}</p>
+              <ul className="rs-rows">
+                {(freshness.notUsed ?? []).map((entry) => <li key={entry.key}><Badge tone="neutral">Not used</Badge> <span>{dependencyName(entry)}</span></li>)}
+              </ul>
+            </div>
+          ) : null}
           <h4 className="rs-mini-head">Planned timetable</h4>
           {configured.cadence.length ? (
             <ul className="rs-rows rs-plan">

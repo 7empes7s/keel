@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 
+import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { namedResource } from "@/lib/job-names";
 import { formatTimestamp, words } from "@/lib/presentation";
 import { toast } from "@/lib/toast";
@@ -35,10 +37,14 @@ export interface CompletionResource {
   items: CompletionItem[];
 }
 
-const STATE_TONES: Record<CompletionState, string> = {
-  "configuration-restored": "warn",
-  "service-validation-pending": "info",
-  "verified-complete": "ok",
+const STATE_TONES: Record<CompletionState, BadgeTone> = {
+  "configuration-restored": "soon",
+  "service-validation-pending": "low",
+  "verified-complete": "fine",
+};
+
+const KIND_ICONS: Record<CompletionItem["kind"], IconName> = {
+  credential: "settings", certificate: "page", consent: "check", integration: "link", "service-validation": "check-circle", enforcement: "play",
 };
 
 const STATE_LABELS: Record<CompletionState, string> = {
@@ -60,45 +66,70 @@ interface ChecklistProps {
 }
 
 export function CompletionChecklist({ resources, canComplete, busyItem = null, onComplete, onReopen }: ChecklistProps) {
+  const [openItem, setOpenItem] = useState<string | null>(null);
   if (resources.length === 0) {
-    return <p className="muted-value">This restore left no follow-up work: every recovered object was fully restored by configuration.</p>;
+    return <p className="ui-calm"><Icon name="check-circle" />Nothing to follow up: everything was restored in full.</p>;
   }
   const items = resources.flatMap((resource) => resource.items);
   const open = items.filter((item) => item.state === "pending").length;
   return (
     <div className="completion-list">
       <p className="completion-summary">
-        {open === 0
-          ? `All ${items.length} follow-ups are verified.`
-          : `${items.length - open} of ${items.length} follow-ups verified; ${open} still ${open === 1 ? "needs" : "need"} evidence.`}
+        {open ? <Badge tone="soon">{`${open} ${open === 1 ? "needs" : "need"} evidence`}</Badge> : null}
+        <Badge tone={open ? "neutral" : "fine"}>{`${items.length - open} of ${items.length} verified`}</Badge>
       </p>
       {resources.map((resource) => (
         <section className={`completion-resource completion-${resource.state}`} key={resource.naturalKey}>
           <header className="completion-resource-head">
             <strong className="resource-name">{resource.label ?? namedResource(resource.naturalKey, {}, resource.resourceType)}</strong>
-            <span className={`pill pill-${STATE_TONES[resource.state] ?? "neutral"} completion-badge-${resource.state}`}>{completionStateLabel(resource.state)}</span>
+            <Badge className={`completion-badge-${resource.state}`} tone={STATE_TONES[resource.state] ?? "neutral"}>{completionStateLabel(resource.state)}</Badge>
             <small className="completion-mechanism">{words(resource.mechanism)}</small>
           </header>
           <ul className="completion-items">
-            {resource.items.map((item) => (
-              <li className={`completion-item completion-item-${item.state}`} key={item.id}>
-                <div className="completion-item-text">
-                  <strong>{words(item.kind)}</strong> · {item.description}
-                  {item.state === "verified" && item.evidence.length ? (
-                    <small className="completion-evidence">
-                      Evidence: {item.evidence[item.evidence.length - 1].type} {item.evidence[item.evidence.length - 1].reference}
-                      {item.closedAt ? ` · ${formatTimestamp(item.closedAt)}` : null}
-                    </small>
-                  ) : null}
-                  {item.kind === "enforcement" && item.state === "pending" ? (
-                    <small className="completion-evidence completion-next-step">
-                      Next: ask for the enforcement step, which needs a second person to approve it. KEEL closes this item once the policy reads back as on.
-                    </small>
-                  ) : null}
-                </div>
-                {canComplete ? (
-                  item.state === "pending" ? (
-                    item.kind === "enforcement" ? null : (
+            {resource.items.map((item) => {
+              const evidence = item.evidence[item.evidence.length - 1];
+              const formOpen = openItem === item.id || busyItem === item.id;
+              return (
+                <li className={`completion-item completion-item-${item.state}`} data-tone={item.state === "verified" ? "fine" : "soon"} key={item.id}>
+                  <span aria-hidden="true" className="completion-kind"><Icon name={KIND_ICONS[item.kind] ?? "info"} /></span>
+                  <div className="completion-item-text">
+                    <strong>{words(item.kind)}</strong>
+                    <span>{item.description}</span>
+                    {item.state === "verified" && evidence ? (
+                      <small className="completion-evidence">
+                        Evidence: {evidence.type} {evidence.reference}
+                        {item.closedAt ? ` · ${formatTimestamp(item.closedAt)}` : null}
+                      </small>
+                    ) : null}
+                    {item.kind === "enforcement" && item.state === "pending" ? (
+                      <small className="completion-evidence completion-next-step">
+                        Next: ask for the enforcement step. A second person approves it, and KEEL closes this once the policy reads back as on.
+                      </small>
+                    ) : null}
+                  </div>
+                  <Badge tone={item.state === "verified" ? "fine" : "soon"}>{item.state === "verified" ? "Verified" : "Needs evidence"}</Badge>
+                  <span className="completion-act">
+                    {canComplete ? (
+                      item.state === "pending" ? (
+                        item.kind === "enforcement" || formOpen ? null : (
+                          <button className="btn btn-secondary btn-sm" disabled={busyItem !== null} onClick={() => setOpenItem(item.id)} type="button">
+                            Add evidence
+                          </button>
+                        )
+                      ) : (
+                        <button
+                          aria-busy={busyItem === item.id || undefined}
+                          className="btn btn-secondary btn-sm"
+                          disabled={busyItem !== null}
+                          onClick={() => onReopen?.(item)}
+                          type="button"
+                        >
+                          Reopen
+                        </button>
+                      )
+                    ) : null}
+                  </span>
+                  {canComplete && item.state === "pending" && item.kind !== "enforcement" && formOpen ? (
                     <form
                       className="completion-form"
                       onSubmit={(event) => {
@@ -121,6 +152,7 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                         <input
                           aria-describedby={`reference-hint-${item.id}`}
                           autoComplete="off"
+                          autoFocus
                           className="completion-control"
                           id={`reference-${item.id}`}
                           name="reference"
@@ -128,29 +160,19 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                           required
                         />
                       </div>
-                      <button aria-busy={busyItem === item.id || undefined} className="btn btn-secondary btn-sm" disabled={busyItem !== null} type="submit">
+                      <button aria-busy={busyItem === item.id || undefined} className="btn btn-primary btn-sm" disabled={busyItem !== null} type="submit">
                         Mark verified
                       </button>
+                      <button className="btn btn-sm" disabled={busyItem !== null} onClick={() => setOpenItem(null)} type="button">Cancel</button>
                       {/* Stays visible while typing: the moment a credential could be pasted. */}
                       <small className="completion-hint" id={`reference-hint-${item.id}`}>
-                        Record where the proof lives: never the secret or credential itself.
+                        Where the proof lives. Never the secret itself.
                       </small>
                     </form>
-                    )
-                  ) : (
-                    <button
-                      aria-busy={busyItem === item.id || undefined}
-                      className="btn btn-secondary btn-sm"
-                      disabled={busyItem !== null}
-                      onClick={() => onReopen?.(item)}
-                      type="button"
-                    >
-                      Reopen
-                    </button>
-                  )
-                ) : null}
-              </li>
-            ))}
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
           <TechnicalDetails summary="Technical details for this resource">
             <RecordField label="Stored key" value={resource.naturalKey} />
@@ -231,8 +253,7 @@ export function RecoveryCompletion({ restoreRef, canComplete }: { restoreRef: st
   return (
     <section aria-labelledby="completion-heading" className="panel completion-panel">
       <div className="section-head">
-        <p className="section-kicker">Recovery completion</p>
-        <h2 id="completion-heading">Follow-up the restore could not do</h2>
+        <h2 className="job-section-head" id="completion-heading"><Icon name="check" />Follow-ups the restore could not do</h2>
       </div>
       {failed ? (
         <p className="data-error" role="alert">Completion items are unavailable right now.</p>

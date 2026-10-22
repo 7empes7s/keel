@@ -20,6 +20,7 @@ import {
   NOT_A_CERTIFICATION,
   NOT_RUN_YET,
   RESULTS,
+  canFixOn,
   STORAGE_UNSET_TODO,
   canGrantOn,
   complianceCounts,
@@ -29,6 +30,7 @@ import {
   controlService,
   controlShort,
   findingTypes,
+  fixableSentence,
   grantLabel,
   immutabilitySentence,
   lastChecked,
@@ -72,11 +74,12 @@ const TILES: { key: ControlResult; small: string; always: boolean }[] = [
 ];
 const RESULT_TILES: FilterTile<ComplianceFinding>[] = (Object.keys(RESULTS) as ControlResult[]).map((key) => ({ key, test: (finding: ComplianceFinding) => resultOf(finding) === key }));
 
-export function CompliancePage({ data, canConfigure, canCheck = false, now = data.generatedAt }: {
+export function CompliancePage({ data, canConfigure, canCheck = false, canRestore = false, now = data.generatedAt }: {
   data: ComplianceData;
   canConfigure: boolean;
   // Holds `collect`, the permission that runs backups: offered "Check now".
   canCheck?: boolean;
+  canRestore?: boolean;
   now?: string;
 }) {
   const router = useRouter();
@@ -168,9 +171,11 @@ export function CompliancePage({ data, canConfigure, canCheck = false, now = dat
         <span className="cp-row-mid">
           <Badge icon={words.icon} tone={words.badge}>{words.label}</Badge>
           <small>{resultLine(finding, now)}</small>
+          {fixableSentence(finding) ? <small className="cp-fixable"><Icon name="check-circle" />{fixableSentence(finding)}</small> : null}
           {owner ? <small className="cp-owner">Owner <Person person={owner} /></small> : null}
         </span>
         <span className="cp-row-acts">
+          {canFixOn(finding, canRestore) ? <Link className="btn btn-sm" href={openHref(finding.id)} onClick={(event) => follow(event, openHref(finding.id))}><Icon name="check-circle" />Make it pass</Link> : null}
           {(result === "failing" || result === "not-set-up") && canGrantOn(finding, canConfigure) ? <Link className="btn btn-sm" href={grantHref([finding.id])}>{finding.exception ? "Renew exception" : "Grant exception"}</Link> : null}
           {result === "unknown" ? <Link className="btn btn-sm" href="/protect"><Icon name="backup" />Run a backup</Link> : null}
         </span>
@@ -308,6 +313,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, now = dat
         <TechnicalDetails summary="Technical details for these results">
           <RecordField copy={false} label="Read with" value="GET /api/evidence?kind=benchmark-evaluation,benchmark-exception" />
           <RecordField copy={false} label="Grant with" value="POST /api/actions/compliance/exception {evaluationId, owner, reason, expiresAt}" />
+          <RecordField copy={false} label="Make it pass with" value="POST /api/actions/compliance/fix {evaluationId, naturalKey}, then POST /api/actions/restore {artifactId, justification}" />
           <RecordField copy={false} label="Check with" value="POST /api/actions/compliance/check (also runs after each backup)" />
           {baseline ? <RecordField label="Approved setup ID" value={baseline.id} /> : null}
           {findings.map((finding) => <FindingRecordFields finding={finding} key={finding.id} />)}
@@ -317,7 +323,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, now = dat
 
       {opened || granting.length ? <BaselinesStyles /> : null}
       {opened && !granting.length ? (
-        <ControlSheet canConfigure={canConfigure} finding={opened} grantHref={grantHref([opened.id])} key={opened.id} now={now} onClose={() => view.set({ open: null })} />
+        <ControlSheet canConfigure={canConfigure} canRestore={canRestore} finding={opened} grantHref={grantHref([opened.id])} key={opened.id} now={now} onClose={() => view.set({ open: null })} />
       ) : null}
       {granting.length ? (
         <ExceptionSheet

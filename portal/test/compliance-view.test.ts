@@ -7,6 +7,7 @@ import {
   complianceScore,
   complianceStatus,
   complianceVerdict,
+  controlMisses,
   controlName,
   controlService,
   exceptionChip,
@@ -26,6 +27,7 @@ import {
   scoresByService,
   scoresByStandard,
   scoreTone,
+  settingValueWords,
   storageSentence,
 } from "@/lib/compliance-view";
 import { serviceOrder } from "@/lib/services";
@@ -151,6 +153,33 @@ test("Backups sit on this server when Keel's database does", () => {
     assert.equal(databaseIsLocal(url), true, url);
   }
   for (const url of ["postgres://keel@db.example.com/keel", "postgres://keel@10.0.0.4/keel", "not a url"]) assert.equal(databaseIsLocal(url), false, url);
+});
+
+test("Defender email controls: filed under Defender, and what fails is named by policy and setting in plain words", () => {
+  const mail = (controlId: string, extra: Partial<ComplianceFinding> = {}) => finding("d1", controlId, "fail", { evidence: [{ resourceType: "exchange-mail-flow", window: { startedAt: null, endedAt: null }, snapshotId: null, collectionId: "c1", completedAt: "2026-10-02T02:00:00Z" }], ...extra });
+  const spam = mail("keel-custom.defender-email.anti-spam-phish-quarantined", {
+    details: [
+      { subject: "Default", setting: "HighConfidencePhishAction", value: "MoveToJmf", expected: "Quarantine" },
+      { subject: "Sales", setting: "PhishZapEnabled", value: false, expected: true },
+    ],
+  });
+  assert.equal(controlName(spam), "Phishing mail goes to quarantine");
+  assert.equal(controlService(spam).name, "Defender");
+  assert.equal(findingTypes(spam), "mail protection policies");
+  assert.deepEqual(controlMisses(spam), [
+    { subject: "Default", setting: "High-confidence phishing goes to", now: "Junk folder", shouldBe: "Quarantine" },
+    { subject: "Sales", setting: "Pulls back delivered phishing", now: "Off", shouldBe: "On" },
+  ]);
+  assert.deepEqual(controlMisses(PASS), []);
+  assert.deepEqual([settingValueWords(["partner.test", "x.test"]), settingValueWords([]), settingValueWords(null)], ["partner.test, x.test", "None", "Not set"]);
+  for (const id of ["anti-phish-spoof-protection", "anti-spam-no-allowed-domains", "malware-file-filter", "safe-links-email"]) {
+    const control = mail(`keel-custom.defender-email.${id}`);
+    assert.notEqual(controlName(control), "Registry wording", id);
+    assert.equal(controlService(control).name, "Defender", id);
+  }
+  // Could not check: said of the mail protection backup, never "policie".
+  assert.equal(reasonWords(mail("keel-custom.defender-email.malware-file-filter", { verdict: "unknown", reason: "exchange-mail-flow:observation-partial" })), "The newest mail protection backup did not finish.");
+  assert.equal(reasonWords(mail("keel-custom.defender-email.malware-file-filter", { verdict: "unknown", reason: "exchange-mail-flow:no-observation" })), "No backup of mail protection policies has been made yet.");
 });
 
 const realFetch = globalThis.fetch;

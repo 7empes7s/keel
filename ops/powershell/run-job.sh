@@ -21,7 +21,9 @@
 #
 # Mode "probe" runs probe-workloads.ps1 and streams its JSON straight through
 # to stdout. Mode "cmdlet" (task-105) runs run-cmdlet.ps1: one allowlisted
-# cmdlet whose parameters arrive as JSON data and are splatted, never parsed. Diagnostics go to stderr so
+# cmdlet whose parameters arrive as JSON data and are splatted, never parsed. Mode
+# "commands" runs list-commands.ps1: the Get cmdlets one module offers, for discovery.
+# Diagnostics go to stderr so
 # stdout stays pure JSON.
 
 set -euo pipefail
@@ -59,8 +61,13 @@ exec pwsh -NoLogo -NoProfile -NonInteractive -Command '
     & /app/run-cmdlet.ps1
     exit $LASTEXITCODE
   }
+  # Discovery: list the Get cmdlets of one module, never run them.
+  if ($mode -eq "commands") {
+    & /app/list-commands.ps1
+    exit $LASTEXITCODE
+  }
   if ($mode -ne "probe") {
-    [Console]::Error.WriteLine("run-job.sh: unsupported mode `"$mode`" (only `"probe`" and `"cmdlet`" are implemented)")
+    [Console]::Error.WriteLine("run-job.sh: unsupported mode `"$mode`" (only `"probe`", `"cmdlet`" and `"commands`" are implemented)")
     exit 2
   }
 

@@ -5,13 +5,14 @@ import type { RiskTone } from "@/lib/menu-status";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
 import { type EngineRef, personLabel } from "@/lib/sentences";
-import type { CloudService } from "@/lib/services";
+import { type CloudService, serviceFor } from "@/lib/services";
 import type {
   BaselineCapture,
   BaselineChanges,
   BaselineRecord,
   ComplianceData,
   ComplianceFinding,
+  ComplianceFixCandidate,
   ComplianceSummary,
   StorageResidency,
 } from "@/lib/types";
@@ -100,6 +101,9 @@ interface ControlWords {
   what: string;
   why: string;
   types: string[];
+  // The service a control is filed under, when it is not its kind's own service: the
+  // mail protection policies are read through Exchange but managed in Defender.
+  service?: string;
 }
 
 const CONTROL_WORDS: Record<string, ControlWords> = {
@@ -131,13 +135,109 @@ const CONTROL_WORDS: Record<string, ControlWords> = {
     why: "Old sign-in methods skip multi-factor sign-in, so a stolen password is enough.",
     types: ["conditionalAccessPolicy"],
   },
+  // Defender email protection, read from the Exchange mail protection policies.
+  "keel-custom.defender-email.anti-phish-spoof-protection": {
+    title: "Anti-phishing catches senders pretending to be someone else",
+    short: "Spoofed senders caught",
+    what: "Checks every anti-phishing policy that is on: spoof protection on, the sender domain's own anti-spoofing rule (DMARC) followed, and a question mark shown on senders that cannot be verified.",
+    why: "Without it, mail that pretends to come from your boss or a supplier lands in the inbox looking real.",
+    types: ["exchange-mail-flow"],
+    service: "Defender",
+  },
+  "keel-custom.defender-email.anti-spam-phish-quarantined": {
+    title: "Phishing mail goes to quarantine",
+    short: "Phishing quarantined",
+    what: "Checks every anti-spam policy: phishing and high-confidence phishing go to quarantine, and phishing already delivered is pulled back out of mailboxes.",
+    why: "Phishing left in the Junk folder is still one click away from a stolen password.",
+    types: ["exchange-mail-flow"],
+    service: "Defender",
+  },
+  "keel-custom.defender-email.anti-spam-no-allowed-domains": {
+    title: "No whole domain skips spam filtering",
+    short: "No domain skips filtering",
+    what: "Checks every anti-spam policy for allowed sender domains, whose mail skips spam filtering.",
+    why: "Anyone can fake a sender from an allowed domain, so its phishing skips the filter too.",
+    types: ["exchange-mail-flow"],
+    service: "Defender",
+  },
+  "keel-custom.defender-email.malware-file-filter": {
+    title: "Risky attachment types are blocked",
+    short: "Risky attachments blocked",
+    what: "Checks every malware policy: risky file types (such as .exe) are blocked, and malware already delivered is pulled back out of mailboxes.",
+    why: "Attachments are still the most common way malware gets in.",
+    types: ["exchange-mail-flow"],
+    service: "Defender",
+  },
+  "keel-custom.defender-email.safe-links-email": {
+    title: "Links in email are checked when clicked",
+    short: "Email links checked",
+    what: "Checks every Safe Links policy: links in email are checked when clicked, and nobody can click past the warning to a dangerous site.",
+    why: "A link that was safe when the mail arrived can turn malicious hours later.",
+    types: ["exchange-mail-flow"],
+    service: "Defender",
+  },
 };
+
+// The settings a control can name in its detail lines, in plain words.
+const SETTING_WORDS: Record<string, string> = {
+  EnableSpoofIntelligence: "Spoof protection",
+  HonorDmarcPolicy: "Follows the sender domain's DMARC rule",
+  EnableUnauthenticatedSender: "Question mark on unverified senders",
+  PhishSpamAction: "Phishing goes to",
+  HighConfidencePhishAction: "High-confidence phishing goes to",
+  PhishZapEnabled: "Pulls back delivered phishing",
+  AllowedSenderDomains: "Allowed sender domains",
+  EnableFileFilter: "Blocks risky file types",
+  ZapEnabled: "Pulls back delivered malware",
+  EnableSafeLinksForEmail: "Checks links in email",
+  ScanUrls: "Checks links when clicked",
+  AllowClickThrough: "Lets people click past the warning",
+};
+
+// Exchange's action codes in plain words.
+const ACTION_WORDS: Record<string, string> = {
+  quarantine: "Quarantine",
+  movetojmf: "Junk folder",
+  addxheader: "Inbox, with a header added",
+  modifysubject: "Inbox, with the subject changed",
+  redirect: "Another address",
+  delete: "Deleted",
+  noaction: "Inbox",
+};
+
+/** A setting's value in plain words: On / Off, an action, a list, or "None". */
+export function settingValueWords(value: unknown): string {
+  if (value === true) return "On";
+  if (value === false) return "Off";
+  if (value === null || value === undefined || value === "") return "Not set";
+  if (Array.isArray(value)) return value.length ? value.map((item) => String(item)).join(", ") : "None";
+  if (typeof value === "string") return ACTION_WORDS[value.toLowerCase()] ?? value;
+  return String(value);
+}
+
+export interface ControlMiss { subject: string; setting: string; now: string; shouldBe: string }
+
+/** What made a control fail, one line per policy and setting, in plain words. */
+export function controlMisses(finding: ComplianceFinding): ControlMiss[] {
+  return (finding.details ?? []).map((line) => ({
+    subject: line.subject,
+    setting: SETTING_WORDS[line.setting] ?? line.setting,
+    now: settingValueWords(line.value),
+    shouldBe: settingValueWords(line.expected),
+  }));
+}
 
 const CHECK_WORDS: Record<string, string> = {
   roleAssignment: "admin role assignments",
   namedLocation: "trusted locations",
   group: "groups",
   conditionalAccessPolicy: "sign-in rules",
+  "exchange-mail-flow": "mail protection policies",
+};
+
+// One backup of a kind, where dropping the plural "s" does not read ("mail protection policie").
+const ONE_WORDS: Record<string, string> = {
+  "exchange-mail-flow": "mail protection",
 };
 
 function kindWords(type: string): string {
@@ -179,7 +279,8 @@ export function controlWhy(finding: ComplianceFinding): string | null {
 }
 
 export function controlService(finding: ComplianceFinding): CloudService {
-  return typeService(controlTypes(finding)[0] ?? "other");
+  const own = CONTROL_WORDS[finding.controlId]?.service;
+  return own ? serviceFor(own) : typeService(controlTypes(finding)[0] ?? "other");
 }
 
 const STANDARD_WORDS: Record<string, string> = {
@@ -273,7 +374,8 @@ export function complianceVerdict(data: ComplianceData): ComplianceVerdict {
       : finding.exceptionState === "incomplete"
         ? `1 control fails; its exception has no owner or end date, so it does not count${notSetUp}.`
         : `1 control fails, with no exception${notSetUp}.`;
-    return { text, detail: `${controlName(finding)}: fix it in Microsoft 365, or accept it for a while with an exception.`, tone: "urgent" };
+    const fixable = fixCandidates(finding).length > 0;
+    return { text, detail: `${controlName(finding)}: ${fixable ? "let Keel fix it after an approval" : "fix it in Microsoft 365"}, or accept it for a while with an exception.`, tone: "urgent" };
   }
   if (counts.failing > 1) {
     const ended = counts.ended ? `; ${counts.ended === 1 ? "one exception has" : `${counts.ended} exceptions have`} ended` : "";
@@ -299,7 +401,7 @@ export function reasonWords(finding: ComplianceFinding): string {
   const type = split > 0 ? reason.slice(0, split) : controlTypes(finding)[0] ?? null;
   const code = split > 0 ? reason.slice(split + 1) : reason;
   const kind = type ? kindWords(type) : "settings";
-  const one = kind.replace(/s$/, "");
+  const one = (type ? ONE_WORDS[type] : undefined) ?? kind.replace(/s$/, "");
   if (code === "no-observation") return `No backup of ${kind} has been made yet.`;
   if (code === "stale" || code === "stale-observation") return `The newest ${one} backup is too old for this check.`;
   if (code.startsWith("observation-")) return `The newest ${one} backup did not finish.`;
@@ -404,6 +506,98 @@ export function exceptionRefusal(status: number, error: string | undefined): str
   if (error === "not_failing") return "Only a failing control can have an exception.";
   if (status === 0) return "Keel could not be reached. Check your connection and try again.";
   return "Keel could not save the exception. Try again.";
+}
+
+/* ------------------------------------------------------------ make it pass -- */
+
+// CoreView gap 6: a failing control that declares a fix offers "Make it pass" for each
+// object it fails on. Keel plans one setting against the live tenant; nothing changes
+// until someone else approves it, and the write can be undone like any restore.
+
+interface FixWords {
+  // The button and the panel heading.
+  action: string;
+  // The setting's plain name, as the row's "Setting" column shows it.
+  setting: string;
+  // What changes for people once it is fixed.
+  effect: string;
+}
+
+const FIX_WORDS: Record<string, FixWords> = {
+  "keel-custom.named-location.no-untrusted-all-countries": {
+    action: "Stop trusting unknown countries",
+    setting: "Takes in unknown countries",
+    effect: "The location stays trusted for the countries it lists. Sign-ins from places that cannot be told no longer count as trusted.",
+  },
+};
+
+/** The objects Keel can fix for this control: only while it fails and has a fix. */
+export function fixCandidates(finding: ComplianceFinding): ComplianceFixCandidate[] {
+  if (finding.verdict !== "fail" || !finding.fix) return [];
+  return finding.fixCandidates ?? [];
+}
+
+/** Who may ask for the fix: someone with the restore permission, on a control Keel can fix. */
+export function canFixOn(finding: ComplianceFinding, canRestore: boolean): boolean {
+  return canRestore && fixCandidates(finding).length > 0;
+}
+
+export function fixAction(finding: ComplianceFinding): string {
+  return FIX_WORDS[finding.controlId]?.action ?? "Make it pass";
+}
+
+export function fixSetting(finding: ComplianceFinding): string {
+  const field = finding.fix?.field ?? "";
+  return FIX_WORDS[finding.controlId]?.setting ?? (field.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (first) => first.toUpperCase()) || "The setting");
+}
+
+export function fixEffect(finding: ComplianceFinding): string | null {
+  return FIX_WORDS[finding.controlId]?.effect ?? null;
+}
+
+/** A setting's value in words: Yes, No, Not set, or the value itself. */
+export function fixValue(value: unknown): string {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  if (value === null || value === undefined || value === "") return "Not set";
+  return String(value);
+}
+
+/** The object by its own name; its kind when it has none (never its key or id). */
+export function fixObjectName(candidate: ComplianceFixCandidate): string {
+  return candidate.name ?? `A ${kindWords(candidate.resourceType).replace(/s$/, "")} with no name`;
+}
+
+/** "1 location can be fixed by Keel" for the row and the verdict. */
+export function fixableSentence(finding: ComplianceFinding): string | null {
+  const count = fixCandidates(finding).length;
+  if (count === 0) return null;
+  return `Keel can fix ${count === 1 ? "it" : `all ${count}`} for you, after an approval.`;
+}
+
+export const FIX_STEPS = "Keel first plans the change against the live tenant and shows it here. Nothing changes until someone else approves it, and it can be undone like any restore.";
+
+export function fixRefusal(status: number, error: string | undefined): string {
+  if (status === 403) return "You need the restore permission to fix a control.";
+  if (status === 404) return "Keel no longer holds this result. Reload the page.";
+  if (error === "not_failing") return "This control passes now, so there is nothing to fix.";
+  if (error === "not_newest") return "A newer check of this control exists. Reload the page.";
+  if (error === "no_fix") return "Keel has no fix for this control. Fix it in Microsoft 365 or grant an exception.";
+  if (error === "not_a_candidate") return "This object no longer needs the fix in the newest backup. Reload the page.";
+  if (status === 0) return "Keel could not be reached. Check your connection and try again.";
+  return "Keel could not plan the fix. Try again.";
+}
+
+/** Why a planned fix cannot go ahead, from the worker's message, in plain words. */
+export function fixPlanProblem(message: string | null | undefined): string {
+  const text = message ?? "";
+  if (/already passes/.test(text)) return "This object already passes in the live tenant. Nothing needs to change.";
+  if (/not in the tenant now/.test(text)) return "This object is no longer in the tenant, so there is nothing to fix.";
+  if (/no complete backup holds/.test(text)) return "No finished backup holds this object yet. Run a backup, then try again.";
+  if (/points to other objects/.test(text)) return "This object points to other objects, so Keel cannot change one setting on its own. Fix it in Microsoft 365.";
+  if (/not updated in place/.test(text)) return "Keel would have to recreate this object, not change one setting. Fix it in Microsoft 365.";
+  if (/incident/.test(text)) return "The backup lies inside an open incident. Plan the fix from the incident instead.";
+  return "Keel could not plan the fix. The details are below.";
 }
 
 /* ------------------------------------------------------------------ links -- */

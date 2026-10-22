@@ -12,6 +12,8 @@ import {
   requestApproval,
 } from "../../engine/govern/approvals.mjs";
 import { applyDisposition } from "../../engine/govern/disposition.mjs";
+import { acceptServiceChange } from "../../engine/govern/workloadApproved.mjs";
+import { resolveAlert } from "../../engine/notify/alerts.mjs";
 import { appendEvidence } from "../../engine/govern/evidence.mjs";
 import { approveBootstrapPlan, executeBootstrap } from "../../engine/bootstrap/execute.mjs";
 import { BootstrapJournal, migrateBootstrapJournal } from "../../engine/bootstrap/journal.mjs";
@@ -125,7 +127,125 @@ export function normalizeJob(row: Record<string, unknown>) {
     startedAt: iso(row.started_at),
     finishedAt: iso(row.finished_at),
     references: (row.references as RowReferences | undefined) ?? EMPTY_REFERENCES,
+    progress: jobProgress(row.progress),
   };
+}
+
+/** One type's read in a backup job: its outcome, count, timing and a short error. */
+export interface TypeProgress {
+  outcome: string;
+  itemCount?: number | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  httpStatus?: number | null;
+  error?: string | null;
+  throttles?: number;
+}
+
+/** A backup job's progress by type: written live by the job, or read from its snapshot. */
+export interface JobProgress {
+  types: Record<string, TypeProgress>;
+  updatedAt: string | null;
+  source: "live" | "snapshot";
+}
+
+function jobProgress(value: unknown): JobProgress | null {
+  const progress = typeof value === "string" ? (() => { try { return JSON.parse(value); } catch { return null; } })() : value;
+  if (!progress || typeof progress !== "object" || Array.isArray(progress)) return null;
+  const { types, updatedAt, source } = progress as Record<string, unknown>;
+  if (!types || typeof types !== "object" || Array.isArray(types)) return null;
+  const entries = Object.entries(types as Record<string, unknown>)
+    .filter((entry): entry is [string, TypeProgress] => Boolean(entry[1]) && typeof (entry[1] as TypeProgress).outcome === "string" && (entry[1] as TypeProgress).outcome !== "not-requested");
+  return {
+    types: Object.fromEntries(entries.map(([type, entry]) => [type, {
+      outcome: entry.outcome,
+      itemCount: Number.isSafeInteger(entry.itemCount) ? entry.itemCount : null,
+      startedAt: typeof entry.startedAt === "string" ? entry.startedAt : null,
+      completedAt: typeof entry.completedAt === "string" ? entry.completedAt : null,
+      httpStatus: Number.isSafeInteger(entry.httpStatus) ? entry.httpStatus : null,
+      error: typeof entry.error === "string" ? entry.error : null,
+      ...(Number.isSafeInteger(entry.throttles) ? { throttles: entry.throttles } : {}),
+    }])),
+    updatedAt: typeof updatedAt === "string" ? updatedAt : null,
+    source: source === "snapshot" ? "snapshot" : "live",
+  };
+}
+
+const SNAPSHOT_LINE = /snapshot ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}) complete/i;
+
+const CONTENT_OUTCOMES: Record<string, string> = { succeeded: "complete", failed: "failed", partial: "partial", skipped: "unavailable", disabled: "disabled" };
+
+/** The service and content backups record one row per workload as each finishes; a job
+ *  shows the rows written while it ran. Pinned to the tenant, and read-only. */
+async function workloadProgress(client: KeelClient, tenantRef: string, row: Record<string, unknown>): Promise<unknown> {
+  const started = row.started_at ? new Date(String(row.started_at)) : null;
+  if (!started || Number.isNaN(started.valueOf())) return null;
+  const until = row.finished_at ? new Date(new Date(String(row.finished_at)).valueOf() + 60_000) : new Date();
+  const tenant = typeof (row.params as Record<string, unknown> | null)?.tenantRef === "string" ? String((row.params as Record<string, unknown>).tenantRef) : tenantRef;
+  try {
+    if (row.kind === "workload-collect") {
+      const { rows } = await client.query(
+        `SELECT c.workload, c.outcome, c.observed_from, c.observed_to, c.digest,
+                (SELECT count(*)::int FROM workload_observation o WHERE o.collection_id = c.id) AS settings
+           FROM workload_collection c
+          WHERE c.tenant_ref = $1 AND c.created_at >= $2 AND c.created_at <= $3
+          ORDER BY c.created_at`,
+        [tenant, started.toISOString(), until.toISOString()],
+      );
+      if (!rows.length) return null;
+      return {
+        source: "live", updatedAt: until.toISOString(),
+        types: Object.fromEntries(rows.map((entry) => {
+          const reasons = Array.isArray((entry.digest as Record<string, unknown> | null)?.reasons) ? ((entry.digest as Record<string, unknown>).reasons as unknown[]) : [];
+          return [`workload:${entry.workload}`, {
+            outcome: entry.outcome === "disabled" ? "disabled" : String(entry.outcome),
+            itemCount: Number(entry.settings ?? 0),
+            startedAt: entry.observed_from ? new Date(String(entry.observed_from)).toISOString() : null,
+            completedAt: entry.observed_to ? new Date(String(entry.observed_to)).toISOString() : null,
+            error: reasons.length ? reasons.map((reason) => typeof reason === "string" ? reason : JSON.stringify(reason)).join("\n").slice(0, 500) : null,
+          }];
+        })),
+      };
+    }
+    if (row.kind === "content-collect") {
+      const { rows } = await client.query(
+        `SELECT workload, outcome, items, reasons, started_at, completed_at FROM content_run
+          WHERE tenant_ref = $1 AND started_at >= $2 AND started_at <= $3 ORDER BY started_at`,
+        [tenant, started.toISOString(), until.toISOString()],
+      );
+      if (!rows.length) return null;
+      return {
+        source: "live", updatedAt: until.toISOString(),
+        types: Object.fromEntries(rows.map((entry) => [`content:${entry.workload}`, {
+          outcome: CONTENT_OUTCOMES[String(entry.outcome)] ?? "failed",
+          itemCount: Number(entry.items ?? 0),
+          startedAt: entry.started_at ? new Date(String(entry.started_at)).toISOString() : null,
+          completedAt: entry.completed_at ? new Date(String(entry.completed_at)).toISOString() : null,
+          error: Array.isArray(entry.reasons) && entry.reasons.length ? entry.reasons.map(String).join("\n").slice(0, 500) : null,
+        }])),
+      };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/** A job's progress by type or workload: live from the job, or from what it wrote. */
+async function snapshotProgress(client: KeelClient, tenantRef: string, row: Record<string, unknown>): Promise<unknown> {
+  if (!row.progress && ["workload-collect", "content-collect"].includes(String(row.kind))) return workloadProgress(client, tenantRef, row);
+  if (row.progress || !["backup", "collect"].includes(String(row.kind))) return row.progress ?? null;
+  const result = (row.result ?? {}) as Record<string, unknown>;
+  const snapshotId = typeof result.snapshotId === "string" ? result.snapshotId : SNAPSHOT_LINE.exec(`${result.stdout ?? ""}\n${row.error ?? ""}`)?.[1];
+  if (!snapshotId || !UUID_PATTERN.test(snapshotId)) return null;
+  try {
+    const { rows } = await client.query(`SELECT coverage_digest, completed_at FROM snapshot WHERE id = $1 AND tenant_ref = $2`, [snapshotId, tenantRef]);
+    const digest = rows[0]?.coverage_digest;
+    if (!digest || typeof digest !== "object") return null;
+    return { types: digest, updatedAt: rows[0].completed_at ? new Date(String(rows[0].completed_at)).toISOString() : null, source: "snapshot" };
+  } catch {
+    return null;
+  }
 }
 
 export function normalizeApprovalRequest(row: Record<string, unknown>) {
@@ -344,9 +464,33 @@ export function guardedDispose(
 ): (request: Request) => Promise<Response> {
   return guarded(
     { action: "dispose", capability: "dispose-accept", recordAttempt: true },
-    async ({ client, principalId, request }) => {
+    async ({ client, principalId, tenantRef: tenant, request }) => {
       const body = await readActionParams(request);
-      const { driftId, action, reason, expiresAt } = body;
+      const { driftId, serviceChangeId, action, reason, expiresAt } = body;
+
+      // A service setting change (Exchange, SharePoint, Teams, ...) is accepted into
+      // that service's approved setup; it has no ignore. Its alert is settled with it.
+      if (serviceChangeId !== undefined) {
+        if (typeof serviceChangeId !== "string" || serviceChangeId.length === 0 || driftId !== undefined) {
+          throw new InvalidActionRequest("serviceChangeId is a change id, and is sent without driftId");
+        }
+        if (action !== "accept") throw new InvalidActionRequest("a service setting change can only be accepted");
+        if (typeof reason !== "string" || reason.trim().length === 0) throw new InvalidActionRequest("reason is required");
+        let accepted: { alertId: string | null };
+        try {
+          accepted = await acceptServiceChange(client, { tenantRef: tenant, changeId: serviceChangeId, actor: principalId, reason });
+        } catch {
+          return Response.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
+        }
+        if (accepted.alertId) {
+          try {
+            await resolveAlert(client, { tenantRef: tenant, alertId: accepted.alertId, actor: principalId, reason: `Accepted into the approved setup: ${reason.trim()}` });
+          } catch {
+            // The next read matches the approved setup and resolves it.
+          }
+        }
+        return Response.json({ accepted }, { headers: NO_STORE });
+      }
 
       if (typeof driftId !== "string" || driftId.length === 0) {
         throw new InvalidActionRequest("driftId is required");
@@ -500,7 +644,8 @@ export function guardedJobShow(
       ]);
       if (!rows[0]) return notFound();
       const [summarized] = (await summarizeJobs(client, { tenantRef, jobs: rows })) as Record<string, unknown>[];
-      return Response.json({ job: normalizeJob(summarized) }, { headers: NO_STORE });
+      const progress = await snapshotProgress(client, tenantRef, summarized);
+      return Response.json({ job: normalizeJob({ ...summarized, progress }) }, { headers: NO_STORE });
     },
     deps,
   );

@@ -80,7 +80,27 @@ function usableObservation(entry, { tenantRef, now, resourceType, maxAgeMs }) {
   return { usable: true };
 }
 
-function freezeResult({ control, verdict, reason, evidenceRefs, observationWindows, now }) {
+// The most per-object detail lines one result keeps: enough to name every failing
+// policy in a real tenant, bounded so one result never grows without limit.
+export const MAX_DETAILS = 50;
+
+/**
+ * What failed, line by line: { subject, setting, value, expected }, each a plain JSON
+ * value. Null when the predicate gave none (every result before details existed).
+ */
+function freezeDetails(details) {
+  if (!Array.isArray(details) || details.length === 0) return null;
+  return Object.freeze(details.slice(0, MAX_DETAILS).map((line) => {
+    if (typeof line?.subject !== 'string' || typeof line?.setting !== 'string') {
+      throw new TypeError('a result detail needs a subject and a setting');
+    }
+    return Object.freeze(JSON.parse(JSON.stringify({
+      subject: line.subject, setting: line.setting, value: line.value ?? null, expected: line.expected ?? null,
+    })));
+  }));
+}
+
+function freezeResult({ control, verdict, reason, evidenceRefs, observationWindows, now, details = null }) {
   return Object.freeze({
     contractVersion: EVALUATION_CONTRACT_VERSION,
     controlId: control.controlId,
@@ -92,6 +112,7 @@ function freezeResult({ control, verdict, reason, evidenceRefs, observationWindo
     reason,
     evidenceRefs: Object.freeze(evidenceRefs),
     observationWindows: Object.freeze(observationWindows),
+    details: freezeDetails(details),
     evaluatedAt: now.toISOString(),
   });
 }
@@ -139,17 +160,22 @@ export function evaluateControl({ controlId, tenantRef, observations = {}, now =
     ? factsByType[control.requiredObservations[0].resourceType]
     : factsByType;
 
+  // A predicate returns a verdict, or { verdict, details } to say which object and
+  // setting made it fail (the Compliance page lists them).
   const predicate = predicateFor(control.predicate.name);
-  const returned = predicate(factsArg, control.predicate.args);
-  // The one structured return: a fail because the setting does not exist at all.
-  const notConfigured = returned !== null && typeof returned === 'object'
-    && returned.verdict === 'fail' && returned.reason === NOT_CONFIGURED;
-  const verdict = notConfigured ? 'fail' : returned;
+  const answer = predicate(factsArg, control.predicate.args);
+  const verdict = typeof answer === 'string' ? answer : answer?.verdict;
   if (!PREDICATE_VERDICTS.includes(verdict)) {
-    throw new TypeError(`${controlId}: predicate must return one of ${PREDICATE_VERDICTS.join(', ')} or { verdict: 'fail', reason: '${NOT_CONFIGURED}' }, got ${JSON.stringify(returned)}`);
+    throw new TypeError(`${controlId}: predicate must return one of ${PREDICATE_VERDICTS.join(', ')}, got ${JSON.stringify(answer)}`);
+  }
+  const details = typeof answer === 'string' ? null : answer.details ?? null;
+  // A fail because the setting does not exist at all ("not set up yet").
+  const reason = verdict === 'fail' && typeof answer === 'object' && answer?.reason === NOT_CONFIGURED ? NOT_CONFIGURED : null;
+  if (typeof answer === 'object' && answer?.reason != null && reason === null) {
+    throw new TypeError(`${controlId}: only a fail may give a reason, and only '${NOT_CONFIGURED}'`);
   }
 
-  return freezeResult({ control, verdict, reason: notConfigured ? NOT_CONFIGURED : null, evidenceRefs, observationWindows, now });
+  return freezeResult({ control, verdict, reason, evidenceRefs, observationWindows, now, details });
 }
 
 /**
@@ -174,13 +200,14 @@ export async function recordEvaluation(client, { tenantRef, result, actor }) {
   const { rows } = await client.query(
     `INSERT INTO benchmark_evaluation
        (tenant_ref, control_id, framework, edition, profile, evaluator_version,
-        verdict, reason, evidence_refs, observation_windows, evaluated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        verdict, reason, evidence_refs, observation_windows, evaluated_at, details)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
      RETURNING *`,
     [
       tenantRef, result.controlId, result.framework, result.edition, result.profile,
       result.evaluatorVersion, result.verdict, result.reason,
       JSON.stringify(result.evidenceRefs), JSON.stringify(result.observationWindows), result.evaluatedAt,
+      result.details ? JSON.stringify(result.details) : null,
     ],
   );
   const evaluation = rows[0];

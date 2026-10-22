@@ -2,7 +2,7 @@
 // Pure helpers shared by the Changes and Restore pages and the UI harness. Natural
 // keys, change-kind codes, planned verbs, waves, deferred references and refusal codes
 // stay in the record layer.
-import { objectName } from "../../engine/cir/objectName.mjs";
+import { NAME_FIELDS, objectName } from "../../engine/cir/objectName.mjs";
 import { plainKind } from "@/lib/baselines-view";
 import { holdsObjectId, isObjectId, objectIdsIn, replaceObjectIds } from "@/lib/object-ids";
 import { ago, resourceLabel, words } from "@/lib/presentation";
@@ -46,10 +46,11 @@ type Named = Pick<DriftRecord, "naturalKey" | "resourceType"> & Partial<Pick<Dri
  * the key with any ids named, else "Unnamed <kind>". Never an object id. */
 export function changeName(item: Named): string {
   const name = item.name?.trim();
-  if (name && !holdsObjectId(name)) return name;
-  // A tenant-wide setting is stored under its type: its kind is its name.
   const kind = kindOf(item.resourceType);
-  if (item.naturalKey === item.resourceType && kind) return kind;
+  // A name that is only the stored type code ("sharepointSettings") is not a name.
+  if (name && !holdsObjectId(name) && !(kind && name === item.resourceType)) return name;
+  // A tenant-wide setting is stored under its type: its kind is its name.
+  if ((item.naturalKey === item.resourceType || resourceName(item.naturalKey) === item.resourceType) && kind) return kind;
   const names = item.refNames ?? {};
   const fromKey = replaceObjectIds(resourceName(item.naturalKey).replace(/\bunknown:/g, ""), (id) => names[id.toLowerCase()] ?? id);
   if (!holdsObjectId(fromKey)) return fromKey;
@@ -133,10 +134,17 @@ export function changesVerdict(all: DriftRecord[], baselineSetAt: string | null,
 }
 
 /** "conditions.users.excludeGroups" → "Conditions › users › exclude groups". */
+// Short forms and product names that keep their capitals inside a setting's name.
+const FIELD_TERMS: [RegExp, (term: string) => string][] = [
+  [/\bbit locker\b/g, () => "BitLocker"], [/\bshare point\b/g, () => "SharePoint"], [/\bone drive\b/g, () => "OneDrive"],
+  [/\b(usb|ip|mfa|url|uri|dns|tls|ssl|vpn|pin|sms|api)\b/g, (term) => term.toUpperCase()],
+];
+
 export function fieldWords(path: string): string {
   if (path === "(value)") return "Value";
   return path.split(".").map((part, index) => {
-    const spaced = part.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replaceAll("_", " ").toLowerCase();
+    let spaced = part.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replaceAll("_", " ").toLowerCase();
+    for (const [pattern, term] of FIELD_TERMS) spaced = spaced.replace(pattern, term);
     return index === 0 ? spaced.charAt(0).toUpperCase() + spaced.slice(1) : spaced;
   }).join(" › ");
 }
@@ -168,8 +176,72 @@ export function valueWords(value: unknown, names?: Readonly<Record<string, strin
       if (unnamed) named.push(`${named.length ? `${unnamed} other` : unnamed} ${unnamed === 1 ? "object" : "objects"} Keel has no name for`);
       return named.join(", ");
     }
+    // A list of objects (grants, rules, members): one short phrase per entry.
+    if (value.every((entry) => entry !== null && typeof entry === "object" && !Array.isArray(entry))) {
+      const shown = value.slice(0, 3).map((entry) => entryWords(entry, names));
+      return value.length > shown.length ? `${shown.join("; ")}; and ${value.length - shown.length} more` : shown.join("; ");
+    }
   }
   return settingsWords(value, names);
+}
+
+// Keys that hold where an entry points: the name found under one says what it is.
+const ENTRY_KINDS: Record<string, string> = {
+  application: "App", applications: "App", app: "App", servicePrincipal: "App", servicePrincipals: "App",
+  user: "Person", users: "Person", group: "Group", groups: "Group", device: "Device", devices: "Device", site: "Site", sites: "Site",
+};
+const ID_KEY = /(^id$|Id$|Ids$|^@|DateTime$)/;
+const ROLE_WORDS: Record<string, string> = { read: "Read", write: "Write", owner: "Full control", fullcontrol: "Full control", manage: "Manage" };
+
+/** The name an entry carries, and what kind of thing the name belongs to. */
+function entryName(entry: Record<string, unknown>, names: Readonly<Record<string, string>> | undefined, depth = 0): { name: string; kind: string | null } | null {
+  for (const field of NAME_FIELDS) {
+    const value = entry[field];
+    if (typeof value === "string" && value.trim() && !holdsObjectId(value)) return { name: value.trim(), kind: null };
+  }
+  if (depth < 3) {
+    for (const [key, inner] of Object.entries(entry)) {
+      const first = Array.isArray(inner) ? inner[0] : inner;
+      if (first && typeof first === "object" && !Array.isArray(first)) {
+        const found = entryName(first as Record<string, unknown>, names, depth + 1);
+        if (found) return { name: found.name, kind: found.kind ?? ENTRY_KINDS[key] ?? null };
+      }
+    }
+  }
+  if (depth === 0) {
+    // A field named like "ruleName" names the entry when nothing else does.
+    for (const [key, value] of Object.entries(entry)) {
+      if (/Name$/.test(key) && typeof value === "string" && value.trim() && !holdsObjectId(value)) return { name: value.trim(), kind: null };
+    }
+    // An entry known only by ids: the name Keel has for one of them.
+    for (const [key, value] of Object.entries(entry)) {
+      if (!/(^id|Id)$/.test(key) || typeof value !== "string" || !names?.[value.toLowerCase()]) continue;
+      const kind = /^(app|client|resource|servicePrincipal)/.test(key) ? "App" : /^(user|principal)/.test(key) ? "Person" : /^group/.test(key) ? "Group" : null;
+      return { name: names[value.toLowerCase()], kind };
+    }
+  }
+  return null;
+}
+
+/** One entry of a list (a grant, a rule, a member) as a short phrase: "App Contoso
+ *  HR · Write access", or its first plain settings when it has no name. Ids never show. */
+export function entryWords(entry: unknown, names?: Readonly<Record<string, string>>): string {
+  if (entry === null || typeof entry !== "object" || Array.isArray(entry)) return valueWords(entry, names);
+  const record = entry as Record<string, unknown>;
+  const named = entryName(record, names);
+  const parts: string[] = [];
+  if (named) parts.push(named.kind ? `${named.kind} ${named.name}` : named.name);
+  const roles = record.roles;
+  if (Array.isArray(roles) && roles.length && roles.every((role) => typeof role === "string")) {
+    parts.push(`${(roles as string[]).map((role) => ROLE_WORDS[role.toLowerCase()] ?? words(role)).join(" and ")} access`);
+  }
+  const used = new Set([...NAME_FIELDS, "roles"]);
+  const extras = Object.keys(record).sort()
+    .filter((key) => !used.has(key) && !ID_KEY.test(key) && !(named && /Name$/.test(key)))
+    .filter((key) => { const value = record[key]; return value === null || typeof value !== "object" || (Array.isArray(value) && value.every((item) => item === null || typeof item !== "object")); })
+    .filter((key) => !(typeof record[key] === "string" && isObjectId(record[key] as string) && !names?.[(record[key] as string).toLowerCase()]));
+  for (const key of extras.slice(0, named ? 2 : 3)) parts.push(`${fieldWords(key)}: ${valueWords(record[key], names)}`);
+  return parts.length ? parts.join(" · ") : "An entry Keel has no name for";
 }
 
 /** A list of objects or an object as its settings in a short line ("State: on; Users:

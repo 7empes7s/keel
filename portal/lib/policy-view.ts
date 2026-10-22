@@ -1,4 +1,5 @@
 import type { IconName } from "@/components/shell/icons";
+import { plainError } from "@/lib/error-words";
 import type { BadgeTone } from "@/components/ui/badge";
 import { plainKind, typeService } from "@/lib/baselines-view";
 import type { RiskTone } from "@/lib/menu-status";
@@ -274,8 +275,8 @@ export function failureWords(error: string | null): string {
   if (/\b429\b|throttl/i.test(first)) return "Microsoft throttled the request";
   if (/\b404\b|not found/i.test(first)) return "The setting no longer exists";
   if (/\b(5\d\d)\b|timed? ?out/i.test(first)) return "Microsoft did not answer in time";
-  const plain = first.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "an id").replace(/\b[0-9a-f]{32,}\b/gi, "an id").trim();
-  return plain || "It stopped with an error";
+  // Anything else in plain words; the raw error is behind "Show details".
+  return plainError(error).cause.replace(/\.$/, "");
 }
 
 /** One plain line under the outcome: why it failed, or when it ran. */

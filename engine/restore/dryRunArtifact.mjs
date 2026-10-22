@@ -101,7 +101,7 @@ export function computePlanDigest({
   snapshotId, selection, closureKeys, targetTenantId, collectorConfigPath, targetConfigPath,
   reconciliationResources, waves, patches, automationContext = null, relationshipOperations = null,
   recoveryMechanisms = null, contentEffects = null, compensation = null, incidentRecovery = null,
-  conditionalAccessEnforcement = null, brandingUploads = null,
+  conditionalAccessEnforcement = null, brandingUploads = null, complianceFix = null,
 }) {
   return sha256(canonicalStringify({
     snapshotId,
@@ -139,6 +139,9 @@ export function computePlanDigest({
     // The gates are not in the digest: they are evaluated again at execution.
     // Null otherwise.
     ...(conditionalAccessEnforcement ? { conditionalAccessEnforcement } : {}),
+    // Gap 6: a compliance fix binds the control, the object, its target id, the
+    // setting and its value now and after. Null for every other restore.
+    ...(complianceFix ? { complianceFix } : {}),
   }));
 }
 
@@ -208,7 +211,7 @@ export async function createDryRunArtifact(client, {
   collectorConfigPath, targetConfigPath, reconciliationResources, waves, patches, guardRefusals, results,
   currentStateFingerprint, digest, status, requestedBy, automationContext = null, relationshipOperations = null,
   recoveryMechanisms = null, contentEffects = null, compensation = null, incidentRecovery = null,
-  workloadRestore = null, conditionalAccessEnforcement = null,
+  workloadRestore = null, conditionalAccessEnforcement = null, complianceFix = null,
 }) {
   if (!TERMINAL_STATUSES.includes(status)) {
     throw new Error(`invalid dry-run artifact status: ${status}`);
@@ -219,8 +222,8 @@ export async function createDryRunArtifact(client, {
         collector_config_path, target_config_path, reconciliation_resources, waves, patches, guard_refusals,
         results, current_state_fingerprint, digest, status, requested_by, automation_context,
         relationship_operations, recovery_mechanisms, content_effects, compensation, incident_recovery,
-        workload_restore, conditional_access_enforcement)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+        workload_restore, conditional_access_enforcement, compliance_fix)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
      RETURNING *`,
     [
       // pg serializes a top-level JS array as a Postgres array literal, not JSON —
@@ -239,6 +242,7 @@ export async function createDryRunArtifact(client, {
       incidentRecovery ? JSON.stringify(incidentRecovery) : null,
       workloadRestore ? JSON.stringify(workloadRestore) : null,
       conditionalAccessEnforcement ? JSON.stringify(conditionalAccessEnforcement) : null,
+      complianceFix ? JSON.stringify(complianceFix) : null,
     ],
   );
   return normalizeArtifact(rows[0]);
@@ -296,6 +300,8 @@ function normalizeArtifact(row) {
     workloadRestore: row.workload_restore ?? null,
     // Task-152: set only on a Conditional Access enforcement dry run.
     conditionalAccessEnforcement: row.conditional_access_enforcement ?? null,
+    // Gap 6: set only on a "Make it pass" compliance fix dry run.
+    complianceFix: row.compliance_fix ?? null,
     createdAt: row.created_at,
   };
 }

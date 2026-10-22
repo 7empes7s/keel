@@ -81,5 +81,5 @@ test('only a fail may carry the not-configured reason', () => {
     requiredObservations: [{ resourceType: 'group', maxAgeMs: 3_600_000 }],
     predicate: { name: 'test.not-configured-pass', args: {} },
   });
-  assert.throws(() => check([], 'test.not-configured-pass', 'group'), /predicate must return/);
+  assert.throws(() => check([], 'test.not-configured-pass', 'group'), /predicate must return|only a fail may give a reason/);
 });

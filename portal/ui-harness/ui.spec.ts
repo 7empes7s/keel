@@ -808,6 +808,9 @@ test("a change says who made it from the audit log and where an undo goes", asyn
   let sheet = await openChange(page, "Block legacy auth");
   const panel = sheet.locator(".change-attribution");
   await expect(panel.locator(".change-attribution-headline")).toContainText("Confirmed by the Microsoft audit log. Amara Okafor made this change, according to the audit log.");
+  await expect(panel.locator(".change-attribution-headline .pill")).toHaveText("Confirmed");
+  await expect(panel.locator(".change-attribution-when")).toContainText("from the Microsoft Entra audit log");
+  await expect(panel.locator(".change-attribution-next")).toHaveCount(0);
   await expect(panel.locator(".change-attribution-route")).toHaveText("A roll back goes to a central approver (2 people), because it touches more than one entity.");
   expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
   const record = panel.locator('[data-layer="record"]');
@@ -827,6 +830,8 @@ test("a change says who made it from the audit log and where an undo goes", asyn
   await expect(page.locator(".bl-row-link", { hasText: /^Block legacy auth$/ })).toBeFocused();
   sheet = await openChange(page, "Finance");
   await expect(sheet.locator(".change-attribution-headline")).toContainText("Not known. The audit log for that time is no longer available");
+  await expect(sheet.locator(".change-attribution-when")).toContainText("between two backups");
+  await expect(sheet.locator(".change-attribution-next")).toHaveText("Microsoft no longer keeps that part of the Microsoft Entra audit log. Ask the people who manage this setting, or check your own log archive.");
   await expect(sheet.locator(".change-attribution-route")).toHaveText("A roll back goes to CREOS approvers (1 person).");
   const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(results.violations.map((violation) => violation.id)).toEqual([]);

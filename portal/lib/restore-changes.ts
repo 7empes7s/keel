@@ -1,6 +1,7 @@
 import { connect } from "@/lib/db";
 import { semanticChange } from "../../engine/govern/semanticDrift.mjs";
 import { MAX_ATTRIBUTED_CHANGES, attributeChanges } from "../../engine/identity/attribution.mjs";
+import { changeObjectIds } from "../../engine/identity/auditSources.mjs";
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 
 import { valueWords } from "@/lib/changes-view";
@@ -102,6 +103,8 @@ interface DiffRow {
   naturalKey: string;
   resourceType: string;
   hash: string;
+  // The Microsoft object ids an audit record about it would name.
+  objectIds: string[];
   kind: "changed" | "deleted";
   fields: RestoreChangeField[];
   fieldCount: number;
@@ -112,7 +115,10 @@ async function diff(client: Client, fromId: string, toId: string): Promise<DiffR
   const result: DiffRow[] = [];
   for (const row of rows) {
     const resourceType = String(row.resource_type);
-    const base = { naturalKey: String(row.natural_key), resourceType, hash: String(row.payload_hash) };
+    const base = {
+      naturalKey: String(row.natural_key), resourceType, hash: String(row.payload_hash),
+      objectIds: changeObjectIds({ naturalKey: String(row.natural_key), before: row.before, after: row.after }) as string[],
+    };
     if (row.deleted) {
       result.push({ ...base, kind: "deleted", fields: [], fieldCount: 0 });
       continue;
@@ -172,7 +178,7 @@ async function whenChanged(client: Client, ref: string, after: SnapshotRow[], ro
   return found;
 }
 
-async function whoChanged(client: Client, ref: string, changes: RestoreChange[], chosenAt: string | null) {
+async function whoChanged(client: Client, ref: string, changes: RestoreChange[], chosenAt: string | null, objectIds: Map<string, string[]>) {
   const who = new Map<string, RestoreChange["who"]>();
   const windows = changes.filter((change) => change.seenAt);
   if (!windows.length) return who;
@@ -183,7 +189,8 @@ async function whoChanged(client: Client, ref: string, changes: RestoreChange[],
         id: change.naturalKey,
         resourceType: change.resourceType,
         naturalKey: change.naturalKey,
-        changeType: change.kind === "deleted" ? "removed" : "changed",
+        changeType: change.kind === "deleted" ? "removed" : "modified",
+        objectIds: objectIds.get(change.naturalKey) ?? [],
         fields: [...new Set(change.fields.map((field) => field.path.split(".")[0]))],
         window: { from: change.sameUntil ?? chosenAt, until: change.seenAt },
       })),
@@ -239,7 +246,7 @@ export async function getRestoreChanges(snapshotId: string): Promise<RestoreChan
     }));
     all.sort((a, b) => (b.seenAt ?? "").localeCompare(a.seenAt ?? "") || a.naturalKey.localeCompare(b.naturalKey));
     const listed = all.slice(0, MAX_RESTORE_CHANGES);
-    const who = await whoChanged(client, ref, listed, chosen.takenAt);
+    const who = await whoChanged(client, ref, listed, chosen.takenAt, new Map(rowsChanged.map((row) => [row.naturalKey, row.objectIds])));
     return {
       newest: { id: newest.id, takenAt: newest.takenAt },
       changes: listed.map((change) => ({ ...change, who: who.get(change.naturalKey) ?? null })),

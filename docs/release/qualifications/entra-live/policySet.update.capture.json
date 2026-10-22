@@ -1,0 +1,63 @@
+{
+  "restoreRef": "440efcea-ec24-8950-b748-225235de98fa",
+  "entry": {
+    "naturalKey": "policySet:8f90ffef-69b4-88ce-b727-3a71d0d739ef",
+    "resourceType": "policySet",
+    "operation": "update",
+    "targetId": "f6c328ff-b49b-8a06-9c1d-a7a4d970ca30",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T18:10:29.878Z",
+    "priorState": {
+      "id": "f6c328ff-b49b-8a06-9c1d-a7a4d970ca30",
+      "items": [
+        {
+          "id": "f6c328ff-b49b-8a06-9c1d-a7a4d970ca30_f5c2603e-d849-8b34-a633-73886c391b91_DeviceConfigurationPolicy_Parcel",
+          "status": "notAssigned",
+          "itemType": "#microsoft.graph.windows10GeneralConfiguration",
+          "errorCode": "noError",
+          "payloadId": "f5c2603e-d849-8b34-a633-73886c391b91",
+          "@odata.type": "#microsoft.graph.deviceConfigurationPolicySetItem",
+          "displayName": "KEEL-RT-profile",
+          "createdDateTime": "2026-10-22T18:08:04.9773862Z",
+          "guidedDeploymentTags": [],
+          "lastModifiedDateTime": "2026-10-22T18:08:05Z"
+        }
+      ],
+      "status": "notAssigned",
+      "errorCode": "noError",
+      "description": "drift",
+      "displayName": "KEEL-RT-set",
+      "roleScopeTags": [
+        "0"
+      ],
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/policySets(items())/$entity",
+      "createdDateTime": "2026-10-22T18:08:25.3458805Z",
+      "items@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/policySets('f6c328ff-b49b-8a06-9c1d-a7a4d970ca30')/items",
+      "guidedDeploymentTags": [],
+      "lastModifiedDateTime": "2026-10-22T18:08:25Z"
+    },
+    "intendedState": {
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-set",
+      "roleScopeTags": [
+        "0"
+      ],
+      "guidedDeploymentTags": []
+    },
+    "postState": {
+      "id": "f6c328ff-b49b-8a06-9c1d-a7a4d970ca30",
+      "status": "notAssigned",
+      "errorCode": "noError",
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-set",
+      "roleScopeTags": [
+        "0"
+      ],
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/policySets/$entity",
+      "createdDateTime": "2026-10-22T18:10:29.9593439Z",
+      "guidedDeploymentTags": [],
+      "lastModifiedDateTime": "2026-10-22T18:10:29Z"
+    }
+  }
+}

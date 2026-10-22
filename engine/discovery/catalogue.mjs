@@ -18,6 +18,12 @@ import { ALIAS_PATHS, SKIPPED_PATHS } from './notGaps.mjs';
 // Graph collections read in full by a workload collector rather than a catalogue entry.
 export const WORKLOAD_GRAPH_PATHS = Object.freeze({
   '/teams': 'teams-settings',
+  // Remaining kinds, batch 7: the same sensitivity labels, and the label policy
+  // defaults, that the Purview label workload reads with Get-Label and Get-LabelPolicy.
+  '/security/informationProtection/sensitivityLabels': 'purview-labels',
+  '/security/informationProtection/labelPolicySettings': 'purview-labels',
+  '/informationProtection/policy/labels': 'purview-labels',
+  '/dataClassification/sensitivityLabels': 'purview-labels',
 });
 
 export const catalogPath = (path) => String(path).split('?')[0].replace(/\/+$/, '');

@@ -5641,7 +5641,7 @@ item that needs it stays untouched.
   (`deviceShellScript`), remediations (`deviceHealthScript`, Microsoft-published ones are never written) and custom compliance
   scripts (`deviceComplianceScript`). Who a script runs on is **not** written; fixtures stay unassigned.
 - Needs: /opt/keel-live at the #435 merge or later (`grep -q scriptRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
+- Status: in-progress
 - Result: blocked (2026-10-22 08:13 UTC) on **#471**: the Restorer lacks `DeviceManagementScripts.ReadWrite.All`. B = c396a2c. Nothing created; nothing granted.
   - Fixture creates (Restorer, POST beta): `deviceManagementScripts`, `deviceShellScripts`, `deviceHealthScripts` and `deviceComplianceScripts` all answered **403**: "Application is not authorized to perform this operation. Application must have one of the following scopes: DeviceManagementScripts.ReadWrite.All". KEEL's writers declare DeviceManagementConfiguration.ReadWrite.All, so a restore would hit the same 403.
   - Backup side is fine: in snapshot ac991228, all four kinds are complete or complete-empty (200). One existing non-fixture PowerShell script is backed up.

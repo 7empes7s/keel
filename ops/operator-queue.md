@@ -7470,8 +7470,16 @@ item that needs it stays untouched.
   reads each site's own `sharingCapability` with one `Get-PnPTenantSite` (no parameters) through PnP, gated on the
   `sharepoint.site-sharing` ledger row. Until a live read record is imported the Sites list shows "Not read yet" in Sharing setting.
 - Needs: /opt/keel-live at the #544 merge or later (`grep -q sharingCapabilityName /opt/keel-live/engine/collect/workloads/sharepoint.mjs`). #544 stores PnP's enum number by name; without it the values land as digits.
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 21:21 UTC). **The per-site sharing read is captured, imported and on**: sharepoint-site-settings is `complete`, with 19 of 20 sites' sharing level read. Step 6 (portal) is not reachable from this box. Collector reads only; nothing granted. B = 3010d22.
+  1. `/etc/keel/workload-scope.json` (backup `.bak-q158`, root:root 644 kept): `powershellConfigs` keys before `exchange, onedrive, purview`; after `exchange, onedrive, purview, **sharepoint**`. `sharepoint` = the OneDrive value (`/etc/keel/purview-collector.json`).
+  2. Capture with that config: exit 0, outcome `complete`, proven `["sharepoint.site-sharing"]`, notProven `[]`, verify ok. `pseudonymize.mjs check`: exit 0; my scan is clean.
+  3. Evidence: `claude/live-evidence-sharepoint-site-sharing` @ **b2f9ad24** (that record only).
+  4. Import: exit 0. Imported 18, including `workload-reads-sharepoint-site-settings-live-acceptance.json`; refused `[]` (no PnP version refusal); absent sharepoint-site-grants and sharepoint-site-permissions.
+  5. `run`: exit 1 (other workloads partial). `sharepoint-site-settings: complete`, reasons `[]`, 0 new changes.
+     - Sites by `sharingCapability`: observed `ExternalUserSharingOnly` 16; observed `Disabled` 3; unknown (empty) 1.
+     - Tenant: `externalUserSharingOnly`. No site is above the tenant's level, so the "Shared wider than default" tile should be 0.
+  6. Not reachable: the portal needs a Cloudflare Access login (401 locally).
 - **Tenant:** reads only. `Get-PnPTenantSite` with the Collector credential (Sites.FullControl.All + SharePoint Administrator, already
   held, as the OneDrive read). No `Set-`, `New-` or `Remove-` cmdlet. Grant, assign or create nothing.
 - **Host:** #538 pins PnP.PowerShell to 3.4.1 in `ops/powershell/Dockerfile`. If the PowerShell image is not rebuilt on deploy,

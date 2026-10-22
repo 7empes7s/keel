@@ -4822,8 +4822,8 @@ item that needs it stays untouched.
 - **Marouane's decision (2026-10-21 17:29 UTC, comment on the executive deck): "get everything in the scope".** Content
   backup covers the whole tenant, not only the `KEEL-RT-` test fixtures.
 - Needs: nothing (Q99 and Q100 can run first or after; it does not change anything).
-- Status: in-progress
-- Result: in progress (2026-10-21 19:30 UTC). A and B are done; C waits for the 2026-10-22 01:00 UTC run. Read-only toward the tenant.
+- Status: blocked
+- Result: rolled back (2026-10-22 01:11 UTC). The first whole-tenant run failed because an auto-deploy restarted the worker mid-job, not because of scope or disk; the scope is back to `KEEL-RT-`. Read-only toward the tenant. Report: #448.
   - **A1.** `storage.root` is not in `tenant.json`; it is in `content-reader.json`: `/var/lib/keel/content`.
     - `/var/lib/keel/content`: on `/dev/sda1` (150G, 51G used, **94G free**, 35 %); `du -sh` 14M.
     - Postgres data (`keel-postgres-data` volume): the same `/` volume; `du -sh` 2.2G.
@@ -4841,8 +4841,22 @@ item that needs it stays untouched.
   - **B.** Saved `content-scope.json.bak-q101` (`cp -p`), then rewrote the file without `namePrefix`; root 600 kept, parse
     check exit 0. New file: `{ "tenantHost": "<org>.sharepoint.com" }`. Content chunks before the run: 887, holding
     7 507 067 bytes.
-  - **C.** Pending. A watcher logs free space every 5 minutes to `/root/q101-watch.log` and puts the backup scope file back
-    automatically if free space drops below 20 %.
+  - **C. Run 2026-10-22 01:00 UTC: failed.**
+    - Job `8c561147-ca3f-471d-b9b0-1e4348b2a5b6`: queued 01:00:01, started 01:01:56, ended 01:08:44, status `failed`, exit
+      code `null`.
+    - Cause: `keel-deploy` deployed master `b2948ad` (#442) at 01:08. It stopped `keel-worker` with SIGTERM at 01:08:44, and the
+      worker terminated the in-flight job. Free space stayed at 64 % at every check.
+    - exchange-mail: `partial`, 2 987 items, 187 551 579 bytes. Reasons (masked): `mailboxSettings <mailbox id>: 504
+      UnknownError`; `<a group mailbox> (group): 1 read(s) failed (403 ErrorAccessDenied Access is denied. Check credentials and
+      try again.)`.
+    - OneDrive, SharePoint and Teams: not reached. Containers found vs read and the throttled count are not reported by the job
+      or by `content_run`.
+    - `df -h /`: 150G, 51G used, 93G free (36 %). `du -sh /var/lib/keel/content`: 14M before, 229M after.
+    - `content_chunk`: 887 / 7 507 067 bytes before; 4 054 / 225 270 538 bytes after.
+  - **Rollback** at 01:11 UTC: `content-scope.json.bak-q101` copied back (`namePrefix: KEEL-RT-`, root 600, parses). The
+    whole-tenant file is kept at `/root/q101-scope-wholetenant.json`. Content already stored stays.
+  - **Waiting on Marouane:** whether to re-apply the whole-tenant scope for another 01:00 UTC run. A deploy during the 6-hour
+    window would stop it again unless deploys hold off while a `content-collect` job runs (a code or ops change).
 - **Read-only toward the tenant.** The collectors only read. No tenant writes, no fixtures, no permission grants: if the
   Collector cannot read some mailboxes, drives or sites (403), report the count and the reason verbatim (masked) and do not
   grant anything. That is a separate decision.

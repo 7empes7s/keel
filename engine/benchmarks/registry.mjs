@@ -481,9 +481,10 @@ mailControl({
 });
 
 // Blocking legacy authentication: an enabled Conditional Access policy that blocks
-// both legacy client app types (Exchange ActiveSync and other clients). A policy that
-// would do this but is off, report-only or misses one of the two fails; no such
-// policy at all is "not set up yet".
+// both legacy client app types (Exchange ActiveSync and other clients) for all users
+// and all apps (exclusions, such as break-glass accounts, are allowed). A policy that
+// would do this but is off, report-only, misses one of the two or covers only some
+// users or apps fails; no such policy at all is "not set up yet".
 const LEGACY_CLIENTS = ['exchangeActiveSync', 'other'];
 
 function blocksLegacy(fact) {
@@ -493,10 +494,16 @@ function blocksLegacy(fact) {
     && clients.some((client) => LEGACY_CLIENTS.includes(client));
 }
 
+function coversEveryone(fact) {
+  const users = fact?.conditions?.users?.includeUsers;
+  const apps = fact?.conditions?.applications?.includeApplications;
+  return Array.isArray(users) && users.includes('All') && Array.isArray(apps) && apps.includes('All');
+}
+
 registerPredicate('conditional-access-block-legacy', (facts) => {
   const candidates = facts.filter(blocksLegacy);
   if (candidates.length === 0) return { verdict: 'fail', reason: NOT_CONFIGURED };
-  const enforced = candidates.some((fact) => fact.state === 'enabled'
+  const enforced = candidates.some((fact) => fact.state === 'enabled' && coversEveryone(fact)
     && LEGACY_CLIENTS.every((client) => fact.conditions.clientAppTypes.includes(client)));
   return enforced ? 'pass' : 'fail';
 });
@@ -505,14 +512,16 @@ registerControl({
   controlId: 'keel-custom.conditional-access.block-legacy',
   title: 'Legacy authentication is blocked',
   description: 'Passes when an enabled conditionalAccessPolicy blocks both legacy '
-    + 'client app types (exchangeActiveSync and other). Fails when such a '
-    + 'policy is disabled, report-only or covers only one of them, and is '
+    + 'client app types (exchangeActiveSync and other) for all users and all '
+    + 'apps. Fails when such a policy is disabled, report-only, covers only one '
+    + 'of them or only some users or apps, and is '
     + 'recorded as not configured when no policy blocks legacy clients at '
     + 'all. An original check.',
   framework: 'keel-custom',
   edition: '1.0.0',
   profile: 'default',
-  evaluatorVersion: 1,
+  // 2: a block must cover all users and all apps.
+  evaluatorVersion: 2,
   severity: 'high',
   requiredObservations: [{ resourceType: 'conditionalAccessPolicy', maxAgeMs: 6 * 60 * 60 * 1000 }],
   predicate: { name: 'conditional-access-block-legacy', args: {} },

@@ -1140,7 +1140,17 @@ function inOrder(...steps) {
 // ------------------------------------------- restore gaps, batch 7
 
 const COMPLIANCE_POLICIES = '/deviceManagement/compliancePolicies';
-const COMPLIANCE_EXPAND = '$expand=settings,scheduledActionsForRule($expand=scheduledActionConfigurations)';
+const COMPLIANCE_EXPAND = '$expand=settings';
+// Issue #473: expanded next to the settings, Graph returns the actions for
+// noncompliance as an empty list, so they are read from their own collection.
+const COMPLIANCE_ACTIONS = 'scheduledActionsForRule?$expand=scheduledActionConfigurations';
+
+/**
+ * Whether a backup holds a policy's actions for noncompliance. Graph needs at
+ * least the block action, so an empty list means they were not read (backups
+ * taken before #473), never that the policy has none.
+ */
+const holdsComplianceActions = (payload) => Array.isArray(payload?.scheduledActionsForRule) && payload.scheduledActionsForRule.length > 0;
 
 /** The whole policy with its settings; a create also carries its actions for noncompliance. */
 function complianceBody(body, { verb, payload }) {
@@ -1175,10 +1185,10 @@ function compliancePolicyRefusal(resource, verb) {
     return { outcome: 'failed', reason: `the backup holds ${payload.settings.length} of this compliance policy's ${count} settings; writing it would delete the rest, so ${newBackup}` };
   }
   const actions = payload.scheduledActionsForRule;
-  if (Array.isArray(actions) && !actions.some((rule) => (rule?.scheduledActionConfigurations ?? []).some((action) => action?.actionType === 'block'))) {
+  if (holdsComplianceActions(payload) && !actions.some((rule) => (rule?.scheduledActionConfigurations ?? []).some((action) => action?.actionType === 'block'))) {
     return { outcome: 'failed', reason: 'the backup lists no block action for noncompliance for this compliance policy, and Graph needs one; restore it by hand' };
   }
-  if (verb === 'create' && !Array.isArray(actions)) {
+  if (verb === 'create' && !holdsComplianceActions(payload)) {
     return { outcome: 'failed', reason: `the backup does not hold this compliance policy's actions for noncompliance (backups before they were read), and Graph needs them to create it; ${newBackup}` };
   }
   return null;
@@ -1188,22 +1198,31 @@ function compliancePolicyRefusal(resource, verb) {
  * Puts a policy's actions for noncompliance back. A create sent them with the
  * policy, so they are only checked. An update from a backup without them leaves
  * the live actions as they are; otherwise changed actions are replaced through
- * setScheduledActions and read back.
+ * setScheduledActions and read back. The live actions are always read from
+ * their own collection (#473).
  */
 async function complianceActionsAfterWrite(io, { payload, verb, targetId, live }) {
-  const want = scheduledActionsBody(payload.scheduledActionsForRule);
-  if (verb === 'update' && !Array.isArray(payload.scheduledActionsForRule)) {
+  if (verb === 'update' && !holdsComplianceActions(payload)) {
     return { changes: { scheduledActions: 'left as they are: the backup was taken before actions for noncompliance were backed up' } };
   }
+  const want = scheduledActionsBody(payload.scheduledActionsForRule);
   const path = `${COMPLIANCE_POLICIES}/${encodeURIComponent(targetId)}`;
-  const differ = (body) => !sameValue(want, scheduledActionsBody(body?.scheduledActionsForRule));
-  if (!differ(live)) return verb === 'create' ? null : { changes: { scheduledActions: 'already as in the backup' } };
+  const differ = (actions) => !sameValue(want, scheduledActionsBody(actions));
+  const actionsOf = (r) => (r?.ok === true && Array.isArray(r.body?.value) ? r.body.value : null);
+  const readActions = (isStale) => readUntil(io, 'beta', `${path}/${COMPLIANCE_ACTIONS}`, isStale, io.readOptions);
+  const withActions = (actions) => ({ ...live, scheduledActionsForRule: actions });
+  // A create waits for its actions to show; an update reads them once.
+  const current = await readActions((r) => verb === 'create' && (recordNotFound(r) || (actionsOf(r) !== null && differ(actionsOf(r)))));
+  const found = actionsOf(current);
+  if (found === null) return { error: `reading the live actions for noncompliance failed: ${outcomeDetail(current)}` };
+  if (!differ(found)) return verb === 'create' ? { live: withActions(found) } : { live: withActions(found), changes: { scheduledActions: 'already as in the backup' } };
   if (verb === 'create') return { error: 'post-state: the actions for noncompliance did not read back as written' };
   const result = await io.retryOperation(() => io.writer.write('beta', `${path}/setScheduledActions`, { method: 'POST', body: { scheduledActions: want } }));
   if (!result.ok) return { error: `writing the actions for noncompliance failed: ${outcomeDetail(result)}` };
-  const check = await readUntil(io, 'beta', `${path}?${COMPLIANCE_EXPAND}`, (r) => recordNotFound(r) || (r?.ok === true && differ(r.body)), io.readOptions);
-  if (check?.ok !== true || differ(check.body)) return { error: 'post-state: the actions for noncompliance did not read back as written' };
-  return { live: check.body, changes: { scheduledActions: 'written' } };
+  const check = await readActions((r) => recordNotFound(r) || (actionsOf(r) !== null && differ(actionsOf(r))));
+  const written = actionsOf(check);
+  if (written === null || differ(written)) return { error: 'post-state: the actions for noncompliance did not read back as written' };
+  return { live: withActions(written), changes: { scheduledActions: 'written' } };
 }
 
 // Batch 9: the image fields of a branding profile. The list read returns no
@@ -1495,7 +1514,7 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     permission: 'DeviceManagementApps.ReadWrite.All',
   }),
   // Restore gaps, batch 7: settings catalog compliance policies. The backup
-  // reads each policy with its settings and actions for noncompliance. The
+  // reads each policy with its settings, then its actions for noncompliance. The
   // policy is written whole (PUT, like a settings catalog policy); a create
   // carries its actions, and on update changed actions go through the
   // policy's setScheduledActions action. Batch 15: then who it is assigned

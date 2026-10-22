@@ -1,0 +1,18 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-demotion",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "deviceManagementReusablePolicySetting",
+  "operation": "create",
+  "reason": "The create put back name, description and address, but Graph assigns a new _id child GUID, so the post-state check fails (#477)",
+  "restoreRef": "f38f6847-47a4-8c77-ad79-63d213cc9dfe",
+  "decidedAt": "2026-10-22T09:09:23.759Z",
+  "builderSteps": [
+    "remove the create registration for deviceManagementReusablePolicySetting in engine/coverage/capabilities.mjs",
+    "add \"live gate #148: create failed live: <reason>\" to TYPE_DECISIONS.deviceManagementReusablePolicySetting.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "or, when the cause is a KEEL bug with a fix under way, keep the registration and record the failure under TYPE_DECISIONS.deviceManagementReusablePolicySetting.liveFailures['create'] (failedAt = this record's date, reason = this record's reason, verbatim); the ledger then shows the write as fixture-tested with a failed live run",
+    "commit this file under docs/release/qualifications/entra-live/ in the same PR"
+  ]
+}

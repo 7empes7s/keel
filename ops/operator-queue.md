@@ -897,29 +897,37 @@ being triggered by queue updates.
      assignment reads repeat rows (the intended fail-closed side). Report the outcome.
 - **Report:** B; step 1 status/count/match; the 25 reasons; confirmation that no write was attempted.
 
-### Q136: Read-only check whether the Collector's Global Reader is enough for Teams policy reads, and a Fabric tenant settings re-check
-- Drafted by the "Power Platform and Fabric role names" thread (2026-10-22). Teams org-wide (`teams-org-policies`) and Teams
-  voice (`teams-voice-policies`) declare **Teams Administrator**, which the Collector does not hold (Q106). It holds **Global Reader**,
-  which may be enough for the `Get-Cs*` reads app-only; nobody has tested it. Also: `GET /v1/admin/tenantsettings` was 403 in Q57
-  (before the Fabric read-only admin setting took effect) and 200 has not been seen since.
+### Q136: Live check that the Teams policy reads work with the Collector's new Teams Administrator role and the Teams backups turn on; Fabric tenant settings re-check
+- Drafted by the "Power Platform and Fabric role names" thread (2026-10-22). Marouane assigned **Teams Administrator** to the
+  Collector on 2026-10-22. Teams org-wide (`teams-org-policies`) and Teams voice (`teams-voice-policies`) declare that role and have
+  never been captured (Q107 step 3: no reads records for them; Q107 step 4: teams-org-policies `disabled`, 9 reasons).
+- The stored Collector roles (`workload_ledger_grants`, Q106 step 1) are written only by the four Wave 1 acceptance imports, from
+  the grants declared at capture time, so they do not list Teams Administrator yet (nor Global Reader or Security Reader). Both
+  Teams workloads stay off until a fresh Wave 1 record declares it.
+- Also: `GET /v1/admin/tenantsettings` was 403 in Q57 (before the Fabric read-only admin setting took effect); not re-checked since.
 - Needs: nothing.
 - Status: todo
 - Result:
-- **Read-only. Nothing is written to the tenant.** Collector credential only. **Grant nothing**: do not assign Teams Administrator
-  or any role or permission, even if a read is refused. Never touch CA policies, break-glass or Marouane's account.
-- Do, at the deployed build B, from your own checkout (never `/opt/keel`):
-  1. `node tools/qualification/workloadReadsLive.mjs plan --workload teams-org-policies` and the same for `teams-voice-policies`.
-  2. `capture` for each of the two workloads with the Collector (`--collector-config` = the Collector's config, `--build` B),
-     `--out` under `docs/release/qualifications/` as the tool suggests, with `KEEL_QUALIFICATION_HMAC_KEY` set.
-  3. If a read is refused, report the exact error text for that cmdlet (e.g. one `Get-CsTeamsMeetingPolicy` and one
-     `Get-CsOnlineUser -ResultSize 1`), so it is clear whether the refusal is the role or something else.
-  4. Fabric: one `GET https://api.fabric.microsoft.com/v1/admin/tenantsettings` with the Collector's token (audience
+- **Test tenant only.** Collector reads, plus the `KEEL-RT-*` fixture writes the Wave 1 Teams capture already makes. **Grant
+  nothing** else: no role or permission changes, whatever is refused. Never touch CA policies, break-glass or Marouane's account.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set and
+  `set -a; . /etc/keel/db.env; set +a`:
+  1. Confirm the role: Q106 step 2's roleAssignments read for the Collector. Report the role names; Teams Administrator yes/no.
+  2. `node tools/qualification/workloadReadsLive.mjs capture` for `teams-org-policies` and for `teams-voice-policies` with the
+     Collector (same flags as Q107). Report each run's exit, outcome, proven count and notProven. If Teams refuses a read, report the
+     exact message; if it looks like the role has not taken effect yet, wait 60 minutes and run it once more.
+  3. Refresh the stored Collector roles: recapture the Wave 1 Teams record (`tools/qualification/teamsLive.mjs capture`, as last time)
+     with `--grants` naming the Collector's **actual** roles from step 1 and its actual permissions. Verify it.
+  4. `pseudonymize.mjs check` and a secret scan, then commit the step 2 and step 3 records on
+     `claude/live-evidence-teams-policies`, branched from `origin/master`. No PR.
+  5. Import (as Q107 step 3), then `keel-workload-collect.mjs run`. Report the Q107 step 4 table and the stored roles
+     (`SELECT app, roles FROM workload_ledger_grants ORDER BY app;`). Expected: teams-org-policies and teams-voice-policies
+     `complete` (or `partial` with named reasons).
+  6. Fabric: one `GET https://api.fabric.microsoft.com/v1/admin/tenantsettings` with the Collector's token (audience
      `https://api.fabric.microsoft.com/`). Report the status and the number of `tenantSettings` only, no values. If 403, report the
-     error body's code and message, and whether the Collector is still the only member of `KEEL-RT-collector-fabric-readers`.
-  5. If any record in step 2 has reads that answered, commit it on `claude/live-evidence-teams-global-reader`, branched from
-     `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
-- **Report:** B; per workload, each cmdlet's status (answered / refused with the message); the Fabric status and count;
-  the evidence branch and commit if any; confirmation that nothing was granted or written.
+     error code and message, and whether the Collector is still the only member of `KEEL-RT-collector-fabric-readers`.
+- **Report:** B; step 1; per Teams workload the capture result; the evidence branch and commit; the step 5 table and stored roles;
+  the Fabric status and count; anything left in the tenant.
 
 ## Operator decisions (human operator only)
 

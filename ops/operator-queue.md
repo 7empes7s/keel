@@ -7154,3 +7154,27 @@ item that needs it stays untouched.
   "Marouanedefili". If no source has a name (for example, Access one-time PIN sign-in gives none), report it: the follow-up is
   a People-page name edit, not a manual DB write.
 - **Report:** per step, the result.
+
+### Q153: Live check that service and content backups show live progress on the Job page (after #509)
+- Drafted by the "Live progress for content backups" thread (2026-10-22). Code: PR #509 (merged). Fixture-tested only.
+  - **Change:** `workload-collect` and `content-collect` jobs now write `job.progress` while they run, like `collect`/`backup`:
+    every workload starts `waiting`, turns `reading` when it starts, then shows its outcome, count, times and a short error.
+    Keys are `workload:<name>` and `content:<name>`. Written only when the worker passes `KEEL_JOB_ID`.
+- Needs: /opt/keel-live at the #509 merge or later (`test -f /opt/keel-live/engine/jobs/progress.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** reads only (a normal backup run). No writes, no fixtures.
+- Do:
+  1. Start one `workload-collect` job the usual way (Schedules "Run now" on the service settings schedule, or wait for its next run).
+     While it runs, twice about a minute apart:
+     `SELECT status, jsonb_pretty(progress) FROM job WHERE id = '<job id>';`
+     Report how many workloads are `waiting`, `reading` and done each time (counts only, no payloads).
+  2. Same for one `content-collect` job.
+  3. After both finish, report each job's final status and, per workload, the outcome and `itemCount` from `progress`
+     (names and numbers only). Check that no entry is left `waiting` or `reading`.
+  4. `curl` the portal locally (as for other live checks) at `/jobs/<id>` for one of them while it runs, if you can catch it,
+     and report the progress tile text ("N of M") and whether a "Reading now" row is shown.
+- **Expected:** step 1 and 2 show `waiting` entries turning into `reading` and then outcomes while the job runs (not only after);
+  step 3 has no entry left `waiting`/`reading`. If `progress` stays NULL, report the worker build and whether the child got
+  `KEEL_JOB_ID`; change nothing.
+- **Report:** per step, the result.

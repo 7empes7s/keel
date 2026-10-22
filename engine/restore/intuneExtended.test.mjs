@@ -318,6 +318,27 @@ test('every script kind declares the scripts permission, and a refused write nam
   }
 });
 
+test('a refused script update names the permission; a 403 that names none is left as Graph answered', async () => {
+  const live = { id: 's-1', displayName: 'KEEL-RT-script', roleScopeTagIds: ['0'], fileName: 'keel-rt.ps1', runAsAccount: 'system', scriptContent: 'V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==' };
+  const backup = { ...live, runAsAccount: 'user' };
+  const forbidden = (message) => ({ ok: false, status: 403, body: { error: { code: 'Forbidden', message } } });
+  const update = async (answer) => {
+    const graph = idoFakeGraph({ seed: { '/deviceManagement/deviceManagementScripts/s-1': live }, failWrites: ({ method }) => (method === 'PATCH' ? answer : null) });
+    return applyIntuneExtendedWrite(graph, resourceOf('deviceManagementScript', backup, { targetId: 's-1' }), 'update', FAST);
+  };
+
+  const named = await update(forbidden('Application must have one of the following scopes: DeviceManagementScripts.ReadWrite.All'));
+  assert.equal(named.failed?.missingPermission, SCRIPT_WRITE_PERMISSION, named.failed?.error);
+
+  const role = await update(forbidden('The caller does not have the required Intune role or scope tag.'));
+  assert.ok(role.failed, 'the write still fails');
+  assert.equal(role.failed.missingPermission, undefined);
+  assert.doesNotMatch(role.failed.error, /missing permission/);
+
+  const other = await update({ ok: false, status: 400, body: { error: { code: 'BadRequest', message: 'Application must have one of the following scopes: X.Y' } } });
+  assert.equal(other.failed?.missingPermission, undefined);
+});
+
 test('a script update writes back a changed script body once a second person approved that text', async () => {
   const path = '/deviceManagement/deviceManagementScripts/s-1';
   const live = { id: 's-1', displayName: 'KEEL-RT-script', description: 'Fixture', scriptContent: 'dGFtcGVyZWQ=', runAsAccount: 'system' };

@@ -231,14 +231,21 @@ export function graphFailure(naturalKey, result, prefix = '') {
   return failure;
 }
 
+// Graph names the permission it wants in a 403's message, in one of these shapes.
+const NAMED_SCOPES = [/following scopes:\s*([\w.]+(?:\s*,\s*[\w.]+)*)/i, /requires one of '([^']+)'/i, /required scopes\s*=\s*\[([^\]]+)\]/i];
+
 /**
- * A failed write. A 403 names the permission the record declares, so the run
- * shows which grant the Restorer is missing (an admin-consent step) instead of
- * only Graph's raw answer.
+ * A failed write. A 403 whose message names the permission Graph wants starts
+ * with that permission, so the run shows which grant the Restorer is missing
+ * (an admin-consent step). A 403 for any other reason (an admin role, a
+ * first-party object) is left as Graph's answer.
  */
 export function writeFailure(record, naturalKey, result) {
-  const permission = result?.status === 403 && record?.permission ? record.permission : null;
-  if (!permission) return graphFailure(naturalKey, result);
+  const message = result?.status === 403 ? JSON.stringify(result?.body ?? result?.error ?? '') : '';
+  const named = NAMED_SCOPES.map((pattern) => message.match(pattern)?.[1]).find(Boolean)
+    ?.split(',').map((scope) => scope.trim()).filter(Boolean) ?? [];
+  if (named.length === 0) return graphFailure(naturalKey, result);
+  const permission = named.includes(record?.permission) ? record.permission : named[0];
   const failure = graphFailure(naturalKey, result, `missing permission: the Restorer needs ${permission} (admin consent); Graph answered `);
   failure.missingPermission = permission;
   return failure;

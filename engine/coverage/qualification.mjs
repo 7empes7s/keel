@@ -1039,8 +1039,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
   // Remaining kinds, batch 3: Intune tenant settings, backed up read-only; manual until a writer is built.
   deviceManagementCompliancePolicy: subset('device-management', 'POST /deviceManagement/compliancePolicies (beta); PUT .../{id} (beta); POST .../{id}/setScheduledActions (beta); POST .../{id}/assign (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
     'create and update with settings and actions for noncompliance are fixture-tested; assignments are written through /assign'),
-  deviceManagementReusablePolicySetting: subset('device-management', 'POST /deviceManagement/reusablePolicySettings (beta); PATCH .../{id} (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
-    'create and update are fixture-tested; the setting definition is never changed'),
+  deviceManagementReusablePolicySetting: subset('device-management', 'POST /deviceManagement/reusablePolicySettings (beta); PUT .../{id} (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'create and update with the group\'s values are fixture-tested; the setting definition is never changed; a backup without the values is refused'),
   policySet: subset('device-management', 'POST /deviceAppManagement/policySets (beta); PATCH .../{id} (beta); POST .../{id}/update (beta)', 'DeviceManagementApps.ReadWrite.All',
     'create and update with the items in the set are fixture-tested; assignments are written through the update action'),
   vppToken: byHand('device-management', null, 'DeviceManagementServiceConfig.ReadWrite.All',

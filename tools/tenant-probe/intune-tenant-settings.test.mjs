@@ -11,10 +11,12 @@ import '../../engine/collect/entraAdapter.mjs';
 // out here rather than derived from the catalogue under test.
 const VPP_SELECT = 'id,organizationName,vppTokenAccountType,appleId,expirationDateTime,lastSyncDateTime,lastModifiedDateTime,state,lastSyncStatus,automaticallyUpdateApps';
 const PLAY_SELECT = 'id,bindStatus,lastAppSyncDateTime,lastAppSyncStatus,ownerUserPrincipalName,ownerOrganizationName,lastModifiedDateTime,enrollmentTarget,targetGroupIds,deviceOwnerManagementEnabled';
+// Graph returns a reusable settings group's values only when they are selected (issue #470).
+const REUSABLE_SELECT = 'id,displayName,description,settingDefinitionId,settingInstance,lastModifiedDateTime';
 const EXPECTED = [
   // Listed, then each policy read on its own with its settings and actions for noncompliance.
   ['deviceManagementCompliancePolicy', '/beta/deviceManagement/compliancePolicies', 'tier1', 'per-policy'],
-  ['deviceManagementReusablePolicySetting', '/beta/deviceManagement/reusablePolicySettings', 'tier2', 'list'],
+  ['deviceManagementReusablePolicySetting', `/beta/deviceManagement/reusablePolicySettings?$select=${REUSABLE_SELECT}`, 'tier2', 'list'],
   // Listed, then each set read on its own with its items expanded.
   ['policySet', '/beta/deviceAppManagement/policySets', 'tier3', 'per-set'],
   ['vppToken', `/v1.0/deviceAppManagement/vppTokens?$select=${VPP_SELECT}`, 'tier2', 'list'],
@@ -51,6 +53,13 @@ test('token and enrollment code fields are left out of the read', () => {
   const play = catalogEntryFor('androidManagedStoreAccountEnterpriseSettings').select.split(',');
   assert.ok(!play.includes('companyCodes'), 'enrollment tokens and QR codes are never read');
   assert.ok(play.includes('ownerUserPrincipalName'), 'the Google account a rebind needs is kept');
+});
+
+test('a reusable settings group is read with its values, the same fields the restore re-reads', async () => {
+  const { REUSABLE_SETTING_SELECT } = await import('../../engine/restore/intuneOperations.mjs');
+  const select = catalogEntryFor('deviceManagementReusablePolicySetting').select;
+  assert.ok(select.split(',').includes('settingInstance'), 'the group\'s values are read');
+  assert.equal(select, REUSABLE_SETTING_SELECT);
 });
 
 test('no Intune tenant settings type duplicates an existing catalogue path or type', () => {

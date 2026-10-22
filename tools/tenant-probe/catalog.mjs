@@ -38,6 +38,7 @@ import intuneTenantSettings from './catalog.d/intune-tenant-settings.mjs';
 import entraTenantSettings from './catalog.d/entra-tenant-settings.mjs';
 import otherRoleProviders from './catalog.d/other-role-providers.mjs';
 import intuneLeftovers from './catalog.d/intune-leftovers.mjs';
+import m365Settings from './catalog.d/m365-settings.mjs';
 
 export const CATALOG = [
   ...tenant,
@@ -55,6 +56,7 @@ export const CATALOG = [
   ...entraTenantSettings,
   ...otherRoleProviders,
   ...intuneLeftovers,
+  ...m365Settings,
 ];
 
 /** Directory object types whose ids other resources reference by GUID. */

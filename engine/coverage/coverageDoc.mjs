@@ -559,6 +559,21 @@ export const TYPE_GUIDE = Object.freeze({
   userExperienceAnalyticsBaseline: manual('Endpoint analytics baselines', NOT_BUILT,
     'KEEL backs up the custom baselines but does not restore them yet. The built-in baseline is set by Microsoft.',
     'Create the baseline again in the Intune admin center, under Reports, Endpoint analytics, Settings, Baselines, with the same name.'),
+  sharepointSettings: manual('SharePoint and OneDrive tenant settings', NOT_BUILT,
+    'KEEL backs up every tenant-wide SharePoint and OneDrive setting, such as site creation, sync app limits, idle session sign-out and storage limits. It restores only the sharing settings, through the SharePoint service backup.',
+    'Set the same values in the SharePoint admin center, under Settings and Policies, from the backup.'),
+  itemInsightsSettings: manual('Item insights setting', NOT_BUILT,
+    'KEEL backs up whether people cards and search show the documents a person worked on, and the group it is turned off for, but does not restore it yet.',
+    'Set the same value in the Microsoft 365 admin center, under Settings, Org settings, Search and intelligence, from the backup, and pick the same group again.'),
+  externalConnection: manual('Copilot connectors', NOT_BUILT,
+    'KEEL backs up each connection\'s name, description and allowed apps but not its schema or the items pushed into it, and does not restore it yet.',
+    'Recreate the connector in the Microsoft 365 admin center, under Copilot, Connectors, from the backup, then let it sync its items again.'),
+  simulationAutomation: manual('Attack simulation automations', NOT_BUILT,
+    'KEEL backs up each automation\'s name and status but does not restore it yet.',
+    'Recreate the automation in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Automations, from the backup.'),
+  attackSimulation: manual('Attack simulations', NOT_BUILT,
+    'KEEL backs up each simulation\'s settings and targets but not its results, and does not restore it yet.',
+    'Launch the simulation again in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Simulations, with the same technique, payload and targets from the backup.'),
 });
 
 const FAMILY_HEADINGS = Object.freeze({

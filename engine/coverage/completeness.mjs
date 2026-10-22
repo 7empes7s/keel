@@ -273,6 +273,12 @@ export const COMPLETENESS = Object.freeze({
   enterpriseCodeSigningCertificate: { whole: 'not-written' },
   symantecCodeSigningCertificate: { whole: 'not-written', missing: [part('Certificate file and password', 'secret')] },
   userExperienceAnalyticsBaseline: { whole: 'not-written', missing: [part('Built-in baselines', 'microsoft-managed')] },
+  // Remaining kinds, batch 7.
+  sharepointSettings: { whole: 'not-written' },
+  itemInsightsSettings: { whole: 'not-written' },
+  externalConnection: { whole: 'not-written', missing: [part('The connection schema and the items pushed into it', 'other-route')] },
+  simulationAutomation: { whole: 'not-written', missing: [part('Each run of the automation', 'other-route')] },
+  attackSimulation: { whole: 'not-written', missing: [part('The payload, landing page and login page the simulation uses', 'other-route')] },
 });
 
 const RECORD_FIELDS = new Set(['managed', 'unreadable', 'whole', 'missing']);

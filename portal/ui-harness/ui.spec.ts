@@ -1489,20 +1489,32 @@ test("recovery surfaces fit a phone without sideways scrolling", async ({ page }
   expect(pillWidth).toBeLessThan(cellWidth * 0.9);
 });
 
-// Site permissions audit, gap 2: the site list and a site's page fit a phone, long
-// names wrap, and a site's name opens its own page.
-test("site permissions fit a phone without sideways scrolling", async ({ page }) => {
+// Sites: the list is a table with problems first and tiles that add up; a site's page
+// leads with four status tiles. Both fit a phone; long names wrap.
+test("sites list and a site's page fit a phone without sideways scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   await open(page, "/sites", "dark");
-  await expect(page.locator(".site-list .site-card")).toHaveCount(3);
-  await expect(page.locator(".site-list")).toContainText("App access unknown · groups and roles not read yet");
+  const rows = page.locator(".st-table tbody tr");
+  await expect(rows).toHaveCount(4);
+  // Problems first: the site with no owner leads.
+  await expect(rows.first()).toContainText("Project Falcon");
+  await expect(rows.first()).toContainText("No owner");
+  await expect(page.locator(".st-list")).not.toContainText("not read yet");
   expect(await overflow()).toBeLessThanOrEqual(0);
+  // Tiles add up: No owner + Guests or links shows both sites.
+  await page.getByRole("button", { name: /No owner/ }).click();
+  await expect(rows).toHaveCount(1);
+  await page.getByRole("button", { name: /Guests or links/ }).click();
+  await expect(rows).toHaveCount(2);
+  await page.getByRole("button", { name: /All sites/ }).click();
+  await expect(rows).toHaveCount(4);
   await page.getByRole("link", { name: "Finance" }).click();
   await expect(page.locator("main#main-content h1")).toHaveText("Finance");
-  await expect(page.locator('[data-layer="verdict"]')).toContainText("2 apps have access to this site; 1 has full control.");
-  await expect(page.getByText("Payroll connector")).toBeVisible();
-  await expect(page.getByText("KEEL does not read this site's SharePoint groups or the roles given to people yet.", { exact: false })).toBeVisible();
+  await expect(page.locator('[data-layer="verdict"]')).toContainText("1 app has full control, and 2 guests have access.");
+  await expect(page.locator(".st-status")).toHaveCount(4);
+  await expect(page.getByRole("rowheader", { name: "Payroll connector" })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Edit" })).toBeVisible();
   expect(await overflow()).toBeLessThanOrEqual(0);
 });
 

@@ -81,7 +81,7 @@ import { compareVerdict, WORKLOAD_LABELS, type CompareData, type CompareResult, 
 import type { ActivityChanges } from "@/lib/changed-values";
 import { changeIntentsVerdict, type ChangeIntent, type IntentCandidate } from "@/lib/change-intents-view";
 import { SiteDetail, SiteList } from "@/components/site-permissions";
-import { sitePermissionsFrom, siteName, siteVerdict, sitesVerdict, type SitePermissionsData } from "@/lib/site-permissions-view";
+import { sitePermissionsFrom, siteName, siteVerdict, sitesVerdict, type PeopleSummary, type SitePermissionsData } from "@/lib/site-permissions-view";
 import { WorkloadServices } from "@/components/restore/workload-services";
 import type { RestoreWorkload } from "@/lib/restore-workloads-view";
 
@@ -1565,18 +1565,37 @@ const SITE_FINANCE = `${SITE_HOST},5e170000-0000-4000-8000-000000000001,5e170000
 const SITE_ARCHIVE = `${SITE_HOST},5e170000-0000-4000-8000-000000000003,5e170000-0000-4000-8000-000000000004`;
 const SITE_INTRANET = `${SITE_HOST},5e170000-0000-4000-8000-000000000005,5e170000-0000-4000-8000-000000000006`;
 const SITE_READ = { status: "observed", operation: "sharepoint.site-permissions" };
+const SITE_TEAM = `${SITE_HOST},5e170000-0000-4000-8000-000000000007,5e170000-0000-4000-8000-000000000008`;
+const SITE_PEOPLE = (over: Partial<PeopleSummary>): PeopleSummary => ({
+  inherits: false, owners: ["Amara Okafor"], ownerCount: 1, people: 6, guests: 0, sharingLinks: 0, uniqueLists: 0, readAt: "2026-10-02T01:10:00Z",
+  groups: [
+    { name: "Owners", members: 1, roles: ["Full Control"] },
+    { name: "Members", members: 4, roles: ["Edit"] },
+    { name: "Visitors", members: 1, roles: ["Read"] },
+  ],
+  ...over,
+});
 const SITES: SitePermissionsData = {
   generatedAt: now,
   run: { id: "c0110000-0000-4000-8000-0000000000c5", outcome: "partial", observedTo: "2026-10-02T02:00:00Z" },
   latest: null,
+  contentRun: { outcome: "partial", completedAt: "2026-10-02T01:20:00Z", namePrefix: null, reasons: ["Records archive with a long name that wraps on a phone: 1 part(s) not fully read, first permissions: denied (HTTP 403 Forbidden)"] },
+  tenantSharing: "ExternalUserSharingOnly",
   sites: [
-    sitePermissionsFrom(`site:${SITE_ARCHIVE}`, { displayName: "Records archive with a long name that wraps on a phone", webUrl: `https://${SITE_HOST}/sites/records-archive-with-a-long-name-that-wraps-on-a-phone` },
+    { ...sitePermissionsFrom(`site:${SITE_ARCHIVE}`, { displayName: "Records archive with a long name that wraps on a phone", webUrl: `https://${SITE_HOST}/sites/records-archive-with-a-long-name-that-wraps-on-a-phone` },
       { appPermissionGrants: { status: "denied", httpStatus: 403, operation: "sharepoint.site-permissions" } }),
-    sitePermissionsFrom(`site:${SITE_FINANCE}`, { displayName: "Finance", webUrl: `https://${SITE_HOST}/sites/finance`, appPermissionGrants: [
+    backup: { items: 1204, bytes: 734_003_200, lastStoredAt: "2026-10-01T01:15:00Z" } },
+    { ...sitePermissionsFrom(`site:${SITE_FINANCE}`, { displayName: "Finance", webUrl: `https://${SITE_HOST}/sites/finance`, appPermissionGrants: [
       { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDE", roles: ["fullcontrol"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a1", displayName: "Payroll connector" }] },
       { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDI", roles: ["read"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a2", displayName: "Board pack reader" }] },
     ] }, { appPermissionGrants: SITE_READ }),
-    sitePermissionsFrom(`site:${SITE_INTRANET}`, { displayName: "Intranet", webUrl: `https://${SITE_HOST}/sites/intranet`, appPermissionGrants: [] }, { appPermissionGrants: SITE_READ }),
+    backup: { items: 5320, bytes: 2_254_857_830, lastStoredAt: "2026-10-02T01:12:00Z" },
+    people: SITE_PEOPLE({ owners: ["Amara Okafor", "Dev Patel", "Lena Fischer"], ownerCount: 3, people: 14, guests: 2, sharingLinks: 3, uniqueLists: 1 }) },
+    { ...sitePermissionsFrom(`site:${SITE_INTRANET}`, { displayName: "Intranet", webUrl: `https://${SITE_HOST}/sites/intranet`, appPermissionGrants: [] }, { appPermissionGrants: SITE_READ }),
+    backup: { items: 312, bytes: 48_234_496, lastStoredAt: "2026-10-01T23:40:00Z" }, people: SITE_PEOPLE({}) },
+    { ...sitePermissionsFrom(`site:${SITE_TEAM}`, { displayName: "Project Falcon", webUrl: `https://${SITE_HOST}/sites/falcon`, appPermissionGrants: [] }, { appPermissionGrants: SITE_READ }),
+    backup: { items: 88, bytes: 5_242_880, lastStoredAt: "2026-09-28T01:05:00Z" },
+    people: SITE_PEOPLE({ owners: [], ownerCount: 0, people: 3, groups: [{ name: "Project Falcon Members", members: 3, roles: ["Edit"] }] }) },
   ],
 };
 
@@ -1609,7 +1628,7 @@ const SERVICE_CHANGES: DriftRecord[] = [
 
 function sitesPage() {
   const verdict = sitesVerdict(SITES);
-  return <>{header("Backup", "Sites", "Each SharePoint site and who can reach it: apps given access now, SharePoint groups and roles once KEEL reads them.")}
+  return <>{header("Backup", "Sites", "Every SharePoint site: is it backed up, who owns it, and which apps and guests can reach it. Problems first.")}
     <Verdict text={verdict.text} tone={verdict.tone} />
     <div data-layer="explanation"><SiteList data={SITES} /></div></>;
 }
@@ -1618,10 +1637,10 @@ function sitePage(path: string) {
   const id = decodeURIComponent(path.slice("/sites/".length));
   const site = SITES.sites.find((entry) => entry.siteId === id);
   if (!site) return null;
-  const verdict = siteVerdict(site);
-  return <>{header("Backup", siteName(site), "Who can reach this SharePoint site, as of KEEL's last read.")}
+  const verdict = siteVerdict(site, SITES.contentRun);
+  return <>{header("Backup", siteName(site), "This SharePoint site's backup, owners, groups, guests and apps.")}
     <Verdict text={verdict.text} tone={verdict.tone} />
-    <div data-layer="explanation"><SiteDetail latest={null} now={now} run={SITES.run!} site={site} /></div></>;
+    <div data-layer="explanation"><SiteDetail contentRun={SITES.contentRun} latest={null} now={now} run={SITES.run!} site={site} tenantSharing={SITES.tenantSharing} /></div></>;
 }
 
 // Restore: four backups (two on 30 Sept, so the time picker shows), settings across

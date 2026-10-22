@@ -5546,8 +5546,12 @@ item that needs it stays untouched.
   (`deviceShellScript`), remediations (`deviceHealthScript`, Microsoft-published ones are never written) and custom compliance
   scripts (`deviceComplianceScript`). Who a script runs on is **not** written; fixtures stay unassigned.
 - Needs: /opt/keel-live at the #435 merge or later (`grep -q scriptRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
+- Status: blocked
+- Result: blocked (2026-10-22 08:13 UTC) on **#471**: the Restorer lacks `DeviceManagementScripts.ReadWrite.All`. B = c396a2c. Nothing created; nothing granted.
+  - Fixture creates (Restorer, POST beta): `deviceManagementScripts`, `deviceShellScripts`, `deviceHealthScripts` and `deviceComplianceScripts` all answered **403**: "Application is not authorized to perform this operation. Application must have one of the following scopes: DeviceManagementScripts.ReadWrite.All". KEEL's writers declare DeviceManagementConfiguration.ReadWrite.All, so a restore would hit the same 403.
+  - Backup side is fine: in snapshot ac991228, all four kinds are complete or complete-empty (200). One existing non-fixture PowerShell script is backed up.
+  - Plan at B: `~/keel-rg4/plan-B.md` (these types are steps 44–51).
+  - Waiting on Marouane: add `DeviceManagementScripts.ReadWrite.All` to the Restorer and grant admin consent (D-93a says to add what the tool needs; consent is his).
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission
   to add: the Restorer and collector hold DeviceManagementConfiguration.ReadWrite.All / .Read.All. If Graph answers 403 (or 400

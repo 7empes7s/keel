@@ -5923,7 +5923,7 @@ item that needs it stays untouched.
   `deviceCustomAttributeShellScript` and `groupPolicyConfiguration` (template, then its settings and values through
   `updateDefinitionValues`). Who either is assigned to is **not** written; fixtures stay unassigned.
 - Needs: /opt/keel-live at the #436 merge or later (`grep -q groupPolicySettingsAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
+- Status: in-progress
 - Result: blocked (2026-10-22 08:18 UTC). The custom attribute script is blocked by a missing permission (**#471**); the administrative template backup holds no settings (**#472**). B = c396a2c. Restorer only; nothing granted; no restore was run.
   - `deviceCustomAttributeShellScript`: fixture create `POST beta /deviceManagement/deviceCustomAttributeShellScripts` answered **403**: "Application is not authorized to
     perform this operation. Application must have one of the following scopes: DeviceManagementScripts.ReadWrite.All". Create and update are **blocked** (#471).

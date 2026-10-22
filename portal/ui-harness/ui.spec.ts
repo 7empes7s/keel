@@ -3857,10 +3857,11 @@ test("errors · a failed job shows a plain cause and what to do; the raw error i
   for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
     await open(page, "/jobs/a4");
-    const notice = page.locator(".ui-error-notice");
-    await expect(notice).toContainText("Microsoft 365 was busy and asked Keel to slow down.");
+    // The Job page leads with its own alert, built from the same plain causes.
+    const notice = page.locator('.ui-alert[data-alert="error"]');
+    await expect(notice).toContainText("Microsoft 365 slowed Keel down");
     await expect(notice.locator(".ui-alert-todo")).toContainText("What to do:");
-    const raw = notice.locator(".ui-raw-error");
+    const raw = notice.locator(".ui-alert-more li");
     await expect(raw).toBeHidden();
     await notice.getByText("Show details").click();
     await expect(raw).toHaveText("Graph 429: throttled after 5 retries on /deviceManagement/deviceConfigurations");

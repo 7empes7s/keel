@@ -167,6 +167,48 @@ test('missing workload RBAC is a named pending prerequisite', () => {
   assert.match(timeout.reasons.join(' '), /the read failed/);
 });
 
+test('Power Platform and Fabric reads turn on with the setup the collector holds, no admin role', () => {
+  // The collector holds these Entra roles and no Power BI permission (the Fabric
+  // read-only admin route refuses an app that holds one). Its Power Platform access is
+  // a management app registration, its Fabric access a tenant setting on a group.
+  const held = {
+    permissions: ALL_GRANTS.permissions.filter((name) => name !== 'Tenant.Read.All'),
+    roles: ['Global Reader', 'Security Reader', 'Exchange Administrator', 'SharePoint Administrator', 'Compliance Administrator'],
+  };
+  const ids = ['powerplatform.environments', 'powerplatform.dlp-policies', 'powerplatform.connectors', 'powerbi.tenant-settings'];
+  const evidence = ids.map((id) => ({
+    operationId: id, kind: 'live-capture', synthetic: false, tenantRef: TENANT, ok: true,
+    capturedAt: '2026-10-03T20:00:00.000Z', version: byId(id).operation.version, proofRef: 'power-platform-live.json',
+  }));
+  const ledger = buildWorkloadLedger({ evidence, grants: held, tenantRef: TENANT, now: NOW });
+  for (const id of ids) {
+    const descriptor = byId(id);
+    assert.deepEqual(descriptor.rbac.roles, [], `${id} declares no admin role`);
+    assert.deepEqual(descriptor.rbac.permissions, [], `${id} declares no Power BI permission`);
+    assert.ok(descriptor.rbac.setup.length, `${id} names its setup`);
+    const row = ledger.rows.find((candidate) => candidate.id === id);
+    assert.equal(row.state, 'live-qualified', id);
+    assert.equal(row.enabled, true, id);
+  }
+
+  // A refused capture names the setup, never a role the route does not use.
+  const refused = workloadRow(byId('powerbi.tenant-settings'), {
+    evidence: [{ ...evidence[3], ok: false, error: '403 Forbidden' }], grants: null, tenantRef: TENANT, now: NOW,
+  });
+  assert.equal(refused.state, 'pending-prerequisite');
+  assert.deepEqual(refused.prerequisite.roles, []);
+  assert.match(refused.prerequisite.message, /Service principals can access read-only admin APIs/);
+  assert.match(refused.prerequisite.message, /keep every Power BI permission off the collector app/);
+  assert.doesNotMatch(refused.prerequisite.message, /Administrator/);
+  const environments = workloadRow(byId('powerplatform.environments'), {
+    evidence: [{ ...evidence[0], ok: false, error: '403 Forbidden' }], grants: null, tenantRef: TENANT, now: NOW,
+  });
+  assert.match(environments.prerequisite.message, /^To read power platform environments, register the collector app as a Power Platform management app/);
+
+  assert.throws(() => validateWorkloadDescriptor({ ...byId('powerplatform.environments'), rbac: { permissions: [], roles: [], setup: 'register it' } }),
+    /rbac\.setup, when present, lists setup steps as text/);
+});
+
 test('a version change invalidates operation evidence', () => {
   // Graph: proof at v1.0 does not carry over when the operation moves to beta.
   const v1 = byId('teams.settings');

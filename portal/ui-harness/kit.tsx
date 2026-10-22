@@ -78,8 +78,21 @@ const GROUPINGS: Grouping<Setting>[] = [
 const MANY: Setting[] = Array.from({ length: 50 }, (_, index) => {
   const services = ["Entra", "Exchange", "SharePoint", "Teams", "Intune"];
   const tones: RiskTone[] = ["fine", "low", "soon", "fine", "low"];
-  return { id: `m${index + 1}`, name: `Sample setting ${String(index + 1).padStart(2, "0")}`, kind: "Sample", service: services[index % 5], tone: tones[index % 5], who: ["Lee Chen", "Sam Ortiz", "Amara Okafor"][index % 3], at: `2026-09-${String(1 + (index % 28)).padStart(2, "0")}T08:00:00Z` };
+  return { id: `m${index + 1}`, name: `Sample setting ${String(index + 1).padStart(2, "0")}`, kind: index % 2 ? "Sample rule" : "Sample setting", service: services[index % 5], tone: tones[index % 5], who: ["Lee Chen", "Sam Ortiz", "Amara Okafor"][index % 3], at: `2026-09-${String(1 + (index % 28)).padStart(2, "0")}T08:00:00Z` };
 });
+
+// The long list also shows kinds inside each service, so paging walks through parts.
+const PART_GROUPINGS: Grouping<Setting>[] = [
+  {
+    ...GROUPINGS[0],
+    groupsOf: (items) => GROUPINGS[0].groupsOf(items).map((group) => {
+      const kinds = [...new Set(group.items.map((item) => item.kind))].sort();
+      const parts = kinds.map((kind) => ({ key: kind.toLowerCase().replace(/\W+/g, "-"), label: kind, items: group.items.filter((item) => item.kind === kind) }));
+      return { ...group, parts, items: parts.flatMap((part) => part.items) };
+    }),
+  },
+  ...GROUPINGS.slice(1),
+];
 
 export function KitPage({ many = false }: { many?: boolean }) {
   const view = useViewState();
@@ -116,7 +129,7 @@ export function KitPage({ many = false }: { many?: boolean }) {
           run: (ids) => toast({ title: `Restore of ${ids.length} settings sent for approval`, detail: "Someone other than you has to approve it." }),
         }}
         getId={(item) => item.id}
-        groupings={GROUPINGS}
+        groupings={many ? PART_GROUPINGS : GROUPINGS}
         items={items}
         label="Changed settings"
         matches={(item, query) => `${item.name} ${item.kind} ${item.who}`.toLowerCase().includes(query)}

@@ -69,7 +69,7 @@ import { alertCounts, alertsStatus, type AlertItem } from "@/lib/alerts-view";
 import { ReadinessPage } from "@/components/readiness/readiness-page";
 import { ResilienceView } from "@/components/resilience-view";
 import { readinessStatus, type Dimension, type ReadinessAccount, type ReadinessData } from "@/lib/readiness-view";
-import { resilienceVerdict, type ResilienceData } from "@/lib/resilience-view";
+import { pageVerdict, resilienceAlerts, resilienceStatus, verdictAction, type ResilienceData } from "@/lib/resilience-view";
 import { DownloadMenu } from "@/components/value-report/download-menu";
 import { ValueReportPage } from "@/components/value-report/value-report-page";
 import { resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
@@ -90,7 +90,7 @@ import type { RestoreWorkload } from "@/lib/restore-workloads-view";
 // a short delay so the real component walks its real states.
 const DEPENDS: Record<string, string[]> = {
   "conditionalAccessPolicy:Block legacy auth": ["group:Break-glass admins", "namedLocation:HQ egress"],
-  "conditionalAccessPolicy:Require MFA for admins": ["group:Break-glass admins", "authenticationStrength:Phishing-resistant"],
+  "conditionalAccessPolicy:Require MFA for admins": ["group:Break-glass admins", "authenticationStrengthPolicy:Phishing-resistant"],
   "deviceConfiguration:Windows baseline": ["group:All managed devices"],
 };
 let jobPolls = 0;
@@ -325,7 +325,7 @@ const DRIFT = [
   { id: "dr1", naturalKey: "conditionalAccessPolicy:Block legacy auth", resourceType: "conditionalAccessPolicy", changeType: "modified", blastRadius: "tenant-lockout", detectedAt: "2026-10-02T09:12:00Z",
     before: { displayName: "Block legacy auth", state: "enabled", conditions: { clientAppTypes: ["exchangeActiveSync", "other"], users: { includeUsers: ["All"], excludeGroups: ["Break-glass admins"] } }, grantControls: { operator: "OR", builtInControls: ["block"] } },
     after: { displayName: "Block legacy auth", state: "enabledForReportingButNotEnforced", conditions: { clientAppTypes: ["exchangeActiveSync", "other"], users: { includeUsers: ["All"], excludeGroups: ["Break-glass admins", "Finance"] } }, grantControls: { operator: "OR", builtInControls: ["block"] } },
-    attribution: { verdict: "exact", reason: "audit-record-names-resource", actors: [{ kind: "user", id: "a71ce000-0000-4000-8000-0000000000a7", name: "Amara Okafor" }],
+    attribution: { verdict: "exact", reason: "audit-record-names-resource", source: "audit", service: "Entra", actors: [{ kind: "user", id: "a71ce000-0000-4000-8000-0000000000a7", name: "Amara Okafor" }],
       evidence: [{ sourceEventId: "Directory_8f2c1d7a-4b3e-4f61-9a20-1c5d7e9b3a44", occurredAt: "2026-10-02T08:47:00Z", operation: "update", activity: "Update conditional access policy", fields: ["conditions", "state"] }],
       resourceObjectId: "c0a10000-0000-4000-8000-0000000000ca", window: { from: "2026-10-02T06:00:00Z", until: "2026-10-02T09:12:00Z" }, coverage: { audit: "covered", signIn: "covered" },
       route: { route: "central", reason: "cross-entity", approverCount: 2, routedAt: "2026-10-02T10:00:00Z" } } },
@@ -334,7 +334,7 @@ const DRIFT = [
     after: { state: "enabled", grantControls: { builtInControls: ["mfa"] }, sessionControls: { signInFrequency: { value: 24, type: "hours" } } } },
   { id: "dr3", naturalKey: "group:Finance", resourceType: "group", changeType: "modified", blastRadius: "access-affecting", detectedAt: "2026-10-01T15:02:00Z",
     before: { displayName: "Finance", membershipRule: null, mailEnabled: false, owners: ["cfo@contoso.com"] }, after: { displayName: "Finance", membershipRule: null, mailEnabled: true, owners: ["cfo@contoso.com", "temp.contractor@contoso.com"] },
-    attribution: { verdict: "unknown", reason: "audit-retention-gap", actors: [], evidence: [], resourceObjectId: "f1a40000-0000-4000-8000-0000000000f1",
+    attribution: { verdict: "unknown", reason: "audit-retention-gap", source: "audit", service: "Entra", actors: [], evidence: [], resourceObjectId: "f1a40000-0000-4000-8000-0000000000f1",
       window: { from: "2026-08-01T06:00:00Z", until: "2026-10-01T15:02:00Z" }, coverage: { audit: "retention-gap", signIn: "not-read" },
       route: { route: "entity", entityCode: "CREOS", approverCount: 1, routedAt: "2026-10-02T10:00:00Z" } } },
   { id: "dr4", naturalKey: "namedLocation:Branch offices", resourceType: "namedLocation", changeType: "added", blastRadius: "access-affecting", detectedAt: "2026-09-30T10:00:00Z", before: null, after: { displayName: "Branch offices", ipRanges: ["203.0.113.0/24"] } },
@@ -1190,6 +1190,21 @@ const RESILIENCE: ResilienceData = {
         { seq: "18201", recordedAt: "2026-10-02T05:12:00.000Z", shippedAt: "2026-10-02T05:10:00.000Z", dumpSha256: "e3".repeat(32), manifestGeneratedAt: "2026-10-02T05:00:00.000Z", counts: false, reason: "missing-required-observation", point: null, missing: ["type:group", "relationship:group/members"] },
       ],
     },
+    services: {
+      settings: [
+        { kind: "service-settings", workload: "exchange-org", name: "Exchange filtering, retention or mobile setting", service: "Exchange", switchedOn: true, latest: { id: "w1", outcome: "complete", at: "2026-10-02T06:05:00Z" }, lastGood: { id: "w1", from: "2026-10-02T06:00:00Z", at: "2026-10-02T06:05:00Z", settings: 40 } },
+        { kind: "service-settings", workload: "exchange-mail-flow", name: "Exchange mail flow or protection rule", service: "Exchange", switchedOn: true, latest: { id: "w2b", outcome: "failed", at: "2026-10-02T06:05:00Z" }, lastGood: { id: "w2", from: "2026-10-01T06:00:00Z", at: "2026-10-01T06:05:00Z", settings: 35 } },
+        { kind: "service-settings", workload: "sharepoint-tenant", name: "SharePoint setting", service: "SharePoint", switchedOn: true, latest: { id: "w3", outcome: "complete", at: "2026-10-02T06:05:00Z" }, lastGood: { id: "w3", from: "2026-10-02T06:00:00Z", at: "2026-10-02T06:05:00Z", settings: 21 } },
+        { kind: "service-settings", workload: "teams-org-policies", name: "Teams organization policy", service: "Teams", switchedOn: false, latest: { id: "w4", outcome: "disabled", at: "2026-10-02T06:05:00Z" }, lastGood: null },
+        { kind: "service-settings", workload: "power-platform", name: "Power Platform or Power BI setting", service: "Power Platform", switchedOn: false, latest: { id: "w5", outcome: "disabled", at: "2026-10-02T06:05:00Z" }, lastGood: null },
+        { kind: "service-settings", workload: "purview-labels", name: "Sensitivity label", service: "Purview", switchedOn: true, latest: { id: "w6", outcome: "complete", at: "2026-10-02T06:05:00Z" }, lastGood: { id: "w6", from: "2026-10-02T06:00:00Z", at: "2026-10-02T06:05:00Z", settings: 21 } },
+      ],
+      content: [
+        { kind: "content", workload: "exchange-mail", name: "Mail, calendars and contacts", service: "Exchange", switchedOn: true, latest: { id: "c1", outcome: "partial", at: "2026-10-02T05:00:00Z", reasons: [], namePrefix: null }, lastGood: null, stored: { items: 3006, versions: 3100, containers: 4, bytes: 187_695_104, storedBytes: 180_000_000, newestAt: "2026-10-02T05:00:00Z" } },
+        { kind: "content", workload: "onedrive", name: "OneDrive files", service: "SharePoint", switchedOn: true, latest: null, lastGood: null, stored: { items: 149, versions: 150, containers: 2, bytes: 34_603_008, storedBytes: 34_000_000, newestAt: null } },
+        { kind: "content", workload: "teams", name: "Teams, channels and tabs", service: "Teams", switchedOn: true, latest: { id: "c3", outcome: "succeeded", at: "2026-10-02T05:00:00Z", reasons: [], namePrefix: null }, lastGood: { id: "c3", from: "2026-10-02T04:55:00Z", at: "2026-10-02T05:00:00Z", items: 11, bytes: 303_104 }, stored: { items: 11, versions: 12, containers: 1, bytes: 303_104, storedBytes: 300_000, newestAt: null } },
+      ],
+    },
     recoveryTime: {
       state: "measured", samples: 2, latestMs: 1_200_000, latestAt: "2026-09-30T14:20:00.000Z", worstMs: 1_200_000, medianMs: 840_000,
       lastAttempt: { source: "restore", ref: "b7c10000-0000-4000-8000-000000000074", at: "2026-10-01T11:00:00.000Z", counts: false, reason: "restore-failed", elapsedMs: null, outcome: "failed" },
@@ -1224,6 +1239,7 @@ const RESILIENCE_EMPTY: ResilienceData = {
       { key: "type:group", kind: "type", type: "group", parentType: null, family: null, lastAttempt: { at: "2026-10-02T09:00:00.000Z", outcome: "failed" } },
     ] },
     recoverablePoint: { state: "unmeasured", point: null, ageMs: null, fromCopy: null, latestCopy: null, copies: [] },
+    services: { settings: [], content: [] },
     recoveryTime: { state: "unmeasured", samples: 0, latestMs: null, latestAt: null, worstMs: null, medianMs: null, lastAttempt: null, attempts: [] },
     readiness: { ...RESILIENCE.metrics.readiness, state: "unmeasured", countedDrills: 0, lastCountedDrill: null },
   },
@@ -1319,9 +1335,10 @@ function readinessPage(data: ReadinessData, { canConfigure = true, canRespond = 
 }
 
 function resiliencePage(data: ResilienceData) {
-  const verdict = resilienceVerdict(data.metrics, data.generatedAt);
-  return <>{header("Restore", "Resilience", "How recent a recovery KEEL could make if this server were lost, and how long a recovery has taken.")}
-    <Verdict headline={verdict.headline} text={verdict.text} tone={verdict.tone} />
+  const alerts = resilienceAlerts(data);
+  const verdict = pageVerdict(data.metrics, data.generatedAt, alerts);
+  return <>{header("Restore", "Resilience", "Could KEEL get your Microsoft 365 setup back if its server were lost, and how fast.", undefined, resilienceStatus(data.metrics, alerts))}
+    <Verdict action={verdictAction(verdict, alerts)} text={verdict.text} tone={verdict.tone} />
     <div data-layer="explanation"><ResilienceView data={data} /></div></>;
 }
 
@@ -1730,7 +1747,7 @@ const RESTORE_RESOURCES: [string, string, string][] = [
   ["group:Contractors", "access-affecting", "Entra"],
   ["namedLocation:HQ egress", "access-affecting", "Entra"],
   ["namedLocation:Branch offices", "access-affecting", "Entra"],
-  ["authenticationStrength:Phishing-resistant", "access-affecting", "Entra"],
+  ["authenticationStrengthPolicy:Phishing-resistant", "access-affecting", "Entra"],
   ["organizationalBranding:Contoso sign-in page", "cosmetic", "Entra"],
   ["groupLifecyclePolicy:Group expiry", "cosmetic", "Entra"],
   ["deviceConfiguration:Windows baseline", "access-affecting", "Intune"],

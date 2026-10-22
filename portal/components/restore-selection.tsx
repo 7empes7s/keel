@@ -48,6 +48,7 @@ import { byRisk, byText, byTime } from "@/lib/paging";
 import { orderGroups, smartOrder } from "@/lib/selection";
 import { madeInSharePoint, serviceFor, serviceOrder } from "@/lib/services";
 import { typeService } from "@/lib/baselines-view";
+import { kindOrder, kindParts } from "@/lib/type-groups";
 
 const DRY_RUN_POLL_MS = 3000;
 
@@ -254,6 +255,11 @@ function grouped(items: RestoreItem[], keyOf: (item: RestoreItem) => string, met
     : orderGroups(groups, (group) => worstTone(group.items.map((item) => toneOf(item) ?? undefined)));
 }
 
+function withKinds(group: ListGroup<RestoreItem>, service: string | null): ListGroup<RestoreItem> {
+  const parts = kindParts(group.items, (item) => item.resourceType, service, (x, y) => x.label.localeCompare(y.label));
+  return { ...group, items: parts.flatMap((part) => part.items), parts };
+}
+
 function serviceGroup(code: string): Omit<ListGroup<RestoreItem>, "items" | "key"> {
   const service = serviceFor(code === "other" ? null : code);
   return { label: service.name, icon: service.icon, about: service.about };
@@ -275,7 +281,10 @@ const GROUPINGS: Grouping<RestoreItem>[] = [
     groupsOf: (items) => {
       const changed = items.filter((item) => item.change);
       const rest = items.filter((item) => !item.change);
-      const services = grouped(rest, (item) => item.service ?? "other", serviceGroup, (code) => serviceOrder(code === "other" ? null : code));
+      // Inside a service, settings sit under their kind: users, groups, roles, then
+      // policies and tenant settings.
+      const services = grouped(rest, (item) => item.service ?? "other", serviceGroup, (code) => serviceOrder(code === "other" ? null : code))
+        .map((group) => withKinds(group, group.key === "other" ? null : group.key));
       return changed.length
         ? [{ key: CHANGED_GROUP, label: "Changed recently", icon: "clock" as IconName, about: "Different now, newest first", items: ordered(changed) }, ...services]
         : services;
@@ -284,11 +293,12 @@ const GROUPINGS: Grouping<RestoreItem>[] = [
   {
     key: "type",
     label: "Type",
+    // Service by service, and inside each the same order as the Service view.
     groupsOf: (items) => grouped(items, (item) => item.resourceType, (type) => ({
       label: plainType(type),
       icon: typeService(type).icon,
       about: `${typeService(type).name}${plainType(type).toLowerCase() !== resourceTypeLabel(type).toLowerCase() ? ` · Microsoft calls it ${resourceTypeLabel(type)}` : ""}`,
-    })),
+    }), (type) => kindOrder(type)),
   },
   {
     key: "impact",

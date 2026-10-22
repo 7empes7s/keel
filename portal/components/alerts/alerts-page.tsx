@@ -51,6 +51,7 @@ import {
   type StateGroup,
 } from "@/lib/alerts-view";
 import { ago, formatTimestamp, fromNow } from "@/lib/presentation";
+import { serviceOrder } from "@/lib/services";
 import type { EngineRef } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
@@ -178,7 +179,8 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
 
   const groupings = useMemo<Grouping<AlertItem>[]>(() => [
     { key: "state", label: "State", groupsOf: (list) => groupBy(list, (alert) => stateGroup(alert), (key, group) => ({ label: STATE_GROUPS[key as StateGroup].label, icon: STATE_GROUPS[key as StateGroup].icon, about: STATE_GROUPS[key as StateGroup].about + ` · ${plural(group.length)}` }), (key) => STATE_GROUP_ORDER.indexOf(key as StateGroup)) },
-    { key: "service", label: "Service", groupsOf: (list) => groupBy(list, (alert) => alertService(alert).name, (key, group) => ({ label: key, icon: alertService(group[0]).icon, about: plural(group.length) })) },
+    // Microsoft's services in the portal's order (Entra ID first), not by name.
+    { key: "service", label: "Service", groupsOf: (list) => groupBy(list, (alert) => alertService(alert).name, (key, group) => ({ label: key, icon: alertService(group[0]).icon, about: plural(group.length) }), (key) => serviceOrder(list.map(alertService).find((service) => service.name === key)?.code)) },
     { key: "severity", label: "Severity", groupsOf: (list) => groupBy(list, (alert) => alert.severity, (key, group) => ({ label: SEVERITY[key as AlertItem["severity"]].label, icon: SEVERITY[key as AlertItem["severity"]].icon, about: plural(group.length) }), (key) => SEVERITY_ORDER.indexOf(key as AlertItem["severity"])) },
     { key: "owner", label: "Owner", groupsOf: (list) => groupBy(list, (alert) => alert.owner?.name ?? "No owner", (key, group) => ({ label: key, icon: "bell", about: plural(group.length) }), (key) => (key === "No owner" ? 1 : 0)) },
   ], []);

@@ -478,6 +478,35 @@ export function assignmentPlan(resource, resolve, { extras = [] } = {}) {
   return { state: 'ready', assignments, identities, filters: [...filters].sort() };
 }
 
+const UNREAD_ASSIGNMENTS = Object.freeze({
+  absent: 'the backup did not read who it is assigned to',
+  failed: 'the backup could not read who it is assigned to',
+  partial: 'the backup read only some of its assignments',
+  unsupported: 'the backup cannot read the assignments of this kind',
+});
+
+/**
+ * Issue #546: a policy whose backup holds no complete read of its assignments
+ * keeps whatever assignments it has live, so a restore can leave it on the
+ * wrong groups. That is a step for a person on that object, in the dry run and
+ * in the restore result, never a silent "applied". Null when the assignments
+ * were read in full, when the restore did not look at them (not a selection
+ * restore), and for a kind with no assignments.
+ */
+export function unreadAssignmentsStep(resource) {
+  if (!writesIntuneAssignments(resource?.resourceType) || resource.verb === 'delete') return null;
+  const desired = resource.assignments;
+  if (!desired || isComplete(desired.outcome)) return null;
+  // The default Company Portal branding applies to every user and has none.
+  if (resource.resourceType === 'intuneBrandingProfile' && isDefaultBranding(resource.payload)) return null;
+  const why = UNREAD_ASSIGNMENTS[desired.outcome] ?? `the backup's read of its assignments was ${desired.outcome ?? 'not recorded'}`;
+  return Object.freeze({
+    kind: 'integration',
+    requirement: 'assignments',
+    description: `Assignments not restored: ${why}, so ${resource.verb === 'create' ? 'it is not assigned to anyone yet' : 'the groups it applies to were left as they are'}. Check its assignments in the Intune admin center and set them by hand`,
+  });
+}
+
 /** The comparable identities of live assignments (Graph's /assignments items or observed edges). */
 export function liveAssignmentIdentities(items, { observed = false, extras = [] } = {}) {
   const identities = new Set();

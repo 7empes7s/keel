@@ -1271,15 +1271,23 @@ export async function runRestore({
       // Wave 2 ENTRA: a writer's follow-up steps (missing parts of an
       // incomplete configuration) become named completion items.
       const followUpByKey = new Map(results.applied.filter((entry) => Array.isArray(entry.followUp)).map((entry) => [entry.naturalKey, entry.followUp]));
+      // Issue #546: assignments the backup did not read stay a step for a
+      // person after the run, whatever way the object came back (or none).
+      const stepsByKey = new Map(results.applied
+        .map((entry) => [entry.naturalKey, [entry.completion ?? []].flat().filter((step) => step?.requirement === 'assignments')])
+        .filter(([, steps]) => steps.length > 0));
       const recovered = results.applied
         .map((entry) => byKey.get(entry.naturalKey))
-        .filter((resource) => resource?.recovery
+        .filter((resource) => resource && (stepsByKey.has(resource.naturalKey) || (resource.recovery
           && (resource.recovery.mechanism === 'recreate' || resource.recovery.mechanism === 'soft-delete-restore'
-            || (resource.recovery.mechanism === 'update-existing' && enforcementPendingFor(resource))))
+            || (resource.recovery.mechanism === 'update-existing' && enforcementPendingFor(resource))))))
         .map((resource) => ({
-          naturalKey: resource.naturalKey, resourceType: resource.resourceType, mechanism: resource.recovery.mechanism,
+          naturalKey: resource.naturalKey, resourceType: resource.resourceType,
+          // An object left in place (unchanged or updated) reads as updated in place.
+          mechanism: !resource.recovery || resource.recovery.mechanism === 'none' ? 'update-existing' : resource.recovery.mechanism,
           enforcementPending: enforcementPendingFor(resource), payload: resource.payload,
           ...(followUpByKey.has(resource.naturalKey) ? { followUp: followUpByKey.get(resource.naturalKey) } : {}),
+          ...(stepsByKey.has(resource.naturalKey) ? { steps: stepsByKey.get(resource.naturalKey) } : {}),
         }));
       if (recovered.length > 0) {
         completionItems = await emitCompletionItemsFn(client, {

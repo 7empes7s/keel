@@ -253,3 +253,50 @@ test('an enforced promotion that recreates a group opens owned completion items 
   assert.equal(result.completionItems.length, 2);
   assert.equal(summarizeCompletion(items)[0].state, 'configuration-restored');
 });
+
+test('issue #546: an enforced run opens a writer\'s assignments step as an owned item on that object', async (t) => {
+  const client = await schemaClient(t);
+  const operator = await principal(client, 'op6@contoso.example', 'restorer');
+  const snapshotId = await createSnapshot(client, { tenantRef: TENANT });
+  await insertResourceVersion(client, {
+    snapshotId,
+    resource: {
+      naturalKey: 'group:finance-approvers', resourceType: 'group', payload: finance, payloadHash: canonicalHash(finance, 'group'),
+      criticality: 'tier1', blastRadius: 'access-affecting', fidelity: 'full', provenance: { adapter: 'test' },
+    },
+  });
+  await completeSnapshot(client, { id: snapshotId, status: 'complete', coverageDigest: {} });
+  const step = { kind: 'integration', requirement: 'assignments', description: 'Assignments not restored: KEEL-RT fixture step' };
+  const { applyWave } = await import('../restore/applyEngine.mjs');
+  // The step is what applyWave puts on an Intune object whose assignment read
+  // failed (engine/restore/unreadAssignments.test.mjs); here only the run's
+  // handling of it is under test.
+  const withStep = async (...args) => {
+    const result = await applyWave(...args);
+    for (const entry of result.applied) entry.completion = [step];
+    return result;
+  };
+  const graph = fakeGraph();
+  const artifactId = nextRef();
+  const logs = [];
+  const logger = { log: (line) => logs.push(line), error: (line) => logs.push(String(line)) };
+  const dependencies = () => ({ ...cliDependencies(graph), applyWave: withStep });
+  await runRestore({
+    snapshotId, selection: ['group:finance-approvers'], mode: 'dry-run', persistArtifactId: artifactId, requestedBy: operator.id,
+    collectorConfig: JSON.parse(configs.get('/fixtures/collector.json')), targetConfig: JSON.parse(configs.get('/fixtures/restorer.json')),
+    collectorConfigPath: '/fixtures/collector.json', targetConfigPath: '/fixtures/restorer.json',
+    readFile, dbUrl: database.url, dependencies: dependencies(), logger,
+  });
+  assert.ok(logs.some((line) => line === `completion step: group:finance-approvers — ${step.description}`), 'the dry run lists the step');
+  assert.deepEqual(await listCompletionItems(client, { tenantRef: TENANT, restoreRef: artifactId }), [], 'a dry run opens nothing');
+
+  const result = await runRestore({ artifactId, mode: 'enforce', readFile, dbUrl: database.url, dependencies: dependencies(), logger });
+  assert.deepEqual(result.results.failed, []);
+  const items = await listCompletionItems(client, { tenantRef: TENANT, restoreRef: artifactId });
+  const assignments = items.filter((item) => item.requirement === 'assignments');
+  assert.equal(assignments.length, 1);
+  assert.equal(assignments[0].kind, 'integration');
+  assert.equal(assignments[0].description, step.description);
+  assert.equal(assignments[0].naturalKey, 'group:finance-approvers');
+  assert.equal(assignments[0].state, 'pending');
+});

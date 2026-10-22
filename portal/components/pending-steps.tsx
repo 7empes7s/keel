@@ -29,3 +29,43 @@ export function PendingSteps({ steps }: { steps?: PendingStep[] | null }) {
     </div>
   );
 }
+
+// Issue #546: a step a writer leaves for a person on one object (assignments the
+// backup did not read, a trust setting a restore never writes). A dry run keeps
+// them on each object's result as `completion`: one step or a list.
+export interface ObjectStep {
+  kind?: string;
+  requirement?: string;
+  description?: string;
+}
+
+export interface ObjectWithSteps {
+  naturalKey: string;
+  completion?: ObjectStep | ObjectStep[] | null;
+}
+
+export function objectSteps(entries?: ObjectWithSteps[] | null): { naturalKey: string; requirement: string; description: string }[] {
+  return (entries ?? []).flatMap((entry) => [entry.completion ?? []].flat()
+    .filter((step): step is ObjectStep & { description: string } => typeof step?.description === "string" && step.description.length > 0)
+    .map((step) => ({ naturalKey: entry.naturalKey, requirement: step.requirement ?? "step", description: step.description })));
+}
+
+export function ObjectSteps({ entries, label = resourceLabel }: { entries?: ObjectWithSteps[] | null; label?: (naturalKey: string) => string }) {
+  const steps = objectSteps(entries);
+  if (!steps.length) return null;
+  return (
+    <div className="alert alert-warning object-steps" role="status">
+      <span className="alert-severity">By hand</span>
+      <div>
+        <h3>{steps.length === 1 ? "1 step is left for a person" : `${steps.length} steps are left for a person`}</h3>
+        <ul className="closure-list">
+          {steps.map((step, index) => (
+            <li key={`${step.naturalKey}:${step.requirement}:${index}`}>
+              <strong>{label(step.naturalKey)}</strong>: {step.description}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}

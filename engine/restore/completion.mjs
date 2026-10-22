@@ -111,8 +111,16 @@ export const CONDITIONAL_ACCESS_STATE_UNCONFIRMED_ITEM = item(
  * none, except the task-152 enforcement step: `enforcementPending` is true when
  * a Conditional Access policy the snapshot had turned on was written report-only.
  */
-export function completionItemsFor({ resourceType, mechanism, enforcementPending = false, stateUnconfirmed = false, payload = undefined, decision = undefined, followUp = undefined }) {
+export function completionItemsFor({ resourceType, mechanism, enforcementPending = false, stateUnconfirmed = false, payload = undefined, decision = undefined, followUp = undefined, steps = [] }) {
   if (stateUnconfirmed) return [CONDITIONAL_ACCESS_STATE_UNCONFIRMED_ITEM];
+  // Issue #546: a writer's own steps for a person (assignments the backup did
+  // not read) are open items whatever the mechanism, after the mechanism's own.
+  const own = (steps ?? []).filter((step) => COMPLETION_KINDS.includes(step?.kind) && step.kind !== 'enforcement')
+    .map((step) => item(step.kind, step.requirement, step.description));
+  return [...mechanismItems({ resourceType, mechanism, enforcementPending, payload, decision, followUp }), ...own];
+}
+
+function mechanismItems({ resourceType, mechanism, enforcementPending, payload, decision, followUp }) {
   const rule = COMPLETION_RULES[resourceType] ?? DEFAULT_RULE;
   const enforcement = enforcementPending ? [CONDITIONAL_ACCESS_ENFORCEMENT_ITEM] : [];
   if (mechanism === 'recreate') {

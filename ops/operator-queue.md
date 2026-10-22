@@ -5089,8 +5089,38 @@ item that needs it stays untouched.
   imports (SharePoint, Teams, Exchange, OneDrive + Purview), from the grants declared at capture time. The Wave 2 writer
   and read imports never change it.
 - Needs: nothing.
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 06:50 UTC). The stored record is stale in one way: it omits Global Reader and Security Reader. Otherwise it matches the tenant. Teams, Power Platform and Fabric Administrator are really missing. eDiscovery reads work through the Compliance Administrator role group (Case Management, Hold), not eDiscovery Manager. Collector only, reads only; nothing changed.
+  1. `workload_ledger_grants` (verbatim):
+     - `collector | ["Compliance Administrator", "Exchange Administrator", "SharePoint Administrator"] | 9 | 2026-10-21 20:24:15.650287+00`
+     - `restorer | ["Compliance Administrator", "Compliance Data Administrator", "Exchange Administrator", "Intune Administrator",
+       "Knowledge Administrator", "Security Administrator", "SharePoint Administrator", "Teams Administrator"] | 57 | 2026-10-21 20:24:15.650287+00`
+  2. Collector (`KEEL Collector`) Entra role assignments (200), all at directoryScopeId `/`: Compliance Administrator, Exchange
+     Administrator, Security Reader, SharePoint Administrator, Global Reader.
+     - Teams Administrator: **no**. Power Platform Administrator: **no**. Fabric Administrator: **no**. Compliance Administrator:
+       **yes**. eDiscovery-related Entra roles: **none**.
+     - Group memberships: `Read-Only Intune Operator` and `KEEL-RT-collector-fabric-readers`. For both, `isAssignableToRole` is null
+       (not role-assignable), so no directory role comes through a group. The five directory roles also appear in memberOf as
+       directoryRole.
+  3. Purview (`Connect-IPPSSession` as the Collector with `purview-collector.json`, the same app as `tenant.json`; nothing refused, so the
+     Restorer was not used):
+     - `Get-ServicePrincipal`: 0 registered, so the Collector app is **not** registered in Purview.
+     - `Get-RoleGroupMember -Identity eDiscoveryManager`: 1 member (MailUser). Collector in it: **no**. `Get-eDiscoveryCaseAdmin`: 1.
+       Collector in it: **no**.
+     - `(Get-RoleGroup -Identity ComplianceAdministrator).Roles`: Admin Unit Extension Manager; **Case Management**; Communication
+       Compliance Admin; Communication Compliance Case Management; Compliance Administrator; Compliance Manager Administration;
+       Compliance Search; Credential Reader; Credential Writer; Data Classification Feedback Provider; Data Classification Feedback
+       Reviewer; Data Connector Admin; Data Investigation Management; Data Map Reader; Data Security Investigation Admin; Device
+       Management; Disposition Management; DLP Compliance Management; **Hold**; IB Compliance Management; Information Protection
+       Admin; Information Protection Analyst; Information Protection Reader; Insider Risk Management Admin; Insights Reader; Manage
+       Alerts; Organization Configuration; Purview Agent Analysis; Purview Agent Deployment; Purview Copilot Workspace Contributor;
+       RecordManagement; Retention Management; Scan Reader; Scan Writer; Scope Manager; Source Reader; Source Writer; View-Only
+       Audit Logs; View-Only Case; View-Only Device Management; View-Only DLP Compliance Management; View-Only IB Compliance
+       Management; View-Only Manage Alerts; View-Only Recipients; View-Only Record Management; View-Only Retention Management.
+     - `Get-Command Get-ComplianceCase, Get-CaseHoldPolicy, Get-CaseHoldRule`: all three present in the Collector session.
+  - Conclusion (inference): purview-governance is gated on a role name ("eDiscovery Manager") that the Collector does not need. Its
+    Compliance Administrator role already carries Case Management and Hold. Teams and Power Platform settings stay off for real
+    missing roles. Granting them is a separate decision.
 - **Tenant:** reads only. Graph GETs and PowerShell `Get-` cmdlets only. Grant, assign, remove or register nothing; no
   `New-`, `Set-`, `Add-` or `Remove-` cmdlet. Read with the Collector first; only where the Collector is refused, repeat
   that same `Get-` read with the Restorer config and say so.

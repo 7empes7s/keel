@@ -495,7 +495,9 @@ export function fakeGraph() {
       const assign = /^(\/device(?:Management|AppManagement)\/[^/]+\/[^/]+)\/assign$/.exec(path);
       if (assign && method === 'POST') {
         if (!objects.has(assign[1])) return { ok: false, status: 404, body: { error: { code: 'ResourceNotFound' } } };
-        const value = (body.assignments ?? []).map((entry, index) => ({ ...entry, id: `${assign[1].split('/').pop()}_${index}` }));
+        // Scripts and remediations name the list their own way (deviceHealthScriptAssignments, ...).
+        const list = body.assignments ?? Object.entries(body ?? {}).find(([key, value]) => /Assignments$/.test(key) && Array.isArray(value))?.[1] ?? [];
+        const value = list.map((entry, index) => ({ ...entry, id: `${assign[1].split('/').pop()}_${index}` }));
         objects.set(`${assign[1]}/assignments`, { value });
         return { ok: true, status: 200, body: { value } };
       }

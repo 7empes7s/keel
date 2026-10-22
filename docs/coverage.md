@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 28 are full, 132 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 87 at least in part; the other 80 are restored by hand from the backup.
+KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 34 are full, 126 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 87 at least in part; the other 80 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -407,16 +407,16 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | App protection policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Managed app configuration | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | App configuration for managed devices | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
-| Windows PowerShell scripts | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| macOS shell scripts | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Windows PowerShell scripts | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| macOS shell scripts | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Remediations | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Custom compliance scripts | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Custom compliance scripts | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Assignment filters | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Scope tags | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Windows feature update profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
-| Windows quality update profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
+| Windows feature update profiles | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
+| Windows quality update profiles | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Windows driver update profiles | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
-| Administrative templates | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Administrative templates | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Imported administrative template files | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Compliance notification emails | Yes (Tier 3, low impact, weekly) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Windows Autopilot devices | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
@@ -497,35 +497,29 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* A backup taken before the targeted apps were read cannot recreate a configuration; take a new backup.
 - **App configuration for managed devices.** Recreates configurations and puts their settings back when the app they configure exists, and removes an unassigned one added since the backup.
   - *You do:* Add the app first. Values Microsoft never returns are entered again by hand.
-- **Windows PowerShell scripts.** Recreates scripts and puts the script and its settings back.
-  - *Not brought back:* who the script runs on (in the backup, but KEEL does not write it yet).
-  - *You do:* Who a script runs on is not put back yet, so assign it again by hand from the backup. A backup taken before scripts were read in full holds only the settings; take a new backup.
-- **macOS shell scripts.** Recreates scripts and puts the script and its settings back.
-  - *Not brought back:* who the script runs on (in the backup, but KEEL does not write it yet).
-  - *You do:* Who a script runs on is not put back yet, so assign it again by hand from the backup. A backup taken before scripts were read in full holds only the settings; take a new backup.
-- **Remediations.** Recreates your own remediations and puts the detection and fix scripts and their settings back. Remediations published by Microsoft are left alone.
-  - *Not brought back:* who the remediation runs on, and its schedule (in the backup, but KEEL does not write it yet); remediations published by Microsoft (set by Microsoft).
-  - *You do:* Who a remediation runs on and its schedule are not put back yet, so assign it again by hand from the backup.
-- **Custom compliance scripts.** Recreates scripts and puts the script and its settings back, before the compliance policies that use them.
-  - *Not brought back:* who the script runs on (in the backup, but KEEL does not write it yet).
-  - *You do:* A backup taken before scripts were read in full holds only the settings; take a new backup.
+- **Windows PowerShell scripts.** Recreates scripts and puts the script, its settings and who it runs on back.
+  - *You do:* Who a script runs on is put back only when the script is picked for a restore, and each group must still exist in the target. A backup taken before scripts were read in full holds only the settings; take a new backup.
+- **macOS shell scripts.** Recreates scripts and puts the script, its settings and who it runs on back.
+  - *You do:* Who a script runs on is put back only when the script is picked for a restore, and each group must still exist in the target. A backup taken before scripts were read in full holds only the settings; take a new backup.
+- **Remediations.** Recreates your own remediations and puts the detection and fix scripts, their settings, who they run on and their schedule back. Remediations published by Microsoft are left alone.
+  - *Not brought back:* remediations published by Microsoft (set by Microsoft).
+  - *You do:* Who a remediation runs on is put back only when it is picked for a restore, and each group must still exist in the target.
+- **Custom compliance scripts.** Recreates scripts and puts the script, its settings and who it runs on back, before the compliance policies that use them.
+  - *You do:* Who a script runs on is put back only when the script is picked for a restore. A backup taken before scripts were read in full holds only the settings; take a new backup.
 - **Assignment filters.** Recreates filters and puts their rules back.
   - *You do:* A filter is never moved to another platform; recreate it by hand if its platform changed.
 - **Scope tags.** Recreates your own tags and puts their names back.
   - *Not brought back:* the built-in Default tag (set by Microsoft).
   - *You do:* The built-in Default tag exists in every tenant and is never written.
-- **Windows feature update profiles.** Recreates profiles, puts their settings back, and removes an unassigned profile added since the backup.
-  - *Not brought back:* who the profile is assigned to (in the backup, but KEEL does not write it yet).
-  - *You do:* Who a profile is assigned to is backed up but not put back yet, so assign it again by hand from the backup.
-- **Windows quality update profiles.** Recreates profiles, puts their settings back, and removes an unassigned profile added since the backup.
-  - *Not brought back:* who the profile is assigned to (in the backup, but KEEL does not write it yet).
-  - *You do:* Who a profile is assigned to is backed up but not put back yet, so assign it again by hand from the backup.
-- **Windows driver update profiles.** Recreates profiles, puts their settings back, and removes an unassigned profile added since the backup.
-  - *Not brought back:* approved drivers (stored separately and not in the backup yet); who the profile is assigned to (in the backup, but KEEL does not write it yet).
-  - *You do:* Driver approvals are not backed up yet, so approve the drivers again by hand. Who a profile is assigned to is backed up but not put back yet, so assign it again by hand from the backup.
-- **Administrative templates.** Recreates templates and puts back which settings are turned on or off and the values entered for them.
-  - *Not brought back:* who the template is assigned to (in the backup, but KEEL does not write it yet).
-  - *You do:* Who a template is assigned to is not put back yet, so assign it again by hand from the backup. A setting from an imported template file needs that file imported first. A backup taken before setting values were read is refused; take a new backup.
+- **Windows feature update profiles.** Recreates profiles, puts their settings and who they are assigned to back, and removes an unassigned profile added since the backup.
+  - *You do:* Who a profile is assigned to is put back only when it is picked for a restore, and each group must still exist in the target.
+- **Windows quality update profiles.** Recreates profiles, puts their settings and who they are assigned to back, and removes an unassigned profile added since the backup.
+  - *You do:* Who a profile is assigned to is put back only when it is picked for a restore, and each group must still exist in the target.
+- **Windows driver update profiles.** Recreates profiles, puts their settings and who they are assigned to back, and removes an unassigned profile added since the backup.
+  - *Not brought back:* approved drivers (stored separately and not in the backup yet).
+  - *You do:* Driver approvals are not backed up yet, so approve the drivers again by hand. Who a profile is assigned to is put back only when it is picked for a restore.
+- **Administrative templates.** Recreates templates and puts back which settings are turned on or off, the values entered for them and who the template is assigned to.
+  - *You do:* Who a template is assigned to is put back only when it is picked for a restore. A setting from an imported template file needs that file imported first. A backup taken before setting values were read is refused; take a new backup.
 - **Imported administrative template files.** Imports a deleted ADMX file again, with its ADML language files, from the backup.
   - *Not brought back:* the ids of the settings in it: Intune gives them new ones, so templates that used them are set up again (in the backup, but KEEL does not write it yet).
   - *You do:* Intune gives the settings in a re-imported file new ids, so administrative templates that used them are set up again by hand. A file is never changed in place: upload a new version in the Intune admin center, under Devices, Configuration, Import ADMX. A backup taken before the file content was read is refused; take a new backup.
@@ -559,8 +553,8 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* built-in categories (set by Microsoft); which apps are in the category (stored separately and not in the backup yet).
   - *You do:* Which apps are in a category is set on each app; add the apps to a recreated category again by hand.
 - **Company Portal branding.** Recreates branding profiles for your groups and puts back their name, colours, contact details, links and Company Portal options. The default branding, which every user sees, is not changed.
-  - *Not brought back:* logo images (stored separately and not in the backup yet); who the profile is assigned to (in the backup, but KEEL does not write it yet).
-  - *You do:* Logo images are not backed up: upload them again from your own copy. Assign a recreated profile to its groups again by hand, and set the default branding by hand from the backup.
+  - *Not brought back:* logo images (stored separately and not in the backup yet).
+  - *You do:* Logo images are not backed up: upload them again from your own copy. Who a profile is assigned to is put back only when it is picked for a restore. Set the default branding by hand from the backup.
 - **Settings catalog compliance policies.** Recreates policies and puts back their settings and actions for noncompliance (block, emails, grace periods).
   - *Not brought back:* who the policy is assigned to (stored separately and not in the backup yet).
   - *You do:* Who a policy is assigned to is not backed up yet, so assign it again by hand; Conditional Access that requires compliant devices needs it assigned first. A backup taken before the actions for noncompliance were read cannot recreate a policy; take a new backup.

@@ -42,7 +42,9 @@ export function idoFakeGraph({ seed = {}, failWrites = () => null } = {}) {
       const owner = parentOf(path);
       if (method === 'POST' && action === 'assign') {
         if (!objects.has(owner)) return notFound();
-        setCollection(`${owner}/assignments`, (body.assignments ?? []).map((entry, index) => ({ ...entry, id: `assignment-${index}` })));
+        // Scripts and remediations name the list their own way (deviceHealthScriptAssignments, ...).
+        const list = body.assignments ?? Object.entries(body ?? {}).find(([key, value]) => /Assignments$/.test(key) && Array.isArray(value))?.[1] ?? [];
+        setCollection(`${owner}/assignments`, list.map((entry, index) => ({ ...entry, id: `assignment-${index}` })));
         return ok(200, null);
       }
       if (method === 'POST' && action === 'targetApps') {

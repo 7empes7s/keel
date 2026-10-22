@@ -196,19 +196,19 @@ export const COMPLETENESS = Object.freeze({
   targetedManagedAppConfiguration: {},
   mobileAppConfiguration: {},
   // Wave 1 CAT-INTUNE. Assignments are backed up as relationship reads
-  // (engine/collect/relationships.mjs); none of these writers puts them back yet.
+  // (engine/collect/relationships.mjs); restore gaps batch 14 writes them back through /assign.
   // Scripts (restore gaps batch 4): the script body is read per script and written back.
-  deviceManagementScript: { missing: [part('Who the script runs on', 'not-written')] },
-  deviceShellScript: { missing: [part('Who the script runs on', 'not-written')] },
-  deviceHealthScript: { missing: [part('Who the remediation runs on, and its schedule', 'not-written'), part('Remediations published by Microsoft', 'microsoft-managed')] },
-  deviceComplianceScript: { missing: [part('Who the script runs on', 'not-written')] },
+  deviceManagementScript: {},
+  deviceShellScript: {},
+  deviceHealthScript: { missing: [part('Remediations published by Microsoft', 'microsoft-managed')] },
+  deviceComplianceScript: {},
   assignmentFilter: {},
   roleScopeTag: { missing: [part('The built-in Default tag', 'microsoft-managed')] },
-  windowsFeatureUpdateProfile: { missing: [part('Who the profile is assigned to', 'not-written')] },
-  windowsQualityUpdateProfile: { missing: [part('Who the profile is assigned to', 'not-written')] },
-  windowsDriverUpdateProfile: { missing: [part('Approved drivers', 'other-route'), part('Who the profile is assigned to', 'not-written')] },
+  windowsFeatureUpdateProfile: {},
+  windowsQualityUpdateProfile: {},
+  windowsDriverUpdateProfile: { missing: [part('Approved drivers', 'other-route')] },
   // Restore gaps batch 5: the values of each setting are read per setting and written back.
-  groupPolicyConfiguration: { missing: [part('Who the template is assigned to', 'not-written')] },
+  groupPolicyConfiguration: {},
   groupPolicyUploadedDefinitionFile: { missing: [part('The ids of the settings in it: Intune gives them new ones, so templates that used them are set up again', 'not-written')] },
   notificationMessageTemplate: {},
   windowsAutopilotDeviceIdentity: { whole: 'secret', missing: [part('The device hardware hash', 'secret')] },
@@ -222,7 +222,7 @@ export const COMPLETENESS = Object.freeze({
   deviceManagementExchangeConnector: { whole: 'not-written', missing: [part('The connector installed on the Exchange server', 'other-route')] },
   onPremisesConditionalAccessSettings: { whole: 'not-written' },
   mobileAppCategory: { missing: [part('Built-in categories', 'microsoft-managed'), part('Which apps are in the category', 'other-route')] },
-  intuneBrandingProfile: { missing: [part('Logo images', 'other-route'), part('Who the profile is assigned to', 'not-written')] },
+  intuneBrandingProfile: { missing: [part('Logo images', 'other-route')] },
   customAuthenticationExtension: { whole: 'not-written' },
   // Remaining kinds, batch 3.
   deviceManagementCompliancePolicy: { missing: [part('Who the policy is assigned to', 'other-route')] },

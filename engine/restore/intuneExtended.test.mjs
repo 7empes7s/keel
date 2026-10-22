@@ -9,8 +9,8 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import {
-  INTUNE_BEST_EFFORT, INTUNE_EXTENDED_RECORDS, INTUNE_RECORDS, applyIntuneExtendedWrite, buildIntuneExtendedLedger, intuneExtendedOperations,
-  targetAppsBody,
+  INTUNE_BEST_EFFORT, INTUNE_EXTENDED_RECORDS, INTUNE_RECORDS, applyIntuneExtendedWrite, attachIntuneAssignments, buildIntuneExtendedLedger,
+  intuneExtendedOperations, targetAppsBody, writesIntuneAssignments,
 } from './intuneOperations.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
 import { classifyContentEffects } from '../safety/contentEffects.mjs';
@@ -1351,4 +1351,155 @@ test('a supersedence that replaces the older app needs the content approval, on 
   const upgrade = classifyContentEffects([{ ...resourceOf('mobileAppRelationship', { ...replace, supersedenceType: 'update' }), verb: 'create' }]);
   assert.deepEqual(upgrade.effects, []);
   assert.deepEqual(classifyContentEffects([{ ...resourceOf('mobileAppRelationship', appLink), verb: 'create' }]).effects, []);
+});
+
+// ------------------------------------------- restore gaps, batch 14
+
+const GROUP_CONTEXT = { targetIndex: new Map([['group:KEEL-RT-Devices', 'target-group']]), mappingTable: new Map(), runProvenance: new Map() };
+const groupTarget = (extra = {}) => ({ targetNaturalKey: 'group:KEEL-RT-Devices', attributes: { targetType: 'groupAssignmentTarget', ...extra } });
+const DAILY = Object.freeze({ '@odata.type': '#microsoft.graph.deviceHealthScriptDailySchedule', interval: 1, useUtc: false, time: '01:00:00.0000000' });
+const remediation = Object.freeze({
+  id: 'h-src', displayName: 'KEEL-RT-remediation', description: 'Fixture', publisher: 'KEEL-RT', runAsAccount: 'system', isGlobalScript: false,
+  detectionScriptContent: 'ZXhpdCAw', remediationScriptContent: 'ZXhpdCAw', roleScopeTagIds: ['0'],
+});
+
+test('a remediation is created, then assigned with its schedule and whether its fix runs', async () => {
+  const graph = idoFakeGraph();
+  const resource = resourceOf('deviceHealthScript', remediation, {
+    assignments: { outcome: 'complete', targets: [groupTarget({ runSchedule: DAILY, runRemediationScript: true })] },
+  });
+  const result = await applyIntuneExtendedWrite(graph, resource, 'create', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const assign = graph.calls.find((call) => call.path.endsWith('/assign'));
+  assert.equal(assign.path, `/deviceManagement/deviceHealthScripts/${result.applied.targetId}/assign`);
+  assert.equal(assign.version, 'beta');
+  assert.deepEqual(assign.body, {
+    deviceHealthScriptAssignments: [{
+      '@odata.type': '#microsoft.graph.deviceHealthScriptAssignment',
+      target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: 'target-group' },
+      runRemediationScript: true,
+      runSchedule: DAILY,
+    }],
+  });
+  assert.equal(result.applied.changes.assignments, 'written');
+});
+
+test('a remediation whose schedule drifted is assigned again; one that matches is left alone', async () => {
+  const path = '/deviceManagement/deviceHealthScripts/h-1';
+  const live = { ...remediation, id: 'h-1' };
+  const assigned = (schedule) => ({
+    [path]: { ...live, assignments: [{ id: 'a-1', target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: 'target-group' }, runRemediationScript: true, runSchedule: schedule }] },
+  });
+  const resource = resourceOf('deviceHealthScript', live, {
+    live: { state: 'present', targetId: 'h-1', payload: live },
+    assignments: { outcome: 'complete', targets: [groupTarget({ runSchedule: DAILY, runRemediationScript: true })] },
+  });
+  const drifted = idoFakeGraph({ seed: assigned({ ...DAILY, time: '23:00:00.0000000' }) });
+  let result = await applyIntuneExtendedWrite(drifted, resource, 'update', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(result.applied.changes.assignments, 'written');
+  assert.deepEqual(drifted.calls.find((call) => call.path.endsWith('/assign')).body.deviceHealthScriptAssignments[0].runSchedule, DAILY);
+  // Only the assignment changed: the script itself is never written.
+  assert.equal(drifted.calls.some((call) => call.method === 'PATCH'), false);
+
+  const same = idoFakeGraph({ seed: assigned(DAILY) });
+  result = await applyIntuneExtendedWrite(same, resource, 'update', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.applied.changes.assignments, 'already as in the backup');
+  assert.equal(same.calls.some((call) => call.method !== 'GET'), false);
+});
+
+test('scripts are assigned through their own /assign list; a custom attribute script has no assignment write', async () => {
+  const cases = [
+    ['deviceManagementScript', 'deviceManagementScriptAssignments', '#microsoft.graph.deviceManagementScriptAssignment'],
+    ['deviceShellScript', 'deviceManagementScriptAssignments', '#microsoft.graph.deviceManagementScriptAssignment'],
+    ['deviceComplianceScript', 'deviceHealthScriptAssignments', '#microsoft.graph.deviceHealthScriptAssignment'],
+  ];
+  for (const [type, bodyKey, assignmentType] of cases) {
+    const fields = Object.fromEntries(SCRIPT_CASES)[type];
+    const graph = idoFakeGraph();
+    const resource = resourceOf(type, { id: `${type}-1`, displayName: `KEEL-RT-${type}`, ...fields }, {
+      assignments: { outcome: 'complete', targets: [groupTarget(), { targetNaturalKey: null, attributes: { targetType: 'allDevicesAssignmentTarget' } }] },
+    });
+    const result = await applyIntuneExtendedWrite(graph, resource, 'create', { ...FAST, referenceContext: GROUP_CONTEXT });
+    assert.equal(result.failed, undefined, `${type}: ${result.failed?.error}`);
+    const assign = graph.calls.find((call) => call.path.endsWith('/assign'));
+    assert.deepEqual(Object.keys(assign.body), [bodyKey], type);
+    assert.deepEqual(assign.body[bodyKey].map((entry) => entry['@odata.type']), [assignmentType, assignmentType], type);
+    assert.deepEqual(assign.body[bodyKey].map((entry) => entry.target['@odata.type']).sort(),
+      ['#microsoft.graph.allDevicesAssignmentTarget', '#microsoft.graph.groupAssignmentTarget'], type);
+  }
+  assert.equal(INTUNE_EXTENDED_RECORDS.deviceCustomAttributeShellScript.assignmentType, undefined);
+  assert.equal(writesIntuneAssignments('deviceCustomAttributeShellScript'), false);
+});
+
+test('an administrative template is assigned after its settings are written', async () => {
+  const graph = idoFakeGraph({ seed: definitionsSeed('d-1', 'd-2') });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('groupPolicyConfiguration', template, {
+    assignments: { outcome: 'complete', targets: [groupTarget({ filterId: null, filterType: 'none' })] },
+  }), 'create', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = graph.calls.filter((call) => call.method === 'POST').map((call) => call.path.split('/').pop());
+  assert.deepEqual(writes, ['groupPolicyConfigurations', 'updateDefinitionValues', 'assign']);
+  assert.deepEqual(graph.calls.find((call) => call.path.endsWith('/assign')).body.assignments[0]['@odata.type'], '#microsoft.graph.groupPolicyConfigurationAssignment');
+  assert.deepEqual(result.applied.changes.settings, { removed: 0, added: 2 });
+  assert.equal(result.applied.changes.assignments, 'written');
+});
+
+test('update profiles and branding profiles are assigned through /assign with their own assignment kind', async () => {
+  const cases = [
+    ['windowsFeatureUpdateProfile', { displayName: 'KEEL-RT-Feature', featureUpdateVersion: 'Windows 11, version 24H2' }],
+    ['windowsQualityUpdateProfile', { displayName: 'KEEL-RT-Quality', expeditedUpdateSettings: { qualityUpdateRelease: '2026-10-14T00:00:00Z', daysUntilForcedReboot: 1 } }],
+    ['windowsDriverUpdateProfile', { displayName: 'KEEL-RT-Driver', approvalType: 'manual' }],
+    ['intuneBrandingProfile', { profileName: 'KEEL-RT-branding', displayName: 'KEEL-RT IT', isDefaultProfile: false }],
+  ];
+  for (const [type, fields] of cases) {
+    const graph = idoFakeGraph();
+    const result = await applyIntuneExtendedWrite(graph, resourceOf(type, { id: `${type}-src`, ...fields }, {
+      assignments: { outcome: 'complete', targets: [groupTarget({ targetType: 'exclusionGroupAssignmentTarget' })] },
+    }), 'create', { ...FAST, referenceContext: GROUP_CONTEXT });
+    assert.equal(result.failed, undefined, `${type}: ${result.failed?.error}`);
+    const assign = graph.calls.find((call) => call.path.endsWith('/assign'));
+    assert.equal(assign.version, 'beta', type);
+    assert.deepEqual(assign.body, {
+      assignments: [{
+        '@odata.type': `#microsoft.graph.${type}Assignment`,
+        target: { '@odata.type': '#microsoft.graph.exclusionGroupAssignmentTarget', groupId: 'target-group' },
+      }],
+    }, type);
+  }
+});
+
+test('a script whose group is missing in the target is not assigned, and nothing about the assignment is guessed', async () => {
+  const graph = idoFakeGraph();
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceHealthScript', remediation, {
+    assignments: { outcome: 'complete', targets: [groupTarget({ runSchedule: DAILY })] },
+  }), 'create', FAST);
+  assert.match(result.failed?.error ?? '', /the group group:KEEL-RT-Devices does not exist in the target/);
+  assert.equal(graph.calls.some((call) => call.path.endsWith('/assign')), false);
+});
+
+test('a restore attaches the backup assignments to scripts, templates and profiles, and plans an update when only they differ', () => {
+  const live = { ...remediation, id: 'h-1' };
+  const base = { ...resourceOf('deviceHealthScript', live), verb: 'noop', live: { state: 'present', targetId: 'h-1', payload: live } };
+  const edge = (schedule) => ({
+    targetId: 'target-group', targetNaturalKey: 'group:KEEL-RT-Devices', edgeKey: 'groupAssignmentTarget|target-group',
+    attributes: { targetType: 'groupAssignmentTarget', runSchedule: schedule, runRemediationScript: true },
+  });
+  const desired = new Map([[`${base.naturalKey}|assignment`, { outcome: 'complete', targets: [edge(DAILY)] }]]);
+  const liveOf = (schedule) => new Map([[`${base.naturalKey}|assignment`, { outcome: 'complete', targets: [{ ...edge(schedule), targetId: 'target-group' }] }]]);
+  const resolve = (key) => (key === 'group:KEEL-RT-Devices' ? 'target-group' : null);
+  const [drifted] = attachIntuneAssignments([base], { desired, live: liveOf({ ...DAILY, interval: 7 }), resolve });
+  assert.equal(drifted.verb, 'update');
+  assert.match(drifted.verbReason, /assignments differ/);
+  const [same] = attachIntuneAssignments([base], { desired, live: liveOf(DAILY), resolve });
+  assert.equal(same.verb, 'noop');
+  assert.equal(same.assignments.outcome, 'complete');
+  for (const type of ['deviceManagementScript', 'deviceShellScript', 'deviceHealthScript', 'deviceComplianceScript', 'groupPolicyConfiguration',
+    'windowsFeatureUpdateProfile', 'windowsQualityUpdateProfile', 'windowsDriverUpdateProfile', 'intuneBrandingProfile',
+    'managedAppPolicy', 'targetedManagedAppConfiguration', 'mobileAppConfiguration', 'deviceConfiguration']) {
+    assert.equal(writesIntuneAssignments(type), true, type);
+  }
+  for (const type of ['policySet', 'windowsAutopilotDeploymentProfile', 'deviceManagementCompliancePolicy', 'windowsManagedAppProtection', 'mobileAppCategory']) {
+    assert.equal(writesIntuneAssignments(type), false, type);
+  }
 });

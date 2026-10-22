@@ -339,20 +339,20 @@ export const TYPE_GUIDE = Object.freeze({
   // Wave 1: backed up, no restore built yet.
   // Restore gaps batch 4: the script body is backed up per script.
   deviceManagementScript: auto('Windows PowerShell scripts', {
-    keeps: 'Recreates scripts and puts the script and its settings back.',
-    todo: 'Who a script runs on is not put back yet, so assign it again by hand from the backup. A backup taken before scripts were read in full holds only the settings; take a new backup.',
+    keeps: 'Recreates scripts and puts the script, its settings and who it runs on back.',
+    todo: 'Who a script runs on is put back only when the script is picked for a restore, and each group must still exist in the target. A backup taken before scripts were read in full holds only the settings; take a new backup.',
   }),
   deviceShellScript: auto('macOS shell scripts', {
-    keeps: 'Recreates scripts and puts the script and its settings back.',
-    todo: 'Who a script runs on is not put back yet, so assign it again by hand from the backup. A backup taken before scripts were read in full holds only the settings; take a new backup.',
+    keeps: 'Recreates scripts and puts the script, its settings and who it runs on back.',
+    todo: 'Who a script runs on is put back only when the script is picked for a restore, and each group must still exist in the target. A backup taken before scripts were read in full holds only the settings; take a new backup.',
   }),
   deviceHealthScript: auto('Remediations', {
-    keeps: 'Recreates your own remediations and puts the detection and fix scripts and their settings back. Remediations published by Microsoft are left alone.',
-    todo: 'Who a remediation runs on and its schedule are not put back yet, so assign it again by hand from the backup.',
+    keeps: 'Recreates your own remediations and puts the detection and fix scripts, their settings, who they run on and their schedule back. Remediations published by Microsoft are left alone.',
+    todo: 'Who a remediation runs on is put back only when it is picked for a restore, and each group must still exist in the target.',
   }),
   deviceComplianceScript: auto('Custom compliance scripts', {
-    keeps: 'Recreates scripts and puts the script and its settings back, before the compliance policies that use them.',
-    todo: 'A backup taken before scripts were read in full holds only the settings; take a new backup.',
+    keeps: 'Recreates scripts and puts the script, its settings and who it runs on back, before the compliance policies that use them.',
+    todo: 'Who a script runs on is put back only when the script is picked for a restore. A backup taken before scripts were read in full holds only the settings; take a new backup.',
   }),
   assignmentFilter: auto('Assignment filters', {
     keeps: 'Recreates filters and puts their rules back.',
@@ -363,21 +363,21 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'The built-in Default tag exists in every tenant and is never written.',
   }),
   windowsFeatureUpdateProfile: auto('Windows feature update profiles', {
-    keeps: 'Recreates profiles, puts their settings back, and removes an unassigned profile added since the backup.',
-    todo: 'Who a profile is assigned to is backed up but not put back yet, so assign it again by hand from the backup.',
+    keeps: 'Recreates profiles, puts their settings and who they are assigned to back, and removes an unassigned profile added since the backup.',
+    todo: 'Who a profile is assigned to is put back only when it is picked for a restore, and each group must still exist in the target.',
   }),
   windowsQualityUpdateProfile: auto('Windows quality update profiles', {
-    keeps: 'Recreates profiles, puts their settings back, and removes an unassigned profile added since the backup.',
-    todo: 'Who a profile is assigned to is backed up but not put back yet, so assign it again by hand from the backup.',
+    keeps: 'Recreates profiles, puts their settings and who they are assigned to back, and removes an unassigned profile added since the backup.',
+    todo: 'Who a profile is assigned to is put back only when it is picked for a restore, and each group must still exist in the target.',
   }),
   windowsDriverUpdateProfile: auto('Windows driver update profiles', {
-    keeps: 'Recreates profiles, puts their settings back, and removes an unassigned profile added since the backup.',
-    todo: 'Driver approvals are not backed up yet, so approve the drivers again by hand. Who a profile is assigned to is backed up but not put back yet, so assign it again by hand from the backup.',
+    keeps: 'Recreates profiles, puts their settings and who they are assigned to back, and removes an unassigned profile added since the backup.',
+    todo: 'Driver approvals are not backed up yet, so approve the drivers again by hand. Who a profile is assigned to is put back only when it is picked for a restore.',
   }),
   // Restore gaps batch 5: the values of each setting are backed up per setting.
   groupPolicyConfiguration: auto('Administrative templates', {
-    keeps: 'Recreates templates and puts back which settings are turned on or off and the values entered for them.',
-    todo: 'Who a template is assigned to is not put back yet, so assign it again by hand from the backup. A setting from an imported template file needs that file imported first. A backup taken before setting values were read is refused; take a new backup.',
+    keeps: 'Recreates templates and puts back which settings are turned on or off, the values entered for them and who the template is assigned to.',
+    todo: 'Who a template is assigned to is put back only when it is picked for a restore. A setting from an imported template file needs that file imported first. A backup taken before setting values were read is refused; take a new backup.',
   }),
   groupPolicyUploadedDefinitionFile: auto('Imported administrative template files', {
     keeps: 'Imports a deleted ADMX file again, with its ADML language files, from the backup.',
@@ -419,7 +419,7 @@ export const TYPE_GUIDE = Object.freeze({
   }),
   intuneBrandingProfile: auto('Company Portal branding', {
     keeps: 'Recreates branding profiles for your groups and puts back their name, colours, contact details, links and Company Portal options. The default branding, which every user sees, is not changed.',
-    todo: 'Logo images are not backed up: upload them again from your own copy. Assign a recreated profile to its groups again by hand, and set the default branding by hand from the backup.',
+    todo: 'Logo images are not backed up: upload them again from your own copy. Who a profile is assigned to is put back only when it is picked for a restore. Set the default branding by hand from the backup.',
   }),
   deviceManagementCompliancePolicy: auto('Settings catalog compliance policies', {
     keeps: 'Recreates policies and puts back their settings and actions for noncompliance (block, emails, grace periods).',

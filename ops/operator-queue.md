@@ -5462,3 +5462,42 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / blocked; the step 5
   result; approval ids; the evidence branch and commit; anything left in the tenant.
+
+### Q118: Check the batch 8 backup kinds land in a snapshot, and rerun discovery (read-only, after #446)
+- Drafted by the "Back up last held-back kinds" thread (2026-10-22). Code: PR #446 (remaining kinds batch 8, 14 kinds,
+  GET only, no writer). Two are read per parent with a filter: `entitlementManagementRoleAssignment`
+  (`/roleManagement/entitlementManagement/roleAssignments?$filter=roleDefinitionId eq '{id}'`, once per role) and
+  `schemaExtension` (`/schemaExtensions?$filter=owner eq '{appId}'`, once per app registration). Discovery now skips the
+  last gaps with a reason (new reasons `holds-secrets`, `retired`, `other-tenant`).
+- Needs: PR #446 live (`git -C /opt/keel-live log --oneline | grep -c "#446"` is 1). Can run together with Q115.
+- Status: todo
+- Result:
+- **Tenant:** reads only, with the collector credential. No grants, no role or config changes, nothing written.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. `node cli/keel-collect.mjs` once by hand (no `--tier`, so every tier is read). Report its exit code and any log
+     line that names one of the types below with an error or a 400/403/404.
+  2. ```sql
+     WITH s AS (SELECT id FROM snapshot ORDER BY started_at DESC LIMIT 1)
+     SELECT t.type, count(rv.resource_type) AS objects
+       FROM unnest('{hardwareConfiguration,certificateBasedApplicationConfiguration,signInIdentifier,verifiedIdProfile,externalOriginResourceConnector,lifecyclePolicy,roleManagementCustomExtension,privilegedAccessGroupResource,crossTenantM365Capability,entitlementManagementRoleAssignment,deviceTemplate,securityZone,sharedEmailDomain,schemaExtension}'::text[]) AS t(type)
+       LEFT JOIN resource_version rv ON rv.resource_type = t.type AND rv.snapshot_id = (SELECT id FROM s)
+      GROUP BY t.type ORDER BY t.type;
+     ```
+     If the table or column names differ, take the snapshot step 1 made and report what you ran.
+  3. Field check: confirm no stored `hardwareConfiguration` payload has a `configurationFileContent` key and no stored
+     `roleManagementCustomExtension` payload has an `endpointConfiguration` key (both expected 0 objects anyway).
+  4. `time node cli/keel-discover.mjs run --config /etc/keel/tenant.json`. Report the exit code, the first summary
+     line, and the `Stored discovery run <id>` line. Then, for that run:
+     ```sql
+     SELECT status, reason, count(*) FROM discovery_item
+      WHERE run_id = (SELECT id FROM discovery_run ORDER BY finished_at DESC, id DESC LIMIT 1) AND kind <> 'cmdlet'
+      GROUP BY 1, 2 ORDER BY 1, 2;
+     SELECT source, name FROM discovery_item
+      WHERE run_id = (SELECT id FROM discovery_run ORDER BY finished_at DESC, id DESC LIMIT 1)
+        AND status = 'uncatalogued' AND kind <> 'cmdlet' ORDER BY name, source;
+     ```
+- **Expected:** step 1 exit 0. Step 2 from discovery run 3: 1 `lifecyclePolicy`, 9 `signInIdentifier` or fewer
+  (unmeasured), 0 or a few `schemaExtension` (only this tenant's own apps), 0 for most others; any 400 on the two
+  filtered reads is the finding to report verbatim. Step 3: 0 and 0. Step 4: no Graph path left `uncatalogued`
+  (any that remain are new paths Microsoft added since run 3; list them).
+- **Report:** steps 1 to 4 verbatim.

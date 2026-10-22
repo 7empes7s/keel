@@ -5888,8 +5888,29 @@ item that needs it stays untouched.
   `appleUserInitiatedEnrollmentProfile` (name, description, enrollment type options, default type; `platform` on create only;
   `priority` and assignments are **not** written). Fixtures stay unassigned and unused.
 - Needs: /opt/keel-live at the #453 merge or later (`grep -q appleUserInitiatedEnrollmentProfile: /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
+- Status: done
+- Result: done (2026-10-22 08:59 UTC). 5 of 6 operations promoted; the e-book category update is blocked by **#474**. Built and captured at **471cb9b** (the restores ran at c396a2c/471cb9b). Restorer only; global admin not used; nothing granted; no Tunnel site or server.
+  - **Per type and operation:**
+    | type | create | update |
+    |---|---|---|
+    | managedEBookCategory | **promoted** | **blocked** (#474): its `lastModifiedDateTime` is the read time, so enforce is refused |
+    | microsoftTunnelConfiguration | **promoted** | **promoted** (port 8443 → 443, DNS 10.99.0.2 → 10.99.0.1) |
+    | appleUserInitiatedEnrollmentProfile | **promoted** | **promoted** (description and default type back) |
+  - **Backup check** (S = `7611927e`): all three `complete` (1 each). The Tunnel payload fields are advancedSettings, defaultDomainSuffix, description, disableUdpConnections,
+    displayName, dnsServers, id, ipv6Network, lastUpdateDateTime, listenPort, network, roleScopeTagIds, routeExcludes, **routeIncludes**, routesExclude, **routesInclude**
+    and splitDNS, so both route forms are stored.
+    - The Tunnel create needed `defaultDomainSuffix`, `advancedSettings` and `roleScopeTagIds`; without them Graph answered 500 InternalServerError.
+    - The Apple profile was created without any certificate prompt.
+  - **Create round:** deleted all three. Dry run `68858a77` (3 selected, closed to 4 with `roleScopeTag:0`, which had no changed fields), approval **20d0e92d**, job `d9e1b795`
+    succeeded. Read-back equals S: category name; Tunnel 10.99.0.0/24, DNS 10.99.0.1, route 10.98.0.0/16, port 443; profile description, iOS, company device,
+    personal accountDrivenUserEnrollment, default device. (Priority and assignments are listed as follow-ups, as designed.)
+  - **Update round:** S2 = `1b07428b`, then the drift.
+    - All three together: dry run `4642d960`, approval **04d5675b**, job `172c8f05` refused with "the target has changed since the dry run" (#474).
+    - Without the category: dry run `74f7c933`, approval **d725c731**, job `b4dfb0f1` succeeded.
+  - **Re-run check:** the category name was put back by hand. Dry run `aab79538` from S2: all entries have no changed fields (**0 planned writes**).
+  - **Cleanup:** deleted all three. Re-read: none left. **Nothing left.**
+  - **Evidence:** `claude/live-evidence-restore-gaps-8` @ **238e796**. pseudonymize check exit 0; my scan is clean (the only hits are the fixture's test IP ranges).
+    `live evidence`: appleUserInitiatedEnrollmentProfile.create and .update, managedEBookCategory.create, microsoftTunnelConfiguration.create and .update: `fixture-tested -> live-qualified`.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementApps.ReadWrite.All (e-book categories), DeviceManagementConfiguration.ReadWrite.All (Tunnel) and

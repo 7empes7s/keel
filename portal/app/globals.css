@@ -4687,6 +4687,15 @@ section.wizard-panel {
   overflow-wrap: anywhere;
 }
 
+.toast-body .toast-todo {
+  color: var(--text);
+}
+
+.toast-body .ui-alert-more {
+  margin-top: var(--space-2xs);
+  font-size: 0.75rem;
+}
+
 .toast-link {
   width: fit-content;
   margin-top: var(--space-2xs);

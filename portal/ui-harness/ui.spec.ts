@@ -1268,7 +1268,10 @@ test("restore completion closes an item with a reference and refuses a pasted se
   await expect(credential.locator(".completion-hint")).toHaveText("Where the proof lives. Never the secret itself.");
   await credential.getByLabel("Evidence reference").fill("-----BEGIN PRIVATE KEY----- secret");
   await credential.getByRole("button", { name: "Mark verified" }).click();
-  await expect(page.getByText("never the credential")).toBeVisible();
+  const refusal = page.locator(".toast[data-error-notice]");
+  await expect(refusal).toContainText("That looks like a secret or key.");
+  await expect(refusal.locator(".toast-todo")).toContainText("never the credential itself");
+  await expect(refusal.locator(".ui-raw-error")).toBeHidden();
   await credential.getByLabel("Evidence reference").fill("CHG-5120");
   await credential.getByRole("button", { name: "Mark verified" }).click();
   await expect(credential.getByRole("button", { name: "Reopen" })).toBeVisible();
@@ -1715,8 +1718,18 @@ test("a change compares each setting with its earlier value, coloured, and many 
   await windows.getByRole("button", { name: /^All 11$/ }).click();
   await windows.getByRole("button", { name: "Show 3 more settings" }).click();
   await expect(windows.locator(".cc-row")).toHaveCount(11);
-  await windows.getByRole("button", { name: "6 settings are the same" }).click();
-  await expect(windows.locator(".cc-same")).toContainText("Defender scheduled scan time");
+  // Changed settings only by default; the switch shows every setting, the same ones
+  // uncoloured, and switches back.
+  await expect(windows.locator(".cc-hidden")).toHaveText("Hidden: 6 settings are the same.");
+  const every = windows.getByRole("switch", { name: /Show every setting/ });
+  await expect(every).toHaveAttribute("aria-checked", "false");
+  await every.click();
+  await expect(every).toHaveAttribute("aria-checked", "true");
+  await expect(windows.locator(".cc-row")).toHaveCount(17);
+  await expect(windows.locator('.cc-row[data-diff="same"]', { hasText: "Defender scheduled scan time" })).toBeVisible();
+  await expect(windows.locator(".cc-filters")).toHaveCount(0);
+  await every.click();
+  await expect(windows.locator('.cc-row[data-diff="same"]')).toHaveCount(0);
   await expect(windows.getByRole("button", { name: "Accept this change" })).toBeVisible();
   await expect(windows.getByRole("button", { name: "Undo this change" })).toBeVisible();
   const results = await new AxeBuilder({ page }).include(".bl-sheet").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
@@ -2973,6 +2986,42 @@ for (const theme of ["dark", "light"] as const) {
   }
 }
 
+// The details panel steps through the list it was opened from, in the list's own order
+// ("2 of N"), stops at the ends, keeps its address in step, and keeps the decision
+// buttons pinned in view at the foot however far the panel scrolls.
+for (const width of [390, 1440]) {
+  for (const [hash, link, noun] of [["/drift", ".sel-row .bl-row-link", "change"], ["/benchmarks", ".sel-row .cp-row-link", "control"]] as const) {
+    test(`details panel · previous and next · ${hash} · ${width}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await open(page, hash, width === 390 ? "light" : "dark");
+      const names = (await page.locator(link).allTextContents()).map((name) => name.trim());
+      expect(names.length).toBeGreaterThan(2);
+      await page.locator(link).first().click();
+      let sheet = page.getByRole("dialog", { name: names[0], exact: true });
+      await expect(sheet.locator(".bl-sheet-step")).toHaveText(`1 of ${names.length}`);
+      await expect(sheet.getByRole("button", { name: `Previous ${noun}` })).toBeDisabled();
+      await sheet.getByRole("button", { name: `Next ${noun}` }).click();
+      sheet = page.getByRole("dialog", { name: names[1], exact: true });
+      await expect(sheet.locator(".bl-sheet-step")).toHaveText(`2 of ${names.length}`);
+      expect(page.url()).toContain("open=");
+      const foot = sheet.locator(".bl-sheet-foot");
+      if (await foot.count()) {
+        await sheet.locator(".bl-sheet-body").evaluate((body) => { body.scrollTop = body.scrollHeight; });
+        await expect(foot.locator(".btn").first()).toBeInViewport();
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      const head = await sheet.locator(".bl-sheet-head").boundingBox();
+      const step = await sheet.locator(".bl-sheet-step").boundingBox();
+      expect(step && head && step.x + step.width <= head.x + head.width).toBeTruthy();
+      for (let index = 2; index < names.length; index += 1) await page.getByRole("button", { name: `Next ${noun}` }).click();
+      sheet = page.getByRole("dialog", { name: names[names.length - 1], exact: true });
+      await expect(sheet.getByRole("button", { name: `Next ${noun}` })).toBeDisabled();
+      const results = await new AxeBuilder({ page }).include(".bl-sheet").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+      expect(results.violations.map((violation) => violation.id)).toEqual([]);
+    });
+  }
+}
+
 test("Compliance · tiles filter, a control opens its panel, renew an exception, export evidence", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await open(page, "/benchmarks");
@@ -3367,12 +3416,28 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(settings.locator("h3").first()).toHaveText("Entra ID");
     const policies = settings.locator("details.compare-group", { hasText: "Sign-in rule" });
     await policies.locator("summary").click();
-    await expect(policies).toContainText("Block legacy auth");
-    await expect(policies).toContainText("enabled for reporting but not enforced");
-    const exclude = policies.locator(".cc-row", { hasText: "Exclude groups" });
+    // A changed object is one line in the list; its settings open in the details panel,
+    // which steps through every changed object on the page and pins the restore link.
+    const block = policies.locator(".compare-item", { hasText: "Block legacy auth" });
+    await expect(block.locator(".compare-item-line")).toHaveText(/^2 settings differ: State and Conditions › users › exclude groups\.\s*See what changed$/);
+    await expect(block.locator(".cc-row")).toHaveCount(0);
+    await block.getByRole("button", { name: "See what changed in Block legacy auth" }).click();
+    const panel = page.getByRole("dialog", { name: "Block legacy auth" });
+    await expect(panel).toContainText("enabled for reporting but not enforced");
+    await expect(panel.locator(".bl-sheet-step")).toContainText("2 of 2");
+    await expect(panel.getByRole("button", { name: "Next item" })).toBeDisabled();
+    await expect(panel.getByRole("link", { name: /^Restore from / })).toHaveAttribute("href", /\/restore\?snapshot=/);
+    const exclude = panel.locator(".cc-row", { hasText: "Exclude groups" });
     await expect(exclude.locator('.cc-entry[data-diff="added"]')).toContainText("an object Keel has no name for");
     await exclude.getByRole("button", { name: "Show the 1 entry that stayed" }).click();
     await expect(exclude).toContainText("Break-glass admins");
+    await panel.getByRole("button", { name: "Previous item" }).click();
+    const finance = page.getByRole("dialog", { name: "Finance" });
+    await expect(finance.locator(".bl-sheet-step")).toContainText("1 of 2");
+    await expect(finance.locator(".cc-row", { hasText: "Security enabled" })).toHaveAttribute("data-diff", "changed");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    await page.keyboard.press("Escape");
+    await expect(finance).toHaveCount(0);
     // Whole added and removed objects are one compact line each, removed first, with a red
     // or green badge; their settings fold away until asked for. Only changed objects list
     // settings before and after.
@@ -3390,7 +3455,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(contractors.locator(".cv-chip")).toHaveText("Added");
     await contractors.getByRole("button", { name: "Show its 3 settings" }).click();
     await expect(contractors.locator(".cc-whole-list")).toContainText("Processing state: On");
-    await expect(groups.locator(".compare-item", { hasText: "Finance" }).locator(".cc-row", { hasText: "Security enabled" })).toHaveAttribute("data-diff", "changed");
+    await expect(groups.locator(".compare-item", { hasText: "Finance" }).locator(".compare-item-line")).toContainText("1 setting differs: Security enabled.");
     await expect(settings).not.toContainText(/\b(not )?there\b/i);
     // Not compared: a few reasons with counts by service, worst first, each folded.
     const gaps = settings.locator('[data-gaps="not-compared"]');
@@ -3415,9 +3480,14 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(page.locator('[data-layer="verdict"]')).toContainText("between the two tenants");
     const across = page.locator("section", { has: page.locator("#compare-settings-heading") });
     await across.locator("details.compare-group").first().locator("summary").click();
-    await across.getByRole("button", { name: "Show the 1 entry that stayed" }).click();
-    await expect(across).toContainText("Break-glass admins (group)");
-    await expect(across).toContainText("an object Keel could not name");
+    await across.getByRole("button", { name: /^See what changed in / }).first().click();
+    const acrossPanel = page.getByRole("dialog");
+    await acrossPanel.getByRole("button", { name: "Show the 1 entry that stayed" }).click();
+    await expect(acrossPanel).toContainText("Break-glass admins (group)");
+    await expect(acrossPanel).toContainText("an object Keel could not name");
+    // Another tenant's backup is not restored from here.
+    await expect(acrossPanel.getByRole("link", { name: /^Restore from / })).toHaveCount(0);
+    await page.keyboard.press("Escape");
     const unmatched = across.locator('[data-gaps="unmatched"] details');
     await expect(unmatched.locator("summary")).toContainText("1 kind");
     await unmatched.locator("summary").click();
@@ -3934,6 +4004,28 @@ test("errors · no raw error text in plain view on any page", async ({ page }) =
     for (const line of text.split("\n")) if (RAW_ERROR_PATTERN.test(line)) leaks.push(`${hash}: ${line.trim().slice(0, 160)}`);
   }
   expect(leaks, "raw error text belongs behind Show details (components/ui/error-notice.tsx)").toEqual([]);
+});
+
+// Pop-up messages too: a refused request says what went wrong and what to do in plain
+// words; the server's own answer waits behind "Show details".
+test("errors · a refused request's pop-up keeps the raw answer behind Show details", async ({ page }) => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await open(page, "/kit");
+    await page.getByRole("button", { name: "Show a refused request" }).click();
+    const item = page.locator(".toast[data-error-notice]").last();
+    await expect(item).toContainText("You need the right role for that, or your sign-in has ended.");
+    await expect(item.locator(".toast-todo")).toContainText("What to do:");
+    const raw = item.locator(".ui-raw-error");
+    await expect(raw).toBeHidden();
+    const text = await page.locator("body").innerText();
+    expect(text.split("\n").filter((line) => RAW_ERROR_PATTERN.test(line)), "raw error text belongs behind Show details").toEqual([]);
+    await item.getByText("Show details").click();
+    await expect(raw).toContainText("Authorization_RequestDenied");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await item.getByRole("button", { name: "Dismiss notification" }).click();
+    await expect(page.locator(".toast[data-error-notice]")).toHaveCount(0);
+  }
 });
 
 test("errors · a failed job shows a plain cause and what to do; the raw error is one click away", async ({ page }) => {

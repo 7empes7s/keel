@@ -77,6 +77,9 @@ interface Props<T> {
   // `groupOf` (such as the service), says how many the view hides, and lists them with
   // a remove button each. The actions run on every pick, shown or not.
   keepPicks?: { pool: T[]; groupOf: (item: T) => PickGroup };
+  // Every row the find leaves, in the order the list shows them (grouping and sort), for
+  // a details panel's previous and next.
+  onOrder?: (ids: string[]) => void;
 }
 
 // What paging counts: a group, or one part of a group that has parts.
@@ -97,7 +100,7 @@ function plural(count: number, noun: { one: string; many: string }) {
  * +click toggles, Ctrl or Cmd+A and Esc, select all or a whole group, long-press and
  * drag on a phone, and a bar that names the action with its count. Grouping, find and
  * closed groups live in the URL. */
-export function SelectableList<T>({ label, items, getId, rowName, renderRow, groupings, toneOf, noun, action, more = [], matches, sorts = [], pageSize = "25", groupAction, closedByDefault = [], empty, keepPicks }: Props<T>) {
+export function SelectableList<T>({ label, items, getId, rowName, renderRow, groupings, toneOf, noun, action, more = [], matches, sorts = [], pageSize = "25", groupAction, closedByDefault = [], empty, keepPicks, onOrder }: Props<T>) {
   const view = useViewState();
   const groupKey = view.get("group", groupings[0]?.key ?? "");
   const grouping = groupings.find((entry) => entry.key === groupKey) ?? groupings[0];
@@ -129,6 +132,9 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
     });
   }, [grouping, filtered, sort, dir]);
   const allIds = useMemo(() => groups.flatMap((group) => group.items.map(getId)), [groups, getId]);
+  const orderRef = useRef(onOrder);
+  orderRef.current = onOrder;
+  useEffect(() => { orderRef.current?.(allIds); }, [allIds]);
   const partsOf = (group: ListGroup<T>) => (group.parts && group.parts.length ? group.parts.map((part) => ({ ...part, key: `${group.key}.${part.key}` })) : null);
   // Paging counts rows in open groups and open parts; a page shows a slice of each.
   const units = useMemo<ListUnit<T>[]>(() => groups.flatMap((group): ListUnit<T>[] => {

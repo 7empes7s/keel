@@ -32,7 +32,7 @@
  */
 import { createHash, randomUUID } from 'node:crypto';
 
-import { TENANT_FIELDS, SITE_FIELDS, UNSUPPORTED_SITE_FIELDS, SHAREPOINT_WORKLOAD } from '../../collect/workloads/sharepoint.mjs';
+import { TENANT_FIELDS, SITE_FIELDS, SITE_SHARING_FIELDS, UNSUPPORTED_SITE_FIELDS, SHAREPOINT_WORKLOAD } from '../../collect/workloads/sharepoint.mjs';
 import { WORKLOAD_DESCRIPTORS, readGraphConfiguration } from '../../collect/workloadContract.mjs';
 import { WORKLOAD_WRITE_OPERATIONS } from '../../coverage/qualification.mjs';
 import { appendEvidence } from '../../govern/evidence.mjs';
@@ -142,6 +142,14 @@ export function planSharePointRestore({ source, live, tenantHost, tenantRef, tes
       }
       if (entry.fieldCoverage?.[field]?.status !== 'observed') continue;
       manual.push({ resourceKey, field, reason: MANUAL_SITE_REASON[field] });
+    }
+    for (const field of Object.keys(SITE_SHARING_FIELDS)) {
+      manual.push({
+        resourceKey, field,
+        reason: entry.fieldCoverage?.[field]?.status === 'observed'
+          ? 'a site\'s own sharing setting is put back by hand in the SharePoint admin center; KEEL does not write it'
+          : 'not read by KEEL for this backup, so it is restored by hand',
+      });
     }
     for (const field of UNSUPPORTED_SITE_FIELDS) {
       manual.push({ resourceKey, field, reason: 'not read by KEEL (needs the SharePoint admin interface), so it is restored by hand' });

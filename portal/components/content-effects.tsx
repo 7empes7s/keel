@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { fieldWords } from "@/lib/changes-view";
 import { type NamedKeys, namedResource } from "@/lib/job-names";
 import { resourceLabel } from "@/lib/presentation";
-import { toast } from "@/lib/toast";
+import { refused, toast } from "@/lib/toast";
 
 // Roadmap task-66: the content consequences of a reviewed dry run. Each effect
 // says plainly that KEEL does not back up content and that restoring the old
@@ -123,7 +123,7 @@ export function ContentEffectsPanel({ artifactId, effects, effectsDigest, approv
       });
       const payload = (await response.json().catch(() => ({}))) as { message?: string };
       if (!response.ok) {
-        toast({ tone: "warning", title: "Content effects not approved", detail: payload.message ?? `Request failed (${response.status})` });
+        toast({ tone: "warning", title: "Content effects not approved", ...refused(response.status, payload.message ?? `HTTP ${response.status}`) });
         return;
       }
       toast({ title: "Content effects approved", detail: "This approval covers exactly the effects listed here." });

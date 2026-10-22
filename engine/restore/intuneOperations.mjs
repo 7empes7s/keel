@@ -1555,6 +1555,9 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     updateMethod: 'PUT', readQuery: COMPLIANCE_EXPAND,
     excluded: ['creationSource', 'isAssigned', 'settingCount', 'settings', 'scheduledActionsForRule', ...POLICY_NAVIGATION],
     transform: complianceBody, sameField: sameComplianceField, refusal: compliancePolicyRefusal,
+    // Issue #513: the policy read leaves the actions out; complianceActionsAfterWrite
+    // reads them from their own collection and checks them.
+    checkedAfterWrite: ['scheduledActionsForRule'],
     afterWrite: inOrder(complianceActionsAfterWrite, assignmentsAfterWrite),
     assignmentType: '#microsoft.graph.deviceManagementConfigurationPolicyAssignment', permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),

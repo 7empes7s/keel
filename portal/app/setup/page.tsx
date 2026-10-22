@@ -6,7 +6,10 @@ import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
 import { CheckAgain } from "@/components/setup/check-again";
 import { SetupPage as SetupBody } from "@/components/setup/setup-page";
+import { getCoverageData } from "@/lib/portal-data";
+import { withWorkloadKinds } from "@/lib/protect-view";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
+import { serviceStatuses, type ServiceStatus } from "@/lib/setup-services";
 import { setupStatus, type SetupState } from "@/lib/setup-view";
 
 const DESCRIPTION = "Connect Keel to your Microsoft tenant: what is in place, what waits on you, and when the first backup can run.";
@@ -25,11 +28,20 @@ export default async function SetupPage() {
   } catch {
     return <><PageHeader section="Settings" title="Setup" description={DESCRIPTION} /><DataUnavailable surface="Setup" /></>;
   }
+  // The service lines read the same coverage report as What's protected. If it cannot
+  // be read, setup still works and the section says so.
+  let services: ServiceStatus[] | null = null;
+  try {
+    services = serviceStatuses(withWorkloadKinds(await getCoverageData()).types, data.generatedAt);
+  } catch {
+    services = null;
+  }
   return <>
     <PageHeader actions={<CheckAgain />} section="Settings" title="Setup" description={DESCRIPTION} generatedAt={data.generatedAt} status={setupStatus(data)} />
     <SetupBody
       canBackup={access.capabilities.includes("collect")}
       canStart={access.capabilities.includes("approve")}
+      services={services}
       state={data}
     />
   </>;

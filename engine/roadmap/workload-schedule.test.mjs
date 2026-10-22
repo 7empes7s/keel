@@ -235,8 +235,9 @@ test('a collector that throws is recorded as failed, and the next workload still
 });
 
 test('each PowerShell workload connects with its own family config from the scope file', () => {
-  // Every workload but the two Graph ones and the Power Platform REST one runs PowerShell, and each has a family.
-  const graphOnly = new Set(['sharepoint-site-settings', 'teams-settings', 'power-platform-settings']);
+  // Every workload but Teams (Graph) and Power Platform (REST) runs PowerShell, and each has a family.
+  // SharePoint's is for its per-site sharing read (PnP); its other reads are Graph.
+  const graphOnly = new Set(['teams-settings', 'power-platform-settings']);
   assert.deepEqual(Object.keys(POWERSHELL_FAMILY).sort(), WORKLOADS.filter((id) => !graphOnly.has(id)).sort());
 
   const files = {
@@ -265,7 +266,7 @@ test('each PowerShell workload connects with its own family config from the scop
   assert.throws(check({ exchange: '/etc/keel/other-tenant.json' }), /another tenant/);
   assert.throws(check({ exchange: '/home/keel/exchange.json' }), /under \/etc\/keel\//);
   assert.throws(check({ exchange: '/etc/keel/../shadow' }), /under \/etc\/keel\//);
-  assert.throws(check({ sharepoint: '/etc/keel/exchange-collector.json' }), /not a PowerShell family/);
+  assert.throws(check({ entra: '/etc/keel/exchange-collector.json' }), /not a PowerShell family/);
   assert.throws(check(['/etc/keel/exchange-collector.json']), /must be an object/);
   assert.deepEqual(powershellConfigPaths({}, { config, readFile }), {});
 });

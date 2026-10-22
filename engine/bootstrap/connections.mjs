@@ -10,6 +10,7 @@ import { X509Certificate } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 import { planBootstrap } from './plan.mjs';
+import { SETUP_SCOPES } from './onboarding.mjs';
 import { registeredWorkloads } from './prerequisites.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { assertTokenFree } from '../../tools/tenant-probe/auth.mjs';
@@ -55,6 +56,8 @@ export function deriveConnection({ identity, appId, plan, servicePrincipals = []
 
   const steps = plan.steps.filter((step) => step.identity === identity);
   const registration = steps.find((step) => step.kind === 'registration');
+  // The tenant read did not cover this app: nothing is claimed.
+  if (!registration) return { state: expired ? 'needs-reconnect' : 'not-checked', objectRef: appId, wanted: null, observed: null };
   const consent = steps.find((step) => step.kind === 'graph-permission');
   const roles = steps.filter((step) => step.kind === 'workload-rbac');
   const rolesChecked = !uncheckedKinds.includes('workload-rbac');
@@ -111,13 +114,38 @@ const canonical = (value) => Array.isArray(value) ? value.map(canonical)
     : value;
 const same = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
 
+// The identities the setup planner observes. Others (the content reader) are read for
+// the permission table only, so their steps are built from that table.
+const PLANNED_IDENTITIES = Object.freeze(Object.values(SETUP_SCOPES));
+const tableId = (identity) => `table:${identity}`;
+
+// Registration and Graph consent steps for an app the planner does not see, from the
+// setup host's permission table entry ({ app, registered, servicePrincipal, enabled, granted }).
+function tableSteps(identity, entry) {
+  if (!entry || typeof entry.registered !== 'boolean') return [];
+  const required = sorted(new Set(registeredWorkloads().filter((r) => r.identity === identity).flatMap((r) => r.graphPermissions)));
+  const consented = sorted(new Set((entry.granted ?? []).filter((grant) => grant.api === 'graph').map((grant) => grant.name)));
+  return [
+    { kind: 'registration', identity, reference: entry.registered ? { appId: entry.app?.appId ?? null, displayName: entry.app?.displayName ?? null } : null,
+      servicePrincipalObjectId: entry.servicePrincipal ? tableId(identity) : null },
+    { kind: 'graph-permission', identity, requiredScopes: required, consentedScopes: consented,
+      missingScopes: required.filter((scope) => !consented.includes(scope)),
+      excessScopes: consented.filter((scope) => !required.includes(scope)) },
+  ];
+}
+
 async function plannedObservation({ tenantRef, readers, identities, now }) {
   if (!readers) return { plan: null, servicePrincipals: [], uncheckedKinds: [] };
-  const workloads = registeredWorkloads().filter((r) => identities.includes(r.identity)).map((r) => r.workload);
+  const planned = identities.filter((identity) => PLANNED_IDENTITIES.includes(identity));
+  const workloads = registeredWorkloads().filter((r) => planned.includes(r.identity)).map((r) => r.workload);
   const plan = await planBootstrap({ tenantRef, workloads, readAdapters: readers, operatorPrincipalId: null, now });
+  const table = readers.listPermissions ? await readers.listPermissions() : {};
+  const others = identities.filter((identity) => !planned.includes(identity));
   return {
-    plan,
-    servicePrincipals: await readers.listServicePrincipals(),
+    plan: { ...plan, steps: [...plan.steps, ...others.flatMap((identity) => tableSteps(identity, table[identity]))] },
+    servicePrincipals: [...await readers.listServicePrincipals(),
+      ...others.filter((identity) => table[identity]?.servicePrincipal)
+        .map((identity) => ({ id: tableId(identity), ...(table[identity].enabled === false ? { accountEnabled: false } : {}) }))],
     uncheckedKinds: readers.uncheckedKinds ? await readers.uncheckedKinds() : [],
   };
 }

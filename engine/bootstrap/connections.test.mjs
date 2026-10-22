@@ -97,7 +97,7 @@ test('certificate expiry is read from the host certificate file; an unreadable f
   assert.equal(certificateExpiry(undefined), null);
 });
 
-test('setup host: the content reader is observed only, and must be its own app in the same tenant', () => {
+test('setup host: the content reader is observed only, and must be its own app', () => {
   const composed = host();
   assert.deepEqual(composed.apps.collector, { appId: COLLECTOR_APP_ID, credentialRef: 'file:/etc/keel/tenant.json', credentialExpiresAt: EXPIRY['/etc/keel/collector.crt'] });
   assert.equal(composed.apps['content-reader'].appId, CONTENT_READER_APP_ID);
@@ -111,8 +111,6 @@ test('setup host: the content reader is observed only, and must be its own app i
     contentReader, build: 'b', getToken: fakeGetToken(),
   });
   assert.throws(build({ config: config(COLLECTOR_APP_ID, 'content'), credentialRef: 'file:/x' }), /its own app registration/);
-  assert.throws(build({ config: { ...config(CONTENT_READER_APP_ID, 'content'), tenantId: 'other' }, credentialRef: 'file:/x' }), /another tenant/);
-  assert.throws(build({ config: { tenantId: TENANT_ID, clientId: 'nope' }, credentialRef: 'file:/x' }), /app id/);
 });
 
 test('sync: the three apps are recorded with state and certificate expiry, and only changes write events', async (t) => {

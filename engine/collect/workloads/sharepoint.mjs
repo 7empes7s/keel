@@ -3,7 +3,11 @@
  * configuration:
  *  - tenant sharing settings;
  *  - each site's properties;
- *  - each site's own app permission grants.
+ *  - each site's own app permission grants;
+ *  - each site's own external sharing setting, through one `Get-PnPTenantSite`
+ *    (the task-101 `sharepoint.site-sharing` operation), only once that read is
+ *    live-qualified on its own ledger row. Until then the field is `unknown` with a
+ *    plain reason, and the rest of the read is unchanged.
  * Every request goes through the task-101 contract. It never reads files, list items
  * or messages, and never per-file permissions.
  *
@@ -27,6 +31,7 @@
  */
 import { registerWorkload } from '../registry.mjs';
 import { WORKLOAD_DESCRIPTORS, readGraphConfiguration } from '../workloadContract.mjs';
+import { CmdletError, runCmdlet } from '../../powershell/jobQueue.mjs';
 
 export const SHAREPOINT_WORKLOAD = 'sharepoint-site-settings';
 export const DEFAULT_MAX_SITES = 500;
@@ -70,15 +75,57 @@ export const SITE_FIELDS = Object.freeze({
       .map((application) => ({ id: application.id ?? null, displayName: application.displayName ?? null })),
   })).sort((a, b) => String(a.id).localeCompare(String(b.id)))],
 });
+// Each site's own sharing settings, from one `Get-PnPTenantSite` answer (every site at
+// once, matched to a site by its URL). Its own ledger row gates it, apart from the
+// Graph reads: the SharePoint read never waits for it, and it never enables itself.
+export const SITE_SHARING_OPERATION = 'sharepoint.site-sharing';
+export const SITE_SHARING_MODULE = 'PnP.PowerShell';
+export const SITE_SHARING_CMDLET = 'Get-PnPTenantSite';
+export const SITE_SHARING_FIELDS = Object.freeze({
+  sharingCapability: (body) => body.SharingCapability,
+});
+// The one family the live read capture proves (tools/qualification/workloadReadsAcceptance.mjs).
+export const SITE_SHARING_FAMILIES = Object.freeze({
+  'site-sharing': Object.freeze({ operation: SITE_SHARING_OPERATION, cmdlet: SITE_SHARING_CMDLET }),
+});
+const SITE_SHARING_OFF = 'not read yet: the per-site sharing read is not live-qualified';
+
 // Site settings KEEL does not read: they need the SharePoint admin interface
-// (Get-PnPTenantSite), which is not qualified for this adapter. Always unknown.
+// (Get-PnPTenantSite), which is not qualified for these fields. Always unknown.
 export const UNSUPPORTED_SITE_FIELDS = Object.freeze([
-  'sharingCapability', 'lockState', 'sensitivityLabel', 'conditionalAccessPolicy', 'externalUserExpirationInDays',
+  'lockState', 'sensitivityLabel', 'conditionalAccessPolicy', 'externalUserExpirationInDays',
 ]);
 const UNSUPPORTED_REASON = 'not read: needs the SharePoint admin interface, which is not qualified for this adapter';
 
+// A site URL as both Graph and PnP spell it: lower case, no trailing slash.
+const urlKey = (url) => String(url ?? '').trim().replace(/\/+$/, '').toLowerCase();
+
+/**
+ * Reads every site's own sharing settings with one `Get-PnPTenantSite` (no parameters:
+ * KEEL never passes a filter or a write switch). Returns Map(urlKey -> PnP site body).
+ * Throws the structured cmdlet error when the read fails; an empty answer is an empty map.
+ */
+export async function readSiteSharing(powershell = {}) {
+  const { tenantConfigPath = null, ...options } = powershell;
+  const { output } = await runCmdlet(
+    { module: SITE_SHARING_MODULE, cmdlet: SITE_SHARING_CMDLET, parameters: {}, tenantConfigPath },
+    { ...options, allowedCmdlets: new Set([SITE_SHARING_CMDLET]) },
+  );
+  const byUrl = new Map();
+  for (const body of output) if (body && typeof body.Url === 'string') byUrl.set(urlKey(body.Url), body);
+  return byUrl;
+}
+
 function failureStatus(error) {
   return error?.status === 401 || error?.status === 403 ? 'denied' : 'failed';
+}
+
+// A cmdlet refusal for lack of rights is `denied`; anything else is `failed`.
+const CMDLET_DENIED = /access (is )?denied|forbidden|unauthori[sz]ed|insufficient|not authorized|does not have permission|PermissionDenied/i;
+function sharingFailure(error) {
+  const detail = error instanceof CmdletError ? error.detail : null;
+  const text = detail ? `${detail.category ?? ''} ${detail.errorId ?? ''} ${detail.message ?? ''}` : String(error?.message ?? error);
+  return { status: CMDLET_DENIED.test(text) || error?.status === 401 || error?.status === 403 ? 'denied' : 'failed', message: String(detail?.message ?? error?.message ?? error) };
 }
 
 function failure(error) {
@@ -105,7 +152,7 @@ export function siteInScope(site, tenantHost) {
  * collectSharePointSites, which applies the qualification gate first.
  */
 export async function readSharePointSites({
-  transport, tenantHost, maxSites = DEFAULT_MAX_SITES, sleep, now = () => new Date(),
+  transport, tenantHost, maxSites = DEFAULT_MAX_SITES, sleep, now = () => new Date(), siteSharing = null,
 }) {
   if (typeof tenantHost !== 'string' || !/^[a-z0-9-]+\.sharepoint\.com$/i.test(tenantHost)) {
     throw new TypeError('tenantHost must be the tenant\'s SharePoint host, such as contoso.sharepoint.com');
@@ -153,6 +200,14 @@ export async function readSharePointSites({
     sites.set(site.id, { siteId: site.id, fields: {}, fieldCoverage: {} });
   }
 
+  // Per-site sharing: one read for every site, only when the caller passes the reader
+  // (collectSharePointSites does once its ledger row is enabled).
+  let sharing = null;
+  let sharingError = null;
+  if (siteSharing && sites.size > 0) {
+    try { sharing = await siteSharing(); } catch (error) { sharingError = error; }
+  }
+
   for (const entry of sites.values()) {
     const substitute = { 'site-id': entry.siteId };
     let properties = null;
@@ -179,12 +234,36 @@ export async function readSharePointSites({
       entry.fields[field] = value ?? null;
       entry.fieldCoverage[field] = { status: value === undefined ? 'unknown' : 'observed', operation: from };
     }
+    for (const [field, pick] of Object.entries(SITE_SHARING_FIELDS)) {
+      if (!siteSharing) {
+        entry.fieldCoverage[field] = { status: 'unknown', operation: SITE_SHARING_OPERATION, reason: SITE_SHARING_OFF };
+        continue;
+      }
+      if (sharingError) {
+        const failed = sharingFailure(sharingError);
+        entry.fieldCoverage[field] = { status: failed.status, operation: SITE_SHARING_OPERATION, error: failed.message };
+        continue;
+      }
+      const body = sharing.get(urlKey(entry.fields.webUrl));
+      const value = body ? pick(body) : undefined;
+      if (value === undefined || value === null) {
+        entry.fieldCoverage[field] = {
+          status: 'unknown', operation: SITE_SHARING_OPERATION,
+          reason: body ? 'the site answered without this setting' : 'the sharing read did not list this site',
+        };
+        continue;
+      }
+      entry.fields[field] = String(value);
+      entry.fieldCoverage[field] = { status: 'observed', operation: SITE_SHARING_OPERATION };
+    }
     for (const field of UNSUPPORTED_SITE_FIELDS) entry.fieldCoverage[field] = { status: 'unknown', operation: null, reason: UNSUPPORTED_REASON };
   }
 
   const supportedStatuses = [
     ...Object.values(tenant.fieldCoverage).map((coverage) => coverage.status),
     ...[...sites.values()].flatMap((entry) => Object.keys(SITE_FIELDS).map((field) => entry.fieldCoverage[field].status)),
+    // A sharing read that ran and failed makes the run partial; one not switched on does not.
+    ...(siteSharing && sharingError ? [sharingFailure(sharingError).status] : []),
   ];
   const fieldCounts = supportedStatuses.reduce((counts, status) => ({ ...counts, [status]: (counts[status] ?? 0) + 1 }), {});
   let outcome;
@@ -217,6 +296,14 @@ export function sharePointActivation(ledger) {
     .filter((id) => !rows.get(id)?.enabled)
     .map((id) => `${id} is ${rows.get(id)?.state ?? 'not in the ledger'}${rows.get(id)?.prerequisite ? `: ${rows.get(id).prerequisite.message}` : ''}`);
   return { enabled: reasons.length === 0, reasons };
+}
+
+/** Whether the per-site sharing read may run: its own row, live-qualified and enabled. */
+export function siteSharingActivation(ledger) {
+  const row = (ledger?.rows ?? []).find((item) => item.id === SITE_SHARING_OPERATION);
+  return row?.enabled
+    ? { enabled: true, reasons: [] }
+    : { enabled: false, reasons: [`${SITE_SHARING_OPERATION} is ${row?.state ?? 'not in the ledger'}`] };
 }
 
 /**
@@ -258,7 +345,7 @@ export async function recordSharePointRun(client, { tenantRef, result }) {
  * The gated entry point. Without qualification it records a `disabled` run that
  * names what is missing, and sends no request.
  */
-export async function collectSharePointSites(client, { tenantRef, ledger, transport, tenantHost, maxSites, sleep, now }) {
+export async function collectSharePointSites(client, { tenantRef, ledger, transport, tenantHost, maxSites, sleep, now, powershell = {} }) {
   const activation = sharePointActivation(ledger);
   if (!activation.enabled) {
     const at = (now?.() ?? new Date()).toISOString();
@@ -268,7 +355,8 @@ export async function collectSharePointSites(client, { tenantRef, ledger, transp
     });
     return { run, result: null, activation };
   }
-  const result = await readSharePointSites({ transport, tenantHost, maxSites, sleep, now });
+  const siteSharing = siteSharingActivation(ledger).enabled ? () => readSiteSharing(powershell) : null;
+  const result = await readSharePointSites({ transport, tenantHost, maxSites, sleep, now, siteSharing });
   const run = await recordSharePointRun(client, { tenantRef, result });
   return { run, result, activation };
 }

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { Icon, type IconName } from "@/components/shell/icons";
+import { ShowDetails } from "@/components/ui/alert-list";
+import { plainError, rawErrorText } from "@/lib/error-words";
 import {
   dismissToast,
   getServerToasts,
@@ -17,6 +19,13 @@ const EXIT_MS = 200;
 const TONE_ICONS: Record<Toast["tone"], IconName> = { success: "check", info: "info", warning: "alert" };
 
 function ToastItem({ item }: { item: Toast }) {
+  // A failure reads like the shared error notice: plain cause, "What to do:", and the
+  // raw answer only behind "Show details".
+  const failed = item.error !== undefined;
+  const words = failed ? plainError(item.error, { service: "Keel" }) : null;
+  const detail = item.detail ?? words?.cause;
+  const todo = item.todo ?? words?.todo;
+  const raw = failed ? rawErrorText(item.error) : null;
   const [leaving, setLeaving] = useState(false);
   const [paused, setPaused] = useState(false);
   const remaining = useRef(LIFETIME_MS);
@@ -44,6 +53,7 @@ function ToastItem({ item }: { item: Toast }) {
   return (
     <li
       className={`toast toast-${item.tone}${leaving ? " toast-leaving" : ""}`}
+      data-error-notice={failed ? "" : undefined}
       onBlur={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onMouseEnter={() => setPaused(true)}
@@ -52,7 +62,9 @@ function ToastItem({ item }: { item: Toast }) {
       <span aria-hidden="true" className="toast-icon"><Icon name={TONE_ICONS[item.tone]} /></span>
       <div className="toast-body">
         <strong>{item.title}</strong>
-        {item.detail ? <p>{item.detail}</p> : null}
+        {detail ? <p>{detail}</p> : null}
+        {todo ? <p className="toast-todo"><b>What to do:</b> {todo}</p> : null}
+        {raw ? <ShowDetails lines={[<code className="ui-raw-error" key="raw">{raw}</code>]} /> : null}
         {item.href ? (
           <Link className="toast-link" href={item.href} onClick={close}>
             {item.hrefLabel ?? "Open"} <span aria-hidden="true">→</span>

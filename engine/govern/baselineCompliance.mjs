@@ -420,6 +420,8 @@ function summarize(findings) {
     excepted: findings.filter((finding) => finding.verdict === 'fail' && finding.exceptionState === 'authorized').length,
     expiredExceptions: findings.filter((finding) => finding.verdict === 'fail' && finding.exceptionState === 'expired').length,
     incompleteExceptions: findings.filter((finding) => finding.verdict === 'fail' && finding.exceptionState === 'incomplete').length,
+    // Fails because the setting does not exist yet (and no exception is in force).
+    notConfigured: findings.filter((finding) => finding.exposed && finding.reason === 'not-configured').length,
     passing: findings.filter((finding) => finding.verdict === 'pass').length,
     unknown: findings.filter((finding) => finding.verdict === 'unknown').length,
     notApplicable: findings.filter((finding) => finding.verdict === 'not-applicable').length,

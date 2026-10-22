@@ -6,8 +6,10 @@ import { useMemo, useState, type MouseEvent } from "react";
 
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { ControlSheet } from "@/components/compliance/control-sheet";
+import { sheetStep } from "@/lib/sheet-step";
 import { FindingRecordFields, StorageRecordFields } from "@/components/compliance/compliance-record";
 import { ExceptionSheet, type Granted } from "@/components/compliance/exception-sheet";
+import { ScoreRing } from "@/components/compliance/score-ring";
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { Icon, type IconName } from "@/components/shell/icons";
@@ -23,6 +25,7 @@ import {
   STORAGE_UNSET_TODO,
   canGrantOn,
   complianceCounts,
+  complianceScore,
   complianceVerdict,
   controlName,
   controlService,
@@ -36,9 +39,15 @@ import {
   ownerPerson,
   resultLine,
   resultOf,
+  SCORE_EXPLAINED,
+  scoreSentence,
+  scoresByService,
+  scoresByStandard,
   standardName,
   storageSentence,
+  scoreTone,
   type ControlResult,
+  type ScoreGroup,
 } from "@/lib/compliance-view";
 import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { ago } from "@/lib/presentation";
@@ -55,11 +64,14 @@ import { useViewState } from "@/lib/use-view-state";
 // control's panel (`?open=<id>`); "Grant an exception" (`?grant=<ids>`) is the one amber
 // action, on failing controls. Ids stay in one record at the foot.
 
-const TILES: { key: ControlResult; small: string }[] = [
-  { key: "failing", small: "Not met, no exception in force" },
-  { key: "excepted", small: "Not met, accepted until a date" },
-  { key: "unknown", small: "The backup it needs is missing or too old" },
-  { key: "passing", small: "Met on the last check" },
+// The four states, in the order a reader acts on them. "Could not check" joins them only
+// while some control could not be checked (or it is picked), so it is never a dead tile.
+const TILES: { key: ControlResult; small: string; always: boolean }[] = [
+  { key: "failing", small: "Set, but not the way the control needs", always: true },
+  { key: "not-set-up", small: "The setting does not exist yet", always: true },
+  { key: "unknown", small: "The backup it needs is missing or too old", always: false },
+  { key: "passing", small: "Met on the last check", always: true },
+  { key: "excepted", small: "Not met, accepted until a date", always: true },
 ];
 const RESULT_TILES: FilterTile<ComplianceFinding>[] = (Object.keys(RESULTS) as ControlResult[]).map((key) => ({ key, test: (finding: ComplianceFinding) => resultOf(finding) === key }));
 
@@ -104,6 +116,9 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
   const tileTotals = useMemo(() => new Map(tileCounts(findings, RESULT_TILES, filterKey ? filterKey.split(",") : []).map((entry) => [entry.key, entry])), [findings, filterKey]);
   const activeFilters: ActiveFilter[] = filter.map((key) => ({ key: `result:${key}`, label: RESULTS[key].plural, clear: { result: withoutTile(filter, key) } }));
   const opened = findings.find((finding) => finding.id === view.get("open")) ?? null;
+  // Previous and next in the panel follow the list as shown: its filter, find, grouping and sort.
+  const [order, setOrder] = useState<string[]>([]);
+  const step = useMemo(() => sheetStep(order, opened?.id), [order, opened?.id]);
   const grantIds = view.get("grant").split(",").filter(Boolean);
   const granting = canConfigure ? findings.filter((finding) => grantIds.includes(finding.id) && finding.verdict === "fail") : [];
   const failing = findings.filter((finding) => resultOf(finding) === "failing");
@@ -130,6 +145,10 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
     ? (canCheck ? { label: check.busy ? "Checking..." : "Check now", onClick: check.run, busy: check.busy } : { label: "See when backups run", href: "/schedules" })
     : canConfigure && failing.length === 1 && !granting.length ? { label: grantLabel(failing[0]), href: grantHref([failing[0].id]) } : null;
   const checkedWhen = lastChecked(findings, now);
+  const score = useMemo(() => complianceScore(findings), [findings]);
+  const standardScores = useMemo(() => scoresByStandard(findings), [findings]);
+  const serviceScores = useMemo(() => scoresByService(findings, serviceOrder), [findings]);
+  const tiles = TILES.filter((tile) => tile.always || counts[tile.key] > 0 || filter.includes(tile.key));
 
   const groupings = useMemo<Grouping<ComplianceFinding>[]>(() => [
     { key: "service", label: "Service", groupsOf: (items) => groupBy(items, (item) => controlService(item).code, (_key, list) => { const service = controlService(list[0]); return { label: service.name, icon: service.icon, about: `${service.about} · ${controlsWord(list.length)}${worstWords(list)}` }; }, (key) => serviceOrder(key)) },
@@ -161,7 +180,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
         </span>
         <span className="cp-row-acts">
           {canFixOn(finding, canRestore) ? <Link className="btn btn-sm" href={openHref(finding.id)} onClick={(event) => follow(event, openHref(finding.id))}><Icon name="check-circle" />Make it pass</Link> : null}
-          {result === "failing" && canGrantOn(finding, canConfigure) ? <Link className="btn btn-sm" href={grantHref([finding.id])}>{finding.exception ? "Renew exception" : "Grant exception"}</Link> : null}
+          {(result === "failing" || result === "not-set-up") && canGrantOn(finding, canConfigure) ? <Link className="btn btn-sm" href={grantHref([finding.id])}>{finding.exception ? "Renew exception" : "Grant exception"}</Link> : null}
           {result === "unknown" ? <Link className="btn btn-sm" href="/protect"><Icon name="backup" />Run a backup</Link> : null}
         </span>
       </div>
@@ -182,12 +201,28 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
           {canCheck && findings.length ? <CheckNowButton check={check} /> : null}
         </p>
 
-        <section aria-label="Results at a glance" className="cp-tiles">
-          {TILES.map((tile) => {
+        {findings.length ? (
+          <section aria-labelledby="cp-score-heading" className="cp-score">
+            <div className="cp-score-main">
+              <ScoreRing label="Overall" score={score} size="lg" />
+              <div className="cp-score-words">
+                <h2 id="cp-score-heading">Compliance score</h2>
+                <b>{scoreSentence({ ...score, excepted: 0 })}</b>
+                {score.excepted ? <Badge icon="pause" tone="neutral">{score.excepted === 1 ? "1 accepted exception, counted as not passing" : `${score.excepted} accepted exceptions, counted as not passing`}</Badge> : null}
+                <small>{SCORE_EXPLAINED}</small>
+              </div>
+            </div>
+            <ScoreList groups={standardScores} title="By standard" />
+            <ScoreList groups={serviceScores} kind="service" title="By service" />
+          </section>
+        ) : null}
+
+        <section aria-label="Results at a glance" className="cp-tiles" style={{ ["--cp-tiles" as string]: tiles.length }}>
+          {tiles.map((tile) => {
             const words = RESULTS[tile.key];
             const active = filter.includes(tile.key);
             const adds = addsWords(tileTotals.get(tile.key), filter.length);
-            const tone = tile.key === "failing" && counts.failing ? "urgent" : (tile.key === "unknown" || tile.key === "excepted") && counts[tile.key] ? "soon" : undefined;
+            const tone = tile.key === "failing" && counts.failing ? "urgent" : (tile.key === "unknown" || tile.key === "not-set-up") && counts[tile.key] ? "soon" : undefined;
             return (
               <Link aria-current={active || undefined} className="cp-tile" data-tone={tone} href={href({ result: tileParam(RESULT_TILES, filter, tile.key), open: null, grant: null })} key={tile.key} title={active ? "Picked: click to remove it from the view" : "Click to add these to the view"}>
                 <span className="cp-tile-label"><Icon name={words.icon} />{words.label}{active ? <Icon className="tile-check" name="check" /> : null}</span>
@@ -208,13 +243,14 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
                 <div className="cp-service-head">
                   <span aria-hidden="true" className="cp-kind">{group.icon ? <Icon name={group.icon} /> : null}</span>
                   <span><b>{group.label}</b><small>{controlsWord(group.items.length)} · {group.items.filter((item) => resultOf(item) === "passing").length} passing</small></span>
+                  <ScoreRing label={group.label} score={complianceScore(group.items)} size="sm" />
                 </div>
                 <div className="cp-ctiles">
                   {group.items.map((finding) => {
                     const words = RESULTS[resultOf(finding)];
                     return (
                       <Link className="cp-ctile" data-tone={words.tone ?? undefined} href={openHref(finding.id)} key={finding.id} onClick={(event) => follow(event, openHref(finding.id))}>
-                        <Badge icon={words.icon} tone={words.badge}>{resultOf(finding) === "excepted" ? "Exception" : words.label}</Badge>
+                        <Badge icon={words.icon} tone={words.badge}>{resultOf(finding) === "excepted" ? "Accepted" : words.label}</Badge>
                         <b>{controlShort(finding)}</b>
                         <small>{resultLine(finding, now)}</small>
                       </Link>
@@ -238,6 +274,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
             <NoMatches extra={{ open: null, grant: null }} filters={activeFilters} noun={{ one: "control", many: "controls" }} />
           ) : (
             <SelectableList
+              onOrder={setOrder}
               action={canConfigure ? {
                 label: (count) => `Grant an exception to ${controlsWord(count)}`,
                 detail: (_count, ids) => {
@@ -291,7 +328,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
 
       {opened || granting.length ? <BaselinesStyles /> : null}
       {opened && !granting.length ? (
-        <ControlSheet canConfigure={canConfigure} canRestore={canRestore} finding={opened} grantHref={grantHref([opened.id])} key={opened.id} now={now} onClose={() => view.set({ open: null })} />
+        <ControlSheet canConfigure={canConfigure} canRestore={canRestore} finding={opened} grantHref={grantHref([opened.id])} now={now} onClose={() => view.set({ open: null })} onStep={(id) => view.set({ open: id })} step={step} />
       ) : null}
       {granting.length ? (
         <ExceptionSheet
@@ -368,6 +405,27 @@ function download(name: string, text: string) {
   link.download = name;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+/** One small ring per standard or service, each with its name and "3 of 4 pass". */
+function ScoreList({ groups, title, kind }: { groups: ScoreGroup[]; title: string; kind?: string }) {
+  if (!groups.length) return null;
+  return (
+    <div className="cp-score-list" data-kind={kind}>
+      <h3>{title}</h3>
+      <ul>
+        {groups.map((group) => (
+          <li data-tone={scoreTone(group.score)} key={group.key}>
+            <ScoreRing label={group.label} score={group.score} size="sm" />
+            <span>
+              <b>{group.icon ? <Icon name={group.icon} /> : null}{group.label}</b>
+              <small>{scoreSentence(group.score)}</small>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function controlsWord(count: number): string {

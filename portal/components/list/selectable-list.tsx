@@ -77,6 +77,9 @@ interface Props<T> {
   // `groupOf` (such as the service), says how many the view hides, and lists them with
   // a remove button each. The actions run on every pick, shown or not.
   keepPicks?: { pool: T[]; groupOf: (item: T) => PickGroup };
+  // Every row the find leaves, in the order the list shows them (grouping and sort), for
+  // a details panel's previous and next.
+  onOrder?: (ids: string[]) => void;
 }
 
 // What paging counts: a group, or one part of a group that has parts.
@@ -97,7 +100,7 @@ function plural(count: number, noun: { one: string; many: string }) {
  * +click toggles, Ctrl or Cmd+A and Esc, select all or a whole group, long-press and
  * drag on a phone, and a bar that names the action with its count. Grouping, find and
  * closed groups live in the URL. */
-export function SelectableList<T>({ label, items, getId, rowName, renderRow, groupings, toneOf, noun, action, more = [], matches, sorts = [], pageSize = "25", groupAction, closedByDefault = [], empty, keepPicks }: Props<T>) {
+export function SelectableList<T>({ label, items, getId, rowName, renderRow, groupings, toneOf, noun, action, more = [], matches, sorts = [], pageSize = "25", groupAction, closedByDefault = [], empty, keepPicks, onOrder }: Props<T>) {
   const view = useViewState();
   const groupKey = view.get("group", groupings[0]?.key ?? "");
   const grouping = groupings.find((entry) => entry.key === groupKey) ?? groupings[0];
@@ -129,6 +132,19 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
     });
   }, [grouping, filtered, sort, dir]);
   const allIds = useMemo(() => groups.flatMap((group) => group.items.map(getId)), [groups, getId]);
+  // Reported only when the order itself changes: `allIds` is a new array on most renders
+  // (pages pass an inline `getId`), and reporting each one re-rendered the page forever.
+  const orderRef = useRef(onOrder);
+  orderRef.current = onOrder;
+  const orderKey = allIds.join("\u0000");
+  const sentKey = useRef<string | null>(null);
+  useEffect(() => {
+    if (sentKey.current === orderKey) return;
+    sentKey.current = orderKey;
+    orderRef.current?.(allIds);
+  }, [orderKey, allIds]);
+  // A list that goes away (nothing matches) leaves no order behind for the panel.
+  useEffect(() => () => { orderRef.current?.([]); }, []);
   const partsOf = (group: ListGroup<T>) => (group.parts && group.parts.length ? group.parts.map((part) => ({ ...part, key: `${group.key}.${part.key}` })) : null);
   // Paging counts rows in open groups and open parts; a page shows a slice of each.
   const units = useMemo<ListUnit<T>[]>(() => groups.flatMap((group): ListUnit<T>[] => {

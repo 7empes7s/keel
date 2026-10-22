@@ -56,9 +56,10 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   { workload: 'purview-retention-dlp', powershellFamily: 'purview', record: recordRetentionDlpRun,
     collect: (client, { base, powershell }) => collectRetentionDlp(client, { ...base, powershell }) },
   // sharepoint.mjs
-  { workload: SHAREPOINT_WORKLOAD, powershellFamily: null, record: recordSharePointRun,
-    collect: (client, { base, transport, scope, sleep }) => collectSharePointSites(client, {
-      ...base, sleep, transport, tenantHost: scope.sharepointHost }) },
+  // Graph reads, plus the per-site sharing read through PnP once that read is qualified.
+  { workload: SHAREPOINT_WORKLOAD, powershellFamily: 'sharepoint', record: recordSharePointRun,
+    collect: (client, { base, transport, scope, sleep, powershell }) => collectSharePointSites(client, {
+      ...base, sleep, transport, powershell, tenantHost: scope.sharepointHost }) },
   // teams.mjs
   { workload: 'teams-settings', powershellFamily: null, record: recordTeamsRun,
     collect: (client, { base, transport, config, sleep }) => collectTeams(client, {

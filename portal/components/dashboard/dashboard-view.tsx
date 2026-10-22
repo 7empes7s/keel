@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { ScoreRing } from "@/components/compliance/score-ring";
 import { OverviewCharts } from "@/components/dashboard/overview-charts";
 import { PageHeader } from "@/components/page-header";
 import { Icon } from "@/components/shell/icons";
@@ -18,9 +19,10 @@ import {
   verdictAction,
   verdictRisk,
 } from "@/lib/overview-view";
+import { countsFromSummary, scoreFromSummary, scoreSentence } from "@/lib/compliance-view";
 import { formatTimestamp } from "@/lib/presentation";
 import { setupName } from "@/lib/baselines-view";
-import type { DashboardData } from "@/lib/types";
+import type { ComplianceSummary, DashboardData } from "@/lib/types";
 
 export const OVERVIEW_DESCRIPTION = "Is this tenant protected right now, and what needs you?";
 
@@ -103,6 +105,7 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
                   </>
                 )}
               </Link>
+              {data.compliance ? <ComplianceCard summary={data.compliance} /> : null}
               <Link className="ov-side-card" href="/protect">
                 <span className="ov-tile-label"><Icon name="clock" />Last backup</span>
                 <b className="ov-side-title">
@@ -165,5 +168,31 @@ export function DashboardView({ data, pendingApprovals }: { data: DashboardData;
         </RecordGroup>
       </TechnicalDetails>
     </>
+  );
+}
+
+/** The compliance score beside the approved setup: a ring, "3 of 4 pass", and what
+ * needs a hand first (fails, then settings not set up yet). Opens Compliance. */
+function ComplianceCard({ summary }: { summary: ComplianceSummary }) {
+  const score = scoreFromSummary(summary);
+  const counts = countsFromSummary(summary);
+  const todo = counts.failing
+    ? <Badge tone="urgent">{counts.failing} failing</Badge>
+    : counts["not-set-up"]
+      ? <Badge tone="soon">{counts["not-set-up"]} not set up yet</Badge>
+      : null;
+  const href = counts.failing ? "/benchmarks?result=failing" : counts["not-set-up"] ? "/benchmarks?result=not-set-up" : "/benchmarks";
+  return (
+    <Link className="ov-side-card ov-score-card" href={href}>
+      <span className="ov-tile-label"><Icon name="check-circle" />Compliance score</span>
+      <span className="ov-score">
+        <ScoreRing label="Compliance" score={score} size="md" />
+        <span>
+          <b className="ov-side-title">{score.percent === null ? "Not checked yet" : `${score.percent}% pass`}</b>
+          <small>{score.percent === null ? "Keel checks after each backup." : scoreSentence(score)}</small>
+          {todo}
+        </span>
+      </span>
+    </Link>
   );
 }

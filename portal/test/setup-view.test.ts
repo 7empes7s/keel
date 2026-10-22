@@ -3,8 +3,8 @@ import { test } from "node:test";
 
 import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICES } from "../../engine/bootstrap/permissionCatalog.mjs";
 import {
-  apiPermissionsLink, consentLink, currentStep, missingSentence, nextSentence, permissionChips, permissionCounts, permissionList, permissionRows,
-  setupPrimary, setupStatus, stepHelp, stepLink, stepTitle,
+  apiPermissionsLink, appFor, consentLink, currentStep, missingSentence, missingWords, nextSentence, permissionChips, permissionCounts, permissionList, permissionRows,
+  roleLink, setupPrimary, setupStatus, stepHelp, stepLink, stepTitle,
   type PermissionEntry, type SetupPermissions, type SetupScope, type SetupState, type SetupStep,
 } from "../lib/setup-view";
 
@@ -96,6 +96,7 @@ const catalog = (observed: SetupPermissions["observed"]): SetupPermissions => ({
 });
 const restorerNames = KEEL_PERMISSIONS.filter((entry) => entry.identity === "restorer");
 const collectorNames = KEEL_PERMISSIONS.filter((entry) => entry.identity === "collector" && entry.need === "required");
+const readerNames = KEEL_PERMISSIONS.filter((entry) => entry.identity === "content-reader" && entry.need === "required" && entry.type !== "admin-role");
 const grant = (entry: { api: string; name: string }) => ({ api: entry.api, name: entry.name });
 
 test("permission rows: granted, missing, optional and held-but-unused, grouped by app then service, most urgent first", () => {
@@ -105,25 +106,26 @@ test("permission rows: granted, missing, optional and held-but-unused, grouped b
     byIdentity: {
       collector: { granted: collectorNames.map(grant), requested: collectorNames.map(grant) },
       restorer: { granted: [...heldRestorer, { api: "graph", name: "Channel.Create" }, { api: "graph", name: "Team.ReadBasic.All" }], requested: heldRestorer },
+      "content-reader": { granted: readerNames.map(grant), requested: readerNames.map(grant) },
     },
   };
   const rows = permissionRows(state([scope([step({ progress: "done" })])], { permissions: catalog(observed) }));
   const counts = permissionCounts(rows);
   assert.equal(counts.missing, 1);
-  assert.equal(counts.optional, 1, "the Purview audit search is optional, never missing");
+  assert.equal(counts.optional, 2, "the Purview audit search and Teams channel messages are optional, never missing");
   assert.equal(counts.unused, 2);
   assert.equal(counts["not-checked"], 0);
   const missing = rows.find((row) => row.status === "missing")!;
   assert.equal(missing.name, "Policy.ReadWrite.ConditionalAccess");
   assert.equal(missing.requested, false, "not on the app's list, so consent alone cannot grant it");
   // Grouping and order: the app with something missing first, services in their order, unused last.
-  assert.deepEqual([...new Set(rows.map((row) => row.identity))], ["restorer", "collector"]);
+  assert.deepEqual([...new Set(rows.map((row) => row.identity))], ["restorer", "collector", "content-reader"]);
   const restorer = rows.filter((row) => row.identity === "restorer");
   assert.equal(restorer[0].service, "entra");
   assert.deepEqual(restorer.slice(-2).map((row) => [row.status, row.name]), [["unused", "Channel.Create"], ["unused", "Team.ReadBasic.All"]]);
   assert.equal(restorer.at(-1)!.words, "List teams", "an unused permission still gets plain words when Keel knows them");
   const entra = restorer.filter((row) => row.service === "entra");
-  const kinds = ["Users", "Groups", "Memberships", "Roles", "Devices", "Apps", "Policies", "Settings"];
+  const kinds = ["Users", "Groups", "Memberships", "Roles", "Devices", "Apps", "Policies", "Settings", "Content"];
   assert.deepEqual(entra.map((row) => kinds.indexOf(row.kind)), [...entra.map((row) => kinds.indexOf(row.kind))].sort((a, b) => a - b), "users, groups, roles, then policies and settings");
   const policies = entra.filter((row) => row.kind === "Policies");
   assert.equal(policies[0].status, "missing", "inside a kind, missing comes first");
@@ -140,7 +142,7 @@ test("without a fresh look only what setup saw is known; the rest is not checked
   assert.equal(byName("TeamSettings.ReadWrite.All").status, "not-checked");
   assert.equal(byName("Channel.Create").status, "unused");
   assert.ok(rows.filter((row) => row.identity === "collector").every((row) => row.status === "not-checked"));
-  assert.deepEqual([...new Set(rows.map((row) => row.identity))], ["restorer", "collector"]);
+  assert.deepEqual([...new Set(rows.map((row) => row.identity))], ["restorer", "collector", "content-reader"]);
   assert.equal(byName("Group.ReadWrite.All").requested, null);
   // An API whose names could not be read is not checked, never missing.
   const partial = permissionRows(state([scope([consent])], { permissions: catalog({ complete: false, byIdentity: { restorer: { granted: [], requested: [] } } }) }));
@@ -167,6 +169,46 @@ test("the table holds more apps and delegated permissions: a new app is listed a
   const row = rows.find((candidate) => candidate.identity === "planner-reader")!;
   assert.equal(row.type, "delegated");
   assert.equal(row.status, "missing");
-  assert.deepEqual([...new Set(rows.map((candidate) => candidate.identity))], ["restorer", "planner-reader", "collector"], "apps with something missing first, known apps before new ones");
+  assert.deepEqual([...new Set(rows.map((candidate) => candidate.identity))], ["restorer", "planner-reader", "collector", "content-reader"], "apps with something missing first, known apps before new ones");
   assert.equal(missingSentence("planner-reader", [row]), "The planner reader app is missing 1 permission. What needs it stops until an admin approves it.");
+});
+
+test("admin roles: a missing role links to its assignment page, never to consent; the content reader is its own app", () => {
+  const heldCollector = collectorNames.filter((entry) => entry.name !== "Teams Administrator").map(grant);
+  const observed = {
+    complete: false,
+    uncheckedApis: [],
+    byIdentity: {
+      collector: { granted: [...heldCollector, { api: "directory", name: "Global Reader" }], requested: collectorNames.filter((entry) => entry.type !== "admin-role").map(grant) },
+      restorer: { granted: restorerNames.map(grant), requested: restorerNames.map(grant) },
+      "content-reader": { granted: readerNames.filter((entry) => entry.name !== "Files.Read.All").map(grant), requested: readerNames.map(grant), app: { displayName: "KEEL Content Reader", appId: "c0" } },
+    },
+  };
+  const current = state([scope([step({ progress: "done" })])], { permissions: catalog(observed) });
+  const rows = permissionRows(current);
+  const teams = rows.find((row) => row.identity === "collector" && row.name === "Teams Administrator")!;
+  assert.equal(teams.type, "admin-role");
+  assert.equal(teams.status, "missing", "a role is checked even when another API's permission names could not be read");
+  assert.equal(teams.requested, null, "a role is never on the registration's list");
+  assert.equal(teams.apiLabel, "Entra admin role");
+  assert.equal(teams.kind, "Roles");
+  assert.match(roleLink(teams)!, /RoleMembers\/objectId\/69091246-20e8-4a56-aa4d-066075b2a7a8\/roleName\/Teams%20Administrator\//);
+  assert.match(roleLink({ api: "intune", name: "Read Only Operator", templateId: null })!, /^https:\/\/intune\.microsoft\.com\//);
+  assert.equal(roleLink({ api: "graph", name: "User.Read.All", templateId: null }), null);
+  const extra = rows.find((row) => row.identity === "collector" && row.name === "Global Reader")!;
+  assert.equal(extra.status, "unused");
+  assert.equal(extra.type, "admin-role");
+  assert.match(extra.usedFor, /needs this role/);
+
+  const files = rows.find((row) => row.identity === "content-reader" && row.name === "Files.Read.All")!;
+  assert.equal(files.status, "missing");
+  assert.deepEqual(appFor(current, "content-reader"), { displayName: "KEEL Content Reader", appId: "c0" }, "the content reader's app comes from the permission check");
+  assert.equal(missingSentence("content-reader", [files]), "The content reader app is missing 1 permission. Content backups that need it stay incomplete until an admin approves it.");
+  assert.equal(missingSentence("collector", [teams]), "The backup reader app is missing 1 admin role. Backups that need it stay incomplete until an admin assigns it.");
+  assert.equal(missingWords([teams, files]), "1 permission and 1 admin role");
+  assert.deepEqual(setupStatus({ ...current, collect: { allowed: true, basis: "collected-before", missing: [] } }), { tone: "urgent", label: "1 permission and 1 admin role missing" });
+
+  // Intune's role lists unreadable: the Intune role is not checked, never missing.
+  const intune = permissionRows(state([scope([step({ progress: "done" })])], { permissions: catalog({ ...observed, uncheckedApis: ["intune"], byIdentity: { ...observed.byIdentity, collector: { ...observed.byIdentity.collector, granted: heldCollector.filter((entry) => entry.api !== "intune") } } }) }));
+  assert.equal(intune.find((row) => row.name === "Read Only Operator")!.status, "not-checked");
 });

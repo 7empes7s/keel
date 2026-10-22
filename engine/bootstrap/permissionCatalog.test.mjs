@@ -6,8 +6,9 @@ import { strict as assert } from 'node:assert';
 import { readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICES, PERMISSION_TYPES, apiForAppId } from './permissionCatalog.mjs';
-import { registeredWorkloads } from './prerequisites.mjs';
+import { ADMIN_ROLE_TEMPLATES, KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICES, PERMISSION_TYPES, apiForAppId, rolesFor } from './permissionCatalog.mjs';
+import { CONTENT_READ_SCOPES, registeredWorkloads } from './prerequisites.mjs';
+import { CONTENT_READER_IDENTITY } from '../collect/workloadContract.mjs';
 import { READ_GRANTS } from '../discovery/grants.mjs';
 import { WORKLOAD_DESCRIPTORS } from '../collect/workloadContract.mjs';
 import { EXPANSION_INVENTORY, WORKLOAD_WRITE_OPERATIONS } from '../coverage/qualification.mjs';
@@ -56,13 +57,31 @@ function restorerUses() {
   return names;
 }
 
-const listed = (identity) => new Set(KEEL_PERMISSIONS.filter((entry) => entry.identity === identity).map((entry) => entry.name));
+const listed = (identity) => new Set(KEEL_PERMISSIONS.filter((entry) => entry.identity === identity && entry.type !== 'admin-role').map((entry) => entry.name));
+
+// Every `roles: [...]` list inside a declaration (rbac.roles on reads and writes).
+function declaredRoles(value, out = new Set()) {
+  if (Array.isArray(value)) value.forEach((item) => declaredRoles(item, out));
+  else if (value && typeof value === 'object') {
+    for (const [key, inner] of Object.entries(value)) {
+      if (key === 'roles' && Array.isArray(inner)) inner.forEach((name) => out.add(name));
+      else declaredRoles(inner, out);
+    }
+  }
+  return out;
+}
+const registeredRoles = (identity, out) => {
+  for (const requirement of registeredWorkloads()) {
+    if (requirement.identity === identity) requirement.workloadRoles.forEach((entry) => out.add(entry.displayName));
+  }
+  return out;
+};
 
 test('every permission the backup reader uses is listed, and every listed one is used', () => {
   const uses = collectorUses();
   const names = listed('collector');
   assert.deepEqual([...uses].filter((name) => !names.has(name)).sort(), [], 'used by the code but missing from the catalogue');
-  const optional = new Set(KEEL_PERMISSIONS.filter((entry) => entry.need === 'optional').map((entry) => entry.name));
+  const optional = new Set(KEEL_PERMISSIONS.filter((entry) => entry.identity === 'collector' && entry.need === 'optional').map((entry) => entry.name));
   assert.deepEqual([...names].filter((name) => !uses.has(name) && !optional.has(name)).sort(), [], 'listed as required but nothing uses it');
 });
 
@@ -73,11 +92,35 @@ test('every permission the restore writer uses is listed, and every listed one i
   assert.deepEqual([...names].filter((name) => !uses.has(name)).sort(), [], 'listed but nothing uses it');
 });
 
-test('the backup reader is read-only and the Purview audit search is the planned optional permission', () => {
-  for (const entry of KEEL_PERMISSIONS.filter((candidate) => candidate.identity === 'collector')) {
+test('every admin role a read or a write declares is listed for its app, and every listed role is declared', () => {
+  const collector = registeredRoles('collector', declaredRoles(WORKLOAD_DESCRIPTORS));
+  const restorer = registeredRoles('restorer', declaredRoles([WKLD_WRITE_OPERATIONS, WORKLOAD_WRITE_OPERATIONS]));
+  assert.deepEqual(rolesFor('collector').map((entry) => entry.name).sort(), [...collector].sort());
+  assert.deepEqual(rolesFor('restorer').map((entry) => entry.name).sort(), [...restorer].sort());
+  assert.deepEqual(rolesFor(CONTENT_READER_IDENTITY), [], 'the content reader needs no admin role');
+  for (const entry of KEEL_PERMISSIONS.filter((candidate) => candidate.type === 'admin-role')) {
+    assert.equal(entry.kind, 'Roles');
+    if (entry.api === 'directory') assert.match(entry.templateId ?? '', /^[0-9a-f-]{36}$/, `${entry.name}: Entra role needs its template id`);
+    else assert.equal(entry.api, 'intune', `${entry.name}: a role is an Entra or an Intune role`);
+  }
+  assert.equal(new Set(Object.values(ADMIN_ROLE_TEMPLATES)).size, Object.keys(ADMIN_ROLE_TEMPLATES).length);
+});
+
+test('the content reader lists exactly what its prerequisite asks for, plus planned content reads', () => {
+  const asked = new Set(registeredWorkloads().filter((requirement) => requirement.identity === CONTENT_READER_IDENTITY).flatMap((requirement) => requirement.graphPermissions));
+  const entries = KEEL_PERMISSIONS.filter((entry) => entry.identity === CONTENT_READER_IDENTITY);
+  assert.deepEqual(entries.filter((entry) => entry.need === 'required').map((entry) => entry.name).sort(), [...asked].sort());
+  for (const entry of entries.filter((candidate) => candidate.need === 'optional')) {
+    assert.ok(CONTENT_READ_SCOPES.includes(entry.name) && !asked.has(entry.name), `${entry.name}: optional content-reader entries are planned content reads`);
+  }
+  for (const entry of entries) assert.ok(!/Write|\.Create/.test(entry.name), `${entry.name} is a write permission on the content reader`);
+});
+
+test('the backup reader is read-only and the Purview audit search is its planned optional permission', () => {
+  for (const entry of KEEL_PERMISSIONS.filter((candidate) => candidate.identity === 'collector' && candidate.type !== 'admin-role')) {
     assert.ok(!/ReadWrite|\.Create/.test(entry.name), `${entry.name} is a write permission on the backup reader`);
   }
-  const optional = KEEL_PERMISSIONS.filter((entry) => entry.need === 'optional');
+  const optional = KEEL_PERMISSIONS.filter((entry) => entry.need === 'optional' && entry.identity !== CONTENT_READER_IDENTITY);
   assert.deepEqual(optional.map((entry) => entry.name), [UNIFIED_AUDIT.permission]);
 });
 

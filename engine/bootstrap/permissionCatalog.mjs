@@ -11,8 +11,10 @@
  * ways, so a permission the code starts using cannot be missing here, and one it
  * stops using cannot linger as "needed".
  *
- * The content reader (a third app that reads mail and files) is not listed: setup does
- * not manage it yet.
+ * The content reader (the third app, which reads mail, files and Teams content) is
+ * listed too, against its prerequisite in bootstrap/prerequisites.mjs. So are the admin
+ * roles each app needs (type 'admin-role'): Microsoft's admin consent never assigns a
+ * role, so the table shows them beside the permissions with their own fix link.
  */
 
 // The Microsoft APIs Keel asks permissions of, by their well-known app ids.
@@ -20,9 +22,14 @@ export const PERMISSION_APIS = Object.freeze({
   graph: Object.freeze({ appId: '00000003-0000-0000-c000-000000000000', label: 'Microsoft Graph' }),
   exchange: Object.freeze({ appId: '00000002-0000-0ff1-ce00-000000000000', label: 'Exchange Online' }),
   sharepoint: Object.freeze({ appId: '00000003-0000-0ff1-ce00-000000000000', label: 'SharePoint' }),
+  // Not APIs: where an admin role lives. Entra roles are directory roles; the Intune
+  // role is granted to a group the app is in.
+  directory: Object.freeze({ appId: null, label: 'Entra admin role' }),
+  intune: Object.freeze({ appId: null, label: 'Intune role' }),
 });
 
 export function apiForAppId(appId) {
+  if (!appId) return null;
   return Object.entries(PERMISSION_APIS).find(([, api]) => api.appId === appId)?.[0] ?? null;
 }
 
@@ -35,20 +42,32 @@ export const PERMISSION_SERVICES = Object.freeze([
   Object.freeze({ key: 'exchange', label: 'Exchange' }),
   Object.freeze({ key: 'sharepoint', label: 'SharePoint and OneDrive' }),
   Object.freeze({ key: 'teams', label: 'Teams' }),
+  Object.freeze({ key: 'planner', label: 'Planner and To Do' }),
   Object.freeze({ key: 'purview', label: 'Purview and security' }),
   Object.freeze({ key: 'other', label: 'Rooms, printers and search' }),
   Object.freeze({ key: 'reports', label: 'Audit logs, health and reports' }),
 ]);
 
 export const PERMISSION_KINDS = Object.freeze([
-  'Users', 'Groups', 'Memberships', 'Roles', 'Devices', 'Apps', 'Policies', 'Settings',
+  'Users', 'Groups', 'Memberships', 'Roles', 'Devices', 'Apps', 'Policies', 'Settings', 'Content',
 ]);
 
 // How a permission is held: 'application' (the app acts as itself, granted by admin
-// consent) or 'delegated' (the app acts as a signed-in account, for settings Microsoft
-// only shows to a user). Every permission today is an application permission; the
-// table already shows the type so delegated access can join it.
-export const PERMISSION_TYPES = Object.freeze(['application', 'delegated']);
+// consent), 'delegated' (the app acts as a signed-in account, for settings Microsoft
+// only shows to a user) or 'admin-role' (an Entra or Intune role assigned to the app;
+// consent cannot grant it). No delegated permission is listed yet; the table already
+// shows the type so delegated access can join it.
+export const PERMISSION_TYPES = Object.freeze(['application', 'delegated', 'admin-role']);
+
+// Entra role template ids: Microsoft-global constants, identical in every tenant. A
+// built-in role's assignment names this id as its roleDefinitionId.
+export const ADMIN_ROLE_TEMPLATES = Object.freeze({
+  'Global Administrator': '62e90394-69f5-4237-9190-012177145e10',
+  'Exchange Administrator': '29232cdf-9323-42fd-ade2-1d097af3e4de',
+  'SharePoint Administrator': 'f28a1f50-f6e7-4571-818b-6a12f2af6b6c',
+  'Teams Administrator': '69091246-20e8-4a56-aa4d-066075b2a7a8',
+  'Compliance Administrator': '17315797-102d-40b4-93e0-432062caca18',
+});
 
 // need: 'required' when a backup or restore fails without it; 'optional' when it only
 // adds a feature Keel is building (the page says what it unlocks).
@@ -56,9 +75,21 @@ const entry = (identity, api, name, service, kind, words, usedFor, need = 'requi
   Object.freeze({ identity, api, name, service, kind, words, usedFor, need, type });
 const read = (name, service, kind, words, usedFor, need) => entry('collector', 'graph', name, service, kind, words, usedFor, need);
 const write = (name, service, kind, words, usedFor, need) => entry('restorer', 'graph', name, service, kind, words, usedFor, need);
+const content = (name, service, kind, words, usedFor, need) => entry('content-reader', 'graph', name, service, kind, words, usedFor, need);
+// An Entra directory role ('directory', matched on its template id) or an Intune role
+// ('intune', matched on its name).
+const role = (identity, api, name, service, words, usedFor) => Object.freeze({
+  ...entry(identity, api, name, service, 'Roles', words, usedFor, 'required', 'admin-role'),
+  templateId: api === 'directory' ? ADMIN_ROLE_TEMPLATES[name] : null,
+});
 
 export const KEEL_PERMISSIONS = Object.freeze([
   // ---- Backup reader (collector): read-only.
+  role('collector', 'intune', 'Read Only Operator', 'intune', 'Intune read-only role', 'Read Intune settings that need an Intune role as well as a permission'),
+  role('collector', 'directory', 'Exchange Administrator', 'exchange', 'Exchange admin role', 'Read Exchange settings with admin commands; Microsoft has no read-only role that works for an app'),
+  role('collector', 'directory', 'SharePoint Administrator', 'sharepoint', 'SharePoint admin role', 'Read SharePoint tenant and site admin settings'),
+  role('collector', 'directory', 'Teams Administrator', 'teams', 'Teams admin role', 'Back up Teams meeting, messaging, calling and voice policies'),
+  role('collector', 'directory', 'Compliance Administrator', 'purview', 'Compliance admin role', 'Back up retention, data loss prevention, label and eDiscovery settings'),
   read('User.Read.All', 'entra', 'Users', 'Read every user', 'Back up users and spot changes to them'),
   read('OrgContact.Read.All', 'entra', 'Users', 'Read organisation contacts', 'Back up external contacts in the directory'),
   read('Group.Read.All', 'entra', 'Groups', 'Read groups', 'Back up groups and their settings'),
@@ -109,6 +140,10 @@ export const KEEL_PERMISSIONS = Object.freeze([
   read('Reports.Read.All', 'reports', 'Settings', 'Read usage reports', 'Show usage next to your settings'),
 
   // ---- Restore writer (restorer): changes settings, only after someone approves.
+  role('restorer', 'directory', 'Exchange Administrator', 'exchange', 'Exchange admin role', 'Restore Exchange and email protection settings'),
+  role('restorer', 'directory', 'SharePoint Administrator', 'sharepoint', 'SharePoint admin role', 'Restore SharePoint tenant settings'),
+  role('restorer', 'directory', 'Teams Administrator', 'teams', 'Teams admin role', 'Restore Teams policies'),
+  role('restorer', 'directory', 'Compliance Administrator', 'purview', 'Compliance admin role', 'Restore retention, data loss prevention and label settings'),
   write('User.ReadWrite.All', 'entra', 'Users', 'Change users', 'Restore users and their licences'),
   write('Group.ReadWrite.All', 'entra', 'Groups', 'Change groups', 'Restore groups and their members'),
   write('GroupSettings.ReadWrite.All', 'entra', 'Groups', 'Change group settings', 'Restore tenant-wide group settings'),
@@ -151,8 +186,33 @@ export const KEEL_PERMISSIONS = Object.freeze([
   write('SharePointTenantSettings.ReadWrite.All', 'sharepoint', 'Settings', 'Change SharePoint settings', 'Restore tenant-wide sharing settings'),
   write('TeamMember.ReadWrite.All', 'teams', 'Memberships', 'Change team members', 'Restore team owners and members'),
   write('TeamSettings.ReadWrite.All', 'teams', 'Settings', 'Change team settings', 'Restore each team\'s settings'),
+
+  // ---- Content reader: reads mail, files and Teams content for content backups. Read-only.
+  content('User.Read.All', 'entra', 'Users', 'Read every user', 'Find the mailboxes and OneDrives to back up'),
+  content('Group.Read.All', 'entra', 'Groups', 'Read groups', 'Find group mailboxes, sites and teams to back up'),
+  content('MailboxSettings.Read', 'exchange', 'Settings', 'Read mailbox settings', 'Tell user, shared and room mailboxes apart'),
+  content('Mail.Read', 'exchange', 'Content', 'Read mail', 'Back up email'),
+  content('Calendars.Read', 'exchange', 'Content', 'Read calendars', 'Back up calendar events'),
+  content('Contacts.Read', 'exchange', 'Content', 'Read contacts', 'Back up mailbox contacts'),
+  content('MailboxFolder.Read.All', 'exchange', 'Content', 'Read mailbox folders', 'Back up archive mailbox folders'),
+  content('MailboxItem.Read.All', 'exchange', 'Content', 'Read mailbox items', 'Back up archive mailbox items'),
+  content('Sites.Read.All', 'sharepoint', 'Settings', 'Read sites', 'Find sites, libraries and lists to back up'),
+  content('Files.Read.All', 'sharepoint', 'Content', 'Read files', 'Back up files in OneDrive and SharePoint'),
+  content('ChannelMember.Read.All', 'teams', 'Memberships', 'Read channel members', 'Back up who is in private and shared channels'),
+  content('TeamsTab.Read.All', 'teams', 'Apps', 'Read channel tabs', 'Back up the tabs in each channel'),
+  content('TeamsAppInstallation.ReadForTeam.All', 'teams', 'Apps', 'Read apps in each team', 'Back up which apps each team has'),
+  content('Team.ReadBasic.All', 'teams', 'Settings', 'List teams', 'Find every team'),
+  content('Channel.ReadBasic.All', 'teams', 'Settings', 'List channels', 'Find every channel'),
+  content('ChannelSettings.Read.All', 'teams', 'Settings', 'Read channel settings', 'Back up each channel\'s settings'),
+  content('ChannelMessage.Read.All', 'teams', 'Content', 'Read channel messages', 'Back up Teams channel messages (coming soon: Microsoft must approve this permission for Keel first)', 'optional'),
+  content('Tasks.Read.All', 'planner', 'Content', 'Read tasks', 'Back up Planner plans and tasks'),
 ]);
 
 export function permissionsFor(identity) {
-  return KEEL_PERMISSIONS.filter((permission) => permission.identity === identity);
+  return KEEL_PERMISSIONS.filter((permission) => permission.identity === identity && permission.type !== 'admin-role');
+}
+
+/** The admin roles one app needs. */
+export function rolesFor(identity) {
+  return KEEL_PERMISSIONS.filter((permission) => permission.identity === identity && permission.type === 'admin-role');
 }

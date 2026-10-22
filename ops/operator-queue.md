@@ -5624,3 +5624,44 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / blocked; the step 5
   result; approval ids; the evidence branch and commit; anything left in the tenant.
+
+### Q123: Live backup and restore of Company Portal branding profiles and Exchange app access scopes (restore gaps batch 9, after #454)
+- Drafted by the "Restore batch 9" thread (2026-10-22). Code: PR #454 (merged 2026-10-22 02:43 UTC, merge a2f0955). No backup change: both kinds
+  were already read (list reads in `tools/tenant-probe/catalog.d/tenant-connectors.mjs` and `other-role-providers.mjs`). New record writers,
+  fixture-tested only, create + update, beta:
+  `intuneBrandingProfile` (name, description, organization name, theme colour, contact details, links, Company Portal options; logos,
+  `isDefaultProfile` and assignments are **never** sent; the **default profile is refused**) and `exchangeCustomAppScope`
+  (`displayName`, `customAttributes` with the recipient filter; `type` on create only; app role assignments not written).
+- Needs: /opt/keel-live at the #454 merge or later (`grep -q exchangeCustomAppScope: /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
+  needs DeviceManagementServiceConfig.ReadWrite.All (branding) and RoleManagement.ReadWrite.Exchange (app scopes); both are in the
+  Q-inventory grant list. If Graph answers 403, report blocked with what Graph names; grant nothing. Never touch CA policies,
+  break-glass or Marouane's account. **Never change the default Company Portal branding, never assign the branding fixture to a
+  group, never create an app role assignment that names the scope, and never touch the existing scope that limits the mail
+  fixture app to keel-rt- mailboxes.** No tenant-wide setting is changed.
+- **Fixtures** (the reviewed guidance in `live-gate-plan.mjs` at B says the same; nothing applies them):
+  - Company Portal branding profile `KEEL-RT-branding`: organization name `KEEL-RT IT`, theme colour #1B2A4A, a help desk name
+    and email, no logos, assigned to no group;
+  - Exchange app access scope `KEEL-RT-app-scope`: type RecipientScope, filter `PrimarySmtpAddress -like 'keel-rt-scope-none*'`
+    (matches no mailbox), used by no app role assignment.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/live-gate-plan.mjs > ~/keel-rg9/plan-B.md`. Use its steps for these two types (collect, restore
+     dry run, approve, `--enforce`, `entraLive.mjs capture`, promote).
+  2. Create the fixtures, then take snapshot S (a run that reads both types). **Backup check:** both are in S; report each type's
+     read outcome, and for branding whether the stored payload holds any logo bytes (expected: none) and its `isDefaultProfile`.
+  3. **Create round:** delete both, restore from S selecting the two, approve, enforce, capture each `create`. Read back equal to
+     the backup (branding name, colour, contact details; scope name, type and filter).
+  4. **Update round:** change the branding contact name to `drift` and theme colour to #F5A623; change the scope filter to
+     `PrimarySmtpAddress -like 'keel-rt-scope-drift*'`. Restore from S, approve, enforce, capture each `update`. Expect both back
+     as in S. Report the exact Graph answer for any refused POST or PATCH (both routes are unmeasured live).
+  5. **Default check (read-only):** the dry run from S must list the default branding profile as skipped (manual), with no write.
+  6. **Re-run check:** dry run from S again after step 4. Expect 0 planned writes for the two.
+  7. Cleanup: delete both fixtures. Report anything left.
+  8. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-9`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / blocked; steps 5 and 6;
+  approval ids; the evidence branch and commit; anything left in the tenant.

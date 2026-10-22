@@ -7492,3 +7492,37 @@ item that needs it stays untouched.
 - **Expected:** neither type is listed as `unreadable` in step 2 (catalogue line reads 144 covered, 0 unreadable, if nothing else
   changed since Q145). Step 3 shows `catalogued` for both paths in v1.0 and beta, with object counts (about 150 each in v1.0).
 - **Report:** steps 1-3 as above.
+
+### Q161: Live re-check of the Exchange undo and the Exchange / Purview Discovery listing (fixes #542, after #548)
+- Drafted by the "Exchange and Purview organization missing" thread (2026-10-22). Code: PR #548. Fixture-tested only.
+  - **Change:** the workload restore (dry run and enforce) and the Discovery cmdlet listing now connect PowerShell with the family's
+    own config, like the collect: `powershellConfigs[family]` for the dry run and Discovery; for the enforce,
+    `powershellRestorerConfigs[family]` in `/etc/keel/workload-scope.json` if set, else the collector file's `-restorer.json`
+    sibling (`exchange-collector.json` gives `exchange-restorer.json`, `purview-collector.json` gives `purview-restorer.json`).
+    Graph still uses `tenant.json` / `restorer.json`. The enforce logs `PowerShell connects as the restorer with <path>`.
+- Needs: /opt/keel-live at the #548 merge or later (`grep -q workloadPowershellConfigPath /opt/keel-live/cli/keel-restore.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules and standing approval as Q149: approve the restore yourself and log the approval id.
+  Collector for reads, Restorer for the write. Grant nothing. Never touch CA policies, break-glass or Marouane's account.
+- **Fixture:** one Exchange transport rule `KEEL-RT-svc-change`, created **disabled**, as in Q149 (condition
+  RecipientAddressContainsWords `keel-rt-nobody`, PrependSubject `[KEEL-RT] `, Mode Audit).
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`):
+  1. **Host check:** report yes/no only (never values): `/etc/keel/exchange-restorer.json` and `/etc/keel/purview-restorer.json`
+     exist, are readable by the user the worker runs as, name `organization`, name `tenantId`, and have a different `clientId`,
+     `certPath` and `keyPath` from the matching `-collector.json` and from `/etc/keel/tenant.json`. #548 refuses a restorer file
+     with no `tenantId`: if one has none, copy it to `<file>.bak-q161` (same owner and mode), add `tenantId` with the value
+     `/etc/keel/tenant.json` holds, keep owner and mode, and report it (undo: restore the `.bak-q161`). If
+     `exchange-restorer.json` is missing, stop and report.
+  2. **Discovery:** `node cli/keel-discover.mjs run --no-store --versions v1.0` (and the default stored run if cheap). Expect
+     `PowerShell ExchangeOnlineManagement: listed N Get cmdlets.` (no "Organization cannot be null"). Report the PowerShell lines verbatim.
+  3. **Undo (the Q149 step that failed):** create the fixture (Mode Audit), collect, accept the `added` row as in Q149 step 2.
+     Set Mode `Enforce`, collect, note the `modified` row's `previous_collection_id`.
+     Dry run **without** `--collector-config`:
+     `node cli/keel-restore.mjs --workload exchange-mail-flow --collection <previous_collection_id> --target transport-rule:KEEL-RT-svc-change --persist-artifact <uuid>`.
+     Expect `1 change(s)`: `Set-TransportRule` Mode Enforce to Audit, and the log line `PowerShell connects as the collector with /etc/keel/exchange-collector.json`.
+     Approve (log the id) and let the worker enforce. Expect outcome `verified`, the log line naming `/etc/keel/exchange-restorer.json`,
+     and the live rule at Mode Audit. Collect: no new row for the rule; its alert `resolved`.
+  4. Cleanup: delete the rule; collect; accept the `removed` row; collect again: 0 changes.
+- **Report:** B; step 1 yes/no; step 2 lines; step 3 artifact, approval and job ids, the job outcome and the two log lines; what is left in the tenant.
+  If any step fails with "Organization cannot be null", "names another tenant" or "separate Restorer", file an issue with the exact message.

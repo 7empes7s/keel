@@ -148,6 +148,9 @@ function fieldDifferences(resourceType, before, after) {
  * The settings of an object found on one side only, so an added or removed object
  * shows what it holds, not only that it is there: each top-level setting is listed
  * as added (or removed) with its value. Fields Microsoft sets itself are left out.
+ * An Intune script's text is never listed, only its size and fingerprint: that
+ * redaction is applied once, inside semanticChange, for every caller of
+ * fieldDifferences (Compare and Activity alike).
  */
 export function presenceFields(resourceType, payload, changeType) {
   const added = changeType === 'added';

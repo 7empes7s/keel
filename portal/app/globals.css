@@ -7828,6 +7828,92 @@ section.wizard-panel {
   gap: var(--space-xs) var(--space-md);
 }
 
+/* Shared list paging and order: rows per page, pages, Order by. */
+.list-sort {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-xs);
+}
+
+.list-sort-dir .icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.list-pager {
+  display: flex;
+  margin-top: var(--space-sm);
+  padding: var(--space-sm) 0;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  gap: var(--space-sm) var(--space-md);
+}
+
+.list-pager-range {
+  align-self: center;
+  color: var(--text-soft);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.list-pager-pages {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.list-pager-pages .icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.list-pager-prev {
+  transform: rotate(180deg);
+}
+
+.list-pager-of {
+  min-width: 7.5rem;
+  color: var(--text-soft);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.sel-group-continued {
+  margin-left: var(--space-xs);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+@media (max-width: 40rem) {
+  .list-pager {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .list-pager-pages {
+    justify-content: space-between;
+  }
+
+  .list-pager-range {
+    align-self: flex-start;
+  }
+
+  .list-pager-of {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .list-pager-word {
+    display: none;
+  }
+}
+
 .restore-readonly {
   margin: 0;
   color: var(--text-soft);
@@ -9722,7 +9808,7 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
   .sel-row:has(> .sel-row-body > .vr-row) .vr-row-acts { display: none; }
 }
 @media print {
-  .vr-toolbar, .vr-download, .page-header-actions, .vr-full, .sel-toolbar, .sel-bar, .sel-check, .vr-row-acts, .verdict .btn { display: none !important; }
+  .vr-toolbar, .vr-download, .page-header-actions, .vr-full, .sel-toolbar, .sel-bar, .sel-check, .list-pager, .vr-row-acts, .verdict .btn { display: none !important; }
   .vr-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .vr-grid, .vr-grid-wide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .vr-card, .vr-tile, .vr-checks, .vr-row { break-inside: avoid; }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { PagedRows } from "@/components/list/paged-rows";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import {
@@ -42,17 +43,27 @@ export function SiteList({ data }: { data: SitePermissionsData }) {
       {!run ? <p className="empty-state">No SharePoint read has stored any sites yet. Sites appear here after the daily SharePoint read.</p> : null}
       {run && !sites.length ? <p className="empty-state">The last read found no sites.</p> : null}
       {sites.length ? (
-        <ul className="item-list site-list">
-          {sites.map((site) => (
-            <li className="item-card site-card" key={site.siteId}>
-              <div className="item-card-head">
-                <Link className="text-link" href={`/sites/${encodeURIComponent(site.siteId)}`}><strong>{siteName(site)}</strong></Link>
-              </div>
-              {siteAddress(site) ? <p className="field-help site-address">{siteAddress(site)}</p> : null}
-              <p className="site-line">{siteLine(site)}</p>
-            </li>
-          ))}
-        </ul>
+        <PagedRows
+          label="Sites"
+          listClassName="item-list site-list"
+          noun={{ one: "site", many: "sites" }}
+          prefix=""
+          rows={sites.map((site) => ({
+            id: site.siteId,
+            node: (
+              <li className="item-card site-card">
+                <div className="item-card-head">
+                  <Link className="text-link" href={`/sites/${encodeURIComponent(site.siteId)}`}><strong>{siteName(site)}</strong></Link>
+                </div>
+                {siteAddress(site) ? <p className="field-help site-address">{siteAddress(site)}</p> : null}
+                <p className="site-line">{siteLine(site)}</p>
+              </li>
+            ),
+            text: `${siteName(site)} ${siteAddress(site) ?? ""} ${siteLine(site)}`,
+            values: { name: siteName(site), apps: site.appGrants.entries?.length ?? -1 },
+          }))}
+          sorts={[{ key: "name", label: "Name" }, { key: "apps", label: "Apps with access", desc: true }]}
+        />
       ) : null}
       {run ? (
         <TechnicalDetails>

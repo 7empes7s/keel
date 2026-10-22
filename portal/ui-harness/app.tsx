@@ -1805,6 +1805,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
   if (path.startsWith("/sites/")) { const detail = sitePage(path); if (detail) return detail; }
   switch (path) {
     case "/kit": return <KitPage />;
+    case "/kit/many": return <KitPage many />;
     // Waiting work matches the Alerts and Incidents fixtures (3 open alerts, 1 open incident).
     case "/": return <DashboardView data={{ ...dashboard(posture), waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } }} pendingApprovals={posture === 2 ? 0 : 2} />;
     case "/activity": case "/activity/viewer": {

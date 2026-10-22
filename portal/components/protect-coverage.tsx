@@ -8,6 +8,7 @@ import { useBackup } from "@/components/backup-controls";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { coverageWindows, TypeDetails, TypeRecordFields } from "@/components/coverage-report";
+import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
@@ -36,6 +37,7 @@ import {
   type HealthFilter,
   type RestoreStanding,
 } from "@/lib/protect-view";
+import { byRisk, byText, byTime } from "@/lib/paging";
 import { orderGroups, smartOrder } from "@/lib/selection";
 import { serviceFor, serviceOrder } from "@/lib/services";
 import { kindParts } from "@/lib/type-groups";
@@ -90,6 +92,14 @@ const STANDING_ABOUT: Record<RestoreStanding, string> = {
   partial: "Some fields come back by hand",
   protected: "A test restore brought everything back",
 };
+
+// Order by: name, health (worst first), last backup, and how many items it holds.
+const SORTS: ListSort<CoverageType>[] = [
+  { key: "name", label: "Name", compare: (a, b) => byText(kindName(a), kindName(b)) },
+  { key: "health", label: "Health", desc: true, compare: (a, b) => byRisk(healthRisk(a), healthRisk(b)) },
+  { key: "backed-up", label: "Last backup", desc: true, compare: (a, b) => byTime(a.lastCollectedAt, b.lastCollectedAt) },
+  { key: "items", label: "Items", desc: true, compare: (a, b) => (a.itemCount ?? -1) - (b.itemCount ?? -1) },
+];
 
 const GROUPINGS: Grouping<CoverageType>[] = [
   {
@@ -430,7 +440,7 @@ export function ProtectCoverage({ data, now, canBackup, tierStrip }: {
               </div>
             );
           }}
-          rowLimit={8}
+          sorts={SORTS}
           rowName={kindName}
           toneOf={healthRisk}
         />

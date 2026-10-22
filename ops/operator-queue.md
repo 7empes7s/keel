@@ -7250,7 +7250,7 @@ item that needs it stays untouched.
     `https://<portal host>/cdn-cgi/access/get-identity` for the same token. It never overwrites a set name, and it retries at most
     once an hour per portal process.
 - Needs: /opt/keel-live at the #510 merge or later (`test -f /opt/keel-live/engine/authz/displayName.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** none. Reads Keel's own database only. Never set `display_name` by hand.
 - Do:

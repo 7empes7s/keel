@@ -7408,6 +7408,99 @@ section.wizard-panel {
   gap: var(--space-xs);
 }
 
+/* Picks tray: picks that outlive the view, counted by service, listed on demand. */
+.sel-tray-sum {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.sel-tray-chip {
+  display: inline-flex;
+  min-height: 1.75rem;
+  padding: 0 var(--space-sm);
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  font-size: 0.8125rem;
+  gap: var(--space-xs);
+}
+
+.sel-tray-chip b {
+  font-variant-numeric: tabular-nums;
+}
+
+.sel-tray-chip[data-tone="soon"] {
+  border-color: var(--check-soon);
+  background: var(--check-soon-bg);
+  color: var(--check-soon);
+}
+
+.sel-tray-picks {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.sel-tray-picks > summary {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 0.8125rem;
+}
+
+.sel-tray-picks > summary::-webkit-details-marker { display: none; }
+.sel-tray-picks > summary .sel-group-chevron { margin-left: var(--space-xs); transition: transform var(--duration-fast) var(--ease-out); }
+.sel-tray-picks[open] > summary .sel-group-chevron { transform: rotate(180deg); }
+
+.sel-tray-list {
+  display: grid;
+  max-height: min(40vh, 18rem);
+  margin: var(--space-xs) 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  gap: 2px;
+}
+
+.sel-tray-list li {
+  display: grid;
+  min-height: 2.5rem;
+  padding: 0 0 0 var(--space-sm);
+  align-items: center;
+  border-left: 3px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--space-sm);
+}
+
+.sel-tray-list li[data-tone="urgent"] { border-left-color: var(--urgent); }
+.sel-tray-list li[data-tone="soon"] { border-left-color: var(--check-soon); }
+.sel-tray-list li[data-hidden] small { color: var(--check-soon); }
+
+.sel-tray-name {
+  overflow: hidden;
+  font-size: 0.875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sel-tray-list small {
+  color: var(--text-soft);
+  font-size: 0.75rem;
+}
+
+@media (max-width: 47.99rem) {
+  .sel-tray-list li { grid-template-columns: minmax(0, 1fr) auto; }
+  .sel-tray-list li small { grid-row: 2; padding-bottom: var(--space-xs); }
+  .sel-tray-list li .icon-button { grid-row: 1 / span 2; grid-column: 2; }
+}
+
 .more-list {
   display: grid;
   margin: 0;

@@ -1628,6 +1628,55 @@ test("Changes · tiles add up, other filters narrow, chips and no dead ends", as
   await expect(page.getByRole("button", { name: /^Remove filter: / })).toHaveCount(2);
 });
 
+// Picks tray: picks stay picked while tiles, services and the find change the view.
+// The bar counts them by service, says how many the view hides, lists them with a
+// remove button each, and the decision runs on every pick, shown or not.
+test("Changes · picks stay picked across filters and services, in a tray", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/drift/services");
+  const bar = page.locator(".sel-bar");
+  await page.getByLabel("Select Finance (group)").check();
+  await page.locator(".bl-tile", { hasText: "Service settings" }).click();
+  await expect(page).toHaveURL(/from=services/);
+  await expect(page.getByLabel("Select Finance (group)")).toHaveCount(0);
+  await expect(bar).toContainText("1 change selected");
+  await expect(bar.locator(".sel-tray-chip[data-tone='soon']")).toHaveText("1 not shown here");
+  await page.getByLabel(/^Select Forward finance mail/).check();
+  await expect(bar).toContainText("2 changes selected");
+  await expect(bar.locator(".sel-tray-chip:not([data-tone])")).toHaveText(["Entra ID 1", "Exchange Online 1"]);
+  // Select all covers what is shown; with hidden picks it unselects only those.
+  await page.getByRole("button", { name: "Select all 5 changes" }).click();
+  await expect(bar).toContainText("6 changes selected");
+  await page.getByRole("button", { name: "Unselect these 5 changes" }).click();
+  await expect(bar).toContainText("1 change selected");
+  await page.getByLabel(/^Select Forward finance mail/).check();
+
+  // Every pick is listed, the hidden one marked, each with its own remove button.
+  await bar.getByText("See every pick").click();
+  const list = bar.getByRole("list", { name: "Picked" });
+  await expect(list.locator("li")).toHaveCount(2);
+  await expect(list.locator("li[data-hidden]")).toContainText("Finance (group)");
+  await expect(list.locator("li[data-hidden]")).toContainText("not shown here");
+
+  // The decision covers the hidden pick too; the service change is left out, and said so.
+  await expect(bar).toContainText("1 service setting change is left out");
+  await bar.getByRole("button", { name: "Accept 2 changes" }).click();
+  const sheet = page.getByRole("dialog", { name: "Accept 1 change into the approved setup" });
+  await expect(sheet).toContainText("Applies only to: Finance (group).");
+  await sheet.getByRole("button", { name: "Cancel" }).click();
+
+  // Clearing the filters shows the pick again, still picked; remove and Clear work.
+  await page.locator(".filter-bar").getByRole("button", { name: "Clear all" }).click();
+  await expect(page.getByLabel("Select Finance (group)")).toBeChecked();
+  await expect(bar.locator(".sel-tray-chip[data-tone='soon']")).toHaveCount(0);
+  await expect(list.locator("li[data-hidden]")).toHaveCount(0);
+  await list.getByRole("button", { name: "Remove Finance (group) from the picks" }).click();
+  await expect(page.getByLabel("Select Finance (group)")).not.toBeChecked();
+  await expect(bar).toContainText("1 change selected");
+  await bar.getByRole("button", { name: "Clear" }).click();
+  await expect(bar).toHaveCount(0);
+});
+
 // Other pages link to a filtered list by kind; the filter note says so.
 test("Changes · a kind filter in the address and plain words on the page", async ({ page }) => {
   await open(page, "/drift?kind=namedLocation");

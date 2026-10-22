@@ -109,8 +109,11 @@ test("whole added and removed objects are one line with a badge, settings folded
   assert.match(html, /data-change="removed"[^>]*>.*?Removed/);
   assert.match(html, /data-change="added"[^>]*>.*?Added/);
   assert.match(html, /Show its 2 settings/);
-  // Settings of a whole item stay folded: only the changed object has before/after rows.
-  assert.equal((html.match(/class="cc-row"/g) ?? []).length, 1);
+  // Settings of a whole item stay folded, and a changed object is one line that opens
+  // its settings in the details panel: the list itself shows no before/after rows.
+  assert.equal((html.match(/class="cc-row"/g) ?? []).length, 0);
+  assert.match(html, /1 setting differs: Security enabled\./);
+  assert.match(html, /aria-label="See what changed in Finance"/);
   assert.doesNotMatch(html, />(Not )?[Tt]here</);
   assert.doesNotMatch(html, /not there/i);
   assert.match(html, /Not in that backup/);

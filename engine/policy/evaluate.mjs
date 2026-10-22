@@ -10,6 +10,7 @@
 // no-match evaluation is recorded exactly like a match — so "why did nothing
 // happen" is answerable from the evidence chain alone.
 import { createHash } from 'node:crypto';
+import { objectNameSql } from '../cir/objectName.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
 import { can } from '../authz/can.mjs';
 import { gateBlastRadius } from '../safety/blastRadius.mjs';
@@ -197,8 +198,8 @@ export async function listPolicyActions(client, { tenantRef, policyId, limit = 2
   const { rows } = await client.query(
     `SELECT e.job_id::text AS job_id, e.status, e.queued_at, e.finished_at, e.error, e.drift_id::text AS drift_id,
             d.natural_key, d.resource_type, d.change_type, d.blast_radius,
-            coalesce(d.after_payload->>'displayName', d.before_payload->>'displayName',
-                     d.after_payload->>'name', d.before_payload->>'name') AS display_name
+            coalesce(${objectNameSql('d.after_payload', 'd.resource_type')},
+                     ${objectNameSql('d.before_payload', 'd.resource_type')}) AS display_name
        FROM auto_remediation_execution e
        LEFT JOIN drift d ON d.id = e.drift_id
       WHERE e.tenant_ref = $1 AND e.policy_id::text = $2

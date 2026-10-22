@@ -19,7 +19,12 @@ const COLLECTOR_SCOPES = ['User.Read.All', 'Group.Read.All', 'RoleManagement.Rea
   'MultiTenantOrganization.Read.All', 'IdentityUserFlow.Read.All', 'APIConnectors.Read.All'];
 const RESTORER_SCOPES = ['Group.ReadWrite.All', 'Policy.ReadWrite.ConditionalAccess', 'RoleManagement.ReadWrite.Directory'];
 const CONTENT_SCOPES = ['Mail.Read', 'Files.Read.All'];
-const ALL_SCOPES = [...new Set([...COLLECTOR_SCOPES, ...RESTORER_SCOPES, ...CONTENT_SCOPES, 'MailboxSettings.ReadWrite', 'Directory.ReadWrite.All', 'Channel.Create'])];
+// Every Graph permission the content reader is registered for (the content-backup prerequisite).
+export const CONTENT_READER_SCOPES = ['Mail.Read', 'Calendars.Read', 'Contacts.Read', 'MailboxSettings.Read', 'User.Read.All',
+  'MailboxFolder.Read.All', 'MailboxItem.Read.All', 'Files.Read.All', 'Sites.Read.All', 'Group.Read.All', 'Team.ReadBasic.All',
+  'Channel.ReadBasic.All', 'ChannelSettings.Read.All', 'ChannelMember.Read.All', 'TeamsTab.Read.All',
+  'TeamsAppInstallation.ReadForTeam.All', 'Tasks.Read.All'];
+const ALL_SCOPES = [...new Set([...COLLECTOR_SCOPES, ...RESTORER_SCOPES, ...CONTENT_SCOPES, ...CONTENT_READER_SCOPES, 'MailboxSettings.ReadWrite', 'Directory.ReadWrite.All', 'Channel.Create'])];
 
 const guid = (seed) => {
   const h = createHash('sha256').update(seed).digest('hex');
@@ -43,6 +48,8 @@ export function fixtureTenant({
   restorerExchange = false,
   // A content reader app that holds Mail.Read only (Files.Read.All is on its list).
   contentReader = false,
+  // Or: a content reader registered for all its permissions, holding these grants.
+  contentReaderScopes = null,
   // Directory roles the apps hold: { collector: [{ roleDefinitionId, directoryScopeId }] }.
   appDirectoryRoles = {},
 } = {}) {
@@ -66,6 +73,7 @@ export function fixtureTenant({
     grants.get(restorerSp).push({ id: guid(`grant:${restorerSp}:exchange`), principalId: restorerSp, resourceId: exchangeSp.id, appRoleId: roleId('Exchange.ManageAsApp') });
   }
   if (contentReader) register(CONTENT_READER_APP_ID, 'KEEL Content Reader', CONTENT_SCOPES, ['Mail.Read']);
+  else if (contentReaderScopes) register(CONTENT_READER_APP_ID, 'KEEL Content Reader', CONTENT_READER_SCOPES, contentReaderScopes);
   const collectorSp = sps.get(COLLECTOR_APP_ID).id;
   const appIdOf = { collector: COLLECTOR_APP_ID, restorer: RESTORER_APP_ID, 'content-reader': CONTENT_READER_APP_ID };
   const held = Object.entries(appDirectoryRoles).flatMap(([identity, roles]) => roles.map((role) => ({

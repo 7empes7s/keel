@@ -336,8 +336,13 @@ test('portal: the deployment host from /etc/keel-style files checks and complete
     reader: join(directory, 'content-reader.json'),
   };
   writeFileSync(files.reader, JSON.stringify({ tenantId: TENANT_ID, clientId: CONTENT_READER_APP_ID, certPath: '/etc/keel/reader.crt', keyPath: '/etc/keel/reader.key' }));
+  // A real certificate for the Collector, so Connections can read its expiry.
+  const collectorCert = join(directory, 'collector.crt');
+  const made = spawnSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(directory, 'collector.key'),
+    '-out', collectorCert, '-days', '90', '-subj', '/CN=KEEL-RT-collector'], { encoding: 'utf8' });
+  assert.equal(made.status, 0, made.stderr);
   writeFileSync(files.tenant, JSON.stringify({ tenantId: TENANT_ID }));
-  writeFileSync(files.collector, JSON.stringify(collectorConfig));
+  writeFileSync(files.collector, JSON.stringify({ ...collectorConfig, certPath: collectorCert }));
   writeFileSync(files.restorer, JSON.stringify(restorerConfig));
   writeFileSync(files.setup, JSON.stringify({ build: 'fixture-build-2', operatorPrincipalId: OPERATOR_ID }));
 
@@ -380,6 +385,21 @@ test('portal: the deployment host from /etc/keel-style files checks and complete
         assert.equal(read.steps.find(s => s.kind === 'registration').progress, 'done');
         assert.equal(read.steps.find(s => s.kind === 'workload-rbac').progress, 'waiting-for-you');
 
+        // Connections: the three apps, each with its state and certificate expiry.
+        const apps = Object.fromEntries(view.connections.map(c => [c.role, c]));
+        assert.deepEqual(view.connections.map(c => c.role), ['settings-reader', 'content-reader', 'settings-restorer']);
+        assert.equal(apps['settings-reader'].state, 'missing-permission', 'the Intune role is not assigned');
+        assert.deepEqual(apps['settings-reader'].observed.missingRoles, ['Read Only Operator']);
+        assert.ok(apps['settings-reader'].credentialExpiresInDays >= 89 && apps['settings-reader'].credentialExpiresInDays <= 90);
+        assert.equal(apps['content-reader'].state, 'missing-permission', 'the content reader holds Mail.Read only');
+        assert.equal(apps['content-reader'].appId, fixture.CONTENT_READER_APP_ID);
+        assert.deepEqual(apps['content-reader'].observed.grantedPermissions, ['Mail.Read']);
+        assert.equal(apps['content-reader'].credentialExpiresAt, null, 'an unreadable certificate is unknown, not expired');
+        assert.equal(apps['settings-restorer'].state, 'working');
+        assert.doesNotMatch(JSON.stringify(view.connections), /\.crt|\.key|\.json/, 'no credential path reaches the page');
+        const { rows: recorded } = await db.query("SELECT action FROM access_event ORDER BY id");
+        assert.deepEqual(recorded.map(r => r.action), ['recorded', 'recorded', 'recorded']);
+
         // Read setup with Intune pauses on the Intune role; Entra-only completes.
         let response = await post({ scope: 'read' });
         assert.equal(response.status, 200);
@@ -410,6 +430,8 @@ test('portal: the deployment host from /etc/keel-style files checks and complete
         view = await show();
         assert.equal(view.checkFailed, true);
         assert.ok(view.scopes.every(s => s.steps.every(step => step.progress === 'not-checked')));
+        // Connections keep their last observed state rather than guessing.
+        assert.equal(view.connections.find(c => c.role === 'content-reader').state, 'missing-permission');
       } finally {
         await db.end();
       }

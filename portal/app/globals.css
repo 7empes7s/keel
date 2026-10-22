@@ -4254,6 +4254,7 @@ section.wizard-panel {
 
 .job-summary-succeeded { --tone: var(--protected); }
 .job-summary-failed { --tone: var(--failed); }
+.job-summary-partial { --tone: var(--partial); }
 .job-summary-running,
 .job-summary-queued { --tone: var(--partial); }
 

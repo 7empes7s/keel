@@ -43,6 +43,30 @@ export function namedSubject(naturalKey: string, names: NamedKeys = {}, resource
   return namedResource(naturalKey, names, resourceType);
 }
 
+/** Issue #447: the types a finished backup did not read in full, from the job's
+ *  result. Empty for any other job. */
+export function jobIncompleteTypes(job: { status: string; result?: unknown }): string[] {
+  if (job.status !== "succeeded") return [];
+  const result = job.result as { partial?: unknown; incompleteTypes?: unknown } | null | undefined;
+  if (!result || result.partial !== true || !Array.isArray(result.incompleteTypes)) return [];
+  return result.incompleteTypes
+    .map((entry) => (entry && typeof entry === "object" ? (entry as { type?: unknown }).type : null))
+    .filter((type): type is string => typeof type === "string" && type.length > 0);
+}
+
+/** The status a person reads: a finished backup with gaps is "partial". */
+export function jobDisplayStatus(job: { status: string; result?: unknown }): string {
+  return jobIncompleteTypes(job).length ? "partial" : job.status;
+}
+
+/** "Not backed up: Intune tenant settings" — the gaps of a partial backup as one line. */
+export function incompleteTypesLine(types: string[]): string {
+  if (!types.length) return "";
+  const named = types.slice(0, 3).map((type) => resourceTypeLabel(type));
+  const more = types.length - named.length;
+  return `Not backed up: ${named.join(", ")}${more > 0 ? ` and ${more} more` : ""}`;
+}
+
 /** A failed job's error as one line for a list; an error that holds an id is not shown. */
 export function jobErrorLine(error: unknown): string {
   const first = String(error ?? "").split("\n")[0].replace(/^[A-Za-z]*Error:\s*/, "").trim();

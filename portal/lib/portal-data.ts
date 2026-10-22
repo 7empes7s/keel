@@ -38,7 +38,8 @@ import { workloadRestoreGuide } from "../../engine/coverage/coverageDoc.mjs";
 import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
 import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
-import { NAME_FIELDS, objectIds, payloadName } from "@/lib/changes-view";
+import { objectIds, payloadName } from "@/lib/changes-view";
+import { objectNameSql } from "../../engine/cir/objectName.mjs";
 import { DERIVED_NAME_TYPES, derivedName, edgeKeyType, referencedIds } from "@/lib/app-names";
 import { idNames, savedNames } from "@/lib/saved-names";
 import { getLiveRecords } from "@/lib/live-records";
@@ -399,7 +400,7 @@ function normalizeDrift(raw: UnknownRecord): DriftRecord {
     detectedAt: iso(raw.detected_at) ?? "",
     before: withoutScriptBodies(resourceType, raw.before_payload ?? null),
     after: withoutScriptBodies(resourceType, raw.after_payload ?? null),
-    name: payloadName(raw.after_payload) ?? payloadName(raw.before_payload),
+    name: payloadName(raw.after_payload, resourceType) ?? payloadName(raw.before_payload, resourceType),
   };
 }
 
@@ -791,7 +792,7 @@ export function displayItems(items: DriftRecord[]): DriftRecord[] {
 
 // At most this many ids are named per page load; the rest read "no name" (bounded).
 const MAX_NAMED_IDS = 5000;
-const REF_NAME_SQL = `COALESCE(${NAME_FIELDS.map((field) => `NULLIF(rv.payload->>'${field}', '')`).join(", ")})`;
+const REF_NAME_SQL = objectNameSql("rv.payload", "rv.resource_type");
 
 // Names, not ids: the users, groups, roles and apps each change points to by id, as the
 // collections that saw the changes read them. Matched on the object id, an app's appId
@@ -923,8 +924,7 @@ export interface RestoreResourcesData {
 }
 
 // The readable name a saved object carries, by the field Microsoft uses for it.
-export const PAYLOAD_NAME_SQL = `COALESCE(${["displayName", "name", "title", "userPrincipalName", "mail", "subject"]
-  .map((field) => `NULLIF(rv.payload->>'${field}', '')`).join(", ")})`;
+export const PAYLOAD_NAME_SQL = objectNameSql("rv.payload", "rv.resource_type");
 
 export async function getRestoreResources(
   snapshotId: string,
@@ -1126,7 +1126,7 @@ export async function getIncidentRecoveryData(requestedId?: string): Promise<Inc
     if (wanted.length > 0) {
       const { rows } = await client.query(
         `SELECT rv.snapshot_id::text AS snapshot_id, rv.natural_key,
-                COALESCE(${NAME_FIELDS.map((field) => `NULLIF(rv.payload->>'${field}', '')`).join(", ")}) AS display_name
+                ${PAYLOAD_NAME_SQL} AS display_name
            FROM resource_version rv JOIN snapshot s ON s.id = rv.snapshot_id
            JOIN unnest($1::text[], $2::text[]) AS w(snapshot_id, natural_key)
              ON w.snapshot_id = rv.snapshot_id::text AND w.natural_key = rv.natural_key

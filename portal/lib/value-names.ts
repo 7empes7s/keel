@@ -2,14 +2,14 @@
 // backups the values came from, so a before/after shows "Finance approvers", never an
 // id. Matched on the object id, an app's appId and a role's template id. Bounded, and
 // a failed read leaves the ids unnamed, never the page down.
+import { objectNameSql } from "../../engine/cir/objectName.mjs";
 import { holdsObjectId, objectIdsIn } from "@/lib/object-ids";
 
 interface QueryClient {
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }
 
-const NAME_FIELDS = ["displayName", "name", "title", "userPrincipalName", "mail"];
-const NAME_SQL = `COALESCE(${NAME_FIELDS.map((field) => `NULLIF(rv.payload->>'${field}', '')`).join(", ")})`;
+const NAME_SQL = objectNameSql("rv.payload", "rv.resource_type");
 const MAX_IDS = 500;
 
 /** Every id inside the values, lower-cased, at most MAX_IDS. */

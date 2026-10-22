@@ -81,6 +81,12 @@ export function planWorkloadComplianceFix({
     workload: fix.workload, source, live, tenantId, tenantRef, targets: [resourceKey], allowTenantWide,
     ...(testTenantRefs ? { testTenantRefs } : {}),
   });
+  // Exactly the one setting, or a guard refusal the person sees. Anything else (no
+  // change because the read and the check disagree on an empty value, say) is refused.
+  const one = base.operations.length === 1 && base.operations[0].changes.length === 1 && base.operations[0].changes[0].field === setting;
+  if (!base.refusals.length && !one) {
+    throw new ComplianceFixRefusal(`${resourceKey} would not change ${setting} as planned, so nothing is planned`);
+  }
   const plan = structuredClone(base);
   plan.complianceFix = {
     controlId,

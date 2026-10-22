@@ -256,6 +256,9 @@ test('a fix is planned from the live policy and changes only its one setting', (
     assert.throws(() => planWorkloadComplianceFix({ controlId: SPAM, target: workloadFixTarget('anti-spam-policy:gone', 'PhishSpamAction'), live, sourceCollectionId: '7', tenantId, tenantRef }), /not in the tenant now/);
     assert.throws(() => planWorkloadComplianceFix({ controlId: SPAM, target: target('PhishSpamAction'), live: { ...live, failures: [{ family: 'antiSpamPolicy', status: 'denied' }] }, sourceCollectionId: '7', tenantId, tenantRef }), /could not be checked/);
     assert.throws(() => planWorkloadComplianceFix({ controlId: SPAM, target: target('PhishSpamAction'), live, sourceCollectionId: null, tenantId, tenantRef }), /no complete service read/);
+    // A null list the check counts as failing, but writing null changes nothing: refused, not a no-op plan.
+    const nullDomains = { ...live, resources: live.resources.map((entry) => ({ ...entry, fields: { ...entry.fields, AllowedSenderDomains: null } })) };
+    assert.throws(() => planWorkloadComplianceFix({ controlId: DOMAINS, target: target('AllowedSenderDomains'), live: nullDomains, sourceCollectionId: '7', tenantId, tenantRef }), /would not change AllowedSenderDomains/);
     assert.throws(() => planWorkloadComplianceFix({ controlId: 'keel-custom.named-location.no-untrusted-all-countries', target: target('PhishSpamAction'), live, sourceCollectionId: '7', tenantId, tenantRef }), ComplianceFixRefusal);
   });
 });

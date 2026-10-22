@@ -6447,8 +6447,19 @@ item that needs it stays untouched.
     with "manual: this backup holds the group's name but not its values"; an update whose setting definition differs from the tenant's.
   - Expect a one-time "changed" for each group on the first drift run after deploy, because older snapshots lack the values.
 - Needs: /opt/keel-live at `471cb9b` or later (`grep -q reusableSettingRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 09:11 UTC). #476 fixes the backup and the PUT, but both writes fail their post-state check: Graph re-generates the group's `_id` child on every write (**#477**). Both are demoted. B = 471cb9b → 56d9682 (deploys during the run; captured at 56d9682). Restorer only; global admin not used; nothing granted.
+  1. Fixture `KEEL-RT-155-addresses` (keyword, autoresolve false, 203.0.113.10), used by no policy. Snapshot S = `681596c1`: the payload holds `settingInstance` with 203.0.113.10 (**backup check passes**).
+  2. Old-backup refusal: dry run `e7b5798d` from Q109's S2 `ac991228`: skipped, status `refused`, 0 writes. Reason: "manual: this backup holds the group's name but not
+     its values (backups before the values were read), so it is not written; take a new backup, or set the values by hand in the Intune admin center". Not promoted.
+  3. Update: drifted the description to `drift` and the address to 203.0.113.20 (PUT 204). Dry run `a72fa6da` (fields description, settingInstance), approval **65ccb575**,
+     job `01e7cdda`: the PUT ran and the tenant read back the description "KEEL restore fixture" and 203.0.113.10. But the journal shows `uncertain`, "post-state: settingInstance did not read back
+     as written". The only difference is the `..._{id}_id` GUID (backup `{aee3fd94-…}`, live `{35c6b7f6-…}`). Capture exit 3, then **demoted**.
+  4. Create: deleted the group. Dry run `2b0a36ae`, approval **47abfca3**, job `5b8b125a`: created with its description and 203.0.113.10, then the same `uncertain` post-state. **Demoted.**
+  5. Re-run: dry run `80180fb5` from S plans **another create** (no targetId), not 0 writes. It looks as if the uncertain create recorded no id mapping (inference). Not enforced (it would make a duplicate).
+  6. Cleanup: deleted the recreated group. No `KEEL-RT` reusable group is left. **Nothing left.**
+  7. Evidence: `claude/live-evidence-reusable-settings` @ **aff2097** (update record, capture and demotion; create demotion). pseudonymize check exit 0; my scan is clean.
+     `live evidence deviceManagementReusablePolicySetting.update.json: not applied (deviceManagementReusablePolicySetting.update.demotion.json demotes this write, so it is not promoted)`.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67 and Q109. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used; it holds
   DeviceManagementConfiguration.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing.

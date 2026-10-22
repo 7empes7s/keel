@@ -61,6 +61,7 @@ import { RULE_KINDS, RULE_STATES, ruleCounts, ruleKind, ruleState, rulesStatus }
 import { peopleCounts, peopleStatus } from "@/lib/people-view";
 import type { PrincipalView } from "@/lib/principals";
 import { CheckAgain } from "@/components/setup/check-again";
+import type { Connection } from "@/lib/connections-view";
 import { SetupPage as SetupBody } from "@/components/setup/setup-page";
 import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICES } from "../../engine/bootstrap/permissionCatalog.mjs";
 import { setupStatus as setupPageStatus, type PermissionEntry, type PermissionGrant, type SetupApp, type SetupPermissions, type SetupState } from "@/lib/setup-view";
@@ -1105,6 +1106,25 @@ const setupPermissions = (observed: SetupPermissions["observed"]): SetupPermissi
 });
 const catalogFor = (identity: "collector" | "restorer" | "content-reader", keep: (entry: PermissionEntry) => boolean = () => true): PermissionGrant[] =>
   (KEEL_PERMISSIONS as unknown as PermissionEntry[]).filter((entry) => entry.identity === identity && keep(entry)).map((entry) => ({ api: entry.api, name: entry.name }));
+// Connections (/api/setup `connections`): one row per Keel app, as the engine records it.
+const CONTENT_SCOPES = ["Files.Read.All", "Mail.Read", "Sites.Read.All", "Team.ReadBasic.All", "Tasks.Read.All"];
+const connection = (role: string, name: string, purpose: string, required: boolean, state: string, fields: {
+  appId?: string | null; expires?: string | null; wanted?: string[]; roles?: string[]; granted?: string[]; missing?: string[]; extra?: string[]; missingRoles?: string[] | null; enabled?: boolean | null; observed?: boolean;
+} = {}): Connection => ({
+  id: `connection-${role}`,
+  kind: "app", role, name, purpose, required, state, appId: fields.appId ?? null,
+  credentialExpiresAt: fields.expires ?? null,
+  credentialExpiresInDays: fields.expires ? Math.floor((Date.parse(fields.expires) - Date.parse(now)) / 86_400_000) : null,
+  wanted: fields.observed === false ? null : { permissions: fields.wanted ?? [], roles: fields.roles ?? [] },
+  observed: fields.observed === false ? null : {
+    at: "2026-10-02T09:38:00Z", displayName: name, enabled: fields.enabled ?? true,
+    grantedPermissions: fields.granted ?? [], missingPermissions: fields.missing ?? [], extraPermissions: fields.extra ?? [], missingRoles: fields.missingRoles === undefined ? [] : fields.missingRoles,
+  },
+  lastUsedAt: null, lastSignInAt: null, updatedAt: "2026-10-02T09:38:00Z",
+});
+const READER_PURPOSE = "Backs up your Microsoft 365 settings. Read only.";
+const CONTENT_PURPOSE = "Backs up mail, files, Teams and Planner. Read only.";
+const RESTORER_PURPOSE = "Puts settings back when you approve a restore.";
 // Backup reader: everything it needs, the optional audit search not yet, and one grant
 // Keel never uses. Restore writer: waiting on consent for the three setup permissions
 // (already on its list), and Exchange Online's permission not on its list at all.
@@ -1137,6 +1157,16 @@ const SETUP: SetupState = {
   checkFailed: false,
   collect: { allowed: false, basis: "read-access-unconfirmed", missing: ["Read Only Operator", "keel.collect"] },
   firstCollection: null,
+  // The reader still waits on its Intune role; the restorer waits on consent; content backup is not set up.
+  connections: [
+    connection("settings-reader", "Keel Settings Reader", READER_PURPOSE, true, "missing-permission", {
+      appId: READER_APP.appId, expires: "2027-03-01T00:00:00Z", wanted: READ_SCOPES, granted: READ_SCOPES, roles: ["Read Only Operator"], missingRoles: ["Read Only Operator"], extra: ["Policy.Read.PermissionGrant"],
+    }),
+    connection("content-reader", "Keel Content Reader", CONTENT_PURPOSE, false, "not-created", { observed: false }),
+    connection("settings-restorer", "Keel Settings Restorer", RESTORER_PURPOSE, false, "waiting-for-consent", {
+      appId: WRITER_APP.appId, expires: "2027-03-01T00:00:00Z", wanted: RESTORE_SCOPES, missing: RESTORE_SCOPES, roles: ["Privileged Role Administrator"], missingRoles: null,
+    }),
+  ],
   scopes: [
     {
       scope: "read", workloads: ["entra-collect", "intune-collect"], observed: true,
@@ -1180,9 +1210,17 @@ const SETUP_CHECKED: SetupState = {
   collect: { allowed: true, basis: "read-access-confirmed", missing: [] },
   firstCollection: null,
   // The settings reader's certificate runs out in 12 days; the restorer's is fine.
+  // Content reader working; restorer switched off between restores, holding one grant Keel never uses.
   connections: [
-    { role: "settings-reader", name: "Keel Settings Reader", appId: READER_APP.appId, credentialExpiresAt: "2026-10-14T09:00:00Z" },
-    { role: "settings-restorer", name: "Keel Settings Restorer", appId: null, credentialExpiresAt: "2027-04-01T00:00:00Z" },
+    connection("settings-reader", "Keel Settings Reader", READER_PURPOSE, true, "working", {
+      appId: READER_APP.appId, expires: "2026-10-14T09:00:00Z", wanted: READ_SCOPES.slice(1), granted: READ_SCOPES.slice(1),
+    }),
+    connection("content-reader", "Keel Content Reader", CONTENT_PURPOSE, false, "working", {
+      appId: "c0a7e470-0000-4000-8000-0000000000c3", expires: "2027-02-01T00:00:00Z", wanted: CONTENT_SCOPES, granted: CONTENT_SCOPES,
+    }),
+    connection("settings-restorer", "Keel Settings Restorer", RESTORER_PURPOSE, false, "switched-off", {
+      appId: null, expires: "2027-04-01T00:00:00Z", wanted: RESTORE_SCOPES, granted: RESTORE_SCOPES, extra: ["Channel.Create"], enabled: false,
+    }),
   ],
   scopes: [
     {

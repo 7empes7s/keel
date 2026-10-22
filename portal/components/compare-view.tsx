@@ -1,13 +1,14 @@
 import { CompareForm, type QuickPick } from "@/components/baselines/compare-form";
 import { ChangeChip, ChangedFieldList, ChangedValuesStyles } from "@/components/changed-values";
+import { CompareOpen, CompareSheet } from "@/components/compare-sheet";
 import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { Icon } from "@/components/shell/icons";
 import { RecordCompare, RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import {
-  bytesWords, containerWords, contentItemWords, countsWords, differenceTotals, notComparedReasons,
+  bytesWords, compareItemId, compareItemLine, containerWords, contentItemWords, countsWords, differenceTotals, notComparedReasons,
   sideWords, workloadLabel, workloadNotComparedSentence,
-  type ChangeType, type CompareData, type CompareField, type CompareResult, type GapTone, type ContentHoldingsSection, type ContentItemsSection,
+  type ChangeType, type CompareData, type CompareOpenable, type CompareField, type CompareResult, type GapTone, type ContentHoldingsSection, type ContentItemsSection,
   type SettingsGroup, type SettingsItem, type SettingsSection, type WorkloadGroup, type WorkloadsSection,
 } from "@/lib/compare-view";
 import { formatTimestamp, resourceTypeLabel } from "@/lib/presentation";
@@ -51,6 +52,11 @@ const CSS = `
   .compare-item[data-whole] { grid-template-columns: minmax(0, 1fr); }
   .compare-item[data-whole] .cc-whole-toggle { justify-self: start; }
 }
+.compare-item-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-xs) var(--space-sm); }
+.compare-item-line > p { color: var(--text-soft); font-size: 0.875rem; }
+.compare-open { white-space: nowrap; }
+.compare-sheet-line { margin: 0; font-weight: 600; }
+.compare-open svg { width: 0.9rem; height: 0.9rem; }
 .compare-item.compare-changed { border-left-color: var(--partial); }
 .compare-item.compare-added { border-left-color: var(--protected); }
 .compare-item.compare-removed { border-left-color: var(--failed); }
@@ -140,7 +146,12 @@ function SettingsGroupView({ group, index, sides }: { group: SettingsGroup; inde
           return (
             <li className={`compare-item compare-${item.changeType}`} data-whole={item.changeType !== "changed" && item.fields?.length ? "" : undefined} key={item.naturalKey}>
               <ItemHead changeType={item.changeType} id={id} name={itemName(item, group.resourceType)} />
-              {item.changeType === "changed" || item.fields?.length ? <FieldTable change={item.changeType} fields={item.fields ?? []} id={itemName(item, group.resourceType)} sides={sides} total={item.fieldsTotal} /> : null}
+              {item.changeType === "changed" ? (
+                <div className="compare-item-line">
+                  <p>{compareItemLine(item.fields ?? [], item.fieldsTotal)}</p>
+                  {item.fields?.length ? <CompareOpen id={compareItemId(group.resourceType, item.naturalKey)} name={itemName(item, group.resourceType)} /> : null}
+                </div>
+              ) : item.fields?.length ? <FieldTable change={item.changeType} fields={item.fields} id={itemName(item, group.resourceType)} sides={sides} total={item.fieldsTotal} /> : null}
             </li>
           );
         })}
@@ -281,13 +292,21 @@ function Unmatched({ entries }: { entries: SettingsSection["unmatched"] }) {
   );
 }
 
-function SettingsPanel({ settings, portable, sides }: { settings: SettingsSection; portable: boolean; sides: Sides }) {
+/** Every changed item with settings to show, in the order the page lists them. */
+function openable(settings: SettingsSection): CompareOpenable[] {
+  return byService(settings.groups, (group) => group.resourceType).flatMap((block) => block.parts.flatMap((part) => part.items.flatMap((group) => byChange(group.items)
+    .filter((item) => item.changeType === "changed" && item.fields?.length)
+    .map((item) => ({ id: compareItemId(group.resourceType, item.naturalKey), name: itemName(item, group.resourceType), kind: plainKind(group.resourceType), service: block.heading, fields: item.fields ?? [], fieldsTotal: item.fieldsTotal })))));
+}
+
+function SettingsPanel({ settings, portable, sides, restore }: { settings: SettingsSection; portable: boolean; sides: Sides; restore: { href: string; label: string } | null }) {
   return (
+    <CompareSheet items={openable(settings)} restore={restore} sides={sides}>
     <section aria-labelledby="compare-settings-heading" className="item-card compare-section">
       <h2 id="compare-settings-heading">Settings</h2>
       <p className="compare-help">
         {countsWords(settings.totals)} across every kind Keel backs up; {settings.totals.unchanged.toLocaleString("en-GB")} the same.
-        {" "}Open a kind to see each setting and its value before and after.
+        {" "}Open a kind, then See what changed on an item, to see each setting before and after.
         {portable ? " Objects are matched by name, and a difference in ids alone does not count." : ""}
       </p>
       {byService(settings.groups, (group) => group.resourceType).map((block) => (
@@ -318,6 +337,7 @@ function SettingsPanel({ settings, portable, sides }: { settings: SettingsSectio
         </TechnicalDetails>
       ) : null}
     </section>
+    </CompareSheet>
   );
 }
 
@@ -551,6 +571,12 @@ function Summary({ data, result }: { data: CompareData; result: CompareResult })
   );
 }
 
+/** Restore from the earlier side, when it is a backup of this tenant. */
+function restoreFrom(result: CompareResult): { href: string; label: string } | null {
+  if (result.portable || result.left.kind !== "snapshot" || !result.left.snapshotId) return null;
+  return { href: `/restore?snapshot=${encodeURIComponent(result.left.snapshotId)}`, label: `Restore from ${formatTimestamp(result.left.at).replace(/, \d\d:\d\d UTC$/, "")}` };
+}
+
 export function CompareView({ data, quick = [] }: { data: CompareData; quick?: QuickPick[] }) {
   const result = data.result;
   const sides: Sides = result
@@ -563,7 +589,7 @@ export function CompareView({ data, quick = [] }: { data: CompareData; quick?: Q
       <ChangedValuesStyles />
       <CompareForm input={data.input} quick={quick} tenants={data.tenants} />
       {result ? <Summary data={data} result={result} /> : null}
-      {result?.settings ? <SettingsPanel portable={result.portable} settings={result.settings} sides={sides} /> : null}
+      {result?.settings ? <SettingsPanel portable={result.portable} restore={restoreFrom(result)} settings={result.settings} sides={sides} /> : null}
       {result?.workloads ? <WorkloadsPanel liveStored={Boolean(result.right.latestStored?.includes("workloads"))} sides={sides} workloads={result.workloads} /> : null}
       {result?.content?.by === "item" ? <ContentItemsPanel content={result.content} /> : null}
       {result?.content?.by === "holdings" ? <ContentHoldingsPanel content={result.content} /> : null}

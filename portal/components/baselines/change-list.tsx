@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { ChangeDecision } from "@/components/baselines/change-decision";
 import { ChangeFacts } from "@/components/baselines/change-facts";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
+import { sheetStep } from "@/lib/sheet-step";
 import { RiskChip } from "@/components/baselines/parts";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { ChangeAttributionPanel } from "@/components/change-attribution";
@@ -179,6 +180,9 @@ export function ChangeList({
   const shown = useMemo(() => applyFilters(open, tiles, pickedKey ? pickedKey.split(",") : [], others), [open, tiles, pickedKey, others]);
   const counts = useMemo(() => new Map(tileCounts(open, tiles, pickedKey ? pickedKey.split(",") : [], others).map((entry) => [entry.key, entry])), [open, tiles, pickedKey, others]);
   const opened = open.find((item) => item.id === view.get("open")) ?? null;
+  // Previous and next in the panel follow the list as shown: its filters, grouping and sort.
+  const [order, setOrder] = useState<string[]>([]);
+  const step = useMemo(() => sheetStep(order, opened?.id), [order, opened?.id]);
   const deciding_items = deciding ? open.filter((item) => deciding.ids.includes(item.id)) : [];
   const undoingItem = undoing ? open.find((item) => item.id === undoing) ?? null : null;
   const serviceIds = useMemo(() => new Set(open.filter((item) => item.serviceRead).map((item) => item.id)), [open]);
@@ -353,6 +357,7 @@ export function ChangeList({
         <h2 className="visually-hidden" id="open-drift-heading">Open changes</h2>
         {open.length ? (
           <SelectableList
+            onOrder={setOrder}
             action={primary}
             empty={<NoMatches extra={{ open: null }} filters={activeFilters} noun={{ one: "change", many: "changes" }} />}
             getId={(item) => item.id}
@@ -424,18 +429,21 @@ export function ChangeList({
             </>
           ) : undefined}
           kicker={<><RiskChip tone={toneOf(opened)}>{impactWords(opened.blastRadius)}</RiskChip><span>{kindLine(opened)}</span></>}
+          noun="change"
           onClose={() => view.set({ open: null })}
+          onStep={(id) => view.set({ open: id })}
+          step={step}
           title={changeName(opened)}
           wide
         >
           <ChangeFacts item={opened} now={now} />
+          {opened.semantic
+            ? <SemanticDiff change={opened.semantic} item={opened} key={opened.id} record={<OpenedRecord item={opened} />} />
+            : <DriftDiff item={opened} key={opened.id} record={<OpenedRecord item={opened} />} />}
           <section className="bl-why" aria-label="Why it matters">
             <h3>Why it matters</h3>
             <p>{whyItMatters(opened.resourceType)}</p>
           </section>
-          {opened.semantic
-            ? <SemanticDiff change={opened.semantic} item={opened} record={<OpenedRecord item={opened} />} />
-            : <DriftDiff item={opened} record={<OpenedRecord item={opened} />} />}
           {opened.evidence !== undefined ? <ChangeEvidencePanel attribution={opened.attribution} evidence={opened.evidence} gap={opened.evidenceGap} now={now} /> : null}
           {opened.attribution !== undefined ? <ChangeAttributionPanel attribution={opened.attribution} now={now} /> : null}
         </DetailsSheet>

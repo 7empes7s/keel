@@ -34,6 +34,7 @@ import {
   standardName,
 } from "@/lib/compliance-view";
 import { ago, formatTimestamp } from "@/lib/presentation";
+import type { SheetStep } from "@/lib/sheet-step";
 import type { ComplianceFinding } from "@/lib/types";
 
 const SEVERITY: Record<string, string> = { high: "High", medium: "Medium", low: "Low", critical: "Critical" };
@@ -42,8 +43,10 @@ const SEVERITY: Record<string, string> = { high: "High", medium: "Medium", low: 
 // the result, the backup it rests on, its exception and the changes linked to it.
 // Grant or renew is the one amber action, on a failing control only. A control Keel
 // can fix shows "Make it pass" per object first, since fixing beats accepting.
-export function ControlSheet({ finding, now, canConfigure, canRestore = false, grantHref, onClose }: {
+export function ControlSheet({ finding, now, canConfigure, canRestore = false, grantHref, onClose, step = null, onStep }: {
   finding: ComplianceFinding;
+  step?: SheetStep | null;
+  onStep?: (id: string) => void;
   now: string;
   canConfigure: boolean;
   canRestore?: boolean;
@@ -75,6 +78,9 @@ export function ControlSheet({ finding, now, canConfigure, canRestore = false, g
         {changeCount ? <Link className="btn" href="/drift">{changeCount === 1 ? "Review the change" : `Review the ${changeCount} changes`}</Link> : null}
         {canGrant ? <p className="bl-help">{EXCEPTION_EFFECT}</p> : null}
       </> : undefined}
+      noun="control"
+      onStep={onStep}
+      step={step}
       kicker={<span className="cp-sheet-kicker"><Icon name={service.icon} />Control · {service.name}</span>}
       onClose={onClose}
       title={controlName(finding)}

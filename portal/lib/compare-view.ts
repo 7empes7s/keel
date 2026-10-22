@@ -1,6 +1,6 @@
 // Wave 2 CMP: the shapes engine/govern/compare.mjs returns, and the words the Compare
 // page uses for them. Pure, so the UI harness renders the real page from fixtures.
-import { valueWords } from "@/lib/changes-view";
+import { fieldWords, valueWords } from "@/lib/changes-view";
 import { readableValue } from "@/lib/changed-values";
 import { formatTimestamp } from "@/lib/presentation";
 
@@ -377,4 +377,31 @@ export function notComparedReasons<T extends { left: string; right: string }>(en
   return [...groups.values()]
     .sort((a, b) => a.rank - b.rank || b.entries.length - a.entries.length || a.reason.localeCompare(b.reason))
     .map(({ rank: _rank, ...group }) => group);
+}
+
+/** One changed item the Compare page can open in its details panel. Plain data, so the
+ *  page (a server component) can hand the list to the panel (a client component). */
+export interface CompareOpenable {
+  id: string;
+  name: string;
+  kind: string;
+  service: string;
+  fields: CompareField[];
+  fieldsTotal?: number;
+}
+
+/** The address key of a changed item on Compare (`?item=`). */
+export function compareItemId(resourceType: string, naturalKey: string): string {
+  return `${resourceType}|${naturalKey}`;
+}
+
+/** A changed item in one line: how many settings differ and the first few by name. */
+export function compareItemLine(fields: readonly { path: string }[], total?: number): string {
+  const count = Math.max(total ?? 0, fields.length);
+  if (!count) return "Only settings Microsoft sets itself differ.";
+  const names = [...new Set(fields.map((field) => fieldWords(field.path)))];
+  const first = names.slice(0, 2);
+  const rest = count - first.length;
+  const list = rest > 0 ? `${first.join(", ")} and ${rest} more` : first.length === 2 ? `${first[0]} and ${first[1]}` : first[0];
+  return `${count === 1 ? "1 setting differs" : `${count.toLocaleString("en-GB")} settings differ`}: ${list}.`;
 }

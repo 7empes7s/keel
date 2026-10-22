@@ -26,7 +26,10 @@
  *    from live reads; returns { reason, completion? } and the update is
  *    skipped as a manual step;
  *  - `sameField(field, desired, live)`: a type's own equality for a field
- *    Graph may return in another form (a JSON string with other spacing).
+ *    Graph may return in another form (a JSON string with other spacing);
+ *  - `checkedAfterWrite`: sent fields the object's own read never returns
+ *    (Graph leaves them out); the record's `afterWrite` reads each one back
+ *    from its own collection and fails the write when it differs.
  *
  * Every write is journalled first and read back; every field it sent must read
  * back as sent (nulls and absent fields read the same). A reference held in a
@@ -56,6 +59,9 @@ export function defineRecord(spec) {
   for (const verb of spec.operations ?? []) {
     if (!VERBS.has(verb)) throw new TypeError(`${spec.resourceType}: unknown operation ${verb}`);
   }
+  if ((spec.checkedAfterWrite ?? []).length > 0 && typeof spec.afterWrite !== 'function') {
+    throw new TypeError(`${spec.resourceType}: a field checked after the write needs an afterWrite that checks it`);
+  }
   if (spec.singleton && (spec.operations ?? []).some((verb) => verb !== 'update')) {
     throw new TypeError(`${spec.resourceType}: a singleton is only ever updated`);
   }
@@ -76,11 +82,13 @@ export function defineRecord(spec) {
     updateGuard: null,
     transform: null,
     sameField: null,
+    checkedAfterWrite: [],
     ...spec,
     operations: Object.freeze([...(spec.operations ?? [])]),
     excluded: Object.freeze([...(spec.excluded ?? [])]),
     writable: spec.writable ? Object.freeze([...spec.writable]) : null,
     createOnly: Object.freeze([...(spec.createOnly ?? [])]),
+    checkedAfterWrite: Object.freeze([...(spec.checkedAfterWrite ?? [])]),
   });
 }
 
@@ -165,7 +173,8 @@ export function recordPostStateRefusal(record, sent, live) {
     && stripGraph(live['@odata.type']) !== stripGraph(sent['@odata.type'])) {
     return `post-state: the object reads back as ${stripGraph(live['@odata.type']) ?? 'an unnamed kind'}, not ${stripGraph(sent['@odata.type'])}`;
   }
-  const wrong = Object.keys(sent).filter((key) => key !== '@odata.type' && key !== 'id' && !sameRecordField(record, key, sent[key], live[key]));
+  const wrong = Object.keys(sent).filter((key) => key !== '@odata.type' && key !== 'id' && !record.checkedAfterWrite.includes(key)
+    && !sameRecordField(record, key, sent[key], live[key]));
   return wrong.length > 0 ? `post-state: ${wrong.join(', ')} did not read back as written` : null;
 }
 

@@ -12,7 +12,7 @@ import {
   INTUNE_BEST_EFFORT, INTUNE_EXTENDED_RECORDS, INTUNE_RECORDS, applyIntuneExtendedWrite, attachIntuneAssignments, buildIntuneExtendedLedger,
   SCRIPT_WRITE_PERMISSION, intuneExtendedOperations, targetAppsBody, writesIntuneAssignments,
 } from './intuneOperations.mjs';
-import { changedRecordFields } from './recordWriter.mjs';
+import { changedRecordFields, defineRecord, recordPostStateRefusal } from './recordWriter.mjs';
 import { EXPANSION_INVENTORY } from '../coverage/qualification.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
 import { classifyContentEffects } from '../safety/contentEffects.mjs';
@@ -823,6 +823,42 @@ test('compliance actions are read back from their own collection, not from the e
   assert.deepEqual(graph.calls.filter((call) => call.method !== 'GET').map((call) => `${call.method} ${call.path}`), [`POST ${path}/setScheduledActions`]);
   assert.equal(result.applied.changes.scheduledActions, 'written');
   assert.equal(graph.objects.get(path).scheduledActionsForRule[0].scheduledActionConfigurations[0].gracePeriodHours, 0);
+});
+
+// Issue #513: like Graph, a policy read without the actions in its $expand
+// leaves them out, so the create's post-state read never lists them.
+const plainReadOmitsActions = (graph) => ({
+  ...graph,
+  async read(version, path) {
+    const result = await graph.read(version, path);
+    if (!/\$expand=[^&]*scheduledActionsForRule/.test(path) && !/\/scheduledActionsForRule(\?|$)/.test(path) && result.ok && result.body && !Array.isArray(result.body.value)) {
+      const { scheduledActionsForRule: _actions, ...rest } = result.body;
+      return { ...result, body: rest };
+    }
+    return result;
+  },
+});
+
+test('a compliance create verifies its actions through their own collection, not the policy read (#513)', async () => {
+  const graph = idoFakeGraph();
+  const result = await applyIntuneExtendedWrite(plainReadOmitsActions(graph), resourceOf('deviceManagementCompliancePolicy', compliance), 'create', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const reads = graph.calls.filter((call) => call.method === 'GET').map((call) => call.path);
+  const id = result.applied.targetId;
+  assert.deepEqual(reads, [`${CP_PATH}/${id}?$expand=settings`, `${CP_PATH}/${id}/scheduledActionsForRule?$expand=scheduledActionConfigurations`],
+    'one policy read, then the actions from their own collection');
+
+  // Actions that did not take still fail the create.
+  const wrong = idoFakeGraph();
+  const lost = {
+    ...plainReadOmitsActions(wrong),
+    async read(version, path) {
+      const out = await plainReadOmitsActions(wrong).read(version, path);
+      return path.includes('/scheduledActionsForRule') && out.ok ? { ...out, body: { value: [] } } : out;
+    },
+  };
+  const failed = await applyIntuneExtendedWrite(lost, resourceOf('deviceManagementCompliancePolicy', compliance), 'create', FAST);
+  assert.match(failed.failed?.error ?? '', /actions for noncompliance did not read back as written/);
 });
 
 test('a backup whose actions list is empty (taken before #473) never removes the live actions', async () => {
@@ -2063,4 +2099,13 @@ test('Exchange on-premises access settings are updated in place and never turned
   const turnedOff = await applyIntuneExtendedWrite(off, resourceOf('onPremisesConditionalAccessSettings', backup, { live: { state: 'present', payload: live2 } }), 'update', FAST);
   assert.equal(turnedOff.failed ?? turnedOff.skipped, undefined, JSON.stringify(turnedOff));
   assert.deepEqual(writesOf(off)[0].body, { enabled: false });
+});
+
+test('a field left out of the post-state read is only allowed when afterWrite checks it (#513)', () => {
+  assert.throws(() => defineRecord({ resourceType: 'x', operations: ['create'], checkedAfterWrite: ['children'] }), /needs an afterWrite/);
+  const checked = defineRecord({ resourceType: 'x', operations: ['create'], checkedAfterWrite: ['children'], afterWrite: async () => null });
+  assert.equal(recordPostStateRefusal(checked, { name: 'a', children: [1] }, { name: 'a' }), null);
+  assert.match(recordPostStateRefusal(checked, { name: 'a', children: [1] }, { name: 'b' }), /name did not read back/);
+  const plain = defineRecord({ resourceType: 'x', operations: ['create'] });
+  assert.match(recordPostStateRefusal(plain, { name: 'a', children: [1] }, { name: 'a' }), /children did not read back/);
 });

@@ -5961,6 +5961,14 @@ item that needs it stays untouched.
 - **Report:** steps 1 to 4 verbatim.
 
 ### Q120: Live backup and restore of settings catalog compliance policies (restore gaps batch 7, after #451)
+- Requeued by the "Compliance actions missing from backup" thread (2026-10-22): **your #473 comment is fixed** by PR #488 (master `1f23774`).
+  The backup now reads each policy with `$expand=settings`, then its actions from
+  `GET /beta/deviceManagement/compliancePolicies/{id}/scheduledActionsForRule?$expand=scheduledActionConfigurations`. The restore reads the live
+  actions from the same route. A backup whose actions list is empty (older snapshots, like `94ad1b37`) never touches the live actions on update and is
+  refused on create, so **take a new snapshot S**; do not reuse `94ad1b37`. The `{parent}` listing error is fixed by #480 (Q140).
+  - Needs: /opt/keel-live at `1f23774` or later (`grep -q COMPLIANCE_ACTIONS /opt/keel-live/engine/restore/intuneOperations.mjs`) and #480
+    (`grep -q listPerParent /opt/keel-live/engine/reconcile/liveState.mjs`).
+  - The fixture may keep **block 0 h only** if `KEEL-RT-notice` still cannot be created (report the 400 again); then expect one action in step 2.
 - Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 7" thread (2026-10-22). Code: PR #451. The backup now reads each settings catalog
   compliance policy on its own: `GET /beta/deviceManagement/compliancePolicies/{id}?$expand=settings,scheduledActionsForRule($expand=scheduledActionConfigurations)`.
@@ -5969,7 +5977,7 @@ item that needs it stays untouched.
   `POST .../compliancePolicies/{id}/setScheduledActions` with `{ scheduledActions: [...] }`, read back. Who the policy is
   assigned to is **not** written; the fixture stays unassigned.
 - Needs: /opt/keel-live at the #451 merge or later (`grep -q complianceActionsAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: blocked
+- Status: todo
 - Result: blocked (2026-10-22 08:42 UTC) on **#473** (comment on it covers this type). B = c396a2c. Restorer only; nothing granted; no restore approved.
   - Fixture `KEEL-RT-compliance` (Linux, linuxMdm, `linux_deviceencryption_required_true`). The notification action was not possible: creating `KEEL-RT-notice`
     (`notificationMessageTemplates`, beta and v1.0) answered **400** "An error has occurred" (StatelessNotification service), so the fixture had **block 0 h** only.

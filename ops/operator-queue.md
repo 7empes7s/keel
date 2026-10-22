@@ -7456,3 +7456,26 @@ item that needs it stays untouched.
   5. **Put back:** `Set-HostedContentFilterPolicy -Identity <KEEL-RT-mailfix-spam Guid> -PhishSpamAction MoveToJmf` so the fixture keeps
      failing for the next proof. Leave the four KEEL-RT-mailfix-* policies in place (no rule, they apply to nobody).
 - **Report:** B; steps 1-5 as above; anything left changed in the tenant.
+
+### Q160: Re-run discovery and check the PIM role settings lists read as covered (read-only, after #547)
+- Drafted by the "Role policy discovery false alarm" thread (2026-10-22). Code: PR #547. Q145 found `unifiedRoleManagementPolicy` and
+  `unifiedRoleManagementPolicyAssignment` stored as `unreadable` (400 MissingProvider) because discovery probed
+  `/policies/roleManagementPolicies` and `/policies/roleManagementPolicyAssignments` without the scope filter Graph requires.
+  Discovery now sends the catalogue's `$filter=scopeId eq '/' and scopeType eq 'DirectoryRole'` on those reads.
+- Needs: PR #547 live (`grep -q requiredFilter /opt/keel-live/engine/discovery/catalogue.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** Graph GETs only (discovery is read-only by design and refuses anything else). Nothing is written.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. `node cli/keel-discover.mjs run --config /etc/keel/tenant.json` (as the scheduled job runs it). Report the exit code.
+  2. `node cli/keel-discover.mjs show --config /etc/keel/tenant.json | sed -n '1,/^Uncatalogued/p'`. Report the `Catalogue:` line and
+     every indented line under it.
+  3. For the latest run:
+     ```sql
+     SELECT source, name, status, objects, http_status, reason FROM discovery_item
+      WHERE run_id = (SELECT id FROM discovery_run ORDER BY finished_at DESC, id DESC LIMIT 1)
+        AND name IN ('/policies/roleManagementPolicies', '/policies/roleManagementPolicyAssignments') ORDER BY name, source;
+     ```
+- **Expected:** neither type is listed as `unreadable` in step 2 (catalogue line reads 144 covered, 0 unreadable, if nothing else
+  changed since Q145). Step 3 shows `catalogued` for both paths in v1.0 and beta, with object counts (about 150 each in v1.0).
+- **Report:** steps 1-3 as above.

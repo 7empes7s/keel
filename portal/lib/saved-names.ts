@@ -1,5 +1,6 @@
 // The name each saved setting carries, read from the tenant's most recent backup that
 // holds one. The job page uses it so follow-ups and undo items never show a bare id.
+import { objectNameSql } from "../../engine/cir/objectName.mjs";
 import { DERIVED_NAME_TYPES, derivedName, edgeKeyType, type IdNames, NO_ID_NAMES, referencedIds } from "@/lib/app-names";
 import { holdsObjectId, type NamedKeys, namedSubject } from "@/lib/job-names";
 import type { ChangeRef } from "@/lib/sentences";
@@ -8,8 +9,7 @@ interface QueryClient {
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }
 
-const NAME_FIELDS = ["displayName", "name", "title", "userPrincipalName", "mail", "subject"];
-const NAME_SQL = `COALESCE(${NAME_FIELDS.map((field) => `NULLIF(rv.payload->>'${field}', '')`).join(", ")})`;
+const NAME_SQL = objectNameSql("rv.payload", "rv.resource_type");
 
 /** Every key, and each side of a relationship edge ("parent|family|target"). */
 export function keysToName(keys: (string | null | undefined)[]): string[] {

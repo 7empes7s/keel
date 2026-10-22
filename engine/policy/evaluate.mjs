@@ -10,8 +10,10 @@
 // no-match evaluation is recorded exactly like a match — so "why did nothing
 // happen" is answerable from the evidence chain alone.
 import { createHash } from 'node:crypto';
+import { objectNameSql } from '../cir/objectName.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
 import { can } from '../authz/can.mjs';
+import { gateBlastRadius } from '../safety/blastRadius.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { OPEN_DRIFT_PREDICATE } from '../store/openDrift.mjs';
 import { executeAutoRemediation } from './execute.mjs';
@@ -42,7 +44,7 @@ export function policyMatches(policy, drift) {
 /** Structural guardrail (§3.4): a policy may not auto_remediate above its own
  * max_blast_radius, whatever it matched. Never configurable away. */
 export function exceedsMaxBlastRadius(drift, policy) {
-  return BLAST_RADIUS_RANK[drift.blast_radius] > BLAST_RADIUS_RANK[policy.max_blast_radius];
+  return BLAST_RADIUS_RANK[gateBlastRadius(drift.resource_type, drift.blast_radius)] > BLAST_RADIUS_RANK[policy.max_blast_radius];
 }
 
 // Roadmap task-55: the same guardrail re-applied AFTER dependency expansion. The
@@ -79,7 +81,7 @@ export function maxOperationImpact(resources, patches = []) {
       naturalKey: resource.naturalKey,
       resourceType: resource.resourceType,
       verb: resource.verb ?? 'patch',
-      blastRadius: resource.blastRadius ?? null,
+      blastRadius: gateBlastRadius(resource.resourceType, resource.blastRadius ?? null),
     }))
     .sort((left, right) => left.naturalKey.localeCompare(right.naturalKey));
 
@@ -196,8 +198,8 @@ export async function listPolicyActions(client, { tenantRef, policyId, limit = 2
   const { rows } = await client.query(
     `SELECT e.job_id::text AS job_id, e.status, e.queued_at, e.finished_at, e.error, e.drift_id::text AS drift_id,
             d.natural_key, d.resource_type, d.change_type, d.blast_radius,
-            coalesce(d.after_payload->>'displayName', d.before_payload->>'displayName',
-                     d.after_payload->>'name', d.before_payload->>'name') AS display_name
+            coalesce(${objectNameSql('d.after_payload', 'd.resource_type')},
+                     ${objectNameSql('d.before_payload', 'd.resource_type')}) AS display_name
        FROM auto_remediation_execution e
        LEFT JOIN drift d ON d.id = e.drift_id
       WHERE e.tenant_ref = $1 AND e.policy_id::text = $2

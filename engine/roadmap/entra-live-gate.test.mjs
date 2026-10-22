@@ -17,8 +17,9 @@ import { ENFORCEMENT_STEP } from '../restore/conditionalAccessEnforcement.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
 import {
   ENTRA_LIVE_KIND, LiveGateRefusal, TEST_TENANT_REFS, applyCommittedEvidence, byReferenceProblems, captureLive, captureOffline,
-  demotionRecord, main as entraLiveMain, promoteRecord, unappliedDemotions, verifiedOutcome,
+  demotionRecord, main as entraLiveMain, nameFieldsFor, namesFixture, promoteRecord, unappliedDemotions, verifiedOutcome,
 } from '../../tools/qualification/entraLive.mjs';
+import { FIXTURE_PAYLOADS } from '../../tools/qualification/operations.mjs';
 import {
   FIXTURE_GUIDANCE, buildLiveGatePlan, guidanceFor, main as planMain, renderMarkdown,
 } from '../../tools/qualification/live-gate-plan.mjs';
@@ -65,6 +66,8 @@ function fixtureRestore(step, {
   const family = edge ? step.resourceType.split('#')[1] : null;
   const key = naturalKey ?? (/\s|</.test(step.select) ? `fixture-key-${step.resourceType}` : step.select);
   const name = displayName ?? (step.fixtureKind === 'named-object' ? `${key}` : null);
+  // The object's own name, in every field its kind is named by (issue #478).
+  const named = (value) => (value ? { displayName: value, ...Object.fromEntries(nameFieldsFor(step.resourceType).map((field) => [field, value])) } : {});
   const targetId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
   // Graph returns the object id a second time, encoded as a security identifier.
   const securityIdentifier = guidToCloudSid(targetId);
@@ -78,9 +81,9 @@ function fixtureRestore(step, {
     targetId,
     priorState: edge
       ? { kind: 'relationship-edge', parentNaturalKey: key, parentTargetId: targetId, family, targetId: 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff', present: step.operation === 'edge-remove' }
-      : { id: targetId, securityIdentifier, ...(name ? { displayName: name } : {}), description: 'before', tenantHint: `https://login.microsoftonline.com/${tenantId}/` },
-    intendedState: edge ? null : { ...(name ? { displayName: name } : {}), description: 'after' },
-    postState: edge ? null : { id: targetId, ...(name ? { displayName: name } : {}), description: 'after' },
+      : { id: targetId, securityIdentifier, ...named(name), description: 'before', tenantHint: `https://login.microsoftonline.com/${tenantId}/` },
+    intendedState: edge ? null : { ...named(name), description: 'after' },
+    postState: edge ? null : { id: targetId, ...named(name), description: 'after' },
     outcome,
     outcomeDetail: outcomeDetail !== undefined ? outcomeDetail : outcome === 'succeeded' ? null : 'status 400',
     recordedAt: new Date(NOW.getTime() - 60_000),
@@ -432,6 +435,63 @@ test('a token or home realm policy is keyed by id but checked by its own display
   }
   // An id-keyed object with no name of its own stays by-reference.
   assert.equal(guidanceFor('oauth2PermissionGrant').kind, 'by-reference');
+});
+
+// Kinds whose write body has no name of its own, each with the reason.
+const NAMELESS_WRITE_BODIES = Object.freeze({
+  servicePrincipal: 'Graph copies an enterprise app\'s display name from its app registration; the write body carries only the appId',
+});
+
+test('every restorable named kind is checked by a name field its objects have (#478)', () => {
+  const named = [...new Set(buildLiveGatePlan().steps
+    .filter((step) => step.fixtureKind === 'named-object' && !step.resourceType.includes('#'))
+    .map((step) => step.resourceType))].sort();
+  assert.ok(named.includes('intuneBrandingProfile'));
+  for (const resourceType of named) {
+    const payload = FIXTURE_PAYLOADS[resourceType];
+    assert.ok(payload, `${resourceType}: no fixture write body to check its name field against`);
+    const fields = nameFieldsFor(resourceType);
+    const present = fields.filter((field) => typeof payload[field] === 'string');
+    if (NAMELESS_WRITE_BODIES[resourceType]) {
+      assert.deepEqual(present, [], `${resourceType}: its write body now has a name; drop it from NAMELESS_WRITE_BODIES`);
+      continue;
+    }
+    assert.ok(present.length > 0, `${resourceType}: none of ${fields.join(', ')} is in its objects; add its name field to OWN_NAME_FIELDS`);
+    // Named like a fixture (any KEEL-RT prefix), it passes; as the harness names it, it does not.
+    const renamed = { ...payload, ...Object.fromEntries(present.map((field) => [field, `KEEL-RT-478-${resourceType}`])) };
+    assert.equal(namesFixture(resourceType, renamed), true, `${resourceType}: a KEEL-RT name is recognised`);
+    assert.equal(namesFixture(resourceType, payload), false, `${resourceType}: a non-fixture name is refused`);
+  }
+});
+
+test('a branding profile is checked by its profile name, not the organization name it shows (#478)', async () => {
+  const step = buildLiveGatePlan().steps.find((candidate) => candidate.id === 'intuneBrandingProfile:create');
+  const profileId = '12345678-1234-4234-8234-123456789abc';
+  const run = (priorState) => {
+    const restore = fixtureRestore(step, { naturalKey: profileId });
+    return restore.getJournal({}, { restoreRef: restore.restoreRef }).then((journal) => {
+      journal[0].priorState = { id: profileId, ...priorState };
+      return captureLive({
+        client: {}, restoreRef: restore.restoreRef, resourceType: step.resourceType, operation: step.operation, fixture: profileId,
+        targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, testTenantRefs: TEST_REFS,
+        getArtifact: restore.getArtifact, getJournal: async () => journal, getSnapshot: restore.getSnapshot,
+      });
+    });
+  };
+  // Q123: the queue item names the organization 'KEEL-RT IT', which is not a fixture name.
+  assert.equal((await run({ profileName: 'KEEL-RT-branding', displayName: 'KEEL-RT IT' })).status, 'captured');
+  assert.equal((await run({ profileName: 'KEEL-RT-Q123-branding', displayName: 'Contoso IT' })).status, 'captured');
+  await assert.rejects(run({ profileName: 'Contoso branding', displayName: 'KEEL-RT-IT' }), /not a disposable/);
+  await assert.rejects(run({ profileName: 'prod-KEEL-RT-branding', displayName: 'Contoso IT' }), /not a disposable/);
+});
+
+test('an app relationship is a fixture only when both of its apps are (#478)', () => {
+  const both = { sourceDisplayName: 'KEEL-RT-148-app-main', targetDisplayName: 'KEEL-RT-148-app-dep' };
+  assert.equal(namesFixture('mobileAppRelationship', both), true);
+  assert.equal(namesFixture('mobileAppRelationship', { ...both, targetDisplayName: 'Company Portal' }), false);
+  assert.equal(namesFixture('mobileAppRelationship', { sourceDisplayName: 'KEEL-RT-148-app-main' }), false);
+  assert.equal(namesFixture('groupPolicyUploadedDefinitionFile', { fileName: 'keel-rt-148-fixture.admx', displayName: 'Windows Update' }), true);
+  assert.equal(namesFixture('groupPolicyUploadedDefinitionFile', { fileName: 'windowsupdate.admx', displayName: 'KEEL-RT-admx' }), false);
 });
 
 test('a delegated consent grant is checked by its client app and user, not a role (#295)', async () => {

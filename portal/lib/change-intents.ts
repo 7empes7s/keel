@@ -66,7 +66,7 @@ export async function loadChangeIntents(client: Client, tenantRef: string, now =
     intents: intents.map((intent) => ({ ...intent, name: saved[intent.naturalKey]?.name ?? null })),
     changes: drifts.map((drift) => ({
       driftId: String(drift.id), naturalKey: String(drift.natural_key), resourceType: String(drift.resource_type),
-      name: payloadName(drift.after_payload) ?? payloadName(drift.before_payload) ?? saved[String(drift.natural_key)]?.name ?? null,
+      name: payloadName(drift.after_payload, String(drift.resource_type)) ?? payloadName(drift.before_payload, String(drift.resource_type)) ?? saved[String(drift.natural_key)]?.name ?? null,
       detectedAt: iso(drift.detected_at), transitions: (driftTransitions(drift) ?? []) as IntentTransition[],
     })).filter((change) => change.transitions.length > 0),
     people: people.map((person) => ({

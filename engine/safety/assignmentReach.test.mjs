@@ -120,6 +120,12 @@ test('a remediation whose fix is turned on reaches its devices anew; a changed s
   const live = (fix, schedule) => ({ outcome: 'complete', targets: [liveEdge('g-1', 'groupAssignmentTarget', { runRemediationScript: fix, runSchedule: schedule })] });
   assert.deepEqual(newAssignmentReach(resource, live(false, daily), resolve, extras), [`${GROUP}, runRemediationScript: true`]);
   assert.deepEqual(newAssignmentReach(resource, live(true, { ...daily, interval: 7 }), resolve, extras), []);
+  // Turning the fix off only narrows what runs there.
+  const off = { live: { state: 'present' }, assignments: { outcome: 'complete', targets: [include(GROUP, { runRemediationScript: false, runSchedule: daily })] } };
+  assert.deepEqual(newAssignmentReach(off, live(true, daily), resolve, extras), []);
+  // A filter is named by its kind, never by its id.
+  const filtered = { live: { state: 'absent' }, assignments: { outcome: 'complete', targets: [include(GROUP, { filterId: 'f-1', filterType: 'include' })] } };
+  assert.deepEqual(newAssignmentReach(filtered, null, resolve), [`${GROUP}, with an assignment filter (include)`]);
 });
 
 test('attaching assignments records who they newly reach, and a same-text script assigned wider is promoted and judged', () => {

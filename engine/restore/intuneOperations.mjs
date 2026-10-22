@@ -577,7 +577,7 @@ function targetLabel(targetType, key, attributes, extras) {
   }[targetType] ?? targetType ?? 'a target of unknown kind');
   const filter = filterOf(attributes);
   const details = [
-    ...(filter ? [`filter ${filter.id} (${filter.type})`] : []),
+    ...(filter ? [`with an assignment filter (${filter.type})`] : []),
     ...extras.filter((field) => attributes?.[field] !== undefined && attributes?.[field] !== null)
       .map((field) => `${field}: ${JSON.stringify(withoutAnnotations(attributes[field]))}`),
   ];
@@ -587,8 +587,8 @@ function targetLabel(targetType, key, attributes, extras) {
 /**
  * Issue #461: who a restore's assignment write reaches that the object does not
  * reach now, in plain words, sorted; null when no assignments are written. A new
- * include target (or the same one with its remediation fix turned on; a schedule
- * alone never counts) counts, and so does a live exclusion the backup does not have.
+ * include target (or the same one with its remediation fix turned on; a schedule,
+ * or a fix turned off, alone never counts) counts, and so does a live exclusion the backup does not have.
  * An added exclusion only narrows, so it never counts. When the live assignments
  * were not read (a create, or a read that did not complete), every include target
  * counts: the safe direction. The content-effect review (engine/safety/
@@ -601,12 +601,16 @@ export function newAssignmentReach(resource, observed, resolve, assignmentExtras
   if (plan.state !== 'ready') return null;
   const liveEdges = resource.live?.state === 'present' && observed && isComplete(observed.outcome) ? (observed.targets ?? []) : null;
   const liveIdentities = liveEdges === null ? new Set() : liveAssignmentIdentities(liveEdges, { observed: true, extras });
+  // The same targets without their settings: a fix turned off reaches no one new.
+  const liveTargets = liveEdges === null ? new Set() : liveAssignmentIdentities(liveEdges, { observed: true });
   const reach = new Set();
   for (const target of resource.assignments.targets ?? []) {
-    const single = assignmentPlan({ assignments: { outcome: resource.assignments.outcome, targets: [target] } }, resolve, { extras });
-    const [identity] = single.identities ?? [];
+    const single = { assignments: { outcome: resource.assignments.outcome, targets: [target] } };
+    const [identity] = assignmentPlan(single, resolve, { extras }).identities ?? [];
     if (!identity || targetTypeOf(identity) === EXCLUSION || liveIdentities.has(identity)) continue;
     const attributes = target.attributes ?? {};
+    const [bare] = assignmentPlan(single, resolve).identities ?? [];
+    if (attributes.runRemediationScript !== true && liveTargets.has(bare)) continue;
     reach.add(targetLabel(attributes.targetType ?? null, target.targetNaturalKey ?? null, attributes, extras));
   }
   for (const edge of liveEdges ?? []) {

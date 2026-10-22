@@ -87,7 +87,7 @@ for (const theme of ["dark", "light"] as const) {
 }
 
 // Visual baselines for the pages most likely to regress, both themes, plus phone width.
-const VISUAL = ["dashboard", "drift", "restore", "approvals", "protect", "job-failed"];
+const VISUAL = ["dashboard", "drift", "restore", "approvals", "protect", "job-failed", "policy-activation"];
 for (const theme of ["dark", "light"] as const) {
   for (const name of VISUAL) {
     test(`visual · ${name} · ${theme}`, async ({ page }) => {
@@ -1124,6 +1124,11 @@ test("restore completion closes an item with a reference and refuses a pasted se
   const app = page.locator(".completion-resource").filter({ hasText: "application:Payroll connector" });
   await expect(app.locator(".completion-badge-configuration-restored")).toHaveText("Configuration restored");
   const credential = app.locator(".completion-item").filter({ hasText: "client secrets" });
+  // The evidence form opens only when asked for, and its warning is announced with the field.
+  await expect(credential.getByLabel("Evidence reference")).toHaveCount(0);
+  await credential.getByRole("button", { name: "Add evidence" }).click();
+  await expect(credential.getByLabel("Evidence reference")).toHaveAttribute("aria-describedby", /reference-hint-/);
+  await expect(credential.locator(".completion-hint")).toHaveText("Where the proof lives. Never the secret itself.");
   await credential.getByLabel("Evidence reference").fill("-----BEGIN PRIVATE KEY----- secret");
   await credential.getByRole("button", { name: "Mark verified" }).click();
   await expect(page.getByText("never the credential")).toBeVisible();
@@ -1131,6 +1136,7 @@ test("restore completion closes an item with a reference and refuses a pasted se
   await credential.getByRole("button", { name: "Mark verified" }).click();
   await expect(credential.getByRole("button", { name: "Reopen" })).toBeVisible();
   const integration = app.locator(".completion-item").filter({ hasText: "new object id" });
+  await integration.getByRole("button", { name: "Add evidence" }).click();
   await integration.getByLabel("Evidence reference").fill("CHG-5121");
   await integration.getByRole("button", { name: "Mark verified" }).click();
   await expect(app.locator(".completion-badge-service-validation-pending")).toHaveText("Service validation pending");
@@ -1951,13 +1957,13 @@ test("a failed restore's undo lists what will be undone, kept, and lost, then as
   await open(page, "/jobs/r10");
   await expect(page.getByRole("heading", { name: "Undo what this failed restore changed" })).toBeVisible();
   await planUndo(page);
-  const undone = page.locator(".compensation-section").filter({ hasText: "WILL BE UNDONE" });
+  const undone = page.locator(".compensation-section").filter({ hasText: "Will be undone" });
   await expect(undone.getByText("Revert description, visibility")).toBeVisible();
   await expect(undone.getByText("Delete the object this restore created")).toBeVisible();
-  await expect(page.locator(".compensation-section").filter({ hasText: "NOT OVERWRITTEN" }).getByText("Require MFA for admins (Conditional Access policy)", { exact: true })).toBeVisible();
-  await expect(page.locator(".compensation-section").filter({ hasText: "NOT OVERWRITTEN" })).toContainText("session controls changed after this restore, so KEEL will not overwrite the later change.");
-  await expect(page.locator(".compensation-section").filter({ hasText: "CANNOT BE UNDONE" }).getByText("Contractors (group)", { exact: true })).toBeVisible();
-  await expect(page.locator(".compensation-section").filter({ hasText: "NEEDS MANUAL REVIEW" })).toContainText("amara.okafor@contoso.example (user) as member of Finance (group)");
+  await expect(page.locator(".compensation-section").filter({ hasText: "Changed since, so not overwritten" }).getByText("Require MFA for admins (Conditional Access policy)", { exact: true })).toBeVisible();
+  await expect(page.locator(".compensation-section").filter({ hasText: "Changed since, so not overwritten" })).toContainText("session controls changed after this restore, so KEEL will not overwrite the later change.");
+  await expect(page.locator(".compensation-section").filter({ hasText: "Cannot be undone" }).getByText("Contractors (group)", { exact: true })).toBeVisible();
+  await expect(page.locator(".compensation-section").filter({ hasText: "Needs a manual review" })).toContainText("amara.okafor@contoso.example (user) as member of Finance (group)");
   await expect(page.locator(".compensation-statement")).toContainText("not atomic");
   // The planned undo speaks in words too; keys, raw reasons and ids stay in its record.
   expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
@@ -2194,8 +2200,24 @@ for (const hash of ["/baselines", "/drift", "/baselines/new", "/compare"]) {
 test("policy activation preview names dependencies above the limit and refuses a stale preview", async ({ page }) => {
   await open(page, "/policies/p2");
   const preview = page.locator("section.policy-preview");
-  await expect(preview.locator(".policy-preview-sentence")).toHaveText("Ready to turn on. It would undo 2 changes now; Keel will refuse 1 that depends on something above its limit.");
-  await expect(preview.locator(".policy-dependencies li")).toHaveText("Privileged approvers (group), needed by Finance (group). Impact: could lock out admins. Above its limit, so Keel will refuse these undos.");
+  await expect(preview.locator(".policy-preview-text")).toHaveText("Ready to turn on. It would undo 2 changes now; Keel will refuse 1 that depends on something above its limit.");
+  // What needs the reader first, worst first, each with what to do; specifics behind Show details.
+  const alerts = preview.locator(".ui-alert");
+  await expect(alerts).toHaveCount(2);
+  await expect(alerts.nth(0)).toHaveAttribute("data-tone", "soon");
+  await expect(alerts.nth(0).locator(".ui-alert-title")).toContainText("1 undo will be refused");
+  await expect(alerts.nth(0).locator(".ui-alert-more li")).toBeHidden();
+  await alerts.nth(0).getByText("Show details").click();
+  await expect(alerts.nth(0).locator(".ui-alert-more li")).toHaveText("Privileged approvers (group) (could lock out admins) is needed by Finance (group).");
+  await expect(alerts.nth(1)).toHaveAttribute("data-tone", "low");
+  await expect(preview.locator(".ui-tile")).toHaveCount(4);
+  // One table: each item with its impact and what happens to it, coloured by outcome.
+  const finance = preview.locator(".pv-table tbody[data-group='matched'] tr").filter({ hasText: "Finance (group)" });
+  await expect(finance).toHaveAttribute("data-tone", "soon");
+  await expect(finance.locator("td[data-label='Outcome']")).toHaveText("Will refuse");
+  const dependency = preview.locator(".pv-table tbody[data-group='dependencies'] tr").filter({ hasText: "Privileged approvers (group)" });
+  await expect(dependency).toHaveAttribute("data-tone", "urgent");
+  await expect(dependency.locator("td[data-label='Outcome']")).toHaveText("Above its limit");
   await expect(preview).toContainText("1 waiting to run, not yet undone");
   await expect(preview).not.toContainText("1 undone");
   // With a preview ready, "Turn on" is the one amber action; a plain Turn on never shows for an undo rule.
@@ -3085,4 +3107,35 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(page.locator(".page-header .status-pill")).toHaveText("Protected");
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
   await expect(page.locator(".ov-calm")).toBeVisible();
+});
+
+// Job page redesign: a failed job leads with a plain cause and one next step; the
+// engine's error text waits behind Show details. Then the job, who asked, and timing tiles.
+test("Job · a failed job leads with a plain cause, keeps the raw error behind Show details, and shows timing tiles", async ({ page }) => {
+  await open(page, "/jobs/a4");
+  const alert = page.locator('.ui-alert[data-alert="error"]');
+  await expect(alert).toHaveAttribute("data-tone", "soon");
+  await expect(alert.locator(".ui-alert-title")).toContainText("Microsoft 365 slowed Keel down");
+  await expect(alert.locator(".ui-alert-todo")).toContainText("What to do:");
+  await expect(alert.getByRole("link", { name: "Open schedules" })).toHaveAttribute("href", /schedules/);
+  // The raw error is not in plain view until asked for.
+  await expect(alert.locator(".ui-alert-more li")).toBeHidden();
+  const explanation = await textOutside(page, "main#main-content", '[data-layer="record"], details');
+  expect(explanation).not.toContain("Graph 429");
+  await alert.getByText("Show details").click();
+  await expect(alert.locator(".ui-alert-more li")).toHaveText("Graph 429: throttled after 5 retries on /deviceManagement/deviceConfigurations");
+  // The alert comes before the summary; the timing is three tiles, not a sentence.
+  const order = await page.locator(".job-page > section").evaluateAll((sections) => sections.map((section) => section.className));
+  expect(order[0]).toContain("job-attention");
+  await expect(page.locator(".job-page .ui-tile")).toHaveCount(3);
+  await expect(page.locator('.ui-tile[data-tile="ran"]')).toHaveAttribute("data-tone", "urgent");
+  await expect(page.locator(".job-requester .person")).toBeVisible();
+});
+
+test("Job page and rule preview fit a phone without sideways scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  for (const hash of ["/jobs/a4", "/jobs/r9", "/jobs/r10", "/policies/p2"]) {
+    await open(page, hash, "light");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), hash).toBeLessThanOrEqual(0);
+  }
 });

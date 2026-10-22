@@ -4238,19 +4238,28 @@ section.wizard-panel {
   animation: grow-x 700ms var(--ease-out) 150ms both;
 }
 
-/* Job detail */
+/* Job detail (redesign): alerts first, then one summary card and the timing tiles. */
+.job-page { display: grid; gap: var(--space-md); margin-top: var(--space-md); min-width: 0; }
+.job-page > * { min-width: 0; }
+.job-attention { display: grid; gap: var(--space-xs); }
+.job-section-head { display: inline-flex; align-items: center; gap: var(--space-xs); margin: 0; font-size: 1.0625rem; font-weight: 650; }
+.job-section-head .icon { width: 1.125rem; height: 1.125rem; flex: none; color: var(--text-soft); }
 .job-summary {
   --tone: var(--line-strong);
+  position: relative;
   display: grid;
-  margin-top: var(--space-xl);
-  padding: var(--space-lg);
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-md) var(--space-md) calc(var(--space-md) + 4px);
+  overflow: hidden;
   border: 1px solid var(--line);
-  border-left: 4px solid var(--tone);
+  border-radius: var(--radius-lg);
   background: var(--surface);
-  grid-template-columns: minmax(0, 1fr) minmax(16rem, 1fr);
-  align-items: center;
-  gap: var(--space-xl);
 }
+.job-summary::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--tone); }
+.job-summary-main h2 { margin: 0; font-size: 1.25rem; line-height: 1.3; overflow-wrap: anywhere; }
+.job-requester { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); margin: 0; color: var(--text-soft); font-size: 0.875rem; }
+.job-requester .person { color: var(--text); font-weight: 600; }
+.job-links { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
 
 .job-summary-succeeded { --tone: var(--protected); }
 .job-summary-failed { --tone: var(--failed); }
@@ -4397,7 +4406,6 @@ section.wizard-panel {
 }
 
 @media (max-width: 46rem) {
-  .job-summary,
   .job-data-grid {
     grid-template-columns: 1fr;
   }
@@ -4851,20 +4859,27 @@ section.wizard-panel {
   .content-effect-approve .btn { justify-content: center; }
 }
 
-/* Completion item: text on top, a compact one-line evidence form below. */
+/* Completion item (Job page redesign): kind icon, words, a status badge and one
+   action; the evidence form opens below the row only when asked for. */
 .completion-item {
+  --tone: var(--check-soon);
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-xs) var(--space-sm);
-  padding: var(--space-xs) var(--space-sm);
+  padding: var(--space-xs) var(--space-sm) var(--space-xs) calc(var(--space-sm) + 3px);
   background: var(--surface-muted);
   font-size: 0.875rem;
 }
-
-.completion-item-pending {
-  grid-template-columns: minmax(0, 1fr);
-}
+.completion-item::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--tone); }
+.completion-item[data-tone="fine"] { --tone: var(--fine); }
+.completion-kind { display: inline-grid; width: 1.75rem; height: 1.75rem; place-items: center; border-radius: var(--radius-md); background: var(--surface); color: var(--text-soft); }
+.completion-kind .icon { width: 1rem; height: 1rem; }
+.completion-item-text { display: grid; gap: 0.0625rem; min-width: 0; overflow-wrap: anywhere; }
+.completion-item-text > span { color: var(--text-soft); }
+.completion-act:empty { display: none; }
+.completion-item > .completion-form { grid-column: 2 / -1; }
 
 .completion-mechanism {
   color: var(--text-muted);
@@ -4872,7 +4887,7 @@ section.wizard-panel {
 
 .completion-form {
   display: grid;
-  grid-template-columns: 9rem minmax(0, 22rem) auto;
+  grid-template-columns: 9rem minmax(0, 22rem) auto auto;
   justify-content: start;
   align-items: end;
   gap: var(--space-2xs);
@@ -4897,9 +4912,10 @@ section.wizard-panel {
 }
 
 .completion-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
   margin: 0;
-  color: var(--text-soft);
-  font-size: 0.875rem;
 }
 
 .completion-form select,
@@ -4930,8 +4946,10 @@ section.wizard-panel {
   }
 
   .completion-item {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
   }
+  .completion-item > .completion-act { grid-column: 2 / -1; justify-self: start; }
+  .completion-item > .completion-form { grid-column: 1 / -1; }
 }
 
 /* Task-70: undo (compensation) of a restore. */
@@ -4962,6 +4980,7 @@ section.wizard-panel {
 }
 
 .compensation-status { margin: 0; }
+.compensation-head { display: flex; align-items: center; gap: var(--space-xs); margin: 0; font-size: 0.9375rem; font-weight: 650; }
 
 .compensation-plan,
 .compensation-section {
@@ -5262,19 +5281,31 @@ section.wizard-panel {
   margin-top: var(--space-md);
 }
 
-/* Roadmap task-92: the activation preview of an automatic roll-back policy. */
-.policy-preview {
-  margin-top: var(--space-md);
-  padding: var(--space-md);
-  border: 1px solid var(--line);
-  background: var(--surface-muted);
-}
-.policy-preview-sentence { margin: 0; padding-left: var(--space-sm); border-left: 3px solid var(--protected); font-weight: 650; }
-.policy-preview-sentence.is-blocked { border-left-color: var(--failed); }
-.policy-preview .policy-facts { margin: 0; padding-left: var(--space-lg); }
-.policy-preview .is-over-limit { color: var(--text); font-weight: 600; }
-.policy-preview-note { color: var(--text-muted); font-size: 0.875rem; }
+/* Roadmap task-92 and the rule preview redesign: status band, alerts, tiles, one
+   table of what happens to each item, then who it acts as and its limits. */
+.policy-preview { display: grid; gap: var(--space-md); min-width: 0; }
+.policy-preview > * { min-width: 0; }
+.policy-preview-sentence { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); margin: 0; padding: var(--space-sm) var(--space-md); border: 1px solid color-mix(in srgb, var(--fine) 35%, var(--line)); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--fine-bg) 60%, var(--surface)); font-weight: 650; }
+.policy-preview-sentence.is-blocked { border-color: color-mix(in srgb, var(--urgent) 40%, var(--line)); background: color-mix(in srgb, var(--urgent-bg) 60%, var(--surface)); }
+.policy-preview-text { flex: 1 1 16rem; min-width: 0; }
+.policy-preview-note { display: inline-flex; align-items: center; gap: 0.375rem; margin: 0; color: var(--text-soft); font-size: 0.8125rem; }
+.policy-preview-note .icon { width: 0.875rem; height: 0.875rem; flex: none; }
 .policy-activation > .form-actions { margin-top: var(--space-sm); }
+.pv-table td[data-label="What"] { color: var(--text); }
+.pv-facts { display: grid; gap: var(--space-sm); grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
+.pv-facts > div { display: grid; align-content: start; gap: var(--space-xs); min-width: 0; padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.pv-facts dt { display: inline-flex; align-items: center; gap: 0.375rem; color: var(--text-soft); font-size: 0.8125rem; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.pv-facts dt .icon { width: 1rem; height: 1rem; flex: none; }
+.pv-facts dd { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem var(--space-xs); margin: 0; min-width: 0; font-size: 0.9375rem; overflow-wrap: anywhere; }
+.pv-facts dd small { flex-basis: 100%; color: var(--text-soft); font-size: 0.8125rem; }
+.pv-checks { display: grid; gap: var(--space-xs); width: 100%; margin: 0; padding: 0; list-style: none; }
+.pv-checks li { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem var(--space-xs); }
+@media (max-width: 46rem) {
+  .pv-facts { grid-template-columns: minmax(0, 1fr); }
+  .pv-table td[data-label="What"] { grid-column: 1 / -1; font-size: 0.8125rem; }
+  .pv-table td[data-label="Impact"] { grid-column: 1 / -1; }
+  .pv-table td[data-label="Outcome"] { grid-column: 2; grid-row: 1; justify-self: end; }
+}
 
 /* Roadmap task-93: approved emergency changes. */
 .change-intent-list { list-style: none; margin: 0 0 var(--space-lg); padding: 0; display: grid; gap: var(--space-md); }
@@ -8925,7 +8956,7 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .po-activation .form-actions { margin-top: 0; }
 .po-facts { display: grid; gap: var(--space-sm); grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
 .po-facts > div { display: grid; gap: var(--space-xs); min-width: 0; padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
-.po-facts dt { display: inline-flex; align-items: center; gap: 0.375rem; color: var(--text-soft); font-size: 0.8125rem; font-weight: 600; }
+.po-facts dt { display: inline-flex; align-items: center; gap: 0.375rem; color: var(--text-soft); font-size: 0.8125rem; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .po-facts dt .icon { width: 1rem; height: 1rem; }
 .po-facts dd { margin: 0; min-width: 0; font-size: 0.9375rem; line-height: 1.45; overflow-wrap: anywhere; }
 .po-chips { display: flex; flex-wrap: wrap; gap: var(--space-xs); }

@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { JobDetail } from "@/components/job-detail";
+import { jobErrorCause } from "@/lib/job-view";
 import { JobTable } from "@/components/job-table";
 import { guardedJobList, guardedJobShow, normalizeJob } from "@/lib/action";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
@@ -44,9 +45,10 @@ test("job details preserve the full error and expose params, result, worker and 
   // Task-130: the full error, params, result, worker and heartbeat are in the record.
   // A multi-line error keeps its line breaks in a block.
   assert.ok(html.includes(`Full error</dt><dd><pre class="technical-block"><code>${row.error}</code></pre>`));
-  assert.ok(html.includes("What went wrong"), "the error block renders because there is an error");
-  assert.ok(!renderToStaticMarkup(createElement(JobDetail, { job: normalizeJob({ ...row, status: "succeeded", error: null }) })).includes("What went wrong"),
-    "no error block without an error");
+  assert.ok(html.includes('data-alert="error"'), "the error alert renders because there is an error");
+  assert.ok(/<details class="ui-alert-more"[^>]*><summary>Show details<\/summary>/.test(html), "the raw error waits behind Show details");
+  assert.ok(!renderToStaticMarkup(createElement(JobDetail, { job: normalizeJob({ ...row, status: "succeeded", error: null }) })).includes('data-alert="error"'),
+    "no error alert without an error");
   for (const text of ["Params", "enforce", "Result", "restored", "worker-1", "Heartbeat"]) {
     assert.ok(html.includes(text), text);
   }
@@ -99,4 +101,23 @@ test("existing guarded job handlers serve the requested history limit and job de
   const shown = (await show.json()).job;
   assert.deepEqual({ ...shown, references: undefined }, { ...normalizeJob(row), references: undefined });
   assert.deepEqual(queries.at(-1)?.values, [row.id]);
+});
+
+test("a failed job leads with a plain cause and one next step, never the raw error", () => {
+  const cause = (error: string, kind = "backup") => jobErrorCause({ kind, error, params: { artifactId: "a1" } });
+  assert.equal(cause("Graph 429: throttled after 5 retries on /deviceManagement/deviceConfigurations").title, "Microsoft 365 slowed Keel down");
+  assert.equal(cause("Graph 403: Authorization_RequestDenied on PATCH /groups/x").title, "Keel is missing a permission in Microsoft 365");
+  assert.equal(cause("Graph 400: the update to Finance was rejected", "restore").title, "Microsoft 365 refused the change");
+  assert.equal(cause("fetch failed: ECONNRESET").title, "Keel could not reach Microsoft 365");
+  assert.equal(cause("restore refused: blocked-content-effect", "restore").action?.href, "/approvals/content-effects/a1");
+  assert.equal(cause("something odd").title, "The job stopped with an error");
+  for (const text of ["Graph 429: throttled", "Graph 403: x", "something odd"]) {
+    const plain = cause(text);
+    assert.doesNotMatch(`${plain.title} ${plain.todo}`, /Graph|\b4\d\d\b|\//, "the cause and next step are plain words");
+  }
+  const job = normalizeJob({ ...row, status: "failed", error: "Graph 429: throttled after 5 retries on /deviceManagement/deviceConfigurations" });
+  const html = renderToStaticMarkup(createElement(JobDetail, { job }));
+  const [beforeDetails] = html.split("<details");
+  assert.ok(!beforeDetails.includes("Graph 429"), "the raw error is not in plain view");
+  assert.ok(html.indexOf('data-alert="error"') < html.indexOf('id="job-heading"'), "the error comes before the summary");
 });

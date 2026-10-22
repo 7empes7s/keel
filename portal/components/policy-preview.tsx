@@ -4,8 +4,14 @@ import { useState } from "react";
 
 import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
-import type { ActivationPreview, PreviewDrift } from "@/lib/policies";
-import { namedSubject } from "@/lib/job-names";
+import { AlertList } from "@/components/ui/alert-list";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
+import { StatTiles } from "@/components/ui/stat-tiles";
+import type { ActivationPreview } from "@/lib/policies";
+import {
+  findingWords, previewAlerts, previewGroups, previewTiles, refusedMatches,
+  type PreviewTone,
+} from "@/lib/policy-preview-view";
 import { ago, formatTimestamp, words } from "@/lib/presentation";
 import { personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
@@ -25,26 +31,6 @@ function plural(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-const IMPACT_WORDS: Record<string, string> = { cosmetic: "low risk", "access-affecting": "affects access", "tenant-lockout": "could lock out admins" };
-
-function impactWords(blastRadius: string | null): string {
-  return (blastRadius && IMPACT_WORDS[blastRadius]) || "not rated";
-}
-
-const CHANGE_WORDS: Record<string, string> = { modified: "was changed", added: "was added", removed: "was removed" };
-const OPERATION_WORDS: Record<string, string> = {
-  create: "Recreating", update: "Updating", delete: "Deleting", "restore-soft-deleted": "Restoring from the recycle bin",
-};
-const UNKNOWN_WORDS: Record<string, string> = {
-  "scope-unresolved": "Keel could not find the backup it would restore from",
-  "not-in-backup": "it is not in the backup Keel would restore from",
-  "unresolved-reference": "it refers to something that is not in the backup",
-  "impact-unknown": "its impact is not rated",
-  "operation-unknown": "Keel does not recognise the kind of change",
-};
-const FINDING_VERDICTS: Record<string, string> = {
-  pass: "passing", fail: "failing", unknown: "not known", "not-applicable": "does not apply", exception: "excepted",
-};
 const CHANGED_WORDS: Record<string, string> = {
   policy: "the policy", grant: "the account's access", ownership: "who owns what it touches",
   projection: "the changes it would act on", preview: "the changes it would act on",
@@ -62,12 +48,6 @@ export function previewSentence(preview: ActivationPreview): string {
   const refused = refusedMatches(preview).length;
   const now = `Ready to turn on. It would undo ${plural(preview.matched.length, "change")} now`;
   return refused > 0 ? `${now}; Keel will refuse ${refused} that ${refused === 1 ? "depends" : "depend"} on something above its limit.` : `${now}.`;
-}
-
-/** Matched changes whose undo depends on something above the rule's limit. */
-function refusedMatches(preview: ActivationPreview): PreviewDrift[] {
-  const blocked = new Set(preview.dependencies.filter((dependency) => dependency.overCeiling).flatMap((dependency) => dependency.requiredBy));
-  return preview.matched.filter((drift) => blocked.has(drift.naturalKey));
 }
 
 /** "1 waiting to run, not yet undone · 5 undone · 1 failed or refused". */
@@ -95,110 +75,98 @@ export function refusalSentence(code: string, changed: string[] = []): string {
   }
 }
 
-function limitSentence(preview: ActivationPreview): string {
-  const ceiling = impactWords(preview.limits.maxBlastRadius);
-  return `Acts only on changes rated ${ceiling} or lower, and refuses an undo if anything it depends on is rated higher.`;
-}
-
-function rateSentence(preview: ActivationPreview): string | null {
-  const { maxActionsPerWindow: count, windowSeconds: seconds } = preview.limits;
-  if (count == null) return null;
-  const window = seconds === 3600 ? "an hour" : seconds === 86_400 ? "a day" : seconds === 60 ? "a minute" : `every ${seconds} seconds`;
-  return `Up to ${count} ${window}, then it pauses itself until someone resumes it.`;
+function badgeTone(tone: PreviewTone): BadgeTone {
+  return tone;
 }
 
 export function ActivationPreviewView({ preview, now }: { preview: ActivationPreview; now: string }) {
-  const overLimit = preview.dependencies.filter((dependency) => dependency.overCeiling);
-  const rate = rateSentence(preview);
-  // Names, not ids: every resource by its saved name; keys stay in Technical details.
-  const resourceLabel = (key: string) => namedSubject(key, preview.names ?? {});
   const runAs = preview.runAs;
+  const alerts = previewAlerts(preview);
+  const groups = previewGroups(preview);
+  const ready = preview.verdict === "ready";
   return (
     <section aria-label={`What turning on ${preview.policy.name} would do`} className="policy-preview">
-      <p className={`policy-preview-sentence ${preview.verdict === "ready" ? "is-ready" : "is-blocked"}`} role="status">{previewSentence(preview)}</p>
+      <p className={`policy-preview-sentence ${ready ? "is-ready" : "is-blocked"}`} role="status">
+        <Badge tone={ready ? (alerts.length ? "soon" : "fine") : "urgent"}>{ready ? "Ready" : "Blocked"}</Badge>
+        <span className="policy-preview-text">{previewSentence(preview)}</span>
+      </p>
 
-      <h3>What it would undo now</h3>
-      <ul className="policy-facts">
-        {preview.matched.length === 0 ? <li>Nothing matches it right now.</li> : null}
-        {preview.matched.map((drift) => (
-          <li key={drift.driftId}>{resourceLabel(drift.naturalKey)} {CHANGE_WORDS[drift.changeType] ?? "changed"}. Impact: {impactWords(drift.blastRadius)}.</li>
-        ))}
-        {preview.matchedOverCeiling.map((drift) => (
-          <li key={drift.driftId}>Left alone: {resourceLabel(drift.naturalKey)} {CHANGE_WORDS[drift.changeType] ?? "changed"}, but its impact ({impactWords(drift.blastRadius)}) is above its limit.</li>
-        ))}
-      </ul>
+      {alerts.length ? <AlertList items={alerts} /> : null}
 
-      {preview.dependencies.length > 0 ? <>
-        <h3>And everything it depends on</h3>
-        <ul className="policy-facts policy-dependencies">
-          {preview.dependencies.map((dependency) => (
-            <li className={dependency.overCeiling ? "is-over-limit" : undefined} key={dependency.naturalKey}>
-              {resourceLabel(dependency.naturalKey)}, needed by {dependency.requiredBy.map((key) => resourceLabel(key)).join(", ")}. Impact: {impactWords(dependency.blastRadius)}.
-              {dependency.overCeiling ? " Above its limit, so Keel will refuse these undos." : null}
-            </li>
+      <StatTiles tiles={previewTiles(preview)} />
+
+      <div className="rs-table-wrap">
+        <table className="rs-table pv-table">
+          <caption className="visually-hidden">What turning it on would do to each item</caption>
+          <thead>
+            <tr><th scope="col">Item</th><th scope="col">What</th><th scope="col">Impact</th><th scope="col">Outcome</th></tr>
+          </thead>
+          {groups.map((group) => (
+            <tbody data-group={group.key} key={group.key}>
+              <tr className="rs-group"><th colSpan={4} scope="colgroup"><span><Icon name={group.icon} />{group.name}</span></th></tr>
+              {group.rows.length === 0 ? (
+                <tr data-tone="neutral"><th colSpan={4} scope="row"><span className="rs-row-name">Nothing matches it right now.</span></th></tr>
+              ) : group.rows.map((row) => (
+                <tr data-tone={row.tone} key={row.key}>
+                  <th scope="row"><span className="rs-row-name">{row.name}</span>{row.note ? <small>{row.note}</small> : null}</th>
+                  <td data-label="What">{row.what}</td>
+                  <td data-label="Impact"><Badge icon={null} tone={row.impactTone}>{row.impact}</Badge></td>
+                  <td data-label="Outcome"><Badge tone={badgeTone(row.tone)}>{row.outcome}</Badge></td>
+                </tr>
+              ))}
+            </tbody>
           ))}
-        </ul>
-      </> : null}
+        </table>
+      </div>
 
-      {preview.unsupported.length > 0 ? <>
-        <h3>Cannot be done automatically</h3>
-        <ul className="policy-facts">
-          {preview.unsupported.map((entry) => (
-            <li key={`${entry.naturalKey}|${entry.operation}`}>{OPERATION_WORDS[entry.operation] ?? "Changing"} {resourceLabel(entry.naturalKey)} is not supported, so it stays manual.</li>
-          ))}
-        </ul>
-      </> : null}
-
-      {preview.unknowns.length > 0 ? <>
-        <h3>What Keel cannot tell</h3>
-        <ul className="policy-facts">
-          {preview.unknowns.map((unknown, index) => (
-            <li key={`${unknown.reason}-${index}`}>{unknown.naturalKeys.map((key) => resourceLabel(key)).join(", ") || "A matched change"}: {UNKNOWN_WORDS[unknown.reason] ?? "its effect is not known"}.</li>
-          ))}
-        </ul>
-      </> : null}
-
-      <h3>Acting as</h3>
-      <ul className="policy-facts">
-        <li>
-          {runAs.readable
-            ? personLabel({ kind: "person", id: runAs.principalId ?? "", name: runAs.name === runAs.email ? null : runAs.name, email: runAs.email, readable: true }, "An account without a name")
-            : "An account that is no longer readable"}
-          {preview.runAs.authorized ? " can undo changes now." : " cannot undo changes now."}
-        </li>
-        {preview.runAs.grants.map((grant) => (
-          <li key={grant.id}>{words(grant.role)}{grant.scope !== "*" ? ` for ${titleCase(grant.scope.replace(/^entity:/, ""))}` : ""}, granted <time dateTime={grant.activeFrom ?? undefined} title={formatTimestamp(grant.activeFrom)}>{ago(grant.activeFrom, now)}</time>{grant.activeUntil ? `, until ${formatTimestamp(grant.activeUntil)}` : ""}.</li>
-        ))}
-      </ul>
-
-      <h3>Limits</h3>
-      <ul className="policy-facts">
-        <li>{limitSentence(preview)}</li>
-        {rate ? <li>{rate}</li> : null}
-        {preview.limits.automationHalted ? <li>Automation is stopped by an operator. Nothing acts until it is started again.</li> : null}
-        {overLimit.length > 0 ? <li>{plural(overLimit.length, "resource")} it depends on {overLimit.length === 1 ? "is" : "are"} above its limit.</li> : null}
-      </ul>
-
-      {preview.benchmarkFindings.state === "unavailable" || preview.benchmarkFindings.findings.length > 0 ? <>
-        <h3>Security checks it affects</h3>
-        <ul className="policy-facts">
-          {preview.benchmarkFindings.state === "unavailable" ? <li>Security check results could not be read.</li> : null}
-          {preview.benchmarkFindings.findings.map((finding) => (
-            <li key={finding.id}>
-              {finding.title ?? "A security check"}: {FINDING_VERDICTS[finding.verdict] ?? "not known"}{finding.exposed ? ", with no exception" : ""}.
-              {finding.link === "linked" ? " Checked against the same backup as this change." : " Checked against a different backup than this change."}
-            </li>
-          ))}
-        </ul>
-      </> : null}
-
-      {preview.outcomes ? <>
-        <h3>So far</h3>
-        <p>{outcomesSentence(preview.outcomes)}</p>
-      </> : null}
+      <dl className="pv-facts">
+        <div>
+          <dt><Icon name="person" />Acting as</dt>
+          <dd>
+            <span>{runAs.readable
+              ? personLabel({ kind: "person", id: runAs.principalId ?? "", name: runAs.name === runAs.email ? null : runAs.name, email: runAs.email, readable: true }, "An account without a name")
+              : "An account that is no longer readable"}</span>
+            <Badge tone={runAs.authorized ? "fine" : "urgent"}>{runAs.authorized ? "Can undo changes" : "Cannot undo changes"}</Badge>
+            {runAs.grants.map((grant) => (
+              <small key={grant.id}>{words(grant.role)}{grant.scope !== "*" ? ` for ${titleCase(grant.scope.replace(/^entity:/, ""))}` : ""}, granted <time dateTime={grant.activeFrom ?? undefined} title={formatTimestamp(grant.activeFrom)}>{ago(grant.activeFrom, now)}</time>{grant.activeUntil ? `, until ${formatTimestamp(grant.activeUntil)}` : ""}</small>
+            ))}
+          </dd>
+        </div>
+        {preview.benchmarkFindings.findings.length ? (
+          <div>
+            <dt><Icon name="baselines" />Security checks it affects</dt>
+            <dd>
+              <ul className="pv-checks">
+                {preview.benchmarkFindings.findings.map((finding) => {
+                  const verdict = findingWords(finding.verdict);
+                  return (
+                    <li key={finding.id}>
+                      <span>{finding.title ?? "A security check"}</span>
+                      <Badge tone={verdict.tone}>{verdict.label}</Badge>
+                      <small>{finding.exposed ? "No exception · " : ""}{finding.link === "linked" ? "Same backup as this change" : "Different backup than this change"}</small>
+                    </li>
+                  );
+                })}
+              </ul>
+            </dd>
+          </div>
+        ) : null}
+        {preview.outcomes ? (
+          <div>
+            <dt><Icon name="restore" />So far</dt>
+            <dd className="pv-outcomes">
+              {preview.outcomes.queued + preview.outcomes.rolledBack + preview.outcomes.failed === 0 ? <span>{outcomesSentence(preview.outcomes)}</span> : <>
+                {preview.outcomes.queued ? <Badge tone="soon">{`${preview.outcomes.queued} waiting to run, not yet undone`}</Badge> : null}
+                {preview.outcomes.rolledBack ? <Badge tone="fine">{`${preview.outcomes.rolledBack} undone`}</Badge> : null}
+                {preview.outcomes.failed ? <Badge tone="urgent">{`${preview.outcomes.failed} failed or refused`}</Badge> : null}
+              </>}
+            </dd>
+          </div>
+        ) : null}
+      </dl>
 
       <p className="policy-preview-note">
-        This preview holds until <time dateTime={preview.expiresAt} title={formatTimestamp(preview.expiresAt)}>{formatTimestamp(preview.expiresAt)}</time>. Turning the rule on approves nothing in advance: Keel checks again before every undo.
+        <Icon name="clock" /><span>Valid until <time dateTime={preview.expiresAt} title={formatTimestamp(preview.expiresAt)}>{formatTimestamp(preview.expiresAt)}</time>. Keel checks again before every undo.</span>
       </p>
 
       <TechnicalDetails summary="Technical details for this preview">

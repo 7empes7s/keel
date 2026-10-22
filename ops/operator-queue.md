@@ -1204,6 +1204,40 @@ being triggered by queue updates.
 - **Report:** B; step 1 backup check; step 2 reason; per operation: promoted / refused (exact Graph message) / blocked; step 5;
   approval ids; the evidence branch and commit; anything left in the tenant.
 
+### Q149: Live proof that a service setting change can be accepted and undone (Exchange mail flow, after #504)
+- Drafted by the "Accept or undo service setting changes" thread (2026-10-22). Code: PR #504. Fixture-tested only.
+  - **Change:** each service read kind now has its own approved setup (`workload_approved_setup`, `workload_approved`), taken on the
+    first drift run after deploy from the read before it; changes still waiting keep their earlier value. Every read is compared with it.
+    Accept writes the change into it (`acceptServiceChange`); undo is the existing workload restore from the read that holds the
+    approved value; the read that matches again resolves the alert.
+- Needs: /opt/keel-live at the #504 merge or later (`grep -q acceptServiceChange /opt/keel-live/engine/govern/workloadApproved.mjs`)
+  and its schema applied (`SELECT to_regclass('workload_approved')` is not null).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules as Q123 and Q135. Under the 2026-10-14 standing authorization, approve the restore yourself and
+  log the approval id. Restorer for the write; Collector for reads. If Exchange answers 403, report blocked with what it names; grant nothing.
+  Never touch CA policies, break-glass or Marouane's account.
+- **Fixture:** one Exchange transport rule `KEEL-RT-svc-change`, created **disabled** (it never acts on mail), e.g. condition
+  `SentTo keel-rt-nobody@<tenant domain>`, action `PrependSubject "[KEEL-RT] "`, `Mode Audit`.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`):
+  1. `node cli/keel-workload-collect.mjs run` once. Report per workload: drift status and changes, and
+     `SELECT workload, seeded_from, (SELECT count(*) FROM workload_approved a WHERE a.tenant_ref = s.tenant_ref AND a.workload = s.workload) FROM workload_approved_setup s`.
+  2. Create the fixture rule (disabled, Mode Audit). Run collect. Expect one `exchange-mail-flow` row in `workload_drift` for
+     `transport-rule:KEEL-RT-svc-change`, `change_type added`, `compared_with approved`, and an open `baseline/drift` alert.
+     **Accept it** (the portal's Accept does the same):
+     `node --input-type=module -e "import pg from 'pg'; import {acceptServiceChange} from './engine/govern/workloadApproved.mjs'; const c=new pg.Client(process.env.KEEL_DB_URL); await c.connect(); console.log(await acceptServiceChange(c,{tenantRef:'<tenant ref>',changeId:'<row id>',actor:'keel-operator',reason:'Q149 fixture'})); await c.end();"`
+     Run collect again: expect 0 new changes for it and the alert `resolved`.
+  3. **Undo:** change the fixture's `Mode` to `Enforce` (still disabled). Run collect: expect one `modified` row (Mode Audit to Enforce).
+     Dry run the restore from the row's `previous_collection_id`:
+     `node cli/keel-restore.mjs --workload exchange-mail-flow --collection <previous_collection_id> --target transport-rule:KEEL-RT-svc-change`
+     (or the portal: Changes, open the rule, Undo this change, Check, Send for approval). Expect one planned update: Mode back to Audit.
+     Approve and enforce. Run collect: expect **no new row** for the rule and its alert `resolved`; the live rule reads Mode Audit.
+  4. **Accept a modification:** set Mode Enforce again, collect, accept as in step 2. Collect: expect 0 changes; `workload_approved` holds Mode Enforce.
+  5. Cleanup: delete the rule. Collect: expect a `removed` row; accept it, collect again: 0 changes and no `KEEL-RT-svc-change` row in `workload_approved`.
+  6. Look at /drift as Marouane would (Changes, Service settings tile): report whether SharePoint or other service changes show
+     "Keel cannot undo this" with a reason, and whether mail flow changes show Accept and Undo.
+- **Report:** B; step 1 table; each step's row ids, change types and alert states; the restore's artifact and approval ids; what is left in the tenant.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

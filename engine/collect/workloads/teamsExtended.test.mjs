@@ -62,10 +62,10 @@ const SAMPLE = Object.freeze({
   'Get-CsOnlineVoicemailPolicy': pair('voicemail').map((body) => ({ ...body, EnableTranscription: true, ShareData: 'Defer', MaximumRecordingLength: '00:05:00' })),
   'Get-CsTeamsMeetingBroadcastPolicy': pair('live').map((body) => ({ ...body, AllowBroadcastScheduling: true, AllowBroadcastTranscription: false, BroadcastAttendeeVisibilityMode: 'EveryoneInCompany', BroadcastRecordingMode: 'AlwaysEnabled' })),
   'Get-CsTeamsEventsPolicy': pair('events').map((body) => ({ ...body, AllowWebinars: 'Enabled', AllowTownhalls: 'Enabled', EventAccessType: 'Everyone' })),
-  'Get-CsTeamsMeetingBroadcastConfiguration': [{ Identity: 'Global', SupportURL: 'https://support.contoso.test', AllowSdnProviderForBroadcastMeeting: true, SdnName: 'KEEL-RT-ecdn', SdnProviderName: 'hive', SdnLicenseId: 'lic-1', SdnApiTemplateUrl: 'https://ecdn.test/{0}', SdnApiToken: 'never-store-this-token' }],
+  'Get-CsTeamsMeetingBroadcastConfiguration': [{ Identity: 'Global', SupportURL: 'https://support.contoso.test', AllowSdnProviderForBroadcastMeeting: true, SdnApiToken: 'never-store-this-token' }],
   'Get-CsOnlineUser': [
-    { Identity: oid(1), UserPrincipalName: 'keel-rt-alice@contoso.test', DisplayName: 'KEEL-RT Alice', EnterpriseVoiceEnabled: true, LineURI: 'tel:+14255550101', TeamsCallingPolicy: { Name: 'KEEL-RT-calling', Authority: 'Tenant' }, OnlineVoiceRoutingPolicy: null, TenantDialPlan: null, TeamsMeetingBroadcastPolicy: null, Department: 'Finance', MobilePhone: '+1 425 555 0199' },
-    { Identity: oid(2), UserPrincipalName: 'keel-rt-bob@contoso.test', EnterpriseVoiceEnabled: false, LineURI: null, TeamsCallingPolicy: null },
+    { Identity: oid(1), UserPrincipalName: 'keel-rt-alice@contoso.test', DisplayName: 'KEEL-RT Alice', EnterpriseVoiceEnabled: true, LineUri: 'tel:+14255550101', TeamsCallingPolicy: { Name: 'KEEL-RT-calling', Authority: 'Tenant' }, OnlineVoiceRoutingPolicy: null, TenantDialPlan: null, TeamsMeetingBroadcastPolicy: null, Department: 'Finance', MobilePhone: '+1 425 555 0199' },
+    { Identity: oid(2), UserPrincipalName: 'keel-rt-bob@contoso.test', EnterpriseVoiceEnabled: false, LineUri: null, TeamsCallingPolicy: null },
   ],
   'Get-CsGroupPolicyAssignment': [{ GroupId: oid(3), PolicyType: 'TeamsCallingPolicy', PolicyName: 'KEEL-RT-calling', Priority: 1, CreatedBy: 'admin' }],
 });
@@ -116,9 +116,15 @@ test('each Teams voice read is declared, in scope, probed, read-only and ships d
   assert.throws(() => assertTeamsExtendedCmdlet({ cmdlet: 'Get-CsOnlineUser', parameters: { Identity: 'x' } }), /does not take Identity/);
   assert.throws(() => assertTeamsExtendedCmdlet({ cmdlet: 'Get-CsOnlineUser', parameters: { ResultSize: 'Unlimited' } }), /positive whole number/);
   assert.throws(() => assertTeamsExtendedCmdlet({ cmdlet: 'Get-CsTeamsCallingPolicy', parameters: { ResultSize: 5 } }), /does not take ResultSize/);
-  // The secret the backup never holds is listed for the completeness records.
-  assert.deepEqual(TEAMS_EXTENDED_MISSING.map((entry) => [entry.family, entry.field, entry.reason]), [['liveEventsConfiguration', 'SdnApiToken', 'secret']]);
-  assert.ok(!FAMILIES.liveEventsConfiguration.fields.includes('SdnApiToken'));
+  // What the backup never holds is listed for the completeness records: the secret, and
+  // the provider fields Teams does not return to a read (Q155).
+  assert.deepEqual(TEAMS_EXTENDED_MISSING.map((entry) => [entry.family, entry.field, entry.reason]), [
+    ['liveEventsConfiguration', 'SdnApiToken', 'secret'],
+    ['liveEventsConfiguration', 'SdnName, SdnProviderName, SdnLicenseId, SdnApiTemplateUrl', 'not-read'],
+  ]);
+  for (const field of ['SdnApiToken', 'SdnName', 'SdnProviderName', 'SdnLicenseId', 'SdnApiTemplateUrl']) {
+    assert.ok(!FAMILIES.liveEventsConfiguration.fields.includes(field), field);
+  }
 });
 
 test('a fixture read of every family is complete, keyed by identity, with declared fields only', async () => {
@@ -139,9 +145,12 @@ test('a fixture read of every family is complete, keyed by identity, with declar
   assert.ok(keys.includes(`group-policy-assignment:${oid(3)}/teamscallingpolicy`));
 
   const config = result.resources.find((resource) => resource.kind === 'liveEventsConfiguration');
-  assert.equal(config.fields.SdnName, 'KEEL-RT-ecdn');
+  assert.equal(config.fields.SupportURL, 'https://support.contoso.test');
+  // Shaped like the live answer (Q155): no Sdn* provider fields, so none is declared or unknown.
+  assert.deepEqual(Object.keys(config.fieldCoverage).sort(), ['AllowSdnProviderForBroadcastMeeting', 'Identity', 'SupportURL']);
   assert.ok(!JSON.stringify(result).includes('never-store-this-token'), 'the eCDN API token is never read into the result');
   const alice = result.resources.find((resource) => resource.identity === oid(1));
+  assert.equal(alice.fields.LineUri, 'tel:+14255550101');
   assert.deepEqual(alice.fields.TeamsCallingPolicy, { Name: 'KEEL-RT-calling', Authority: 'Tenant' });
   assert.equal(alice.fields.OnlineVoiceRoutingPolicy, null, 'null means the Global default and is kept as observed');
   assert.equal(alice.fieldCoverage.OnlineVoiceRoutingPolicy.status, 'observed');

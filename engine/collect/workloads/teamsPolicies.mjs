@@ -42,7 +42,11 @@ export const DEFAULT_MAX_OBJECTS = 1000;
  *    `Identity` field;
  *  - `singleton`: a tenant configuration. There is exactly one, `Global`; anything
  *    else in the answer is not trusted and is counted as unidentified.
- * Fields were declared from Microsoft's cmdlet documentation, not measured live.
+ * Fields were declared from Microsoft's cmdlet documentation, then checked against the
+ * live module (Q155, 2026-10-22, MicrosoftTeams 7.9.0): Get-CsTeamsMeetingPolicy carries
+ * no AllowUserToJoinExternalMeeting and Get-CsTenantFederationConfiguration no
+ * AllowPublicUsers (both retired), so neither is declared. A declared field an answer
+ * does not carry is `unknown` and makes the run partial.
  */
 export const FAMILIES = Object.freeze({
   meetingPolicy: Object.freeze({
@@ -55,7 +59,7 @@ export const FAMILIES = Object.freeze({
       'NewMeetingRecordingExpirationDays', 'AllowAnonymousUsersToJoinMeeting', 'AllowAnonymousUsersToStartMeeting', 'AutoAdmittedUsers',
       'AllowPSTNUsersToBypassLobby', 'AllowExternalNonTrustedMeetingChat', 'DesignatedPresenterRoleMode', 'AllowBreakoutRooms',
       'AllowMeetingReactions', 'AllowMeetingRegistration', 'WhoCanRegister', 'AllowEngagementReport', 'AllowOutlookAddIn',
-      'AllowUserToJoinExternalMeeting', 'StreamingAttendeeMode', 'MediaBitRateKb', 'VideoFiltersMode',
+      'StreamingAttendeeMode', 'MediaBitRateKb', 'VideoFiltersMode',
       'AllowWatermarkForScreenSharing', 'AllowWatermarkForCameraVideo', 'ExplicitRecordingConsent',
     ]),
   }),
@@ -85,7 +89,7 @@ export const FAMILIES = Object.freeze({
     operation: 'teams.federation-configuration', cmdlet: 'Get-CsTenantFederationConfiguration', prefix: 'federation-configuration', key: 'singleton',
     fields: Object.freeze([
       'Identity', 'AllowFederatedUsers', 'AllowedDomains', 'BlockedDomains', 'BlockAllSubdomains', 'AllowTeamsConsumer',
-      'AllowTeamsConsumerInbound', 'RestrictTeamsConsumerToExternalUserProfiles', 'AllowPublicUsers', 'TreatDiscoveredPartnersAsUnverified',
+      'AllowTeamsConsumerInbound', 'RestrictTeamsConsumerToExternalUserProfiles', 'TreatDiscoveredPartnersAsUnverified',
       'SharedSipAddressSpace', 'ExternalAccessWithTrialTenants', 'AllowedTrialTenantDomains',
     ]),
   }),

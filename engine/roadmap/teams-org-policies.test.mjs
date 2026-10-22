@@ -71,7 +71,7 @@ const SAMPLE = Object.freeze({
       NewMeetingRecordingExpirationDays: 120, AllowAnonymousUsersToJoinMeeting: true, AllowAnonymousUsersToStartMeeting: false, AutoAdmittedUsers: 'EveryoneInCompanyExcludingGuests',
       AllowPSTNUsersToBypassLobby: false, AllowExternalNonTrustedMeetingChat: true, DesignatedPresenterRoleMode: 'EveryoneUserOverride', AllowBreakoutRooms: true,
       AllowMeetingReactions: true, AllowMeetingRegistration: true, WhoCanRegister: 'Everyone', AllowEngagementReport: 'Enabled', AllowOutlookAddIn: true,
-      AllowUserToJoinExternalMeeting: 'Disabled', StreamingAttendeeMode: 'Enabled', MediaBitRateKb: 50000, VideoFiltersMode: 'AllFilters',
+      StreamingAttendeeMode: 'Enabled', MediaBitRateKb: 50000, VideoFiltersMode: 'AllFilters',
       AllowWatermarkForScreenSharing: false, AllowWatermarkForCameraVideo: false, ExplicitRecordingConsent: 'Disabled',
       Key: '[{urn:schema:Microsoft.Rtc.Management.Policy.Meeting:2015}TeamsMeetingPolicy,Tenant{00000000-0000-4000-8000-000000000154},Global]', XsAnyElements: null,
     },
@@ -104,7 +104,7 @@ const SAMPLE = Object.freeze({
   'Get-CsTenantFederationConfiguration': [
     {
       Identity: 'Global', AllowFederatedUsers: true, AllowedDomains: { AllowedDomain: [{ Domain: 'partner.test' }] }, BlockedDomains: [{ Domain: 'blocked.test' }], BlockAllSubdomains: false,
-      AllowTeamsConsumer: false, AllowTeamsConsumerInbound: false, RestrictTeamsConsumerToExternalUserProfiles: false, AllowPublicUsers: false,
+      AllowTeamsConsumer: false, AllowTeamsConsumerInbound: false, RestrictTeamsConsumerToExternalUserProfiles: false,
       TreatDiscoveredPartnersAsUnverified: false, SharedSipAddressSpace: false, ExternalAccessWithTrialTenants: 'Blocked', AllowedTrialTenantDomains: [],
     },
   ],

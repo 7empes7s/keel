@@ -13,6 +13,8 @@
  * - Write anything but the one setting (other live values are kept).
  * - Promote after the policy changed live since the dry run.
  * - Plan a fix for a setting that already passes, or a policy that is gone.
+ * - Restore a backup whose mail protection is weaker than the tenant's (an allowed
+ *   sender domain added, Safe Links click-through on, a switch off, a softer action).
  */
 import { strict as assert } from 'node:assert';
 import { after, test } from 'node:test';
@@ -29,7 +31,7 @@ import { FAMILIES, readMailFlow, recordMailFlowRun } from '../collect/workloads/
 import { approveRequest, requestApproval, SelfApprovalError } from '../govern/approvals.mjs';
 import { complianceFindings } from '../govern/baselineCompliance.mjs';
 import { getDryRunArtifactById } from '../restore/dryRunArtifact.mjs';
-import { restoreReadFamilies } from '../restore/workloads/cmdletSettings.mjs';
+import { planWorkloadSettingsRestore, restoreReadFamilies, WEAKENING_RULES, weakensMailProtection } from '../restore/workloads/cmdletSettings.mjs';
 import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 import { approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
@@ -407,4 +409,68 @@ test('every Defender email fix is a check the evaluator itself would pass afterw
     const result = evaluateControl({ controlId, tenantRef: 'sha256:pure', now, observations: { [MAIL]: { observation, resources: [{ kind: fix.family, ...fixed }] } } });
     assert.equal(result.verdict, 'pass', controlId);
   }
+});
+
+// ------------------------------------------------------- weakening guard
+
+const MAIL_PROTECTION_TYPES = ['exchangeAntiPhishPolicy', 'exchangeAntiSpamPolicy', 'exchangeAntiMalwarePolicy', 'exchangeSafeLinksPolicy'];
+
+test('every written mail protection setting has a weakening rule, except the notification switch', () => {
+  for (const write of Object.values(WKLD_WRITE_OPERATIONS).filter((item) => MAIL_PROTECTION_TYPES.includes(item.resourceType))) {
+    for (const field of write.fields) {
+      if (write.resourceType === 'exchangeAntiMalwarePolicy' && field === 'CustomNotifications') continue;
+      assert.equal(typeof WEAKENING_RULES[write.resourceType]?.[field], 'function', `${write.resourceType}.${field} has no weakening rule`);
+    }
+  }
+  const weakens = (type, field, before, after) => weakensMailProtection(type, field, before, after);
+  assert.equal(weakens('exchangeAntiSpamPolicy', 'AllowedSenderDomains', [], ['evil.example']), true);
+  assert.equal(weakens('exchangeAntiSpamPolicy', 'AllowedSenderDomains', null, ['evil.example']), true);
+  assert.equal(weakens('exchangeAntiSpamPolicy', 'AllowedSenderDomains', ['a.example', 'b.example'], ['a.example']), false);
+  assert.equal(weakens('exchangeAntiSpamPolicy', 'AllowedSenderDomains', ['a.example'], ['b.example']), true, 'swapping a domain still adds one');
+  assert.equal(weakens('exchangeSafeLinksPolicy', 'AllowClickThrough', false, true), true);
+  assert.equal(weakens('exchangeSafeLinksPolicy', 'AllowClickThrough', true, false), false);
+  assert.equal(weakens('exchangeSafeLinksPolicy', 'ScanUrls', true, false), true);
+  assert.equal(weakens('exchangeSafeLinksPolicy', 'ScanUrls', false, true), false);
+  assert.equal(weakens('exchangeAntiSpamPolicy', 'PhishSpamAction', 'Quarantine', 'MoveToJmf'), true);
+  assert.equal(weakens('exchangeAntiSpamPolicy', 'PhishSpamAction', 'Delete', 'Quarantine'), false);
+  assert.equal(weakens('exchangeAntiSpamPolicy', 'PhishSpamAction', 'MoveToJmf', 'Quarantine'), false);
+  assert.equal(weakens('exchangeAntiSpamPolicy', 'HighConfidencePhishAction', 'MoveToJmf', 'SomethingNew'), true, 'an action KEEL cannot rank is never written');
+  assert.equal(weakens('exchangeAntiSpamPolicy', 'HighConfidencePhishAction', 'SomethingNew', 'Quarantine'), true);
+  assert.equal(weakens('exchangeAntiPhishPolicy', 'HonorDmarcPolicy', true, false), true);
+  assert.equal(weakens('exchangeAntiMalwarePolicy', 'ZapEnabled', true, false), true);
+  assert.equal(weakens('exchangeAntiMalwarePolicy', 'CustomNotifications', true, false), false);
+  assert.equal(weakens('exchangeTransportRule', 'Mode', 'Enforce', 'Audit'), false, 'other types keep their own rules');
+});
+
+/** The source a restore plans from: a backup read of `bodies`. */
+const backupOf = (read) => ({ collectionId: '9', outcome: 'complete', observedTo: null, observations: read.resources.map(({ resourceKey, kind, identity, fields, fieldCoverage }) => ({ resourceKey, kind, identity, fields, fieldCoverage })) });
+
+test('a restore never writes a weaker mail protection setting from a backup; it lists it for an administrator', async () => {
+  const { tenantId, tenantRef } = nextTenant();
+  const spam = policy('antiSpamPolicy');
+  const links = policy('safeLinksPolicy');
+  const phish = policy('antiPhishPolicy');
+  const malware = policy('antiMalwarePolicy');
+  const live = await readLive(fakeTenant({ antiSpamPolicy: [spam], safeLinksPolicy: [links], antiPhishPolicy: [phish], antiMalwarePolicy: [malware] }));
+  // A tampered or old backup of the same policies, each one weaker.
+  const backup = await readLive(fakeTenant({
+    antiSpamPolicy: [{ ...spam, AllowedSenderDomains: ['evil.example'], PhishSpamAction: 'MoveToJmf', InlineSafetyTipsEnabled: false }],
+    safeLinksPolicy: [{ ...links, AllowClickThrough: true, ScanUrls: false }],
+    antiPhishPolicy: [{ ...phish, HonorDmarcPolicy: false }],
+    antiMalwarePolicy: [{ ...malware, ZapEnabled: false, CustomNotifications: true }],
+  }));
+  const plan = planWorkloadSettingsRestore({ workload: MAIL, source: backupOf(backup), live, tenantId, tenantRef });
+  assert.deepEqual(plan.operations.map((op) => [op.cmdlet, op.parameters]), [
+    ['Set-MalwareFilterPolicy', { Identity: malware.Guid, CustomNotifications: true }],
+  ], 'only the change that does not weaken protection is written');
+  const weakened = plan.manual.filter((entry) => entry.weakensProtection === true).map((entry) => entry.field).sort();
+  assert.deepEqual(weakened, ['AllowClickThrough', 'AllowedSenderDomains', 'HonorDmarcPolicy', 'InlineSafetyTipsEnabled', 'PhishSpamAction', 'ScanUrls', 'ZapEnabled']);
+  for (const entry of plan.manual.filter((item) => item.weakensProtection)) assert.match(entry.reason, /weaken mail protection/);
+
+  // The stricter direction (the live tenant weaker than the backup) is written as before.
+  const back = planWorkloadSettingsRestore({ workload: MAIL, source: backupOf(live), live: backup, tenantId, tenantRef });
+  assert.equal(back.manual.filter((entry) => entry.weakensProtection).length, 0);
+  assert.deepEqual(back.operations.map((op) => op.changes.map((change) => change.field).sort()).sort(), [
+    ['AllowClickThrough', 'ScanUrls'], ['AllowedSenderDomains', 'InlineSafetyTipsEnabled', 'PhishSpamAction'], ['CustomNotifications', 'ZapEnabled'], ['HonorDmarcPolicy'],
+  ].sort());
 });

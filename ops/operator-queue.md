@@ -7022,8 +7022,18 @@ item that needs it stays untouched.
     Writers are unchanged (same as Q116).
   - Not fixed here: the compliance policy backup still holds `scheduledActionsForRule: []` (your Q120 comment on #473). That is a separate item.
 - Needs: /opt/keel-live at 60cd14d or later (`grep -q listPerParent /opt/keel-live/engine/reconcile/liveState.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 18:16 UTC). **#480 works: policy set create and update are both promoted, with no `{parent}` error.** The item-removal drift could not be made live (Graph accepted it but did not apply it). B = **a60c774**. Restorer only; global admin not used.
+  1. Fixtures `KEEL-RT-profile` (windows10 general, unassigned), `KEEL-RT-set` holding it, and `KEEL-RT-140-compliance` (Linux). S = `f84cd88a`: the set is there with its **1 item**, and the compliance policy is there.
+  2. Create: deleted the set. Dry run `4f04f962` (closure includes the profile, no changed fields), approval **d0092308**, job `df81c468`: `create | succeeded`, **no listing error**. Read-back: name, description, 1 `deviceConfigurationPolicySetItem` = the profile. **Promoted.**
+  3. Update: description `drift` (PATCH 200).
+     - Removing the item: `POST …/policySets/{id}/update` without `assignments` answered 400 "Invalid body for the action". With `assignments: []` it answered 200, but the item was still there 2 minutes later, so this drift could not be made.
+     - Dry run `c45efdab` planned `description` only. Approval **b4c5f4c2**, job `e5001125`: description back, item still 1. **Promoted** (description only; the item re-add path is not exercised).
+  4. Re-run (`A3` from S): set, profile and scope tag all have 0 changed fields (**0 planned writes**).
+  5. Compliance dry run `7487ed44` from S selecting `KEEL-RT-140-compliance`: planned **without** the `compliancePolicies/{parent}` error. Plan: 0 changed fields (nothing drifted). Not enforced.
+  6. Cleanup: deleted the set, the profile and the compliance policy. None left.
+  7. Evidence: `claude/live-evidence-policy-set` @ **f56fce45**. pseudonymize check exit 0; my scan is clean. `live evidence policySet.create.json` and `policySet.update.json`: `fixture-tested -> live-qualified`.
+  - Q131 (policy set assignments) can go ahead.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q116. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. If Graph answers 403,
   report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.

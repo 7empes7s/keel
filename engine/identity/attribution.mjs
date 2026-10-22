@@ -34,6 +34,7 @@
  */
 import { ownershipVisibleTo } from '../authz/entityScope.mjs';
 import { redactSecrets } from '../../tools/tenant-probe/graph.mjs';
+import { auditSourceFor } from './auditSources.mjs';
 
 export const ATTRIBUTION_VERDICTS = Object.freeze(['exact', 'plausible', 'unknown']);
 export const MAX_ATTRIBUTED_CHANGES = 200;
@@ -71,6 +72,8 @@ export async function migrateChangeAttribution(client) {
     );
     CREATE INDEX IF NOT EXISTS audit_change_fact_target
       ON audit_change_fact(tenant_ref, target_type, target_id, occurred_at);
+    CREATE INDEX IF NOT EXISTS audit_change_fact_target_id
+      ON audit_change_fact(tenant_ref, target_id, occurred_at);
     CREATE TABLE IF NOT EXISTS audit_sign_in_fact (
       tenant_ref text NOT NULL, source_event_id text NOT NULL,
       occurred_at timestamptz NOT NULL,
@@ -99,7 +102,7 @@ function actorKind(value) {
  * ignored; an invalid fact refuses the whole page (the cursor does not advance).
  */
 export function minimizeAttributionFact(source, event) {
-  if (source === 'audit') {
+  if (source === 'audit' || source === 'intune-audit') {
     const change = event?.change;
     if (change === undefined) return null;
     if (!change || typeof change !== 'object') throw new AttributionFactError('invalid change');
@@ -151,7 +154,7 @@ export async function insertAttributionFact(client, { tenantRef, eventId, occurr
 
 /** Same retention rule as task 88's minimized events. */
 export async function pruneAttributionFacts(client, { tenantRef, source, until, retentionDays }) {
-  const table = source === 'audit' ? 'audit_change_fact' : 'audit_sign_in_fact';
+  const table = source === 'sign-in' ? 'audit_sign_in_fact' : 'audit_change_fact';
   await client.query(`DELETE FROM ${table} WHERE tenant_ref=$1 AND occurred_at < $2::timestamptz - $3 * interval '1 day'`,
     [tenantRef, until, retentionDays]);
 }
@@ -221,16 +224,19 @@ const UNKNOWN_FROM_COVERAGE = Object.freeze({
 
 /**
  * Pure classification of one change. `change` is
- *   { resourceType, sourceId | null, changeType, fields, window: { from, until } }.
+ *   { resourceType, sourceIds: [objectId] (or sourceId), changeType, edge?, fields, window: { from, until } }.
+ * A fact names the change when its object id is one of the change's object ids (Microsoft
+ * object ids are unique in a tenant, so the audit log's own type name is not compared).
+ * A relationship change (`edge`) is recorded on its parent with any operation.
  * Returns { verdict, reason, actors: [{ kind, id }], evidence: [fact] }.
  */
 export function classifyAttribution({ tenantRef, change, auditFacts, signInFacts, auditCoverage, signInCoverage }) {
   const result = (verdict, reason, actors = [], evidence = []) => ({ verdict, reason, actors, evidence });
-  if (!change.sourceId) return result('unknown', 'resource-identity-unresolved');
-  const operations = CHANGE_OPERATIONS[change.changeType] ?? [];
+  const ids = (change.sourceIds ?? [change.sourceId]).filter(Boolean);
+  if (!ids.length) return result('unknown', 'resource-identity-unresolved');
+  const operations = change.edge ? ['create', 'update', 'delete'] : CHANGE_OPERATIONS[change.changeType] ?? [];
   const direct = auditFacts.filter((fact) => fact.tenantRef === tenantRef
-    && fact.targetType === change.resourceType
-    && fact.targetId === change.sourceId
+    && ids.includes(fact.targetId)
     && operations.includes(fact.operation)
     && within(fact, change.window)
     && fieldsAgree(change.fields, fact.fields));
@@ -323,8 +329,10 @@ export function changedFields(before, after) {
 
 /**
  * Attributes up to MAX_ATTRIBUTED_CHANGES changes in a bounded, batched read.
- * Each change: { id, resourceType, naturalKey, changeType, fields, window: { from, until } }
- * where `from` may be null (then a 90-day lookback before `until`).
+ * Each change: { id, resourceType, naturalKey, changeType, fields, objectIds?, window: { from, until } }
+ * where `from` may be null (then a 90-day lookback before `until`), and `objectIds` are
+ * the Microsoft object ids the change is about (auditSources.mjs#changeObjectIds), used
+ * when KEEL holds no lineage for the natural key.
  * `scope` is the reader's entity scope (central by default); it decides only whether
  * an actor may be named. The caller must already have authorized the changes.
  */
@@ -342,20 +350,35 @@ export async function attributeChanges(client, { tenantRef, changes, scope = { c
   const results = [];
   const allActors = new Map();
   for (const [index, change] of bounded.entries()) {
-    const identity = identities[index];
-    const auditCoverage = await coverageFor(client, tenantRef, 'audit', change.window);
+    const lineage = identities[index];
+    const { source, service } = auditSourceFor(change.resourceType);
+    // The object ids an audit record would name: the lineage's when KEEL resolved one,
+    // else the ids the caller read from the change itself (its saved copy or edge key).
+    const objectIds = lineage
+      ? [lineage.sourceId.toLowerCase()]
+      : [...new Set((change.objectIds ?? []).filter((id) => typeof id === 'string' && OBJECT_ID.test(id)).map((id) => id.toLowerCase()))];
+    const identity = objectIds.length ? { lineageId: lineage?.lineageId ?? null, sourceId: objectIds[0] } : null;
+    if (!source) {
+      results.push({
+        change, identity, source: null, service,
+        verdict: { verdict: 'unknown', reason: 'audit-source-not-read', actors: [], evidence: [] },
+        coverage: { audit: 'source-not-read', signIn: 'not-used' },
+      });
+      continue;
+    }
+    const auditCoverage = await coverageFor(client, tenantRef, source, change.window);
     const signInCoverage = await coverageFor(client, tenantRef, 'sign-in', change.window);
     let auditFacts = [];
     let signInFacts = [];
-    if (factsReady && identity) {
+    if (factsReady && objectIds.length) {
       ({ rows: auditFacts } = await client.query(
         `SELECT tenant_ref AS "tenantRef", source_event_id AS "sourceEventId", occurred_at AS "occurredAt",
                 target_type AS "targetType", target_id AS "targetId", operation, activity, fields,
                 actor_kind AS "actorKind", actor_id AS "actorId"
            FROM audit_change_fact
-          WHERE tenant_ref = $1 AND target_type = $2 AND target_id = $3 AND occurred_at > $4 AND occurred_at <= $5
+          WHERE tenant_ref = $1 AND target_id = ANY($2::text[]) AND occurred_at > $3 AND occurred_at <= $4
           ORDER BY occurred_at DESC, source_event_id LIMIT ${MAX_EVENTS_PER_CHANGE}`,
-        [tenantRef, change.resourceType, identity.sourceId.toLowerCase(), change.window.from, change.window.until],
+        [tenantRef, objectIds, change.window.from, change.window.until],
       ));
       ({ rows: signInFacts } = await client.query(
         `SELECT DISTINCT ON (actor_kind, actor_id) tenant_ref AS "tenantRef", source_event_id AS "sourceEventId",
@@ -368,15 +391,18 @@ export async function attributeChanges(client, { tenantRef, changes, scope = { c
     }
     const verdict = classifyAttribution({
       tenantRef,
-      change: { ...change, sourceId: identity ? identity.sourceId.toLowerCase() : null },
+      change: { ...change, sourceIds: objectIds, edge: typeof change.naturalKey === 'string' && change.naturalKey.startsWith('edge:') },
       auditFacts, signInFacts, auditCoverage, signInCoverage,
     });
     for (const actor of verdict.actors) allActors.set(`${actor.kind}:${actor.id}`, actor);
-    results.push({ change, identity, verdict, coverage: { audit: auditCoverage.status, signIn: signInCoverage.status } });
+    results.push({ change, identity, source, service, verdict, coverage: { audit: auditCoverage.status, signIn: signInCoverage.status } });
   }
   const names = await actorNames(client, tenantRef, [...allActors.values()], scope, at);
-  return results.map(({ change, identity, verdict, coverage }) => ({
+  return results.map(({ change, identity, source, service, verdict, coverage }) => ({
     changeId: change.id,
+    // Which audit log was asked (null when KEEL reads none for this service) and the service.
+    source,
+    service,
     verdict: verdict.verdict,
     reason: verdict.reason,
     actors: verdict.actors.map((actor) => {

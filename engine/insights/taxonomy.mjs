@@ -3,7 +3,8 @@
  *
  * Each entry gives what a reader sees instead of a stored code: a plain singular name
  * ("Conditional Access policy"), the service it belongs to, and a default priority with
- * the reason for it. Pages, reports and the change feed group and rank by these fields.
+ * the reason for it, and the group of kinds it sits in within its service ("Users and
+ * contacts", "Admin roles"…). Pages, reports and the change feed group and rank by these fields.
  *
  * Entries live in taxonomy.d/, one file per service, so services can change in parallel.
  * A catalogue type takes its priority from the catalogue's blast radius and criticality
@@ -43,11 +44,23 @@ function catalogPriority(entry) {
   return entry.criticality === 'tier1' ? CATALOG_PRIORITY.tier1 : CATALOG_PRIORITY.access;
 }
 
-function build() {
+// A type no service file places in a group (or an unmapped code) sorts after every group.
+export const OTHER_CATEGORY = Object.freeze({ key: 'other', name: 'Other settings', rank: 99 });
+
+function placements(categories) {
+  const placed = new Map();
+  (categories ?? []).forEach((category, rank) => {
+    category.types.forEach((type, typeRank) => placed.set(type, { category: category.key, categoryName: category.name, categoryRank: rank, typeRank }));
+  });
+  return placed;
+}
+
+function build(field) {
   const catalog = new Map(CATALOG.map((entry) => [entry.type, entry]));
   const taxonomy = {};
-  for (const { service, entries } of SERVICE_FILES) {
-    for (const [type, entry] of Object.entries(entries)) {
+  for (const { service, categories, ...file } of SERVICE_FILES) {
+    const placed = placements(categories);
+    for (const [type, entry] of Object.entries(file[field] ?? {})) {
       if (taxonomy[type]) throw new Error(`taxonomy: ${type} is mapped by both ${taxonomy[type].service} and ${service}`);
       const fallback = catalog.has(type) ? catalogPriority(catalog.get(type)) : null;
       taxonomy[type] = Object.freeze({
@@ -56,13 +69,19 @@ function build() {
         service,
         priority: entry.priority ?? fallback?.priority ?? null,
         priorityReason: entry.reason ?? fallback?.reason ?? null,
+        ...(placed.get(type) ?? { category: OTHER_CATEGORY.key, categoryName: OTHER_CATEGORY.name, categoryRank: OTHER_CATEGORY.rank, typeRank: 0 }),
       });
     }
   }
   return Object.freeze(taxonomy);
 }
 
-export const TAXONOMY = build();
+export const TAXONOMY = build('entries');
+
+/** Links between objects (group members and owners, app owners, policy assignments),
+ * by the type edge changes store them under. Kept apart from TAXONOMY, which maps the
+ * catalogue and workload reads one for one. */
+export const EDGE_TAXONOMY = build('edges');
 
 const words = (code) => String(code).replace(/[-_]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().trim();
 
@@ -72,7 +91,7 @@ const words = (code) => String(code).replace(/[-_]+/g, ' ').replace(/([a-z0-9])(
  * `known: false` so callers can show that it is not classified yet.
  */
 export function typeInfo(type) {
-  const entry = TAXONOMY[type];
+  const entry = TAXONOMY[type] ?? EDGE_TAXONOMY[type];
   if (entry) return { ...entry, known: true };
   const name = words(type);
   return {
@@ -81,8 +100,23 @@ export function typeInfo(type) {
     service: null,
     priority: 'normal',
     priorityReason: 'Not classified yet.',
+    category: OTHER_CATEGORY.key,
+    categoryName: OTHER_CATEGORY.name,
+    categoryRank: OTHER_CATEGORY.rank,
+    typeRank: 0,
     known: false,
   };
+}
+
+/**
+ * List order inside one service: by the service file's groups (people and objects,
+ * then roles, then policies, then settings), then the type's place in its group, then
+ * the name. Pages that group a service's settings by kind sort with this.
+ */
+export function compareInService(a, b) {
+  const left = typeInfo(a);
+  const right = typeInfo(b);
+  return left.categoryRank - right.categoryRank || left.typeRank - right.typeRank || left.name.localeCompare(right.name);
 }
 
 /** Sort comparator: most urgent priority first, then service order, then name. */

@@ -130,6 +130,9 @@ const CSS = `
 .bl-tile[data-tone="soon"] .bl-tile-label .icon { color: var(--check-soon); }
 .bl-tile[data-tone="low"] .bl-tile-label .icon { color: var(--low-risk); }
 .bl-tile[data-tone="fine"] .bl-tile-label .icon { color: var(--fine); }
+.bl-tile .bl-tile-check { width: 1rem; height: 1rem; margin-left: auto; color: var(--accent); }
+.bl-tile .bl-tile-adds { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.bl-tile[aria-current] .bl-tile-label { color: var(--text); }
 .bl-tile-count { font-size: 1.75rem; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .bl-tile small, .bl-tile dd small { color: var(--text-soft); font-size: 0.8125rem; }
 .bl-tile dd { display: grid; gap: var(--space-2xs); margin: 0; }

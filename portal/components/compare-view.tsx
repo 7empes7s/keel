@@ -12,7 +12,9 @@ import {
 import { formatTimestamp, resourceTypeLabel } from "@/lib/presentation";
 import { holdsObjectId } from "@/lib/object-ids";
 import { plainKind } from "@/lib/baselines-view";
-import { SERVICES } from "@/lib/services";
+import { SERVICES, serviceFor, serviceOrder } from "@/lib/services";
+import { kindParts, type KindPart } from "@/lib/type-groups";
+import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 
 // Wave 2 CMP: the Compare page. The form submits with GET, so comparing never changes
 // anything. Results are grouped by service and kind, plain names first; every key, id
@@ -28,6 +30,9 @@ const CSS = `
 .compare-summary small { display: block; color: var(--text-soft); font-size: 0.8125rem; font-weight: 500; letter-spacing: 0; }
 .compare-section { display: grid; gap: var(--space-sm); }
 .compare-section h3 { margin: var(--space-sm) 0 0; font-size: 0.9375rem; }
+.compare-kind { display: grid; gap: var(--space-xs); }
+.compare-kind-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-xs) var(--space-sm); margin: var(--space-xs) 0 0; color: var(--text-soft); font-size: 0.75rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; }
+.compare-kind-heading small { font-size: 0.8125rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .compare-group { border: 1px solid var(--line); border-radius: 0.5rem; background: var(--surface); }
 .compare-group > summary { cursor: pointer; padding: var(--space-sm) var(--space-md); display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-md); justify-content: space-between; }
 .compare-group > summary:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: 0.5rem; }
@@ -132,10 +137,39 @@ function SettingsGroupView({ group, index, sides }: { group: SettingsGroup; inde
   );
 }
 
-function byService<T extends { service: string }>(groups: T[]): [string, T[]][] {
-  const map = new Map<string, T[]>();
-  for (const group of groups) map.set(group.service, [...(map.get(group.service) ?? []), group]);
-  return [...map.entries()];
+interface ServiceBlock<T> { key: string; heading: string; parts: KindPart<T>[] }
+
+/** Kinds by Microsoft service, in the portal's service order, and inside each service by
+ * kind group (users, groups, roles, then policies and settings), as on Restore and
+ * What's protected. The taxonomy decides the service; the comparison's own service
+ * name is the fallback for a kind the taxonomy does not know. */
+function byService<T extends { service: string }>(groups: T[], typeOf: (group: T) => string): ServiceBlock<T>[] {
+  const map = new Map<string, { code: string | null; heading: string; groups: T[] }>();
+  for (const group of groups) {
+    const code = typeInfo(typeOf(group)).service ?? null;
+    const key = code ?? group.service;
+    const entry = map.get(key) ?? { code, heading: code ? serviceFor(code).name : group.service, groups: [] as T[] };
+    entry.groups.push(group);
+    map.set(key, entry);
+  }
+  return [...map.entries()]
+    .sort(([, a], [, b]) => serviceOrder(a.code) - serviceOrder(b.code) || a.heading.localeCompare(b.heading))
+    .map(([key, entry]) => ({ key, heading: entry.heading, parts: kindParts(entry.groups, typeOf, entry.code) }));
+}
+
+function sumCounts(groups: { added?: number; removed?: number; changed?: number }[]): { added: number; removed: number; changed: number } {
+  return groups.reduce<{ added: number; removed: number; changed: number }>((sum, group) => ({ added: sum.added + (group.added ?? 0), removed: sum.removed + (group.removed ?? 0), changed: sum.changed + (group.changed ?? 0) }), { added: 0, removed: 0, changed: 0 });
+}
+
+/** A kind group's heading inside a service, when the service has more than one. */
+function KindHeading<T extends { added?: number; removed?: number; changed?: number }>({ part, show }: { part: KindPart<T>; show: boolean }) {
+  if (!show) return null;
+  return (
+    <h4 className="compare-kind-heading">
+      {part.label}
+      <small>{part.items.length === 1 ? "1 kind" : `${part.items.length} kinds`} · {countsWords(sumCounts(part.items))}</small>
+    </h4>
+  );
 }
 
 function SettingsPanel({ settings, portable, sides }: { settings: SettingsSection; portable: boolean; sides: Sides }) {
@@ -147,10 +181,15 @@ function SettingsPanel({ settings, portable, sides }: { settings: SettingsSectio
         {" "}Open a kind to see each setting and its value before and after.
         {portable ? " Objects are matched by name, and a difference in ids alone does not count." : ""}
       </p>
-      {byService(settings.groups).map(([service, groups]) => (
-        <div className="compare-section" key={service}>
-          <ServiceHeading service={service} />
-          {groups.map((group) => <SettingsGroupView group={group} index={settings.groups.indexOf(group)} key={group.resourceType} sides={sides} />)}
+      {byService(settings.groups, (group) => group.resourceType).map((block) => (
+        <div className="compare-section" key={block.key}>
+          <ServiceHeading service={block.heading} />
+          {block.parts.map((part) => (
+            <div className="compare-kind" key={part.key}>
+              <KindHeading part={part} show={block.parts.length > 1} />
+              {part.items.map((group) => <SettingsGroupView group={group} index={settings.groups.indexOf(group)} key={group.resourceType} sides={sides} />)}
+            </div>
+          ))}
         </div>
       ))}
       {settings.notCompared.length ? (
@@ -244,12 +283,17 @@ function WorkloadsPanel({ workloads, liveStored, sides }: { workloads: Workloads
         {liveStored ? " The second side uses the newest stored collection." : ""}
       </p>
       {workloads.groups.length === 0 ? <p className="compare-note">No workload settings were collected for either side.</p> : null}
-      {byService(workloads.groups).map(([service, groups]) => (
-        <div className="compare-section" key={service}>
-          <ServiceHeading service={service} />
-          <ul className="compare-list" style={{ listStyle: "none", paddingLeft: 0 }}>
-            {groups.map((group) => <WorkloadGroupView group={group} index={workloads.groups.indexOf(group)} key={group.workload} sides={sides} />)}
-          </ul>
+      {byService(workloads.groups, (group) => group.workload).map((block) => (
+        <div className="compare-section" key={block.key}>
+          <ServiceHeading service={block.heading} />
+          {block.parts.map((part) => (
+            <div className="compare-kind" key={part.key}>
+              <KindHeading part={part} show={block.parts.length > 1} />
+              <ul className="compare-list" style={{ listStyle: "none", paddingLeft: 0 }}>
+                {part.items.map((group) => <WorkloadGroupView group={group} index={workloads.groups.indexOf(group)} key={group.workload} sides={sides} />)}
+              </ul>
+            </div>
+          ))}
         </div>
       ))}
       {workloads.groups.length ? (
@@ -281,10 +325,10 @@ function ContentItemsPanel({ content }: { content: ContentItemsSection }) {
       <h2 id="compare-content-heading">Content</h2>
       <p className="compare-help">Mail, files, sites, Teams and plans Keel holds, item by item: {countsWords(content.totals)}.</p>
       {changed.length === 0 ? <p className="compare-note">No stored item differs.</p> : null}
-      {byService(changed).map(([service, groups]) => (
-        <div className="compare-section" key={service}>
-          <ServiceHeading service={service} />
-          {groups.map((group) => (
+      {byService(changed, (group) => group.workload).map((block) => (
+        <div className="compare-section" key={block.key}>
+          <ServiceHeading service={block.heading} />
+          {block.parts.flatMap((part) => part.items).map((group) => (
             <div className="compare-section" key={group.workload}>
               <p className="compare-note">{workloadLabel(group.workload)}: {group.leftItems.toLocaleString("en-GB")} items, then {group.rightItems.toLocaleString("en-GB")}.</p>
               {group.containers.map((container) => (

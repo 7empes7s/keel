@@ -5755,7 +5755,7 @@ item that needs it stays untouched.
      (`cp -p /opt/keel-deploy/deploy.sh /opt/keel-deploy/deploy.sh.bak-q121`), replace both with
      `systemctl try-reload-or-restart keel-worker`, and `bash -n` it. No `restart keel-worker` / `try-restart keel-worker`
      may remain. Report the diff on #448 too.
-- Status: todo
+- Status: in-progress
 - Result:
 - **Read-only toward the tenant**, same as Q101: collectors only read; no grants, no fixtures, no tenant writes. 403s are
   reported (count and masked reason), never fixed by granting.

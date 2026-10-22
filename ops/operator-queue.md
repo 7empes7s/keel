@@ -5166,8 +5166,17 @@ item that needs it stays untouched.
   hourly collect has failed since 23:00 UTC on 2026-10-21 (issue #438). Exact repeats are now dropped after each read; a repeat
   whose content differs fails only its own kind, and the rest of the collect completes.
 - Needs: /opt/keel-live at the #445 merge or later (`grep -q dropRepeatedIds /opt/keel-live/engine/collect/entraAdapter.mjs`).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-22 06:35 UTC). The role-read fix works. The collect job still exits 1, because of `deviceManagementSettings` (#447, Q119). Drift runs. Read-only.
+  1. Hourly collect `47f0a20a-2f45-4eb0-9b4b-253d469c82a5`, 06:00 UTC, the first in this window at #445 or later (#445 live since 00:41). It ran
+     06:00:03 to 06:02:07 (2 min 4 s), exit code 1, and snapshot `675ad8d0` completed. Its only failed type is `deviceManagementSettings` (400, see Q119).
+  2. Role-provider kinds in the coverage digest:
+     - `exchangeRoleAssignment`: `complete`, 228 items, 3 pages, HTTP 200, `error` null. There is no "different objects under one id" error.
+     - `exchangeRoleDefinition`, `exchangeCustomAppScope`, `defenderRoleDefinition`, `defenderRoleAssignment`, `defenderCustomAppScope`:
+       `not-requested` (itemCount null).
+  3. drift-detect `41fd91a3-e2e6-438f-974b-11350536d55c` ran at 06:05 (not deferred): `succeeded`. The earlier hours (02:00–05:00) also ran.
+  4. #438 has a comment (issuecomment-6334328405) and is left open: the collect job did not succeed, so the close condition is not met. The
+     remaining failure belongs to #447.
 - **Read-only.** Nothing is written to the tenant. Take this item before Q109–Q116: drift detection is deferring until it passes.
 - Do:
   1. Wait for the next scheduled hourly collect after the deploy (or start one the usual way if the timer is idle). Report its
@@ -5186,8 +5195,18 @@ item that needs it stays untouched.
   Drift detection now runs when at least one type read in full; failed or partial types are skipped and listed in the
   collect job's `result.driftTrigger.skippedTypes`.
 - Needs: PR #452 live (`git -C /opt/keel-live log --oneline | grep -c "#452"` is 1).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-22 06:35 UTC). The Intune read still answers 400. The drift fix works: drift is `queued` with that one type skipped. Collector reads only; nothing written.
+  1. Hourly collect `47f0a20a-2f45-4eb0-9b4b-253d469c82a5` (06:00 UTC, #452 live since 01:39): exit code 1. The only non-complete type is
+     `deviceManagementSettings`: `failed`, HTTP 400, graphCode `No method match route template`, error verbatim:
+     `No OData route exists that match template ~/singleton with http verb GET for request /StatelessOnboardingService/deviceManagement.`
+     Endpoint `/deviceManagement?$select=id,settings,intuneBrand,managedDeviceCleanupSettings` (beta).
+  2. Newest snapshot `675ad8d0-e121-4f6b-a2e5-61cd9579786c`: digest outcome `failed`, objects 0, has_settings empty (no row).
+  3. Collect jobs: `47f0a20a` failed 06:02:07, driftTrigger `{"error": null, "jobId": "41fd91a3-…", "status": "queued", "skippedTypes":
+     ["deviceManagementSettings"]}`; `49abb5cc` failed 05:01:53, same trigger shape (drift job `acc29b5a`).
+     drift-detect: `41fd91a3` succeeded 06:05:35; `acc29b5a` succeeded 05:05:34; `933f9685` succeeded 04:05:08 (error empty for all three).
+  - This matches the item's 400 fallback case. Commented on #447 (issuecomment-6334331868), noting that the `StatelessOnboardingService` route
+    suggests the tenant has no Intune singleton to serve (inference, not checked).
 - **Tenant:** reads only, with the collector credential. Nothing written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. Wait for the next hourly collect after the deploy (or run `node cli/keel-collect.mjs` once by hand). Report its

@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
+import { ListPager, SortControl, useListPaging, type ListSort } from "@/components/list/list-paging";
 import { SavedFilters } from "@/components/list/saved-filters";
 import { Segmented } from "@/components/pickers/segmented";
 import { StatusBadge } from "@/components/shell/menu";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { Popover } from "@/components/shell/popover";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
+import { byRisk, byText, pageGroups, sortRows, type PageSize } from "@/lib/paging";
 import { groupCheck, NO_SELECTION, prune, selectRange, setMany, span, toggleOne, type Selection } from "@/lib/selection";
 import { readList, useViewState } from "@/lib/use-view-state";
 
@@ -54,9 +56,14 @@ interface Props<T> {
   more?: { label: string; run: (ids: string[]) => void }[];
   // Free-text find, kept in the URL as `q`.
   matches?: (item: T, query: string) => boolean;
-  // Rows shown per group before a "Show all" button; every row by default. Selecting a
-  // whole group still selects the rows not shown.
-  rowLimit?: number;
+  // Ways to order the rows inside each group (and each part), kept in the URL as `sort`
+  // and `dir`. "Suggested" (the order `items` and the grouping give) is always first;
+  // Name (by `rowName`) and Risk (by `toneOf`) are always offered.
+  sorts?: ListSort<T>[];
+  // Rows per page to start with; the viewer can pick 25, 50, 100 or all (`size`). Group
+  // and part headers repeat on each page that shows their rows. Selecting a whole group
+  // still selects the rows on other pages.
+  pageSize?: PageSize;
   // A control in a group's header that acts on the group, such as "Undo all 4".
   groupAction?: (group: ListGroup<T>) => ReactNode;
   // Groups that start closed (count still shown) until someone opens them, such as
@@ -65,6 +72,13 @@ interface Props<T> {
   // Shown instead of the plain line when no row matches, such as a page's filter chips
   // with Clear all. Without it the list still offers to clear its own find.
   empty?: ReactNode;
+}
+
+// What paging counts: a group, or one part of a group that has parts.
+interface ListUnit<T> {
+  group: ListGroup<T>;
+  part: ListGroup<T> | null;
+  closed: boolean;
 }
 
 const LONG_PRESS_MS = 450;
@@ -78,7 +92,7 @@ function plural(count: number, noun: { one: string; many: string }) {
  * +click toggles, Ctrl or Cmd+A and Esc, select all or a whole group, long-press and
  * drag on a phone, and a bar that names the action with its count. Grouping, find and
  * closed groups live in the URL. */
-export function SelectableList<T>({ label, items, getId, rowName, renderRow, groupings, toneOf, noun, action, more = [], matches, rowLimit, groupAction, closedByDefault = [], empty }: Props<T>) {
+export function SelectableList<T>({ label, items, getId, rowName, renderRow, groupings, toneOf, noun, action, more = [], matches, sorts = [], pageSize = "25", groupAction, closedByDefault = [], empty }: Props<T>) {
   const view = useViewState();
   const groupKey = view.get("group", groupings[0]?.key ?? "");
   const grouping = groupings.find((entry) => entry.key === groupKey) ?? groupings[0];
@@ -86,24 +100,65 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
   const closed = readList(view.get("closed", closedByDefault.join(",")));
   const [selection, setSelection] = useState<Selection>(NO_SELECTION);
   const [touchMode, setTouchMode] = useState(false);
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  // Every list can be ordered by name and, when its rows carry a risk, by risk; a list
+  // adds its own sorts (such as by time) in front.
+  const allSorts = useMemo<ListSort<T>[]>(() => {
+    const own = new Set(sorts.map((entry) => entry.key));
+    const builtIn: ListSort<T>[] = [{ key: "name", label: "Name", compare: (a, b) => byText(rowName(a), rowName(b)) }];
+    if (toneOf) builtIn.push({ key: "risk", label: "Risk", desc: true, compare: (a, b) => byRisk(toneOf(a), toneOf(b)) });
+    return [...sorts, ...builtIn.filter((entry) => !own.has(entry.key))];
+  }, [sorts, rowName, toneOf]);
+  const paging = useListPaging<T>({ defaultSize: pageSize, sorts: allSorts });
   const listRef = useRef<HTMLDivElement>(null);
 
   const filtered = useMemo(() => (matches && query ? items.filter((item) => matches(item, query.toLowerCase())) : items), [items, matches, query]);
-  const groups = useMemo(() => grouping.groupsOf(filtered), [grouping, filtered]);
-  const shownOf = (group: ListGroup<T>) => (rowLimit && !expanded.has(group.key) && group.items.length > rowLimit + 1 ? group.items.slice(0, rowLimit) : group.items);
+  const { sort, dir } = paging;
+  // A sort reorders rows inside each group, and inside each part, never the groups.
+  const groups = useMemo(() => {
+    const grouped = grouping.groupsOf(filtered);
+    if (!sort) return grouped;
+    return grouped.map((group) => {
+      if (!group.parts?.length) return { ...group, items: sortRows(group.items, sort.compare, dir) };
+      const parts = group.parts.map((part) => ({ ...part, items: sortRows(part.items, sort.compare, dir) }));
+      return { ...group, parts, items: parts.flatMap((part) => part.items) };
+    });
+  }, [grouping, filtered, sort, dir]);
   const allIds = useMemo(() => groups.flatMap((group) => group.items.map(getId)), [groups, getId]);
   const partsOf = (group: ListGroup<T>) => (group.parts && group.parts.length > 1 ? group.parts.map((part) => ({ ...part, key: `${group.key}.${part.key}` })) : null);
-  const visibleIds = useMemo(() => groups.filter((group) => !closed.includes(group.key)).flatMap((group) => {
-    const parts = partsOf(group);
-    return parts ? parts.filter((part) => !closed.includes(part.key)).flatMap((part) => shownOf(part).map(getId)) : shownOf(group).map(getId);
-  }), [groups, closed, getId, expanded, rowLimit]);
+  // Paging counts rows in open groups and open parts; a page shows a slice of each.
+  const units = useMemo<ListUnit<T>[]>(() => groups.flatMap((group): ListUnit<T>[] => {
+    const parts = closed.includes(group.key) ? null : partsOf(group);
+    return parts ? parts.map((part) => ({ group, part, closed: closed.includes(part.key) })) : [{ group, part: null, closed: closed.includes(group.key) }];
+  }), [groups, closed.join(",")]);
+  const unitRows = (unit: ListUnit<T>) => (unit.part ?? unit.group).items.length;
+  const openRows = units.reduce((sum, unit) => sum + (unit.closed ? 0 : unitRows(unit)), 0);
+  const page = paging.pageOf(openRows);
+  const paged = useMemo(() => pageGroups(units, unitRows, (unit) => unit.closed, page, paging.size).groups, [units, page, paging.size]);
+  const visibleIds = useMemo(() => paged.flatMap(({ group: unit, start, end }) => (unit.part ?? unit.group).items.slice(start, end).map(getId)), [paged, getId]);
+  // The page's units, gathered under their group in order.
+  const pageGroupsShown = useMemo(() => {
+    const out: { group: ListGroup<T>; units: typeof paged }[] = [];
+    for (const entry of paged) {
+      const last = out.at(-1);
+      if (last && last.group.key === entry.group.group.key) last.units.push(entry);
+      else out.push({ group: entry.group.group, units: [entry] });
+    }
+    return out;
+  }, [paged]);
+  // Rows of a group on later pages, for the line under its last row here.
+  const laterIn = (group: ListGroup<T>) => {
+    const own = paged.filter((entry) => entry.group.group.key === group.key);
+    const last = own.at(-1);
+    if (!last) return 0;
+    const rest = units.slice(units.indexOf(last.group) + 1).filter((unit) => unit.group.key === group.key && !unit.closed);
+    return last.more + rest.reduce((sum, unit) => sum + unitRows(unit), 0);
+  };
   const toggleClosed = (key: string, isClosed: boolean) => view.set({ closed: (isClosed ? closed.filter((entry) => entry !== key) : [...closed, key]).join(",") || (closedByDefault.length ? "none" : null) });
 
-  function rowsOf(group: ListGroup<T>) {
+  function rowsOf(group: ListGroup<T>, start: number, end: number, later = 0, owner = group) {
     return (
       <ul className="sel-rows">
-        {shownOf(group).map((item) => {
+        {group.items.slice(start, end).map((item) => {
           const id = getId(item);
           const selected = selection.ids.has(id);
           return (
@@ -113,12 +168,9 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
             </li>
           );
         })}
-        {shownOf(group).length < group.items.length ? (
+        {later > 0 ? (
           <li className="sel-more">
-            <button className="btn btn-sm" onClick={() => setExpanded((current) => new Set([...current, group.key]))} type="button">
-              Show all {plural(group.items.length, noun)}
-            </button>
-            <span>{plural(group.items.length - shownOf(group).length, noun)} more in {group.label}</span>
+            <span>{plural(later, noun)} more in {owner.label} on the next page</span>
           </li>
         ) : null}
       </ul>
@@ -217,7 +269,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
         {groupings.length > 1 ? (
           <Segmented
             label="Group by"
-            onChange={(value) => view.set({ group: value, closed: null }, { group: groupings[0].key })}
+            onChange={(value) => view.set({ group: value, closed: null, ...paging.resetPage }, { group: groupings[0].key })}
             options={groupings.map((entry) => ({ value: entry.key, label: entry.label }))}
             value={grouping.key}
           />
@@ -227,10 +279,11 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
             <span className="picker-label">Find</span>
             <span className="sel-find-box">
               <Icon name="search" />
-              <input className="bare-input" onChange={(event) => view.set({ q: event.target.value })} placeholder={`Find ${noun.many}`} type="search" value={query} />
+              <input className="bare-input" onChange={(event) => view.set({ q: event.target.value, ...paging.resetPage })} placeholder={`Find ${noun.many}`} type="search" value={query} />
             </span>
           </label>
         ) : null}
+        <SortControl paging={paging} sorts={allSorts} />
         <SavedFilters />
       </div>
       <div className="sel-summary">
@@ -259,7 +312,10 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
         ref={listRef}
         role="group"
       >
-        {groups.map((group) => {
+        {pageGroupsShown.map(({ group, units: shownUnits }) => {
+          const first = shownUnits[0];
+          const continued = first.start > 0 || units.indexOf(first.group) > units.findIndex((unit) => unit.group.key === group.key);
+          const later = laterIn(group);
           const ids = group.items.map(getId);
           const check = groupCheck(selection, ids);
           const isClosed = closed.includes(group.key);
@@ -287,7 +343,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
                 >
                   {group.icon ? <Icon name={group.icon} /> : null}
                   <span className="sel-group-name"><b>{group.label}</b>{group.about ? <small>{group.about}</small> : null}</span>
-                  <span className="sel-group-count">{plural(ids.length, noun)}</span>
+                  <span className="sel-group-count">{plural(ids.length, noun)}{continued && !isClosed ? <small className="sel-group-continued">continued</small> : null}</span>
                   {tone && attention ? <StatusBadge status={{ tone, count: attention, note: `${attention} ${tone === "urgent" ? "urgent" : "to check soon"}${soonToo ? `, and ${soonToo} to check soon` : ""}` }} /> : null}
                   <Icon className="sel-group-chevron" name="chevron-down" />
                 </button>
@@ -295,7 +351,8 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
               </header>
               {isClosed ? null : parts ? (
                 <div className="sel-parts">
-                  {parts.map((part) => {
+                  {shownUnits.map(({ group: unit, start, end, more: partMore }, index) => {
+                    const part = unit.part!;
                     const partIds = part.items.map(getId);
                     const partCheck = groupCheck(selection, partIds);
                     const partClosed = closed.includes(part.key);
@@ -312,16 +369,16 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
                           />
                           <button aria-expanded={!partClosed} className="sel-part-toggle" onClick={() => toggleClosed(part.key, partClosed)} type="button">
                             <span className="sel-part-name">{part.label}</span>
-                            <span className="sel-group-count">{plural(partIds.length, noun)}</span>
+                            <span className="sel-group-count">{plural(partIds.length, noun)}{start > 0 && !partClosed ? <small className="sel-group-continued">continued</small> : null}</span>
                             <Icon className="sel-group-chevron" name="chevron-down" />
                           </button>
                         </header>
-                        {partClosed ? null : rowsOf(part)}
+                        {partClosed ? null : rowsOf(part, start, end, index === shownUnits.length - 1 ? later : partMore, index === shownUnits.length - 1 ? group : part)}
                       </section>
                     );
                   })}
                 </div>
-              ) : rowsOf(group)}
+              ) : rowsOf(group, first.start, first.end, later)}
             </section>
           );
         })}
@@ -332,6 +389,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
           </p>
         )) : null}
       </div>
+      <ListPager label={label} noun={noun} paging={paging} total={openRows} />
       {count ? (
         <div aria-label="Selection" className="sel-bar" role="region">
           <span className="sel-bar-count"><b>{plural(count, noun)}</b> selected</span>

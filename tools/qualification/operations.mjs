@@ -44,7 +44,7 @@ const DIRECTORY_POLICY_COLLECTIONS = new Set(Object.values(DIRECTORY_POLICY_RECO
 
 const STS_DEFINITION = Object.freeze(['{"TokenLifetimePolicy":{"Version":1,"AccessTokenLifetime":"8:00:00"}}']);
 
-const FIXTURE_PAYLOADS = Object.freeze({
+export const FIXTURE_PAYLOADS = Object.freeze({
   // Wave 2 ENTRA: directory policies and a delegated consent.
   tokenLifetimePolicy: { displayName: 'Fixture token lifetime', definition: STS_DEFINITION, isOrganizationDefault: false },
   tokenIssuancePolicy: { displayName: 'Fixture token issuance', definition: ['{"TokenIssuancePolicy":{"Version":1,"TokenResponseSigningPolicy":"TokenOnly"}}'], isOrganizationDefault: false },

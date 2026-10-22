@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { postAction } from "@/lib/action-client";
+import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { RecoveryMechanismTable, type RecoveryMechanism } from "@/components/recovery-mechanism";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
@@ -43,13 +44,13 @@ import {
   whoWords,
   type NameBook,
 } from "@/lib/restore-view";
+import { byRisk, byText, byTime } from "@/lib/paging";
 import { orderGroups, smartOrder } from "@/lib/selection";
 import { madeInSharePoint, serviceFor, serviceOrder } from "@/lib/services";
 import { typeService } from "@/lib/baselines-view";
 import { kindOrder, kindParts } from "@/lib/type-groups";
 
 const DRY_RUN_POLL_MS = 3000;
-const ROWS_PER_GROUP = 8;
 
 interface AdditionReason {
   requiredBy: string;
@@ -263,6 +264,14 @@ function serviceGroup(code: string): Omit<ListGroup<RestoreItem>, "items" | "key
   const service = serviceFor(code === "other" ? null : code);
   return { label: service.name, icon: service.icon, about: service.about };
 }
+
+// Order by: name, kind of setting, risk, and when it changed.
+const SORTS: ListSort<RestoreItem>[] = [
+  { key: "name", label: "Name", compare: (a, b) => byText(a.label, b.label) },
+  { key: "kind", label: "Kind of setting", compare: (a, b) => byText(resourceTypeLabel(a.resourceType), resourceTypeLabel(b.resourceType)) || byText(a.label, b.label) },
+  { key: "risk", label: "Risk", desc: true, compare: (a, b) => byRisk(toneOf(a), toneOf(b)) },
+  { key: "changed", label: "When it changed", desc: true, compare: (a, b) => byTime(a.change?.seenAt, b.change?.seenAt) },
+];
 
 const GROUPINGS: Grouping<RestoreItem>[] = [
   {
@@ -607,7 +616,7 @@ export function RestoreSelection({
                 matches={(item, query) => `${item.label} ${plainType(item.resourceType)} ${resourceTypeLabel(item.resourceType)} ${serviceFor(item.service).name}`.toLowerCase().includes(query)}
                 noun={{ one: "setting", many: "settings" }}
                 renderRow={(item) => <RestoreRow compared={changes !== null} item={item} undo={item.change ? undoButton([item.naturalKey], item.change.kind === "deleted" ? "Bring back" : "Undo change", item.label) : null} />}
-                rowLimit={ROWS_PER_GROUP}
+                sorts={SORTS}
                 rowName={(item) => plainLabel(item.naturalKey, names)}
                 toneOf={toneOf}
               />

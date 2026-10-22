@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { RiskChip, SectionHead } from "@/components/baselines/parts";
 import { JobRecordFields } from "@/components/job-table";
+import { PagedRows } from "@/components/list/paged-rows";
 import { Icon } from "@/components/shell/icons";
 import { RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import type { RiskTone } from "@/lib/menu-status";
@@ -23,12 +24,16 @@ export function RecentWork({ jobs, now }: { jobs: JobRecord[]; now: string }) {
     <section aria-labelledby="baseline-jobs-heading" className="bl-section">
       <SectionHead about="Creating a setup or switching to another one runs in the background. Each row opens its progress." id="baseline-jobs-heading" title="Recent work" />
       {jobs.length ? (
-        <ul className="bl-versions">
-          {jobs.map((job) => {
+        <PagedRows
+          label="Recent work"
+          listClassName="bl-versions"
+          noun={{ one: "job", many: "jobs" }}
+          prefix="work-"
+          rows={jobs.map((job) => {
             const chip = statusChip(job.status);
             const at = job.finishedAt ?? job.startedAt ?? job.createdAt;
-            return (
-              <li className="bl-card bl-job" key={job.id}>
+            return { id: job.id, text: `${jobName(job)} ${chip.label}`, values: { when: at ?? "", name: jobName(job), status: chip.label }, node: (
+              <li className="bl-card bl-job">
                 <span aria-hidden="true" className="bl-kind-icon" data-tone={chip.tone ?? undefined}><Icon name="baselines" /></span>
                 <span className="bl-job-name">
                   <Link className="bl-row-link" href={`/jobs/${encodeURIComponent(job.id)}`}>{jobName(job)}</Link>
@@ -39,9 +44,10 @@ export function RecentWork({ jobs, now }: { jobs: JobRecord[]; now: string }) {
                 </span>
                 <RiskChip tone={chip.tone}>{chip.label}</RiskChip>
               </li>
-            );
+            ) };
           })}
-        </ul>
+          sorts={[{ key: "when", label: "When", desc: true }, { key: "name", label: "Name" }, { key: "status", label: "Status" }]}
+        />
       ) : <p className="bl-help">Nothing yet. Creating an approved setup shows here while it runs.</p>}
       {jobs.length ? (
         <TechnicalDetails summary="Technical details: recent work">

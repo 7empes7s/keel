@@ -8,6 +8,7 @@ import { useBackup } from "@/components/backup-controls";
 import { ChangedObjects, ChangedValuesStyles } from "@/components/changed-values";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
+import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { DatePicker } from "@/components/pickers/date-picker";
 import { OptionPicker } from "@/components/pickers/option-picker";
@@ -50,6 +51,7 @@ import { rangeToParam, toDay, type DayRange } from "@/lib/date-range";
 import type { ChainIntegrity, EvidenceEntry } from "@/lib/evidence";
 import type { NamedKeys } from "@/lib/job-names";
 import type { JobRecord } from "@/lib/portal-jobs";
+import { byRisk, byText, byTime } from "@/lib/paging";
 import { formatTimestamp } from "@/lib/presentation";
 import { jobStatusSentence, personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
@@ -68,6 +70,13 @@ const SHOW: ChoiceOption<"all" | "jobs" | "records">[] = [
   { value: "all", label: "Everything" },
   { value: "jobs", label: "Jobs" },
   { value: "records", label: "Audit record" },
+];
+
+// Order by: when, outcome (failures first) and what happened.
+const SORTS: ListSort<ActivityRow>[] = [
+  { key: "when", label: "When", desc: true, compare: (a, b) => byTime(a.at, b.at) },
+  { key: "outcome", label: "Outcome", desc: true, compare: (a, b) => byRisk(outcomeTone(a.outcome), outcomeTone(b.outcome)) },
+  { key: "what", label: "What happened", compare: (a, b) => byText(a.title, b.title) },
 ];
 
 const WHO_ANY = "";
@@ -245,7 +254,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
               matches={(item, text) => `${item.title} ${item.line} ${item.person ? personLabel(item.person) : "keel"} ${OUTCOMES[item.outcome].label}`.toLowerCase().includes(text)}
               noun={{ one: "entry", many: "entries" }}
               renderRow={renderRow}
-              rowLimit={25}
+              sorts={SORTS}
               rowName={(item) => `${item.title} at ${clockWords(item.at) || "an unknown time"}`}
               toneOf={(item) => outcomeTone(item.outcome)}
             />

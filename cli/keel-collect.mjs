@@ -125,10 +125,28 @@ export async function readAuditLogs(client, { tenantRef, reader, logger = consol
   }
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Job page redesign: when the worker runs this as a job it passes the job's id, and each
+ * type's progress is written onto that running job so the portal can show it live.
+ * Without a job id (a timer or an operator run) nothing is written.
+ */
+export function progressWriter(client, jobId) {
+  if (typeof jobId !== 'string' || !UUID.test(jobId)) return undefined;
+  return async (types) => {
+    await client.query(
+      `UPDATE job SET progress = $2 WHERE id = $1 AND status = 'running'`,
+      [jobId, JSON.stringify({ types, updatedAt: new Date().toISOString() })],
+    );
+  };
+}
+
 export async function runCollect({
   config,
   dbUrl = process.env.KEEL_DB_URL,
   tier,
+  jobId = process.env.KEEL_JOB_ID,
   dependencies = {},
   logger = console,
   readAudit = false,
@@ -155,6 +173,7 @@ export async function runCollect({
     // Gap register M6: the company branding files are backed up with the snapshot.
     const { snapshotId, coverageDigest, relationshipsByFamily, brandingAssets } = await collectSnapshotFn(client, {
       reader, tenantRef, tenantId: config.tenantId, tier, relationships: COLLECT_RELATIONSHIPS, brandingAssets: true,
+      onProgress: progressWriter(client, jobId),
     });
     logger.log(`snapshot ${snapshotId} complete`);
     const assignmentLine = describeAssignmentReads(relationshipsByFamily?.assignment);

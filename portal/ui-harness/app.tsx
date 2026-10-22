@@ -56,6 +56,7 @@ import { integrationsPageVerdict } from "@/lib/integrations-view";
 import { ServiceNowPanel } from "@/components/servicenow-panel";
 import type { ServiceNowStatus } from "@/lib/servicenow";
 import type { ActivationPreview, Policy, PolicyAction } from "@/lib/policies";
+import type { TypeProgress } from "@/lib/action";
 import { RULE_KINDS, RULE_STATES, ruleCounts, ruleKind, ruleState, rulesStatus } from "@/lib/policy-view";
 import { peopleCounts, peopleStatus } from "@/lib/people-view";
 import type { PrincipalView } from "@/lib/principals";
@@ -420,6 +421,29 @@ const job = (id: string, kind: string, status: string, extra: Partial<Job> = {})
   workerId: "worker-1", startedAt: "2026-10-02T09:31:00Z", heartbeatAt: "2026-10-02T09:39:40Z",
   createdAt: "2026-10-02T09:30:00Z", finishedAt: status === "running" || status === "queued" ? null : "2026-10-02T09:34:00Z", ...extra,
 } as Job);
+// Job page redesign: a tier 1 backup's progress by type, live while it runs.
+const TIER1_TYPES: [string, number][] = [
+  ["group", 214], ["administrativeUnit", 6], ["roleAssignment", 38], ["directoryRole", 12], ["roleDefinition", 96],
+  ["conditionalAccessPolicy", 18], ["namedLocation", 4], ["authenticationMethodsPolicy", 1], ["authenticationStrengthPolicy", 3],
+  ["application", 57], ["servicePrincipal", 412], ["oauth2PermissionGrant", 88],
+  ["deviceCompliancePolicy", 9], ["deviceManagementRoleDefinition", 22], ["deviceManagementRoleAssignment", 5], ["deviceManagementSettings", 1],
+];
+function tierProgress(mode: "running" | "failed" | "done") {
+  const types: Record<string, TypeProgress> = {};
+  TIER1_TYPES.forEach(([type, count], index) => {
+    const startedAt = new Date(Date.parse("2026-10-02T09:31:00Z") + index * 9_000).toISOString();
+    const completedAt = new Date(Date.parse(startedAt) + 4_000 + (count % 7) * 1_000).toISOString();
+    if (mode === "running" && index === 9) types[type] = { outcome: "reading", startedAt };
+    else if (mode === "running" && index > 9) types[type] = { outcome: "waiting" };
+    else if (mode === "failed" && index === 13) types[type] = { outcome: "reading", startedAt };
+    else if (mode === "failed" && index > 13) types[type] = { outcome: "waiting" };
+    else if (type === "deviceCompliancePolicy") types[type] = { outcome: "failed", itemCount: null, startedAt, completedAt, httpStatus: 429, error: "Graph 429: throttled after 5 retries on /deviceManagement/deviceCompliancePolicies" };
+    else if (type === "authenticationStrengthPolicy") types[type] = { outcome: "unavailable", itemCount: null, startedAt, completedAt, httpStatus: 403, error: "Tenant is not licensed for this feature" };
+    else if (type === "oauth2PermissionGrant" && mode === "done") types[type] = { outcome: "partial", itemCount: 61, startedAt, completedAt, httpStatus: 200, error: "pagination incomplete" };
+    else types[type] = { outcome: count === 0 ? "complete-empty" : "complete", itemCount: count, startedAt, completedAt, httpStatus: 200, error: null };
+  });
+  return { types, updatedAt: "2026-10-02T09:39:40Z", source: "live" as const };
+}
 const initialJobs = [
   job("a1", "backup", "running"),
   job("a2", "collect", "queued"),
@@ -1860,7 +1884,9 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
           <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate"]} items={items} now={now} summary={DRIFT_SUMMARY} />
         </div></>;
     }
-    case "/jobs/a4": { const detail = jobs.find((item) => item.id === "a4")!; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
+    case "/jobs/a1": { const detail = { ...jobs.find((item) => item.id === "a1")!, status: "running", finishedAt: null, progress: tierProgress("running") }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
+    case "/jobs/b2": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "b2", status: "succeeded", error: null, result: { partial: true, incompleteTypes: [{ type: "deviceCompliancePolicy", outcome: "failed" }, { type: "oauth2PermissionGrant", outcome: "partial" }] }, progress: tierProgress("done") }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
+    case "/jobs/a4": { const detail = { ...jobs.find((item) => item.id === "a4")!, progress: tierProgress("failed") }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/r10": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010" } }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }

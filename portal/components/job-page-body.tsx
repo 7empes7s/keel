@@ -5,6 +5,7 @@ import { JobDetail, jobVerdict } from "@/components/job-detail";
 import { JobRefresher } from "@/components/job-refresher";
 import { RecoveryCompletion } from "@/components/recovery-completion";
 import { Verdict } from "@/components/verdict";
+import { jobDisplayStatus } from "@/lib/job-names";
 import type { JobRecord } from "@/lib/portal-jobs";
 
 // The Job page below its header, shared by the route and the UI harness: the verdict,
@@ -21,7 +22,7 @@ export function JobPageBody({ job, now, capabilities }: { job: JobRecord; now: s
   const enforced = restoreRef && params.mode === "enforce" && (job.status === "succeeded" || job.status === "failed");
   return (
     <>
-      <Verdict text={jobVerdict(job, now)} tone={job.status === "failed" ? "critical" : job.status === "succeeded" ? "good" : "attention"} />
+      <Verdict text={jobVerdict(job, now)} tone={job.status === "failed" ? "critical" : jobDisplayStatus(job) === "succeeded" ? "good" : "attention"} />
       <Link className="text-link back-link" href="/activity"><span aria-hidden="true">←</span> All activity</Link>
       <JobDetail job={job} now={now} />
       {restoreRef && !compensates && job.status === "succeeded" ? <RecoveryCompletion canComplete={canRestore} restoreRef={restoreRef} /> : null}

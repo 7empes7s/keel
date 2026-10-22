@@ -25,6 +25,8 @@ const PAGES = [
   { name: "readiness-empty", hash: "/readiness/empty" },
   { name: "activity", hash: "/activity" },
   { name: "job-failed", hash: "/jobs/a4" },
+  { name: "job-backup-running", hash: "/jobs/a1" },
+  { name: "job-backup-partial", hash: "/jobs/b2" },
   { name: "job-restore-completion", hash: "/jobs/r9" },
   { name: "job-restore-undo", hash: "/jobs/r10" },
   { name: "policies", hash: "/policies" },
@@ -87,7 +89,7 @@ for (const theme of ["dark", "light"] as const) {
 }
 
 // Visual baselines for the pages most likely to regress, both themes, plus phone width.
-const VISUAL = ["dashboard", "drift", "restore", "approvals", "protect", "job-failed", "policy-activation"];
+const VISUAL = ["dashboard", "drift", "restore", "approvals", "protect", "job-failed", "policy-activation", "job-backup-running", "job-backup-partial"];
 for (const theme of ["dark", "light"] as const) {
   for (const name of VISUAL) {
     test(`visual · ${name} · ${theme}`, async ({ page }) => {
@@ -3198,18 +3200,43 @@ test("Job · a failed job leads with a plain cause, keeps the raw error behind S
   expect(explanation).not.toContain("Graph 429");
   await alert.getByText("Show details").click();
   await expect(alert.locator(".ui-alert-more li")).toHaveText("Graph 429: throttled after 5 retries on /deviceManagement/deviceConfigurations");
-  // The alert comes before the summary; the timing is three tiles, not a sentence.
+  // The alert comes before the summary; progress and timing are tiles, not a sentence.
   const order = await page.locator(".job-page > section").evaluateAll((sections) => sections.map((section) => section.className));
   expect(order[0]).toContain("job-attention");
-  await expect(page.locator(".job-page .ui-tile")).toHaveCount(3);
+  await expect(page.locator(".job-page .ui-tile")).toHaveCount(4);
+  // The kind being read when the job failed says it stopped there.
+  await expect(page.locator('.job-types-table tr[data-state="stopped"] .badge')).toHaveText("Stopped before it finished");
   await expect(page.locator('.ui-tile[data-tile="ran"]')).toHaveAttribute("data-tone", "urgent");
   await expect(page.locator(".job-requester .person")).toBeVisible();
 });
 
 test("Job page and rule preview fit a phone without sideways scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  for (const hash of ["/jobs/a4", "/jobs/r9", "/jobs/r10", "/policies/p2"]) {
+  for (const hash of ["/jobs/a1", "/jobs/b2", "/jobs/a4", "/jobs/r9", "/jobs/r10", "/policies/p2"]) {
     await open(page, hash, "light");
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), hash).toBeLessThanOrEqual(0);
   }
+});
+
+test("Job · a running backup shows progress and every kind by service, with state, count and time", async ({ page }) => {
+  await open(page, "/jobs/a1");
+  await expect(page.locator(".job-progress-bar")).toHaveAttribute("aria-valuenow", "56");
+  await expect(page.locator('.ui-tile[data-tile="progress"] .ui-tile-value')).toHaveText("9 of 16");
+  const services = page.locator(".job-types-table tbody[data-service]");
+  expect(await services.evaluateAll((groups) => groups.map((group) => group.getAttribute("data-service")))).toEqual(["Entra", "Intune"]);
+  await expect(page.locator('.job-types-table tr[data-state="reading"]')).toHaveCount(1);
+  await expect(page.locator('.job-types-table tr[data-state="reading"] .badge')).toHaveText("Reading now");
+  await expect(page.locator(".job-types-table tr[data-state]").filter({ has: page.getByText("Group", { exact: true }) }).locator("td[data-label='Items']")).toHaveText("214");
+});
+
+test("Job · a partly done backup leads with the kinds it missed and why", async ({ page }) => {
+  await open(page, "/jobs/b2");
+  const alert = page.locator('.ui-alert[data-alert="types"]');
+  await expect(alert.locator(".ui-alert-title")).toContainText("2 kinds were not backed up in full");
+  const failed = page.locator('.job-types-table tr[data-state="failed"]');
+  await expect(failed.locator(".job-problem")).toHaveText("Microsoft 365 slowed Keel down");
+  await expect(failed.locator(".ui-alert-more li")).toBeHidden();
+  await failed.getByText("Show details").click();
+  await expect(failed.locator(".ui-alert-more li")).toContainText("Graph 429");
+  await expect(page.locator('[data-layer="verdict"]')).toHaveAttribute("data-tone", "soon");
 });

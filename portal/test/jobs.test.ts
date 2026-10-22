@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { JobDetail } from "@/components/job-detail";
-import { jobErrorCause } from "@/lib/job-view";
+import { jobErrorCause, jobProgressPercent, jobTypeGroups, jobTypeRows, typeProblemsAlert } from "@/lib/job-view";
 import { JobTable } from "@/components/job-table";
 import { guardedJobList, guardedJobShow, normalizeJob } from "@/lib/action";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
@@ -120,4 +120,43 @@ test("a failed job leads with a plain cause and one next step, never the raw err
   const [beforeDetails] = html.split("<details");
   assert.ok(!beforeDetails.includes("Graph 429"), "the raw error is not in plain view");
   assert.ok(html.indexOf('data-alert="error"') < html.indexOf('id="job-heading"'), "the error comes before the summary");
+});
+
+test("a backup job lists every kind it reads by service, with state, count, time and a plain problem", () => {
+  const progress = {
+    source: "live" as const, updatedAt: "2026-10-22T10:05:00Z",
+    types: {
+      group: { outcome: "complete", itemCount: 214, startedAt: "2026-10-22T10:00:00Z", completedAt: "2026-10-22T10:00:08Z", httpStatus: 200, error: null },
+      conditionalAccessPolicy: { outcome: "reading", startedAt: "2026-10-22T10:01:00Z" },
+      deviceCompliancePolicy: { outcome: "failed", itemCount: null, startedAt: "2026-10-22T10:00:10Z", completedAt: "2026-10-22T10:00:16Z", httpStatus: 429, error: "Graph 429: throttled after 5 retries" },
+      namedLocation: { outcome: "waiting" },
+    },
+  };
+  const now = "2026-10-22T10:02:00Z";
+  const running = { status: "running", progress };
+  const rows = jobTypeRows(running, now);
+  const byType = Object.fromEntries(rows.map((row) => [row.type, row]));
+  assert.equal(byType.group.label, "Backed up");
+  assert.equal(byType.group.count, 214);
+  assert.equal(byType.group.took, "8 seconds");
+  assert.equal(byType.conditionalAccessPolicy.label, "Reading now");
+  assert.equal(byType.deviceCompliancePolicy.tone, "urgent");
+  assert.equal(byType.deviceCompliancePolicy.problem, "Microsoft 365 slowed Keel down");
+  assert.equal(byType.deviceCompliancePolicy.raw, "Graph 429: throttled after 5 retries");
+  assert.equal(byType.namedLocation.label, "Waiting");
+  // Grouped by service in Microsoft's order: Entra ID before Intune.
+  assert.deepEqual(jobTypeGroups(rows).map((group) => group.name), ["Entra ID", "Intune"]);
+  assert.equal(jobProgressPercent(rows), 50);
+  // A kind still being read when the job ended stopped there, and says so.
+  const ended = jobTypeRows({ status: "failed", progress }, now).find((row) => row.type === "conditionalAccessPolicy")!;
+  assert.equal(ended.label, "Stopped before it finished");
+  assert.equal(ended.tone, "urgent");
+  // The problems lead the page as one alert; specifics behind Show details.
+  const alert = typeProblemsAlert(rows)!;
+  assert.equal(alert.title, "1 kind was not backed up in full");
+  assert.deepEqual(alert.more, ["Device compliance policy: Microsoft 365 slowed Keel down"]);
+  const html = renderToStaticMarkup(createElement(JobDetail, { job: { ...normalizeJob({ ...row, kind: "backup", status: "running", error: null, finished_at: null }), progress }, now }));
+  assert.match(html, /role="progressbar"/);
+  assert.match(html, /What it backs up/);
+  assert.ok(!html.split("<details")[0].includes("Graph 429"), "raw errors wait behind Show details");
 });

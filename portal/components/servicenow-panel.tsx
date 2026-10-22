@@ -1,4 +1,5 @@
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { ErrorNotice } from "@/components/ui/error-notice";
 import { formatTimestamp } from "@/lib/presentation";
 import { heldBackSentence, serviceNowSentence, stateValueWords } from "@/lib/integrations-view";
 import type { ServiceNowStatus } from "@/lib/servicenow";
@@ -44,9 +45,15 @@ export function ServiceNowPanel({ status }: { status: ServiceNowStatus }) {
           <div className={status.mirror.conflicts > 0 ? "stat-warn" : undefined}><dt>Disagreements</dt><dd>{status.mirror.conflicts}</dd></div>
         </dl>
       </> : null}
-      {status.heldBack.length > 0 ? <ul className="quarantine-list">{status.heldBack.map((event) => <li key={event.eventId}>
-        {heldBackSentence(event)} <time dateTime={event.createdAt} title={event.createdAt}>{formatTimestamp(event.createdAt)}</time>
-      </li>)}</ul> : null}
+      {status.heldBack.length > 0 ? <div className="ui-alerts">{status.heldBack.map((event) => <ErrorNotice
+        error={[`${formatTimestamp(event.createdAt)} · after ${event.attempts} ${event.attempts === 1 ? "attempt" : "attempts"}`, event.lastError ?? event.reason ?? null].filter(Boolean).join("\n")}
+        id={`held-${event.eventId}`}
+        key={event.eventId}
+        service="ServiceNow"
+        title={heldBackSentence(event)}
+        todo="Nothing to do now: KEEL's decision stands. If more are held back, check the ServiceNow connection."
+        tone="soon"
+      />)}</div> : null}
       {status.configured ? <p className="field-help">Not yet proven against a real ServiceNow instance.</p> : null}
       <TechnicalDetails>
         <RecordField copy={false} label="Mapping API" usage={<>set with <code>PUT /api/integrations/servicenow</code>; check with <code>node tools/qualification/servicenow.mjs check --config &lt;file&gt;</code></>} value="GET /api/integrations/servicenow" />

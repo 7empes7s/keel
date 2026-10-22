@@ -11,6 +11,7 @@ import { OptionPicker } from "@/components/pickers/option-picker";
 import { Segmented, type ChoiceOption } from "@/components/pickers/segmented";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { ErrorNotice } from "@/components/ui/error-notice";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Verdict } from "@/components/verdict";
@@ -704,13 +705,13 @@ function ChannelPanel({ channel, health, rules, deliveries, now, busy, error, re
       <div className="nf-sheet">
         <p className="nf-plain">{channelSentence(channel)}</p>
         {health.problem ? (
-          <div className="nf-note" data-tone={health.state === "failing" ? "urgent" : "soon"}>
-            <Icon name={health.state === "failing" ? "alert" : "clock"} />
-            <div>
-              <b>{health.problem.sentence}</b>
-              <p>{health.problem.whatToDo}</p>
-            </div>
-          </div>
+          <ErrorNotice
+            error={health.latest?.last_error ?? null}
+            id="channel-error"
+            title={health.problem.sentence}
+            todo={health.problem.whatToDo}
+            tone={health.state === "failing" ? "urgent" : "soon"}
+          />
         ) : null}
         {error ? <p className="nf-error" role="alert"><Icon name="alert" />{error}</p> : null}
         <section className="nf-sheet-sect">

@@ -10394,3 +10394,6 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
   .ui-alert { grid-template-columns: auto minmax(0, 1fr); padding: var(--space-sm) var(--space-sm) var(--space-sm) calc(var(--space-sm) + 4px); }
   .ui-alert-action { grid-column: 2; justify-self: start; }
 }
+.ui-error-notice { min-width: 0; }
+.ui-raw-error { display: block; padding: var(--space-2xs) var(--space-xs); border-radius: var(--radius-md); background: var(--surface); font-family: var(--font-mono); font-size: 0.8125rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ui-alert-more:has(.ui-raw-error) ul { padding-left: 0; list-style: none; }

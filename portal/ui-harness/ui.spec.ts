@@ -3,6 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { RAW_ERROR_PATTERN } from "../lib/error-words";
+
 const HARNESS = pathToFileURL(join(__dirname, "dist/index.html")).href;
 
 const PAGES = [
@@ -267,7 +269,7 @@ test("Notifications · tiles, tabs, send test, turn back on, real-event rules, e
   await expect(page).toHaveURL(/open=c4e10000-0000-4000-8000-0000000000c4/);
   const panel = page.getByRole("dialog", { name: "Slack" });
   await expect(panel).toBeVisible();
-  await expect(panel.locator(".nf-note")).toContainText("Make a new address in Slack");
+  await expect(panel.locator(".ui-error-notice")).toContainText("Make a new address in Slack");
   await expect(panel.getByRole("link", { name: "An alert came back · warning or above" })).toHaveCount(1);
   await expect(panel.locator(".nf-mini > li")).toHaveCount(3);
   await expect(panel.locator(".btn-primary:visible")).toHaveText("Send test");
@@ -357,7 +359,7 @@ test("Activity · tiles, day groups, panel, run again, who filter, one amber act
   await open(page, "/activity");
   await expect(page.locator(".status-pill")).toHaveText("2 failed today");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Keel ran 6 jobs in the last day; the backup of Tier 1 failed, and 1 more.");
-  await expect(page.locator('[data-layer="verdict"] .verdict-detail')).toHaveText("Graph 429: throttled after 5 retries on /deviceManagement/deviceConfigurations");
+  await expect(page.locator('[data-layer="verdict"] .verdict-detail')).toHaveText("Microsoft 365 was busy and asked Keel to slow down.");
   const amber = page.locator("main .btn-primary:visible");
   await expect(amber).toHaveCount(1);
   await expect(amber).toHaveText("Run the Tier 1 backup again");
@@ -382,7 +384,7 @@ test("Activity · tiles, day groups, panel, run again, who filter, one amber act
   await expect(page).toHaveURL(/open=job%3Aa4|open=job:a4/);
   const panel = page.getByRole("dialog", { name: "Backup of Tier 1" });
   await expect(panel).toBeVisible();
-  await expect(panel.locator(".ac-note")).toContainText("Graph 429: throttled after 5 retries");
+  await expect(panel.locator(".ui-error-notice")).toContainText("Microsoft 365 was busy and asked Keel to slow down.");
   await expect(panel.getByRole("link", { name: "Open the job page" })).toHaveAttribute("href", /\/jobs\/a4$/);
   await expect(panel.locator(".btn-primary:visible")).toHaveText("Run the Tier 1 backup again");
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
@@ -3085,4 +3087,48 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(page.locator(".page-header .status-pill")).toHaveText("Protected");
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
   await expect(page.locator(".ov-calm")).toBeVisible();
+});
+
+// Raw error text (status codes, exception names, API paths) never shows in plain view:
+// every page, and the sheets that hold failed jobs and refused sends, show a plain cause
+// and "What to do:", with the raw error only behind "Show details" (ErrorNotice).
+const ERROR_STATES = [
+  "/activity?open=job:a4",
+  "/activity?open=job:y1",
+  "/notifications?open=c4e10000-0000-4000-8000-0000000000c4",
+  "/notifications?tab=sent",
+  "/notifications?tab=sent&open=d0e10000-0000-4000-8000-0000000000d4",
+  "/schedules?group=status",
+  "/schedules?open=5c4e0000-0000-4000-8000-000000000002",
+];
+test("errors · no raw error text in plain view on any page", async ({ page }) => {
+  test.setTimeout(240_000);
+  const leaks: string[] = [];
+  for (const hash of [...PAGES.map((entry) => entry.hash), ...ERROR_STATES]) {
+    await open(page, hash);
+    const text = await page.locator("body").innerText();
+    for (const line of text.split("\n")) if (RAW_ERROR_PATTERN.test(line)) leaks.push(`${hash}: ${line.trim().slice(0, 160)}`);
+  }
+  expect(leaks, "raw error text belongs behind Show details (components/ui/error-notice.tsx)").toEqual([]);
+});
+
+test("errors · a failed job shows a plain cause and what to do; the raw error is one click away", async ({ page }) => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await open(page, "/jobs/a4");
+    const notice = page.locator(".ui-error-notice");
+    await expect(notice).toContainText("Microsoft 365 was busy and asked Keel to slow down.");
+    await expect(notice.locator(".ui-alert-todo")).toContainText("What to do:");
+    const raw = notice.locator(".ui-raw-error");
+    await expect(raw).toBeHidden();
+    await notice.getByText("Show details").click();
+    await expect(raw).toHaveText("Graph 429: throttled after 5 retries on /deviceManagement/deviceConfigurations");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await notice.getByText("Show details").click();
+    await expect(raw).toBeHidden();
+  }
+  await open(page, "/activity?open=job:a4");
+  const sheet = page.locator(".ui-error-notice");
+  await expect(sheet).toContainText("Run it again");
+  await expect(sheet.locator(".ui-raw-error")).toBeHidden();
 });

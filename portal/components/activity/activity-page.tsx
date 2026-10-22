@@ -15,6 +15,7 @@ import { Segmented, type ChoiceOption } from "@/components/pickers/segmented";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { JobRecordFields } from "@/components/job-table";
 import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { ErrorNotice } from "@/components/ui/error-notice";
 import { Badge } from "@/components/ui/badge";
 import { Person } from "@/components/ui/person";
 import { Verdict } from "@/components/verdict";
@@ -370,13 +371,11 @@ function RowPanel({ row, now, canBackup, retryBusy, retryLabel, onRetry, onClose
           {job ? <div><dt>Status</dt><dd>{capital(jobStatusSentence(job, now))}</dd></div> : null}
         </dl>
         {job?.status === "failed" && job.error ? (
-          <div className="ac-note" data-tone="urgent">
-            <Icon name="alert" />
-            <div>
-              <b>{String(job.error).split("\n")[0].replace(/^[A-Za-z]*Error:\s*/, "") || "It stopped with an error."}</b>
-              <p>{retry && retry.kind !== "plan" ? "Running it again usually works; Keel only reads your tenant." : retry?.kind === "plan" ? "Nothing was changed by the failed part. Plan it again to try once more." : "The full error is in Technical details."}</p>
-            </div>
-          </div>
+          <ErrorNotice
+            error={job.error}
+            id="activity-error"
+            todo={retry && retry.kind !== "plan" ? "Run it again: it usually works, and Keel only reads your tenant." : retry?.kind === "plan" ? "Nothing was changed by the failed part. Plan it again to try once more." : undefined}
+          />
         ) : null}
         {row.outcome === "refused" ? (
           <div className="ac-note" data-tone="soon">

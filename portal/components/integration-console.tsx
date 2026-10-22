@@ -2,9 +2,11 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { ErrorNotice } from "@/components/ui/error-notice";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { formatTimestamp } from "@/lib/presentation";
+import { plainError } from "@/lib/error-words";
 import { toast } from "@/lib/toast";
 import type { Destination, DestinationStatus, QuarantinedEvent } from "@/lib/integrations";
 import { destinationKind, destinationTarget, isPaused } from "@/lib/integrations-view";
@@ -111,9 +113,14 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
               ? <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void write(`/api/integrations/${destination.id}/resume`, "POST", undefined, "resume")} type="button">Resume</button>
               : <ConfirmButton confirmLabel="Pause" description={<p>{destination.name} stops receiving audit entries until it is resumed. New entries wait, so it falls behind while paused.</p>} disabled={busy} onConfirm={() => write(`/api/integrations/${destination.id}/revoke`, "POST", undefined, "pause")} size="sm" title={`Pause ${destination.name}?`}>Pause</ConfirmButton>) : null}
           </div>
-          {events ? (events.length === 0 ? <p className="field-help">Nothing is held back.</p> : <ul className="quarantine-list">{events.map((quarantinedEvent) => <li key={quarantinedEvent.id}>
-            Held back <time dateTime={quarantinedEvent.quarantined_at}>{formatTimestamp(quarantinedEvent.quarantined_at)}</time> after {quarantinedEvent.attempts} {quarantinedEvent.attempts === 1 ? "attempt" : "attempts"}: {quarantinedEvent.quarantine_reason ?? "no reason recorded"}
-          </li>)}</ul>) : null}
+          {events ? (events.length === 0 ? <p className="field-help">Nothing is held back.</p> : <div className="ui-alerts">{events.map((quarantinedEvent) => <ErrorNotice
+            error={quarantinedEvent.quarantine_reason}
+            id={`quarantined-${quarantinedEvent.id}`}
+            key={quarantinedEvent.id}
+            service={destination.name}
+            title={`Held back ${formatTimestamp(quarantinedEvent.quarantined_at)} after ${quarantinedEvent.attempts} ${quarantinedEvent.attempts === 1 ? "attempt" : "attempts"}: ${plainError(quarantinedEvent.quarantine_reason, { service: destination.name }).cause}`}
+            tone="soon"
+          />)}</div>) : null}
           {canConfiguration ? <form className="inline-form" onSubmit={(event) => replay(destination.id, event)}><fieldset disabled={busy}><legend>Send again</legend>
             <label className="filter-field"><span>From audit entry number</span><input name="fromSeq" type="number" min={0} defaultValue={0} /></label>
             <button className="btn btn-secondary" type="submit">Send again</button>

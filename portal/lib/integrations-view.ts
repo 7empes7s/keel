@@ -58,11 +58,11 @@ const UPDATE_KINDS: Record<string, string> = {
   conflict: "The disagreement notice",
 };
 
-/** "The decision update was held back after 1 attempt: ServiceNow refused it." */
+/** "The decision update was held back: ServiceNow refused it." Attempts and the raw error go behind "Show details". */
 export function heldBackSentence(event: ServiceNowHeldBack): string {
   const what = UPDATE_KINDS[event.kind] ?? "An update";
   const why = event.reason === "rejected by adapter" ? "ServiceNow refused it" : "it failed every retry";
-  return `${what} was held back after ${event.attempts} ${event.attempts === 1 ? "attempt" : "attempts"}: ${why}. KEEL's decision stands.`;
+  return `${what} was held back: ${why}.`;
 }
 
 /** The page verdict: a ServiceNow problem outranks the audit-record destinations. */

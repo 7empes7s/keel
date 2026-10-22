@@ -9385,6 +9385,9 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .technical-side[data-side="after"] li[data-differs] { background: var(--check-soon-bg); color: var(--text); }
 .technical-compare[data-change="removed"] .technical-side[data-side="before"] li[data-differs] { background: var(--urgent-bg); }
 .technical-compare[data-change="same"] .technical-side { box-shadow: inset 3px 0 0 var(--fine); }
+@media (max-width: 46rem) {
+  .technical-body:popover-open > .technical-toolbar { margin-inline: var(--space-md); }
+}
 @media (max-width: 30rem) {
   .technical-sides { grid-template-columns: minmax(0, 1fr); }
 }

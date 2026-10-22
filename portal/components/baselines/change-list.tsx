@@ -263,6 +263,12 @@ export function ChangeList({
     ] : []),
   ];
 
+  // Picks stay picked while tiles, services, kinds and the find change the view, so
+  // someone can gather changes from several services and decide on them together.
+  const keepPicks = useMemo(() => ({ pool: open, groupOf: (item: DriftRecord) => {
+    const where = itemService(item);
+    return { key: where.code, label: where.name, icon: where.icon, rank: serviceOrder(where.code) };
+  } }), [open]);
   const waiting = open.filter((item) => item.serviceRead && isWaiting(item)).length;
   const tileLink = (key: string | null) => {
     const changes = { ...tileParams(key === null ? [] : toggleTile(tiles, picked, key)), open: null };
@@ -345,6 +351,7 @@ export function ChangeList({
             getId={(item) => item.id}
             groupings={GROUPINGS}
             items={shown}
+            keepPicks={keepPicks}
             label="Open changes"
             matches={(item, text) => changeText(item).includes(text.trim())}
             more={more}

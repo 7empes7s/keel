@@ -132,7 +132,8 @@ test("the Changes data names each change and the objects its settings point to",
   const assignment = byKey.get(changes[2].key)!;
   const name = changeName(assignment);
   assert.doesNotMatch(name, GUID);
-  assert.match(name, /^Unnamed /);
+  // A role assignment is named from its role and holder, even when the holder is not backed up.
+  assert.equal(name, "Global Administrator → someone Keel has no name for");
   assert.doesNotMatch(changeLabel(assignment), GUID);
 
   const review = byKey.get(changes[3].key)!;

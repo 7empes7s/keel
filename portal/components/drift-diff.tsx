@@ -1,22 +1,25 @@
 import type { ReactNode } from "react";
 
 import { ChangeComparison } from "@/components/change-comparison";
-import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
+import { RecordCompare, RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { changeLabel, fieldWords } from "@/lib/changes-view";
 import { diffPayloads } from "@/lib/drift-diff";
 import type { DriftRecord } from "@/lib/types";
 
-/** One setting that differs, in the record: its path, what kind of change, and both raw
- *  values in full (a list or object pretty-printed), each in its own field. */
-export function FieldRecord({ path, change, before, after, note }: { path: string; change: string; before: unknown; after: unknown; note?: ReactNode }) {
+/** One setting that differs, in the record: both sides with the difference marked,
+ *  and its stored path for support. */
+export function FieldRecord({ path, before, after, note, sides }: { path: string; change?: string; before: unknown; after: unknown; note?: ReactNode; sides?: { before: string; after: string } }) {
   return (
     <RecordGroup note={note} title={fieldWords(path)}>
+      <RecordCompare after={after} before={before} label="Setting value" sides={sides} />
       <RecordField label="Setting path" value={path} />
-      <RecordField copy={false} label="Change" value={change} />
-      <RecordField label="Before" value={before as never} />
-      <RecordField label="After" value={after as never} />
     </RecordGroup>
   );
+}
+
+/** The two sides' names: the approved setup and now, or two reads of a service. */
+export function compareSides(read: boolean): { before: string; after: string } {
+  return read ? { before: "Earlier read", after: "Newest read" } : { before: "Approved setup", after: "Now" };
 }
 
 function displayPayload(payload: unknown): string {
@@ -52,8 +55,9 @@ export function DriftDiff({ item, record }: { item: DriftRecord; record?: ReactN
         <RecordField copy={false} label="Change type" value={item.changeType} />
         <RecordField copy={false} label="Blast radius" value={item.blastRadius} />
         {record}
+        <RecordCompare after={item.after} before={item.before} label="Whole item" sides={compareSides(read)} />
         {changes.map((change) => (
-          <FieldRecord after={change.kind === "removed" ? undefined : change.after} before={change.kind === "added" ? undefined : change.before} change={change.kind} key={change.path} path={change.path} />
+          <FieldRecord after={change.kind === "removed" ? undefined : change.after} before={change.kind === "added" ? undefined : change.before} change={change.kind} key={change.path} path={change.path} sides={compareSides(read)} />
         ))}
         <RecordField copy={false} label={read ? "Previous read" : "Baseline payload"} value={displayPayload(item.before)} />
         <RecordField copy={false} label={read ? "Newest read" : "Observed payload"} value={displayPayload(item.after)} />

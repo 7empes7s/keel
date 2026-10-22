@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
 import { RestorePoint } from "@/components/restore/restore-point";
 import { RestoreStepper } from "@/components/restore-selection";
-import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { RecordCompare, RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import { postAction } from "@/lib/action-client";
 import { fieldWords, valueWords } from "@/lib/changes-view";
 import { SettingRows } from "@/components/change-comparison";
@@ -602,7 +602,7 @@ function RunReview({ run, heading, nameOf, canApprove, onApproved }: {
             {operation.member ? <RecordField label="Member" value={operation.member} /> : null}
             {operation.before ? <RecordField label="Roles before" value={operation.before} /> : null}
             {(operation.changes ?? []).map((change) => (
-              <RecordField copy={false} key={change.field} label={`Field ${change.field}`} value={{ now: change.before, after: change.after } as RecordValue} />
+              <RecordCompare after={change.after} before={change.before} key={change.field} label={`Field ${change.field}`} sides={{ before: "Now", after: "After the restore" }} />
             ))}
           </RecordGroup>
         ))}
@@ -611,8 +611,7 @@ function RunReview({ run, heading, nameOf, canApprove, onApproved }: {
             <RecordField label="Resource key" value={item.resourceKey} />
             <RecordField copy={false} label="Field path" value={item.field} />
             <RecordField copy={false} label="Reason" value={item.reason} />
-            {"before" in item ? <RecordField copy={false} label="Now" value={item.before as RecordValue} /> : null}
-            {"after" in item ? <RecordField copy={false} label="In the backup" value={item.after as RecordValue} /> : null}
+            {"before" in item || "after" in item ? <RecordCompare after={"after" in item ? item.after : undefined} before={"before" in item ? item.before : undefined} label="Setting value" sides={{ before: "In the tenant now", after: "In the backup" }} /> : null}
           </RecordGroup>
         ))}
         {refusals.map((item) => (

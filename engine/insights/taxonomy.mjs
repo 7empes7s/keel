@@ -11,6 +11,11 @@
  * unless its entry sets `priority` and `reason`; a workload read has no catalogue tier, so
  * its entry must set both. taxonomy.test.mjs fails on any catalogued type or workload
  * without an entry, so a new CAT or READ type has to be mapped here.
+ *
+ * Each service file also lists every group of kinds the service has, including groups
+ * with no mapped kind yet, with a pattern per group (`match`) and the service's code
+ * prefix (`prefix`). A kind read before anyone maps it still lands in its service and
+ * group (placeUnmapped below).
  */
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import defender from './taxonomy.d/defender.mjs';
@@ -90,22 +95,55 @@ const words = (code) => String(code).replace(/[-_]+/g, ' ').replace(/([a-z0-9])(
  * words ("someNewType" becomes "Some new type") with no service and normal priority, and
  * `known: false` so callers can show that it is not classified yet.
  */
-export function typeInfo(type) {
+/** @param {string} type @param {string | null} [service] the service the row is filed under, if known */
+export function typeInfo(type, service = null) {
   const entry = TAXONOMY[type] ?? EDGE_TAXONOMY[type];
   if (entry) return { ...entry, known: true };
   const name = words(type);
+  const placed = placeUnmapped(type, service);
   return {
     type,
     name: name ? name[0].toUpperCase() + name.slice(1) : 'Unknown type',
-    service: null,
+    service: placed?.service ?? null,
     priority: 'normal',
     priorityReason: 'Not classified yet.',
-    category: OTHER_CATEGORY.key,
-    categoryName: OTHER_CATEGORY.name,
-    categoryRank: OTHER_CATEGORY.rank,
-    typeRank: 0,
+    category: placed?.category ?? OTHER_CATEGORY.key,
+    categoryName: placed?.categoryName ?? OTHER_CATEGORY.name,
+    categoryRank: placed?.categoryRank ?? OTHER_CATEGORY.rank,
+    // After the group's mapped types, so a kind Keel already knows lists first.
+    typeRank: placed ? 1_000 : 0,
     known: false,
   };
+}
+
+/**
+ * Where a kind Keel has not mapped yet belongs, so it lands in the right group the day
+ * it is first read. A code that starts with a service's `prefix` ("exchange…",
+ * "teams…") belongs to that service: to its first group whose `match` fits the code, or
+ * else to the service's `fallback` group. A code with no service prefix (a Graph type
+ * such as "accessReviewFoo") is placed only when an Entra group's `match` fits it, and
+ * otherwise stays under "Other settings". When the caller knows the service (a row
+ * stored under a workload's own code, such as "transportRule" under Exchange), that
+ * service's groups place it. Codes are compared lower case, without dashes or
+ * underscores.
+ */
+/** @param {string} type @param {string | null} [service] */
+export function placeUnmapped(type, service = null) {
+  const code = String(type ?? '').replace(/[-_\s]+/g, '').toLowerCase();
+  if (!code) return null;
+  const known = service ? SERVICE_FILES.filter((file) => file.service.toLowerCase() === String(service).toLowerCase()) : [];
+  const prefixed = known.length ? known : SERVICE_FILES.filter((file) => file.prefix?.test(code));
+  const candidates = prefixed.length ? prefixed : SERVICE_FILES.filter((file) => !file.prefix);
+  for (const file of candidates) {
+    const rank = file.categories.findIndex((category) => category.match?.test(code));
+    const fallback = prefixed.length && file.fallback ? file.categories.findIndex((category) => category.key === file.fallback) : -1;
+    const at = rank >= 0 ? rank : fallback;
+    if (at >= 0) {
+      const category = file.categories[at];
+      return { service: file.service, category: category.key, categoryName: category.name, categoryRank: at };
+    }
+  }
+  return null;
 }
 
 /**

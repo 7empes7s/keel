@@ -1,7 +1,9 @@
+import type { ReactNode } from "react";
+
 import { ItemSettings, SettingRows } from "@/components/change-comparison";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { fieldRow } from "@/lib/change-comparison";
-import { CHANGE_LABELS, changeLine, type ChangeKind, type ChangedField, type ChangedObject } from "@/lib/changed-values";
+import { CHANGE_LABELS, changeLine, valueLines, type ChangeKind, type ChangedField, type ChangedObject } from "@/lib/changed-values";
 import { resourceTypeLabel } from "@/lib/presentation";
 
 // The setting that changed and its value before and after, on Activity and Compare.
@@ -49,6 +51,41 @@ const CHANGE_ICONS: Record<ChangeKind, IconName> = { changed: "swap", added: "pl
 export function ChangeChip({ change }: { change: ChangeKind }) {
   return <span className="cv-chip" data-change={change}><Icon name={CHANGE_ICONS[change]} />{CHANGE_LABELS[change]}</span>;
 }
+
+/** One value, a setting per line when it holds several (emergency changes). */
+export function Value({ value, names }: { value: unknown; names?: Readonly<Record<string, string>> }) {
+  const { lines, more } = valueLines(value, names);
+  if (lines.length === 1 && !lines[0].label && !more) return <span className="cv-value">{lines[0].text}</span>;
+  return (
+    <ul className="cv-lines">
+      {lines.map((line, index) => <li key={index}>{line.label ? <><b>{line.label}:</b> </> : null}{line.text}</li>)}
+      {more ? <li><b>And {more} more</b></li> : null}
+    </ul>
+  );
+}
+
+
+/** One setting with its value on both sides (emergency changes). */
+export function SidesRow({ name, note, sides, before, after }: {
+  name: string;
+  note?: string;
+  sides: { before: string; after: string };
+  before: ReactNode | null;
+  after: ReactNode | null;
+}) {
+  const side = (which: "before" | "after", value: ReactNode | null) => (
+    <span className="cv-side" data-empty={value === null || typeof value === "string" || undefined} data-side={which}><small>{sides[which]}</small>{value ?? "Not there"}</span>
+  );
+  return (
+    <li className="cv-row">
+      <span className="cv-name">{name}{note ? <small className="cv-note">{note}</small> : null}</span>
+      {side("before", before)}
+      <Icon className="cv-arrow" name="chevron" />
+      {side("after", after)}
+    </li>
+  );
+}
+
 
 /** Each setting that differs, with its value on both sides. A whole item that was added
  *  or removed lists its settings folded away instead, one value each. */

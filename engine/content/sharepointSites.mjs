@@ -318,6 +318,66 @@ export async function readSitePermissions(permissionsReader, webUrl) {
 }
 
 
+// Version of the plain summary saved beside each `site/permissions` item. A stored item
+// with an older summary (or none) is stored again on the next run so the portal can read it.
+export const PERMISSIONS_SUMMARY_VERSION = 1;
+const SYSTEM_LOGINS = /^(SHAREPOINT\\system|c:0\(\.s\|true|i:0i\.t\|00000003-0000-0ff1-ce00-000000000000)/i;
+const GUEST = /#ext#|urn%3aspo%3aguest/i;
+const OWNER_ROLE = /^full control$/i;
+const SHARING_LINK_GROUP = /^SharingLinks\./i;
+
+/**
+ * Who can reach a site, in a few counts and names, from a `site/permissions` value. Saved
+ * as the item's metadata (plain, unlike the item itself) so the portal's Sites pages can
+ * show groups, owners and guests without opening the backup. Names only: no logins or ids.
+ */
+export function permissionsSummary(value) {
+  const groups = Array.isArray(value?.groups) ? value.groups : [];
+  const admins = Array.isArray(value?.siteCollectionAdmins) ? value.siteCollectionAdmins : [];
+  const assignments = Array.isArray(value?.roleAssignments) ? value.roleAssignments : null;
+  const rolesOf = new Map((assignments ?? []).map((row) => [row.principalId, (row.roles ?? []).map((role) => role.name).filter((name) => name && name !== 'Limited Access')]));
+  // SharePoint user ids are unique within a site, so they join a group member to an admin.
+  const principalKey = (principal) => (principal.id !== null && principal.id !== undefined ? `id:${principal.id}` : principal.loginName ?? principal.title);
+  const real = (principal) => principal && !SYSTEM_LOGINS.test(principal.loginName ?? '') && principal.title !== 'System Account';
+  const people = new Map();
+  const guests = new Set();
+  const note = (principal) => {
+    if (!real(principal)) return;
+    const key = principalKey(principal);
+    if (principal.principalType === 1 || principal.principalType === null || principal.principalType === undefined) people.set(key, principal);
+    if (GUEST.test(principal.loginName ?? '') || GUEST.test(principal.userPrincipalName ?? '')) guests.add(key);
+  };
+  const sharingLinks = groups.filter((group) => SHARING_LINK_GROUP.test(group.title ?? ''));
+  const shown = groups.filter((group) => !SHARING_LINK_GROUP.test(group.title ?? '') && !/^Limited Access System Group/i.test(group.title ?? ''));
+  for (const group of groups) for (const member of group.members ?? []) note(member);
+  for (const admin of admins) note(admin);
+  for (const row of assignments ?? []) if (row.member?.principalType === 1) note(row.member);
+  // Owners: site collection admins, and members of groups given Full Control (or, when the
+  // site inherits and roles are not its own, the group SharePoint names "... Owners").
+  const ownerGroup = (group) => (assignments ? (rolesOf.get(group.id) ?? []).some((role) => OWNER_ROLE.test(role)) : /\bOwners$/i.test(group.title ?? ''));
+  const owners = new Map();
+  for (const admin of admins) if (real(admin)) owners.set(principalKey(admin), admin.title ?? null);
+  for (const group of shown.filter(ownerGroup)) for (const member of group.members ?? []) if (real(member)) owners.set(principalKey(member), member.title ?? null);
+  const ownerNames = [...owners.values()].filter(Boolean).sort((a, b) => a.localeCompare(b));
+  return {
+    v: PERMISSIONS_SUMMARY_VERSION,
+    inherits: assignments === null,
+    groups: shown.map((group) => ({
+      name: group.title ?? null,
+      members: Array.isArray(group.members) ? group.members.filter(real).length : null,
+      roles: assignments ? rolesOf.get(group.id) ?? [] : null,
+    })),
+    owners: ownerNames.slice(0, 20),
+    ownerCount: owners.size,
+    admins: admins.filter(real).length,
+    people: people.size,
+    guests: guests.size,
+    sharingLinks: sharingLinks.length,
+    directRoles: (assignments ?? []).filter((row) => row.member?.principalType === 1).length,
+    uniqueLists: Array.isArray(value?.lists) ? value.lists.length : 0,
+  };
+}
+
 /**
  * Backs up every in-scope site. Pure apart from the injected transport, store and drive
  * backup: no database and no gate.
@@ -373,13 +433,13 @@ export async function backupSharePointSites({
     return { ...response, headers: Object.fromEntries([...answered.entries()].map(([key, value]) => [key.toLowerCase(), value])) };
   };
 
-  const put = async (container, itemKey, value, version) => {
+  const put = async (container, itemKey, value, version, metadata = {}) => {
     const bytes = Buffer.from(canonicalJson(value));
     const sha256 = createHash('sha256').update(bytes).digest('hex');
     const result = await store.putItem(Readable.from([bytes]), {
       tenantRef, workload: SITES_WORKLOAD, container, itemKey,
       version: version ?? sha256,
-      metadata: { contentType: 'application/json' },
+      metadata: { contentType: 'application/json', ...metadata },
     });
     counters.stored += 1;
     counters.bytes += bytes.length;
@@ -429,16 +489,18 @@ export async function backupSharePointSites({
     const previous = saved?.version === SITE_STATE_VERSION ? saved : { stored: {}, pages: {} };
     const next = { version: SITE_STATE_VERSION, stored: {}, pages: {} };
     // Settings Graph has no delta for: read every run, stored only when they changed.
-    const putSetting = async (itemKey, value, version) => {
+    // `metadata` goes beside the item in plain form; `summary` is its version, and an item
+    // stored with an older one is stored again even when the value has not changed.
+    const putSetting = async (itemKey, value, version, { metadata, summary } = {}) => {
       const sha256 = createHash('sha256').update(canonicalJson(value)).digest('hex');
       const known = previous.stored[itemKey];
-      if (known?.sha256 === sha256 && known.ref) {
+      if (known?.sha256 === sha256 && known.ref && (known.summary ?? null) === (summary ?? null)) {
         counters.unchanged += 1;
         next.stored[itemKey] = known;
         return known.ref;
       }
-      const stored = await put(container, itemKey, value, version);
-      next.stored[itemKey] = stored;
+      const stored = await put(container, itemKey, value, version, metadata);
+      next.stored[itemKey] = summary ? { ...stored, summary } : stored;
       return stored.ref;
     };
     const entry = {
@@ -471,7 +533,9 @@ export async function backupSharePointSites({
         // gets a new row with this run's time, so the latest row is always the state now
         // (the restore picks a backup by time). Unchanged permissions are still not stored.
         const hash = createHash('sha256').update(canonicalJson(value)).digest('hex');
-        entry.refs.permissions = await putSetting('site/permissions', value, `sha256:${hash}@${startedAt}`);
+        entry.refs.permissions = await putSetting('site/permissions', value, `sha256:${hash}@${startedAt}`, {
+          metadata: { summary: permissionsSummary(value) }, summary: PERMISSIONS_SUMMARY_VERSION,
+        });
         if (failed.length) throw Object.assign(new Error(`${failed.length} permission read(s) failed, first ${failed[0].what}: ${failed[0].error}`), { status: failed[0].httpStatus });
       });
     }

@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 
 import { ChangeComparison } from "@/components/change-comparison";
-import { FieldRecord } from "@/components/drift-diff";
-import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { compareSides, FieldRecord } from "@/components/drift-diff";
+import { RecordCompare, RecordField, TechnicalDetails } from "@/components/technical-details";
 import { changeLabel } from "@/lib/changes-view";
 import { IMPACT_HEADINGS } from "@/lib/semantic-drift";
 import type { DriftRecord, SemanticChange } from "@/lib/types";
@@ -39,8 +39,9 @@ export function SemanticDiff({ item, change, record }: { item: DriftRecord; chan
         {record}
         <RecordField copy={false} label="Comparison state" value={change.state} />
         <RecordField copy={false} label="Comparison rules" value={change.rules} />
-        <RecordField copy={false} label="Behavioural settings" value={`${change.total} (${change.groups.fixed} immutable, ${change.groups.behaviour} writable, ${change.groups["unknown-before"]} unknown before)`} />
+        <RecordField copy={false} label="Behavioural settings" value={`${change.total}: ${change.groups.fixed} cannot be changed back in place, ${change.groups.behaviour} can be changed back, ${change.groups["unknown-before"]} with no earlier value`} />
         <RecordField copy={false} label="Server-owned settings not shown" value={change.cosmetic} />
+        <RecordCompare after={item.after} before={item.before} label="Whole item" sides={compareSides(false)} />
         {change.fields.map((field) => (
           <FieldRecord
             after={field.kind === "removed" ? undefined : field.after}

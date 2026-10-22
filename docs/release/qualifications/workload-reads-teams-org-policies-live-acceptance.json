@@ -1,0 +1,130 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-reads-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "56d968285bde1ecaee360420278905b97f554a68",
+  "operation": "workload-reads",
+  "credentialMode": "collector-only",
+  "observedAt": "2026-10-22T09:57:29.404Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "teams-org-policies",
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "MicrosoftTeams",
+      "moduleVersion": "7.9.0"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c"
+    },
+    "outcome": "partial",
+    "reads": [
+      {
+        "operationId": "teams.meeting-policies",
+        "family": "meetingPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-22T09:57:29.404Z",
+        "ok": true,
+        "status": "read",
+        "objects": 8,
+        "error": null
+      },
+      {
+        "operationId": "teams.messaging-policies",
+        "family": "messagingPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-22T09:57:29.404Z",
+        "ok": true,
+        "status": "read",
+        "objects": 8,
+        "error": null
+      },
+      {
+        "operationId": "teams.app-setup-policies",
+        "family": "appSetupPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-22T09:57:29.404Z",
+        "ok": true,
+        "status": "read",
+        "objects": 3,
+        "error": null
+      },
+      {
+        "operationId": "teams.app-permission-policies",
+        "family": "appPermissionPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-22T09:57:29.404Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "teams.federation-configuration",
+        "family": "federationConfiguration",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-22T09:57:29.404Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "teams.client-configuration",
+        "family": "clientConfiguration",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-22T09:57:29.404Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "teams.guest-meeting-configuration",
+        "family": "guestMeetingConfiguration",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-22T09:57:29.404Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "teams.guest-messaging-configuration",
+        "family": "guestMessagingConfiguration",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-22T09:57:29.404Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "teams.guest-calling-configuration",
+        "family": "guestCallingConfiguration",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-22T09:57:29.404Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      }
+    ]
+  },
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "926f323fdc1f9317de3921e894c79aa2649db61725e945cf49641baee5ff7fd0"
+    }
+  }
+}

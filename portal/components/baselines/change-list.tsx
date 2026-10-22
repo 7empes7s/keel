@@ -29,6 +29,7 @@ import { ago, BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
 import { orderGroups, smartOrder } from "@/lib/selection";
 import { serviceFor, serviceOrder } from "@/lib/services";
+import { kindParts } from "@/lib/type-groups";
 import { toast } from "@/lib/toast";
 import type { BaselineRecord, DriftRecord, SemanticSummary } from "@/lib/types";
 import { useViewState } from "@/lib/use-view-state";
@@ -57,9 +58,14 @@ const RISK_ABOUT: Record<string, string> = {
 const GROUPINGS: Grouping<DriftRecord>[] = [
   {
     key: "service", label: "Service",
+    // Inside a service, changes sit under their kind (users, groups, memberships, roles,
+    // then policies and settings); inside a kind, the most serious first.
     groupsOf: (items) => groupBy(items, (item) => itemService(item).code, (code) => {
       const service = serviceFor(code);
       return { label: service.name, icon: service.icon, about: service.about };
+    }).map((group) => {
+      const parts = kindParts(group.items, (item) => item.resourceType, group.key);
+      return { ...group, items: parts.flatMap((part) => part.items), parts };
     }),
   },
   {

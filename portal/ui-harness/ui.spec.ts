@@ -561,7 +561,6 @@ test("a queued backup confirms with a toast linking to the job", async ({ page }
 test("the restore wizard walks select → dry run → review → confirm → track", async ({ page }) => {
   await open(page, "/restore");
   await expect(page.locator('[data-layer="verdict"]')).toHaveText("5 settings changed since the backup of Wed, 30 Sept 2026. Undo the ones nobody expected.");
-  await page.getByRole("button", { name: "Show all 11 settings" }).click();
   await page.getByLabel("Select Require MFA for admins (sign-in rule)").click();
   await page.getByRole("button", { name: "Put back 1 setting" }).click();
   await expect(page.getByText("Ready to send for approval")).toBeVisible({ timeout: 15_000 });
@@ -614,10 +613,21 @@ test("restore leads with what changed, by service, and undoes a change or a grou
   await expect(page.locator(".restore-point-age")).toHaveText("2 days old · 19 settings saved · 3 backups taken after it");
   await expect(page.locator(".restore-tile").nth(0)).toContainText("Changed since4");
   await expect(page.locator(".restore-tile").nth(3).getByRole("link")).toHaveAttribute("href", "#/jobs/a3");
-  // Long groups show their first rows and say how many more.
-  await expect(groups.nth(1).locator(".sel-row")).toHaveCount(8);
-  await groups.nth(1).getByRole("button", { name: "Show all 11 settings" }).click();
-  await expect(groups.nth(1).locator(".sel-row")).toHaveCount(11);
+  // Inside a service, settings sit under their kind, in the service's order, each kind
+  // with its count, its own select-all and its own open and close.
+  const entraParts = groups.nth(1).locator(".sel-part");
+  await expect(entraParts.locator(".sel-part-name")).toHaveText(["Groups and administrative units", "Sign-in rules and methods", "Tenant and directory settings"]);
+  await expect(entraParts.nth(0).locator(".sel-group-count")).toHaveText("7 settings");
+  await expect(entraParts.nth(0).locator(".sel-row").first()).toContainText("All managed devices");
+  await page.getByRole("checkbox", { name: "Select all 3 settings in Entra ID: Sign-in rules and methods" }).check();
+  await expect(page.locator(".sel-bar")).toContainText("3 settings selected");
+  await expect(groups.nth(1).locator(".sel-group-head .sel-check")).toHaveJSProperty("indeterminate", true);
+  await page.keyboard.press("Escape");
+  await entraParts.nth(0).getByRole("button", { name: /Groups and administrative units/ }).click();
+  await expect(entraParts.nth(0).locator(".sel-row")).toHaveCount(0);
+  await expect(page).toHaveURL(/closed=Entra\.groups/);
+  await entraParts.nth(0).getByRole("button", { name: /Groups and administrative units/ }).click();
+  await expect(entraParts.nth(0).locator(".sel-row")).toHaveCount(7);
   // Unchanged rows say "Same now" and carry no lockout warning: a restore writes nothing to them.
   await expect(groups.nth(1).locator(".restore-row-same")).toHaveCount(11);
   await expect(groups.nth(1).locator(".restore-row-impact")).toHaveCount(0);
@@ -1014,8 +1024,10 @@ test("What's protected sorts failed and out-of-date kinds first, each with a run
   await open(page, "/protect");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("2 types failed their last backup.");
   const entra = page.locator(".sel-group", { hasText: "Entra ID" }).first();
-  await expect(entra.locator(".pt-row-link").first()).toHaveText("Authentication methods policy");
-  const failed = entra.locator(".sel-row").first();
+  // Kinds sit under their kind group; inside a group, failures come first.
+  const signIn = entra.locator(".sel-part", { hasText: "Sign-in rules and methods" });
+  await expect(signIn.locator(".pt-row-link").first()).toHaveText("Authentication methods policy");
+  const failed = signIn.locator(".sel-row").first();
   await expect(failed.locator(".badge")).toHaveText("Failed");
   await failed.getByRole("button", { name: "Back up Tier 1 again" }).click();
   await expect(page.locator(".toast").first()).toContainText("Tier 1 backup queued");
@@ -1047,7 +1059,7 @@ test("What's protected · tiles filter in the address, selection names its tiers
   await page.getByRole("link", { name: "Show every kind" }).click();
   await expect(page.locator(".sel-row")).toHaveCount(15);
   // Shift+click picks a range; the bar says which tiers run before anything runs.
-  const rows = page.locator(".sel-row");
+  const rows = page.locator(".sel-part", { hasText: "Sign-in rules and methods" }).locator(".sel-row");
   await rows.nth(0).locator("input").click();
   await rows.nth(2).locator(".pt-row-name small").click({ modifiers: ["Shift"] });
   await expect(page.locator(".sel-row[data-selected]")).toHaveCount(3);

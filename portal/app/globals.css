@@ -6612,6 +6612,7 @@ section.wizard-panel {
 .saved-filter a:focus-visible,
 .saved-filter button:focus-visible,
 .sel-group-toggle:focus-visible,
+.sel-part-toggle:focus-visible,
 .sel-check:focus-visible {
   outline: 2px solid transparent;
   box-shadow: var(--focus-ring);
@@ -7178,6 +7179,48 @@ section.wizard-panel {
 }
 
 .sel-group-toggle[aria-expanded="false"] .sel-group-chevron {
+  transform: rotate(-90deg);
+}
+
+/* A kind inside a service: a small caps header on the rows' own column of checkboxes. */
+.sel-part {
+  border-top: 1px solid var(--line);
+}
+
+.sel-part-head {
+  display: flex;
+  padding-left: var(--space-md);
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.sel-part-toggle {
+  display: flex;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: var(--space-2xs) var(--space-md) var(--space-2xs) 0;
+  flex: 1;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  gap: var(--space-sm);
+  text-align: left;
+}
+
+.sel-part-name {
+  min-width: 0;
+  flex: 1;
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sel-part-toggle[aria-expanded="false"] .sel-group-chevron {
   transform: rotate(-90deg);
 }
 

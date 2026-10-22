@@ -6991,8 +6991,10 @@ item that needs it stays untouched.
   Get-CsTeamsMeetingPolicy answers, 9 + 13 reads proven, evidence `claude/live-evidence-teams-reads` @ 8c103a7). Q141 is `blocked`
   only on #484 deploying. #484 merged as **fc5b5c8**; master has moved on since.
 - Needs: PR #484 live (`grep -q observeCollectorRoles /opt/keel-live/cli/keel-workload-collect.mjs`).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-22 11:48 UTC). Already covered by **Q141** steps 5 and 6, run at 11:18–11:22 UTC on 905d075 with #484 live.
+  - Import exit 0: 16 imported, including both Teams read records; refused `[]`. `collectorRoles` live = stored = the six roles, including **Teams Administrator**. The collector row in `workload_ledger_grants` now lists Teams Administrator.
+  - Run: teams-org-policies `partial` (0 reasons, 25 observations) and teams-voice-policies `partial` (0 reasons, 143), so both are **on**. The partial comes only from unknown fields (9 and 108). The full table is in Q141.
 - **Tenant:** reads only. The import sends 2 to 3 Graph GETs for the Collector's roles; the run is the normal scheduled read.
 - Do exactly Q141 steps 5 and 6, with `--dir` a checkout holding the two Teams read records from `claude/live-evidence-teams-reads`
   and the other records (as Q107 step 3), the verification key loaded. Then set Q141 to `done` with a pointer to this item.

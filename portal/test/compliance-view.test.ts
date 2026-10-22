@@ -12,6 +12,7 @@ import {
   exceptionRefusal,
   findingTypes,
   grantLabel,
+  lastChecked,
   linkedChangeName,
   orderFindings,
   ownerName,
@@ -20,6 +21,7 @@ import {
   resultOf,
   storageSentence,
 } from "@/lib/compliance-view";
+import { databaseIsLocal } from "@/lib/runtime-config";
 import type { ComplianceData, ComplianceFinding } from "@/lib/types";
 import { renderComplianceAt } from "./render-compliance";
 
@@ -102,6 +104,43 @@ test("Compliance body: a tile sets result=, the filter shows only that result, n
 
   const viewer = await renderComplianceAt("", { data: DATA, canConfigure: false, now: NOW });
   assert.doesNotMatch(viewer, /Renew exception|Grant exception|btn-primary/);
+});
+
+test("Nothing checked yet: every empty state names the next step with a button", async () => {
+  const unset = { configured: false, provider: null, region: null, boundary: null, immutability: "unknown", generatedAt: null, certifies: null, source: null } as ComplianceData["storage"];
+  const empty: ComplianceData = { ...DATA, findings: [], storage: unset, summary: { ...DATA.summary, controls: 0 } };
+  assert.equal(complianceVerdict(empty).detail, "Keel checks these after each backup. Results show here after the next backup or check.");
+  assert.equal(lastChecked([], NOW), null);
+  assert.equal(lastChecked(DATA.findings, NOW), "Last checked 20 minutes ago.");
+
+  // Someone who runs backups: Check now in the verdict and in the empty list.
+  const operator = await renderComplianceAt("", { data: empty, canConfigure: false, canCheck: true, now: NOW });
+  assert.match(operator, /<button[^>]*class="btn btn-primary primary"[^>]*>Check now<\/button>/);
+  assert.equal((operator.match(/>Check now<\/button>/g) ?? []).length, 2);
+  assert.match(operator, /Keel checks these after each backup\./);
+  assert.doesNotMatch(operator, /does not run these checks/);
+  // Storage not known: tinted, says what to do, and links to the storage section.
+  assert.match(operator, /class="cp-storage" data-tone="soon"/);
+  assert.match(operator, /Ask whoever runs the Keel server to record where backups are stored\./);
+  assert.match(operator, /href="\/resilience#storage"[^>]*>.*See backup storage<\/a>/);
+
+  // A viewer cannot run a check: a link to when backups run, never a dead end.
+  const viewer = await renderComplianceAt("", { data: empty, canConfigure: false, now: NOW });
+  assert.doesNotMatch(viewer, /Check now/);
+  assert.match(viewer, /href="\/schedules"[^>]*>See when backups run<\/a>/);
+
+  // With results: when they were made, and Check now beside it; storage known has no button.
+  const checked = await renderComplianceAt("", { data: DATA, canConfigure: true, canCheck: true, now: NOW });
+  assert.match(checked, /Results come from the last check\. Last checked 20 minutes ago\./);
+  assert.equal((checked.match(/>Check now<\/button>/g) ?? []).length, 1);
+  assert.doesNotMatch(checked, /See backup storage/);
+});
+
+test("Backups sit on this server when Keel's database does", () => {
+  for (const url of ["postgres://keel@localhost:5432/keel", "postgresql://keel:pw@127.0.0.1/keel", "postgres://[::1]/keel", "postgres:///keel", "postgres://keel@/keel?host=/var/run/postgresql"]) {
+    assert.equal(databaseIsLocal(url), true, url);
+  }
+  for (const url of ["postgres://keel@db.example.com/keel", "postgres://keel@10.0.0.4/keel", "not a url"]) assert.equal(databaseIsLocal(url), false, url);
 });
 
 const realFetch = globalThis.fetch;

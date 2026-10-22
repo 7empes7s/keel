@@ -2137,18 +2137,30 @@ test("Setup · the step waiting on you is open, links to Microsoft, and continue
   expect(await page.evaluate(() => (window as unknown as { __stay?: boolean }).__stay)).toBe(true);
 });
 
-// Production host: a grant broader than setup asks for is reported as found in the
-// tenant, never as something Keel fixed or will remove. With read access confirmed,
-// the first backup is the page's one amber action.
-test("Setup · the restorer's extra grant shows as a check-soon chip, and the first backup runs from the verdict", async ({ page }) => {
+// Production host: a grant Keel never uses is reported as found in the tenant, grey and
+// last in the permission table, never as a warning or something Keel will remove. With
+// read access confirmed, the first backup is the page's one amber action.
+test("Setup · a grant Keel never uses is listed grey and last, and the first backup runs from the verdict", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/setup/checked", "light");
   const restore = page.locator("section.su-track", { has: page.getByRole("heading", { name: "Write access for restores" }) });
   const consent = restore.locator(".su-step", { has: page.getByRole("heading", { name: "Grant admin consent for the restore writer app" }) });
   await expect(consent).toHaveAttribute("data-state", "done");
-  await expect(consent.locator(".su-perm[data-extra] .su-perm-words")).toHaveText("Extra: Change mailbox settings");
-  await expect(consent.locator(".su-perm[data-extra] .su-perm-code")).toHaveText("MailboxSettings.ReadWrite");
-  await expect(consent).toContainText("Keel does not need it and does not remove it");
+  await expect(consent.locator(".su-perm")).toHaveCount(0);
+  await expect(consent.getByRole("link", { name: "Permissions" })).toHaveAttribute("href", "#setup-permissions");
+  await expect(page.locator(".su-page")).not.toContainText("Extra:");
+  const panel = page.locator("#setup-permissions");
+  await expect(panel.locator(".su-pp-alert")).toHaveCount(0);
+  await expect(page.locator(".su-tile", { hasText: "Permissions" }).locator(".su-tile-count")).toHaveText("All granted");
+  // Large table: pages of 50; the unused grant is found from its tile.
+  await expect(panel.getByRole("navigation", { name: "Pages of Permissions" })).toBeVisible();
+  await panel.locator(".su-pp-tile", { hasText: "Not used by Keel" }).click();
+  const unused = panel.locator('.su-ptable-row[data-status="unused"]');
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(1);
+  await expect(unused).toContainText("Channel.Create");
+  await expect(unused.locator(".badge")).toHaveText("Not used by Keel");
+  await expect(unused.locator(".badge")).toHaveAttribute("data-tone", "neutral");
+  await expect(panel.locator(".su-ptable-group")).toHaveText([/Not used by Keel/]);
   await expect(restore.locator('.su-step[data-state="current"] h3')).toHaveText('Activate your "Privileged Role Administrator" role');
   // The restorer's app id is unknown here: no consent link anywhere on the page.
   await expect(page.locator('a[href^="https://login.microsoftonline.com/"]')).toHaveCount(0);
@@ -2157,6 +2169,71 @@ test("Setup · the restorer's extra grant shows as a check-soon chip, and the fi
   expect(await page.locator("main .btn-primary:visible").count()).toBe(1);
   await verdict.getByRole("button", { name: "Run the first backup" }).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { __harnessCalls: { url: string }[] }).__harnessCalls.filter((call) => call.url.endsWith("/api/actions/backup")).length)).toBeGreaterThan(0);
+});
+
+// The permission table: what is missing comes first with Microsoft's consent page one
+// click away, tiles of the same kind add up, the app picker and Find narrow, and coming
+// back from Microsoft checks the tenant again on its own.
+test("Setup · missing permissions come first with a consent link, and the table filters by status, app and text", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/setup", "light");
+  const panel = page.locator("#setup-permissions");
+  await expect(page.locator(".su-tile", { hasText: "Permissions" })).toHaveAttribute("data-tone", "urgent");
+  await expect(page.locator(".su-tile", { hasText: "Permissions" }).locator(".su-tile-count")).toHaveText("4 missing");
+
+  const alert = panel.locator(".su-pp-alert");
+  await expect(alert).toHaveCount(1);
+  await expect(alert.locator(".su-pp-alert-title")).toHaveText("The restore writer app is missing 4 permissions. Restores that need them stop until an admin approves them.");
+  await expect(alert).toContainText("1 of them is not on the app's permission list yet, so approving cannot grant it. Add it in Entra ID first: Exchange.ManageAsApp.");
+  await expect(alert.getByRole("link", { name: /Approve in Microsoft/ })).toHaveAttribute("href",
+    "https://login.microsoftonline.com/72f988bf-0000-4000-8000-0000000000aa/adminconsent?client_id=2e570e00-0000-4000-8000-0000000000c2");
+  await expect(alert.getByRole("link", { name: /Approve in Microsoft/ })).toHaveAttribute("target", "_blank");
+  await expect(alert.getByRole("link", { name: /Add in Entra ID/ })).toHaveAttribute("href", /CallAnAPI\/appId\/2e570e00-0000-4000-8000-0000000000c2$/);
+
+  // Rows: plain words, the Microsoft name beside them, what Keel uses it for, a badge.
+  const missing = panel.locator('.su-ptable-row[data-status="missing"]');
+  await expect(missing).toHaveCount(4);
+  const groups = missing.filter({ hasText: "Change groups" });
+  await expect(groups.locator(".su-ptable-words")).toHaveText("Change groups");
+  await expect(groups.locator("code")).toHaveText("Group.ReadWrite.All");
+  await expect(groups.locator(".badge")).toHaveText("Missing");
+  await expect(groups.getByRole("link", { name: /Approve/ })).toHaveAttribute("href", /adminconsent\?client_id=2e570e00/);
+  const exchange = missing.filter({ hasText: "Exchange.ManageAsApp" });
+  await expect(exchange.locator(".su-ptable-api")).toHaveText("Exchange Online");
+  await expect(exchange.getByRole("link", { name: /Add in Entra ID/ })).toBeVisible();
+  // The app with something missing is listed first.
+  await expect(panel.locator(".su-ptable-app").first()).toContainText("Restore writer app");
+
+  // Tiles of one kind add up (OR); the app picker and Find narrow (AND).
+  const tile = (name: string) => panel.locator(".su-pp-tile", { hasText: name });
+  await tile("Optional").click();
+  const optional = panel.locator('.su-ptable-row[data-status="optional"]');
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(1);
+  await expect(optional).toContainText("AuditLogsQuery.Read.All");
+  await expect(optional.locator(".badge")).toHaveAttribute("data-tone", "low");
+  await expect(optional.getByRole("link", { name: /Approve/ })).toHaveAttribute("href", /adminconsent\?client_id=c011ec70/);
+  await tile("Optional").click();
+  await expect(tile("Missing").locator("b")).toHaveText("4");
+  await tile("Missing").click();
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(4);
+  await expect(tile("Not used by Keel").locator("small")).toHaveText("+1 if added");
+  await tile("Not used by Keel").click();
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(5);
+  await panel.getByRole("radio", { name: "Restore writer" }).click();
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(4);
+  await panel.getByPlaceholder("Find permissions").fill("sign-in rules");
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(1);
+  await expect(panel.locator(".su-ptable-row")).toContainText("Policy.ReadWrite.ConditionalAccess");
+  await panel.getByRole("button", { name: "Clear all" }).click();
+  await expect(panel.locator(".su-pp-tile[aria-pressed=true]")).toHaveCount(0);
+
+  // Back from Microsoft's consent tab: the page checks again without being asked.
+  const approve = alert.getByRole("link", { name: /Approve in Microsoft/ });
+  await approve.evaluate((link) => link.addEventListener("click", (event) => event.preventDefault()));
+  await approve.click();
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByText("Checking permissions again")).toBeVisible();
+  await expect(page.locator(".su-page")).not.toContainText("Extra:");
 });
 
 for (const theme of ["dark", "light"] as const) {

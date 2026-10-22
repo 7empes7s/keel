@@ -166,8 +166,8 @@ const ms = (value) => (value instanceof Date ? value.getTime() : Date.parse(valu
  * own run evidence. Only `complete` / `complete-empty` runs prove traversal of their
  * window. A window older than what KEEL's own retention keeps, or overlapping a
  * retention gap Microsoft reported, is a gap. Statuses:
- *   covered | retention-gap | read-scope-revoked | read-failed | not-read |
- *   archive-reference | not-configured
+ *   covered | events-skipped | retention-gap | read-scope-revoked | read-failed |
+ *   not-read | archive-reference | not-configured
  */
 export function coverageFromRuns({ runs, state }, { from, until }) {
   if (!runs.length && !state) return { status: 'not-configured' };
@@ -176,6 +176,7 @@ export function coverageFromRuns({ runs, state }, { from, until }) {
   let keptFrom = -Infinity;
   let archiveRef = null;
   let lastFailure = null;
+  const skippedWindows = [];
   for (const run of runs) {
     const evidence = run.evidence ?? {};
     if (evidence.retentionGap) gaps.push(evidence.retentionGap);
@@ -186,6 +187,9 @@ export function coverageFromRuns({ runs, state }, { from, until }) {
         keptFrom = Math.max(keptFrom, ms(evidence.window.until) - evidence.retentionDays * 86400000);
       }
     }
+    // Any run, finished or not, that skipped an entry leaves its window incomplete:
+    // an unfinished window is resumed by a later run that does not repeat the skip.
+    if (evidence.skippedEvents > 0 && evidence.window) skippedWindows.push([ms(evidence.window.from), ms(evidence.window.until)]);
     if (!lastFailure && ['read-scope-revoked', 'read-failed', 'invalid-page', 'failed'].includes(evidence.status)) lastFailure = evidence.status;
   }
   if (state?.retention_gap) gaps.push(state.retention_gap);
@@ -198,7 +202,12 @@ export function coverageFromRuns({ runs, state }, { from, until }) {
     if (start > reach) break;
     reach = Math.max(reach, end);
   }
-  if (reach >= hi && windows.length) return { status: 'covered' };
+  if (reach >= hi && windows.length) {
+    // A read that skipped an entry it could not store (auditIngest.mjs) may have missed
+    // the one naming this change, so that time is read but not complete.
+    if (skippedWindows.some(([start, end]) => start < hi && end > lo)) return { status: 'events-skipped' };
+    return { status: 'covered' };
+  }
   if (lastFailure === 'read-scope-revoked') return { status: 'read-scope-revoked' };
   if (lastFailure) return { status: 'read-failed' };
   if (archiveRef && !windows.length) return { status: 'archive-reference' };
@@ -219,6 +228,7 @@ const UNKNOWN_FROM_COVERAGE = Object.freeze({
   'read-scope-revoked': 'audit-read-scope-revoked',
   'read-failed': 'audit-read-failed',
   'not-read': 'audit-window-not-read',
+  'events-skipped': 'audit-events-skipped',
   'archive-reference': 'audit-in-organization-archive',
 });
 

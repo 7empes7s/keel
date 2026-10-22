@@ -219,7 +219,7 @@ export async function ingestCollectorAudit(client, {
   if (!exists.rows[0].name) return { status: 'not-configured' };
   const end = new Date(now.getTime() - SETTLE_MS).toISOString();
   for (const source of sources) {
-    const outcome = { windows: 0, status: null, insertedEvents: 0 };
+    const outcome = { windows: 0, status: null, insertedEvents: 0, skippedEvents: 0 };
     results[source] = outcome;
     try {
       for (let i = 0; i < maxWindows; i++) {
@@ -245,13 +245,14 @@ export async function ingestCollectorAudit(client, {
         outcome.windows++;
         outcome.status = evidence.status;
         outcome.insertedEvents += evidence.insertedEvents ?? 0;
+        outcome.skippedEvents += evidence.skippedEvents ?? 0;
         if (!['complete', 'complete-empty'].includes(evidence.status)) break;
       }
     } catch (error) {
       outcome.status = 'failed';
       outcome.error = error instanceof Error ? error.message : String(error);
     }
-    log(`${AUDIT_SOURCES[source].label}: ${outcome.status ?? 'up to date'} (${outcome.windows} day(s) read, ${outcome.insertedEvents} new record(s))`);
+    log(`${AUDIT_SOURCES[source].label}: ${outcome.status ?? 'up to date'} (${outcome.windows} day(s) read, ${outcome.insertedEvents} new record(s)${outcome.skippedEvents ? `, ${outcome.skippedEvents} skipped as unreadable` : ''})`);
   }
   return { status: 'ran', sources: results };
 }

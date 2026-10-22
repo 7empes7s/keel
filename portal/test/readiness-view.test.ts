@@ -226,3 +226,11 @@ test("the page names accounts, keeps ids in Technical details, and shows changes
   assert.match(empty, /No emergency accounts yet\. Add two cloud-only accounts so one failure does not lock everyone out\./);
   assert.match(empty, /btn-primary[^>]*>Add an emergency account</);
 });
+
+test("a sign-in log with skipped entries is not called watched or read completely", () => {
+  const page = data([account(BG1, "bg1@contoso.onmicrosoft.com", ["fido2"])]);
+  page.canary = { status: "not-watching", reason: "events-skipped", sources: { "sign-in": { status: "events-skipped", readUntil: NOW } } };
+  const sentence = canarySentence(page, NOW);
+  assert.match(sentence, /^KEEL is not watching reliably: it skipped some sign-in entries/);
+  assert.doesNotMatch(sentence, /completely/);
+});

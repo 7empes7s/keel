@@ -221,3 +221,13 @@ test("without lineage the saved copy's object id matches, the app is named from 
   assert.match(attributionNextStep(sp) ?? "", /search the Purview audit log .* AuditLogsQuery\.Read\.All/);
   assert.match(attributionWhen(sp).sentence, /^Changed between .+ and .+, between two backups\.$/);
 });
+
+test("a window with skipped audit entries says so, and points to the audit log", () => {
+  const skipped = {
+    verdict: "unknown", reason: "audit-events-skipped", source: "intune-audit", service: "Intune", actors: [], evidence: [],
+    window: { from: "2026-10-01T06:00:00Z", until: "2026-10-01T15:00:00Z" },
+  } as unknown as ChangeAttribution;
+  assert.match(attributionSentence(skipped), /skipped some audit entries/);
+  assert.match(attributionNextStep(skipped) ?? "", /^To find out, search the .* for this item between/);
+  assert.equal(attributionSummary(skipped), "Not known.");
+});

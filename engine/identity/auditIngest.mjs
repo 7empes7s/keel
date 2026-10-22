@@ -54,6 +54,17 @@ async function authorize(client, options, capability) {
   const principal = await findPrincipalById(client, options.requestedBy);
   if (!principal || !await can(client, principal, capability)) throw new Error('not authorized for audit ingestion');
 }
+// Why one event cannot be stored, as a fixed reason name, or the stored form of the event.
+// The reason never carries the event's own text, which may be what the secret filter caught.
+const SKIP_REASONS = Object.freeze(['time', 'outside-window', 'id', 'fact']);
+function checkEvent(event, source, windowFrom, until) {
+  let occurredAt;
+  try { occurredAt = instant(event?.occurredAt); } catch { return SKIP_REASONS[0]; }
+  if (occurredAt < windowFrom || occurredAt > until) return SKIP_REASONS[1];
+  let id;
+  try { id = safeRef(event.id); } catch { return SKIP_REASONS[2]; }
+  try { return { id, occurredAt, fact: minimizeAttributionFact(source, event) }; } catch { return SKIP_REASONS[3]; }
+}
 function positive(value, maximum, name) {
   if (!Number.isSafeInteger(value) || value < 1 || value > maximum) throw new Error(`invalid ${name} budget`);
 }
@@ -97,7 +108,7 @@ export async function ingestAudit(client, options) {
   const locked = await client.query('SELECT pg_try_advisory_lock(hashtextextended($1 || current_schema(), 0)) AS locked', [lockKey]);
   if (!locked.rows[0].locked) return { status: 'busy' };
   const runId = randomUUID(), started = Date.now();
-  const evidence = { status: 'running', requests: 0, observedEvents: 0, insertedEvents: 0, storedBytes: 0,
+  const evidence = { status: 'running', requests: 0, observedEvents: 0, insertedEvents: 0, storedBytes: 0, skippedEvents: 0, skippedReasons: {},
     retentionGap: null, retentionDays, synthetic: archiveRef === undefined ? adapter.synthetic : false,
     window: { from, until }, transitions: ['running'] };
   let runCreated = false;
@@ -109,7 +120,8 @@ export async function ingestAudit(client, options) {
     evidence.envelope = defineEvent({ tenantRef, eventType: `audit-ingest.${status}`,
       source: { component: 'audit-ingest', instanceId: source }, correlationId: runId,
       sourceEventId: `${runId}:${status}`, observedAt: new Date(started),
-      payload: { status, requests: evidence.requests, insertedEvents: evidence.insertedEvents, retentionGap: evidence.retentionGap } });
+      payload: { status, requests: evidence.requests, insertedEvents: evidence.insertedEvents, retentionGap: evidence.retentionGap,
+        skippedEvents: evidence.skippedEvents } });
     await client.query('UPDATE audit_ingest_run SET evidence=$2 WHERE id=$1 AND tenant_ref=$3', [runId, evidence, tenantRef]);
     await client.query(`DELETE FROM audit_ingest_run WHERE tenant_ref=$1 AND source=$2
       AND id<>$3 AND started_at < now() - $4 * interval '1 day'`, [tenantRef, source, runId, retentionDays]);
@@ -162,17 +174,22 @@ export async function ingestAudit(client, options) {
         if (nextCursor !== null && (!Number.isSafeInteger(nextCursor) || nextCursor < 0 || (cursor !== null && nextCursor <= cursor))) throw new Error('cursor');
         const availableFrom = page.availableFrom === undefined ? null : instant(page.availableFrom);
         gap = availableFrom && availableFrom > windowFrom ? { from: windowFrom, until: availableFrom < until ? availableFrom : until } : null;
-        events = page.events.map((event) => {
-          const occurredAt = instant(event.occurredAt);
-          if (occurredAt < windowFrom || occurredAt > until) throw new Error('event outside window');
-          return { id: safeRef(event.id), occurredAt, fact: minimizeAttributionFact(source, event) };
-        });
       } catch { status = 'invalid-page'; break; }
+      // One event that fails validation or the secret filter is skipped and counted by
+      // reason, so it cannot hold up the whole log (issue #552). Nothing from it is kept.
+      events = [];
+      const skipped = {};
+      for (const event of page.events) {
+        const checked = checkEvent(event, source, windowFrom, until);
+        if (typeof checked === 'string') skipped[checked] = (skipped[checked] ?? 0) + 1;
+        else events.push(checked);
+      }
       await authorize(client, options, 'collect');
       if (Date.now() - started >= maxDurationMs) break;
       let insertedEvents = 0, storedBytes = 0;
       const previous = { observedEvents: evidence.observedEvents, insertedEvents: evidence.insertedEvents,
-        storedBytes: evidence.storedBytes, retentionGap: evidence.retentionGap };
+        storedBytes: evidence.storedBytes, retentionGap: evidence.retentionGap,
+        skippedEvents: evidence.skippedEvents, skippedReasons: evidence.skippedReasons };
       await client.query('BEGIN');
       try {
         // Event persistence and checkpoint advancement are one transaction, in this order.
@@ -193,7 +210,11 @@ export async function ingestAudit(client, options) {
           WHERE tenant_ref=$1 AND source=$2`, [tenantRef, source, nextCursor, windowFrom, until, nextCursor === null, gap]);
         await client.query(`DELETE FROM audit_ingest_event WHERE tenant_ref=$1 AND source=$2 AND occurred_at < $3::timestamptz - $4 * interval '1 day'`, [tenantRef, source, until, retentionDays]);
         await pruneAttributionFacts(client, { tenantRef, source, until, retentionDays });
-        evidence.observedEvents += events.length;
+        evidence.observedEvents += page.events.length;
+        for (const [reason, count] of Object.entries(skipped)) {
+          evidence.skippedEvents += count;
+          evidence.skippedReasons = { ...evidence.skippedReasons, [reason]: (evidence.skippedReasons[reason] ?? 0) + count };
+        }
         evidence.insertedEvents += insertedEvents;
         evidence.storedBytes += storedBytes;
         if (gap) evidence.retentionGap = gap;

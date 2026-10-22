@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "deviceHealthScript",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "a60c77439200540767f54fd15edd48a7db3b6325",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-22T17:58:31.629Z",
+  "restoreRef": "57e4a5ba-4d39-8c71-8192-b7cc3abe6e52",
+  "naturalKey": "deviceHealthScript:ca95eb8e-8636-8925-ac17-e95d3847d5c7",
+  "fixtureKind": "named-object",
+  "captureSha256": "81e009d09dd8f8869d9bf46ec59c8a3b69d562aba11c8d58bcebe26dcc45820d",
+  "proofRef": "docs/release/qualifications/entra-live/deviceHealthScript.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "b2385695539e926b4c4ac49b9b87c9d164e5c7bcca54a9736a06d2a207d24a57"
+    }
+  }
+}

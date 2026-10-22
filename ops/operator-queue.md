@@ -5913,8 +5913,20 @@ item that needs it stays untouched.
   `customAttributes` differ from the live scope and any Exchange app role assignment (beta `/roleManagement/exchange/roleAssignments`,
   every page) has `appScopeId` equal to the scope's id. If the assignments or the live scope cannot be read, the update is skipped too.
 - Needs: /opt/keel-live at the #456 merge or later (`grep -q appScopeGuard /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-22 07:02 UTC), with a finding: **#467**. The guard skipped in all 10 calls with 0 writes, but it can fail open, because the beta role-assignment paging (#438) sometimes returns none of L's assignments. B = **e1a811b**. Restorer reads only; the writer's `write` was a stub that throws, and it was never called. Nothing written.
+  1. L = `KEEL-RT-test-mailboxes` (RecipientScope, filter `PrimarySmtpAddress -like 'keel-rt-*'`), the only custom app scope.
+     - Exchange app role assignments: 3 pages, 231 rows per read, but only 226–230 unique, and the set changes between reads.
+     - **3 distinct assignments name L** (two are Application Calendars.ReadWrite and Contacts.ReadWrite). Every one has `appScopeId`
+       equal to L's `id` exactly; no prefixed form, and `directoryScopeId` is empty on them.
+     - Unique assignments naming L in 10 back-to-back reads: 3, 3, 3, 1, 3, **0**, 3, 3, 3, 1. My first read also saw **0**.
+  2. Broader filter `PrimarySmtpAddress -like '*'`, with `live.payload` = L: `{"skipped":{"naturalKey":"<L.id>","reason":"manual: This app access scope is used by 2 app role assignments, and its recipient filter differs from the backup. A restore never changes the recipient filter of a scope an app role assignment uses, because a different filter from a changed backup could let that app read other mailboxes: compare the filter with the backup, then change it by hand in Exchange Online PowerShell (Set-ManagementScope) if needed.","completion":{"kind":"manual-setting","requirement":"exchangeAppScopeFilter","fields":["customAttributes"],"description":"<same text>"}}}`.
+     Five runs gave the same shape, with "used by" 2, 2, 5, 1, 5. Writes: 0.
+  3. Same, but without `live.payload` (the guard reads L itself first): `skipped` with the same reason and completion. Five runs, "used by" 5, 7, 5, 3, 3. Writes: 0.
+  - **Findings (#467):**
+    - When a read misses all of L's rows, `using === 0`, and the broader filter would be written (fail open).
+    - The count is rows, not unique ids, so it can be overstated (7 against 3).
+  - Step 4: Q123 has not run.
 - **Read-only. Nothing is written to the tenant.** Restorer credentials, test tenant only. Never change the existing scope that limits
   the mail fixture app, never create or change an app role assignment.
 - Do, at the deployed build B, from your own checkout (never `/opt/keel`):

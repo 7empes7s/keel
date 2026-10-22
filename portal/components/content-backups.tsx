@@ -1,5 +1,6 @@
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
+import { ShowDetails } from "@/components/ui/alert-list";
 import { Badge } from "@/components/ui/badge";
 import {
   NOT_BACKED_UP,
@@ -9,6 +10,7 @@ import {
   holdingLine,
   lastRunAt,
   runLine,
+  runReasons,
   runScope,
   scopeSentence,
   scopeWords,
@@ -46,6 +48,7 @@ function Row({ row, now, prefix }: { row: ContentRow; now: string; prefix: strin
         <small>{row.workload.what}</small>
         <small>{scopeWords(row.workload, prefix)}</small>
         {line ? <small className={problem ? "job-error-line" : undefined}>{line}</small> : null}
+        {problem ? <ShowDetails lines={runReasons(row).map((reason) => <code className="ui-raw-error" key={reason}>{reason}</code>)} /> : null}
       </span>
       <span className="row-mid">
         <span className="row-status"><Badge tone={badge.tone}>{badge.label}</Badge></span>

@@ -102,7 +102,7 @@ export function attributionNextStep(attribution: ChangeAttribution): string | nu
     case "audit-retention-gap":
       return `Microsoft no longer keeps that part of the ${log}. Ask the people who manage this setting, or check your own log archive.`;
     case "audit-read-scope-revoked":
-      return `Give the Collector app ${(attribution.source && AUDIT_LOG_PERMISSIONS[attribution.source]) || "its audit log permission"} again, then run a backup.`;
+      return `Microsoft refused the read. Give the Collector app ${(attribution.source && AUDIT_LOG_PERMISSIONS[attribution.source]) || "its audit log permission"}, then run a backup.`;
     case "audit-read-failed":
       return "Keel tries again after the next backup.";
     case "audit-in-organization-archive":

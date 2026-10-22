@@ -1162,7 +1162,7 @@ being triggered by queue updates.
     be missing every setting, so it is not written; ...". Nothing is written.
   - Unmeasured: the per-template settings read inside the collector, and every write below.
 - Needs: /opt/keel-live at the #487 merge or later (`grep -q "definitionValues@odata.context" /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67 and Q114. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used; it holds

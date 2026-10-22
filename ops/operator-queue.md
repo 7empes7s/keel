@@ -932,11 +932,19 @@ being triggered by queue updates.
   Confirmed / Likely / Not known badge, and a next step when it cannot tell. Schema fragment `37-audit-ingest.sql` creates the
   tables on deploy.
 - Needs: PR #493 live (`test -f /opt/keel-live/engine/identity/auditSources.mjs`).
-- Status: in-progress
-- Result: in progress (2026-10-22 11:49 UTC).
-  - Step 1: `audit_change_fact`, `audit_ingest_run` and `audit_ingest_state` all exist.
-  - Step 3 change made at 11:48:46 UTC with the Restorer: the description of `KEEL-RT-20260908 Blocked Sign-in Test` set to `KEEL-RT who-check 2026-10-22 11:48:46 UTC`. Old value: "KEEL-RT-20260908 Users targeted by blocking Conditional Access tests".
-  - Waiting for the 12:00 collect (step 2), then a collect by hand after 12:10 (step 3).
+- Status: done
+- Result: done (2026-10-22 12:20 UTC), with a blocking finding: **#514**. The Entra audit log never ingests, so no Entra change can be attributed; the Intune audit log works. B = 944ed34. Collector reads; one Restorer change to a fixture group, put back.
+  1. `audit_change_fact`, `audit_ingest_run` and `audit_ingest_state` exist.
+  2. Scheduled 12:00 collect `0c2e9de2`: `Microsoft Entra audit log: invalid-page (1 day(s) read, 0 new record(s))` / `Intune audit log: complete (1 day(s) read, 7 new record(s))`.
+     - `audit_ingest_run` (newest 6): intune-audit `complete` 7, 29 and 20 inserted (windows 11:25 to 11:47 today). audit (Entra) `invalid-page` 0 inserted, every time on the **same** first window `2026-09-22T11:4x` to `2026-09-23T11:4x`.
+     - `audit_ingest_state`: audit `complete f`, no cursor or window; intune-audit `complete t`, window 11:45:39 to 11:47:04.
+     - `audit_change_fact`: 158 facts, 2026-10-10 20:18 to 2026-10-22 11:46. **All are Intune.**
+     - Cause (#514): Graph answers that window with 200 and 105 records. `directoryAuditEvents` gives ids `entra:B2C_<guid>_<guid>_<x>:0`, and `redactSecrets` changes 105 of 105 of them to `entra:[redacted]:0`,
+       so `safeRef` throws, which is reported as `invalid-page`. No permission is missing; I granted nothing.
+  3. Change: at 11:48:46 UTC, `KEEL-RT-20260908 Blocked Sign-in Test` description set to `KEEL-RT who-check 2026-10-22 11:48:46 UTC` (Restorer). Collect by hand at 12:13 (exit 3, partial): Entra `invalid-page` again, Intune `complete` 21 new.
+     `audit_change_fact` rows for that group: **0**.
+  4. Portal panel: not reachable from this box (Cloudflare Access login). Going by the DB, the panel can only say "Not known" for this change, since no Entra fact exists. `journalctl -u keel-portal --since -1h | grep -ci attribution`: 0.
+  5. Description put back to "KEEL-RT-20260908 Users targeted by blocking Conditional Access tests"; a GET confirms it. **Done; nothing left changed.**
 - **Tenant:** one change to a `KEEL-RT-` fixture, put back at the end (standing approval for test fixtures). Reads otherwise.
   Never touch CA policies, break-glass or Marouane's account.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:

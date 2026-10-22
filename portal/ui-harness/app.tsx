@@ -989,6 +989,14 @@ const INCIDENT: IncidentDetail = {
     },
   ],
   recommended: SNAP_GOOD,
+  serviceBackups: [
+    { kind: "service-settings", workload: "exchange-mail-flow", name: "Mail flow", service: "Exchange", assessed: false,
+      newestGood: { id: "w1", from: "2026-10-02T02:00:00Z", at: "2026-10-02T02:05:00Z", inCompromiseWindow: true },
+      beforeWindow: { id: "w0", from: "2026-09-30T02:00:00Z", at: "2026-09-30T02:05:00Z", inCompromiseWindow: false } },
+    { kind: "content", workload: "planner", name: "Planner plans and tasks", service: "Planner", assessed: false, newestGood: null, beforeWindow: null },
+    { kind: "content", workload: "exchange-mail", name: "Mail, calendars and contacts", service: "Exchange", assessed: false,
+      newestGood: { id: "c1", from: "2026-09-29T01:00:00Z", at: "2026-09-29T01:05:00Z", inCompromiseWindow: false }, beforeWindow: null },
+  ],
 };
 const DRILL_SNAP = "d2110000-0000-4000-8000-000000000070";
 const INCIDENT_CLOSED: IncidentDetail = {
@@ -1385,6 +1393,30 @@ const VALUE_REPORT: ValueReport = {
     freshness: { state: "measured", achievedRpoMs: 5 * 3_600_000, gaps: 0, asOf: now },
     recoverablePoint: { state: "unmeasured", ageMs: null, asOf: now },
   },
+  // As on the live report of 2026-10-22: mail content read in part by a run that stopped early.
+  backups: {
+    withheld: false,
+    settings: { backups: 420, lastAt: now },
+    serviceSettings: {
+      runs: 108, workloads: 3, expected: 4, partial: 0, failed: 1, notRun: 0, lastAt: now,
+      areas: [
+        { workload: "exchange-mail-flow", state: "good", goodRuns: 30, partialRuns: 0, failedRuns: 0, lastGoodAt: now },
+        { workload: "purview-labels", state: "good", goodRuns: 30, partialRuns: 0, failedRuns: 0, lastGoodAt: now },
+        { workload: "sharepoint-site-settings", state: "good", goodRuns: 48, partialRuns: 0, failedRuns: 0, lastGoodAt: now },
+        { workload: "teams-org-policies", state: "failed", goodRuns: 0, partialRuns: 0, failedRuns: 30, lastGoodAt: null },
+      ],
+    },
+    content: {
+      runs: 0, workloads: 0, expected: 5, partial: 1, failed: 0, notRun: 4, lastAt: null, itemsStored: 4094, bytesStored: 225_270_538,
+      areas: [
+        { workload: "exchange-mail", state: "partial", goodRuns: 0, partialRuns: 1, failedRuns: 0, lastGoodAt: null },
+        { workload: "onedrive", state: "not-run", goodRuns: 0, partialRuns: 0, failedRuns: 0, lastGoodAt: null },
+        { workload: "sharepoint-sites", state: "not-run", goodRuns: 0, partialRuns: 0, failedRuns: 0, lastGoodAt: null },
+        { workload: "teams", state: "not-run", goodRuns: 0, partialRuns: 0, failedRuns: 0, lastGoodAt: null },
+        { workload: "planner", state: "not-run", goodRuns: 0, partialRuns: 0, failedRuns: 0, lastGoodAt: null },
+      ],
+    },
+  },
   estimate: { state: "configured", source: "/etc/keel/value-estimate.json" },
   hoursSaved: {
     hours: 2, basis: "verified-outcomes-only", owner: "the IT lead", setAt: "2026-09-01T00:00:00.000Z", notEstimated: ["remediation"],
@@ -1407,6 +1439,7 @@ const VALUE_REPORT_SCOPED: ValueReport = {
   outcomes: { ...VALUE_REPORT.outcomes, ...VALUE_SUMMARY(1, 0, 0, 0, 0, 2), byFamily: { restore: VALUE_SUMMARY(1, 0, 0, 0, 0, 2), remediation: VALUE_SUMMARY(0, 0, 0, 0, 0, 0) }, rows: [VALUE_REPORT.outcomes.rows[0]], rowsShown: 1, undoRunsExcluded: null },
   findings: { withheld: true },
   recovery: { withheld: true },
+  backups: { withheld: true },
   estimate: { state: "not-configured", source: null, problems: [] },
   hoursSaved: null,
 };

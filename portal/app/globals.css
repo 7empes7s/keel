@@ -9820,6 +9820,29 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .vr-ring-text b { font-size: 0.9375rem; font-variant-numeric: tabular-nums; }
 .vr-ring-text small { color: var(--text-soft); font-size: 0.6875rem; }
 
+/* What we backed up: one stat per family (tinted by its worst state), then the areas table. */
+.vr-stats { display: grid; gap: var(--space-sm); grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); }
+.vr-stats > * { min-width: 0; }
+.vr-stat { display: grid; align-content: start; gap: var(--space-2xs); padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-left-width: 4px; border-radius: var(--radius-lg); background: var(--surface-raised); }
+.vr-stat[data-tone="fine"] { border-left-color: var(--fine); }
+.vr-stat[data-tone="soon"] { border-color: color-mix(in srgb, var(--check-soon) 45%, var(--line)); border-left-color: var(--check-soon); background: color-mix(in srgb, var(--check-soon-bg) 55%, var(--surface)); }
+.vr-stat[data-tone="urgent"] { border-color: color-mix(in srgb, var(--urgent) 45%, var(--line)); border-left-color: var(--urgent); background: color-mix(in srgb, var(--urgent-bg) 55%, var(--surface)); }
+.vr-stat[data-tone="neutral"] { border-left-color: var(--neutral); }
+.vr-stat[data-tone="urgent"] .vr-tile-label { color: var(--urgent); }
+.vr-stat[data-tone="soon"] .vr-tile-label { color: var(--check-soon); }
+.vr-stat[data-tone="fine"] .vr-tile-label { color: var(--fine); }
+.vr-stat > small { color: var(--text-soft); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.vr-stat > .badge { justify-self: start; }
+.vr-areas tbody th small { display: block; margin-top: 0.125rem; color: var(--text-soft); font-size: 0.8125rem; font-weight: 400; overflow-wrap: anywhere; }
+.vr-area-name { display: block; overflow-wrap: anywhere; }
+.vr-areas td { width: 1%; vertical-align: middle; text-align: end; }
+.vr-areas thead th:last-child { text-align: end; }
+.vr-areas tr.vr-area-group th { padding-top: var(--space-sm); background: none; color: var(--text); font-size: 0.8125rem; font-weight: 650; text-transform: none; }
+.vr-areas tr.vr-area-group th small { display: inline; margin: 0 0 0 var(--space-sm); font-weight: 400; }
+.vr-areas tr[data-state="failed"] > th:first-child { box-shadow: inset 3px 0 0 var(--urgent); padding-left: var(--space-sm); }
+.vr-areas tr:is([data-state="partial"], [data-state="not-run"]) > th:first-child { box-shadow: inset 3px 0 0 var(--check-soon); padding-left: var(--space-sm); }
+.vr-areas .badge { white-space: nowrap; }
+
 .vr-figures { display: grid; gap: var(--space-sm); grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
 .vr-figures > div { display: flex; flex-direction: column-reverse; justify-content: start; gap: 0.125rem; min-width: 0; }
 .vr-figures dt { color: var(--text-soft); font-size: 0.8125rem; font-weight: 400; letter-spacing: normal; text-transform: none; overflow-wrap: anywhere; }
@@ -10460,13 +10483,17 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
   .ov-ring[data-big] { grid-template-columns: 8rem minmax(0, 1fr); }
   .ov-full span { display: none; }
 }
-.vr-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-xs); }
-.vr-lines li { margin: 0; overflow-wrap: anywhere; }
 .ir-service-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-xs); }
 .ir-service-row { display: grid; gap: var(--space-2xs); padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); overflow-wrap: anywhere; }
-.ir-service-name { font-weight: 600; }
+.ir-service-row { border-left-width: 4px; }
+.ir-service-row[data-tone="fine"] { border-left-color: var(--fine); }
+.ir-service-row[data-tone="soon"] { border-left-color: var(--check-soon); }
+.ir-service-row[data-tone="urgent"] { border-left-color: var(--urgent); background: color-mix(in srgb, var(--urgent-bg) 45%, var(--surface)); }
+.ir-service-row > .badge { justify-self: start; }
+.ir-service-name { display: grid; gap: 0.125rem; font-weight: 600; }
+.ir-service-name small { color: var(--text-soft); font-size: 0.8125rem; font-weight: 400; }
 @media (min-width: 48rem) {
-  .ir-service-row { grid-template-columns: minmax(12rem, 1fr) minmax(0, 2fr); align-items: baseline; }
+  .ir-service-row { grid-template-columns: minmax(12rem, 1fr) auto minmax(0, 2fr); align-items: center; }
 }
 
 /* --- Setup (portal audit, pick A: two checklists side by side) ------------- */

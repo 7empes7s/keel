@@ -1238,6 +1238,12 @@ test("the value report adds up, shows hours only with an estimate, and withholds
   await expect(page.locator(".vr-hours-table")).toContainText("Checked restores");
   await expect(page.locator(".vr-assumptions")).toContainText("A manual restore of one group and its members takes about 90 minutes.");
   await expect(page.locator(".vr-claim")).toContainText("It is not a statement of compliance with any regulation or framework.");
+  // What we backed up: a tile per family, problems first, every card with a status badge.
+  await expect(page.locator("#vr-backups .vr-stat")).toHaveCount(3);
+  await expect(page.locator("#vr-backups .vr-stat[data-family='content']")).toContainText("1 in part · 4 did not run");
+  await expect(page.locator("#vr-backups .vr-areas tr[data-state]").first()).toHaveAttribute("data-state", "failed");
+  await expect(page.locator("#vr-backups")).toContainText("including items from areas backed up only in part");
+  for (const card of await page.locator(".vr-card").all()) await expect(card.locator(".vr-card-head .badge")).toBeVisible();
   expect(await page.locator("main .btn-primary:visible").count()).toBeLessThanOrEqual(1);
 
   // One Download menu: spreadsheet, Excel workbook, PDF (print) and the data file.

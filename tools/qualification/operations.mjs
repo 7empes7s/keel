@@ -275,6 +275,16 @@ const FIXTURE_PAYLOADS = Object.freeze({
     }],
     scheduledActionsForRule: [{ ruleName: null, scheduledActionConfigurations: [{ actionType: 'block', gracePeriodHours: 0, notificationTemplateId: '', notificationMessageCCList: [] }] }],
   },
+  // Restore gaps, batch 8.
+  managedEBookCategory: { displayName: 'Fixture e-book category' },
+  microsoftTunnelConfiguration: {
+    displayName: 'Fixture tunnel', description: 'Fixture', network: '10.99.0.0/24', dnsServers: ['10.99.0.1'], defaultDomainSuffix: '',
+    routeIncludes: ['10.98.0.0/16'], routeExcludes: [], splitDNS: [], listenPort: 443, advancedSettings: [], roleScopeTagIds: ['0'], disableUdpConnections: false,
+  },
+  appleUserInitiatedEnrollmentProfile: {
+    displayName: 'Fixture Apple enrollment', description: 'Fixture', platform: 'iOS', defaultEnrollmentType: 'device',
+    availableEnrollmentTypeOptions: [{ ownerType: 'company', enrollmentType: 'device' }, { ownerType: 'personal', enrollmentType: 'accountDrivenUserEnrollment' }],
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons.
   externalIdentitiesPolicy: { allowExternalIdentitiesToLeave: true, allowDeletedIdentitiesDataRemoval: false },
   accessReviewPolicy: { isGroupOwnerManagementEnabled: true },

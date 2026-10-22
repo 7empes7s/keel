@@ -119,6 +119,10 @@ const REGISTERED = Object.freeze({
   policySet: ['create', 'update'],
   // Restore gaps, batch 7.
   deviceManagementCompliancePolicy: ['create', 'update'],
+  // Restore gaps, batch 8.
+  managedEBookCategory: ['create', 'update'],
+  microsoftTunnelConfiguration: ['create', 'update'],
+  appleUserInitiatedEnrollmentProfile: ['create', 'update'],
   // Wave 2 ENTRA: directory policies and delegated consents.
   tokenLifetimePolicy: ['create', 'update'],
   tokenIssuancePolicy: ['create', 'update'],

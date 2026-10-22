@@ -684,6 +684,90 @@ test('a compliance policy without all its settings, without actions to create it
   }
 });
 
+// ------------------------------------------- restore gaps, batch 8
+
+test('an e-book category is created and updated through beta by its name', async () => {
+  const graph = idoFakeGraph();
+  const created = await applyIntuneExtendedWrite(graph, resourceOf('managedEBookCategory', { id: 'e-src', displayName: 'KEEL-RT-Books', lastModifiedDateTime: 'x' }), 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.path, '/deviceAppManagement/managedEBookCategories');
+  assert.equal(post.version, 'beta');
+  assert.deepEqual(post.body, { displayName: 'KEEL-RT-Books' });
+
+  const path = '/deviceAppManagement/managedEBookCategories/e-1';
+  const live = { id: 'e-1', displayName: 'KEEL-RT-Books (renamed)' };
+  const renamed = idoFakeGraph({ seed: { [path]: live } });
+  const updated = await applyIntuneExtendedWrite(renamed, resourceOf('managedEBookCategory', { id: 'e-1', displayName: 'KEEL-RT-Books' }, {
+    live: { state: 'present', targetId: 'e-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  assert.deepEqual(renamed.calls.find((call) => call.method === 'PATCH').body, { displayName: 'KEEL-RT-Books' });
+});
+
+const tunnel = Object.freeze({
+  id: 't-src', displayName: 'KEEL-RT-Tunnel', description: 'Fixture', network: '10.99.0.0/24', dnsServers: ['10.99.0.1'], defaultDomainSuffix: '',
+  routesInclude: ['10.98.0.0/16'], routesExclude: [], routeIncludes: ['10.98.0.0/16'], routeExcludes: [], splitDNS: [], listenPort: 443,
+  advancedSettings: [], roleScopeTagIds: ['0'], disableUdpConnections: false, lastUpdateDateTime: '2026-10-01T00:00:00Z',
+});
+
+test('a Microsoft Tunnel configuration is created and updated with its network, DNS, routes and port, never the older route fields', async () => {
+  const graph = idoFakeGraph();
+  const created = await applyIntuneExtendedWrite(graph, resourceOf('microsoftTunnelConfiguration', tunnel), 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.path, '/deviceManagement/microsoftTunnelConfigurations');
+  assert.equal(post.version, 'beta');
+  for (const field of ['id', 'lastUpdateDateTime', 'routesInclude', 'routesExclude']) assert.equal(field in post.body, false, field);
+  assert.deepEqual(post.body.routeIncludes, ['10.98.0.0/16']);
+  assert.equal(post.body.network, '10.99.0.0/24');
+  assert.equal(post.body.listenPort, 443);
+
+  const path = '/deviceManagement/microsoftTunnelConfigurations/t-1';
+  const live = { ...tunnel, id: 't-1', listenPort: 8443, dnsServers: ['10.99.0.2'] };
+  const drifted = idoFakeGraph({ seed: { [path]: live } });
+  const updated = await applyIntuneExtendedWrite(drifted, resourceOf('microsoftTunnelConfiguration', { ...tunnel, id: 't-1' }, {
+    live: { state: 'present', targetId: 't-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  const patch = drifted.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.path, path);
+  assert.equal(patch.body.listenPort, 443);
+  assert.deepEqual(patch.body.dnsServers, ['10.99.0.1']);
+  assert.equal('routesInclude' in patch.body, false);
+});
+
+const appleEnrollment = Object.freeze({
+  id: 'a-src', displayName: 'KEEL-RT-Apple enrollment', description: 'Fixture', platform: 'iOS', priority: 3, defaultEnrollmentType: 'device',
+  availableEnrollmentTypeOptions: [{ ownerType: 'company', enrollmentType: 'device' }, { ownerType: 'personal', enrollmentType: 'accountDrivenUserEnrollment' }],
+  createdDateTime: 'x', lastModifiedDateTime: 'x',
+});
+
+test('an Apple user enrollment profile is created with its platform, and updated without it; its priority is never written', async () => {
+  const graph = idoFakeGraph();
+  const created = await applyIntuneExtendedWrite(graph, resourceOf('appleUserInitiatedEnrollmentProfile', appleEnrollment), 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.path, '/deviceManagement/appleUserInitiatedEnrollmentProfiles');
+  assert.equal(post.version, 'beta');
+  assert.deepEqual(post.body, {
+    displayName: 'KEEL-RT-Apple enrollment', description: 'Fixture', platform: 'iOS', defaultEnrollmentType: 'device',
+    availableEnrollmentTypeOptions: appleEnrollment.availableEnrollmentTypeOptions,
+  });
+
+  const path = '/deviceManagement/appleUserInitiatedEnrollmentProfiles/a-1';
+  const live = { ...appleEnrollment, id: 'a-1', priority: 1, description: 'Changed', defaultEnrollmentType: 'accountDrivenUserEnrollment' };
+  const drifted = idoFakeGraph({ seed: { [path]: live } });
+  const updated = await applyIntuneExtendedWrite(drifted, resourceOf('appleUserInitiatedEnrollmentProfile', { ...appleEnrollment, id: 'a-1' }, {
+    live: { state: 'present', targetId: 'a-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  const patch = drifted.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.body.description, 'Fixture');
+  assert.equal(patch.body.defaultEnrollmentType, 'device');
+  for (const field of ['platform', 'priority']) assert.equal(field in patch.body, false, field);
+});
+
 test('a policy delete passes the deletion guard and refuses a policy that is still assigned', async () => {
   for (const type of ['deviceCompliancePolicy', 'deviceConfiguration', 'configurationPolicy']) {
     const collection = INTUNE_RECORDS[type].collection;

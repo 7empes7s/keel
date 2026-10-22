@@ -104,6 +104,13 @@ export default [
   // Restore gaps, batch 7: settings catalog compliance policies.
   { resourceType: 'deviceManagementCompliancePolicy', operation: 'create', path: '/deviceManagement/compliancePolicies', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
   { resourceType: 'deviceManagementCompliancePolicy', operation: 'update', path: '/deviceManagement/compliancePolicies', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  // Restore gaps, batch 8: e-book categories, Microsoft Tunnel configurations and Apple user enrollment profiles.
+  { resourceType: 'managedEBookCategory', operation: 'create', path: '/deviceAppManagement/managedEBookCategories', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'managedEBookCategory', operation: 'update', path: '/deviceAppManagement/managedEBookCategories', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'microsoftTunnelConfiguration', operation: 'create', path: '/deviceManagement/microsoftTunnelConfigurations', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'microsoftTunnelConfiguration', operation: 'update', path: '/deviceManagement/microsoftTunnelConfigurations', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'appleUserInitiatedEnrollmentProfile', operation: 'create', path: '/deviceManagement/appleUserInitiatedEnrollmentProfiles', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'appleUserInitiatedEnrollmentProfile', operation: 'update', path: '/deviceManagement/appleUserInitiatedEnrollmentProfiles', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   // Add-only identity edges: an edge is never removed, so edge-remove is not registered.
   { resourceType: 'application#appOwner', operation: 'edge-add', path: '/applications/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },
   { resourceType: 'servicePrincipal#servicePrincipalOwner', operation: 'edge-add', path: '/servicePrincipals/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },

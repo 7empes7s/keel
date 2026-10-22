@@ -1142,6 +1142,28 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     transform: complianceBody, sameField: sameComplianceField, refusal: compliancePolicyRefusal, afterWrite: complianceActionsAfterWrite,
     permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
+  // Restore gaps, batch 8. An e-book category is only a name.
+  managedEBookCategory: defineRecord({
+    resourceType: 'managedEBookCategory', version: 'beta', collection: '/deviceAppManagement/managedEBookCategories',
+    operations: ['create', 'update'], permission: 'DeviceManagementApps.ReadWrite.All',
+  }),
+  // A Microsoft Tunnel server configuration (address range, DNS, routes, port).
+  // Sites and servers point to it by id and are not written. The older route
+  // fields hold the same routes as routeIncludes and routeExcludes, so only the
+  // current ones are sent.
+  microsoftTunnelConfiguration: defineRecord({
+    resourceType: 'microsoftTunnelConfiguration', version: 'beta', collection: '/deviceManagement/microsoftTunnelConfigurations',
+    operations: ['create', 'update'], excluded: ['lastUpdateDateTime', 'routesInclude', 'routesExclude'],
+    permission: 'DeviceManagementConfiguration.ReadWrite.All',
+  }),
+  // An Apple user enrollment profile (which enrollment types users may pick).
+  // Its platform is set on create only. Its place in the priority order and
+  // who it is assigned to are not written.
+  appleUserInitiatedEnrollmentProfile: defineRecord({
+    resourceType: 'appleUserInitiatedEnrollmentProfile', version: 'beta', collection: '/deviceManagement/appleUserInitiatedEnrollmentProfiles',
+    operations: ['create', 'update'], excluded: ['priority', 'assignments'], createOnly: ['platform'],
+    permission: 'DeviceManagementServiceConfig.ReadWrite.All',
+  }),
 });
 
 /** A cleanup rule is never made to retire devices sooner than it does now. */

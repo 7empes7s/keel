@@ -235,6 +235,23 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-compliance`, drift: 'change its description and the block grace period to 72 hours: the restore puts back both (0 hours)',
     note: 'Assigned to nobody and the test tenant has no Linux devices. Back up after restore gaps batch 7 deploys, since only then are the actions read.',
   },
+  // Restore gaps, batch 8: an e-book category, a Microsoft Tunnel server
+  // configuration no site uses, and an Apple user enrollment profile assigned
+  // to nobody, so no device, user or connection is affected.
+  managedEBookCategory: {
+    kind: 'named-object', fixture: `e-book category ${FIXTURE_PREFIX}-books (no book is in it)`,
+    select: `${FIXTURE_PREFIX}-books`, drift: 'delete it: the restore recreates it with the same name',
+  },
+  microsoftTunnelConfiguration: {
+    kind: 'named-object', fixture: `Microsoft Tunnel server configuration ${FIXTURE_PREFIX}-tunnel (network 10.99.0.0/24, DNS server 10.99.0.1, port 443, one included route 10.98.0.0/16), used by no site`,
+    select: `${FIXTURE_PREFIX}-tunnel`, drift: 'delete it: the restore recreates it with the same network, DNS server, route and port',
+    note: 'No site or server points to it, so no device connects through it.',
+  },
+  appleUserInitiatedEnrollmentProfile: {
+    kind: 'named-object', fixture: `Apple user enrollment profile ${FIXTURE_PREFIX}-apple-enroll (iOS/iPadOS, company devices may use device enrollment, personal devices account driven user enrollment, default device), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-apple-enroll`, drift: 'change its description and default enrollment type: the restore puts back both',
+    note: 'Assigned to nobody, so no user is offered it. If Intune refuses to create it (for example without an Apple MDM push certificate), record that and skip this kind.',
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons. None touches sign-in,
   // Conditional Access or any account; each is set back to its value after the run.
   externalIdentitiesPolicy: {

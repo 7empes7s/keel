@@ -4921,7 +4921,7 @@ item that needs it stays untouched.
   `docs/roadmap/workload-reads-live-acceptance.md`).
 - Needs: PR #425 live (`git -C /opt/keel-live log --oneline | grep -c "#425"` is 1, or `/opt/keel-live/tools/qualification/workloadReadsLive.mjs` exists).
 - Status: done
-- Result: done (2026-10-22 07:05 UTC). Step 5 was finished by **Q107**: records recaptured with the #427 fix, pseudonym check exit 0, published on `claude/live-evidence-q103` @ 701bd5a.
+- Result: done (2026-10-22 06:41 UTC). Step 5 was finished by **Q107**: records recaptured with the #427 fix, pseudonym check exit 0, published on `claude/live-evidence-q103` @ 701bd5a.
   - Earlier: partly done (2026-10-21), blocked on #427 for step 5. Live build **01df9af**; my clone was detached at it. Reads only
   toward the tenant: the collector credential sent only the declared `Get-` cmdlets. No grants, no role changes.
   - **1.** `powershellConfigs.exchange` is `/etc/keel/exchange-collector.json` (`organization` non-empty: **yes**).
@@ -5091,7 +5091,7 @@ item that needs it stays untouched.
   and read imports never change it.
 - Needs: nothing.
 - Status: done
-- Result: done (2026-10-22 06:50 UTC). The stored record is stale in one way: it omits Global Reader and Security Reader. Otherwise it matches the tenant. Teams, Power Platform and Fabric Administrator are really missing. eDiscovery reads work through the Compliance Administrator role group (Case Management, Hold), not eDiscovery Manager. Collector only, reads only; nothing changed.
+- Result: done (2026-10-22 06:35 UTC). The stored record is stale in one way: it omits Global Reader and Security Reader. Otherwise it matches the tenant. Teams, Power Platform and Fabric Administrator are really missing. eDiscovery reads work through the Compliance Administrator role group (Case Management, Hold), not eDiscovery Manager. Collector only, reads only; nothing changed.
   1. `workload_ledger_grants` (verbatim):
      - `collector | ["Compliance Administrator", "Exchange Administrator", "SharePoint Administrator"] | 9 | 2026-10-21 20:24:15.650287+00`
      - `restorer | ["Compliance Administrator", "Compliance Data Administrator", "Exchange Administrator", "Intune Administrator",
@@ -5156,7 +5156,7 @@ item that needs it stays untouched.
   `subject.credentials.collector` carries `app:<pseudonym>` like the writer records.
 - Needs: PR #428 live (`git -C /opt/keel-live log --oneline | grep -c "#428"` is 1).
 - Status: done
-- Result: done (2026-10-22 07:05 UTC). Four read records recaptured at live build **04a4c91**. Every id is a pseudonym, and the records are published on `claude/live-evidence-q103` @ **701bd5a** (no PR). Collector reads only.
+- Result: done (2026-10-22 06:41 UTC). Four read records recaptured at live build **04a4c91**. Every id is a pseudonym, and the records are published on `claude/live-evidence-q103` @ **701bd5a** (no PR). Collector reads only.
   1. Captures, same flags as Q103 step 2 (exchange-collector config for the two Exchange workloads, purview-collector config for the two Purview workloads):
      - exchange-mail-flow: exit 0, outcome `complete`, **11 proven**, notProven `[]`, verify ok.
      - exchange-extended: exit 0, `complete`, **23 proven**, notProven `[]`, verify ok.
@@ -5206,8 +5206,20 @@ item that needs it stays untouched.
 - Drafted by the "Exchange backups report partial" thread (2026-10-21). Q105 found the unknown fields were declared
   properties the live module never returns. PR #429 stops declaring them and adds `digest.unknownFields` to each run.
 - Needs: PR #429 live (`git -C /opt/keel-live log --oneline | grep -c "#429"` is 1).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-22 06:43 UTC). Both report `complete`, with no unknown fields. Collector reads only.
+  1. `node cli/keel-workload-collect.mjs run` by hand at 06:41: exit **0**. (Q107's run at 06:37 is also inside the 15-minute window, so
+     each workload has two rows.)
+  2. Verbatim:
+     ```
+           workload      | outcome  |          created_at           |   field_counts    | unknown_fields | observations
+     --------------------+----------+-------------------------------+-------------------+----------------+--------------
+      exchange-extended  | complete | 2026-10-22 06:37:32.458133+00 | {"observed": 455} | {}             |           40
+      exchange-extended  | complete | 2026-10-22 06:41:40.354966+00 | {"observed": 455} | {}             |           40
+      exchange-mail-flow | complete | 2026-10-22 06:38:06.07464+00  | {"observed": 752} | {}             |           35
+      exchange-mail-flow | complete | 2026-10-22 06:42:14.825191+00 | {"observed": 752} | {}             |           35
+     ```
+  - As expected: no `unknown` in field_counts, `unknown_fields` `{}`, 35 and 40 observations.
 - **Tenant:** reads only. The run sends only the declared `Get-` cmdlets with the collector credential. No grants, no role
   or config changes.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:

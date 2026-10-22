@@ -5952,7 +5952,7 @@ item that needs it stays untouched.
   `isDefaultProfile` and assignments are **never** sent; the **default profile is refused**) and `exchangeCustomAppScope`
   (`displayName`, `customAttributes` with the recipient filter; `type` on create only; app role assignments not written).
 - Needs: /opt/keel-live at the #454 merge or later (`grep -q exchangeCustomAppScope: /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
-- Status: blocked
+- Status: in-progress
 - Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer

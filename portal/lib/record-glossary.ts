@@ -62,7 +62,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Kind code": support("Kind code", "The stored code for the kind of item."),
   "Type": fact("Type of setting", "The kind of Microsoft 365 setting or object."),
   "Resource type": fact("Type of setting", "The kind of Microsoft 365 setting or object."),
-  "Configuration type": fact("Type of setting", "The kind of Microsoft 365 setting this row covers."),
+  "Configuration type": support("Type code", "The stored code for this kind of setting. Its name is the row's title."),
   "Parent type": fact("Belongs to", "The kind of item this one sits under."),
   "Created": fact("Created", "When this was created."),
   "Started": fact("Started", "When the work started."),

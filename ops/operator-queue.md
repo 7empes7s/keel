@@ -6685,8 +6685,22 @@ item that needs it stays untouched.
     `keel-restore` (only the three built-in policy kinds were), so they were never written. They are now.
   - A policy whose only change is its assignments is planned as an `update`; the object itself is not patched.
 - Needs: /opt/keel-live at the #460 merge or later (`grep -q SCRIPT_ASSIGNMENTS /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
+- Status: done
+- Result: done (2026-10-22 17:24 UTC). **Assignments are written back for all four kinds; 5 records promoted.** The feature update profile capture was refused by the tool (#478 comment). B = 4fadc0a → **0450b0f**. Restorer only; global admin not used; fixtures assigned only to empty groups.
+  - Step 0: the Restorer token has 56 roles, including **DeviceManagementScripts.ReadWrite.All**, DeviceManagementConfiguration, ServiceConfig, Apps, ManagedDevices and RBAC ReadWrite (list in `/root/q129-roles.txt`).
+  - Fixtures: empty groups `KEEL-RT-149-assign` and `-assign-b`; `KEEL-RT-149-script`, `-remediation` (daily 01:00), `-admx` (Edge home page `https://example.com`) and `-feature` (Windows 11, version 24H2), all assigned to `KEEL-RT-149-assign` (/assign 200). The optional kinds were skipped.
+  - **Step 1, backup** (S = `785eddd2`): "policy assignment reads: 34 complete". Each fixture has one `assignment` edge, `complete`, groupAssignmentTarget = `KEEL-RT-149-assign`.
+    The remediation edge holds `runSchedule` daily 01:00 and `runRemediationScript: false`. Graph stored false although I sent true on create, so the backup matches the tenant.
+  - **Step 2, assignments:** moved all four to `-assign-b` (remediation at 23:00). Dry run `4c333a15` planned an update for each (no field changes; the assignment change carried 3 `runs-on-devices` content effects).
+    Content effects approved; approval **7957a12c**; job `d5846284`: 4 updates succeeded.
+    - Live afterwards: every fixture is assigned to `KEEL-RT-149-assign` only, and the remediation is back at 01:00 (`runRemediationScript` false, as in S).
+    - Promoted: deviceManagementScript, deviceHealthScript and groupPolicyConfiguration updates.
+    - windowsFeatureUpdateProfile: capture refused ("has no name of its own: pass --allow-by-reference"), a tool gap, commented on #478. The restore itself worked.
+  - **Step 3, create:** deleted the script and the remediation. Dry run `1be2a2d7` (3 content effects approved), approval **c6dc4867**, job `7ea75a9d`: both created, with bodies `Write-Output 'KEEL-RT'` / `exit 0`, **and** assigned to
+    `KEEL-RT-149-assign` (remediation at 01:00). Both creates **promoted**.
+  - **Step 4, re-run** (`A3` from S, after the create): all 5 entries have 0 changed fields and 0 content effects. **0 planned writes**, so the #485 fix works live.
+  - **Step 5, cleanup:** deleted all four fixtures and both groups (security groups are not soft-deleted; the purge answered 404). None left.
+  - **Evidence:** `claude/live-evidence-restore-gaps-14` @ **e3b7645e**. pseudonymize check exit 0; my scan is clean. `live evidence`: deviceManagementScript create and update, deviceHealthScript create and update, groupPolicyConfiguration update: `fixture-tested -> live-qualified`.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementConfiguration.ReadWrite.All and DeviceManagementServiceConfig.ReadWrite.All. If Graph answers 403, report

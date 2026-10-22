@@ -7178,3 +7178,27 @@ item that needs it stays untouched.
   step 3 has no entry left `waiting`/`reading`. If `progress` stays NULL, report the worker build and whether the child got
   `KEEL_JOB_ID`; change nothing.
 - **Report:** per step, the result.
+
+### Q154: Live re-check that the Entra audit log now ingests and Entra changes get a "who" (fixes #514, after #528)
+- Drafted by the "Entra audit ingest stuck" thread (2026-10-22). Code: PR #528. Re-runs the part of Q144 that failed.
+  - **Change:** a long Microsoft record id (the test tenant's `B2C_<guid>_<guid>_<x>` ids) is now stored as `entra:h<32 hex>:<n>`
+    (a SHA-256 prefix) instead of verbatim, so `redactSecrets` no longer rejects the page as `invalid-page`. Short ids are unchanged.
+- Needs: /opt/keel-live at the #528 merge or later (`grep -q recordRef /opt/keel-live/engine/identity/auditSources.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** Collector reads, plus one change to a `KEEL-RT-` fixture group put back at the end (standing approval for test
+  fixtures). Never touch CA policies, break-glass or Marouane's account.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. After the next scheduled collect (or one `collect` job), report the stdout line starting `Microsoft Entra audit log:`.
+  2. `SELECT source, status, window_from, window_until, evidence->>'insertedEvents' FROM audit_ingest_run ORDER BY started_at DESC LIMIT 6;`
+     and `SELECT * FROM audit_ingest_state;` (adjust column names to the table). Expect `audit` windows advancing day by day,
+     not the same 2026-09-22 window.
+  3. `SELECT count(*), min(source_event_id) FROM audit_change_fact WHERE source_event_id LIKE 'entra:%';` Expect a count > 0 and
+     ids shaped `entra:h<hex>:<n>` (no `B2C_`).
+  4. Repeat Q144 step 3: set the description of a `KEEL-RT-` fixture group (Restorer), run a collect once the Entra read has
+     caught up to today, report whether `audit_change_fact` has a row for that group's object id with the Restorer as actor,
+     then put the description back and confirm with a GET.
+- **Expected:** Entra read status `complete` or `complete-empty` once caught up (first runs may stop at the time budget and
+  continue next run), Entra facts present, and the fixture change attributed. If `invalid-page` remains, report one failing
+  event id shape (prefix only) and reopen #514.
+- **Report:** per step, the result.

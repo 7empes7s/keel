@@ -231,6 +231,26 @@ export function graphFailure(naturalKey, result, prefix = '') {
   return failure;
 }
 
+// Graph names the permission it wants in a 403's message, in one of these shapes.
+const NAMED_SCOPES = [/following scopes:\s*([\w.]+(?:\s*,\s*[\w.]+)*)/i, /requires one of '([^']+)'/i, /required scopes\s*=\s*\[([^\]]+)\]/i];
+
+/**
+ * A failed write. A 403 whose message names the permission Graph wants starts
+ * with that permission, so the run shows which grant the Restorer is missing
+ * (an admin-consent step). A 403 for any other reason (an admin role, a
+ * first-party object) is left as Graph's answer.
+ */
+export function writeFailure(record, naturalKey, result) {
+  const message = result?.status === 403 ? JSON.stringify(result?.body ?? result?.error ?? '') : '';
+  const named = NAMED_SCOPES.map((pattern) => message.match(pattern)?.[1]).find(Boolean)
+    ?.split(',').map((scope) => scope.trim()).filter(Boolean) ?? [];
+  if (named.length === 0) return graphFailure(naturalKey, result);
+  const permission = named.includes(record?.permission) ? record.permission : named[0];
+  const failure = graphFailure(naturalKey, result, `missing permission: the Restorer needs ${permission} (admin consent); Graph answered `);
+  failure.missingPermission = permission;
+  return failure;
+}
+
 export const isNotFound = (result) => result?.ok === false && result?.status === 404;
 
 /** Re-reads until `isStale` clears (Graph's read-after-write lag), bounded. */
@@ -330,7 +350,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
     const result = await io.retryOperation(() => writer.write(record.version, collection, { method: 'POST', body }));
     if (!result.ok) {
       await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
-      return { failed: graphFailure(naturalKey, result) };
+      return { failed: writeFailure(record, naturalKey, result) };
     }
     targetId = result.body?.id;
     if (typeof targetId !== 'string' || targetId.length === 0) {
@@ -344,7 +364,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
     const result = await io.retryOperation(() => writer.write(record.version, recordObjectPath(record, payload, targetId), { method: record.updateMethod, body: sent }));
     if (!result.ok) {
       await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
-      return { failed: graphFailure(naturalKey, result) };
+      return { failed: writeFailure(record, naturalKey, result) };
     }
   }
 
@@ -411,7 +431,7 @@ async function applyRecordDelete(io, record, resource, payload, ctx) {
   const result = await io.retryOperation(() => io.writer.write(record.version, path, { method: 'DELETE', body: {} }));
   if (!result.ok) {
     await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
-    return { failed: graphFailure(naturalKey, result) };
+    return { failed: writeFailure(record, naturalKey, result) };
   }
   const reRead = await readUntil(io, record.version, path, (r) => r?.ok === true && r.body?.deletedDateTime == null, io.readOptions);
   if (!isNotFound(reRead) && reRead?.body?.deletedDateTime == null) {

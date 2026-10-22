@@ -1100,6 +1100,11 @@ async function groupPolicySettingsAfterWrite(io, { payload, verb, targetId }) {
  * deviceHealthScriptAssignments. Custom attribute scripts (batch 15) use the
  * script list too.
  */
+// Graph refuses every script kind (PowerShell, shell, remediation, compliance and
+// custom attribute scripts) without this permission; the device configuration
+// permission does not cover them (issue #471).
+export const SCRIPT_WRITE_PERMISSION = 'DeviceManagementScripts.ReadWrite.All';
+
 const SCRIPT_ASSIGNMENTS = Object.freeze({
   deviceManagementScript: { assignmentType: '#microsoft.graph.deviceManagementScriptAssignment', assignmentBodyKey: 'deviceManagementScriptAssignments' },
   deviceShellScript: { assignmentType: '#microsoft.graph.deviceManagementScriptAssignment', assignmentBodyKey: 'deviceManagementScriptAssignments' },
@@ -1447,7 +1452,7 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // carries its schedule and whether its fix runs.
   ...Object.fromEntries(Object.entries(SCRIPT_BODY_FIELDS).map(([resourceType, bodies]) => [resourceType, defineRecord({
     resourceType, version: 'beta', collection: `/deviceManagement/${resourceType}s`, operations: ['create', 'update'],
-    excluded: SCRIPT_SERVER_FIELDS, refusal: scriptRefusal(bodies), permission: 'DeviceManagementConfiguration.ReadWrite.All',
+    excluded: SCRIPT_SERVER_FIELDS, refusal: scriptRefusal(bodies), permission: SCRIPT_WRITE_PERMISSION,
     ...(SCRIPT_ASSIGNMENTS[resourceType] ? { afterWrite: assignmentsAfterWrite, ...SCRIPT_ASSIGNMENTS[resourceType] } : {}),
   })])),
   // Restore gaps, batch 5: administrative templates. The backup reads the

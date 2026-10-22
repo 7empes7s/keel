@@ -137,10 +137,10 @@ const APP_SCOPE_PORTAL = 'Exchange Online PowerShell (Set-ManagementScope)';
 const appScopeStep = (detail) => `${detail} A restore never changes the recipient filter of a scope an app role assignment uses, `
   + `because a different filter from a changed backup could let that app read other mailboxes: compare the filter with the backup, then change it by hand in ${APP_SCOPE_PORTAL} if needed.`;
 
-/** Every Exchange app role assignment, across pages; null when a page cannot be read. */
-async function exchangeRoleAssignments(io, { maxPages = 50 } = {}) {
+/** Every Exchange app role assignment from `path`, across pages; { error } when a page cannot be read. */
+async function exchangeRoleAssignments(io, { path = EXCHANGE_ROLE_ASSIGNMENTS, maxPages = 50 } = {}) {
   const value = [];
-  let next = EXCHANGE_ROLE_ASSIGNMENTS;
+  let next = path;
   for (let page = 0; page < maxPages; page += 1) {
     const result = await io.retryOperation(() => io.writer.read('beta', next));
     if (result?.ok !== true) return { error: outcomeDetail(result) };
@@ -151,11 +151,59 @@ async function exchangeRoleAssignments(io, { maxPages = 50 } = {}) {
   return { error: `more than ${maxPages} pages` };
 }
 
+/** How many full reads of the assignments must agree before a scope counts as unused. */
+export const APP_SCOPE_ASSIGNMENT_READS = 3;
+
+/**
+ * The app role assignments that use an app scope, read so that a doubt never
+ * reads as "unused". The beta assignment list pages unstably (#438, #467): a
+ * full read can repeat some rows and miss others, so one read can miss every
+ * assignment that names the scope. The scope is first looked up with a
+ * filtered read; when that finds none, the full list is read several times.
+ * The result is the distinct assignment ids seen in any read, plus `doubt`
+ * when the reads cannot show the list was complete: a read failed, a read
+ * repeated or lacked an id, or two reads returned different id sets.
+ */
+async function appScopeAssignments(io, targetId) {
+  const using = new Set();
+  const note = (rows) => {
+    for (const row of rows) if (row?.appScopeId === targetId) using.add(String(row.id ?? JSON.stringify(row)));
+  };
+  // A filtered read; Graph may reject or ignore the filter, so only the rows
+  // that name the scope count, and an empty answer proves nothing.
+  const filter = encodeURIComponent(`appScopeId eq '${String(targetId).replaceAll("'", "''")}'`);
+  const filtered = await exchangeRoleAssignments(io, { path: `${EXCHANGE_ROLE_ASSIGNMENTS}?$filter=${filter}` });
+  if (!filtered.error) note(filtered.value);
+  if (using.size > 0) return { using: using.size, doubt: null };
+
+  let doubt = null;
+  let firstIds = null;
+  for (let read = 0; read < APP_SCOPE_ASSIGNMENT_READS; read += 1) {
+    const all = await exchangeRoleAssignments(io);
+    if (all.error) {
+      doubt = `the app role assignments could not be read (${all.error})`;
+      break;
+    }
+    note(all.value);
+    const ids = all.value.map((row) => row?.id);
+    const distinct = new Set(ids);
+    if (ids.some((id) => typeof id !== 'string' || id.length === 0)) {
+      doubt ??= 'a read of the app role assignments returned a row without an id';
+    } else if (distinct.size !== ids.length) {
+      doubt ??= `a read of the app role assignments repeated rows (${distinct.size} distinct of ${ids.length}), so rows may be missing`;
+    }
+    const key = [...distinct].sort().join('\n');
+    if (firstIds === null) firstIds = key;
+    else if (key !== firstIds) doubt ??= 'reads of the app role assignments returned different assignments';
+  }
+  return { using: using.size, doubt };
+}
+
 /**
  * An app scope's recipient filter is held back when an app role assignment
- * uses the scope and the filter would change: a broader filter widens which
- * mailboxes the app reaches. Fails closed when the assignments or the live
- * scope cannot be read.
+ * uses the scope, or might, and the filter would change: a broader filter
+ * widens which mailboxes the app reaches. Fails closed when the live scope
+ * cannot be read or the assignments cannot be shown to be complete.
  */
 async function appScopeGuard(io, { payload, targetId, before, fields }) {
   if (!fields.includes('customAttributes')) return null;
@@ -168,13 +216,12 @@ async function appScopeGuard(io, { payload, targetId, before, fields }) {
     live = found.body;
   }
   if (sameValue(payload.customAttributes, live?.customAttributes)) return null;
-  const assignments = await exchangeRoleAssignments(io);
-  if (assignments.error) {
-    return { reason: `manual: ${appScopeStep(`The app role assignments could not be read (${assignments.error}), so it is not known whether one uses this scope.`)}` };
-  }
-  const using = assignments.value.filter((assignment) => assignment?.appScopeId === targetId).length;
-  if (using === 0) return null;
-  const description = appScopeStep(`This app access scope is used by ${using} app role assignment${using === 1 ? '' : 's'}, and its recipient filter differs from the backup.`);
+  const { using, doubt } = await appScopeAssignments(io, targetId);
+  if (using === 0 && !doubt) return null;
+  const detail = using > 0
+    ? `This app access scope is used by ${doubt ? 'at least ' : ''}${using} app role assignment${using === 1 ? '' : 's'}, and its recipient filter differs from the backup.`
+    : `It could not be confirmed that no app role assignment uses this app access scope (${doubt}), and its recipient filter differs from the backup.`;
+  const description = appScopeStep(detail);
   return {
     reason: `manual: ${description}`,
     completion: { kind: 'manual-setting', requirement: 'exchangeAppScopeFilter', fields: ['customAttributes'], description },

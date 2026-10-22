@@ -7,7 +7,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import {
-  FEDERATION_SIGN_IN_FIELDS, IDENTITY_BEST_EFFORT, IDENTITY_NEEDS_REVIEW, IDENTITY_RECORDS, MICROSOFT_OWNER_TENANTS, applyIdentityEdges, applyIdentityObjectWrite,
+  APP_SCOPE_ASSIGNMENT_READS, FEDERATION_SIGN_IN_FIELDS, IDENTITY_BEST_EFFORT, IDENTITY_NEEDS_REVIEW, IDENTITY_RECORDS, MICROSOFT_OWNER_TENANTS, applyIdentityEdges, applyIdentityObjectWrite,
   buildIdentityObjectLedger, identityObjectOperations, planIdentityEdges, sameJsonStrings, userCreateBody,
 } from './identityObjectOperations.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
@@ -511,7 +511,7 @@ test('an Exchange app access scope an app role assignment uses never has its fil
   assert.equal(unread.writes.length, 0);
   // Assignments that cannot be read hold the filter back too.
   const unreadable = await run(broader, { exchange: null });
-  assert.match(unreadable.result.skipped?.reason ?? '', /^manual: The app role assignments could not be read/);
+  assert.match(unreadable.result.skipped?.reason ?? '', /^manual: It could not be confirmed that no app role assignment uses this app access scope \(the app role assignments could not be read/);
   assert.equal(unreadable.writes.length, 0);
   // An assignment on a later page counts.
   const paged = idoFakeGraph({ seed: { [`${APP_SCOPES}/scope-1`]: live } });
@@ -526,6 +526,72 @@ test('an Exchange app access scope an app role assignment uses never has its fil
   }, 'update', FAST);
   assert.match(second.skipped?.reason ?? '', /used by 1 app role assignment/);
   assert.equal(paged.calls.filter((call) => call.method === 'PATCH').length, 0);
+});
+
+test('the app scope guard fails closed when the beta assignment list pages unstably (#467)', async () => {
+  const live = { ...appScope("PrimarySmtpAddress -like 'keel-rt-scope-mail*'"), id: 'scope-1' };
+  const broader = { ...live, customAttributes: { Exclusive: false, RecipientFilter: "PrimarySmtpAddress -like '*'" } };
+  const others = (count, from = 0) => Array.from({ length: count }, (_, index) => appAssignment('scope-other', `other-${from + index}`));
+  // `reads` answers each unfiltered read of the list in turn (one page each);
+  // `filtered` answers the read filtered by scope (null: Graph rejects it).
+  const run = async ({ reads, filtered = null }) => {
+    const graph = idoFakeGraph({ seed: { [`${APP_SCOPES}/scope-1`]: live } });
+    const read = graph.read.bind(graph);
+    let full = 0;
+    graph.read = async (version, path) => {
+      if (path.startsWith(`${EXCHANGE}/roleAssignments?$filter=`)) {
+        graph.calls.push({ version, method: 'GET', path });
+        return filtered ? { ok: true, status: 200, body: { value: filtered } } : { ok: false, status: 400, body: { error: { code: 'BadRequest' } } };
+      }
+      if (path === `${EXCHANGE}/roleAssignments`) {
+        graph.calls.push({ version, method: 'GET', path });
+        const rows = reads[Math.min(full, reads.length - 1)];
+        full += 1;
+        return { ok: true, status: 200, body: { value: rows } };
+      }
+      return read(version, path);
+    };
+    const result = await applyIdentityObjectWrite(graph, {
+      naturalKey: 'scope-1', resourceType: 'exchangeCustomAppScope', payload: broader, references: [], live: { state: 'present', targetId: 'scope-1', payload: live },
+    }, 'update', FAST);
+    return { result, full, patches: graph.calls.filter((call) => call.method === 'PATCH') };
+  };
+  const using = [appAssignment('scope-1', 'a-1'), appAssignment('scope-1', 'a-2'), appAssignment('scope-1', 'a-3')];
+
+  // One read repeats rows and misses every assignment naming the scope (the
+  // live 3,3,3,1,3,0,... pattern): the filter is still held back.
+  const missed = await run({ reads: [[...others(4), others(1)[0]]] });
+  assert.match(missed.result.skipped?.reason ?? '', /^manual: It could not be confirmed that no app role assignment uses this app access scope \(a read of the app role assignments repeated rows \(4 distinct of 5\)/);
+  assert.equal(missed.result.skipped.completion.requirement, 'exchangeAppScopeFilter');
+  assert.equal(missed.patches.length, 0);
+
+  // Reads without repeats that disagree are doubted too, even when none names the scope.
+  const shifting = await run({ reads: [others(3), others(3, 1), others(3)] });
+  assert.match(shifting.result.skipped?.reason ?? '', /reads of the app role assignments returned different assignments/);
+  assert.equal(shifting.patches.length, 0);
+
+  // An assignment seen in any read counts, and repeated rows count once.
+  const sometimes = await run({ reads: [[...others(2), using[0], using[0]], others(3), [...others(2), using[1]]] });
+  assert.match(sometimes.result.skipped?.reason ?? '', /used by at least 2 app role assignments/);
+  assert.equal(sometimes.patches.length, 0);
+
+  // A row without an id is doubted.
+  const noId = await run({ reads: [[...others(2), { appScopeId: 'scope-other' }]] });
+  assert.match(noId.result.skipped?.reason ?? '', /returned a row without an id/);
+
+  // A filtered read that names the scope settles it without the full reads; the count is of distinct ids.
+  const byFilter = await run({ reads: [others(3)], filtered: [...using, using[0]] });
+  assert.match(byFilter.result.skipped?.reason ?? '', /used by 3 app role assignments,/);
+  assert.equal(byFilter.full, 0);
+  // A filter Graph ignores (rows for other scopes) proves nothing by itself.
+  const ignored = await run({ reads: [[...others(3), using[2]]], filtered: others(3) });
+  assert.match(ignored.result.skipped?.reason ?? '', /used by 1 app role assignment,/);
+
+  // Only agreeing, complete reads with no assignment naming the scope let the filter be written.
+  const clean = await run({ reads: [others(3)], filtered: [] });
+  assert.equal(clean.result.failed, undefined, clean.result.failed?.error);
+  assert.equal(clean.full, APP_SCOPE_ASSIGNMENT_READS);
+  assert.deepEqual(clean.patches.map((call) => call.body), [{ customAttributes: broader.customAttributes }]);
 });
 
 test('a guest federation restore never writes its sign-in endpoints or signing certificate', async () => {

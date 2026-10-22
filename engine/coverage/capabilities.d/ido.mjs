@@ -111,6 +111,11 @@ export default [
   { resourceType: 'microsoftTunnelConfiguration', operation: 'update', path: '/deviceManagement/microsoftTunnelConfigurations', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   { resourceType: 'appleUserInitiatedEnrollmentProfile', operation: 'create', path: '/deviceManagement/appleUserInitiatedEnrollmentProfiles', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
   { resourceType: 'appleUserInitiatedEnrollmentProfile', operation: 'update', path: '/deviceManagement/appleUserInitiatedEnrollmentProfiles', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  // Restore gaps, batch 9: Company Portal branding (not the default) and Exchange app access scopes.
+  { resourceType: 'intuneBrandingProfile', operation: 'create', path: '/deviceManagement/intuneBrandingProfiles', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'intuneBrandingProfile', operation: 'update', path: '/deviceManagement/intuneBrandingProfiles', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'exchangeCustomAppScope', operation: 'create', path: '/roleManagement/exchange/customAppScopes', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
+  { resourceType: 'exchangeCustomAppScope', operation: 'update', path: '/roleManagement/exchange/customAppScopes', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   // Add-only identity edges: an edge is never removed, so edge-remove is not registered.
   { resourceType: 'application#appOwner', operation: 'edge-add', path: '/applications/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },
   { resourceType: 'servicePrincipal#servicePrincipalOwner', operation: 'edge-add', path: '/servicePrincipals/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },

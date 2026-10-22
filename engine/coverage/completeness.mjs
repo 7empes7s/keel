@@ -222,7 +222,7 @@ export const COMPLETENESS = Object.freeze({
   deviceManagementExchangeConnector: { whole: 'not-written', missing: [part('The connector installed on the Exchange server', 'other-route')] },
   onPremisesConditionalAccessSettings: { whole: 'not-written' },
   mobileAppCategory: { missing: [part('Built-in categories', 'microsoft-managed'), part('Which apps are in the category', 'other-route')] },
-  intuneBrandingProfile: { whole: 'not-written', missing: [part('Logo images', 'other-route')] },
+  intuneBrandingProfile: { missing: [part('Logo images', 'other-route'), part('Who the profile is assigned to', 'not-written')] },
   customAuthenticationExtension: { whole: 'not-written' },
   // Remaining kinds, batch 3.
   deviceManagementCompliancePolicy: { missing: [part('Who the policy is assigned to', 'other-route')] },
@@ -251,7 +251,7 @@ export const COMPLETENESS = Object.freeze({
   // Remaining kinds, batch 5.
   exchangeRoleDefinition: { whole: 'not-written', missing: [part('Built-in roles', 'microsoft-managed')] },
   exchangeRoleAssignment: { whole: 'not-written' },
-  exchangeCustomAppScope: { whole: 'not-written' },
+  exchangeCustomAppScope: { missing: [part('The app role assignments that use it', 'other-route')] },
   defenderRoleDefinition: { whole: 'not-written' },
   defenderRoleAssignment: { whole: 'not-written' },
   defenderCustomAppScope: { whole: 'not-written' },

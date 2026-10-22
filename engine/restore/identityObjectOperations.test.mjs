@@ -454,6 +454,28 @@ test('restore gaps batch 3: a guest federation updates its settings in place, ne
   assert.deepEqual(writes[0].body, { displayName: 'KEEL-RT-148-fed-renamed' });
 });
 
+const APP_SCOPES = '/roleManagement/exchange/customAppScopes';
+const appScope = (filter) => ({ id: 'scope-src', type: 'RecipientScope', displayName: 'KEEL-RT-app-scope', customAttributes: { Exclusive: false, RecipientFilter: filter } });
+
+test('restore gaps batch 9: an Exchange app access scope is recreated with its filter and updated without its kind', async () => {
+  const backup = appScope("PrimarySmtpAddress -like 'keel-rt-scope-none*'");
+  const graph = idoFakeGraph();
+  const created = await applyIdentityObjectWrite(graph, { naturalKey: 'scope-src', resourceType: 'exchangeCustomAppScope', payload: backup, references: [] }, 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.version, 'beta');
+  assert.equal(post.path, APP_SCOPES);
+  assert.deepEqual(post.body, { type: 'RecipientScope', displayName: 'KEEL-RT-app-scope', customAttributes: backup.customAttributes });
+
+  const drifted = { ...appScope("PrimarySmtpAddress -like 'keel-rt-*'"), id: 'scope-1' };
+  const second = idoFakeGraph({ seed: { [`${APP_SCOPES}/scope-1`]: drifted } });
+  const updated = await applyIdentityObjectWrite(second, { naturalKey: 'scope-1', resourceType: 'exchangeCustomAppScope', payload: { ...backup, id: 'scope-1' }, references: [], live: { state: 'present', targetId: 'scope-1', payload: drifted } }, 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  const patch = second.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.path, `${APP_SCOPES}/scope-1`);
+  assert.deepEqual(patch.body, { customAttributes: backup.customAttributes });
+});
+
 test('a guest federation restore never writes its sign-in endpoints or signing certificate', async () => {
   const live = {
     '@odata.type': '#microsoft.graph.samlOrWsFedExternalDomainFederation', id: 'fed-1', displayName: 'KEEL-RT-148-fed',

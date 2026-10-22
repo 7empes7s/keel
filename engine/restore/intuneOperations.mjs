@@ -1023,6 +1023,18 @@ async function complianceActionsAfterWrite(io, { payload, verb, targetId, live }
   return { live: check.body, changes: { scheduledActions: 'written' } };
 }
 
+// Batch 9: the image fields of a branding profile. The list read returns no
+// image bytes, so a backup never holds them.
+const BRANDING_PROFILE_IMAGES = Object.freeze(['themeColorLogo', 'lightBackgroundLogo', 'landingPageCustomizedImage']);
+
+/** The default branding profile reaches every user, so it is a tenant-wide setting KEEL leaves to a person. */
+function defaultBrandingProfile(resource) {
+  if (resource.payload?.isDefaultProfile === true || resource.live?.payload?.isDefaultProfile === true) {
+    return { outcome: 'skipped', reason: 'manual: this is the default Company Portal branding, which every user sees, so it is not written; set it by hand from the backup' };
+  }
+  return null;
+}
+
 export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // Delete only: create and update stay on the built-in path above.
   ...Object.fromEntries(Object.values(INTUNE_RECORDS).map((entry) => [entry.resourceType, defineRecord({
@@ -1163,6 +1175,16 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     resourceType: 'appleUserInitiatedEnrollmentProfile', version: 'beta', collection: '/deviceManagement/appleUserInitiatedEnrollmentProfiles',
     operations: ['create', 'update'], excluded: ['priority', 'assignments'], createOnly: ['platform'],
     permission: 'DeviceManagementServiceConfig.ReadWrite.All',
+  }),
+  // Restore gaps, batch 9. A Company Portal branding profile for some groups.
+  // The default profile applies to every user in the tenant and is never
+  // written. Logo images are not backed up, so they are never sent: an update
+  // keeps the live logos and a recreated profile has none. Who a profile is
+  // assigned to is not written.
+  intuneBrandingProfile: defineRecord({
+    resourceType: 'intuneBrandingProfile', version: 'beta', collection: '/deviceManagement/intuneBrandingProfiles',
+    operations: ['create', 'update'], excluded: ['isDefaultProfile', 'assignments', ...BRANDING_PROFILE_IMAGES],
+    refusal: defaultBrandingProfile, permission: 'DeviceManagementServiceConfig.ReadWrite.All',
   }),
 });
 

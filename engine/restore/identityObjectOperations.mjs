@@ -129,6 +129,58 @@ function federationAfterWrite(_io, { resource }) {
   };
 }
 
+// ------------------------------------------------ Exchange app access scope
+
+const EXCHANGE_ROLE_ASSIGNMENTS = '/roleManagement/exchange/roleAssignments';
+const APP_SCOPE_PORTAL = 'Exchange Online PowerShell (Set-ManagementScope)';
+
+const appScopeStep = (detail) => `${detail} A restore never changes the recipient filter of a scope an app role assignment uses, `
+  + `because a different filter from a changed backup could let that app read other mailboxes: compare the filter with the backup, then change it by hand in ${APP_SCOPE_PORTAL} if needed.`;
+
+/** Every Exchange app role assignment, across pages; null when a page cannot be read. */
+async function exchangeRoleAssignments(io, { maxPages = 50 } = {}) {
+  const value = [];
+  let next = EXCHANGE_ROLE_ASSIGNMENTS;
+  for (let page = 0; page < maxPages; page += 1) {
+    const result = await io.retryOperation(() => io.writer.read('beta', next));
+    if (result?.ok !== true) return { error: outcomeDetail(result) };
+    value.push(...(result.body?.value ?? []));
+    next = result.body?.['@odata.nextLink'];
+    if (typeof next !== 'string' || next.length === 0) return { value };
+  }
+  return { error: `more than ${maxPages} pages` };
+}
+
+/**
+ * An app scope's recipient filter is held back when an app role assignment
+ * uses the scope and the filter would change: a broader filter widens which
+ * mailboxes the app reaches. Fails closed when the assignments or the live
+ * scope cannot be read.
+ */
+async function appScopeGuard(io, { payload, targetId, before, fields }) {
+  if (!fields.includes('customAttributes')) return null;
+  let live = before;
+  if (!live) {
+    const found = await io.retryOperation(() => io.writer.read('beta', `/roleManagement/exchange/customAppScopes/${encodeURIComponent(targetId)}`));
+    if (found?.ok !== true) {
+      return { reason: `manual: ${appScopeStep(`The live app access scope could not be read (${outcomeDetail(found)}), so its filter is not changed.`)}` };
+    }
+    live = found.body;
+  }
+  if (sameValue(payload.customAttributes, live?.customAttributes)) return null;
+  const assignments = await exchangeRoleAssignments(io);
+  if (assignments.error) {
+    return { reason: `manual: ${appScopeStep(`The app role assignments could not be read (${assignments.error}), so it is not known whether one uses this scope.`)}` };
+  }
+  const using = assignments.value.filter((assignment) => assignment?.appScopeId === targetId).length;
+  if (using === 0) return null;
+  const description = appScopeStep(`This app access scope is used by ${using} app role assignment${using === 1 ? '' : 's'}, and its recipient filter differs from the backup.`);
+  return {
+    reason: `manual: ${description}`,
+    completion: { kind: 'manual-setting', requirement: 'exchangeAppScopeFilter', fields: ['customAttributes'], description },
+  };
+}
+
 // ------------------------------------------------ multitenant org template
 
 /**
@@ -378,9 +430,11 @@ export const IDENTITY_RECORDS = Object.freeze({
   // Restore gaps, batch 9. An Exchange app access scope: a recipient filter
   // that limits which mailboxes an app role assignment reaches. Its kind is
   // set on create only. The app role assignments that name it are not written.
+  // The filter of a scope an assignment uses is never changed (appScopeGuard).
   exchangeCustomAppScope: defineRecord({
     resourceType: 'exchangeCustomAppScope', version: 'beta', collection: '/roleManagement/exchange/customAppScopes',
     operations: ['create', 'update'], writable: ['displayName', 'customAttributes'], createOnly: ['type'],
+    updateGuard: appScopeGuard,
     permission: 'RoleManagement.ReadWrite.Exchange', docs: beta('customappscope-update'),
   }),
 });

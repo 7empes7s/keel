@@ -227,11 +227,12 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Puts the list of allowed Microsoft clouds back.',
   }),
   crossTenantAccessPolicyConfigurationDefault: auto('Cross-tenant access defaults', {
-    keeps: 'Puts the default guest collaboration, direct connect and inbound trust settings back.',
+    keeps: 'Puts the default guest collaboration and direct connect settings back.',
+    todo: 'Inbound trust (accepting another tenant\'s MFA and device claims) is never changed by a restore. If it differs from the backup, change it by hand in Cross-tenant access settings.',
   }),
   crossTenantAccessPolicyPartner: auto('Cross-tenant access per organization', {
     keeps: 'Recreates partner organization settings and puts their settings back.',
-    todo: 'A partner tenant that no longer exists cannot be added. Removing extra partners is done by hand.',
+    todo: 'A partner tenant that no longer exists cannot be added. Removing extra partners is done by hand. Inbound trust is never changed by a restore; change it by hand if it differs.',
   }),
   deviceRegistrationPolicy: manual('Device join and registration settings', KEEL,
     'These settings decide who may join devices and whether joining needs MFA. A wrong write could stop admins joining devices or quietly drop the MFA requirement, so KEEL only backs them up.',
@@ -490,8 +491,8 @@ export const TYPE_GUIDE = Object.freeze({
     'KEEL backs these up but does not restore them yet. Each one points to a custom authentication extension.',
     'Recreate the custom authentication extension first, then the listener with PowerShell from the backup, for the same apps.'),
   externalDomainFederation: auto('Guest SAML or WS-Fed sign-in', {
-    keeps: 'Puts back each partner\'s sign-in addresses, protocol and public signing certificate.',
-    todo: 'A deleted partner is set up again in the Entra admin center, under External Identities, All identity providers, with its domains. Check the partner\'s certificate is still current.',
+    keeps: 'Puts back each partner\'s name and sign-in protocol.',
+    todo: 'KEEL never puts back a partner\'s sign-in addresses or signing certificate, so a changed backup cannot send guests to another sign-in page. Check those with the partner and set them in the Entra admin center, under External Identities, All identity providers. A deleted partner is set up again there too, with its domains.',
   }),
   exchangeRoleDefinition: manual('Exchange admin roles', NOT_BUILT,
     'KEEL backs up the custom roles but does not restore them yet. The built-in roles are set by Microsoft.',
@@ -562,6 +563,21 @@ export const TYPE_GUIDE = Object.freeze({
   userExperienceAnalyticsBaseline: manual('Endpoint analytics baselines', NOT_BUILT,
     'KEEL backs up the custom baselines but does not restore them yet. The built-in baseline is set by Microsoft.',
     'Create the baseline again in the Intune admin center, under Reports, Endpoint analytics, Settings, Baselines, with the same name.'),
+  sharepointSettings: manual('SharePoint and OneDrive tenant settings', NOT_BUILT,
+    'KEEL backs up every tenant-wide SharePoint and OneDrive setting, such as site creation, sync app limits, idle session sign-out and storage limits. It restores only the sharing settings, through the SharePoint service backup.',
+    'Set the same values in the SharePoint admin center, under Settings and Policies, from the backup.'),
+  itemInsightsSettings: manual('Item insights setting', NOT_BUILT,
+    'KEEL backs up whether people cards and search show the documents a person worked on, and the group it is turned off for, but does not restore it yet.',
+    'Set the same value in the Microsoft 365 admin center, under Settings, Org settings, Search and intelligence, from the backup, and pick the same group again.'),
+  externalConnection: manual('Copilot connectors', NOT_BUILT,
+    'KEEL backs up each connection\'s name, description and allowed apps but not its schema or the items pushed into it, and does not restore it yet.',
+    'Recreate the connector in the Microsoft 365 admin center, under Copilot, Connectors, from the backup, then let it sync its items again.'),
+  simulationAutomation: manual('Attack simulation automations', NOT_BUILT,
+    'KEEL backs up each automation\'s name and status but does not restore it yet.',
+    'Recreate the automation in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Automations, from the backup.'),
+  attackSimulation: manual('Attack simulations', NOT_BUILT,
+    'KEEL backs up each simulation\'s settings and targets but not its results, and does not restore it yet.',
+    'Launch the simulation again in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Simulations, with the same technique, payload and targets from the backup.'),
 });
 
 const FAMILY_HEADINGS = Object.freeze({

@@ -13,6 +13,7 @@ import {
   targetAppsBody,
 } from './intuneOperations.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
+import { classifyContentEffects } from '../safety/contentEffects.mjs';
 
 const FAST = { readAfterWriteOptions: { attempts: 1, delayMs: 0 } };
 const GUARD = { breakGlassUserIds: ['break-glass-1'], keelAppIds: [], caPolicies: [] };
@@ -294,17 +295,44 @@ test('scripts and remediations are created with their script body, without run r
   }
 });
 
-test('a script update writes back a changed script body', async () => {
+test('a script update writes back a changed script body once a second person approved that text', async () => {
   const path = '/deviceManagement/deviceManagementScripts/s-1';
   const live = { id: 's-1', displayName: 'KEEL-RT-script', description: 'Fixture', scriptContent: 'dGFtcGVyZWQ=', runAsAccount: 'system' };
   const graph = idoFakeGraph({ seed: { [path]: live } });
-  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementScript', { ...live, scriptContent: 'V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==' }, {
+  const resource = resourceOf('deviceManagementScript', { ...live, scriptContent: 'V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==' }, {
     live: { state: 'present', targetId: 's-1', payload: live },
-  }), 'update', FAST);
+  });
+  const { effects } = classifyContentEffects([{ ...resource, verb: 'update' }]);
+  assert.equal(effects.length, 1);
+  const result = await applyIntuneExtendedWrite(graph, resource, 'update', { ...FAST, approvedContentEffects: effects });
   assert.equal(result.failed, undefined, result.failed?.error);
   const patch = graph.calls.find((call) => call.method === 'PATCH');
   assert.equal(patch.path, path);
   assert.deepEqual(patch.body, { scriptContent: 'V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==' });
+});
+
+test('a script update that changes its text is not written without that approval; a dry run plans it', async () => {
+  const path = '/deviceManagement/deviceHealthScripts/h-1';
+  const live = { id: 'h-1', displayName: 'KEEL-RT-remediation', detectionScriptContent: 'ZXhpdCAw', remediationScriptContent: 'ZXhpdCAx' };
+  const backup = { ...live, remediationScriptContent: 'V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==' };
+  const resource = resourceOf('deviceHealthScript', backup, { live: { state: 'present', targetId: 'h-1', payload: live } });
+  const [effect] = classifyContentEffects([{ ...resource, verb: 'update' }]).effects;
+  const otherText = { ...effect, after: '3 characters, sha256 0000' };
+  for (const approvedContentEffects of [[], [otherText]]) {
+    const graph = idoFakeGraph({ seed: { [path]: live } });
+    const result = await applyIntuneExtendedWrite(graph, resource, 'update', { ...FAST, approvedContentEffects });
+    assert.match(result.skipped?.reason ?? '', /runs on every device the script is assigned to/);
+    assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
+  }
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const planned = await applyIntuneExtendedWrite(graph, resource, 'update', { ...FAST, mode: 'dry-run' });
+  assert.equal(planned.skipped, undefined, planned.skipped?.reason);
+  // Only the name changes: nothing new runs on devices, so no approval is needed.
+  const renamed = resourceOf('deviceHealthScript', { ...live, displayName: 'KEEL-RT-renamed' }, { live: { state: 'present', targetId: 'h-1', payload: live } });
+  assert.deepEqual(classifyContentEffects([{ ...renamed, verb: 'update' }]).effects, []);
+  const renameGraph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await applyIntuneExtendedWrite(renameGraph, renamed, 'update', FAST);
+  assert.equal(result.skipped, undefined, result.skipped?.reason);
 });
 
 test('a script backed up without its body, and a Microsoft-published remediation, are never written', async () => {

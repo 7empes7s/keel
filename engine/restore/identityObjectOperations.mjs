@@ -83,6 +83,52 @@ function servicePrincipalRefusal(resource, verb) {
   return null;
 }
 
+// ------------------------------------------------------ guest federation
+
+/**
+ * The guest federation fields that decide where guests from the domain sign in
+ * and which tokens Entra trusts for them. A backup that was tampered with
+ * could point them at another identity provider, so a restore never writes
+ * them: a difference is reported for a person to check with the partner and
+ * set by hand. The name and protocol are still written.
+ */
+export const FEDERATION_SIGN_IN_FIELDS = Object.freeze(['issuerUri', 'metadataExchangeUri', 'passiveSignInUri', 'signingCertificate']);
+
+export const FEDERATION_WRITABLE_FIELDS = Object.freeze(['displayName', 'preferredAuthenticationProtocol']);
+
+const FEDERATION_PORTAL_PATH = 'Entra admin center > External Identities > All identity providers > SAML/WS-Fed';
+
+/** The sign-in fields the backup holds that differ from the live federation (all of them when there is no live copy). */
+function federationSignInDiffers(resource) {
+  const live = resource.live?.payload ?? null;
+  return FEDERATION_SIGN_IN_FIELDS.filter((field) => resource.payload?.[field] !== undefined
+    && (!live || !sameValue(resource.payload[field], live[field])));
+}
+
+const federationSignInStep = (fields) => `Where this guest federation's guests sign in (${fields.join(', ')}) differs from the backup. `
+  + `A restore never changes it, so a changed backup cannot send guests to another sign-in page: confirm the values with the partner, then set them in ${FEDERATION_PORTAL_PATH}.`;
+
+function federationRefusal(resource, verb) {
+  if (verb !== 'update') return null;
+  const differs = federationSignInDiffers(resource);
+  if (differs.length === 0) return null;
+  const live = resource.live?.payload ?? null;
+  if (live && !FEDERATION_WRITABLE_FIELDS.every((field) => sameValue(resource.payload[field], live[field]))) return null;
+  return {
+    outcome: 'skipped', reason: `manual: ${federationSignInStep(differs)}`,
+    completion: { kind: 'manual-setting', requirement: 'externalDomainFederationSignIn', fields: differs, description: federationSignInStep(differs) },
+  };
+}
+
+function federationAfterWrite(_io, { resource }) {
+  const differs = federationSignInDiffers(resource);
+  return {
+    completion: differs.length > 0
+      ? [{ kind: 'manual-setting', requirement: 'externalDomainFederationSignIn', fields: differs, description: federationSignInStep(differs) }]
+      : [],
+  };
+}
+
 // ------------------------------------------------ multitenant org template
 
 /**
@@ -319,13 +365,14 @@ export const IDENTITY_RECORDS = Object.freeze({
   }),
   // A guest federation's settings are updated in place. Its domains are a
   // separate collection the backup does not read yet, so a deleted federation
-  // is set up again by hand.
+  // is set up again by hand. Its sign-in endpoints and signing certificate are
+  // never written back (FEDERATION_SIGN_IN_FIELDS).
   externalDomainFederation: defineRecord({
     resourceType: 'externalDomainFederation', version: 'v1.0', collection: FEDERATIONS,
     collectionFor: (payload) => (payload?.['@odata.type'] === undefined || stripGraph(payload['@odata.type']) === 'samlOrWsFedExternalDomainFederation'
       ? FEDERATIONS : null),
     operations: ['update'],
-    writable: ['displayName', 'issuerUri', 'metadataExchangeUri', 'passiveSignInUri', 'preferredAuthenticationProtocol', 'signingCertificate'],
+    writable: FEDERATION_WRITABLE_FIELDS, refusal: federationRefusal, afterWrite: federationAfterWrite,
     permission: 'Domain.ReadWrite.All', docs: v1('samlorwsfedexternaldomainfederation-update'),
   }),
 });

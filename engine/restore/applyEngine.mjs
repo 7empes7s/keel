@@ -26,7 +26,7 @@ import { RETRY_AFTER_FALLBACK_SECONDS } from './graphWriter.mjs';
 import { isDeepStrictEqual } from 'node:util';
 import {
   isTenantPolicyGoverned, methodConfigurationWrites, reviewerQueryObjects, tenantPolicyPostStateRefusal, tenantPolicyRecordFor,
-  tenantPolicyRootWrite, tenantPolicyRoute, tenantPolicyWriteRefusal,
+  inboundTrustCompletion, tenantPolicyRootWrite, tenantPolicyRoute, tenantPolicyWriteRefusal,
 } from './tenantPolicyOperations.mjs';
 import {
   assignLicenseBody, changedUserFields, groupLicenceReadPath, isSyncedUser, isUserGoverned, licencePlan, manualUserFields,
@@ -1305,9 +1305,12 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
     return { failed: { naturalKey, error: err.message } };
   }
   const targetId = resource.targetId ?? resource.live?.targetId ?? null;
+  // Inbound trust is never written; a difference is reported as a follow-up step.
+  const inboundTrust = inboundTrustCompletion(resource, verb);
+  const followUp = inboundTrust ? { completion: inboundTrust } : {};
   const writes = [...methods, ...(root ? [root] : [])];
-  if (writes.length === 0) return { applied: { naturalKey, targetId } };
-  if (mode === 'dry-run') return { applied: { naturalKey, targetId } };
+  if (writes.length === 0) return { applied: { naturalKey, targetId, ...followUp } };
+  if (mode === 'dry-run') return { applied: { naturalKey, targetId, ...followUp } };
 
   // A reviewer query names directory objects inside a string, out of reach of
   // reference rewriting: each must still exist before the PUT replaces the policy.
@@ -1351,7 +1354,7 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
   }
   await noteOutcome(rollbackClient, journal, 'succeeded', { postState: live });
   return {
-    applied: { naturalKey, targetId: targetId ?? live?.id ?? null },
+    applied: { naturalKey, targetId: targetId ?? live?.id ?? null, ...followUp },
     signInPathSection: entry.signInPathSection,
   };
 }

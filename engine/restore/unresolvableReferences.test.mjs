@@ -44,7 +44,10 @@ const application = Object.freeze({
   id: 'source-app-object', appId: APP_ID, displayName: 'Payroll connector', signInAudience: 'AzureADMyOrg',
   tags: ['payroll'], createdByAppId: UNKNOWN_APP,
 });
-const partner = Object.freeze({ tenantId: FOREIGN_TENANT, isServiceProvider: false, inboundTrust: { isMfaAccepted: true } });
+const partner = Object.freeze({
+  tenantId: FOREIGN_TENANT, isServiceProvider: false, inboundTrust: { isMfaAccepted: true },
+  b2bCollaborationInbound: { usersAndGroups: { accessType: 'allowed' } },
+});
 const compliance = Object.freeze({
   '@odata.type': '#microsoft.graph.windows10CompliancePolicy',
   id: 'source-compliance', version: 7, displayName: 'Windows baseline', description: 'Require BitLocker', roleScopeTagIds: ['0'],
@@ -164,14 +167,14 @@ test('partner create and update carry the foreign tenant id verbatim', async () 
 
   graph = recordingGraph();
   const path = `/policies/crossTenantAccessPolicy/partners/${FOREIGN_TENANT}`;
-  const live = { ...partner, inboundTrust: { isMfaAccepted: false } };
+  const live = { ...partner, b2bCollaborationInbound: { usersAndGroups: { accessType: 'blocked' } } };
   graph.objects.set(path, live);
   outcome = await run(graph, [{
     ...resource, verb: 'update', targetId: FOREIGN_TENANT, blastRadius: 'access-affecting',
     live: { state: 'present', targetId: FOREIGN_TENANT, payload: live },
   }]);
   assert.deepEqual(outcome.failed, []);
-  assert.deepEqual(graph.bodies, [{ method: 'PATCH', path, body: { inboundTrust: { isMfaAccepted: true } } }]);
+  assert.deepEqual(graph.bodies, [{ method: 'PATCH', path, body: { b2bCollaborationInbound: { usersAndGroups: { accessType: 'allowed' } } } }]);
 });
 
 test('compliance policy update: the backup child ids are never written and the update succeeds', async () => {

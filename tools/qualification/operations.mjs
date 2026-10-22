@@ -114,6 +114,7 @@ const FIXTURE_PAYLOADS = Object.freeze({
   crossTenantAccessPolicyPartner: {
     tenantId: 'fixture-partner-tenant',
     inboundTrust: { isMfaAccepted: true, isCompliantDeviceAccepted: false, isHybridAzureADJoinedDeviceAccepted: false },
+    b2bCollaborationInbound: { usersAndGroups: { accessType: 'allowed', targets: [{ target: 'AllUsers', targetType: 'user' }] } },
   },
   adminConsentRequestPolicy: {
     isEnabled: true, notifyReviewers: true, remindersEnabled: true, requestDurationInDays: 30,
@@ -288,8 +289,9 @@ const FIXTURE_DRIFT = Object.freeze({
   }),
   identitySecurityDefaultsEnforcementPolicy: () => ({ isEnabled: true }),
   crossTenantAccessPolicy: () => ({ allowedCloudEndpoints: ['microsoftonline.us'] }),
-  crossTenantAccessPolicyConfigurationDefault: (payload) => ({ inboundTrust: { ...payload.inboundTrust, isMfaAccepted: false } }),
-  crossTenantAccessPolicyPartner: (payload) => ({ inboundTrust: { ...payload.inboundTrust, isMfaAccepted: false } }),
+  // Inbound trust is never written, so the cross-tenant settings drift B2B collaboration.
+  crossTenantAccessPolicyConfigurationDefault: (payload) => ({ b2bCollaborationInbound: { usersAndGroups: { ...payload.b2bCollaborationInbound.usersAndGroups, accessType: 'blocked' } } }),
+  crossTenantAccessPolicyPartner: (payload) => ({ b2bCollaborationInbound: { usersAndGroups: { ...payload.b2bCollaborationInbound.usersAndGroups, accessType: 'blocked' } } }),
   adminConsentRequestPolicy: () => ({ isEnabled: false }),
   // Issue #156: the restore reverts defaced text, a shortened group lifetime
   // (a longer one is restored; a shorter one would be refused) and an enabled
@@ -331,7 +333,8 @@ const FIXTURE_DRIFT = Object.freeze({
   // Restore gaps, batch 3: each drifts the setting its restore puts back.
   b2bManagementPolicy: () => ({ definition: ['{"B2BManagementPolicy":{"InvitationsAllowedAndBlockedDomainsPolicy":{"BlockedDomains":[]}}}'] }),
   permissionGrantPreApprovalPolicy: (payload) => ({ conditions: payload.conditions.map((condition) => ({ ...condition, scopeType: 'group' })) }),
-  externalDomainFederation: () => ({ passiveSignInUri: 'https://keel-rt-fed.example/drifted' }),
+  // A federation's sign-in endpoints are never restored, so its name drifts.
+  externalDomainFederation: () => ({ displayName: 'Fixture federation (drifted)' }),
 });
 
 // Roadmap task-149: lockout-sensitive tenant policies need a lockout gate; the

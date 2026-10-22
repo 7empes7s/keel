@@ -205,10 +205,15 @@ export const SKIPPED_PATHS = Object.freeze({
   '/roleManagement/entitlementManagement/roleDefinitions': 'microsoft-published',
   '/security/attackSimulation/trainingCampaigns': 'not-configuration',
   '/security/attackSimulation/trainings': 'not-configuration',
+  // Binary policy bundles Purview compiles from the tenant's labels and policies
+  // for client apps to download; the labels and policies are backed up themselves.
+  '/security/dataSecurityAndGovernance/policyFiles': 'not-configuration',
   '/security/secureScoreControlProfiles': 'not-configuration',
   '/security/secureScores': 'not-configuration',
   '/sites': 'not-configuration',
   '/subscriptions': 'not-configuration',
+  // Only whether Teams is on and the tenant's region, both read-only.
+  '/teamwork': 'not-configuration',
   '/teamwork/deletedTeams': 'not-configuration',
   '/tenantRelationships/delegatedAdminCustomers': 'not-configuration',
   '/workplace/sensorDevices': 'not-configuration',

@@ -65,6 +65,9 @@ export const ID_KEY_TYPES = new Set([
   'iosLobAppProvisioningConfiguration', 'mobileAppRelationship', 'managedEBook', 'managedEBookCategory',
   'cartToClassAssociation', 'windowsManagedAppProtection', 'enterpriseCodeSigningCertificate',
   'userExperienceAnalyticsBaseline',
+  // Remaining kinds, batch 7: Microsoft 365 settings. A connection's id is the
+  // name its admin chose; simulation names are unmeasured.
+  'externalConnection', 'simulationAutomation', 'attackSimulation',
 ]);
 
 // Tenant singletons: exactly one object per tenant, so the type name is the
@@ -89,6 +92,8 @@ export const CONSTANT_KEY_TYPES = new Set([
   'multiTenantOrganizationIdentitySyncPolicyTemplate', 'multiTenantOrganizationPartnerConfigurationTemplate',
   // Remaining kinds, batch 6: Intune tenant singletons.
   'deviceManagementSettings', 'androidForWorkSettings', 'symantecCodeSigningCertificate',
+  // Remaining kinds, batch 7: Microsoft 365 tenant singletons.
+  'sharepointSettings', 'itemInsightsSettings',
 ]);
 
 const PARTNER_KEY_TYPES = new Set(['crossTenantAccessPolicyPartner', 'crossTenantIdentitySyncPolicyPartner']);

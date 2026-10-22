@@ -168,13 +168,35 @@ test('mutation: a lockout-sensitive policy is never written without an allowing 
   assert.match(result.skipped[0].reason, /none was supplied/);
 });
 
-test('a non-lockout policy needs no gate; the cross-tenant default PATCHes only what changed', async () => {
+test('a non-lockout policy needs no gate; the cross-tenant default PATCHes only what changed, never inbound trust', async () => {
   const graph = recordingGraph();
-  const desired = { isServiceDefault: false, inboundTrust: { isMfaAccepted: true, isCompliantDeviceAccepted: false }, b2bCollaborationOutbound: { usersAndGroups: { accessType: 'allowed', targets: [{ target: 'AllUsers', targetType: 'user' }] } } };
+  const allowed = { usersAndGroups: { accessType: 'allowed', targets: [{ target: 'AllUsers', targetType: 'user' }] } };
+  const desired = { isServiceDefault: false, inboundTrust: { isMfaAccepted: true, isCompliantDeviceAccepted: false }, b2bCollaborationOutbound: allowed };
+  const live = { ...desired, inboundTrust: { isMfaAccepted: false, isCompliantDeviceAccepted: false }, b2bCollaborationOutbound: { usersAndGroups: { ...allowed.usersAndGroups, accessType: 'blocked' } } };
+  const result = await run(graph, [plannedUpdate(graph, 'crossTenantAccessPolicyConfigurationDefault', '/policies/crossTenantAccessPolicy/default', desired, live)]);
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(graph.bodies, [{ method: 'PATCH', path: '/policies/crossTenantAccessPolicy/default', body: { b2bCollaborationOutbound: allowed } }]);
+  assert.equal(result.applied.length, 1);
+  assert.equal(result.applied[0].completion.requirement, 'inboundTrust');
+  assert.match(result.applied[0].completion.description, /never changes it/);
+});
+
+test('the cross-tenant default is skipped as manual when only inbound trust differs', async () => {
+  const graph = recordingGraph();
+  const desired = { isServiceDefault: false, inboundTrust: { isMfaAccepted: true, isCompliantDeviceAccepted: true } };
   const live = { ...desired, inboundTrust: { isMfaAccepted: false, isCompliantDeviceAccepted: false } };
   const result = await run(graph, [plannedUpdate(graph, 'crossTenantAccessPolicyConfigurationDefault', '/policies/crossTenantAccessPolicy/default', desired, live)]);
   assert.deepEqual(result.failed, []);
-  assert.deepEqual(graph.bodies, [{ method: 'PATCH', path: '/policies/crossTenantAccessPolicy/default', body: { inboundTrust: desired.inboundTrust } }]);
+  assert.equal(graph.bodies.length, 0, 'nothing is sent');
+  assert.equal(result.skipped.length, 1);
+  assert.match(result.skipped[0].reason, /^manual: Inbound trust/);
+  assert.equal(result.skipped[0].completion.requirement, 'inboundTrust');
+});
+
+test('no cross-tenant record lists inbound trust as writable', () => {
+  for (const entry of TENANT_POLICY_RECORDS.filter((record) => record.resourceType.startsWith('crossTenantAccessPolicy'))) {
+    assert.ok(!entry.writableFields.includes('inboundTrust'), `${entry.resourceType} ${entry.operation}`);
+  }
 });
 
 test('authentication methods: each changed method is PATCHed with its @odata.type, then the root fields', async () => {
@@ -277,19 +299,28 @@ test('authentication methods: a property outside the method allowlist is never s
   assert.deepEqual(Object.keys(graph.bodies[0].body).sort(), ['@odata.type', 'includeTargets', 'isAttestationEnforced', 'state']);
 });
 
-test('partners: create and update are addressed by the partner tenantId', async () => {
+test('partners: create and update are addressed by the partner tenantId, and never write inbound trust', async () => {
   const tenantId = '9f1c0a7e-6b3d-4b8e-9d55-1c2b3a4d5e6f';
-  const payload = { tenantId, isServiceProvider: false, inboundTrust: { isMfaAccepted: true } };
+  const blocked = { usersAndGroups: { accessType: 'blocked', targets: [{ target: 'AllUsers', targetType: 'user' }] } };
+  const payload = { tenantId, isServiceProvider: false, inboundTrust: { isMfaAccepted: true }, b2bCollaborationInbound: blocked };
   let graph = recordingGraph();
   let result = await run(graph, [{ naturalKey: `crossTenantAccessPolicyPartner:${tenantId}`, resourceType: 'crossTenantAccessPolicyPartner', verb: 'create', payload, references: [], blastRadius: 'access-affecting' }]);
   assert.deepEqual(result.failed, []);
-  assert.deepEqual(graph.bodies, [{ method: 'POST', path: '/policies/crossTenantAccessPolicy/partners', body: { tenantId, inboundTrust: { isMfaAccepted: true } } }]);
+  assert.deepEqual(graph.bodies, [{ method: 'POST', path: '/policies/crossTenantAccessPolicy/partners', body: { tenantId, b2bCollaborationInbound: blocked } }]);
+  assert.equal(result.applied[0].completion.requirement, 'inboundTrust');
 
   graph = recordingGraph();
   const path = `/policies/crossTenantAccessPolicy/partners/${tenantId}`;
+  result = await run(graph, [plannedUpdate(graph, 'crossTenantAccessPolicyPartner', path, payload, { ...payload, b2bCollaborationInbound: null })]);
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(graph.bodies, [{ method: 'PATCH', path, body: { b2bCollaborationInbound: blocked } }]);
+  assert.equal(result.applied[0].completion, undefined, 'inbound trust already matches');
+
+  graph = recordingGraph();
   result = await run(graph, [plannedUpdate(graph, 'crossTenantAccessPolicyPartner', path, payload, { ...payload, inboundTrust: { isMfaAccepted: false } })]);
   assert.deepEqual(result.failed, []);
-  assert.deepEqual(graph.bodies, [{ method: 'PATCH', path, body: { inboundTrust: { isMfaAccepted: true } } }]);
+  assert.equal(graph.bodies.length, 0, 'only inbound trust differs, so nothing is sent');
+  assert.match(result.skipped[0].reason, /^manual: Inbound trust/);
 });
 
 test('a write that does not read back as written fails with the field named', async (t) => {

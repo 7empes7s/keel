@@ -245,7 +245,18 @@ export interface ComplianceEvidence {
   resourceType: string;
   window: { startedAt: string | null; endedAt: string | null };
   snapshotId: string | null;
+  // A control resting on a service read (Exchange mail protection policies...) links to
+  // that read's run instead of a backup snapshot.
+  collectionId?: string | null;
   completedAt: string | null;
+}
+
+/** One object and setting that made a control fail: its value now and what it should be. */
+export interface ComplianceDetail {
+  subject: string;
+  setting: string;
+  value: unknown;
+  expected: unknown;
 }
 
 export interface ComplianceChangeLink {
@@ -284,6 +295,8 @@ export interface ComplianceFinding {
   evaluatorVersion: number;
   verdict: "pass" | "fail" | "unknown" | "not-applicable";
   reason: string | null;
+  // Which policy and setting made it fail (engine/benchmarks/evaluate.mjs details).
+  details?: ComplianceDetail[];
   evaluatedAt: string | null;
   evidenceSeq: string | null;
   exceptionState: "none" | "authorized" | "expired" | "incomplete";
@@ -328,6 +341,9 @@ export interface StorageResidency {
   certifies: null;
   // Where the residency was read from (the recovery manifest path), or null.
   source: string | null;
+  // How it is known: from the recovery manifest, or, with no manifest set, from
+  // where Keel's own database runs (on this server). Absent means not known.
+  basis?: "recovery-manifest" | "database-location" | null;
 }
 
 export interface ComplianceData {

@@ -6,7 +6,7 @@
  * nothing here produces SQL. This module only turns a question, or a structured
  * request, into a validated plan:
  *
- *   { intent, params: { entity, from, to, resourceType, changeType, limit } }
+ *   { intent, params: { entity, from, to, resourceType, resourceTypes, name, changeType, limit } }
  *
  * Every value is checked against a closed set: an intent from INTENTS, a resource type
  * KEEL collects, a change type, an entity code KEEL holds ownership evidence for and
@@ -21,6 +21,7 @@
  * add an entity, type or date the person did not ask about.
  */
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
+import { TAXONOMY } from '../insights/taxonomy.mjs';
 
 export const PLAN_VERSION = 1;
 
@@ -31,7 +32,7 @@ export const BUDGET = Object.freeze({
   maxWindowDays: 31,
   /** The most records an answer lists; the rest are counted. */
   maxRows: 100,
-  defaultRows: 25,
+  defaultRows: 100,
   /** The longest question read. */
   maxQuestionLength: 500,
   /** Statement timeout for each read, in milliseconds. */
@@ -40,11 +41,51 @@ export const BUDGET = Object.freeze({
 
 const DAY = 86_400_000;
 const CHANGE_TYPES = Object.freeze(['added', 'modified', 'removed']);
-const PARAM_KEYS = Object.freeze(['entity', 'from', 'to', 'period', 'resourceType', 'changeType', 'limit']);
+const PARAM_KEYS = Object.freeze(['entity', 'from', 'to', 'period', 'resourceType', 'resourceTypes', 'name', 'changeType', 'limit']);
+/** The longest name a question can look for, and the most kinds one question can name. */
+const MAX_NAME = 120;
+const MAX_KINDS = 60;
 const ENTITY_CODE = /^[A-Z][A-Z0-9_]{1,31}$/;
 const PERIODS = Object.freeze(['today', 'yesterday', 'this-week', 'last-week', 'last-7-days', 'last-30-days', 'this-month']);
 
 export const RESOURCE_TYPES = Object.freeze(DESCRIPTORS.map(({ type }) => type));
+/** Every kind a question can narrow to: collected types and service setting reads. */
+export const KNOWN_KINDS = Object.freeze([...new Set([...RESOURCE_TYPES, ...Object.keys(TAXONOMY)])]);
+
+/** Words a person uses for a service, matched to the taxonomy's service names. */
+const SERVICE_WORDS = Object.freeze([
+  [/\b(entra(?: id)?|azure (?:ad|active directory)|aad)\b/i, 'Entra'],
+  [/\bintune\b/i, 'Intune'],
+  [/\bexchange(?: online)?\b/i, 'Exchange'],
+  [/\b(ms |microsoft )?teams\b/i, 'Teams'],
+  [/\b(sharepoint|onedrive)\b/i, 'SharePoint'],
+  [/\bpurview\b/i, 'Purview'],
+  [/\b(power platform|power apps|power automate)\b/i, 'Power Platform'],
+  [/\bdefender\b/i, 'Defender'],
+]);
+
+/** Broad words for a kind of setting; each keeps the kinds whose name holds the word. */
+const CATEGORY_WORDS = Object.freeze([
+  [/\bpolic(?:y|ies)\b/i, /\bpolic(?:y|ies)\b/i],
+  [/\broles?\b/i, /\broles?\b/i],
+  [/\brules?\b/i, /\brules?\b/i],
+  [/\blabels?\b/i, /\blabels?\b/i],
+  [/\bmemberships?\b/i, /\bmemberships?\b/i],
+  [/\b(apps?|applications?)\b/i, /\b(apps?|applications?)\b/i],
+  [/\bdevices?\b/i, /\bdevices?\b/i],
+  [/\bmailbox(?:es)?\b/i, /\bmailbox(?:es)?\b/i],
+  [/\bsites?\b/i, /\bsites?\b/i],
+]);
+
+// Words that carry no filter. Anything else a reading does not use is reported back as
+// "not understood", never dropped silently.
+const FILLER = new Set(('a an the what which who whom whose when where how why did do does done was were is are be been being has have had '
+  + 'in on of for to from by with and or at as any all every some me my our us we you your i it its this that these those there their '
+  + 'show list tell give find see get please about since between during ago last past previous days day weeks week months month '
+  + 'happen happened happening anything something everything kind kinds type types setting settings resource resources thing things '
+  + 'tenant microsoft 365 m365 office online new latest backup backups recent recently made make change changed changes changing '
+  + 'modified added created removed deleted drift drifted edited updated covered coverage protected protection backed up fail failed '
+  + 'failure failures failing job jobs run runs task tasks collection collections now today yesterday month').split(' '));
 
 /** Words a person uses for a resource type. Each maps to exactly one collected type. */
 const TYPE_WORDS = Object.freeze([
@@ -119,47 +160,126 @@ export function readQuestion(question, { now = new Date(), knownEntities = [] } 
   if (typeof question !== 'string' || !question.trim()) return { unsupported: 'empty' };
   if (question.length > BUDGET.maxQuestionLength) return { unsupported: 'too-long' };
   const text = question.replace(/\s+/g, ' ').trim();
+  // Every span a rule reads, so the rest can be reported as not understood.
+  const used = [];
+  const hit = (pattern) => {
+    const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+    let found = false;
+    for (const match of text.matchAll(new RegExp(pattern.source, flags))) {
+      used.push([match.index, match.index + match[0].length]);
+      found = true;
+    }
+    return found;
+  };
+
+  // A quoted phrase is a name to look for ("Block legacy auth").
+  const params = {};
+  const quoted = /["“”'‘’]([^"“”'‘’]{2,120})["“”'‘’]/.exec(text);
+  if (quoted) {
+    params.name = quoted[1].trim();
+    used.push([quoted.index, quoted.index + quoted[0].length]);
+  }
 
   let intent = null;
-  if (/\bfail(ed|ures?|ing)?\b/i.test(text) && /\b(jobs?|runs?|tasks?|backups?|collections?)\b/i.test(text)) intent = 'failed-jobs';
-  else if (/\b(coverage|covered|protected|protection|backed up)\b/i.test(text)) intent = 'coverage';
-  else if (/\b(chang(e|ed|es)|modified|added|created|removed|deleted|drift(ed)?|edited|updated)\b/i.test(text)) intent = 'changes';
+  const failWords = /\bfail(ed|ures?|ing)?\b/i;
+  const jobWords = /\b(jobs?|runs?|tasks?|backups?|collections?)\b/i;
+  const coverageWords = /\b(coverage|covered|protected|protection|backed up)\b/i;
+  const changeWords = /\b(chang(e|ed|es)|modified|added|created|removed|deleted|drift(ed)?|edited|updated)\b/i;
+  if (failWords.test(text) && jobWords.test(text)) { intent = 'failed-jobs'; hit(failWords); hit(jobWords); }
+  else if (coverageWords.test(text)) { intent = 'coverage'; hit(coverageWords); }
+  else if (changeWords.test(text)) { intent = 'changes'; hit(changeWords); }
   if (!intent) return { unsupported: 'unknown-intent' };
 
-  const params = {};
   const entities = knownEntities.filter((code) => new RegExp(`\\b${code.replace(/_/g, '[ _]')}\\b`, 'i').test(text));
   if (entities.length > 1) return { unsupported: 'several-entities' };
-  if (entities.length === 1) params.entity = entities[0];
+  if (entities.length === 1) {
+    params.entity = entities[0];
+    hit(new RegExp(`\\b${entities[0].replace(/_/g, '[ _]')}\\b`, 'i'));
+  }
 
   const types = [...new Set(TYPE_WORDS.filter(([pattern]) => pattern.test(text)).map(([, type]) => type))];
   // "group" inside "conditional access policy for a group" is still one question;
   // the more specific phrase wins only when exactly one specific type matched.
   const specific = types.filter((type) => type !== 'group' && type !== 'user');
   if (specific.length > 1 || (specific.length === 0 && types.length > 1)) return { unsupported: 'several-types' };
-  if (specific.length === 1) params.resourceType = specific[0];
-  else if (types.length === 1) params.resourceType = types[0];
+  const services = [...new Set(SERVICE_WORDS.filter(([pattern]) => pattern.test(text)).map(([, service]) => service))];
+  if (types.length) {
+    for (const [pattern] of TYPE_WORDS) hit(pattern);
+    if (specific.length === 1) params.resourceType = specific[0];
+    else params.resourceType = types[0];
+  } else if (intent !== 'failed-jobs') {
+    // A service and broad kind words ("Teams policies") narrow to the taxonomy's kinds:
+    // a kind's full name first, then every kind of the service whose name holds the word.
+    const lower = text.toLowerCase();
+    const named = Object.values(TAXONOMY).filter((entry) => {
+      const name = entry.name.toLowerCase();
+      return lower.includes(name) || lower.includes(`${name}s`) || (name.endsWith('y') && lower.includes(`${name.slice(0, -1)}ies`));
+    });
+    // A broad word narrows only as the subject ("Which policies changed") or next to a
+    // service ("changed in Teams policies"); elsewhere it is reported as not understood.
+    const verbAt = text.search(intent === 'coverage' ? coverageWords : changeWords);
+    const categoryWords = CATEGORY_WORDS.filter(([pattern]) => {
+      const at = text.search(pattern);
+      return at !== -1 && (services.length > 0 || at < verbAt);
+    });
+    const categories = categoryWords.map(([, test]) => test);
+    let kinds = [];
+    if (named.length) {
+      kinds = named;
+      for (const entry of named) hit(new RegExp(entry.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/y$/i, '(?:y|ies)'), 'i'));
+    } else if (services.length || categories.length) {
+      kinds = Object.values(TAXONOMY).filter((entry) => (!services.length || services.includes(entry.service))
+        && (!categories.length || categories.some((test) => test.test(entry.name))));
+      for (const [pattern] of categoryWords) hit(pattern);
+      if (!kinds.length) return { unsupported: 'no-such-kind' };
+    }
+    if (services.length) {
+      for (const [pattern] of SERVICE_WORDS) hit(pattern);
+      kinds = kinds.filter((entry) => services.includes(entry.service));
+      if (named.length && !kinds.length) return { unsupported: 'no-such-kind' };
+    }
+    if (kinds.length === 1) params.resourceType = kinds[0].type;
+    else if (kinds.length > 1) params.resourceTypes = kinds.map((entry) => entry.type).sort();
+  }
 
   if (intent === 'changes') {
-    if (/\b(added|created|new)\b/i.test(text)) params.changeType = 'added';
-    else if (/\b(removed|deleted)\b/i.test(text)) params.changeType = 'removed';
-    else if (/\b(modified|edited|updated)\b/i.test(text)) params.changeType = 'modified';
+    const added = /\b(added|created|new)\b/i;
+    const removed = /\b(removed|deleted)\b/i;
+    const modified = /\b(modified|edited|updated)\b/i;
+    if (added.test(text)) { params.changeType = 'added'; hit(added); }
+    else if (removed.test(text)) { params.changeType = 'removed'; hit(removed); }
+    else if (modified.test(text)) { params.changeType = 'modified'; hit(modified); }
   }
 
   if (intent !== 'coverage') {
-    const lastDays = /\b(?:last|past|previous) (\d{1,4}) days?\b/i.exec(text);
-    const between = /\bbetween (\d{4}-\d{2}-\d{2}) and (\d{4}-\d{2}-\d{2})\b/i.exec(text);
-    const since = /\bsince (\d{4}-\d{2}-\d{2})\b/i.exec(text);
+    const lastDays = /\b(?:last|past|previous) (\d{1,4}) days?\b/i;
+    const between = /\bbetween (\d{4}-\d{2}-\d{2}) and (\d{4}-\d{2}-\d{2})\b/i;
+    const since = /\bsince (\d{4}-\d{2}-\d{2})\b/i;
     const named = PERIOD_WORDS.find(([pattern]) => pattern.test(text));
-    if (between) { params.from = between[1]; params.to = between[2]; }
-    else if (since) { params.from = since[1]; params.to = now.toISOString(); }
-    else if (lastDays) {
-      const days = Number(lastDays[1]);
+    const betweenMatch = between.exec(text);
+    const sinceMatch = since.exec(text);
+    const lastMatch = lastDays.exec(text);
+    if (betweenMatch) { params.from = betweenMatch[1]; params.to = betweenMatch[2]; hit(between); }
+    else if (sinceMatch) { params.from = sinceMatch[1]; params.to = now.toISOString(); hit(since); }
+    else if (lastMatch) {
+      const days = Number(lastMatch[1]);
       params.from = new Date(now.getTime() - days * DAY).toISOString();
       params.to = now.toISOString();
-    } else if (named) params.period = named[1];
-    else if (UNBOUNDED.test(text)) params.unbounded = true;
+      hit(lastDays);
+    } else if (named) { params.period = named[1]; hit(named[0]); }
+    else if (UNBOUNDED.test(text)) { params.unbounded = true; hit(UNBOUNDED); }
   }
-  return { intent, params };
+
+  const ignored = [];
+  for (const match of text.matchAll(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (used.some(([from, to]) => start < to && end > from)) continue;
+    const word = match[0].toLowerCase().replace(/['’]s$/, '');
+    if (FILLER.has(word) || /^\d+$/.test(word)) continue;
+    if (!ignored.includes(match[0])) ignored.push(match[0]);
+  }
+  return { intent, params, ignored };
 }
 
 /* ------------------------------------------------------------ validate -- */
@@ -188,6 +308,7 @@ export function validateRequest(candidate, { now = new Date(), knownEntities = [
   const unknownKeys = Object.keys(params).filter((key) => !PARAM_KEYS.includes(key) && key !== 'unbounded');
   if (unknownKeys.length) return refuse('unexpected-field', 'This request carries something other than a question, so KEEL did not run it.');
   for (const [key, value] of Object.entries(params)) {
+    if (key === 'resourceTypes' && (value === null || value === undefined || (Array.isArray(value) && value.every((entry) => typeof entry === 'string')))) continue;
     if (value !== undefined && value !== null && typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
       return refuse('malformed', `KEEL could not read the ${key} of this request.`);
     }
@@ -197,7 +318,7 @@ export function validateRequest(candidate, { now = new Date(), knownEntities = [
   const readerEntities = central ? [] : (Array.isArray(scope?.entities) ? scope.entities.filter((code) => ENTITY_CODE.test(code)) : []);
   if (!central && readerEntities.length === 0) return refuse('no-access', 'You do not have access to this.');
 
-  const plan = { intent, params: { entity: null, from: null, to: null, resourceType: null, changeType: null, limit: BUDGET.defaultRows } };
+  const plan = { intent, params: { entity: null, from: null, to: null, resourceType: null, resourceTypes: null, name: null, changeType: null, limit: BUDGET.defaultRows } };
 
   if (params.entity !== undefined && params.entity !== null && params.entity !== '') {
     const entity = String(params.entity).toUpperCase();
@@ -208,8 +329,20 @@ export function validateRequest(candidate, { now = new Date(), knownEntities = [
     plan.params.entity = entity;
   }
   if (params.resourceType) {
-    if (!RESOURCE_TYPES.includes(params.resourceType)) return refuse('unknown-type', 'KEEL does not collect that kind of resource.');
+    if (!KNOWN_KINDS.includes(params.resourceType)) return refuse('unknown-type', 'KEEL does not collect that kind of resource.');
     plan.params.resourceType = params.resourceType;
+  }
+  if (Array.isArray(params.resourceTypes) && params.resourceTypes.length) {
+    if (plan.params.resourceType) return refuse('malformed', 'KEEL could not read the kind of resource asked about.');
+    if (params.resourceTypes.length > MAX_KINDS || !params.resourceTypes.every((type) => KNOWN_KINDS.includes(type))) {
+      return refuse('unknown-type', 'KEEL does not collect that kind of resource.');
+    }
+    plan.params.resourceTypes = Object.freeze([...new Set(params.resourceTypes)].sort());
+  }
+  if (params.name !== undefined && params.name !== null && params.name !== '') {
+    const name = String(params.name).trim();
+    if (!name || name.length > MAX_NAME) return refuse('malformed', `Look for a name of at most ${MAX_NAME} characters.`);
+    plan.params.name = name;
   }
   if (params.changeType) {
     if (intent !== 'changes' || !CHANGE_TYPES.includes(params.changeType)) return refuse('malformed', 'KEEL could not read the kind of change asked about.');
@@ -315,16 +448,18 @@ export async function planQuestion(question, { helper = null, now = new Date(), 
       'too-long': `Ask in at most ${BUDGET.maxQuestionLength} characters.`,
       'several-entities': 'Ask about one entity at a time.',
       'several-types': 'Ask about one kind of resource at a time.',
+      'no-such-kind': 'KEEL backs up no kind of setting that matches those words.',
     }[builtIn.unsupported] ?? 'KEEL can answer questions about changes, coverage and failed jobs only.';
     return { ...refuse('unsupported', message), readBy: 'rules' };
   }
-  return { ...validateRequest(builtIn, { now, knownEntities, scope }), readBy: 'rules' };
+  const { ignored = [], ...candidate } = builtIn;
+  return { ...validateRequest(candidate, { now, knownEntities, scope }), readBy: 'rules', ignored };
 }
 
 /** The plan in words, for "Understood as". */
 export function describePlan(plan) {
   const { intent, params } = plan;
-  const type = params.resourceType ? ` to ${params.resourceType}` : '';
+  const type = params.resourceType ? ` to ${params.resourceType}` : params.resourceTypes ? ` to ${params.resourceTypes.length} kinds` : '';
   const owner = params.entity ? ` owned by ${params.entity}` : '';
   if (intent === 'coverage') return `What the latest backup holds${params.resourceType ? ` for ${params.resourceType}` : ''}${owner}`;
   if (intent === 'failed-jobs') return `Jobs that failed between ${params.from} and ${params.to}`;

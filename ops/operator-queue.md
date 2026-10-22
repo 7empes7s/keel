@@ -7402,3 +7402,43 @@ item that needs it stays untouched.
 - **Expected:** the read is proven and imported; step 5 shows `observed` for every in-scope site (or `unknown` only for sites the
   cmdlet did not list); the pages match step 5.
 - **Report:** per step, the result; evidence branch and commit; site counts per status/value; tenant value; any site wider than it.
+
+### Q159: Prove the four mail protection policy writes live, then run one Defender "Make it pass" end to end (KEEL-RT- policies only, after #543)
+- Drafted by the "Fixes for Defender email checks" thread (2026-10-22). Code: PR #543 (merged as a499c2d). New declared writes on the
+  `exchange-mail-flow` workload: `mailflow.anti-phish-policy.update` (Set-AntiPhishPolicy), `mailflow.anti-spam-policy.update`
+  (Set-HostedContentFilterPolicy), `mailflow.anti-malware-policy.update` (Set-MalwareFilterPolicy), `mailflow.safe-links-policy.update`
+  (Set-SafeLinksPolicy). They stay off until a live writer capture is imported. Compliance's Defender email checks then offer
+  "Make it pass" per failing setting; the fix is a one-setting workload restore (dry run, approval, content-effect approval, write, read-back).
+- Needs: /opt/keel-live at a499c2d or later (`grep -q mailflow.anti-spam-policy /opt/keel-live/engine/restore/workloads/writeDeclarations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only. KEEL-RT- policies only, each with NO rule, so it applies to nobody.** Never change a Default or built-in policy, a
+  rule, a CA policy, break-glass or Marouane's account. Restorer for writes, Collector for reads; global admin not used. Under the
+  2026-10-14 standing authorization approve the restore and its content effects yourself and log both approval ids. No tenant-wide
+  setting is changed.
+- Do, from your clone at the deployed commit B, with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print it)
+  and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Fixtures** (Exchange Online PowerShell as the Restorer; create only the policy, never a `New-*Rule`). Report each `Name`, `Guid` and
+     whether it was created:
+     - `New-HostedContentFilterPolicy -Name KEEL-RT-mailfix-spam -PhishSpamAction MoveToJmf -PhishZapEnabled $false`
+     - `New-AntiPhishPolicy -Name KEEL-RT-mailfix-phish`
+     - `New-MalwareFilterPolicy -Name KEEL-RT-mailfix-malware`
+     - `New-SafeLinksPolicy -Name KEEL-RT-mailfix-links -AllowClickThrough $true` (skip and say so if Safe Links is not licensed)
+  2. **Writer capture** for `exchange-mail-flow`, as the tool's header documents: `plan --workload exchange-mail-flow` first, then
+     `capture --confirm-live-tenant-write --workload exchange-mail-flow ... --out docs/release/qualifications/workload-writers-exchange-mail-flow-live-acceptance.json`
+     (all the usual flags, default image, deployed scripts). It flips one harmless switch on each KEEL-RT- policy and puts it back.
+     Then `node tools/release/qualification.mjs verify --require-live --gate workload-writers-live-acceptance --evidence <the record>`.
+     Report the exit codes, and per new operation `ok`, `readBackVerified`, `restoredToOriginal` and `error` or skip reason.
+     Exit 3 means a value may not be back: report object, field and original value.
+  3. Commit the record and `.capture.json` to `claude/live-evidence-workload-writers-mailfix` (from origin/master, secret scan and
+     `pseudonymize.mjs check` first), open a PR with `automerge`, and run `node cli/keel-workload-collect.mjs import` from that checkout.
+     Report the import line for exchange-mail-flow.
+  4. **Make it pass, end to end:** `node cli/keel-workload-collect.mjs run` once, then Check now on Compliance (or
+     `node cli/keel-compliance-check.mjs` if that is how you run it). Confirm "Anti-spam policies quarantine phishing" fails with
+     KEEL-RT-mailfix-spam rows for "Phishing goes to" and "Pulls back delivered phishing". In the portal (or the API), press
+     **Make it pass** on the KEEL-RT-mailfix-spam "Phishing goes to" row, give a reason, ask for approval, approve the restore and its
+     content effect (quarantine) yourself, and let the worker run it. Report the dry-run artifact id, job ids, approval ids, the
+     outcome (`verified` expected) and that only `PhishSpamAction` changed (Get-HostedContentFilterPolicy KEEL-RT-mailfix-spam).
+  5. **Put back:** `Set-HostedContentFilterPolicy -Identity <KEEL-RT-mailfix-spam Guid> -PhishSpamAction MoveToJmf` so the fixture keeps
+     failing for the next proof. Leave the four KEEL-RT-mailfix-* policies in place (no rule, they apply to nobody).
+- **Report:** B; steps 1-5 as above; anything left changed in the tenant.

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { after, before, test } from "node:test";
 
 import { CONSTANT_KEY_TYPES, ID_KEY_TYPES } from "../../engine/cir/naturalKey.mjs";
+import { objectName, OWN_NAME_FIELDS, RELATIONSHIP_KINDS } from "../../engine/cir/objectName.mjs";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
 import { CATALOG } from "../../tools/tenant-probe/catalog.mjs";
@@ -13,7 +14,7 @@ import { holdsObjectId, namedSubject } from "@/lib/job-names";
 import { resourceLabel } from "@/lib/presentation";
 import { savedNames } from "@/lib/saved-names";
 
-// No setting reads "Unnamed …". Every kind Keel backs up is named one of four ways,
+// No setting reads "Unnamed …". Every kind Keel backs up is named one of five ways,
 // and this file is the audit of which: a new kind fails the first test until it is
 // placed in one of them (and, when it carries no name of its own, given a rule in
 // lib/app-names.ts with a fixture below).
@@ -59,8 +60,20 @@ const NAMED_BY_KEY: Record<string, string> = {
   schemaExtension: "contoso_employeeBadge",
 };
 
-// Named in another change: an Intune branding profile's name is its profileName.
-const NAMED_ELSEWHERE = new Set(["intuneBrandingProfile"]);
+// Kinds named by a field other than displayName (engine/cir/objectName.mjs), each with
+// a saved copy in the shape Graph returns and the name it reads by.
+const OWN_FIELD_FIXTURES: Record<string, { payload: Record<string, unknown>; name: string }> = {
+  intuneBrandingProfile: { payload: { profileName: "Sales devices", displayName: "Contoso IT" }, name: "Sales devices" },
+  groupPolicyUploadedDefinitionFile: { payload: { fileName: "chrome.admx" }, name: "chrome.admx" },
+  mobileAppRelationship: { payload: { sourceDisplayName: "Company Portal", targetDisplayName: "Authenticator", targetType: "child" }, name: "Company Portal needs Authenticator" },
+  managedDevice: { payload: { deviceName: "KEEL-RT-LAPTOP-01" }, name: "KEEL-RT-LAPTOP-01" },
+  windowsAutopilotDeviceIdentity: { payload: { displayName: "", serialNumber: "PF3ABC12" }, name: "PF3ABC12" },
+  deviceManagementExchangeConnector: { payload: { serverName: "outlook.office365.com" }, name: "outlook.office365.com" },
+  vppToken: { payload: { organizationName: "Contoso Ltd", appleId: "vpp@contoso.example" }, name: "Contoso Ltd" },
+  depOnboardingSetting: { payload: { tokenName: "Contoso DEP" }, name: "Contoso DEP" },
+  enterpriseCodeSigningCertificate: { payload: { subjectName: "CN=Contoso Code Signing" }, name: "CN=Contoso Code Signing" },
+};
+const NAMED_BY_OWN_FIELD = new Set<string>([...Object.keys(OWN_NAME_FIELDS), ...RELATIONSHIP_KINDS]);
 
 const DERIVED = new Set<string>(DERIVED_NAME_TYPES);
 
@@ -168,13 +181,6 @@ const FIXTURES: Record<string, { key: string; payload: Record<string, unknown>; 
   },
   mobileThreatDefenseConnector: { key: id(34), payload: { id: id(34), partnerState: "enabled" }, name: "Mobile threat defense connector (enabled)" },
   microsoftTunnelHealthThreshold: { key: "cpuUsage", payload: { id: "cpuUsage", healthyThreshold: 50 }, name: "Tunnel health: cpu usage" },
-  mobileAppRelationship: { key: id(35), payload: { id: id(35), sourceDisplayName: "Company Portal", targetDisplayName: "Authenticator" }, name: "Company Portal → Authenticator" },
-  managedDevice: { key: id(36), payload: { id: id(36), deviceName: "KEEL-RT-LAPTOP-01" }, name: "KEEL-RT-LAPTOP-01" },
-  windowsAutopilotDeviceIdentity: { key: id(37), payload: { id: id(37), displayName: "", serialNumber: "PF3ABC12" }, name: "PF3ABC12" },
-  deviceManagementExchangeConnector: { key: id(38), payload: { id: id(38), serverName: "outlook.office365.com" }, name: "outlook.office365.com" },
-  vppToken: { key: id(39), payload: { id: id(39), organizationName: "Contoso Ltd", appleId: "vpp@contoso.example" }, name: "Contoso Ltd" },
-  depOnboardingSetting: { key: id(40), payload: { id: id(40), tokenName: "Contoso DEP" }, name: "Contoso DEP" },
-  enterpriseCodeSigningCertificate: { key: id(41), payload: { id: id(41), subjectName: "CN=Contoso Code Signing" }, name: "CN=Contoso Code Signing" },
   deviceTemplate: { key: id(42), payload: { id: id(42), manufacturer: "Contoso", model: "Sensor 2" }, name: "Contoso Sensor 2" },
   signInIdentifier: { key: id(43), payload: { id: "email", isEnabled: true }, name: "Email" },
   crossTenantM365Capability: { key: id(44), payload: { id: "calendarSharing" }, name: "Calendar sharing" },
@@ -187,13 +193,21 @@ const constantKinds = CONSTANT_KEY_TYPES as Set<string>;
 
 test("every kind Keel backs up has a way to be named", () => {
   const unplaced = catalogKinds.filter((type) => !constantKinds.has(type) && !NAMED_BY_FIELD.has(type)
-    && !(type in NAMED_BY_KEY) && !DERIVED.has(type) && !NAMED_ELSEWHERE.has(type));
-  assert.deepEqual(unplaced, [], "place each new kind in NAMED_BY_FIELD, NAMED_BY_KEY or lib/app-names.ts");
+    && !(type in NAMED_BY_KEY) && !DERIVED.has(type) && !NAMED_BY_OWN_FIELD.has(type));
+  assert.deepEqual(unplaced, [], "place each new kind in NAMED_BY_FIELD, NAMED_BY_KEY, engine/cir/objectName.mjs or lib/app-names.ts");
   // A kind keyed by its Graph id (or by ids, like a role assignment) shows that id
   // when nothing else names it, so it must carry a name field or have a rule.
   const idKeyed = [...(ID_KEY_TYPES as Set<string>), "roleAssignment", "crossTenantAccessPolicyPartner"];
-  const bare = idKeyed.filter((type) => !NAMED_BY_FIELD.has(type) && !DERIVED.has(type) && !(type in NAMED_BY_KEY) && !NAMED_ELSEWHERE.has(type));
+  const bare = idKeyed.filter((type) => !NAMED_BY_FIELD.has(type) && !DERIVED.has(type) && !(type in NAMED_BY_KEY) && !NAMED_BY_OWN_FIELD.has(type));
   assert.deepEqual(bare, []);
+});
+
+test("every kind named by another field reads by it", () => {
+  assert.deepEqual([...NAMED_BY_OWN_FIELD].filter((type) => !OWN_FIELD_FIXTURES[type]), [], "add a fixture for each kind in objectName.mjs");
+  for (const [type, fixture] of Object.entries(OWN_FIELD_FIXTURES)) {
+    assert.equal(objectName(fixture.payload, type), fixture.name, type);
+    assert.equal(DERIVED.has(type), false, `${type}: named in objectName.mjs, so it needs no rule in lib/app-names.ts`);
+  }
 });
 
 test("every kind with no name of its own reads by a name built from its fields", () => {

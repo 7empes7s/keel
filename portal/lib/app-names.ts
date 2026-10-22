@@ -4,9 +4,9 @@
 // provisioning jobs, site access for an app, and every kind of admin role assignment
 // (Entra, PIM schedules, Exchange, Defender, entitlement management). This module turns
 // those ids into names, from a lookup the server builds from the backup
-// (lib/saved-names.ts). Others carry a readable field under another name (a device's
-// deviceName, a token's organization) or a value that says what they are (a group
-// expiration policy's lifetime). Pure, so it is tested directly. It never returns
+// (lib/saved-names.ts). Others carry a value that says what they are (a group
+// expiration policy's lifetime, a branding language). Kinds named by a field other
+// than displayName (a device's deviceName) are in engine/cir/objectName.mjs. Pure, so it is tested directly. It never returns
 // text that holds an id. test/unnamed-kinds.test.ts checks that every kind Keel backs
 // up has a name.
 import { holdsObjectId } from "@/lib/object-ids";
@@ -48,14 +48,7 @@ export const DERIVED_NAME_TYPES = [
   "permissionGrantPreApprovalPolicy",
   "mobileThreatDefenseConnector",
   "microsoftTunnelHealthThreshold",
-  "mobileAppRelationship",
-  // Named by a field other than displayName.
-  "managedDevice",
-  "windowsAutopilotDeviceIdentity",
-  "deviceManagementExchangeConnector",
-  "vppToken",
-  "depOnboardingSetting",
-  "enterpriseCodeSigningCertificate",
+  // Beta kinds with no documented name field.
   "deviceTemplate",
   "signInIdentifier",
   "crossTenantM365Capability",
@@ -80,16 +73,10 @@ const ROLE_ASSIGNMENT_TYPES = new Set([
   "defenderRoleAssignment", "entitlementManagementRoleAssignment",
 ]);
 
-// Kinds named by the first readable value among these fields.
+// Beta kinds whose name field is not documented. (Kinds named by another field, such
+// as a device's deviceName, are listed in engine/cir/objectName.mjs instead.)
 const FIELD_NAMES: Record<string, string[]> = {
-  managedDevice: ["deviceName", "managedDeviceName", "serialNumber"],
-  windowsAutopilotDeviceIdentity: ["displayName", "serialNumber"],
-  deviceManagementExchangeConnector: ["serverName", "exchangeAlias", "primarySmtpAddress"],
-  vppToken: ["displayName", "organizationName", "appleId"],
-  depOnboardingSetting: ["tokenName", "appleIdentifier"],
-  enterpriseCodeSigningCertificate: ["subjectName", "subject", "issuerName"],
-  // Beta kinds whose name field is not documented: a readable id ("email",
-  // "calendarSharing") names them, else their Graph type.
+  // A readable id ("email", "calendarSharing") names them, else their Graph type.
   signInIdentifier: ["displayName", "name", "id"],
   crossTenantM365Capability: ["displayName", "name", "id"],
   lifecyclePolicy: ["displayName", "name", "id"],
@@ -267,7 +254,7 @@ function words(text: string): string {
  * - admin role assignment (any provider): "Global Administrator → Ada Lovelace";
  * - access package assignment: "Ada Lovelace → Sales access";
  * - group expiration policy: "Groups expire after 180 days (selected groups)";
- * - a device, token or connector: its device, token or server name.
+ * - a beta kind with no documented name field: its readable id or Graph type.
  * Null for other types, or when nothing it points to has a name.
  */
 export function derivedName(resourceType: string | null | undefined, naturalKey: string, payload: unknown, names: IdNames): string | null {
@@ -343,10 +330,6 @@ export function derivedName(resourceType: string | null | undefined, naturalKey:
   } else if (type === "microsoftTunnelHealthThreshold") {
     const metric = readable(record.id) ?? readable(naturalKey);
     if (metric) name = `Tunnel health: ${words(metric)}`;
-  } else if (type === "mobileAppRelationship") {
-    const source = readable(record.sourceDisplayName);
-    const target = readable(record.targetDisplayName);
-    if (source || target) name = `${source ?? "An app"} → ${target ?? "an app"}`;
   } else if (type === "privilegedAccessGroupResource") {
     name = nameOf(record.id ?? naturalKey, names);
   } else if (type === "deviceTemplate") {

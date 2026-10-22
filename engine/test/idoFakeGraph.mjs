@@ -79,6 +79,8 @@ export function idoFakeGraph({ seed = {}, failWrites = () => null } = {}) {
           items.push({ ...item, id: `item-${next}`, status: 'notAssigned' });
         }
         setCollection(`${owner}/items`, items);
+        // Assignments, when sent, replace the set's list whole (batch 16).
+        if (Array.isArray(body.assignments)) setCollection(`${owner}/assignments`, body.assignments.map((entry, index) => ({ ...entry, id: `assignment-${index}` })));
         return ok(204, null);
       }
       if (method === 'POST' && action === 'setScheduledActions') {

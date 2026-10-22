@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 37 are full, 123 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 87 at least in part; the other 80 are restored by hand from the backup.
+KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 39 are full, 121 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 87 at least in part; the other 80 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -432,7 +432,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Company Portal branding | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Settings catalog compliance policies | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Reusable settings groups | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Policy sets | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Policy sets | Yes (Tier 3, low impact, weekly) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Apple Volume Purchase tokens | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | Apple automated enrollment tokens | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | Managed Google Play connection | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
@@ -448,7 +448,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Derived credential issuers | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Microsoft Tunnel server configurations | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Microsoft Tunnel health thresholds | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Apple app provisioning profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Apple app provisioning profiles | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | App dependencies and supersedence | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Managed e-books | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | E-book categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -559,9 +559,8 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Who a policy is assigned to is put back only when it is picked for a restore, from backups taken after assignments were read; Conditional Access that requires compliant devices needs it assigned first. A backup taken before the actions for noncompliance were read cannot recreate a policy; take a new backup.
 - **Reusable settings groups.** Recreates groups and puts their settings back, before the settings catalog policies that use them.
   - *You do:* A group is never moved to another setting definition; recreate it by hand if that changed.
-- **Policy sets.** Recreates sets and puts back their names and the apps and policies in them.
-  - *Not brought back:* who the set is assigned to (in the backup, but KEEL does not write it yet).
-  - *You do:* Every app and policy in a set must be back first with the same id. Who a set is assigned to is not put back yet, so assign it again by hand. A backup taken before the apps and policies in a set were read is refused; take a new backup.
+- **Policy sets.** Recreates sets and puts back their names, the apps and policies in them, and who they are assigned to.
+  - *You do:* Every app and policy in a set must be back first with the same id. Who a set is assigned to is put back only when it is picked for a restore, from backups taken after assignments were read. A backup taken before the apps and policies in a set were read is refused; take a new backup.
 - **Apple Volume Purchase tokens** (Microsoft limit). Apple issues the token. No tool can upload it from a backup, and the token itself is never read.
   - *Not brought back:* the token file (Microsoft never returns it).
   - *You do:* Use the backup for the Apple ID, organization and expiry. Download a new token from Apple Business Manager with that Apple ID and upload it in the Intune admin center.
@@ -601,9 +600,8 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* A site points to its configuration by id: point the site at a recreated configuration again by hand.
 - **Microsoft Tunnel health thresholds** (not built yet). KEEL backs up the healthy and unhealthy limits but does not restore them yet.
   - *You do:* Set the same limits in the Intune admin center, under Tenant administration, Microsoft Tunnel Gateway, Health status, from the backup.
-- **Apple app provisioning profiles.** Recreates profiles and puts back their name, description, scope tags and the profile file from Apple.
-  - *Not brought back:* who the profile is assigned to (stored separately and not in the backup yet).
-  - *You do:* Who a profile is assigned to is not backed up yet, so assign a recreated profile again by hand. An expired file, or one that expires before the profile in Intune now, is never uploaded: renew it with Apple and upload it in the Intune admin center, under Apps, iOS/iPadOS, App provisioning profiles. A backup taken before the profile file was read is refused; take a new backup.
+- **Apple app provisioning profiles.** Recreates profiles and puts back their name, description, scope tags, the profile file from Apple and who they are assigned to.
+  - *You do:* Who a profile is assigned to is put back only when it is picked for a restore, from backups taken after assignments were read. An expired file, or one that expires before the profile in Intune now, is never uploaded: renew it with Apple and upload it in the Intune admin center, under Apps, iOS/iPadOS, App provisioning profiles. A backup taken before the profile file was read is refused; take a new backup.
 - **App dependencies and supersedence.** Puts back which app depends on or replaces which, and how (install automatically or detect; update or replace), when both apps are in Intune.
   - *Not brought back:* the app packages on both ends, added again by hand before the link (a file the backup does not hold).
   - *You do:* Apps are not backed up, so add a deleted app again by hand first: a link to a missing app is not written. Setting an app to replace another uninstalls the older app on devices, so that needs the separate content approval.

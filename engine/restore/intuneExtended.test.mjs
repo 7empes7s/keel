@@ -1498,10 +1498,12 @@ test('a restore attaches the backup assignments to scripts, templates and profil
     'windowsFeatureUpdateProfile', 'windowsQualityUpdateProfile', 'windowsDriverUpdateProfile', 'intuneBrandingProfile',
     'managedAppPolicy', 'targetedManagedAppConfiguration', 'mobileAppConfiguration', 'deviceConfiguration',
     // Restore gaps, batch 15.
-    'deviceCustomAttributeShellScript', 'windowsAutopilotDeploymentProfile', 'deviceManagementCompliancePolicy', 'windowsManagedAppProtection']) {
+    'deviceCustomAttributeShellScript', 'windowsAutopilotDeploymentProfile', 'deviceManagementCompliancePolicy', 'windowsManagedAppProtection',
+    // Restore gaps, batch 16.
+    'policySet', 'iosLobAppProvisioningConfiguration']) {
     assert.equal(writesIntuneAssignments(type), true, type);
   }
-  for (const type of ['policySet', 'iosLobAppProvisioningConfiguration', 'mobileAppCategory']) {
+  for (const type of ['mobileAppCategory', 'managedEBookCategory']) {
     assert.equal(writesIntuneAssignments(type), false, type);
   }
 });
@@ -1613,4 +1615,93 @@ test('an Autopilot profile whose group is missing in the target is not assigned'
   }), 'create', FAST);
   assert.match(result.failed?.error ?? '', /does not exist in the target/);
   assert.equal(graph.calls.some((call) => /\/assignments/.test(call.path) && call.method !== 'GET'), false);
+});
+
+// ------------------------------------------- restore gaps, batch 16
+
+test('a policy set is created with its items, then assigned through its update action (it has no /assign)', async () => {
+  const graph = idoFakeGraph({ seed: itemTargets });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('policySet', policySet, {
+    assignments: { outcome: 'complete', targets: [groupTarget()] },
+  }), 'create', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const set = `${SET_PATH}/${result.applied.targetId}`;
+  const writes = graph.calls.filter((call) => call.method !== 'GET');
+  assert.deepEqual(writes.map((call) => `${call.method} ${call.path}`), [`POST ${SET_PATH}`, `POST ${set}/update`, `POST ${set}/update`]);
+  assert.equal(graph.calls.some((call) => call.path.endsWith('/assign')), false);
+  assert.equal('assignments' in writes[1].body, false, 'the items call never sends assignments');
+  assert.equal(writes[2].version, 'beta');
+  assert.deepEqual(writes[2].body, {
+    addedPolicySetItems: [], updatedPolicySetItems: [], deletedPolicySetItemIds: [],
+    assignments: [{
+      '@odata.type': '#microsoft.graph.policySetAssignment',
+      target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: 'target-group' },
+    }],
+  });
+  assert.equal((await graph.read('beta', `${set}?$expand=items`)).body.items.length, 2, 'the assignments call keeps the items');
+  assert.deepEqual(result.applied.changes.items, { removed: 0, added: 2 });
+  assert.equal(result.applied.changes.assignments, 'written');
+});
+
+test('a policy set whose items match is only reassigned when its assignments differ', async () => {
+  const path = `${SET_PATH}/set-1`;
+  const liveItems = policySet.items.map((item) => ({ ...item, id: `live-${item.payloadId}` }));
+  const live = { id: 'set-1', displayName: 'KEEL-RT-Set', description: 'Fixture', roleScopeTags: ['0'], guidedDeploymentTags: [] };
+  const seeded = (assignments) => {
+    const graph = idoFakeGraph({ seed: { ...itemTargets, [path]: live } });
+    graph.objects.set(path, { ...live, items: liveItems, assignments });
+    return graph;
+  };
+  const resource = resourceOf('policySet', { ...policySet, id: 'set-1' }, {
+    live: { state: 'present', targetId: 'set-1', payload: { ...live, items: liveItems } },
+    assignments: { outcome: 'complete', targets: [groupTarget()] },
+  });
+  const differ = seeded([{ id: 'a-1', target: { '@odata.type': '#microsoft.graph.allDevicesAssignmentTarget' } }]);
+  let result = await applyIntuneExtendedWrite(differ, resource, 'update', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const posts = differ.calls.filter((call) => call.method === 'POST');
+  assert.deepEqual(posts.map((call) => call.path), [`${path}/update`]);
+  assert.deepEqual(posts[0].body.deletedPolicySetItemIds, []);
+  assert.deepEqual(posts[0].body.addedPolicySetItems, []);
+  assert.deepEqual(posts[0].body.assignments.map((entry) => entry.target.groupId), ['target-group']);
+  assert.equal(result.applied.changes.items, 'already as in the backup');
+  assert.equal(result.applied.changes.assignments, 'written');
+
+  const same = seeded([{ id: 'a-1', target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: 'target-group' } }]);
+  result = await applyIntuneExtendedWrite(same, resource, 'update', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.applied.changes.assignments, 'already as in the backup');
+  assert.equal(same.calls.some((call) => call.method === 'POST'), false);
+});
+
+test('an iOS provisioning profile is assigned through /assign in its own list', async () => {
+  const graph = idoFakeGraph();
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('iosLobAppProvisioningConfiguration', profile, {
+    assignments: { outcome: 'complete', targets: [groupTarget(), groupTarget({ targetType: 'exclusionGroupAssignmentTarget' })] },
+  }), 'create', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = graph.calls.filter((call) => call.method !== 'GET');
+  assert.deepEqual(writes.map((call) => `${call.method} ${call.path}`), [`POST ${PROV}`, `POST ${PROV}/${result.applied.targetId}/assign`]);
+  assert.equal(writes[1].version, 'beta');
+  assert.deepEqual(Object.keys(writes[1].body), ['iOSLobAppProvisioningConfigAssignments'], 'the older group assignments list is never sent');
+  assert.deepEqual(writes[1].body.iOSLobAppProvisioningConfigAssignments.map((entry) => [entry['@odata.type'], entry.target['@odata.type']]).sort((a, b) => b[1].localeCompare(a[1])), [
+    ['#microsoft.graph.iosLobAppProvisioningConfigurationAssignment', '#microsoft.graph.groupAssignmentTarget'],
+    ['#microsoft.graph.iosLobAppProvisioningConfigurationAssignment', '#microsoft.graph.exclusionGroupAssignmentTarget'],
+  ]);
+  assert.equal(result.applied.changes.assignments, 'written');
+});
+
+test('a skipped iOS provisioning profile is never assigned; a missing group fails before /assign', async () => {
+  const expired = { ...profile, expirationDateTime: '2020-01-01T00:00:00Z' };
+  const skippedGraph = idoFakeGraph();
+  const skipped = await applyIntuneExtendedWrite(skippedGraph, resourceOf('iosLobAppProvisioningConfiguration', expired, {
+    assignments: { outcome: 'complete', targets: [groupTarget()] },
+  }), 'create', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.ok(skipped.skipped);
+  assert.equal(writesOf(skippedGraph).length, 0);
+  const graph = idoFakeGraph();
+  const missing = await applyIntuneExtendedWrite(graph, resourceOf('iosLobAppProvisioningConfiguration', profile, {
+    assignments: { outcome: 'complete', targets: [groupTarget()] },
+  }), 'create', FAST);
+  assert.match(missing.failed?.error ?? '', /does not exist in the target/);
+  assert.equal(graph.calls.some((call) => call.path.endsWith('/assign')), false);
 });

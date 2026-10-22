@@ -430,8 +430,8 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'A group is never moved to another setting definition; recreate it by hand if that changed.',
   }),
   policySet: auto('Policy sets', {
-    keeps: 'Recreates sets and puts back their names and the apps and policies in them.',
-    todo: 'Every app and policy in a set must be back first with the same id. Who a set is assigned to is not put back yet, so assign it again by hand. A backup taken before the apps and policies in a set were read is refused; take a new backup.',
+    keeps: 'Recreates sets and puts back their names, the apps and policies in them, and who they are assigned to.',
+    todo: 'Every app and policy in a set must be back first with the same id. Who a set is assigned to is put back only when it is picked for a restore, from backups taken after assignments were read. A backup taken before the apps and policies in a set were read is refused; take a new backup.',
   }),
   vppToken: manual('Apple Volume Purchase tokens', MS,
     'Apple issues the token. No tool can upload it from a backup, and the token itself is never read.',
@@ -545,8 +545,8 @@ export const TYPE_GUIDE = Object.freeze({
     'KEEL backs up the healthy and unhealthy limits but does not restore them yet.',
     'Set the same limits in the Intune admin center, under Tenant administration, Microsoft Tunnel Gateway, Health status, from the backup.'),
   iosLobAppProvisioningConfiguration: auto('Apple app provisioning profiles', {
-    keeps: 'Recreates profiles and puts back their name, description, scope tags and the profile file from Apple.',
-    todo: 'Who a profile is assigned to is not backed up yet, so assign a recreated profile again by hand. An expired file, or one that expires before the profile in Intune now, is never uploaded: renew it with Apple and upload it in the Intune admin center, under Apps, iOS/iPadOS, App provisioning profiles. A backup taken before the profile file was read is refused; take a new backup.',
+    keeps: 'Recreates profiles and puts back their name, description, scope tags, the profile file from Apple and who they are assigned to.',
+    todo: 'Who a profile is assigned to is put back only when it is picked for a restore, from backups taken after assignments were read. An expired file, or one that expires before the profile in Intune now, is never uploaded: renew it with Apple and upload it in the Intune admin center, under Apps, iOS/iPadOS, App provisioning profiles. A backup taken before the profile file was read is refused; take a new backup.',
   }),
   mobileAppRelationship: auto('App dependencies and supersedence', {
     keeps: 'Puts back which app depends on or replaces which, and how (install automatically or detect; update or replace), when both apps are in Intune.',

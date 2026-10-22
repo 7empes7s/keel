@@ -6,6 +6,7 @@ import { useMemo, useState, type MouseEvent } from "react";
 
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { ControlSheet } from "@/components/compliance/control-sheet";
+import { sheetStep } from "@/lib/sheet-step";
 import { FindingRecordFields, StorageRecordFields } from "@/components/compliance/compliance-record";
 import { ExceptionSheet, type Granted } from "@/components/compliance/exception-sheet";
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
@@ -104,6 +105,9 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
   const tileTotals = useMemo(() => new Map(tileCounts(findings, RESULT_TILES, filterKey ? filterKey.split(",") : []).map((entry) => [entry.key, entry])), [findings, filterKey]);
   const activeFilters: ActiveFilter[] = filter.map((key) => ({ key: `result:${key}`, label: RESULTS[key].plural, clear: { result: withoutTile(filter, key) } }));
   const opened = findings.find((finding) => finding.id === view.get("open")) ?? null;
+  // Previous and next in the panel follow the list as shown: its filter, find, grouping and sort.
+  const [order, setOrder] = useState<string[]>([]);
+  const step = useMemo(() => sheetStep(order, opened?.id), [order, opened?.id]);
   const grantIds = view.get("grant").split(",").filter(Boolean);
   const granting = canConfigure ? findings.filter((finding) => grantIds.includes(finding.id) && finding.verdict === "fail") : [];
   const failing = findings.filter((finding) => resultOf(finding) === "failing");
@@ -238,6 +242,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
             <NoMatches extra={{ open: null, grant: null }} filters={activeFilters} noun={{ one: "control", many: "controls" }} />
           ) : (
             <SelectableList
+              onOrder={setOrder}
               action={canConfigure ? {
                 label: (count) => `Grant an exception to ${controlsWord(count)}`,
                 detail: (_count, ids) => {
@@ -291,7 +296,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
 
       {opened || granting.length ? <BaselinesStyles /> : null}
       {opened && !granting.length ? (
-        <ControlSheet canConfigure={canConfigure} canRestore={canRestore} finding={opened} grantHref={grantHref([opened.id])} key={opened.id} now={now} onClose={() => view.set({ open: null })} />
+        <ControlSheet canConfigure={canConfigure} canRestore={canRestore} finding={opened} grantHref={grantHref([opened.id])} now={now} onClose={() => view.set({ open: null })} onStep={(id) => view.set({ open: id })} step={step} />
       ) : null}
       {granting.length ? (
         <ExceptionSheet

@@ -53,13 +53,6 @@ const CSS = `
 .cc-entry[data-diff="changed"] { background: var(--check-soon-bg); }
 .cc-entry small { color: var(--text-soft); }
 .cc-more { justify-self: start; border: 0; background: none; padding: 0; color: var(--text); font: inherit; font-size: 0.8125rem; font-weight: 600; text-decoration: underline; cursor: pointer; }
-.cc-same { border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
-.cc-same-toggle { display: flex; align-items: center; gap: var(--space-xs); width: 100%; min-height: 2.5rem; padding: var(--space-xs) var(--space-sm); border: 0; background: none; color: var(--text-soft); font: inherit; font-size: 0.875rem; font-weight: 600; text-align: left; cursor: pointer; }
-.cc-same-toggle svg { width: 1rem; height: 1rem; }
-.cc-same-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-md); }
-.cc-same dl { display: grid; grid-template-columns: minmax(8rem, 0.9fr) minmax(0, 2fr); gap: 0.3rem var(--space-sm); margin: 0; padding: 0 var(--space-sm) var(--space-sm); font-size: 0.8125rem; }
-.cc-same dt { color: var(--text-soft); overflow-wrap: anywhere; }
-.cc-same dd { margin: 0; overflow-wrap: anywhere; }
 .cc-whole { display: grid; gap: var(--space-xs); min-width: 0; }
 .cc-whole-toggle { justify-self: start; display: inline-flex; align-items: center; gap: var(--space-2xs, 0.25rem); min-height: 2rem; padding: 0 var(--space-sm); border: 1px solid var(--line-strong); border-radius: var(--radius-pill); background: var(--surface); color: var(--text); font: inherit; font-size: 0.8125rem; font-weight: 600; cursor: pointer; }
 .cc-whole-toggle svg { width: 0.9rem; height: 0.9rem; }
@@ -71,14 +64,26 @@ const CSS = `
 .cc-whole-list dt { color: var(--text-soft); overflow-wrap: anywhere; }
 .cc-whole-list dd { margin: 0; overflow-wrap: anywhere; }
 .cc-empty { margin: 0; color: var(--text-soft); }
+.cc-row[data-diff="same"] { border-left-color: var(--line-strong); }
+.cc-row[data-diff="same"] .cc-side { background: transparent; }
+.cc-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs) var(--space-sm); }
+.cc-every { display: inline-flex; align-items: center; gap: var(--space-xs); min-height: 2.25rem; padding: 0 var(--space-sm) 0 var(--space-xs); border: 1px solid var(--line-strong); border-radius: var(--radius-pill); background: var(--surface); color: var(--text); font: inherit; font-size: 0.8125rem; font-weight: 600; cursor: pointer; }
+.cc-every small { color: var(--text-soft); font-weight: 500; }
+.cc-every:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.cc-switch { position: relative; flex: none; width: 2rem; height: 1.125rem; border-radius: var(--radius-pill); background: var(--line-strong); transition: background var(--duration-base) var(--ease-out); }
+.cc-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: calc(1.125rem - 4px); height: calc(1.125rem - 4px); border-radius: 50%; background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / 0.25); transition: transform var(--duration-base) var(--ease-out); }
+.cc-every[aria-checked="true"] { border-color: var(--accent); }
+.cc-every[aria-checked="true"] .cc-switch { background: var(--accent); }
+.cc-every[aria-checked="true"] .cc-switch::after { transform: translateX(0.875rem); }
+.cc-hidden { color: var(--text-soft); font-size: 0.8125rem; }
+@media (prefers-reduced-motion: reduce) { .cc-switch, .cc-switch::after { transition: none; } }
 @media (max-width: 640px) {
   .cc-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: var(--space-xs) var(--space-sm); }
   .cc-row > .cc-name { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
   .cc-row > .cc-name > small { grid-column: 1 / -1; grid-row: 2; }
   .cc-row[data-list] { grid-template-columns: minmax(0, 1fr); }
-  .cc-same dl, .cc-whole-list { grid-template-columns: minmax(0, 1fr); }
+  .cc-whole-list { grid-template-columns: minmax(0, 1fr); }
   .cc-whole-list dd { margin-bottom: var(--space-xs); }
-  .cc-same dd { margin-bottom: var(--space-xs); }
 }
 `;
 
@@ -95,8 +100,8 @@ export function DiffChip({ diff }: { diff: Diff }) {
 const ENTRY_LIMIT = 6;
 const ROW_LIMIT = 8;
 
-function Entries({ entries }: { entries: EntryDiff[] }) {
-  const [all, setAll] = useState(false);
+function Entries({ entries, open = false }: { entries: EntryDiff[]; open?: boolean }) {
+  const [all, setAll] = useState(open);
   const differing = entries.filter((entry) => entry.diff !== "same");
   const kept = entries.length - differing.length;
   const shown = all ? entries : differing.slice(0, ENTRY_LIMIT);
@@ -133,7 +138,7 @@ export function SettingRowView({ row, sides, note }: { row: SettingRow; sides: {
     return (
       <li aria-label={`${row.label}: ${row.entries.filter((entry) => entry.diff !== "same").map((entry) => `${DIFF_WORDS[entry.diff]} ${entry.text}`).join("; ")}`} className="cc-row" data-diff={row.diff} data-list="">
         {name}
-        <div><Entries entries={row.entries} /></div>
+        <div><Entries entries={row.entries} open={row.diff === "same"} /></div>
       </li>
     );
   }
@@ -230,14 +235,19 @@ export function ChangeComparison({ before, after, names = {}, sides, against, be
   const isQuiet = (path: string) => behaviour !== null && !behaviour.some((entry) => path === entry || path.startsWith(`${entry}.`) || entry.startsWith(`${path}.`));
   const [filter, setFilter] = useState<Diff | "all">("all");
   const [allRows, setAllRows] = useState(false);
+  // Changed settings only, unless asked for every setting (then nothing folds away).
+  const [every, setEvery] = useState(false);
   const loud = comparison.rows.filter((row) => row.diff !== "same" && !isQuiet(row.path));
-  const quietRows = comparison.rows.filter((row) => row.diff !== "same" && isQuiet(row.path));
-  const sameRows = comparison.rows.filter((row) => row.diff === "same");
+  const quietCount = comparison.rows.filter((row) => row.diff !== "same" && isQuiet(row.path)).length;
+  const sameCount = comparison.rows.filter((row) => row.diff === "same").length;
   const kinds = (["changed", "added", "removed", "unknown"] as const).filter((kind) => loud.some((row) => row.diff === kind));
   const filtered = filter === "all" ? loud : loud.filter((row) => row.diff === filter);
-  const shown = allRows ? filtered : filtered.slice(0, ROW_LIMIT);
+  const shown = every ? comparison.rows : allRows ? filtered : filtered.slice(0, ROW_LIMIT);
   const sections = bySection(shown);
-  const quietCount = quietRows.length;
+  const hiddenWords = [
+    sameCount ? `${sameCount} ${sameCount === 1 ? "setting is" : "settings are"} the same` : "",
+    quietCount ? `${quietCount} ${quietCount === 1 ? "setting Microsoft manages itself also differs" : "settings Microsoft manages itself also differ"}` : "",
+  ].filter(Boolean);
   const sentence = quietCount && !loud.length
     ? `Only ${quietCount === 1 ? "1 setting Microsoft manages itself differs" : `${quietCount} settings Microsoft manages itself differ`}. Nothing that changes behaviour was changed.`
     : comparisonSentence({ ...comparison, rows: comparison.rows.filter((row) => !isQuiet(row.path)), differing: loud.length, counts: { ...comparison.counts, ...Object.fromEntries((["changed", "added", "removed", "unknown"] as const).map((kind) => [kind, loud.filter((row) => row.diff === kind).length])) } }, against);
@@ -257,13 +267,19 @@ export function ChangeComparison({ before, after, names = {}, sides, against, be
     );
   }
   return (
-    <div className="cc" aria-label={label} role="group">
+    <div className="cc" aria-label={label} data-every={every || undefined} role="group">
       <ChangeComparisonStyles />
       <div className="cc-summary">
         <p className="cc-sentence">{sentence}</p>
       </div>
       {extra}
-      {kinds.length > 1 || loud.length > ROW_LIMIT ? (
+      {hiddenWords.length ? (
+        <div className="cc-bar">
+          <EveryToggle on={every} onChange={setEvery} total={comparison.rows.length} />
+          {every ? null : <small className="cc-hidden">Hidden: {hiddenWords.join("; ")}.</small>}
+        </div>
+      ) : null}
+      {!every && (kinds.length > 1 || loud.length > ROW_LIMIT) ? (
         <div aria-label="Show" className="cc-filters" role="group">
           <button aria-pressed={filter === "all"} className="cc-filter" onClick={() => setFilter("all")} type="button">All {loud.length}</button>
           {kinds.map((kind) => (
@@ -277,37 +293,26 @@ export function ChangeComparison({ before, after, names = {}, sides, against, be
         <div className="cc-section" key={section}>
           {sections.length > 1 || section !== "General" ? <h4>{section}</h4> : null}
           <ul className="cc-rows">
-            {rows.map((row) => <SettingRowView key={row.path} note={notes[row.path]} row={row} sides={sides} />)}
+            {rows.map((row) => <SettingRowView key={row.path} note={notes[row.path] ?? (row.diff !== "same" && isQuiet(row.path) ? MANAGED_NOTE : undefined)} row={row} sides={sides} />)}
           </ul>
         </div>
       ))}
-      {filtered.length > shown.length ? (
+      {!every && filtered.length > shown.length ? (
         <button aria-expanded={false} className="cc-more" onClick={() => setAllRows(true)} type="button">Show {filtered.length - shown.length} more {filtered.length - shown.length === 1 ? "setting" : "settings"}</button>
       ) : null}
-      {quietRows.length ? <Folded rows={quietRows} sides={sides} summary={`${quietRows.length} ${quietRows.length === 1 ? "setting" : "settings"} Microsoft manages itself also ${quietRows.length === 1 ? "differs" : "differ"}`} /> : null}
-      {sameRows.length ? <Folded rows={sameRows} sides={sides} summary={`${sameRows.length} ${sameRows.length === 1 ? "setting is" : "settings are"} the same`} /> : null}
     </div>
   );
 }
 
-// A plain toggle, not <details>: the record layer's <details> must stay the first one.
-function Folded({ rows, summary, sides }: { rows: SettingRow[]; summary: string; sides: { before: string; after: string } }) {
-  const [open, setOpen] = useState(false);
+const MANAGED_NOTE = "Microsoft manages this itself";
+
+/** The switch between changed settings only (the default) and every setting the item holds. */
+export function EveryToggle({ on, onChange, total }: { on: boolean; onChange: (on: boolean) => void; total: number }) {
   return (
-    <div className="cc-same">
-      <button aria-expanded={open} className="cc-same-toggle" onClick={() => setOpen(!open)} type="button">
-        <Icon name={open ? "up" : "down"} />{summary}
-      </button>
-      {open ? (
-        <dl>
-          {rows.map((row) => (
-            <div key={row.path} style={{ display: "contents" }}>
-              <dt>{row.section === "General" ? row.label : `${row.section} › ${row.label.toLowerCase()}`}</dt>
-              <dd>{row.diff === "same" ? row.after : `${sides.before}: ${row.before ?? absentWords(row, "before").toLowerCase()}. ${sides.after}: ${row.after ?? absentWords(row, "after").toLowerCase()}.`}</dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
-    </div>
+    <button aria-checked={on} className="cc-every" onClick={() => onChange(!on)} role="switch" type="button">
+      <span aria-hidden="true" className="cc-switch" />
+      Show every setting
+      <small>{total.toLocaleString("en-GB")} in all</small>
+    </button>
   );
 }

@@ -7682,3 +7682,26 @@ item that needs it stays untouched.
   continue next run), and the three previously failing events stored. If `invalid-page` remains, re-run the Q154 reproduction
   on the stuck window, report which check throws and the activity's shape (length, character classes), and comment on #552.
 - **Report:** per step, the result.
+
+### Q164: Live re-check that an unread assignment read is a step for a person (fixes the silent part of #546, after #553)
+- Drafted by the "Unread assignments flagged in restore" thread (2026-10-22). Code: PR #553. Fixture-tested only.
+  - **Change:** when a policy's backup holds no complete assignment read (failed, partial, absent, unsupported), the restore no longer
+    lists it as plainly applied. Its applied entry carries a step `requirement: assignments` ("Assignments not restored: ..."),
+    the run log prints `completion step: <key> — Assignments not restored: ...`, the dry-run review page shows a "By hand" box,
+    and an enforced run opens an owned follow-up item (kind `integration`, requirement `assignments`).
+- Needs: /opt/keel-live at the #553 merge or later (`grep -q unreadAssignmentsStep /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: open
+- Result:
+- **Test tenant only.** Restorer only; grant nothing. Never touch CA policies, break-glass or Marouane's account. No tenant-wide
+  setting is changed. Approve the restore yourself under the standing approval and log the approval id.
+- Uses Q150's snapshot S = `1fa5ee87`, where `KEEL-RT-150-attr` has a `failed` assignment read (the script was deleted in Q150 step 5).
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`):
+  1. **Dry run** from S selecting only `KEEL-RT-150-attr` (deviceCustomAttributeShellScript) with `--persist-artifact <uuid>`.
+     Expect a `create` and the log line `completion step: ... — Assignments not restored: the backup could not read who it is assigned to, so it is not assigned to anyone yet. ...`
+     Read the artifact: `results.applied[0].completion[0].requirement` is `assignments`. Open the restore review page for that dry run if you can and say whether the "By hand" box shows.
+  2. **Enforce** it (approve, log the id). Expect the script created with **no** assignment, and
+     `SELECT natural_key, kind, requirement, state FROM recovery_completion_item WHERE restore_ref = '<artifact>';`
+     to list `integration | assignments | pending` for it.
+  3. Cleanup: delete the script. Report anything left. (The completion item may stay pending; report its id.)
+- **Report:** B; step 1 artifact id and log line; step 2 approval and job ids and the item row; anything left in the tenant.
+  If the step is missing in step 1 or 2, report the artifact's `results.applied` entry for the script and comment on #546.

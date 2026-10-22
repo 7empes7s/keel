@@ -10,6 +10,10 @@ Type=simple
 User=root
 EnvironmentFile=/etc/keel/db.env
 ExecStart=/usr/bin/node /opt/keel-live/cli/keel-worker.mjs
+# Deploys run `systemctl try-reload-or-restart keel-worker`. Reload drains: the running job
+# finishes, nothing new starts, the worker exits 0 and Restart=always brings it back on the new
+# tree. A stop (SIGTERM) still ends the running job within TimeoutStopSec. Issue #448.
+ExecReload=/bin/kill -USR2 $MAINPID
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM

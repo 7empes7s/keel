@@ -108,7 +108,7 @@ test("the job table names who asked by name and hides ids in the failed line", (
   assert.ok(visible.includes("asked by Maro Defili"), visible);
   assert.ok(!visible.includes("@"), "no email outside Technical details");
   assert.ok(!GUID.test(visible), "no id outside Technical details");
-  assert.ok(visible.includes("It stopped with an error"));
+  assert.ok(visible.includes("What Keel asked for no longer exists in Microsoft 365."), visible);
   assert.ok(html.includes(`Graph 404 on /groups/${GROUP_ID}`), "the full error stays in Technical details");
   const system = renderToStaticMarkup(createElement(JobTable, {
     headingId: "h", jobs: [rollback("group:Finance", person({ id: "scheduler", name: "scheduler", email: null, system: true }))], title: "", now: NOW,
@@ -117,9 +117,9 @@ test("the job table names who asked by name and hides ids in the failed line", (
 });
 
 test("a failed line keeps a plain error and drops the error class", () => {
-  assert.equal(jobErrorLine("TypeError: Graph 429: throttled\n at x"), "Graph 429: throttled");
-  assert.equal(jobErrorLine(`not found: ${GROUP_ID}`), "It stopped with an error. Open the job to see what went wrong.");
-  assert.equal(jobErrorLine(""), "It stopped with an error. Open the job to see what went wrong.");
+  assert.equal(jobErrorLine("TypeError: Graph 429: throttled\n at x"), "Microsoft 365 was busy and asked Keel to slow down.");
+  assert.equal(jobErrorLine(`not found: ${GROUP_ID}`), "What Keel asked for no longer exists in Microsoft 365.");
+  assert.equal(jobErrorLine(""), "It stopped with an error.");
 });
 
 test("audit entries name the actor and the object, never an email, code or id", async () => {

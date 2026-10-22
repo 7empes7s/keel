@@ -268,7 +268,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Grant with": support("Grant with", COMMAND),
   "Add with": support("Add with", COMMAND),
   "Checked with": support("Checked with", COMMAND),
-  "Check with": support("Run a check with", COMMAND),
+  "Check with": support("Check with", COMMAND),
   "Changes": support("Change with", COMMAND),
   "Items in a backup": support("List items with", COMMAND),
   "Mapping API": support("Settings address", COMMAND),
@@ -280,6 +280,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Delivery checkpoint": support("Send checkpoint", "How far sending has got, for support."),
   "Estimate file": support("Estimate file", "The file the time-saved estimate is read from."),
   "Recovery manifest": support("Recovery list file", "The file that lists what was copied off-site."),
+  "Read from": fact("Where this comes from", "Where Keel read the storage location from."),
   "Cron": support("Timetable code", "The timetable written as a cron rule."),
   "Comparison rules": support("Comparison rules", "Which rules Keel used to compare the copies."),
   "Engine sentence": support("Status sentence as stored", "The status line as Keel wrote it."),
@@ -429,6 +430,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Last read started": fact("Last read started", "When Keel last started reading this."),
   "Last read completed": fact("Last read finished", "When Keel last finished reading this."),
   "Observation window": fact("Read between", "When Keel started and finished reading."),
+  "Failing setting": fact("Failing setting", "A setting that fails this check: its value now, and the value expected."),
   "Observation evidence": fact("How complete the read was", "Whether Keel read everything, and the proof."),
 
   // Overview.
@@ -571,7 +573,6 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Retention pins": count("Backups kept", "Backups held so they are not cleaned up."),
   "Provider": fact("Stored with", "The company that stores the backups."),
   "Boundary": fact("Separation", "How far the copy is kept from this server."),
-  "Read from": fact("Where this came from", "Where Keel found the storage location it shows."),
   "Immutability claim": fact("Protected from deletion", "Whether stored copies are locked against deletion.", { enum: "storageImmutability" }),
   "Certifies": fact("Proves", "What this record proves."),
   "Edits": fact("Can it be edited?", "Results are kept as a record and cannot be changed."),

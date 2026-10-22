@@ -3,6 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { RAW_ERROR_PATTERN } from "../lib/error-words";
+
 const HARNESS = pathToFileURL(join(__dirname, "dist/index.html")).href;
 
 const PAGES = [
@@ -43,6 +45,7 @@ const PAGES = [
   { name: "alerts", hash: "/alerts" },
   { name: "ask", hash: "/ask" },
   { name: "ask-unknown", hash: "/ask/unknown" },
+  { name: "ask-many", hash: "/ask/many" },
   { name: "emergency-changes", hash: "/emergency-changes" },
   { name: "compare", hash: "/compare" },
   { name: "compare-tenants", hash: "/compare/tenants" },
@@ -267,7 +270,7 @@ test("Notifications · tiles, tabs, send test, turn back on, real-event rules, e
   await expect(page).toHaveURL(/open=c4e10000-0000-4000-8000-0000000000c4/);
   const panel = page.getByRole("dialog", { name: "Slack" });
   await expect(panel).toBeVisible();
-  await expect(panel.locator(".nf-note")).toContainText("Make a new address in Slack");
+  await expect(panel.locator(".ui-error-notice")).toContainText("Make a new address in Slack");
   await expect(panel.getByRole("link", { name: "An alert came back · warning or above" })).toHaveCount(1);
   await expect(panel.locator(".nf-mini > li")).toHaveCount(3);
   await expect(panel.locator(".btn-primary:visible")).toHaveText("Send test");
@@ -357,7 +360,7 @@ test("Activity · tiles, day groups, panel, run again, who filter, one amber act
   await open(page, "/activity");
   await expect(page.locator(".status-pill")).toHaveText("2 failed today");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Keel ran 6 jobs in the last day; the backup of Tier 1 failed, and 1 more.");
-  await expect(page.locator('[data-layer="verdict"] .verdict-detail')).toHaveText("Graph 429: throttled after 5 retries on /deviceManagement/deviceConfigurations");
+  await expect(page.locator('[data-layer="verdict"] .verdict-detail')).toHaveText("Microsoft 365 was busy and asked Keel to slow down.");
   const amber = page.locator("main .btn-primary:visible");
   await expect(amber).toHaveCount(1);
   await expect(amber).toHaveText("Run the Tier 1 backup again");
@@ -382,7 +385,7 @@ test("Activity · tiles, day groups, panel, run again, who filter, one amber act
   await expect(page).toHaveURL(/open=job%3Aa4|open=job:a4/);
   const panel = page.getByRole("dialog", { name: "Backup of Tier 1" });
   await expect(panel).toBeVisible();
-  await expect(panel.locator(".ac-note")).toContainText("Graph 429: throttled after 5 retries");
+  await expect(panel.locator(".ui-error-notice")).toContainText("Microsoft 365 was busy and asked Keel to slow down.");
   await expect(panel.getByRole("link", { name: "Open the job page" })).toHaveAttribute("href", /\/jobs\/a4$/);
   await expect(panel.locator(".btn-primary:visible")).toHaveText("Run the Tier 1 backup again");
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
@@ -1172,21 +1175,21 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
   // Alerts come before the tiles and the table, worst first.
   const order = await page.locator(".rs-page > section").evaluateAll((sections) => sections.map((section) => section.className));
   expect(order[0]).toContain("rs-attention");
-  const alerts = page.locator(".rs-alert");
+  const alerts = page.locator(".ui-alert");
   await expect(alerts.first()).toHaveAttribute("data-tone", "urgent");
   const tones = await alerts.evaluateAll((rows) => rows.map((row) => row.getAttribute("data-tone")));
   expect(tones).toEqual([...tones].sort((a, b) => ["urgent", "soon", "low"].indexOf(a!) - ["urgent", "soon", "low"].indexOf(b!)));
-  for (const alert of await alerts.all()) await expect(alert.locator(".rs-alert-todo")).toContainText("What to do:");
+  for (const alert of await alerts.all()) await expect(alert.locator(".ui-alert-todo")).toContainText("What to do:");
   // Error details are hidden until asked for.
-  const mail = page.locator('.rs-alert[data-alert="service-never-worked"]');
-  await expect(mail.locator(".rs-alert-more li")).toBeHidden();
+  const mail = page.locator('.ui-alert[data-alert="service-never-worked"]');
+  await expect(mail.locator(".ui-alert-more li")).toBeHidden();
   await mail.getByText("Show details").click();
-  await expect(mail.locator(".rs-alert-more li")).toContainText("Mail, calendars and contacts: last try stopped part way");
-  await expect(page.locator('.rs-alert[data-alert="restore-failed"]').getByRole("link", { name: "View restore" })).toHaveAttribute("href", /b7c10000-0000-4000-8000-000000000074/);
-  await expect(page.locator('.rs-alert[data-alert="incident:1c1d0000-0000-4000-8000-000000000071"]').getByRole("link", { name: "Open incident" })).toBeVisible();
+  await expect(mail.locator(".ui-alert-more li")).toContainText("Mail, calendars and contacts: last try stopped part way");
+  await expect(page.locator('.ui-alert[data-alert="restore-failed"]').getByRole("link", { name: "View restore" })).toHaveAttribute("href", /b7c10000-0000-4000-8000-000000000074/);
+  await expect(page.locator('.ui-alert[data-alert="incident:1c1d0000-0000-4000-8000-000000000071"]').getByRole("link", { name: "Open incident" })).toBeVisible();
   // Tiles and the service table.
-  await expect(page.locator('.rs-tile[data-tile="point"] .rs-tile-value')).toHaveText("29 hours ago");
-  await expect(page.locator('.rs-tile[data-tile="services"] .rs-tile-value')).toHaveText("4 of 8");
+  await expect(page.locator('.ui-tile[data-tile="point"] .ui-tile-value')).toHaveText("29 hours ago");
+  await expect(page.locator('.ui-tile[data-tile="services"] .ui-tile-value')).toHaveText("4 of 8");
   await expect(page.locator('.rs-table tr[data-row="content:exchange-mail"]')).toContainText("Never worked");
   await expect(page.locator('.rs-table tr[data-row="service-settings:teams-org-policies"]')).toContainText("Switched off");
   const groups = await page.locator(".rs-group").allTextContents();
@@ -1197,15 +1200,15 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
 
   await open(page, "/resilience/unmeasured");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Recovery is not measured yet: no checked off-site copy holds every backed-up type, and no recovery has been timed.");
-  for (const tile of ["point", "time"]) await expect(page.locator(`.rs-tile[data-tile="${tile}"] .rs-tile-value`)).toHaveText("Not measured");
-  await expect(page.locator('.rs-tile[data-tile="drill"] .rs-tile-value')).toHaveText("None yet");
-  await expect(page.locator(".rs-tiles")).not.toContainText(/\b0 (minutes|hours)\b/);
+  for (const tile of ["point", "time"]) await expect(page.locator(`.ui-tile[data-tile="${tile}"] .ui-tile-value`)).toHaveText("Not measured");
+  await expect(page.locator('.ui-tile[data-tile="drill"] .ui-tile-value')).toHaveText("None yet");
+  await expect(page.locator(".ui-tiles")).not.toContainText(/\b0 (minutes|hours)\b/);
   for (const card of ["freshness", "point", "time", "drills"]) {
     // Badges inside the card's Technical details describe single fields, not the card.
     await expect(page.locator(`.resilience-${card} .badge:not([data-layer="record"] .badge)`)).toHaveText("Not measured");
     await expect(page.locator(`.resilience-${card} .resilience-sentence`)).toContainText("Not measured");
   }
-  await expect(page.locator('.rs-alert[data-alert="never-backed-up"]')).toContainText("2 setting types never backed up");
+  await expect(page.locator('.ui-alert[data-alert="never-backed-up"]')).toContainText("2 setting types never backed up");
 });
 
 // Task-100 and the Value report redesign (pick A): the tiles and chart add up, each
@@ -1640,6 +1643,55 @@ test("Changes · tiles add up, other filters narrow, chips and no dead ends", as
   await expect(page.getByRole("button", { name: /^Remove filter: / })).toHaveCount(2);
 });
 
+// Picks tray: picks stay picked while tiles, services and the find change the view.
+// The bar counts them by service, says how many the view hides, lists them with a
+// remove button each, and the decision runs on every pick, shown or not.
+test("Changes · picks stay picked across filters and services, in a tray", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/drift/services");
+  const bar = page.locator(".sel-bar");
+  await page.getByLabel("Select Finance (group)").check();
+  await page.locator(".bl-tile", { hasText: "Service settings" }).click();
+  await expect(page).toHaveURL(/from=services/);
+  await expect(page.getByLabel("Select Finance (group)")).toHaveCount(0);
+  await expect(bar).toContainText("1 change selected");
+  await expect(bar.locator(".sel-tray-chip[data-tone='soon']")).toHaveText("1 not shown here");
+  await page.getByLabel(/^Select Forward finance mail/).check();
+  await expect(bar).toContainText("2 changes selected");
+  await expect(bar.locator(".sel-tray-chip:not([data-tone])")).toHaveText(["Entra ID 1", "Exchange Online 1"]);
+  // Select all covers what is shown; with hidden picks it unselects only those.
+  await page.getByRole("button", { name: "Select all 5 changes" }).click();
+  await expect(bar).toContainText("6 changes selected");
+  await page.getByRole("button", { name: "Unselect these 5 changes" }).click();
+  await expect(bar).toContainText("1 change selected");
+  await page.getByLabel(/^Select Forward finance mail/).check();
+
+  // Every pick is listed, the hidden one marked, each with its own remove button.
+  await bar.getByText("See every pick").click();
+  const list = bar.getByRole("list", { name: "Picked" });
+  await expect(list.locator("li")).toHaveCount(2);
+  await expect(list.locator("li[data-hidden]")).toContainText("Finance (group)");
+  await expect(list.locator("li[data-hidden]")).toContainText("not shown here");
+
+  // The decision covers the hidden pick too; the service change is left out, and said so.
+  await expect(bar).toContainText("1 service setting change is left out");
+  await bar.getByRole("button", { name: "Accept 2 changes" }).click();
+  const sheet = page.getByRole("dialog", { name: "Accept 1 change into the approved setup" });
+  await expect(sheet).toContainText("Applies only to: Finance (group).");
+  await sheet.getByRole("button", { name: "Cancel" }).click();
+
+  // Clearing the filters shows the pick again, still picked; remove and Clear work.
+  await page.locator(".filter-bar").getByRole("button", { name: "Clear all" }).click();
+  await expect(page.getByLabel("Select Finance (group)")).toBeChecked();
+  await expect(bar.locator(".sel-tray-chip[data-tone='soon']")).toHaveCount(0);
+  await expect(list.locator("li[data-hidden]")).toHaveCount(0);
+  await list.getByRole("button", { name: "Remove Finance (group) from the picks" }).click();
+  await expect(page.getByLabel("Select Finance (group)")).not.toBeChecked();
+  await expect(bar).toContainText("1 change selected");
+  await bar.getByRole("button", { name: "Clear" }).click();
+  await expect(bar).toHaveCount(0);
+});
+
 // Other pages link to a filtered list by kind; the filter note says so.
 test("Changes · a kind filter in the address and plain words on the page", async ({ page }) => {
   await open(page, "/drift?kind=namedLocation");
@@ -1723,6 +1775,7 @@ const RECORD_IDS: Record<string, string[]> = {
   "reports-scoped": ["restore-plan:7f3c0000-0000-4000-8000-000000000100", "covers.FIN", "not-configured"],
   ask: ["a5c00000-0000-4000-8000-000000000991", "c0110000-0000-4000-8000-000000000992", "group:Sales Admins", "conditionalAccessPolicy:Sales VPN", "not-compared-yet"],
   "ask-unknown": ["no-history", "2020-01-01T00:00:00.000Z"],
+  "ask-many": ["a5c10000-0000-4000-8000-000000000000"],
   compare: ["c0a10000-0000-4000-8000-000000000001", "c0a10000-0000-4000-8000-000000000002", "conditionalAccessPolicy:Block legacy auth", "mailbox:finance@contoso.com", "drive:b!Xc9", "3e".repeat(32)],
   "compare-tenants": ["sha256:5a1e00000000c0b2", "conditionalAccessPolicy:Require MFA for admins"],
   readiness: ["b9000000-0000-4000-8000-000000000001", "b9000000-0000-4000-8000-000000000002", "a1e70000-0000-4000-8000-000000000094", "conditionalAccessPolicy:Block legacy auth", "si-7f21", "au-9c10"],
@@ -2139,18 +2192,30 @@ test("Setup · the step waiting on you is open, links to Microsoft, and continue
   expect(await page.evaluate(() => (window as unknown as { __stay?: boolean }).__stay)).toBe(true);
 });
 
-// Production host: a grant broader than setup asks for is reported as found in the
-// tenant, never as something Keel fixed or will remove. With read access confirmed,
-// the first backup is the page's one amber action.
-test("Setup · the restorer's extra grant shows as a check-soon chip, and the first backup runs from the verdict", async ({ page }) => {
+// Production host: a grant Keel never uses is reported as found in the tenant, grey and
+// last in the permission table, never as a warning or something Keel will remove. With
+// read access confirmed, the first backup is the page's one amber action.
+test("Setup · a grant Keel never uses is listed grey and last, and the first backup runs from the verdict", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/setup/checked", "light");
   const restore = page.locator("section.su-track", { has: page.getByRole("heading", { name: "Write access for restores" }) });
   const consent = restore.locator(".su-step", { has: page.getByRole("heading", { name: "Grant admin consent for the restore writer app" }) });
   await expect(consent).toHaveAttribute("data-state", "done");
-  await expect(consent.locator(".su-perm[data-extra] .su-perm-words")).toHaveText("Extra: Change mailbox settings");
-  await expect(consent.locator(".su-perm[data-extra] .su-perm-code")).toHaveText("MailboxSettings.ReadWrite");
-  await expect(consent).toContainText("Keel does not need it and does not remove it");
+  await expect(consent.locator(".su-perm")).toHaveCount(0);
+  await expect(consent.getByRole("link", { name: "Permissions" })).toHaveAttribute("href", "#setup-permissions");
+  await expect(page.locator(".su-page")).not.toContainText("Extra:");
+  const panel = page.locator("#setup-permissions");
+  await expect(panel.locator(".su-pp-alert")).toHaveCount(0);
+  await expect(page.locator(".su-tile", { hasText: "Permissions" }).locator(".su-tile-count")).toHaveText("All granted");
+  // Large table: pages of 50; the unused grant is found from its tile.
+  await expect(panel.getByRole("navigation", { name: "Pages of Permissions" })).toBeVisible();
+  await panel.locator(".su-pp-tile", { hasText: "Not used by Keel" }).click();
+  const unused = panel.locator('.su-ptable-row[data-status="unused"]');
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(1);
+  await expect(unused).toContainText("Channel.Create");
+  await expect(unused.locator(".badge")).toHaveText("Not used by Keel");
+  await expect(unused.locator(".badge")).toHaveAttribute("data-tone", "neutral");
+  await expect(panel.locator(".su-ptable-group")).toHaveText([/Not used by Keel/]);
   await expect(restore.locator('.su-step[data-state="current"] h3')).toHaveText('Activate your "Privileged Role Administrator" role');
   // The restorer's app id is unknown here: no consent link anywhere on the page.
   await expect(page.locator('a[href^="https://login.microsoftonline.com/"]')).toHaveCount(0);
@@ -2159,6 +2224,71 @@ test("Setup · the restorer's extra grant shows as a check-soon chip, and the fi
   expect(await page.locator("main .btn-primary:visible").count()).toBe(1);
   await verdict.getByRole("button", { name: "Run the first backup" }).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { __harnessCalls: { url: string }[] }).__harnessCalls.filter((call) => call.url.endsWith("/api/actions/backup")).length)).toBeGreaterThan(0);
+});
+
+// The permission table: what is missing comes first with Microsoft's consent page one
+// click away, tiles of the same kind add up, the app picker and Find narrow, and coming
+// back from Microsoft checks the tenant again on its own.
+test("Setup · missing permissions come first with a consent link, and the table filters by status, app and text", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/setup", "light");
+  const panel = page.locator("#setup-permissions");
+  await expect(page.locator(".su-tile", { hasText: "Permissions" })).toHaveAttribute("data-tone", "urgent");
+  await expect(page.locator(".su-tile", { hasText: "Permissions" }).locator(".su-tile-count")).toHaveText("4 missing");
+
+  const alert = panel.locator(".su-pp-alert");
+  await expect(alert).toHaveCount(1);
+  await expect(alert.locator(".su-pp-alert-title")).toHaveText("The restore writer app is missing 4 permissions. Restores that need them stop until an admin approves them.");
+  await expect(alert).toContainText("1 of them is not on the app's permission list yet, so approving cannot grant it. Add it in Entra ID first: Exchange.ManageAsApp.");
+  await expect(alert.getByRole("link", { name: /Approve in Microsoft/ })).toHaveAttribute("href",
+    "https://login.microsoftonline.com/72f988bf-0000-4000-8000-0000000000aa/adminconsent?client_id=2e570e00-0000-4000-8000-0000000000c2");
+  await expect(alert.getByRole("link", { name: /Approve in Microsoft/ })).toHaveAttribute("target", "_blank");
+  await expect(alert.getByRole("link", { name: /Add in Entra ID/ })).toHaveAttribute("href", /CallAnAPI\/appId\/2e570e00-0000-4000-8000-0000000000c2$/);
+
+  // Rows: plain words, the Microsoft name beside them, what Keel uses it for, a badge.
+  const missing = panel.locator('.su-ptable-row[data-status="missing"]');
+  await expect(missing).toHaveCount(4);
+  const groups = missing.filter({ hasText: "Change groups" });
+  await expect(groups.locator(".su-ptable-words")).toHaveText("Change groups");
+  await expect(groups.locator("code")).toHaveText("Group.ReadWrite.All");
+  await expect(groups.locator(".badge")).toHaveText("Missing");
+  await expect(groups.getByRole("link", { name: /Approve/ })).toHaveAttribute("href", /adminconsent\?client_id=2e570e00/);
+  const exchange = missing.filter({ hasText: "Exchange.ManageAsApp" });
+  await expect(exchange.locator(".su-ptable-api")).toHaveText("Exchange Online");
+  await expect(exchange.getByRole("link", { name: /Add in Entra ID/ })).toBeVisible();
+  // The app with something missing is listed first.
+  await expect(panel.locator(".su-ptable-app").first()).toContainText("Restore writer app");
+
+  // Tiles of one kind add up (OR); the app picker and Find narrow (AND).
+  const tile = (name: string) => panel.locator(".su-pp-tile", { hasText: name });
+  await tile("Optional").click();
+  const optional = panel.locator('.su-ptable-row[data-status="optional"]');
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(1);
+  await expect(optional).toContainText("AuditLogsQuery.Read.All");
+  await expect(optional.locator(".badge")).toHaveAttribute("data-tone", "low");
+  await expect(optional.getByRole("link", { name: /Approve/ })).toHaveAttribute("href", /adminconsent\?client_id=c011ec70/);
+  await tile("Optional").click();
+  await expect(tile("Missing").locator("b")).toHaveText("4");
+  await tile("Missing").click();
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(4);
+  await expect(tile("Not used by Keel").locator("small")).toHaveText("+1 if added");
+  await tile("Not used by Keel").click();
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(5);
+  await panel.getByRole("radio", { name: "Restore writer" }).click();
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(4);
+  await panel.getByPlaceholder("Find permissions").fill("sign-in rules");
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(1);
+  await expect(panel.locator(".su-ptable-row")).toContainText("Policy.ReadWrite.ConditionalAccess");
+  await panel.getByRole("button", { name: "Clear all" }).click();
+  await expect(panel.locator(".su-pp-tile[aria-pressed=true]")).toHaveCount(0);
+
+  // Back from Microsoft's consent tab: the page checks again without being asked.
+  const approve = alert.getByRole("link", { name: /Approve in Microsoft/ });
+  await approve.evaluate((link) => link.addEventListener("click", (event) => event.preventDefault()));
+  await approve.click();
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByText("Checking permissions again")).toBeVisible();
+  await expect(page.locator(".su-page")).not.toContainText("Extra:");
 });
 
 for (const theme of ["dark", "light"] as const) {
@@ -2724,6 +2854,43 @@ test("Compliance · nothing checked yet, reader: no Check now, a link to when ba
   await expect(page.locator(".cp-empty").getByRole("link", { name: "See when backups run" })).toBeVisible();
 });
 
+test("Compliance · Defender email controls sit under Defender; a failing one lists each policy and setting, now and should be", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/benchmarks/defender");
+  const main = page.locator("main");
+  await expect(main).toContainText("Phishing mail goes to quarantine");
+  await expect(main).toContainText("Risky attachment types are blocked");
+  await expect(main).toContainText("Links in email are checked when clicked");
+  await page.goto(`${HARNESS}#/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1`);
+  const sheet = page.getByRole("dialog", { name: "Phishing mail goes to quarantine" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet).toContainText("Control · Defender");
+  await expect(sheet.locator("#cp-misses-heading")).toContainText("3 settings");
+  const rows = sheet.locator(".cp-misses tbody tr");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0)).toContainText("Default");
+  await expect(rows.nth(0)).toContainText("High-confidence phishing goes to");
+  await expect(rows.nth(0).locator(".cp-miss-now")).toHaveText("Junk folder");
+  await expect(rows.nth(0).locator(".cp-miss-want")).toHaveText("Quarantine");
+  await expect(rows.nth(1).locator(".cp-miss-now")).toHaveText("Off");
+  await expect(rows.nth(1).locator(".cp-miss-want")).toHaveText("On");
+  // The read it rests on is named, not left as "no backup matches".
+  await expect(sheet).toContainText("Checked against the backup collected");
+  await expect(sheet).not.toContainText("No stored backup matches");
+  expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
+});
+
+test("Compliance · phone: the failing settings stack, one card per setting, with no sideways scroll", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1", "light");
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.locator(".cp-misses tbody tr")).toHaveCount(3);
+  await expect(sheet.locator(".cp-misses thead")).toHaveCSS("position", "absolute");
+  const widths = await sheet.locator(".cp-misses tbody tr").evaluateAll((rows) => rows.map((row) => row.scrollWidth - row.clientWidth));
+  expect(Math.max(...widths)).toBeLessThanOrEqual(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
 test("Compliance · phone: pass and fail tiles per service open the same panel", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page, "/benchmarks");
@@ -2737,7 +2904,7 @@ test("Compliance · phone: pass and fail tiles per service open the same panel",
 
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
-    for (const hash of ["/benchmarks", "/benchmarks/empty", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1"]) {
+    for (const hash of ["/benchmarks", "/benchmarks/empty", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks/defender", "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1"]) {
       test(`Compliance · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await open(page, hash, theme);
@@ -2751,8 +2918,10 @@ for (const theme of ["dark", "light"] as const) {
         expect(tiles.length).toBe(4);
         expect(new Set(tiles).size).toBe(1);
         if (width === 390 && hash !== "/benchmarks/empty") {
-          const scorecard = await page.locator(".cp-ctile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
-          expect(new Set(scorecard).size).toBe(1);
+          // Tiles are equal within each service's scorecard (each service is its own grid).
+          const scorecards = await page.locator(".cp-ctiles").evaluateAll((grids) => grids.map((grid) => [...grid.querySelectorAll(".cp-ctile")].map((item) => Math.round(item.getBoundingClientRect().height))));
+          expect(scorecards.length).toBeGreaterThan(0);
+          for (const scorecard of scorecards) expect(new Set(scorecard).size).toBe(1);
         }
         // Rule 12: everything styled as clickable is a link with a target or a button.
         const dead = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>("main a, main .btn, .cp-tile, .cp-ctile, .cp-row-link, .bl-sheet a, .bl-sheet .btn")]
@@ -2773,18 +2942,26 @@ for (const theme of ["dark", "light"] as const) {
 
 // Task-99: a grounded answer cites each record and its window, says which part of the
 // period is not known, never reads missing history as "nothing changed", and fits a phone.
-test("ask cites its records, states unknown periods, and fits a phone", async ({ page }) => {
+test("ask cites its records, states unknown periods first, and fits a phone", async ({ page }) => {
   await open(page, "/ask", "dark");
   const answer = page.locator(".ask-answer");
+  await expect(answer.locator(".badge").first()).toHaveText("Partly known");
   await expect(answer).toContainText("Understood as: Changes owned by SALES");
-  await expect(answer).toContainText("Only resources owned by SALES are included");
-  await expect(answer.locator(".ask-gap")).toContainText("KEEL has not compared a backup since then");
+  // What is not known comes before the records, as alert rows that say what to do.
+  const alerts = answer.locator(".ui-alert");
+  await expect(alerts.nth(0)).toHaveAttribute("data-tone", "soon");
+  await expect(alerts.nth(0)).toContainText("KEEL has not compared a backup since then");
+  await expect(alerts.nth(1)).toContainText("Only resources owned by SALES are included");
+  await expect(answer.locator('.ui-tile[data-tile="found"] .ui-tile-value')).toHaveText("2");
   const records = answer.locator(".ask-record");
   await expect(records).toHaveCount(2);
   await expect(records.nth(0)).toContainText("Sales Admins (group)");
   await expect(records.nth(0)).toContainText("Happened between");
+  await expect(records.nth(0).locator(".badge").first()).toHaveText("Changed");
   await expect(records.nth(0).getByRole("link", { name: "Open the Changes page" })).toHaveAttribute("href", /drift/);
   await expect(records.nth(1)).toContainText("the earlier backup is not known");
+  await expect(records.nth(1)).toHaveAttribute("data-tone", "urgent");
+  await expect(records.nth(1).locator(".badge", { hasText: "Could lock out admins" })).toHaveAttribute("data-tone", "urgent");
   await expect(page.locator("form[method='get']")).toHaveCount(2);
   await expect(page.locator("form[method='post']")).toHaveCount(0);
   await answer.locator("summary", { hasText: "Technical details" }).click();
@@ -2795,8 +2972,66 @@ test("ask cites its records, states unknown periods, and fits a phone", async ({
 
   await open(page, "/ask/unknown", "light");
   await expect(page.locator('[data-layer="verdict"]')).toContainText("Not known");
-  await expect(page.locator(".ask-answer")).toContainText("This is not the same as nothing happening");
+  await expect(page.locator(".ask-answer .ui-alert").first()).toContainText("This is not the same as nothing happening");
+  await expect(page.locator('.ask-answer .ui-tile[data-tile="found"] .ui-tile-value')).toHaveText("Not known");
   await expect(page.locator(".ask-answer")).not.toContainText("Nothing matched");
+});
+
+// A broad answer: understood filters as badges, words not understood said plainly, a
+// summary of every match, then one table with filter tiles, grouping, sorting and pages.
+test("ask summarises every match, says what it did not understand, and pages a grouped table", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/ask/many", "dark");
+  const answer = page.locator(".ask-answer");
+  await expect(answer.locator(".ui-alert", { hasText: "Not understood" })).toContainText("“printers”");
+  await expect(answer.locator('.ak-understood [data-filter="intent"]')).toContainText("What changed");
+  // The summary counts all 276 matches, not only the rows listed.
+  const services = answer.locator(".ak-sum-card", { hasText: "By service" });
+  await expect(services.locator("li").first()).toContainText("Exchange Online");
+  await expect(services.locator("li").first()).toContainText("180");
+  await expect(answer.locator(".ak-sum-card", { hasText: "By risk" }).locator("li").first()).toContainText("Could lock out admins");
+  // 36 rows: 25 on the first page, grouped by service with Entra ID first.
+  const table = answer.locator(".pg-table");
+  await expect(table.locator("tr.ask-record")).toHaveCount(25);
+  await expect(table.locator("tr.pg-group").first()).toContainText("Entra ID");
+  const pager = answer.getByRole("navigation", { name: "Pages of Records this answer rests on" });
+  await expect(pager.getByRole("status")).toHaveText("Showing 1–25 of 36 records");
+  await pager.getByRole("button", { name: "Next" }).click();
+  await expect(table.locator("tr.ask-record")).toHaveCount(11);
+  expect(page.url()).toContain("rec-page=2");
+  await pager.getByRole("radio", { name: "50" }).click();
+  await expect(table.locator("tr.ask-record")).toHaveCount(36);
+  // Tiles of the same kind add up; another kind and the search narrow.
+  await answer.getByRole("button", { name: /^Removed/ }).click();
+  await expect(table.locator("tr.ask-record")).toHaveCount(6);
+  await answer.getByRole("button", { name: /^Added/ }).click();
+  await expect(table.locator("tr.ask-record")).toHaveCount(24);
+  await answer.getByRole("button", { name: /^Could lock out admins/ }).click();
+  await expect(table.locator("tr.ask-record")).toHaveCount(6);
+  await answer.getByLabel("Find").fill("Global Reader");
+  await expect(table.locator("tr.ask-record")).toHaveCount(6);
+  await answer.getByLabel("Find").fill("nothing like this");
+  await expect(answer.locator(".pg-empty")).toContainText("No record matches");
+  await answer.getByRole("button", { name: "Clear filters" }).click();
+  await answer.getByLabel("Find").fill("");
+  await answer.getByRole("button", { name: /Order by: Suggested/ }).click();
+  await page.getByRole("option", { name: "Name", exact: true }).click();
+  await answer.getByRole("button", { name: /Group by: Service/ }).click();
+  await page.getByRole("option", { name: "No grouping" }).click();
+  await expect(table.locator("tr.pg-group")).toHaveCount(0);
+  await expect(table.locator("tr.ask-record").first()).toContainText("Calling policy 2 ");
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  }
+
+  // On a scoped answer the owner filter can be removed: the link asks again without it.
+  await open(page, "/ask", "light");
+  const owner = page.locator('.ak-understood [data-filter="entity"]');
+  await expect(owner).toContainText("SALES");
+  const href = await owner.getByRole("link").getAttribute("href");
+  expect(href).toContain("intent=changes");
+  expect(href).not.toContain("entity=");
 });
 
 // Wave 2 CMP: compare groups differences by service and kind with plain names, reads
@@ -2846,21 +3081,41 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
 // Task-93: an approved emergency change says what KEEL will hold back and until when,
 // keeps every other change on the resource in play, says what happened when one ended,
 // and refuses an approval by the person who made the change.
-test("emergency changes say what is held back, how each ended, and refuse self-approval", async ({ page }) => {
+test("emergency changes put alerts first, show each approved value, and refuse self-approval", async ({ page }) => {
   await open(page, "/emergency-changes");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("One emergency change is approved right now; KEEL will not roll it back. The next approval ends in 3 hours.");
+  // A change still there after its approval ended leads; the approval in force follows.
+  const alerts = page.locator("#ec-attention .ui-alert");
+  await expect(alerts).toHaveCount(2);
+  await expect(alerts.nth(0)).toHaveAttribute("data-tone", "soon");
+  await expect(alerts.nth(0)).toContainText("Finance (group) is still changed after its approval ended");
+  await expect(alerts.nth(0).getByRole("link", { name: "Open Changes" })).toHaveAttribute("href", /drift/);
+  await expect(alerts.nth(1)).toContainText("Block legacy auth (Conditional Access policy) is not rolled back until");
+  await expect(page.locator('.ui-tile[data-tile="active"] .ui-tile-value')).toHaveText("1");
+  await expect(page.locator('.ui-tile[data-tile="next"] .ui-tile-value')).toHaveText("in 3 hours");
+
   const active = page.locator("li.change-intent.is-active");
+  await expect(active.locator(".badge").first()).toHaveText("In force");
   await expect(active.locator(".change-intent-sentence")).toHaveText(/^KEEL will not roll back the state change until .+ \(in 3 hours\)\.$/);
-  await expect(active).toContainText("Any other change to Block legacy auth (Conditional Access policy) is still rolled back as its policies say.");
-  await expect(active).toContainText("Change ticket CHG0031337.");
-  await expect(page.locator("li.change-intent.is-ended .change-intent-settled")).toHaveText("When it ended, KEEL checked again: it was still changed, so its policies acted on it as usual.");
-  await expect(page.locator("li.change-intent.is-revoked .change-intent-sentence")).toHaveText("Revoked 47 hours ago by Amara Okafor: migration finished early.");
+  // The approved setting, as the baseline has it and as the approval allows it.
+  const row = active.locator(".cv-row");
+  await expect(row.locator('[data-side="before"]')).toContainText("enabled");
+  await expect(row.locator('[data-side="after"]')).toContainText("enabled for reporting but not enforced");
+  await expect(active).toContainText("Other changes to this Conditional Access policy still roll back as usual.");
+  await expect(active).toContainText("CHG0031337");
+
+  // Ended approvals sit last, in one table, each with how it ended and what KEEL found.
+  const ended = page.locator("#ec-ended tr.change-intent.is-ended");
+  await expect(ended.locator(".badge", { hasText: "Still changed" })).toHaveAttribute("data-tone", "soon");
+  await expect(ended.locator(".change-intent-settled")).toHaveText("Its policies acted on it as usual.");
+  await expect(page.locator("#ec-ended tr.change-intent.is-revoked .change-intent-sentence")).toHaveText("Revoked 47 hours ago by Amara Okafor: migration finished early.");
 
   const form = page.locator("form.change-intent-form");
   const submit = form.getByRole("button", { name: "Approve emergency change" });
   await expect(submit).toBeDisabled();
   await form.getByLabel("Visibility").check();
-  await form.getByLabel("Who made or owns the change").selectOption({ label: "Amara Okafor" });
+  await expect(form.locator(".pg-summary")).toContainText("KEEL will not roll back 1 setting on Old project team (group) until");
+  await form.getByLabel("Who made the change").selectOption({ label: "Amara Okafor" });
   await form.getByLabel("Reason").fill("Responders need the group open");
   await submit.click();
   const toast = page.locator(".toast").first();
@@ -2871,6 +3126,38 @@ test("emergency changes say what is held back, how each ended, and refuse self-a
   await active.getByRole("button", { name: "Revoke" }).click();
   await expect(page.locator("dialog[open]").getByRole("button", { name: "Cancel" })).toBeFocused();
   expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+
+  await open(page, "/emergency-changes/none", "light");
+  await expect(page.locator("#ec-attention .ui-calm")).toBeVisible();
+  await expect(page.locator(".pg-empty")).toContainText("No open change to approve");
+});
+
+// Integrations: held-back updates lead as red alerts with the raw error behind Show
+// details; ServiceNow and each destination carry a coloured state and counts.
+test("integrations put held-back entries first and keep raw errors behind a click", async ({ page }) => {
+  await open(page, "/integrations", "light");
+  const alerts = page.locator("#ig-attention .ui-alert");
+  await expect(alerts.nth(0)).toHaveAttribute("data-tone", "urgent");
+  await expect(alerts.nth(0)).toContainText("1 ServiceNow update was held back");
+  const details = alerts.nth(0).locator("details");
+  await expect(details).not.toHaveAttribute("open", "");
+  await expect(details.getByText("ServiceNow said: ServiceNow PATCH returned HTTP 403")).toBeHidden();
+  await details.locator("summary").click();
+  await expect(details.getByText("ServiceNow said: ServiceNow PATCH returned HTTP 403")).toBeVisible();
+  await expect(alerts.nth(1)).toContainText("3 audit entries could not be sent to Sentinel CEF");
+  await expect(page.locator('.ui-tile[data-tile="held"] .ui-tile-value')).toHaveText("4");
+  await expect(page.locator("#ig-servicenow .pg-chips .badge", { hasText: "gate passed" })).toHaveAttribute("data-tone", "fine");
+  const destination = page.locator("#ig-destinations li.pg-card");
+  await expect(destination.locator(".badge").first()).toHaveText("3 held back");
+  await expect(page.locator("main .section-kicker")).toHaveCount(0);
+
+  await open(page, "/integrations/servicenow-off", "dark");
+  await expect(page.locator("#ig-attention")).toContainText("ServiceNow approvals are off: 2 settings are missing");
+  await expect(page.locator("#ig-servicenow ul[aria-label='Missing settings'] li")).toHaveCount(2);
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  }
 });
 
 // Restore, rule 12: no sideways scroll, sibling tiles share a height, and everything
@@ -3205,6 +3492,50 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(page.locator(".page-header .status-pill")).toHaveText("Protected");
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
   await expect(page.locator(".ov-calm")).toBeVisible();
+});
+
+// Raw error text (status codes, exception names, API paths) never shows in plain view:
+// every page, and the sheets that hold failed jobs and refused sends, show a plain cause
+// and "What to do:", with the raw error only behind "Show details" (ErrorNotice).
+const ERROR_STATES = [
+  "/activity?open=job:a4",
+  "/activity?open=job:y1",
+  "/notifications?open=c4e10000-0000-4000-8000-0000000000c4",
+  "/notifications?tab=sent",
+  "/notifications?tab=sent&open=d0e10000-0000-4000-8000-0000000000d4",
+  "/schedules?group=status",
+  "/schedules?open=5c4e0000-0000-4000-8000-000000000002",
+];
+test("errors · no raw error text in plain view on any page", async ({ page }) => {
+  test.setTimeout(240_000);
+  const leaks: string[] = [];
+  for (const hash of [...PAGES.map((entry) => entry.hash), ...ERROR_STATES]) {
+    await open(page, hash);
+    const text = await page.locator("body").innerText();
+    for (const line of text.split("\n")) if (RAW_ERROR_PATTERN.test(line)) leaks.push(`${hash}: ${line.trim().slice(0, 160)}`);
+  }
+  expect(leaks, "raw error text belongs behind Show details (components/ui/error-notice.tsx)").toEqual([]);
+});
+
+test("errors · a failed job shows a plain cause and what to do; the raw error is one click away", async ({ page }) => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await open(page, "/jobs/a4");
+    const notice = page.locator(".ui-error-notice");
+    await expect(notice).toContainText("Microsoft 365 was busy and asked Keel to slow down.");
+    await expect(notice.locator(".ui-alert-todo")).toContainText("What to do:");
+    const raw = notice.locator(".ui-raw-error");
+    await expect(raw).toBeHidden();
+    await notice.getByText("Show details").click();
+    await expect(raw).toHaveText("Graph 429: throttled after 5 retries on /deviceManagement/deviceConfigurations");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await notice.getByText("Show details").click();
+    await expect(raw).toBeHidden();
+  }
+  await open(page, "/activity?open=job:a4");
+  const sheet = page.locator(".ui-error-notice");
+  await expect(sheet).toContainText("Run it again");
+  await expect(sheet.locator(".ui-raw-error")).toBeHidden();
 });
 
 // Shared list paging: 25 rows a page by default, a choice of 25, 50, 100 or all, page

@@ -5676,8 +5676,27 @@ item that needs it stays untouched.
   never changed) and `policySet` (beta; the set, then its items through `POST .../policySets/{id}/update`, remove then add).
   Who any of them is assigned to is **not** written; fixtures stay unassigned.
 - Needs: /opt/keel-live at the #442 merge or later (`grep -q policySetItemsAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
+- Status: done
+- Result: done (2026-10-22 08:37 UTC), partly: 1 of 6 operations promoted; the rest are blocked on **#473**, **#474** and an Autopilot 400. B = **c396a2c**. Restorer only; global admin not used; nothing granted.
+  - **Per type and operation:**
+    | type | create | update |
+    |---|---|---|
+    | mobileAppCategory | **promoted** | **blocked** (#474): enforce always refused as "the target has changed since the dry run" |
+    | windowsAutopilotDeploymentProfile | **blocked**: fixture create 400 | **blocked** (same) |
+    | policySet | **blocked** (#473): the restore lists `policySets/{parent}?$expand=items` literally | **blocked** (#473) |
+    - Autopilot: `POST beta /deviceManagement/windowsAutopilotDeploymentProfiles` (azureAD kind) answered 400 "An error has occurred" (DeviceEnroll service, no detail)
+      for every body tried: minimal, + OOBE, + language, and the newer field names. Likely a tenant Autopilot prerequisite (inference).
+    - #474: Graph stamps a custom category's `lastModifiedDateTime` with the read time, so the current-state fingerprint differs on every read (two dry runs: 95e529ef… against c4f60017…).
+  - **Backup check** (S = `a735510d`): mobileAppCategory `complete` (10), policySet `complete` (1), windowsAutopilotDeploymentProfile `complete-empty` (0).
+    The `KEEL-RT-set` payload holds `items` with the one `#microsoft.graph.deviceConfigurationPolicySetItem` (payloadId set, KEEL-RT-profile).
+  - **Rounds:** fixtures `KEEL-RT-profile` (windows10 general, unassigned), `KEEL-RT-apps`, `KEEL-RT-set`.
+    - Create: deleted the category and the set. The two-type dry run failed (#473). A category-only dry run `de13d55e`, approval **59419567**, job `4f888040` succeeded;
+      the category reads back `KEEL-RT-apps`.
+    - Update: S2 = `94a46548`, renamed to `KEEL-RT-apps-drift`. Dry runs `8ab753db` and `9caf2b8a`, approvals **ee2c64a4** and **03e41620**: both jobs refused before writing (#474).
+  - **Re-run check:** not meaningful while the updates are blocked; skipped.
+  - **Cleanup:** deleted the category, the set and KEEL-RT-profile. Re-read: no KEEL-RT category, profile, set or Autopilot profile. **Nothing left.**
+  - **Evidence:** `claude/live-evidence-restore-gaps-6` @ **e2a54e1** (mobileAppCategory.create + .capture.json). pseudonymize check exit 0; my scan is clean.
+    `live evidence mobileAppCategory.create.json: fixture-tested -> live-qualified`.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementApps.ReadWrite.All (categories, policy sets) and DeviceManagementServiceConfig.ReadWrite.All (Autopilot).

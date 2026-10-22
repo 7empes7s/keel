@@ -1487,8 +1487,8 @@ test("site permissions fit a phone without sideways scrolling", async ({ page })
 
 // Service setting changes sit in the Changes list beside the approved-setup changes, so
 // grouping and filtering by service cover every service, not only Entra ID and Intune.
-// They fit a phone and are acknowledged or resolved in place instead of accepted or undone.
-test("the Changes list groups and filters every service, and service changes are answered in place", async ({ page }) => {
+// Each service has its own approved setup, so they are accepted or undone like the rest.
+test("the Changes list groups and filters every service, and service changes can be accepted or undone", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await open(page, "/drift/services", "dark");
   await expect(page.locator('[data-layer="verdict"]')).toContainText("5 service setting changes wait for review");
@@ -1497,25 +1497,41 @@ test("the Changes list groups and filters every service, and service changes are
     await expect(page.locator(".sel-group-head", { hasText: service }).first()).toBeVisible();
   }
   expect(await groups.count()).toBeGreaterThanOrEqual(6);
-  await expect(page.getByText("have no approved setup yet, so Keel compares each read with the one before it")).toBeVisible();
+  await expect(page.getByText("are measured against their own approved setup, taken from Keel's first read")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 
   await page.getByRole("link", { name: "Forward finance mail" }).click();
   const sheet = page.getByRole("dialog");
   await expect(sheet).toContainText("Exchange mail flow or protection rule · changed");
-  await expect(sheet.locator(".cv-side[data-side='before'] small").first()).toHaveText("Previous read");
-  await expect(sheet).toContainText("1 setting changed since the previous read.");
+  await expect(sheet.locator(".cv-side[data-side='before'] small").first()).toHaveText("Approved");
+  await expect(sheet).toContainText("1 setting differs from the approved setup.");
+  await expect(sheet).toContainText("with the approved setup");
+  await expect(sheet.getByRole("button", { name: "Accept this change" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Undo this change" })).toBeVisible();
   await expect(sheet.getByRole("button", { name: "Acknowledge" })).toBeVisible();
   await expect(sheet.getByRole("link", { name: "Open its alert" })).toHaveAttribute("href", /alerts\?open=a1e70000-0000-4000-8000-0000000000a6/);
-  await expect(sheet.getByRole("button", { name: "Accept this change" })).toHaveCount(0);
+  await expect(sheet.locator(".bl-cannot")).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
 
-// The Service settings tile keeps service changes only; acknowledging two posts one call
-// per alert and marks both seen; resolving needs a note and takes the change off the list.
-test("Changes · acknowledge and resolve service setting changes in place", async ({ page }) => {
+// A kind Keel cannot write back says so plainly on the change, and offers only Accept.
+test("Changes · a service change Keel cannot undo says why", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/drift/services");
+  await page.locator(".sel-row", { hasText: "SharePoint" }).locator(".bl-row-link", { hasText: /^Finance$/ }).click();
+  const sheet = page.getByRole("dialog", { name: "Finance" });
+  await expect(sheet.getByRole("button", { name: "Accept this change" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Undo this change" })).toHaveCount(0);
+  await expect(sheet.locator(".bl-cannot")).toContainText("Keel cannot undo this");
+  await expect(sheet.locator(".bl-cannot")).toContainText("Keel cannot write SharePoint site settings back yet");
+});
+
+// Acknowledging two posts one call per alert and marks both seen; accepting two sends
+// each to the service's approved setup with the reason, and takes them off the list.
+test("Changes · acknowledge and accept service setting changes in place", async ({ page }) => {
   type Call = { url: string; method: string; body: string | null };
-  const posts = async () => (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
-    .filter((call) => call.url === "/api/actions/alerts").map((call) => JSON.parse(call.body ?? "{}"));
+  const posts = async (url: string) => (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
+    .filter((call) => call.url === url).map((call) => JSON.parse(call.body ?? "{}"));
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/drift/services");
   const tile = page.locator(".bl-tile", { hasText: "Service settings" });
@@ -1525,37 +1541,53 @@ test("Changes · acknowledge and resolve service setting changes in place", asyn
   await expect(page.locator(".sel-row")).toHaveCount(5);
   await expect(page.locator(".filter-bar")).toContainText("Showing 5 of 12 changes");
 
+  // Acknowledge one from its panel: seen, still on the list.
+  let sheet = await openChange(page, "Global");
+  await sheet.getByRole("button", { name: "Acknowledge" }).click();
+  await expect(page.locator(".toast").first()).toContainText("Acknowledged 1 change");
+  expect(await posts("/api/actions/alerts")).toEqual([{ alertId: "a1e70000-0000-4000-8000-0000000000a7", action: "acknowledge" }]);
+  await expect(tile).toContainText("4 waiting for review; 1 seen");
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+
   await page.getByLabel(/^Select Forward finance mail/).check();
   await page.getByLabel(/^Select Global/).check();
   const bar = page.locator(".sel-bar");
-  await expect(bar).toContainText("Marks them as seen.");
-  await bar.getByRole("button", { name: "Acknowledge 2 changes" }).click();
-  await expect(page.locator(".toast").first()).toContainText("Acknowledged 2 changes");
-  const acknowledged = await posts();
-  expect(acknowledged).toEqual([
-    { alertId: "a1e70000-0000-4000-8000-0000000000a6", action: "acknowledge" },
-    { alertId: "a1e70000-0000-4000-8000-0000000000a7", action: "acknowledge" },
+  await expect(bar).toContainText("Adds them to the approved setup. Nothing in Microsoft 365 changes.");
+  await bar.getByRole("button", { name: "Accept 2 changes" }).click();
+  sheet = page.getByRole("dialog", { name: "Accept 2 changes into the approved setup" });
+  await sheet.getByPlaceholder("Why is this decision right?").fill("Both planned in change 42");
+  await sheet.getByRole("button", { name: "Accept 2 changes" }).click();
+  await expect(page.locator(".toast", { hasText: "Accepted 2 changes" })).toBeVisible();
+  expect(await posts("/api/actions/dispose")).toEqual([
+    { serviceChangeId: "d1a00000-0000-4000-8000-0000000000d2", action: "accept", reason: "Both planned in change 42" },
+    { serviceChangeId: "d1a00000-0000-4000-8000-0000000000d3", action: "accept", reason: "Both planned in change 42" },
   ]);
-  for (const name of ["Forward finance mail", "Global"]) {
-    await expect(page.locator(".sel-row", { has: page.locator(".bl-row-link", { hasText: new RegExp(`^${name}$`) }) }).locator(".bl-row-who")).toContainText("Seen, not resolved");
-  }
-  // The count is what the tile shows; seen ones still show until resolved.
-  await expect(tile.locator(".bl-tile-count")).toHaveText("5");
-  await expect(tile).toContainText("3 waiting for review; 2 seen");
+  await expect(page.locator(".sel-row")).toHaveCount(3);
+});
 
-  // Resolve one from its panel: a note is required, then it leaves the list.
-  const sheet = await openChange(page, "Global");
-  await expect(sheet.getByRole("button", { name: "Acknowledge" })).toHaveCount(0);
-  await sheet.getByRole("button", { name: "Resolve with a note…" }).click();
-  const resolve = page.getByRole("dialog", { name: "Resolve this change" });
-  await resolve.getByRole("button", { name: "Resolve 1 change" }).click();
-  await expect(resolve.getByRole("alert")).toContainText("Write why");
-  await resolve.getByPlaceholder("What was checked, and why it is fine").fill("Federation was planned");
-  await resolve.getByRole("button", { name: "Resolve 1 change" }).click();
-  await expect(resolve).toBeHidden();
-  expect((await posts()).at(-1)).toEqual({ alertId: "a1e70000-0000-4000-8000-0000000000a7", action: "resolve", note: "Federation was planned" });
-  await expect(page.locator(".bl-row-link", { hasText: /^Global$/ })).toHaveCount(0);
-  await expect(page.locator(".sel-row")).toHaveCount(4);
+// Undo of a service change runs the service restore from the read holding the approved
+// value, with that setting chosen: check first, then send for approval.
+test("Changes · undo a service setting change through its restore", async ({ page }) => {
+  type Call = { url: string; method: string; body: string | null };
+  const posts = async (url: string) => (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
+    .filter((call) => call.url === url).map((call) => JSON.parse(call.body ?? "{}"));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/drift/services");
+  const details = await openChange(page, "Forward finance mail");
+  await details.getByRole("button", { name: "Undo this change" }).click();
+  const sheet = page.getByRole("dialog", { name: "Undo this change" });
+  await expect(sheet).toContainText("Keel puts back the approved value, from the read of 30 Sept, 02:00.");
+  await expect(sheet.getByRole("checkbox", { name: /Forward finance mail/ })).toBeChecked();
+  await expect(sheet.getByRole("checkbox", { name: /KEEL-RT Quarantine executables/ })).not.toBeChecked();
+  await sheet.getByRole("button", { name: "Check what would change" }).click();
+  expect(await posts("/api/actions/restore/workload/dry-run")).toEqual([
+    { workload: "exchange-mail-flow", collectionId: "c0110000-0000-4000-8000-0000000000c4", targets: ["transport-rule:Forward finance mail"] },
+  ]);
+  await sheet.getByRole("button", { name: "Send for approval" }).click();
+  await expect(sheet).toContainText("Step 4 of 4: sent to approvers.");
+  expect((await posts("/api/actions/restore")).length).toBe(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
 
 // Summary tiles add up (OR): Cosmetic and Service settings together show both sets.
@@ -2185,14 +2217,14 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await page.goBack();
     await page.locator(".bl-current").waitFor();
     // Every service has a card, not only Entra ID and Intune. Service reads are measured
-    // against the previous backup, and their changes link to the Changes page too.
+    // against their own approved setup, and their changes link to the Changes page too.
     for (const name of ["Entra ID", "Intune", "Exchange Online", "SharePoint and OneDrive", "Teams", "Purview", "Power Platform"]) {
       await expect(page.locator(".bl-service", { hasText: name })).toHaveCount(1);
     }
     const exchange = page.locator(".bl-service", { hasText: "Exchange Online" });
     await expect(exchange).toHaveAttribute("data-basis", "previous-backup");
     await expect(exchange).toContainText(/Changed\s*1\s*kind/);
-    await expect(exchange).toContainText(/Unchanged\s*1\s*kind/);
+    await expect(exchange).toContainText(/In line\s*1\s*kind/);
     await expect(exchange).toHaveAttribute("href", /drift\?service=Exchange/);
     await expect(page.locator(".bl-service", { hasText: "Intune" })).toHaveAttribute("data-basis", "approved-setup");
     await expect(page.locator(".bl-legend")).toContainText("Not read");

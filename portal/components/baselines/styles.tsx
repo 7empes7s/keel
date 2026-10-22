@@ -164,6 +164,7 @@ const CSS = `
 .bl-sheet-body .drift-diff, .bl-sheet-body .decision-evidence, .bl-sheet-body .change-attribution { margin: 0; }
 .bl-sheet-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); padding: var(--space-sm) var(--space-lg) calc(var(--space-sm) + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--surface-muted); }
 .bl-sheet-foot .bl-help { flex-basis: 100%; }
+.bl-cannot { display: flex; flex-basis: 100%; flex-wrap: wrap; align-items: center; gap: var(--space-xs); margin: 0; padding: var(--space-xs) var(--space-sm); border-left: 3px solid var(--check-soon); border-radius: var(--radius-md); background: var(--check-soon-bg); font-size: 0.8125rem; line-height: 1.45; }
 .bl-why { display: grid; gap: var(--space-xs); padding: var(--space-sm) var(--space-md); border-radius: var(--radius-md); background: var(--surface-muted); }
 .bl-why h3 { margin: 0; font-size: 0.875rem; }
 .bl-why p { margin: 0; }

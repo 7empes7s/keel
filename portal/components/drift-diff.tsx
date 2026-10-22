@@ -31,7 +31,8 @@ function displayPayload(payload: unknown): string {
 // same Technical details, so a change has one record, not two.
 export function DriftDiff({ item, record }: { item: DriftRecord; record?: ReactNode }) {
   const changes = diffPayloads(item.before, item.after);
-  const read = Boolean(item.serviceRead);
+  // An older service change compares two reads; the rest compare with an approved setup.
+  const read = item.serviceRead?.comparedWith === "previous";
   const summary = item.changeType === "added"
     ? read ? "This is new since the previous read." : "This exists in the tenant but not in the approved setup."
     : item.changeType === "removed"
@@ -64,7 +65,7 @@ export function DriftDiff({ item, record }: { item: DriftRecord; record?: ReactN
       ) : null}
       <TechnicalDetails>
         <RecordField label="Natural key" value={item.naturalKey} />
-        {read ? null : <RecordField label="Drift ID" value={item.id} usage={<>The <code>driftId</code> for <code>POST /api/actions/dispose</code></>} />}
+        {item.serviceRead ? null : <RecordField label="Drift ID" value={item.id} usage={<>The <code>driftId</code> for <code>POST /api/actions/dispose</code></>} />}
         <RecordField copy={false} label="Change type" value={item.changeType} />
         <RecordField copy={false} label="Blast radius" value={item.blastRadius} />
         {record}

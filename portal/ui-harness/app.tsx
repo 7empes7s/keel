@@ -57,6 +57,7 @@ import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 import { integrationsPageVerdict } from "@/lib/integrations-view";
 import { ServiceNowPanel } from "@/components/servicenow-panel";
 import type { ServiceNowStatus } from "@/lib/servicenow";
+import { serviceUndo } from "@/lib/service-changes-view";
 import type { ActivationPreview, Policy, PolicyAction } from "@/lib/policies";
 import { RULE_KINDS, RULE_STATES, ruleCounts, ruleKind, ruleState, rulesStatus } from "@/lib/policy-view";
 import { peopleCounts, peopleStatus } from "@/lib/people-view";
@@ -1580,12 +1581,17 @@ const SITES: SitePermissionsData = {
 };
 
 // Site permissions audit: site settings that changed between two daily reads.
-// Service setting changes: each service read compared with the one before it, so the
-// Changes list's service filter and grouping cover more than Entra ID and Intune.
+// Service setting changes: each service read compared with the service's approved
+// setup, so the Changes list's service filter and grouping cover more than Entra ID and
+// Intune. SharePoint and Power Platform cannot be undone from the portal yet.
 const serviceChange = (id: string, workload: string, resourceKey: string, name: string, over: Partial<DriftRecord>, alert: string): DriftRecord => ({
   id, naturalKey: `${workload}:${resourceKey}`, resourceType: workload, changeType: "modified", blastRadius: "access-affecting",
   detectedAt: "2026-10-02T02:00:00Z", before: null, after: null, name,
-  serviceRead: { workload, resourceKey, collectionId: "c0110000-0000-4000-8000-0000000000c5", previousCollectionId: "c0110000-0000-4000-8000-0000000000c4", alertId: alert, alertState: "open" },
+  serviceRead: {
+    workload, resourceKey, collectionId: "c0110000-0000-4000-8000-0000000000c5", previousCollectionId: "c0110000-0000-4000-8000-0000000000c4", previousReadAt: "2026-09-30T02:00:00Z",
+    comparedWith: "approved", alertId: alert, alertState: "open",
+    undo: serviceUndo({ workload, resourceKey, changeType: over.changeType ?? "modified" }, { restorable: true, reason: null }),
+  },
   ...over,
 });
 const SERVICE_CHANGES: DriftRecord[] = [
@@ -1674,7 +1680,18 @@ const WORKLOAD_BACKUPS = [
   { collectionId: "c0110000-0000-4000-8000-000000000002", takenAt: "2026-10-02T06:12:00Z", items: 7 },
   { collectionId: "c0110000-0000-4000-8000-000000000012", takenAt: "2026-09-29T06:10:00Z", items: 8 },
 ];
+// The read a service setting change's undo restores from (serviceChange above).
+const SERVICE_UNDO_READ = { collectionId: "c0110000-0000-4000-8000-0000000000c4", takenAt: "2026-09-30T02:00:00Z", items: 3 };
 function workloadChoicesFixture(collection: string | null) {
+  if (collection === SERVICE_UNDO_READ.collectionId) {
+    return {
+      workload: "exchange-mail-flow", backups: [WORKLOAD_BACKUPS[0], SERVICE_UNDO_READ], chosen: SERVICE_UNDO_READ,
+      groups: [{ kind: "transportRule", name: "Mail flow (transport) rules", restorable: true, reason: null, items: [
+        { key: "transport-rule:Forward finance mail", name: "Forward finance mail", change: "changed", restorable: true, reason: null, tenantWide: false },
+        { key: "transport-rule:KEEL-RT Quarantine executables", name: "KEEL-RT Quarantine executables", change: "same", restorable: true, reason: null, tenantWide: false },
+      ] }],
+    };
+  }
   const chosen = WORKLOAD_BACKUPS.find((backup) => backup.collectionId === collection) ?? WORKLOAD_BACKUPS[0];
   const older = chosen !== WORKLOAD_BACKUPS[0];
   const rule = (id: string, name: string, change: "changed" | "deleted" | "same" | null) => ({
@@ -1859,7 +1876,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
         <Verdict text={verdict.text} tone={verdict.tone} />
         <div data-layer="explanation">
-          <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate"]} items={items} now={now} summary={DRIFT_SUMMARY} />
+          <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} now={now} summary={DRIFT_SUMMARY} />
         </div></>;
     }
     case "/jobs/a4": { const detail = jobs.find((item) => item.id === "a4")!; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }

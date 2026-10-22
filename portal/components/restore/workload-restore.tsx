@@ -155,13 +155,15 @@ export function manualWords(reason: string): string {
   return sentence(reason.replace(/\ban administrator\b/g, "an admin"));
 }
 
-export function WorkloadRestore({ workload, name, canRestore, canApprove, now, onClose }: {
+export function WorkloadRestore({ workload, name, canRestore, canApprove, now, onClose, start }: {
   workload: string;
   name: string;
   canRestore: boolean;
   canApprove: boolean;
   now: string;
   onClose: () => void;
+  // Opens on this backup with these objects chosen (an undo from the Changes page).
+  start?: { collectionId: string; targets: string[] };
 }) {
   const [choices, setChoices] = useState<WorkloadChoices | null>(null);
   const [loading, setLoading] = useState(true);
@@ -193,8 +195,11 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
       const found = await fetchChoices(workload, collectionId);
       setChoices(found);
       // Start with what changed since: the likely thing to put back. Settings that
-      // affect the whole tenant are never ticked for you.
-      setSelected(new Set(found.groups.flatMap((group) => group.items.filter((item) => item.restorable && !item.tenantWide && item.change === "changed").map((item) => item.key))));
+      // affect the whole tenant are never ticked for you, unless an undo asked for them.
+      const asked = start && found.chosen.collectionId === start.collectionId ? new Set(start.targets) : null;
+      setSelected(new Set(found.groups.flatMap((group) => group.items
+        .filter((item) => item.restorable && (asked ? asked.has(item.key) : !item.tenantWide && item.change === "changed"))
+        .map((item) => item.key))));
     } catch {
       setError("KEEL could not read this backup. Reload in a minute.");
     } finally {
@@ -202,7 +207,7 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
     }
   }
 
-  useEffect(() => { void load(null); }, [workload]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load(start?.collectionId ?? null); }, [workload, start?.collectionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const snapshots = useMemo<SnapshotOption[]>(() => (choices?.backups ?? []).map((backup) => ({
     id: backup.collectionId, startedAt: backup.takenAt, completedAt: backup.takenAt, resourceCount: backup.items,

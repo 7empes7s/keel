@@ -168,7 +168,7 @@ export async function runWorkloadCollection(client, { tenantRef, config, scope =
     }
     runs.push({ workload: step.workload, outcome: run.outcome, collectionId: run.id, reasons, drift });
     logger.log(`${step.workload}: ${run.outcome}${run.outcome === 'disabled' ? ' (not qualified; nothing was read)' : ''}`);
-    if (drift.status === 'detected') logger.log(`${step.workload}: ${drift.changes} drift change(s) since the previous run`);
+    if (drift.status === 'detected') logger.log(`${step.workload}: ${drift.changes} new change(s) against the approved setup`);
     if (drift.status === 'failed') logger.log(`${step.workload}: drift detection failed: ${drift.error}`);
   }
   const proof = proofExpiry([...inputs.reads, ...inputs.writes], { now: now() });

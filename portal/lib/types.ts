@@ -365,9 +365,9 @@ export interface DriftRecord {
   // did not compute them; evidence is null when it could not be read.
   semantic?: SemanticChange;
   evidence?: ChangeEvidence | null;
-  // Set on a change found by comparing a service read (Exchange, SharePoint, Teams,
-  // Purview, Power Platform) with the read before it. Those settings have no approved
-  // setup, so the change has no accept or undo: its alert is where someone reviews it.
+  // Set on a change found by a service read (Exchange, SharePoint, Teams, Purview,
+  // Power Platform), compared with that service's approved setup. Accept adds it to that
+  // setup; undo goes through the service restore when Keel can write the setting back.
   serviceRead?: ServiceRead;
 }
 
@@ -378,9 +378,23 @@ export interface ServiceRead {
   // As stored: "transport-rule:Block forwarding", "site:<id>" or "tenant".
   resourceKey: string;
   collectionId: string;
+  // The read that holds the approved value (or, for a change recorded before the
+  // service had an approved setup, the read before the change): an undo restores from it.
   previousCollectionId: string;
+  // When that read was taken; null when unknown.
+  previousReadAt: string | null;
+  // What the read was compared with: the service's approved setup, or (older changes)
+  // the read before it.
+  comparedWith: "approved" | "previous";
   alertId: string | null;
   alertState: string | null;
+  // Whether Keel can put the earlier value back, and why not when it cannot.
+  undo: ServiceUndo;
+}
+
+export interface ServiceUndo {
+  possible: boolean;
+  reason: string | null;
 }
 
 // engine/govern/semanticDrift.mjs#semanticChange.

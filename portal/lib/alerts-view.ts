@@ -99,11 +99,11 @@ const CHANGE_WORDS: Record<string, string> = {
   removed: "was removed since the approved setup was saved",
 };
 
-// Workload settings (SharePoint) have no baseline: each read is compared with the
-// read before it (engine/govern/workloadDrift.mjs).
+// Service settings (Exchange, SharePoint, Teams, ...) are compared with the service's
+// own approved setup (engine/govern/workloadDrift.mjs).
 const WORKLOAD_CHANGE_WORDS: Record<string, string> = {
-  modified: "Its settings changed since the previous read.",
-  added: "It is new since the previous read.",
+  modified: "Its settings differ from the approved setup.",
+  added: "It is new since the approved setup.",
   removed: "It was missing from the latest read.",
 };
 
@@ -161,7 +161,7 @@ const PLAIN_KIND_WORDS: Record<string, string> = {
 export function causeSentence(alert: AlertItem): string {
   if (alert.control === "baseline" && alert.condition === "drift") {
     if (alertWorkload(alert.resourceKey)) {
-      return WORKLOAD_CHANGE_WORDS[alert.cause.changeType ?? ""] ?? "Its settings changed since the previous read.";
+      return WORKLOAD_CHANGE_WORDS[alert.cause.changeType ?? ""] ?? "Its settings differ from the approved setup.";
     }
     const change = CHANGE_WORDS[alert.cause.changeType ?? ""] ?? "differs from the approved setup";
     return alert.conditionActive ? `It ${change}.` : "It matches the approved setup again.";

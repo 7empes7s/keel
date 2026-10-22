@@ -45,6 +45,7 @@ export const WORKLOADS = Object.freeze([
   'sharepoint-site-settings', 'teams-settings', 'exchange-mailbox-settings', 'onedrive-site-settings', 'purview-labels',
   'exchange-mail-flow', 'teams-org-policies', 'purview-retention-dlp',
   'exchange-extended',
+  'exchange-role-groups',
   'teams-voice-policies', 'purview-governance',
   'power-platform-settings',
 ]);
@@ -339,6 +340,16 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
     source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
   })),
+  // Exchange admin role groups, in the Exchange Online session with no parameters.
+  // engine/collect/workloads/exchangeRoleGroups.mjs holds the fields and identity.
+  {
+    id: 'exchange-role-groups.role-groups', workload: 'exchange-role-groups', resource: 'Exchange admin role groups',
+    operation: cmdlet('Get-RoleGroup', 'ExchangeOnlineManagement'),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
+    source: doc('/en-us/powershell/module/exchange/get-rolegroup'),
+  },
   // Wave 1 READ-TEAMS-PV: Teams calling, voice and live event policies, and the
   // policies assigned to users and groups, in the MicrosoftTeams session.
   // engine/collect/workloads/teamsExtended.mjs holds the fields and identities.

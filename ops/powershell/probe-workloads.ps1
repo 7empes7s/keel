@@ -305,6 +305,8 @@ if ($Workloads -contains 'exo' -and (Test-KeelPrereq -Workload 'exo' -Value $Org
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-SafeAttachmentRule' -Block { Get-SafeAttachmentRule }
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ATPProtectionPolicyRule' -Block { Get-ATPProtectionPolicyRule }
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AtpPolicyForO365' -Block { Get-AtpPolicyForO365 }
+        # Exchange admin role groups (engine/collect/workloads/exchangeRoleGroups.mjs): reads only.
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-RoleGroup' -Block { Get-RoleGroup }
     } catch {
         Add-Result -Workload 'exo' -Connected $false -Cmdlet $null -Ok $false -Count $null -ErrorText $_.Exception.Message
         Write-Diag "exo connect FAILED: $($_.Exception.Message)"

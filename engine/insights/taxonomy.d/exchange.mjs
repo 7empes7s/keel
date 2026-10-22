@@ -11,7 +11,7 @@ export default Object.freeze({
   categories: Object.freeze([
     { key: 'mailboxes', name: 'Mailboxes', types: ['exchange-mailbox-settings'], match: /mailbox(settings|permission|folder|plan)?$|mailboxsettings|mailboxretention|mailuser|mailcontact|recipient|inboxrule|forwarding|autoreply|calendar/ },
     { key: 'groups', name: 'Groups and address lists', types: [], match: /distribution|dynamicgroup|unifiedgroup|roomlist|addresslist|addressbook/ },
-    { key: 'roles', name: 'Admin roles', types: ['exchangeRoleDefinition', 'exchangeRoleAssignment', 'exchangeCustomAppScope'], match: /role|scope/ },
+    { key: 'roles', name: 'Admin roles', types: ['exchange-role-groups', 'exchangeRoleDefinition', 'exchangeRoleAssignment', 'exchangeCustomAppScope'], match: /role|scope/ },
     { key: 'mail-flow', name: 'Mail flow and protection', types: ['exchange-mail-flow'], match: /mailflow|transport|connector|connectionfilter|defenderforoffice|journal|accepteddomain|remotedomain|dkim|dmarc|spam|phish|malware|safelink|safeattachment|quarantine|protection|threat/ },
     { key: 'access', name: 'Sharing and client access', types: [], match: /sharing|organizationrelationship|federation|owa|outlook|clientaccess|authpolicy|authenticationpolicy|addin/ },
     { key: 'tenant', name: 'Filtering, retention and mobile', types: ['exchange-extended'], match: /extended|filter|hygiene|retention|mobile|activesync|deviceaccess/ },
@@ -22,6 +22,12 @@ export default Object.freeze({
     exchangeRoleDefinition: { name: 'Exchange admin role' },
     exchangeRoleAssignment: { name: 'Exchange admin role assignment' },
     exchangeCustomAppScope: { name: 'Exchange app access scope' },
+    // Read with Get-RoleGroup (a workload, so it sets its own priority).
+    'exchange-role-groups': {
+      name: 'Exchange admin role group',
+      priority: 'high',
+      reason: 'Its members get Exchange admin rights over the whole organization.',
+    },
     'exchange-mailbox-settings': {
       name: 'Exchange mailbox setting',
       priority: 'high',

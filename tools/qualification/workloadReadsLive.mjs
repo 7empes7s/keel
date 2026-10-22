@@ -36,6 +36,7 @@ import { basename, dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { structuredFailure } from '../../engine/collect/workloads/exchange.mjs';
+import { readExchangeRoleGroups } from '../../engine/collect/workloads/exchangeRoleGroups.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
 import { pseudonymizeCapture } from './pseudonymize.mjs';
@@ -59,7 +60,9 @@ export async function readSharePointSiteSharing({ powershell }) {
   }
 }
 
-export const WORKLOAD_READERS = Object.freeze({ ...WRITTEN_READERS, [SHAREPOINT_WORKLOAD]: readSharePointSiteSharing });
+export const WORKLOAD_READERS = Object.freeze({
+  ...WRITTEN_READERS, [SHAREPOINT_WORKLOAD]: readSharePointSiteSharing, 'exchange-role-groups': readExchangeRoleGroups,
+});
 
 export { READ_FAMILIES, WORKLOAD_READS_LIVE_GATE, workloadReadsCapturePlan, workloadReadsRecordFile };
 

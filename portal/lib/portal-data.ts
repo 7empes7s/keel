@@ -47,7 +47,7 @@ import { loadServiceChanges } from "@/lib/service-changes";
 import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
 import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
-import { databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
+import { databaseIsLocal, databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
 import type {
   BaselineCapture,
   BaselineChanges,
@@ -485,22 +485,36 @@ async function baselinesWithCapture(client: KeelClient, ref: string, now: Date):
   });
 }
 
-function readRecoveryManifest(): { manifest: UnknownRecord | null; source: string | null } {
+type StorageBasis = NonNullable<StorageResidency["basis"]>;
+
+function readRecoveryManifest(): { manifest: UnknownRecord | null; source: string | null; basis: StorageBasis | null } {
   const path = recoveryManifestPath();
-  if (!path) return { manifest: null, source: null };
+  if (!path) {
+    // No recovery manifest set: backups are kept in Keel's own database, so when that
+    // database runs on this server, that is where they are. A remote database stays
+    // unknown rather than guessed.
+    return databaseIsLocal(databaseUrl())
+      ? { manifest: { residency: { provider: "local-disk" } }, source: null, basis: "database-location" }
+      : { manifest: null, source: null, basis: null };
+  }
   try {
-    return { manifest: JSON.parse(readFileSync(/* turbopackIgnore: true */ path, "utf8")) as UnknownRecord, source: path };
+    return { manifest: JSON.parse(readFileSync(/* turbopackIgnore: true */ path, "utf8")) as UnknownRecord, source: path, basis: "recovery-manifest" };
   } catch {
     // An unreadable manifest is reported as not configured, never guessed.
-    return { manifest: null, source: path };
+    return { manifest: null, source: path, basis: null };
   }
+}
+
+function storageFrom(): StorageResidency {
+  const { manifest, source, basis } = readRecoveryManifest();
+  const storage = { ...(storageResidency({ manifest }) as Omit<StorageResidency, "source">), source };
+  return { ...storage, basis: storage.configured ? basis : null };
 }
 
 export async function getComplianceData(): Promise<ComplianceData> {
   const ref = tenantRef();
   const now = new Date();
-  const { manifest, source } = readRecoveryManifest();
-  const storage = { ...(storageResidency({ manifest }) as Omit<StorageResidency, "source">), source };
+  const storage = storageFrom();
   return withClient(async (client) => {
     const [{ findings, summary }, baselines] = await Promise.all([
       complianceFindings(client, { tenantRef: ref, now }) as Promise<{ findings: ComplianceFinding[]; summary: ComplianceSummary }>,
@@ -1387,8 +1401,7 @@ export async function getDashboardData(): Promise<DashboardData> {
 export async function getResilienceData(): Promise<ResilienceData> {
   const ref = tenantRef();
   const now = new Date();
-  const { manifest, source } = readRecoveryManifest();
-  const storage = { ...(storageResidency({ manifest }) as Omit<StorageResidency, "source">), source };
+  const storage = storageFrom();
   return withClient(async (client) => {
     const metrics = (await loadRecoveryMetrics(client, {
       tenantRef: ref,

@@ -7341,3 +7341,49 @@ item that needs it stays untouched.
 - **Expected:** the read is proven; after step 4 exchange-role-groups is `complete` (or `partial` from unknown fields only) with
   one observation per role group (built-in ones included); in step 5 `named` equals `by_id`.
 - **Report:** per step, the result; the evidence branch and commit; on / off with the reason; step 5's two numbers.
+
+### Q158: Capture, import and turn on the per-site SharePoint sharing read; check the Sites pages (read-only toward the tenant, after #538)
+- Drafted by the "Per-site sharing setting" thread (2026-10-22). Code: PR #538. The `sharepoint-site-settings` workload now also
+  reads each site's own `sharingCapability` with one `Get-PnPTenantSite` (no parameters) through PnP, gated on the
+  `sharepoint.site-sharing` ledger row. Until a live read record is imported the Sites list shows "Not read yet" in Sharing setting.
+- Needs: /opt/keel-live at the #538 merge or later (`grep -q readSiteSharing /opt/keel-live/engine/collect/workloads/sharepoint.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** reads only. `Get-PnPTenantSite` with the Collector credential (Sites.FullControl.All + SharePoint Administrator, already
+  held, as the OneDrive read). No `Set-`, `New-` or `Remove-` cmdlet. Grant, assign or create nothing.
+- **Host:** #538 pins PnP.PowerShell to 3.4.1 in `ops/powershell/Dockerfile`. If the PowerShell image is not rebuilt on deploy,
+  rebuild it from the deployed tree, then report `Get-Module -ListAvailable PnP.PowerShell` from the image.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Scope file:** add `"sharepoint": <the PnP config the OneDrive read uses>` (its `powershellConfigs.onedrive` value) under
+     `powershellConfigs` in `/etc/keel/workload-scope.json`. Keep mode and owner. Report the keys before and after.
+  2. **Capture** with that config:
+     ```bash
+     node tools/qualification/workloadReadsLive.mjs capture --workload sharepoint-site-settings --tenant-ref <tenant ref> \
+       --collector-ref app:<that config's clientId> --collector-config <that config> \
+       --build "$(git -C /opt/keel-live rev-parse HEAD)" \
+       --out docs/release/qualifications/workload-reads-sharepoint-site-settings-live-acceptance.json
+     node tools/qualification/pseudonymize.mjs check docs/release/qualifications/workload-reads-sharepoint-site-settings-live-acceptance.json
+     ```
+     Report exit codes, `outcome`, `proven` and `notProven` verbatim. If the check is not exit 0, stop and file an issue.
+  3. **Evidence:** commit the record to `claude/live-evidence-sharepoint-site-sharing` (from `origin/master`, that file only, checked
+     for secrets) and push. No PR.
+  4. **Import** with `--dir` a checkout holding this record and the other records (as Q141 step 5):
+     `node cli/keel-workload-collect.mjs import --dir <dir>`. Report exit code and `imported` / `refused` / `absent`. A refusal
+     about the PnP.PowerShell version means the image and the OneDrive proof differ: report both versions and stop.
+  5. `node cli/keel-workload-collect.mjs run` once by hand. Report sharepoint-site-settings' outcome and reasons, then (DB only):
+     ```sql
+     WITH c AS (SELECT id FROM workload_collection WHERE workload='sharepoint-site-settings' AND outcome IN ('complete','partial')
+                 ORDER BY created_at DESC LIMIT 1)
+     SELECT field_coverage->'sharingCapability'->>'status' AS status, fields->>'sharingCapability' AS value, count(*)
+       FROM workload_observation WHERE collection_id IN (SELECT id FROM c) AND resource_key LIKE 'site:%' GROUP BY 1,2 ORDER BY 3 DESC;
+     SELECT fields->>'sharingCapability' AS tenant FROM workload_observation
+      WHERE collection_id IN (SELECT id FROM c) AND resource_key='tenant';
+     ```
+  6. **Live check** at https://keel.techinsiderbytes.com/sites (390 and 1440 px, light and dark): the Sharing setting column shows a
+     badge per site (no "Not read yet" for sites in step 5's `observed` rows); a site whose level is above the tenant's shows
+     "More open than the default" and counts in the "Shared wider than default" tile; a site page shows the Sharing setting tile.
+     Screenshots to `claude/live-evidence-sharepoint-site-sharing` under `screens/`.
+- **Expected:** the read is proven and imported; step 5 shows `observed` for every in-scope site (or `unknown` only for sites the
+  cmdlet did not list); the pages match step 5.
+- **Report:** per step, the result; evidence branch and commit; site counts per status/value; tenant value; any site wider than it.

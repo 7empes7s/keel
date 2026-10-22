@@ -5756,7 +5756,21 @@ item that needs it stays untouched.
      `systemctl try-reload-or-restart keel-worker`, and `bash -n` it. No `restart keel-worker` / `try-restart keel-worker`
      may remain. Report the diff on #448 too.
 - Status: in-progress
-- Result:
+- Result: in progress (2026-10-22 07:44 UTC). Step 0, A and B are done; C waits for the **2026-10-23 01:00 UTC** run. Marouane approved the host changes directly in this session (07:4x UTC). Read-only toward the tenant.
+  - **Step 0:**
+    1. `#449` count in /opt/keel-live: **1** (f61ea92, 01:29 UTC).
+    2. The unit had no reload. I installed `/opt/keel-live/ops/keel-worker.service` (old copy at `/root/keel-worker.service.bak-q121`) and ran
+       `daemon-reload`. `ExecReload` is now `/bin/kill -USR2 $MAINPID`. No restart: the worker had started at 07:08:50, after #449.
+    3. `/opt/keel-deploy/deploy.sh` (backup `deploy.sh.bak-q121`): lines 125 and 157 changed from `systemctl try-restart keel-worker` to
+       `systemctl try-reload-or-restart keel-worker`. `bash -n` ok, and no `try-restart` or `restart keel-worker` is left. The diff is on #448.
+  - **A.** Running jobs: 0. `systemctl reload keel-worker` at 07:43:55, exit 0:
+    `07:43:55 worker Mulinux: received SIGUSR2 — finishing current job, then exiting` / `07:43:56 worker Mulinux: exited cleanly` /
+    `07:44:01 systemd: Started keel-worker.service` / `07:44:01 worker Mulinux: polling for jobs every 2000ms`. `is-active`: **active**;
+    MainPID 4025816 → **4033046**.
+  - **B.** `content-scope.json.bak-q101` kept as the rollback copy (namePrefix `KEEL-RT-`). I copied `/root/q101-scope-wholetenant.json` over the scope
+    file: root:root 600, parse exit 0. Contents: `{"tenantHost":"<org>.sharepoint.com"}`.
+    - Before the run: `content_chunk` 4 054 / 225 270 538 bytes. `df -h /`: 150G, 51G used, 93G free (36 %). `du -sh` 229M.
+  - **C.** Pending. A watcher logs to `/root/q121-watch.log` every 5 minutes and copies `.bak-q101` back if free space drops below 20 %.
 - **Read-only toward the tenant**, same as Q101: collectors only read; no grants, no fixtures, no tenant writes. 403s are
   reported (count and masked reason), never fixed by granting.
 - **A. Drain check (host only, no job running).** `SELECT count(*) FROM job WHERE status = 'running'` must be 0. Then

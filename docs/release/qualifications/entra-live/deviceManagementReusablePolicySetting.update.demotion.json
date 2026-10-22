@@ -1,0 +1,18 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-demotion",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "deviceManagementReusablePolicySetting",
+  "operation": "update",
+  "reason": "Graph has no PATCH route for reusable settings (400 'No method match route template ... with http verb PATCH'); only PUT with the full settingInstance works, and the backup holds none (#470)",
+  "restoreRef": "b871dfea-9b8e-8740-b6e8-8a0381943703",
+  "decidedAt": "2026-10-22T08:07:09.655Z",
+  "builderSteps": [
+    "remove the update registration for deviceManagementReusablePolicySetting in engine/coverage/capabilities.mjs",
+    "add \"live gate #148: update failed live: <reason>\" to TYPE_DECISIONS.deviceManagementReusablePolicySetting.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "or, when the cause is a KEEL bug with a fix under way, keep the registration and record the failure under TYPE_DECISIONS.deviceManagementReusablePolicySetting.liveFailures['update'] (failedAt = this record's date, reason = this record's reason, verbatim); the ledger then shows the write as fixture-tested with a failed live run",
+    "commit this file under docs/release/qualifications/entra-live/ in the same PR"
+  ]
+}

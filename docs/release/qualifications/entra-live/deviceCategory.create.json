@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "deviceCategory",
+  "operation": "create",
+  "fieldProjectionContractVersion": 1,
+  "build": "c396a2cdd732bea1188e79bf0364bdd6088da814",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-22T07:58:18.792Z",
+  "restoreRef": "b3e8fb3f-b493-868f-8cca-533e3306e96b",
+  "naturalKey": "deviceCategory:d093772f-a081-8a0d-bbca-b6fc5922037c",
+  "fixtureKind": "named-object",
+  "captureSha256": "d59513ce731a1f70b6834fe7ea3424ddafc5d27487e0afb11cc0b389a7912b73",
+  "proofRef": "docs/release/qualifications/entra-live/deviceCategory.create.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "780e4b8e20e8dd279b2c5367cdba59e0ba8a05838b800b6aa73ed719b8bf030d"
+    }
+  }
+}

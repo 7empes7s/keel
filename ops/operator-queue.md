@@ -7705,3 +7705,25 @@ item that needs it stays untouched.
   3. Cleanup: delete the script. Report anything left. (The completion item may stay pending; report its id.)
 - **Report:** B; step 1 artifact id and log line; step 2 approval and job ids and the item row; anything left in the tenant.
   If the step is missing in step 1 or 2, report the artifact's `results.applied` entry for the script and comment on #546.
+
+### Q165: Live re-check that one bad audit entry is skipped and counted, not a stuck page (#552 second part, after #557)
+- Drafted by the "Skip bad audit events" thread (2026-10-22). Code: PR #557. Fixture-tested only.
+  - **Change:** an audit entry that fails validation or the secret filter (bad time, outside the window, token-shaped id,
+    invalid attribution fact) is skipped and counted by reason; the rest of the page is stored and the cursor advances.
+    Run evidence gets `skippedEvents` and `skippedReasons`; the Collector log line adds `, N skipped as unreadable` when N > 0.
+    A window with skipped entries is reported as `events-skipped` (never "exact" or "nobody on record").
+    Page-level problems (bad cursor, oversized page) still stop as `invalid-page`.
+- Needs: /opt/keel-live at the #557 merge or later (`grep -q checkEvent /opt/keel-live/engine/identity/auditIngest.mjs`).
+- Status: open
+- Result:
+- **Tenant:** Collector reads only. No tenant writes, no CA policies, break-glass or Marouane's account.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. After the next scheduled collect (or one `collect` job), report the stdout lines starting `Microsoft Entra audit log:` and
+     `Intune audit log:`.
+  2. `SELECT source, evidence->>'status' AS status, evidence->'window' AS window, evidence->>'insertedEvents' AS inserted, evidence->>'skippedEvents' AS skipped, evidence->'skippedReasons' AS reasons FROM audit_ingest_run WHERE source IN ('audit','intune-audit') ORDER BY started_at DESC LIMIT 10;`
+  3. `SELECT source, evidence->>'status' AS status, count(*) FROM audit_ingest_run WHERE started_at > now() - interval '1 day' GROUP BY 1, 2 ORDER BY 1, 2;`
+- **Expected:** new runs carry `skipped` (usually `0`) and `reasons` (usually `{}`); no new `invalid-page` runs for either log;
+  statuses `complete` / `complete-empty` once caught up (or `budget-exhausted` that continues next run).
+  If `skipped` is above 0, report the reasons object only (it holds reason names and counts, never entry text) and comment on #552.
+  If `invalid-page` still appears, report the run's window and comment on #552.
+- **Report:** per step, the result.

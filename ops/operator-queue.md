@@ -6415,3 +6415,37 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; the originals; per kind: written / refused (exact message) / skipped / blocked; step 4; step 5 values; approval ids;
   the evidence branch and commit.
+
+### Q135: Live restore of a reusable settings group with its values (fixes #470, after #476)
+- Drafted by the "Reusable policy settings backed up empty" thread (2026-10-22), from your Q109 finding **#470**. Code: PR #476 (master `471cb9b`). Fixture-tested only.
+  - **Backup change:** `deviceManagementReusablePolicySetting` is now listed with
+    `$select=id,displayName,description,settingDefinitionId,settingInstance,lastModifiedDateTime`, so each group holds its values.
+  - **Restore change:** update is a full **PUT** (displayName, description, settingDefinitionId, settingInstance), never PATCH. Each
+    write is re-read with the same `$select` (the single-item GET with `$select` is unmeasured).
+  - **Refusals (skipped as manual, nothing written):** a backup without `settingInstance` (every snapshot before #476, e.g. S2 `ac991228`),
+    with "manual: this backup holds the group's name but not its values"; an update whose setting definition differs from the tenant's.
+  - Expect a one-time "changed" for each group on the first drift run after deploy, because older snapshots lack the values.
+- Needs: /opt/keel-live at `471cb9b` or later (`grep -q reusableSettingRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67 and Q109. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used; it holds
+  DeviceManagementConfiguration.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing.
+  Never touch CA policies, break-glass or Marouane's account. The group is used by no policy.
+- **Fixture:** firewall reusable settings group `KEEL-RT-155-addresses` (keyword, autoresolve false, one address 203.0.113.10),
+  used by no policy, as in Q109.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Create the fixture, then take snapshot S. **Backup check:** the fixture's payload in S holds `settingInstance` with the address.
+  2. **Old-backup refusal (no write expected):** dry run from Q109's S2 `ac991228` selecting `deviceManagementReusablePolicySetting`
+     (if S2 is gone, use any pre-B snapshot holding a group). Expect it skipped as manual with the text above, 0 writes. Do not promote.
+  3. **Update round:** in the portal change the fixture's description **and** its address to 203.0.113.20. Restore from S, approve,
+     enforce, capture the `update`. Expect a PUT (no PATCH), read back with the original description and 203.0.113.10.
+  4. **Create round:** delete the fixture. Restore from S, approve, enforce, capture the `create`. Expect it back with 203.0.113.10.
+  5. **Re-run check:** dry run from S after step 4. Expect 0 planned writes for the group. If the post-state check fails although the
+     values look equal (e.g. Graph returns an empty list as absent), report the read-back body.
+  6. Cleanup: delete every `KEEL-RT-155-*` fixture. Report anything left.
+  7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-reusable-settings`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; step 1 backup check; step 2 reason; per operation: promoted / refused (exact Graph message) / blocked; step 5;
+  approval ids; the evidence branch and commit; anything left in the tenant.

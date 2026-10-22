@@ -151,9 +151,8 @@ export function deliveryProblem(delivery: Pick<Delivery, "status" | "last_error"
   if (/not configured|setting .* is not set|is unset|missing/.test(raw)) {
     return { sentence: "The server setting that holds its address is not set.", whatToDo: "Ask whoever runs the Keel server to add the setting, then send a test." };
   }
-  const plain = (delivery.last_error ?? `${who} refused the message`).replace(/\s*\((?:HTTP|status)\s*\d+\)/gi, "").replace(/\s*\(HTTP[^)]*\)/gi, "").trim();
-  const sentence = plain ? plain[0].toUpperCase() + plain.slice(1) + (/[.!?]$/.test(plain) ? "" : ".") : `${who} refused the message.`;
-  return { sentence, whatToDo: retrying ? "Keel tries again on its own." : "Check the address, then send a test." };
+  // Anything else: a plain sentence only. The provider's own words stay behind "Show details".
+  return { sentence: `${who} refused the message.`, whatToDo: retrying ? "Keel tries again on its own." : "Check the address, then send a test." };
 }
 
 export type HealthState = "failing" | "retrying" | "working" | "untested" | "off";
@@ -393,7 +392,7 @@ export function notificationsVerdict(data: { channels: Channel[] | null; subscri
       : `${listWords(failing.map((entry) => channelName(entry.channel)))} are failing`;
     const rest = others === 0 ? "no other channel is on" : others === 1 ? "the other channel works" : `the other ${others} channels work`;
     const problem = first.health.problem;
-    return { text: `${lead}; ${rest}.`, detail: problem ? `${problem.sentence} ${problem.whatToDo}` : undefined, tone: "attention", action: "test", channelId: first.channel.id };
+    return { text: `${lead}; ${rest}.`, detail: problem ? problem.sentence : undefined, tone: "attention", action: "test", channelId: first.channel.id };
   }
   if (subscriptions.length === 0) return { text: "Channels are set up, but no rule sends anything to them.", detail: "Add a rule so alerts reach someone.", tone: "attention", action: "add-rule", channelId: null };
   const retrying = enabled.filter((entry) => entry.health.state === "retrying");

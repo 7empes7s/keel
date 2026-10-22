@@ -12,7 +12,7 @@ import { addDays, inRange, rangeFromParam, rangeToParam, type Day } from "@/lib/
 import type { RiskTone } from "@/lib/menu-status";
 import { orderGroups, smartOrder } from "@/lib/selection";
 import { serviceFor, serviceOrder, SERVICES } from "@/lib/services";
-import { toast } from "@/lib/toast";
+import { refused, toast } from "@/lib/toast";
 import { useViewState } from "@/lib/use-view-state";
 import { worstTone } from "@/lib/menu-status";
 
@@ -156,6 +156,7 @@ export function KitPage({ many = false }: { many?: boolean }) {
           <button className="btn" onClick={() => toast({ title: "Backup started for the critical settings", href: "/jobs/job-1", hrefLabel: "Watch it" })} type="button">Show a done message</button>
           <button className="btn" onClick={() => toast({ tone: "info", title: "Rule turned off", action: { label: "Undo", run: () => toast({ title: "Rule turned back on" }) } })} type="button">Show a message with Undo</button>
           <button className="btn" onClick={() => toast({ tone: "warning", title: "Could not send the test message", detail: "The address was refused." })} type="button">Show a failure message</button>
+          <button className="btn" onClick={() => toast({ tone: "warning", title: "Undo not planned", ...refused(403, "AuthorizationError: Graph 403 Authorization_RequestDenied on /deviceManagement/deviceConfigurations") })} type="button">Show a refused request</button>
         </div>
         <DataUnavailable service={{ name: "ServiceNow", href: "/integrations" }} surface="ServiceNow approvals" />
         <DataUnavailable surface="Schedules" />

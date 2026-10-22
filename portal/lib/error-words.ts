@@ -86,6 +86,17 @@ export function plainError(error: unknown, options: PlainErrorOptions = {}): Pla
   return { cause: rule.cause(service), todo: rule.todo(service), raw };
 }
 
+/** Plain words for a refused portal request, by its HTTP status (0: no answer). The
+ *  server's own text goes behind "Show details". */
+export function refusalWords(status: number): Pick<PlainError, "cause" | "todo"> {
+  if (status === 0) return { cause: "Keel could not be reached.", todo: "Check your connection, then try again." };
+  if (status === 401 || status === 403) return { cause: "You need the right role for that, or your sign-in has ended.", todo: "Sign in again. If it still fails, ask an admin for the role." };
+  if (status === 404) return { cause: "It no longer exists.", todo: "Reload the page to see where things stand." };
+  if (status === 409) return { cause: "Someone else changed it first, or it was already done.", todo: "Reload the page to see where it stands." };
+  if (status === 400 || status === 422) return { cause: "Keel would not accept what was sent.", todo: "Open the details to see what it refused, fix that, then try again." };
+  return { cause: "Keel could not do that just now.", todo: "Try again in a minute. If it fails again, share the details with whoever runs Keel." };
+}
+
 /** Text that looks like a raw error: status codes, exception names, API paths. Used by
  *  the checks that keep raw error text out of plain view. */
 export const RAW_ERROR_PATTERN = /\b(Graph|HTTP)\s?[1-5]\d\d\b|\b[A-Z][A-Za-z]*(Error|Exception):|Authorization_Request|throttled after|(?<![\w.])\/(deviceManagement|groups|users|identity|policies|teams)\/|\bE(CONN\w*|TIMEDOUT|NOTFOUND)\b|\bsys_id\b|\b[a-z]+(_[a-z]+)+:\s/;

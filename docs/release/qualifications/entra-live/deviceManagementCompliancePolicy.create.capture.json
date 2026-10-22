@@ -1,0 +1,98 @@
+{
+  "restoreRef": "92a0be41-0c5b-8851-acc9-3487928391ea",
+  "entry": {
+    "naturalKey": "deviceManagementCompliancePolicy:bb1e40bc-9337-8aaf-a019-7f32d8b01f04",
+    "resourceType": "deviceManagementCompliancePolicy",
+    "operation": "create",
+    "targetId": "3d6a4962-5d4f-8fa0-8b8b-fdf0d9445697",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T18:48:39.645Z",
+    "priorState": null,
+    "intendedState": {
+      "name": "KEEL-RT-compliance",
+      "settings": [
+        {
+          "@odata.type": "#microsoft.graph.deviceManagementConfigurationSetting",
+          "settingInstance": {
+            "@odata.type": "#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance",
+            "choiceSettingValue": {
+              "value": "linux_deviceencryption_required_true",
+              "children": [],
+              "settingValueTemplateReference": null
+            },
+            "settingDefinitionId": "linux_deviceencryption_required",
+            "auditRuleInformation": null,
+            "settingInstanceTemplateReference": null
+          }
+        }
+      ],
+      "platforms": "linux",
+      "description": "KEEL restore fixture",
+      "technologies": "linuxMdm",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "scheduledActionsForRule": [
+        {
+          "ruleName": null,
+          "scheduledActionConfigurations": [
+            {
+              "actionType": "block",
+              "gracePeriodHours": 0,
+              "notificationTemplateId": "766d6357-cf13-863e-ac98-f99d551c3da0",
+              "notificationMessageCCList": []
+            }
+          ]
+        }
+      ]
+    },
+    "postState": {
+      "id": "3d6a4962-5d4f-8fa0-8b8b-fdf0d9445697",
+      "name": "KEEL-RT-compliance",
+      "settings": [
+        {
+          "id": "0",
+          "settingInstance": {
+            "@odata.type": "#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance",
+            "choiceSettingValue": {
+              "value": "linux_deviceencryption_required_true",
+              "children": [],
+              "settingValueTemplateReference": null
+            },
+            "settingDefinitionId": "linux_deviceencryption_required",
+            "auditRuleInformation": null,
+            "settingInstanceTemplateReference": null
+          }
+        }
+      ],
+      "platforms": "linux",
+      "description": "KEEL restore fixture",
+      "settingCount": 1,
+      "technologies": "linuxMdm",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies(settings())/$entity",
+      "creationSource": null,
+      "createdDateTime": "2026-10-22T18:48:39.9414117Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-10-22T18:48:39.9414117Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies('3d6a4962-5d4f-8fa0-8b8b-fdf0d9445697')/settings",
+      "scheduledActionsForRule": [
+        {
+          "id": "3d6a4962-5d4f-8fa0-8b8b-fdf0d9445697",
+          "ruleName": null,
+          "scheduledActionConfigurations": [
+            {
+              "id": "f900c87e-95e4-83ff-acc7-9f9e7cc7d77f",
+              "actionType": "block",
+              "gracePeriodHours": 0,
+              "notificationTemplateId": "766d6357-cf13-863e-ac98-f99d551c3da0",
+              "notificationMessageCCList": []
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

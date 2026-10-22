@@ -1373,6 +1373,29 @@ function provisioningProfileRefusal(resource, verb) {
  */
 export const REUSABLE_SETTING_SELECT = 'id,displayName,description,settingDefinitionId,settingInstance,lastModifiedDateTime';
 
+/**
+ * Issue #477: Graph gives the key child of a dynamic keyword item (the
+ * simple setting `..._{id}_id`, a guid) a new value on every write, much
+ * like a server id. It never counts when a group's values are compared;
+ * every other value still does.
+ */
+const REGENERATED_KEY_CHILD = /_\{id\}_id$/;
+
+export function withoutRegeneratedKeys(value) {
+  if (Array.isArray(value)) return value.map(withoutRegeneratedKeys);
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [key, child] of Object.entries(value)) {
+    out[key] = key === 'children' && Array.isArray(child)
+      ? child.filter((item) => !(REGENERATED_KEY_CHILD.test(item?.settingDefinitionId ?? '') && 'simpleSettingValue' in (item ?? {}))).map(withoutRegeneratedKeys)
+      : withoutRegeneratedKeys(child);
+  }
+  return out;
+}
+
+const sameReusableField = (field, left, right) => (field === 'settingInstance'
+  ? sameValue(withoutRegeneratedKeys(left), withoutRegeneratedKeys(right)) : null);
+
 export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // Delete only: create and update stay on the built-in path above.
   ...Object.fromEntries(Object.values(INTUNE_RECORDS).map((entry) => [entry.resourceType, defineRecord({
@@ -1426,7 +1449,7 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     resourceType: 'deviceManagementReusablePolicySetting', version: 'beta', collection: '/deviceManagement/reusablePolicySettings',
     operations: ['create', 'update'], updateMethod: 'PUT', readQuery: `$select=${REUSABLE_SETTING_SELECT}`,
     excluded: ['version', 'referencingConfigurationPolicyCount', 'referencingConfigurationPolicies'],
-    refusal: reusableSettingRefusal, permission: 'DeviceManagementConfiguration.ReadWrite.All',
+    refusal: reusableSettingRefusal, sameField: sameReusableField, permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
   windowsQualityUpdatePolicy: defineRecord({
     resourceType: 'windowsQualityUpdatePolicy', version: 'beta', collection: '/deviceManagement/windowsQualityUpdatePolicies',

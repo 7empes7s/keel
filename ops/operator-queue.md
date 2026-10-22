@@ -7250,8 +7250,11 @@ item that needs it stays untouched.
     `https://<portal host>/cdn-cgi/access/get-identity` for the same token. It never overwrites a set name, and it retries at most
     once an hour per portal process.
 - Needs: /opt/keel-live at the #510 merge or later (`test -f /opt/keel-live/engine/authz/displayName.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 18:40 UTC). **The operator's principal now has a real display name.** Reads only.
+  1. Human principals (`system_kind IS NULL`): `…@techinsiderbytes.com | <full name> (Entra ID)` (bac8d59b, the Entra requester); `…@gmail.com | <full name>` (2a47535a, the operator's Gmail principal). Neither is empty.
+  2. Not needed: the operator's row already has a name. (`KEEL_PORTAL_URL` is not set in db.env or portal.env, for reference.)
+  3. Local portal `curl`: not possible (the portal answers 401 without a Cloudflare Access login, as in Q150), so the job page's "Person" value could not be read.
 - **Tenant:** none. Reads Keel's own database only. Never set `display_name` by hand.
 - Do:
   1. `SELECT email, display_name FROM principal WHERE system_kind IS NULL ORDER BY email;` Report the rows (name the email's

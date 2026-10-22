@@ -222,6 +222,14 @@ const failureReason = (entry) => entry?.error ?? entry?.reason ?? 'no reason was
 export function failureSummary(failed) {
   return failed.map((entry) => `${entry?.naturalKey ?? 'unknown'}: ${failureReason(entry)}`).join('; ');
 }
+// A completion step is a single object on the tenant policy path and a list
+// on the identity path; log one line per step either way.
+export function completionStepLines(entry) {
+  const steps = [entry?.pendingApproval ?? entry?.completion ?? []].flat();
+  return steps
+    .filter((step) => step && typeof step.description === 'string' && step.description.length > 0)
+    .map((step) => `completion step: ${entry.naturalKey} — ${step.description}`);
+}
 function logFailures(logger, failed) {
   for (const entry of failed) logger.log(`  failed ${entry?.naturalKey ?? 'unknown'}: ${failureReason(entry)}`);
 }
@@ -1024,8 +1032,7 @@ export async function runRestore({
       logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
       logFailures(logger, result.failed);
       for (const entry of [...result.applied, ...result.skipped]) {
-        const step = entry.pendingApproval ?? entry.completion;
-        if (step) logger.log(`completion step: ${entry.naturalKey} — ${step.description}`);
+        for (const line of completionStepLines(entry)) logger.log(line);
       }
       results.applied.push(...result.applied);
       results.skipped.push(...result.skipped);

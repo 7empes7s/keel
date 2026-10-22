@@ -5304,6 +5304,7 @@ item that needs it stays untouched.
 - **Report:** steps 1 to 3 verbatim.
 
 ### Q109: Live restore of four Intune settings kinds (restore gaps batch 1, after #430)
+- Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Make backed-up kinds restorable" thread (2026-10-21). Code: PR #430. New record writers, fixture-tested only:
   reusable settings groups (`deviceManagementReusablePolicySetting`, beta, create + update), Windows hotpatch policies
   (`windowsQualityUpdatePolicy`, beta, create + update), device categories (`deviceCategory`, v1.0, create + update),
@@ -5495,6 +5496,7 @@ item that needs it stays untouched.
 - **Report:** step 1 exit code and error lines, steps 2 and 3 verbatim.
 
 ### Q113: Live backup and restore of Intune scripts and remediations (restore gaps batch 4, after #435)
+- Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 4" thread (2026-10-21). Code: PR #435. The backup now lists each script kind, then reads each
   script on its own so it holds the script body (Graph returns the body only on a single-script GET). New record writers,
   fixture-tested only, beta, create + update: Windows PowerShell scripts (`deviceManagementScript`), macOS shell scripts
@@ -5535,6 +5537,7 @@ item that needs it stays untouched.
   results; approval ids; the evidence branch and commit; anything left in the tenant.
 
 ### Q114: Live backup and restore of macOS custom attribute scripts and administrative templates (restore gaps batch 5, after #436)
+- Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 5" thread (2026-10-21). Code: PR #436. The backup now reads each macOS custom attribute script
   on its own (so it holds `scriptContent`), and reads the values of each administrative template setting
   (`definitionValues[].presentationValues`, one GET per setting). New record writers, fixture-tested only, beta, create + update:
@@ -5610,6 +5613,7 @@ item that needs it stays untouched.
 - **Report:** step 1 exit code and error lines, steps 2 and 3 verbatim.
 
 ### Q116: Live backup and restore of app categories, Autopilot profiles and policy sets (restore gaps batch 6, after #442)
+- Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 6" thread (2026-10-22). Code: PR #442. The backup now reads each policy set on its own with
   its items expanded (`/deviceAppManagement/policySets/{id}?$expand=items`). New record writers, fixture-tested only, create + update:
   `mobileAppCategory` (v1.0; built-in categories never written), `windowsAutopilotDeploymentProfile` (beta; `@odata.type` sent,
@@ -5701,6 +5705,7 @@ item that needs it stays untouched.
 - **Report:** steps 1 to 4 verbatim.
 
 ### Q120: Live backup and restore of settings catalog compliance policies (restore gaps batch 7, after #451)
+- Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 7" thread (2026-10-22). Code: PR #451. The backup now reads each settings catalog
   compliance policy on its own: `GET /beta/deviceManagement/compliancePolicies/{id}?$expand=settings,scheduledActionsForRule($expand=scheduledActionConfigurations)`.
   New record writer `deviceManagementCompliancePolicy` (beta, fixture-tested only), create + update: create is one POST with
@@ -5793,6 +5798,7 @@ item that needs it stays untouched.
 - **Report:** Needs 1-3, A, B (masked), C. Open an issue labelled `operator-report` only if a rollback happened.
 
 ### Q122: Live backup and restore of e-book categories, Microsoft Tunnel configurations and Apple user enrollment profiles (restore gaps batch 8, after #453)
+- Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 8" thread (2026-10-22). Code: PR #453 (merged 2026-10-22 02:06 UTC, merge 3edc50d). No backup change: all three kinds were already read
   (list reads in `tools/tenant-probe/catalog.d/intune-leftovers.mjs`). New record writers, fixture-tested only, create + update, beta:
   `managedEBookCategory` (name), `microsoftTunnelConfiguration` (network, DNS, `routeIncludes`/`routeExcludes`, port, advanced
@@ -5835,6 +5841,7 @@ item that needs it stays untouched.
   result; approval ids; the evidence branch and commit; anything left in the tenant.
 
 ### Q123: Live backup and restore of Company Portal branding profiles and Exchange app access scopes (restore gaps batch 9, after #454)
+- Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 9" thread (2026-10-22). Code: PR #454 (merged 2026-10-22 02:43 UTC, merge a2f0955). No backup change: both kinds
   were already read (list reads in `tools/tenant-probe/catalog.d/tenant-connectors.mjs` and `other-role-providers.mjs`). New record writers,
   fixture-tested only, create + update, beta:
@@ -5876,6 +5883,7 @@ item that needs it stays untouched.
   approval ids; the evidence branch and commit; anything left in the tenant.
 
 ### Q124: Live backup and restore of Endpoint analytics baselines, classroom carts and Android enrollment profiles (restore gaps batch 10, after #455)
+- Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 10" thread (2026-10-22). Code: PR #455 (merged 2026-10-22T03:25:16+00:00, merge 0537e09). No backup change: all four kinds were already read
   (list reads in `tools/tenant-probe/catalog.d/intune-leftovers.mjs`). New record writers, fixture-tested only, create + update, beta:
   `userExperienceAnalyticsBaseline` (`displayName` only; **built-in baselines refused**), `cartToClassAssociation` (name, description,
@@ -5958,6 +5966,7 @@ item that needs it stays untouched.
 - **Report:** B; step 1 counts and the id check; the exact result objects of steps 2 and 3; confirmation that no write was attempted.
 
 ### Q126: Live backup and restore of imported ADMX files and BIOS configurations (restore gaps batch 11, after #457)
+- Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 11" thread (2026-10-22). Code: PR #457. **Backup change:** `groupPolicyUploadedDefinitionFile` is now
   listed, then each file read on its own (`/beta/deviceManagement/groupPolicyUploadedDefinitionFiles/{id}`), so the backup holds the
   ADMX `content` and `groupPolicyUploadedLanguageFiles[].content`. New record writers, fixture-tested only, beta:
@@ -6025,6 +6034,7 @@ item that needs it stays untouched.
   created) / blocked; step 5; approval ids; the evidence branch and commit; anything left in the tenant.
 
 ### Q127: Live backup and restore of Windows app protection policies and iOS app provisioning profiles (restore gaps batch 12, after #458)
+- Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 12" thread (2026-10-22). Code: PR #458. **Backup change:** both kinds are now listed, then each object
   read on its own: `windowsManagedAppProtection` at `/beta/deviceAppManagement/windowsManagedAppProtections/{id}?$expand=apps` (so the
   backup holds the apps it covers), `iosLobAppProvisioningConfiguration` at `/beta/deviceAppManagement/iosLobAppProvisioningConfigurations/{id}`
@@ -6066,6 +6076,7 @@ item that needs it stays untouched.
   created) / blocked; step 5; approval ids; the evidence branch and commit; anything left in the tenant.
 
 ### Q128: Live backup and restore of app dependencies, and the apps app protection policies cover (restore gaps batch 13, after #459)
+- Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 13" thread (2026-10-22). Code: PR #459. **Backup change:** `managedAppPolicy` (iOS and Android
   app protection) and `targetedManagedAppConfiguration` now read the apps each policy covers, one read per policy:
   `/v1.0/deviceAppManagement/{iosManagedAppProtections|androidManagedAppProtections|targetedManagedAppConfigurations}/{id}/apps`.
@@ -6107,6 +6118,7 @@ item that needs it stays untouched.
   created) / blocked; step 5; approval ids; the evidence branch and commit; anything left in the tenant.
 
 ### Q129: Live restore of who scripts, remediations, administrative templates and update profiles are assigned to (restore gaps batch 14, after #460)
+- Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 14" thread (2026-10-22). Code: PR #460. No backup change (assignments were already backed up).
   A restore that picks these kinds now writes their assignments back through `/assign` (beta), fixture-tested only:
   - `deviceManagementScript`, `deviceShellScript`: body `{ deviceManagementScriptAssignments: [...] }`.
@@ -6152,6 +6164,7 @@ item that needs it stays untouched.
   not be created) / blocked; step 4; approval ids; the evidence branch and commit; anything left in the tenant.
 
 ### Q130: Live restore of who compliance policies, Windows app protection, custom attribute scripts and Autopilot profiles are assigned to (restore gaps batch 15, after #462)
+- Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 15" thread (2026-10-22). Code: PR #462. Fixture-tested only.
   - **Backup change:** assignments are now read per object (beta) for `deviceCustomAttributeShellScript`, `deviceManagementCompliancePolicy`
     (`/deviceManagement/compliancePolicies/{id}/assignments`) and `windowsManagedAppProtection`.
@@ -6194,6 +6207,7 @@ item that needs it stays untouched.
   not be created) / blocked; step 4; approval ids; the evidence branch and commit; anything left in the tenant.
 
 ### Q131: Live restore of who policy sets and iOS app provisioning profiles are assigned to (restore gaps batch 16, after #463)
+- Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 16" thread (2026-10-22). Code: PR #463. Fixture-tested only.
   - **Backup change:** assignments are now read per object (beta) for `policySet` (`/deviceAppManagement/policySets/{id}/assignments`)
     and `iosLobAppProvisioningConfiguration` (`/deviceAppManagement/iosLobAppProvisioningConfigurations/{id}/assignments`).

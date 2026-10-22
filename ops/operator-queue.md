@@ -5309,8 +5309,27 @@ item that needs it stays untouched.
   (`windowsQualityUpdatePolicy`, beta, create + update), device categories (`deviceCategory`, v1.0, create + update),
   device cleanup rules (`managedDeviceCleanupRule`, beta, **update only**, refused when the backup retires devices sooner than now).
 - Needs: /opt/keel-live at the #430 merge or later (`grep -q cleanupRuleRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 07:00 UTC) on **#466**. Every restore from a snapshot stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported). Hotpatch is separately **blocked** by a 403. B = **e1a811b**. Restorer only; global admin not used; nothing granted. No approval filed yet.
+  - Plan: `~/keel-rg1/plan-B.md` (168 operations, 169 steps). These types are steps 37–43, and their fixture names are `KEEL-RT-148-*`.
+  - Tenant had none of the four types before (categories: only the three `KEEL-RT-20260908` ones; 0 managed devices; no cleanup rule for any platform).
+  - Fixtures created (Restorer):
+    - `KEEL-RT-148-category` (201).
+    - `KEEL-RT-148-addresses`: firewall reusable settings group with keyword `KEEL-RT-148-addresses`, autoresolve false, one address
+      203.0.113.10, used by no policy (201). Microsoft requires `_keyword` and `_autoresolve`, with `_addresses` nested under the
+      `autoresolve_false` choice.
+    - `KEEL-RT-148-cleanup`: macOS, 270 days (200).
+    - `KEEL-RT-148-hotpatch`: **403 Forbidden**. Graph names no permission: "An error has occurred ... Url:
+      https://proxy.msub06.manage.microsoft.com/Updates/SoftwareUpdateService/.../deviceManagement/windowsQualityUpdatePolicies".
+      GET is 200 (empty). Likely a tenant licence or Windows Update for Business prerequisite (inference). windowsQualityUpdatePolicy
+      create and update: **blocked**.
+  - Snapshot **S = 2b450888-07cd-4ba6-b250-96306b941b53** (full collect, exit 1 on the known failed types). It holds the category, the
+    address group and the cleanup rule (270).
+  - Create round: deleted the category (then 404) and the address group (then 400). The dry run for A1 `ba0f80f6` (2 selected, closed to
+    2) exited 1 before planning: `collecting deviceManagementExchangeConnector failed` (501 NotSupported, StatelessOnboardingService).
+    No artifact was approved or enforced.
+  - **Left in the tenant:** `KEEL-RT-148-cleanup` (macOS, 270 days; no devices). The category and the address group are deleted, so the
+    create round can resume from S once #466 is fixed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission
   to add: the Restorer holds DeviceManagementConfiguration.ReadWrite.All and DeviceManagementManagedDevices.ReadWrite.All. If Graph

@@ -172,7 +172,7 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   }
   if (/\/api\/snapshots\/[^/]+\/items$/.test(url)) return json({ generatedAt: now, snapshotId: "", resources: BACKUP_ITEMS });
   if (url.endsWith("/api/actions/compliance/exception")) return json({ exception: { id: "e7c10000-0000-4000-8000-0000000000c9" } }, 201);
-  if (url.endsWith("/api/actions/compliance/check")) return json({ checked: 3, pass: 1, fail: 1, unknown: 1, notApplicable: 0 }, 201);
+  if (url.endsWith("/api/actions/compliance/check")) return json({ checked: 4, pass: 1, fail: 2, unknown: 1, notApplicable: 0, notConfigured: 1 }, 201);
   if (url.includes("/api/evidence?kind=benchmark-evaluation")) return json({ entries: [{ seq: "4182", kind: "benchmark-evaluation" }, { seq: "4183", kind: "benchmark-exception" }], nextBefore: null, generatedAt: "2026-10-04T09:00:00Z" });
   if (url.endsWith("/api/principals") && init?.method === "POST") return json({ principal: NEW_PERSON(JSON.parse(String(init.body))) }, 201);
   if (/\/api\/principals\/[^/]+\/(grant|revoke|disable|enable)$/.test(url)) return json({ result: {} }, 200);

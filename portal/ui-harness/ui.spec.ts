@@ -3280,8 +3280,8 @@ test("Compliance · nothing checked yet: Check now runs the checks; storage not 
 
   type Call = { url: string; method: string; body: string | null };
   await verdict.getByRole("button", { name: "Check now" }).click();
-  await expect(page.locator(".toast").first()).toContainText("3 controls checked");
-  await expect(page.locator(".toast").first()).toContainText("1 failing, 1 could not be checked, 1 passing");
+  await expect(page.locator(".toast").first()).toContainText("4 controls checked");
+  await expect(page.locator(".toast").first()).toContainText("1 failing, 1 not set up yet, 1 could not be checked, 1 passing");
   const posts = (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
     .filter((call) => call.method === "POST" && call.url === "/api/actions/compliance/check");
   expect(posts.length).toBe(1);

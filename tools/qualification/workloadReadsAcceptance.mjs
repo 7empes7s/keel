@@ -4,6 +4,7 @@
  * tools/release/qualification.mjs can register the gate without an import cycle.
  */
 import { FAMILIES as EXCHANGE_EXTENDED } from '../../engine/collect/workloads/exchangeExtended.mjs';
+import { EXCHANGE_ROLE_GROUPS_MODULE, FAMILIES as EXCHANGE_ROLE_GROUPS } from '../../engine/collect/workloads/exchangeRoleGroups.mjs';
 import { FAMILIES as MAIL_FLOW } from '../../engine/collect/workloads/mailFlow.mjs';
 import { FAMILIES as PURVIEW_EXTENDED } from '../../engine/collect/workloads/purviewExtended.mjs';
 import { FAMILIES as RETENTION_DLP } from '../../engine/collect/workloads/purviewRetentionDlp.mjs';
@@ -24,11 +25,21 @@ export const workloadReadsRecordFile = (workload) => `workload-reads-${workload}
 export const READ_FAMILIES = Object.freeze({
   'exchange-mail-flow': MAIL_FLOW,
   'exchange-extended': EXCHANGE_EXTENDED,
+  'exchange-role-groups': EXCHANGE_ROLE_GROUPS,
   'teams-org-policies': TEAMS_POLICIES,
   'teams-voice-policies': TEAMS_EXTENDED,
   'purview-retention-dlp': RETENTION_DLP,
   'purview-governance': PURVIEW_EXTENDED,
 });
+
+// Workloads that are read only (no declared writes), with the module they run in. The
+// others take theirs from their declared writes.
+const READ_ONLY_MODULES = Object.freeze({ 'exchange-role-groups': EXCHANGE_ROLE_GROUPS_MODULE });
+
+/** The PowerShell module a workload's reads run in. */
+export function readModule(workload) {
+  return WRITTEN_WORKLOADS[workload]?.module ?? READ_ONLY_MODULES[workload];
+}
 
 const MODULE_VERSION_RE = /^\d+\.\d+\.\d+(\.\d+)?$/;
 const DESCRIPTOR_IDS = new Set(WORKLOAD_DESCRIPTORS.map((descriptor) => descriptor.id));
@@ -63,7 +74,7 @@ export function validateWorkloadReadsLiveSubject(evidence, { tenantRef, build, r
   const subject = evidence.subject;
   if (!subject || typeof subject !== 'object') return [...failures, 'subject is missing'];
   if (!READ_FAMILIES[subject.workload]) return [...failures, `unknown workload '${subject.workload ?? 'missing'}'`];
-  const { module } = WRITTEN_WORKLOADS[subject.workload];
+  const module = readModule(subject.workload);
   const execution = subject.execution ?? {};
   if (execution.transport !== WORKLOAD_READS_TRANSPORT || execution.module !== module) {
     failures.push(`cmdlets must run through the bounded ${WORKLOAD_READS_TRANSPORT} transport (${module})`);

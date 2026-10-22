@@ -25,9 +25,10 @@ import {
   READ_FAMILIES, WORKLOAD_READS_LIVE_GATE, captureWorkloadReads, ledgerEvidenceFromWorkloadReadsAcceptance, main, workloadReadsRecordFile,
 } from '../../tools/qualification/workloadReadsLive.mjs';
 import { main as pseudonymizeCheck } from '../../tools/qualification/pseudonymize.mjs';
-import { WRITTEN_WORKLOADS } from '../../tools/qualification/workloadWritesAcceptance.mjs';
+import { readModule } from '../../tools/qualification/workloadReadsAcceptance.mjs';
 import { WORKLOAD_DESCRIPTORS, buildWorkloadLedger } from '../collect/workloadContract.mjs';
 import { exchangeExtendedActivation } from '../collect/workloads/exchangeExtended.mjs';
+import { exchangeRoleGroupsActivation } from '../collect/workloads/exchangeRoleGroups.mjs';
 import { mailFlowActivation } from '../collect/workloads/mailFlow.mjs';
 import { purviewExtendedActivation } from '../collect/workloads/purviewExtended.mjs';
 import { retentionDlpActivation } from '../collect/workloads/purviewRetentionDlp.mjs';
@@ -46,13 +47,14 @@ const now = () => NOW;
 const ACTIVATION = {
   'exchange-mail-flow': mailFlowActivation,
   'exchange-extended': exchangeExtendedActivation,
+  'exchange-role-groups': exchangeRoleGroupsActivation,
   'teams-org-policies': teamsPolicyActivation,
   'teams-voice-policies': teamsExtendedActivation,
   'purview-retention-dlp': retentionDlpActivation,
   'purview-governance': purviewExtendedActivation,
 };
 const TABLES = {
-  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
+  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
   MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended'],
 };
 // The run-cmdlet.ps1 allowlists, cmdlet names with digits included (Get-AtpPolicyForO365).
@@ -66,7 +68,7 @@ const allowlistFor = (module) => Object.assign({}, ...TABLES[module].map(contain
 
 /** A tenant that answers every allowed Get- with nothing, or with `fail[cmdlet]`. */
 function fakeTenant(workload, fail = {}) {
-  const { module } = WRITTEN_WORKLOADS[workload];
+  const module = readModule(workload);
   return fakeCmdletContainer({
     module,
     allowlist: allowlistFor(module),
@@ -76,7 +78,7 @@ function fakeTenant(workload, fail = {}) {
 
 const capture = (workload, live, extra = {}) => captureWorkloadReads({
   workload, collector: live.powershell, tenantRef, build, credential: 'app:collector',
-  moduleVersion: MODULE_VERSIONS[WRITTEN_WORKLOADS[workload].module], now, ...extra,
+  moduleVersion: MODULE_VERSIONS[readModule(workload)], now, ...extra,
 });
 const verifyOptions = (extra = {}) => ({ gate: WORKLOAD_READS_LIVE_GATE, tenantRef, build, hmacKey: KEY, requireLive: true, now: NOW, ...extra });
 const signed = (record) => signEvidence(record, KEY, 'keel-release-runner');
@@ -105,7 +107,7 @@ for (const workload of Object.keys(READ_FAMILIES)) {
     assert.ok(seam.reads.every((item) => item.kind === 'live-capture' && item.synthetic === false && item.tenantRef === tenantRef));
     assert.deepEqual(seam.writes, []);
     assert.equal(seam.grants, null, 'grants are left as the other records stored them');
-    const { module } = WRITTEN_WORKLOADS[workload];
+    const module = readModule(workload);
     assert.deepEqual(seam.runtime, { modules: { [module]: MODULE_VERSIONS[module] } });
 
     assert.equal(ACTIVATION[workload](ledger([])).enabled, false, 'off without the read proof');

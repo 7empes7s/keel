@@ -228,6 +228,7 @@ export const WORKLOAD_LABELS: Record<string, string> = {
   "exchange-mailbox-settings": "Mailbox settings",
   "exchange-mail-flow": "Mail flow",
   "exchange-extended": "Exchange organization settings",
+  "exchange-role-groups": "Exchange admin role groups",
   "exchange-mail": "Mail, calendars and contacts",
   "group-conversations": "Group conversations",
   "teams-settings": "Teams settings",

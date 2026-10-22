@@ -117,7 +117,7 @@ export async function idNames(client: QueryClient, tenantRef: string, ids: strin
     console.error("[keel-portal] app names unavailable", error);
     return NO_ID_NAMES;
   }
-  const found: Record<string, string> = {};
+  const found: Record<string, string> = await roleGroupNames(client, tenantRef, wantedIds);
   const roles: Record<string, string> = {};
   const wantedRole = new Set(wantedRoles);
   for (const row of rows) {
@@ -135,6 +135,45 @@ export async function idNames(client: QueryClient, tenantRef: string, ids: strin
     }
   }
   return { ids: found, roles };
+}
+
+// Exchange admin role groups are read with Get-RoleGroup (workload exchange-role-groups),
+// not from Microsoft Graph, so Graph's "/RoleGroups/<id>" in an Exchange role assignment
+// is named from the newest usable read of them.
+const ROLE_GROUP_WORKLOAD = "exchange-role-groups";
+
+/** Names of the Exchange role groups among `ids` (by Guid or ExchangeObjectId). A failed
+ * read names none, never the page down. */
+export async function roleGroupNames(client: QueryClient, tenantRef: string, ids: string[]): Promise<Record<string, string>> {
+  if (!ids.length) return {};
+  let rows: Record<string, unknown>[];
+  try {
+    ({ rows } = await client.query(
+      `WITH latest AS (
+         SELECT c.id FROM workload_collection c
+          WHERE c.tenant_ref = $1 AND c.workload = $3 AND c.outcome IN ('complete', 'partial')
+          ORDER BY c.observed_to DESC LIMIT 1
+       )
+       SELECT lower(o.fields->>'identity') AS id, lower(o.fields->>'ExchangeObjectId') AS object_id,
+              COALESCE(NULLIF(btrim(o.fields->>'DisplayName'), ''), NULLIF(btrim(o.fields->>'Name'), '')) AS name
+         FROM workload_observation o
+        WHERE o.collection_id IN (SELECT id FROM latest)
+          AND (lower(o.fields->>'identity') = ANY($2::text[]) OR lower(o.fields->>'ExchangeObjectId') = ANY($2::text[]))`,
+      [tenantRef, ids, ROLE_GROUP_WORKLOAD],
+    ));
+  } catch (error) {
+    console.error("[keel-portal] role group names unavailable", error);
+    return {};
+  }
+  const found: Record<string, string> = {};
+  for (const row of rows) {
+    const name = typeof row.name === "string" ? row.name.trim() : "";
+    if (!name || holdsObjectId(name)) continue;
+    for (const id of [row.id, row.object_id]) {
+      if (typeof id === "string" && id && !(id in found)) found[id] = name;
+    }
+  }
+  return found;
 }
 
 interface WithChanges {

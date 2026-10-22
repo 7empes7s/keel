@@ -34,15 +34,18 @@ import { basename, dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { structuredFailure } from '../../engine/collect/workloads/exchange.mjs';
+import { readExchangeRoleGroups } from '../../engine/collect/workloads/exchangeRoleGroups.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
 import { pseudonymizeCapture } from './pseudonymize.mjs';
 import {
   READ_FAMILIES, WORKLOAD_READS_CREDENTIAL_MODE, WORKLOAD_READS_LIVE_GATE, WORKLOAD_READS_LIVE_OPERATION, WORKLOAD_READS_TRANSPORT,
-  knownWorkload, provenReads, workloadReads, workloadReadsCapturePlan, workloadReadsRecordFile,
+  knownWorkload, provenReads, readModule, workloadReads, workloadReadsCapturePlan, workloadReadsRecordFile,
 } from './workloadReadsAcceptance.mjs';
-import { WRITTEN_WORKLOADS } from './workloadWritesAcceptance.mjs';
-import { WORKLOAD_READERS, pinnedModuleVersions } from './workloadWritesLive.mjs';
+import { WORKLOAD_READERS as WRITTEN_READERS, pinnedModuleVersions } from './workloadWritesLive.mjs';
+
+// Each workload's reader: the written workloads' readers, plus the read-only workloads.
+const WORKLOAD_READERS = Object.freeze({ ...WRITTEN_READERS, 'exchange-role-groups': readExchangeRoleGroups });
 
 export { READ_FAMILIES, WORKLOAD_READS_LIVE_GATE, workloadReadsCapturePlan, workloadReadsRecordFile };
 
@@ -58,7 +61,7 @@ export async function captureWorkloadReads({
   workload, collector, read = WORKLOAD_READERS[workload], tenantRef, build, credential, moduleVersion, now = () => new Date(),
 }) {
   knownWorkload(workload);
-  const { module } = WRITTEN_WORKLOADS[workload];
+  const module = readModule(workload);
   const problems = [];
   if (!tenantRef || !build) problems.push('a capture needs --tenant-ref and a build');
   if (typeof credential !== 'string' || !credential.trim()) problems.push('a capture needs --collector-ref');
@@ -173,7 +176,7 @@ export async function main(argv = process.argv.slice(2), {
   if (typeof tenantId !== 'string' || options.tenantRef !== tenantRefFor(tenantId)) {
     throw new Error('--tenant-ref is not the tenant the collector config names; nothing was sent');
   }
-  const { module } = WRITTEN_WORKLOADS[options.workload];
+  const module = readModule(options.workload);
   const moduleVersion = pins()[module];
   if (!moduleVersion) throw new Error(`ops/powershell/Dockerfile pins no ${module} version; nothing was sent`);
   const { record, diagnostics } = await capture({

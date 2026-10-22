@@ -318,3 +318,32 @@ test("saved role assignments and partners read by the names their backup holds",
     "Fabrikam (cross-tenant access partner)",
   ]);
 });
+
+test("an Exchange role assignment names its role group from the newest usable role group read", async () => {
+  const read = async (outcome: string, at: string, name: string | null) => {
+    const { rows: [run] } = await client.query(
+      `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to, digest)
+       VALUES ($1, 'exchange-role-groups', $2, $3, $3, '{}') RETURNING id`,
+      [TENANT, outcome, at],
+    );
+    if (name) {
+      await client.query(
+        `INSERT INTO workload_observation (collection_id, resource_key, fields, field_coverage) VALUES ($1, $2, $3, '{}')`,
+        [run.id, `role-group:${ROLE_GROUP_ID}`, JSON.stringify({ identity: ROLE_GROUP_ID, kind: "roleGroup", Name: name, ExchangeObjectId: ROLE_GROUP_ID })],
+      );
+    }
+  };
+  await read("complete", "2026-10-21T01:00:00Z", "Old name");
+  await read("complete", "2026-10-22T01:00:00Z", "Recipient Management");
+  // A later run that read nothing does not hide the last good read.
+  await read("disabled", "2026-10-22T02:00:00Z", null);
+  const { rows: [snapshot] } = await client.query("SELECT id FROM snapshot WHERE tenant_ref = $1", [TENANT]);
+  const payload = { id: id(24), roleDefinitionId: EXO_ROLE, principalId: `/RoleGroups/${ROLE_GROUP_ID}`, directoryScopeId: "/" };
+  await client.query(
+    `INSERT INTO resource_version (snapshot_id, natural_key, resource_type, payload, payload_hash, criticality, blast_radius, fidelity, provenance)
+     VALUES ($1, $2, 'exchangeRoleAssignment', $3, $3, 'critical', 'access-affecting', 'full', '{}')`,
+    [snapshot.id, id(24), JSON.stringify(payload)],
+  );
+  const names = await savedNames(client, TENANT, [id(24)]);
+  assert.equal(namedSubject(id(24), names), "Mail Recipients → Recipient Management (exchange role assignment)");
+});

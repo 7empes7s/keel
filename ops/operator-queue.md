@@ -6749,8 +6749,21 @@ item that needs it stays untouched.
     and each extra one `DELETE .../assignments/{id}`, then read back.
   - A policy whose only change is its assignments is planned as an `update`; the object itself is not patched.
 - Needs: /opt/keel-live at the #462 merge or later (`grep -q "assignmentWrite: 'per-item'" /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
+- Status: done
+- Result: done (2026-10-22 17:36 UTC). **3 records promoted** (compliance policy create and update, Windows app protection update). The custom attribute script's assignment is not backed up (**#546**); Autopilot is skipped (create 400). B = **0450b0f**. Restorer only; global admin not used; fixtures assigned only to empty groups.
+  - Fixtures (all 201, /assign 200 or 204): empty groups `KEEL-RT-150-assign` and `-assign-b`; `KEEL-RT-150-compliance` (Linux, encryption required, block 0 h); `KEEL-RT-150-win-mam` (target app Edge);
+    `KEEL-RT-150-attr`; all assigned to `-assign`. **Autopilot `KEEL-RT-150-autopilot`: create 400 "An error has occurred"** (DeviceEnroll, as in Q116), skipped.
+  - **Step 1, backup** (S = `1fa5ee87`): "policy assignment reads: 32 complete, 0 partial, 1 failed".
+    - compliance: `complete`, 1, target `-assign`.
+    - winmam: `complete`, 1 (stored under the lowercased id `i_…`).
+    - **attr: `failed`**, `400 No method match route template: No OData route exists that match template ~/singleton/navigation/key/navigation with http verb GET for request /DeviceFE/StatelessDeviceFEService/deviceManagement/deviceCustomAttributeShellScripts('<id>')/assignments.`
+      The same object reads fine with `/groupAssignments` or `?$expand=assignments` (200, 1). Filed **#546**.
+  - **Step 2, assignments:** moved all three to `-assign-b`. Dry run `bd08bf09`, approval **9a550c0e**, job `35173d38`: compliance and winmam updated and are **back on `-assign` only**; both promoted.
+    attr: left on `-assign-b`, with **no follow-up or manual step** in the plan or result (silent; added to #546). I put it back by hand.
+  - **Step 3, create:** deleted the compliance policy. Dry run `d0c53aa4`, approval **dac53c1f**, job `a177b596`: created, journal `succeeded` (verified; the #513 post-state problem did not appear at this build), **assigned to `-assign`**. Promoted.
+  - **Step 4, re-run** (`A3` from S): all entries have 0 changed fields, 0 content effects. **0 planned writes.**
+  - **Step 5, cleanup:** deleted compliance, winmam, attr and both groups. None left.
+  - **Evidence:** `claude/live-evidence-restore-gaps-15` @ **2087f53f**. pseudonymize check exit 0; my scan is clean. `live evidence`: deviceManagementCompliancePolicy create and update, windowsManagedAppProtection update: `fixture-tested -> live-qualified`.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementConfiguration.ReadWrite.All, DeviceManagementApps.ReadWrite.All and DeviceManagementServiceConfig.ReadWrite.All.

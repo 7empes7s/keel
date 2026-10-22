@@ -60,7 +60,8 @@ export function failureReason(status, { code, message } = {}) {
  * one, else by walking pages up to `pageCap`; a single object counts as one.
  * Returns { readable, objects, objectsExact, httpStatus, reason, message, grant }.
  * `heldGrants` is the app's granted roles (null when unknown): a refusal for a grant it
- * holds is `refused-with-grant` and carries no grant.
+ * holds is `refused-with-grant` and carries no grant. `entry.filter` is a `$filter=`
+ * the list needs before Graph answers it; every read of the list carries it.
  */
 export async function probePath(graph, version, entry, { pageCap = DEFAULT_PAGE_CAP, heldGrants = null } = {}) {
   const fail = (response) => {
@@ -73,6 +74,8 @@ export async function probePath(graph, version, entry, { pageCap = DEFAULT_PAGE_
     }
     return { readable: false, objects: null, objectsExact: null, httpStatus: response.status, reason, message: code ? `${code}: ${message ?? ''}`.trim() : message, grant };
   };
+  const base = entry.filter ? `${entry.path}?${entry.filter}` : entry.path;
+  const join = base.includes('?') ? '&' : '?';
   if (!entry.collection) {
     const response = await graph.get(entry.path, { version });
     if (response.status !== 200 || response.tooLarge) return fail(response);
@@ -80,11 +83,11 @@ export async function probePath(graph, version, entry, { pageCap = DEFAULT_PAGE_
   }
 
   const ok = (objects, objectsExact) => ({ readable: true, objects, objectsExact, httpStatus: 200, reason: null, message: null, grant: null });
-  let response = await graph.get(`${entry.path}?$count=true&$top=1`, { version, headers: { ConsistencyLevel: 'eventual' } });
+  let response = await graph.get(`${base}${join}$count=true&$top=1`, { version, headers: { ConsistencyLevel: 'eventual' } });
   // Not every collection takes $count or $top; ask again plainly before calling it unreadable.
   let plain = false;
   if (response.status === 400) {
-    response = await graph.get(entry.path, { version });
+    response = await graph.get(base, { version });
     plain = true;
   }
   if (response.status !== 200 || response.tooLarge) return fail(response);
@@ -95,7 +98,7 @@ export async function probePath(graph, version, entry, { pageCap = DEFAULT_PAGE_
   if (!next) return ok(response.json.value.length, true);
   // No count and more than one page: walk full pages up to the cap.
   let objects = 0;
-  next = plain ? next : `${entry.path}?$top=999`;
+  next = plain ? next : `${base}${join}$top=999`;
   if (plain) objects = response.json.value.length;
   for (let page = plain ? 1 : 0; next && page < pageCap; page++) {
     const more = await graph.get(next, { version });
@@ -141,15 +144,17 @@ export async function discoverGraphVersion(graph, version, metadataText, {
   const truncated = total > maxPaths;
   if (truncated) paths = paths.slice(0, maxPaths);
   const items = await pool(paths, concurrency, async (entry) => {
+    const lookup = catalogPath(entry.path).toLowerCase();
+    const listedAs = catalogued.get(lookup) ?? [];
+    const filter = listedAs.find((item) => item.filter)?.filter ?? null;
     let probe;
     try {
-      probe = await probePath(graph, version, entry, { pageCap, heldGrants });
+      probe = await probePath(graph, version, filter ? { ...entry, filter } : entry, { pageCap, heldGrants });
     } catch (error) {
       if (error?.name === 'DiscoveryWriteRefused') throw error;
       probe = { readable: false, objects: null, objectsExact: null, httpStatus: null, reason: 'error', message: clip(String(error?.message ?? error)), grant: null };
     }
-    const lookup = catalogPath(entry.path).toLowerCase();
-    const catalogTypes = (catalogued.get(lookup) ?? []).map((item) => item.type);
+    const catalogTypes = listedAs.map((item) => item.type);
     const skipReason = catalogTypes.length ? null : skipped.get(lookup) ?? null;
     let status = 'unreadable';
     if (probe.readable) status = catalogTypes.length ? 'catalogued' : skipReason ? 'skipped' : 'uncatalogued';

@@ -96,6 +96,8 @@ const DEPENDS: Record<string, string[]> = {
   "deviceConfiguration:Windows baseline": ["group:All managed devices"],
 };
 let jobPolls = 0;
+// The setting the last "Make it pass" asked for: a mail policy setting is named after a #.
+let fixTarget = "";
 let contentEffectsApproved = false;
 let lastClosure: string[] = [];
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -228,7 +230,11 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     return json({ runs: [{ target: null, job: { id: "job-wd-1" }, artifactId: "wd000000-0000-4000-8000-000000000001" }] }, 202);
   }
   // Compliance, "Make it pass": the fix is planned, and its dry run is ready.
-  if (url.endsWith("/api/actions/compliance/fix")) return json({ job: { id: "f1c0b000-0000-4000-8000-000000000001" }, artifactId: "f1c00000-0000-4000-8000-000000000001" }, 202);
+  if (url.endsWith("/api/actions/compliance/fix")) {
+    fixTarget = String((JSON.parse(String(init?.body ?? "{}")) as { naturalKey?: string }).naturalKey ?? "");
+    return json({ job: { id: "f1c0b000-0000-4000-8000-000000000001" }, artifactId: "f1c00000-0000-4000-8000-000000000001" }, 202);
+  }
+  if (url.includes("/api/actions/restore/dry-run/f1c00000") && fixTarget.includes("#")) return json({ artifact: { id: "f1c00000-0000-4000-8000-000000000001", status: "completed", guardRefusals: [], complianceFix: { naturalKey: fixTarget, field: fixTarget.slice(fixTarget.indexOf("#") + 1), from: "AddXHeader", to: "Quarantine" } } });
   if (url.includes("/api/actions/restore/dry-run/f1c00000")) return json({ artifact: { id: "f1c00000-0000-4000-8000-000000000001", status: "completed", guardRefusals: [], complianceFix: { naturalKey: "namedLocation:Branch offices", field: "includeUnknownCountriesAndRegions", from: true, to: false } } });
   if (url.includes("/api/actions/restore/dry-run/wd000000")) return json({ artifact: WORKLOAD_ARTIFACT });
   if (url.includes("/api/actions/restore/dry-run/mb000000")) return json({ artifact: mailboxArtifact(url.slice(-1)) });
@@ -768,12 +774,26 @@ const COMPLIANCE: ComplianceData = {
 // Defender email controls, read from the Exchange mail protection policies: one failing
 // on two policies, one passing, and Safe Links not relevant (no Defender for Office 365).
 const MAIL_EVIDENCE = { resourceType: "exchange-mail-flow", window: { startedAt: "2026-10-02T02:00:00Z", endedAt: "2026-10-02T02:03:00Z" }, snapshotId: null, collectionId: "0c0f0000-0000-4000-8000-0000000000f1", completedAt: "2026-10-02T02:03:00Z" };
-const mailFinding = (id: string, controlId: string, verdict: ComplianceData["findings"][number]["verdict"], details: ComplianceData["findings"][number]["details"] = []): ComplianceData["findings"][number] => ({
+const mailFinding = (id: string, controlId: string, verdict: ComplianceData["findings"][number]["verdict"], details: ComplianceData["findings"][number]["details"] = [], fix: Partial<ComplianceData["findings"][number]> = {}): ComplianceData["findings"][number] => ({
   id: `e7a10000-0000-4000-8000-0000000000${id}`, controlId, title: null, severity: "high", framework: "keel-custom", edition: "1.0.0", profile: "default", evaluatorVersion: 1,
   verdict, reason: null, details, evaluatedAt: "2026-10-02T09:20:00Z", evidenceSeq: "4190", exceptionState: "none", exposed: verdict === "fail", exception: null,
   evidence: [MAIL_EVIDENCE],
   links: { backup: { state: "linked", linked: [MAIL_EVIDENCE], mismatched: [] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } },
+  ...fix,
 });
+// "Make it pass" on a mail protection policy: one row per failing setting, like the miss lines.
+const mailFix = (guid: string, name: string, field: string, from: unknown, to: unknown) => ({
+  naturalKey: `anti-spam-policy:${guid}#${field}`, resourceType: "exchangeAntiSpamPolicy", name, field, from, to,
+  snapshotId: MAIL_EVIDENCE.collectionId, seenAt: MAIL_EVIDENCE.completedAt,
+});
+const SPAM_FIX = {
+  fix: { resourceType: "exchangeAntiSpamPolicy", field: null, to: null, settings: { PhishSpamAction: "Quarantine", HighConfidencePhishAction: "Quarantine", PhishZapEnabled: true } },
+  fixCandidates: [
+    mailFix("0c0f5000-0000-4000-8000-000000000001", "Default", "HighConfidencePhishAction", "MoveToJmf", "Quarantine"),
+    mailFix("0c0f5000-0000-4000-8000-000000000001", "Default", "PhishZapEnabled", false, true),
+    mailFix("0c0f5000-0000-4000-8000-000000000002", "KEEL-RT-Finance inbound filtering for the accounts payable team", "PhishSpamAction", "AddXHeader", "Quarantine"),
+  ],
+};
 const DEFENDER_COMPLIANCE: ComplianceData = {
   ...COMPLIANCE,
   findings: [
@@ -782,7 +802,7 @@ const DEFENDER_COMPLIANCE: ComplianceData = {
       { subject: "Default", setting: "HighConfidencePhishAction", value: "MoveToJmf", expected: "Quarantine" },
       { subject: "Default", setting: "PhishZapEnabled", value: false, expected: true },
       { subject: "KEEL-RT-Finance inbound filtering for the accounts payable team", setting: "PhishSpamAction", value: "AddXHeader", expected: "Quarantine" },
-    ]),
+    ], SPAM_FIX),
     mailFinding("f2", "keel-custom.defender-email.malware-file-filter", "pass"),
     mailFinding("f3", "keel-custom.defender-email.safe-links-email", "not-applicable"),
   ],
@@ -2193,7 +2213,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/benchmarks/defender": {
       // Defender email controls beside the others: filed under Defender, failing settings in a table.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(DEFENDER_COMPLIANCE.findings))} title="Compliance" />
-      <CompliancePage canCheck canConfigure data={DEFENDER_COMPLIANCE} now={now} /></>;
+      <CompliancePage canCheck canConfigure canRestore data={DEFENDER_COMPLIANCE} now={now} /></>;
     }
     case "/benchmarks/empty": case "/benchmarks/empty-viewer": {
       // Nothing checked yet and the storage location not known: each empty state has its button.

@@ -59,7 +59,9 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   // Graph reads, plus the per-site sharing read through PnP once that read is qualified.
   { workload: SHAREPOINT_WORKLOAD, powershellFamily: 'sharepoint', record: recordSharePointRun,
     collect: (client, { base, transport, scope, sleep, powershell }) => collectSharePointSites(client, {
-      ...base, sleep, transport, powershell, tenantHost: scope.sharepointHost }) },
+      ...base, sleep, transport, tenantHost: scope.sharepointHost,
+      // Only its own PnP config can connect; the Graph tenant config has no certificate.
+      powershell: scope.powershellConfigs?.sharepoint ? powershell : null }) },
   // teams.mjs
   { workload: 'teams-settings', powershellFamily: null, record: recordTeamsRun,
     collect: (client, { base, transport, config, sleep }) => collectTeams(client, {

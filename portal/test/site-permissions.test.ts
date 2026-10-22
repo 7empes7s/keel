@@ -282,6 +282,9 @@ test("each site's own sharing setting reads against the tenant default; more ope
   // Not read yet is neutral, never a guessed value; a refused read says so.
   assert.deepEqual([sharingStatus(QUIET).key, sharingStatus(QUIET).tone], ["not-read", "neutral"]);
   assert.equal(sharingStatus(withSharing(QUIET, null, tenant, "denied")).label, "Not allowed");
+  // Approved but the host has no PnP config: says so, instead of "not approved yet".
+  const unconfigured = sitePermissionsFrom(`site:${ARCHIVE}`, { displayName: "Archive" }, { sharingCapability: { status: "unknown", operation: "sharepoint.site-sharing", reason: "not read: the scope file names no PnP config for SharePoint (powershellConfigs.sharepoint)" } });
+  assert.deepEqual([sharingStatus(unconfigured).label, sharingStatus(unconfigured).tone], ["Not set up", "soon"]);
   // Unknown tenant default: shown, but never called wider.
   assert.equal(sharingStatus(withSharing(QUIET, "ExternalUserAndGuestSharing", null)).key, "anyone");
 

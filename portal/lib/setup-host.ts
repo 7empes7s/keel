@@ -69,6 +69,7 @@ const DEFAULT_TENANT_CONFIG_PATH = "/etc/keel/tenant.json";
 // The content reader's credential file (the same default cli/keel-restore.mjs reads).
 // Setup only takes its app id from it, to show the app in the permission table.
 const DEFAULT_CONTENT_READER_PATH = "/etc/keel/content-reader.json";
+const APP_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface SetupConfig {
   operatorPrincipalId?: string | null;
@@ -114,6 +115,12 @@ export function composeSetupHost(
   try {
     const reader = existsSync(readerPath) ? (readJson(readerPath) as { clientId?: string; certPath?: string }) : null;
     readerAppId = reader?.clientId ?? null;
+    // Only an app id of its own: anything else leaves the content reader out, never the whole host.
+    const own = (path: string) => { try { return (readJson(path) as { clientId?: string }).clientId; } catch { return null; } };
+    if (readerAppId !== null && (!APP_ID.test(readerAppId) || [own(paths.collectorConfig), own(paths.targetConfig)].includes(readerAppId))) {
+      console.error("setup host: the content reader file does not name an app of its own");
+      readerAppId = null;
+    }
     readerCertPath = typeof reader?.certPath === "string" ? reader.certPath : null;
   } catch {
     console.error("setup host: the content reader file could not be read");

@@ -13,6 +13,7 @@ import {
   canFixOn,
   complianceVerdict,
   fixAction,
+  fixEffect,
   fixCandidates,
   fixObjectName,
   fixPlanProblem,
@@ -186,4 +187,16 @@ test("the fix route plans a dry run only, for a candidate of the newest failing 
   assert.deepEqual([stale.status, (await stale.json()).error], [409, "not_newest"]);
   const fixed = await route()(request({ evaluationId: passing, naturalKey: KEY }));
   assert.deepEqual([fixed.status, (await fixed.json()).error], [409, "not_failing"]);
+});
+
+test("a Defender email fix names each row's own setting and shows mail values in plain words", () => {
+  const spam = finding("fail", { controlId: "keel-custom.defender-email.anti-spam-phish-quarantined", fix: { resourceType: "exchangeAntiSpamPolicy", field: null, to: null, settings: { PhishSpamAction: "Quarantine" } } });
+  const row = { naturalKey: "anti-spam-policy:g#PhishSpamAction", resourceType: "exchangeAntiSpamPolicy", name: "KEEL-RT-Sales", field: "PhishSpamAction", from: "MoveToJmf", to: "Quarantine", snapshotId: "1", seenAt: null };
+  assert.equal(fixSetting(spam, row), "Phishing goes to");
+  assert.equal(fixAction(spam), "Quarantine phishing");
+  assert.match(fixEffect(spam) ?? "", /quarantine/);
+  assert.deepEqual([fixValue(row.from, row.field), fixValue(row.to, row.field)], ["Junk folder", "Quarantine"]);
+  assert.deepEqual([fixValue(false, "PhishZapEnabled"), fixValue(true, "PhishZapEnabled")], ["Off", "On"]);
+  assert.deepEqual([fixValue(["fabrikam.example"], "AllowedSenderDomains"), fixValue(null, "AllowedSenderDomains")], ["fabrikam.example", "None"]);
+  assert.equal(fixPlanProblem("compliance fix refused: the live read of antiSpamPolicy was denied, so anti-spam-policy:g could not be checked"), "Keel could not read this policy in the live tenant just now. Try again in a few minutes.");
 });

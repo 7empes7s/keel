@@ -105,7 +105,7 @@ const material = (row) => ({
   credentialRef: row.credential_ref ?? null,
   credentialExpiresAt: row.credential_expires_at ? new Date(row.credential_expires_at).toISOString() : null,
   wanted: row.wanted ?? null,
-  observed: row.observed ? canonical({ ...row.observed, at: undefined }) : null,
+  observed: row.observed ? canonical({ ...row.observed, at: undefined, rolesChecked: undefined }) : null,
 });
 // jsonb does not keep key order, so compare with sorted keys.
 const canonical = (value) => Array.isArray(value) ? value.map(canonical)

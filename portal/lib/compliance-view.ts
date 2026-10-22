@@ -529,6 +529,32 @@ const FIX_WORDS: Record<string, FixWords> = {
     setting: "Takes in unknown countries",
     effect: "The location stays trusted for the countries it lists. Sign-ins from places that cannot be told no longer count as trusted.",
   },
+  // The Defender email checks: one setting of one policy per row, named by the row.
+  "keel-custom.defender-email.anti-phish-spoof-protection": {
+    action: "Turn on spoof protection",
+    setting: "",
+    effect: "Mail that pretends to come from someone else is flagged, and may go to junk or quarantine. An approver also reviews that, because quarantined mail is deleted after a while.",
+  },
+  "keel-custom.defender-email.anti-spam-phish-quarantined": {
+    action: "Quarantine phishing",
+    setting: "",
+    effect: "Phishing goes to quarantine instead of the inbox or junk folder, and is pulled back after delivery. An approver also reviews that, because quarantined mail is deleted after a while.",
+  },
+  "keel-custom.defender-email.anti-spam-no-allowed-domains": {
+    action: "Remove allowed sender domains",
+    setting: "",
+    effect: "Mail from these domains is filtered like any other mail again, so some of it may go to junk or quarantine. An approver also reviews that.",
+  },
+  "keel-custom.defender-email.malware-file-filter": {
+    action: "Block risky attachments",
+    setting: "",
+    effect: "Mail with risky attachment types is blocked, and malware already delivered is pulled back. An approver also reviews that, because blocked mail does not reach the inbox.",
+  },
+  "keel-custom.defender-email.safe-links-email": {
+    action: "Check links in email",
+    setting: "",
+    effect: "Links in email are checked when clicked, and people can no longer click past the warning to a dangerous site.",
+  },
 };
 
 /** The objects Keel can fix for this control: only while it fails and has a fix. */
@@ -546,17 +572,23 @@ export function fixAction(finding: ComplianceFinding): string {
   return FIX_WORDS[finding.controlId]?.action ?? "Make it pass";
 }
 
-export function fixSetting(finding: ComplianceFinding): string {
-  const field = finding.fix?.field ?? "";
-  return FIX_WORDS[finding.controlId]?.setting ?? (field.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (first) => first.toUpperCase()) || "The setting");
+/** The setting a row changes in plain words: the row's own setting when the fix has several. */
+export function fixSetting(finding: ComplianceFinding, candidate?: ComplianceFixCandidate): string {
+  const field = candidate?.field ?? finding.fix?.field ?? "";
+  if (SETTING_WORDS[field]) return SETTING_WORDS[field];
+  return FIX_WORDS[finding.controlId]?.setting || (field.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (first) => first.toUpperCase()) || "The setting");
 }
 
 export function fixEffect(finding: ComplianceFinding): string | null {
   return FIX_WORDS[finding.controlId]?.effect ?? null;
 }
 
-/** A setting's value in words: Yes, No, Not set, or the value itself. */
-export function fixValue(value: unknown): string {
+// Settings that hold a list: the fix empties them by writing "not set".
+const LIST_SETTINGS = new Set(["AllowedSenderDomains"]);
+
+/** A setting's value in words: Yes, No, Not set, or the value itself. A mail protection setting reads as its check shows it. */
+export function fixValue(value: unknown, field?: string): string {
+  if (field && SETTING_WORDS[field]) return settingValueWords(value === null && LIST_SETTINGS.has(field) ? [] : value);
   if (value === true) return "Yes";
   if (value === false) return "No";
   if (value === null || value === undefined || value === "") return "Not set";
@@ -594,6 +626,8 @@ export function fixPlanProblem(message: string | null | undefined): string {
   if (/already passes/.test(text)) return "This object already passes in the live tenant. Nothing needs to change.";
   if (/not in the tenant now/.test(text)) return "This object is no longer in the tenant, so there is nothing to fix.";
   if (/no complete backup holds/.test(text)) return "No finished backup holds this object yet. Run a backup, then try again.";
+  if (/no complete service read holds/.test(text)) return "No finished backup holds this policy yet. Run a backup, then try again.";
+  if (/could not be checked/.test(text)) return "Keel could not read this policy in the live tenant just now. Try again in a few minutes.";
   if (/points to other objects/.test(text)) return "This object points to other objects, so Keel cannot change one setting on its own. Fix it in Microsoft 365.";
   if (/not updated in place/.test(text)) return "Keel would have to recreate this object, not change one setting. Fix it in Microsoft 365.";
   if (/incident/.test(text)) return "The backup lies inside an open incident. Plan the fix from the incident instead.";

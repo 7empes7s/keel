@@ -7,7 +7,7 @@ import { after, before, test } from 'node:test';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
-import { catalogPath, catalogedCmdlets, isUnderItem } from './catalogue.mjs';
+import { catalogPath, catalogedCmdlets, isUnderItem, requiredFilter } from './catalogue.mjs';
 import { ALIAS_PATHS, SKIPPED_PATHS, SKIP_REASONS } from './notGaps.mjs';
 import { discover, discoverPowerShell, failureReason, notUsedReason, probePath, reclassifyCatalogue } from './discover.mjs';
 import { holdsGrant, missingGrant, tokenRoles } from './grants.mjs';
@@ -101,7 +101,8 @@ const json = (status, body, headers = {}) => new Response(JSON.stringify(body), 
 /**
  * The fixture tenant. Every collection answers with KEEL-RT- objects and a count,
  * except: /users takes no $count and pages, /groups has more pages than the cap,
- * /print/printers is refused, and anything not GET would be recorded.
+ * /print/printers is refused, the PIM role settings lists answer 400 MissingProvider
+ * without their scope filter (as Graph does), and anything not GET would be recorded.
  */
 function fixtureTenant() {
   const calls = [];
@@ -119,6 +120,9 @@ function fixtureTenant() {
     }
     if (path === '/print/printers') {
       return json(403, { error: { code: 'Authorization_RequestDenied', message: "Missing role permissions on the request. API requires one of 'Printer.Read.All, Printer.ReadWrite.All'." } });
+    }
+    if (/^\/policies\/(roleManagementPolicies|roleManagementPolicyAssignments)$/.test(path) && parsed.searchParams.get('$filter') !== "scopeId eq '/' and scopeType eq 'DirectoryRole'") {
+      return json(400, { error: { code: 'UnknownError', message: '{"errorCode":"MissingProvider","message":"The provider is missing."}' } });
     }
     if (path === '/bookingBusinesses') return json(200, { value: [{ displayName: 'KEEL-RT-booking-a' }, { displayName: 'KEEL-RT-booking-b' }], '@odata.count': 2 });
     if (path === '/sites/getAllSites') return json(200, { value: [{ displayName: 'KEEL-RT-site' }], '@odata.count': 1 });
@@ -197,6 +201,13 @@ test('on the fixture tenant every catalogued type is covered and the planted typ
   assert.equal(byName.get('/users').status, 'catalogued');
   assert.deepEqual(byName.get('/users').catalogTypes, ['user']);
   assert.equal(byName.get('/teams').catalogTypes[0], 'teams-settings');
+
+  // The PIM role settings lists need the catalogue's scope filter to answer at all.
+  for (const name of ['/policies/roleManagementPolicies', '/policies/roleManagementPolicyAssignments']) {
+    assert.deepEqual([byName.get(name).status, byName.get(name).objects], ['catalogued', 1], name);
+  }
+  assert.ok(tenant.calls.some((call) => call.url.includes('/policies/roleManagementPolicies?$filter=')));
+  assert.ok(!tenant.calls.some((call) => /\/policies\/roleManagementPolicies(\?\$count|$)/.test(call.url)), 'never probed without its filter');
 
   assert.equal(run.summary.containers.sites.objects, 1);
   assert.deepEqual(run.summary.containers.groups, { objects: 3, exact: false });
@@ -297,6 +308,13 @@ test('throttled reads wait the full Retry-After and a metadata failure reads unk
   assert.deepEqual(run.sources, [{ source: 'graph:beta', status: 'unknown', error: 'GET /beta/$metadata answered 503', metadataVersion: null, paths: 0 }]);
   assert.equal(run.items.length, 0);
   assert.ok(run.catalogue.every((entry) => entry.coverage === 'not-in-metadata'));
+});
+
+test('only a catalogue $filter with no parent placeholder is required on discovery reads', () => {
+  assert.equal(requiredFilter("$filter=scopeId eq '/' and scopeType eq 'DirectoryRole'&$expand=rules"), "$filter=scopeId eq '/' and scopeType eq 'DirectoryRole'");
+  assert.equal(requiredFilter("$filter=roleDefinitionId eq '{parent}'"), null);
+  assert.equal(requiredFilter('$expand=settings'), null);
+  assert.equal(requiredFilter(undefined), null);
 });
 
 test('failure reasons and grant hints', () => {

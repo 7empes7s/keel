@@ -7585,3 +7585,31 @@ item that needs it stays untouched.
   4. Cleanup: delete the rule; collect; accept the `removed` row; collect again: 0 changes.
 - **Report:** B; step 1 yes/no; step 2 lines; step 3 artifact, approval and job ids, the job outcome and the two log lines; what is left in the tenant.
   If any step fails with "Organization cannot be null", "names another tenant" or "separate Restorer", file an issue with the exact message.
+
+### Q162: Live re-check of who a macOS custom attribute script is assigned to (fixes #546, after #551)
+- Drafted by the "macOS attribute script assignments" thread (2026-10-22). Code: PR #551. Fixture-tested only.
+  - **Change:** Graph has no `/deviceManagement/deviceCustomAttributeShellScripts/{id}/assignments` route (400, Q130), so backup
+    and restore now read `GET beta .../deviceCustomAttributeShellScripts/{id}?$expand=assignments` for this kind only. A read
+    without the `assignments` list (or with `assignments@odata.nextLink`) is `failed`, never empty. Restore writes through
+    `/assign` with `deviceManagementScriptAssignments`, as before, and reads them back the same expanded way.
+- Needs: /opt/keel-live at the #551 merge or later (`grep -q "assignmentsRead: 'expand'" /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules and standing approval as Q130: approve the restore yourself and log the approval id.
+  Restorer only (it holds `DeviceManagementScripts.ReadWrite.All`, Q130 step 0); grant nothing. Never touch CA policies,
+  break-glass or Marouane's account. No tenant-wide setting is changed. **Assign the fixture only to the empty groups below.**
+- **Fixtures:** security groups `KEEL-RT-546-assign` and `KEEL-RT-546-assign-b`, both with **no members**; macOS custom attribute
+  script `KEEL-RT-546-attr` (body `echo KEEL-RT`, string attribute), assigned to `KEEL-RT-546-assign`.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Create the fixtures, then take snapshot S. **Backup check:** the fixture's assignment read is `complete`, 1 target
+     (`KEEL-RT-546-assign`), endpoint ending `?$expand=assignments`. Report the "policy assignment reads" line verbatim.
+  2. **Assignment-only round:** move the script's assignment to `KEEL-RT-546-assign-b`. Restore from S selecting
+     `deviceCustomAttributeShellScript`. Expect the dry run to plan an `update` with assignments differing; approve, enforce,
+     capture the `update`. Expect the script assigned to `KEEL-RT-546-assign` only, and the job outcome verified.
+  3. **Re-run check:** dry run from S after step 2. Expect 0 planned writes.
+  4. Cleanup: delete the script and both groups. Report anything left.
+  5. Commit the record and `.capture.json` under `docs/release/qualifications/entra-live/` on `claude/live-evidence-546`,
+     branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR. Run
+     `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; step 1 line and outcome; step 2 dry run, approval and job ids and the result; step 3; the evidence branch and
+  commit; anything left in the tenant. If the expanded read fails, report the exact Graph answer and comment on #546.

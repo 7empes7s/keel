@@ -903,7 +903,7 @@ being triggered by queue updates.
   registration (Q61: environments 200) and Power BI through the Fabric read-only admin API group (Q61: 200). Not yet seen live:
   `GET /v1/admin/tenantsettings` (403 in Q57, before the Fabric setting took effect), the DLP policies read and the connectors read.
 - Needs: nothing.
-- Status: todo
+- Status: in-progress
 - Result:
 - **Read-only. Nothing is written to the tenant.** Collector token only, GETs only. **Grant, register or change nothing**, whatever
   is refused. Never touch CA policies, break-glass or Marouane's account.

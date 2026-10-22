@@ -14,7 +14,6 @@ import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { recordException } from '../benchmarks/evaluate.mjs';
 import { fixFor, listFixCandidates } from '../benchmarks/fix.mjs';
-import { controlFor } from '../benchmarks/registry.mjs';
 import { WORKLOAD_FACT_TYPES, controlFor } from '../benchmarks/registry.mjs';
 import { readObservation } from '../contracts/observation.mjs';
 import { retentionClaimFor } from '../storage/qualification.mjs';

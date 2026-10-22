@@ -1,9 +1,14 @@
 import Link from "next/link";
 
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { AskRecords } from "@/components/ask-records";
+import { Icon, type IconName } from "@/components/shell/icons";
+import { AlertList } from "@/components/ui/alert-list";
+import { Badge } from "@/components/ui/badge";
+import { StatTiles } from "@/components/ui/stat-tiles";
 import {
-  ASK_INTENTS, ASK_PERIODS, gapSentence, recordSentence, recordTitle, sourceLabel, understoodAs, windowSentence,
-  type AskData, type AnswerRecord, type GroundedAnswer,
+  ASK_INTENTS, ASK_PERIODS, answerBadge, answerSummary, askAlerts, askTiles, understoodAs, understoodFilters,
+  type AskData, type GroundedAnswer, type SummaryRow,
 } from "@/lib/ask-view";
 import { RESOURCE_TYPE_LABELS, formatTimestamp } from "@/lib/presentation";
 
@@ -11,23 +16,30 @@ import { RESOURCE_TYPE_LABELS, formatTimestamp } from "@/lib/presentation";
 // anything. Every answer lists the records it rests on, each with a link to where it
 // came from and the window it covers; the plan, ids and raw values sit in the record.
 const CSS = `
-.ask-forms { display: grid; gap: var(--space-md); grid-template-columns: minmax(0, 1fr); }
+.ask-forms { display: contents; }
+.ask-form-card { display: grid; gap: var(--space-sm); min-width: 0; padding: var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.ask-form-card h2 { display: inline-flex; align-items: center; gap: var(--space-xs); margin: 0; font-size: 1rem; font-weight: 650; }
+.ask-form-card h2 .icon { width: 1rem; height: 1rem; color: var(--text-soft); }
 .ask-form { display: grid; gap: var(--space-sm); }
-.ask-form-row { display: grid; gap: var(--space-sm); grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); align-items: end; }
+.ask-form .filter-field > span { color: var(--text-soft); font-size: 0.8125rem; font-weight: 600; letter-spacing: normal; text-transform: none; }
+.ask-form-row { display: grid; gap: var(--space-sm); grid-template-columns: repeat(4, minmax(0, 1fr)) auto; align-items: end; }
 .ask-question { display: grid; gap: var(--space-sm); grid-template-columns: minmax(0, 1fr) auto; align-items: end; }
-.ask-examples { margin: 0; padding-left: var(--space-lg); display: grid; gap: var(--space-2xs); }
-.ask-answer { display: grid; gap: var(--space-sm); }
-.ask-understood, .ask-scope, .ask-refusal { margin: 0; }
-.ask-gaps { margin: 0; padding-left: var(--space-lg); display: grid; gap: var(--space-2xs); }
-.ask-gap { color: var(--text-soft); font-weight: 600; }
-.ask-records { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-sm); }
-.ask-record { display: grid; gap: var(--space-2xs); padding: var(--space-sm) var(--space-md); border-left: 3px solid var(--line-strong); overflow-wrap: anywhere; }
-.ask-record p { margin: 0; }
-.ask-record-title { font-weight: 600; }
-.ask-record-window { color: var(--text-soft); }
-.ask-truncated { margin: 0; }
+.ask-examples { display: flex; flex-wrap: wrap; gap: var(--space-2xs); margin: 0; padding: 0; list-style: none; }
+.ask-examples a { display: inline-flex; padding: 0.25rem var(--space-sm); border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); font-size: 0.8125rem; text-decoration: none; }
+.ask-examples a:hover { border-color: var(--accent, var(--check-soon)); }
+.ask-examples a:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.ask-answer { display: grid; gap: var(--space-md); min-width: 0; }
+.ask-asked { display: grid; gap: var(--space-2xs); margin: 0; padding: var(--space-sm) var(--space-md); border-left: 3px solid var(--line-strong); background: var(--surface-muted); border-radius: var(--radius-md); }
+.ask-asked p { margin: 0; overflow-wrap: anywhere; }
+.ask-question-text { font-weight: 650; }
+.ask-understood { color: var(--text-soft); font-size: 0.875rem; }
+.ask-badges { display: flex; flex-wrap: wrap; gap: var(--space-2xs); }
+.ask-foot { margin: 0; color: var(--text-soft); font-size: 0.8125rem; }
+@media (max-width: 64rem) {
+  .ask-form-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 40rem) {
-  .ask-question { grid-template-columns: minmax(0, 1fr); }
+  .ask-question, .ask-form-row { grid-template-columns: minmax(0, 1fr); }
 }
 `;
 
@@ -41,17 +53,6 @@ const EXAMPLES = [
   "What is covered in the latest backup?",
   "Which jobs failed yesterday?",
 ];
-
-function RecordItem({ record }: { record: AnswerRecord }) {
-  return (
-    <li className={`ask-record ask-record-${record.kind}`}>
-      <p className="ask-record-title">{recordTitle(record)}</p>
-      <p>{recordSentence(record)}</p>
-      <p className="ask-record-window">{windowSentence(record)}</p>
-      <p><Link href={record.source.href}>{sourceLabel(record)}</Link></p>
-    </li>
-  );
-}
 
 function AnswerRecordLayer({ answer }: { answer: GroundedAnswer }) {
   return (
@@ -76,35 +77,73 @@ function AnswerRecordLayer({ answer }: { answer: GroundedAnswer }) {
   );
 }
 
+function SummaryList({ title, icon, rows, total, limit = 6 }: { title: string; icon: IconName; rows: SummaryRow[]; total: number; limit?: number }) {
+  const shown = rows.slice(0, limit);
+  const rest = rows.slice(limit).reduce((sum, row) => sum + row.count, 0);
+  return (
+    <section className="ak-sum-card">
+      <h3><Icon name={icon} />{title}</h3>
+      <ul>
+        {shown.map((row) => (
+          <li data-tone={row.tone} key={row.key}>
+            <span className="ak-sum-label">{row.icon ? <Icon name={row.icon as IconName} /> : null}{row.tone !== "neutral" ? <Badge tone={row.tone}>{row.label}</Badge> : row.label}</span>
+            <span className="ak-sum-bar"><i style={{ width: `${Math.max(4, Math.round((row.count / Math.max(1, total)) * 100))}%` }} /></span>
+            <b>{row.count.toLocaleString("en-GB")}</b>
+          </li>
+        ))}
+        {rest ? <li className="ak-sum-rest"><span className="ak-sum-label">{`${rows.length - limit} more`}</span><span /><b>{rest.toLocaleString("en-GB")}</b></li> : null}
+      </ul>
+    </section>
+  );
+}
+
+/** Every match counted by service, kind, risk and change, before any row. */
+function AnswerSummary({ answer }: { answer: GroundedAnswer }) {
+  const summary = answerSummary(answer);
+  if (!summary) return null;
+  const total = summary.services.reduce((sum, row) => sum + row.count, 0);
+  return (
+    <section aria-label="Summary of every match" className="ak-summary">
+      <SummaryList icon="service-keel" rows={summary.services} title="By service" total={total} />
+      <SummaryList icon="filter" rows={summary.kinds} title="By kind of setting" total={total} />
+      <SummaryList icon="alert" rows={summary.risks} title="By risk" total={total} />
+      <SummaryList icon="swap" rows={summary.changes} title="By change" total={total} />
+    </section>
+  );
+}
+
 export function AnswerView({ answer }: { answer: GroundedAnswer }) {
   const understood = understoodAs(answer);
+  const badge = answerBadge(answer);
   return (
-    <section aria-labelledby="ask-answer-heading" className="item-card ask-answer">
-      <h2 id="ask-answer-heading">Answer</h2>
-      {answer.question ? <p className="ask-understood">You asked: “{answer.question}”</p> : null}
-      {understood ? <p className="ask-understood">Understood as: {understood}</p> : null}
-      {answer.refusal ? <p className="ask-refusal">{answer.refusal.message}</p> : null}
-      {!answer.scope.central ? (
-        <p className="ask-scope">Only resources owned by {answer.scope.entities.join(" and ")} are included. Other resources in this tenant are answered for a central administrator.</p>
+    <section aria-labelledby="ask-answer-heading" className="ask-answer">
+      <div className="rs-section-head">
+        <h2 id="ask-answer-heading"><Icon name="search" />Answer</h2>
+        <Badge tone={badge.tone}>{badge.label}</Badge>
+      </div>
+      {answer.question || understood ? (
+        <div className="ask-asked">
+          {answer.question ? <p className="ask-question-text">“{answer.question}”</p> : null}
+          {understood ? <p className="ask-understood">Understood as: {understood}</p> : null}
+          <ul aria-label="What KEEL understood" className="ak-understood">
+            {understoodFilters(answer).map((filter) => (
+              <li data-filter={filter.key} key={filter.key}>
+                <span><small>{filter.label}</small>{filter.value}</span>
+                {filter.removeHref ? <Link aria-label={`Ask again without ${filter.label.toLowerCase()}: ${filter.value}`} className="ak-remove" href={filter.removeHref}><Icon name="close" /></Link> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
-      {answer.status === "unknown" && answer.intent ? (
-        <p className="ask-gap">KEEL has no record for this, so it cannot say whether anything happened. This is not the same as nothing happening.</p>
-      ) : null}
-      {answer.gaps.length && answer.status !== "unknown" ? (
-        <ul aria-label="Periods KEEL cannot answer for" className="ask-gaps">
-          {answer.gaps.map((gap, index) => <li className="ask-gap" key={index}>{gapSentence(gap)}</li>)}
-        </ul>
-      ) : null}
+      <AlertList calm="KEEL has records for the whole period." items={askAlerts(answer)} />
+      {answer.intent ? <StatTiles label="The answer at a glance" tiles={askTiles(answer)} /> : null}
       {answer.intent && answer.status !== "unknown" && answer.records.length === 0 ? (
-        <p>Nothing matched in the part of this period KEEL has records for.</p>
+        <p className="pg-empty"><Icon name="info" />Nothing matched in the part of this period KEEL has records for.</p>
       ) : null}
-      {answer.records.length ? (
-        <ul aria-label="Records this answer rests on" className="ask-records">
-          {answer.records.map((record) => <RecordItem key={record.id} record={record} />)}
-        </ul>
-      ) : null}
-      {answer.truncated ? <p className="ask-truncated">Showing the newest {answer.shown} of {answer.total}. Narrow the question to see the rest.</p> : null}
-      <p className="ask-record-window">Answered {formatTimestamp(answer.generatedAt)} from KEEL&apos;s own records. Nothing was changed.</p>
+      <AnswerSummary answer={answer} />
+      {answer.records.length ? <AskRecords records={answer.records} /> : null}
+      {answer.truncated ? <p className="pg-help ask-truncated"><Icon name="info" />The table lists the newest {answer.shown} of {answer.total}; the summary counts all {answer.total}. Narrow the question to list the rest.</p> : null}
+      <p className="ask-foot">Answered {formatTimestamp(answer.generatedAt)} from KEEL&apos;s own records. Nothing was changed.</p>
       <AnswerRecordLayer answer={answer} />
     </section>
   );
@@ -113,11 +152,11 @@ export function AnswerView({ answer }: { answer: GroundedAnswer }) {
 export function AskView({ data, question = "" }: { data: AskData; question?: string }) {
   const typeOptions = Object.entries(RESOURCE_TYPE_LABELS).filter(([type]) => type !== "retentionLabel");
   return (
-    <div className="ask-view">
+    <div className="pg-page ask-view">
       <AskStyles />
       <div className="ask-forms">
-        <section aria-labelledby="ask-question-heading" className="item-card">
-          <h2 id="ask-question-heading">Ask a question</h2>
+        <section aria-labelledby="ask-question-heading" className="ask-form-card">
+          <h2 id="ask-question-heading"><Icon name="search" />Ask a question</h2>
           <form action="/ask" className="ask-form" method="get" role="search">
             <div className="ask-question">
               <label className="filter-field">
@@ -127,13 +166,13 @@ export function AskView({ data, question = "" }: { data: AskData; question?: str
               <button className="btn btn-primary" type="submit">Ask</button>
             </div>
           </form>
-          <p className="ask-understood">For example:</p>
-          <ul className="ask-examples">
+          <ul aria-label="Example questions" className="ask-examples">
             {EXAMPLES.map((example) => <li key={example}><Link href={`/ask?q=${encodeURIComponent(example)}`}>{example}</Link></li>)}
           </ul>
         </section>
-        <section aria-labelledby="ask-form-heading" className="item-card">
-          <h2 id="ask-form-heading">Or choose</h2>
+        {data.answer ? <AnswerView answer={data.answer} /> : null}
+        <section aria-labelledby="ask-form-heading" className="ask-form-card">
+          <h2 id="ask-form-heading"><Icon name="filter" />Or choose</h2>
           <form action="/ask" className="ask-form" method="get">
             <div className="ask-form-row">
               <label className="filter-field">
@@ -167,7 +206,6 @@ export function AskView({ data, question = "" }: { data: AskData; question?: str
           </form>
         </section>
       </div>
-      {data.answer ? <AnswerView answer={data.answer} /> : null}
     </div>
   );
 }

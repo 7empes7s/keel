@@ -16,6 +16,13 @@ export const NAME_FIELDS = Object.freeze(['displayName', 'name', 'title', 'userP
 export const OWN_NAME_FIELDS = Object.freeze({
   intuneBrandingProfile: Object.freeze(['profileName']),
   groupPolicyUploadedDefinitionFile: Object.freeze(['fileName', 'displayName']),
+  // Devices, tokens and connectors Graph saves with no displayName (or an empty one).
+  managedDevice: Object.freeze(['deviceName', 'managedDeviceName', 'serialNumber']),
+  windowsAutopilotDeviceIdentity: Object.freeze(['displayName', 'serialNumber']),
+  deviceManagementExchangeConnector: Object.freeze(['serverName', 'exchangeAlias', 'primarySmtpAddress']),
+  vppToken: Object.freeze(['displayName', 'organizationName', 'appleId']),
+  depOnboardingSetting: Object.freeze(['tokenName', 'appleIdentifier']),
+  enterpriseCodeSigningCertificate: Object.freeze(['subjectName', 'subject', 'issuerName']),
 });
 
 /** Kinds named after the two apps they link. */

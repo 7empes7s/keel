@@ -43,10 +43,12 @@ test("a held-back update is shown and the decision is said to stand", () => {
     heldBack: [{ eventId: "keel:decision:x", kind: "decision", externalRef: "a".repeat(32), attempts: 2, reason: "rejected by adapter", lastError: "HTTP 403", createdAt: "2026-10-04T00:00:00.000Z" }],
   };
   assert.equal(integrationsPageVerdict([], [], held).text, "1 ServiceNow update is held back; KEEL's decisions stand.");
-  assert.equal(heldBackSentence(held.heldBack[0]), "The decision update was held back after 2 attempts: ServiceNow refused it. KEEL's decision stands.");
+  assert.equal(heldBackSentence(held.heldBack[0]), "The decision update was held back: ServiceNow refused it.");
   const html = renderToStaticMarkup(createElement(ServiceNowPanel, { status: held }));
   assert.match(html, /gate passed/);
-  assert.match(html, /Not yet proven against a real ServiceNow instance/);
+  assert.match(html, /Not yet tested on a real ServiceNow/);
+  // The raw error waits behind "Show details".
+  assert.match(html, /<details[^>]*data-show-details[\s\S]*HTTP 403/);
   assert.ok(!/adapter/i.test(html.replace(/<details[\s\S]*<\/details>/, "")), "no internal vocabulary outside the record");
 });
 

@@ -20,7 +20,15 @@ export function FindingRecordFields({ finding }: { finding: ComplianceFinding })
           copy={false}
           key={`${entry.resourceType}-${entry.window.startedAt}`}
           label={`Observation window · ${entry.resourceType}`}
-          value={`${entry.window.startedAt ?? "unknown"} → ${entry.window.endedAt ?? "unknown"} · snapshot ${entry.snapshotId ?? "no match"}`}
+          value={`${entry.window.startedAt ?? "unknown"} → ${entry.window.endedAt ?? "unknown"} · ${entry.collectionId ? `service read ${entry.collectionId}` : `snapshot ${entry.snapshotId ?? "no match"}`}`}
+        />
+      ))}
+      {(finding.details ?? []).map((line, index) => (
+        <RecordField
+          copy={false}
+          key={`detail-${index}`}
+          label={`Failing setting · ${line.subject}`}
+          value={`${line.setting} = ${JSON.stringify(line.value)} (expected ${JSON.stringify(line.expected)})`}
         />
       ))}
       {links.change.linked.map((change) => (

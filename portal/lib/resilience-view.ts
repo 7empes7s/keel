@@ -299,7 +299,7 @@ export function freshnessSentence(metrics: RecoveryMetrics): string {
   }
   if (freshness.state === "gaps") {
     const count = freshness.gaps.length;
-    return `Not measured: ${count} setting type${count === 1 ? " has" : "s have"} never been backed up.`;
+    return `Not measured: ${count} item${count === 1 ? " has" : "s have"} never been backed up.`;
   }
   return "Not measured: no backup has finished yet.";
 }
@@ -424,7 +424,8 @@ function age(at: string | null | undefined, now: string): number {
 
 /** A service backup's state in two words and a tone. */
 export function serviceState(entry: ServiceBackup, now: string): { tone: ResilienceTone; status: string } {
-  if (!entry.switchedOn) return { tone: "neutral", status: "Switched off" };
+  // A run recorded as "disabled" means the workload's live check switched it off.
+  if (!entry.switchedOn || entry.latest?.outcome === "disabled") return { tone: "neutral", status: "Switched off" };
   if (!entry.lastGood) return entry.latest ? { tone: "urgent", status: "Never worked" } : { tone: "soon", status: "Not run yet" };
   if (entry.latest && entry.latest.id !== entry.lastGood.id) {
     return { tone: "soon", status: entry.latest.outcome === "partial" ? "Last try incomplete" : "Last try failed" };
@@ -440,21 +441,27 @@ function holdsWords(entry: ServiceBackup): string {
   return typeof entry.lastGood?.settings === "number" ? plural(entry.lastGood.settings, "setting") : "";
 }
 
+/** Freshness lists every required backup; the Entra ID and Intune ones are its types and relationships. */
+function isEntraIntune(dependency: DependencyRef): boolean {
+  return dependency.kind === "type" || dependency.kind === "relationship";
+}
+
 /** The Entra ID and Intune settings backup as one row, from the freshness numbers. */
 function entraRow(metrics: RecoveryMetrics, now: string): ServiceRow {
   const freshness = metrics.freshness;
-  const base = { key: "entra-intune", name: "Users, groups, sign-in rules, devices and apps", what: "Settings" as const, holds: plural(freshness.required, "setting type") };
-  if (freshness.gaps.length) {
-    return { ...base, tone: "urgent", status: `${freshness.gaps.length} never backed up`, last: freshness.oldestDependency ? ago(freshness.oldestDependency.since, now) : "Never" };
+  const gaps = freshness.gaps.filter(isEntraIntune);
+  const failures = freshness.latestFailures.filter(isEntraIntune);
+  const oldest = freshness.oldestDependency && isEntraIntune(freshness.oldestDependency) ? freshness.oldestDependency : null;
+  // When the oldest backup overall is another service's, Entra ID and Intune are newer than it.
+  const last = oldest ? ago(oldest.since, now) : freshness.oldestDependency ? `Newer than ${ago(freshness.oldestDependency.since, now).replace(/ ago$/, "")}` : "Never";
+  const base = { key: "entra-intune", name: "Users, groups, sign-in rules, devices and apps", what: "Settings" as const, holds: "" };
+  if (gaps.length) return { ...base, tone: "urgent", status: `${gaps.length} never backed up`, last };
+  if (failures.length) return { ...base, tone: "soon", status: `${failures.length} failed last time`, last };
+  if (freshness.oldestDependency) {
+    const stale = oldest !== null && oldest.ageMs > STALE_MS;
+    return { ...base, tone: stale ? "soon" : "fine", status: stale ? "Out of date" : "Backed up", last };
   }
-  if (freshness.latestFailures.length) {
-    return { ...base, tone: "soon", status: `${freshness.latestFailures.length} failed last time`, last: freshness.oldestDependency ? ago(freshness.oldestDependency.since, now) : "Never" };
-  }
-  if (freshness.state === "measured" && freshness.oldestDependency) {
-    const stale = (freshness.achievedRpoMs ?? 0) > STALE_MS;
-    return { ...base, tone: stale ? "soon" : "fine", status: stale ? "Out of date" : "Backed up", last: ago(freshness.oldestDependency.since, now) };
-  }
-  return { ...base, tone: "soon", status: "Not run yet", last: "Never" };
+  return { ...base, tone: "soon", status: "Not run yet", last };
 }
 
 /** Every backup by Microsoft service, in the portal's service order; settings before content. */
@@ -524,23 +531,27 @@ export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
     });
   }
 
-  if (freshness.gaps.length) {
-    const names = freshness.gaps.map((gap) => dependencyName(gap));
+  // Service settings and content are in freshness too; their alerts come from `services` below.
+  const gaps = freshness.gaps.filter(isEntraIntune);
+  const failures = freshness.latestFailures.filter(isEntraIntune);
+  if (gaps.length) {
+    const names = gaps.map((gap) => dependencyName(gap));
     alerts.push({
       key: "never-backed-up", tone: "urgent", icon: "x-circle",
-      title: freshness.gaps.length === 1 ? `${names[0]} never backed up` : `${freshness.gaps.length} setting types never backed up`,
+      title: gaps.length === 1 ? `${names[0]} never backed up` : `${gaps.length} setting types never backed up`,
       todo: "KEEL can't restore them yet. See why on What's protected.",
-      more: freshness.gaps.map((gap) => `${dependencyName(gap)}: ${gap.lastAttempt ? `last try ${gap.lastAttempt.outcome === "partial" ? "stopped part way" : "failed"} ${ago(gap.lastAttempt.at, now)}` : "never tried"}`),
-      action: { label: "See failures", href: "/protect?health=failed" },
+      more: gaps.map((gap) => `${dependencyName(gap)}: ${gap.lastAttempt ? `last try ${gap.lastAttempt.outcome === "partial" ? "stopped part way" : "failed"} ${ago(gap.lastAttempt.at, now)}` : "never tried"}`),
+      // A type never tried is "out of date" on Protect, not "failed".
+      action: gaps.some((gap) => gap.lastAttempt) ? { label: "See failures", href: "/protect?health=failed" } : { label: "What's protected", href: "/protect" },
     });
   }
 
-  if (freshness.latestFailures.length) {
+  if (failures.length) {
     alerts.push({
       key: "latest-failed", tone: "soon", icon: "alert",
-      title: freshness.latestFailures.length === 1 ? `${dependencyName(freshness.latestFailures[0])}: last backup failed` : `${freshness.latestFailures.length} setting types failed last backup`,
+      title: failures.length === 1 ? `${dependencyName(failures[0])}: last backup failed` : `${failures.length} setting types failed last backup`,
       todo: "Older copies are kept. Run the backup again.",
-      more: freshness.latestFailures.map((failure) => `${dependencyName(failure)}: ${failure.outcome === "partial" ? "stopped part way" : "failed"} ${ago(failure.failedAt, now)}; using the copy from ${ago(failure.lastSuccessAt, now)}`),
+      more: failures.map((failure) => `${dependencyName(failure)}: ${failure.outcome === "partial" ? "stopped part way" : "failed"} ${ago(failure.failedAt, now)}; using the copy from ${ago(failure.lastSuccessAt, now)}`),
       action: { label: "See failures", href: "/protect?health=failed" },
     });
   }

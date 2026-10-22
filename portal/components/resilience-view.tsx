@@ -89,7 +89,7 @@ function Alerts({ alerts }: { alerts: ResilienceAlert[] }) {
                 {alert.more.length ? (
                   <details className="rs-alert-more">
                     <summary>Show details</summary>
-                    <ul>{alert.more.map((line) => <li key={line}>{line}</li>)}</ul>
+                    <ul>{alert.more.map((line, index) => <li key={`${index}:${line}`}>{line}</li>)}</ul>
                   </details>
                 ) : null}
               </div>

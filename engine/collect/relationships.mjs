@@ -178,6 +178,11 @@ const ASSIGNMENT_ROUTES = Object.freeze({
   windowsDriverUpdateProfile: { version: 'beta', base: '/deviceManagement/windowsDriverUpdateProfiles', requires: DEVICE_CONFIG },
   groupPolicyConfiguration: { version: 'beta', base: '/deviceManagement/groupPolicyConfigurations', requires: DEVICE_CONFIG },
   intuneBrandingProfile: { version: 'beta', base: '/deviceManagement/intuneBrandingProfiles', requires: SERVICE_CONFIG },
+  // Restore gaps batch 15: custom attribute scripts, settings catalog
+  // compliance policies and Windows app protection (beta-only routes).
+  deviceCustomAttributeShellScript: { version: 'beta', base: '/deviceManagement/deviceCustomAttributeShellScripts', requires: DEVICE_CONFIG },
+  deviceManagementCompliancePolicy: { version: 'beta', base: '/deviceManagement/compliancePolicies', requires: DEVICE_CONFIG },
+  windowsManagedAppProtection: { version: 'beta', base: '/deviceAppManagement/windowsManagedAppProtections', requires: APPS },
   managedAppPolicy: {
     version: 'v1.0',
     requires: APPS,

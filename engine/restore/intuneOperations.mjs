@@ -750,6 +750,7 @@ async function assignmentsAfterWrite(io, { payload, verb, targetId, resource }) 
     if (found?.ok !== true) return { error: `dependency: an assignment filter this policy uses ${recordNotFound(found) ? 'does not exist in the target' : 'could not be read'}` };
   }
   const base = recordObjectPath(record, payload, targetId);
+  if (record.assignmentWrite === 'per-item') return perItemAssignments(io, { record, base, verb, plan, extras });
   let current = new Set();
   if (verb !== 'create') {
     const listed = await io.retryOperation(() => io.writer.read(record.version, `${base}/assignments`));
@@ -766,6 +767,48 @@ async function assignmentsAfterWrite(io, { payload, verb, targetId, resource }) 
     return { error: 'post-state: the assignments did not read back as written' };
   }
   return { changes: { assignments: 'written' } };
+}
+
+/**
+ * Assignments written one by one (Autopilot profiles, restore gaps batch 15):
+ * Graph has no /assign action for them, so each missing assignment is POSTed
+ * to .../assignments and each one not in the backup is deleted by its id,
+ * then the list is read back.
+ */
+async function perItemAssignments(io, { record, base, verb, plan, extras }) {
+  const wanted = new Map(plan.assignments.map((assignment, index) => [
+    [...liveAssignmentIdentities([assignment], { extras })][0] ?? `unknown-${index}`, assignment,
+  ]));
+  let liveItems = [];
+  if (verb !== 'create') {
+    const listed = await io.retryOperation(() => io.writer.read(record.version, `${base}/assignments`));
+    if (listed?.ok !== true) return { error: 'the profile\'s live assignments could not be read, so they were not changed' };
+    liveItems = listed.body?.value ?? [];
+  }
+  const current = liveAssignmentIdentities(liveItems, { extras });
+  if (sameIdentities(plan.identities, current)) return { changes: { assignments: 'already as in the backup' } };
+  const extra = liveItems.filter((item) => {
+    const identity = [...liveAssignmentIdentities([item], { extras })][0];
+    return identity === undefined || !plan.identities.has(identity);
+  });
+  for (const item of extra) {
+    if (typeof item?.id !== 'string' || item.id.length === 0) return { error: 'a live assignment has no id, so it could not be removed' };
+    const removed = await io.retryOperation(() => io.writer.write(record.version, `${base}/assignments/${encodeURIComponent(item.id)}`, { method: 'DELETE' }));
+    if (!removed.ok && !recordNotFound(removed)) return { error: `removing an assignment that is not in the backup failed: ${outcomeDetail(removed)}` };
+  }
+  for (const [identity, assignment] of wanted) {
+    if (current.has(identity)) continue;
+    const added = await io.retryOperation(() => io.writer.write(record.version, `${base}/assignments`, {
+      method: 'POST', body: { '@odata.type': record.assignmentType, ...assignment },
+    }));
+    if (!added.ok) return { error: `assigning the profile failed: ${outcomeDetail(added)}` };
+  }
+  const check = await readUntil(io, record.version, `${base}/assignments`, (r) => recordNotFound(r)
+    || (r?.ok === true && !sameIdentities(plan.identities, liveAssignmentIdentities(r.body?.value ?? [], { extras }))), io.readOptions);
+  if (check?.ok !== true || !sameIdentities(plan.identities, liveAssignmentIdentities(check.body?.value ?? [], { extras }))) {
+    return { error: 'post-state: the assignments did not read back as written' };
+  }
+  return { changes: { assignments: { removed: extra.length, added: [...wanted.keys()].filter((identity) => !current.has(identity)).length } } };
 }
 
 /** A device app configuration's apps must exist in the target (by id). */
@@ -989,8 +1032,8 @@ async function groupPolicySettingsAfterWrite(io, { payload, verb, targetId }) {
 /**
  * Script and remediation /assign bodies (beta). Scripts name their list
  * deviceManagementScriptAssignments, remediations and compliance scripts
- * deviceHealthScriptAssignments. A custom attribute script's assignments are
- * not backed up (no assignments route is read), so it has no entry.
+ * deviceHealthScriptAssignments. Custom attribute scripts (batch 15) use the
+ * script list too.
  */
 const SCRIPT_ASSIGNMENTS = Object.freeze({
   deviceManagementScript: { assignmentType: '#microsoft.graph.deviceManagementScriptAssignment', assignmentBodyKey: 'deviceManagementScriptAssignments' },
@@ -1000,18 +1043,26 @@ const SCRIPT_ASSIGNMENTS = Object.freeze({
     assignmentExtras: ['runRemediationScript', 'runSchedule'],
   },
   deviceComplianceScript: { assignmentType: '#microsoft.graph.deviceHealthScriptAssignment', assignmentBodyKey: 'deviceHealthScriptAssignments' },
+  // Batch 15: custom attribute scripts take the same list as other scripts.
+  deviceCustomAttributeShellScript: { assignmentType: '#microsoft.graph.deviceManagementScriptAssignment', assignmentBodyKey: 'deviceManagementScriptAssignments' },
 });
 
-/** Child writes one after another; the first error stops them, and their changes merge. */
+/**
+ * Child writes one after another; the first error stops them, and their
+ * changes merge. A step that read the object back passes it on as `live`.
+ */
 function inOrder(...steps) {
   return async (io, step) => {
     const changes = {};
+    let live = null;
     for (const run of steps) {
-      const out = await run(io, step);
+      const out = await run(io, live ? { ...step, live } : step);
       if (out?.error) return out;
       if (out?.changes) Object.assign(changes, out.changes);
+      if (out?.live) live = out.live;
     }
-    return Object.keys(changes).length > 0 ? { changes } : null;
+    if (Object.keys(changes).length === 0 && !live) return null;
+    return { ...(Object.keys(changes).length > 0 ? { changes } : {}), ...(live ? { live } : {}) };
   };
 }
 
@@ -1323,12 +1374,15 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     operations: ['create', 'update'], refusal: builtInAppCategory, permission: 'DeviceManagementApps.ReadWrite.All',
   }),
   // An Autopilot profile is written with its kind (Entra joined or hybrid
-  // joined), which never changes. The devices it applies to and who it is
-  // assigned to are not written.
+  // joined), which never changes. The devices it applies to are not written.
+  // Batch 15: who it is assigned to is written one assignment at a time
+  // (Autopilot profiles have no /assign action).
   windowsAutopilotDeploymentProfile: defineRecord({
     resourceType: 'windowsAutopilotDeploymentProfile', version: 'beta', collection: '/deviceManagement/windowsAutopilotDeploymentProfiles',
     odataType: 'required', operations: ['create', 'update'], excluded: ['assignedDevices', 'assignments'],
-    refusal: sameAutopilotKind, permission: 'DeviceManagementServiceConfig.ReadWrite.All',
+    refusal: sameAutopilotKind, afterWrite: assignmentsAfterWrite,
+    assignmentType: '#microsoft.graph.windowsAutopilotDeploymentProfileAssignment', assignmentWrite: 'per-item',
+    permission: 'DeviceManagementServiceConfig.ReadWrite.All',
   }),
   // A policy set is written, then its items (the apps and policies in it)
   // are synced through the set's update action. Every app and policy it holds
@@ -1343,13 +1397,15 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // reads each policy with its settings and actions for noncompliance. The
   // policy is written whole (PUT, like a settings catalog policy); a create
   // carries its actions, and on update changed actions go through the
-  // policy's setScheduledActions action. Who it is assigned to is not written.
+  // policy's setScheduledActions action. Batch 15: then who it is assigned
+  // to, through /assign (read per policy from batch 15).
   deviceManagementCompliancePolicy: defineRecord({
     resourceType: 'deviceManagementCompliancePolicy', version: 'beta', collection: COMPLIANCE_POLICIES, operations: ['create', 'update'],
     updateMethod: 'PUT', readQuery: COMPLIANCE_EXPAND,
     excluded: ['creationSource', 'isAssigned', 'settingCount', 'settings', 'scheduledActionsForRule', ...POLICY_NAVIGATION],
-    transform: complianceBody, sameField: sameComplianceField, refusal: compliancePolicyRefusal, afterWrite: complianceActionsAfterWrite,
-    permission: 'DeviceManagementConfiguration.ReadWrite.All',
+    transform: complianceBody, sameField: sameComplianceField, refusal: compliancePolicyRefusal,
+    afterWrite: inOrder(complianceActionsAfterWrite, assignmentsAfterWrite),
+    assignmentType: '#microsoft.graph.deviceManagementConfigurationPolicyAssignment', permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
   // Restore gaps, batch 8. An e-book category is only a name.
   managedEBookCategory: defineRecord({
@@ -1440,12 +1496,12 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   }),
   // Restore gaps, batch 12. Windows app protection (Edge on unmanaged Windows
   // devices): the backup reads each policy with its apps, which are written
-  // through /targetApps like iOS and Android policies. Who it is assigned to
-  // is not backed up, so a recreated policy is assigned again by hand.
+  // through /targetApps like iOS and Android policies. Batch 15: who it is
+  // assigned to is read per policy and written through /assign.
   windowsManagedAppProtection: defineRecord({
     resourceType: 'windowsManagedAppProtection', version: 'beta', collection: '/deviceAppManagement/windowsManagedAppProtections',
     operations: ['create', 'update'], excluded: APP_POLICY_SERVER_FIELDS, refusal: managedAppRefusal, afterWrite: targetAppsAfterWrite,
-    permission: 'DeviceManagementApps.ReadWrite.All',
+    assignmentType: '#microsoft.graph.targetedManagedAppPolicyAssignment', permission: 'DeviceManagementApps.ReadWrite.All',
   }),
   // An iOS app provisioning profile: its name, description, scope tags and the
   // profile file. Who it is assigned to is not backed up.

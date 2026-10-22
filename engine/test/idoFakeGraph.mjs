@@ -4,7 +4,7 @@
  * under it (or, before any child write, the parent's inline array of the same
  * name); `$expand=x` adds the `x` collection to the object read. The actions
  * the writers use are modelled: /assign, /targetApps, a policy set's /update, a compliance
- * policy's /setScheduledActions, owners/$ref,
+ * policy's /setScheduledActions, owners/$ref, an inline child's DELETE,
  * appRoleAssignments, createNewVersion and assignLicense. Every call is kept in
  * `calls` (method, version, path, body) for the tests to inspect.
  */
@@ -138,7 +138,13 @@ export function idoFakeGraph({ seed = {}, failWrites = () => null } = {}) {
         // A child of an inline collection (an allowed value, a localized message).
         const list = collectionOf(owner);
         const index = list.findIndex((item) => String(item.id) === decodeURIComponent(action));
-        if (index < 0 || method !== 'PATCH') return notFound();
+        if (index < 0) return notFound();
+        if (method === 'DELETE') {
+          // One Autopilot profile assignment, removed by its id (restore gaps batch 15).
+          setCollection(owner, list.filter((_, at) => at !== index));
+          return ok(204, null);
+        }
+        if (method !== 'PATCH') return notFound();
         const updated = [...list];
         updated[index] = { ...updated[index], ...body };
         setCollection(owner, updated);

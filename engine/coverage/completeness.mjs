@@ -188,7 +188,7 @@ export const COMPLETENESS = Object.freeze({
   deviceManagementRoleDefinition: { whole: 'not-written' },
   deviceCategory: { missing: [part('Which devices are in the category', 'read-only')] },
   termsAndConditions: { whole: 'not-written', missing: [part('Who accepted the terms', 'read-only')] },
-  windowsAutopilotDeploymentProfile: { missing: [part('The registered device hardware it applies to', 'other-route'), part('Who the profile is assigned to', 'not-written')] },
+  windowsAutopilotDeploymentProfile: { missing: [part('The registered device hardware it applies to', 'other-route')] },
   deviceManagementIntent: { whole: 'not-written', missing: [part('The baseline\'s settings', 'other-route')] },
   managedDevice: { managed: true },
   mobileApp: { whole: 'not-written', missing: [part('The app package', 'binary-route')] },
@@ -225,7 +225,8 @@ export const COMPLETENESS = Object.freeze({
   intuneBrandingProfile: { missing: [part('Logo images', 'other-route')] },
   customAuthenticationExtension: { whole: 'not-written' },
   // Remaining kinds, batch 3.
-  deviceManagementCompliancePolicy: { missing: [part('Who the policy is assigned to', 'other-route')] },
+  // Restore gaps batch 15: assignments read per policy and written through /assign.
+  deviceManagementCompliancePolicy: {},
   deviceManagementReusablePolicySetting: {},
   policySet: { missing: [part('Who the set is assigned to', 'not-written')] },
   vppToken: { whole: 'not-written', missing: [part('The token file', 'secret')] },
@@ -235,7 +236,7 @@ export const COMPLETENESS = Object.freeze({
   windowsQualityUpdatePolicy: { missing: [part('Who the policy is assigned to', 'other-route')] },
   operationApprovalPolicy: { whole: 'not-written' },
   // Restore gaps batch 5: the script body is read per script and written back.
-  deviceCustomAttributeShellScript: { missing: [part('Who the script is assigned to', 'other-route')] },
+  deviceCustomAttributeShellScript: {},
   // Remaining kinds, batch 4.
   externalIdentitiesPolicy: {},
   b2bManagementPolicy: {},
@@ -269,7 +270,7 @@ export const COMPLETENESS = Object.freeze({
   managedEBook: { whole: 'not-written', missing: [part('Who the book is assigned to', 'other-route')] },
   managedEBookCategory: { missing: [part('Which books are in the category', 'other-route')] },
   cartToClassAssociation: { missing: [part('The devices and classes it names', 'other-route')] },
-  windowsManagedAppProtection: { missing: [part('Who the policy is assigned to', 'other-route')] },
+  windowsManagedAppProtection: {},
   enterpriseCodeSigningCertificate: { whole: 'not-written' },
   symantecCodeSigningCertificate: { whole: 'not-written', missing: [part('Certificate file and password', 'secret')] },
   userExperienceAnalyticsBaseline: { missing: [part('Built-in baselines', 'microsoft-managed'), part('The scores taken when it was created', 'microsoft-managed')] },

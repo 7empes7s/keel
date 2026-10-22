@@ -1,5 +1,7 @@
+import type { IconName } from "@/components/shell/icons";
 import type { VerdictTone } from "@/components/verdict";
 import { ago, formatTimestamp, resourceTypeLabel, words } from "@/lib/presentation";
+import { serviceFor, serviceOrder, type CloudService } from "@/lib/services";
 import type { StorageResidency } from "@/lib/types";
 
 // Roadmap task-73: the Resilience page in words. The numbers come from
@@ -226,13 +228,20 @@ export function storageSentence(storage: StorageResidency): string {
   return STORAGE_SENTENCES[storage.immutability] ?? STORAGE_SENTENCES.unknown;
 }
 
+// Tiers in plain words; the tier number stays in brackets so it matches Schedules.
+const TIER_WORDS: Record<string, string> = {
+  tier1: "Critical settings (tier 1)",
+  tier2: "Important settings (tier 2)",
+  tier3: "Rarely changing settings (tier 3)",
+};
+
 const EVERY_WORDS: Record<string, string> = { hour: "hour", day: "day", week: "week" };
 
 /** Configured cadence in words, labelled as a plan by the caller. */
 export function cadenceSentence(entry: RecoveryMetrics["configured"]["cadence"][number]): string {
   const what = entry.jobKind === "offsite"
     ? "Off-site copy"
-    : `${entry.tier ? `Tier ${entry.tier.replace(/^tier/, "")} ` : ""}backup`;
+    : TIER_WORDS[entry.tier ?? ""] ?? "Settings backup";
   if (!entry.enabled) return `${what}: turned off`;
   if (entry.cron) return `${what}: on a custom timetable`;
   const every = EVERY_WORDS[entry.cadence?.every ?? ""];
@@ -290,18 +299,18 @@ export function freshnessSentence(metrics: RecoveryMetrics): string {
   }
   if (freshness.state === "gaps") {
     const count = freshness.gaps.length;
-    return `Not measured: ${count} required item${count === 1 ? " has" : "s have"} never been backed up successfully.`;
+    return `Not measured: ${count} item${count === 1 ? " has" : "s have"} never been backed up.`;
   }
-  return "Not measured: KEEL has no successful backup to measure from yet.";
+  return "Not measured: no backup has finished yet.";
 }
 
 export function recoverablePointSentence(metrics: RecoveryMetrics, now: string): string {
   const point = metrics.recoverablePoint;
   if (point.state === "measured" && point.point) {
-    return `The newest complete off-site copy recovers settings as collected ${ago(point.point, now)}.`;
+    return `The newest checked off-site copy holds settings from ${ago(point.point, now)}.`;
   }
-  if (point.copies.length === 0) return "Not measured: no off-site copy has been recorded and checked yet.";
-  return "Not measured: no off-site copy has passed its check with a good backup of everything required.";
+  if (point.copies.length === 0) return "Not measured: no off-site copy has been checked yet.";
+  return "Not measured: no off-site copy holds a good backup of everything.";
 }
 
 /** Bytes in words: "7.4 MB". */
@@ -339,10 +348,10 @@ export function servicesSentence(metrics: RecoveryMetrics): string {
 
 export function recoveryTimeSentence(metrics: RecoveryMetrics): string {
   const time = metrics.recoveryTime;
-  if (time.state !== "measured") return "Not measured: no drill or restore has finished and been checked yet.";
+  if (time.state !== "measured") return "Not measured: no restore or drill has been timed yet.";
   const from = `${time.samples} checked recover${time.samples === 1 ? "y" : "ies"}`;
   if (time.samples === 1) return `The one checked recovery took ${formatDuration(time.latestMs)}.`;
-  return `The last checked recovery took ${formatDuration(time.latestMs)}; the slowest of ${from} took ${formatDuration(time.worstMs)}.`;
+  return `Last checked recovery: ${formatDuration(time.latestMs)}. Slowest of ${from}: ${formatDuration(time.worstMs)}.`;
 }
 
 export function readinessSentence(metrics: RecoveryMetrics, now: string): string {
@@ -351,9 +360,9 @@ export function readinessSentence(metrics: RecoveryMetrics, now: string): string
     return `${readiness.cleanupFailures.length} drill${readiness.cleanupFailures.length === 1 ? "" : "s"} left test objects in the tenant.`;
   }
   if (readiness.state === "drilled" && readiness.lastCountedDrill) {
-    return `The last recovery drill on a test group passed ${ago(readiness.lastCountedDrill.at, now)} and cleaned up after itself.`;
+    return `Passed ${ago(readiness.lastCountedDrill.at, now)} and cleaned up after itself.`;
   }
-  return "Not measured: no recovery drill has run on this tenant yet.";
+  return "Not measured: no drill has run on this tenant yet.";
 }
 
 export function incidentSentence(summary: IncidentPointSummary, now: string): string {
@@ -363,3 +372,361 @@ export function incidentSentence(summary: IncidentPointSummary, now: string): st
 }
 
 export { formatTimestamp };
+
+// --- The page at a glance (Resilience redesign) ---------------------------------
+// What needs the reader first, as alerts with one line on what to do; four tiles;
+// and one row per service backup. Words only: the component lays them out.
+
+export type ResilienceTone = "urgent" | "soon" | "low" | "fine" | "neutral";
+
+export interface ResilienceAlert {
+  key: string;
+  tone: "urgent" | "soon" | "low";
+  icon: IconName;
+  title: string;
+  todo: string;
+  // Error specifics, shown only when the reader asks for them.
+  more: string[];
+  action: { label: string; href: string } | null;
+}
+
+const TONE_RANK: Record<ResilienceAlert["tone"], number> = { urgent: 0, soon: 1, low: 2 };
+
+function plural(count: number, one: string, many = `${one}s`): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+/** One row per service backup beyond Entra ID and Intune, with a plain state. */
+export interface ServiceRow {
+  key: string;
+  name: string;
+  what: "Settings" | "Content";
+  tone: ResilienceTone;
+  status: string;
+  last: string;
+  holds: string;
+}
+
+export interface ServiceGroup {
+  key: string;
+  name: string;
+  icon: IconName;
+  rows: ServiceRow[];
+}
+
+const STALE_MS = 48 * 3_600_000;
+
+function age(at: string | null | undefined, now: string): number {
+  if (!at) return Number.POSITIVE_INFINITY;
+  const ms = new Date(now).valueOf() - new Date(at).valueOf();
+  return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+}
+
+/** A service backup's state in two words and a tone. */
+export function serviceState(entry: ServiceBackup, now: string): { tone: ResilienceTone; status: string } {
+  // A run recorded as "disabled" means the workload's live check switched it off.
+  if (!entry.switchedOn || entry.latest?.outcome === "disabled") return { tone: "neutral", status: "Switched off" };
+  if (!entry.lastGood) return entry.latest ? { tone: "urgent", status: "Never worked" } : { tone: "soon", status: "Not run yet" };
+  if (entry.latest && entry.latest.id !== entry.lastGood.id) {
+    return { tone: "soon", status: entry.latest.outcome === "partial" ? "Last try incomplete" : "Last try failed" };
+  }
+  if (age(entry.lastGood.at, now) > STALE_MS) return { tone: "soon", status: "Out of date" };
+  return { tone: "fine", status: "Backed up" };
+}
+
+function holdsWords(entry: ServiceBackup): string {
+  if (entry.kind === "content") {
+    return entry.stored ? `${entry.stored.items.toLocaleString("en-GB")} item${entry.stored.items === 1 ? "" : "s"}, ${formatBytes(entry.stored.bytes)}` : "";
+  }
+  return typeof entry.lastGood?.settings === "number" ? plural(entry.lastGood.settings, "setting") : "";
+}
+
+/** Freshness lists every required backup; the Entra ID and Intune ones are its types and relationships. */
+function isEntraIntune(dependency: DependencyRef): boolean {
+  return dependency.kind === "type" || dependency.kind === "relationship";
+}
+
+/** The Entra ID and Intune settings backup as one row, from the freshness numbers. */
+function entraRow(metrics: RecoveryMetrics, now: string): ServiceRow {
+  const freshness = metrics.freshness;
+  const gaps = freshness.gaps.filter(isEntraIntune);
+  const failures = freshness.latestFailures.filter(isEntraIntune);
+  const oldest = freshness.oldestDependency && isEntraIntune(freshness.oldestDependency) ? freshness.oldestDependency : null;
+  // When the oldest backup overall is another service's, Entra ID and Intune are newer than it.
+  const last = oldest ? ago(oldest.since, now) : freshness.oldestDependency ? `Newer than ${ago(freshness.oldestDependency.since, now).replace(/ ago$/, "")}` : "Never";
+  const base = { key: "entra-intune", name: "Users, groups, sign-in rules, devices and apps", what: "Settings" as const, holds: "" };
+  if (gaps.length) return { ...base, tone: "urgent", status: `${gaps.length} never backed up`, last };
+  if (failures.length) return { ...base, tone: "soon", status: `${failures.length} failed last time`, last };
+  if (freshness.oldestDependency) {
+    const stale = oldest !== null && oldest.ageMs > STALE_MS;
+    return { ...base, tone: stale ? "soon" : "fine", status: stale ? "Out of date" : "Backed up", last };
+  }
+  return { ...base, tone: "soon", status: "Not run yet", last };
+}
+
+/** Every backup by Microsoft service, in the portal's service order; settings before content. */
+export function serviceGroups(metrics: RecoveryMetrics, now: string): ServiceGroup[] {
+  const groups: ServiceGroup[] = [{ key: "entra-intune", name: "Entra ID and Intune", icon: "service-entra", rows: [entraRow(metrics, now)] }];
+  const entries = [...(metrics.services?.settings ?? []), ...(metrics.services?.content ?? [])];
+  const byService = new Map<string, { service: CloudService; entries: ServiceBackup[] }>();
+  for (const entry of entries) {
+    const service = serviceFor(entry.service);
+    const bucket = byService.get(service.code) ?? { service, entries: [] };
+    bucket.entries.push(entry);
+    byService.set(service.code, bucket);
+  }
+  const ordered = [...byService.values()].sort((a, b) => serviceOrder(a.service.code) - serviceOrder(b.service.code));
+  for (const { service, entries: rows } of ordered) {
+    rows.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "service-settings" ? -1 : 1));
+    groups.push({
+      key: service.code,
+      name: service.name,
+      icon: service.icon,
+      rows: rows.map((entry) => ({
+        key: `${entry.kind}:${entry.workload}`,
+        name: entry.name,
+        what: entry.kind === "content" ? "Content" : "Settings",
+        ...serviceState(entry, now),
+        last: entry.lastGood ? ago(entry.lastGood.at, now) : "Never",
+        holds: holdsWords(entry),
+      })),
+    });
+  }
+  return groups;
+}
+
+/** How many backups are good, need attention, or are switched off. */
+export function serviceCounts(groups: ServiceGroup[]): { good: number; on: number; attention: number; off: number; worst: ResilienceTone } {
+  const rows = groups.flatMap((group) => group.rows);
+  const on = rows.filter((row) => row.tone !== "neutral");
+  const worst: ResilienceTone = on.some((row) => row.tone === "urgent") ? "urgent" : on.some((row) => row.tone === "soon") ? "soon" : on.length ? "fine" : "neutral";
+  return { good: on.filter((row) => row.tone === "fine").length, on: on.length, attention: on.filter((row) => row.tone !== "fine").length, off: rows.length - on.length, worst };
+}
+
+/** Everything the reader should act on or know is missing, worst first. Each says what
+ * to do in one short line; error specifics wait behind a click (`more`). */
+export function resilienceAlerts(data: ResilienceData): ResilienceAlert[] {
+  const { metrics, generatedAt: now } = data;
+  const alerts: ResilienceAlert[] = [];
+  const { readiness, freshness, recoverablePoint, recoveryTime } = metrics;
+
+  if (readiness.state === "attention") {
+    const objects = readiness.cleanupFailures.flatMap((failure) => failure.objects);
+    alerts.push({
+      key: "drill-left-objects", tone: "urgent", icon: "alert",
+      title: "A drill left test objects behind",
+      todo: "Remove them before the next drill.",
+      more: objects.map((key) => `Still in the tenant: ${key.split(":").slice(1).join(":") || key}`),
+      action: { label: "Find them", href: "/restore" },
+    });
+  }
+
+  for (const summary of data.incidents) {
+    alerts.push({
+      key: `incident:${summary.incident.id}`, tone: "urgent", icon: "alert",
+      title: `Incident open: ${summary.incident.title}`,
+      todo: summary.recommended ? `Restore only from the backup cleared ${ago(summary.recommended.collectedAt, now)}.` : "Get a backup checked before anyone restores.",
+      more: [],
+      action: { label: "Open incident", href: `/incidents?incident=${summary.incident.id}` },
+    });
+  }
+
+  // Service settings and content are in freshness too; their alerts come from `services` below.
+  const gaps = freshness.gaps.filter(isEntraIntune);
+  const failures = freshness.latestFailures.filter(isEntraIntune);
+  if (gaps.length) {
+    const names = gaps.map((gap) => dependencyName(gap));
+    alerts.push({
+      key: "never-backed-up", tone: "urgent", icon: "x-circle",
+      title: gaps.length === 1 ? `${names[0]} never backed up` : `${gaps.length} setting types never backed up`,
+      todo: "KEEL can't restore them yet. See why on What's protected.",
+      more: gaps.map((gap) => `${dependencyName(gap)}: ${gap.lastAttempt ? `last try ${gap.lastAttempt.outcome === "partial" ? "stopped part way" : "failed"} ${ago(gap.lastAttempt.at, now)}` : "never tried"}`),
+      // A type never tried is "out of date" on Protect, not "failed".
+      action: gaps.some((gap) => gap.lastAttempt) ? { label: "See failures", href: "/protect?health=failed" } : { label: "What's protected", href: "/protect" },
+    });
+  }
+
+  if (failures.length) {
+    alerts.push({
+      key: "latest-failed", tone: "soon", icon: "alert",
+      title: failures.length === 1 ? `${dependencyName(failures[0])}: last backup failed` : `${failures.length} setting types failed last backup`,
+      todo: "Older copies are kept. Run the backup again.",
+      more: failures.map((failure) => `${dependencyName(failure)}: ${failure.outcome === "partial" ? "stopped part way" : "failed"} ${ago(failure.failedAt, now)}; using the copy from ${ago(failure.lastSuccessAt, now)}`),
+      action: { label: "See failures", href: "/protect?health=failed" },
+    });
+  }
+
+  const services = [...(metrics.services?.settings ?? []), ...(metrics.services?.content ?? [])];
+  const withState = services.map((entry) => ({ entry, state: serviceState(entry, now) }));
+  const pick = (status: string[]) => withState.filter(({ state }) => status.includes(state.status)).map(({ entry }) => entry);
+  const broken = pick(["Never worked"]);
+  if (broken.length) {
+    alerts.push({
+      key: "service-never-worked", tone: "urgent", icon: "x-circle",
+      title: broken.length === 1 ? `${broken[0].name}: never backed up` : `${broken.length} service backups never worked`,
+      todo: "No copy to restore yet. Open the failed runs.",
+      more: broken.map((entry) => `${entry.name}: last try ${entry.latest?.outcome === "partial" ? "stopped part way" : "failed"} ${ago(entry.latest?.at ?? null, now)}`),
+      action: { label: "See failures", href: "/activity?what=backup&outcome=failed" },
+    });
+  }
+  const failedLast = pick(["Last try failed", "Last try incomplete"]);
+  if (failedLast.length) {
+    alerts.push({
+      key: "service-failed-last", tone: "soon", icon: "alert",
+      title: failedLast.length === 1 ? `${failedLast[0].name}: last backup failed` : `${failedLast.length} service backups failed last time`,
+      todo: "Older copies are kept. Tonight's run tries again.",
+      more: failedLast.map((entry) => `${entry.name}: ${entry.latest?.outcome === "partial" ? "stopped part way" : "failed"} ${ago(entry.latest?.at ?? null, now)}`),
+      action: { label: "See failures", href: "/activity?what=backup&outcome=failed" },
+    });
+  }
+  const stale = pick(["Out of date"]);
+  if (stale.length) {
+    alerts.push({
+      key: "service-stale", tone: "soon", icon: "clock",
+      title: stale.length === 1 ? `${stale[0].name}: no backup for 2+ days` : `${stale.length} backups older than 2 days`,
+      todo: "Check the nightly timetable is on.",
+      more: [],
+      action: { label: "Timetable", href: "/schedules" },
+    });
+  }
+  const notRun = pick(["Not run yet"]);
+  if (notRun.length) {
+    alerts.push({
+      key: "service-not-run", tone: "low", icon: "clock",
+      title: notRun.length === 1 ? `${notRun[0].name}: first backup not run yet` : `${notRun.length} backups waiting for their first run`,
+      todo: "They run tonight. Nothing to do.",
+      more: [],
+      action: null,
+    });
+  }
+
+  if (recoverablePoint.state !== "measured" || !recoverablePoint.point) {
+    const newest = recoverablePoint.copies.at(-1);
+    alerts.push({
+      key: "no-offsite", tone: "soon", icon: "cloud",
+      title: "No safe copy outside this server",
+      todo: "Ask your KEEL server admin to fix the daily off-site copy.",
+      more: newest ? recoverablePoint.copies.slice(-3).reverse().filter((copy) => !copy.counts).map((copy) => `Copy sent ${ago(copy.shippedAt, now)} does not count: ${offsiteReason(copy)}`) : [],
+      action: { label: "Off-site copies", href: "/activity?what=copy" },
+    });
+  }
+
+  const failedRestores = recoveryTime.attempts.filter((attempt) => attempt.source === "restore" && !attempt.counts && attempt.reason !== "awaiting-verification");
+  const openChecks = recoveryTime.attempts.filter((attempt) => attempt.source === "restore" && attempt.reason === "awaiting-verification");
+  if (failedRestores.length) {
+    const newest = failedRestores.at(-1)!;
+    alerts.push({
+      key: "restore-failed", tone: "soon", icon: "restore",
+      title: failedRestores.length === 1 ? "A restore failed" : `${failedRestores.length} restores failed`,
+      todo: "Open it, see what did not go back, try again.",
+      more: failedRestores.slice(-5).reverse().map((attempt) => `Restore ${ago(attempt.at, now)}: ${attemptReason(attempt)}`),
+      action: newest.ref ? { label: "View restore", href: `/jobs/${newest.ref}` } : null,
+    });
+  }
+  if (recoveryTime.state !== "measured") {
+    alerts.push({
+      key: "no-recovery-time", tone: "soon", icon: "clock",
+      title: "Recovery time not measured",
+      todo: "Restore one test setting to time it.",
+      more: [],
+      action: { label: "Plan a restore", href: "/restore" },
+    });
+  }
+  if (openChecks.length) {
+    const newest = openChecks.at(-1)!;
+    alerts.push({
+      key: "restore-checks-open", tone: "low", icon: "check-circle",
+      title: openChecks.length === 1 ? "A restore needs its follow-up checks" : `${openChecks.length} restores need follow-up checks`,
+      todo: "Finish the checks so they count.",
+      more: [],
+      action: newest.ref ? { label: "Open newest", href: `/jobs/${newest.ref}` } : null,
+    });
+  }
+
+  if (readiness.state === "unmeasured") {
+    alerts.push({
+      key: "no-drill", tone: "soon", icon: "play",
+      title: "No recovery drill yet",
+      todo: "Ask your KEEL server admin to run one. It uses test objects only.",
+      more: [],
+      action: null,
+    });
+  }
+
+  if (data.storage.immutability !== "live-qualified") {
+    const unknown = !data.storage.configured;
+    const unsupported = data.storage.immutability === "unsupported";
+    alerts.push({
+      key: "storage", tone: unknown || unsupported ? "soon" : "low", icon: "backup",
+      title: unknown ? "Backup storage unknown" : unsupported ? "Backups can be deleted" : "Locked storage not proven",
+      todo: unknown ? "Set the storage details on the KEEL server." : unsupported ? "Move backups to storage that blocks deletion." : "Run the locked-storage check here.",
+      more: [],
+      action: null,
+    });
+  }
+
+  return alerts.map((alert, index) => ({ alert, index }))
+    .sort((a, b) => TONE_RANK[a.alert.tone] - TONE_RANK[b.alert.tone] || a.index - b.index)
+    .map(({ alert }) => alert);
+}
+
+export interface ResilienceTile {
+  key: string;
+  label: string;
+  icon: IconName;
+  value: string;
+  about: string;
+  tone: ResilienceTone;
+  href: string;
+}
+
+/** Four tiles that answer "could we recover, and how fast". Unmeasured never reads as zero. */
+export function resilienceTiles(data: ResilienceData, groups: ServiceGroup[]): ResilienceTile[] {
+  const { metrics, generatedAt: now } = data;
+  const point = metrics.recoverablePoint;
+  const time = metrics.recoveryTime;
+  const readiness = metrics.readiness;
+  const counts = serviceCounts(groups);
+  return [
+    point.state === "measured" && point.point
+      ? { key: "point", label: "Safe copy off this server", icon: "cloud", value: ago(point.point, now), about: "Anything changed after this would be lost.", tone: "fine", href: "#rs-point" }
+      : { key: "point", label: "Safe copy off this server", icon: "cloud", value: "Not measured", about: "No checked copy outside this server yet.", tone: "soon", href: "#rs-point" },
+    time.state === "measured"
+      ? { key: "time", label: "Time to recover", icon: "restore", value: formatDuration(time.latestMs), about: time.samples > 1 ? `Last checked recovery. Slowest: ${formatDuration(time.worstMs)}.` : "The one checked recovery.", tone: "fine", href: "#rs-time" }
+      : { key: "time", label: "Time to recover", icon: "restore", value: "Not measured", about: "No restore or drill has been timed yet.", tone: "soon", href: "#rs-time" },
+    {
+      key: "services", label: "Backups working", icon: "backup",
+      value: counts.on ? `${counts.good} of ${counts.on}` : "None yet",
+      about: [counts.attention ? `${counts.attention} need${counts.attention === 1 ? "s" : ""} attention` : "All working", counts.off ? `${counts.off} switched off` : ""].filter(Boolean).join(" · ") + ".",
+      tone: counts.worst, href: "#rs-services",
+    },
+    readiness.state === "attention"
+      ? { key: "drill", label: "Last drill", icon: "play", value: "Left objects", about: "Test objects are still in the tenant.", tone: "urgent", href: "#rs-drills" }
+      : readiness.lastCountedDrill
+        ? { key: "drill", label: "Last drill", icon: "play", value: ago(readiness.lastCountedDrill.at, now), about: "Passed and cleaned up after itself.", tone: "fine", href: "#rs-drills" }
+        : { key: "drill", label: "Last drill", icon: "play", value: "None yet", about: "No drill has run on this tenant.", tone: "soon", href: "#rs-drills" },
+  ];
+}
+
+/** The status pill beside the title: the worst thing on the page, in two words. */
+export function resilienceStatus(metrics: RecoveryMetrics, alerts: ResilienceAlert[]): { tone: "urgent" | "soon" | "low" | "fine"; label: string } {
+  if (metrics.readiness.state === "attention") return { tone: "urgent", label: "Test objects left" };
+  if (alerts.some((alert) => alert.tone === "urgent")) return { tone: "urgent", label: "Needs attention" };
+  if (metrics.recoverablePoint.state !== "measured") return { tone: "soon", label: "Not measured" };
+  if (alerts.some((alert) => alert.tone === "soon")) return { tone: "soon", label: "Check soon" };
+  return { tone: "fine", label: "Recoverable" };
+}
+
+/** The verdict's one action: jump to the alerts, which each carry their own fix. */
+export function verdictAction(verdict: ResilienceVerdict, alerts: ResilienceAlert[]): { label: string; href: string } | null {
+  if (verdict.tone === "good" || alerts.every((alert) => alert.tone === "low")) return null;
+  return { label: "See what to fix", href: "#rs-attention" };
+}
+
+/** The page's verdict: a measured recovery still reads as "attention" while anything
+ * on the page needs fixing, so the band never looks green above red alerts. */
+export function pageVerdict(metrics: RecoveryMetrics, now: string, alerts: ResilienceAlert[]): ResilienceVerdict {
+  const verdict = resilienceVerdict(metrics, now);
+  if (verdict.tone === "good" && alerts.some((alert) => alert.tone !== "low")) return { ...verdict, tone: "attention" };
+  return verdict;
+}

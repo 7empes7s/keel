@@ -90,6 +90,7 @@ function tierBadge(tier: TierSummary): { tone: BadgeTone; label: string } {
   if (!tier.schedule) return { tone: "neutral", label: "No schedule" };
   if (!tier.schedule.enabled) return { tone: "neutral", label: "Turned off" };
   if (status === "failed") return { tone: "urgent", label: "Failed" };
+  if (status === "partial") return { tone: "soon", label: "Partly done" };
   if (status === "running" || status === "queued") return { tone: "low", label: "Running" };
   if (status) return { tone: "fine", label: "Finished" };
   return { tone: "neutral", label: "Not run yet" };

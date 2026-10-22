@@ -44,7 +44,7 @@ const DIRECTORY_POLICY_COLLECTIONS = new Set(Object.values(DIRECTORY_POLICY_RECO
 
 const STS_DEFINITION = Object.freeze(['{"TokenLifetimePolicy":{"Version":1,"AccessTokenLifetime":"8:00:00"}}']);
 
-const FIXTURE_PAYLOADS = Object.freeze({
+export const FIXTURE_PAYLOADS = Object.freeze({
   // Wave 2 ENTRA: directory policies and a delegated consent.
   tokenLifetimePolicy: { displayName: 'Fixture token lifetime', definition: STS_DEFINITION, isOrganizationDefault: false },
   tokenIssuancePolicy: { displayName: 'Fixture token issuance', definition: ['{"TokenIssuancePolicy":{"Version":1,"TokenResponseSigningPolicy":"TokenOnly"}}'], isOrganizationDefault: false },
@@ -610,6 +610,9 @@ export function fakeGraph() {
       // Issue #155: an Intune policy that exists and was never assigned lists no assignments.
       const assignments = /^(\/device(?:Management|AppManagement)\/[^/]+\/[^/]+)\/assignments$/.exec(path);
       if (assignments && !objects.has(path) && objects.has(assignments[1])) return { ok: true, status: 200, body: { value: [] } };
+      // Issue #473: a compliance policy's actions for noncompliance are read from their own collection.
+      const complianceActions = /^(\/deviceManagement\/compliancePolicies\/[^/]+)\/scheduledActionsForRule$/.exec(path);
+      if (complianceActions && objects.has(complianceActions[1])) return { ok: true, status: 200, body: { value: objects.get(complianceActions[1]).scheduledActionsForRule ?? [] } };
       // Restore gaps batch 5: every built-in administrative template setting
       // exists in every tenant, and a template that exists starts with no settings.
       if (/^\/deviceManagement\/groupPolicyDefinitions\/[^/]+$/.test(path)) return { ok: true, status: 200, body: { id: decodeURIComponent(path.split('/').pop()) } };

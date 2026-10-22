@@ -6,6 +6,7 @@ const STATUS: Record<string, { tone: BadgeTone; icon: IconName }> = {
   queued: { tone: "low", icon: "clock" },
   running: { tone: "soon", icon: "play" },
   succeeded: { tone: "fine", icon: "check-circle" },
+  partial: { tone: "soon", icon: "alert" },
   failed: { tone: "urgent", icon: "x-circle" },
   cancelled: { tone: "neutral", icon: "pause" },
 };

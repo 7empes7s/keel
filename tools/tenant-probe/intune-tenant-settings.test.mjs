@@ -145,26 +145,49 @@ test('each policy set is listed, then read on its own with the apps and policies
   assert.deepEqual(result.items, [{ id: 'set-1', displayName: 'KEEL-RT-set', items: [item] }]);
 });
 
-test('each settings catalog compliance policy is listed, then read on its own with its settings and actions for noncompliance', async () => {
+test('each settings catalog compliance policy is listed, read on its own with its settings, then its actions for noncompliance are read', async () => {
   const entry = catalogEntryFor('deviceManagementCompliancePolicy');
   const list = '/beta/deviceManagement/compliancePolicies';
   assert.equal(`/${entry.version}${entry.parent.path}`, list);
-  const expand = '$expand=settings,scheduledActionsForRule($expand=scheduledActionConfigurations)';
+  const expand = '$expand=settings';
+  const actions = 'scheduledActionsForRule?$expand=scheduledActionConfigurations';
   const urls = [];
   const settings = [{ id: '0', settingInstance: { settingDefinitionId: 'linux_distribution_alloweddistros' } }];
   const scheduledActionsForRule = [{ id: 'r-1', ruleName: null, scheduledActionConfigurations: [{ id: 'a-1', actionType: 'block', gracePeriodHours: 0 }] }];
+  const gone = { items: [], pages: 0, status: 404, capped: false, error: { status: 404, error: 'gone' } };
   const reader = {
     async collect(version, path) {
       urls.push(`/${version}${path}`);
-      if (path.startsWith(`${entry.parent.path}?`)) return { items: [{ id: 'cp-1' }, { id: 'cp-2' }], pages: 1, status: 200, capped: false, error: null };
+      if (path.startsWith(`${entry.parent.path}?`)) return { items: [{ id: 'cp-1' }, { id: 'cp-2' }, { id: 'cp-3' }], pages: 1, status: 200, capped: false, error: null };
+      // Issue #473: the policy's own collection holds its actions.
+      if (path.endsWith(`/${actions}`)) {
+        return path.includes('/cp-3/') ? gone : { items: scheduledActionsForRule, pages: 1, status: 200, capped: false, error: null };
+      }
       const id = path.split('?')[0].split('/').pop();
-      if (id === 'cp-2') return { items: [], pages: 0, status: 404, capped: false, error: { status: 404, error: 'gone' } };
-      return { items: [{ id, name: 'KEEL-RT-compliance', settings, scheduledActionsForRule }], pages: 1, status: 200, capped: false, error: null };
+      if (id === 'cp-2') return gone;
+      // Like Graph, the policy read itself gives an empty list of actions.
+      return { items: [{ id, name: 'KEEL-RT-compliance', settings, scheduledActionsForRule: [] }], pages: 1, status: 200, capped: false, error: null };
     },
   };
   const result = await get('deviceManagementCompliancePolicy').adapter.collectRaw(reader, {});
-  assert.deepEqual(urls, [`${list}?$select=id`, `${list}/cp-1?${expand}`, `${list}/cp-2?${expand}`], 'list, then one GET per policy');
+  assert.deepEqual(urls, [
+    `${list}?$select=id`, `${list}/cp-1?${expand}`, `${list}/cp-2?${expand}`, `${list}/cp-3?${expand}`,
+    `${list}/cp-1/${actions}`, `${list}/cp-3/${actions}`,
+  ], 'list, one GET per policy, then one actions read per policy');
   assert.equal(result.error, null);
-  // A policy deleted between the list and its own read is absent, not a failure.
+  // A policy deleted between the list and either read is absent, not a failure.
   assert.deepEqual(result.items, [{ id: 'cp-1', name: 'KEEL-RT-compliance', settings, scheduledActionsForRule }]);
+});
+
+test("a failed read of a compliance policy's actions for noncompliance fails the kind", async () => {
+  const reader = {
+    async collect(version, path) {
+      if (path.endsWith('?$select=id')) return { items: [{ id: 'cp-1' }], pages: 1, status: 200, capped: false, error: null };
+      if (path.includes('/scheduledActionsForRule')) return { items: [], pages: 0, status: 403, capped: false, error: { status: 403, error: 'denied' } };
+      return { items: [{ id: 'cp-1', settings: [], scheduledActionsForRule: [] }], pages: 1, status: 200, capped: false, error: null };
+    },
+  };
+  const result = await get('deviceManagementCompliancePolicy').adapter.collectRaw(reader, {});
+  assert.equal(result.error?.status, 403);
+  assert.deepEqual(result.items, [], 'a backup never holds a policy without its actions');
 });

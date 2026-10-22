@@ -455,6 +455,10 @@ export interface SemanticSummary {
 export interface ChangeAttribution {
   verdict: "exact" | "plausible" | "unknown";
   reason: string;
+  // The audit log KEEL asked ("audit" is Microsoft Entra's, "intune-audit" Intune's), null
+  // when it reads none for this service; and the service the change belongs to.
+  source?: "audit" | "intune-audit" | null;
+  service?: string | null;
   // id is null when the account is outside the reader's entities; name is null when
   // KEEL holds no collected user or app with that id.
   actors: Array<{ kind: "user" | "servicePrincipal"; id: string | null; name: string | null }>;

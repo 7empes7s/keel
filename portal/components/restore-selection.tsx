@@ -29,6 +29,8 @@ import {
   changeTone,
   dayWords,
   impactWords,
+  restoreService,
+  rowImpact,
   itemName,
   nameBook,
   plainLabel,
@@ -43,7 +45,9 @@ import {
   type NameBook,
 } from "@/lib/restore-view";
 import { orderGroups, smartOrder } from "@/lib/selection";
-import { serviceFor, serviceOrder } from "@/lib/services";
+import { madeInSharePoint, serviceFor, serviceOrder } from "@/lib/services";
+import { typeService } from "@/lib/baselines-view";
+import { kindOrder, kindParts } from "@/lib/type-groups";
 
 const DRY_RUN_POLL_MS = 3000;
 const ROWS_PER_GROUP = 8;
@@ -251,6 +255,11 @@ function grouped(items: RestoreItem[], keyOf: (item: RestoreItem) => string, met
     : orderGroups(groups, (group) => worstTone(group.items.map((item) => toneOf(item) ?? undefined)));
 }
 
+function withKinds(group: ListGroup<RestoreItem>, service: string | null): ListGroup<RestoreItem> {
+  const parts = kindParts(group.items, (item) => item.resourceType, service, (x, y) => x.label.localeCompare(y.label));
+  return { ...group, items: parts.flatMap((part) => part.items), parts };
+}
+
 function serviceGroup(code: string): Omit<ListGroup<RestoreItem>, "items" | "key"> {
   const service = serviceFor(code === "other" ? null : code);
   return { label: service.name, icon: service.icon, about: service.about };
@@ -264,7 +273,10 @@ const GROUPINGS: Grouping<RestoreItem>[] = [
     groupsOf: (items) => {
       const changed = items.filter((item) => item.change);
       const rest = items.filter((item) => !item.change);
-      const services = grouped(rest, (item) => item.service ?? "other", serviceGroup, (code) => serviceOrder(code === "other" ? null : code));
+      // Inside a service, settings sit under their kind: users, groups, roles, then
+      // policies and tenant settings.
+      const services = grouped(rest, (item) => item.service ?? "other", serviceGroup, (code) => serviceOrder(code === "other" ? null : code))
+        .map((group) => withKinds(group, group.key === "other" ? null : group.key));
       return changed.length
         ? [{ key: CHANGED_GROUP, label: "Changed recently", icon: "clock" as IconName, about: "Different now, newest first", items: ordered(changed) }, ...services]
         : services;
@@ -273,11 +285,12 @@ const GROUPINGS: Grouping<RestoreItem>[] = [
   {
     key: "type",
     label: "Type",
-    groupsOf: (items) => grouped(items, (item) => item.resourceType, (type, list) => ({
+    // Service by service, and inside each the same order as the Service view.
+    groupsOf: (items) => grouped(items, (item) => item.resourceType, (type) => ({
       label: plainType(type),
-      icon: serviceFor(list[0]?.service).icon,
-      about: `${serviceFor(list[0]?.service).name}${plainType(type).toLowerCase() !== resourceTypeLabel(type).toLowerCase() ? ` · Microsoft calls it ${resourceTypeLabel(type)}` : ""}`,
-    })),
+      icon: typeService(type).icon,
+      about: `${typeService(type).name}${plainType(type).toLowerCase() !== resourceTypeLabel(type).toLowerCase() ? ` · Microsoft calls it ${resourceTypeLabel(type)}` : ""}`,
+    }), (type) => kindOrder(type)),
   },
   {
     key: "impact",
@@ -348,7 +361,8 @@ export function RestoreSelection({
   const items = useMemo<RestoreItem[]>(() => resources.map((resource) => {
     const change = changeByKey.get(resource.naturalKey);
     const label = itemName(resource.naturalKey, names);
-    return change ? { ...resource, change, label } : { ...resource, label };
+    const placed = { ...resource, service: restoreService(resource, label), label };
+    return change ? { ...placed, change } : placed;
   }), [resources, changeByKey, names]);
 
   useEffect(() => () => {
@@ -934,23 +948,25 @@ function RestoreRow({ item, undo, compared }: { item: RestoreItem; undo: ReactNo
   const service = serviceFor(item.service);
   const change = item.change;
   const tone = changeTone(change);
+  const impact = rowImpact(item.blastRadius, compared);
+  const madeBy = madeInSharePoint(item.resourceType, item.name, item.label) ? "made in SharePoint admin center" : service.name;
   return (
     <div className="restore-row" data-changed={change ? change.kind : undefined}>
       <span className="restore-row-name">
         <b>{item.label}</b>
-        <small title={`Microsoft calls it ${resourceTypeLabel(item.resourceType)}`}>{plainType(item.resourceType)} · {service.name}</small>
+        <small title={`Microsoft calls it ${resourceTypeLabel(item.resourceType)}`}>{plainType(item.resourceType)} · {madeBy}</small>
       </span>
       {change ? (
         <span className="restore-row-change">
           <span>{tone ? <span className="restore-chip" data-tone={tone}>{TONE_WORDS[tone]}</span> : null}{changeLine(change)}</span>
           <small title={`Changed ${whenWords(change)} UTC`}>{whoWords(change)} · {whenWords(change)}</small>
         </span>
-      ) : (
-        <span className="restore-row-impact" data-impact={item.blastRadius} title="How much a wrong restore of it could break">
-          <Icon name={item.blastRadius === "tenant-lockout" ? "alert" : item.blastRadius === "cosmetic" ? "page" : "info"} />
-          {impactWords(item.blastRadius)}
+      ) : impact ? (
+        <span className="restore-row-impact" data-impact={impact} title="How much a wrong restore of it could break">
+          <Icon name={impact === "tenant-lockout" ? "alert" : impact === "cosmetic" ? "page" : "info"} />
+          {impactWords(impact)}
         </span>
-      )}
+      ) : <span />}
       <span className="restore-row-action">
         {undo ?? (compared ? <span className="restore-row-same"><Icon name="check" />Same now</span> : null)}
       </span>

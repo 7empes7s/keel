@@ -39,3 +39,13 @@ export function serviceOrder(code: string | null | undefined): number {
   const index = SERVICES.findIndex((service) => service.code.toLowerCase() === (code ?? "").toLowerCase());
   return index === -1 ? SERVICES.length : index;
 }
+
+// SharePoint admin center makes Conditional Access policies named "[SharePoint admin
+// center]..." when someone limits access from unmanaged devices (Policies > Access
+// control). They are stored in Entra ID but are SharePoint settings, so every list that
+// places a single setting under a service files them under SharePoint.
+const SHAREPOINT_MADE = /^\s*\[SharePoint admin center\]/i;
+
+export function madeInSharePoint(type: string, ...names: (string | null | undefined)[]): boolean {
+  return type === "conditionalAccessPolicy" && names.some((name) => SHAREPOINT_MADE.test(name ?? ""));
+}

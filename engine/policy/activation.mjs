@@ -37,6 +37,7 @@ import { FIELD_PROJECTION_CONTRACT_VERSION } from '../contracts/fieldProjection.
 import { HASH_VERSION } from '../cir/canonicalHash.mjs';
 import { getReferences, getResourceVersions } from '../store/db.mjs';
 import { OPEN_DRIFT_PREDICATE } from '../store/openDrift.mjs';
+import { gateBlastRadius } from '../safety/blastRadius.mjs';
 import { dependencyClosure } from '../restore/selection.mjs';
 import { canonicalDigest, restoreCandidates } from '../restore/dryRunArtifact.mjs';
 import { resolveRestoreScope } from '../../cli/keel-remediate.mjs';
@@ -321,7 +322,7 @@ export async function buildActivationPreview(client, {
     .map((dependency) => ({
       ...dependency,
       overCeiling: blastRadiusRank(dependency.blastRadius) !== null
-        && exceedsBlastRadiusCeiling(dependency.blastRadius, policy.max_blast_radius),
+        && exceedsBlastRadiusCeiling(gateBlastRadius(dependency.resourceType, dependency.blastRadius), policy.max_blast_radius),
     }));
   const unsupported = [];
   for (const operation of operationList) {

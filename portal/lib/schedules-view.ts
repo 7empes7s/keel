@@ -44,17 +44,18 @@ export function scheduleTitle(schedule: Pick<Schedule, "job_kind" | "tier">): st
 
 // ---- State of one schedule -------------------------------------------------------------
 
-export type ScheduleState = "failed" | "warning" | "running" | "off" | "fine" | "new";
+export type ScheduleState = "failed" | "partial" | "warning" | "running" | "off" | "fine" | "new";
 
 export const STATE_WORDS: Record<ScheduleState, { label: string; tone: BadgeTone; icon: IconName }> = {
   failed: { label: "Failed", tone: "urgent", icon: "x-circle" },
+  partial: { label: "Partly done", tone: "soon", icon: "alert" },
   warning: { label: "Heavy load", tone: "soon", icon: "clock" },
   running: { label: "Running", tone: "low", icon: "refresh" },
   off: { label: "Off", tone: "neutral", icon: "pause" },
   fine: { label: "On time", tone: "fine", icon: "check-circle" },
   new: { label: "Not run yet", tone: "neutral", icon: "info" },
 };
-export const STATE_ORDER: ScheduleState[] = ["failed", "warning", "running", "new", "fine", "off"];
+export const STATE_ORDER: ScheduleState[] = ["failed", "partial", "warning", "running", "new", "fine", "off"];
 
 export const forecastFor = (forecasts: ScheduleForecast[] | undefined, schedule: Pick<Schedule, "id">) =>
   forecasts?.find((forecast) => forecast.scheduleId === schedule.id);
@@ -62,6 +63,7 @@ export const forecastFor = (forecasts: ScheduleForecast[] | undefined, schedule:
 export function scheduleState(schedule: Schedule, forecast: ScheduleForecast | undefined): ScheduleState {
   if (!schedule.enabled) return "off";
   if (schedule.last_status === "failed") return "failed";
+  if (schedule.last_status === "partial") return "partial";
   if (openWarnings(forecast).length) return "warning";
   if (schedule.last_status === "running" || schedule.last_status === "queued") return "running";
   if (!schedule.last_status) return "new";
@@ -70,7 +72,7 @@ export function scheduleState(schedule: Schedule, forecast: ScheduleForecast | u
 
 export function scheduleTone(schedule: Schedule, forecast: ScheduleForecast | undefined): RiskTone | null {
   const state = scheduleState(schedule, forecast);
-  return state === "failed" ? "urgent" : state === "warning" ? "soon" : null;
+  return state === "failed" ? "urgent" : state === "warning" || state === "partial" ? "soon" : null;
 }
 
 /** The last result chip: what happened on the last run. */
@@ -79,6 +81,7 @@ export function lastResult(schedule: Schedule, now: string): { label: string; to
   const when = ago(schedule.last_run_at, now);
   if (schedule.last_status === "failed") return { label: `Failed ${when}`, tone: "urgent", icon: "x-circle", title: "Open the run to see why." };
   if (schedule.last_status === "running" || schedule.last_status === "queued") return { label: "Running now", tone: "low", icon: "refresh", title: `Started ${when}.` };
+  if (schedule.last_status === "partial") return { label: `Partly done ${when}`, tone: "soon", icon: "alert", title: "Some types were not backed up. Open the run to see which." };
   if (schedule.last_status === "cancelled") return { label: `Cancelled ${when}`, tone: "neutral", icon: "info", title: "Someone stopped the last run." };
   return { label: `Finished ${when}`, tone: "fine", icon: "check-circle", title: "The last run finished." };
 }

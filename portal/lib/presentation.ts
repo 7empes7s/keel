@@ -110,6 +110,7 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   authenticationFlowsPolicy: "self-service sign-up setting",
   retentionLabel: "retention label",
   deviceConfiguration: "device configuration",
+  deviceManagementSettings: "Intune tenant settings",
 };
 
 // Product names keep their capitals inside an otherwise lower-case label.
@@ -237,6 +238,7 @@ export const DISPLAY_ENUMS = {
     queued: "Waiting to start",
     running: "Running",
     succeeded: "Finished",
+    partial: "Partly done",
     failed: "Failed",
     cancelled: "Cancelled",
   },

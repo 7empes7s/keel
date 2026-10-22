@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { ATTRIBUTION_HEADLINES } from "@/components/change-attribution";
+import { attributionSummary } from "@/components/change-attribution";
 import { DecisionStyles } from "@/components/decision-styles";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { ago, displayEnum, formatTimestamp } from "@/lib/presentation";
@@ -110,7 +110,7 @@ export function ChangeEvidencePanel({ evidence, attribution, now, gap }: { evide
       <dl className="decision-list">
         <Row label="Owner">{ownerSentence(evidence.ownership)}</Row>
         <Row label="Who made it">
-          {attribution ? `${ATTRIBUTION_HEADLINES[attribution.verdict]}.` : "Keel did not check who made this change."}
+          {attribution ? attributionSummary(attribution) : "Keel could not check who made this change."}
         </Row>
         <Row label="Found by" mismatch={evidence.observation.state === "mismatch"}>
           {seenSentence(evidence)}<When at={evidence.observation.at} now={now} />

@@ -574,6 +574,37 @@ test('an administrative template without its setting values, or with a setting t
   assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
 });
 
+test('issue #472: an administrative template backed up through $expand (which returns no settings) is never written, so its live settings are not wiped', async () => {
+  // The shape Q114 found: the expanded list came back empty, with Graph's annotation on it.
+  const expanded = {
+    ...template,
+    'definitionValues@odata.context': "https://graph.microsoft.com/beta/$metadata#deviceManagement/groupPolicyConfigurations('gp-src')/definitionValues(definition())",
+    definitionValues: [],
+  };
+  const path = `${TEMPLATE_PATH}/gp-1`;
+  const live = { id: 'gp-1', displayName: 'KEEL-RT-admx', description: 'Fixture', roleScopeTagIds: ['0'] };
+  const graph = idoFakeGraph({
+    seed: {
+      ...definitionsSeed('d-1'),
+      [path]: { ...live, definitionValues: [setting('d-1', true, [], 'live-1')] },
+      [`${path}/definitionValues/live-1`]: { id: 'live-1', presentationValues: [textValue('p-1', 'https://example.com')] },
+    },
+  });
+  for (const verb of ['create', 'update']) {
+    const result = await applyIntuneExtendedWrite(graph, resourceOf('groupPolicyConfiguration', expanded, {
+      ...(verb === 'update' ? { live: { state: 'present', targetId: 'gp-1', payload: live } } : {}),
+    }), verb, FAST);
+    assert.match(result.skipped?.reason ?? '', /^manual: this backup was taken before the template's settings were read on their own/, verb);
+  }
+  assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0, 'nothing written');
+
+  // A template backed up the new way with no settings carries no annotation and is written.
+  const empty = { ...template, definitionValues: [] };
+  const result = await applyIntuneExtendedWrite(idoFakeGraph(), resourceOf('groupPolicyConfiguration', empty), 'create', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(result.skipped, undefined);
+});
+
 // ------------------------------------------------------------------- delete
 
 // ------------------------------------------- restore gaps, batch 6
@@ -760,8 +791,57 @@ test('a settings catalog compliance policy is created with its settings and acti
       { actionType: 'notification', gracePeriodHours: 24, notificationTemplateId: 'tpl-1', notificationMessageCCList: [] },
     ],
   }]);
-  const read = graph.calls.filter((call) => call.method === 'GET').at(-1);
-  assert.match(read.path, /\$expand=settings,scheduledActionsForRule/, 'read back with settings and actions');
+  const reads = graph.calls.filter((call) => call.method === 'GET').map((call) => call.path);
+  const id = result.applied.targetId;
+  assert.deepEqual(reads, [`${CP_PATH}/${id}?$expand=settings`, `${CP_PATH}/${id}/scheduledActionsForRule?$expand=scheduledActionConfigurations`],
+    'read back with settings, then the actions from their own collection');
+});
+
+// Issue #473: like Graph, a policy read with settings and actions expanded
+// together lists no actions; only the policy's own collection holds them.
+const expandHidesActions = (graph) => ({
+  ...graph,
+  async read(version, path) {
+    const result = await graph.read(version, path);
+    if (/\?.*\$expand=[^&]*scheduledActionsForRule/.test(path) && result.ok && result.body) result.body.scheduledActionsForRule = [];
+    return result;
+  },
+});
+
+test('compliance actions are read back from their own collection, not from the expanded policy read', async () => {
+  const created = idoFakeGraph();
+  const made = await applyIntuneExtendedWrite(expandHidesActions(created), resourceOf('deviceManagementCompliancePolicy', compliance), 'create', FAST);
+  assert.equal(made.failed, undefined, made.failed?.error);
+
+  const path = `${CP_PATH}/cp-1`;
+  const live = { ...compliance, id: 'cp-1', scheduledActionsForRule: actionsFor(72) };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await applyIntuneExtendedWrite(expandHidesActions(graph), resourceOf('deviceManagementCompliancePolicy', { ...compliance, id: 'cp-1' }, {
+    live: { state: 'present', targetId: 'cp-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(graph.calls.filter((call) => call.method !== 'GET').map((call) => `${call.method} ${call.path}`), [`POST ${path}/setScheduledActions`]);
+  assert.equal(result.applied.changes.scheduledActions, 'written');
+  assert.equal(graph.objects.get(path).scheduledActionsForRule[0].scheduledActionConfigurations[0].gracePeriodHours, 0);
+});
+
+test('a backup whose actions list is empty (taken before #473) never removes the live actions', async () => {
+  const path = `${CP_PATH}/cp-1`;
+  const live = { ...compliance, id: 'cp-1', description: 'Changed', scheduledActionsForRule: actionsFor(72) };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const older = { ...compliance, id: 'cp-1', scheduledActionsForRule: [] };
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementCompliancePolicy', older, {
+    live: { state: 'present', targetId: 'cp-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(graph.calls.filter((call) => call.method !== 'GET').map((call) => call.method), ['PUT'], 'no setScheduledActions');
+  assert.equal('scheduledActionsForRule' in graph.calls.find((call) => call.method === 'PUT').body, false);
+  assert.match(result.applied.changes.scheduledActions, /left as they are/);
+
+  const fresh = idoFakeGraph();
+  const create = await applyIntuneExtendedWrite(fresh, resourceOf('deviceManagementCompliancePolicy', { ...compliance, scheduledActionsForRule: [] }), 'create', FAST);
+  assert.match(create.failed?.error ?? '', /does not hold this compliance policy's actions for noncompliance/);
+  assert.equal(fresh.calls.length, 0);
 });
 
 test('a compliance policy update puts the whole policy back, then its changed actions through setScheduledActions', async () => {

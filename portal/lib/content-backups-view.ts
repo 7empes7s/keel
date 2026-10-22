@@ -1,4 +1,5 @@
 import type { BadgeTone } from "@/components/ui/badge";
+import { plainError } from "@/lib/error-words";
 import { bytesWords } from "@/lib/compare-view";
 
 // What's protected, content backups: what the nightly content backup holds per
@@ -116,11 +117,17 @@ export function scopeWords(workload: ContentWorkload, prefix: string | null | un
   return `Only ${workload.scoped} whose names start with ${prefix}`;
 }
 
+/** The raw reasons of a run that did not finish, for "Show details". */
+export function runReasons(row: ContentRow): string[] {
+  return row.latest && row.latest.outcome !== "succeeded" ? row.latest.reasons : [];
+}
+
 /** Why the last run did not finish, or what the last good run stored. */
 export function runLine(row: ContentRow): string | null {
   const { latest, lastGood } = row;
   if (!latest) return row.items ? "Stored before Keel recorded each run. The next nightly run is recorded here." : null;
-  const reason = latest.reasons[0] ? `: ${latest.reasons[0]}` : "";
+  // The raw reasons stay behind "Show details" (runReasons); the line gets plain words.
+  const reason = latest.reasons[0] ? `. ${plainError(latest.reasons[0]).cause}` : "";
   if (latest.outcome === "failed") return `Last run failed${reason}`;
   if (latest.outcome !== "succeeded") return `Last run could not read ${plural(latest.reasons.length || 1, "part", "parts")}${reason}`;
   if (lastGood && lastGood.id === latest.id) {

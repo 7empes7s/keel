@@ -9617,6 +9617,76 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
   .technical-body:popover-open > .technical-fields { padding-inline: var(--space-md); }
 }
 
+/* The record in plain words: each field has its plain label over a one-line meaning,
+   then the value (a status badge when it is a status, a short line otherwise). IDs,
+   codes and commands are support details, hidden until the switch is on, and listed
+   after the plain fields; errors come first, one line, the full text on a click. Two
+   sides of a setting sit next to each other with the differences marked. */
+.technical-field > dt { display: grid; gap: 0.125rem; }
+.technical-label { color: var(--text); font-weight: 650; }
+.technical-meaning { color: var(--text-muted); font-size: 0.75rem; font-weight: 450; line-height: 1.4; }
+.technical-value { color: var(--text); overflow-wrap: anywhere; }
+.technical-why { flex-basis: 100%; color: var(--text-soft); font-size: 0.75rem; line-height: 1.45; }
+.technical-lines { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; min-width: 0; overflow-wrap: anywhere; }
+.technical-lines b { color: var(--text-soft); font-weight: 600; }
+.technical-more { color: var(--text-soft); font-weight: 600; }
+.technical-stored { display: flex; flex-basis: 100%; flex-wrap: wrap; align-items: center; gap: var(--space-2xs) var(--space-xs); min-width: 0; }
+.technical-stored-label { color: var(--text-muted); font-size: 0.75rem; }
+.technical-stored > code {
+  max-width: 100%;
+  padding: 0.0625rem 0.375rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-soft);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.technical-body[data-support-shown="false"] [data-support="only"] { display: none; }
+.technical-body[data-support-shown="false"] .technical-group:not(:has(.technical-field:not([data-support="only"]))) { display: none; }
+.technical-field[data-support="only"] { order: 2; }
+.technical-field[data-support="only"] .technical-label { color: var(--text-soft); font-weight: 600; }
+.technical-field[data-error] { order: -1; }
+.technical-error-line { display: inline-flex; align-items: flex-start; gap: var(--space-2xs); color: var(--failed); font-weight: 600; overflow-wrap: anywhere; }
+.technical-error-line .icon { flex: none; width: 1rem; height: 1rem; margin-top: 0.125rem; }
+.technical-error-full { position: relative; flex-basis: 100%; min-width: 0; }
+.technical-error-full[hidden] { display: none; }
+.technical-error-full .technical-copy { position: absolute; top: 0.3125rem; right: 0.3125rem; background: var(--surface); }
+.technical-error-full .technical-block { padding-right: 4.5rem; }
+.technical-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs) var(--space-sm);
+  margin-bottom: var(--space-xs);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+.technical-toolbar[hidden] { display: none; }
+.technical-toolbar-text { margin: 0; color: var(--text-soft); font-size: 0.8125rem; }
+.technical-support-toggle .icon { width: 1rem; height: 1rem; }
+.technical-support-toggle[aria-pressed="true"] { color: var(--text); background: var(--accent-soft); }
+.technical-body:popover-open > .technical-toolbar { margin: var(--space-sm) var(--space-lg) 0; }
+.technical-sides { display: grid; flex-basis: 100%; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-xs); min-width: 0; }
+.technical-side { display: grid; align-content: start; gap: var(--space-2xs); min-width: 0; padding: var(--space-xs) var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); font-size: 0.8125rem; }
+.technical-side > small { color: var(--text-soft); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.technical-side[data-side="before"] { box-shadow: inset 3px 0 0 var(--neutral); }
+.technical-side[data-side="after"] { box-shadow: inset 3px 0 0 var(--check-soon); }
+.technical-side li[data-differs] { margin-inline: -0.25rem; padding: 0 0.25rem; border-radius: 4px; }
+.technical-side[data-side="before"] li[data-differs] { background: var(--neutral-bg); }
+.technical-side[data-side="after"] li[data-differs] { background: var(--check-soon-bg); color: var(--text); }
+.technical-compare[data-change="removed"] .technical-side[data-side="before"] li[data-differs] { background: var(--urgent-bg); }
+.technical-compare[data-change="same"] .technical-side { box-shadow: inset 3px 0 0 var(--fine); }
+@media (max-width: 46rem) {
+  .technical-body:popover-open > .technical-toolbar { margin-inline: var(--space-md); }
+}
+@media (max-width: 30rem) {
+  .technical-sides { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* Compliance (portal audit, pick A on a desktop, B on a phone): context line, tiles,
    the phone scorecard per service, control rows, storage card, the control panel and
    the exception sheet. Tokens only; `.cp-` prefix. */
@@ -9689,6 +9759,15 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .cp-storage p b { color: var(--text); font-weight: 600; }
 .cp-storage-icon { display: inline-grid; width: 2rem; height: 2rem; flex: none; place-items: center; border-radius: var(--radius-md); background: var(--neutral-bg); color: var(--text-soft); }
 .cp-storage-icon .icon, .cp-help .icon { width: 1rem; height: 1rem; }
+.cp-storage[data-tone="soon"] { border-color: var(--check-soon); background: var(--check-soon-bg); }
+.cp-storage[data-tone="soon"] .cp-storage-icon { background: var(--surface); color: var(--check-soon); }
+.cp-storage-todo { display: block; margin-top: 2px; }
+.cp-storage .btn { flex: none; }
+@media (max-width: 640px) { .cp-storage { flex-wrap: wrap; } .cp-storage .btn { width: 100%; justify-content: center; } }
+.cp-context .btn { align-self: center; }
+.cp-empty { display: flex; flex-direction: column; align-items: center; gap: var(--space-sm); }
+.cp-empty p { margin: 0; }
+.cp-empty .btn { margin-left: 0; }
 .cp-help { display: inline-grid; flex: none; place-items: center; width: 1.75rem; height: 1.75rem; border-radius: var(--radius-pill); color: var(--text-soft); cursor: help; }
 
 /* The control panel and the exception sheet. */

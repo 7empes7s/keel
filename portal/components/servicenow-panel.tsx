@@ -8,7 +8,7 @@ import type { ServiceNowStatus } from "@/lib/servicenow";
 // back after a failed write; table, field names, raw state values, secret names and
 // record ids are in the record.
 
-const FIELD_LABELS: Record<string, string> = {
+export const SERVICENOW_FIELD_LABELS: Record<string, string> = {
   state: "Field holding the approval state",
   approver: "Field naming who decided",
   planVersion: "Field KEEL writes the plan version to",
@@ -53,7 +53,7 @@ export function ServiceNowPanel({ status }: { status: ServiceNowStatus }) {
         {mapping ? <>
           <RecordField copy={false} label="Instance" value={mapping.instanceHost} />
           <RecordField label="Table" value={mapping.table} />
-          {Object.entries(FIELD_LABELS).map(([role, label]) => <RecordField key={role} label={label} value={mapping.fields[role] || "not set"} />)}
+          {Object.entries(SERVICENOW_FIELD_LABELS).map(([role, label]) => <RecordField key={role} label={label} value={mapping.fields[role] || "not set"} />)}
           <RecordField copy={false} label="Approved state values" value={JSON.stringify(mapping.approvedValues)} />
           <RecordField copy={false} label="Rejected state values" value={JSON.stringify(mapping.rejectedValues)} />
           <RecordField label="Access token (stored secret name)" value={mapping.tokenRef} />

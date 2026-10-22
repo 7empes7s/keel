@@ -26,7 +26,7 @@ import { SHAREPOINT_WRITE_OPERATION } from '../restore/workloads/sharepoint.mjs'
 import { approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
-import { defaultWorkloadQualifications, main, runRestore } from '../../cli/keel-restore.mjs';
+import { defaultWorkloadConnection, defaultWorkloadQualifications, main, runRestore } from '../../cli/keel-restore.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
@@ -415,6 +415,15 @@ test('a workload restore connects PowerShell with the family file from the workl
   }
   assert.equal(planned.length, Object.keys(expected).length);
   assert.equal(executed.length, Object.keys(expected).length);
+});
+
+test('the default connection gives PowerShell the family file, else the role file (#542)', async () => {
+  const getTokenFn = async () => ({ accessToken: 't' });
+  const config = { tenantId: TENANT_ID, clientId: 'restorer' };
+  const family = await defaultWorkloadConnection({ role: 'restorer', config, configPath: '/fixtures/restorer.json', powershellConfigPath: '/etc/keel/exchange-restorer.json', getTokenFn });
+  assert.equal(family.powershell.tenantConfigPath, '/etc/keel/exchange-restorer.json');
+  const plain = await defaultWorkloadConnection({ role: 'restorer', config, configPath: '/fixtures/restorer.json', getTokenFn });
+  assert.equal(plain.powershell.tenantConfigPath, '/fixtures/restorer.json');
 });
 
 test('a family restorer file for another tenant, or the collector registration, is refused before connecting (#542)', async (t) => {

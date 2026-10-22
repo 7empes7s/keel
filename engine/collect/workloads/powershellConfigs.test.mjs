@@ -53,3 +53,15 @@ test('another tenant, the collector registration, a path outside /etc/keel or an
   assert.throws(() => resolveFor('exchange', 'collector', { scope: { powershellConfigs: { entra: '/etc/keel/exchange-collector.json' } } }), /not a PowerShell family/);
   assert.throws(() => resolveFor('exchange', 'writer'), /unknown role/);
 });
+
+test('a restorer file must name the tenant and share no app or certificate with any collector', () => {
+  files.set('/etc/keel/no-tenant-restorer.json', JSON.stringify({ clientId: 'restorer' }));
+  files.set('/etc/keel/same-cert-restorer.json', JSON.stringify({ tenantId: TENANT_ID, clientId: 'restorer', certPath: '/etc/keel/collector.pem' }));
+  const named = (path) => ({ scope: { ...scope, powershellRestorerConfigs: { exchange: path, teams: path } } });
+  assert.throws(() => resolveFor('exchange', 'restorer', named('/etc/keel/no-tenant-restorer.json')), /names no tenantId/);
+  // A family with no collector file is still checked against the Graph collector.
+  const graphCollector = { tenantId: TENANT_ID, clientId: 'graph-collector', certPath: '/etc/keel/collector.pem' };
+  assert.throws(() => resolveFor('teams', 'restorer', { ...named('/etc/keel/same-cert-restorer.json'), separateFrom: [graphCollector] }), /separate Restorer/);
+  assert.throws(() => resolveFor('teams', 'restorer', { ...named('/etc/keel/exchange-restorer.json'), separateFrom: [{ clientId: 'restorer' }] }), /separate Restorer/);
+  assert.equal(resolveFor('teams', 'restorer', { ...named('/etc/keel/exchange-restorer.json'), separateFrom: [graphCollector] }), '/etc/keel/exchange-restorer.json');
+});

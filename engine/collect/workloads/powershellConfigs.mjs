@@ -73,10 +73,12 @@ export function restorerSibling(collectorPath) {
  *   role 'collector': powershellConfigs[family].
  *   role 'restorer':  powershellRestorerConfigs[family], else the collector file's
  *                     -restorer.json sibling when it exists.
- * Every file it returns is under /etc/keel and names `tenantId` (when the file has
- * one). A restorer file must not be the family's collector registration.
+ * Every file it returns is under /etc/keel and names `tenantId` (a collector file may
+ * leave it out, as the collect allows; a restorer file must name it). A restorer file
+ * must not share the app or certificate of the family's collector file or of any
+ * `separateFrom` config (the Graph collector).
  */
-export function familyConfigPath(family, { role, scope = {}, tenantId, readFile, exists = existsSync }) {
+export function familyConfigPath(family, { role, scope = {}, tenantId, readFile, exists = existsSync, separateFrom = [] }) {
   if (!family) return null;
   if (role !== 'collector' && role !== 'restorer') throw new Error(`unknown role ${role}`);
   const collectors = scope.powershellConfigs ?? {};
@@ -91,12 +93,16 @@ export function familyConfigPath(family, { role, scope = {}, tenantId, readFile,
   }
   if (!path) return null;
   const config = JSON.parse(readFile(path, 'utf8'));
+  if (role === 'restorer' && config.tenantId === undefined) {
+    throw new Error(`the ${family} PowerShell restorer config (${path}) names no tenantId: add the tenant's id to it`);
+  }
   if (config.tenantId !== undefined && config.tenantId !== tenantId) {
     throw new Error(`the ${family} PowerShell ${role} config names another tenant than this restore: refusing to connect`);
   }
-  if (role === 'restorer' && collectorPath) {
-    const collector = JSON.parse(readFile(collectorPath, 'utf8'));
-    if (path === collectorPath || (config.clientId && config.clientId === collector.clientId)) {
+  if (role === 'restorer') {
+    const others = [...(collectorPath ? [JSON.parse(readFile(collectorPath, 'utf8'))] : []), ...separateFrom];
+    const shares = (other) => ['clientId', 'certPath', 'keyPath'].some((key) => config[key] && config[key] === other?.[key]);
+    if (path === collectorPath || others.some(shares)) {
       throw new Error(`the ${family} PowerShell restorer config is the collector registration: restore requires a separate Restorer`);
     }
   }

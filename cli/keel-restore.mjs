@@ -60,7 +60,8 @@
 // (Exchange, Purview, OneDrive, SharePoint, Teams) connects with the family's file from
 // the workload scope file (KEEL_WORKLOAD_SCOPE_PATH, default /etc/keel/workload-scope.json):
 // powershellConfigs for the dry run, and powershellRestorerConfigs or the collector file's
-// -restorer.json sibling for the promotion (issue #542).
+// -restorer.json sibling for the promotion (issue #542). A family file wins over
+// --collector-config for PowerShell; Graph still reads with --collector-config.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
@@ -1763,7 +1764,7 @@ async function executeEnforcementRun({ client, artifact, collectorConfig, target
  * (a certificate token for that host). The collector's can only read; the restorer's
  * can only send the allow-listed site permission writes (sitePermissionsWriteTransport).
  */
-async function defaultWorkloadConnection({ role, config, configPath, powershellConfigPath = null, getTokenFn }) {
+export async function defaultWorkloadConnection({ role, config, configPath, powershellConfigPath = null, getTokenFn }) {
   const { accessToken } = await getTokenFn(config);
   const sharePoint = (tenantHost, { webUrl = null } = {}) => {
     const token = () => getTokenFn(config, { scope: `https://${tenantHost}/.default` });
@@ -1785,8 +1786,8 @@ function defaultWorkloadScope({ readFile }) {
  * sibling for the promotion). Exchange and Purview refuse the Graph configs, which
  * name no organization. Null leaves the role's own file.
  */
-function workloadPowershellPath(workload, { role, tenantId, readFile, logger, deps }) {
-  const path = workloadPowershellConfigPath(workload, { role, tenantId, readFile, scope: deps.workloadScopeFn({ readFile }) });
+function workloadPowershellPath(workload, { role, tenantId, readFile, logger, deps, separateFrom = [] }) {
+  const path = workloadPowershellConfigPath(workload, { role, tenantId, readFile, separateFrom, scope: deps.workloadScopeFn({ readFile }) });
   if (path) logger.log(`PowerShell connects as the ${role} with ${path}`);
   return path;
 }
@@ -1869,7 +1870,7 @@ async function executeWorkloadRun({ client, artifact, readFile, logger, deps }) 
     throw new Error('workload restore promotion refused: the restorer signs in to a different tenant than the one this plan was made for');
   }
   const powershellConfigPath = workloadPowershellPath(plan.workload, {
-    role: 'restorer', tenantId: targetConfig.tenantId, readFile, logger, deps,
+    role: 'restorer', tenantId: targetConfig.tenantId, readFile, logger, deps, separateFrom: [collectorConfig],
   });
   const connection = await deps.workloadConnectionFn({
     role: 'restorer', config: targetConfig, configPath: paths.targetConfig, powershellConfigPath, getTokenFn: deps.getTokenFn,

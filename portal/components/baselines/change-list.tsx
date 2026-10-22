@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
 import { ChangeDecision } from "@/components/baselines/change-decision";
+import { ChangeFacts } from "@/components/baselines/change-facts";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { RiskChip } from "@/components/baselines/parts";
 import { BaselinesStyles } from "@/components/baselines/styles";
@@ -25,7 +26,7 @@ import { workloadLabel } from "@/lib/compare-view";
 import { toDay } from "@/lib/date-range";
 import { driftActionControls } from "@/lib/drift-actions";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
-import { ago, BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
+import { ago, BLAST_RADIUS_ORDER, brandCase, formatTimestamp } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
 import { orderGroups, smartOrder } from "@/lib/selection";
 import { serviceFor, serviceOrder } from "@/lib/services";
@@ -358,7 +359,10 @@ export function ChangeList({
               {canDispose && isWaiting(opened) ? <button className="btn btn-primary" onClick={() => acknowledge([opened.id])} type="button">Acknowledge</button> : null}
               {canDispose ? <button className="btn" onClick={() => resolve([opened.id])} type="button">Resolve with a note…</button> : null}
               {opened.serviceRead.alertId ? <Link className="btn" href={`/alerts?open=${encodeURIComponent(opened.serviceRead.alertId)}`}>Open its alert</Link> : null}
-              <p className="bl-help">{workloadLabel(opened.serviceRead.workload)} has no approved setup, so there is nothing to accept or undo. Keel shows and tracks this change; putting it back is done in {typeService(opened.resourceType).name}.</p>
+              <ul className="bl-help bl-how">
+                <li><strong>Keep it:</strong> acknowledge it, or resolve it with a note saying why it is fine.</li>
+                <li><strong>Put it back:</strong> Keel cannot undo this one: there is no approved setup for {brandCase(workloadLabel(opened.serviceRead.workload).toLowerCase())} yet. Change it back in {typeService(opened.resourceType).name}; the next read then shows it as fixed.</li>
+              </ul>
             </>
           ) : canDispose || canRemediate ? (
             <>
@@ -373,19 +377,15 @@ export function ChangeList({
           title={changeName(opened)}
           wide
         >
+          <ChangeFacts item={opened} now={now} />
           <section className="bl-why" aria-label="Why it matters">
             <h3>Why it matters</h3>
             <p>{whyItMatters(opened.resourceType)}</p>
-            <p className="bl-help">
-              {opened.serviceRead
-                ? `Keel found it ${ago(opened.detectedAt, now)}, when it compared the newest ${workloadLabel(opened.serviceRead.workload).toLowerCase()} read in ${typeService(opened.resourceType).name} with the one before. It does not know who made it.`
-                : `${changedBy(opened) ? `${changedBy(opened)} made it` : "Keel does not know who made it yet"}; Keel found it ${ago(opened.detectedAt, now)}, in ${typeService(opened.resourceType).name}.`}
-            </p>
           </section>
           {opened.semantic
             ? <SemanticDiff change={opened.semantic} item={opened} record={<OpenedRecord item={opened} />} />
             : <DriftDiff item={opened} record={<OpenedRecord item={opened} />} />}
-          {opened.evidence !== undefined ? <ChangeEvidencePanel attribution={opened.attribution} evidence={opened.evidence} now={now} /> : null}
+          {opened.evidence !== undefined ? <ChangeEvidencePanel attribution={opened.attribution} evidence={opened.evidence} gap={opened.evidenceGap} now={now} /> : null}
           {opened.attribution !== undefined ? <ChangeAttributionPanel attribution={opened.attribution} now={now} /> : null}
         </DetailsSheet>
       ) : null}

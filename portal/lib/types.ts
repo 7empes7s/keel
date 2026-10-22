@@ -365,6 +365,9 @@ export interface DriftRecord {
   // did not compute them; evidence is null when it could not be read.
   semantic?: SemanticChange;
   evidence?: ChangeEvidence | null;
+  // Why evidence is null: the read failed, the change was past the number of changes
+  // whose records are read at once, or its row was not found (settled since).
+  evidenceGap?: "read-failed" | "over-limit" | "not-found";
   // Set on a change found by comparing a service read (Exchange, SharePoint, Teams,
   // Purview, Power Platform) with the read before it. Those settings have no approved
   // setup, so the change has no accept or undo: its alert is where someone reviews it.

@@ -99,6 +99,7 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   servicePrincipalOwnership: "enterprise app owner",
   synchronizationJob: "provisioning job",
   sharepointSiteAppGrant: "site access for an app",
+  sharepointSettings: "SharePoint and OneDrive settings",
   user: "user",
   authorizationPolicy: "authorization policy",
   crossTenantAccessPolicyPartner: "cross-tenant access partner",
@@ -111,8 +112,19 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   deviceConfiguration: "device configuration",
 };
 
+// Product names keep their capitals inside an otherwise lower-case label.
+const BRANDS: [RegExp, string][] = [
+  [/\bsharepoint\b/g, "SharePoint"], [/\bonedrive\b/g, "OneDrive"], [/\bintune\b/g, "Intune"], [/\bentra\b/g, "Entra"], [/\bpurview\b/g, "Purview"],
+  [/\bexchange\b/g, "Exchange"], [/\bteams\b/g, "Teams"], [/\bpower platform\b/g, "Power Platform"], [/\bpower bi\b/g, "Power BI"],
+];
+
+/** A lower-case label with Microsoft's product names capitalised. */
+export function brandCase(label: string): string {
+  return BRANDS.reduce((text, [pattern, brand]) => text.replace(pattern, brand), label);
+}
+
 export function resourceTypeLabel(type: string): string {
-  return RESOURCE_TYPE_LABELS[type] ?? words(type).toLowerCase();
+  return RESOURCE_TYPE_LABELS[type] ?? brandCase(words(type).toLowerCase());
 }
 
 // The stored type of each edge drift key ("edge:appOwner:…").

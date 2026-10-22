@@ -1,8 +1,7 @@
-import type { ReactNode } from "react";
-
+import { SettingRows } from "@/components/change-comparison";
 import { Icon, type IconName } from "@/components/shell/icons";
-import { fieldWords } from "@/lib/changes-view";
-import { CHANGE_LABELS, changeLine, valueLines, valueText, type ChangeKind, type ChangedField, type ChangedObject } from "@/lib/changed-values";
+import { fieldRow } from "@/lib/change-comparison";
+import { CHANGE_LABELS, changeLine, type ChangeKind, type ChangedField, type ChangedObject } from "@/lib/changed-values";
 import { resourceTypeLabel } from "@/lib/presentation";
 
 // The setting that changed and its value before and after, on Activity and Compare.
@@ -48,18 +47,6 @@ export function ChangeChip({ change }: { change: ChangeKind }) {
   return <span className="cv-chip" data-change={change}><Icon name={CHANGE_ICONS[change]} />{CHANGE_LABELS[change]}</span>;
 }
 
-/** A value as a person reads it: one line, or one line per setting inside it. */
-export function Value({ value, names }: { value: unknown; names?: Readonly<Record<string, string>> }) {
-  const { lines, more } = valueLines(value, names);
-  if (lines.length === 1 && !lines[0].label && !more) return <span className="cv-value">{lines[0].text}</span>;
-  return (
-    <ul className="cv-lines">
-      {lines.map((line, index) => <li key={index}>{line.label ? <><b>{line.label}:</b> </> : null}{line.text}</li>)}
-      {more ? <li><b>And {more} more</b></li> : null}
-    </ul>
-  );
-}
-
 /** Each setting that differs, with its value on both sides. */
 export function ChangedFieldList({ fields, total, sides, names, change = "changed", label }: {
   fields: ChangedField[];
@@ -72,44 +59,11 @@ export function ChangedFieldList({ fields, total, sides, names, change = "change
   if (!fields.length) {
     return <p className="cv-more">{change === "changed" ? "Only settings Microsoft sets itself differ." : "It holds no settings Keel lists."}</p>;
   }
-  const absent = change === "added" ? "before" : change === "removed" ? "after" : null;
   return (
     <>
-      <ul aria-label={label} className="cv-list">
-        {fields.map((field) => (
-          <li aria-label={`${fieldWords(field.path)}: ${absent === "before" ? "not there" : valueText(field.before, names)} to ${absent === "after" ? "not there" : valueText(field.after, names)}`} className="cv-row" key={field.path}>
-            <span className="cv-name">{fieldWords(field.path)}</span>
-            <span className="cv-side" data-empty={absent === "before" || undefined} data-side="before"><small>{sides.before}</small>{absent === "before" ? "Not there" : <Value names={names} value={field.before} />}</span>
-            <Icon className="cv-arrow" name="chevron" />
-            <span className="cv-side" data-empty={absent === "after" || undefined} data-side="after"><small>{sides.after}</small>{absent === "after" ? "Not there" : <Value names={names} value={field.after} />}</span>
-          </li>
-        ))}
-      </ul>
+      <SettingRows label={label} rows={fields.map((field) => fieldRow(field.path, field.before, field.after, change, names))} sides={sides} />
       {total && total > fields.length ? <p className="cv-more">And {total - fields.length} more {total - fields.length === 1 ? "setting" : "settings"}.</p> : null}
     </>
-  );
-}
-
-/** One setting with both sides worded by the caller: a value, or a word such as "Not
- *  known" when a side holds none (`null` reads "Not there"). `note` says what kind of
- *  change it is, under the setting's name. */
-export function SidesRow({ name, note, sides, before, after }: {
-  name: string;
-  note?: string;
-  sides: { before: string; after: string };
-  before: ReactNode | null;
-  after: ReactNode | null;
-}) {
-  const side = (which: "before" | "after", value: ReactNode | null) => (
-    <span className="cv-side" data-empty={value === null || typeof value === "string" || undefined} data-side={which}><small>{sides[which]}</small>{value ?? "Not there"}</span>
-  );
-  return (
-    <li className="cv-row">
-      <span className="cv-name">{name}{note ? <small className="cv-note">{note}</small> : null}</span>
-      {side("before", before)}
-      <Icon className="cv-arrow" name="chevron" />
-      {side("after", after)}
-    </li>
   );
 }
 

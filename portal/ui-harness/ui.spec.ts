@@ -431,16 +431,20 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 1000
     await expect(changes.locator("h3")).toHaveText("What changed (3)");
     const policy = changes.locator(".cv-object", { hasText: "Block legacy auth" });
     await expect(policy.locator(".cv-chip")).toHaveText("Changed");
-    const state = policy.locator(".cv-row", { hasText: "State" });
+    const state = policy.locator(".cc-row", { hasText: "State" });
     await expect(state.locator('[data-side="before"]')).toContainText("Previous backup");
     await expect(state.locator('[data-side="before"]')).toContainText("enabled");
     await expect(state.locator('[data-side="after"]')).toContainText("enabled for reporting but not enforced");
-    await expect(policy.locator(".cv-row", { hasText: "Exclude groups" }).locator('[data-side="after"]')).toContainText("Break-glass admins, an object Keel has no name for");
+    // A list compares entry by entry: the new entry is marked added; the kept one folds away.
+    await expect(policy.locator(".cc-row", { hasText: "Exclude groups" }).locator('.cc-entry[data-diff="added"]')).toContainText("an object Keel has no name for");
     const removed = changes.locator(".cv-object", { hasText: "Old project team" });
     await expect(removed.locator(".cv-chip")).toHaveText("Removed");
-    await expect(removed.locator(".cv-row", { hasText: "Description" }).locator('[data-side="before"]')).toContainText("Project Atlas, closed in September");
-    await expect(removed.locator(".cv-row", { hasText: "Description" }).locator('[data-side="after"]')).toContainText("Not there");
-    await expect(changes.locator(".cv-object", { hasText: "Windows compliance" })).toContainText("#1 › grace period hours: 24");
+    await expect(removed.locator(".cc-row", { hasText: "Description" }).locator('[data-side="before"]')).toContainText("Project Atlas, closed in September");
+    await expect(removed.locator(".cc-row", { hasText: "Description" }).locator('[data-side="after"]')).toContainText("Not there");
+    await expect(removed.locator(".cc-row", { hasText: "Description" })).toHaveAttribute("data-diff", "removed");
+    // A list of objects reads one entry per line, never as "#1 › …" paths.
+    await expect(changes.locator(".cv-object", { hasText: "Windows compliance" })).toContainText("Grace period hours: 24");
+    await expect(changes.locator(".cv-object", { hasText: "Windows compliance" })).not.toContainText("#1 ›");
     await expect(changes.getByRole("link", { name: "See every difference in Compare" })).toHaveAttribute("href", /\/compare\?from=0b5e0000-0000-4000-8000-0000000000c8&to=0b5e0000-0000-4000-8000-0000000000d5/);
     expect(await panel.evaluate((element) => element.textContent ?? "")).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
@@ -448,8 +452,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 1000
     // A restore says what it put back, and a row that changed no settings has no section.
     await open(page, "/activity?open=job:y1", "light");
     const restore = page.getByRole("dialog").locator(".ac-changes");
-    await expect(restore.locator(".cv-row", { hasText: "Security enabled" }).locator('[data-side="before"]')).toContainText("no");
-    await expect(restore.locator(".cv-row", { hasText: "Security enabled" }).locator('[data-side="after"]')).toContainText("yes");
+    await expect(restore.locator(".cc-row", { hasText: "Security enabled" }).locator('[data-side="before"]')).toContainText("no");
+    await expect(restore.locator(".cc-row", { hasText: "Security enabled" }).locator('[data-side="after"]')).toContainText("yes");
     await open(page, "/activity?open=record:18204", "light");
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(page.getByRole("dialog").locator(".ac-changes")).toHaveCount(0);
@@ -623,7 +627,9 @@ test("restore leads with what changed, by service, and undoes a change or a grou
   await expect(page.getByText("Ready to send for approval")).toBeVisible({ timeout: 15_000 });
   const beforeAfter = page.locator(".restore-before-after");
   await expect(beforeAfter).toContainText("Branch offices (trusted location)Now: gone");
-  await expect(beforeAfter.locator("tr", { hasText: "Visibility" })).toContainText("PublicPrivate");
+  const visibility = beforeAfter.locator(".cc-row", { hasText: "Visibility" });
+  await expect(visibility.locator('[data-side="before"]')).toContainText("Public");
+  await expect(visibility.locator('[data-side="after"]')).toContainText("Private");
   await expect(page.locator(".restore-point-hint")).toHaveText("To pick another backup, change your selection first.");
   await page.getByRole("button", { name: "Change selection" }).click();
   await expect(groups.nth(0).locator(".sel-group-name b")).toHaveText("Changed recently");
@@ -845,10 +851,17 @@ test("a change shows its behavioural settings and linked records, and flags mism
   const sheet = page.getByRole("dialog", { name: "Finance" });
   await expect(sheet).toBeVisible();
   await expect(sheet.locator(".bl-why")).toContainText("Why it matters");
+  // At a glance: what changed, when and who, before the setting-by-setting comparison.
+  const glance = sheet.locator(".bl-glance");
+  await expect(glance.locator('[data-fact="what"]')).toContainText("Mail enabled: no → yes, and 1 more setting.");
+  await expect(glance).toContainText("1 Oct 2026, 15:02 UTC");
+  await expect(glance).toContainText("Not known yet");
   const diff = sheet.locator(".semantic-diff");
-  await expect(diff.locator(".semantic-summary")).toHaveText("2 settings differ from the approved setup in a way that changes behaviour.");
-  await expect(diff.getByRole("heading", { name: "Cannot be changed back in place (1)" })).toBeVisible();
-  await expect(diff.getByRole("heading", { name: "Changes behaviour (1)" })).toBeVisible();
+  await expect(diff.locator(".cc-sentence")).toHaveText("2 settings changed since the approved setup.");
+  const mail = diff.locator(".cc-row", { hasText: "Mail enabled" });
+  await expect(mail).toHaveAttribute("data-diff", "changed");
+  await expect(mail).toContainText("Cannot be changed back in place");
+  await expect(diff.locator(".cc-row", { hasText: "Owners" }).locator('.cc-entry[data-diff="added"]')).toContainText("temp.contractor@contoso.com");
   const evidence = sheet.locator(".decision-evidence");
   await expect(evidence.locator(".decision-mismatch-note")).toHaveText("2 records do not match the others. Check before you decide.");
   await expect(evidence.locator(".decision-row-mismatch dt")).toHaveText(["Approved setup copy · does not match", "Roll-back plan and result · does not match"]);
@@ -868,9 +881,9 @@ test("a change shows its behavioural settings and linked records, and flags mism
 
   const unknownSheet = await openChange(page, "HQ egress");
   const unknown = unknownSheet.locator(".semantic-diff");
-  await expect(unknown.locator(".semantic-summary")).toHaveText("Keel did not keep the approved setup's copy of this, so the earlier values are not known. Nothing is shown as removed.");
-  await expect(unknown.locator(".cv-side[data-side='before']")).toHaveText([/^Approved\s*Not known$/, /^Approved\s*Not known$/]);
-  await expect(unknown.locator(".cv-note")).toHaveText(["Now set", "Now set"]);
+  await expect(unknown.locator(".cc-sentence")).toHaveText("2 settings are set now. Keel did not keep the earlier copy, so nothing is shown as removed.");
+  await expect(unknown.locator(".cc-side[data-side='before']")).toHaveText([/^Approved setup\s*Not known$/, /^Approved setup\s*Not known$/]);
+  await expect(unknown.locator(".cc-chip")).toHaveText(["Now set", "Now set"]);
   await expect(unknownSheet.locator(".decision-evidence")).toContainText("The approved setup holds no copy of this, so Keel cannot check what it compared against.");
   await expect(unknownSheet.locator(".decision-evidence")).toContainText("The backup that found this change is stored, but the change did not record what it saw, so Keel cannot check it.");
   expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
@@ -1475,11 +1488,49 @@ test("the Changes list groups and filters every service, and service changes are
   await page.getByRole("link", { name: "Forward finance mail" }).click();
   const sheet = page.getByRole("dialog");
   await expect(sheet).toContainText("Exchange mail flow or protection rule · changed");
-  await expect(sheet.locator(".cv-side[data-side='before'] small").first()).toHaveText("Previous read");
-  await expect(sheet).toContainText("1 setting changed since the previous read.");
+  await expect(sheet.locator(".cc-side[data-side='before'] small").first()).toHaveText("Previous read");
+  await expect(sheet.locator(".cc-sentence")).toHaveText("1 setting changed since the previous read.");
+  await expect(sheet).toContainText("Put it back:");
   await expect(sheet.getByRole("button", { name: "Acknowledge" })).toBeVisible();
   await expect(sheet.getByRole("link", { name: "Open its alert" })).toHaveAttribute("href", /alerts\?open=a1e70000-0000-4000-8000-0000000000a6/);
   await expect(sheet.getByRole("button", { name: "Accept this change" })).toHaveCount(0);
+});
+
+// A change reads as what happened, by name: one app's write grant removed shows as that,
+// struck through in red, never as "#1 › applications" paths or ids. Many changed settings
+// lead with counts and filters, and settings that stayed the same fold away.
+test("a change compares each setting with its earlier value, coloured, and many changes stay short", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/drift/services", "light");
+  await page.locator(".sel-row", { hasText: "SharePoint setting" }).locator(".bl-row-link", { hasText: /^Finance$/ }).click();
+  const sheet = page.getByRole("dialog", { name: "Finance" });
+  await expect(sheet.locator('.bl-glance [data-fact="what"]')).toHaveText(/App permission grants: removed App KEEL-RT-site-grant-app · Write access, and 1 more entry\./);
+  const grants = sheet.locator(".cc-row", { hasText: "App permission grants" });
+  const removed = grants.locator('.cc-entry[data-diff="removed"]');
+  await expect(removed).toContainText("App KEEL-RT-site-grant-app · Write access");
+  expect(await removed.locator("span").last().evaluate((element) => getComputedStyle(element).textDecorationLine)).toBe("line-through");
+  await expect(grants.locator('.cc-entry[data-diff="added"]')).toContainText("App Board pack reader · Read access");
+  await expect(grants).not.toContainText("#1");
+  expect(await textOutside(page, ".bl-sheet", '[data-layer="record"]')).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/drift", "dark");
+  const windows = await openChange(page, "Windows baseline");
+  await expect(windows.locator(".cc-sentence")).toHaveText("11 settings differ from the approved setup: 7 changed, 2 added and 2 removed.");
+  await expect(windows.locator(".cc-row")).toHaveCount(8);
+  await windows.getByRole("button", { name: /^Removed 2$/ }).click();
+  await expect(windows.locator(".cc-row")).toHaveCount(2);
+  await expect(windows.locator(".cc-row").first()).toHaveAttribute("data-diff", "removed");
+  await windows.getByRole("button", { name: /^All 11$/ }).click();
+  await windows.getByRole("button", { name: "Show 3 more settings" }).click();
+  await expect(windows.locator(".cc-row")).toHaveCount(11);
+  await windows.getByRole("button", { name: "6 settings are the same" }).click();
+  await expect(windows.locator(".cc-same")).toContainText("Defender scheduled scan time");
+  await expect(windows.getByRole("button", { name: "Accept this change" })).toBeVisible();
+  await expect(windows.getByRole("button", { name: "Undo this change" })).toBeVisible();
+  const results = await new AxeBuilder({ page }).include(".bl-sheet").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  expect(results.violations.map((violation) => violation.id)).toEqual([]);
 });
 
 // The Service settings tile keeps service changes only; acknowledging two posts one call
@@ -2671,15 +2722,18 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await policies.locator("summary").click();
     await expect(policies).toContainText("Block legacy auth");
     await expect(policies).toContainText("enabled for reporting but not enforced");
-    await expect(policies.locator(".cv-row", { hasText: "Exclude groups" }).locator('[data-side="before"]')).toContainText("Break-glass admins");
-    await expect(policies.locator(".cv-row", { hasText: "Exclude groups" }).locator('[data-side="after"]')).toContainText("Break-glass admins, an object Keel has no name for");
+    const exclude = policies.locator(".cc-row", { hasText: "Exclude groups" });
+    await expect(exclude.locator('.cc-entry[data-diff="added"]')).toContainText("an object Keel has no name for");
+    await exclude.getByRole("button", { name: "Show the 1 entry that stayed" }).click();
+    await expect(exclude).toContainText("Break-glass admins");
     // Added and removed objects list the settings they hold, each with its value.
     const groups = settings.locator("details.compare-group").filter({ has: page.locator(".compare-group-name", { hasText: /^Group$/ }) });
     await groups.locator("summary").click();
-    await expect(groups.locator(".compare-item", { hasText: "Old project team" }).locator(".cv-row", { hasText: "Description" })).toContainText("Project Atlas, closed in September");
+    await expect(groups.locator(".compare-item", { hasText: "Old project team" }).locator(".cc-row", { hasText: "Description" })).toContainText("Project Atlas, closed in September");
     const contractors = groups.locator(".compare-item", { hasText: "KEEL-RT-Contractors" });
-    await expect(contractors.locator(".cv-row", { hasText: "Membership rule" }).locator('[data-side="after"]')).toContainText("Processing state: On");
-    await expect(contractors.locator(".cv-row", { hasText: "Membership rule" }).locator('[data-side="before"]')).toContainText("Not there");
+    await expect(contractors.locator(".cc-row", { hasText: "Membership rule" }).locator('[data-side="after"]')).toContainText("Processing state: On");
+    await expect(contractors.locator(".cc-row", { hasText: "Membership rule" }).locator('[data-side="before"]')).toContainText("Not there");
+    await expect(contractors.locator(".cc-row", { hasText: "Membership rule" })).toHaveAttribute("data-diff", "added");
     await expect(settings).toContainText("Device configuration (Intune): First side read in full, second side failed to read.");
     const content = page.locator("section", { has: page.locator("#compare-content-heading") });
     await content.locator("details.compare-group", { hasText: "Drive" }).locator("summary").click();
@@ -2692,6 +2746,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(page.locator('[data-layer="verdict"]')).toContainText("between the two tenants");
     const across = page.locator("section", { has: page.locator("#compare-settings-heading") });
     await across.locator("details.compare-group").first().locator("summary").click();
+    await across.getByRole("button", { name: "Show the 1 entry that stayed" }).click();
     await expect(across).toContainText("Break-glass admins (group)");
     await expect(across).toContainText("an object Keel could not name");
     await expect(across).toContainText("Device category (Intune): 3 in the first, 2 in the second.");

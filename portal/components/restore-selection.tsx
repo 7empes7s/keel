@@ -16,6 +16,7 @@ import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/
 import { Verdict, type VerdictTone } from "@/components/verdict";
 import { toast } from "@/lib/toast";
 import { fieldWords, refusalSentence } from "@/lib/changes-view";
+import { SettingRows } from "@/components/change-comparison";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
 import type { RestoreResource } from "@/lib/portal-data";
 import type { SnapshotOption } from "@/lib/portal-jobs";
@@ -971,18 +972,13 @@ function BeforeAfter({ keys, changes, names }: { keys: string[]; changes: Map<st
             {change.kind === "deleted" ? (
               <p className="restore-ba-line"><span>Now: gone</span><Icon name="chevron" /><span>After: recreated as in the backup</span></p>
             ) : (
-              <table className="restore-ba-table">
-                <thead><tr><th scope="col">Setting</th><th scope="col">Now</th><th scope="col">After the restore</th></tr></thead>
-                <tbody>
-                  {change.fields.map((field) => (
-                    <tr key={field.path}>
-                      <th scope="row">{fieldWords(field.path)}</th>
-                      <td data-label="Now">{field.after}</td>
-                      <td data-label="After">{field.before}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="restore-ba-table">
+                <SettingRows
+                  label={`${plainLabel(change.naturalKey, names)}: settings`}
+                  rows={change.fields.map((field) => ({ path: field.path, section: "General", label: fieldWords(field.path), diff: "changed", before: field.after, after: field.before, entries: null }))}
+                  sides={{ before: "Now", after: "After the restore" }}
+                />
+              </div>
             )}
             {change.fieldCount > change.fields.length ? <p className="restore-ba-more">{plural(change.fieldCount - change.fields.length, "more setting")} also go back.</p> : null}
           </li>

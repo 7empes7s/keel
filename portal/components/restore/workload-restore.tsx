@@ -9,6 +9,7 @@ import { RestoreStepper } from "@/components/restore-selection";
 import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import { postAction } from "@/lib/action-client";
 import { fieldWords, valueWords } from "@/lib/changes-view";
+import { SettingRows } from "@/components/change-comparison";
 import { toast } from "@/lib/toast";
 import { plural } from "@/lib/restore-view";
 import {
@@ -530,18 +531,22 @@ function RunReview({ run, heading, nameOf, canApprove, onApproved }: {
             {tables.map((table) => (
               <li key={table.key}>
                 {table.title !== heading ? <strong>{table.title}</strong> : null}
-                <table className="restore-ba-table">
-                  <thead><tr><th scope="col">{table.key === "members" ? "Member" : "Setting"}</th><th scope="col">Now in your tenant</th><th scope="col">After the restore</th></tr></thead>
-                  <tbody>
-                    {table.rows.map((change) => (
-                      <tr key={change.field}>
-                        <th scope="row">{table.key === "members" ? change.field : fieldWords(change.field)}</th>
-                        <td data-label="Now">{table.key === "members" ? String(change.before) : settingValueWords(change.field, change.before)}</td>
-                        <td data-label="After">{table.key === "members" ? String(change.after) : settingValueWords(change.field, change.after)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div className="restore-ba-table">
+                  <SettingRows
+                    label={`${table.title}: what will change`}
+                    rows={table.rows.map((change) => {
+                      const members = table.key === "members";
+                      const diff = members && change.before === "Not in the team" ? "added" : members && change.after === "Removed from the team" ? "removed" : "changed";
+                      return {
+                        path: change.field, section: "General", label: members ? change.field : fieldWords(change.field), diff,
+                        before: diff === "added" ? null : members ? String(change.before) : settingValueWords(change.field, change.before),
+                        after: diff === "removed" ? null : members ? String(change.after) : settingValueWords(change.field, change.after),
+                        entries: null,
+                      };
+                    })}
+                    sides={{ before: "Now in your tenant", after: "After the restore" }}
+                  />
+                </div>
               </li>
             ))}
           </ul>

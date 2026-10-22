@@ -159,7 +159,7 @@ test("names fall back to words, never to an id", () => {
 });
 
 test("a list or object value reads as its first settings, not a pointer to Technical details", () => {
-  assert.equal(valueWords([{ appId: "x", scope: "Sites.Read.All" }]), "App id: x; Scope: Sites.Read.All");
+  assert.equal(valueWords([{ appId: "x", scope: "Sites.Read.All" }]), "Scope: Sites.Read.All");
   assert.equal(valueWords({ a: 1, b: { c: true, d: [1, 2] }, e: "x", f: null }), "A: 1; B › c: yes; B › d: 1, 2; and 2 more");
   assert.ok(!valueWords([{ a: 1 }, { a: 2 }]).includes("Technical details"));
 });

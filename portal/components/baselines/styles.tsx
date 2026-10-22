@@ -164,6 +164,15 @@ const CSS = `
 .bl-why { display: grid; gap: var(--space-xs); padding: var(--space-sm) var(--space-md); border-radius: var(--radius-md); background: var(--surface-muted); }
 .bl-why h3 { margin: 0; font-size: 0.875rem; }
 .bl-why p { margin: 0; }
+.bl-glance { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-xs); margin: 0; }
+.bl-glance-fact { display: grid; gap: 0.2rem; align-content: start; min-width: 0; padding: var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
+.bl-glance-fact[data-fact="what"] { grid-column: 1 / -1; border-left: 4px solid var(--accent); }
+.bl-glance-fact dt { color: var(--text-soft); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.bl-glance-fact dd { display: grid; gap: 0.15rem; margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.bl-glance-fact dd small { color: var(--text-soft); font-weight: 400; font-size: 0.8125rem; }
+.bl-glance-fact:not([data-fact]):not([data-known]):last-child dd { color: var(--text-soft); }
+.bl-how { display: grid; gap: 0.25rem; margin: 0; padding-left: 1.1rem; }
+@media (max-width: 640px) { .bl-glance { grid-template-columns: minmax(0, 1fr); } }
 .bl-decision { display: grid; gap: var(--space-md); }
 .bl-decision-what { margin: 0; font-size: 0.9375rem; line-height: 1.5; }
 .bl-decision-scope { margin: 0; color: var(--text-soft); font-size: 0.875rem; overflow-wrap: anywhere; }

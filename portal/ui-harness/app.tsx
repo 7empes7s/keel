@@ -339,7 +339,11 @@ const DRIFT = [
       route: { route: "entity", entityCode: "CREOS", approverCount: 1, routedAt: "2026-10-02T10:00:00Z" } } },
   { id: "dr4", naturalKey: "namedLocation:Branch offices", resourceType: "namedLocation", changeType: "added", blastRadius: "access-affecting", detectedAt: "2026-09-30T10:00:00Z", before: null, after: { displayName: "Branch offices", ipRanges: ["203.0.113.0/24"] } },
   { id: "dr5", naturalKey: "deviceConfiguration:Windows baseline", resourceType: "deviceConfiguration", changeType: "modified", blastRadius: "cosmetic", detectedAt: "2026-09-29T08:30:00Z",
-    before: { description: "Corporate Windows baseline", passwordMinimumLength: 12 }, after: { description: "Corporate Windows baseline v2", passwordMinimumLength: 12 } },
+    // Many settings at once: the panel leads with counts and filters, not a long text.
+    before: { description: "Corporate Windows baseline", passwordMinimumLength: 12, passwordRequired: true, passwordExpirationDays: 90, storageRequireEncryption: true, defenderScanType: "full", defenderScheduledScanTime: "02:00",
+      firewall: { domainProfileEnabled: true, publicProfileEnabled: true, inboundBlocked: true }, bitLocker: { recoveryKeyBackup: true, startupAuthentication: "tpmAndPin" }, edge: { smartScreenEnabled: true, passwordManagerEnabled: false }, usbStorageBlocked: true },
+    after: { description: "Corporate Windows baseline v2", passwordMinimumLength: 8, passwordRequired: true, storageRequireEncryption: false, defenderScanType: "quick", defenderScheduledScanTime: "02:00", screenLockMinutes: 15,
+      firewall: { domainProfileEnabled: true, publicProfileEnabled: false, inboundBlocked: true }, bitLocker: { recoveryKeyBackup: true, startupAuthentication: "tpmOnly" }, edge: { smartScreenEnabled: true, passwordManagerEnabled: true, trackingPrevention: "strict" } } },
   { id: "dr6", naturalKey: "group:Old project team", resourceType: "group", changeType: "removed", blastRadius: "cosmetic", detectedAt: "2026-09-28T12:00:00Z", before: { displayName: "Old project team" }, after: null },
   // Task 98: a change whose baseline copy was not kept; its earlier values are unknown.
   { id: "dr7", naturalKey: "namedLocation:HQ egress", resourceType: "namedLocation", changeType: "modified", blastRadius: "access-affecting", detectedAt: "2026-09-27T07:15:00Z", before: null, after: { displayName: "HQ egress", ipRanges: ["198.51.100.0/24"] } },
@@ -360,7 +364,7 @@ const SEMANTIC: Record<string, NonNullable<DriftRecord["semantic"]>> = {
     { path: "owners", kind: "changed", before: ["cfo@contoso.com"], after: ["cfo@contoso.com", "temp.contractor@contoso.com"], impact: "behaviour" },
   ] },
   dr4: { state: "added", rules: "reviewed", total: 0, shown: 0, cosmetic: 0, groups: { behaviour: 0, fixed: 0, "unknown-before": 0 }, fields: [] },
-  dr5: { state: "compared", rules: "reviewed", total: 1, shown: 1, cosmetic: 0, groups: { behaviour: 1, fixed: 0, "unknown-before": 0 }, fields: [
+  dr5: { state: "compared", rules: "generic", total: 1, shown: 1, cosmetic: 0, groups: { behaviour: 1, fixed: 0, "unknown-before": 0 }, fields: [
     { path: "description", kind: "changed", before: "Corporate Windows baseline", after: "Corporate Windows baseline v2", impact: "behaviour" },
   ] },
   dr6: { state: "removed", rules: "reviewed", total: 0, shown: 0, cosmetic: 0, groups: { behaviour: 0, fixed: 0, "unknown-before": 0 }, fields: [] },
@@ -1573,7 +1577,15 @@ const serviceChange = (id: string, workload: string, resourceKey: string, name: 
 });
 const SERVICE_CHANGES: DriftRecord[] = [
   serviceChange("d1a00000-0000-4000-8000-0000000000d1", "sharepoint-site-settings", `site:${SITE_FINANCE}`, "Finance", {
-    before: { appPermissionGrants: [] }, after: { appPermissionGrants: [{ roles: ["write"], applications: [{ displayName: "Payroll connector" }] }] },
+    // One app lost its write access, and one gained read access: each reads by its name.
+    before: { appPermissionGrants: [
+      { id: "aTowaS50fG1zLnNwLmV4dHxrZWVscnQxMjM0NTY3ODkw", roles: ["write"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a3", displayName: "KEEL-RT-site-grant-app" }] },
+      { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDE", roles: ["fullcontrol"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a1", displayName: "Payroll connector" }] },
+    ] },
+    after: { appPermissionGrants: [
+      { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDE", roles: ["fullcontrol"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a1", displayName: "Payroll connector" }] },
+      { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDI", roles: ["read"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a2", displayName: "Board pack reader" }] },
+    ] },
   }, "a1e70000-0000-4000-8000-0000000000a5"),
   serviceChange("d1a00000-0000-4000-8000-0000000000d2", "exchange-mail-flow", "transport-rule:Forward finance mail", "Forward finance mail", {
     before: { State: "Disabled" }, after: { State: "Enabled" }, detectedAt: "2026-10-01T22:00:00Z",

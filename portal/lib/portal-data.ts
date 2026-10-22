@@ -23,7 +23,7 @@ import { routeApproval } from "../../engine/govern/approvals.mjs";
 import { MAX_ATTRIBUTED_CHANGES, attributeChanges, changedFields } from "../../engine/identity/attribution.mjs";
 import { loadBreakGlassReadiness } from "../../engine/safety/breakGlassReadiness.mjs";
 import { withoutScriptBodies } from "../../engine/safety/scriptBodies.mjs";
-import { comparedSettings, driftEvidence, semanticChange, summarizeSemanticDrift } from "../../engine/govern/semanticDrift.mjs";
+import { comparedSettings, driftEvidence, MAX_EVIDENCE_CHANGES, semanticChange, summarizeSemanticDrift } from "../../engine/govern/semanticDrift.mjs";
 import { answerQuestion, knownEntities } from "../../engine/query/execute.mjs";
 import {
   getEvidenceIntegrity,
@@ -737,15 +737,24 @@ async function withDecisionEvidence(client: KeelClient, ref: string, items: Drif
     return change as SemanticChange;
   });
   let evidence: Map<string, ChangeEvidence> | null = null;
+  // The engine reads the records of a bounded number of changes: the riskiest first, so
+  // a change that could lock administrators out always has its records.
+  const rank = (radius: string) => { const index = BLAST_RADIUS_ORDER.indexOf(radius); return index === -1 ? 99 : index; };
+  const byRisk = [...items].sort((a, b) => rank(a.blastRadius) - rank(b.blastRadius) || b.detectedAt.localeCompare(a.detectedAt));
+  const read = new Set(byRisk.slice(0, MAX_EVIDENCE_CHANGES).map((item) => item.id));
   try {
     evidence = (await driftEvidence(client, {
       tenantRef: ref, scope,
-      items: items.map(({ id, naturalKey, resourceType, changeType, detectedAt }) => ({ id, naturalKey, resourceType, changeType, detectedAt })),
+      items: byRisk.map(({ id, naturalKey, resourceType, changeType, detectedAt }) => ({ id, naturalKey, resourceType, changeType, detectedAt })),
     })) as Map<string, ChangeEvidence>;
   } catch (error) {
     console.error("[keel-portal] change evidence unavailable", error);
   }
-  return items.map((item, index) => ({ ...item, semantic: semantic[index], evidence: evidence?.get(item.id) ?? null }));
+  return items.map((item, index) => {
+    const found = evidence?.get(item.id) ?? null;
+    const evidenceGap: DriftRecord["evidenceGap"] = found ? undefined : !evidence ? "read-failed" : read.has(item.id) ? "not-found" : "over-limit";
+    return { ...item, semantic: semantic[index], evidence: found, ...(evidenceGap ? { evidenceGap } : {}) };
+  });
 }
 
 /**

@@ -126,6 +126,11 @@ const REGISTERED = Object.freeze({
   // Restore gaps, batch 9.
   intuneBrandingProfile: ['create', 'update'],
   exchangeCustomAppScope: ['create', 'update'],
+  // Restore gaps, batch 10.
+  userExperienceAnalyticsBaseline: ['create', 'update'],
+  cartToClassAssociation: ['create', 'update'],
+  androidForWorkEnrollmentProfile: ['create', 'update'],
+  androidDeviceOwnerEnrollmentProfile: ['create', 'update'],
   // Wave 2 ENTRA: directory policies and delegated consents.
   tokenLifetimePolicy: ['create', 'update'],
   tokenIssuancePolicy: ['create', 'update'],

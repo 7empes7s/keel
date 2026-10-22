@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 133 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 78 at least in part; the other 89 are restored by hand from the backup.
+KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 133 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 82 at least in part; the other 85 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -441,8 +441,8 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Multi admin approval policies | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
 | macOS custom attribute scripts | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Intune tenant settings | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
-| Android Enterprise enrollment profiles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Android work profile enrollment profiles | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Android Enterprise enrollment profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Android work profile enrollment profiles | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Apple user enrollment profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Android work profile connection | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 | Derived credential issuers | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
@@ -452,11 +452,11 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | App dependencies and supersedence | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Managed e-books | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | E-book categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Classroom device cart assignments | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Classroom device cart assignments | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Windows app protection policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Windows code signing certificates | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Symantec code signing certificate | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (KEEL choice) | None |
-| Endpoint analytics baselines | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Endpoint analytics baselines | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | BIOS configurations | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
@@ -592,12 +592,12 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Who a script is assigned to is not backed up yet, so assign it again by hand. A backup taken before scripts were read in full holds only the settings; take a new backup.
 - **Intune tenant settings** (not built yet). KEEL backs up the tenant-wide Intune settings, such as how devices with no compliance policy are marked and the Company Portal contact details, but does not restore them yet.
   - *You do:* Set the same values in the Intune admin center, under Endpoint security, Device compliance, Compliance settings, and under Tenant administration, Customization, from the backup.
-- **Android Enterprise enrollment profiles** (not built yet). KEEL backs up each profile's settings but not its enrollment token, QR code or Wi-Fi password, and does not restore it yet.
+- **Android Enterprise enrollment profiles.** Recreates profiles and puts back their name, description, device name template and Wi-Fi network; the enrollment mode is set when a profile is recreated. A profile on a secured Wi-Fi network is recreated by hand, because the Wi-Fi password is not backed up.
   - *Not brought back:* enrollment token, QR code and Wi-Fi password (Microsoft never returns it).
-  - *You do:* Recreate the profile in the Intune admin center, under Devices, Enrollment, Android, from the backup, type the Wi-Fi password again, and hand out the new QR code or token.
-- **Android work profile enrollment profiles** (not built yet). KEEL backs up each profile's name and settings but not its enrollment token or QR code, and does not restore it yet.
+  - *You do:* A recreated profile has a new enrollment token and QR code: make a token in the Intune admin center, under Devices, Enrollment, Android, and hand it out again. Recreate a profile on a secured Wi-Fi network by hand and type the password again.
+- **Android work profile enrollment profiles.** Recreates profiles and puts back their name and description.
   - *Not brought back:* enrollment token and QR code (Microsoft never returns it).
-  - *You do:* Recreate the profile in the Intune admin center, under Devices, Enrollment, Android, from the backup, and hand out the new token.
+  - *You do:* A recreated profile has no enrollment token: make one in the Intune admin center, under Devices, Enrollment, Android, and hand it out again.
 - **Apple user enrollment profiles.** Recreates profiles and puts their settings back (name, description, which enrollment types users may pick and the default).
   - *Not brought back:* its place in the priority order (in the backup, but KEEL does not write it yet); who the profile is assigned to (in the backup, but KEEL does not write it yet).
   - *You do:* A recreated profile goes to the end of the priority order and is assigned to nobody: set its priority and assign it again by hand from the backup.
@@ -621,8 +621,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 - **E-book categories.** Recreates categories and puts their names back.
   - *Not brought back:* which books are in the category (stored separately and not in the backup yet).
   - *You do:* Which books are in a category is set on each book; add the books to a recreated category again by hand.
-- **Classroom device cart assignments** (not built yet). KEEL backs up which device carts go to which classes but does not restore them yet.
-  - *You do:* Assign the same carts to the same classes again in Intune for Education from the backup.
+- **Classroom device cart assignments.** Recreates cart assignments and puts back their name, description, devices and classes.
+  - *Not brought back:* the devices and classes it names (stored separately and not in the backup yet).
+  - *You do:* Devices and classes are named by id and are not restored by KEEL: if a device or class was removed, add the cart to the new class again in Intune for Education.
 - **Windows app protection policies** (not built yet). KEEL backs up each policy's settings but not yet who it is assigned to or which apps it covers, and does not restore it yet.
   - *Not brought back:* who the policy is assigned to and which apps it covers (stored separately and not in the backup yet).
   - *You do:* Recreate the policy in the Intune admin center, under Apps, App protection policies, from the backup, then add the apps and assign it again.
@@ -631,9 +632,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 - **Symantec code signing certificate** (KEEL choice). KEEL backs up the certificate's subject, issuer and expiry but never the certificate file or its password.
   - *Not brought back:* certificate file and password (Microsoft never returns it).
   - *You do:* Upload the certificate again from your own copy in the Intune admin center, under Tenant administration, Connectors and tokens, Windows Symantec certificate, and check its expiry against the backup.
-- **Endpoint analytics baselines** (not built yet). KEEL backs up the custom baselines but does not restore them yet. The built-in baseline is set by Microsoft.
-  - *Not brought back:* built-in baselines (set by Microsoft).
-  - *You do:* Create the baseline again in the Intune admin center, under Reports, Endpoint analytics, Settings, Baselines, with the same name.
+- **Endpoint analytics baselines.** Recreates custom baselines and puts their names back. The built-in baseline is set by Microsoft and never changed.
+  - *Not brought back:* built-in baselines (set by Microsoft); the scores taken when it was created (set by Microsoft).
+  - *You do:* A recreated baseline takes today's scores to compare against, not the scores it held before; compare against the backup by hand if you need the old ones.
 - **BIOS configurations** (not built yet). KEEL backs up each BIOS configuration's name, format and password setting but not the settings file, which can hold the BIOS password, and does not restore it yet.
   - *Not brought back:* the BIOS settings file, which can hold the BIOS password (Microsoft never returns it).
   - *You do:* Create the configuration again in the Intune admin center, under Devices, Windows, Configuration, BIOS configurations and other settings, and upload the settings file from your own copy.

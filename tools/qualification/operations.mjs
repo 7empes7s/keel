@@ -296,6 +296,14 @@ const FIXTURE_PAYLOADS = Object.freeze({
     type: 'RecipientScope', displayName: 'Fixture app scope',
     customAttributes: { Exclusive: false, RecipientFilter: "PrimarySmtpAddress -like 'keel-rt-fixture*'" },
   },
+  // Restore gaps, batch 10.
+  userExperienceAnalyticsBaseline: { displayName: 'Fixture baseline', isBuiltIn: false },
+  cartToClassAssociation: { displayName: 'Fixture cart', description: 'Fixture', deviceIds: [], classroomIds: [] },
+  androidForWorkEnrollmentProfile: { displayName: 'Fixture work profile enrollment', description: 'Fixture' },
+  androidDeviceOwnerEnrollmentProfile: {
+    displayName: 'Fixture Android enrollment', description: 'Fixture', enrollmentMode: 'corporateOwnedDedicatedDevice', enrollmentTokenType: 'default',
+    isTeamsDeviceProfile: false, deviceNameTemplate: 'FIXTURE-{{SERIAL}}', configureWifi: false, wifiHidden: false, wifiSecurityType: 'none', roleScopeTagIds: ['0'],
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons.
   externalIdentitiesPolicy: { allowExternalIdentitiesToLeave: true, allowDeletedIdentitiesDataRemoval: false },
   accessReviewPolicy: { isGroupOwnerManagementEnabled: true },

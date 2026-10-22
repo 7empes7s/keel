@@ -265,6 +265,29 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-app-scope`, drift: 'delete it: the restore recreates it with the same name and filter; then change its filter: the restore puts it back',
     note: 'A separate scope: never the existing scope that limits the mail fixture app to keel-rt- mailboxes. No app role assignment names it, so no app reaches any mailbox through it.',
   },
+  // Restore gaps, batch 10: a custom Endpoint analytics baseline, a cart
+  // association with no devices or classes, and two Android enrollment
+  // profiles nobody enrolls with. No device, user or class is affected.
+  userExperienceAnalyticsBaseline: {
+    kind: 'named-object', fixture: `custom Endpoint analytics baseline ${FIXTURE_PREFIX}-baseline`,
+    select: `${FIXTURE_PREFIX}-baseline`, drift: 'delete it: the restore recreates it with the same name; then rename it: the restore puts the name back',
+    note: 'Never a built-in baseline: KEEL refuses to write it. If Endpoint analytics is not set up in the test tenant and the create is refused, record that and skip this kind.',
+  },
+  cartToClassAssociation: {
+    kind: 'named-object', fixture: `classroom cart association ${FIXTURE_PREFIX}-cart (description Fixture, no devices, no classes)`,
+    select: `${FIXTURE_PREFIX}-cart`, drift: 'delete it: the restore recreates it with the same name and description; then change its description: the restore puts it back',
+    note: 'Names no device and no class, so nothing changes for any device. If Intune refuses to create it (for example without Intune for Education), record that and skip this kind.',
+  },
+  androidForWorkEnrollmentProfile: {
+    kind: 'named-object', fixture: `legacy Android work profile enrollment profile ${FIXTURE_PREFIX}-android-work (description Fixture), with no token handed out`,
+    select: `${FIXTURE_PREFIX}-android-work`, drift: 'delete it: the restore recreates it with the same name and description; then change its description: the restore puts it back',
+    note: 'No device enrolls with it. This legacy profile kind needs the legacy Android work profile connection; if Intune refuses to create it, record that and skip this kind.',
+  },
+  androidDeviceOwnerEnrollmentProfile: {
+    kind: 'named-object', fixture: `Android Enterprise dedicated device enrollment profile ${FIXTURE_PREFIX}-android-owner (device name template KEEL-RT-{{SERIAL}}, no Wi-Fi), with no token handed out`,
+    select: `${FIXTURE_PREFIX}-android-owner`, drift: 'delete it: the restore recreates it with the same mode and name template; then change its description and name template: the restore puts back both',
+    note: 'No device enrolls with it, and it joins no Wi-Fi network (a secured network is refused because its password is not backed up). Needs the managed Google Play connection; if Intune refuses to create it, record that and skip this kind.',
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons. None touches sign-in,
   // Conditional Access or any account; each is set back to its value after the run.
   externalIdentitiesPolicy: {

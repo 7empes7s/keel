@@ -3032,13 +3032,14 @@ test("Compliance · tiles filter, a control opens its panel, renew an exception,
   await open(page, "/benchmarks");
   await expect(page.locator("main#main-content h1")).toHaveText("Compliance");
   await expect(page.locator(".status-pill")).toHaveText("1 failing");
-  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("1 control fails, and its exception ended 2 days ago.");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("1 control fails, and its exception ended 2 days ago; 1 control is not set up yet.");
   await expect(page.locator(".cp-context")).toContainText("Measured against Post-migration golden state");
   const tiles = page.locator(".cp-tile");
-  await expect(tiles).toHaveCount(4);
+  // Fails, Not set up yet, Could not check (one could not be), Passes, Accepted exception.
+  await expect(tiles.locator(".cp-tile-label")).toHaveText(["Fails", "Not set up yet", "Could not check", "Passes", "Accepted exception"]);
   await expect(page.locator(".sel-group .sel-group-name b")).toHaveText(["Entra ID"]);
   const rows = page.locator(".sel-row");
-  await expect(rows).toHaveCount(4);
+  await expect(rows).toHaveCount(5);
   await expect(rows.nth(0)).toContainText("No more than 5 people hold the top admin role");
   await expect(rows.nth(0)).toContainText("Exception ended 2 days ago");
   await expect(rows.filter({ hasText: "No trusted location" })).toContainText("Owner Amara Okafor");
@@ -3052,17 +3053,22 @@ test("Compliance · tiles filter, a control opens its panel, renew an exception,
   expectPlainText(visible);
   for (const word of ["secops@", "@contoso", "westeurope", "KEEL", "Baseline", "Conditional Access", "Named location"]) expect(visible).not.toContain(word);
 
-  // (1) The Failing tile sets result=failing and shows only the failing control.
-  await tiles.filter({ hasText: "Failing" }).click();
+  // (1) The Fails tile sets result=failing and shows only the failing control.
+  await tiles.filter({ hasText: "Fails" }).click();
   await expect(page).toHaveURL(/result=failing/);
   await expect(page.locator(".sel-row")).toHaveCount(1);
-  await expect(page.locator(".filter-count")).toHaveText("Showing 1 of 4 controls");
-  // Result tiles add up: Passing adds to Failing.
-  await tiles.filter({ hasText: "Passing" }).click();
-  await expect(page).toHaveURL(/result=failing%2Cpassing|result=failing,passing/);
-  await expect.poll(() => page.locator(".sel-row").count()).toBeGreaterThan(1);
+  await expect(page.locator(".filter-count")).toHaveText("Showing 1 of 5 controls");
+  // Result tiles add up: Not set up yet adds to Fails.
+  await tiles.filter({ hasText: "Not set up yet" }).click();
+  await expect(page).toHaveURL(/result=failing%2Cnot-set-up|result=failing,not-set-up/);
+  await expect(page.locator(".sel-row")).toHaveCount(2);
+  // Search narrows what the tiles show (AND).
+  await page.locator(".sel-find input").fill("old sign-in");
+  await expect(page.locator(".sel-row")).toHaveCount(1);
+  await expect(page.locator(".sel-row")).toContainText("Old sign-in methods are blocked");
+  await page.locator(".sel-find input").fill("");
   await page.getByRole("button", { name: "Clear all" }).click();
-  await expect(page.locator(".sel-row")).toHaveCount(4);
+  await expect(page.locator(".sel-row")).toHaveCount(5);
 
   // (2) A control's name opens its panel with open=<evaluationId>; Esc closes it and focus returns.
   const name = page.locator(".cp-row-link", { hasText: "No more than 5 people hold the top admin role" });
@@ -3113,6 +3119,26 @@ test("Compliance · tiles filter, a control opens its panel, renew an exception,
   expect((await calls()).some((call) => call.url.startsWith("/api/evidence?kind=benchmark-evaluation,benchmark-exception"))).toBe(true);
 });
 
+test("Compliance · score overall, per standard and per service; not set up yet explained", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/benchmarks");
+  const score = page.locator(".cp-score");
+  // Judged: 1 pass, 1 fail, 1 not set up yet, 1 accepted exception; the stale one is left out.
+  await expect(score.locator(".cp-score-main .score-ring")).toHaveAttribute("aria-label", "Overall: 25% pass. 1 of 4 checked controls passes · 1 accepted exception.");
+  await expect(score.locator(".cp-score-main .score-ring")).toHaveAttribute("data-tone", "urgent");
+  await expect(score.locator(".cp-score-words b")).toHaveText("1 of 4 checked controls passes");
+  await expect(score.locator(".cp-score-words .badge")).toHaveText("1 accepted exception, counted as not passing");
+  await expect(score.locator(".cp-score-list").first().locator("li > span:last-child b")).toHaveText(["Keel checks", "NIST SP 800-53"]);
+  await expect(score.locator(".cp-score-list").first().locator("li").nth(1)).toContainText("100%");
+  await expect(score.locator('.cp-score-list[data-kind="service"] li')).toHaveText([/Entra ID.*1 of 4 checked controls passes/]);
+  // The control that is not set up yet says what that means, and can still be accepted.
+  await page.locator(".cp-row-link", { hasText: "Old sign-in methods are blocked" }).click();
+  const panel = page.getByRole("dialog", { name: "Old sign-in methods are blocked" });
+  await expect(panel.locator(".cp-sheet-result .badge")).toHaveText("Not set up yet");
+  await expect(panel.locator(".cp-callout")).toContainText("does not exist in Microsoft 365 yet");
+  await expect(panel.locator(".bl-sheet-foot .btn-primary")).toHaveText("Grant an exception");
+});
+
 test("Compliance · make it pass: the panel shows the one setting, plans it, and sends it to the approvers", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await open(page, "/benchmarks");
@@ -3155,7 +3181,7 @@ test("Compliance · make it pass: the panel shows the one setting, plans it, and
 
 test("Compliance · a reader sees results and no exception controls", async ({ page }) => {
   await open(page, "/benchmarks/viewer");
-  await expect(page.locator(".sel-row")).toHaveCount(4);
+  await expect(page.locator(".sel-row")).toHaveCount(5);
   await expect(page.getByRole("link", { name: /^(Grant|Renew|Extend)/ })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Make it pass" })).toHaveCount(0);
   await expect(page.locator("main .btn-primary")).toHaveCount(0);
@@ -3237,7 +3263,10 @@ test("Compliance · phone: pass and fail tiles per service open the same panel",
   const card = page.locator(".cp-by-service .cp-service");
   await expect(card).toHaveCount(1);
   await expect(card.locator(".cp-service-head")).toContainText("Entra ID");
-  await expect(card.locator(".cp-ctile")).toHaveCount(4);
+  await expect(card.locator(".cp-ctile")).toHaveCount(5);
+  await expect(card.locator(".cp-service-head .score-ring")).toHaveAttribute("aria-label", /^Entra ID: 25% pass/);
+  // The service list in the score is the cards' job on a phone.
+  await expect(page.locator('.cp-score-list[data-kind="service"]')).toBeHidden();
   await card.locator(".cp-ctile", { hasText: "At most 5 top admins" }).click();
   await expect(page.getByRole("dialog", { name: "No more than 5 people hold the top admin role" })).toBeVisible();
 });
@@ -3255,7 +3284,7 @@ for (const theme of ["dark", "light"] as const) {
           .map((element) => element.textContent));
         expect(clipped).toEqual([]);
         const tiles = await page.locator(".cp-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
-        expect(tiles.length).toBe(4);
+        expect(tiles.length).toBe(hash === "/benchmarks/empty" ? 4 : 5);
         expect(new Set(tiles).size).toBe(1);
         if (width === 390 && hash !== "/benchmarks/empty") {
           // Tiles are equal within each service's scorecard (each service is its own grid).
@@ -3859,7 +3888,7 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "See the 4 failed" })).toHaveAttribute("href", /protect\?health=failed$/);
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(1);
   await expect(page.locator(".ov-tile")).toHaveCount(4);
-  const routes = ["protect", "resilience", "drift", "approvals", "alerts", "incidents", "baselines", "restore", "activity"];
+  const routes = ["protect", "resilience", "drift", "approvals", "alerts", "incidents", "baselines", "restore", "activity", "benchmarks"];
   for (const link of await page.locator(".ov-tile, .ov-legend-link, .ov-row, .ov-side-card, .ov-chart-link").all()) {
     expect(await link.evaluate((item) => item.tagName)).toBe("A");
     const href = (await link.getAttribute("href")) ?? "";
@@ -3870,6 +3899,11 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   // The verdict's own sentence is not a "Needs attention" row.
   await expect(page.locator(".ov-row", { hasText: "failed their last backup" })).toHaveCount(0);
   await expect(page.locator(".ov-side-card", { hasText: "Approved setup" })).toContainText("by Marouane Defili");
+  // The compliance score opens Compliance on what fails.
+  const compliance = page.locator(".ov-score-card");
+  await expect(compliance).toContainText("25% pass");
+  await expect(compliance).toContainText("1 failing");
+  await expect(compliance).toHaveAttribute("href", /\/benchmarks\?result=failing$/);
   const visible = await textOutside(page, "main#main-content", '[data-layer="record"]');
   expect(visible).not.toMatch(/Baseline|Conditional Access|CRITICAL|WARNING|KEEL|@|[0-9a-f]{8}-[0-9a-f]{4}-/);
 

@@ -11,6 +11,7 @@ import { Person } from "@/components/ui/person";
 import {
   EXCEPTION_EFFECT,
   NOT_RUN_YET,
+  NOT_SET_UP_HELP,
   RESULTS,
   canFixOn,
   canGrantOn,
@@ -41,8 +42,9 @@ const SEVERITY: Record<string, string> = { high: "High", medium: "Medium", low: 
 
 // One control, opened from its row (`?open=<evaluationId>`): what it checks and why,
 // the result, the backup it rests on, its exception and the changes linked to it.
-// Grant or renew is the one amber action, on a failing control only. A control Keel
-// can fix shows "Make it pass" per object first, since fixing beats accepting.
+// Grant or renew is the one amber action, on a control that fails or is not set up
+// yet. A control Keel can fix shows "Make it pass" per object first, since fixing
+// beats accepting.
 export function ControlSheet({ finding, now, canConfigure, canRestore = false, grantHref, onClose, step = null, onStep }: {
   finding: ComplianceFinding;
   step?: SheetStep | null;
@@ -74,7 +76,7 @@ export function ControlSheet({ finding, now, canConfigure, canRestore = false, g
   return (
     <DetailsSheet
       footer={(canGrant || changeCount) ? <>
-        {canGrant ? <Link className={result === "failing" && !fixable ? "btn btn-primary" : "btn"} href={grantHref}>{grantLabel(finding)}</Link> : null}
+        {canGrant ? <Link className={(result === "failing" || result === "not-set-up") && !fixable ? "btn btn-primary" : "btn"} href={grantHref}>{grantLabel(finding)}</Link> : null}
         {changeCount ? <Link className="btn" href="/drift">{changeCount === 1 ? "Review the change" : `Review the ${changeCount} changes`}</Link> : null}
         {canGrant ? <p className="bl-help">{EXCEPTION_EFFECT}</p> : null}
       </> : undefined}
@@ -108,6 +110,7 @@ export function ControlSheet({ finding, now, canConfigure, canRestore = false, g
         </dl>
         {!snapshot ? <p className="cp-muted">{evidenceSentence(finding, now)}</p> : null}
         {result === "unknown" ? <p className="cp-muted">{NOT_RUN_YET}</p> : null}
+        {result === "not-set-up" ? <p className="cp-callout" data-tone="soon"><Icon name="plus" />{NOT_SET_UP_HELP}</p> : null}
 
         {misses.length ? (
           <section aria-labelledby="cp-misses-heading" className="cp-block">

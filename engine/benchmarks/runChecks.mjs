@@ -112,7 +112,7 @@ async function newestWorkloadRead(client, { tenantRef, resourceType, parts, now 
 }
 
 /**
- * @returns {Promise<{ checked: number, pass: number, fail: number, unknown: number, notApplicable: number, evaluations: object[] }>}
+ * @returns {Promise<{ checked: number, pass: number, fail: number, unknown: number, notApplicable: number, notConfigured: number, evaluations: object[] }>}
  */
 export async function runComplianceChecks(client, { tenantRef, actor, now = new Date(), controls = listControls() }) {
   assertTenantRef(tenantRef);
@@ -151,6 +151,8 @@ export async function runComplianceChecks(client, { tenantRef, actor, now = new 
     fail: count('fail'),
     unknown: count('unknown'),
     notApplicable: count('not-applicable'),
+    // Of the fails, those where the setting does not exist yet.
+    notConfigured: evaluations.filter((evaluation) => evaluation.reason === 'not-configured').length,
     evaluations,
   };
 }

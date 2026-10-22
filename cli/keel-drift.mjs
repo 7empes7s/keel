@@ -139,7 +139,7 @@ async function detect() {
     if (suppliedSnapshotId) {
       try {
         const checks = await runComplianceChecks(client, { tenantRef, actor: 'scheduler' });
-        console.log(`compliance checks: ${checks.checked} run (${checks.pass} pass, ${checks.fail} fail, ${checks.unknown} could not check)`);
+        console.log(`compliance checks: ${checks.checked} run (${checks.pass} pass, ${checks.fail} fail, ${checks.unknown} could not check${checks.notConfigured ? `; ${checks.notConfigured} of the fails not set up yet` : ''})`);
       } catch (error) {
         console.error(`compliance checks failed: ${error?.message ?? error}`);
       }

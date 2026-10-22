@@ -47,6 +47,11 @@ export const BENCHMARK_REGISTRY_CONTRACT_VERSION = 1;
 // recorded against an existing 'fail' evaluation, never a verdict a predicate
 // computes (see evaluate.mjs's recordException/effectiveVerdict).
 export const PREDICATE_VERDICTS = Object.freeze(['pass', 'fail', 'not-applicable']);
+// A predicate may also say why it fails when the setting it looks for does not exist
+// at all ("not set up yet"), as opposed to existing with the wrong value. It returns
+// { verdict: 'fail', reason: NOT_CONFIGURED }. The stored verdict stays 'fail', so an
+// exception can still be granted and every reader that counts fails still counts it.
+export const NOT_CONFIGURED = 'not-configured';
 export const CONTROL_VERDICTS = Object.freeze(['pass', 'fail', 'unknown', 'not-applicable', 'exception']);
 export const PROVENANCE_SOURCES = Object.freeze(['original', 'licensed']);
 
@@ -473,4 +478,42 @@ mailControl({
     + 'without Defender for Office 365.',
   severity: 'medium',
   settings: { EnableSafeLinksForEmail: isOn, ScanUrls: isOn, AllowClickThrough: isOff },
+});
+
+// Blocking legacy authentication: an enabled Conditional Access policy that blocks
+// both legacy client app types (Exchange ActiveSync and other clients). A policy that
+// would do this but is off, report-only or misses one of the two fails; no such
+// policy at all is "not set up yet".
+const LEGACY_CLIENTS = ['exchangeActiveSync', 'other'];
+
+function blocksLegacy(fact) {
+  const clients = fact?.conditions?.clientAppTypes;
+  const controls = fact?.grantControls?.builtInControls;
+  return Array.isArray(clients) && Array.isArray(controls) && controls.includes('block')
+    && clients.some((client) => LEGACY_CLIENTS.includes(client));
+}
+
+registerPredicate('conditional-access-block-legacy', (facts) => {
+  const candidates = facts.filter(blocksLegacy);
+  if (candidates.length === 0) return { verdict: 'fail', reason: NOT_CONFIGURED };
+  const enforced = candidates.some((fact) => fact.state === 'enabled'
+    && LEGACY_CLIENTS.every((client) => fact.conditions.clientAppTypes.includes(client)));
+  return enforced ? 'pass' : 'fail';
+});
+
+registerControl({
+  controlId: 'keel-custom.conditional-access.block-legacy',
+  title: 'Legacy authentication is blocked',
+  description: 'Passes when an enabled conditionalAccessPolicy blocks both legacy '
+    + 'client app types (exchangeActiveSync and other). Fails when such a '
+    + 'policy is disabled, report-only or covers only one of them, and is '
+    + 'recorded as not configured when no policy blocks legacy clients at '
+    + 'all. An original check.',
+  framework: 'keel-custom',
+  edition: '1.0.0',
+  profile: 'default',
+  evaluatorVersion: 1,
+  severity: 'high',
+  requiredObservations: [{ resourceType: 'conditionalAccessPolicy', maxAgeMs: 6 * 60 * 60 * 1000 }],
+  predicate: { name: 'conditional-access-block-legacy', args: {} },
 });

@@ -5496,8 +5496,8 @@ item that needs it stays untouched.
       WHERE run_id = (SELECT id FROM discovery_run ORDER BY finished_at DESC, id DESC LIMIT 1)
         AND status = 'uncatalogued' AND kind <> 'cmdlet' ORDER BY name, source;
      ```
-- **Expected:** step 1 exit 0. Step 2 from discovery run 3: 1 `lifecyclePolicy`, 9 `signInIdentifier` or fewer
-  (unmeasured), 0 or a few `schemaExtension` (only this tenant's own apps), 0 for most others; any 400 on the two
+- **Expected:** step 1 exit 0. Step 2 from discovery run 3: 1 `lifecyclePolicy`, 0 or a few `schemaExtension` (only
+  extensions owned by this tenant's apps), 0 for the others (run 3 counted 0 each); any 400 on the two
   filtered reads is the finding to report verbatim. Step 3: 0 and 0. Step 4: no Graph path left `uncatalogued`
   (any that remain are new paths Microsoft added since run 3; list them).
 - **Report:** steps 1 to 4 verbatim.

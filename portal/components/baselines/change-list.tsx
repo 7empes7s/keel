@@ -12,6 +12,7 @@ import { ChangeAttributionPanel } from "@/components/change-attribution";
 import { ConfirmSheet } from "@/components/incidents/confirm-sheet";
 import { ChangeEvidencePanel } from "@/components/decision-workbook";
 import { DriftDiff } from "@/components/drift-diff";
+import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { SemanticDiff } from "@/components/semantic-diff";
 import { Icon } from "@/components/shell/icons";
@@ -27,6 +28,7 @@ import { driftActionControls } from "@/lib/drift-actions";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
 import { ago, BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
+import { byRisk, byText, byTime } from "@/lib/paging";
 import { orderGroups, smartOrder } from "@/lib/selection";
 import { serviceFor, serviceOrder } from "@/lib/services";
 import { toast } from "@/lib/toast";
@@ -53,6 +55,13 @@ const RISK_ABOUT: Record<string, string> = {
   "access-affecting": "Changes who can sign in or reach apps and data",
   cosmetic: "Names, labels and descriptions: nobody gains or loses access",
 };
+
+// Order by: when it was found, risk, and name.
+const SORTS: ListSort<DriftRecord>[] = [
+  { key: "found", label: "When found", desc: true, compare: (a, b) => byTime(a.detectedAt, b.detectedAt) },
+  { key: "risk", label: "Risk", desc: true, compare: (a, b) => byRisk(toneOf(a), toneOf(b)) },
+  { key: "name", label: "Name", compare: (a, b) => byText(changeName(a), changeName(b)) },
+];
 
 const GROUPINGS: Grouping<DriftRecord>[] = [
   {
@@ -313,6 +322,7 @@ export function ChangeList({
             label="Open changes"
             matches={(item, query) => `${changeName(item)} ${plainKind(item.resourceType)} ${typeName(item.resourceType)} ${changedBy(item) ?? ""}`.toLowerCase().includes(query)}
             more={more}
+            sorts={SORTS}
             noun={{ one: "change", many: "changes" }}
             renderRow={(item) => {
               const who = changedBy(item);

@@ -6,7 +6,9 @@ import { useMemo, useState, type FormEvent, type MouseEvent } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
+import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
+import { byTime } from "@/lib/paging";
 import { OptionPicker } from "@/components/pickers/option-picker";
 import { Segmented, type ChoiceOption } from "@/components/pickers/segmented";
 import { Icon, type IconName } from "@/components/shell/icons";
@@ -73,6 +75,9 @@ const TABS: ChoiceOption<Tab>[] = [
   { value: "rules", label: "Who gets which alerts" },
   { value: "sent", label: "Sent" },
 ];
+// Sent can also be ordered by when it was sent; Name and Risk come with every list.
+const SENT_SORTS: ListSort<Delivery>[] = [{ key: "when", label: "When sent", desc: true, compare: (a, b) => byTime(deliveryTime(a), deliveryTime(b)) }];
+
 const PHONE_TABS: Record<Tab, string> = { channels: "Channels", rules: "Rules", sent: "Sent" };
 
 const SEVERITIES: ChoiceOption<string>[] = [
@@ -476,6 +481,7 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
                 noun={{ one: "send", many: "sends" }}
                 renderRow={renderDelivery}
                 rowName={(item) => `${deliveryTitle(item)} at ${clockWords(deliveryTime(item))}`}
+                sorts={SENT_SORTS}
                 toneOf={(item) => { const tone = deliveryBadge(item).tone; return tone === "urgent" ? "urgent" : tone === "soon" ? "soon" : null; }}
               />
             ) : (

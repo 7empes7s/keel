@@ -73,12 +73,20 @@ const GROUPINGS: Grouping<Setting>[] = [
   { key: "person", label: "Person", groupsOf: (items) => groupBy(items, (item) => item.who, (who) => ({ label: who, icon: "service-entra" })) },
 ];
 
-export function KitPage() {
+// A long list for paging: 50 more settings spread over the services, so pages,
+// rows per page and Order by have something to split.
+const MANY: Setting[] = Array.from({ length: 50 }, (_, index) => {
+  const services = ["Entra", "Exchange", "SharePoint", "Teams", "Intune"];
+  const tones: RiskTone[] = ["fine", "low", "soon", "fine", "low"];
+  return { id: `m${index + 1}`, name: `Sample setting ${String(index + 1).padStart(2, "0")}`, kind: "Sample", service: services[index % 5], tone: tones[index % 5], who: ["Lee Chen", "Sam Ortiz", "Amara Okafor"][index % 3], at: `2026-09-${String(1 + (index % 28)).padStart(2, "0")}T08:00:00Z` };
+});
+
+export function KitPage({ many = false }: { many?: boolean }) {
   const view = useViewState();
   const when = rangeFromParam(view.get("when"));
   const service = view.get("service") || null;
   const show = view.get("show", "all");
-  const items = SETTINGS.filter((item) => (!service || item.service === service)
+  const items = (many ? [...SETTINGS, ...MANY] : SETTINGS).filter((item) => (!service || item.service === service)
     && (show === "all" || (show === "action" ? item.tone === "urgent" || item.tone === "soon" : item.tone === "low" || item.tone === "fine"))
     && (!when || inRange(item.at.slice(0, 10), when)));
 

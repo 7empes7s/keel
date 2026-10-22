@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { PagedRows } from "@/components/list/paged-rows";
 import { JobStatusBadge } from "@/components/job-status-badge";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, RecordGroup, ReferenceFields, TechnicalDetails, type RecordValue } from "@/components/technical-details";
@@ -92,6 +93,12 @@ function JobListRecord({ job }: { job: JobRecord }) {
   );
 }
 
+const JOB_SORTS = [
+  { key: "when", label: "When", desc: true },
+  { key: "name", label: "Name" },
+  { key: "status", label: "Status" },
+];
+
 export function JobTable({
   headingId,
   jobs,
@@ -115,9 +122,19 @@ export function JobTable({
 
       {jobs.length ? (
         <>
-          <ul className="activity-list">
-            {jobs.map((job) => <JobRow job={job} key={job.id} now={now} />)}
-          </ul>
+          <PagedRows
+            label={title}
+            listClassName="activity-list"
+            noun={{ one: "job", many: "jobs" }}
+            prefix="jobs-"
+            rows={jobs.map((job) => ({
+              id: job.id,
+              node: <JobRow job={job} now={now} />,
+              text: `${jobName(job)} ${job.status} ${job.status === "failed" && job.error ? jobErrorLine(job.error) : ""}`,
+              values: { when: job.finishedAt ?? job.startedAt ?? job.createdAt ?? "", name: jobName(job), status: job.status },
+            }))}
+            sorts={JOB_SORTS}
+          />
           <TechnicalDetails summary="Technical details for these jobs">
             {jobs.map((job) => (
               <JobListRecord job={job} key={job.id} />

@@ -561,7 +561,6 @@ test("a queued backup confirms with a toast linking to the job", async ({ page }
 test("the restore wizard walks select → dry run → review → confirm → track", async ({ page }) => {
   await open(page, "/restore");
   await expect(page.locator('[data-layer="verdict"]')).toHaveText("5 settings changed since the backup of Wed, 30 Sept 2026. Undo the ones nobody expected.");
-  await page.getByRole("button", { name: "Show all 11 settings" }).click();
   await page.getByLabel("Select Require MFA for admins (sign-in rule)").click();
   await page.getByRole("button", { name: "Put back 1 setting" }).click();
   await expect(page.getByText("Ready to send for approval")).toBeVisible({ timeout: 15_000 });
@@ -614,10 +613,9 @@ test("restore leads with what changed, by service, and undoes a change or a grou
   await expect(page.locator(".restore-point-age")).toHaveText("2 days old · 19 settings saved · 3 backups taken after it");
   await expect(page.locator(".restore-tile").nth(0)).toContainText("Changed since4");
   await expect(page.locator(".restore-tile").nth(3).getByRole("link")).toHaveAttribute("href", "#/jobs/a3");
-  // Long groups show their first rows and say how many more.
-  await expect(groups.nth(1).locator(".sel-row")).toHaveCount(8);
-  await groups.nth(1).getByRole("button", { name: "Show all 11 settings" }).click();
+  // 19 settings fit on one page of 25, so every row shows and there is no pager.
   await expect(groups.nth(1).locator(".sel-row")).toHaveCount(11);
+  await expect(page.locator(".list-pager")).toHaveCount(0);
   // Undo the whole group: every change goes to the check at once, with before and after.
   await groups.nth(0).getByRole("button", { name: "Undo all 5: Changed recently" }).click();
   await expect(page.getByText("Ready to send for approval")).toBeVisible({ timeout: 15_000 });
@@ -3062,4 +3060,59 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(page.locator(".page-header .status-pill")).toHaveText("Protected");
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
   await expect(page.locator(".ov-calm")).toBeVisible();
+});
+
+// Shared list paging: 25 rows a page by default, a choice of 25, 50, 100 or all, page
+// buttons, Order by with a direction, and all of it kept in the address so a reload
+// brings the same view back. Group headers repeat on each page that has their rows.
+test("shared list · rows per page, pages and order are kept in the address", async ({ page }) => {
+  await open(page, "/kit/many");
+  const rows = page.locator(".sel-row");
+  const pager = page.getByRole("navigation", { name: "Pages of Changed settings" });
+  await expect(rows).toHaveCount(25);
+  await expect(pager.getByRole("status")).toHaveText("Showing 1–25 of 64 settings");
+  await expect(pager).toContainText("Page 1 of 3");
+  await pager.getByRole("button", { name: "Next" }).click();
+  await expect(pager.getByRole("status")).toHaveText("Showing 26–50 of 64 settings");
+  expect(page.url()).toContain("page=2");
+  // A group that began on page 1 keeps its header here, marked as continued.
+  await expect(page.locator(".sel-group-continued").first()).toHaveText("continued");
+  await pager.getByRole("button", { name: "Last page" }).click();
+  await expect(rows).toHaveCount(14);
+  // A bigger page starts again from page 1.
+  await pager.getByRole("radio", { name: "50" }).click();
+  await expect(rows).toHaveCount(50);
+  expect(page.url()).toContain("size=50");
+  expect(page.url()).not.toContain("page=");
+  await pager.getByRole("radio", { name: "All" }).click();
+  await expect(rows).toHaveCount(64);
+  await expect(pager.getByRole("button", { name: "Next" })).toHaveCount(0);
+  // Order by name, then flip it; the first row of the first group follows.
+  await page.getByRole("button", { name: /Order by: Suggested/ }).click();
+  await page.getByRole("option", { name: "Name" }).click();
+  expect(page.url()).toContain("sort=name");
+  const firstGroup = page.locator(".sel-group").first().locator(".sel-row");
+  const ascending = await firstGroup.first().innerText();
+  await page.getByRole("button", { name: /Order: ascending/ }).click();
+  expect(page.url()).toContain("dir=desc");
+  await expect(firstGroup.first()).not.toHaveText(ascending);
+  // Find narrows the list and goes back to page 1.
+  await page.getByPlaceholder("Find settings").fill("Sample setting 0");
+  await expect(rows).toHaveCount(9);
+  // A reload brings the same view back.
+  await page.reload();
+  await page.locator("main#main-content h1").waitFor();
+  await expect(rows).toHaveCount(9);
+  await expect(page.getByRole("button", { name: /Order by: Name/ })).toBeVisible();
+});
+
+test("shared list · the pager fits a phone without sideways scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await open(page, "/kit/many");
+  const pager = page.locator(".list-pager");
+  await expect(pager).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+  await pager.getByRole("button", { name: "Next" }).click();
+  await expect(pager.getByRole("status")).toHaveText("Showing 26–50 of 64 settings");
 });

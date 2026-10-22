@@ -4,7 +4,9 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
+import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
+import { byTime } from "@/lib/paging";
 import { Segmented } from "@/components/pickers/segmented";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, RecordGroup, ReferenceFields, TechnicalDetails, type RecordValue } from "@/components/technical-details";
@@ -49,6 +51,11 @@ import { useViewState } from "@/lib/use-view-state";
 // the card; several requests can be rejected with one reason, Approve stays one at a
 // time. Ids stay in one record under each list.
 
+// Requests can also be ordered by when they were asked for and when they expire.
+const REQUEST_SORTS: ListSort<ApprovalRequestRecord>[] = [
+  { key: "asked", label: "When asked", desc: true, compare: (a, b) => byTime(a.createdAt, b.createdAt) },
+  { key: "expires", label: "Expires", compare: (a, b) => byTime(a.expiresAt ?? "9999-12-31T00:00:00Z", b.expiresAt ?? "9999-12-31T00:00:00Z") },
+];
 const NOUN = { one: "request", many: "requests" };
 
 /**
@@ -568,6 +575,7 @@ export function ApprovalInbox({
                 noun={NOUN}
                 renderRow={renderRequest}
                 rowName={approvalTitle}
+                sorts={REQUEST_SORTS}
                 toneOf={(item) => requestTone(item, now)}
               />
             ) : (

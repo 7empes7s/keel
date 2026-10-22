@@ -1,0 +1,116 @@
+{
+  "restoreRef": "75df3b1a-b147-8cd9-b240-c5d42cd4ad19",
+  "entry": {
+    "naturalKey": "deviceManagementCompliancePolicy:9cd35b1e-a71e-851b-bcfe-d592dda60732",
+    "resourceType": "deviceManagementCompliancePolicy",
+    "operation": "update",
+    "targetId": "9cd35b1e-a71e-851b-bcfe-d592dda60732",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T12:03:18.093Z",
+    "priorState": {
+      "id": "9cd35b1e-a71e-851b-bcfe-d592dda60732",
+      "name": "KEEL-RT-compliance",
+      "settings": [
+        {
+          "id": "0",
+          "settingInstance": {
+            "@odata.type": "#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance",
+            "choiceSettingValue": {
+              "value": "linux_deviceencryption_required_true",
+              "children": [],
+              "settingValueTemplateReference": null
+            },
+            "settingDefinitionId": "linux_deviceencryption_required",
+            "auditRuleInformation": null,
+            "settingInstanceTemplateReference": null
+          }
+        }
+      ],
+      "platforms": "linux",
+      "description": "drift",
+      "settingCount": 1,
+      "technologies": "linuxMdm",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies(settings())/$entity",
+      "creationSource": null,
+      "createdDateTime": "2026-10-22T11:58:47.7945048Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-10-22T12:01:07.1626505Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies('9cd35b1e-a71e-851b-bcfe-d592dda60732')/settings"
+    },
+    "intendedState": {
+      "name": "KEEL-RT-compliance",
+      "settings": [
+        {
+          "@odata.type": "#microsoft.graph.deviceManagementConfigurationSetting",
+          "settingInstance": {
+            "@odata.type": "#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance",
+            "choiceSettingValue": {
+              "value": "linux_deviceencryption_required_true",
+              "children": [],
+              "settingValueTemplateReference": null
+            },
+            "settingDefinitionId": "linux_deviceencryption_required",
+            "auditRuleInformation": null,
+            "settingInstanceTemplateReference": null
+          }
+        }
+      ],
+      "platforms": "linux",
+      "description": "KEEL restore fixture",
+      "technologies": "linuxMdm",
+      "roleScopeTagIds": [
+        "0"
+      ]
+    },
+    "postState": {
+      "id": "9cd35b1e-a71e-851b-bcfe-d592dda60732",
+      "name": "KEEL-RT-compliance",
+      "settings": [
+        {
+          "id": "0",
+          "settingInstance": {
+            "@odata.type": "#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance",
+            "choiceSettingValue": {
+              "value": "linux_deviceencryption_required_true",
+              "children": [],
+              "settingValueTemplateReference": null
+            },
+            "settingDefinitionId": "linux_deviceencryption_required",
+            "auditRuleInformation": null,
+            "settingInstanceTemplateReference": null
+          }
+        }
+      ],
+      "platforms": "linux",
+      "description": "KEEL restore fixture",
+      "settingCount": 1,
+      "technologies": "linuxMdm",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies(settings())/$entity",
+      "creationSource": null,
+      "createdDateTime": "2026-10-22T11:58:47.7945048Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-10-22T12:03:18.2138885Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies('9cd35b1e-a71e-851b-bcfe-d592dda60732')/settings",
+      "scheduledActionsForRule": [
+        {
+          "id": "9cd35b1e-a71e-851b-bcfe-d592dda60732",
+          "ruleName": null,
+          "scheduledActionConfigurations": [
+            {
+              "id": "ba37f5da-2e08-8d18-8356-e9d1aea58423",
+              "actionType": "block",
+              "gracePeriodHours": 0,
+              "notificationTemplateId": "766d6357-cf13-863e-ac98-f99d551c3da0",
+              "notificationMessageCCList": []
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

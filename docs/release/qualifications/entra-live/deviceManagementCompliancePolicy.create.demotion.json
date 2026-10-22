@@ -1,0 +1,18 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-demotion",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "deviceManagementCompliancePolicy",
+  "operation": "create",
+  "reason": "The create wrote the policy with its setting and block action, but the post-state read has no scheduledActionsForRule (it reads only settings), so the check always fails",
+  "restoreRef": "90a2baa7-ac2e-8ddc-a450-0fe7bc165fb7",
+  "decidedAt": "2026-10-22T12:07:19.445Z",
+  "builderSteps": [
+    "remove the create registration for deviceManagementCompliancePolicy in engine/coverage/capabilities.mjs",
+    "add \"live gate #148: create failed live: <reason>\" to TYPE_DECISIONS.deviceManagementCompliancePolicy.reason in engine/coverage/qualification.mjs (manual if no operation is left)",
+    "or, when the cause is a KEEL bug with a fix under way, keep the registration and record the failure under TYPE_DECISIONS.deviceManagementCompliancePolicy.liveFailures['create'] (failedAt = this record's date, reason = this record's reason, verbatim); the ledger then shows the write as fixture-tested with a failed live run",
+    "commit this file under docs/release/qualifications/entra-live/ in the same PR"
+  ]
+}

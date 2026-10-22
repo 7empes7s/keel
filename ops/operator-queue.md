@@ -5971,3 +5971,46 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; the step 1 backup check; per kind and round: assignments written / refused (exact message) / skipped (fixture could
   not be created) / blocked; step 4; approval ids; the evidence branch and commit; anything left in the tenant.
+
+### Q131: Live restore of who policy sets and iOS app provisioning profiles are assigned to (restore gaps batch 16, after #463)
+- Drafted by the "Restore batch 16" thread (2026-10-22). Code: PR #463. Fixture-tested only.
+  - **Backup change:** assignments are now read per object (beta) for `policySet` (`/deviceAppManagement/policySets/{id}/assignments`)
+    and `iosLobAppProvisioningConfiguration` (`/deviceAppManagement/iosLobAppProvisioningConfigurations/{id}/assignments`).
+  - **Policy set:** no `/assign` action, so assignments go through `POST .../policySets/{id}/update` with
+    `{ addedPolicySetItems: [], updatedPolicySetItems: [], deletedPolicySetItemIds: [], assignments: [policySetAssignment] }`, after the items step.
+    The items step's own `/update` calls never send `assignments`.
+  - **iOS app provisioning profile:** `POST .../{id}/assign` with `{ iOSLobAppProvisioningConfigAssignments: [iosLobAppProvisioningConfigurationAssignment] }`.
+    The older `appProvisioningConfigurationGroupAssignments` list is not sent.
+  - A set or profile whose only change is its assignments is planned as an `update`; the object itself is not patched.
+  - Unmeasured: both assignment reads; whether `/update` accepts empty item lists plus `assignments`; whether an items-only `/update`
+    (no `assignments` key) leaves assignments alone; whether `/assign` accepts the iOS list without the group list.
+- Needs: /opt/keel-live at the #463 merge or later (`grep -q "assignmentAction: 'update'" /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
+  needs DeviceManagementApps.ReadWrite.All and DeviceManagementConfiguration.ReadWrite.All.
+  If Graph answers 403, report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.
+  No tenant-wide setting is changed. **Assign fixtures only to the empty groups below: never to All devices, All users or any group with members.**
+- **Fixtures:**
+  - Security groups `KEEL-RT-151-assign` and `KEEL-RT-151-assign-b`, both with **no members**.
+  - Device configuration profile `KEEL-RT-151-cfg` (any platform, one harmless setting, unassigned), the item of the set.
+  - Policy set `KEEL-RT-151-set` holding `KEEL-RT-151-cfg`, assigned to `KEEL-RT-151-assign`.
+  - iOS app provisioning profile `KEEL-RT-151-ios-prov` (same test `.mobileprovision` approach as Q127), assigned to `KEEL-RT-151-assign`.
+  - Report and skip any fixture Intune refuses to create (an iOS profile needs a valid Apple file).
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Create the fixtures, then take snapshot S. **Backup check:** for each fixture, the assignment read outcome in S and its target
+     (`KEEL-RT-151-assign`). Both reads are new: report the exact Graph answer if one fails.
+  2. **Assignment-only round:** in the portal, move each fixture's assignment to `KEEL-RT-151-assign-b`. Restore from S selecting
+     `policySet` and `iosLobAppProvisioningConfiguration`. Expect the dry run to plan an `update` with "assignments differ" for each,
+     approve, enforce, capture each `update`. Expect both assigned to `KEEL-RT-151-assign` only, and the set still holding
+     `KEEL-RT-151-cfg`. Report the exact Graph answer for any refused write.
+  3. **Create round:** delete `KEEL-RT-151-set` (keep `KEEL-RT-151-cfg`). Restore from S, approve, enforce, capture the `create`.
+     Expect the set back with its item and assigned to `KEEL-RT-151-assign`.
+  4. **Re-run check:** dry run from S after step 3. Expect 0 planned writes.
+  5. Cleanup: delete every `KEEL-RT-151-*` fixture (the set first) and both groups. Report anything left.
+  6. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-16`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; the step 1 backup check; per kind and round: assignments written / refused (exact message) / skipped (fixture could
+  not be created) / blocked; whether the set's item survived step 2; step 4; approval ids; the evidence branch and commit; anything left in the tenant.

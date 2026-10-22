@@ -3320,6 +3320,40 @@ test("Compliance · Defender email controls sit under Defender; a failing one li
   expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
 });
 
+test("Compliance · Defender make it pass: one row per failing setting, in plain words, planned and sent to the approvers", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${HARNESS}#/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1`);
+  const panel = page.getByRole("dialog", { name: "Phishing mail goes to quarantine" });
+  const fix = panel.locator(".cp-fix");
+  await expect(fix.locator("h3")).toContainText("Quarantine phishing");
+  await expect(fix).toContainText("An approver also reviews that");
+  const rows = fix.locator(".cp-fix-row");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0)).toContainText("High-confidence phishing goes to");
+  await expect(rows.nth(0).locator(".cp-fix-values")).toHaveAttribute("aria-label", "High-confidence phishing goes to: now Junk folder, after Quarantine");
+  await expect(rows.nth(1).locator(".cp-fix-values")).toHaveAttribute("aria-label", "Pulls back delivered phishing: now Off, after On");
+  // Several rows: the first row's fix is the panel's one main action, the others are secondary.
+  await expect(panel.locator(".btn-primary")).toHaveCount(1);
+  await expect(rows.nth(0).getByRole("button", { name: "Make it pass" })).toHaveClass(/btn-primary/);
+  await expect(rows.nth(1).getByRole("button", { name: "Make it pass" })).not.toHaveClass(/btn-primary/);
+
+  const item = rows.nth(2);
+  await item.getByRole("button", { name: "Make it pass" }).click();
+  await expect(item.locator(".badge", { hasText: "Ready for approval" })).toBeVisible();
+  await expect(item).toContainText("Keel will change only “Phishing goes to” on KEEL-RT-Finance inbound filtering for the accounts payable team, from Inbox, with a header added to Quarantine");
+  await item.getByLabel("Why make this change?").fill("Quarantine phishing for accounts payable");
+  await item.getByRole("button", { name: "Ask for approval" }).click();
+  await expect(item.locator(".badge", { hasText: "Waiting for approval" })).toBeVisible();
+
+  type Call = { url: string; method: string; body: string | null };
+  const calls = await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+  const planned = calls.filter((call) => call.method === "POST" && call.url === "/api/actions/compliance/fix");
+  expect(planned.map((call) => JSON.parse(call.body ?? "{}"))).toEqual([{ evaluationId: "e7a10000-0000-4000-8000-0000000000f1", naturalKey: "anti-spam-policy:0c0f5000-0000-4000-8000-000000000002#PhishSpamAction" }]);
+  const visible = await textOutside(page, ".bl-sheet", ".technical-details");
+  expectPlainText(visible);
+  for (const word of ["PhishSpamAction", "AddXHeader", "MoveToJmf", "anti-spam-policy", "0c0f5000"]) expect(visible).not.toContain(word);
+});
+
 test("Compliance · phone: the failing settings stack, one card per setting, with no sideways scroll", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page, "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1", "light");
@@ -3377,7 +3411,7 @@ for (const theme of ["dark", "light"] as const) {
           await expect(sheet).toBeVisible();
           // One main action per panel: the fix when Keel can make it pass, else the exception.
           await expect(sheet.locator(".btn-primary")).toHaveCount(1);
-          if (hash.includes("0000000000e2")) {
+          if (hash.includes("0000000000e2") || hash.includes("0000000000f1")) {
             await expect(sheet.locator(".cp-fix .btn-primary")).toBeInViewport();
           } else {
             await expect(sheet.locator(".bl-sheet-foot .btn-primary")).toBeInViewport();

@@ -410,7 +410,10 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
 
 function fixDescriptor(controlId) {
   const fix = fixFor(controlId);
-  return fix ? { resourceType: fix.resourceType, field: fix.field, to: fix.to } : null;
+  if (!fix) return null;
+  // A fix on a service read changes one of several settings; each candidate names its own.
+  if (fix.workload) return { resourceType: fix.resourceType, field: null, to: null, settings: { ...fix.settings } };
+  return { resourceType: fix.resourceType, field: fix.field, to: fix.to };
 }
 
 function summarize(findings) {

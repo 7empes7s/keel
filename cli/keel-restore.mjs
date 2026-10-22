@@ -110,7 +110,11 @@ import {
 import { compensationDigestInput, planCompensation } from '../engine/restore/compensation.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
 import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
-import { ComplianceFixRefusal, fixedPayload, newestSnapshotWith, planComplianceFix } from '../engine/benchmarks/fix.mjs';
+import {
+  ComplianceFixRefusal, fixFor, fixedPayload, isWorkloadFix, newestSnapshotWith, parseWorkloadFixTarget, planComplianceFix,
+} from '../engine/benchmarks/fix.mjs';
+import { newestWorkloadRead } from '../engine/benchmarks/runChecks.mjs';
+import { planWorkloadComplianceFix } from '../engine/benchmarks/workloadFix.mjs';
 import { credentialPaths } from '../engine/restore/credentialPaths.mjs';
 import { workloadWriteQualification } from '../engine/coverage/qualification.mjs';
 import { loadWorkloadLedger } from '../engine/collect/workloadLedgerStore.mjs';
@@ -344,6 +348,7 @@ export async function runRestore({
     loadLockoutGateInputs: loadLockoutGateInputsFn = loadLockoutGateInputs,
     loadGroupMembership: loadGroupMembershipFn = loadGroupMembership,
     newestSnapshotWith: newestSnapshotWithFn = newestSnapshotWith,
+    newestWorkloadRead: newestWorkloadReadFn = newestWorkloadRead,
     // W2: the workload table, how a workload run reaches the tenant, and which
     // workload writes are qualified. Tests inject fakes; nothing here is a tenant.
     workloadRestores = WORKLOAD_RESTORES,
@@ -513,6 +518,14 @@ export async function runRestore({
     if (workloadRestore !== undefined) {
       return await planWorkloadRun({
         client, request: workloadRestore, collectorConfig, collectorConfigPath, persistArtifactId, requestedBy, logger, deps: workloadDeps,
+      });
+    }
+    // Gap 6 on a service read (the Defender email checks): one setting of one policy,
+    // planned as a workload restore from the live policy.
+    if (complianceFix !== undefined && isWorkloadFix(fixFor(complianceFix.controlId))) {
+      return await planWorkloadFixRun({
+        client, request: complianceFix, collectorConfig, collectorConfigPath, persistArtifactId, requestedBy, logger,
+        deps: { ...workloadDeps, newestWorkloadReadFn },
       });
     }
     // Gap 6: the source of a compliance fix is the newest complete backup that
@@ -1820,6 +1833,42 @@ async function planWorkloadRun({ client, request, collectorConfig, collectorConf
   logger.log(`${entry.label} restore plan: ${plan.operations.length} change(s), ${plan.manual.length} manual, ${plan.refusals.length} refused`);
   logger.log(`persisted workload dry-run artifact ${artifact.id} (status: ${artifact.status})`);
   return { mode: 'dry-run', workloadRestore: plan, status: artifact.status, artifactId: artifact.id };
+}
+
+/**
+ * Gap 6 on a service read: reads the policy's family live with the collector, plans
+ * the one setting as a workload restore (benchmarks/workloadFix.mjs) and persists it.
+ * Promotion is the ordinary workload promotion (executeWorkloadRun).
+ */
+async function planWorkloadFixRun({ client, request, collectorConfig, collectorConfigPath, persistArtifactId, requestedBy, logger, deps }) {
+  const fix = fixFor(request.controlId);
+  const entry = workloadRestoreFor(fix.workload, deps.workloadRestores);
+  if (typeof entry.read !== 'function') throw new Error(`compliance fix refused: ${entry.label} has no live read for a fix`);
+  const tenantRef = tenantRefFor(collectorConfig.tenantId);
+  const named = parseWorkloadFixTarget(request.naturalKey);
+  const checked = await deps.newestWorkloadReadFn(client, { tenantRef, resourceType: fix.workload, parts: [fix.family], now: new Date() });
+  const sourceCollectionId = checked?.observation?.completeness === 'complete'
+    && checked.resources.some((item) => item.id === named?.resourceKey) ? checked.collectionId : null;
+  const connection = await deps.workloadConnectionFn({
+    role: 'collector', config: collectorConfig, configPath: collectorConfigPath, getTokenFn: deps.getTokenFn,
+  });
+  const live = await entry.read({ powershell: connection.powershell });
+  let plan;
+  try {
+    plan = planWorkloadComplianceFix({
+      controlId: request.controlId, target: request.naturalKey, live, sourceCollectionId,
+      tenantId: collectorConfig.tenantId, tenantRef,
+    });
+  } catch (error) {
+    if (error instanceof ComplianceFixRefusal) throw new Error(`compliance fix refused: ${error.message}`);
+    throw error;
+  }
+  const artifact = await entry.create(client, {
+    tenantRef, plan, requestedBy: requestedBy ?? 'keel-restore', ...(persistArtifactId !== undefined ? { id: persistArtifactId } : {}),
+  });
+  logger.log(`compliance fix plan: ${plan.complianceFix.field} on ${plan.complianceFix.resourceKey}, ${plan.operations.length} change(s), ${plan.refusals.length} refused`);
+  logger.log(`persisted workload dry-run artifact ${artifact.id} (status: ${artifact.status})`);
+  return { mode: 'dry-run', workloadRestore: plan, complianceFix: plan.complianceFix, status: artifact.status, artifactId: artifact.id };
 }
 
 async function executeWorkloadRun({ client, artifact, readFile, logger, deps }) {

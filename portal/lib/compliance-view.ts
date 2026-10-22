@@ -131,7 +131,7 @@ const CONTROL_WORDS: Record<string, ControlWords> = {
   "keel-custom.conditional-access.block-legacy": {
     title: "Old sign-in methods are blocked",
     short: "Old sign-in blocked",
-    what: "Looks for a sign-in rule that turns on blocking of old sign-in methods.",
+    what: "Looks for a sign-in rule that is on and blocks old sign-in methods for every user and every app.",
     why: "Old sign-in methods skip multi-factor sign-in, so a stolen password is enough.",
     types: ["conditionalAccessPolicy"],
   },

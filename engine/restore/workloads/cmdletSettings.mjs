@@ -537,9 +537,15 @@ export function workloadSettingsPlanDigest(plan) {
 
 // How strongly a spam or phish action deals with the mail: higher is stricter. An
 // action not named here cannot be compared, so a move to or from it is never written.
-const ACTION_STRENGTH = Object.freeze({ delete: 4, quarantine: 4, redirect: 2, movetojmf: 2, modifysubject: 1, addxheader: 1, noaction: 0 });
+// Redirect sends the mail to whoever the policy names, so it ranks below junk.
+const ACTION_STRENGTH = Object.freeze({ delete: 4, quarantine: 4, movetojmf: 3, redirect: 2, modifysubject: 1, addxheader: 1, noaction: 0 });
 const strength = (value) => ACTION_STRENGTH[String(value ?? '').toLowerCase()] ?? -1;
 const weakerAction = (before, after) => !same(before, after) && (strength(before) < 0 || strength(after) < strength(before));
+// A protection switch is written only as a literal boolean in the stricter direction.
+// Anything else (1, 'TRUE', null) could bind as on or off in PowerShell, so it is
+// treated as the weaker value: listed, never written.
+const switchedOff = (before, after) => !same(before, after) && after !== true;
+const switchedOn = (before, after) => !same(before, after) && after !== false;
 
 /**
  * The changes that would weaken mail protection, by written type. A restore source is
@@ -549,25 +555,25 @@ const weakerAction = (before, after) => !same(before, after) && (strength(before
  */
 export const WEAKENING_RULES = Object.freeze({
   exchangeAntiPhishPolicy: Object.freeze({
-    EnableSpoofIntelligence: enabledToDisabled,
-    HonorDmarcPolicy: enabledToDisabled,
-    EnableUnauthenticatedSender: enabledToDisabled,
+    EnableSpoofIntelligence: switchedOff,
+    HonorDmarcPolicy: switchedOff,
+    EnableUnauthenticatedSender: switchedOff,
   }),
   exchangeAntiSpamPolicy: Object.freeze({
     PhishSpamAction: weakerAction,
     HighConfidencePhishAction: weakerAction,
-    PhishZapEnabled: enabledToDisabled,
-    InlineSafetyTipsEnabled: enabledToDisabled,
+    PhishZapEnabled: switchedOff,
+    InlineSafetyTipsEnabled: switchedOff,
     AllowedSenderDomains: addsEntry,
   }),
   exchangeAntiMalwarePolicy: Object.freeze({
-    EnableFileFilter: enabledToDisabled,
-    ZapEnabled: enabledToDisabled,
+    EnableFileFilter: switchedOff,
+    ZapEnabled: switchedOff,
   }),
   exchangeSafeLinksPolicy: Object.freeze({
-    EnableSafeLinksForEmail: enabledToDisabled,
-    ScanUrls: enabledToDisabled,
-    AllowClickThrough: disabledToEnabled,
+    EnableSafeLinksForEmail: switchedOff,
+    ScanUrls: switchedOff,
+    AllowClickThrough: switchedOn,
   }),
 });
 

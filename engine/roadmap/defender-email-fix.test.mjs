@@ -31,7 +31,9 @@ import { FAMILIES, readMailFlow, recordMailFlowRun } from '../collect/workloads/
 import { approveRequest, requestApproval, SelfApprovalError } from '../govern/approvals.mjs';
 import { complianceFindings } from '../govern/baselineCompliance.mjs';
 import { getDryRunArtifactById } from '../restore/dryRunArtifact.mjs';
-import { planWorkloadSettingsRestore, restoreReadFamilies, WEAKENING_RULES, weakensMailProtection } from '../restore/workloads/cmdletSettings.mjs';
+import {
+  createWorkloadSettingsArtifact, executeWorkloadSettingsRestore, planWorkloadSettingsRestore, restoreReadFamilies, WEAKENING_RULES, weakensMailProtection, workloadSettingsPlanDigest,
+} from '../restore/workloads/cmdletSettings.mjs';
 import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 import { approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
@@ -439,6 +441,14 @@ test('every written mail protection setting has a weakening rule, except the not
   assert.equal(weakens('exchangeAntiPhishPolicy', 'HonorDmarcPolicy', true, false), true);
   assert.equal(weakens('exchangeAntiMalwarePolicy', 'ZapEnabled', true, false), true);
   assert.equal(weakens('exchangeAntiMalwarePolicy', 'CustomNotifications', true, false), false);
+  assert.equal(weakens('exchangeAntiSpamPolicy', 'PhishSpamAction', 'MoveToJmf', 'Redirect'), true, 'redirect sends phish to someone else');
+  // Only a literal boolean in the stricter direction is written: 1 or 'TRUE' could bind as on in PowerShell.
+  assert.equal(weakens('exchangeSafeLinksPolicy', 'AllowClickThrough', false, 1), true);
+  assert.equal(weakens('exchangeSafeLinksPolicy', 'AllowClickThrough', false, 'TRUE'), true);
+  assert.equal(weakens('exchangeSafeLinksPolicy', 'AllowClickThrough', null, false), false);
+  assert.equal(weakens('exchangeSafeLinksPolicy', 'ScanUrls', true, 0), true);
+  assert.equal(weakens('exchangeSafeLinksPolicy', 'ScanUrls', null, false), true, 'an unknown live switch counts as on');
+  assert.equal(weakens('exchangeSafeLinksPolicy', 'ScanUrls', 'False', true), false);
   assert.equal(weakens('exchangeTransportRule', 'Mode', 'Enforce', 'Audit'), false, 'other types keep their own rules');
 });
 
@@ -473,4 +483,26 @@ test('a restore never writes a weaker mail protection setting from a backup; it 
   assert.deepEqual(back.operations.map((op) => op.changes.map((change) => change.field).sort()).sort(), [
     ['AllowClickThrough', 'ScanUrls'], ['AllowedSenderDomains', 'InlineSafetyTipsEnabled', 'PhishSpamAction'], ['CustomNotifications', 'ZapEnabled'], ['HonorDmarcPolicy'],
   ].sort());
+});
+
+test('a stored plan that would weaken mail protection is refused at the write, after the live re-read', async (t) => {
+  const client = await schemaClient(t);
+  const { tenantId, tenantRef } = nextTenant();
+  const links = policy('safeLinksPolicy', { ScanUrls: false });
+  const tenant = fakeTenant({ safeLinksPolicy: [links] });
+  const live = await readLive(tenant);
+  const backup = await readLive(fakeTenant({ safeLinksPolicy: [{ ...links, ScanUrls: true }] }));
+  const plan = structuredClone(planWorkloadSettingsRestore({ workload: MAIL, source: backupOf(backup), live, tenantId, tenantRef }));
+  assert.deepEqual(plan.operations.map((op) => op.parameters), [{ Identity: links.Guid, ScanUrls: true }]);
+  // A plan made before the guard, or altered with its digest recomputed, that also turns click-through on.
+  plan.operations[0].changes.push({ field: 'AllowClickThrough', before: false, after: true });
+  plan.operations[0].parameters.AllowClickThrough = true;
+  plan.digest = workloadSettingsPlanDigest(plan);
+  const artifact = await createWorkloadSettingsArtifact(client, { tenantRef, plan, requestedBy: await principal(client, 'requester', 'restorer') });
+  const result = await executeWorkloadSettingsRestore(client, {
+    tenantRef, artifactId: artifact.id, tenantId, workload: MAIL, read: readLive.bind(null, tenant), powershell: tenant.powershell, qualifications: enabled(),
+  });
+  assert.equal(result.operations[0].outcome, 'refused');
+  assert.match(result.operations[0].reasons[0], /AllowClickThrough: this would weaken mail protection/);
+  assert.deepEqual(tenant.writes, []);
 });

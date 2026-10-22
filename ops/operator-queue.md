@@ -7298,8 +7298,15 @@ item that needs it stays untouched.
   - **Change:** a long Microsoft record id (the test tenant's `B2C_<guid>_<guid>_<x>` ids) is now stored as `entra:h<32 hex>:<n>`
     (a SHA-256 prefix) instead of verbatim, so `redactSecrets` no longer rejects the page as `invalid-page`. Short ids are unchanged.
 - Needs: /opt/keel-live at the #528 merge or later (`grep -q recordRef /opt/keel-live/engine/identity/auditSources.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 21:14 UTC). **#528 works: the Entra audit log ingests and the fixture change is attributed to the Restorer.** The **Intune** log is now stuck instead (**#552**). Collector reads; one Restorer change to a fixture group, put back.
+  1. Collect `e09b70f5` (18:02): `Microsoft Entra audit log: complete (1 day(s) read, 100 new record(s))`. 19:00 collect `63a09f78`: `Microsoft Entra audit log: complete (1 day(s) read, 23 new record(s))`.
+  2. `audit_ingest_run` (newest 6): audit `complete` with advancing windows (17:41→17:47 100 inserted, 17:47→17:51 41, 17:51→18:05 201). intune-audit `invalid-page` 0 inserted on every run, always from `2026-10-22T17:13:47.681Z`.
+     `audit_ingest_state`: audit 17:51:01 → 18:05:12, complete t; intune-audit 17:02:20 → 17:13:47, complete t (stuck).
+  3. `audit_change_fact` with `entra:`: **1676**, min id `entra:h0047142e933f79a30…`: the `entra:h<hex>` shape, no `B2C_`.
+  4. Description of `KEEL-RT-20260908 Blocked Sign-in Test` set at 18:42:26 UTC (Restorer). After the 19:00 collect: fact `entra:hbe1b2a268a05e2f… | 18:42:27 | update | Update group | servicePrincipal | group`,
+     actor = the **Keel Restorer** service principal (3 Restorer facts for this group, including the two Q144 changes, now backfilled). Description put back and confirmed with a GET.
+  - **New finding #552:** Intune ingest is `invalid-page` since 17:13. `minimizeAttributionFact` throws "invalid activity" because `redactSecrets` flags `UpdateWindowsFeatureUpdateProfileAssignmentsAsync` (from Q129's fixture assignments), and the page fails as a whole. Same class as #514.
 - **Tenant:** Collector reads, plus one change to a `KEEL-RT-` fixture group put back at the end (standing approval for test
   fixtures). Never touch CA policies, break-glass or Marouane's account.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:

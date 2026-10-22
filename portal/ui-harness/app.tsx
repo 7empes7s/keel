@@ -63,7 +63,8 @@ import { peopleCounts, peopleStatus } from "@/lib/people-view";
 import type { PrincipalView } from "@/lib/principals";
 import { CheckAgain } from "@/components/setup/check-again";
 import { SetupPage as SetupBody } from "@/components/setup/setup-page";
-import { setupStatus as setupPageStatus, type SetupApp, type SetupState } from "@/lib/setup-view";
+import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICES } from "../../engine/bootstrap/permissionCatalog.mjs";
+import { setupStatus as setupPageStatus, type PermissionEntry, type PermissionGrant, type SetupApp, type SetupPermissions, type SetupState } from "@/lib/setup-view";
 import { AlertsPage } from "@/components/alerts/alerts-page";
 import { alertCounts, alertsStatus, type AlertItem } from "@/lib/alerts-view";
 import { ReadinessPage } from "@/components/readiness/readiness-page";
@@ -1023,8 +1024,35 @@ const setupStep = (id: string, kind: SetupState["scopes"][number]["steps"][numbe
   ({ id, kind, identity, workload, name, action, requiredScopes: scopes, missingScopes: scopes, manual: kind === "workload-rbac" || kind === "pim-activation", progress, app });
 const READ_SCOPES = ["DeviceManagementConfiguration.Read.All", "Group.Read.All", "Policy.Read.All", "RoleManagement.Read.Directory", "User.Read.All"];
 const RESTORE_SCOPES = ["Group.ReadWrite.All", "Policy.ReadWrite.ConditionalAccess", "RoleManagement.ReadWrite.Directory"];
+// The permission table: the engine's catalogue, and what each app holds in the tenant.
+const setupPermissions = (observed: SetupPermissions["observed"]): SetupPermissions => ({
+  permissions: KEEL_PERMISSIONS as unknown as PermissionEntry[],
+  services: PERMISSION_SERVICES.map((service) => ({ ...service })),
+  kinds: [...PERMISSION_KINDS],
+  apis: Object.fromEntries(Object.entries(PERMISSION_APIS).map(([key, api]) => [key, api.label])),
+  observed,
+});
+const catalogFor = (identity: "collector" | "restorer", keep: (entry: PermissionEntry) => boolean = () => true): PermissionGrant[] =>
+  (KEEL_PERMISSIONS as unknown as PermissionEntry[]).filter((entry) => entry.identity === identity && keep(entry)).map((entry) => ({ api: entry.api, name: entry.name }));
+// Backup reader: everything it needs, the optional audit search not yet, and one grant
+// Keel never uses. Restore writer: waiting on consent for the three setup permissions
+// (already on its list), and Exchange Online's permission not on its list at all.
+const SETUP_PERMISSIONS = setupPermissions({
+  complete: true,
+  byIdentity: {
+    collector: {
+      granted: [...catalogFor("collector", (entry) => entry.need === "required"), { api: "graph", name: "Policy.Read.PermissionGrant" }],
+      requested: catalogFor("collector"),
+    },
+    restorer: {
+      granted: catalogFor("restorer", (entry) => !RESTORE_SCOPES.includes(entry.name) && entry.api !== "exchange"),
+      requested: catalogFor("restorer", (entry) => entry.api !== "exchange"),
+    },
+  },
+});
 const SETUP: SetupState = {
   generatedAt: now,
+  permissions: SETUP_PERMISSIONS,
   tenantId: SETUP_TENANT_ID,
   canCheck: true,
   canProvision: true,
@@ -1059,6 +1087,13 @@ const SETUP: SetupState = {
 const SETUP_CHECKED_RUN = "5e7a" + "0c".repeat(30);
 const SETUP_CHECKED: SetupState = {
   generatedAt: now,
+  permissions: setupPermissions({
+    complete: true,
+    byIdentity: {
+      collector: { granted: catalogFor("collector"), requested: catalogFor("collector") },
+      restorer: { granted: [...catalogFor("restorer"), { api: "graph", name: "Channel.Create" }], requested: catalogFor("restorer") },
+    },
+  }),
   tenantId: SETUP_TENANT_ID,
   canCheck: true,
   canProvision: true,
@@ -1079,7 +1114,7 @@ const SETUP_CHECKED: SetupState = {
       scope: "restore", workloads: ["entra-restore"], observed: true, run: null, planId: "plan-8e7d6c5b4a392110",
       steps: [
         { ...setupStep("step-4a2b3c4d5e6f7a80", "registration", "restorer", "keel-restorer", "reuse-existing", "done", null, RESTORE_SCOPES, null), missingScopes: [] },
-        { ...setupStep("step-4a2b3c4d5e6f7a81", "graph-permission", "restorer", "keel-restorer admin consent", "grant-consent", "done", null, RESTORE_SCOPES, null), missingScopes: [], excessScopes: ["MailboxSettings.ReadWrite"] },
+        { ...setupStep("step-4a2b3c4d5e6f7a81", "graph-permission", "restorer", "keel-restorer admin consent", "grant-consent", "done", null, RESTORE_SCOPES, null), missingScopes: [], excessScopes: ["Channel.Create"] },
         setupStep("step-4a2b3c4d5e6f7a82", "pim-activation", "restorer", "Privileged Role Administrator", "pim-activate", "waiting-for-you", "entra-restore", [], null),
         setupStep("step-4a2b3c4d5e6f7a83", "keel-app-permission", "restorer", "keel.restore", "configure-keel-permission", "done", null, [], null),
       ],

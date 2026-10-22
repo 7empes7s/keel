@@ -5402,3 +5402,43 @@ item that needs it stays untouched.
 - **Expected:** step 1 exit 0. Step 2 from discovery run 3: 1 `sharepointSettings`, 1 `itemInsightsSettings`, 0 for the
   other three. Step 3: about 29 setting keys (sharingCapability, isLoopEnabled, idleSessionSignOut, ...), no `report`.
 - **Report:** step 1 exit code and error lines, steps 2 and 3 verbatim.
+
+### Q116: Live backup and restore of app categories, Autopilot profiles and policy sets (restore gaps batch 6, after #442)
+- Drafted by the "Restore batch 6" thread (2026-10-22). Code: PR #442. The backup now reads each policy set on its own with
+  its items expanded (`/deviceAppManagement/policySets/{id}?$expand=items`). New record writers, fixture-tested only, create + update:
+  `mobileAppCategory` (v1.0; built-in categories never written), `windowsAutopilotDeploymentProfile` (beta; `@odata.type` sent,
+  never changed) and `policySet` (beta; the set, then its items through `POST .../policySets/{id}/update`, remove then add).
+  Who any of them is assigned to is **not** written; fixtures stay unassigned.
+- Needs: /opt/keel-live at the #442 merge or later (`grep -q policySetItemsAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
+  needs DeviceManagementApps.ReadWrite.All (categories, policy sets) and DeviceManagementServiceConfig.ReadWrite.All (Autopilot).
+  If Graph answers 403, report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or
+  Marouane's account. **Never assign any fixture to a group, user or device.** No tenant-wide setting is changed.
+- **Fixtures** (the reviewed guidance in `live-gate-plan.mjs` at B says the same; nothing applies them):
+  - app category `KEEL-RT-apps`, no app in it;
+  - Windows Autopilot profile `KEEL-RT-autopilot`, Microsoft Entra joined, device name template `KEELRT-%RAND:4%`, assigned to nobody;
+  - policy set `KEEL-RT-set` holding one existing `KEEL-RT-` device configuration profile (create one, unassigned, if none is
+    left), assigned to nobody.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/live-gate-plan.mjs > ~/keel-rg6/plan-B.md`. Use its steps for these three types (collect, restore
+     dry run, approve, `--enforce`, `entraLive.mjs capture`, promote).
+  2. Create the fixtures, then take snapshot S (one tier run that reads all three types). **Backup check:** confirm all three are
+     in S, and that the `KEEL-RT-set` payload holds an `items` list with the one profile (`payloadId` set, `@odata.type` a
+     `deviceConfigurationPolicySetItem`). Report each type's read outcome (complete / failed). If the policy set read fails,
+     report the exact Graph error on the per-set read.
+  3. **Create round:** delete the category, the Autopilot profile and the set (not the profile inside it), restore from S
+     selecting the three, approve, enforce, capture each `create`. Read back equal to the backup (category name; profile
+     kind, name, description, device name template, out-of-box settings; set name, description, and the one item).
+  4. **Update round:** rename the category to `KEEL-RT-apps-drift`, change the profile's device name template to
+     `DRIFT-%SERIAL%`, change the set's description and remove its item. Restore from S, approve, enforce, capture each
+     `update`. Expect all three back as in S, the set's item added again.
+  5. **Re-run check:** dry run from S again after step 4. Expect 0 planned writes for the three.
+  6. Cleanup: delete the three fixtures (and the profile inside the set, if you created it). Report anything left.
+  7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-6`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / blocked; the step 5
+  result; approval ids; the evidence branch and commit; anything left in the tenant.

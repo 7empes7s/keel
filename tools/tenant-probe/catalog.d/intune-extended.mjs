@@ -33,16 +33,19 @@ export default [
   { type: 'windowsQualityUpdateProfile', path: '/deviceManagement/windowsQualityUpdateProfiles', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting' },
   { type: 'windowsDriverUpdateProfile', path: '/deviceManagement/windowsDriverUpdateProfiles', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic' },
   // Administrative templates (ADMX). A policy's configured settings are a
-  // separate collection, listed only when expanded; the values entered for
-  // each setting (its presentation values) sit one level further down and are
-  // read per setting (restore gaps batch 5), so a restore can put them back.
+  // separate collection, read per policy; the values entered for each setting
+  // (its presentation values) sit one level further down and are read per
+  // setting (restore gaps batch 5), so a restore can put them back.
   { type: 'groupPolicyConfiguration', path: '/deviceManagement/groupPolicyConfigurations', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
-    query: '$expand=definitionValues($expand=definition)',
+    // Issue #472: Graph returns no settings through $expand=definitionValues
+    // (on the list or on one template), so each template's settings are read
+    // from their own collection, then each setting's values.
+    itemReads: { as: 'definitionValues', path: '/deviceManagement/groupPolicyConfigurations/{item}/definitionValues?$expand=definition' },
     childReads: {
       field: 'definitionValues', as: 'presentationValues', query: '$expand=presentation',
       path: '/deviceManagement/groupPolicyConfigurations/{item}/definitionValues/{child}/presentationValues',
     },
-    note: 'The values of each setting are read per setting.' },
+    note: 'The settings are read per template, and the values of each setting per setting.' },
   // Imported custom ADMX files. Graph returns the ADMX and ADML file content
   // only on a GET of one file, so each file is listed, then read on its own
   // (restore gaps batch 11), like scripts.

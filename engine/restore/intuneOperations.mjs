@@ -1016,13 +1016,21 @@ export function addedSetting(setting) {
 /**
  * An administrative template is written only from a backup that holds every
  * setting with the values entered for it (backups before batch 5 hold the
- * settings without their values).
+ * settings without their values; backups before issue #472 hold no settings).
  */
 function groupPolicyRefusal(resource, verb) {
   if (verb === 'delete') return null;
   const settings = resource.payload?.definitionValues;
   const manual = (why) => ({ outcome: 'skipped', reason: `manual: ${why}, so it is not written; take a new backup, or recreate the template by hand from the backup` });
   if (!Array.isArray(settings)) return manual('this backup does not hold the template\'s settings');
+  // Issue #472: a backup whose settings came through $expand=definitionValues
+  // holds none, whatever the template had (Graph returns no settings that
+  // way), so writing it would remove every setting. Graph marks an expanded
+  // list with its own @odata.context; settings read from their own
+  // collection carry none.
+  if (resource.payload['definitionValues@odata.context'] !== undefined) {
+    return manual('this backup was taken before the template\'s settings were read on their own, and may be missing every setting');
+  }
   for (const setting of settings) {
     if (!definitionIdOf(setting)) return manual('a setting in this backup does not say which setting it is');
     if (!Array.isArray(setting.presentationValues)) {

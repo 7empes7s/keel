@@ -27,7 +27,7 @@ const LISTED = [
   ['windowsFeatureUpdateProfile', '/beta/deviceManagement/windowsFeatureUpdateProfiles', 'tier2'],
   ['windowsQualityUpdateProfile', '/beta/deviceManagement/windowsQualityUpdateProfiles', 'tier2'],
   ['windowsDriverUpdateProfile', '/beta/deviceManagement/windowsDriverUpdateProfiles', 'tier3'],
-  ['groupPolicyConfiguration', '/beta/deviceManagement/groupPolicyConfigurations?$expand=definitionValues($expand=definition)', 'tier2'],
+  ['groupPolicyConfiguration', '/beta/deviceManagement/groupPolicyConfigurations', 'tier2'],
   ['notificationMessageTemplate', '/v1.0/deviceManagement/notificationMessageTemplates?$expand=localizedNotificationMessages', 'tier3'],
   ['windowsAutopilotDeviceIdentity', '/v1.0/deviceManagement/windowsAutopilotDeviceIdentities', 'tier2'],
   ['deviceManagementRoleAssignment', '/beta/deviceManagement/roleAssignments', 'tier1'],
@@ -111,32 +111,52 @@ test('each extended Intune type reads a KEEL-RT- fixture with GET only, across p
   }
 });
 
-test('each administrative template setting is read with the values entered for it', async () => {
-  const list = '/beta/deviceManagement/groupPolicyConfigurations?$expand=definitionValues($expand=definition)';
+test('each administrative template is listed, then its settings are read on their own, then the values entered for each (issue #472)', async () => {
+  const base = '/beta/deviceManagement/groupPolicyConfigurations';
   const urls = [];
-  const template = (id, settings) => ({ id, displayName: `KEEL-RT-${id}`, definitionValues: settings.map((setting) => ({ id: setting, enabled: true, definition: { id: `def-${setting}` } })) });
+  const settings = { 't-1': ['s-1', 's-2'], 't-2': [] };
   const reader = {
     async collect(version, path) {
-      urls.push(`/${version}${path}`);
-      if (`/${version}${path}` === list) return { items: [template('t-1', ['s-1', 's-2']), template('t-2', [])], pages: 1, status: 200, capped: false, error: null };
+      const url = `/${version}${path}`;
+      urls.push(url);
+      // Graph returns no settings through $expand=definitionValues, so the list must not rely on it.
+      assert.ok(!url.includes('$expand=definitionValues'), url);
+      if (url === base) return { items: [{ id: 't-1', displayName: 'KEEL-RT-t-1' }, { id: 't-2', displayName: 'KEEL-RT-t-2' }], pages: 1, status: 200, capped: false, error: null };
+      const template = /groupPolicyConfigurations\/([^/]+)\/definitionValues\?\$expand=definition$/.exec(url)?.[1];
+      if (template) return { items: settings[template].map((id) => ({ id, enabled: true, definition: { id: `def-${id}` } })), pages: 1, status: 200, capped: false, error: null };
       const setting = path.split('/').at(-2);
       return { items: [{ id: `v-${setting}`, '@odata.type': '#microsoft.graph.groupPolicyPresentationValueText', value: 'x', presentation: { id: `p-${setting}` } }], pages: 1, status: 200, capped: false, error: null };
     },
   };
   const result = await get('groupPolicyConfiguration').adapter.collectRaw(reader, {});
-  const values = (setting) => `/beta/deviceManagement/groupPolicyConfigurations/t-1/definitionValues/${setting}/presentationValues?$expand=presentation`;
-  assert.deepEqual(urls, [list, values('s-1'), values('s-2')], 'the list, then one read per setting');
+  const settingsOf = (id) => `${base}/${id}/definitionValues?$expand=definition`;
+  const values = (setting) => `${base}/t-1/definitionValues/${setting}/presentationValues?$expand=presentation`;
+  assert.deepEqual(urls, [base, settingsOf('t-1'), settingsOf('t-2'), values('s-1'), values('s-2')], 'the list, one settings read per template, then one values read per setting');
   assert.equal(result.error, null);
-  assert.equal(result.pages, 3);
+  assert.equal(result.pages, 5);
+  assert.deepEqual(result.items[0].definitionValues.map((setting) => setting.definition.id), ['def-s-1', 'def-s-2']);
   assert.deepEqual(result.items[0].definitionValues.map((setting) => setting.presentationValues.map((value) => value.presentation.id)), [['p-s-1'], ['p-s-2']]);
   assert.deepEqual(result.items[1].definitionValues, []);
+});
+
+test('a failed read of a template\'s settings fails the administrative template backup, never hides the settings', async () => {
+  const reader = {
+    async collect(version, path) {
+      if (path.includes('/definitionValues')) return { items: [], pages: 0, status: 403, capped: false, error: { status: 403, error: 'denied' } };
+      return { items: [{ id: 't-1' }], pages: 1, status: 200, capped: false, error: null };
+    },
+  };
+  const result = await get('groupPolicyConfiguration').adapter.collectRaw(reader, {});
+  assert.equal(result.error.status, 403);
+  assert.deepEqual(result.items, []);
 });
 
 test('a failed read of a setting\'s values fails the administrative template backup, never hides the values', async () => {
   const reader = {
     async collect(version, path) {
       if (path.includes('/presentationValues')) return { items: [], pages: 0, status: 403, capped: false, error: { status: 403, error: 'denied' } };
-      return { items: [{ id: 't-1', definitionValues: [{ id: 's-1', enabled: true, definition: { id: 'd-1' } }] }], pages: 1, status: 200, capped: false, error: null };
+      if (path.includes('/definitionValues')) return { items: [{ id: 's-1', enabled: true, definition: { id: 'd-1' } }], pages: 1, status: 200, capped: false, error: null };
+      return { items: [{ id: 't-1' }], pages: 1, status: 200, capped: false, error: null };
     },
   };
   const result = await get('groupPolicyConfiguration').adapter.collectRaw(reader, {});

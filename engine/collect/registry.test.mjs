@@ -186,7 +186,11 @@ assert.ok(perParent > 0);
 // configuration policy targets) reads it for its one object; a read chosen by
 // @odata.type finds none here (the fake objects carry no kind).
 const perItem = CATALOG.filter((entry) => entry.itemReads?.path).length;
-assert.equal(seen.length, M1_TYPES.length + perParent + perItem, 'one reader.collect call per type, plus the parent list for a type read per parent, plus one per object for a type with item reads');
+// Issue #472: an administrative template's settings come from its item read
+// (one here), and each setting's values are one more read.
+const perChild = CATALOG.filter((entry) => entry.itemReads?.path && entry.childReads?.field === entry.itemReads.as).length;
+assert.ok(perChild > 0);
+assert.equal(seen.length, M1_TYPES.length + perParent + perItem + perChild, 'one reader.collect call per type, plus the parent list for a type read per parent, plus one per object for a type with item reads, plus one per child those reads return');
 
 // collectM1 is order-independent against the reader: entries are keyed by type.
 const byType = Object.fromEntries(collected);

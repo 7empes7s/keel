@@ -4921,7 +4921,43 @@ item that needs it stays untouched.
   `docs/roadmap/workload-reads-live-acceptance.md`).
 - Needs: PR #425 live (`git -C /opt/keel-live log --oneline | grep -c "#425"` is 1, or `/opt/keel-live/tools/qualification/workloadReadsLive.mjs` exists).
 - Status: done
-- Result: done (2026-10-22 07:05 UTC). Step 5 was finished by **Q107**: records recaptured with the #427 fix, pseudonym check exit 0, published on `claude/live-evidence-q103` @ 701bd5a. Earlier result: Q103 steps 1-4 on 2026-10-21 (build 01df9af), 46 reads proven and imported.
+- Result: done (2026-10-22 07:05 UTC). Step 5 was finished by **Q107**: records recaptured with the #427 fix, pseudonym check exit 0, published on `claude/live-evidence-q103` @ 701bd5a.
+  - Earlier: partly done (2026-10-21), blocked on #427 for step 5. Live build **01df9af**; my clone was detached at it. Reads only
+  toward the tenant: the collector credential sent only the declared `Get-` cmdlets. No grants, no role changes.
+  - **1.** `powershellConfigs.exchange` is `/etc/keel/exchange-collector.json` (`organization` non-empty: **yes**).
+    `powershellConfigs.purview` is `/etc/keel/purview-collector.json` (**yes**). No change was needed, and no `.bak-q103`
+    exists. The Q99 "Organization cannot be null" error came from a 10-14 run, not a current one (see the Q99 correction).
+  - **2. Captures:** all four exit **0**, verify ok, `notProven: []`.
+    - exchange-mail-flow, 11 proven: accepted-domains, remote-domains, transport-rules, inbound-connectors,
+      outbound-connectors, anti-spam-policies, anti-phish-policies, anti-malware-policies, dkim-signing,
+      safe-links-policies, safe-attachment-policies.
+    - exchange-extended, 23 proven: outbound-spam-policies and -rules, connection-filter-policies, anti-spam/anti-phish/
+      anti-malware rules, eop-preset-rules, quarantine-policies, quarantine-global-settings, journal-rules,
+      mobile-device-policies, device-access-rules, activesync-settings, address-lists, global-address-lists,
+      offline-address-books, address-book-policies, retention-policy-tags, retention-policies, safe-links-rules,
+      safe-attachment-rules, defender-preset-rules, defender-office-apps.
+    - purview-retention-dlp, 4 proven: retention-policies, retention-rules, dlp-policies, dlp-rules.
+    - purview-governance, 8 proven: retention-labels, adaptive-scopes, auto-label-policies, auto-label-rules,
+      ediscovery-cases, ediscovery-premium-cases, case-holds, case-hold-rules. The eDiscovery reads answered too.
+  - **3. Import** (`--dir <clone>/docs/release/qualifications`): exit **0**. 14 imported, including workload-reads-*:
+    mail-flow 11, extended 23, retention-dlp 4, governance 8. Refused: none. Absent: workload-reads teams-org-policies
+    and teams-voice-policies, sharepoint-site-grants, sharepoint-site-permissions.
+  - **4. Manual `keel-workload-collect.mjs run`:** exit 1 overall (the partials below).
+
+    | workload | now | observations | reasons |
+    |---|---|---|---|
+    | exchange-mail-flow | **on**, `partial` | 35 | 0; all 11 families read, 11 fields unknown |
+    | exchange-extended | **on**, `partial` | 40 | 0; all families read |
+    | purview-retention-dlp | **on**, `complete` | 10 | 0 |
+    | purview-governance | **off**, `disabled` | 0 | 3 (below) |
+
+    purview-governance's 3 reasons, verbatim: "purview.ediscovery-cases / purview.case-holds / purview.case-hold-rules is
+    pending-prerequisite: To read ediscovery ... assign it the eDiscovery Manager role." The reads answered live, but the
+    gate still requires the role to be observed in the grants. I did not grant it.
+  - **5. Evidence: held.** `pseudonymize.mjs check` exits 1 on all four records. Each has one raw id, the Collector's app id
+    in `subject.credentials.collector`: `workloadReadsLive.mjs` never calls `pseudonymizeCapture`, unlike the writer tool.
+    Filed **#427**. The records are kept on the host in `/root/q103-records/`, not committed. After the fix deploys I rerun
+    the four captures (reads only) and publish to `claude/live-evidence-q103`.
 - **Tenant:** reads only. Each capture sends only the workload's declared `Get-` cmdlets with the collector credential.
   Nothing is created, changed or deleted in the tenant. No grant or role changes.
 - Do, from your clone checked out at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from

@@ -116,6 +116,15 @@ export default [
   { resourceType: 'intuneBrandingProfile', operation: 'update', path: '/deviceManagement/intuneBrandingProfiles', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   { resourceType: 'exchangeCustomAppScope', operation: 'create', path: '/roleManagement/exchange/customAppScopes', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'exchangeCustomAppScope', operation: 'update', path: '/roleManagement/exchange/customAppScopes', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  // Restore gaps, batch 10: Endpoint analytics baselines, classroom carts and Android enrollment profiles.
+  { resourceType: 'userExperienceAnalyticsBaseline', operation: 'create', path: '/deviceManagement/userExperienceAnalyticsBaselines', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'userExperienceAnalyticsBaseline', operation: 'update', path: '/deviceManagement/userExperienceAnalyticsBaselines', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'cartToClassAssociation', operation: 'create', path: '/deviceManagement/cartToClassAssociations', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'cartToClassAssociation', operation: 'update', path: '/deviceManagement/cartToClassAssociations', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'androidForWorkEnrollmentProfile', operation: 'create', path: '/deviceManagement/androidForWorkEnrollmentProfiles', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'androidForWorkEnrollmentProfile', operation: 'update', path: '/deviceManagement/androidForWorkEnrollmentProfiles', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'androidDeviceOwnerEnrollmentProfile', operation: 'create', path: '/deviceManagement/androidDeviceOwnerEnrollmentProfiles', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'androidDeviceOwnerEnrollmentProfile', operation: 'update', path: '/deviceManagement/androidDeviceOwnerEnrollmentProfiles', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   // Add-only identity edges: an edge is never removed, so edge-remove is not registered.
   { resourceType: 'application#appOwner', operation: 'edge-add', path: '/applications/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },
   { resourceType: 'servicePrincipal#servicePrincipalOwner', operation: 'edge-add', path: '/servicePrincipals/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },

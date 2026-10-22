@@ -817,6 +817,143 @@ test('the default branding profile is never written', async () => {
   }
 });
 
+// ------------------------------------------- restore gaps, batch 10
+
+const writesOf = (graph) => graph.calls.filter((call) => call.method !== 'GET');
+
+test('a custom Endpoint analytics baseline is created and renamed by its name only; a built-in one is never written', async () => {
+  const baseline = { id: 'bl-src', displayName: 'KEEL-RT-baseline', overallScore: 61, isBuiltIn: false, createdDateTime: 'x' };
+  const graph = idoFakeGraph();
+  const created = await applyIntuneExtendedWrite(graph, resourceOf('userExperienceAnalyticsBaseline', baseline), 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.path, '/deviceManagement/userExperienceAnalyticsBaselines');
+  assert.equal(post.version, 'beta');
+  assert.deepEqual(post.body, { displayName: 'KEEL-RT-baseline' });
+
+  const path = '/deviceManagement/userExperienceAnalyticsBaselines/bl-1';
+  const live = { ...baseline, id: 'bl-1', displayName: 'KEEL-RT-baseline (renamed)', overallScore: 70 };
+  const renamed = idoFakeGraph({ seed: { [path]: live } });
+  const updated = await applyIntuneExtendedWrite(renamed, resourceOf('userExperienceAnalyticsBaseline', { ...baseline, id: 'bl-1' }, {
+    live: { state: 'present', targetId: 'bl-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  const patch = renamed.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.path, path);
+  assert.deepEqual(patch.body, { displayName: 'KEEL-RT-baseline' });
+
+  for (const [verb, extra] of [
+    ['create', {}],
+    ['update', { live: { state: 'present', targetId: 'bl-0', payload: { id: 'bl-0', displayName: 'Commercial median', isBuiltIn: true } } }],
+  ]) {
+    const builtIn = idoFakeGraph();
+    const result = await applyIntuneExtendedWrite(builtIn, resourceOf('userExperienceAnalyticsBaseline', { id: 'bl-0', displayName: 'Commercial median', isBuiltIn: true }, extra), verb, FAST);
+    assert.ok(result.skipped || result.failed, verb);
+    assert.match(JSON.stringify(result), /built-in/, verb);
+    assert.equal(writesOf(builtIn).length, 0, verb);
+  }
+});
+
+test('a classroom cart association is created and updated with its devices and classes', async () => {
+  const cart = { id: 'c-src', displayName: 'KEEL-RT-cart', description: 'Fixture', version: 3, deviceIds: [], classroomIds: [], createdDateTime: 'x', lastModifiedDateTime: 'x' };
+  const graph = idoFakeGraph();
+  const created = await applyIntuneExtendedWrite(graph, resourceOf('cartToClassAssociation', cart), 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.path, '/deviceManagement/cartToClassAssociations');
+  assert.equal(post.version, 'beta');
+  assert.deepEqual(post.body, { displayName: 'KEEL-RT-cart', description: 'Fixture', deviceIds: [], classroomIds: [] });
+
+  const path = '/deviceManagement/cartToClassAssociations/c-1';
+  const live = { ...cart, id: 'c-1', description: 'Changed', classroomIds: ['class-9'], version: 4 };
+  const drifted = idoFakeGraph({ seed: { [path]: live } });
+  const updated = await applyIntuneExtendedWrite(drifted, resourceOf('cartToClassAssociation', { ...cart, id: 'c-1' }, {
+    live: { state: 'present', targetId: 'c-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  const patch = drifted.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.body.description, 'Fixture');
+  assert.deepEqual(patch.body.classroomIds, []);
+  assert.equal('version' in patch.body, false);
+});
+
+test('a legacy Android work profile enrollment profile is written by name and description, never its token', async () => {
+  const profile = { id: 'aw-src', displayName: 'KEEL-RT-android-work', description: 'Fixture', accountId: 'acct-1', tokenExpirationDateTime: '2026-11-01T00:00:00Z', createdDateTime: 'x', lastModifiedDateTime: 'x' };
+  const graph = idoFakeGraph();
+  const created = await applyIntuneExtendedWrite(graph, resourceOf('androidForWorkEnrollmentProfile', profile), 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.path, '/deviceManagement/androidForWorkEnrollmentProfiles');
+  assert.deepEqual(post.body, { displayName: 'KEEL-RT-android-work', description: 'Fixture' });
+
+  const path = '/deviceManagement/androidForWorkEnrollmentProfiles/aw-1';
+  const live = { ...profile, id: 'aw-1', description: 'Changed' };
+  const drifted = idoFakeGraph({ seed: { [path]: live } });
+  const updated = await applyIntuneExtendedWrite(drifted, resourceOf('androidForWorkEnrollmentProfile', { ...profile, id: 'aw-1' }, {
+    live: { state: 'present', targetId: 'aw-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  assert.deepEqual(drifted.calls.find((call) => call.method === 'PATCH').body, { description: 'Fixture' });
+});
+
+const deviceOwner = Object.freeze({
+  id: 'ad-src', displayName: 'KEEL-RT-android-owner', description: 'Fixture', accountId: 'acct-1', enrollmentMode: 'corporateOwnedDedicatedDevice',
+  enrollmentTokenType: 'default', isTeamsDeviceProfile: false, deviceNameTemplate: 'KEEL-{{SERIAL}}', configureWifi: false, wifiSsid: null,
+  wifiHidden: false, wifiSecurityType: 'none', roleScopeTagIds: ['0'], tokenCreationDateTime: 'x', tokenExpirationDateTime: 'x', createdDateTime: 'x', lastModifiedDateTime: 'x',
+});
+
+test('an Android Enterprise enrollment profile is created with its mode, and updated without mode, token type or token', async () => {
+  const graph = idoFakeGraph();
+  const created = await applyIntuneExtendedWrite(graph, resourceOf('androidDeviceOwnerEnrollmentProfile', deviceOwner), 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.path, '/deviceManagement/androidDeviceOwnerEnrollmentProfiles');
+  assert.equal(post.version, 'beta');
+  assert.equal(post.body.enrollmentMode, 'corporateOwnedDedicatedDevice');
+  assert.equal(post.body.deviceNameTemplate, 'KEEL-{{SERIAL}}');
+  for (const field of ['id', 'accountId', 'tokenCreationDateTime', 'tokenExpirationDateTime', 'createdDateTime']) assert.equal(field in post.body, false, field);
+
+  const path = '/deviceManagement/androidDeviceOwnerEnrollmentProfiles/ad-1';
+  const live = { ...deviceOwner, id: 'ad-1', description: 'Changed', deviceNameTemplate: 'X-{{SERIAL}}' };
+  const drifted = idoFakeGraph({ seed: { [path]: live } });
+  const updated = await applyIntuneExtendedWrite(drifted, resourceOf('androidDeviceOwnerEnrollmentProfile', { ...deviceOwner, id: 'ad-1' }, {
+    live: { state: 'present', targetId: 'ad-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  const patch = drifted.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.body.description, 'Fixture');
+  assert.equal(patch.body.deviceNameTemplate, 'KEEL-{{SERIAL}}');
+  for (const field of ['enrollmentMode', 'enrollmentTokenType', 'isTeamsDeviceProfile']) assert.equal(field in patch.body, false, field);
+});
+
+test('an Android Enterprise profile on a secured Wi-Fi network is written only when the live profile already joins that network', async () => {
+  const secured = { ...deviceOwner, configureWifi: true, wifiSsid: 'KEEL-RT-wifi', wifiSecurityType: 'wpa' };
+  const refused = idoFakeGraph();
+  const create = await applyIntuneExtendedWrite(refused, resourceOf('androidDeviceOwnerEnrollmentProfile', secured), 'create', FAST);
+  assert.ok(create.skipped || create.failed);
+  assert.match(JSON.stringify(create), /password is not backed up/);
+  assert.equal(writesOf(refused).length, 0);
+
+  const otherNetwork = { ...secured, id: 'ad-2', wifiSsid: 'Other' };
+  const moved = idoFakeGraph();
+  const change = await applyIntuneExtendedWrite(moved, resourceOf('androidDeviceOwnerEnrollmentProfile', { ...secured, id: 'ad-2' }, {
+    live: { state: 'present', targetId: 'ad-2', payload: otherNetwork },
+  }), 'update', FAST);
+  assert.ok(change.skipped || change.failed);
+  assert.equal(writesOf(moved).length, 0);
+
+  const path = '/deviceManagement/androidDeviceOwnerEnrollmentProfiles/ad-3';
+  const live = { ...secured, id: 'ad-3', description: 'Changed' };
+  const same = idoFakeGraph({ seed: { [path]: live } });
+  const kept = await applyIntuneExtendedWrite(same, resourceOf('androidDeviceOwnerEnrollmentProfile', { ...secured, id: 'ad-3' }, {
+    live: { state: 'present', targetId: 'ad-3', payload: live },
+  }), 'update', FAST);
+  assert.equal(kept.failed, undefined, kept.failed?.error);
+  const patch = same.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.body.description, 'Fixture');
+  assert.equal('wifiPassword' in patch.body, false);
+});
+
 test('a policy delete passes the deletion guard and refuses a policy that is still assigned', async () => {
   for (const type of ['deviceCompliancePolicy', 'deviceConfiguration', 'configurationPolicy']) {
     const collection = INTUNE_RECORDS[type].collection;

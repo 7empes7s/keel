@@ -1035,6 +1035,32 @@ function defaultBrandingProfile(resource) {
   return null;
 }
 
+// Batch 10: an Endpoint analytics baseline Microsoft provides in every tenant.
+function builtInBaseline(resource) {
+  if (resource.payload?.isBuiltIn === true || resource.live?.payload?.isBuiltIn === true) {
+    return { outcome: 'skipped', reason: 'built-in: Microsoft provides this Endpoint analytics baseline in every tenant, so it is never written' };
+  }
+  return null;
+}
+
+// Batch 10: the Wi-Fi password of an Android Enterprise enrollment profile is
+// never read, so a profile that joins a secured network is written only when
+// the live profile already joins that same network (its password is kept).
+const ANDROID_WIFI_FIELDS = Object.freeze(['wifiSsid', 'wifiSecurityType']);
+const securedWifi = (payload) => payload?.configureWifi === true && lower(payload?.wifiSecurityType || 'none') !== 'none';
+
+function androidWifiPassword(resource, verb) {
+  const want = resource.payload;
+  if (!securedWifi(want)) return null;
+  const now = resource.live?.payload;
+  const sameNetwork = verb === 'update' && securedWifi(now) && ANDROID_WIFI_FIELDS.every((field) => sameValue(want[field], now[field]));
+  if (sameNetwork) return null;
+  return {
+    outcome: 'skipped',
+    reason: `manual: the profile joins the secured Wi-Fi network ${want.wifiSsid ?? ''}, and its password is not backed up; ${verb === 'create' ? 'recreate it' : 'change the network'} by hand and type the password again`,
+  };
+}
+
 export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // Delete only: create and update stay on the built-in path above.
   ...Object.fromEntries(Object.values(INTUNE_RECORDS).map((entry) => [entry.resourceType, defineRecord({
@@ -1185,6 +1211,41 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     resourceType: 'intuneBrandingProfile', version: 'beta', collection: '/deviceManagement/intuneBrandingProfiles',
     operations: ['create', 'update'], excluded: ['isDefaultProfile', 'assignments', ...BRANDING_PROFILE_IMAGES],
     refusal: defaultBrandingProfile, permission: 'DeviceManagementServiceConfig.ReadWrite.All',
+  }),
+  // Restore gaps, batch 10. A custom Endpoint analytics baseline is only a
+  // name: Graph takes the scores to compare against when it is created, so a
+  // recreated baseline holds today's scores. Built-in baselines are never written.
+  userExperienceAnalyticsBaseline: defineRecord({
+    resourceType: 'userExperienceAnalyticsBaseline', version: 'beta', collection: '/deviceManagement/userExperienceAnalyticsBaselines',
+    operations: ['create', 'update'], writable: ['displayName'], refusal: builtInBaseline,
+    permission: 'DeviceManagementConfiguration.ReadWrite.All',
+  }),
+  // Which device carts go to which classes (Intune for Education). The device
+  // and class ids are written as backed up: devices and classes are not
+  // restored by KEEL, so they must still exist.
+  cartToClassAssociation: defineRecord({
+    resourceType: 'cartToClassAssociation', version: 'beta', collection: '/deviceManagement/cartToClassAssociations',
+    operations: ['create', 'update'], writable: ['displayName', 'description', 'deviceIds', 'classroomIds'],
+    permission: 'DeviceManagementConfiguration.ReadWrite.All',
+  }),
+  // A legacy Android work profile enrollment profile: name and description.
+  // The enrollment token and QR code are never read; a recreated profile has
+  // no token until one is made in the admin center.
+  androidForWorkEnrollmentProfile: defineRecord({
+    resourceType: 'androidForWorkEnrollmentProfile', version: 'beta', collection: '/deviceManagement/androidForWorkEnrollmentProfiles',
+    operations: ['create', 'update'], writable: ['displayName', 'description'],
+    permission: 'DeviceManagementServiceConfig.ReadWrite.All',
+  }),
+  // An Android Enterprise corporate-owned enrollment profile. Its enrollment
+  // mode, token type and Teams flag are set on create only. The token, QR code
+  // and Wi-Fi password are never read: a profile joining a secured network is
+  // refused unless the live profile already joins it.
+  androidDeviceOwnerEnrollmentProfile: defineRecord({
+    resourceType: 'androidDeviceOwnerEnrollmentProfile', version: 'beta', collection: '/deviceManagement/androidDeviceOwnerEnrollmentProfiles',
+    operations: ['create', 'update'],
+    writable: ['displayName', 'description', 'deviceNameTemplate', 'configureWifi', 'wifiSsid', 'wifiHidden', 'wifiSecurityType', 'roleScopeTagIds'],
+    createOnly: ['enrollmentMode', 'enrollmentTokenType', 'isTeamsDeviceProfile'],
+    refusal: androidWifiPassword, permission: 'DeviceManagementServiceConfig.ReadWrite.All',
   }),
 });
 

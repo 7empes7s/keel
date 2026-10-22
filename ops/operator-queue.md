@@ -7275,8 +7275,8 @@ item that needs it stays untouched.
     every workload starts `waiting`, turns `reading` when it starts, then shows its outcome, count, times and a short error.
     Keys are `workload:<name>` and `content:<name>`. Written only when the worker passes `KEEL_JOB_ID`.
 - Needs: /opt/keel-live at the #509 merge or later (`test -f /opt/keel-live/engine/jobs/progress.mjs`).
-- Status: todo
-- Result:
+- Status: in-progress
+- Result: in progress (2026-10-22 18:40 UTC). Waiting for the next scheduled runs (no run started by hand; there is no CLI "Run now" and the portal is not reachable from this box): content-collect at **2026-10-23 01:00 UTC** and workload-collect at **02:00 UTC**. A watcher samples each job's `progress` once a minute (counts only) into `/root/q153-progress.log`.
 - **Tenant:** reads only (a normal backup run). No writes, no fixtures.
 - Do:
   1. Start one `workload-collect` job the usual way (Schedules "Run now" on the service settings schedule, or wait for its next run).

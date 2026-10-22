@@ -7565,8 +7565,12 @@ item that needs it stays untouched.
   `/policies/roleManagementPolicies` and `/policies/roleManagementPolicyAssignments` without the scope filter Graph requires.
   Discovery now sends the catalogue's `$filter=scopeId eq '/' and scopeType eq 'DirectoryRole'` on those reads.
 - Needs: PR #547 live (`grep -q requiredFilter /opt/keel-live/engine/discovery/catalogue.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 21:27 UTC). **#547 works: the PIM role settings lists read as covered.** Collector reads only.
+  1. `keel-discover.mjs run`: exit **0**. `Discovery 2026-10-22T21:26:45.022Z: 1487 types; 212 catalogued, 480 uncatalogued, 171 skipped (not worth backing up), 574 unreadable, 50 not listed.` Stored discovery run 6.
+  2. `Catalogue: 144 covered, 16 under-item, 7 not-used.` (0 unreadable.) The indented lines are the 7 not-used types only: lifecycleWorkflow, lifecycleWorkflowCustomTaskExtension and lifecycleManagementSettings (not-licensed);
+     identityApiConnector, deviceManagementExchangeConnector and onPremisesConditionalAccessSettings (feature-off); applePushNotificationCertificate (not-set-up).
+  3. `/policies/roleManagementPolicies` and `/policies/roleManagementPolicyAssignments`, both beta and v1.0: **catalogued, 150 objects, 200**, no reason.
 - **Tenant:** Graph GETs only (discovery is read-only by design and refuses anything else). Nothing is written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. `node cli/keel-discover.mjs run --config /etc/keel/tenant.json` (as the scheduled job runs it). Report the exit code.

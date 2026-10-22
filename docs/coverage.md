@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 133 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 73 at least in part; the other 94 are restored by hand from the backup.
+KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 133 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 76 at least in part; the other 91 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -442,15 +442,15 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Intune tenant settings | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
 | Android Enterprise enrollment profiles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Android work profile enrollment profiles | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Apple user enrollment profiles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Apple user enrollment profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Android work profile connection | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 | Derived credential issuers | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Microsoft Tunnel server configurations | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Microsoft Tunnel server configurations | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Microsoft Tunnel health thresholds | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Apple app provisioning profiles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | App dependencies and supersedence | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Managed e-books | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| E-book categories | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| E-book categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Classroom device cart assignments | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Windows app protection policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Windows code signing certificates | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
@@ -597,14 +597,16 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 - **Android work profile enrollment profiles** (not built yet). KEEL backs up each profile's name and settings but not its enrollment token or QR code, and does not restore it yet.
   - *Not brought back:* enrollment token and QR code (Microsoft never returns it).
   - *You do:* Recreate the profile in the Intune admin center, under Devices, Enrollment, Android, from the backup, and hand out the new token.
-- **Apple user enrollment profiles** (not built yet). KEEL backs these up but does not restore them yet.
-  - *You do:* Recreate each profile in the Intune admin center, under Devices, Enrollment, Apple, Enrollment types, from the backup, with the same priority.
+- **Apple user enrollment profiles.** Recreates profiles and puts their settings back (name, description, which enrollment types users may pick and the default).
+  - *Not brought back:* its place in the priority order (in the backup, but KEEL does not write it yet); who the profile is assigned to (in the backup, but KEEL does not write it yet).
+  - *You do:* A recreated profile goes to the end of the priority order and is assigned to nobody: set its priority and assign it again by hand from the backup.
 - **Android work profile connection** (Microsoft limit). The legacy work profile connection is made by signing in to Google. No tool can make it from a backup.
   - *You do:* Use the backup for the Google account and target groups, connect again in the Intune admin center with that account, and turn on the same enrollment options.
 - **Derived credential issuers** (not built yet). KEEL backs up the issuer settings but does not restore them yet.
   - *You do:* Set the same issuer, help page and renewal threshold in the Intune admin center, under Tenant administration, Connectors and tokens, Derived credentials, from the backup.
-- **Microsoft Tunnel server configurations** (not built yet). KEEL backs up each configuration's network, DNS and routes but does not restore them yet.
-  - *You do:* Recreate the configuration in the Intune admin center, under Tenant administration, Microsoft Tunnel Gateway, Server configurations, from the backup, before the sites that use it.
+- **Microsoft Tunnel server configurations.** Recreates configurations and puts back their network, DNS servers, routes and port.
+  - *Not brought back:* the sites and servers that use it (stored separately and not in the backup yet).
+  - *You do:* A site points to its configuration by id: point the site at a recreated configuration again by hand.
 - **Microsoft Tunnel health thresholds** (not built yet). KEEL backs up the healthy and unhealthy limits but does not restore them yet.
   - *You do:* Set the same limits in the Intune admin center, under Tenant administration, Microsoft Tunnel Gateway, Health status, from the backup.
 - **Apple app provisioning profiles** (not built yet). KEEL backs up each profile with its file from Apple but not yet who it is assigned to, and does not restore it yet.
@@ -615,8 +617,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 - **Managed e-books** (not built yet). KEEL backs up each book's details but not yet who it is assigned to, and does not restore it yet.
   - *Not brought back:* who the book is assigned to (stored separately and not in the backup yet).
   - *You do:* Sync the books again from Apple Business Manager in the Intune admin center, under Apps, eBooks, and assign them again from the backup.
-- **E-book categories** (not built yet). KEEL backs these up but does not restore them yet.
-  - *You do:* Recreate each category in the Intune admin center, under Apps, eBooks, from the backup.
+- **E-book categories.** Recreates categories and puts their names back.
+  - *Not brought back:* which books are in the category (stored separately and not in the backup yet).
+  - *You do:* Which books are in a category is set on each book; add the books to a recreated category again by hand.
 - **Classroom device cart assignments** (not built yet). KEEL backs up which device carts go to which classes but does not restore them yet.
   - *You do:* Assign the same carts to the same classes again in Intune for Education from the backup.
 - **Windows app protection policies** (not built yet). KEEL backs up each policy's settings but not yet who it is assigned to or which apps it covers, and does not restore it yet.

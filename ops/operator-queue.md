@@ -7727,3 +7727,23 @@ item that needs it stays untouched.
   If `skipped` is above 0, report the reasons object only (it holds reason names and counts, never entry text) and comment on #552.
   If `invalid-page` still appears, report the run's window and comment on #552.
 - **Report:** per step, the result.
+
+### Q166: Live check that the Teams policy backups now report complete (after #532)
+- Drafted by the "Teams backups report complete" thread (2026-10-22). Q155 named the 7 declared Teams fields the live
+  module never returned. PR #532 stops declaring the retired and Sdn* ones, reads `LineUri` (not `LineURI`), and adds
+  `digest.unknownFields` to the Teams runs.
+- Needs: /opt/keel-live at the #532 merge or later (`grep -q LineUri /opt/keel-live/engine/collect/workloads/teamsExtended.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** Collector reads only (the normal scheduled Teams reads). Nothing is written.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. After the next scheduled collect that runs both Teams workloads (or one `keel-workload-collect.mjs run`), report:
+     ```sql
+     SELECT workload, outcome, created_at, digest->'fieldCounts' AS field_counts, digest->'unknownFields' AS unknown_fields,
+            digest->'reasons' AS reasons
+       FROM workload_collection WHERE workload IN ('teams-org-policies', 'teams-voice-policies') AND outcome <> 'disabled'
+      ORDER BY created_at DESC LIMIT 2;
+     ```
+- **Expected:** both `complete`, `field_counts` with no `unknown`, `unknown_fields` `{}`. If `userPolicyAssignment.LineUri`
+  is still unknown, report its object count and the total user count (some users may simply have no number); change nothing.
+- **Report:** the output verbatim and the build.

@@ -7214,7 +7214,7 @@ item that needs it stays untouched.
 - Drafted by the "Probe user-only areas" thread (2026-10-22). Build step 1 of the delegated access design
   (`/mnt/project-files/handoff/delegated-access/DESIGN.md` section 8). Code: PR #527.
 - Needs: /opt/keel-live at the #527 merge or later (`test -f /opt/keel-live/tools/tenant-probe/delegated-probe.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** reads only, Collector credential (`/etc/keel/tenant.json`). The Node probe sends GETs plus the Power Platform
   `listtenantsettings` read (POST, no body). The sweep calls only `Get-` cmdlets. Grant, assign, register or create nothing,

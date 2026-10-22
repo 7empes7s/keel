@@ -1708,6 +1708,47 @@ test('scripts are assigned through their own /assign list', async () => {
   }
 });
 
+// Issue #546: Graph has no /assignments route for custom attribute scripts
+// (400), so their live assignments are read expanded on the script.
+test('a custom attribute script\'s live assignments are read expanded, never at /assignments', async () => {
+  const fields = Object.fromEntries(SCRIPT_CASES).deviceCustomAttributeShellScript;
+  const path = '/deviceManagement/deviceCustomAttributeShellScripts/s-1';
+  const live = { id: 's-1', displayName: 'KEEL-RT-attr', ...fields };
+  const resource = resourceOf('deviceCustomAttributeShellScript', live, {
+    live: { state: 'present', targetId: 's-1', payload: live },
+    assignments: { outcome: 'complete', targets: [groupTarget()] },
+    newAssignments: [],
+  });
+  const noRoute = (graph) => {
+    const read = graph.read.bind(graph);
+    graph.read = async (version, target, options) => {
+      if (/\/assignments(\?|$)/.test(target)) {
+        graph.calls.push({ version, method: 'GET', path: target });
+        return { ok: false, status: 400, body: { error: { code: 'No method match route template' } } };
+      }
+      return read(version, target, options);
+    };
+    return graph;
+  };
+  const moved = noRoute(idoFakeGraph({ seed: {
+    [path]: { ...live, assignments: [{ id: 'a-1', target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: 'other-group' } }] },
+  } }));
+  let result = await applyIntuneExtendedWrite(moved, resource, 'update', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(result.applied.changes.assignments, 'written');
+  assert.equal(moved.calls.some((call) => /\/assignments(\?|$)/.test(call.path)), false);
+  assert.ok(moved.calls.some((call) => call.method === 'GET' && call.path === `${path}?$expand=assignments`));
+  assert.deepEqual(moved.calls.find((call) => call.path.endsWith('/assign')).body.deviceManagementScriptAssignments
+    .map((entry) => entry.target.groupId), ['target-group']);
+
+  const same = noRoute(idoFakeGraph({ seed: {
+    [path]: { ...live, assignments: [{ id: 'a-1', target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: 'target-group' } }] },
+  } }));
+  result = await applyIntuneExtendedWrite(same, resource, 'update', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.applied.changes.assignments, 'already as in the backup');
+  assert.equal(same.calls.some((call) => call.method !== 'GET'), false);
+});
+
 test('an administrative template is assigned after its settings are written', async () => {
   const graph = idoFakeGraph({ seed: definitionsSeed('d-1', 'd-2') });
   const result = await applyIntuneExtendedWrite(graph, resourceOf('groupPolicyConfiguration', template, {

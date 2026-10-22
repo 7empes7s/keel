@@ -79,3 +79,39 @@ test('coverage no longer says these assignments are missing from the backup', ()
     }
   }
 });
+
+// Issue #546: Graph has no /assignments route for macOS custom attribute
+// scripts (it answers 400), so the script is read with them expanded.
+test('a custom attribute script\'s assignments are read expanded on the script, never at /assignments', async () => {
+  const calls = [];
+  const reader = {
+    async collect(version, path) {
+      calls.push([version, path]);
+      if (path.endsWith('/assignments')) return { items: [], pages: 0, status: null, capped: false, error: { status: 400, error: 'No method match route template' } };
+      return { items: [{ id: POLICY, displayName: 'KEEL-RT-attr', assignments: [{ id: 'a-1', target: groupTarget }] }], pages: 1, status: 200, capped: false, error: null };
+    },
+  };
+  const [observation] = await collectRelationships(reader, {
+    tenantRef: 'sha256:t', families: ['assignment'], parents: [{ type: 'deviceCustomAttributeShellScript', sourceId: POLICY }],
+  });
+  const path = `/deviceManagement/deviceCustomAttributeShellScripts/${POLICY}?$expand=assignments`;
+  assert.deepEqual(calls, [['beta', path]]);
+  assert.equal(observation.outcome, 'complete');
+  assert.equal(observation.endpoint, path);
+  assert.deepEqual(observation.targets.map((edge) => edge.targetId), [GROUP]);
+});
+
+test('a custom attribute script read without its assignments is failed, never an empty set', async () => {
+  const unassigned = { async collect() { return { items: [{ id: POLICY, assignments: [] }], pages: 1, status: 200, capped: false, error: null }; } };
+  const missing = { async collect() { return { items: [{ id: POLICY }], pages: 1, status: 200, capped: false, error: null }; } };
+  const parents = [{ type: 'deviceCustomAttributeShellScript', sourceId: POLICY }];
+  const [empty] = await collectRelationships(unassigned, { tenantRef: 'sha256:t', families: ['assignment'], parents });
+  assert.equal(empty.outcome, 'complete-empty');
+  const [failed] = await collectRelationships(missing, { tenantRef: 'sha256:t', families: ['assignment'], parents });
+  assert.equal(failed.outcome, 'failed');
+  assert.equal(failed.itemCount, null);
+  assert.match(failed.error, /assignments/);
+  const paged = { async collect() { return { items: [{ id: POLICY, assignments: [{ id: 'a-1', target: groupTarget }], 'assignments@odata.nextLink': 'https://graph.microsoft.com/beta/next' }], pages: 1, status: 200, capped: false, error: null }; } };
+  const [cut] = await collectRelationships(paged, { tenantRef: 'sha256:t', families: ['assignment'], parents });
+  assert.equal(cut.outcome, 'failed');
+});

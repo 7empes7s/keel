@@ -271,6 +271,10 @@ export function canarySentence(data: ReadinessData, now: string): string {
   const readUntil = data.canary.sources?.["sign-in"]?.readUntil ?? null;
   if (data.canary.status === "watching") return `KEEL is watching emergency sign-ins: the sign-in log was read up to ${ago(readUntil, now)}.`;
   if (data.canary.status === "not-configured") return "KEEL does not read the sign-in log yet, so it cannot see an emergency sign-in.";
+  // One sign-in entry that could not be stored safely was skipped: it might be the emergency sign-in.
+  if (data.canary.sources?.["sign-in"]?.status === "events-skipped") {
+    return "KEEL is not watching reliably: it skipped some sign-in entries it could not store safely, and one of them could be an emergency sign-in.";
+  }
   return readUntil
     ? `KEEL is not watching reliably: the sign-in log was last read completely up to ${ago(readUntil, now)}.`
     : "KEEL is not watching: the sign-in log has not been read completely.";

@@ -5929,3 +5929,45 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; the step 1 backup check; per kind and round: assignments written / refused (exact message) / skipped (fixture could
   not be created) / blocked; step 4; approval ids; the evidence branch and commit; anything left in the tenant.
+
+### Q130: Live restore of who compliance policies, Windows app protection, custom attribute scripts and Autopilot profiles are assigned to (restore gaps batch 15, after #462)
+- Drafted by the "Restore batch 15" thread (2026-10-22). Code: PR #462. Fixture-tested only.
+  - **Backup change:** assignments are now read per object (beta) for `deviceCustomAttributeShellScript`, `deviceManagementCompliancePolicy`
+    (`/deviceManagement/compliancePolicies/{id}/assignments`) and `windowsManagedAppProtection`.
+  - **Restore through `/assign` (beta):** custom attribute script `{ deviceManagementScriptAssignments: [...] }`; compliance v2
+    `{ assignments: [deviceManagementConfigurationPolicyAssignment] }` after its actions for noncompliance; Windows app protection
+    `{ assignments: [targetedManagedAppPolicyAssignment] }` after its apps.
+  - **Autopilot profiles** (assignments already backed up): no `/assign` action, so each missing assignment is `POST .../assignments`
+    and each extra one `DELETE .../assignments/{id}`, then read back.
+  - A policy whose only change is its assignments is planned as an `update`; the object itself is not patched.
+- Needs: /opt/keel-live at the #462 merge or later (`grep -q "assignmentWrite: 'per-item'" /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
+  needs DeviceManagementConfiguration.ReadWrite.All, DeviceManagementApps.ReadWrite.All and DeviceManagementServiceConfig.ReadWrite.All.
+  If Graph answers 403, report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.
+  No tenant-wide setting is changed. **Assign fixtures only to the empty groups below: never to All devices, All users or any group with members.**
+- **Fixtures:**
+  - Security groups `KEEL-RT-150-assign` and `KEEL-RT-150-assign-b`, both with **no members**.
+  - Settings catalog compliance policy `KEEL-RT-150-compliance` (any platform, one setting, default "mark noncompliant" action), assigned to `KEEL-RT-150-assign`.
+  - Windows app protection policy `KEEL-RT-150-win-mam` (Edge), assigned to `KEEL-RT-150-assign`.
+  - macOS custom attribute script `KEEL-RT-150-attr` (body `echo KEEL-RT`), assigned to `KEEL-RT-150-assign`.
+  - Autopilot profile `KEEL-RT-150-autopilot` (Entra joined), assigned to `KEEL-RT-150-assign`.
+  - Report and skip any fixture Intune refuses to create.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Create the fixtures, then take snapshot S. **Backup check:** for each fixture, the assignment read outcome in S and its target
+     (`KEEL-RT-150-assign`). For the first three kinds this read is new: report the exact Graph answer if it fails.
+  2. **Assignment-only round:** in the portal, move each fixture's assignment to `KEEL-RT-150-assign-b`. Restore from S selecting the
+     fixtures' kinds. Expect the dry run to plan an `update` with "assignments differ" for each, approve, enforce, capture each `update`.
+     Expect every fixture assigned to `KEEL-RT-150-assign` only (Autopilot: one DELETE and one POST). Report the exact Graph answer for
+     any refused write.
+  3. **Create round:** delete `KEEL-RT-150-compliance` and `KEEL-RT-150-autopilot`. Restore from S, approve, enforce, capture both
+     `create`s. Expect both back and assigned to `KEEL-RT-150-assign`.
+  4. **Re-run check:** dry run from S after step 3. Expect 0 planned writes.
+  5. Cleanup: delete every `KEEL-RT-150-*` fixture (unassign the Autopilot profile first) and both groups. Report anything left.
+  6. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-15`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; the step 1 backup check; per kind and round: assignments written / refused (exact message) / skipped (fixture could
+  not be created) / blocked; step 4; approval ids; the evidence branch and commit; anything left in the tenant.

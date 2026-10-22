@@ -5180,6 +5180,36 @@ item that needs it stays untouched.
   4. If the collect still fails, paste the error and stack, and comment on #438.
 - **Report:** steps 1–3; close #438 if the collect and drift-detect succeeded.
 
+### Q119: Recheck the hourly collect and drift after the Intune settings fix (read-only, urgent, after #452)
+- Drafted by the "Hourly collect failing on Intune settings" thread (2026-10-22). Code: PR #452 (fixes #447).
+  `deviceManagementSettings` now reads `GET beta /deviceManagement?$select=id,settings,intuneBrand,managedDeviceCleanupSettings`.
+  Drift detection now runs when at least one type read in full; failed or partial types are skipped and listed in the
+  collect job's `result.driftTrigger.skippedTypes`.
+- Needs: PR #452 live (`git -C /opt/keel-live log --oneline | grep -c "#452"` is 1).
+- Status: todo
+- Result:
+- **Tenant:** reads only, with the collector credential. Nothing written.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. Wait for the next hourly collect after the deploy (or run `node cli/keel-collect.mjs` once by hand). Report its
+     exit code and every type with a non-complete outcome.
+  2. ```sql
+     WITH s AS (SELECT id, coverage_digest FROM snapshot ORDER BY started_at DESC LIMIT 1)
+     SELECT s.coverage_digest->'deviceManagementSettings' AS digest,
+            (SELECT count(*) FROM resource_version rv WHERE rv.snapshot_id = s.id AND rv.resource_type = 'deviceManagementSettings') AS objects,
+            (SELECT payload ? 'settings' FROM resource_version rv WHERE rv.snapshot_id = s.id AND rv.resource_type = 'deviceManagementSettings' LIMIT 1) AS has_settings
+       FROM s;
+     ```
+  3. ```sql
+     SELECT id, status, finished_at, result->'driftTrigger' AS drift_trigger FROM job
+      WHERE kind = 'collect' ORDER BY finished_at DESC NULLS LAST LIMIT 2;
+     SELECT id, status, error, finished_at FROM job WHERE kind = 'drift-detect' ORDER BY created_at DESC LIMIT 3;
+     ```
+- **Expected:** step 1 exit 0 with no failed type. Step 2: outcome `complete`, 1 object, `has_settings` true. Step 3:
+  `driftTrigger.status` is `queued` with `skippedTypes` `[]`, and the newest drift-detect job `succeeded`. If the
+  Intune read still answers 400, report the error verbatim: drift should still be `queued`, with
+  `skippedTypes` `["deviceManagementSettings"]`.
+- **Report:** steps 1 to 3 verbatim.
+
 ### Q109: Live restore of four Intune settings kinds (restore gaps batch 1, after #430)
 - Drafted by the "Make backed-up kinds restorable" thread (2026-10-21). Code: PR #430. New record writers, fixture-tested only:
   reusable settings groups (`deviceManagementReusablePolicySetting`, beta, create + update), Windows hotpatch policies
@@ -5515,36 +5545,6 @@ item that needs it stays untouched.
   filtered reads is the finding to report verbatim. Step 3: 0 and 0. Step 4: no Graph path left `uncatalogued`
   (any that remain are new paths Microsoft added since run 3; list them).
 - **Report:** steps 1 to 4 verbatim.
-
-### Q119: Recheck the hourly collect and drift after the Intune settings fix (read-only, after #452)
-- Drafted by the "Hourly collect failing on Intune settings" thread (2026-10-22). Code: PR #452 (fixes #447).
-  `deviceManagementSettings` now reads `GET beta /deviceManagement?$select=id,settings,intuneBrand,managedDeviceCleanupSettings`.
-  Drift detection now runs when at least one type read in full; failed or partial types are skipped and listed in the
-  collect job's `result.driftTrigger.skippedTypes`.
-- Needs: PR #452 live (`git -C /opt/keel-live log --oneline | grep -c "#452"` is 1).
-- Status: todo
-- Result:
-- **Tenant:** reads only, with the collector credential. Nothing written.
-- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
-  1. Wait for the next hourly collect after the deploy (or run `node cli/keel-collect.mjs` once by hand). Report its
-     exit code and every type with a non-complete outcome.
-  2. ```sql
-     WITH s AS (SELECT id, coverage_digest FROM snapshot ORDER BY started_at DESC LIMIT 1)
-     SELECT s.coverage_digest->'deviceManagementSettings' AS digest,
-            (SELECT count(*) FROM resource_version rv WHERE rv.snapshot_id = s.id AND rv.resource_type = 'deviceManagementSettings') AS objects,
-            (SELECT payload ? 'settings' FROM resource_version rv WHERE rv.snapshot_id = s.id AND rv.resource_type = 'deviceManagementSettings' LIMIT 1) AS has_settings
-       FROM s;
-     ```
-  3. ```sql
-     SELECT id, status, finished_at, result->'driftTrigger' AS drift_trigger FROM job
-      WHERE kind = 'collect' ORDER BY finished_at DESC NULLS LAST LIMIT 2;
-     SELECT id, status, error, finished_at FROM job WHERE kind = 'drift-detect' ORDER BY created_at DESC LIMIT 3;
-     ```
-- **Expected:** step 1 exit 0 with no failed type. Step 2: outcome `complete`, 1 object, `has_settings` true. Step 3:
-  `driftTrigger.status` is `queued` with `skippedTypes` `[]`, and the newest drift-detect job `succeeded`. If the
-  Intune read still answers 400, report the error verbatim: drift should still be `queued`, with
-  `skippedTypes` `["deviceManagementSettings"]`.
-- **Report:** steps 1 to 3 verbatim.
 
 ### Q120: Live backup and restore of settings catalog compliance policies (restore gaps batch 7, after #451)
 - Drafted by the "Restore batch 7" thread (2026-10-22). Code: PR #451. The backup now reads each settings catalog

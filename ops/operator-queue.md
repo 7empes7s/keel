@@ -5957,17 +5957,16 @@ item that needs it stays untouched.
   `deviceCustomAttributeShellScript` and `groupPolicyConfiguration` (template, then its settings and values through
   `updateDefinitionValues`). Who either is assigned to is **not** written; fixtures stay unassigned.
 - Needs: /opt/keel-live at the #436 merge or later (`grep -q groupPolicySettingsAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result: blocked (2026-10-22 08:18 UTC). The custom attribute script is blocked by a missing permission (**#471**); the administrative template backup holds no settings (**#472**). B = c396a2c. Restorer only; nothing granted; no restore was run.
-  - `deviceCustomAttributeShellScript`: fixture create `POST beta /deviceManagement/deviceCustomAttributeShellScripts` answered **403**: "Application is not authorized to
-    perform this operation. Application must have one of the following scopes: DeviceManagementScripts.ReadWrite.All". Create and update are **blocked** (#471).
-    Its backup read is `complete-empty` 200.
-  - `groupPolicyConfiguration`: created `KEEL-RT-admx` with Edge (machine) "Configure the home page URL" enabled = `https://example.com` (text box presentation) and
-    "Show Home button on toolbar" disabled (`updateDefinitionValues` 204; the value reads back).
-    - Snapshot S = `c468ba6c`: read outcome `complete` (2 items), but the fixture's `definitionValues` is **`[]`**, so the backup check fails.
-    - As the Collector: `?$expand=definitionValues($expand=definition)` gives 0 values; `/{id}/definitionValues` gives 2. A restore would drop every setting, so I did not
-      run the rounds. Create and update are **blocked** (#472).
-  - Cleanup: deleted `KEEL-RT-admx` (204); no `KEEL-RT` template is left. Nothing left in the tenant.
+- Status: done
+- Result: done (2026-10-22 11:58 UTC). **The custom attribute script's create and update are both promoted.** The administrative template part is done in **Q142** (create and update promoted, #472 fixed by #487). B = 22fbc27 / 944ed34 (deploys during the run). Restorer only (with DeviceManagementScripts.ReadWrite.All); global admin not used; nothing assigned.
+  - Fixture `KEEL-RT-attribute` (attribute `KEEL-RTAttribute`, string, body `echo KEEL-RT`, system, unassigned). S = `b44b3c0b`: read `complete` (1). The payload holds a non-empty `scriptContent` and type `string`.
+    - `customAttributeName` is **null in the backup**, and Graph also returns null on a direct GET right after create, so Microsoft does not keep or return it (not a KEEL gap). It cannot be compared.
+  - Update (run first, because of #485): description `drift`, body `echo drifted`. Dry run `97eccc0d` (description, scriptContent; 1 runs-on-devices effect), content approval **47c73482**, approval **d59b4b10**,
+    job `3d603bdb`: verified. Read back "KEEL restore fixture", `echo KEEL-RT`. **Promoted.**
+  - Re-run (`af7a86ca`, before the create): **0 changed fields**.
+  - Create: deleted it. Dry run `f5a4a286`, approval **d677caaf**, job `b8fc76ed`: verified. Read back: description, string, system, `echo KEEL-RT`. **Promoted.**
+  - Cleanup: deleted. No KEEL-RT attribute script is left; `KEEL-RT-admx` was cleaned up in Q142. **Nothing left.**
+  - Evidence: `claude/live-evidence-restore-gaps-5` @ **527c53b9**. pseudonymize check exit 0; my scan is clean. `live evidence deviceCustomAttributeShellScript.create.json` and `.update.json`: `fixture-tested -> live-qualified`.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission
   to add: the Restorer and collector hold DeviceManagementConfiguration.ReadWrite.All / .Read.All. If Graph answers 403, report

@@ -5334,27 +5334,38 @@ item that needs it stays untouched.
   (`windowsQualityUpdatePolicy`, beta, create + update), device categories (`deviceCategory`, v1.0, create + update),
   device cleanup rules (`managedDeviceCleanupRule`, beta, **update only**, refused when the backup retires devices sooner than now).
 - Needs: /opt/keel-live at the #430 merge or later (`grep -q cleanupRuleRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: blocked
-- Result: blocked (2026-10-22 06:52 UTC) on **#466**. Every restore from a snapshot stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported). Hotpatch is separately **blocked** by a 403. B = **e1a811b**. Restorer only; global admin not used; nothing granted. No approval filed yet.
-  - Plan: `~/keel-rg1/plan-B.md` (168 operations, 169 steps). These types are steps 37–43, and their fixture names are `KEEL-RT-148-*`.
-  - Tenant had none of the four types before (categories: only the three `KEEL-RT-20260908` ones; 0 managed devices; no cleanup rule for any platform).
-  - Fixtures created (Restorer):
-    - `KEEL-RT-148-category` (201).
-    - `KEEL-RT-148-addresses`: firewall reusable settings group with keyword `KEEL-RT-148-addresses`, autoresolve false, one address
-      203.0.113.10, used by no policy (201). Microsoft requires `_keyword` and `_autoresolve`, with `_addresses` nested under the
-      `autoresolve_false` choice.
-    - `KEEL-RT-148-cleanup`: macOS, 270 days (200).
-    - `KEEL-RT-148-hotpatch`: **403 Forbidden**. Graph names no permission: "An error has occurred ... Url:
-      https://proxy.msub06.manage.microsoft.com/Updates/SoftwareUpdateService/.../deviceManagement/windowsQualityUpdatePolicies".
-      GET is 200 (empty). Likely a tenant licence or Windows Update for Business prerequisite (inference). windowsQualityUpdatePolicy
-      create and update: **blocked**.
-  - Snapshot **S = 2b450888-07cd-4ba6-b250-96306b941b53** (full collect, exit 1 on the known failed types). It holds the category, the
-    address group and the cleanup rule (270).
-  - Create round: deleted the category (then 404) and the address group (then 400). The dry run for A1 `ba0f80f6` (2 selected, closed to
-    2) exited 1 before planning: `collecting deviceManagementExchangeConnector failed` (501 NotSupported, StatelessOnboardingService).
-    No artifact was approved or enforced.
-  - **Left in the tenant:** `KEEL-RT-148-cleanup` (macOS, 270 days; no devices). The category and the address group are deleted, so the
-    create round can resume from S once #466 is fixed.
+- Status: done
+- Result: done (2026-10-22 08:11 UTC), resumed after #466 was fixed (#468). B = **c396a2c**. Restorer only; global admin not used; nothing granted. Self-approved under the 2026-10-14 standing authorization.
+  - **Per type and operation:**
+    | type | create | update |
+    |---|---|---|
+    | deviceCategory | **promoted** | **promoted** |
+    | managedDeviceCleanupRule | (update only) | **promoted** (180 → 270 put back) |
+    | deviceManagementReusablePolicySetting | **demoted** (#470) | **demoted** (#470) |
+    | windowsQualityUpdatePolicy | **blocked**: fixture create 403 | **blocked** (same) |
+    - Reusable create: the backup holds no `settingInstance` (the list read leaves it out), so Graph refused it: `400 Policy Id <id> has list
+      of empty setting instances. A policy document is expected with a list of setting instances.`
+    - Reusable update: Graph has no PATCH route for this type: `400 "No method match route template": No OData route exists that match template
+      ~/singleton/navigation/key with http verb PATCH`. Only PUT with the full `settingInstance` works. Filed **#470** (with the fix: `$select=...,settingInstance` on the list read, and PUT).
+    - Hotpatch: `POST beta /deviceManagement/windowsQualityUpdatePolicies` answered 403 "An error has occurred" from SoftwareUpdateService, naming
+      no permission. GET is 200. Likely a licence or Windows Update for Business prerequisite (inference).
+  - **Rounds:**
+    - Fixtures: `KEEL-RT-148-category`, `KEEL-RT-148-addresses` (keyword, autoresolve false, address 203.0.113.10, used by no policy),
+      `KEEL-RT-148-cleanup` (macOS, 270 days). The tenant had no cleanup rule before, and has 0 managed devices.
+    - S = `2b450888` (06:47). The first create-round dry run (06:52, e1a811b) stopped on #466.
+    - Create round: dry run A1 `815b5e6f` planned 2 creates, approval **838db325**, job `864a075c` failed on the reusable create. Category created; read-back
+      name and description equal.
+    - Update round: recreated the address group by hand, S2 = `ac991228`. Drifted the descriptions and set the cleanup rule to 180 days. Dry run A2 `a78c7046` planned 3 updates
+      (only the drifted fields), approval **d69cdb29**, job `2d0927da`: category and cleanup rule updated (read back "KEEL restore fixture", 270);
+      reusable failed (PATCH).
+  - **Step 5, refusal:** cleanup rule set to 365, dry run `ce4f2d9c` from S2: skipped, status `refused`, 0 writes. Reason: "manual: the backup retires devices
+    after 270 days without check-in, sooner than the 365 days set now; a shorter wait could retire devices at once, so a person changes it". Not promoted.
+  - **Step 6, re-run:** rule back at 270, address group description back. Dry run `3b33f4ae` from S2: 3 entries, **none with changed fields** (0 planned writes).
+  - **Step 7, cleanup:** deleted the category, address group and cleanup rule. Re-read: no `KEEL-RT-148` object of these four types. **Nothing left.**
+  - **Evidence:** `claude/live-evidence-restore-gaps-1` @ **bdc7ffb**: deviceCategory.create/.update, managedDeviceCleanupRule.update (each with .capture.json) and
+    the two reusable demotions. pseudonymize check exit 0; my scan is clean. (The capture needs `--fixture <naturalKey>`; the display name gives "not-exercised".)
+  - `operations.mjs --live-evidence`: `deviceCategory.create.json: fixture-tested -> live-qualified`; `deviceCategory.update.json: fixture-tested -> live-qualified`;
+    `managedDeviceCleanupRule.update.json: fixture-tested -> live-qualified`.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission
   to add: the Restorer holds DeviceManagementConfiguration.ReadWrite.All and DeviceManagementManagedDevices.ReadWrite.All. If Graph

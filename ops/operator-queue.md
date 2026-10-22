@@ -6897,7 +6897,7 @@ item that needs it stays untouched.
   - **Change:** the restore's current-state fingerprint now ignores `lastModifiedDateTime` for `mobileAppCategory` and `managedEBookCategory` only,
     because Graph returns it as the time of the read. Every other kind still counts it. Nothing else changed: same writers as Q116 and Q122.
 - Needs: /opt/keel-live at df9295a or later (`grep -q READ_TIME_FIELDS /opt/keel-live/engine/restore/dryRunArtifact.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q116 and Q122. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used; it holds

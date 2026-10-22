@@ -161,9 +161,9 @@ function sumCounts(groups: { added?: number; removed?: number; changed?: number 
   return groups.reduce<{ added: number; removed: number; changed: number }>((sum, group) => ({ added: sum.added + (group.added ?? 0), removed: sum.removed + (group.removed ?? 0), changed: sum.changed + (group.changed ?? 0) }), { added: 0, removed: 0, changed: 0 });
 }
 
-/** A kind group's heading inside a service, when the service has more than one. */
-function KindHeading<T extends { added?: number; removed?: number; changed?: number }>({ part, show }: { part: KindPart<T>; show: boolean }) {
-  if (!show) return null;
+/** A kind group's heading inside a service, shown even when the service has one group,
+ * so every service reads the same way. */
+function KindHeading<T extends { added?: number; removed?: number; changed?: number }>({ part }: { part: KindPart<T> }) {
   return (
     <h4 className="compare-kind-heading">
       {part.label}
@@ -186,7 +186,7 @@ function SettingsPanel({ settings, portable, sides }: { settings: SettingsSectio
           <ServiceHeading service={block.heading} />
           {block.parts.map((part) => (
             <div className="compare-kind" key={part.key}>
-              <KindHeading part={part} show={block.parts.length > 1} />
+              <KindHeading part={part} />
               {part.items.map((group) => <SettingsGroupView group={group} index={settings.groups.indexOf(group)} key={group.resourceType} sides={sides} />)}
             </div>
           ))}
@@ -288,7 +288,7 @@ function WorkloadsPanel({ workloads, liveStored, sides }: { workloads: Workloads
           <ServiceHeading service={block.heading} />
           {block.parts.map((part) => (
             <div className="compare-kind" key={part.key}>
-              <KindHeading part={part} show={block.parts.length > 1} />
+              <KindHeading part={part} />
               <ul className="compare-list" style={{ listStyle: "none", paddingLeft: 0 }}>
                 {part.items.map((group) => <WorkloadGroupView group={group} index={workloads.groups.indexOf(group)} key={group.workload} sides={sides} />)}
               </ul>

@@ -16,7 +16,9 @@ export interface KindPart<T> {
  * filed under another service (a policy another app created) sorts after the service's
  * own groups, still under its own group's name. */
 export function kindRank(type: string, service?: string | null): [number, number] {
-  const info = typeInfo(type);
+  // The service places a kind it stores under its own code ("transportRule" under
+  // Exchange) that the taxonomy does not map by name.
+  const info = typeInfo(type, service ?? null);
   const foreign = service != null && info.service != null && info.service.toLowerCase() !== service.toLowerCase();
   return [info.categoryRank + (foreign ? 100 : 0), info.typeRank];
 }
@@ -40,7 +42,7 @@ export function compareKinds(a: string, b: string, service?: string | null): num
 export function kindParts<T>(items: readonly T[], typeOf: (item: T) => string, service?: string | null, within?: (a: T, b: T) => number): KindPart<T>[] {
   const parts = new Map<string, { rank: number; label: string; items: T[] }>();
   for (const item of items) {
-    const info = typeInfo(typeOf(item));
+    const info = typeInfo(typeOf(item), service ?? null);
     const [rank] = kindRank(typeOf(item), service);
     // A group from another service keeps its own key, so it never merges with this
     // service's group of the same name.

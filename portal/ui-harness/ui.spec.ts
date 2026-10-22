@@ -628,6 +628,10 @@ test("restore leads with what changed, by service, and undoes a change or a grou
   await expect(page).toHaveURL(/closed=Entra\.groups/);
   await entraParts.nth(0).getByRole("button", { name: /Groups and administrative units/ }).click();
   await expect(entraParts.nth(0).locator(".sel-row")).toHaveCount(7);
+  // Every service shows its kinds, even with only one: Exchange's mail flow rule, stored
+  // under the workload's own code, sits under "Mail flow and protection".
+  const exchange = page.locator(".sel-group").filter({ has: page.locator(".sel-group-name b", { hasText: /^Exchange Online$/ }) });
+  await expect(exchange.locator(".sel-part-name")).toHaveText(["Mail flow and protection"]);
   // Unchanged rows say "Same now" and carry no lockout warning: a restore writes nothing to them.
   await expect(groups.nth(1).locator(".restore-row-same")).toHaveCount(11);
   await expect(groups.nth(1).locator(".restore-row-impact")).toHaveCount(0);
@@ -933,7 +937,7 @@ test("changes · Shift+click range, select a service, select all, filter by risk
   await expect(page.locator(".sel-bar")).toContainText("3 changes selected");
   expect(await page.evaluate(() => window.getSelection()?.toString() ?? "")).toBe("");
   await page.keyboard.press("Escape");
-  await page.getByRole("checkbox", { name: "Select all 1 change in Intune" }).check();
+  await page.getByRole("checkbox", { name: "Select all 1 change in Intune", exact: true }).check();
   await expect(page.locator(".sel-bar")).toContainText("1 change selected");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Select all 7 changes" }).click();

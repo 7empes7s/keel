@@ -229,6 +229,9 @@ const CSS = `
 .bl-sides-arrow { width: 1rem; height: 1rem; color: var(--text-muted); }
 .bl-service-heading { display: flex; align-items: center; gap: var(--space-xs); }
 .bl-service-heading .icon { color: var(--text-soft); }
+.compare-kind { overflow: hidden; margin-top: var(--space-xs); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
+.compare-kind-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2xs) var(--space-sm); margin: 0; padding: var(--space-xs) var(--space-md); background: var(--surface-raised); color: var(--text); font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
+.compare-kind-heading small { color: var(--text-soft); font-size: 0.75rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .bl-sides-list { display: grid; margin: 0; padding: 0; list-style: none; gap: var(--space-xs); }
 .bl-sides-row { display: grid; align-items: center; gap: var(--space-xs) var(--space-sm); grid-template-columns: minmax(8rem, 1fr) minmax(0, 1.2fr) auto minmax(0, 1.2fr); }
 .bl-sides-name { font-weight: 600; font-size: 0.875rem; overflow-wrap: anywhere; }

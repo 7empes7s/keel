@@ -93,7 +93,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
   const groups = useMemo(() => grouping.groupsOf(filtered), [grouping, filtered]);
   const shownOf = (group: ListGroup<T>) => (rowLimit && !expanded.has(group.key) && group.items.length > rowLimit + 1 ? group.items.slice(0, rowLimit) : group.items);
   const allIds = useMemo(() => groups.flatMap((group) => group.items.map(getId)), [groups, getId]);
-  const partsOf = (group: ListGroup<T>) => (group.parts && group.parts.length > 1 ? group.parts.map((part) => ({ ...part, key: `${group.key}.${part.key}` })) : null);
+  const partsOf = (group: ListGroup<T>) => (group.parts && group.parts.length ? group.parts.map((part) => ({ ...part, key: `${group.key}.${part.key}` })) : null);
   const visibleIds = useMemo(() => groups.filter((group) => !closed.includes(group.key)).flatMap((group) => {
     const parts = partsOf(group);
     return parts ? parts.filter((part) => !closed.includes(part.key)).flatMap((part) => shownOf(part).map(getId)) : shownOf(group).map(getId);

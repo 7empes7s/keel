@@ -7201,16 +7201,33 @@ section.wizard-panel {
   transform: rotate(-90deg);
 }
 
-/* A kind inside a service: a small caps header on the rows' own column of checkboxes. */
-.sel-part {
+/* A kind inside a service: its own bordered panel with a tinted header bar, so each
+   kind's edges show and its heading stands out from the rows it holds. */
+.sel-parts {
+  display: grid;
+  padding: var(--space-xs);
   border-top: 1px solid var(--line);
+  background: var(--surface-muted);
+  gap: var(--space-xs);
+}
+
+.sel-part {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
 }
 
 .sel-part-head {
   display: flex;
   padding-left: var(--space-md);
   align-items: center;
+  background: var(--surface-raised);
   gap: var(--space-sm);
+}
+
+.sel-part[data-closed] .sel-part-head {
+  background: var(--surface);
 }
 
 .sel-part-toggle {
@@ -7232,11 +7249,19 @@ section.wizard-panel {
 .sel-part-name {
   min-width: 0;
   flex: 1;
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.sel-part-head .sel-group-count {
+  padding: 0.125rem var(--space-xs);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
   color: var(--text-soft);
   font-size: 0.75rem;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .sel-part-toggle[aria-expanded="false"] .sel-group-chevron {

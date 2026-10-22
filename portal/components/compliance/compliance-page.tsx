@@ -8,6 +8,7 @@ import { BaselinesStyles } from "@/components/baselines/styles";
 import { ControlSheet } from "@/components/compliance/control-sheet";
 import { FindingRecordFields, StorageRecordFields } from "@/components/compliance/compliance-record";
 import { ExceptionSheet, type Granted } from "@/components/compliance/exception-sheet";
+import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
@@ -27,7 +28,6 @@ import {
   findingTypes,
   grantLabel,
   immutabilitySentence,
-  isResult,
   orderFindings,
   ownerPerson,
   resultLine,
@@ -36,6 +36,7 @@ import {
   storageSentence,
   type ControlResult,
 } from "@/lib/compliance-view";
+import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { ago } from "@/lib/presentation";
 import { serviceOrder } from "@/lib/services";
 import { toast } from "@/lib/toast";
@@ -56,6 +57,7 @@ const TILES: { key: ControlResult; small: string }[] = [
   { key: "unknown", small: "The backup it needs is missing or too old" },
   { key: "passing", small: "Met on the last check" },
 ];
+const RESULT_TILES: FilterTile<ComplianceFinding>[] = (Object.keys(RESULTS) as ControlResult[]).map((key) => ({ key, test: (finding: ComplianceFinding) => resultOf(finding) === key }));
 
 export function CompliancePage({ data, canConfigure, now = data.generatedAt }: {
   data: ComplianceData;
@@ -87,9 +89,12 @@ export function CompliancePage({ data, canConfigure, now = data.generatedAt }: {
   })), [data.findings, granted, now]);
   const counts = useMemo(() => complianceCounts(findings), [findings]);
   const verdict = complianceVerdict({ ...data, findings });
-  const resultParam = params?.get("result") ?? null;
-  const filter = isResult(resultParam) ? resultParam : null;
-  const shown = useMemo(() => (filter ? findings.filter((finding) => resultOf(finding) === filter) : findings), [findings, filter]);
+  // The result tiles add up: `result=failing,unknown` shows controls in either.
+  const filter = readPicked(RESULT_TILES, params?.get("result")) as ControlResult[];
+  const filterKey = filter.join(",");
+  const shown = useMemo(() => applyFilters(findings, RESULT_TILES, filterKey ? filterKey.split(",") : []), [findings, filterKey]);
+  const tileTotals = useMemo(() => new Map(tileCounts(findings, RESULT_TILES, filterKey ? filterKey.split(",") : []).map((entry) => [entry.key, entry])), [findings, filterKey]);
+  const activeFilters: ActiveFilter[] = filter.map((key) => ({ key: `result:${key}`, label: RESULTS[key].plural, clear: { result: withoutTile(filter, key) } }));
   const opened = findings.find((finding) => finding.id === view.get("open")) ?? null;
   const grantIds = view.get("grant").split(",").filter(Boolean);
   const granting = canConfigure ? findings.filter((finding) => grantIds.includes(finding.id) && finding.verdict === "fail") : [];
@@ -164,13 +169,15 @@ export function CompliancePage({ data, canConfigure, now = data.generatedAt }: {
         <section aria-label="Results at a glance" className="cp-tiles">
           {TILES.map((tile) => {
             const words = RESULTS[tile.key];
-            const active = filter === tile.key;
+            const active = filter.includes(tile.key);
+            const adds = addsWords(tileTotals.get(tile.key), filter.length);
             const tone = tile.key === "failing" && counts.failing ? "urgent" : (tile.key === "unknown" || tile.key === "excepted") && counts[tile.key] ? "soon" : undefined;
             return (
-              <Link aria-current={active || undefined} className="cp-tile" data-tone={tone} href={href({ result: active ? null : tile.key, open: null, grant: null })} key={tile.key}>
-                <span className="cp-tile-label"><Icon name={words.icon} />{words.label}</span>
+              <Link aria-current={active || undefined} className="cp-tile" data-tone={tone} href={href({ result: tileParam(RESULT_TILES, filter, tile.key), open: null, grant: null })} key={tile.key} title={active ? "Picked: click to remove it from the view" : "Click to add these to the view"}>
+                <span className="cp-tile-label"><Icon name={words.icon} />{words.label}{active ? <Icon className="tile-check" name="check" /> : null}</span>
                 <b className="cp-tile-count">{counts[tile.key]}</b>
                 <small>{tile.small}</small>
+                {adds ? <small className="tile-adds">{adds}</small> : null}
               </Link>
             );
           })}
@@ -205,16 +212,11 @@ export function CompliancePage({ data, canConfigure, now = data.generatedAt }: {
 
         <section aria-labelledby="cp-controls-heading" className="cp-section">
           <h2 className="visually-hidden" id="cp-controls-heading">Controls</h2>
-          {filter ? (
-            <p className="cp-filter-note" role="status">
-              Showing {RESULTS[filter].label.toLowerCase()} only: {shown.length} of {findings.length}.
-              <Link className="cp-inline-link" href={href({ result: null })}>Show every control</Link>
-            </p>
-          ) : null}
+          <ActiveFilters extra={{ open: null, grant: null }} filters={activeFilters} noun={{ one: "control", many: "controls" }} shown={shown.length} total={findings.length} />
           {findings.length === 0 ? (
             <p className="sel-empty">No control has been checked on this tenant yet.</p>
           ) : shown.length === 0 ? (
-            <p className="sel-empty">No control matches this filter.</p>
+            <NoMatches extra={{ open: null, grant: null }} filters={activeFilters} noun={{ one: "control", many: "controls" }} />
           ) : (
             <SelectableList
               action={canConfigure ? {

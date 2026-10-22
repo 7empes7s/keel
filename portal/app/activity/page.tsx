@@ -35,7 +35,7 @@ export default async function ActivityPage({ searchParams }: {
 
   const jobQuery = new URLSearchParams({ limit: "100" });
   if (filters.what) jobQuery.set("kind", ACTIVITY_KINDS[filters.what].jobs.join(",") || "none");
-  if (filters.outcome) jobQuery.set("status", OUTCOMES[filters.outcome].jobStatuses.join(",") || "none");
+  if (filters.outcomes.length) jobQuery.set("status", filters.outcomes.flatMap((key) => OUTCOMES[key].jobStatuses).join(",") || "none");
   const evidenceQuery = new URLSearchParams();
   if (filters.what) evidenceQuery.set("kind", ACTIVITY_KINDS[filters.what].records.join(",") || "none");
   if (bounds) { evidenceQuery.set("from", bounds.from); evidenceQuery.set("to", bounds.to); }
@@ -43,7 +43,7 @@ export default async function ActivityPage({ searchParams }: {
   if (before) evidenceQuery.set("before", before);
   // A job filter with no job kinds (drills) or an outcome only jobs have skips that side.
   const wantJobs = filters.show !== "records" && !before && jobQuery.get("kind") !== "none" && jobQuery.get("status") !== "none";
-  const wantRecords = filters.show !== "jobs" && evidenceQuery.get("kind") !== "none" && (!filters.outcome || filters.outcome === "failed" || filters.outcome === "refused" || filters.outcome === "recorded");
+  const wantRecords = filters.show !== "jobs" && evidenceQuery.get("kind") !== "none" && (!filters.outcomes.length || filters.outcomes.some((key) => key === "failed" || key === "refused" || key === "recorded"));
 
   let jobs: JobsData | null = null;
   let evidence: EvidenceData | null = null;

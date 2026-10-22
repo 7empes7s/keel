@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, type MouseEvent } from "react";
 
 import { BaselinesStyles } from "@/components/baselines/styles";
+import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { AddPersonSheet } from "@/components/people/add-person-sheet";
 import { PersonRecord } from "@/components/people/person-record";
@@ -22,7 +23,8 @@ import {
   accessLine,
   accessReviewCsv,
   addRoleDetail,
-  filterWords,
+  hasRole,
+  inState,
   grantEntity,
   isRole,
   isSystem,
@@ -39,9 +41,11 @@ import {
   sinceWords,
   systemWords,
   type PersonState,
+  type PeopleState,
   type Role,
 } from "@/lib/people-view";
 import type { PrincipalView } from "@/lib/principals";
+import { addsWords, tileCounts } from "@/lib/filter-set";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
 import { useViewState } from "@/lib/use-view-state";
@@ -55,6 +59,9 @@ import { useViewState } from "@/lib/use-view-state";
 // apart, with no controls. Ids and capability codes stay in one record at the foot.
 
 const GROUP_ORDER = [...ROLE_ORDER, "starts-later", "no-role", "disabled"];
+
+// Which filter key each tile stands for.
+const TILE_KEYS: Record<string, string> = { use: "active", admins: "admin", approve: "approver", disabled: "disabled" };
 
 export function PeoplePage({ people, canUsers, canRoles, now = new Date().toISOString() }: {
   people: PrincipalView[];
@@ -78,7 +85,19 @@ export function PeoplePage({ people, canUsers, canRoles, now = new Date().toISOS
   const counts = useMemo(() => peopleCounts(everyone, now), [everyone, now]);
   const verdict = peopleVerdict(counts);
   const shown = useMemo(() => humans.filter((person) => personMatches(person, filters, now)), [humans, filters, now]);
-  const filtering = Boolean(filters.role || filters.state);
+  const filtering = Boolean(filters.roles.length || filters.states.length);
+  // Each tile and what picking it would add to the people shown now.
+  const pickedTiles = [...filters.states, ...filters.roles] as string[];
+  const tileTotals = useMemo(() => new Map(tileCounts(humans, [
+    ...(["active", "disabled"] as const).map((state) => ({ key: state as string, test: (person: PrincipalView) => inState(person, state, now) })),
+    ...ROLE_ORDER.map((role) => ({ key: role as string, test: (person: PrincipalView) => hasRole(person, role, now) })),
+  ], pickedTiles).map((entry) => [entry.key, entry])), [humans, now, pickedTiles.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggleRole = (role: Role) => ({ role: (filters.roles.includes(role) ? filters.roles.filter((entry) => entry !== role) : ROLE_ORDER.filter((entry) => entry === role || filters.roles.includes(entry))).join(",") || null });
+  const toggleState = (state: PeopleState) => ({ state: (filters.states.includes(state) ? filters.states.filter((entry) => entry !== state) : (["active", "disabled"] as const).filter((entry) => entry === state || filters.states.includes(entry))).join(",") || null });
+  const activeFilters: ActiveFilter[] = [
+    ...filters.states.map((state) => ({ key: `state:${state}`, label: state === "active" ? "Can use Keel" : "Disabled", clear: toggleState(state) })),
+    ...filters.roles.map((role) => ({ key: `role:${role}`, label: role === "approver" ? "Can approve" : ROLES[role].plural, clear: toggleRole(role) })),
+  ];
   const openId = view.get("open");
   const opened = everyone.find((person) => person.id === openId) ?? null;
   const adding = Boolean(view.get("new")) && canUsers && canRoles;
@@ -129,10 +148,10 @@ export function PeoplePage({ people, canUsers, canRoles, now = new Date().toISOS
   const verdictAction = verdict.tone === "urgent" && canUsers && canRoles && !adding ? { label: "Add an approver", href: href({ new: "1", as: "approver", open: null }) } : null;
 
   const tiles: { key: string; label: string; icon: IconName; value: number; small: string; changes: Record<string, string | null>; tone?: "urgent" | "soon"; active: boolean }[] = [
-    { key: "use", label: "Can use Keel", icon: "check-circle", value: counts.canUse, small: counts.total > counts.canUse ? `${counts.total - counts.canUse} more without a role or disabled` : "Everyone added has a role", changes: { state: filters.state === "active" && !filters.role ? null : "active", role: null }, active: filters.state === "active" && !filters.role },
-    { key: "admins", label: "Admins", icon: "settings", value: counts.admins, small: counts.admins <= 1 ? "Add a second admin to be safe" : "Add people and grant roles", changes: { role: filters.role === "admin" ? null : "admin", state: null }, tone: counts.admins <= 1 ? "soon" : undefined, active: filters.role === "admin" },
-    { key: "approve", label: "Can approve", icon: "inbox", value: counts.approvers, small: counts.approvers ? "Restores and changes someone asked for" : "Nobody can approve yet", changes: { role: filters.role === "approver" ? null : "approver", state: null }, tone: counts.approvers === 0 ? "urgent" : undefined, active: filters.role === "approver" },
-    { key: "disabled", label: "Disabled", icon: "hide", value: counts.disabled, small: counts.disabled ? "Roles kept, cannot sign in" : "Nobody is disabled", changes: { state: filters.state === "disabled" ? null : "disabled", role: null }, active: filters.state === "disabled" },
+    { key: "use", label: "Can use Keel", icon: "check-circle", value: counts.canUse, small: counts.total > counts.canUse ? `${counts.total - counts.canUse} more without a role or disabled` : "Everyone added has a role", changes: toggleState("active"), active: filters.states.includes("active") },
+    { key: "admins", label: "Admins", icon: "settings", value: counts.admins, small: counts.admins <= 1 ? "Add a second admin to be safe" : "Add people and grant roles", changes: toggleRole("admin"), tone: counts.admins <= 1 ? "soon" : undefined, active: filters.roles.includes("admin") },
+    { key: "approve", label: "Can approve", icon: "inbox", value: counts.approvers, small: counts.approvers ? "Restores and changes someone asked for" : "Nobody can approve yet", changes: toggleRole("approver"), tone: counts.approvers === 0 ? "urgent" : undefined, active: filters.roles.includes("approver") },
+    { key: "disabled", label: "Disabled", icon: "hide", value: counts.disabled, small: counts.disabled ? "Roles kept, cannot sign in" : "Nobody is disabled", changes: toggleState("disabled"), active: filters.states.includes("disabled") },
   ];
 
   const groupings = useMemo<Grouping<PrincipalView>[]>(() => [
@@ -170,21 +189,22 @@ export function PeoplePage({ people, canUsers, canRoles, now = new Date().toISOS
       <Verdict action={verdictAction} detail={verdict.detail} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <section aria-label="People at a glance" className="pe-tiles">
-          {tiles.map((tile) => (
-            <Link aria-current={tile.active || undefined} className="pe-tile" data-tone={tile.tone} href={href({ ...tile.changes, open: null, new: null })} key={tile.key}>
-              <span className="pe-tile-label"><Icon name={tile.icon} />{tile.label}</span>
-              <b className="pe-tile-count">{tile.value}</b>
-              <small>{tile.small}</small>
-            </Link>
-          ))}
+          {tiles.map((tile) => {
+            const adds = addsWords(tileTotals.get(TILE_KEYS[tile.key]), pickedTiles.length);
+            return (
+              <Link aria-current={tile.active || undefined} className="pe-tile" data-tone={tile.tone} href={href({ ...tile.changes, open: null, new: null })} key={tile.key} title={tile.active ? "Picked: click to remove it from the view" : "Click to add these to the view"}>
+                <span className="pe-tile-label"><Icon name={tile.icon} />{tile.label}{tile.active ? <Icon className="tile-check" name="check" /> : null}</span>
+                <b className="pe-tile-count">{tile.value}</b>
+                <small>{tile.small}</small>
+                {adds ? <small className="tile-adds">{adds}</small> : null}
+              </Link>
+            );
+          })}
         </section>
 
         <div className="pe-tools">
           {filtering ? (
-            <p className="pe-filter-note" role="status">
-              Showing {filterWords(filters)} only: {shown.length} of {humans.length}.
-              <Link className="pe-inline-link" href={href({ role: null, state: null })}>Show everyone</Link>
-            </p>
+            <ActiveFilters extra={{ open: null }} filters={activeFilters} noun={{ one: "person", many: "people" }} shown={shown.length} total={humans.length} />
           ) : <p className="pe-filter-note">Adding someone here does not let them past your sign-in gate; allow their email there too.</p>}
           {humans.length ? <button className="btn btn-sm" onClick={exportCsv} type="button"><Icon name="save" />Export for access review</button> : null}
         </div>
@@ -197,7 +217,7 @@ export function PeoplePage({ people, canUsers, canRoles, now = new Date().toISOS
               {canUsers && canRoles ? <Link className="btn" href={href({ new: "1" })}><Icon name="plus" />Add person</Link> : null}
             </div>
           ) : shown.length === 0 ? (
-            <p className="sel-empty">Nobody matches this filter.</p>
+            <NoMatches extra={{ open: null }} filters={activeFilters} noun={{ one: "person", many: "people" }} />
           ) : canRoles || canUsers ? (
             <SelectableList
               action={canRoles ? {

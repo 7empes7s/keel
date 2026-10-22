@@ -72,7 +72,11 @@ test("rows: role chips, since when, and filters set by the tiles", () => {
   const approvers = parseFilters((key) => (key === "role" ? "approver" : null));
   assert.deepEqual(PEOPLE.filter((person) => personMatches(person, approvers, NOW)).map((person) => person.id), [PEOPLE[0].id, PEOPLE[1].id]);
   assert.equal(filterWords(approvers), "approvers");
-  assert.deepEqual(parseFilters((key) => (key === "role" ? "owner" : key === "state" ? "gone" : null)), { role: null, state: null }, "unknown values are ignored");
+  assert.deepEqual(parseFilters((key) => (key === "role" ? "owner" : key === "state" ? "gone" : null)), { roles: [], states: [] }, "unknown values are ignored");
+  // The tiles add up: approvers or disabled people shows both.
+  const either = parseFilters((key) => (key === "role" ? "approver" : key === "state" ? "disabled" : null));
+  assert.deepEqual(PEOPLE.filter((person) => personMatches(person, either, NOW)).map((person) => person.id), PEOPLE.filter((person) => personMatches(person, approvers, NOW) || Boolean(person.disabled_at)).map((person) => person.id));
+  assert.equal(filterWords(either), "disabled people or approvers");
   assert.equal(addRoleDetail("viewer", PEOPLE.slice(1, 5), NOW), "From now on they can see backups, changes and reports. 1 already holds it and stays as is. 1 is disabled and is left out.");
 });
 
@@ -119,8 +123,8 @@ test("each control reaches its guarded route with the body it takes", async () =
 
 test("the page body: tiles filter by link, ids stay in the record, the scheduler has no controls", async () => {
   const html = await renderPeopleAt("role=approver", { people: PEOPLE, canUsers: true, canRoles: true, now: NOW });
-  assert.match(html, /Showing approvers only: 2 of 5\./);
-  assert.match(html, /href="\/principals\?role=admin"/);
+  assert.match(html, /Showing <b>2<\/b> of 5 people/);
+  assert.match(html, /href="\/principals\?role=admin%2Capprover"/, "Admins adds to Can approve");
   assert.match(html, /href="\/principals"[^>]*>[\s\S]*?Can approve/, "the active tile clears its filter");
   const record = html.indexOf('data-layer="record"');
   const visible = html.slice(0, record).replace(/ (data-row-id|href|title|id|for|aria-labelledby)="[^"]*"/g, "");

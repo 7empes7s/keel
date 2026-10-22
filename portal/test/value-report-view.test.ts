@@ -157,7 +157,9 @@ test("the tiles and the chart add up, every request links to its job, and the pa
 test("the result filter narrows the list", async () => {
   const value = report();
   const filtered = await render(value, "result=verified");
-  assert.match(filtered, /Showing put back and checked only: 1 of 2\./);
+  assert.match(filtered, /Showing <b>1<\/b> of 2 requests/);
+  const both = await render(value, "result=verified,open");
+  assert.match(both, /Showing <b>2<\/b> of 2 requests/, "the tiles add up");
   assert.doesNotMatch(visible(filtered), /Undo a change to a group/);
 });
 

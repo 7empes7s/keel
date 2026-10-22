@@ -131,17 +131,17 @@ test("tiles, status and verdict count the last day by when a job was asked for",
 
 test("filters live in the address, narrow the rows, and read back as words", () => {
   const filters = parseFilters((key) => ({ show: "jobs", range: "2026-10-01..2026-10-02", who: AMARA.id, what: "restore", outcome: "failed" }[key] ?? null));
-  assert.deepEqual(filters, { show: "jobs", range: { from: "2026-10-01", to: "2026-10-02" }, who: AMARA.id, what: "restore", outcome: "failed" });
+  assert.deepEqual(filters, { show: "jobs", range: { from: "2026-10-01", to: "2026-10-02" }, who: AMARA.id, what: "restore", outcomes: ["failed"] });
   assert.deepEqual(rangeBounds(filters.range), { from: "2026-10-01T00:00:00.000Z", to: "2026-10-02T23:59:59.999Z" });
-  assert.deepEqual(parseFilters(() => null), { show: "all", range: null, who: null, what: null, outcome: null });
+  assert.deepEqual(parseFilters(() => null), { show: "all", range: null, who: null, what: null, outcomes: [] });
   assert.equal(parseFilters((key) => (key === "what" ? "nonsense" : key === "outcome" ? "exploded" : null)).what, null);
   const rows = activityRows(JOBS, ENTRIES, PEOPLE, NAMES, NOW);
   assert.deepEqual(rows.filter((row) => rowMatches(row, filters)).map((row) => row.id), ["job:a4000000-0000-4000-8000-000000000004"]);
-  assert.equal(rows.filter((row) => rowMatches(row, { ...filters, show: "all", what: null, outcome: "refused" })).length, 0);
-  assert.equal(rows.filter((row) => rowMatches(row, { show: "records", range: null, who: null, what: null, outcome: "refused" })).length, 1);
-  assert.equal(rows.filter((row) => rowMatches(row, { show: "all", range: { from: "2026-09-28" }, who: null, what: null, outcome: null })).length, 2);
+  assert.equal(rows.filter((row) => rowMatches(row, { ...filters, show: "all", what: null, outcomes: ["refused"] })).length, 0);
+  assert.equal(rows.filter((row) => rowMatches(row, { show: "records", range: null, who: null, what: null, outcomes: ["refused"] })).length, 1);
+  assert.equal(rows.filter((row) => rowMatches(row, { show: "all", range: { from: "2026-09-28" }, who: null, what: null, outcomes: [] })).length, 2);
   assert.equal(filterWords(filters, PEOPLE, "2026-10-02"), "failed restores by Amara Okafor from 1 Oct to 2 Oct");
-  assert.equal(filterWords({ show: "records", range: { from: "2026-10-02" }, who: null, what: null, outcome: null }, PEOPLE, "2026-10-02"), "audit entries today");
+  assert.equal(filterWords({ show: "records", range: { from: "2026-10-02" }, who: null, what: null, outcomes: [] }, PEOPLE, "2026-10-02"), "audit entries today");
   assert.deepEqual(peopleIn(rows, PEOPLE, null).map((person) => person.name), ["Amara Okafor", "Maro Defili", "Keel's scheduler"]);
   assert.equal(dayLabel("2026-10-01T16:52:00Z", NOW), "Yesterday");
   const csv = activityCsv(rows.slice(0, 2));
@@ -159,13 +159,17 @@ test("the page body renders rows by day, filters by address, and keeps ids in th
     assert.ok(visible.includes(text), text);
   }
   assert.ok(html.indexOf("Today") < html.indexOf("Yesterday") && html.indexOf("Yesterday") < html.indexOf("Monday 28 September"), "newest day first");
-  assert.ok(html.includes(`href="/activity?show=jobs&amp;outcome=failed"`), "the Failed tile links to the failed filter");
+  assert.ok(html.includes(`href="/activity?outcome=failed"`), "the Failed tile links to the failed filter");
   const record = html.match(/<details[\s\S]*<\/details>/)?.[0] ?? "";
   for (const id of [JOBS[2].id, "18205", MARO.id, "GET /api/evidence/verify"]) assert.ok(record.includes(id), `record keeps ${id}`);
 
   const failedOnly = await renderActivityAt("show=jobs&outcome=failed", props);
   assert.equal((failedOnly.match(/class="sel-row"/g) ?? []).length, 2);
-  assert.ok(failedOnly.includes("Showing failed jobs only: 2 of 9 loaded."));
+  assert.match(failedOnly, /Showing <b>2<\/b> of 9 entries loaded/);
+  assert.match(failedOnly, /Remove filter: Failed/);
+  assert.match(failedOnly, /Remove filter: Jobs only/);
+  // Outcome tiles add up: the Running or waiting tile adds to Failed, it does not replace it.
+  assert.ok(failedOnly.includes(`href="/activity?show=jobs&amp;outcome=failed%2Crunning%2Cwaiting"`), "Running or waiting adds to Failed");
   const viewer = await renderActivityAt("", { ...props, canBackup: false });
   assert.ok(!viewer.includes("Run again"), "a viewer cannot run a backup");
   assert.ok(!viewer.includes("btn-primary"), "no amber action without the backup capability");

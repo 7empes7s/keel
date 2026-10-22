@@ -88,7 +88,8 @@ test("Compliance body: a tile sets result=, the filter shows only that result, n
   assert.match(all, /href="\/benchmarks\?open=e7a10000-0000-4000-8000-0000000000e1"/);
   assert.match(all, /Renew exception/);
   const failing = await renderComplianceAt("result=failing", { data: DATA, canConfigure: true, now: NOW });
-  assert.match(failing, /Showing failing only: 1 of 4\./);
+  assert.match(failing, /Showing <b>1<\/b> of 4 controls/);
+  assert.match(failing, /href="\/benchmarks\?result=failing%2Cpassing"/, "Passing adds to Failing");
   const list = failing.slice(failing.indexOf('aria-labelledby="cp-controls-heading"'));
   assert.ok(list.includes("No more than 5 people hold the top admin role"));
   assert.ok(!list.slice(0, list.indexOf("cp-storage")).includes("Old sign-in methods are blocked"));

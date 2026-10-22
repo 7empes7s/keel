@@ -1038,7 +1038,7 @@ being triggered by queue updates.
   set up (404 on an `absentWhenNotFound` entry). Anything else stays a problem with its reason and permission. Stored runs
   are re-judged on load, so no new discovery run is needed.
 - Needs: PR #495 live (`grep -q notUsedReason /opt/keel-live/engine/discovery/discover.mjs`).
-- Status: todo
+- Status: in-progress
 - **Tenant:** nothing read or written. DB and portal reads only.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. `node cli/keel-discover.mjs show --config /etc/keel/tenant.json | sed -n '1,/^Uncatalogued/p'`. Report the

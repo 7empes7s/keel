@@ -12,6 +12,7 @@ import { canonicalHash, HASH_VERSION } from '../cir/canonicalHash.mjs';
 import { complianceFindings } from '../govern/baselineCompliance.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { listControls } from './registry.mjs';
 import { runComplianceChecks } from './runChecks.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
@@ -23,6 +24,9 @@ const GLOBAL_ADMIN = '62e90394-69f5-4237-9190-012177145e10';
 const ROLE = 'keel-custom.role-assignment.admin-count-at-most';
 const LOCATION = 'keel-custom.named-location.no-untrusted-all-countries';
 const GROUP = 'keel-custom.group.role-assignable-not-synced';
+// Every shipped control is checked; the rest (Defender email...) have no read in these tests.
+const ALL = listControls().length;
+const OTHERS = ALL - 3;
 
 let ready = false;
 async function schemaClient(t) {
@@ -72,19 +76,19 @@ test('checks every control against the newest complete read of each type and rec
   const newest = await snapshot(client, tenantRef, new Date(now.getTime() - HOUR), { roleAssignment: 'complete', group: 'failed' }, admins(2));
 
   const result = await runComplianceChecks(client, { tenantRef, actor: 'scheduler', now });
-  assert.equal(result.checked, 3);
+  assert.equal(result.checked, ALL);
   const byControl = Object.fromEntries(result.evaluations.map((evaluation) => [evaluation.control_id, evaluation]));
   assert.equal(byControl[ROLE].verdict, 'pass', 'the newest complete role read (2 admins) is used');
   assert.equal(byControl[GROUP].verdict, 'fail', 'a failed group read falls back to the newest complete one');
   assert.equal(byControl[LOCATION].verdict, 'unknown', 'a type no backup read is never a guessed pass');
   assert.equal(byControl[LOCATION].reason, 'namedLocation:no-observation');
-  assert.deepEqual([result.pass, result.fail, result.unknown], [1, 1, 1]);
+  assert.deepEqual([result.pass, result.fail, result.unknown], [1, 1, 1 + OTHERS]);
 
   // Each result has its evidence entry, and the Compliance reader matches it to the snapshot it came from.
   const { rows: [{ count }] } = await client.query("SELECT count(*)::int AS count FROM evidence WHERE tenant_ref = $1 AND kind = 'benchmark-evaluation'", [tenantRef]);
-  assert.equal(count, 3);
+  assert.equal(count, ALL);
   const { findings } = await complianceFindings(client, { tenantRef, now });
-  assert.equal(findings.length, 3);
+  assert.equal(findings.length, ALL);
   const role = findings.find((finding) => finding.controlId === ROLE);
   assert.deepEqual(role.evidence.map((entry) => entry.snapshotId), [newest]);
 });
@@ -106,7 +110,7 @@ test('another tenant\'s backups are never used', async (t) => {
   const other = tenant();
   await snapshot(client, other, new Date(Date.now() - HOUR), { roleAssignment: 'complete' }, admins(9));
   const result = await runComplianceChecks(client, { tenantRef: mine, actor: 'scheduler' });
-  assert.equal(result.unknown, 3);
+  assert.equal(result.unknown, ALL);
   const { rows } = await client.query('SELECT DISTINCT tenant_ref FROM benchmark_evaluation WHERE tenant_ref = ANY($1)', [[mine, other]]);
   assert.deepEqual(rows.map((row) => row.tenant_ref), [mine]);
 });
@@ -116,10 +120,10 @@ test('drift detection after a backup runs the checks, even with no active baseli
   const tenantRef = tenant();
   const snapshotId = await snapshot(client, tenantRef, new Date(Date.now() - HOUR), { roleAssignment: 'complete' }, admins(3));
   const run = spawnSync(process.execPath, [join(ROOT, 'cli', 'keel-drift.mjs'), 'detect', '--snapshot-id', snapshotId, '--tenant-ref', tenantRef, '--db-url', database.url], { encoding: 'utf8' });
-  assert.match(run.stdout, /compliance checks: 3 run \(1 pass, 0 fail, 2 could not check\)/, run.stderr);
+  assert.match(run.stdout, new RegExp(`compliance checks: ${ALL} run \\(1 pass, 0 fail, ${ALL - 1} could not check\\)`), run.stderr);
   // With no baseline, drift itself still refuses as before.
   assert.equal(run.status, 1);
   assert.match(run.stderr, /no active baseline/);
   const { rows } = await client.query("SELECT actor FROM evidence WHERE tenant_ref = $1 AND kind = 'benchmark-evaluation'", [tenantRef]);
-  assert.deepEqual(rows.map((row) => row.actor), ['scheduler', 'scheduler', 'scheduler']);
+  assert.deepEqual(rows.map((row) => row.actor), Array(ALL).fill('scheduler'));
 });

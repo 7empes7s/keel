@@ -11,7 +11,7 @@ import { SelectableList, type Grouping, type ListGroup } from "@/components/list
 import { DatePicker } from "@/components/pickers/date-picker";
 import { MultiOptionPicker } from "@/components/pickers/option-picker";
 import { Icon } from "@/components/shell/icons";
-import { Badge } from "@/components/ui/badge";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { Verdict } from "@/components/verdict";
 import { ValueReportRecord } from "@/components/value-report/value-report-record";
 import { plainControlTitle } from "@/lib/compliance-view";
@@ -47,14 +47,21 @@ import {
   periodWords,
   reasonSentence,
   recoverySentence,
-  backupLines,
+  BACKUP_AREA_WORDS,
+  backupView,
   scopeSentence,
   shortDuration,
   valueVerdict,
+  type BackupArea,
+  type BackupSection,
+  type FindingsSection,
+  type RecoverySection,
+  type BackupTile,
   type OutcomeRow,
   type OutcomeState,
   type OutcomeSummary,
   type ValueReportData,
+  type Withheld,
 } from "@/lib/value-report-view";
 import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { formatTimestamp } from "@/lib/presentation";
@@ -220,6 +227,7 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
           <section aria-labelledby="vr-chart-heading" className="vr-card">
             <div className="vr-card-head">
               <h2 id="vr-chart-heading"><Icon name="reports" />Results by kind</h2>
+              <Badge tone={resultsBadge(outcomes).tone}>{resultsBadge(outcomes).label}</Badge>
               <a className="btn btn-sm btn-ghost vr-full" href={href({ chart: "full" })} onClick={openChart}><Icon name="show" />Full screen</a>
             </div>
             <a aria-label="Results by kind: open full screen" className="vr-chart-open" href={href({ chart: "full" })} onClick={openChart}>
@@ -229,7 +237,10 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
           </section>
 
           <section aria-labelledby="vr-fixed-heading" className="vr-card">
-            <div className="vr-card-head"><h2 id="vr-fixed-heading"><Icon name="baselines" />Security checks fixed</h2></div>
+            <div className="vr-card-head">
+              <h2 id="vr-fixed-heading"><Icon name="baselines" />Security checks fixed</h2>
+              <Badge tone={checksBadge(shownFindings).tone}>{checksBadge(shownFindings).label}</Badge>
+            </div>
             <div className="vr-ring-row">
               {shownFindings && shownFindings.total ? <Ring label="fixed" value={shownFindings.percentResolved ?? 0} /> : null}
               <p className="vr-muted">{findingSentence(findings)} A check counts as fixed only while its newest result passes. An exception does not fix it.</p>
@@ -238,17 +249,15 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
           </section>
         </div>
 
+        <BackupsCard backups={report.backups} />
+
         <div className="vr-grid">
-          <section aria-labelledby="vr-backups-heading" className="vr-card">
-            <div className="vr-card-head"><h2 id="vr-backups-heading"><Icon name="backup" />What we backed up</h2></div>
-            <ul className="vr-lines">
-              {backupLines(report.backups).map((line) => <li className="vr-muted" key={line}>{line}</li>)}
-            </ul>
-            <Link className="vr-link" href="/protect">Open What&apos;s protected</Link>
-          </section>
 
           <section aria-labelledby="vr-recovery-heading" className="vr-card">
-            <div className="vr-card-head"><h2 id="vr-recovery-heading"><Icon name="restore" />How fast we recovered</h2></div>
+            <div className="vr-card-head">
+              <h2 id="vr-recovery-heading"><Icon name="restore" />How fast we recovered</h2>
+              <Badge tone={recoveryBadge(shownRecovery).tone}>{recoveryBadge(shownRecovery).label}</Badge>
+            </div>
             {shownRecovery ? (
               <>
                 <dl className="vr-figures">
@@ -404,10 +413,98 @@ function stillOpenWords(outcomes: OutcomeSummary): string {
   return parts.length ? parts.join(" · ") : "Nothing open";
 }
 
+function resultsBadge(outcomes: OutcomeSummary): { tone: BadgeTone; label: string } {
+  if (!outcomes.total) return { tone: "neutral", label: "Nothing asked" };
+  if (outcomes.states.failed) return { tone: "urgent", label: `${outcomes.states.failed} failed` };
+  if (outcomes.states.reopened) return { tone: "soon", label: `${outcomes.states.reopened} changed again` };
+  const waiting = outcomes.total - outcomes.states.verified;
+  return waiting ? { tone: "low", label: `${waiting} waiting` } : { tone: "fine", label: "All checked" };
+}
+
+function checksBadge(findings: FindingsSection | null): { tone: BadgeTone; label: string } {
+  if (!findings) return { tone: "neutral", label: "Not shown" };
+  if (findings.states.open) return { tone: "urgent", label: `${findings.states.open} still failing` };
+  if (findings.states.unchecked) return { tone: "soon", label: `${findings.states.unchecked} not checked` };
+  return { tone: "fine", label: findings.total ? "All fixed" : "None failing" };
+}
+
+function recoveryBadge(recovery: RecoverySection | null): { tone: BadgeTone; label: string } {
+  if (!recovery) return { tone: "neutral", label: "Not shown" };
+  if (recovery.recoveryTime.state === "unmeasured") return { tone: "soon", label: "Not measured" };
+  return recovery.freshness.state === "measured" ? { tone: "fine", label: "Measured" } : { tone: "soon", label: "Backup age not measured" };
+}
+
 function checksWords(open: number, unchecked: number): string {
   const parts = [`${open} still failing`];
   if (unchecked) parts.push(`${unchecked} not checked`);
   return parts.join(", ");
+}
+
+/** What we backed up: one tile per family, problems first, then every area in one compact table. */
+function BackupsCard({ backups }: { backups: BackupSection | Withheld | undefined }) {
+  const view = backupView(backups);
+  return (
+    <section aria-labelledby="vr-backups-heading" className="vr-card vr-backups" id="vr-backups">
+      <div className="vr-card-head">
+        <h2 id="vr-backups-heading"><Icon name="backup" />What we backed up</h2>
+        {view.state === "shown" ? <Badge tone={view.headline.tone}>{view.headline.text}</Badge> : <Badge tone="neutral">Not shown</Badge>}
+      </div>
+      {view.state !== "shown" ? <p className="vr-muted">{view.text}</p> : (
+        <>
+          <div className="vr-stats">
+            {view.tiles.map((tile) => <BackupStat key={tile.key} tile={tile} />)}
+          </div>
+          {view.groups.length ? (
+            <table className="vr-table vr-areas">
+              <caption className="visually-hidden">Every backed-up area in this period, problems first</caption>
+              <thead><tr><th scope="col">Area</th><th scope="col">Result</th></tr></thead>
+              {view.groups.map((group) => (
+                <tbody data-family={group.family} key={group.family}>
+                  <tr className="vr-area-group"><th colSpan={2} scope="colgroup">{group.label}<small>{group.rows.filter((row) => row.state === "good").length} of {group.rows.length} backed up</small></th></tr>
+                  {group.rows.map((row) => {
+                    const words = BACKUP_AREA_WORDS[row.state];
+                    return (
+                      <tr data-state={row.state} key={row.workload}>
+                        <th scope="row">
+                          <span className="vr-area-name">{row.name}</span>
+                          <small>{areaLine(row)}</small>
+                        </th>
+                        <td><Badge icon={words.icon} tone={words.badge}>{words.label}</Badge></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              ))}
+            </table>
+          ) : null}
+          {view.note ? <p className="vr-muted">{view.note}</p> : null}
+        </>
+      )}
+      <Link className="vr-link" href="/protect">Open What&apos;s protected</Link>
+    </section>
+  );
+}
+
+function areaLine(row: BackupArea): string {
+  if (row.state === "good") return `${plural(row.goodRuns, "good run")}${row.lastGoodAt ? ` · last ${formatTimestamp(row.lastGoodAt)}` : ""}`;
+  if (row.state === "partial") return `${plural(row.partialRuns, "run")} read only part of it · no full backup in this period`;
+  if (row.state === "failed") return `${plural(row.failedRuns, "run")} failed · no good backup in this period`;
+  return "No run finished in this period";
+}
+
+function BackupStat({ tile }: { tile: BackupTile }) {
+  const total = tile.of ?? 0;
+  return (
+    <div className="vr-stat" data-family={tile.key} data-tone={tile.tone}>
+      <span className="vr-tile-label"><Icon name={tile.icon} />{tile.label}</span>
+      {tile.count === null
+        ? <b className="vr-tile-count vr-tile-word">{tile.word}</b>
+        : <b className="vr-tile-count">{tile.count}{tile.of ? <small> of {tile.of}</small> : null}</b>}
+      <small>{tile.detail}</small>
+      {tile.meter ? <Meter parts={tile.meter} total={total} /> : null}
+      {tile.problem ? <Badge tone={tile.problemTone}>{tile.problem}</Badge> : null}
+    </div>
+  );
 }
 
 function Meter({ parts, total }: { parts: { tone: string; value: number }[]; total: number }) {

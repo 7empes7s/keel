@@ -96,5 +96,5 @@ test("the page header reads SECTION_ICONS from a plain module, not the client me
   assert.equal(isClientModule(header), false, "the page header is a server component");
   assert.equal(isClientModule(join(PORTAL, "components", "nav-links.tsx")), true);
   assert.equal(isClientModule(join(PORTAL, "lib", "nav-sections.ts")), false);
-  assert.match(readFileSync(header, "utf8"), /import \{ SECTION_ICONS, type NavSection \} from "@\/lib\/nav-sections"/);
+  assert.match(readFileSync(header, "utf8"), /import \{[^}]*\bSECTION_ICONS\b[^}]*\} from "@\/lib\/nav-sections"/);
 });

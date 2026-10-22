@@ -22,7 +22,7 @@ import { Verdict } from "@/components/verdict";
 import { incidentAction } from "@/lib/incident-calls";
 import {
   ALLOW_EFFECT, CLOSE_EFFECT, HISTORY_HREF, KEPT_HELP, READ_ONLY_LINE, STATES, WINDOW_HELP,
-  backupAge, backupName, backupsWord, checkLine, serviceBackupLine, incidentCounts, incidentVerdict, orderBackups,
+  backupAge, backupName, backupsWord, checkLine, orderServiceBackups, serviceBackupLine, serviceBackupStatus, incidentCounts, incidentVerdict, isStateFilter, orderBackups,
   personOf, restoreHref, stateChip, stateOf, type BackupState, type StateFilter,
 } from "@/lib/incidents-view";
 import type { IncidentDetail, IncidentRecoveryPoint, IncidentSummary } from "@/lib/portal-data";
@@ -279,12 +279,16 @@ export function IncidentsPage({ incidents, selected, canInvestigate, now }: {
               <h2 id="ir-services-heading">Other services&apos; backups</h2>
               <p className="ir-muted">Exchange, SharePoint, OneDrive, Teams, Purview and Power Platform settings, and content. The check above covers Entra ID and Intune only, so check these by hand before you restore from them.</p>
               <ul className="ir-service-list">
-                {selected.serviceBackups.map((entry) => (
-                  <li className="ir-service-row" key={`${entry.kind}:${entry.workload}`}>
-                    <span className="ir-service-name">{entry.name}{entry.kind === "content" ? " (content)" : " (settings)"}</span>
-                    <span className="ir-muted">{serviceBackupLine(entry, now)}</span>
-                  </li>
-                ))}
+                {orderServiceBackups(selected.serviceBackups).map((entry) => {
+                  const status = serviceBackupStatus(entry);
+                  return (
+                    <li className="ir-service-row" data-tone={status.tone} key={`${entry.kind}:${entry.workload}`}>
+                      <span className="ir-service-name">{entry.name}<small>{entry.kind === "content" ? "Content" : "Settings"}</small></span>
+                      <Badge tone={status.tone}>{status.label}</Badge>
+                      <span className="ir-muted">{serviceBackupLine(entry, now)}</span>
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           ) : null}

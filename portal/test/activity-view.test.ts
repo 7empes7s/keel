@@ -63,7 +63,7 @@ test("every job and audit entry is one row with a kind, an outcome and a person,
   assert.deepEqual(rows.slice(0, 3).map((row) => row.id), ["record:18205", "job:a3000000-0000-4000-8000-000000000003", "job:a1000000-0000-4000-8000-000000000001"]);
   const failed = rows.find((row) => row.id === "job:a3000000-0000-4000-8000-000000000003")!;
   assert.equal(failed.title, "Backup of Tier 1");
-  assert.equal(failed.line, "Backup · Graph 429: throttled after 5 retries on /deviceManagement/deviceConfigurations");
+  assert.equal(failed.line, "Backup · Microsoft 365 was busy and asked Keel to slow down.");
   assert.equal(failed.outcome, "failed");
   assert.equal(failed.kind, "backup");
   assert.equal(failed.who, MARO.id);
@@ -117,7 +117,7 @@ test("tiles, status and verdict count the last day by when a job was asked for",
   const verdict = activityVerdict(counts, true, { ok: true, status: "verified" });
   assert.equal(verdict.text, "Keel ran 4 jobs in the last day; the backup of Tier 1 failed, and 1 more.");
   assert.ok(verdict.text.split(/\s+/).length <= 25);
-  assert.equal(verdict.detail, "Graph 429: throttled after 5 retries on /deviceManagement/deviceConfigurations");
+  assert.equal(verdict.detail, "Microsoft 365 was busy and asked Keel to slow down.");
   assert.deepEqual(verdict.retry, { kind: "backup", tier: "tier1" });
   assert.equal(activityVerdict(activityCounts([JOBS[0], JOBS[4]], NOW), true, null).text, "Keel ran 1 job in the last day, none failed; 1 is still running or waiting.");
   assert.equal(activityVerdict(counts, false, { ok: false, status: "broken-at-sequence" }).tone, "urgent");

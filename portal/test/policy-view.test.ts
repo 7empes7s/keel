@@ -105,7 +105,7 @@ test("the last action, the run-as account and the action history read as names, 
   assert.equal(actionKindLine(action), "Group · Entra ID · changed");
   assert.equal(actionLine(action, NOW), "Microsoft refused the write: not enough rights · 2 hours ago");
   assert.equal(failureWords("Graph 429: throttled after 5 retries"), "Microsoft throttled the request");
-  assert.equal(failureWords("conflict on 5d1c0000-0000-4000-8000-0000000000f2"), "conflict on an id");
+  assert.equal(failureWords("conflict on 5d1c0000-0000-4000-8000-0000000000f2"), "Microsoft 365 would not accept what Keel sent");
   assert.equal(failureWords(null), "It stopped with an error");
   assert.equal(actionLine({ ...action, status: "queued", finished_at: null, error: null }, NOW), "Waiting to run · queued 2 hours ago");
   assert.equal(actionLine({ ...action, status: "executed", error: null }, NOW), "Put back · 2 hours ago");

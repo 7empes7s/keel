@@ -4,7 +4,8 @@ import type { VerdictTone } from "@/components/verdict";
 import { plainKind } from "@/lib/baselines-view";
 import { addDays, isDay, shortDay, toDay, type Day, type DayRange } from "@/lib/date-range";
 import type { RiskTone } from "@/lib/menu-status";
-import { formatDuration } from "@/lib/resilience-view";
+import { workloadLabel } from "@/lib/compare-view";
+import { dependencyName, formatDuration } from "@/lib/resilience-view";
 
 // Roadmap task-100: the value report in words. Every number comes from
 // engine/reports/value.mjs; this file only turns it into sentences. Hours appear only
@@ -91,12 +92,35 @@ export interface RecoverySection {
   recoverablePoint: { state: "measured" | "unmeasured"; ageMs: number | null; asOf: string };
 }
 
+/** One backed-up area (a workload) and how its runs in the period went. */
+export type BackupAreaState = "good" | "partial" | "failed" | "not-run";
+export interface BackupArea {
+  workload: string;
+  state: BackupAreaState;
+  goodRuns: number;
+  partialRuns: number;
+  failedRuns: number;
+  lastGoodAt: string | null;
+}
+
+/** One backup family's counts. The area breakdown is absent on reports made before it was counted. */
+export interface BackupFamily {
+  runs: number;
+  workloads: number;
+  expected: number;
+  lastAt: string | null;
+  partial?: number;
+  failed?: number;
+  notRun?: number;
+  areas?: BackupArea[];
+}
+
 /** Backups that finished well in the period, per family (engine/reports/value.mjs). */
 export interface BackupSection {
   withheld: false;
   settings: { backups: number; lastAt: string | null };
-  serviceSettings: { runs: number; workloads: number; expected: number; lastAt: string | null };
-  content: { runs: number; workloads: number; expected: number; lastAt: string | null; itemsStored: number; bytesStored: number };
+  serviceSettings: BackupFamily;
+  content: BackupFamily & { itemsStored: number; bytesStored: number };
 }
 
 export interface HoursSaved {
@@ -325,20 +349,149 @@ function bytesShort(bytes: number): string {
   return unit === 0 ? `${value} bytes` : `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
 }
 
-/** The backups card's lines, one per family. */
-export function backupLines(backups: BackupSection | Withheld | undefined): string[] {
-  if (!backups) return ["This report was made before backups of every service were counted."];
-  if (isWithheld(backups)) return ["Backups cover the whole tenant, so they are shown only to people who can read all of it."];
+// The backups card (pick: stat tiles, problems first, one compact table of areas).
+export const BACKUP_AREA_WORDS: Record<BackupAreaState, { label: string; badge: BadgeTone; icon: IconName; rank: number }> = {
+  failed: { label: "Failed", badge: "urgent", icon: "x-circle", rank: 0 },
+  partial: { label: "Backed up in part", badge: "soon", icon: "alert", rank: 1 },
+  "not-run": { label: "Did not run", badge: "soon", icon: "clock", rank: 2 },
+  good: { label: "Backed up", badge: "fine", icon: "check-circle", rank: 3 },
+};
+
+export type BackupFamilyKey = "settings" | "service-settings" | "content";
+
+export interface BackupTile {
+  key: BackupFamilyKey;
+  label: string;
+  icon: IconName;
+  count: number | null;
+  of: number | null;
+  word: string | null;
+  detail: string;
+  problem: string | null;
+  problemTone: BadgeTone;
+  tone: BadgeTone;
+  meter: { tone: string; value: number }[] | null;
+}
+
+export interface BackupAreaRow extends BackupArea {
+  family: Exclude<BackupFamilyKey, "settings">;
+  name: string;
+}
+
+export interface BackupAreaGroup {
+  family: Exclude<BackupFamilyKey, "settings">;
+  label: string;
+  rows: BackupAreaRow[];
+}
+
+export type BackupView =
+  | { state: "missing" | "withheld"; text: string }
+  | { state: "shown"; tiles: BackupTile[]; groups: BackupAreaGroup[]; needsLook: number; headline: { text: string; tone: BadgeTone }; note: string | null };
+
+const FAMILY_LABELS: Record<Exclude<BackupFamilyKey, "settings">, string> = { "service-settings": "Service settings", content: "Content" };
+
+function areaName(family: Exclude<BackupFamilyKey, "settings">, workload: string): string {
+  if (family === "content") return CONTENT_AREA_NAMES[workload] ?? dependencyName(`content:${workload}`).replace(/ \(content\)$/, "");
+  return workloadLabel(workload);
+}
+
+// Content areas as Microsoft names them (engine/content/collectors.mjs).
+const CONTENT_AREA_NAMES: Record<string, string> = {
+  "exchange-mail": "Mail, calendars and contacts",
+  "group-conversations": "Group conversations",
+  onedrive: "OneDrive files",
+  sharepoint: "SharePoint document libraries",
+  "sharepoint-sites": "SharePoint sites, lists and files",
+  teams: "Teams, channels and tabs",
+  planner: "Planner plans and tasks",
+};
+
+function familyCounts(family: BackupFamily) {
+  const partial = family.partial ?? 0;
+  const failed = family.failed ?? 0;
+  const notRun = family.notRun ?? Math.max(0, family.expected - family.workloads - partial - failed);
+  return { partial, failed, notRun };
+}
+
+function familyProblem(family: BackupFamily): string | null {
+  const { partial, failed, notRun } = familyCounts(family);
+  const parts = [];
+  if (failed) parts.push(`${failed} failed`);
+  if (partial) parts.push(`${partial} in part`);
+  if (notRun) parts.push(`${notRun} did not run`);
+  return parts.length ? parts.join(" · ") : null;
+}
+
+function problemTone(family: BackupFamily): BadgeTone {
+  return familyCounts(family).failed ? "urgent" : "soon";
+}
+
+function familyTone(family: BackupFamily): BadgeTone {
+  if (!family.expected) return "neutral";
+  const { partial, failed, notRun } = familyCounts(family);
+  if (failed || family.workloads === 0) return "urgent";
+  return partial || notRun ? "soon" : "fine";
+}
+
+function familyMeter(family: BackupFamily): BackupTile["meter"] {
+  if (!family.expected) return null;
+  const { partial, failed } = familyCounts(family);
+  return [{ tone: "fine", value: family.workloads }, { tone: "soon", value: partial }, { tone: "urgent", value: failed }];
+}
+
+/** What the backups card shows: three tiles, then every area grouped by family with problems first. */
+export function backupView(backups: BackupSection | Withheld | undefined): BackupView {
+  if (!backups) return { state: "missing", text: "This report was made before backups of every service were counted." };
+  if (isWithheld(backups)) return { state: "withheld", text: "Backups cover the whole tenant, so they are shown only to people who can read all of it." };
   const { settings, serviceSettings, content } = backups;
-  return [
-    `Entra ID and Intune settings: ${plural(settings.backups, "complete backup")}.`,
-    serviceSettings.expected
-      ? `Service settings (Exchange, SharePoint, OneDrive, Teams, Purview, Power Platform): ${serviceSettings.workloads} of ${serviceSettings.expected} areas backed up, ${plural(serviceSettings.runs, "good run")}.`
-      : "Service settings: none switched on yet.",
-    content.expected
-      ? `Content (mail, files, sites, Teams, Planner): ${content.workloads} of ${content.expected} areas backed up, ${plural(content.runs, "good run")}; ${plural(content.itemsStored, "new item")} stored (${bytesShort(content.bytesStored)} after removing duplicates).`
-      : "Content: no content backup has run yet.",
+  const tiles: BackupTile[] = [
+    {
+      key: "settings", label: "Entra ID and Intune", icon: "service-entra", count: settings.backups, of: null, word: null,
+      detail: settings.backups === 1 ? "complete backup" : "complete backups",
+      problem: settings.backups ? null : "No complete backup in this period", problemTone: "urgent",
+      tone: settings.backups ? "fine" : "urgent", meter: null,
+    },
+    {
+      key: "service-settings", label: "Service settings", icon: "settings",
+      count: serviceSettings.expected ? serviceSettings.workloads : null, of: serviceSettings.expected || null,
+      word: serviceSettings.expected ? null : "None yet",
+      detail: serviceSettings.expected ? `areas backed up · ${plural(serviceSettings.runs, "good run")}` : "No service settings backup is switched on yet",
+      problem: familyProblem(serviceSettings), problemTone: problemTone(serviceSettings), tone: familyTone(serviceSettings), meter: familyMeter(serviceSettings),
+    },
+    {
+      key: "content", label: "Content", icon: "cloud",
+      count: content.expected ? content.workloads : null, of: content.expected || null,
+      word: content.expected ? null : "None yet",
+      detail: content.expected || content.itemsStored
+        ? `areas backed up · ${plural(content.itemsStored, "new item")} stored (${bytesShort(content.bytesStored)})`
+        : "No content backup has run yet",
+      problem: familyProblem(content), problemTone: problemTone(content), tone: familyTone(content), meter: familyMeter(content),
+    },
   ];
+  const groups = (["service-settings", "content"] as const)
+    .map((family): BackupAreaGroup => {
+      const source = family === "content" ? content : serviceSettings;
+      const rows = (source.areas ?? [])
+        .map((area) => ({ ...area, family, name: areaName(family, area.workload) }))
+        .sort((a, b) => BACKUP_AREA_WORDS[a.state].rank - BACKUP_AREA_WORDS[b.state].rank || a.name.localeCompare(b.name));
+      return { family, label: FAMILY_LABELS[family], rows };
+    })
+    .filter((group) => group.rows.length > 0)
+    .sort((a, b) => worstRank(a) - worstRank(b));
+  const needsLook = [serviceSettings, content].reduce((sum, family) => { const c = familyCounts(family); return sum + c.partial + c.failed + c.notRun; }, 0)
+    + (settings.backups ? 0 : 1);
+  const urgent = !settings.backups || [serviceSettings, content].some((family) => familyTone(family) === "urgent");
+  const headline = needsLook
+    ? { text: `${plural(needsLook, "area needs", "areas need")} a look`, tone: urgent ? "urgent" as const : "soon" as const }
+    : { text: "Everything backed up", tone: "fine" as const };
+  const note = content.itemsStored && familyCounts(content).partial
+    ? "New items count everything stored in the period, including items from areas backed up only in part."
+    : null;
+  return { state: "shown", tiles, groups, needsLook, headline, note };
+}
+
+function worstRank(group: BackupAreaGroup): number {
+  return Math.min(...group.rows.map((row) => BACKUP_AREA_WORDS[row.state].rank));
 }
 
 const ESTIMATE_PROBLEMS: Record<string, string> = {

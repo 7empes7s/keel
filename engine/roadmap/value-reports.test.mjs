@@ -588,14 +588,40 @@ test('backups in the period count every service: settings, service settings and 
   const result = await report(tenantRef);
   assert.equal(result.backups.withheld, false);
   assert.equal(result.backups.settings.backups, 1, 'only the settings backup inside the period');
-  assert.deepEqual(result.backups.serviceSettings, { runs: 2, workloads: 1, expected: 2, lastAt: '2026-09-22T02:00:00.000Z' },
-    'a failed run never counts; a switched-off workload is not expected');
+  assert.deepEqual(result.backups.serviceSettings, {
+    runs: 2, workloads: 1, expected: 2, partial: 0, failed: 1, notRun: 0, lastAt: '2026-09-22T02:00:00.000Z',
+    areas: [
+      { workload: 'exchange-mail-flow', state: 'good', goodRuns: 2, partialRuns: 0, failedRuns: 0, lastGoodAt: '2026-09-22T02:00:00.000Z' },
+      { workload: 'teams-org-policies', state: 'failed', goodRuns: 0, partialRuns: 0, failedRuns: 1, lastGoodAt: null },
+    ],
+  }, 'a failed run never counts; a switched-off workload is not expected');
   assert.equal(result.backups.content.runs, 1);
   assert.equal(result.backups.content.workloads, 1);
-  assert.equal(result.backups.content.expected, 2);
+  assert.equal(result.backups.content.expected, 5, 'every content run reads all five content areas, so all five are expected');
+  assert.equal(result.backups.content.failed, 1);
+  assert.equal(result.backups.content.notRun, 3);
   assert.equal(result.backups.content.itemsStored, 1);
   assert.equal(result.backups.content.bytesStored, 25);
   const csv = valueReportCsv(result);
   assert.match(csv, /# service_settings_workloads,1 of 2/);
   assert.match(csv, /# content_items_stored,1/);
+});
+
+test('a content run that read only part of an area is counted as partly backed up, not hidden', async () => {
+  const tenantRef = 'sha256:value-backups-partial';
+  // The first whole-tenant run: mail read in part, then the job stopped before the other areas.
+  await client.query(
+    `INSERT INTO content_run (tenant_ref, workload, outcome, items, bytes, started_at, completed_at)
+     VALUES ($1, 'exchange-mail', 'partial', 2987, 187551579, '2026-09-22T01:01:00Z', '2026-09-22T01:08:00Z')`,
+    [tenantRef],
+  );
+  const { content } = (await report(tenantRef)).backups;
+  assert.equal(content.runs, 0);
+  assert.equal(content.workloads, 0);
+  assert.equal(content.partial, 1);
+  assert.equal(content.expected, 5);
+  assert.equal(content.notRun, 4);
+  assert.deepEqual(content.areas.find((area) => area.workload === 'exchange-mail'),
+    { workload: 'exchange-mail', state: 'partial', goodRuns: 0, partialRuns: 1, failedRuns: 0, lastGoodAt: null });
+  assert.deepEqual(content.areas.map((area) => area.workload).sort(), ['exchange-mail', 'onedrive', 'planner', 'sharepoint-sites', 'teams']);
 });

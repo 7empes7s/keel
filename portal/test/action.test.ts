@@ -17,6 +17,7 @@ import React from "react";
 
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { APPROVAL_REQUEST_EVIDENCE_KIND } from "../../engine/govern/approvals.mjs";
+import { detectWorkloadDrift } from "../../engine/govern/workloadDrift.mjs";
 
 import { POST as baselineActivateRoute } from "@/app/api/actions/baseline/activate/route";
 import { POST as baselineRoute } from "@/app/api/actions/baseline/route";
@@ -906,3 +907,45 @@ test("notification routes enforce configuration while viewers can read recent de
   assert.equal((await client.query("SELECT id FROM subscription WHERE id = $1", [subscription.id])).rows.length, 0);
 });
 
+
+// A service setting change (Exchange, SharePoint, Teams, ...) is accepted into that
+// service's approved setup through the same dispose action, with a reason; it has no
+// ignore, and a change id from another tenant or a malformed body is refused.
+test("dispose accepts a service setting change into its service's approved setup", async () => {
+  const tenant = tenantRef();
+  const read = async (at: string, state: string) => {
+    const { rows: [collection] } = await client.query(
+      `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to, created_at)
+       VALUES ($1, 'exchange-mail-flow', 'complete', $2, $2, $2) RETURNING id`,
+      [tenant, at],
+    );
+    await client.query(
+      "INSERT INTO workload_observation (collection_id, resource_key, fields) VALUES ($1, 'transport-rule:KEEL-RT-accept', $2)",
+      [collection.id, { identity: "KEEL-RT-accept", kind: "transportRule", Name: "KEEL-RT-accept", State: state }],
+    );
+    await detectWorkloadDrift(client, { collectionId: collection.id, hysteresis: undefined });
+    return String(collection.id);
+  };
+  await read("2026-10-12T02:00:00Z", "Disabled");
+  const changed = await read("2026-10-13T02:00:00Z", "Enabled");
+  const { rows: [change] } = await client.query("SELECT id FROM workload_drift WHERE collection_id = $1", [changed]);
+  const operator = { principalId: OPERATOR, capabilities: ["dispose-accept"] };
+  const post = (body: Record<string, unknown>) => disposeRoute(postAction("/api/actions/dispose", { ...operator, body }));
+
+  for (const body of [
+    { serviceChangeId: change.id, action: "ignore", reason: "later", expiresAt: "2026-12-01T00:00:00Z" },
+    { serviceChangeId: change.id, driftId: change.id, action: "accept", reason: "both" },
+    { serviceChangeId: change.id, action: "accept", reason: " " },
+  ]) assert.equal((await post(body)).status, 400, JSON.stringify(body));
+  assert.equal((await post({ serviceChangeId: randomUUID(), action: "accept", reason: "unknown" })).status, 400);
+
+  const accepted = await post({ serviceChangeId: change.id, action: "accept", reason: "Planned in change 42" });
+  assert.equal(accepted.status, 200);
+  const { rows: [approved] } = await client.query(
+    "SELECT * FROM workload_approved WHERE tenant_ref = $1 AND resource_key = 'transport-rule:KEEL-RT-accept'", [tenant],
+  );
+  assert.equal((approved.fields as { State?: string }).State, "Enabled");
+  assert.equal(String(approved.collection_id), changed);
+  assert.equal(approved.approved_by, OPERATOR);
+  assert.equal(approved.reason, "Planned in change 42");
+});

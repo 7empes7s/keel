@@ -34,7 +34,8 @@
 //   { "sharepointHost": "contoso.sharepoint.com", "mailboxes": ["user@contoso.com"],
 //     "onedriveHost": "contoso-my.sharepoint.com", "onedriveSites": ["https://contoso-my.sharepoint.com/personal/..."],
 //     "powershellConfigs": { "exchange": "/etc/keel/exchange-collector.json", "onedrive": "/etc/keel/purview-collector.json",
-//                            "purview": "/etc/keel/purview-collector.json", "teams": "/etc/keel/teams-collector.json" } }
+//                            "purview": "/etc/keel/purview-collector.json", "sharepoint": "/etc/keel/purview-collector.json",
+//                            "teams": "/etc/keel/teams-collector.json" } }
 // It is optional; without it SharePoint cannot run and Exchange reads organization settings only.
 // powershellConfigs names the certificate config each PowerShell module connects with (the
 // Graph tenant config has no `organization` or certificate, so Exchange, OneDrive and Purview

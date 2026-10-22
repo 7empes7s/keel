@@ -64,7 +64,11 @@ export async function loadSitePermissions(
     .filter((row) => row.resource_key !== "tenant")
     .map((row) => {
       const site = sitePermissionsFrom(String(row.resource_key), row.fields, row.field_coverage);
-      return { ...site, backup: backups.held.get(site.siteId) ?? null, people: backups.people.get(site.siteId) ?? null };
+      return {
+        ...site, backup: backups.held.get(site.siteId) ?? null, people: backups.people.get(site.siteId) ?? null,
+        // Each site is compared with the tenant default it was read with.
+        sharing: { ...site.sharing, tenant: typeof sharing === "string" ? sharing : null },
+      };
     })
     .sort((a, b) => siteName(a).localeCompare(siteName(b), "en-GB", { sensitivity: "base" }) || a.siteId.localeCompare(b.siteId));
   return {

@@ -1741,7 +1741,9 @@ const SITE_PEOPLE = (over: Partial<PeopleSummary>): PeopleSummary => ({
   ],
   ...over,
 });
-const SITES: SitePermissionsData = {
+// Each site's own sharing setting (one PnP read), compared with the tenant default below.
+const SITE_SHARING_READ = { status: "observed", operation: "sharepoint.site-sharing" };
+const SITES_READ: SitePermissionsData = {
   generatedAt: now,
   run: { id: "c0110000-0000-4000-8000-0000000000c5", outcome: "partial", observedTo: "2026-10-02T02:00:00Z" },
   latest: null,
@@ -1751,19 +1753,21 @@ const SITES: SitePermissionsData = {
     { ...sitePermissionsFrom(`site:${SITE_ARCHIVE}`, { displayName: "Records archive with a long name that wraps on a phone", webUrl: `https://${SITE_HOST}/sites/records-archive-with-a-long-name-that-wraps-on-a-phone` },
       { appPermissionGrants: { status: "denied", httpStatus: 403, operation: "sharepoint.site-permissions" } }),
     backup: { items: 1204, bytes: 734_003_200, lastStoredAt: "2026-10-01T01:15:00Z" } },
-    { ...sitePermissionsFrom(`site:${SITE_FINANCE}`, { displayName: "Finance", webUrl: `https://${SITE_HOST}/sites/finance`, appPermissionGrants: [
+    { ...sitePermissionsFrom(`site:${SITE_FINANCE}`, { displayName: "Finance", webUrl: `https://${SITE_HOST}/sites/finance`, sharingCapability: "ExternalUserAndGuestSharing", appPermissionGrants: [
       { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDE", roles: ["fullcontrol"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a1", displayName: "Payroll connector" }] },
       { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDI", roles: ["read"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a2", displayName: "Board pack reader" }] },
-    ] }, { appPermissionGrants: SITE_READ }),
+    ] }, { appPermissionGrants: SITE_READ, sharingCapability: SITE_SHARING_READ }),
     backup: { items: 5320, bytes: 2_254_857_830, lastStoredAt: "2026-10-02T01:12:00Z" },
     people: SITE_PEOPLE({ owners: ["Amara Okafor", "Dev Patel", "Lena Fischer"], ownerCount: 3, people: 14, guests: 2, sharingLinks: 3, uniqueLists: 1 }) },
-    { ...sitePermissionsFrom(`site:${SITE_INTRANET}`, { displayName: "Intranet", webUrl: `https://${SITE_HOST}/sites/intranet`, appPermissionGrants: [] }, { appPermissionGrants: SITE_READ }),
+    { ...sitePermissionsFrom(`site:${SITE_INTRANET}`, { displayName: "Intranet", webUrl: `https://${SITE_HOST}/sites/intranet`, sharingCapability: "Disabled", appPermissionGrants: [] }, { appPermissionGrants: SITE_READ, sharingCapability: SITE_SHARING_READ }),
     backup: { items: 312, bytes: 48_234_496, lastStoredAt: "2026-10-01T23:40:00Z" }, people: SITE_PEOPLE({}) },
-    { ...sitePermissionsFrom(`site:${SITE_TEAM}`, { displayName: "Project Falcon", webUrl: `https://${SITE_HOST}/sites/falcon`, appPermissionGrants: [] }, { appPermissionGrants: SITE_READ }),
+    { ...sitePermissionsFrom(`site:${SITE_TEAM}`, { displayName: "Project Falcon", webUrl: `https://${SITE_HOST}/sites/falcon`, sharingCapability: "ExternalUserSharingOnly", appPermissionGrants: [] }, { appPermissionGrants: SITE_READ, sharingCapability: SITE_SHARING_READ }),
     backup: { items: 88, bytes: 5_242_880, lastStoredAt: "2026-09-28T01:05:00Z" },
     people: SITE_PEOPLE({ owners: [], ownerCount: 0, people: 3, groups: [{ name: "Project Falcon Members", members: 3, roles: ["Edit"] }] }) },
   ],
 };
+// The loader gives each site the tenant default it was read with.
+const SITES: SitePermissionsData = { ...SITES_READ, sites: SITES_READ.sites.map((site) => ({ ...site, sharing: { ...site.sharing, tenant: SITES_READ.tenantSharing ?? null } })) };
 
 // Site permissions audit: site settings that changed between two daily reads.
 // Service setting changes: each service read compared with the service's approved

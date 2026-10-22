@@ -1621,16 +1621,20 @@ test("recovery surfaces fit a phone without sideways scrolling", async ({ page }
 });
 
 // Sites: the list is a table with problems first and tiles that add up; a site's page
-// leads with four status tiles. Both fit a phone; long names wrap.
+// leads with five status tiles. Both fit a phone; long names wrap.
 test("sites list and a site's page fit a phone without sideways scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   await open(page, "/sites", "dark");
   const rows = page.locator(".st-table tbody tr");
   await expect(rows).toHaveCount(4);
-  // Problems first: the site with no owner leads.
-  await expect(rows.first()).toContainText("Project Falcon");
-  await expect(rows.first()).toContainText("No owner");
+  // Problems first: the site shared wider than the tenant default and the site with no owner lead.
+  await expect(rows.nth(0)).toContainText("Finance");
+  await expect(rows.nth(0)).toContainText("Anyone with the link");
+  await expect(rows.nth(0)).toContainText("More open than the default");
+  await expect(rows.nth(1)).toContainText("Project Falcon");
+  await expect(rows.nth(1)).toContainText("No owner");
+  await expect(page.getByRole("button", { name: /Shared wider than default/ })).toContainText("1");
   await expect(page.locator(".st-list")).not.toContainText("not read yet");
   expect(await overflow()).toBeLessThanOrEqual(0);
   // Tiles add up: No owner + Guests or links shows both sites.
@@ -1642,8 +1646,9 @@ test("sites list and a site's page fit a phone without sideways scrolling", asyn
   await expect(rows).toHaveCount(4);
   await page.getByRole("link", { name: "Finance" }).click();
   await expect(page.locator("main#main-content h1")).toHaveText("Finance");
-  await expect(page.locator('[data-layer="verdict"]')).toContainText("1 app has full control, and 2 guests have access.");
-  await expect(page.locator(".st-status")).toHaveCount(4);
+  await expect(page.locator('[data-layer="verdict"]')).toContainText("It is shared more widely than your organisation's default, and 1 app has full control.");
+  await expect(page.locator(".st-status")).toHaveCount(5);
+  await expect(page.locator('.st-status[data-tone="urgent"]', { hasText: "Sharing setting" })).toContainText("More open than your organisation's default");
   await expect(page.getByRole("rowheader", { name: "Payroll connector" })).toBeVisible();
   await expect(page.getByRole("cell", { name: "Edit" })).toBeVisible();
   expect(await overflow()).toBeLessThanOrEqual(0);

@@ -1,3 +1,5 @@
+import { Icon } from "@/components/shell/icons";
+import { PagedRows } from "@/components/list/paged-rows";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
   catalogueSentence,
@@ -7,6 +9,8 @@ import {
   containerLine,
   discoveryHeadline,
   objectCount,
+  powershellNoteSentence,
+  powershellNotes,
   sourceLabel,
   skippedSentence,
   sourceProblems,
@@ -46,14 +50,45 @@ function ItemRow({ item }: { item: DiscoveryItem }) {
   );
 }
 
-function ItemList({ items, summary }: { items: DiscoveryItem[]; summary: string }) {
+/** A calm note: discovery could not list some PowerShell areas this run. */
+function PowerShellNote({ data }: { data: DiscoveryInventoryData }) {
+  const notes = powershellNotes(data);
+  const sentence = powershellNoteSentence(notes);
+  if (!sentence) return null;
+  const reasons = notes.filter((note) => note.reason);
+  return (
+    <div className="discovery-note" role="note">
+      <Icon name="info" />
+      <div>
+        <p>{sentence}</p>
+        {reasons.length ? (
+          <TechnicalDetails>
+            {reasons.map((note) => <RecordField copy={false} key={note.area} label={`Not listed · ${note.area}`} value={note.reason ?? ""} />)}
+          </TechnicalDetails>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ItemList({ items, summary, prefix, label }: { items: DiscoveryItem[]; summary: string; prefix: string; label: string }) {
   if (!items.length) return null;
   return (
     <details className="technical-details">
       <summary>{summary}</summary>
-      <ul className="activity-list">
-        {items.map((item) => <ItemRow item={item} key={`${item.source}|${item.name}`} />)}
-      </ul>
+      <PagedRows
+        label={label}
+        listClassName="activity-list"
+        noun={{ one: "kind", many: "kinds" }}
+        prefix={prefix}
+        rows={items.map((item) => ({
+          id: `${item.source}|${item.name}`,
+          node: <ItemRow item={item} />,
+          text: `${typeLabel(item)} ${sourceLabel(item.source)}`,
+          values: { name: typeLabel(item), source: sourceLabel(item.source), objects: item.objects ?? -1 },
+        }))}
+        sorts={[{ key: "name", label: "Name" }, { key: "source", label: "Found in" }, { key: "objects", label: "Objects", desc: true }]}
+      />
     </details>
   );
 }
@@ -93,9 +128,10 @@ export function DiscoveryInventoryView({ data, now }: { data: DiscoveryInventory
       <p className={missing.length ? "action-error" : undefined}>{catalogueSentence(data)}</p>
       {containers ? <p className="activity-meta">{containers}</p> : null}
       {sourceProblems(data).map((line) => <p className="action-error" key={line}>{line}</p>)}
-      <ItemList items={uncatalogued} summary={`Not backed up yet (${uncatalogued.length.toLocaleString("en-GB")})`} />
-      <ItemList items={unreadable} summary={`KEEL cannot read (${unreadable.length.toLocaleString("en-GB")})`} />
-      <ItemList items={skipped} summary={`Not worth backing up (${skipped.length.toLocaleString("en-GB")})`} />
+      <PowerShellNote data={data} />
+      <ItemList items={uncatalogued} label="Not backed up yet" prefix="new-" summary={`Not backed up yet (${uncatalogued.length.toLocaleString("en-GB")})`} />
+      <ItemList items={unreadable} label="KEEL cannot read" prefix="unread-" summary={`KEEL cannot read (${unreadable.length.toLocaleString("en-GB")})`} />
+      <ItemList items={skipped} label="Not worth backing up" prefix="skip-" summary={`Not worth backing up (${skipped.length.toLocaleString("en-GB")})`} />
       {missing.length ? (
         <details className="technical-details" open>
           <summary>{`Backed-up types not found (${missing.length})`}</summary>

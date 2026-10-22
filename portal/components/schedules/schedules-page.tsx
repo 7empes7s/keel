@@ -8,11 +8,13 @@ import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { ConfirmSheet } from "@/components/incidents/confirm-sheet";
 import { Segmented } from "@/components/pickers/segmented";
+import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { Badge } from "@/components/ui/badge";
 import { Verdict } from "@/components/verdict";
+import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import { scheduleName } from "@/lib/protect-view";
 import { changeSchedule, runScheduleNow, type ScheduleChange } from "@/lib/schedule-calls";
@@ -22,8 +24,8 @@ import {
 } from "@/lib/schedule-forecast-view";
 import type { Schedule, ScheduleForecast, SchedulesData } from "@/lib/schedules";
 import {
-  FILTER_WORDS, KIND_ICONS, SCHEDULE_GROUPS, SCHEDULE_GROUP_ORDER, STATE_ORDER, STATE_WORDS,
-  cadenceUtc, cadenceWords, forecastFor, lastResult, loadChip, nextRunWords, parseScheduleFilter, previewNextRun,
+  KIND_ICONS, SCHEDULE_FILTERS, SCHEDULE_GROUPS, SCHEDULE_GROUP_ORDER, STATE_ORDER, STATE_WORDS,
+  cadenceUtc, cadenceWords, forecastFor, lastResult, loadChip, nextRunWords, previewNextRun,
   runNowRoute, runsFilter, scheduleCounts, scheduleGroup, scheduleMatches, scheduleState, scheduleTitle, scheduleTone,
   schedulesVerdict, turnOffEffect, turnOnEffect, utcTime, utcToZoned, waitingSentence, zoneName, zonedTime, zonedToUtc,
   zonedWithUtc, type ScheduleFilter, type ScheduleGroup, type ScheduleState,
@@ -41,6 +43,7 @@ import { readList, useViewState } from "@/lib/use-view-state";
 // with `pick=` for several). The server keeps UTC; ids stay in Technical details.
 
 const plural = (count: number) => `${count} ${count === 1 ? "schedule" : "schedules"}`;
+const TILE_LABELS: Record<ScheduleFilter, string> = { on: "On", off: "Off", failed: "Failed last run", warning: "Load warnings" };
 
 export function SchedulesPage({ schedules, deferrals, forecasts, now, timeZone, canEdit, canRun }: Pick<SchedulesData, "schedules" | "deferrals" | "forecasts"> & {
   now: string;
@@ -52,7 +55,6 @@ export function SchedulesPage({ schedules, deferrals, forecasts, now, timeZone, 
   const view = useViewState();
   const pathname = usePathname() ?? "/schedules";
   const params = useSearchParams();
-  const filter = parseScheduleFilter(params?.get("status"), params?.get("load"));
   const openId = view.get("open");
   const step = (["off"] as const).find((value) => value === view.get("do")) ?? null;
   const picked = readList(view.get("pick"));
@@ -67,10 +69,15 @@ export function SchedulesPage({ schedules, deferrals, forecasts, now, timeZone, 
     ? { ...forecast, warnings: forecast.warnings.map((warning) => ({ ...warning, acknowledged: true })) }
     : forecast)), [forecasts, accepted]);
   const loadOf = (schedule: Schedule) => forecastFor(loads, schedule);
+  // The tiles add up: `status=failed,warning` shows schedules in either. Old `load=warning` links still work.
+  const stateTiles = useMemo<FilterTile<Schedule>[]>(() => SCHEDULE_FILTERS.map((key) => ({ key, test: (schedule: Schedule) => scheduleMatches(schedule, forecastFor(loads, schedule), key) })), [loads]);
+  const filter = readPicked(stateTiles, [params?.get("status"), params?.get("load")].filter(Boolean).join(","));
+  const pickTile = (key: string) => ({ status: tileParam(stateTiles, filter, key), load: null, open: null, do: null, pick: null, closed: null });
 
   const counts = useMemo(() => scheduleCounts(items, loads), [items, loads]);
   const verdict = useMemo(() => schedulesVerdict(items, now, loads), [items, now, loads]);
-  const shown = useMemo(() => items.filter((schedule) => scheduleMatches(schedule, forecastFor(loads, schedule), filter)), [items, loads, filter]);
+  const shown = useMemo(() => applyFilters(items, stateTiles, filter), [items, stateTiles, filter]);
+  const tileTotals = useMemo(() => new Map(tileCounts(items, stateTiles, filter).map((entry) => [entry.key, entry])), [items, stateTiles, filter]);
   const opened = items.find((schedule) => schedule.id === openId) ?? null;
   const pickedItems = items.filter((schedule) => picked.includes(schedule.id));
 
@@ -158,11 +165,13 @@ export function SchedulesPage({ schedules, deferrals, forecasts, now, timeZone, 
     : null;
 
   const tiles: { key: ScheduleFilter | "next"; label: string; icon: IconName; value: string; small: string; to: string; tone?: "urgent" | "soon" }[] = [
-    { key: "on", label: "On", icon: "play", value: `${counts.on} of ${counts.total}`, small: counts.on === counts.total ? "Every schedule runs" : `${counts.total - counts.on} turned off`, to: href({ status: filter === "on" ? null : "on", load: null, open: null, do: null, pick: null, closed: null }) },
-    { key: "failed", label: "Failed last run", icon: "x-circle", value: String(counts.failed), small: counts.failed ? "Open one to see why" : "Every last run worked", to: href({ status: filter === "failed" ? null : "failed", load: null, open: null, do: null, pick: null, closed: null }), tone: counts.failed ? "urgent" : undefined },
-    { key: "warning", label: "Load warnings", icon: "clock", value: String(counts.warnings), small: counts.warnings ? "A slower timetable is suggested" : "Microsoft keeps up", to: href({ load: filter === "warning" ? null : "warning", status: null, open: null, do: null, pick: null, closed: null }), tone: counts.warnings ? "soon" : undefined },
+    { key: "on", label: "On", icon: "play", value: `${counts.on} of ${counts.total}`, small: counts.on === counts.total ? "Every schedule runs" : `${counts.total - counts.on} turned off`, to: href(pickTile("on")) },
+    { key: "failed", label: "Failed last run", icon: "x-circle", value: String(counts.failed), small: counts.failed ? "Open one to see why" : "Every last run worked", to: href(pickTile("failed")), tone: counts.failed ? "urgent" : undefined },
+    { key: "warning", label: "Load warnings", icon: "clock", value: String(counts.warnings), small: counts.warnings ? "A slower timetable is suggested" : "Microsoft keeps up", to: href(pickTile("warning")), tone: counts.warnings ? "soon" : undefined },
     { key: "next", label: "Next run", icon: "calendar", value: counts.next ? nextRunWords(counts.next, now).replace(/^Next run /, "").replace(/^in /, "In ") : "None", small: counts.next ? scheduleName(counts.next) : "Everything is off", to: counts.next ? openHref(counts.next.id) : href({}) },
   ];
+
+  const activeFilters: ActiveFilter[] = filter.map((key) => ({ key: `status:${key}`, label: TILE_LABELS[key as ScheduleFilter], clear: { status: withoutTile(filter, key), load: null, closed: null } }));
 
   const groupings = useMemo<Grouping<Schedule>[]>(() => [
     { key: "kind", label: "What it does", groupsOf: (list) => groupBy(list, (schedule) => scheduleGroup(schedule), (key, group) => ({ label: SCHEDULE_GROUPS[key as ScheduleGroup].label, icon: SCHEDULE_GROUPS[key as ScheduleGroup].icon, about: `${SCHEDULE_GROUPS[key as ScheduleGroup].about} · ${plural(group.length)}` }), (key, group) => (group.some((schedule) => schedule.last_status === "failed") ? -1 : 0) * 10 + SCHEDULE_GROUP_ORDER.indexOf(key as ScheduleGroup)) },
@@ -206,21 +215,21 @@ export function SchedulesPage({ schedules, deferrals, forecasts, now, timeZone, 
       <Verdict action={verdictAction} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <section aria-label="Schedules at a glance" className="sc-tiles">
-          {tiles.map((tile) => (
-            <Link aria-current={filter === tile.key || undefined} className="sc-tile" data-tone={tile.tone} href={tile.to} key={tile.key} onClick={tile.key === "next" && counts.next ? (event) => follow(event, tile.to) : undefined}>
-              <span className="sc-tile-label"><Icon name={tile.icon} />{tile.label}</span>
-              <b className="sc-tile-count">{tile.value}</b>
-              <small>{tile.small}</small>
-            </Link>
-          ))}
+          {tiles.map((tile) => {
+            const active = filter.includes(tile.key);
+            const adds = tile.key === "next" ? null : addsWords(tileTotals.get(tile.key), filter.length);
+            return (
+              <Link aria-current={active || undefined} className="sc-tile" data-tone={tile.tone} href={tile.to} key={tile.key} onClick={tile.key === "next" && counts.next ? (event) => follow(event, tile.to) : undefined} title={tile.key === "next" ? undefined : active ? "Picked: click to remove it from the view" : "Click to add these to the view"}>
+                <span className="sc-tile-label"><Icon name={tile.icon} />{tile.label}{active ? <Icon className="tile-check" name="check" /> : null}</span>
+                <b className="sc-tile-count">{tile.value}</b>
+                <small>{tile.small}</small>
+                {adds ? <small className="tile-adds">{adds}</small> : null}
+              </Link>
+            );
+          })}
         </section>
 
-        {filter ? (
-          <p className="sc-filter-note" role="status">
-            Showing {FILTER_WORDS[filter]} only: {shown.length} of {items.length}.
-            <Link className="sc-inline-link" href={href({ status: null, load: null, closed: null })}>Show everything</Link>
-          </p>
-        ) : null}
+        <ActiveFilters extra={{ load: null, closed: null, open: null }} filters={activeFilters} noun={{ one: "schedule", many: "schedules" }} shown={shown.length} total={items.length} />
 
         {deferrals.length ? (
           <p className="sc-note" role="note">
@@ -237,7 +246,7 @@ export function SchedulesPage({ schedules, deferrals, forecasts, now, timeZone, 
           {items.length === 0 ? (
             <p className="sel-empty">No schedules are set up. Keel adds one for each backup tier and upkeep task when it is installed.</p>
           ) : shown.length === 0 ? (
-            <p className="sel-empty">No schedule matches this filter.</p>
+            <NoMatches extra={{ load: null, closed: null, open: null }} filters={activeFilters} noun={{ one: "schedule", many: "schedules" }} />
           ) : canEdit ? (
             <SelectableList
               action={{
@@ -248,7 +257,7 @@ export function SchedulesPage({ schedules, deferrals, forecasts, now, timeZone, 
               getId={(schedule) => schedule.id}
               groupings={groupings}
               items={shown}
-              key={filter ?? "all"}
+              key={filter.join(",") || "all"}
               label="Schedules"
               matches={(schedule, text) => `${scheduleName(schedule)} ${cadenceWords(schedule, timeZone)} ${SCHEDULE_GROUPS[scheduleGroup(schedule)].label}`.toLowerCase().includes(text)}
               more={[{ label: "Turn on", run: (ids) => { if (!busy) void turnOn(ids); } }]}

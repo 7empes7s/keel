@@ -9,6 +9,8 @@ import {
   notUsedSentence,
   containerLine,
   discoveryHeadline,
+  powershellNoteSentence,
+  powershellNotes,
   skippedSentence,
   sourceProblems,
   typeLabel,
@@ -50,7 +52,14 @@ test("the discovery sentences lead with the answer", () => {
   assert.equal(discoveryHeadline(DATA), "Discovery found 53 types: 48 types backed up, 2 readable but not backed up yet, 1 not worth backing up, 1 KEEL cannot read.");
   assert.equal(catalogueSentence(DATA), "The one type KEEL backs up was found and read.");
   assert.equal(containerLine(DATA), "Users 1,234 · Groups at least 5,000 · Teams unknown · Sites unknown");
-  assert.deepEqual(sourceProblems(DATA), ["PowerShell, MicrosoftTeams: the cmdlet list was not supplied, so its cmdlets are not checked."]);
+  // A PowerShell area that was not listed is a note, never an error line.
+  assert.deepEqual(sourceProblems(DATA), []);
+  assert.deepEqual(sourceProblems({ ...DATA, sources: [{ ...DATA.sources[0], status: "partial", error: "stopped at 5 of 9 paths" }] }), ["Microsoft Graph was only partly read (stopped at 5 of 9 paths)."]);
+  assert.deepEqual(powershellNotes(DATA), [{ area: "Teams", reason: null }]);
+  assert.equal(powershellNoteSentence(powershellNotes(DATA)), "Not checked this run: Teams settings that need PowerShell. Their backups are not affected; the next discovery run tries again.");
+  assert.equal(powershellNoteSentence([{ area: "Exchange Online and Purview", reason: "x" }, { area: "Teams", reason: null }, { area: "SharePoint", reason: null }]),
+    "Not checked this run: Exchange Online and Purview, Teams and SharePoint settings that need PowerShell. Their backups are not affected; the next discovery run tries again.");
+  assert.equal(powershellNoteSentence([]), null);
   assert.equal(typeLabel({ kind: "navigation", name: "/deviceManagement/deviceConfigurations", entityType: "deviceConfiguration" }), "Device configuration");
   assert.equal(typeLabel({ kind: "entitySet", name: "/oauth2PermissionGrants", entityType: "oAuth2PermissionGrant" }), "OAuth2 permission grant");
   assert.equal(unreadableSentence({ reason: "missing-grant", missingGrant: "Printer.Read.All", grantSource: "graph" }), "Not read: KEEL's app is not allowed to read it. It needs the Printer.Read.All permission.");
@@ -78,6 +87,29 @@ test("the section lists what is not backed up and what cannot be read, with path
   // The raw path appears only inside the record layer.
   const visible = html.replace(/<details class="technical-details" data-layer="record">[\s\S]*?<\/details>/g, "");
   assert.doesNotMatch(visible, /\/print\/printers|\/bookingBusinesses|\/auditLogs/);
+  assert.match(html, /Exchange Online and Purview \(PowerShell\)/);
+});
+
+test("PowerShell areas that could not be listed show a calm note, with the reason under Technical details", () => {
+  const listed: DiscoveryInventoryData = {
+    ...DATA,
+    sources: [
+      DATA.sources[0],
+      { source: "powershell:ExchangeOnlineManagement", status: "unknown", error: "Security & Compliance: could not connect: timed out", metadataVersion: null, paths: 0 },
+      { source: "powershell:MicrosoftTeams", status: "complete", error: null, metadataVersion: null, paths: 412 },
+    ],
+  };
+  const html = renderToStaticMarkup(createElement(DiscoveryInventoryView, { data: listed, now: NOW }));
+  assert.match(html, /class="discovery-note" role="note"/);
+  assert.match(html, /Not checked this run: Exchange Online and Purview settings that need PowerShell\. Their backups are not affected/);
+  assert.doesNotMatch(html, /action-error/);
+  assert.doesNotMatch(html, /cmdlet list was not supplied/);
+  const visible = html.replace(/<details class="technical-details" data-layer="record">[\s\S]*?<\/details>/g, "");
+  assert.doesNotMatch(visible, /could not connect/);
+  assert.match(html, /could not connect: timed out/);
+
+  const complete = renderToStaticMarkup(createElement(DiscoveryInventoryView, { data: { ...listed, sources: [DATA.sources[0], listed.sources[2]] }, now: NOW }));
+  assert.doesNotMatch(complete, /discovery-note/);
 });
 
 test("before the first run the section says discovery has not run", () => {

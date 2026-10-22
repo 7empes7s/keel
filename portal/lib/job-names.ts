@@ -2,6 +2,7 @@
 // (lib/saved-names.ts); these helpers turn a key into words with that name and never
 // return text that holds an object id. Keys and ids stay in Technical details.
 import { edgeKeyType } from "@/lib/app-names";
+import { plainError } from "@/lib/error-words";
 import { holdsObjectId } from "@/lib/object-ids";
 import { resourceTypeLabel } from "@/lib/presentation";
 
@@ -67,9 +68,7 @@ export function incompleteTypesLine(types: string[]): string {
   return `Not backed up: ${named.join(", ")}${more > 0 ? ` and ${more} more` : ""}`;
 }
 
-/** A failed job's error as one line for a list; an error that holds an id is not shown. */
+/** A failed job's error as one short plain line for a list; the raw text is on the job page, behind "Show details". */
 export function jobErrorLine(error: unknown): string {
-  const first = String(error ?? "").split("\n")[0].replace(/^[A-Za-z]*Error:\s*/, "").trim();
-  if (!first || holdsObjectId(first)) return "It stopped with an error. Open the job to see what went wrong.";
-  return first;
+  return plainError(error).cause;
 }

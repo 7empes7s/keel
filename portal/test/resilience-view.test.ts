@@ -7,7 +7,8 @@ import {
 import { summarizeRecoveryReadiness } from "../../engine/coverage/recoveryReadiness.mjs";
 import {
   attemptReason, cadenceSentence, dependencyName, formatDuration, freshnessSentence, notUsedSentence, offsiteReason,
-  recoverablePointSentence, recoveryTimeSentence, resilienceVerdict, type RecoveryMetrics,
+  recoverablePointSentence, recoveryTimeSentence, resilienceAlerts, resilienceVerdict, serviceGroups, serviceState,
+  type RecoveryMetrics, type ResilienceData, type ServiceBackup,
 } from "@/lib/resilience-view";
 
 // Roadmap task-73: the Resilience page's words, fed by the engine's own computations
@@ -60,7 +61,7 @@ test("no samples is said to be unmeasured, never good, never zero, never the sch
   }
   assert.equal(formatDuration(null), "not measured");
   // The plan is described as a plan, apart from the measurements.
-  assert.equal(cadenceSentence(empty.configured.cadence[0]), "Tier 1 backup: every hour");
+  assert.equal(cadenceSentence(empty.configured.cadence[0]), "Critical settings (tier 1): every hour");
 });
 
 test("a measured point with no timed recovery still says recovery time is not measured", () => {
@@ -97,7 +98,42 @@ test("reasons and names are words, not codes", () => {
   assert.equal(formatDuration(125 * 60_000), "2 hours 5 minutes");
   const gaps = metrics({ observations: [success("user", "2026-10-03T06:00:00.000Z")] });
   assert.equal(gaps.freshness.state, "gaps");
-  assert.equal(freshnessSentence(gaps), "Not measured: 1 required item has never been backed up successfully.");
+  assert.equal(freshnessSentence(gaps), "Not measured: 1 item has never been backed up.");
+});
+
+test("a service backup failure is reported once, by its service, never against Entra ID and Intune", () => {
+  const NOW_ = "2026-10-03T12:00:00.000Z";
+  const base = metrics({ observations: [success("user", "2026-10-03T06:00:00.000Z"), success("group", "2026-10-03T06:00:00.000Z")] });
+  const mail: ServiceBackup = {
+    kind: "content", workload: "exchange-mail", name: "Mail, calendars and contacts", service: "Exchange", switchedOn: true,
+    latest: { id: "c1", outcome: "failed", at: "2026-10-03T01:00:00.000Z" }, lastGood: null, stored: null,
+  };
+  const data: ResilienceData = {
+    generatedAt: NOW_,
+    metrics: {
+      ...base,
+      // The engine puts every service backup into freshness as well.
+      freshness: { ...base.freshness, state: "gaps", gaps: [{ key: "content:exchange-mail", kind: "content", type: null, parentType: null, family: null, workload: "exchange-mail", lastAttempt: { at: "2026-10-03T01:00:00.000Z", outcome: "failed" } }] },
+      services: { settings: [], content: [mail] },
+    },
+    incidents: [],
+    storage: { configured: true, provider: "local-disk", region: null, boundary: null, immutability: "live-qualified", generatedAt: null, certifies: null, source: null },
+  } as ResilienceData;
+  const alerts = resilienceAlerts(data);
+  assert.equal(alerts.some((alert) => alert.key === "never-backed-up"), false);
+  assert.equal(alerts.filter((alert) => alert.key === "service-never-worked").length, 1);
+  const [entra] = serviceGroups(data.metrics, NOW_);
+  assert.equal(entra.rows[0].status, "Backed up");
+});
+
+test("a workload whose latest run was switched off reads as switched off, not failed", () => {
+  const off: ServiceBackup = {
+    kind: "service-settings", workload: "teams-org-policies", name: "Teams organization policy", service: "Teams", switchedOn: true,
+    latest: { id: "w2", outcome: "disabled", at: "2026-10-03T02:00:00.000Z" },
+    lastGood: { id: "w1", from: "2026-10-02T02:00:00.000Z", at: "2026-10-02T02:05:00.000Z", settings: 9 },
+  };
+  assert.deepEqual(serviceState(off, NOW), { tone: "neutral", status: "Switched off" });
+  assert.deepEqual(serviceState({ ...off, lastGood: null }, NOW), { tone: "neutral", status: "Switched off" });
 });
 
 test("a type the tenant does not use is listed as not used, not as never backed up", () => {

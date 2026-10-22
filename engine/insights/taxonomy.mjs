@@ -3,13 +3,19 @@
  *
  * Each entry gives what a reader sees instead of a stored code: a plain singular name
  * ("Conditional Access policy"), the service it belongs to, and a default priority with
- * the reason for it. Pages, reports and the change feed group and rank by these fields.
+ * the reason for it, and the group of kinds it sits in within its service ("Users and
+ * contacts", "Admin roles"…). Pages, reports and the change feed group and rank by these fields.
  *
  * Entries live in taxonomy.d/, one file per service, so services can change in parallel.
  * A catalogue type takes its priority from the catalogue's blast radius and criticality
  * unless its entry sets `priority` and `reason`; a workload read has no catalogue tier, so
  * its entry must set both. taxonomy.test.mjs fails on any catalogued type or workload
  * without an entry, so a new CAT or READ type has to be mapped here.
+ *
+ * Each service file also lists every group of kinds the service has, including groups
+ * with no mapped kind yet, with a pattern per group (`match`) and the service's code
+ * prefix (`prefix`). A kind read before anyone maps it still lands in its service and
+ * group (placeUnmapped below).
  */
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import defender from './taxonomy.d/defender.mjs';
@@ -43,11 +49,23 @@ function catalogPriority(entry) {
   return entry.criticality === 'tier1' ? CATALOG_PRIORITY.tier1 : CATALOG_PRIORITY.access;
 }
 
-function build() {
+// A type no service file places in a group (or an unmapped code) sorts after every group.
+export const OTHER_CATEGORY = Object.freeze({ key: 'other', name: 'Other settings', rank: 99 });
+
+function placements(categories) {
+  const placed = new Map();
+  (categories ?? []).forEach((category, rank) => {
+    category.types.forEach((type, typeRank) => placed.set(type, { category: category.key, categoryName: category.name, categoryRank: rank, typeRank }));
+  });
+  return placed;
+}
+
+function build(field) {
   const catalog = new Map(CATALOG.map((entry) => [entry.type, entry]));
   const taxonomy = {};
-  for (const { service, entries } of SERVICE_FILES) {
-    for (const [type, entry] of Object.entries(entries)) {
+  for (const { service, categories, ...file } of SERVICE_FILES) {
+    const placed = placements(categories);
+    for (const [type, entry] of Object.entries(file[field] ?? {})) {
       if (taxonomy[type]) throw new Error(`taxonomy: ${type} is mapped by both ${taxonomy[type].service} and ${service}`);
       const fallback = catalog.has(type) ? catalogPriority(catalog.get(type)) : null;
       taxonomy[type] = Object.freeze({
@@ -56,13 +74,19 @@ function build() {
         service,
         priority: entry.priority ?? fallback?.priority ?? null,
         priorityReason: entry.reason ?? fallback?.reason ?? null,
+        ...(placed.get(type) ?? { category: OTHER_CATEGORY.key, categoryName: OTHER_CATEGORY.name, categoryRank: OTHER_CATEGORY.rank, typeRank: 0 }),
       });
     }
   }
   return Object.freeze(taxonomy);
 }
 
-export const TAXONOMY = build();
+export const TAXONOMY = build('entries');
+
+/** Links between objects (group members and owners, app owners, policy assignments),
+ * by the type edge changes store them under. Kept apart from TAXONOMY, which maps the
+ * catalogue and workload reads one for one. */
+export const EDGE_TAXONOMY = build('edges');
 
 const words = (code) => String(code).replace(/[-_]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().trim();
 
@@ -71,18 +95,66 @@ const words = (code) => String(code).replace(/[-_]+/g, ' ').replace(/([a-z0-9])(
  * words ("someNewType" becomes "Some new type") with no service and normal priority, and
  * `known: false` so callers can show that it is not classified yet.
  */
-export function typeInfo(type) {
-  const entry = TAXONOMY[type];
+/** @param {string} type @param {string | null} [service] the service the row is filed under, if known */
+export function typeInfo(type, service = null) {
+  const entry = TAXONOMY[type] ?? EDGE_TAXONOMY[type];
   if (entry) return { ...entry, known: true };
   const name = words(type);
+  const placed = placeUnmapped(type, service);
   return {
     type,
     name: name ? name[0].toUpperCase() + name.slice(1) : 'Unknown type',
-    service: null,
+    service: placed?.service ?? null,
     priority: 'normal',
     priorityReason: 'Not classified yet.',
+    category: placed?.category ?? OTHER_CATEGORY.key,
+    categoryName: placed?.categoryName ?? OTHER_CATEGORY.name,
+    categoryRank: placed?.categoryRank ?? OTHER_CATEGORY.rank,
+    // After the group's mapped types, so a kind Keel already knows lists first.
+    typeRank: placed ? 1_000 : 0,
     known: false,
   };
+}
+
+/**
+ * Where a kind Keel has not mapped yet belongs, so it lands in the right group the day
+ * it is first read. A code that starts with a service's `prefix` ("exchange…",
+ * "teams…") belongs to that service: to its first group whose `match` fits the code, or
+ * else to the service's `fallback` group. A code with no service prefix (a Graph type
+ * such as "accessReviewFoo") is placed only when an Entra group's `match` fits it, and
+ * otherwise stays under "Other settings". When the caller knows the service (a row
+ * stored under a workload's own code, such as "transportRule" under Exchange), that
+ * service's groups place it. Codes are compared lower case, without dashes or
+ * underscores.
+ */
+/** @param {string} type @param {string | null} [service] */
+export function placeUnmapped(type, service = null) {
+  const code = String(type ?? '').replace(/[-_\s]+/g, '').toLowerCase();
+  if (!code) return null;
+  const known = service ? SERVICE_FILES.filter((file) => file.service.toLowerCase() === String(service).toLowerCase()) : [];
+  const prefixed = known.length ? known : SERVICE_FILES.filter((file) => file.prefix?.test(code));
+  const candidates = prefixed.length ? prefixed : SERVICE_FILES.filter((file) => !file.prefix);
+  for (const file of candidates) {
+    const rank = file.categories.findIndex((category) => category.match?.test(code));
+    const fallback = prefixed.length && file.fallback ? file.categories.findIndex((category) => category.key === file.fallback) : -1;
+    const at = rank >= 0 ? rank : fallback;
+    if (at >= 0) {
+      const category = file.categories[at];
+      return { service: file.service, category: category.key, categoryName: category.name, categoryRank: at };
+    }
+  }
+  return null;
+}
+
+/**
+ * List order inside one service: by the service file's groups (people and objects,
+ * then roles, then policies, then settings), then the type's place in its group, then
+ * the name. Pages that group a service's settings by kind sort with this.
+ */
+export function compareInService(a, b) {
+  const left = typeInfo(a);
+  const right = typeInfo(b);
+  return left.categoryRank - right.categoryRank || left.typeRank - right.typeRank || left.name.localeCompare(right.name);
 }
 
 /** Sort comparator: most urgent priority first, then service order, then name. */

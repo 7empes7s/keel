@@ -21,9 +21,11 @@ import { OPEN_DRIFT_PREDICATE } from "../../engine/store/openDrift.mjs";
 import { captureApprovalScope, scopePredicate } from "../../engine/authz/entityScope.mjs";
 import { routeApproval } from "../../engine/govern/approvals.mjs";
 import { MAX_ATTRIBUTED_CHANGES, attributeChanges, changedFields } from "../../engine/identity/attribution.mjs";
+import { changeObjectIds } from "../../engine/identity/auditSources.mjs";
 import { loadBreakGlassReadiness } from "../../engine/safety/breakGlassReadiness.mjs";
 import { withoutScriptBodies } from "../../engine/safety/scriptBodies.mjs";
-import { comparedSettings, driftEvidence, semanticChange, summarizeSemanticDrift } from "../../engine/govern/semanticDrift.mjs";
+import { changeBlastRadius, itemBlastRadius } from "../../engine/safety/blastRadius.mjs";
+import { comparedSettings, driftEvidence, MAX_EVIDENCE_CHANGES, semanticChange, summarizeSemanticDrift } from "../../engine/govern/semanticDrift.mjs";
 import { answerQuestion, knownEntities } from "../../engine/query/execute.mjs";
 import {
   getEvidenceIntegrity,
@@ -36,7 +38,8 @@ import { workloadRestoreGuide } from "../../engine/coverage/coverageDoc.mjs";
 import type { AskData, AskInput, GroundedAnswer } from "@/lib/ask-view";
 import type { EntityScope } from "@/lib/principal";
 import { BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
-import { NAME_FIELDS, objectIds, payloadName } from "@/lib/changes-view";
+import { objectIds, payloadName } from "@/lib/changes-view";
+import { objectNameSql } from "../../engine/cir/objectName.mjs";
 import { DERIVED_NAME_TYPES, derivedName, edgeKeyType, referencedIds } from "@/lib/app-names";
 import { idNames, savedNames } from "@/lib/saved-names";
 import { getLiveRecords } from "@/lib/live-records";
@@ -45,7 +48,7 @@ import { loadServiceChanges } from "@/lib/service-changes";
 import { personLabel } from "@/lib/sentences";
 import type { ReadinessData } from "@/lib/readiness-view";
 import type { IncidentPointSummary, RecoveryMetrics, ResilienceData } from "@/lib/resilience-view";
-import { databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
+import { databaseIsLocal, databaseUrl, recoveryManifestPath, tenantRef } from "@/lib/runtime-config";
 import type {
   BaselineCapture,
   BaselineChanges,
@@ -392,11 +395,12 @@ function normalizeDrift(raw: UnknownRecord): DriftRecord {
     naturalKey: String(raw.natural_key),
     resourceType,
     changeType: String(raw.change_type) as DriftRecord["changeType"],
-    blastRadius: String(raw.blast_radius),
+    // Conditional Access is rated by what the rule does, before and after the change.
+    blastRadius: String(changeBlastRadius(resourceType, raw.before_payload ?? null, raw.after_payload ?? null, raw.blast_radius)),
     detectedAt: iso(raw.detected_at) ?? "",
     before: withoutScriptBodies(resourceType, raw.before_payload ?? null),
     after: withoutScriptBodies(resourceType, raw.after_payload ?? null),
-    name: payloadName(raw.after_payload) ?? payloadName(raw.before_payload),
+    name: payloadName(raw.after_payload, resourceType) ?? payloadName(raw.before_payload, resourceType),
   };
 }
 
@@ -482,22 +486,36 @@ async function baselinesWithCapture(client: KeelClient, ref: string, now: Date):
   });
 }
 
-function readRecoveryManifest(): { manifest: UnknownRecord | null; source: string | null } {
+type StorageBasis = NonNullable<StorageResidency["basis"]>;
+
+function readRecoveryManifest(): { manifest: UnknownRecord | null; source: string | null; basis: StorageBasis | null } {
   const path = recoveryManifestPath();
-  if (!path) return { manifest: null, source: null };
+  if (!path) {
+    // No recovery manifest set: backups are kept in Keel's own database, so when that
+    // database runs on this server, that is where they are. A remote database stays
+    // unknown rather than guessed.
+    return databaseIsLocal(databaseUrl())
+      ? { manifest: { residency: { provider: "local-disk" } }, source: null, basis: "database-location" }
+      : { manifest: null, source: null, basis: null };
+  }
   try {
-    return { manifest: JSON.parse(readFileSync(/* turbopackIgnore: true */ path, "utf8")) as UnknownRecord, source: path };
+    return { manifest: JSON.parse(readFileSync(/* turbopackIgnore: true */ path, "utf8")) as UnknownRecord, source: path, basis: "recovery-manifest" };
   } catch {
     // An unreadable manifest is reported as not configured, never guessed.
-    return { manifest: null, source: path };
+    return { manifest: null, source: path, basis: null };
   }
+}
+
+function storageFrom(): StorageResidency {
+  const { manifest, source, basis } = readRecoveryManifest();
+  const storage = { ...(storageResidency({ manifest }) as Omit<StorageResidency, "source">), source };
+  return { ...storage, basis: storage.configured ? basis : null };
 }
 
 export async function getComplianceData(): Promise<ComplianceData> {
   const ref = tenantRef();
   const now = new Date();
-  const { manifest, source } = readRecoveryManifest();
-  const storage = { ...(storageResidency({ manifest }) as Omit<StorageResidency, "source">), source };
+  const storage = storageFrom();
   return withClient(async (client) => {
     const [{ findings, summary }, baselines] = await Promise.all([
       complianceFindings(client, { tenantRef: ref, now }) as Promise<{ findings: ComplianceFinding[]; summary: ComplianceSummary }>,
@@ -670,59 +688,87 @@ async function scopedBaselineCount(client: KeelClient, ref: string, baselineId: 
   return Number(rows[0]?.count ?? 0);
 }
 
-// Task 91: who made each open change, from audit evidence (engine/identity/attribution.mjs),
-// and where a roll back of it would be routed (approvals.mjs#routeApproval), computed
-// server-side for the changes this reader may already see. The change window runs from
-// when KEEL captured the baseline's version of the resource (the baseline's own time
-// for an added resource) to the collection that saw the change. A reader that cannot
-// be attributed (no audit tables, a failed query) gets null, never a guess.
+// Task 91: who made each open change, from Microsoft's audit logs (engine/identity/
+// attribution.mjs, read in by each collection through auditSources.mjs), and where a roll
+// back of it would be routed (approvals.mjs#routeApproval), computed server-side for the
+// changes this reader may already see. The change window is as narrow as KEEL's backups
+// allow: from the last backup that still held the baseline's version (else the baseline's
+// own capture) to the first backup that saw this change. A reader that cannot be
+// attributed (a failed query) gets null, never a guess; a failed approval route keeps the
+// attribution and drops only the route.
+export const ATTRIBUTION_WINDOW_SQL = `SELECT d.id,
+        COALESCE(prev.completed_at, bs.completed_at, bs.started_at, b.set_at) AS window_from,
+        COALESCE(fs.completed_at, f.detected_at, os.completed_at, d.detected_at) AS window_until
+   FROM drift d
+   JOIN baseline b ON b.id = d.baseline_id
+   JOIN snapshot os ON os.id = d.observed_snapshot
+   LEFT JOIN baseline_resource br ON br.baseline_id = d.baseline_id AND br.natural_key = d.natural_key
+   LEFT JOIN resource_version rv ON rv.id = br.resource_version_id
+   LEFT JOIN snapshot bs ON bs.id = rv.snapshot_id
+   LEFT JOIN LATERAL (
+     SELECT f.detected_at, f.observed_snapshot FROM drift f
+      WHERE f.tenant_ref = d.tenant_ref AND f.baseline_id = d.baseline_id AND f.natural_key = d.natural_key
+        AND f.after_hash IS NOT DISTINCT FROM d.after_hash
+      ORDER BY f.detected_at ASC, f.id ASC LIMIT 1
+   ) f ON true
+   LEFT JOIN snapshot fs ON fs.id = f.observed_snapshot
+   LEFT JOIN LATERAL (
+     SELECT s.completed_at FROM snapshot s
+       JOIN resource_version pv ON pv.snapshot_id = s.id AND pv.natural_key = d.natural_key AND pv.payload_hash = d.before_hash
+      WHERE d.change_type <> 'added' AND s.tenant_ref = d.tenant_ref AND s.completed_at IS NOT NULL
+        AND s.completed_at <= COALESCE(fs.started_at, os.started_at)
+        AND s.completed_at >= COALESCE(bs.completed_at, bs.started_at, b.set_at)
+      ORDER BY s.completed_at DESC LIMIT 1
+   ) prev ON true
+  WHERE d.tenant_ref = $1 AND d.baseline_id = $2 AND d.id = ANY($3::uuid[])`;
+
 async function withAttribution(client: KeelClient, ref: string, baselineId: string, items: DriftRecord[], scope: EntityScope): Promise<DriftRecord[]> {
   const bounded = items.slice(0, MAX_ATTRIBUTED_CHANGES);
   if (!bounded.length) return items;
+  let byId: Map<string, Omit<ChangeAttribution, "route"> & { changeId: string }>;
   try {
-    const { rows } = await client.query(
-      `SELECT d.id,
-              COALESCE(bs.completed_at, bs.started_at, b.set_at) AS window_from,
-              COALESCE(os.completed_at, d.detected_at) AS window_until
-         FROM drift d
-         JOIN baseline b ON b.id = d.baseline_id
-         JOIN snapshot os ON os.id = d.observed_snapshot
-         LEFT JOIN baseline_resource br ON br.baseline_id = d.baseline_id AND br.natural_key = d.natural_key
-         LEFT JOIN resource_version rv ON rv.id = br.resource_version_id
-         LEFT JOIN snapshot bs ON bs.id = rv.snapshot_id
-        WHERE d.tenant_ref = $1 AND d.baseline_id = $2 AND d.id = ANY($3::uuid[])`,
-      [ref, baselineId, bounded.map((item) => item.id)],
-    );
+    const { rows } = await client.query(ATTRIBUTION_WINDOW_SQL, [ref, baselineId, bounded.map((item) => item.id)]);
     const windows = new Map(rows.map((row) => [String(row.id), { from: iso(row.window_from), until: iso(row.window_until) }]));
     const changes = bounded.filter((item) => windows.get(item.id)?.until).map((item) => ({
       id: item.id, resourceType: item.resourceType, naturalKey: item.naturalKey, changeType: item.changeType,
       fields: changedFields(item.before, item.after), window: windows.get(item.id)!,
+      objectIds: changeObjectIds({ naturalKey: item.naturalKey, before: item.before, after: item.after }),
     }));
     const attributed = (await attributeChanges(client, { tenantRef: ref, changes, scope })) as Array<Omit<ChangeAttribution, "route"> & { changeId: string }>;
-    const byId = new Map(attributed.map((entry) => [entry.changeId, entry]));
-    const approverCache = new Map();
-    const result: DriftRecord[] = [];
-    for (const item of items) {
-      const found = byId.get(item.id);
-      if (!found) { result.push({ ...item, attribution: null }); continue; }
-      const { changeId: _changeId, ...attribution } = found;
-      const entityScope = await captureApprovalScope(client, { tenantRef: ref, resources: [{ resourceType: item.resourceType, naturalKey: item.naturalKey }] });
-      const route = (await routeApproval(client, { tenantRef: ref, entityScope, approverCache })) as {
-        route: "entity" | "central" | "refused"; reason?: string; entityCode?: string; approvers?: string[]; routedAt: string;
-      };
-      result.push({
-        ...item,
-        attribution: {
-          ...attribution,
-          route: { route: route.route, reason: route.reason, entityCode: route.entityCode, approverCount: route.approvers?.length ?? 0, routedAt: route.routedAt },
-        },
-      });
+    // A central reader may see who any account is: name the ones KEEL backed up.
+    if (scope.central) {
+      const unnamed = attributed.flatMap((entry) => entry.actors.filter((actor) => !actor.name && actor.id).map((actor) => actor.id!));
+      if (unnamed.length) {
+        const lookup = await idNames(client, ref, unnamed);
+        for (const entry of attributed) {
+          entry.actors = entry.actors.map((actor) => (actor.name || !actor.id ? actor : { ...actor, name: lookup.ids[actor.id.toLowerCase()] ?? null }));
+        }
+      }
     }
-    return result;
+    byId = new Map(attributed.map((entry) => [entry.changeId, entry]));
   } catch (error) {
     console.error("[keel-portal] change attribution unavailable", error);
     return items.map((item) => ({ ...item, attribution: null }));
   }
+  const approverCache = new Map();
+  const result: DriftRecord[] = [];
+  for (const item of items) {
+    const found = byId.get(item.id);
+    if (!found) { result.push({ ...item, attribution: null }); continue; }
+    const { changeId: _changeId, ...attribution } = found;
+    let route: ChangeAttribution["route"] = null;
+    try {
+      const entityScope = await captureApprovalScope(client, { tenantRef: ref, resources: [{ resourceType: item.resourceType, naturalKey: item.naturalKey }] });
+      const routed = (await routeApproval(client, { tenantRef: ref, entityScope, approverCache })) as {
+        route: "entity" | "central" | "refused"; reason?: string; entityCode?: string; approvers?: string[]; routedAt: string;
+      };
+      route = { route: routed.route, reason: routed.reason, entityCode: routed.entityCode, approverCount: routed.approvers?.length ?? 0, routedAt: routed.routedAt };
+    } catch (error) {
+      console.error("[keel-portal] approval route unavailable", error);
+    }
+    result.push({ ...item, attribution: { ...attribution, route } });
+  }
+  return result;
 }
 
 // Task 98: the settings that change behaviour for each change the reader may see, and
@@ -737,15 +783,24 @@ async function withDecisionEvidence(client: KeelClient, ref: string, items: Drif
     return change as SemanticChange;
   });
   let evidence: Map<string, ChangeEvidence> | null = null;
+  // The engine reads the records of a bounded number of changes: the riskiest first, so
+  // a change that could lock administrators out always has its records.
+  const rank = (radius: string) => { const index = BLAST_RADIUS_ORDER.indexOf(radius); return index === -1 ? 99 : index; };
+  const byRisk = [...items].sort((a, b) => rank(a.blastRadius) - rank(b.blastRadius) || b.detectedAt.localeCompare(a.detectedAt));
+  const read = new Set(byRisk.slice(0, MAX_EVIDENCE_CHANGES).map((item) => item.id));
   try {
     evidence = (await driftEvidence(client, {
       tenantRef: ref, scope,
-      items: items.map(({ id, naturalKey, resourceType, changeType, detectedAt }) => ({ id, naturalKey, resourceType, changeType, detectedAt })),
+      items: byRisk.map(({ id, naturalKey, resourceType, changeType, detectedAt }) => ({ id, naturalKey, resourceType, changeType, detectedAt })),
     })) as Map<string, ChangeEvidence>;
   } catch (error) {
     console.error("[keel-portal] change evidence unavailable", error);
   }
-  return items.map((item, index) => ({ ...item, semantic: semantic[index], evidence: evidence?.get(item.id) ?? null }));
+  return items.map((item, index) => {
+    const found = evidence?.get(item.id) ?? null;
+    const evidenceGap: DriftRecord["evidenceGap"] = found ? undefined : !evidence ? "read-failed" : read.has(item.id) ? "not-found" : "over-limit";
+    return { ...item, semantic: semantic[index], evidence: found, ...(evidenceGap ? { evidenceGap } : {}) };
+  });
 }
 
 /**
@@ -760,7 +815,7 @@ export function displayItems(items: DriftRecord[]): DriftRecord[] {
 
 // At most this many ids are named per page load; the rest read "no name" (bounded).
 const MAX_NAMED_IDS = 5000;
-const REF_NAME_SQL = `COALESCE(${NAME_FIELDS.map((field) => `NULLIF(rv.payload->>'${field}', '')`).join(", ")})`;
+const REF_NAME_SQL = objectNameSql("rv.payload", "rv.resource_type");
 
 // Names, not ids: the users, groups, roles and apps each change points to by id, as the
 // collections that saw the changes read them. Matched on the object id, an app's appId
@@ -892,8 +947,7 @@ export interface RestoreResourcesData {
 }
 
 // The readable name a saved object carries, by the field Microsoft uses for it.
-export const PAYLOAD_NAME_SQL = `COALESCE(${["displayName", "name", "title", "userPrincipalName", "mail", "subject"]
-  .map((field) => `NULLIF(rv.payload->>'${field}', '')`).join(", ")})`;
+export const PAYLOAD_NAME_SQL = objectNameSql("rv.payload", "rv.resource_type");
 
 export async function getRestoreResources(
   snapshotId: string,
@@ -908,7 +962,8 @@ export async function getRestoreResources(
     };
     const { rows } = await queryClient.query(
       `SELECT rv.natural_key, rv.resource_type, rv.blast_radius, ${PAYLOAD_NAME_SQL} AS display_name,
-              CASE WHEN ${PAYLOAD_NAME_SQL} IS NULL AND rv.resource_type = ANY($3::text[]) THEN rv.payload END AS payload
+              CASE WHEN ${PAYLOAD_NAME_SQL} IS NULL AND rv.resource_type = ANY($3::text[]) THEN rv.payload END AS payload,
+              CASE WHEN rv.resource_type = 'conditionalAccessPolicy' THEN rv.payload END AS rated_payload
        FROM resource_version rv
        JOIN snapshot s ON s.id = rv.snapshot_id
        WHERE rv.snapshot_id = $1 AND s.tenant_ref = $2
@@ -928,7 +983,8 @@ export async function getRestoreResources(
       resources: rows.map((row) => ({
         naturalKey: String(row.natural_key),
         resourceType: String(row.resource_type),
-        blastRadius: String(row.blast_radius),
+        // Conditional Access is rated by what this backed-up rule does.
+        blastRadius: String(itemBlastRadius(String(row.resource_type), row.rated_payload ?? null, row.blast_radius)),
         service: typeInfo(String(row.resource_type)).service,
         name: row.display_name != null
           ? String(row.display_name)
@@ -1093,7 +1149,7 @@ export async function getIncidentRecoveryData(requestedId?: string): Promise<Inc
     if (wanted.length > 0) {
       const { rows } = await client.query(
         `SELECT rv.snapshot_id::text AS snapshot_id, rv.natural_key,
-                COALESCE(${NAME_FIELDS.map((field) => `NULLIF(rv.payload->>'${field}', '')`).join(", ")}) AS display_name
+                ${PAYLOAD_NAME_SQL} AS display_name
            FROM resource_version rv JOIN snapshot s ON s.id = rv.snapshot_id
            JOIN unnest($1::text[], $2::text[]) AS w(snapshot_id, natural_key)
              ON w.snapshot_id = rv.snapshot_id::text AND w.natural_key = rv.natural_key
@@ -1354,8 +1410,7 @@ export async function getDashboardData(): Promise<DashboardData> {
 export async function getResilienceData(): Promise<ResilienceData> {
   const ref = tenantRef();
   const now = new Date();
-  const { manifest, source } = readRecoveryManifest();
-  const storage = { ...(storageResidency({ manifest }) as Omit<StorageResidency, "source">), source };
+  const storage = storageFrom();
   return withClient(async (client) => {
     const metrics = (await loadRecoveryMetrics(client, {
       tenantRef: ref,
@@ -1398,7 +1453,8 @@ export async function getAskData(scope: EntityScope = CENTRAL_SCOPE, input: AskI
     const request = input.question ? null : {
       intent: input.intent,
       params: Object.fromEntries(Object.entries({
-        entity: input.entity, period: input.period, resourceType: input.resourceType, changeType: input.changeType,
+        entity: input.entity, period: input.period, from: input.from, to: input.to, resourceType: input.resourceType,
+        resourceTypes: input.resourceTypes, name: input.name, changeType: input.changeType,
       }).filter(([, value]) => value !== undefined)),
     };
     const answer = (await answerQuestion(client, {

@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { BaselinesStyles } from "@/components/baselines/styles";
+import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { NewRuleSheet } from "@/components/policies/new-rule-sheet";
 import { RuleRecord } from "@/components/policies/rule-record";
@@ -20,10 +21,11 @@ import {
   RULE_KIND_ORDER,
   RULE_STATES,
   RULE_STATE_ORDER,
-  filterWords,
   kindWords,
   lastActionWords,
   parseFilters,
+  RULE_STATE_FILTERS,
+  ruleInState,
   riskTone,
   ruleCounts,
   ruleKind,
@@ -35,8 +37,11 @@ import {
   turnOffDetail,
   type RuleKind,
   type RuleState,
+  watchedType,
 } from "@/lib/policy-view";
+import { kindOrder } from "@/lib/type-groups";
 import type { Policy } from "@/lib/policies";
+import { addsWords, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import { personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
@@ -69,7 +74,14 @@ export function PoliciesPage({ canEdit, policies, halted, haltedAt = null, haltF
   const counts = useMemo(() => ruleCounts(policies), [policies]);
   const verdict = useMemo(() => rulesVerdict(policies, halted, now), [policies, halted, now]);
   const shown = useMemo(() => policies.filter((policy) => ruleMatches(policy, filters)), [policies, filters]);
-  const filtering = Boolean(filters.state || filters.what);
+  const filtering = Boolean(filters.states.length || filters.what);
+  // What each state tile holds under the "what" filter, and what it would add.
+  const stateTiles = useMemo<FilterTile<Policy>[]>(() => RULE_STATE_FILTERS.map((key) => ({ key, test: (policy: Policy) => ruleInState(policy, key) })), []);
+  const tileTotals = useMemo(() => new Map(tileCounts(policies, stateTiles, filters.states, filters.what ? [(policy: Policy) => ruleKind(policy) === filters.what] : []).map((entry) => [entry.key, entry])), [policies, stateTiles, filters]);
+  const activeFilters: ActiveFilter[] = [
+    ...filters.states.map((key) => ({ key: `state:${key}`, label: key === "paused" ? "Paused or stopped" : key === "running" ? "Running" : "Off", clear: { state: withoutTile(filters.states, key) } })),
+    ...(filters.what ? [{ key: "what", label: RULE_KINDS[filters.what].label, clear: { what: null } }] : []),
+  ];
 
   const href = (changes: Record<string, string | null>) => {
     const next = new URLSearchParams(params?.toString() ?? "");
@@ -120,16 +132,18 @@ export function PoliciesPage({ canEdit, policies, halted, haltedAt = null, haltF
     : null;
 
   const tiles: { key: string; label: string; icon: IconName; value: number; small: string; changes: Record<string, string | null>; tone?: "urgent" | "soon"; active: boolean }[] = [
-    { key: "running", label: "Running", icon: "check-circle", value: counts.running, small: counts.running ? "Acting on new changes" : "No rule is acting right now", changes: { state: filters.state === "running" ? null : "running", what: null }, active: filters.state === "running" },
-    { key: "paused", label: "Paused or stopped", icon: "pause", value: counts.paused + counts.stopped, small: pausedWords(counts.paused, counts.stopped), changes: { state: filters.state === "paused" ? null : "paused", what: null }, tone: counts.stopped ? "urgent" : counts.paused ? "soon" : undefined, active: filters.state === "paused" },
-    { key: "off", label: "Off", icon: "hide", value: counts.off, small: counts.undoOff ? `${counts.undoOff === 1 ? "1 undo rule turns" : `${counts.undoOff} undo rules turn`} on after a preview` : "Turned on when needed", changes: { state: filters.state === "off" ? null : "off", what: null }, active: filters.state === "off" },
+    { key: "running", label: "Running", icon: "check-circle", value: counts.running, small: counts.running ? "Acting on new changes" : "No rule is acting right now", changes: { state: tileParam(stateTiles, filters.states, "running") }, active: filters.states.includes("running") },
+    { key: "paused", label: "Paused or stopped", icon: "pause", value: counts.paused + counts.stopped, small: pausedWords(counts.paused, counts.stopped), changes: { state: tileParam(stateTiles, filters.states, "paused") }, tone: counts.stopped ? "urgent" : counts.paused ? "soon" : undefined, active: filters.states.includes("paused") },
+    { key: "off", label: "Off", icon: "hide", value: counts.off, small: counts.undoOff ? `${counts.undoOff === 1 ? "1 undo rule turns" : `${counts.undoOff} undo rules turn`} on after a preview` : "Turned on when needed", changes: { state: tileParam(stateTiles, filters.states, "off") }, active: filters.states.includes("off") },
     { key: "actions", label: "Actions this week", icon: "automation", value: counts.actionsWeek, small: counts.actionsWeek ? "Across every rule, the last 7 days" : "Nothing was undone in the last 7 days", changes: { state: null, what: null }, active: false },
   ];
 
   const groupings = useMemo<Grouping<Policy>[]>(() => [
     { key: "what", label: "What it does", groupsOf: (items) => groupBy(items, (item) => ruleKind(item), (key, list) => ({ label: RULE_KINDS[key as RuleKind].label, icon: RULE_KINDS[key as RuleKind].icon, about: `${RULE_KINDS[key as RuleKind].about} · ${rules(list.length)}` }), (key) => RULE_KIND_ORDER.indexOf(key as RuleKind)) },
     { key: "state", label: "State", groupsOf: (items) => groupBy(items, (item) => ruleState(item), (key, list) => ({ label: RULE_STATES[key as RuleState].plural, icon: RULE_STATES[key as RuleState].icon, about: rules(list.length) }), (key) => RULE_STATE_ORDER.indexOf(key as RuleState)) },
-    { key: "kind", label: "Kind of thing", groupsOf: (items) => groupBy(items, (item) => kindWords(item), (key, list) => ({ label: capital(key), icon: "cloud", about: rules(list.length) })) },
+    // Service by service, and inside each by kind (users, groups, roles, then policies
+    // and settings); rules that watch anything come last.
+    { key: "kind", label: "Kind of thing", groupsOf: (items) => groupBy(items, (item) => kindWords(item), (key, list) => ({ label: capital(key), icon: "cloud", about: rules(list.length) }), (key) => { const type = watchedType(items.find((item) => kindWords(item) === key)!); return type ? kindOrder(type) : Number.MAX_SAFE_INTEGER; }) },
   ], []);
 
   const renderRow = (policy: Policy) => {
@@ -184,21 +198,20 @@ export function PoliciesPage({ canEdit, policies, halted, haltedAt = null, haltF
         ) : null}
 
         <section aria-label="Rules at a glance" className="po-tiles">
-          {tiles.map((tile) => (
-            <Link aria-current={tile.active || undefined} className="po-tile" data-tone={tile.tone} href={href({ ...tile.changes, new: null })} key={tile.key}>
-              <span className="po-tile-label"><Icon name={tile.icon} />{tile.label}</span>
-              <b className="po-tile-count">{tile.value}</b>
-              <small>{tile.small}</small>
-            </Link>
-          ))}
+          {tiles.map((tile) => {
+            const adds = tile.key === "actions" ? null : addsWords(tileTotals.get(tile.key), filters.states.length);
+            return (
+              <Link aria-current={tile.active || undefined} className="po-tile" data-tone={tile.tone} href={href({ ...tile.changes, new: null })} key={tile.key} title={tile.key === "actions" ? "Show every rule" : tile.active ? "Picked: click to remove it from the view" : "Click to add these to the view"}>
+                <span className="po-tile-label"><Icon name={tile.icon} />{tile.label}{tile.active ? <Icon className="tile-check" name="check" /> : null}</span>
+                <b className="po-tile-count">{tile.value}</b>
+                <small>{tile.small}</small>
+                {adds ? <small className="tile-adds">{adds}</small> : null}
+              </Link>
+            );
+          })}
         </section>
 
-        {filtering ? (
-          <p className="po-filter-note" role="status">
-            Showing {filterWords(filters)} only: {shown.length} of {policies.length}.
-            <Link className="po-inline-link" href={href({ state: null, what: null })}>Show everything</Link>
-          </p>
-        ) : null}
+        <ActiveFilters filters={activeFilters} noun={{ one: "rule", many: "rules" }} shown={shown.length} total={policies.length} />
 
         <section aria-labelledby="po-rules-heading" className="po-section">
           <h2 className="visually-hidden" id="po-rules-heading">Rules</h2>
@@ -208,7 +221,7 @@ export function PoliciesPage({ canEdit, policies, halted, haltedAt = null, haltF
               {canEdit ? <Link className="btn" href={href({ new: "1" })}><Icon name="plus" />New rule</Link> : null}
             </div>
           ) : shown.length === 0 ? (
-            <p className="sel-empty">No rule matches this filter.</p>
+            <NoMatches filters={activeFilters} noun={{ one: "rule", many: "rules" }} />
           ) : (
             <SelectableList
               action={{

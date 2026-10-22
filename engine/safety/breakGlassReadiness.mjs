@@ -676,7 +676,11 @@ export async function runBreakGlassCanary(client, { tenantRef, now = new Date(),
   const byId = new Map(accounts.map((account) => [account.accountId, account]));
   const since = new Date(ms(now) - lookbackDays * DAY);
   const usage = [];
-  const factsReady = await tableExists(client, 'audit_sign_in_fact');
+  // The audit tables now ship with the schema, so their presence proves nothing: the
+  // canary has facts only once a log was read for this tenant.
+  const factsReady = await tableExists(client, 'audit_sign_in_fact') && (await client.query(
+    "SELECT 1 FROM audit_ingest_state WHERE tenant_ref = $1 AND source IN ('sign-in', 'audit') LIMIT 1", [tenantRef],
+  )).rows.length > 0;
   if (factsReady) {
     const ids = [...byId.keys()];
     const { rows: signIns } = await client.query(

@@ -25,7 +25,7 @@ export const DEFAULT_MEMORY = '1g';
 export const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 export const DEFAULT_CREDENTIAL_MOUNT = '/etc/keel';
 /**
- * The deployed container scripts (run-job.sh, run-cmdlet.ps1, probe-workloads.ps1).
+ * The deployed container scripts (run-job.sh, run-cmdlet.ps1, list-commands.ps1, probe-workloads.ps1).
  * A function, as catalogue.mjs does: a `new URL(literal, import.meta.url)` makes the
  * portal's bundler resolve the directory as a module.
  */

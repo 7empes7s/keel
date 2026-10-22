@@ -8,13 +8,16 @@ import { useBackup } from "@/components/backup-controls";
 import { ChangedObjects, ChangedValuesStyles } from "@/components/changed-values";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
+import { ActiveFilters, NoMatches } from "@/components/list/active-filters";
+import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { DatePicker } from "@/components/pickers/date-picker";
-import { OptionPicker } from "@/components/pickers/option-picker";
+import { MultiOptionPicker } from "@/components/pickers/option-picker";
 import { Segmented, type ChoiceOption } from "@/components/pickers/segmented";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { JobRecordFields } from "@/components/job-table";
 import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { ErrorNotice } from "@/components/ui/error-notice";
 import { Badge } from "@/components/ui/badge";
 import { Person } from "@/components/ui/person";
 import { Verdict } from "@/components/verdict";
@@ -24,6 +27,8 @@ import {
   ACTIVITY_KIND_ORDER,
   OUTCOMES,
   OUTCOME_ORDER,
+  type ActivityKind,
+  type Outcome,
   activityCounts,
   activityCsv,
   activityRows,
@@ -31,7 +36,7 @@ import {
   clockWords,
   dayKey,
   dayLabel,
-  filterWords,
+  filterChips,
   integrityWords,
   outcomeTone,
   parseFilters,
@@ -50,6 +55,7 @@ import { rangeToParam, toDay, type DayRange } from "@/lib/date-range";
 import type { ChainIntegrity, EvidenceEntry } from "@/lib/evidence";
 import type { NamedKeys } from "@/lib/job-names";
 import type { JobRecord } from "@/lib/portal-jobs";
+import { byRisk, byText, byTime } from "@/lib/paging";
 import { formatTimestamp } from "@/lib/presentation";
 import { jobStatusSentence, personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
@@ -70,7 +76,13 @@ const SHOW: ChoiceOption<"all" | "jobs" | "records">[] = [
   { value: "records", label: "Audit record" },
 ];
 
-const WHO_ANY = "";
+// Order by: when, outcome (failures first) and what happened.
+const SORTS: ListSort<ActivityRow>[] = [
+  { key: "when", label: "When", desc: true, compare: (a, b) => byTime(a.at, b.at) },
+  { key: "outcome", label: "Outcome", desc: true, compare: (a, b) => byRisk(outcomeTone(a.outcome), outcomeTone(b.outcome)) },
+  { key: "what", label: "What happened", compare: (a, b) => byText(a.title, b.title) },
+];
+
 const SERVER_KEYS = { show: null, range: null, who: null, what: null, outcome: null, before: null };
 
 export function ActivityPage({ canBackup, jobs, entries, integrity, people = {}, names = {}, now = new Date().toISOString(), nextBefore = null }: {
@@ -147,18 +159,27 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
     : verdict.retry && canBackup ? { label: retryLabel(verdict.retry), onClick: () => void runAgain(verdict.retry), busy: retryBusy }
     : null;
 
-  // Tiles: each sets a filter in the address and reloads the page to it.
+  // Tiles: the outcome tiles add up (`outcome=failed,running,waiting`); Audit record
+  // narrows to the audit record; the first tile clears every filter. Each reloads the page.
+  const outcomeTile = (keys: Outcome[]) => {
+    const on = keys.some((key) => filters.outcomes.includes(key));
+    const next = on ? filters.outcomes.filter((key) => !keys.includes(key)) : [...filters.outcomes, ...keys];
+    return { changes: { outcome: OUTCOME_ORDER.filter((key) => next.includes(key)).join(",") || null, before: null }, active: on };
+  };
+  const failedTile = outcomeTile(["failed"]);
+  const activeTile = outcomeTile(["running", "waiting"]);
   const tiles: { key: string; label: string; icon: IconName; value: string; small: string; changes: Record<string, string | null>; tone?: "urgent" | "soon"; active: boolean }[] = [
-    { key: "jobs", label: "Jobs in the last day", icon: "swap", value: String(counts.jobsDay), small: "Each bar is a day; red is what failed", changes: { ...SERVER_KEYS }, active: filters.show === "all" && !filters.outcome && !filters.what && !filters.who && !filters.range },
-    { key: "failed", label: "Failed", icon: "x-circle", value: String(counts.failedDay), small: counts.failedWeek ? `${counts.failedWeek} failed in the last 7 days` : "Nothing failed in the last 7 days", changes: { ...SERVER_KEYS, show: "jobs", outcome: filters.outcome === "failed" ? null : "failed" }, tone: counts.failedDay ? "urgent" : undefined, active: filters.outcome === "failed" },
-    { key: "active", label: "Running or waiting", icon: "play", value: String(counts.running + counts.waiting), small: counts.running + counts.waiting ? `${counts.running} running, ${counts.waiting} waiting to start` : "Nothing is running", changes: { ...SERVER_KEYS, show: "jobs", outcome: filters.outcome === "running" ? null : "running" }, active: filters.outcome === "running" || filters.outcome === "waiting" },
-    { key: "record", label: "Audit record", icon: "audit", value: record.label, small: record.sentence, changes: { ...SERVER_KEYS, show: filters.show === "records" ? null : "records" }, tone: record.state === "broken" ? "urgent" : record.state === "unchecked" ? "soon" : undefined, active: filters.show === "records" },
+    { key: "jobs", label: "Jobs in the last day", icon: "swap", value: String(counts.jobsDay), small: "Each bar is a day; red is what failed", changes: { ...SERVER_KEYS }, active: filters.show === "all" && !filters.outcomes.length && !filters.what.length && !filters.who.length && !filters.range },
+    { key: "failed", label: "Failed", icon: "x-circle", value: String(counts.failedDay), small: counts.failedWeek ? `${counts.failedWeek} failed in the last 7 days` : "Nothing failed in the last 7 days", changes: failedTile.changes, tone: counts.failedDay ? "urgent" : undefined, active: failedTile.active },
+    { key: "active", label: "Running or waiting", icon: "play", value: String(counts.running + counts.waiting), small: counts.running + counts.waiting ? `${counts.running} running, ${counts.waiting} waiting to start` : "Nothing is running", changes: activeTile.changes, active: activeTile.active },
+    { key: "record", label: "Audit record", icon: "audit", value: record.label, small: record.sentence, changes: { show: filters.show === "records" ? null : "records", before: null }, tone: record.state === "broken" ? "urgent" : record.state === "unchecked" ? "soon" : undefined, active: filters.show === "records" },
   ];
 
-  const whoOptions: ChoiceOption<string>[] = [{ value: WHO_ANY, label: "Anyone" }, ...who.map((person) => ({ value: person.id, label: person.name, icon: (person.system ? "clock" : undefined) as IconName | undefined }))];
-  const whatOptions: ChoiceOption<string>[] = [{ value: "", label: "All kinds" }, ...ACTIVITY_KIND_ORDER.map((kind) => ({ value: kind, label: ACTIVITY_KINDS[kind].label, icon: ACTIVITY_KINDS[kind].icon }))];
-  const outcomeOptions: ChoiceOption<string>[] = [{ value: "", label: "Any outcome" }, ...OUTCOME_ORDER.map((outcome) => ({ value: outcome, label: OUTCOMES[outcome].plural, icon: OUTCOMES[outcome].icon }))];
-  const filtering = Boolean(filters.who || filters.what || filters.outcome || filters.range || filters.show !== "all");
+  const whoOptions: ChoiceOption<string>[] = who.map((person) => ({ value: person.id, label: person.name, icon: (person.system ? "clock" : undefined) as IconName | undefined }));
+  const whatOptions: ChoiceOption<ActivityKind>[] = ACTIVITY_KIND_ORDER.map((kind) => ({ value: kind, label: ACTIVITY_KINDS[kind].label, icon: ACTIVITY_KINDS[kind].icon }));
+  const outcomeOptions: ChoiceOption<Outcome>[] = OUTCOME_ORDER.map((outcome) => ({ value: outcome, label: OUTCOMES[outcome].plural, icon: OUTCOMES[outcome].icon }));
+  const chips = filterChips(filters, people, today);
+  const filtering = chips.length > 0;
 
   const groupings = useMemo<Grouping<ActivityRow>[]>(() => [
     { key: "day", label: "Day", groupsOf: (items) => groupBy(items, (item) => dayKey(item.at), (key, list) => ({ label: dayLabel(list[0].at, now), icon: "calendar", about: failedWords(list) }), (key) => (key === "unknown" ? Infinity : -Date.parse(key))) },
@@ -209,8 +230,8 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
       <div data-layer="explanation">
         <section aria-label="Activity at a glance" className="ac-tiles">
           {tiles.map((tile) => (
-            <Link aria-current={tile.active || undefined} className="ac-tile" data-tone={tile.tone} href={href(tile.changes)} key={tile.key}>
-              <span className="ac-tile-label"><Icon name={tile.icon} />{tile.label}</span>
+            <Link aria-current={tile.active || undefined} className="ac-tile" data-tone={tile.tone} href={href({ open: null, ...tile.changes })} key={tile.key} title={tile.key === "jobs" ? "Show everything" : tile.active ? "Picked: click to remove it from the view" : "Click to add these to the view"}>
+              <span className="ac-tile-label"><Icon name={tile.icon} />{tile.label}{tile.active && tile.key !== "jobs" ? <Icon className="tile-check" name="check" /> : null}</span>
               <b className="ac-tile-count" data-word={/[a-z]/i.test(tile.value) || undefined}>{tile.value}</b>
               {tile.key === "jobs" ? <Spark days={counts.days} /> : null}
               <small>{tile.small}</small>
@@ -221,23 +242,19 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
         <div className="ac-filters">
           <Segmented label="Show" onChange={(value) => navigate({ show: value === "all" ? null : value })} options={SHOW} value={filters.show} />
           <DatePicker allowClear label="When" onChange={(range: DayRange | null) => navigate({ range: rangeToParam(range) || null })} today={today} value={filters.range} />
-          <OptionPicker label="Who" onChange={(value) => navigate({ who: value || null })} options={whoOptions} value={filters.who ?? WHO_ANY} />
-          <OptionPicker label="What" onChange={(value) => navigate({ what: value || null })} options={whatOptions} value={filters.what ?? ""} />
-          <OptionPicker label="Outcome" onChange={(value) => navigate({ outcome: value || null })} options={outcomeOptions} value={filters.outcome ?? ""} />
+          <MultiOptionPicker anyLabel="Anyone" label="Who" onChange={(values) => navigate({ who: values.join(",") || null })} options={whoOptions} values={filters.who} />
+          <MultiOptionPicker anyLabel="All kinds" label="What" onChange={(values) => navigate({ what: values.join(",") || null })} options={whatOptions} values={filters.what} />
+          <MultiOptionPicker anyLabel="Any outcome" label="Outcome" onChange={(values) => navigate({ outcome: values.join(",") || null })} options={outcomeOptions} values={filters.outcomes} />
         </div>
         {feedback}
-        {filtering ? (
-          <p className="ac-filter-note" role="status">
-            Showing {filterWords(filters, people, today)} only: {shown.length} of {rows.length} loaded.
-            <Link className="ac-inline-link" href={href({ ...SERVER_KEYS, open: null })}>Show everything</Link>
-          </p>
-        ) : null}
+        <ActiveFilters extra={{ open: null, before: null }} filters={chips} noun={{ one: "entry", many: "entries" }} onChange={navigate} shown={shown.length} total={rows.length} totalWords="loaded" />
 
         <section aria-labelledby="ac-timeline-heading" className="ac-section">
           <h2 className="visually-hidden" id="ac-timeline-heading">Timeline</h2>
           {rows.length ? (
             <SelectableList
               action={{ label: (count) => `Export ${count === 1 ? "1 entry" : `${count} entries`}`, detail: () => "A spreadsheet file of these entries: when, what, who and the outcome, with ids in extra columns for an auditor.", run: exportCsv }}
+              empty={filtering ? <NoMatches extra={{ open: null, before: null }} filters={chips} noun={{ one: "entry", many: "entries" }} onChange={navigate} /> : undefined}
               getId={(item) => item.id}
               groupings={groupings}
               items={shown}
@@ -245,12 +262,12 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
               matches={(item, text) => `${item.title} ${item.line} ${item.person ? personLabel(item.person) : "keel"} ${OUTCOMES[item.outcome].label}`.toLowerCase().includes(text)}
               noun={{ one: "entry", many: "entries" }}
               renderRow={renderRow}
-              rowLimit={25}
+              sorts={SORTS}
               rowName={(item) => `${item.title} at ${clockWords(item.at) || "an unknown time"}`}
               toneOf={(item) => outcomeTone(item.outcome)}
             />
           ) : (
-            <p className="sel-empty">{filtering ? "Nothing matches these filters." : "Nothing has happened yet. The first backup shows here once it runs."}</p>
+            filtering ? <NoMatches extra={{ open: null, before: null }} filters={chips} noun={{ one: "entry", many: "entries" }} onChange={navigate} /> : <p className="sel-empty">Nothing has happened yet. The first backup shows here once it runs.</p>
           )}
           {filters.show !== "jobs" && (nextBefore || before) ? (
             <nav aria-label="Older audit entries" className="ac-paging">
@@ -370,13 +387,11 @@ function RowPanel({ row, now, canBackup, retryBusy, retryLabel, onRetry, onClose
           {job ? <div><dt>Status</dt><dd>{capital(jobStatusSentence(job, now))}</dd></div> : null}
         </dl>
         {job?.status === "failed" && job.error ? (
-          <div className="ac-note" data-tone="urgent">
-            <Icon name="alert" />
-            <div>
-              <b>{String(job.error).split("\n")[0].replace(/^[A-Za-z]*Error:\s*/, "") || "It stopped with an error."}</b>
-              <p>{retry && retry.kind !== "plan" ? "Running it again usually works; Keel only reads your tenant." : retry?.kind === "plan" ? "Nothing was changed by the failed part. Plan it again to try once more." : "The full error is in Technical details."}</p>
-            </div>
-          </div>
+          <ErrorNotice
+            error={job.error}
+            id="activity-error"
+            todo={retry && retry.kind !== "plan" ? "Run it again: it usually works, and Keel only reads your tenant." : retry?.kind === "plan" ? "Nothing was changed by the failed part. Plan it again to try once more." : undefined}
+          />
         ) : null}
         {row.outcome === "refused" ? (
           <div className="ac-note" data-tone="soon">

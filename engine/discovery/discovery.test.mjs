@@ -379,15 +379,30 @@ test('the CLI runs from saved metadata, writes the inventory and stores nothing 
     writeFileSync(join(dir, 'tenant.json'), JSON.stringify({ tenantId: 'fixture-tenant' }));
     const tenant = fixtureTenant();
     const lines = [];
+    const listed = [];
     const code = await discoverCli(['run', '--config', join(dir, 'tenant.json'), '--versions', 'v1.0', '--metadata-dir', dir, '--no-store', '--out', join(dir, 'inventory.json')], {
       fetchImpl: tenant.fetchImpl, getTokenFn: async () => ({ accessToken: 'cli-token' }), now: fixed,
+      // By default each module is listed live; one that cannot be keeps its reason.
+      listCommandsFn: async (options) => {
+        listed.push(options);
+        return { commands: { MicrosoftTeams: ['Get-CsTeamsMeetingPolicy', 'Get-CsTeamsFixturePolicy'] }, errors: { ExchangeOnlineManagement: 'Exchange Online: could not connect: denied' } };
+      },
       connectFn: async () => { throw new Error('the database must not be touched'); },
       logger: { log: (line) => lines.push(line) },
     });
-    assert.equal(code, 0);
+    assert.equal(code, 0, 'a PowerShell module that could not be listed does not fail the run');
+    assert.deepEqual(listed, [{ tenantConfigPath: join(dir, 'tenant.json') }]);
+    assert.ok(lines.includes('PowerShell MicrosoftTeams: listed 2 Get cmdlets.'));
+    assert.ok(lines.includes('PowerShell ExchangeOnlineManagement: not listed (Exchange Online: could not connect: denied).'));
     const inventory = JSON.parse(readFileSync(join(dir, 'inventory.json'), 'utf8'));
+    assert.deepEqual(inventory.sources.filter((source) => source.source.startsWith('powershell:')).map((source) => [source.source, source.status, source.error]), [
+      ['powershell:ExchangeOnlineManagement', 'unknown', 'Exchange Online: could not connect: denied'],
+      ['powershell:MicrosoftTeams', 'complete', null],
+      ['powershell:PnP.PowerShell', 'unknown', 'no command list was supplied for this module'],
+    ]);
+    assert.ok(inventory.items.some((item) => item.name === 'Get-CsTeamsFixturePolicy' && item.status === 'uncatalogued'));
     assert.match(inventory.tenantRef, /^sha256:/);
-    assert.equal(inventory.summary.uncatalogued, 1);
+    assert.equal(inventory.summary.uncatalogued, 2, '/bookingBusinesses and the listed Teams cmdlet');
     assert.ok(lines.some((line) => line.includes('/bookingBusinesses (2 objects)')));
     assert.ok(lines.some((line) => line.includes('/print/printers: missing-grant (403), needs Printer.Read.All')));
     assert.ok(!tenant.calls.some((call) => call.url.includes('$metadata')));
@@ -396,8 +411,9 @@ test('the CLI runs from saved metadata, writes the inventory and stores nothing 
     // A token whose roles already hold the grant: the refusal is not blamed on a missing grant.
     const roles = Buffer.from(JSON.stringify({ roles: ['Printer.Read.All'] })).toString('base64url');
     const held = [];
-    assert.equal(await discoverCli(['run', '--config', join(dir, 'tenant.json'), '--versions', 'v1.0', '--metadata-dir', dir, '--no-store'], {
+    assert.equal(await discoverCli(['run', '--config', join(dir, 'tenant.json'), '--versions', 'v1.0', '--metadata-dir', dir, '--no-store', '--no-powershell'], {
       fetchImpl: fixtureTenant().fetchImpl, getTokenFn: async () => ({ accessToken: `h.${roles}.s` }), now: fixed,
+      listCommandsFn: async () => { throw new Error('--no-powershell lists nothing'); },
       connectFn: async () => { throw new Error('the database must not be touched'); },
       logger: { log: (line) => held.push(line) },
     }), 0);

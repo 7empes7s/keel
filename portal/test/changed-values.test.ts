@@ -12,7 +12,7 @@ test("a plain value is one line; an object reads one line per setting inside it"
     { label: "Processing state", text: "On" },
     { label: "Rule", text: "user.dept -eq \"x\"" },
   ]);
-  assert.equal(valueText([{ ruleName: "PasswordRequired", gracePeriodHours: 24 }]), "#1 › grace period hours: 24; #1 › rule name: PasswordRequired");
+  assert.equal(valueText([{ ruleName: "PasswordRequired", gracePeriodHours: 24 }]), "PasswordRequired · Grace period hours: 24");
   const many = Object.fromEntries(Array.from({ length: 15 }, (_, index) => [`k${index}`, index]));
   assert.equal(valueLines(many).lines.length, 12);
   assert.equal(valueLines(many).more, 3);

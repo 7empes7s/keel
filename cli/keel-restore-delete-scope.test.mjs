@@ -44,6 +44,8 @@ function fakes(artifacts) {
       if (/recovery_completion_item/.test(sql)) return { rows: [] };
       if (/INSERT INTO rollback_entry/.test(sql)) { state.journal.push(values); return { rows: [{ id: 'journal-1' }] }; }
       if (/UPDATE rollback_entry/.test(sql)) return { rows: [] };
+      // Issue #485: no earlier restore created anything in the fixture tenant.
+      if (/FROM rollback_entry e/.test(sql)) return { rows: [] };
       throw new Error(`unexpected query: ${sql}`);
     },
     end: async () => {},

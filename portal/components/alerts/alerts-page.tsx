@@ -8,7 +8,10 @@ import { AlertRecord } from "@/components/alerts/alert-record";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { ConfirmSheet } from "@/components/incidents/confirm-sheet";
+import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
+import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
+import { byTime } from "@/lib/paging";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +19,7 @@ import { Person } from "@/components/ui/person";
 import { Verdict } from "@/components/verdict";
 import { alertCall, alertCallWords, type AlertAction } from "@/lib/alert-calls";
 import {
-  FILTER_WORDS,
+  ALERT_FILTERS,
   HISTORY_ICONS,
   SEVERITY,
   SEVERITY_ORDER,
@@ -41,14 +44,15 @@ import {
   isActive,
   isOverdue,
   isWaiting,
-  parseAlertFilter,
   stateGroup,
   type AlertFilter,
   type AlertItem,
   type AlertState,
   type StateGroup,
 } from "@/lib/alerts-view";
+import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { ago, formatTimestamp, fromNow } from "@/lib/presentation";
+import { serviceOrder } from "@/lib/services";
 import type { EngineRef } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
@@ -66,6 +70,11 @@ import { readList, useViewState } from "@/lib/use-view-state";
 type Step = "resolve" | "mute";
 
 const ownerRef = (alert: AlertItem): EngineRef | null => (alert.owner ? { kind: "principal", id: alert.owner.id, name: alert.owner.name, readable: true } : null);
+// Alerts can also be ordered by when they last fired or first opened.
+const ALERT_SORTS: ListSort<AlertItem>[] = [
+  { key: "fired", label: "Last fired", desc: true, compare: (a, b) => byTime(a.lastFiringAt, b.lastFiringAt) },
+  { key: "opened", label: "First opened", desc: true, compare: (a, b) => byTime(a.firstOpenedAt, b.firstOpenedAt) },
+];
 const plural = (count: number) => `${count} ${count === 1 ? "alert" : "alerts"}`;
 
 export function AlertsPage({ alerts, now, canRespond, canMute }: {
@@ -78,7 +87,9 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
   const view = useViewState();
   const pathname = usePathname() ?? "/alerts";
   const params = useSearchParams();
-  const filter = parseAlertFilter(params?.get("state"));
+  const stateTiles = useMemo<FilterTile<AlertItem>[]>(() => ALERT_FILTERS.map((key) => ({ key, test: (alert: AlertItem) => alertMatches(alert, key, now) })), [now]);
+  // The tiles add up: `state=waiting,overdue` shows alerts in either.
+  const filter = readPicked(stateTiles, params?.get("state"));
   const openId = view.get("open");
   const step = (["resolve", "mute"] as const).find((value) => value === view.get("do")) ?? null;
   const picked = readList(view.get("pick"));
@@ -100,7 +111,8 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
   const counts = useMemo(() => alertCounts(items, now), [items, now]);
   const verdict = useMemo(() => alertsVerdict(items, now), [items, now]);
   const ordered = useMemo(() => inboxOrder(items), [items]);
-  const shown = useMemo(() => ordered.filter((alert) => alertMatches(alert, filter, now)), [ordered, filter, now]);
+  const shown = useMemo(() => applyFilters(ordered, stateTiles, filter), [ordered, stateTiles, filter]);
+  const tileTotals = useMemo(() => new Map(tileCounts(ordered, stateTiles, filter).map((entry) => [entry.key, entry])), [ordered, stateTiles, filter]);
   const opened = items.find((alert) => alert.id === openId) ?? null;
   const pickedAlerts = items.filter((alert) => picked.includes(alert.id));
   const overdueIds = items.filter((alert) => isOverdue(alert, now)).map((alert) => alert.id);
@@ -169,9 +181,13 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
     { key: "resolved", label: "Resolved this week", icon: "check-circle", value: counts.resolvedWeek, small: "Closed in the last 7 days" },
   ];
 
+  const tileLabel = (key: string) => tiles.find((tile) => tile.key === key)?.label ?? STATE_GROUPS[key as StateGroup]?.label ?? key;
+  const activeFilters: ActiveFilter[] = filter.map((key) => ({ key: `state:${key}`, label: tileLabel(key), clear: { state: withoutTile(filter, key), closed: null } }));
+
   const groupings = useMemo<Grouping<AlertItem>[]>(() => [
     { key: "state", label: "State", groupsOf: (list) => groupBy(list, (alert) => stateGroup(alert), (key, group) => ({ label: STATE_GROUPS[key as StateGroup].label, icon: STATE_GROUPS[key as StateGroup].icon, about: STATE_GROUPS[key as StateGroup].about + ` · ${plural(group.length)}` }), (key) => STATE_GROUP_ORDER.indexOf(key as StateGroup)) },
-    { key: "service", label: "Service", groupsOf: (list) => groupBy(list, (alert) => alertService(alert).name, (key, group) => ({ label: key, icon: alertService(group[0]).icon, about: plural(group.length) })) },
+    // Microsoft's services in the portal's order (Entra ID first), not by name.
+    { key: "service", label: "Service", groupsOf: (list) => groupBy(list, (alert) => alertService(alert).name, (key, group) => ({ label: key, icon: alertService(group[0]).icon, about: plural(group.length) }), (key) => serviceOrder(list.map(alertService).find((service) => service.name === key)?.code)) },
     { key: "severity", label: "Severity", groupsOf: (list) => groupBy(list, (alert) => alert.severity, (key, group) => ({ label: SEVERITY[key as AlertItem["severity"]].label, icon: SEVERITY[key as AlertItem["severity"]].icon, about: plural(group.length) }), (key) => SEVERITY_ORDER.indexOf(key as AlertItem["severity"])) },
     { key: "owner", label: "Owner", groupsOf: (list) => groupBy(list, (alert) => alert.owner?.name ?? "No owner", (key, group) => ({ label: key, icon: "bell", about: plural(group.length) }), (key) => (key === "No owner" ? 1 : 0)) },
   ], []);
@@ -209,28 +225,28 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
       <Verdict action={verdictAction} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
         <section aria-label="Alerts at a glance" className="al-tiles">
-          {tiles.map((tile) => (
-            <Link aria-current={filter === tile.key || undefined} className="al-tile" data-tone={tile.tone} href={href({ state: filter === tile.key ? null : tile.key, open: null, do: null, pick: null, closed: null })} key={tile.key}>
-              <span className="al-tile-label"><Icon name={tile.icon} />{tile.label}</span>
-              <b className="al-tile-count">{tile.value}</b>
-              <small>{tile.small}</small>
-            </Link>
-          ))}
+          {tiles.map((tile) => {
+            const active = filter.includes(tile.key);
+            const adds = addsWords(tileTotals.get(tile.key), filter.length);
+            return (
+              <Link aria-current={active || undefined} className="al-tile" data-tone={tile.tone} href={href({ state: tileParam(stateTiles, filter, tile.key), open: null, do: null, pick: null, closed: null })} key={tile.key} title={active ? "Picked: click to remove it from the view" : "Click to add these to the view"}>
+                <span className="al-tile-label"><Icon name={tile.icon} />{tile.label}{active ? <Icon className="tile-check" name="check" /> : null}</span>
+                <b className="al-tile-count">{tile.value}</b>
+                <small>{tile.small}</small>
+                {adds ? <small className="tile-adds">{adds}</small> : null}
+              </Link>
+            );
+          })}
         </section>
 
-        {filter ? (
-          <p className="al-filter-note" role="status">
-            Showing {FILTER_WORDS[filter]} only: {shown.length} of {items.length}.
-            <Link className="al-inline-link" href={href({ state: null, closed: null })}>Show everything</Link>
-          </p>
-        ) : null}
+        <ActiveFilters extra={{ closed: null, open: null }} filters={activeFilters} noun={{ one: "alert", many: "alerts" }} shown={shown.length} total={items.length} />
 
         <section aria-labelledby="al-list-heading" className="al-section">
           <h2 className="visually-hidden" id="al-list-heading">Alerts</h2>
           {items.length === 0 ? (
             <p className="sel-empty">No alerts yet. When a check finds a change, it shows here.</p>
           ) : shown.length === 0 ? (
-            <p className="sel-empty">No alert matches this filter.</p>
+            <NoMatches extra={{ closed: null, open: null }} filters={activeFilters} noun={{ one: "alert", many: "alerts" }} />
           ) : (
             <SelectableList
               action={{
@@ -238,11 +254,11 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
                 detail: (_count, ids) => bulkDetail("acknowledge", items.filter((alert) => ids.includes(alert.id))),
                 run: (ids) => void run("acknowledge", ids),
               }}
-              closedByDefault={filter ? [] : ["resolved", "muted"]}
+              closedByDefault={filter.length ? [] : ["resolved", "muted"]}
               getId={(alert) => alert.id}
               groupings={groupings}
               items={shown}
-              key={filter ?? "all"}
+              key={filter.join(",") || "all"}
               label="Alerts"
               matches={(alert, text) => `${alertTitle(alert)} ${causeSentence(alert)} ${STATE_WORDS[alert.state].label} ${SEVERITY[alert.severity].label} ${alert.owner?.name ?? "no owner"}`.toLowerCase().includes(text)}
               more={[
@@ -252,6 +268,7 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
               noun={{ one: "alert", many: "alerts" }}
               renderRow={renderRow}
               rowName={(alert) => alertTitle(alert)}
+              sorts={ALERT_SORTS}
               toneOf={alertTone}
             />
           )}

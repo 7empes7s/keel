@@ -2,6 +2,33 @@
 // (see ../taxonomy.mjs) unless an entry sets its own.
 export default Object.freeze({
   service: 'Entra',
+  // Types by kind, in the order a list shows them: people and objects first, then
+  // roles and access, then policies, then tenant-wide settings. taxonomy.test.mjs fails
+  // on an entry that is in no group, so a new type has to be placed here. Every group
+  // the service has is listed, even with no type yet: `match` places a kind Keel has
+  // not mapped yet (see placeUnmapped in ../taxonomy.mjs).
+  categories: Object.freeze([
+    { key: 'people', name: 'Users and contacts', types: ['user', 'contact'], match: /^(user|contact|orgcontact|invitation)(?!flow)/ },
+    { key: 'groups', name: 'Groups and administrative units', types: ['group', 'administrativeUnit', 'groupLifecyclePolicy', 'groupSetting', 'directorySettingTemplate'], match: /^(group|administrativeunit|directorysettingtemplate)(?!.*(membership|owner))/ },
+    { key: 'memberships', name: 'Memberships and owners', types: ['groupMembership', 'groupTransitiveMembership', 'groupOwnership', 'applicationOwnership', 'servicePrincipalOwnership'], match: /membership|ownership|owner$/ },
+    { key: 'roles', name: 'Admin roles', types: ['directoryRole', 'roleDefinition', 'directoryRoleTemplate', 'roleAssignment', 'roleEligibilitySchedule', 'roleAssignmentSchedule', 'unifiedRoleManagementPolicy', 'unifiedRoleManagementPolicyAssignment', 'privilegedAccessGroupResource', 'roleManagementCustomExtension', 'entitlementManagementRoleAssignment'], match: /^(?!.*accessreview)(directoryrole|roledefinition|roleassignment|roleeligibility|rolemanagement|unifiedrole|privilegedaccess|entitlementmanagementrole|role)/ },
+    { key: 'apps', name: 'Apps and consent', types: ['application', 'servicePrincipal', 'oauth2PermissionGrant', 'appRoleGrant', 'permissionGrantPolicy', 'permissionGrantPreApprovalPolicy', 'adminConsentRequestPolicy', 'servicePrincipalCreationPolicy', 'appManagementPolicy', 'tenantAppManagementPolicy', 'certificateBasedApplicationConfiguration', 'claimsMappingPolicy', 'tokenIssuancePolicy', 'tokenLifetimePolicy', 'synchronizationJob'], match: /^application|serviceprincipal|oauth|consent|permissiongrant|approle|appmanagement|certificatebasedapplication|claimsmapping|tokenissuance|tokenlifetime|synchroni/ },
+    { key: 'sign-in', name: 'Sign-in rules and methods', types: ['conditionalAccessPolicy', 'namedLocation', 'authenticationStrengthPolicy', 'authenticationContextClassReference', 'authenticationMethodsPolicy', 'identitySecurityDefaultsEnforcementPolicy', 'certificateBasedAuthConfiguration', 'signInIdentifier', 'activityBasedTimeoutPolicy', 'homeRealmDiscoveryPolicy', 'featureRolloutPolicy', 'deviceRegistrationPolicy', 'authenticationEventListener', 'customAuthenticationExtension'], match: /conditionalaccess|namedlocation|authentication(strength|method|context|event)|certificatebasedauth|customauthentication|signin|securitydefaults|homerealm|activitybasedtimeout|featurerollout|deviceregistration/ },
+    { key: 'external', name: 'Guests and other tenants', types: ['identityProvider', 'externalDomainFederation', 'crossTenantAccessPolicy', 'crossTenantAccessPolicyConfigurationDefault', 'crossTenantAccessPolicyPartner', 'crossTenantIdentitySyncPolicyPartner', 'crossTenantM365Capability', 'multiTenantOrganization', 'multiTenantOrganizationIdentitySyncPolicyTemplate', 'multiTenantOrganizationPartnerConfigurationTemplate', 'authenticationFlowsPolicy', 'externalIdentitiesPolicy', 'b2bManagementPolicy', 'b2xIdentityUserFlow', 'identityUserFlowAttribute', 'identityApiConnector'], match: /crosstenant|externalidentit|externaldomain|b2b|b2c|b2x|federation|identityprovider|userflow|apiconnector|authenticationflows|multitenant/ },
+    { key: 'governance', name: 'Access reviews and governance', types: ['accessReviewScheduleDefinition', 'accessReviewPolicy', 'directoryRoleAccessReviewPolicy', 'accessPackageCatalog', 'accessPackage', 'accessPackageAssignmentPolicy', 'accessPackageAssignment', 'accessPackageResourceRoleScope', 'connectedOrganization', 'externalOriginResourceConnector', 'entitlementManagementSettings', 'lifecycleWorkflow', 'lifecycleWorkflowCustomTaskExtension', 'lifecycleManagementSettings', 'lifecyclePolicy', 'agreement', 'verifiedIdProfile'], match: /accessreview|accesspackage|entitlement|connectedorganization|externalorigin|lifecycle|agreement|termsofuse|verifiedid/ },
+    { key: 'tenant', name: 'Tenant and directory settings', types: ['organization', 'domain', 'sharedEmailDomain', 'subscribedSku', 'authorizationPolicy', 'organizationalBranding', 'organizationalBrandingLocalization', 'attributeSet', 'customSecurityAttributeDefinition', 'schemaExtension', 'deviceTemplate'], match: /^(organization|domain|subscribedsku|authorizationpolicy|sharedemaildomain|schemaextension|devicetemplate)|branding|customsecurityattribute|attributeset|directorysetting/ },
+  ]),
+  // Links between objects (who is in a group, who owns an app), as edge changes store
+  // them (engine/govern/diffSnapshots.mjs). They are not catalogue types, so they live
+  // here rather than in `entries`, and set their own priority.
+  edges: Object.freeze({
+    groupMembership: { name: 'Group membership', priority: 'high', reason: 'Changes who is in a group, and so what its members can reach.' },
+    groupTransitiveMembership: { name: 'Nested group membership', priority: 'high', reason: 'Changes who is in a group through another group.' },
+    groupOwnership: { name: 'Group owner', priority: 'high', reason: 'Owners can add anyone to the group.' },
+    applicationOwnership: { name: 'App registration owner', priority: 'high', reason: 'Owners can add credentials to the app and act as it.' },
+    servicePrincipalOwnership: { name: 'Enterprise app owner', priority: 'high', reason: 'Owners can change who can use the app and how it signs in.' },
+    appRoleGrant: { name: 'App permission', priority: 'high', reason: 'Gives an app or person a permission on another app.' },
+  }),
   entries: Object.freeze({
     // tenant
     organization: { name: 'Tenant profile' },

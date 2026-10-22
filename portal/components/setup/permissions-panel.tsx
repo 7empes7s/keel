@@ -1,0 +1,311 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { Fragment, useEffect, useMemo, useRef } from "react";
+
+import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
+import { ListPager, SortControl, useListPaging, type ListSort } from "@/components/list/list-paging";
+import { Segmented } from "@/components/pickers/segmented";
+import { Icon, type IconName } from "@/components/shell/icons";
+import { Badge } from "@/components/ui/badge";
+import { applyFilters, pickedTiles, tileCounts, toggleTile, type FilterTile } from "@/lib/filter-set";
+import { byText, pageGroups, sortRows } from "@/lib/paging";
+import {
+  PERMISSION_STATUS_LABELS, PERMISSION_STATUS_ORDER, PERMISSION_STATUS_TONES,
+  apiPermissionsLink, appFor, appName, consentLink, missingSentence, permissionApps, permissionCounts, permissionRows,
+  type PermissionRow, type PermissionStatus, type SetupState,
+} from "@/lib/setup-view";
+import { toast } from "@/lib/toast";
+import { readList, useViewState } from "@/lib/use-view-state";
+
+// Setup's permission table (CoreView comparison, gaps 1 and 2): every permission each
+// Keel app uses, by app and service, with what it is for and whether the app holds it.
+// Missing ones come first with Microsoft's admin consent page one click away; when the
+// admin comes back to this tab, the page checks the tenant again on its own. Held
+// permissions Keel never uses are listed last, grey, never as a warning.
+
+const SERVICE_ICONS: Record<string, IconName> = {
+  entra: "service-entra", governance: "service-entra", intune: "service-intune", exchange: "service-exchange",
+  sharepoint: "service-sharepoint", teams: "service-teams", purview: "service-purview", other: "cloud", reports: "reports", unused: "info",
+};
+
+const STATUS_HINTS: Record<PermissionStatus, string> = {
+  missing: "Keel needs these and the app does not hold them",
+  optional: "Would add a feature; nothing fails without them",
+  "not-checked": "Keel could not look in your tenant",
+  granted: "The app holds these",
+  unused: "The app holds these, but Keel never uses them",
+};
+
+const NOUN = { one: "permission", many: "permissions" };
+const PREFIX = "perm-";
+
+interface Group {
+  key: string;
+  identity: string;
+  service: string;
+  label: string;
+  rows: PermissionRow[];
+}
+
+export function PermissionsPanel({ state }: { state: SetupState }) {
+  const router = useRouter();
+  const view = useViewState();
+  const rows = useMemo(() => permissionRows(state), [state]);
+  const armed = useRef(false);
+
+  // Back from Microsoft's consent page: check the tenant again without being asked.
+  useEffect(() => {
+    const back = () => {
+      if (!armed.current || document.visibilityState !== "visible") return;
+      armed.current = false;
+      toast({ title: "Checking permissions again", detail: "Microsoft can take a minute to show a new approval. Press Check again if it still shows missing." });
+      router.refresh();
+    };
+    window.addEventListener("focus", back);
+    document.addEventListener("visibilitychange", back);
+    return () => { window.removeEventListener("focus", back); document.removeEventListener("visibilitychange", back); };
+  }, [router]);
+  const arm = () => { armed.current = true; };
+
+  const tiles = useMemo<FilterTile<PermissionRow>[]>(() => PERMISSION_STATUS_ORDER.map((status) => ({ key: status, test: (row) => row.status === status })), []);
+  const picked = pickedTiles(tiles, readList(view.get(`${PREFIX}status`)));
+  const identities = useMemo(() => permissionApps(state.permissions), [state.permissions]);
+  const app = identities.find((identity) => identity === view.get(`${PREFIX}app`)) ?? null;
+  const query = view.get(`${PREFIX}q`);
+  const text = query.trim().toLowerCase();
+  const others = useMemo(() => [
+    ...(app ? [(row: PermissionRow) => row.identity === app] : []),
+    ...(text ? [(row: PermissionRow) => `${row.words} ${row.name} ${row.usedFor} ${row.serviceLabel}`.toLowerCase().includes(text)] : []),
+  ], [app, text]);
+  const shown = useMemo(() => applyFilters(rows, tiles, picked, others), [rows, tiles, picked.join(","), others]);
+  const counts = useMemo(() => new Map(tileCounts(rows, tiles, picked, others).map((entry) => [entry.key, entry])), [rows, tiles, picked.join(","), others]);
+
+  const sorts = useMemo<ListSort<PermissionRow>[]>(() => [
+    { key: "status", label: "Status", compare: (a, b) => PERMISSION_STATUS_ORDER.indexOf(a.status) - PERMISSION_STATUS_ORDER.indexOf(b.status) },
+    { key: "name", label: "Permission", compare: (a, b) => byText(a.words, b.words) },
+    { key: "code", label: "Microsoft name", compare: (a, b) => byText(a.name, b.name) },
+  ], []);
+  const paging = useListPaging<PermissionRow>({ prefix: PREFIX, sorts, defaultSize: "50" });
+
+  const groups = useMemo(() => {
+    const out: Group[] = [];
+    for (const row of shown) {
+      const groupKey = `${row.identity}:${row.service}`;
+      let group = out.find((entry) => entry.key === groupKey);
+      if (!group) out.push(group = { key: groupKey, identity: row.identity, service: row.service, label: row.serviceLabel, rows: [] });
+      group.rows.push(row);
+    }
+    return paging.sort ? out.map((group) => ({ ...group, rows: sortRows(group.rows, paging.sort!.compare, paging.dir) })) : out;
+  }, [shown, paging.sort, paging.dir]);
+  const page = paging.pageOf(shown.length);
+  const paged = pageGroups(groups, (group) => group.rows.length, () => false, page, paging.size).groups;
+
+  if (!state.permissions || !rows.length) return null;
+  const all = permissionCounts(rows);
+  const observed = state.permissions.observed;
+  const apps = identities.map((identity) => {
+    const own = rows.filter((row) => row.identity === identity);
+    const info = appFor(state, identity);
+    return {
+      identity, info, rows: own, counts: permissionCounts(own),
+      consent: consentLink(state.tenantId, info?.appId),
+      entra: apiPermissionsLink(info?.appId),
+      missing: own.filter((row) => row.status === "missing"),
+    };
+  });
+
+  const setTiles = (next: string[]) => view.set({ [`${PREFIX}status`]: next.join(",") || null, ...paging.resetPage });
+  const filters: ActiveFilter[] = [
+    ...picked.map((status) => ({ key: `status:${status}`, label: PERMISSION_STATUS_LABELS[status as PermissionStatus], clear: { [`${PREFIX}status`]: picked.filter((entry) => entry !== status).join(",") || null } })),
+    ...(app ? [{ key: "app", label: appName(app), clear: { [`${PREFIX}app`]: null } }] : []),
+    ...(text ? [{ key: "q", label: `Find: “${query.trim()}”`, clear: { [`${PREFIX}q`]: null } }] : []),
+  ];
+  let lastIdentity: string | null = null;
+
+  return (
+    <section aria-labelledby="setup-permissions-title" className="su-pp" id="setup-permissions">
+      <header className="su-pp-head">
+        <div>
+          <h2 id="setup-permissions-title"><Icon name="settings" />Permissions</h2>
+          <p>
+            What each Keel app may do in Microsoft 365, and what Keel uses it for.{" "}
+            {observed
+              ? <>Checked in your tenant when this page loaded{!observed.complete ? "; some Exchange or SharePoint permissions could not be read" : ""}.</>
+              : "Keel could not look at your tenant just now, so only what setup saw is shown."}
+          </p>
+        </div>
+      </header>
+
+      {apps.filter((entry) => entry.missing.length).map((entry) => {
+        const unlisted = entry.missing.filter((row) => row.requested === false);
+        return (
+          <div className="su-pp-alert" data-tone="urgent" key={entry.identity} role="alert">
+            <span aria-hidden="true" className="su-pp-alert-icon"><Icon name="x-circle" /></span>
+            <div className="su-pp-alert-body">
+              <p className="su-pp-alert-title">{missingSentence(entry.identity, entry.missing)}</p>
+              <p>
+                {entry.consent
+                  ? "Approve opens Microsoft's consent page for this app. A Global Administrator signs in once; Keel checks again when you come back to this tab."
+                  : "This server does not know the app's ID, so Keel cannot open its consent page. Approve it in Entra ID under the app's API permissions."}
+              </p>
+              {unlisted.length ? (
+                <p>
+                  {unlisted.length === entry.missing.length ? "They are" : `${unlisted.length} of them ${unlisted.length === 1 ? "is" : "are"}`} not on the app&apos;s permission list yet, so approving cannot grant {unlisted.length === 1 ? "it" : "them"}. Add {unlisted.length === 1 ? "it" : "them"} in Entra ID first: {unlisted.map((row) => row.name).join(", ")}.
+                </p>
+              ) : null}
+              <div className="su-pp-alert-actions">
+                {entry.consent ? (
+                  <a className="btn" href={entry.consent} onClick={arm} rel="noreferrer" target="_blank">
+                    <Icon name="link" />Approve in Microsoft<span className="visually-hidden"> (opens in a new tab)</span>
+                  </a>
+                ) : null}
+                {entry.entra && (unlisted.length || !entry.consent) ? (
+                  <a className="btn" href={entry.entra} onClick={arm} rel="noreferrer" target="_blank">
+                    <Icon name="link" />Add in Entra ID<span className="visually-hidden"> (opens in a new tab)</span>
+                  </a>
+                ) : null}
+                <CopyNames names={entry.missing.map((row) => row.name)} />
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      <div aria-label="Permissions by status" className="su-pp-tiles" role="group">
+        {PERMISSION_STATUS_ORDER.filter((status) => all[status] > 0).map((status) => {
+          const entry = counts.get(status);
+          const on = picked.includes(status);
+          const adds = picked.length && !on && entry ? (entry.adds ? `+${entry.adds} if added` : "Adds none") : null;
+          return (
+            <button
+              aria-pressed={on}
+              className="su-pp-tile"
+              data-tone={PERMISSION_STATUS_TONES[status]}
+              key={status}
+              onClick={() => setTiles(toggleTile(tiles, picked, status))}
+              title={STATUS_HINTS[status]}
+              type="button"
+            >
+              <span className="su-pp-tile-label"><Icon name={status === "granted" ? "check-circle" : status === "missing" ? "x-circle" : "info"} />{PERMISSION_STATUS_LABELS[status]}</span>
+              <b>{entry?.count ?? 0}</b>
+              <small>{adds ?? STATUS_HINTS[status]}</small>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="sel-toolbar su-pp-toolbar">
+        <Segmented
+          label="App"
+          onChange={(value) => view.set({ [`${PREFIX}app`]: value || null, ...paging.resetPage })}
+          options={[{ value: "", label: identities.length === 2 ? "Both apps" : "All apps" }, ...identities.map((identity) => ({ value: identity, label: appName(identity).replace(/ app$/, "") }))]}
+          value={app ?? ""}
+        />
+        <label className="picker-field sel-find">
+          <span className="picker-label">Find</span>
+          <span className="sel-find-box">
+            <Icon name="search" />
+            <input className="bare-input" onChange={(event) => view.set({ [`${PREFIX}q`]: event.target.value, ...paging.resetPage })} placeholder="Find permissions" type="search" value={query} />
+          </span>
+        </label>
+        <SortControl paging={paging} sorts={sorts} />
+      </div>
+      <ActiveFilters filters={filters} noun={NOUN} shown={shown.length} total={rows.length} />
+
+      {shown.length ? (
+        <table className="su-ptable">
+          <caption className="visually-hidden">Permissions by app and service</caption>
+          <thead>
+            <tr><th scope="col">Permission</th><th scope="col">What Keel uses it for</th><th scope="col">Status</th></tr>
+          </thead>
+          <tbody>
+            {paged.map(({ group, start, end, continued }) => {
+              const appEntry = apps.find((entry) => entry.identity === group.identity)!;
+              const appHeader = group.identity !== lastIdentity;
+              lastIdentity = group.identity;
+              return (
+                <Fragment key={group.key}>
+                  {appHeader ? (
+                    <tr className="su-ptable-app">
+                      <th colSpan={3} scope="rowgroup"><div className="su-ptable-head">
+                        <span className="su-ptable-app-name">
+                          <Icon name={group.identity === "collector" ? "backup" : "restore"} />
+                          {appName(group.identity)}
+                          {appEntry.info?.displayName ? <small>{appEntry.info.displayName}</small> : null}
+                        </span>
+                        <span className="su-ptable-app-counts">
+                          {appEntry.counts.missing ? <Badge tone="urgent">{appEntry.counts.missing} missing</Badge> : null}
+                          <Badge tone="fine">{appEntry.counts.granted} granted</Badge>
+                          {appEntry.counts.unused ? <Badge tone="neutral">{appEntry.counts.unused} not used</Badge> : null}
+                        </span>
+                      </div></th>
+                    </tr>
+                  ) : null}
+                  <tr className="su-ptable-group" data-service={group.service}>
+                    <th colSpan={3} scope="rowgroup"><div className="su-ptable-head">
+                      <Icon name={SERVICE_ICONS[group.service] ?? "cloud"} />
+                      {group.label}
+                      <small>{group.rows.length}{continued ? " · continued" : ""}</small>
+                      {group.service === "unused" && appEntry.entra ? (
+                        <a className="su-inline-link" href={appEntry.entra} rel="noreferrer" target="_blank">Review in Entra ID<span className="visually-hidden"> (opens in a new tab)</span></a>
+                      ) : null}
+                    </div></th>
+                  </tr>
+                  {group.rows.slice(start, end).map((row) => (
+                    <tr className="su-ptable-row" data-status={row.status} key={row.id}>
+                      <td data-label="Permission">
+                        <span className="su-ptable-words">{row.words}</span>
+                        <span className="su-ptable-code">
+                          <code>{row.name}</code>
+                          {row.api !== "graph" ? <span className="su-ptable-api">{row.apiLabel}</span> : null}
+                          {row.type === "delegated" ? <span className="su-ptable-api" title="Used while signed in as a Keel service account">Delegated</span> : null}
+                        </span>
+                      </td>
+                      <td data-label="Used for">{row.usedFor}</td>
+                      <td data-label="Status">
+                        <span className="su-ptable-status">
+                          <Badge tone={PERMISSION_STATUS_TONES[row.status]}>{PERMISSION_STATUS_LABELS[row.status]}</Badge>
+                          <RowAction app={appEntry} arm={arm} row={row} />
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      ) : (
+        <NoMatches filters={filters} noun={NOUN} />
+      )}
+      <ListPager label="Permissions" noun={NOUN} paging={paging} total={shown.length} />
+    </section>
+  );
+}
+
+// The one thing to do about a row, right beside it: approve a missing or optional
+// permission, or add it to the app first when consent cannot grant it.
+function RowAction({ row, app, arm }: { row: PermissionRow; app: { consent: string | null; entra: string | null }; arm: () => void }) {
+  if (row.status !== "missing" && row.status !== "optional") return null;
+  const href = row.requested === false ? app.entra : app.consent ?? app.entra;
+  if (!href) return null;
+  return (
+    <a className="su-inline-link" href={href} onClick={arm} rel="noreferrer" target="_blank">
+      {row.requested === false || !app.consent ? "Add in Entra ID" : "Approve"}
+      <span className="visually-hidden"> {row.words} (opens in a new tab)</span>
+    </a>
+  );
+}
+
+function CopyNames({ names }: { names: string[] }) {
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(names.join("\n"));
+      toast({ title: "Permission names copied" });
+    } catch {
+      toast({ tone: "warning", title: "Could not copy", detail: "Your browser blocked the clipboard. The Microsoft names are in the table." });
+    }
+  }
+  return <button className="btn" onClick={copy} type="button"><Icon name="page" />Copy Microsoft names</button>;
+}

@@ -23,24 +23,27 @@ test("states have plain-language labels", () => {
   assert.equal(completionStateLabel("verified-complete"), "Verified complete");
 });
 
-test("a restorer sees a reference form for open items and Reopen for verified ones", () => {
+test("a restorer sees Add evidence for open items and Reopen for verified ones; the form waits for the click", () => {
   const html = renderToStaticMarkup(createElement(CompletionChecklist, { resources: [resource("configuration-restored")], canComplete: true }));
-  assert.match(html, /Mark verified/);
+  assert.match(html, /Add evidence/);
   assert.match(html, /Reopen/);
-  assert.match(html, /never the secret/);
-  assert.match(html, /aria-describedby="reference-hint-i1"/, "the secret warning stays visible and is announced with the field");
-  assert.match(html, /1 of 2 follow-ups verified; 1 still needs evidence\./);
+  // The evidence form (and its "never the secret" hint) opens only when asked for; the
+  // harness test checks the hint is announced with the field once it is open.
+  assert.doesNotMatch(html, /Mark verified/);
+  assert.match(html, /1 needs evidence/);
+  assert.match(html, /1 of 2 verified/);
+  assert.match(html, /data-tone="soon"/);
   assert.match(html, /Evidence: ticket CHG-1/);
   assert.doesNotMatch(html, /type="password"/, "the form never collects a credential");
 });
 
 test("without the restore capability the checklist is read-only", () => {
   const html = renderToStaticMarkup(createElement(CompletionChecklist, { resources: [resource("configuration-restored")], canComplete: false }));
-  assert.doesNotMatch(html, /Mark verified|Reopen/);
+  assert.doesNotMatch(html, /Add evidence|Mark verified|Reopen/);
 });
 
 test("no items renders an explicit nothing-left message", () => {
-  assert.match(renderToStaticMarkup(createElement(CompletionChecklist, { resources: [], canComplete: true })), /no follow-up work/);
+  assert.match(renderToStaticMarkup(createElement(CompletionChecklist, { resources: [], canComplete: true })), /Nothing to follow up/);
 });
 
 test("task-152: a pending enforcement step names the approved next step and offers no evidence form", () => {
@@ -54,8 +57,8 @@ test("task-152: a pending enforcement step names the approved next step and offe
     ],
   };
   const html = renderToStaticMarkup(createElement(CompletionChecklist, { resources: [enforcement], canComplete: true }));
-  assert.match(html, /Next: ask for the enforcement step, which needs a second person to approve it/);
-  assert.doesNotMatch(html, /Mark verified/, "a ticket cannot stand in for turning the policy on");
+  assert.match(html, /Next: ask for the enforcement step\. A second person approves it/);
+  assert.doesNotMatch(html, /Add evidence|Mark verified/, "a ticket cannot stand in for turning the policy on");
 });
 
 test("task-152: the pending steps list shows only when the restore left a policy report-only", () => {

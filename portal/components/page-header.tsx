@@ -1,9 +1,10 @@
+import Link from "next/link";
 import { Suspense, type ReactNode } from "react";
 
 import { Icon, type IconName } from "@/components/shell/icons";
 import { PageActions } from "@/components/shell/page-actions";
 import type { RiskTone } from "@/lib/menu-status";
-import { SECTION_ICONS, type NavSection } from "@/lib/nav-sections";
+import { breadcrumbTrail, SECTION_ICONS, type Crumb, type NavSection } from "@/lib/nav-sections";
 import { formatTimestamp } from "@/lib/presentation";
 
 const STATUS_ICONS: Record<RiskTone, IconName> = { urgent: "alert", soon: "clock", low: "info", fine: "check" };
@@ -12,7 +13,9 @@ const STATUS_ICONS: Record<RiskTone, IconName> = { urgent: "alert", soon: "clock
 // verdict, and one plain sentence. `section` is the menu section the page sits in,
 // typed so no page can carry a second taxonomy (portal/test/experience-contract.test.ts
 // checks each page passes the section that owns its route); it gives a starred page
-// its icon. The section's name is not repeated above the title: the menu shows it.
+// its icon. Above the title, a breadcrumb says where the page sits (Backup › Sites ›
+// Finance), so a phone, where the menu is folded away, still shows it; a detail page
+// passes the pages above it as `parents`, which replaces a lone "← All …" link.
 export function PageHeader({
   section,
   title,
@@ -21,6 +24,7 @@ export function PageHeader({
   marker,
   status,
   actions,
+  parents,
 }: {
   section: NavSection;
   title: string;
@@ -30,9 +34,33 @@ export function PageHeader({
   status?: { tone: RiskTone; label: string };
   // The page's own control beside the star, such as "Back up now".
   actions?: ReactNode;
+  // The pages between the section and this one, nearest last: [{ href: "/sites", label: "Sites" }].
+  parents?: readonly Crumb[];
 }) {
+  const trail = breadcrumbTrail(section, title, parents);
   return (
     <header className="page-header">
+      {trail.length ? (
+        <nav aria-label="Breadcrumb" className="breadcrumbs">
+          <ol>
+            {trail.map((crumb, index) => {
+              const last = index === trail.length - 1;
+              return (
+                <li key={`${index}-${crumb.label}`}>
+                  {index === 0 ? <Icon name={SECTION_ICONS[section]} /> : null}
+                  {last ? (
+                    <span aria-current="page" className="breadcrumb-current">{crumb.label}</span>
+                  ) : crumb.href ? (
+                    <Link className="breadcrumb-link" href={crumb.href} prefetch={false}>{crumb.label}</Link>
+                  ) : (
+                    <span className="breadcrumb-section">{crumb.label}</span>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
+      ) : null}
       <div className="page-title-row">
         <h1>{title}</h1>
         {status ? (

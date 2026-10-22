@@ -5,9 +5,9 @@
 import { typeInfo } from "../../engine/insights/taxonomy.mjs";
 import { WORKLOAD_LABELS } from "@/lib/compare-view";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
-import { ago, displayEnum } from "@/lib/presentation";
+import { RESOURCE_TYPE_LABELS, ago, displayEnum } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
-import { serviceFor, serviceOrder, type CloudService } from "@/lib/services";
+import { madeInSharePoint, serviceFor, serviceOrder, type CloudService } from "@/lib/services";
 import type { BaselineRecord, DriftRecord } from "@/lib/types";
 
 function plural(count: number, one: string, many = `${one}s`): string {
@@ -30,6 +30,12 @@ export function typeService(type: string): CloudService {
   return serviceFor(typeInfo(type).service);
 }
 
+/** The service one setting sits under: its type's, except the sign-in rules SharePoint
+ * admin center made, which are SharePoint settings. */
+export function itemService(item: { resourceType: string; name?: string | null }): CloudService {
+  return madeInSharePoint(item.resourceType, item.name) ? serviceFor("SharePoint") : typeService(item.resourceType);
+}
+
 /** Why a kind of setting matters, from the taxonomy's priority reason. */
 export function whyItMatters(type: string): string {
   const info = typeInfo(type);
@@ -47,7 +53,9 @@ const PLAIN_KINDS: Record<string, string> = {
  * ("Exchange mail flow or protection rule"); the catalogue name for everything else. */
 export function plainKind(type: string): string {
   if (PLAIN_KINDS[type]) return PLAIN_KINDS[type];
-  return Object.hasOwn(WORKLOAD_LABELS, type) ? typeInfo(type).name : typeName(type);
+  if (Object.hasOwn(WORKLOAD_LABELS, type)) return typeInfo(type).name;
+  // A type with no portal label reads as its taxonomy name, never as its code in words.
+  return Object.hasOwn(RESOURCE_TYPE_LABELS, type) || !typeInfo(type).known ? typeName(type) : typeInfo(type).name;
 }
 
 /** "Block legacy auth (sign-in rule)" */
@@ -104,7 +112,7 @@ export interface ServiceReadKind {
  * carry `serviceRead`) join the Entra ID and Intune kinds, so every service shows. */
 export function serviceSummaries(
   baseline: Pick<BaselineRecord, "capture"> | null,
-  items: (Pick<DriftRecord, "resourceType" | "blastRadius"> & Partial<Pick<DriftRecord, "serviceRead">>)[],
+  items: (Pick<DriftRecord, "resourceType" | "blastRadius"> & Partial<Pick<DriftRecord, "serviceRead" | "name">>)[],
   backedUp: string[],
   serviceReads: ServiceReadKind[] = [],
 ): ServiceSummary[] {
@@ -115,8 +123,7 @@ export function serviceSummaries(
   const captured = new Set(baseline?.capture?.types ?? []);
   const changedTypes = new Set(items.map((item) => item.resourceType));
   const byCode = new Map<string, ServiceSummary>();
-  const entry = (type: string) => {
-    const service = typeService(type);
+  const entry = (type: string, service: CloudService = typeService(type)) => {
     let summary = byCode.get(service.code);
     if (!summary) {
       summary = { service, basis: "previous-backup", inLine: [], changed: 0, changedKinds: [], notCovered: [], tone: "fine" };
@@ -128,7 +135,7 @@ export function serviceSummaries(
   };
   for (const type of captured) if (!changedTypes.has(type)) entry(type).inLine.push(type);
   for (const item of items) {
-    const summary = entry(item.resourceType);
+    const summary = entry(item.resourceType, itemService(item));
     summary.changed += 1;
     if (!summary.changedKinds.includes(item.resourceType)) summary.changedKinds.push(item.resourceType);
     summary.tone = worstTone([summary.tone, impactTone(item.blastRadius)]) ?? summary.tone;

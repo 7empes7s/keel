@@ -967,7 +967,17 @@ being triggered by queue updates.
   the portal shows them as "Partly done" and names each type. Exit 1 stays for runs that read nothing in full or crash. Health
   (`fullCoverage`) still fails while a type is missing.
 - Needs: PR #489 live (`grep -q PARTIAL_EXIT_CODE /opt/keel-live/cli/keel-worker.mjs`).
-- Status: todo
+- Status: in-progress
+- Result: in progress (2026-10-22 10:23 UTC). Step 3 is done; step 1 waits for the 11:00 UTC hourly collect (the first one on 755b069, which has #489). Collector reads only.
+  - Step 3 (Collector token, one GET each, at 755b069):
+    - `beta/deviceManagement`: **200**: id, settings, maximumDepTokens, intuneAccountId, lastReportAggregationDateTime, deviceComplianceReportSummarizationDateTime, legacyPcManangementEnabled, unlicensedAdminstratorsEnabled
+    - `beta/deviceManagement?$select=id,settings`: **200**: id, settings
+    - `beta/deviceManagement?$select=settings`: **200**: settings
+    - `v1.0/deviceManagement`: **200**: id, settings, intuneAccountId
+    - `v1.0/deviceManagement?$select=id,settings,intuneBrand`: **400** `No method match route template`: "No OData route exists that match template ~/singleton with http verb GET for request /StatelessOnboardingService/deviceManagement."
+    - `beta/deviceManagement/managedDeviceCleanupSettings`: **403** `Forbidden`: "An error has occurred ... Url: .../DeviceFE/StatelessDeviceFEService/deviceManagement/managedDeviceCleanupSettings"
+    - So `settings` reads; selecting `intuneBrand` (or the cleanup settings) breaks the read. The table is commented on #447.
+  - Step 2: not possible from this box. The portal checks a Cloudflare Access login (portal.env), and keel-operator has no Access session or service token, so no badge or screenshot. Step 1 will give the job's `partial` and `incompleteTypes` from the DB instead.
 - **Tenant:** reads only, with the collector credential. Nothing written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. After the next scheduled hourly collect (do not start one by hand):

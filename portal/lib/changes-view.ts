@@ -2,7 +2,7 @@
 // Pure helpers shared by the Changes and Restore pages and the UI harness. Natural
 // keys, change-kind codes, planned verbs, waves, deferred references and refusal codes
 // stay in the record layer.
-import { objectName } from "../../engine/cir/objectName.mjs";
+import { NAME_FIELDS, objectName } from "../../engine/cir/objectName.mjs";
 import { plainKind } from "@/lib/baselines-view";
 import { holdsObjectId, isObjectId, objectIdsIn, replaceObjectIds } from "@/lib/object-ids";
 import { ago, resourceLabel, words } from "@/lib/presentation";

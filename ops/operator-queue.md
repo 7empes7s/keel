@@ -7379,8 +7379,15 @@ item that needs it stays untouched.
     which never returns it). The actions are checked from `/compliancePolicies/{id}/scheduledActionsForRule?$expand=scheduledActionConfigurations`
     right after, and the journalled post-state now holds them. Lost or different actions still fail the create. Update is unchanged.
 - Needs: /opt/keel-live at the #531 merge or later (`grep -q checkedAfterWrite /opt/keel-live/engine/restore/recordWriter.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 18:49 UTC). **#531 works: the compliance policy create now verifies, and it is promoted.** B = **3010d22**. Restorer only; global admin not used.
+  1. Fixture `KEEL-RT-compliance` (Linux, encryption required, block 0 h). S = `20ec07c4` (tier 1): payload `settings` 1, `scheduledActionsForRule` block:0.
+  2. Create: deleted the policy. Dry run `9ef1504a` (name, platforms, description, technologies, roleScopeTagIds, settings, scheduledActionsForRule), approval **fae7cdba**, job `22d103b0`.
+     Journal **`create | succeeded`** (no detail). `post_state` keys: id, name, settings, platforms, description, settingCount, technologies, @odata.context, creationSource, createdDateTime, roleScopeTagIds,
+     lastModifiedDateTime, settings@odata.context, **scheduledActionsForRule** (`block:0`). The tenant, read through the actions route, shows the same `block 0`.
+  3. Captured and **promoted** (it replaces Q120's `deviceManagementCompliancePolicy.create.demotion.json`, which is on `claude/live-evidence-restore-gaps-7`; the builder can drop it there).
+  4. Cleanup: deleted the recreated policy; no KEEL-RT compliance policy is left.
+  5. Evidence: `claude/live-evidence-compliance-create` @ **6afd9406**. pseudonymize check exit 0; my scan is clean. `live evidence deviceManagementCompliancePolicy.create.json: fixture-tested -> live-qualified`.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q120. Under the 2026-10-14 standing
   authorization, approve this restore yourself and log the approval id. Restorer only; global admin not used. If Graph answers 403,
   report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.

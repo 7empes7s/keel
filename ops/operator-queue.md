@@ -5545,3 +5545,40 @@ item that needs it stays untouched.
   Intune read still answers 400, report the error verbatim: drift should still be `queued`, with
   `skippedTypes` `["deviceManagementSettings"]`.
 - **Report:** steps 1 to 3 verbatim.
+
+### Q120: Live backup and restore of settings catalog compliance policies (restore gaps batch 7, after #451)
+- Drafted by the "Restore batch 7" thread (2026-10-22). Code: PR #451. The backup now reads each settings catalog
+  compliance policy on its own: `GET /beta/deviceManagement/compliancePolicies/{id}?$expand=settings,scheduledActionsForRule($expand=scheduledActionConfigurations)`.
+  New record writer `deviceManagementCompliancePolicy` (beta, fixture-tested only), create + update: create is one POST with
+  settings and actions; update is a PUT of the whole policy (never the actions), then, only if the actions differ,
+  `POST .../compliancePolicies/{id}/setScheduledActions` with `{ scheduledActions: [...] }`, read back. Who the policy is
+  assigned to is **not** written; the fixture stays unassigned.
+- Needs: /opt/keel-live at the #451 merge or later (`grep -q complianceActionsAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
+  needs DeviceManagementConfiguration.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing.
+  Never touch CA policies, break-glass or Marouane's account. **Never assign the fixture to a group, user or device.** No
+  tenant-wide setting is changed.
+- **Fixture** (the reviewed guidance in `live-gate-plan.mjs` at B says the same): Linux settings catalog compliance policy
+  `KEEL-RT-compliance`, one setting (device encryption required), actions: block after 0 hours and email the user after
+  24 hours (any notification template; create `KEEL-RT-notice` if none exists), assigned to nobody.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/live-gate-plan.mjs > ~/keel-rg7/plan-B.md`. Use its steps for this type (collect, restore
+     dry run, approve, `--enforce`, `entraLive.mjs capture`, promote).
+  2. Create the fixture, then take snapshot S (one tier 1 run). **Backup check:** the `KEEL-RT-compliance` payload in S holds
+     `settings` (1 item) and `scheduledActionsForRule` with both actions (`block` 0 h, `notification` 24 h). Report the type's
+     read outcome. If the per-policy read fails, report the exact Graph error (first suspect: the double `$expand`).
+  3. **Update round:** change the description to `drift` and the block grace period to 72 hours. Restore from S, approve,
+     enforce, capture `update`. Expect description and block 0 h back. Report the exact Graph answer if the PUT or
+     `setScheduledActions` is refused (both routes are unmeasured live).
+  4. **Create round:** delete the policy, restore from S, approve, enforce, capture `create`. Read back equal to S (name,
+     description, platform, the setting, both actions).
+  5. **Re-run check:** dry run from S again after step 4. Expect 0 planned writes for this type.
+  6. Cleanup: delete the fixture (and `KEEL-RT-notice` if you created it). Report anything left.
+  7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-7`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; the step 2 backup check; per operation: promoted / refused (exact message) / blocked; the step 5 result;
+  approval ids; the evidence branch and commit; anything left in the tenant.

@@ -6052,8 +6052,28 @@ item that needs it stays untouched.
   `isDefaultProfile` and assignments are **never** sent; the **default profile is refused**) and `exchangeCustomAppScope`
   (`displayName`, `customAttributes` with the recipient filter; `type` on create only; app role assignments not written).
 - Needs: /opt/keel-live at the #454 merge or later (`grep -q exchangeCustomAppScope: /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
-- Status: in-progress
-- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
+- Status: done
+- Result: done (2026-10-22 09:50 UTC). 3 of 4 operations promoted. The scope update is held back as manual by the #469 guard (fail-closed, as Q134 step 4 expected). New findings: **#478** (capture name field) and **#485** (re-run plans a second create). B = c396a2c → 56d9682 (captures at 56d9682). Restorer only; global admin not used; nothing granted; the default branding was never written.
+  - **Per type and operation:**
+    | type | create | update |
+    |---|---|---|
+    | intuneBrandingProfile | **promoted** | **promoted** (contact name and #1B2A4A back) |
+    | exchangeCustomAppScope | **promoted** | **skipped (manual)**, not written: "It could not be confirmed that no app role assignment uses this app access scope (a read of the app role assignments repeated rows (229 distinct of 231), so rows may be missing) ..." |
+  - **Backup check** (S = `a5e2dc50`): both types `complete` (2 each). The KEEL-RT-branding payload has `themeColorLogo`, `lightBackgroundLogo` and `landingPageCustomizedImage` all **null** (no logo bytes), and `isDefaultProfile` false.
+  - **Create round:** deleted both. Dry run `c277e902` (closure adds `roleScopeTag:0` with no changed fields), approval **4f78ae2d**, job `8015fcbf`: both created; read-back equals S
+    (KEEL-RT IT, 27/42/74, help desk name and email; RecipientScope with the `keel-rt-scope-none*` filter).
+    - The scope create was captured and promoted.
+    - The branding capture was **refused**: "is not a disposable KEEL-RT-* fixture", because the tool checks `displayName` (the org name "KEEL-RT IT"), not `profileName`. Filed **#478**.
+      Workaround: renamed the org to `KEEL-RT-IT` and took S2 = `650eac6e`. Later I deleted the profile and restored it from S2: dry run `a0b37321`, approval **83bd8f47**, job `0fec9540`. Promoted.
+  - **Update round** (from S2):
+    - Branding: contact name `drift`, colour #F5A623. Dry run `8e1ad5b4` (themeColor, contactITName), approval **2257d02e**, job `7a13e72d`. Promoted.
+    - Scope: filter `keel-rt-scope-drift*`. My first drift PATCH with the full `customAttributes` was refused by Graph with `400 "exclusive is not changable!"`; a filter-only PATCH worked.
+      KEEL's dry run `c21ba28d` then skipped the scope as manual (above).
+    - A first combined dry run hung for over 15 minutes in planning; I killed it, and nothing was approved from it. Run alone, each type planned in about 60 s.
+  - **Step 5, default check:** a dry run `6fe01994` that also selected the default profile listed it with **no changed fields** (no write), not as "skipped (manual)", because it does not differ from S2, so the guard was not exercised. That run was never enforced.
+  - **Step 6, re-run** (`f077e6cc`, scope filter set back by hand first): the scope has 0 fields. Branding: **another create planned** (no targetId), because the recreated profile is not mapped back to the backup key (**#485**). Not enforced.
+  - **Cleanup:** deleted the branding fixture and the scope. Left: only the default branding and `KEEL-RT-test-mailboxes` (both untouched). **Nothing of ours left.**
+  - **Evidence:** `claude/live-evidence-restore-gaps-9` @ **bb18878**. pseudonymize check exit 0; my scan is clean. `live evidence`: exchangeCustomAppScope.create, intuneBrandingProfile.create and intuneBrandingProfile.update: `fixture-tested -> live-qualified`.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementServiceConfig.ReadWrite.All (branding) and RoleManagement.ReadWrite.Exchange (app scopes); both are in the

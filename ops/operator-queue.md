@@ -986,6 +986,42 @@ being triggered by queue updates.
      `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; per operation: promoted / refused (exact Graph message) / blocked; step 4; step 5; approval ids; the evidence
   branch and commit; anything left in the tenant.
+### Q142: Live backup and restore of administrative templates with their settings (fixes #472, after #487)
+- Drafted by the "Admin templates backed up empty" thread (2026-10-22), from your Q114 finding **#472**. Code: PR #487. Fixture-tested only.
+  This replaces the administrative template part of Q114 (still blocked there on #472); the custom attribute script part stays in Q114.
+  - **Backup change:** `groupPolicyConfiguration` is listed without `$expand`. Each template's settings are read from
+    `GET beta /deviceManagement/groupPolicyConfigurations/{id}/definitionValues?$expand=definition` (paged), then each setting's
+    values from `.../definitionValues/{vid}/presentationValues?$expand=presentation`. Any failed read fails the kind.
+  - **Restore change:** a backup whose settings came through `$expand` (its payload has `definitionValues@odata.context`, e.g. Q114's
+    S `c468ba6c`) is skipped as manual: "manual: this backup was taken before the template's settings were read on their own, and may
+    be missing every setting, so it is not written; ...". Nothing is written.
+  - Unmeasured: the per-template settings read inside the collector, and every write below.
+- Needs: /opt/keel-live at the #487 merge or later (`grep -q "definitionValues@odata.context" /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67 and Q114. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used; it holds
+  DeviceManagementConfiguration.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing.
+  Never touch CA policies, break-glass or Marouane's account. **Never assign the fixture to a group, user or device.**
+- **Fixture:** administrative template `KEEL-RT-admx`, as in Q114: Edge "Configure the home page URL" enabled = `https://example.com`
+  (text value) and "Show Home button on toolbar" disabled, assigned to nobody.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Create the fixture, then take snapshot S. **Backup check:** the fixture's `definitionValues` in S holds **2** settings, each with a
+     `definition.id` and a `presentationValues` list; the home page setting has one value `https://example.com` whose `presentation.id`
+     is set. Report the read outcome. If the read fails, report the exact Graph error and which read it was.
+  2. **Old-backup refusal (no write expected):** dry run from Q114's S `c468ba6c` selecting `groupPolicyConfiguration` (if it is gone,
+     any pre-B snapshot holding a template). Expect it skipped as manual with the text above, 0 writes. Do not promote.
+  3. **Create round:** delete the fixture, restore from S, approve, enforce, capture the `create`. Expect it back with both settings
+     on/off as before and the home page value.
+  4. **Update round:** change the description, set the home page value to `https://drifted.example`, and add a third built-in setting.
+     Restore from S, approve, enforce, capture the `update`. Expect the value back and the extra setting gone.
+  5. **Re-run check:** dry run from S after step 4. Expect 0 planned writes for the template.
+  6. Cleanup: delete every `KEEL-RT-admx*` template. Report anything left.
+  7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-admin-templates`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; step 1 backup check; step 2 reason; per operation: promoted / refused (exact Graph message) / blocked; step 5;
+  approval ids; the evidence branch and commit; anything left in the tenant.
 
 ## Operator decisions (human operator only)
 

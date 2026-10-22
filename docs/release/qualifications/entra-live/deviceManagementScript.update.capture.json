@@ -1,0 +1,56 @@
+{
+  "restoreRef": "d4a21575-5699-8be2-b7f5-c658fc9610f6",
+  "entry": {
+    "naturalKey": "deviceManagementScript:6c391cb4-071d-8ca0-9cfd-79d27f181a0e",
+    "resourceType": "deviceManagementScript",
+    "operation": "update",
+    "targetId": "6c391cb4-071d-8ca0-9cfd-79d27f181a0e",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T11:14:19.298Z",
+    "priorState": {
+      "id": "6c391cb4-071d-8ca0-9cfd-79d27f181a0e",
+      "fileName": "keel-rt-script.ps1",
+      "runAs32Bit": false,
+      "description": "drift",
+      "displayName": "KEEL-RT-script",
+      "runAsAccount": "system",
+      "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceManagementScripts/$entity",
+      "createdDateTime": "2026-10-22T10:25:42.6218135Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-10-22T10:28:47.8717243Z",
+      "enforceSignatureCheck": false
+    },
+    "intendedState": {
+      "fileName": "keel-rt-script.ps1",
+      "runAs32Bit": false,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-script",
+      "runAsAccount": "system",
+      "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "enforceSignatureCheck": false
+    },
+    "postState": {
+      "id": "6c391cb4-071d-8ca0-9cfd-79d27f181a0e",
+      "fileName": "keel-rt-script.ps1",
+      "runAs32Bit": false,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-script",
+      "runAsAccount": "system",
+      "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceManagementScripts/$entity",
+      "createdDateTime": "2026-10-22T10:25:42.6218135Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-10-22T11:14:19.4696944Z",
+      "enforceSignatureCheck": false
+    }
+  }
+}

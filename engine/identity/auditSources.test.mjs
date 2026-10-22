@@ -243,3 +243,36 @@ test('a long Intune activity name is kept readable, not rejected as a secret (#5
   });
   assert.deepEqual([policy.verdict, policy.actors[0].id], ['exact', SYNC_SP]);
 });
+
+test('long activity names with numbers or acronyms are split too, and tokens still are not', async () => {
+  const activity = async (name) => (await intuneAuditEvents(intuneAudit('ia-name', 1, { activity: name }), async () => SYNC_SP))[0].change.activity;
+  const cases = [
+    ['CreateWindows10GeneralConfigurationAssignmentsAsync', 'Create Windows 10 General Configuration Assignments Async'],
+    ['PatchIOSUpdateConfigurationAssignmentsAsyncNowPlease', 'Patch IOS Update Configuration Assignments Async Now Please'],
+    ['iosGeneralDeviceConfigurationAssignmentsUpdateAsync', 'ios General Device Configuration Assignments Update Async'],
+    ['AssignWin32LobAppToGroupsAndDevicesForEveryoneNow', 'Assign Win 32 Lob App To Groups And Devices For Everyone Now'],
+    ['UpdateMacOSCustomConfigurationAssignmentsAsyncAgain', 'Update Mac OS Custom Configuration Assignments Async Again'],
+  ];
+  for (const [name, split] of cases) assert.equal(await activity(`${name} DeviceConfiguration`), `${split} DeviceConfiguration`, name);
+  const [entra] = directoryAuditEvents(directoryAudit('Directory_digits', 1, { activityDisplayName: cases[0][0] }));
+  assert.equal(entra.change.activity, cases[0][1], 'Entra activity names get the same treatment');
+
+  // Token shapes that mix capitals, digits and acronyms are still dropped, never split.
+  const tokens = [
+    'aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3zA5bC7dE9fG1hJ3kL5', // mixed case and digits
+    'A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3F4A5B6', // upper-case hex
+    'ABCDE12345FGHIJ67890KLMNO12345PQRST67890UVWXY12345', // acronyms and numbers only
+    'AbCdEfGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKlMnOpQrStUvWx', // two-letter words only
+    'Xk9QwErTyUiOpAsDfGhJkLzXcVbNmQwErTyUiOpAsDfGhJkLzX', // single capitals between letters
+  ];
+  for (const token of tokens) assert.equal(await activity(`Patch ${token}`), null, token);
+  // A seeded sweep of random tokens: none reads as a name.
+  let seed = 552;
+  const random = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  for (const alphabet of ['ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', '0123456789ABCDEF', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789']) {
+    for (let i = 0; i < 500; i += 1) {
+      const token = Array.from({ length: 48 + Math.floor(random() * 40) }, () => alphabet[Math.floor(random() * alphabet.length)]).join('');
+      assert.equal(await activity(`Patch ${token}`), null, token);
+    }
+  }
+});

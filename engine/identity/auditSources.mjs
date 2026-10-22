@@ -77,14 +77,29 @@ function typeName(value) {
 // A Microsoft operation name can hold one very long CamelCase word (Intune's
 // "UpdateWindowsFeatureUpdateProfileAssignmentsAsync ..." is 49 letters). redactSecrets
 // takes any 48+ character run for a token, and the stored fact refuses a redacted
-// activity, which failed the whole page (issue #552). A long word made only of
-// capitalised words is a name, so it is split at its word boundaries. Anything still
-// token-shaped drops the activity (it is optional); the event itself is kept.
-const CAMEL_WORDS = /^(?:[A-Z][a-z]+)+$/;
+// activity, which failed the whole page (issue #552). A long word that reads as a name
+// is split into its parts: capitalised words, short acronyms ("IOS") and short numbers
+// ("Windows10"), with an optional lowercase first word ("ios..."). To stay a name and
+// not a token, at least half of its letters must be in real words (a capital and two or
+// more lowercase letters), which random tokens, hex and all-caps strings never reach.
+// Anything still token-shaped drops the activity (it is optional); the event is kept.
+const NAME_PART = /[A-Z][a-z]+|[A-Z]{2,5}(?=[A-Z][a-z]|\d|$)|\d{1,4}/y;
+function nameParts(word) {
+  const lead = /^[a-z]{2,}(?=[A-Z])/.exec(word)?.[0] ?? '';
+  const parts = lead ? [lead] : [];
+  NAME_PART.lastIndex = lead.length;
+  while (NAME_PART.lastIndex < word.length) {
+    const match = NAME_PART.exec(word);
+    if (!match) return null;
+    parts.push(match[0]);
+  }
+  const wordLetters = parts.filter((part) => /^[A-Z]?[a-z]{2,}$/.test(part)).join('').length;
+  return wordLetters * 2 >= word.length ? parts : null;
+}
 function activityName(value) {
   if (typeof value !== 'string') return null;
   const clean = value.replace(/[^A-Za-z0-9 ._()-]/g, ' ').replace(/\s+/g, ' ').trim()
-    .split(' ').map((word) => (word.length >= 48 && CAMEL_WORDS.test(word) ? word.replace(/(?<=[a-z])(?=[A-Z])/g, ' ') : word))
+    .split(' ').map((word) => (word.length >= 48 ? nameParts(word)?.join(' ') ?? word : word))
     .join(' ').slice(0, 96).trim();
   return /^[A-Za-z0-9]/.test(clean) && redactSecrets(clean) === clean ? clean : null;
 }

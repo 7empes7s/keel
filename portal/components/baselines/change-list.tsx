@@ -17,7 +17,7 @@ import { SemanticDiff } from "@/components/semantic-diff";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
-  changedBy, decisionWords, impactTone, impactWords, kindLine, plainKind, setupName, typeService, whyItMatters, type Decision,
+  changedBy, decisionWords, impactTone, impactWords, itemService, kindLine, plainKind, setupName, typeService, whyItMatters, type Decision,
 } from "@/lib/baselines-view";
 import { alertCall, alertCallWords } from "@/lib/alert-calls";
 import { changeLabel, changeName, isWaiting, respondDetail, respondResult, REVIEW_WORDS, reviewState } from "@/lib/changes-view";
@@ -57,7 +57,7 @@ const RISK_ABOUT: Record<string, string> = {
 const GROUPINGS: Grouping<DriftRecord>[] = [
   {
     key: "service", label: "Service",
-    groupsOf: (items) => groupBy(items, (item) => typeService(item.resourceType).code, (code) => {
+    groupsOf: (items) => groupBy(items, (item) => itemService(item).code, (code) => {
       const service = serviceFor(code);
       return { label: service.name, icon: service.icon, about: service.about };
     }),
@@ -142,7 +142,7 @@ export function ChangeList({
   const kind = view.get("kind");
   // `from=services` keeps service setting changes only (the Service settings tile).
   const from = view.get("from") === "services" ? "services" : "";
-  const shown = useMemo(() => open.filter((item) => (!service || typeService(item.resourceType).code === service) && (!risk || item.blastRadius === risk) && (!kind || item.resourceType === kind) && (!from || item.serviceRead)), [open, service, risk, kind, from]);
+  const shown = useMemo(() => open.filter((item) => (!service || itemService(item).code === service) && (!risk || item.blastRadius === risk) && (!kind || item.resourceType === kind) && (!from || item.serviceRead)), [open, service, risk, kind, from]);
   const opened = open.find((item) => item.id === view.get("open")) ?? null;
   const deciding_items = deciding ? open.filter((item) => deciding.ids.includes(item.id)) : [];
   const serviceIds = useMemo(() => new Set(open.filter((item) => item.serviceRead).map((item) => item.id)), [open]);
@@ -244,7 +244,7 @@ export function ChangeList({
     kind ? `${plainKind(kind).toLowerCase()} changes` : null,
     serviceName ? `in ${serviceName}` : null,
   ].filter(Boolean).join(" ");
-  const serviceReads = [...new Set(open.flatMap((item) => (item.serviceRead ? [serviceFor(typeService(item.resourceType).code).name] : [])))];
+  const serviceReads = [...new Set(open.flatMap((item) => (item.serviceRead ? [itemService(item).name] : [])))];
   return (
     <div className="bl-page">
       <BaselinesStyles />
@@ -319,7 +319,7 @@ export function ChangeList({
               const state = reviewState(item);
               return (
                 <div className="bl-row">
-                  <span aria-hidden="true" className="bl-kind-icon" data-tone={toneOf(item)}><Icon name={typeService(item.resourceType).icon} /></span>
+                  <span aria-hidden="true" className="bl-kind-icon" data-tone={toneOf(item)}><Icon name={itemService(item).icon} /></span>
                   <span className="bl-row-name">
                     <Link className="bl-row-link" href={href({ open: item.id })} onClick={(event) => follow(event, { open: item.id })}>{changeName(item)}</Link>
                     <small>{kindLine(item)}</small>
@@ -358,7 +358,7 @@ export function ChangeList({
               {canDispose && isWaiting(opened) ? <button className="btn btn-primary" onClick={() => acknowledge([opened.id])} type="button">Acknowledge</button> : null}
               {canDispose ? <button className="btn" onClick={() => resolve([opened.id])} type="button">Resolve with a note…</button> : null}
               {opened.serviceRead.alertId ? <Link className="btn" href={`/alerts?open=${encodeURIComponent(opened.serviceRead.alertId)}`}>Open its alert</Link> : null}
-              <p className="bl-help">{workloadLabel(opened.serviceRead.workload)} has no approved setup, so there is nothing to accept or undo. Keel shows and tracks this change; putting it back is done in {typeService(opened.resourceType).name}.</p>
+              <p className="bl-help">{workloadLabel(opened.serviceRead.workload)} has no approved setup, so there is nothing to accept or undo. Keel shows and tracks this change; putting it back is done in {itemService(opened).name}.</p>
             </>
           ) : canDispose || canRemediate ? (
             <>
@@ -378,8 +378,8 @@ export function ChangeList({
             <p>{whyItMatters(opened.resourceType)}</p>
             <p className="bl-help">
               {opened.serviceRead
-                ? `Keel found it ${ago(opened.detectedAt, now)}, when it compared the newest ${workloadLabel(opened.serviceRead.workload).toLowerCase()} read in ${typeService(opened.resourceType).name} with the one before. It does not know who made it.`
-                : `${changedBy(opened) ? `${changedBy(opened)} made it` : "Keel does not know who made it yet"}; Keel found it ${ago(opened.detectedAt, now)}, in ${typeService(opened.resourceType).name}.`}
+                ? `Keel found it ${ago(opened.detectedAt, now)}, when it compared the newest ${workloadLabel(opened.serviceRead.workload).toLowerCase()} read in ${itemService(opened).name} with the one before. It does not know who made it.`
+                : `${changedBy(opened) ? `${changedBy(opened)} made it` : "Keel does not know who made it yet"}; Keel found it ${ago(opened.detectedAt, now)}, in ${itemService(opened).name}.`}
             </p>
           </section>
           {opened.semantic

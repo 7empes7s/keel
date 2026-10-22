@@ -4,6 +4,7 @@ import { fieldWords } from "@/lib/changes-view";
 import { holdsObjectId } from "@/lib/object-ids";
 import { displayEnum } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
+import { madeInSharePoint } from "@/lib/services";
 import type { RestoreChange, RestoreChangesData } from "@/lib/restore-changes";
 import type { JobRecord, SnapshotOption } from "@/lib/portal-jobs";
 import { jobStatusSentence } from "@/lib/sentences";
@@ -185,19 +186,9 @@ export function rowImpact(blastRadius: string, compared: boolean): string | null
   return compared ? null : blastRadius;
 }
 
-// SharePoint admin center makes these Conditional Access policies when someone limits
-// access from unmanaged devices (Policies > Access control). They are stored in Entra ID
-// but are SharePoint settings, so the Restore page files them under SharePoint.
-const SHAREPOINT_MADE = /^\s*\[SharePoint admin center\]/i;
-
-export function madeInSharePoint(resource: { resourceType: string; name?: string | null }, label?: string): boolean {
-  if (resource.resourceType !== "conditionalAccessPolicy") return false;
-  return SHAREPOINT_MADE.test(resource.name ?? "") || SHAREPOINT_MADE.test(label ?? "");
-}
-
 /** The service a restore row sits under: SharePoint for the sign-in rules SharePoint made. */
 export function restoreService(resource: { resourceType: string; service: string | null; name?: string | null }, label?: string): string | null {
-  return madeInSharePoint(resource, label) ? "SharePoint" : resource.service;
+  return madeInSharePoint(resource.resourceType, resource.name, label) ? "SharePoint" : resource.service;
 }
 
 export const IMPACT_ORDER = ["tenant-lockout", "access-affecting", "cosmetic"];

@@ -28,7 +28,6 @@ import {
   changeTone,
   dayWords,
   impactWords,
-  madeInSharePoint,
   restoreService,
   rowImpact,
   itemName,
@@ -45,7 +44,8 @@ import {
   type NameBook,
 } from "@/lib/restore-view";
 import { orderGroups, smartOrder } from "@/lib/selection";
-import { serviceFor, serviceOrder } from "@/lib/services";
+import { madeInSharePoint, serviceFor, serviceOrder } from "@/lib/services";
+import { typeService } from "@/lib/baselines-view";
 
 const DRY_RUN_POLL_MS = 3000;
 const ROWS_PER_GROUP = 8;
@@ -275,10 +275,10 @@ const GROUPINGS: Grouping<RestoreItem>[] = [
   {
     key: "type",
     label: "Type",
-    groupsOf: (items) => grouped(items, (item) => item.resourceType, (type, list) => ({
+    groupsOf: (items) => grouped(items, (item) => item.resourceType, (type) => ({
       label: plainType(type),
-      icon: serviceFor(list[0]?.service).icon,
-      about: `${serviceFor(list[0]?.service).name}${plainType(type).toLowerCase() !== resourceTypeLabel(type).toLowerCase() ? ` · Microsoft calls it ${resourceTypeLabel(type)}` : ""}`,
+      icon: typeService(type).icon,
+      about: `${typeService(type).name}${plainType(type).toLowerCase() !== resourceTypeLabel(type).toLowerCase() ? ` · Microsoft calls it ${resourceTypeLabel(type)}` : ""}`,
     })),
   },
   {
@@ -938,7 +938,7 @@ function RestoreRow({ item, undo, compared }: { item: RestoreItem; undo: ReactNo
   const change = item.change;
   const tone = changeTone(change);
   const impact = rowImpact(item.blastRadius, compared);
-  const madeBy = madeInSharePoint(item, item.label) ? "made in SharePoint admin center" : service.name;
+  const madeBy = madeInSharePoint(item.resourceType, item.name, item.label) ? "made in SharePoint admin center" : service.name;
   return (
     <div className="restore-row" data-changed={change ? change.kind : undefined}>
       <span className="restore-row-name">

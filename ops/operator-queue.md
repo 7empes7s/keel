@@ -7346,7 +7346,7 @@ item that needs it stays untouched.
 - Drafted by the "Per-site sharing setting" thread (2026-10-22). Code: PR #538. The `sharepoint-site-settings` workload now also
   reads each site's own `sharingCapability` with one `Get-PnPTenantSite` (no parameters) through PnP, gated on the
   `sharepoint.site-sharing` ledger row. Until a live read record is imported the Sites list shows "Not read yet" in Sharing setting.
-- Needs: /opt/keel-live at the #538 merge or later (`grep -q readSiteSharing /opt/keel-live/engine/collect/workloads/sharepoint.mjs`).
+- Needs: /opt/keel-live at the #544 merge or later (`grep -q sharingCapabilityName /opt/keel-live/engine/collect/workloads/sharepoint.mjs`). #544 stores PnP's enum number by name; without it the values land as digits.
 - Status: todo
 - Result:
 - **Tenant:** reads only. `Get-PnPTenantSite` with the Collector credential (Sites.FullControl.All + SharePoint Administrator, already

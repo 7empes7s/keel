@@ -444,15 +444,16 @@ test('portal: an entity-scoped reader gets semantic changes and linked records w
       const [creosShown, sharedShown] = [creos, shared].map((item) => displayItems([item])[0]);
       assert.deepEqual(Object.keys(creosShown.after).sort(), ['description', 'displayName'], 'ids and Microsoft-set fields are not handed to the client');
       const diffHtml = withRouter(createElement(SemanticDiff, { item: creosShown, change: creos.semantic }));
-      assert.match(diffHtml, /1 setting differs from the approved setup in a way that changes behaviour\./);
-      assert.match(diffHtml, /2 settings Microsoft manages itself also differ\. They do not change behaviour and are not shown\./);
+      // The shared comparison names the one setting that changes behaviour; the settings
+      // Microsoft manages itself are left out entirely (checked just below).
+      assert.match(diffHtml, /1 setting changed since the approved setup\./);
       assert.ok(diffHtml.includes('changed creos'));
       for (const cosmetic of ['rotated@contoso', 'modifiedDateTime', '2026-10-01']) assert.ok(!diffHtml.includes(cosmetic), 'rendered ' + cosmetic);
       assertPlain(visibleText(diffHtml), 'semantic diff');
 
       const unknownHtml = withRouter(createElement(SemanticDiff, { item: sharedShown, change: shared.semantic }));
-      assert.match(unknownHtml, /the earlier values are not known\. Nothing is shown as removed\./);
-      assert.match(unknownHtml, /Earlier value not known/);
+      assert.match(unknownHtml, /2 settings are set now\. Keel did not keep the earlier copy, so nothing is shown as removed\./);
+      assert.match(unknownHtml, /Now set/);
       assert.ok(unknownHtml.includes('>Not known<'));
       const unknownText = visibleText(unknownHtml);
       for (const wrong of ['Removed', 'No longer set', 'Not set in the approved setup', 'Added']) assert.ok(!unknownText.includes(wrong), 'unknown before rendered as ' + wrong);

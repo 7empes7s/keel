@@ -6190,3 +6190,43 @@ item that needs it stays untouched.
   approval, what was written; step 5; approval ids; the evidence branch and commit; anything left in the tenant.
 - Note for Q129 and Q130: on a build with #464, their create rounds (script, remediation, custom attribute script) and their
   assignment-only rounds that move a script to a group it is not on now also list a `runs-on-devices` effect. Approve it too and log the id.
+
+### Q133: Live restore of Intune and SharePoint tenant-wide settings (restore gaps batch 17, after #465)
+- Drafted by the "Restore tenant-wide setting kinds" thread (2026-10-22). Code: PR #465. Fixture-tested only.
+  - **Marouane approved tenant-wide setting changes for this proof on 2026-10-22 ("Ok for tenant wide", project thread).**
+    Each value below is drifted, restored, and then **set back to its original value right after its round**, whatever the outcome.
+  - Kinds, all update in place only: `deviceManagementSettings` (beta `PATCH /deviceManagement`, only `settings` and
+    `managedDeviceCleanupSettings`), `microsoftTunnelHealthThreshold` (beta, two limits), `onPremisesConditionalAccessSettings`
+    (v1.0, never turned on), `intuneBrandingProfile` default profile (beta, now updated in place), `sharepointSettings`
+    (v1.0, every setting except the five sharing fields).
+  - Guards (skipped as manual, nothing written): secureByDefault turned off; device cleanup started or shortened; Exchange
+    on-premises access turned on; default branding created or swapped; SharePoint legacy auth on, unmanaged sync allowed, or
+    guest account match dropped.
+  - Unmeasured: every PATCH above and its read-back (the `/deviceManagement` read uses `$select=id,settings,managedDeviceCleanupSettings`).
+- Needs: /opt/keel-live at the #465 merge or later (`grep -q onPremisesAccessRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
+  needs DeviceManagementConfiguration.ReadWrite.All, DeviceManagementServiceConfig.ReadWrite.All and SharePointTenantSettings.ReadWrite.All.
+  If Graph answers 403, report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.
+  **Never** set `secureByDefault`, the device cleanup window, Exchange on-premises `enabled`, SharePoint legacy auth, unmanaged sync
+  or any SharePoint sharing field. Capture each with `--allow-tenant-setting`.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set.
+  Before step 1, write down the original value of every field you will drift (report them).
+  1. Take snapshot S. **Backup check:** each of the five kinds is in S (default branding profile included).
+  2. Drift, one value each:
+     - `deviceManagementSettings`: `settings.deviceComplianceCheckinThresholdDays` by a few days (e.g. 30 to 25).
+     - `microsoftTunnelHealthThreshold`: one limit's `healthyThreshold` by a few points (skip and report if Graph lists none).
+     - `onPremisesConditionalAccessSettings`: `overrideDefaultRule` to the other value, `enabled` stays false.
+     - Default Company Portal branding profile: `contactITName` to `KEEL-RT-153-drift`.
+     - `sharepointSettings`: `isLoopEnabled` to the other value.
+  3. Restore from S selecting those five kinds. Expect the dry run to plan one `update` per kind with only the drifted field;
+     approve, enforce, capture each `update`. Expect each to read back at its step 1 value. Report the exact Graph answer for any refused write.
+  4. **Re-run check:** dry run from S. Expect 0 planned writes.
+  5. **Set back:** confirm every drifted field is at its original value (it should be after step 3; set it by hand if not). Report each.
+  6. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-17`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; the originals; per kind: written / refused (exact message) / skipped / blocked; step 4; step 5 values; approval ids;
+  the evidence branch and commit.

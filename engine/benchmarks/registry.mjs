@@ -296,10 +296,10 @@ registerControl({
   },
 });
 
-// The name a detail line gives one directory object: its display name, else its id.
+// The name a detail line gives one directory object: its display name, never its id
+// (the line is shown on the page).
 function objectName(fact, fallback) {
-  if (typeof fact?.displayName === 'string' && fact.displayName.length > 0) return fact.displayName;
-  return typeof fact?.id === 'string' && fact.id.length > 0 ? fact.id : fallback;
+  return typeof fact?.displayName === 'string' && fact.displayName.length > 0 ? fact.displayName : fallback;
 }
 
 registerPredicate('named-location-no-untrusted-all-countries', (facts) => {

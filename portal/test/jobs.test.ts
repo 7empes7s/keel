@@ -8,6 +8,7 @@ import { jobErrorCause, jobProgressPercent, jobTypeGroups, jobTypeRows, typeProb
 import { JobTable } from "@/components/job-table";
 import { guardedJobList, guardedJobShow, normalizeJob } from "@/lib/action";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
+import { recordValues } from "./record-fields";
 
 const row = {
   id: "00000000-0000-0000-0000-000000000001",
@@ -44,7 +45,7 @@ test("job details preserve the full error and expose params, result, worker and 
   const html = renderToStaticMarkup(createElement(JobDetail, { job }));
   // Task-130: the full error, params, result, worker and heartbeat are in the record.
   // A multi-line error keeps its line breaks in a block.
-  assert.ok(html.includes(`Full error</dt><dd><pre class="technical-block"><code>${row.error}</code></pre>`));
+  assert.ok(recordValues(html, "Full error").some((value) => value.includes(`<pre class="technical-block"><code>${row.error}</code></pre>`)), "the full error is kept, behind a click");
   assert.ok(html.includes('data-alert="error"'), "the error alert renders because there is an error");
   assert.ok(/<details class="ui-alert-more"[^>]*><summary>Show details<\/summary>/.test(html), "the raw error waits behind Show details");
   assert.ok(!renderToStaticMarkup(createElement(JobDetail, { job: normalizeJob({ ...row, status: "succeeded", error: null }) })).includes('data-alert="error"'),

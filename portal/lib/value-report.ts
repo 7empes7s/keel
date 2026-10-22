@@ -34,19 +34,20 @@ function readEstimate(path: string | null): unknown {
 }
 
 /**
- * The reader's report scope: their own scope, optionally narrowed to one entity. An
- * entity outside an entity-scoped reader's scope gives an empty scope, never a wider one.
+ * The reader's report scope: their own scope, optionally narrowed to some entities (any
+ * of them). An entity outside an entity-scoped reader's scope is dropped, never widening
+ * it; when none is left the scope is empty.
  */
-export function reportScope(scope: EntityScope, entity: string | null): EntityScope {
-  if (!entity) return scope;
-  if (scope.central) return { central: false, entities: [entity] };
-  return { central: false, entities: scope.entities.includes(entity) ? [entity] : [] };
+export function reportScope(scope: EntityScope, entities: readonly string[]): EntityScope {
+  if (!entities.length) return scope;
+  if (scope.central) return { central: false, entities: [...entities] };
+  return { central: false, entities: entities.filter((entity) => scope.entities.includes(entity)) };
 }
 
-export async function getValueReport({ scope, period, entity = null, now = new Date() }: {
+export async function getValueReport({ scope, period, entities = [], now = new Date() }: {
   scope: EntityScope;
   period: ReportWindow;
-  entity?: string | null;
+  entities?: readonly string[];
   now?: Date;
 }): Promise<ValueReport> {
   const ref = tenantRef();
@@ -58,7 +59,7 @@ export async function getValueReport({ scope, period, entity = null, now = new D
       from: new Date(period.from),
       to: new Date(period.to),
       now,
-      scope: reportScope(scope, entity),
+      scope: reportScope(scope, entities),
       estimate: readEstimate(path),
       estimateSource: path,
     })) as ValueReport;

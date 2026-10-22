@@ -1,13 +1,16 @@
 import { workloadLabel } from "@/lib/compare-view";
 import { fieldWords } from "@/lib/changes-view";
-import type { DriftRecord } from "@/lib/types";
+import { PAGE_RESTORE_WORKLOADS } from "@/lib/restore-workloads-view";
+import type { DriftRecord, ServiceUndo } from "@/lib/types";
 
 // Service setting changes: Exchange, SharePoint and OneDrive, Teams, Purview and Power
-// Platform settings Keel reads on a schedule. They have no approved setup, so each read
-// is compared with the read before it (engine/govern/workloadDrift.mjs, table
-// workload_drift). The Changes page lists them beside the approved-setup changes, so
-// its service filter and grouping cover every service. Each one raised an alert that
-// stays open until someone acknowledges or resolves it.
+// Platform settings Keel reads on a schedule. Each read is compared with the service's
+// approved setup (engine/govern/workloadApproved.mjs and workloadDrift.mjs, table
+// workload_drift). The Changes page lists them beside the Entra ID and Intune changes, so
+// its service filter and grouping cover every service. Accept adds a change to the
+// approved setup; undo puts the approved value back through the service restore (a
+// check, then someone else's approval). Each change raised an alert, which the read
+// that matches the approved setup again resolves.
 
 const FIELD_LABELS: Record<string, string> = {
   appPermissionGrants: "app access",
@@ -49,9 +52,36 @@ export function serviceChangeName(resourceKey: string, fields: Record<string, un
   return index === -1 ? resourceKey : resourceKey.slice(index + 1);
 }
 
+/** What the Restore page would say about putting one setting back from a read
+ * (engine/restore/workloads/restoreChoices.mjs): null when that read does not hold it. */
+export interface UndoChoice {
+  restorable: boolean;
+  reason: string | null;
+}
+
+/** Whether Keel can undo one service setting change, and in plain words why not.
+ * Undo restores the earlier value from the read that holds it, through the Restore
+ * page's own service restore, so only what that restore writes can be undone here. */
+export function serviceUndo({ workload, resourceKey, changeType }: { workload: string; resourceKey: string; changeType: string }, choice: UndoChoice | null): ServiceUndo {
+  const label = workloadLabel(workload);
+  if (!PAGE_RESTORE_WORKLOADS.includes(workload)) {
+    return { possible: false, reason: `Keel cannot write ${label} back yet. Accept the change, or change it back in the admin center.` };
+  }
+  if (changeType === "added") {
+    return { possible: false, reason: "It is new since the approved setup, and Keel never deletes settings. Accept it, or remove it in the admin center." };
+  }
+  if (workload === "exchange-mailbox-settings" && resourceKey === "organization") {
+    return { possible: false, reason: "Organization-wide Exchange settings go back together with a mailbox. Put them back from the Restore page." };
+  }
+  if (!choice) return { possible: false, reason: "The read that holds the earlier value no longer has this setting, so Keel cannot put it back." };
+  if (!choice.restorable) return { possible: false, reason: choice.reason ?? "Keel does not write this kind of setting back. Accept the change, or change it back by hand." };
+  return { possible: true, reason: null };
+}
+
 /** One stored workload_drift row, joined with its resource's fields and its alert, as a
- * row of the Changes list. */
-export function serviceChangeFrom(row: Record<string, unknown>): DriftRecord {
+ * row of the Changes list. `choice` is what the restore offers for its resource from
+ * the read that holds the earlier value. */
+export function serviceChangeFrom(row: Record<string, unknown>, choice: UndoChoice | null = null): DriftRecord {
   const workload = String(row.workload);
   const resourceKey = String(row.resource_key);
   const changeType = row.change_type as DriftRecord["changeType"];
@@ -76,8 +106,11 @@ export function serviceChangeFrom(row: Record<string, unknown>): DriftRecord {
       resourceKey,
       collectionId: String(row.collection_id),
       previousCollectionId: String(row.previous_collection_id),
+      previousReadAt: row.previous_observed_to ? new Date(row.previous_observed_to as string | Date).toISOString() : null,
+      comparedWith: row.compared_with === "approved" ? "approved" : "previous",
       alertId: row.alert_id ? String(row.alert_id) : null,
       alertState: row.alert_state ? String(row.alert_state) : null,
+      undo: serviceUndo({ workload, resourceKey, changeType: String(row.change_type) }, choice),
     },
   };
 }

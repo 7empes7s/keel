@@ -130,7 +130,7 @@ test("the page body: tiles filter by address, rows open their panel, ids stay in
   const props = { schedules: [TIER1, TIER2, PRUNE, OFFSITE, DISCOVER], deferrals: [], forecasts: [WARNING], now, timeZone: "Europe/Paris", canEdit: true, canRun: true };
   const html = await renderSchedulesAt("", props);
   assert.match(html, /href="\/schedules\?status=failed"/);
-  assert.match(html, /href="\/schedules\?load=warning"/);
+  assert.match(html, /href="\/schedules\?status=warning"/, "load warnings are one of the status tiles");
   assert.match(html, /href="\/schedules\?status=on"/);
   assert.match(html, new RegExp(`href="/schedules\\?open=${TIER1.id}"`));
   assert.match(html, /href="\/jobs\/a4"/);
@@ -142,7 +142,10 @@ test("the page body: tiles filter by address, rows open their panel, ids stay in
   assert.doesNotMatch(visible, /\b[a-z]+(?:_[a-z0-9]+)+\b/);
 
   const failed = await renderSchedulesAt("status=failed", props);
-  assert.ok(failed.includes("Showing schedules whose last run failed only: 1 of 5."));
+  assert.match(failed, /Showing <b>1<\/b> of 5 schedules/);
+  assert.ok(failed.includes(`href="/schedules?status=failed%2Cwarning"`), "Load warnings adds to Failed");
+  const old = await renderSchedulesAt("load=warning", props);
+  assert.match(old, /Showing <b>1<\/b> of 5 schedules/, "an old load=warning link still works");
   const viewer = await renderSchedulesAt("", { ...props, canEdit: false, canRun: false });
   assert.ok(!viewer.includes("sel-check"));
   assert.ok(!viewer.includes("Review the load warning"));

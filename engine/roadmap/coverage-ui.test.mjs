@@ -267,14 +267,16 @@ test('coverage portal: report survives normalization, authorization and page ren
         await render(new Headers([[PRINCIPAL_ID_HEADER, 'viewer'], [CAPABILITIES_HEADER, 'read']]))));
       assert.ok(reads > 0, 'authorized positive control reaches the loader');
       // Protect lists the Microsoft 365 workloads beside the catalogue types.
-      assert.equal((html.match(/<dt>Configuration type<\/dt>/g) || []).length, data.types.length + data.workloads.length);
+      // A record field is found by the label the page passes (data-field), then its value.
+      const field = (label, value) => new RegExp('data-field="' + label + '"[^>]*>(?:(?!</dd>)[^])*?<dd>(?:(?!</dd>)[^])*?<code>' + value);
+      assert.equal((html.match(/data-field="Configuration type"/g) || []).length, data.types.length + data.workloads.length);
       for (const item of data.types) {
         assert.ok(html.includes(item.type));
         if (item.observation) assert.ok(html.includes(item.observation.observationId));
       }
-      assert.match(html, /Write · update<\/dt><dd><code>fixture-tested/);
+      assert.match(html, field('Write · update', 'fixture-tested'));
       assert.doesNotMatch(html, /<code>live-qualified/);
-      assert.match(html, /Pagination evidence<\/dt><dd><code>unknown/);
+      assert.match(html, field('Pagination evidence', 'unknown'));
       assert.match(html, /Relationship completeness/);
       assert.match(html, /engine\/restore\/updatePath.test.mjs/);
       assert.match(html, /projection review/);

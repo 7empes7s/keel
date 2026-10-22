@@ -924,6 +924,51 @@ being triggered by queue updates.
      `KEEL-RT-collector-fabric-readers` and holds no Power BI permission.
 - **Report:** per read, the status and the item count only (no names or values). Nothing changes in the tenant, the host or the DB.
 
+### Q143: Recheck the hourly backup shows "Partly done", and probe the Intune settings route (read-only, urgent, after #489)
+- Drafted by the "Hourly backup shows Failed" thread (2026-10-22). Code: PR #489 (refs #447). A collect whose snapshot holds at
+  least one fully read type, but some types failed or were read in part, now exits **3** and prints one `incomplete types: [...]`
+  line. The worker finishes such `collect`/`backup` jobs as `succeeded` with `result.partial = true` and `result.incompleteTypes`;
+  the portal shows them as "Partly done" and names each type. Exit 1 stays for runs that read nothing in full or crash. Health
+  (`fullCoverage`) still fails while a type is missing.
+- Needs: PR #489 live (`grep -q PARTIAL_EXIT_CODE /opt/keel-live/cli/keel-worker.mjs`).
+- Status: todo
+- **Tenant:** reads only, with the collector credential. Nothing written.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. After the next scheduled hourly collect (do not start one by hand):
+     ```sql
+     SELECT id, status, error, finished_at, result->'partial' AS partial, result->'incompleteTypes' AS incomplete,
+            result->'driftTrigger'->>'status' AS drift
+       FROM job WHERE kind = 'collect' ORDER BY finished_at DESC NULLS LAST LIMIT 2;
+     ```
+  2. Open https://keel.techinsiderbytes.com/protect and that job's page. Report the badge text on its Recent backups row and
+     the "Not backed up: ..." line, and the "What was not backed up" list on the job page (a phone-width screenshot of the row
+     if you can; no Playwright on the box).
+  3. Probe the Intune singleton routes with the collector token, one GET each, and report HTTP status and, on error, the
+     Graph `code` and `message` verbatim (mask tenant ids). On 200, list only the top-level property names returned:
+     ```bash
+     node --input-type=module -e '
+     import { readFileSync } from "node:fs";
+     import { getToken } from "./tools/tenant-probe/auth.mjs";
+     const config = JSON.parse(readFileSync("/etc/keel/tenant.json", "utf8"));
+     const { accessToken } = await getToken(config);
+     for (const path of [
+       "beta/deviceManagement",
+       "beta/deviceManagement?$select=id,settings",
+       "beta/deviceManagement?$select=settings",
+       "v1.0/deviceManagement",
+       "v1.0/deviceManagement?$select=id,settings,intuneBrand",
+       "beta/deviceManagement/managedDeviceCleanupSettings",
+     ]) {
+       const res = await fetch(`https://graph.microsoft.com/${path}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+       const body = await res.json().catch(() => ({}));
+       console.log(path, res.status, res.ok ? Object.keys(body).filter((k) => !k.startsWith("@")).join(",") : JSON.stringify(body.error ?? body));
+     }'
+     ```
+- **Expected:** step 1 newest collect `succeeded`, `partial` true, `incomplete` `[{"type":"deviceManagementSettings","outcome":"failed","httpStatus":400}]`
+  (or `[]`/absent if the type now reads), `error` null, drift `queued`. Step 2: amber "Partly done", "Not backed up: Intune
+  tenant settings". Step 3: which routes answer 200 decides the #447 fix.
+- **Report:** steps 1 to 3 verbatim. Comment the step 3 table on #447.
+
 ### Q137: Check that retention labels and eDiscovery cases land in a collect (read-only, after #481)
 - Drafted by the "Turn on retention labels backup" thread (2026-10-22). Code: PR #481. The four eDiscovery reads in
   `purview-governance` now declare Compliance Administrator (which Q106 showed carries Case Management and Hold) instead of

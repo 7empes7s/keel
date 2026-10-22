@@ -7526,7 +7526,7 @@ item that needs it stays untouched.
   (Set-SafeLinksPolicy). They stay off until a live writer capture is imported. Compliance's Defender email checks then offer
   "Make it pass" per failing setting; the fix is a one-setting workload restore (dry run, approval, content-effect approval, write, read-back).
 - Needs: /opt/keel-live at a499c2d or later (`grep -q mailflow.anti-spam-policy /opt/keel-live/engine/restore/workloads/writeDeclarations.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Test tenant only. KEEL-RT- policies only, each with NO rule, so it applies to nobody.** Never change a Default or built-in policy, a
   rule, a CA policy, break-glass or Marouane's account. Restorer for writes, Collector for reads; global admin not used. Under the

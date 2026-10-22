@@ -7740,7 +7740,7 @@ item that needs it stays untouched.
     A window with skipped entries is reported as `events-skipped` (never "exact" or "nobody on record").
     Page-level problems (bad cursor, oversized page) still stop as `invalid-page`.
 - Needs: /opt/keel-live at the #557 merge or later (`grep -q checkEvent /opt/keel-live/engine/identity/auditIngest.mjs`).
-- Status: open
+- Status: todo
 - Result:
 - **Tenant:** Collector reads only. No tenant writes, no CA policies, break-glass or Marouane's account.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:

@@ -12,6 +12,28 @@ export function snapshotHasFullCoverage(snapshot) {
     && Object.values(digest).every((entry) => ['complete', 'complete-empty', 'not-requested', 'unavailable'].includes(entry?.outcome));
 }
 
+/**
+ * Issue #447: drift detection runs on the types a snapshot did read, so one
+ * failing type cannot hold back drift for the whole tenant. Drift detect
+ * compares only complete or complete-empty types, so a failed or partial type
+ * never reads as deleted. A snapshot with no successful read still waits.
+ */
+export function snapshotReadyForDrift(snapshot) {
+  const digest = snapshot?.coverage_digest;
+  return snapshot?.status === 'complete' && Boolean(digest) && typeof digest === 'object'
+    && !Array.isArray(digest)
+    && Object.values(digest).some((entry) => ['complete', 'complete-empty'].includes(entry?.outcome));
+}
+
+/** Types a snapshot did not read in full, which drift detection skips. */
+export function typesSkippedByDrift(snapshot) {
+  const digest = snapshot?.coverage_digest;
+  if (!digest || typeof digest !== 'object' || Array.isArray(digest)) return [];
+  return Object.entries(digest)
+    .filter(([, entry]) => !['complete', 'complete-empty', 'not-requested', 'unavailable'].includes(entry?.outcome))
+    .map(([type]) => type).sort();
+}
+
 // Scan terminal collect jobs, including exit-1 partial collections. The collection CLI
 // prints its persisted snapshot ID before reporting coverage failures. Never guess latest.
 export async function processCollectionCompletions(client, requestedBy) {
@@ -26,7 +48,7 @@ export async function processCollectionCompletions(client, requestedBy) {
       const snapshotId = job.result?.snapshotId
         ?? /snapshot ([0-9a-f-]{36}) complete/i.exec(job.result?.stdout ?? job.error ?? '')?.[1];
       const snapshot = snapshotId ? (await client.query('SELECT * FROM snapshot WHERE id = $1', [snapshotId])).rows[0] : null;
-      const ready = snapshotHasFullCoverage(snapshot)
+      const ready = snapshotReadyForDrift(snapshot)
         && (!job.params.tenantRef || snapshot.tenant_ref === job.params.tenantRef);
       const tenantRef = snapshot?.tenant_ref ?? job.params.tenantRef;
       const driftJob = await enqueue(client, {
@@ -40,7 +62,10 @@ export async function processCollectionCompletions(client, requestedBy) {
       if (!ready) await fail(client, { id: driftJob.id, error });
       await client.query(
         `UPDATE job SET result = COALESCE(result, '{}'::jsonb) || $2::jsonb WHERE id = $1`,
-        [job.id, JSON.stringify({ driftTrigger: { status: ready ? 'queued' : 'deferred', jobId: driftJob.id, error } })],
+        [job.id, JSON.stringify({ driftTrigger: {
+          status: ready ? 'queued' : 'deferred', jobId: driftJob.id, error,
+          ...(ready ? { skippedTypes: typesSkippedByDrift(snapshot) } : {}),
+        } })],
       );
       if (ready) await client.query(
         `UPDATE job SET result = COALESCE(result, '{}'::jsonb) || $2::jsonb

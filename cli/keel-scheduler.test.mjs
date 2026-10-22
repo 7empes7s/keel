@@ -325,6 +325,44 @@ try {
     }
   });
 
+  await test('one failed type does not hold back drift; drift skips failed and partial types (#447)', async () => {
+    await clearJobs();
+    const tenantRef = 'one-failing-kind';
+    const baseline = (await client.query("INSERT INTO baseline (tenant_ref, set_by) VALUES ($1, 'fixture') RETURNING *", [tenantRef])).rows[0];
+    const row = async (snapshotId, key, type) => (await client.query(`INSERT INTO resource_version
+      (snapshot_id, natural_key, resource_type, payload, payload_hash, criticality, blast_radius, fidelity, provenance)
+      VALUES ($1, $2, $3, '{}', 'fixture-hash', 'tier1', 'cosmetic', 'full', '{}') RETURNING id`, [snapshotId, key, type])).rows[0];
+    const digest = {
+      group: { outcome: 'complete-empty', itemCount: 0 },
+      deviceManagementSettings: { outcome: 'failed', itemCount: null, httpStatus: 400 },
+      namedLocation: { outcome: 'partial', itemCount: 1 },
+      user: { outcome: 'not-requested', itemCount: null },
+    };
+    const before = (await client.query(`INSERT INTO snapshot (tenant_ref, status, coverage_digest)
+      VALUES ($1, 'complete', $2) RETURNING *`, [tenantRef, digest])).rows[0];
+    for (const [key, type] of [['group:KEEL-RT-a', 'group'], ['deviceManagementSettings:tenant', 'deviceManagementSettings'], ['namedLocation:KEEL-RT-old', 'namedLocation']]) {
+      const version = await row(before.id, key, type);
+      await client.query('INSERT INTO baseline_resource (baseline_id, natural_key, resource_version_id) VALUES ($1, $2, $3)', [baseline.id, key, version.id]);
+    }
+    const observed = (await client.query(`INSERT INTO snapshot (tenant_ref, status, coverage_digest)
+      VALUES ($1, 'complete', $2) RETURNING *`, [tenantRef, digest])).rows[0];
+    // The partial read returned one object the baseline does not hold.
+    await row(observed.id, 'namedLocation:KEEL-RT-new', 'namedLocation');
+    const collected = await enqueue(client, { kind: 'collect', requestedBy: principal.id, params: { tenantRef } });
+    await client.query("UPDATE job SET status = 'failed', error = $2, finished_at = now() WHERE id = $1",
+      [collected.id, `exit code 1\nstdout: snapshot ${observed.id} complete`]);
+    await processCollectionCompletions(client, principal.id);
+    const driftJob = (await listJobs(client)).find((job) => job.kind === 'drift-detect');
+    assert.equal(driftJob.status, 'queued', 'one failed type no longer defers drift for the tenant');
+    const trigger = (await client.query('SELECT result FROM job WHERE id = $1', [collected.id])).rows[0].result.driftTrigger;
+    assert.equal(trigger.status, 'queued');
+    assert.deepEqual(trigger.skippedTypes, ['deviceManagementSettings', 'namedLocation']);
+    await exec(process.execPath, ['cli/keel-drift.mjs', ...JOB_HANDLERS['drift-detect'].argsFor(driftJob.params), '--db-url', database.url], { cwd: repoRoot });
+    const drift = (await client.query('SELECT natural_key, change_type FROM drift WHERE observed_snapshot = $1 ORDER BY natural_key', [observed.id])).rows;
+    assert.deepEqual(drift, [{ natural_key: 'group:KEEL-RT-a', change_type: 'removed' }],
+      'the failed type never reads as removed and the partial type never as added or removed');
+  });
+
   await test('drift retry marks only the scheduling tenant\'s deferred jobs as retried', async () => {
     await clearJobs();
     // Seed tenant B's own deferred drift-detect job directly, mirroring exactly what

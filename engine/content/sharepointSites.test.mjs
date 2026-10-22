@@ -10,7 +10,7 @@ import { test } from 'node:test';
 
 import {
   ITEM_PERMISSIONS_MISSING, MISSING_PARTS, SITE_PERMISSIONS_MISSING, assertPermissionsRequest, assertSitesRequest,
-  backupSharePointSites, canonicalJson, defaultLibraryBackup,
+  PERMISSIONS_SUMMARY_VERSION, backupSharePointSites, canonicalJson, defaultLibraryBackup, permissionsSummary,
 } from './sharepointSites.mjs';
 import { createMemoryContentStore } from './store.mjs';
 import { loadSitePermissionsSource } from '../restore/workloads/sharepointSitePermissions.mjs';
@@ -654,4 +654,77 @@ test('site permissions that change and change back are stored again, so the late
   const latest = await loadSitePermissionsSource({ store, tenantRef: 't', siteId: ROOT });
   assert.deepEqual(latest.value.siteCollectionAdmins.map((admin) => admin.title), ['KEEL-RT-Owner']);
   assert.equal(latest.storedAt, new Date(clock).toISOString());
+});
+
+test('each stored site/permissions item carries a plain summary of groups, owners and guests', async () => {
+  const store = memoryStore();
+  await backupSharePointSites({
+    transport: fakeGraph(fixtureRoutes()).transport, permissionsTransport: fakeSharePoint().transport,
+    store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]),
+  });
+  const item = store.items.filter((entry) => entry.container === `site:${ROOT}` && entry.itemKey === 'site/permissions').at(-1);
+  assert.equal(item.metadata.contentType, 'application/json');
+  const summary = item.metadata.summary;
+  assert.equal(summary.v, PERMISSIONS_SUMMARY_VERSION);
+  assert.equal(summary.inherits, false);
+  assert.deepEqual(summary.groups, [
+    { name: 'KEEL-RT-Site Owners', members: 1, roles: ['Full Control'] },
+    { name: 'KEEL-RT-Site Members', members: 2, roles: ['Edit'] },
+  ]);
+  assert.deepEqual(summary.owners, ['KEEL-RT-Owner']);
+  assert.equal(summary.people, 3);
+  assert.equal(summary.guests, 0);
+  assert.equal(summary.uniqueLists, 1);
+  // No logins or ids in the plain summary.
+  assert.ok(!JSON.stringify(summary).includes('membership'));
+
+  // The subsite inherits: its owners come from the group SharePoint names "... Owners".
+  const sub = store.items.filter((entry) => entry.container === `site:${SUB}` && entry.itemKey === 'site/permissions').at(-1).metadata.summary;
+  assert.equal(sub.inherits, true);
+  assert.equal(sub.groups[0].roles, null);
+  assert.deepEqual(sub.owners, ['KEEL-RT-Owner']);
+});
+
+test('the summary counts guests and sharing links and leaves out system accounts', () => {
+  const summary = permissionsSummary({
+    groups: [
+      { id: 3, title: 'Hub Owners', members: [{ id: 1, title: 'Ann', loginName: 'i:0#.f|membership|ann@contoso.com', principalType: 1 }, { id: 2, title: 'System Account', loginName: 'SHAREPOINT\\system', principalType: 1 }] },
+      { id: 7, title: 'Hub Visitors', members: [{ id: 4, title: 'Guest Gus', loginName: 'i:0#.f|membership|gus_fabrikam.com#ext#@contoso.onmicrosoft.com', principalType: 1 }] },
+      { id: 9, title: 'SharingLinks.abc.OrganizationView.def', members: [] },
+    ],
+    siteCollectionAdmins: [{ id: 1, title: 'Ann', loginName: 'i:0#.f|membership|ann@contoso.com', principalType: 1 }],
+    roleAssignments: [
+      { principalId: 3, member: { principalType: 8 }, roles: [{ name: 'Full Control' }] },
+      { principalId: 7, member: { principalType: 8 }, roles: [{ name: 'Read' }, { name: 'Limited Access' }] },
+    ],
+    lists: [],
+  });
+  assert.deepEqual(summary.groups.map((group) => [group.name, group.members, group.roles]), [['Hub Owners', 1, ['Full Control']], ['Hub Visitors', 1, ['Read']]]);
+  assert.deepEqual(summary.owners, ['Ann']);
+  assert.equal(summary.ownerCount, 1);
+  assert.equal(summary.people, 2);
+  assert.equal(summary.guests, 1);
+  assert.equal(summary.sharingLinks, 1);
+});
+
+test('permissions stored before the summary existed are stored once more with it', async () => {
+  const store = memoryStore();
+  const deltaState = memoryDeltaState();
+  const run = () => backupSharePointSites({
+    transport: fakeGraph(fixtureRoutes()).transport, permissionsTransport: fakeSharePoint().transport, deltaState,
+    store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]),
+  });
+  await run();
+  // As an older release saved it: no summary version on the stored entry.
+  for (const [key, state] of deltaState.rows) {
+    if (!key.startsWith('site:')) continue;
+    if (state.stored?.['site/permissions']) delete state.stored['site/permissions'].summary;
+  }
+  const before = store.items.filter((item) => item.itemKey === 'site/permissions').length;
+  await run();
+  const after = store.items.filter((item) => item.itemKey === 'site/permissions');
+  assert.equal(after.length, before * 2);
+  assert.ok(after.every((item) => item.metadata.summary?.v === PERMISSIONS_SUMMARY_VERSION));
+  await run();
+  assert.equal(store.items.filter((item) => item.itemKey === 'site/permissions').length, before * 2);
 });

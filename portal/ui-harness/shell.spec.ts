@@ -452,3 +452,31 @@ test("breadcrumbs: every page says where it sits, and a detail page links back u
     await expect(page.getByRole("navigation", { name: "Breadcrumb" }).locator("li")).toHaveText(trail);
   }
 });
+
+test("brand mark: one smooth 12 s loop that moves only transform and opacity, and a still logo with reduced motion", async ({ page }) => {
+  await page.setViewportSize(desktop);
+  await open(page, "/");
+  const mark = page.locator(".rail .brand-mark");
+  // Reduced motion: nothing runs, storm layers are hidden.
+  expect(await mark.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(0);
+  expect(await mark.locator(".keel-rain").evaluate((el) => getComputedStyle(el).opacity)).toBe("0");
+
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const loops = await mark.evaluate((el) => el.getAnimations({ subtree: true }).map((animation) => {
+    const effect = animation.effect as KeyframeEffect;
+    const timing = effect.getTiming();
+    const props = new Set(effect.getKeyframes().flatMap((frame) => Object.keys(frame).filter((key) => !["offset", "computedOffset", "easing", "composite"].includes(key))));
+    return { name: (animation as CSSAnimation).animationName, duration: Number(timing.duration), iterations: timing.iterations, props: [...props] };
+  }));
+  expect(loops.length).toBeGreaterThanOrEqual(8);
+  for (const loop of loops) {
+    expect(loop.iterations, loop.name).toBe(Infinity);
+    // Everything shares the 12 s clock or divides it evenly, so layers never drift.
+    expect(12000 % loop.duration, loop.name).toBe(0);
+    for (const prop of loop.props) expect(["transform", "opacity"], `${loop.name} animates ${prop}`).toContain(prop);
+  }
+  // No hover restart.
+  const before = await mark.evaluate((el) => el.getAnimations({ subtree: true }).length);
+  await page.locator(".rail .brand").hover();
+  expect(await mark.evaluate((el) => el.getAnimations({ subtree: true }).length)).toBe(before);
+});

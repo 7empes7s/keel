@@ -1444,7 +1444,8 @@ export async function getAskData(scope: EntityScope = CENTRAL_SCOPE, input: AskI
     const request = input.question ? null : {
       intent: input.intent,
       params: Object.fromEntries(Object.entries({
-        entity: input.entity, period: input.period, resourceType: input.resourceType, changeType: input.changeType,
+        entity: input.entity, period: input.period, from: input.from, to: input.to, resourceType: input.resourceType,
+        resourceTypes: input.resourceTypes, name: input.name, changeType: input.changeType,
       }).filter(([, value]) => value !== undefined)),
     };
     const answer = (await answerQuestion(client, {

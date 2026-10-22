@@ -2,7 +2,7 @@ import { CompareForm, type QuickPick } from "@/components/baselines/compare-form
 import { ChangedFieldList, ChangedValuesStyles } from "@/components/changed-values";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { Icon } from "@/components/shell/icons";
-import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { RecordCompare, RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import {
   CHANGE_WORDS, bytesWords, containerWords, contentItemWords, countsWords, differenceTotals, notComparedSentence,
   sideWords, workloadLabel, workloadNotComparedSentence,
@@ -31,7 +31,7 @@ const CSS = `
 .compare-section { display: grid; gap: var(--space-sm); }
 .compare-section h3 { margin: var(--space-sm) 0 0; font-size: 0.9375rem; }
 .compare-kind { display: grid; gap: var(--space-xs); }
-.compare-kind-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-xs) var(--space-sm); margin: var(--space-xs) 0 0; color: var(--text-soft); font-size: 0.75rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; }
+.compare-kind-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-xs) var(--space-sm); margin: var(--space-xs) 0 0; color: var(--text-soft); font-size: 0.75rem; font-weight: 650; }
 .compare-kind-heading small { font-size: 0.8125rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .compare-group { border: 1px solid var(--line); border-radius: 0.5rem; background: var(--surface); }
 .compare-group > summary { cursor: pointer; padding: var(--space-sm) var(--space-md); display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-md); justify-content: space-between; }
@@ -161,9 +161,9 @@ function sumCounts(groups: { added?: number; removed?: number; changed?: number 
   return groups.reduce<{ added: number; removed: number; changed: number }>((sum, group) => ({ added: sum.added + (group.added ?? 0), removed: sum.removed + (group.removed ?? 0), changed: sum.changed + (group.changed ?? 0) }), { added: 0, removed: 0, changed: 0 });
 }
 
-/** A kind group's heading inside a service, when the service has more than one. */
-function KindHeading<T extends { added?: number; removed?: number; changed?: number }>({ part, show }: { part: KindPart<T>; show: boolean }) {
-  if (!show) return null;
+/** A kind group's heading inside a service, shown even when the service has one group,
+ * so every service reads the same way. */
+function KindHeading<T extends { added?: number; removed?: number; changed?: number }>({ part }: { part: KindPart<T> }) {
   return (
     <h4 className="compare-kind-heading">
       {part.label}
@@ -186,7 +186,7 @@ function SettingsPanel({ settings, portable, sides }: { settings: SettingsSectio
           <ServiceHeading service={block.heading} />
           {block.parts.map((part) => (
             <div className="compare-kind" key={part.key}>
-              <KindHeading part={part} show={block.parts.length > 1} />
+              <KindHeading part={part} />
               {part.items.map((group) => <SettingsGroupView group={group} index={settings.groups.indexOf(group)} key={group.resourceType} sides={sides} />)}
             </div>
           ))}
@@ -237,7 +237,7 @@ function FieldRecords({ fields, prefix }: { fields?: CompareField[]; prefix?: st
   return (
     <>
       {(fields ?? []).map((field) => (
-        <RecordField copy={false} key={`${prefix ?? ""}#${field.path}`} label={`Field ${field.path}`} usage={prefix} value={{ kind: field.kind, before: field.before, after: field.after } as RecordValue} />
+        <RecordCompare after={field.kind === "removed" ? undefined : field.after} before={field.kind === "added" ? undefined : field.before} key={`${prefix ?? ""}#${field.path}`} label={`Field ${field.path}`} sides={{ before: "Earlier backup", after: "Later backup" }} />
       ))}
     </>
   );
@@ -288,7 +288,7 @@ function WorkloadsPanel({ workloads, liveStored, sides }: { workloads: Workloads
           <ServiceHeading service={block.heading} />
           {block.parts.map((part) => (
             <div className="compare-kind" key={part.key}>
-              <KindHeading part={part} show={block.parts.length > 1} />
+              <KindHeading part={part} />
               <ul className="compare-list" style={{ listStyle: "none", paddingLeft: 0 }}>
                 {part.items.map((group) => <WorkloadGroupView group={group} index={workloads.groups.indexOf(group)} key={group.workload} sides={sides} />)}
               </ul>

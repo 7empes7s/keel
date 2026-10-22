@@ -13,7 +13,7 @@
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { recordException } from '../benchmarks/evaluate.mjs';
-import { controlFor } from '../benchmarks/registry.mjs';
+import { WORKLOAD_FACT_TYPES, controlFor } from '../benchmarks/registry.mjs';
 import { readObservation } from '../contracts/observation.mjs';
 import { retentionClaimFor } from '../storage/qualification.mjs';
 import { OPEN_DRIFT_PREDICATE } from '../store/openDrift.mjs';
@@ -196,9 +196,23 @@ function snapshotObservations(snapshot) {
  * evaluation recorded, the snapshot whose read of that type covered exactly that window.
  * A window no stored collection reproduces is unmatched; it is never approximated.
  */
-function matchEvidence(evaluation, snapshots) {
+function matchEvidence(evaluation, snapshots, collections = []) {
   const windows = Array.isArray(evaluation.observation_windows) ? evaluation.observation_windows : [];
   return windows.map((window) => {
+    // A service read (the Exchange mail protection policies...) is matched to the run
+    // of that read covering exactly that window.
+    if (WORKLOAD_FACT_TYPES.has(window.resourceType)) {
+      const run = collections.find((candidate) => candidate.workload === window.resourceType
+        && ms(candidate.observed_from) === ms(window.startedAt)
+        && ms(candidate.observed_to) === ms(window.endedAt));
+      return {
+        resourceType: window.resourceType,
+        window: { startedAt: iso(window.startedAt), endedAt: iso(window.endedAt) },
+        snapshotId: null,
+        collectionId: run ? String(run.id) : null,
+        completedAt: run ? iso(run.observed_to) : null,
+      };
+    }
     const match = snapshots.find((snapshot) => {
       const observed = snapshot.observations.get(window.resourceType);
       return observed
@@ -209,10 +223,13 @@ function matchEvidence(evaluation, snapshots) {
       resourceType: window.resourceType,
       window: { startedAt: iso(window.startedAt), endedAt: iso(window.endedAt) },
       snapshotId: match ? match.id : null,
+      collectionId: null,
       completedAt: match ? match.completedAt : null,
     };
   });
 }
+
+const matched = (entry) => Boolean(entry.snapshotId || entry.collectionId);
 
 function exceptionState(exception, now) {
   if (!exception) return { state: 'none', exception: null };
@@ -263,7 +280,10 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
   );
   if (evaluations.length === 0) return { findings: [], summary: summarize([]) };
 
-  const [{ rows: exceptions }, { rows: snapshotRows }, { rows: driftRows }, { rows: planRows }] = await Promise.all([
+  const workloads = [...new Set(evaluations.flatMap((evaluation) => (Array.isArray(evaluation.observation_windows) ? evaluation.observation_windows : [])
+    .map((window) => window.resourceType)
+    .filter((type) => WORKLOAD_FACT_TYPES.has(type))))];
+  const [{ rows: exceptions }, { rows: snapshotRows }, { rows: driftRows }, { rows: planRows }, { rows: collections }] = await Promise.all([
     client.query(
       `SELECT * FROM benchmark_exception
        WHERE tenant_ref = $1 AND evaluation_id = ANY($2::uuid[])
@@ -295,6 +315,13 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
        WHERE a.action = 'restore' AND a.status = 'pending' AND a.expires_at > $2`,
       [tenantRef, now],
     ),
+    workloads.length
+      ? client.query(
+        `SELECT id, workload, observed_from, observed_to FROM workload_collection
+          WHERE tenant_ref = $1 AND workload = ANY($2::text[])`,
+        [tenantRef, workloads],
+      )
+      : { rows: [] },
   ]);
 
   const snapshots = snapshotRows.map((snapshot) => ({
@@ -308,7 +335,7 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
   }
 
   const findings = evaluations.map((evaluation) => {
-    const evidence = matchEvidence(evaluation, snapshots);
+    const evidence = matchEvidence(evaluation, snapshots, collections);
     const types = new Set(evidence.map((entry) => entry.resourceType));
     const evidenceSnapshotIds = new Set(evidence.map((entry) => entry.snapshotId).filter(Boolean));
 
@@ -347,6 +374,8 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
       evaluatorVersion: Number(evaluation.evaluator_version),
       verdict,
       reason: evaluation.reason ?? null,
+      // Which object and setting made it fail, with its value and what it should be.
+      details: Array.isArray(evaluation.details) ? evaluation.details : [],
       evaluatedAt: iso(evaluation.evaluated_at),
       evidenceSeq: evaluation.evidence_seq === null || evaluation.evidence_seq === undefined ? null : String(evaluation.evidence_seq),
       exceptionState: state,
@@ -357,9 +386,9 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
       evidence,
       links: {
         backup: {
-          state: evidence.length === 0 ? 'none' : evidence.every((entry) => entry.snapshotId) ? 'linked' : 'mismatch',
-          linked: evidence.filter((entry) => entry.snapshotId),
-          mismatched: evidence.filter((entry) => !entry.snapshotId),
+          state: evidence.length === 0 ? 'none' : evidence.every(matched) ? 'linked' : 'mismatch',
+          linked: evidence.filter(matched),
+          mismatched: evidence.filter((entry) => !matched(entry)),
         },
         change: partition(changes, evidenceSnapshotIds),
         restorePlan: partition(plans, evidenceSnapshotIds),

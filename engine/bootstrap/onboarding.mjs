@@ -6,6 +6,7 @@
 // "not checked", never assumed present or absent.
 import { planBootstrap } from './plan.mjs';
 import { registeredWorkloads } from './prerequisites.mjs';
+import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICES } from './permissionCatalog.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 
 // Two separate setups, one per credential. Read-only setup never asks for a
@@ -140,6 +141,19 @@ function firstCollection(snapshot) {
   };
 }
 
+// The permission table: every permission Keel uses (the catalogue) and, when the host
+// can read the tenant, what each app holds right now and what its registration asks
+// for. Read fresh on every load, even after a finished setup run, so a grant removed
+// later shows as missing.
+async function permissionsView(readers) {
+  const catalog = { permissions: KEEL_PERMISSIONS, services: PERMISSION_SERVICES, kinds: PERMISSION_KINDS,
+    apis: Object.fromEntries(Object.entries(PERMISSION_APIS).map(([key, api]) => [key, api.label])) };
+  if (!readers?.listPermissions) return { ...catalog, observed: null };
+  const byIdentity = await readers.listPermissions();
+  const unchecked = readers.uncheckedKinds ? await readers.uncheckedKinds() : [];
+  return { ...catalog, observed: { byIdentity, complete: !unchecked.includes('permissions') } };
+}
+
 /**
  * Everything the setup page shows. `readers` are the host's planBootstrap
  * read adapters; null means the server cannot look at the tenant, and every
@@ -191,6 +205,7 @@ export async function loadSetupState(client, { tenantRef, viewerId, readers = nu
   return {
     generatedAt: now.toISOString(),
     scopes,
+    permissions: await permissionsView(readers),
     collect: await firstCollectReadiness(client, { tenantRef }),
     firstCollection: firstCollection(await latestCompletedSnapshot(client, tenantRef)),
   };

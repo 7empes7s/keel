@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 34 are full, 126 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 87 at least in part; the other 80 are restored by hand from the backup.
+KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 37 are full, 123 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 87 at least in part; the other 80 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -430,7 +430,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Exchange on-premises access settings | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | App categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Company Portal branding | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Settings catalog compliance policies | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Settings catalog compliance policies | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Reusable settings groups | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Policy sets | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Apple Volume Purchase tokens | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
@@ -439,7 +439,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Device cleanup rules | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Windows hotpatch update policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Multi admin approval policies | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
-| macOS custom attribute scripts | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| macOS custom attribute scripts | Yes (Tier 3, low impact, weekly) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Intune tenant settings | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
 | Android Enterprise enrollment profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Android work profile enrollment profiles | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -453,7 +453,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Managed e-books | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | E-book categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Classroom device cart assignments | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Windows app protection policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Windows app protection policies | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Windows code signing certificates | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Symantec code signing certificate | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (KEEL choice) | None |
 | Endpoint analytics baselines | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -479,9 +479,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 - **Terms and conditions** (Microsoft limit). Who accepted cannot be recreated: a recreated policy asks every user to accept again.
   - *Not brought back:* who accepted the terms (no tool can write it).
   - *You do:* Recreate the terms by hand from the backup and tell users they will be asked to accept again.
-- **Windows Autopilot profiles.** Recreates profiles and puts their settings back (out-of-box experience, device name template, language), keeping each profile's kind.
-  - *Not brought back:* the registered device hardware it applies to (stored separately and not in the backup yet); who the profile is assigned to (in the backup, but KEEL does not write it yet).
-  - *You do:* Who a profile is assigned to is not put back yet, so assign it again by hand from the backup. The registered device hardware is not backed up; devices are imported again from the devices themselves.
+- **Windows Autopilot profiles.** Recreates profiles and puts their settings (out-of-box experience, device name template, language) and who they are assigned to back, keeping each profile's kind.
+  - *Not brought back:* the registered device hardware it applies to (stored separately and not in the backup yet).
+  - *You do:* Who a profile is assigned to is put back only when it is picked for a restore, and each group must still exist in the target. The registered device hardware is not backed up; devices are imported again from the devices themselves.
 - **Security baselines (older format)** (KEEL choice). This older format is preview-only and replaced by the settings catalog, and its settings are stored separately and not backed up.
   - *Not brought back:* the baseline's settings (stored separately and not in the backup yet).
   - *You do:* Rebuild the baseline in the settings catalog. KEEL restores settings catalog policies.
@@ -555,9 +555,8 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 - **Company Portal branding.** Recreates branding profiles for your groups and puts back their name, colours, contact details, links and Company Portal options. The default branding, which every user sees, is not changed.
   - *Not brought back:* logo images (stored separately and not in the backup yet).
   - *You do:* Logo images are not backed up: upload them again from your own copy. Who a profile is assigned to is put back only when it is picked for a restore. Set the default branding by hand from the backup.
-- **Settings catalog compliance policies.** Recreates policies and puts back their settings and actions for noncompliance (block, emails, grace periods).
-  - *Not brought back:* who the policy is assigned to (stored separately and not in the backup yet).
-  - *You do:* Who a policy is assigned to is not backed up yet, so assign it again by hand; Conditional Access that requires compliant devices needs it assigned first. A backup taken before the actions for noncompliance were read cannot recreate a policy; take a new backup.
+- **Settings catalog compliance policies.** Recreates policies and puts back their settings, actions for noncompliance (block, emails, grace periods) and who they are assigned to.
+  - *You do:* Who a policy is assigned to is put back only when it is picked for a restore, from backups taken after assignments were read; Conditional Access that requires compliant devices needs it assigned first. A backup taken before the actions for noncompliance were read cannot recreate a policy; take a new backup.
 - **Reusable settings groups.** Recreates groups and puts their settings back, before the settings catalog policies that use them.
   - *You do:* A group is never moved to another setting definition; recreate it by hand if that changed.
 - **Policy sets.** Recreates sets and puts back their names and the apps and policies in them.
@@ -580,9 +579,8 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Who a policy is assigned to is not backed up yet, so assign it again by hand.
 - **Multi admin approval policies** (not built yet). KEEL backs these up but does not restore them yet. They decide which changes need a second admin, so a person should review them.
   - *You do:* Recreate each policy in the Intune admin center from the backup, with the same approver groups.
-- **macOS custom attribute scripts.** Recreates scripts and puts the script and its settings back.
-  - *Not brought back:* who the script is assigned to (stored separately and not in the backup yet).
-  - *You do:* Who a script is assigned to is not backed up yet, so assign it again by hand. A backup taken before scripts were read in full holds only the settings; take a new backup.
+- **macOS custom attribute scripts.** Recreates scripts and puts the script, its settings and who it runs on back.
+  - *You do:* Who a script runs on is put back only when the script is picked for a restore, from backups taken after assignments were read. A backup taken before scripts were read in full holds only the settings; take a new backup.
 - **Intune tenant settings** (not built yet). KEEL backs up the tenant-wide Intune settings, such as how devices with no compliance policy are marked and the Company Portal contact details, but does not restore them yet.
   - *You do:* Set the same values in the Intune admin center, under Endpoint security, Device compliance, Compliance settings, and under Tenant administration, Customization, from the backup.
 - **Android Enterprise enrollment profiles.** Recreates profiles and puts back their name, description, device name template and Wi-Fi network; the enrollment mode is set when a profile is recreated. A profile on a secured Wi-Fi network is recreated by hand, because the Wi-Fi password is not backed up.
@@ -618,9 +616,8 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 - **Classroom device cart assignments.** Recreates cart assignments and puts back their name, description, devices and classes.
   - *Not brought back:* the devices and classes it names (stored separately and not in the backup yet).
   - *You do:* Devices and classes are named by id and are not restored by KEEL: if a device or class was removed, add the cart to the new class again in Intune for Education.
-- **Windows app protection policies.** Recreates policies and puts back their settings and the apps they cover.
-  - *Not brought back:* who the policy is assigned to (stored separately and not in the backup yet).
-  - *You do:* Who a policy is assigned to is not backed up yet, so assign a recreated policy again by hand in the Intune admin center, under Apps, App protection policies. A backup taken before the apps were read is refused for a recreate; take a new backup.
+- **Windows app protection policies.** Recreates policies and puts back their settings, the apps they cover and who they are assigned to.
+  - *You do:* Who a policy is assigned to is put back only when it is picked for a restore, from backups taken after assignments were read. A backup taken before the apps were read is refused for a recreate; take a new backup.
 - **Windows code signing certificates** (not built yet). KEEL backs up each public certificate but does not restore it yet.
   - *You do:* Upload the same certificate again in the Intune admin center, under Tenant administration, Connectors and tokens, Windows enterprise certificate, from the backup.
 - **Symantec code signing certificate** (KEEL choice). KEEL backs up the certificate's subject, issuer and expiry but never the certificate file or its password.

@@ -1408,10 +1408,12 @@ test('a remediation whose schedule drifted is assigned again; one that matches i
   assert.equal(same.calls.some((call) => call.method !== 'GET'), false);
 });
 
-test('scripts are assigned through their own /assign list; a custom attribute script has no assignment write', async () => {
+test('scripts are assigned through their own /assign list', async () => {
   const cases = [
     ['deviceManagementScript', 'deviceManagementScriptAssignments', '#microsoft.graph.deviceManagementScriptAssignment'],
     ['deviceShellScript', 'deviceManagementScriptAssignments', '#microsoft.graph.deviceManagementScriptAssignment'],
+    // Restore gaps, batch 15.
+    ['deviceCustomAttributeShellScript', 'deviceManagementScriptAssignments', '#microsoft.graph.deviceManagementScriptAssignment'],
     ['deviceComplianceScript', 'deviceHealthScriptAssignments', '#microsoft.graph.deviceHealthScriptAssignment'],
   ];
   for (const [type, bodyKey, assignmentType] of cases) {
@@ -1428,8 +1430,6 @@ test('scripts are assigned through their own /assign list; a custom attribute sc
     assert.deepEqual(assign.body[bodyKey].map((entry) => entry.target['@odata.type']).sort(),
       ['#microsoft.graph.allDevicesAssignmentTarget', '#microsoft.graph.groupAssignmentTarget'], type);
   }
-  assert.equal(INTUNE_EXTENDED_RECORDS.deviceCustomAttributeShellScript.assignmentType, undefined);
-  assert.equal(writesIntuneAssignments('deviceCustomAttributeShellScript'), false);
 });
 
 test('an administrative template is assigned after its settings are written', async () => {
@@ -1496,10 +1496,121 @@ test('a restore attaches the backup assignments to scripts, templates and profil
   assert.equal(same.assignments.outcome, 'complete');
   for (const type of ['deviceManagementScript', 'deviceShellScript', 'deviceHealthScript', 'deviceComplianceScript', 'groupPolicyConfiguration',
     'windowsFeatureUpdateProfile', 'windowsQualityUpdateProfile', 'windowsDriverUpdateProfile', 'intuneBrandingProfile',
-    'managedAppPolicy', 'targetedManagedAppConfiguration', 'mobileAppConfiguration', 'deviceConfiguration']) {
+    'managedAppPolicy', 'targetedManagedAppConfiguration', 'mobileAppConfiguration', 'deviceConfiguration',
+    // Restore gaps, batch 15.
+    'deviceCustomAttributeShellScript', 'windowsAutopilotDeploymentProfile', 'deviceManagementCompliancePolicy', 'windowsManagedAppProtection']) {
     assert.equal(writesIntuneAssignments(type), true, type);
   }
-  for (const type of ['policySet', 'windowsAutopilotDeploymentProfile', 'deviceManagementCompliancePolicy', 'windowsManagedAppProtection', 'mobileAppCategory']) {
+  for (const type of ['policySet', 'iosLobAppProvisioningConfiguration', 'mobileAppCategory']) {
     assert.equal(writesIntuneAssignments(type), false, type);
   }
+});
+
+// ------------------------------------------- restore gaps, batch 15
+
+test('a settings catalog compliance policy is created with its actions, then assigned through /assign', async () => {
+  const graph = idoFakeGraph();
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementCompliancePolicy', compliance, {
+    assignments: { outcome: 'complete', targets: [groupTarget()] },
+  }), 'create', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = graph.calls.filter((call) => call.method !== 'GET');
+  assert.deepEqual(writes.map((call) => `${call.method} ${call.path}`), [`POST ${CP_PATH}`, `POST ${CP_PATH}/${result.applied.targetId}/assign`]);
+  assert.equal(writes[1].version, 'beta');
+  assert.deepEqual(writes[1].body, {
+    assignments: [{
+      '@odata.type': '#microsoft.graph.deviceManagementConfigurationPolicyAssignment',
+      target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: 'target-group' },
+    }],
+  });
+  assert.equal(result.applied.changes.assignments, 'written');
+});
+
+test('a compliance policy update writes changed actions first, then changed assignments', async () => {
+  const path = `${CP_PATH}/cp-1`;
+  const live = {
+    ...compliance, id: 'cp-1', scheduledActionsForRule: actionsFor(72),
+    assignments: [{ id: 'a-1', target: { '@odata.type': '#microsoft.graph.allDevicesAssignmentTarget' } }],
+  };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementCompliancePolicy', { ...compliance, id: 'cp-1' }, {
+    live: { state: 'present', targetId: 'cp-1', payload: live },
+    assignments: { outcome: 'complete', targets: [groupTarget()] },
+  }), 'update', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = graph.calls.filter((call) => call.method !== 'GET').map((call) => `${call.method} ${call.path}`);
+  assert.deepEqual(writes, [`POST ${path}/setScheduledActions`, `POST ${path}/assign`]);
+  assert.equal(result.applied.changes.scheduledActions, 'written');
+  assert.equal(result.applied.changes.assignments, 'written');
+  assert.deepEqual(graph.objects.get(path).assignments.map((item) => item.target.groupId), ['target-group']);
+});
+
+test('a Windows app protection policy is created, its apps written, then assigned through /assign', async () => {
+  const graph = idoFakeGraph();
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('windowsManagedAppProtection', windowsProtection, {
+    assignments: { outcome: 'complete', targets: [groupTarget({ targetType: 'exclusionGroupAssignmentTarget' })] },
+  }), 'create', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = graph.calls.filter((call) => call.method === 'POST').map((call) => call.path.split('/').pop());
+  assert.deepEqual(writes, ['windowsManagedAppProtections', 'targetApps', 'assign']);
+  const assign = graph.calls.find((call) => call.path.endsWith('/assign'));
+  assert.equal(assign.version, 'beta');
+  assert.deepEqual(assign.body.assignments, [{
+    '@odata.type': '#microsoft.graph.targetedManagedAppPolicyAssignment',
+    target: { '@odata.type': '#microsoft.graph.exclusionGroupAssignmentTarget', groupId: 'target-group' },
+  }]);
+});
+
+test('an Autopilot profile is assigned one assignment at a time: missing ones added, extra ones removed', async () => {
+  const created = idoFakeGraph();
+  let result = await applyIntuneExtendedWrite(created, resourceOf('windowsAutopilotDeploymentProfile', autopilot, {
+    assignments: { outcome: 'complete', targets: [groupTarget()] },
+  }), 'create', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const base = `/deviceManagement/windowsAutopilotDeploymentProfiles/${result.applied.targetId}`;
+  const post = created.calls.find((call) => call.method === 'POST' && call.path === `${base}/assignments`);
+  assert.equal(post.version, 'beta');
+  assert.deepEqual(post.body, {
+    '@odata.type': '#microsoft.graph.windowsAutopilotDeploymentProfileAssignment',
+    target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: 'target-group' },
+  });
+  assert.equal(created.calls.some((call) => call.path.endsWith('/assign')), false, 'Autopilot profiles have no /assign action');
+  assert.deepEqual(result.applied.changes.assignments, { removed: 0, added: 1 });
+
+  const path = '/deviceManagement/windowsAutopilotDeploymentProfiles/ap-1';
+  const live = {
+    ...autopilot, id: 'ap-1', assignedDevices: undefined,
+    assignments: [
+      { id: 'keep', target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: 'target-group' } },
+      { id: 'extra', target: { '@odata.type': '#microsoft.graph.allDevicesAssignmentTarget' } },
+    ],
+  };
+  const resource = resourceOf('windowsAutopilotDeploymentProfile', { ...autopilot, id: 'ap-1' }, {
+    live: { state: 'present', targetId: 'ap-1', payload: live },
+    assignments: { outcome: 'complete', targets: [groupTarget(), groupTarget({ targetType: 'exclusionGroupAssignmentTarget' })] },
+  });
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  result = await applyIntuneExtendedWrite(graph, resource, 'update', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = graph.calls.filter((call) => call.method !== 'GET' && call.method !== 'PATCH').map((call) => `${call.method} ${call.path}`);
+  assert.deepEqual(writes, [`DELETE ${path}/assignments/extra`, `POST ${path}/assignments`]);
+  assert.equal(graph.calls.find((call) => call.method === 'POST').body.target['@odata.type'], '#microsoft.graph.exclusionGroupAssignmentTarget');
+  assert.deepEqual(result.applied.changes.assignments, { removed: 1, added: 1 });
+
+  const same = idoFakeGraph({ seed: { [path]: { ...live, assignments: [live.assignments[0]] } } });
+  result = await applyIntuneExtendedWrite(same, resourceOf('windowsAutopilotDeploymentProfile', { ...autopilot, id: 'ap-1' }, {
+    live: { state: 'present', targetId: 'ap-1', payload: live },
+    assignments: { outcome: 'complete', targets: [groupTarget()] },
+  }), 'update', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.applied.changes.assignments, 'already as in the backup');
+  assert.equal(same.calls.some((call) => call.method === 'POST' || call.method === 'DELETE'), false);
+});
+
+test('an Autopilot profile whose group is missing in the target is not assigned', async () => {
+  const graph = idoFakeGraph();
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('windowsAutopilotDeploymentProfile', autopilot, {
+    assignments: { outcome: 'complete', targets: [groupTarget()] },
+  }), 'create', FAST);
+  assert.match(result.failed?.error ?? '', /does not exist in the target/);
+  assert.equal(graph.calls.some((call) => /\/assignments/.test(call.path) && call.method !== 'GET'), false);
 });

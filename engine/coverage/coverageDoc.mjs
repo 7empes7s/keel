@@ -312,8 +312,8 @@ export const TYPE_GUIDE = Object.freeze({
     'Who accepted cannot be recreated: a recreated policy asks every user to accept again.',
     'Recreate the terms by hand from the backup and tell users they will be asked to accept again.'),
   windowsAutopilotDeploymentProfile: auto('Windows Autopilot profiles', {
-    keeps: 'Recreates profiles and puts their settings back (out-of-box experience, device name template, language), keeping each profile\'s kind.',
-    todo: 'Who a profile is assigned to is not put back yet, so assign it again by hand from the backup. The registered device hardware is not backed up; devices are imported again from the devices themselves.',
+    keeps: 'Recreates profiles and puts their settings (out-of-box experience, device name template, language) and who they are assigned to back, keeping each profile\'s kind.',
+    todo: 'Who a profile is assigned to is put back only when it is picked for a restore, and each group must still exist in the target. The registered device hardware is not backed up; devices are imported again from the devices themselves.',
   }),
   deviceManagementIntent: manual('Security baselines (older format)', KEEL,
     'This older format is preview-only and replaced by the settings catalog, and its settings are stored separately and not backed up.',
@@ -422,8 +422,8 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'Logo images are not backed up: upload them again from your own copy. Who a profile is assigned to is put back only when it is picked for a restore. Set the default branding by hand from the backup.',
   }),
   deviceManagementCompliancePolicy: auto('Settings catalog compliance policies', {
-    keeps: 'Recreates policies and puts back their settings and actions for noncompliance (block, emails, grace periods).',
-    todo: 'Who a policy is assigned to is not backed up yet, so assign it again by hand; Conditional Access that requires compliant devices needs it assigned first. A backup taken before the actions for noncompliance were read cannot recreate a policy; take a new backup.',
+    keeps: 'Recreates policies and puts back their settings, actions for noncompliance (block, emails, grace periods) and who they are assigned to.',
+    todo: 'Who a policy is assigned to is put back only when it is picked for a restore, from backups taken after assignments were read; Conditional Access that requires compliant devices needs it assigned first. A backup taken before the actions for noncompliance were read cannot recreate a policy; take a new backup.',
   }),
   deviceManagementReusablePolicySetting: auto('Reusable settings groups', {
     keeps: 'Recreates groups and puts their settings back, before the settings catalog policies that use them.',
@@ -455,8 +455,8 @@ export const TYPE_GUIDE = Object.freeze({
     'Recreate each policy in the Intune admin center from the backup, with the same approver groups.'),
   // Restore gaps batch 5: the script body is backed up per script.
   deviceCustomAttributeShellScript: auto('macOS custom attribute scripts', {
-    keeps: 'Recreates scripts and puts the script and its settings back.',
-    todo: 'Who a script is assigned to is not backed up yet, so assign it again by hand. A backup taken before scripts were read in full holds only the settings; take a new backup.',
+    keeps: 'Recreates scripts and puts the script, its settings and who it runs on back.',
+    todo: 'Who a script runs on is put back only when the script is picked for a restore, from backups taken after assignments were read. A backup taken before scripts were read in full holds only the settings; take a new backup.',
   }),
   externalIdentitiesPolicy: auto('External user leave settings', {
     keeps: 'Puts back whether external users can leave your organization themselves, and whether their data is removed when they do.',
@@ -564,8 +564,8 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'Devices and classes are named by id and are not restored by KEEL: if a device or class was removed, add the cart to the new class again in Intune for Education.',
   }),
   windowsManagedAppProtection: auto('Windows app protection policies', {
-    keeps: 'Recreates policies and puts back their settings and the apps they cover.',
-    todo: 'Who a policy is assigned to is not backed up yet, so assign a recreated policy again by hand in the Intune admin center, under Apps, App protection policies. A backup taken before the apps were read is refused for a recreate; take a new backup.',
+    keeps: 'Recreates policies and puts back their settings, the apps they cover and who they are assigned to.',
+    todo: 'Who a policy is assigned to is put back only when it is picked for a restore, from backups taken after assignments were read. A backup taken before the apps were read is refused for a recreate; take a new backup.',
   }),
   enterpriseCodeSigningCertificate: manual('Windows code signing certificates', NOT_BUILT,
     'KEEL backs up each public certificate but does not restore it yet.',

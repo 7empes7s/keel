@@ -7022,7 +7022,7 @@ item that needs it stays untouched.
     Writers are unchanged (same as Q116).
   - Not fixed here: the compliance policy backup still holds `scheduledActionsForRule: []` (your Q120 comment on #473). That is a separate item.
 - Needs: /opt/keel-live at 60cd14d or later (`grep -q listPerParent /opt/keel-live/engine/reconcile/liveState.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q116. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. If Graph answers 403,

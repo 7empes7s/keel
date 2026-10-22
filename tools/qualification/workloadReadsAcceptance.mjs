@@ -10,6 +10,7 @@ import { FAMILIES as PURVIEW_EXTENDED } from '../../engine/collect/workloads/pur
 import { FAMILIES as RETENTION_DLP } from '../../engine/collect/workloads/purviewRetentionDlp.mjs';
 import { FAMILIES as TEAMS_EXTENDED } from '../../engine/collect/workloads/teamsExtended.mjs';
 import { FAMILIES as TEAMS_POLICIES } from '../../engine/collect/workloads/teamsPolicies.mjs';
+import { SHAREPOINT_WORKLOAD, SITE_SHARING_FAMILIES, SITE_SHARING_MODULE } from '../../engine/collect/workloads/sharepoint.mjs';
 import { WORKLOAD_DESCRIPTORS } from '../../engine/collect/workloadContract.mjs';
 import { WRITTEN_WORKLOADS } from './workloadWritesAcceptance.mjs';
 
@@ -30,15 +31,16 @@ export const READ_FAMILIES = Object.freeze({
   'teams-voice-policies': TEAMS_EXTENDED,
   'purview-retention-dlp': RETENTION_DLP,
   'purview-governance': PURVIEW_EXTENDED,
+  // Not a written workload: only its per-site sharing read runs through PowerShell.
+  [SHAREPOINT_WORKLOAD]: SITE_SHARING_FAMILIES,
 });
 
-// Workloads that are read only (no declared writes), with the module they run in. The
-// others take theirs from their declared writes.
-const READ_ONLY_MODULES = Object.freeze({ 'exchange-role-groups': EXCHANGE_ROLE_GROUPS_MODULE });
+// Read-only workloads name their module here; a written workload's comes from its writes.
+const READ_ONLY_MODULES = Object.freeze({ [SHAREPOINT_WORKLOAD]: SITE_SHARING_MODULE, 'exchange-role-groups': EXCHANGE_ROLE_GROUPS_MODULE });
 
-/** The PowerShell module a workload's reads run in. */
+/** The PowerShell module a workload's read capture runs in. */
 export function readModule(workload) {
-  return WRITTEN_WORKLOADS[workload]?.module ?? READ_ONLY_MODULES[workload];
+  return READ_ONLY_MODULES[workload] ?? WRITTEN_WORKLOADS[workload]?.module ?? null;
 }
 
 const MODULE_VERSION_RE = /^\d+\.\d+\.\d+(\.\d+)?$/;

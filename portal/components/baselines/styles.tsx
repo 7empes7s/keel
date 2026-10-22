@@ -158,6 +158,10 @@ const CSS = `
 .bl-sheet[data-wide] { width: min(42rem, 100%); }
 @keyframes bl-panel-in { from { transform: translateX(2.5rem); opacity: 0; } to { transform: none; opacity: 1; } }
 .bl-sheet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-md); padding: var(--space-md) var(--space-lg); border-bottom: 1px solid var(--line); }
+.bl-sheet-head > div:first-child { flex: 1; min-width: 0; }
+.bl-sheet-step { display: inline-flex; flex: none; align-items: center; gap: var(--space-2xs, 0.25rem); color: var(--text-soft); font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bl-sheet-step .icon-button:first-child svg { transform: scaleX(-1); }
+.bl-sheet-step .icon-button:disabled { opacity: 0.4; cursor: default; }
 .bl-sheet-head h2 { margin: var(--space-2xs) 0 0; font-size: 1.25rem; font-weight: 650; overflow-wrap: anywhere; }
 .bl-sheet-kicker { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); color: var(--text-soft); font-size: 0.8125rem; }
 .bl-sheet-body { display: grid; flex: 1; align-content: start; gap: var(--space-md); padding: var(--space-md) var(--space-lg) var(--space-lg); overflow-y: auto; overscroll-behavior: contain; }

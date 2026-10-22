@@ -4687,6 +4687,15 @@ section.wizard-panel {
   overflow-wrap: anywhere;
 }
 
+.toast-body .toast-todo {
+  color: var(--text);
+}
+
+.toast-body .ui-alert-more {
+  margin-top: var(--space-2xs);
+  font-size: 0.75rem;
+}
+
 .toast-link {
   width: fit-content;
   margin-top: var(--space-2xs);
@@ -11188,10 +11197,10 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 .tile-adds { color: var(--text) !important; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* Sites list and a site's page: tiles that filter, a compact table with problems first,
-   and four status tiles on a site's page. Rows become labelled lines on a phone. */
+   and five status tiles on a site's page. Rows become labelled lines on a phone. */
 .st-page, .st-list { display: grid; gap: var(--space-md); min-width: 0; }
 .st-page > *, .st-list > * { min-width: 0; }
-.st-tiles { display: grid; gap: var(--space-sm); grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.st-tiles { display: grid; gap: var(--space-sm); grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .st-tile { display: grid; align-content: start; gap: var(--space-2xs); padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out); }
 .st-tile:hover { border-color: var(--line-strong); background: var(--surface-raised); }
 .st-tile:focus-visible { outline: none; box-shadow: var(--focus-ring); }
@@ -11217,7 +11226,7 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 .st-table th, .st-table td { padding: 0.5rem var(--space-sm); border-top: 1px solid var(--line); text-align: left; vertical-align: middle; font-weight: 400; }
 .st-table thead th { border-top: 0; color: var(--text-soft); font-size: 0.75rem; font-weight: 650; letter-spacing: 0.02em; background: var(--surface-muted); white-space: nowrap; }
 .st-table tbody tr:hover { background: color-mix(in oklab, var(--surface-raised) 65%, transparent); }
-.st-table tbody th[scope="row"] { min-width: 12rem; font-weight: 600; overflow-wrap: anywhere; }
+.st-table tbody th[scope="row"] { min-width: 10rem; font-weight: 600; overflow-wrap: anywhere; }
 .st-table td { color: var(--text-soft); }
 .st-table td > small, .st-table th > small { display: block; margin-top: 0.125rem; color: var(--text-soft); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
 .st-table tbody tr[data-tone="urgent"] th[scope="row"] { box-shadow: inset 3px 0 0 var(--urgent); }
@@ -11227,9 +11236,10 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 .st-name:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .st-address { font-family: var(--font-mono); font-weight: 400; overflow-wrap: anywhere; }
 .st-owners { color: var(--text); }
+.st-table td > small.st-wider { color: var(--urgent); font-weight: 600; }
 .st-table-small tbody th[scope="row"] { min-width: 10rem; }
 
-.st-statuses { display: grid; gap: var(--space-sm); grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.st-statuses { display: grid; gap: var(--space-sm); grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .st-status { display: grid; align-content: start; gap: var(--space-xs); padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-left-width: 4px; border-radius: var(--radius-lg); background: var(--surface); min-width: 0; }
 .st-status[data-tone="urgent"] { border-left-color: var(--urgent); background: color-mix(in srgb, var(--urgent-bg) 40%, var(--surface)); }
 .st-status[data-tone="soon"] { border-left-color: var(--check-soon); background: color-mix(in srgb, var(--check-soon-bg) 40%, var(--surface)); }
@@ -11248,8 +11258,8 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 .st-section h2 { display: flex; align-items: center; gap: var(--space-xs); margin: 0; font-size: 1rem; }
 
 @media (max-width: 74rem) {
-  .st-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .st-statuses { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .st-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .st-statuses { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 46rem) {
   .st-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }

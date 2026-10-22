@@ -30,6 +30,7 @@ import { WORKLOAD_DESCRIPTORS, buildWorkloadLedger } from '../collect/workloadCo
 import { exchangeExtendedActivation } from '../collect/workloads/exchangeExtended.mjs';
 import { exchangeRoleGroupsActivation } from '../collect/workloads/exchangeRoleGroups.mjs';
 import { mailFlowActivation } from '../collect/workloads/mailFlow.mjs';
+import { siteSharingActivation } from '../collect/workloads/sharepoint.mjs';
 import { purviewExtendedActivation } from '../collect/workloads/purviewExtended.mjs';
 import { retentionDlpActivation } from '../collect/workloads/purviewRetentionDlp.mjs';
 import { teamsExtendedActivation } from '../collect/workloads/teamsExtended.mjs';
@@ -52,10 +53,13 @@ const ACTIVATION = {
   'teams-voice-policies': teamsExtendedActivation,
   'purview-retention-dlp': retentionDlpActivation,
   'purview-governance': purviewExtendedActivation,
+  // SharePoint's per-site sharing read: the rest of the SharePoint read never waits for it.
+  'sharepoint-site-settings': siteSharingActivation,
 };
 const TABLES = {
   ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
   MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended'],
+  'PnP.PowerShell': ['AllowedPnP'],
 };
 // The run-cmdlet.ps1 allowlists, cmdlet names with digits included (Get-AtpPolicyForO365).
 const SCRIPT = readFileSync(new URL('../../ops/powershell/run-cmdlet.ps1', import.meta.url), 'utf8');
@@ -83,8 +87,9 @@ const capture = (workload, live, extra = {}) => captureWorkloadReads({
 const verifyOptions = (extra = {}) => ({ gate: WORKLOAD_READS_LIVE_GATE, tenantRef, build, hmacKey: KEY, requireLive: true, now: NOW, ...extra });
 const signed = (record) => signEvidence(record, KEY, 'keel-release-runner');
 
-/** Live proof for every read outside the six Wave 2 workloads: what those workloads follow. */
-const BASE = WORKLOAD_DESCRIPTORS.filter((descriptor) => !READ_FAMILIES[descriptor.workload]).map((descriptor) => ({
+/** Live proof for every read this gate does not capture: what those workloads follow. */
+const CAPTURED = new Set(Object.values(READ_FAMILIES).flatMap((families) => Object.values(families).map((spec) => spec.operation)));
+const BASE = WORKLOAD_DESCRIPTORS.filter((descriptor) => !CAPTURED.has(descriptor.id)).map((descriptor) => ({
   operationId: descriptor.id, kind: 'live-capture', synthetic: false, tenantRef, capturedAt: '2026-10-20T00:00:00Z', ok: true,
   version: descriptor.operation.kind === 'graph' || descriptor.operation.kind === 'rest' ? descriptor.operation.version : MODULE_VERSIONS[descriptor.operation.module],
   proofRef: `${descriptor.id}@base`,

@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
  * Live read proof for the Wave 2 cmdlet workloads (mail flow, Exchange settings, Teams
- * org-wide, Teams voice and live events, Purview retention and DLP, retention labels).
+ * org-wide, Teams voice and live events, Purview retention and DLP, retention labels),
+ * and for SharePoint's per-site sharing read (`--workload sharepoint-site-settings`,
+ * one `Get-PnPTenantSite` with the PnP collector config).
  *
  * Their reads ship disabled until each one is live-qualified in the task-101 ledger, and
  * the scheduled `workload-collect` job builds that ledger only from signed records it
@@ -42,10 +44,25 @@ import {
   READ_FAMILIES, WORKLOAD_READS_CREDENTIAL_MODE, WORKLOAD_READS_LIVE_GATE, WORKLOAD_READS_LIVE_OPERATION, WORKLOAD_READS_TRANSPORT,
   knownWorkload, provenReads, readModule, workloadReads, workloadReadsCapturePlan, workloadReadsRecordFile,
 } from './workloadReadsAcceptance.mjs';
+import { SHAREPOINT_WORKLOAD, readSiteSharing } from '../../engine/collect/workloads/sharepoint.mjs';
 import { WORKLOAD_READERS as WRITTEN_READERS, pinnedModuleVersions } from './workloadWritesLive.mjs';
 
-// Each workload's reader: the written workloads' readers, plus the read-only workloads.
-const WORKLOAD_READERS = Object.freeze({ ...WRITTEN_READERS, 'exchange-role-groups': readExchangeRoleGroups });
+/**
+ * The SharePoint per-site sharing read, in the shape the written workloads' readers
+ * answer: one `site-sharing` family, `read` with the number of sites listed.
+ */
+export async function readSharePointSiteSharing({ powershell }) {
+  try {
+    const sites = await readSiteSharing(powershell);
+    return { outcome: 'complete', discovery: { families: { 'site-sharing': { status: 'read', objects: sites.size } } }, failures: [] };
+  } catch (error) {
+    return { outcome: 'failed', discovery: { families: { 'site-sharing': { status: 'failed', objects: 0 } } }, failures: [{ family: 'site-sharing', error: structuredFailure(error).error }] };
+  }
+}
+
+export const WORKLOAD_READERS = Object.freeze({
+  ...WRITTEN_READERS, [SHAREPOINT_WORKLOAD]: readSharePointSiteSharing, 'exchange-role-groups': readExchangeRoleGroups,
+});
 
 export { READ_FAMILIES, WORKLOAD_READS_LIVE_GATE, workloadReadsCapturePlan, workloadReadsRecordFile };
 

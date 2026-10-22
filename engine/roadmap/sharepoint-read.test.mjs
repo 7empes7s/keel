@@ -16,9 +16,11 @@ import { after, test } from 'node:test';
 import { listWorkloads, registerWorkload } from '../collect/registry.mjs';
 import { buildWorkloadLedger, scopeProblems } from '../collect/workloadContract.mjs';
 import {
-  SHAREPOINT_DESCRIPTOR, SHAREPOINT_OPERATIONS, SITE_FIELDS, UNSUPPORTED_SITE_FIELDS,
-  collectSharePointSites, readSharePointSites, recordSharePointRun, sharePointActivation,
+  SHAREPOINT_DESCRIPTOR, SHAREPOINT_OPERATIONS, SITE_FIELDS, SITE_SHARING_OPERATION, UNSUPPORTED_SITE_FIELDS,
+  collectSharePointSites, readSharePointSites, readSiteSharing, recordSharePointRun, sharePointActivation, siteSharingActivation,
 } from '../collect/workloads/sharepoint.mjs';
+import { CmdletError } from '../powershell/jobQueue.mjs';
+import { MODULE_VERSIONS, fakeCmdletContainer } from '../test/fakeCmdletContainer.mjs';
 import { buildCoverageReport } from '../coverage/report.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
@@ -262,4 +264,78 @@ test('the workload adapter is registered apart from catalogue types and ships di
   assert.equal(descriptor.enabledByDefault, false);
   assert.throws(() => registerWorkload({ type: 'x', workload: 'y', enabledByDefault: true }, { collect() {} }), /must ship disabled/);
   assert.throws(() => registerWorkload(SHAREPOINT_DESCRIPTOR, { collect() {} }), /already registered/);
+});
+
+// Per-site sharing: one Get-PnPTenantSite for every site, gated on its own ledger row.
+const PNP_SITES = [
+  { Url: `https://${HOST}/sites/site1/`, SharingCapability: 'ExternalUserAndGuestSharing', Template: 'GROUP#0' },
+  { Url: `https://${HOST}/sites/site2`, SharingCapability: 'Disabled', Template: 'SITEPAGEPUBLISHING#0' },
+];
+
+test('per-site sharing: one read for every site, matched by URL; an unlisted site is unknown', async () => {
+  let calls = 0;
+  const graph = fakeGraph({ pages: [[site(1), site(2), site(3)]] });
+  const result = await readSharePointSites({
+    transport: graph.transport, tenantHost: HOST, now,
+    siteSharing: async () => { calls += 1; return new Map(PNP_SITES.map((body) => [body.Url.replace(/\/$/, '').toLowerCase(), body])); },
+  });
+  assert.equal(calls, 1, 'one read for all sites, never one per site');
+  const byN = (n) => result.sites.find((entry) => entry.siteId === siteId(n));
+  assert.equal(byN(1).fields.sharingCapability, 'ExternalUserAndGuestSharing');
+  assert.deepEqual(byN(1).fieldCoverage.sharingCapability, { status: 'observed', operation: SITE_SHARING_OPERATION });
+  assert.equal(byN(2).fields.sharingCapability, 'Disabled');
+  assert.equal(byN(3).fieldCoverage.sharingCapability.status, 'unknown');
+  assert.equal('sharingCapability' in byN(3).fields, false, 'never given a guessed value');
+  assert.equal(result.outcome, 'complete', 'a site the read did not list is unknown, not a failure');
+});
+
+test('per-site sharing: off until qualified, and a failed read is partial, never empty', async () => {
+  const off = await readSharePointSites({ transport: fakeGraph({ pages: [[site(1)]] }).transport, tenantHost: HOST, now });
+  assert.equal(off.outcome, 'complete', 'the rest of the read never waits for the sharing read');
+  assert.equal(off.sites[0].fieldCoverage.sharingCapability.status, 'unknown');
+  assert.match(off.sites[0].fieldCoverage.sharingCapability.reason, /not live-qualified/);
+
+  const denied = await readSharePointSites({
+    transport: fakeGraph({ pages: [[site(1)]] }).transport, tenantHost: HOST, now,
+    siteSharing: async () => { throw new CmdletError('Get-PnPTenantSite: denied', { code: 'CMDLET_ERROR', cmdlet: 'Get-PnPTenantSite', message: 'Access is denied.', category: null, errorId: null }); },
+  });
+  assert.equal(denied.outcome, 'partial');
+  assert.equal(denied.sites[0].fieldCoverage.sharingCapability.status, 'denied');
+  assert.equal('sharingCapability' in denied.sites[0].fields, false);
+});
+
+test('per-site sharing runs only Get-PnPTenantSite, with no parameter, through the job transport', async () => {
+  const live = fakeCmdletContainer({ module: 'PnP.PowerShell', allowlist: { 'Get-PnPTenantSite': ['Identity'] }, answer: () => PNP_SITES });
+  const sites = await readSiteSharing(live.powershell);
+  assert.deepEqual(live.calls.map((call) => [call.cmdlet, Object.keys(call.parameters ?? {})]), [['Get-PnPTenantSite', []]]);
+  assert.equal(sites.get(`https://${HOST}/sites/site1`).SharingCapability, 'ExternalUserAndGuestSharing');
+  assert.equal(MODULE_VERSIONS['PnP.PowerShell'] !== undefined, true);
+});
+
+test('per-site sharing is gated on its own ledger row, apart from the Graph reads', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = 'sha256:site-sharing';
+  const evidence = (ids) => ids.map((operationId) => ({
+    operationId, kind: 'live-capture', synthetic: false, tenantRef, capturedAt: new Date().toISOString(), ok: true,
+    version: operationId === SITE_SHARING_OPERATION ? MODULE_VERSIONS['PnP.PowerShell'] : 'v1.0', proofRef: `${operationId}@test`,
+  }));
+  const grants = { permissions: ['SharePointTenantSettings.Read.All', 'Sites.Read.All', 'Sites.FullControl.All'], roles: ['SharePoint Administrator'] };
+  const runtime = { modules: { 'PnP.PowerShell': MODULE_VERSIONS['PnP.PowerShell'] } };
+  const graphOnly = buildWorkloadLedger({ evidence: evidence(SHAREPOINT_OPERATIONS), grants, runtime, tenantRef });
+  assert.equal(sharePointActivation(graphOnly).enabled, true);
+  assert.equal(siteSharingActivation(graphOnly).enabled, false);
+  const live = fakeCmdletContainer({ module: 'PnP.PowerShell', allowlist: { 'Get-PnPTenantSite': ['Identity'] }, answer: () => PNP_SITES });
+  const first = await collectSharePointSites(client, { tenantRef, ledger: graphOnly, transport: fakeGraph({ pages: [[site(1)]] }).transport, tenantHost: HOST, now, powershell: live.powershell });
+  assert.equal(live.calls.length, 0, 'nothing is sent until the sharing read is qualified');
+  assert.equal(first.result.sites[0].fieldCoverage.sharingCapability.status, 'unknown');
+
+  const both = buildWorkloadLedger({ evidence: evidence([...SHAREPOINT_OPERATIONS, SITE_SHARING_OPERATION]), grants, runtime, tenantRef });
+  assert.equal(siteSharingActivation(both).enabled, true, siteSharingActivation(both).reasons.join('; '));
+  const second = await collectSharePointSites(client, { tenantRef, ledger: both, transport: fakeGraph({ pages: [[site(1)]] }).transport, tenantHost: HOST, now, powershell: live.powershell });
+  assert.equal(live.calls.length, 1);
+  assert.equal(second.result.sites[0].fields.sharingCapability, 'ExternalUserAndGuestSharing');
+  const { rows: [row] } = await client.query(
+    `SELECT fields, field_coverage FROM workload_observation WHERE collection_id = $1 AND resource_key = $2`, [second.run.id, `site:${siteId(1)}`],
+  );
+  assert.equal(row.fields.sharingCapability, 'ExternalUserAndGuestSharing', 'stored with the run, so the backup holds it');
 });

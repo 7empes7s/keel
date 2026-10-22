@@ -32,12 +32,14 @@ ENV POWERSHELL_TELEMETRY_OPTOUT=1 \
 # version Teams capture has not been tested on. Bump it on purpose, with a live check.
 # ExchangeOnlineManagement is pinned to 3.10.1, the version the Exchange and Purview
 # live captures were taken at (#339); a floor alone let a rebuild change it.
+# PnP.PowerShell is pinned to 3.4.1, the version the OneDrive live capture was taken at,
+# so the SharePoint per-site sharing read capture records the version the image runs.
 RUN pwsh -NoLogo -NoProfile -NonInteractive -Command " \
       \$ErrorActionPreference = 'Stop'; \
       Set-PSRepository -Name PSGallery -InstallationPolicy Trusted; \
       Install-Module -Name ExchangeOnlineManagement -RequiredVersion 3.10.1 -Scope AllUsers -Force -AllowClobber -Repository PSGallery; \
       Install-Module -Name MicrosoftTeams -RequiredVersion 7.9.0 -Scope AllUsers -Force -AllowClobber -Repository PSGallery; \
-      Install-Module -Name PnP.PowerShell -Scope AllUsers -Force -AllowClobber -Repository PSGallery; \
+      Install-Module -Name PnP.PowerShell -RequiredVersion 3.4.1 -Scope AllUsers -Force -AllowClobber -Repository PSGallery; \
       Write-Host 'module install complete:'; \
       Get-Module -ListAvailable ExchangeOnlineManagement,MicrosoftTeams,PnP.PowerShell | Select-Object Name,Version | Format-Table -AutoSize | Out-String | Write-Host; \
     " \

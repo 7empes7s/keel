@@ -6851,7 +6851,7 @@ item that needs it stays untouched.
   - A schedule-only change, a fix turned off, or an added exclusion reaches no one new and needs no approval.
   - The review page shows "Newly assigned to ..." on each such effect.
 - Needs: /opt/keel-live at the #464 merge or later (`grep -q newAssignmentReach /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
+- Status: in-progress
 - Result: blocked (2026-10-22 07:45 UTC) on **#466**, not started (no fixtures created). The Needs are met at 1856809, but a snapshot dry run still stops in the current-state read (`collecting deviceManagementExchangeConnector failed`). I re-checked at 1856809 with the Q109 dry run at 07:45 UTC.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores and content effects yourself and log every approval id. Restorer only; global admin not used.

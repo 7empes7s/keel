@@ -17,6 +17,9 @@ const SCRIPTS = [
   ['deviceHealthScript', '/beta/deviceManagement/deviceHealthScripts', 'detectionScriptContent'],
   ['deviceComplianceScript', '/beta/deviceManagement/deviceComplianceScripts', 'detectionScriptContent'],
 ];
+// Imported ADMX files are read the same way: Graph returns the file content
+// only on a GET of one file.
+const PER_OBJECT = [...SCRIPTS, ['groupPolicyUploadedDefinitionFile', '/beta/deviceManagement/groupPolicyUploadedDefinitionFiles', 'content']];
 
 const LISTED = [
   ['assignmentFilter', '/beta/deviceManagement/assignmentFilters', 'tier2'],
@@ -25,13 +28,17 @@ const LISTED = [
   ['windowsQualityUpdateProfile', '/beta/deviceManagement/windowsQualityUpdateProfiles', 'tier2'],
   ['windowsDriverUpdateProfile', '/beta/deviceManagement/windowsDriverUpdateProfiles', 'tier3'],
   ['groupPolicyConfiguration', '/beta/deviceManagement/groupPolicyConfigurations?$expand=definitionValues($expand=definition)', 'tier2'],
-  ['groupPolicyUploadedDefinitionFile', '/beta/deviceManagement/groupPolicyUploadedDefinitionFiles', 'tier3'],
   ['notificationMessageTemplate', '/v1.0/deviceManagement/notificationMessageTemplates?$expand=localizedNotificationMessages', 'tier3'],
   ['windowsAutopilotDeviceIdentity', '/v1.0/deviceManagement/windowsAutopilotDeviceIdentities', 'tier2'],
   ['deviceManagementRoleAssignment', '/beta/deviceManagement/roleAssignments', 'tier1'],
 ];
 
-const EXPECTED = [...SCRIPTS.map(([type, list]) => [type, list, 'tier2']), ...LISTED];
+const EXPECTED = [
+  ...SCRIPTS.map(([type, list]) => [type, list, 'tier2']),
+  ...LISTED.slice(0, LISTED.findIndex(([type]) => type === 'groupPolicyConfiguration') + 1),
+  ['groupPolicyUploadedDefinitionFile', null, 'tier3'],
+  ...LISTED.slice(LISTED.findIndex(([type]) => type === 'groupPolicyConfiguration') + 1),
+];
 
 test('the extended Intune family holds exactly the planned types, all in CATALOG', () => {
   assert.deepEqual(intuneExtended.map((entry) => entry.type), EXPECTED.map(([type]) => type));
@@ -52,8 +59,8 @@ test('no extended Intune type duplicates an existing catalogue path', () => {
   for (const entry of intuneExtended) assert.ok(!otherPaths.has(`${entry.version}${entry.path}`), entry.type);
 });
 
-test('each script is listed, then read on its own so the backup holds its body', async () => {
-  for (const [type, list, body] of SCRIPTS) {
+test('each script and imported ADMX file is listed, then read on its own so the backup holds its body', async () => {
+  for (const [type, list, body] of PER_OBJECT) {
     const entry = catalogEntryFor(type);
     assert.equal(`/${entry.version}${entry.parent.path}`, list, type);
     const urls = [];

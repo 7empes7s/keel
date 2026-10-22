@@ -288,6 +288,18 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-android-owner`, drift: 'delete it: the restore recreates it with the same mode and name template; then change its description and name template: the restore puts back both',
     note: 'No device enrolls with it, and it joins no Wi-Fi network (a secured network is refused because its password is not backed up). Needs the managed Google Play connection; if Intune refuses to create it, record that and skip this kind.',
   },
+  // Restore gaps, batch 11: an imported ADMX file no template uses, and a BIOS
+  // configuration assigned to nobody. No device is affected.
+  groupPolicyUploadedDefinitionFile: {
+    kind: 'named-object', fixture: `imported ADMX file ${FIXTURE_PREFIX.toLowerCase()}-fixture.admx with its en-US ADML file (one setting under its own namespace and category, used by no template)`,
+    select: `${FIXTURE_PREFIX.toLowerCase()}-fixture.admx`, drift: 'delete it: the restore uploads it again with the same ADMX and ADML content, and it reads as Available',
+    note: 'Back it up after this batch is deployed: an older backup holds no file content and is refused. Its namespace and prefix are KEEL-RT only, so no Microsoft or real template collides.',
+  },
+  hardwareConfiguration: {
+    kind: 'named-object', fixture: `BIOS configuration ${FIXTURE_PREFIX}-bios (per-device password on), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-bios`, drift: 'change its description: the restore puts it back',
+    note: 'Update only: a deleted configuration is imported again by hand. If Intune refuses to create it without a real OEM settings file, record that and skip this kind. Never assign it.',
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons. None touches sign-in,
   // Conditional Access or any account; each is set back to its value after the run.
   externalIdentitiesPolicy: {

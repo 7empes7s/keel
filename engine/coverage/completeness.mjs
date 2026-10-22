@@ -209,7 +209,7 @@ export const COMPLETENESS = Object.freeze({
   windowsDriverUpdateProfile: { missing: [part('Approved drivers', 'other-route'), part('Who the profile is assigned to', 'not-written')] },
   // Restore gaps batch 5: the values of each setting are read per setting and written back.
   groupPolicyConfiguration: { missing: [part('Who the template is assigned to', 'not-written')] },
-  groupPolicyUploadedDefinitionFile: { whole: 'not-written', missing: [part('The template file content', 'binary-route')] },
+  groupPolicyUploadedDefinitionFile: { missing: [part('The ids of the settings in it: Intune gives them new ones, so templates that used them are set up again', 'not-written')] },
   notificationMessageTemplate: {},
   windowsAutopilotDeviceIdentity: { whole: 'secret', missing: [part('The device hardware hash', 'secret')] },
   deviceManagementRoleAssignment: { whole: 'not-written' },
@@ -280,7 +280,7 @@ export const COMPLETENESS = Object.freeze({
   simulationAutomation: { whole: 'not-written', missing: [part('Each run of the automation', 'other-route')] },
   attackSimulation: { whole: 'not-written', missing: [part('The payload, landing page and login page the simulation uses', 'other-route')] },
   // Remaining kinds, batch 8.
-  hardwareConfiguration: { whole: 'not-written', missing: [part('The BIOS settings file, which can hold the BIOS password', 'secret', always)] },
+  hardwareConfiguration: { missing: [part('The BIOS settings file, which can hold the BIOS password', 'secret', always), part('A deleted configuration, and turning per-device BIOS passwords off', 'not-written')] },
   certificateBasedApplicationConfiguration: { whole: 'not-written', missing: [part('The trusted certificate authorities', 'other-route')] },
   signInIdentifier: { whole: 'not-written' },
   verifiedIdProfile: { whole: 'not-written' },

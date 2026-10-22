@@ -131,6 +131,9 @@ const REGISTERED = Object.freeze({
   cartToClassAssociation: ['create', 'update'],
   androidForWorkEnrollmentProfile: ['create', 'update'],
   androidDeviceOwnerEnrollmentProfile: ['create', 'update'],
+  // Restore gaps, batch 11.
+  groupPolicyUploadedDefinitionFile: ['create'],
+  hardwareConfiguration: ['update'],
   // Wave 2 ENTRA: directory policies and delegated consents.
   tokenLifetimePolicy: ['create', 'update'],
   tokenIssuancePolicy: ['create', 'update'],

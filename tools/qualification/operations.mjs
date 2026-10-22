@@ -304,6 +304,12 @@ const FIXTURE_PAYLOADS = Object.freeze({
     displayName: 'Fixture Android enrollment', description: 'Fixture', enrollmentMode: 'corporateOwnedDedicatedDevice', enrollmentTokenType: 'default',
     isTeamsDeviceProfile: false, deviceNameTemplate: 'FIXTURE-{{SERIAL}}', configureWifi: false, wifiHidden: false, wifiSecurityType: 'none', roleScopeTagIds: ['0'],
   },
+  // Restore gaps, batch 11: file content is base64, as Graph returns it.
+  groupPolicyUploadedDefinitionFile: {
+    fileName: 'fixture.admx', defaultLanguageCode: 'en-US', content: 'PHBvbGljeURlZmluaXRpb25zLz4=',
+    groupPolicyUploadedLanguageFiles: [{ fileName: 'fixture.adml', languageCode: 'en-US', content: 'PHBvbGljeURlZmluaXRpb25SZXNvdXJjZXMvPg==' }],
+  },
+  hardwareConfiguration: { displayName: 'Fixture BIOS configuration', description: 'Fixture', perDevicePasswordDisabled: false, roleScopeTagIds: ['0'] },
   // Restore gaps, batch 2: Entra ID tenant singletons.
   externalIdentitiesPolicy: { allowExternalIdentitiesToLeave: true, allowDeletedIdentitiesDataRemoval: false },
   accessReviewPolicy: { isGroupOwnerManagementEnabled: true },

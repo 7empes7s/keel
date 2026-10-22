@@ -136,6 +136,38 @@ assert.equal(
   false,
 );
 
+
+{
+  // Issue #474: Graph returns an app or e-book category's lastModifiedDateTime as the
+  // time of the read. Two reads of an unchanged category must give one fingerprint, or
+  // every update is refused as "target changed since the dry run".
+  for (const resourceType of ['mobileAppCategory', 'managedEBookCategory']) {
+    const read = (at, displayName = 'KEEL-RT-apps-drift') => [{
+      naturalKey: `${resourceType}:KEEL-RT-apps-drift`, resourceType, sourceId: 'cat-id',
+      payload: { id: 'cat-id', displayName, lastModifiedDateTime: at },
+    }];
+    const key = [`${resourceType}:KEEL-RT-apps-drift`];
+    assert.equal(
+      computeCurrentStateFingerprint(read('2026-10-22T08:36:39.6299953Z'), key),
+      computeCurrentStateFingerprint(read('2026-10-22T08:36:42.1325217Z'), key),
+      `${resourceType}: a read-time lastModifiedDateTime must not change the fingerprint`,
+    );
+    assert.notEqual(
+      computeCurrentStateFingerprint(read('2026-10-22T08:36:39.6299953Z'), key),
+      computeCurrentStateFingerprint(read('2026-10-22T08:36:39.6299953Z', 'KEEL-RT-renamed'), key),
+      `${resourceType}: a real change must still change the fingerprint`,
+    );
+  }
+  // Kinds not observed to stamp the read time keep the field as a change signal.
+  const other = (at) => [{
+    naturalKey: 'group:Admins', resourceType: 'group', sourceId: 'target-admins-id',
+    payload: { displayName: 'Admins', lastModifiedDateTime: at },
+  }];
+  assert.notEqual(
+    computeCurrentStateFingerprint(other('2026-10-22T08:00:00Z'), ['group:Admins']),
+    computeCurrentStateFingerprint(other('2026-10-22T09:00:00Z'), ['group:Admins']),
+  );
+}
 // --- createDryRunArtifact / getDryRunArtifact: real persistence, isolated test DB ---
 
 const database = await createIsolatedTestDatabase(import.meta.url);

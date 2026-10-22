@@ -366,3 +366,59 @@ test('import stores only records that verify; the committed records need the sig
   assert.deepEqual(real.refused.map((entry) => entry.file).sort(), committed.sort());
   assert.deepEqual((await loadLedgerInputs(client, { tenantRef: committedTenant })).reads, []);
 });
+
+test('import adds the roles the collector holds live, so a role granted after capture counts', async (t) => {
+  const client = await schemaClient(t);
+  const config = JSON.stringify({ tenantId: TENANT_ID, clientId: 'collector-app-id' });
+  const tenantRef = (await import('../store/tenantRef.mjs')).tenantRefFor(TENANT_ID);
+  const proof = sharePointProof(tenantRef);
+  const seams = [{ file: 'ok.json', seam: () => ({ ok: true, failures: [], ...proof, grants: { permissions: ['Sites.FullControl.All'], roles: ['SharePoint Administrator'] } }) }];
+  const requests = [];
+  const page2 = 'https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?page=2';
+  const fetchImpl = async (url, init) => {
+    requests.push({ url, method: init?.method });
+    const { pathname } = new URL(url);
+    let body;
+    if (pathname.startsWith("/v1.0/servicePrincipals(appId='collector-app-id')")) body = { id: 'sp-1' };
+    else if (url === page2) body = { value: [{ directoryScopeId: '/administrativeUnits/au-1', roleDefinition: { displayName: 'User Administrator' } }] };
+    else if (pathname === '/v1.0/roleManagement/directory/roleAssignments') {
+      assert.equal(new URL(url).searchParams.get('$filter'), "principalId eq 'sp-1'");
+      body = { value: [
+        { directoryScopeId: '/', roleDefinition: { displayName: 'Teams Administrator' } },
+        { directoryScopeId: '/', roleDefinition: { displayName: 'Global Reader' } },
+      ], '@odata.nextLink': page2 };
+    } else return { status: 404, headers: new Headers(), text: async () => '{}' };
+    return { status: 200, headers: new Headers(), text: async () => JSON.stringify(body) };
+  };
+  const lines = [];
+  const options = {
+    readFile: () => config, connectFn: async () => client, logger: { log: (line) => lines.push(line) }, seams, fetchImpl,
+    getTokenFn: async () => ({ accessToken: 'token' }),
+  };
+  const fakeEnd = client.end.bind(client);
+  client.end = async () => {};
+  try {
+    assert.equal(await main(['import', '--db-url', 'postgres://unused', '--dir', '/nowhere'], options), 0);
+  } finally {
+    client.end = fakeEnd;
+  }
+  assert.ok(requests.length === 3 && requests.every((item) => item.method === 'GET'));
+  const stored = await loadLedgerInputs(client, { tenantRef });
+  // Declared roles stay, live tenant-wide roles are added, a scoped role is not.
+  assert.deepEqual(stored.grants.roles, ['Global Reader', 'SharePoint Administrator', 'Teams Administrator']);
+  assert.deepEqual(stored.grants.permissions, ['Sites.FullControl.All']);
+  assert.equal(JSON.parse(lines.join('\n')).collectorRoles.source, 'declared+live');
+  // The Teams policy reads no longer wait on the Teams Administrator role.
+  const ledger = buildWorkloadLedger({ evidence: [], grants: stored.grants, tenantRef, now: NOW });
+  const teamsRows = ledger.rows.filter((row) => row.workload === 'teams-org-policies');
+  assert.ok(teamsRows.length > 0);
+  assert.ok(teamsRows.every((row) => !row.prerequisite));
+
+  // A failed live read keeps the declared roles and says why; nothing else changes.
+  const failed = await importLedgerInputs(client, {
+    tenantRef, dir: '/nowhere', seams, readFile: () => '{}', observeRoles: async () => { throw new Error('reading roles returned HTTP 403'); },
+  });
+  assert.deepEqual(failed.collectorRoles, { source: 'declared', live: null, error: 'reading roles returned HTTP 403', stored: ['SharePoint Administrator'] });
+  assert.equal(failed.exitCode, 0);
+  assert.deepEqual((await loadLedgerInputs(client, { tenantRef })).grants.roles, ['SharePoint Administrator']);
+});

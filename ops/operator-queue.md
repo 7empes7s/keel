@@ -6905,8 +6905,15 @@ item that needs it stays untouched.
   - **Change:** the restore's current-state fingerprint now ignores `lastModifiedDateTime` for `mobileAppCategory` and `managedEBookCategory` only,
     because Graph returns it as the time of the read. Every other kind still counts it. Nothing else changed: same writers as Q116 and Q122.
 - Needs: /opt/keel-live at df9295a or later (`grep -q READ_TIME_FIELDS /opt/keel-live/engine/restore/dryRunArtifact.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 16:19 UTC). **#479 works: both category updates promoted**, with no "target has changed" refusal. B = 4fadc0a (the capture build; the restore ran right before at the same build). Restorer only; global admin not used.
+  1. Fixtures `KEEL-RT-apps` (mobileAppCategory) and `KEEL-RT-books` (managedEBookCategory). S = `f1ba81a9` holds both.
+  2. Fingerprint check: dry runs `d61717ca` and `ab4f820b`, about 5 s apart, nothing changed. **Same fingerprint**, `28854acb31b34e6903f7b3a6eac3bb106294fe5c90077620205e0ed71133bf7b`, and 0 changed fields on both entries.
+  3. Update: renamed to `KEEL-RT-apps-drift` and `KEEL-RT-books-drift`. Dry run `2a5f68e0` (displayName on each), approval **591bd445**, job `3e019253` succeeded, with no refusal. Read-back `KEEL-RT-apps` and `KEEL-RT-books`.
+     Both captured and **promoted** (mobileAppCategory.update, managedEBookCategory.update).
+  4. Re-run (`A2` from S): 0 changed fields for both.
+  5. Cleanup: deleted both. No `KEEL-RT-apps*` or `KEEL-RT-books*` category is left.
+  6. Evidence: `claude/live-evidence-category-update` @ **4f3fc1b9**. pseudonymize check exit 0; my scan is clean. `live evidence`: `managedEBookCategory.update.json` and `mobileAppCategory.update.json`: `fixture-tested -> live-qualified`.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q116 and Q122. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used; it holds
   DeviceManagementApps.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing.

@@ -1249,7 +1249,7 @@ being triggered by queue updates.
     approved value; the read that matches again resolves the alert.
 - Needs: /opt/keel-live at the #504 merge or later (`grep -q acceptServiceChange /opt/keel-live/engine/govern/workloadApproved.mjs`)
   and its schema applied (`SELECT to_regclass('workload_approved')` is not null).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Test tenant only.** Same hard rules as Q123 and Q135. Under the 2026-10-14 standing authorization, approve the restore yourself and
   log the approval id. Restorer for the write; Collector for reads. If Exchange answers 403, report blocked with what it names; grant nothing.

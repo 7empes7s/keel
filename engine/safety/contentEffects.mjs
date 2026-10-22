@@ -315,9 +315,9 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   // print and threat level settings only restrict where work data may go, and
   // the required and warning versions block or warn, keeping the data. What
   // removes work data from the app is a wipe: a wipe version that is new or
-  // higher, or an action that becomes "wipe". A restore never assigns a
-  // recreated policy, so creates are not judged.
-  windowsManagedAppProtection: { reviewed: true, rules: [
+  // higher, or an action that becomes "wipe". Issue #461: a restore assigns a
+  // recreated policy too, so a create that is assigned is judged.
+  windowsManagedAppProtection: { reviewed: true, judgesCreates: 'when-assigned', rules: [
     rule('minimumWipeAppVersion', 'irreversible', wipeVersionRises),
     rule('minimumWipeOsVersion', 'irreversible', wipeVersionRises),
     rule('minimumWipeSdkVersion', 'irreversible', wipeVersionRises),
@@ -335,10 +335,12 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   // PR #435 follow-up: Intune scripts and remediations. An update that changes a
   // script's text pushes that text to every device the script is assigned to, so it
   // needs the separate approval, showing the text. Which devices it is assigned to
-  // is not read here, so every such update is judged as reaching devices. A
-  // recreated script is never assigned by a restore, so creates are not judged.
+  // is not read here, so every such update is judged as reaching devices. Issue
+  // #461: a restore also assigns scripts (batch 14), so a recreated script that is
+  // assigned is judged, and so is an existing one assigned to more devices.
   ...Object.fromEntries(Object.entries(SCRIPT_BODY_FIELDS).map(([resourceType, fields]) => [resourceType, {
     reviewed: true,
+    judgesCreates: 'when-assigned',
     rules: fields.map((field) => rule(field, 'runs-on-devices', bodyChanges, scriptBody(field), scriptDetail(field))),
   }])),
 });
@@ -368,6 +370,23 @@ function isPreservationLocked(payload) {
   return LOCK_FIELDS.some((field) => truthy(payload?.[field]));
 }
 
+const READ_ASSIGNMENTS = new Set(['complete', 'complete-empty']);
+/**
+ * Issue #461: who a restore's assignment write newly reaches, sorted, or null when
+ * no one. A restore plan says so itself (`newAssignments`, attachIntuneAssignments).
+ * A resource that carries assignments without that answer is judged as reaching
+ * every include target it is assigned to: the safe direction.
+ */
+function assignmentReach(resource) {
+  if (Array.isArray(resource.newAssignments)) return resource.newAssignments.length > 0 ? [...resource.newAssignments].sort() : null;
+  const desired = resource.assignments;
+  if (!desired || !READ_ASSIGNMENTS.has(desired.outcome)) return null;
+  const labels = (desired.targets ?? [])
+    .filter((target) => target?.attributes?.targetType !== 'exclusionGroupAssignmentTarget')
+    .map((target) => String(target?.targetNaturalKey ?? target?.attributes?.targetType ?? 'a target of unknown kind'));
+  return labels.length > 0 ? [...new Set(labels)].sort() : null;
+}
+
 /**
  * Classifies the planned writes. `resources` are reconciled restore resources
  * ({ naturalKey, resourceType, verb, payload, live }). Returns ordered
@@ -395,19 +414,25 @@ export function classifyContentEffects(resources) {
         continue;
       }
       if (!after) continue;
+      // Issue #461: who the restore's assignment write reaches that the object does
+      // not reach now (attachIntuneAssignments). Those devices get the object as if
+      // it were new, so a type whose effects land on devices judges its rules from
+      // nothing for them, even when the setting itself does not change.
+      const reach = review.judgesCreates ? assignmentReach(resource) : null;
       // A create starts from nothing, so no existing content changes reach,
       // unless the type's effects land on content outside the object (devices).
-      if (!before && !review.judgesCreates) continue;
+      // 'when-assigned': only when the restore also assigns it to someone.
+      if (!before && (!review.judgesCreates || (review.judgesCreates === 'when-assigned' && !reach))) continue;
       for (const entry of review.rules) {
         const b = entry.read(before ?? {});
         const a = entry.read(after);
-        if (JSON.stringify(b ?? null) === JSON.stringify(a ?? null)) continue; // unchanged: benign
-        if (entry.when(b, a)) {
-          effects.push({
-            naturalKey, resourceType, field: entry.field, effect: entry.effect, before: b ?? null, after: a ?? null, disclosure: disclosureFor(entry.effect),
-            ...(entry.detail ? { script: entry.detail(before, after) } : {}),
-          });
-        }
+        const changes = JSON.stringify(b ?? null) !== JSON.stringify(a ?? null) && entry.when(b, a);
+        if (!changes && !(reach && entry.when(entry.read({}), a))) continue; // unchanged and reaches no one new: benign
+        effects.push({
+          naturalKey, resourceType, field: entry.field, effect: entry.effect, before: b ?? null, after: a ?? null, disclosure: disclosureFor(entry.effect),
+          ...(reach ? { newAssignments: reach } : {}),
+          ...(entry.detail ? { script: entry.detail(before, after) } : {}),
+        });
       }
       continue;
     }
@@ -434,7 +459,11 @@ function canonical(value) {
 
 /** The identity of a set of effects. An approval is bound to exactly this. */
 export function contentEffectsDigest(effects) {
-  const bound = effects.map(({ naturalKey, resourceType, field, effect, before, after }) => ({ naturalKey, resourceType, field, effect, before, after }));
+  // Who an assignment write newly reaches is bound too (issue #461), only when
+  // present, so every effect without it keeps its digest.
+  const bound = effects.map(({ naturalKey, resourceType, field, effect, before, after, newAssignments }) => ({
+    naturalKey, resourceType, field, effect, before, after, ...(newAssignments ? { newAssignments } : {}),
+  }));
   return createHash('sha256').update(canonical(bound)).digest('hex');
 }
 

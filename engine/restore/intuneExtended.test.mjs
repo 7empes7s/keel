@@ -22,6 +22,8 @@ const COMPLETE = (type) => ({ [type]: { outcome: 'complete' } });
 const resourceOf = (resourceType, payload, extra = {}) => ({
   naturalKey: `${resourceType}:${payload.displayName ?? payload.id}`, resourceType, payload, references: [], blastRadius: 'access-affecting', ...extra,
 });
+// The content effects a second person approved for exactly this write (issue #461).
+const approvedFor = (resource, verb) => classifyContentEffects([{ ...resource, verb }]).effects;
 
 const iosApp = (bundleId) => ({
   id: `${bundleId}.ios`, version: '1',
@@ -1142,9 +1144,9 @@ test('a Windows app protection update that adds or raises a wipe needs the conte
     ['appActionIfUnableToAuthenticateUser', 'irreversible'], ['minimumWipeAppVersion', 'irreversible'], ['minimumWipeOsVersion', 'irreversible'],
   ]);
   assert.deepEqual(raised.refusals, []);
-  // A recreated policy is never assigned by a restore, so a create is not judged.
+  // A recreated policy the restore does not assign reaches no one, so it is not judged (issue #461 covers the assigned one).
   assert.deepEqual(classifyContentEffects([{ naturalKey: 'n', resourceType: 'windowsManagedAppProtection', verb: 'create',
-    payload: { ...windowsProtection, minimumWipeOsVersion: '10.0.22000' }, live: null }]), { effects: [], refusals: [] });
+    payload: { ...windowsProtection, minimumWipeOsVersion: '10.0.22000' }, live: null, newAssignments: [] }]), { effects: [], refusals: [] });
 });
 
 const profile = Object.freeze({
@@ -1368,7 +1370,8 @@ test('a remediation is created, then assigned with its schedule and whether its 
   const resource = resourceOf('deviceHealthScript', remediation, {
     assignments: { outcome: 'complete', targets: [groupTarget({ runSchedule: DAILY, runRemediationScript: true })] },
   });
-  const result = await applyIntuneExtendedWrite(graph, resource, 'create', { ...FAST, referenceContext: GROUP_CONTEXT });
+  // Issue #461: the recreated script runs on the group it is assigned to, so a second person approved it.
+  const result = await applyIntuneExtendedWrite(graph, resource, 'create', { ...FAST, referenceContext: GROUP_CONTEXT, approvedContentEffects: approvedFor(resource, 'create') });
   assert.equal(result.failed, undefined, result.failed?.error);
   const assign = graph.calls.find((call) => call.path.endsWith('/assign'));
   assert.equal(assign.path, `/deviceManagement/deviceHealthScripts/${result.applied.targetId}/assign`);
@@ -1393,6 +1396,8 @@ test('a remediation whose schedule drifted is assigned again; one that matches i
   const resource = resourceOf('deviceHealthScript', live, {
     live: { state: 'present', targetId: 'h-1', payload: live },
     assignments: { outcome: 'complete', targets: [groupTarget({ runSchedule: DAILY, runRemediationScript: true })] },
+    // The plan found the same group with its fix on: only the schedule differs, so it reaches no one new.
+    newAssignments: [],
   });
   const drifted = idoFakeGraph({ seed: assigned({ ...DAILY, time: '23:00:00.0000000' }) });
   let result = await applyIntuneExtendedWrite(drifted, resource, 'update', { ...FAST, referenceContext: GROUP_CONTEXT });
@@ -1422,7 +1427,7 @@ test('scripts are assigned through their own /assign list', async () => {
     const resource = resourceOf(type, { id: `${type}-1`, displayName: `KEEL-RT-${type}`, ...fields }, {
       assignments: { outcome: 'complete', targets: [groupTarget(), { targetNaturalKey: null, attributes: { targetType: 'allDevicesAssignmentTarget' } }] },
     });
-    const result = await applyIntuneExtendedWrite(graph, resource, 'create', { ...FAST, referenceContext: GROUP_CONTEXT });
+    const result = await applyIntuneExtendedWrite(graph, resource, 'create', { ...FAST, referenceContext: GROUP_CONTEXT, approvedContentEffects: approvedFor(resource, 'create') });
     assert.equal(result.failed, undefined, `${type}: ${result.failed?.error}`);
     const assign = graph.calls.find((call) => call.path.endsWith('/assign'));
     assert.deepEqual(Object.keys(assign.body), [bodyKey], type);
@@ -1469,11 +1474,33 @@ test('update profiles and branding profiles are assigned through /assign with th
   }
 });
 
+test('a recreated script the restore assigns is not written without that approval; a dry run plans it (issue #461)', async () => {
+  const resource = resourceOf('deviceHealthScript', remediation, {
+    assignments: { outcome: 'complete', targets: [groupTarget({ runSchedule: DAILY, runRemediationScript: true })] },
+    newAssignments: ['group:KEEL-RT-Devices, runRemediationScript: true'],
+  });
+  const graph = idoFakeGraph();
+  const refused = await applyIntuneExtendedWrite(graph, resource, 'create', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.match(refused.skipped?.reason ?? '', /runs on every device the script is assigned to/);
+  assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
+  // An approval for other groups does not cover this one.
+  const elsewhere = approvedFor({ ...resource, newAssignments: ['group:KEEL-RT-Other'] }, 'create');
+  const other = await applyIntuneExtendedWrite(idoFakeGraph(), resource, 'create', { ...FAST, referenceContext: GROUP_CONTEXT, approvedContentEffects: elsewhere });
+  assert.match(other.skipped?.reason ?? '', /second person approves the script first/);
+  const planned = await applyIntuneExtendedWrite(idoFakeGraph(), resource, 'create', { ...FAST, referenceContext: GROUP_CONTEXT, mode: 'dry-run' });
+  assert.equal(planned.skipped, undefined, planned.skipped?.reason);
+  const approved = await applyIntuneExtendedWrite(idoFakeGraph(), resource, 'create', { ...FAST, referenceContext: GROUP_CONTEXT, approvedContentEffects: approvedFor(resource, 'create') });
+  assert.equal(approved.failed, undefined, approved.failed?.error);
+  assert.equal(approved.skipped, undefined, approved.skipped?.reason);
+  assert.equal(approved.applied.changes.assignments, 'written');
+});
+
 test('a script whose group is missing in the target is not assigned, and nothing about the assignment is guessed', async () => {
   const graph = idoFakeGraph();
-  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceHealthScript', remediation, {
+  const resource = resourceOf('deviceHealthScript', remediation, {
     assignments: { outcome: 'complete', targets: [groupTarget({ runSchedule: DAILY })] },
-  }), 'create', FAST);
+  });
+  const result = await applyIntuneExtendedWrite(graph, resource, 'create', { ...FAST, approvedContentEffects: approvedFor(resource, 'create') });
   assert.match(result.failed?.error ?? '', /the group group:KEEL-RT-Devices does not exist in the target/);
   assert.equal(graph.calls.some((call) => call.path.endsWith('/assign')), false);
 });

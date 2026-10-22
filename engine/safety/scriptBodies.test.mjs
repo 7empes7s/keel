@@ -82,7 +82,7 @@ test('putting back a script\'s text on an existing script needs its own approval
   // Another text is another effect: an approval of one never covers the other.
   const [other] = classifyContentEffects([resource('echo tampered')]).effects;
   assert.notEqual(contentEffectsDigest([effect]), contentEffectsDigest([other]));
-  // The same text, and a recreated script (never assigned by a restore), need nothing.
+  // The same text, and a recreated script the restore does not assign, need nothing (issue #461 covers the assigned one).
   assert.deepEqual(classifyContentEffects([resource('echo live')]).effects, []);
   assert.deepEqual(classifyContentEffects([resource('echo backup', 'create')]).effects, []);
   // A live script whose text was not read counts as different.

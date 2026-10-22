@@ -7470,7 +7470,7 @@ item that needs it stays untouched.
   reads each site's own `sharingCapability` with one `Get-PnPTenantSite` (no parameters) through PnP, gated on the
   `sharepoint.site-sharing` ledger row. Until a live read record is imported the Sites list shows "Not read yet" in Sharing setting.
 - Needs: /opt/keel-live at the #544 merge or later (`grep -q sharingCapabilityName /opt/keel-live/engine/collect/workloads/sharepoint.mjs`). #544 stores PnP's enum number by name; without it the values land as digits.
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** reads only. `Get-PnPTenantSite` with the Collector credential (Sites.FullControl.All + SharePoint Administrator, already
   held, as the OneDrive read). No `Set-`, `New-` or `Remove-` cmdlet. Grant, assign or create nothing.

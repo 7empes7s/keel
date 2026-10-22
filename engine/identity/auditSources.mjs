@@ -74,10 +74,19 @@ function typeName(value) {
   return (last.charAt(0).toLowerCase() + last.slice(1)).slice(0, 64);
 }
 
+// A Microsoft operation name can hold one very long CamelCase word (Intune's
+// "UpdateWindowsFeatureUpdateProfileAssignmentsAsync ..." is 49 letters). redactSecrets
+// takes any 48+ character run for a token, and the stored fact refuses a redacted
+// activity, which failed the whole page (issue #552). A long word made only of
+// capitalised words is a name, so it is split at its word boundaries. Anything still
+// token-shaped drops the activity (it is optional); the event itself is kept.
+const CAMEL_WORDS = /^(?:[A-Z][a-z]+)+$/;
 function activityName(value) {
   if (typeof value !== 'string') return null;
-  const clean = value.replace(/[^A-Za-z0-9 ._()-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 96).trim();
-  return /^[A-Za-z0-9]/.test(clean) ? clean : null;
+  const clean = value.replace(/[^A-Za-z0-9 ._()-]/g, ' ').replace(/\s+/g, ' ').trim()
+    .split(' ').map((word) => (word.length >= 48 && CAMEL_WORDS.test(word) ? word.replace(/(?<=[a-z])(?=[A-Z])/g, ' ') : word))
+    .join(' ').slice(0, 96).trim();
+  return /^[A-Za-z0-9]/.test(clean) && redactSecrets(clean) === clean ? clean : null;
 }
 
 const ENTRA_OPERATIONS = Object.freeze({ add: 'create', update: 'update', delete: 'delete', assign: 'update', unassign: 'update' });

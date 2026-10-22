@@ -95,7 +95,7 @@ export function ControlSheet({ finding, now, canConfigure, canRestore = false, g
         <p>{controlWhat(finding)}</p>
         {why ? <p className="cp-why">{why}</p> : null}
 
-        <FixPanel canRestore={canRestore} finding={finding} now={now} />
+        <FixPanel canRestore={canRestore} finding={finding} key={finding.id} now={now} />
 
         <dl className="cp-facts">
           <div>

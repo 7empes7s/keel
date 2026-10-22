@@ -3056,6 +3056,8 @@ for (const width of [390, 1440]) {
       for (let index = 2; index < names.length; index += 1) await page.getByRole("button", { name: `Next ${noun}` }).click();
       sheet = page.getByRole("dialog", { name: names[names.length - 1], exact: true });
       await expect(sheet.getByRole("button", { name: `Next ${noun}` })).toBeDisabled();
+      // Reaching the end keeps focus in the panel, on the other step button.
+      await expect(sheet.getByRole("button", { name: `Previous ${noun}` })).toBeFocused();
       const results = await new AxeBuilder({ page }).include(".bl-sheet").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
       expect(results.violations.map((violation) => violation.id)).toEqual([]);
     });

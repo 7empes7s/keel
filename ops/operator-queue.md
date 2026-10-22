@@ -6939,3 +6939,16 @@ item that needs it stays untouched.
 - **Expected:** steps 1 and 2 show the role. Both captures prove their reads (some voice reads may be not-licensed; those are
   optional). After step 6, teams-org-policies and teams-voice-policies are on (`complete` or `partial`), no longer `disabled`.
 - **Report:** per step, the result; the evidence branch and commit; per Teams workload, on / off with the reason.
+
+### Q147: Finish Q141 steps 5 and 6: import the Teams read records with the live role refresh, then run (read-only toward the tenant)
+- Drafted by the "Turn on Teams policy backups" thread (2026-10-22). Q141 steps 1 to 4 are done (Teams Administrator held at `/`,
+  Get-CsTeamsMeetingPolicy answers, 9 + 13 reads proven, evidence `claude/live-evidence-teams-reads` @ 8c103a7). Q141 is `blocked`
+  only on #484 deploying. #484 merged as **fc5b5c8**; master has moved on since.
+- Needs: PR #484 live (`grep -q observeCollectorRoles /opt/keel-live/cli/keel-workload-collect.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** reads only. The import sends 2 to 3 Graph GETs for the Collector's roles; the run is the normal scheduled read.
+- Do exactly Q141 steps 5 and 6, with `--dir` a checkout holding the two Teams read records from `claude/live-evidence-teams-reads`
+  and the other records (as Q107 step 3), the verification key loaded. Then set Q141 to `done` with a pointer to this item.
+- **Report:** as Q141 steps 5 and 6: import exit code, `imported` / `refused` / `absent`, `collectorRoles` verbatim, the
+  `workload_ledger_grants` rows, and the run table with teams-org-policies and teams-voice-policies outcome and reasons.

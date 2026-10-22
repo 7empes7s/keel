@@ -94,6 +94,13 @@ export default [
   { resourceType: 'deviceCustomAttributeShellScript', operation: 'update', path: '/deviceManagement/deviceCustomAttributeShellScripts', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   { resourceType: 'groupPolicyConfiguration', operation: 'create', path: '/deviceManagement/groupPolicyConfigurations', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
   { resourceType: 'groupPolicyConfiguration', operation: 'update', path: '/deviceManagement/groupPolicyConfigurations', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  // Restore gaps, batch 6: app categories, Autopilot profiles and policy sets.
+  { resourceType: 'mobileAppCategory', operation: 'create', path: '/deviceAppManagement/mobileAppCategories', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'mobileAppCategory', operation: 'update', path: '/deviceAppManagement/mobileAppCategories', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'windowsAutopilotDeploymentProfile', operation: 'create', path: '/deviceManagement/windowsAutopilotDeploymentProfiles', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'windowsAutopilotDeploymentProfile', operation: 'update', path: '/deviceManagement/windowsAutopilotDeploymentProfiles', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'policySet', operation: 'create', path: '/deviceAppManagement/policySets', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'policySet', operation: 'update', path: '/deviceAppManagement/policySets', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   // Add-only identity edges: an edge is never removed, so edge-remove is not registered.
   { resourceType: 'application#appOwner', operation: 'edge-add', path: '/applications/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },
   { resourceType: 'servicePrincipal#servicePrincipalOwner', operation: 'edge-add', path: '/servicePrincipals/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },

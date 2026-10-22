@@ -435,6 +435,147 @@ test('an administrative template without its setting values, or with a setting t
 
 // ------------------------------------------------------------------- delete
 
+// ------------------------------------------- restore gaps, batch 6
+
+test('an app category is created and updated, and a built-in category is never written', async () => {
+  const graph = idoFakeGraph();
+  const created = await applyIntuneExtendedWrite(graph, resourceOf('mobileAppCategory', { id: 'c-src', displayName: 'KEEL-RT-Field apps', lastModifiedDateTime: 'x' }), 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.path, '/deviceAppManagement/mobileAppCategories');
+  assert.equal(post.version, 'v1.0');
+  assert.deepEqual(post.body, { displayName: 'KEEL-RT-Field apps' });
+
+  const path = '/deviceAppManagement/mobileAppCategories/c-1';
+  const live = { id: 'c-1', displayName: 'KEEL-RT-Field apps (renamed)' };
+  const renamed = idoFakeGraph({ seed: { [path]: live } });
+  const updated = await applyIntuneExtendedWrite(renamed, resourceOf('mobileAppCategory', { id: 'c-1', displayName: 'KEEL-RT-Field apps' }, {
+    live: { state: 'present', targetId: 'c-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  assert.deepEqual(renamed.calls.find((call) => call.method === 'PATCH').body, { displayName: 'KEEL-RT-Field apps' });
+
+  for (const displayName of ['Productivity', 'Books & Reference', 'other apps']) {
+    const builtIn = idoFakeGraph();
+    const result = await applyIntuneExtendedWrite(builtIn, resourceOf('mobileAppCategory', { id: 'b-1', displayName }), 'create', FAST);
+    assert.match(result.skipped?.reason ?? '', /built-in/, displayName);
+    assert.equal(builtIn.calls.length, 0, displayName);
+  }
+});
+
+const autopilot = Object.freeze({
+  '@odata.type': '#microsoft.graph.azureADWindowsAutopilotDeploymentProfile',
+  id: 'ap-src', displayName: 'KEEL-RT-Autopilot', description: 'Fixture', language: 'os-default', deviceNameTemplate: 'KEELRT-%RAND:4%',
+  deviceType: 'windowsPc', extractHardwareHash: false, enableWhiteGlove: false, roleScopeTagIds: ['0'], createdDateTime: 'x', lastModifiedDateTime: 'x',
+  outOfBoxExperienceSettings: { hidePrivacySettings: true, hideEULA: true, userType: 'standard', deviceUsageType: 'singleUser', skipKeyboardSelectionPage: true, hideEscapeLink: true },
+  assignedDevices: [{ id: 'dev-1' }], assignments: [{ id: 'a-1', target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: 'g-1' } }],
+});
+
+test('an Autopilot profile is created with its kind, never with its devices or assignments', async () => {
+  const graph = idoFakeGraph();
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('windowsAutopilotDeploymentProfile', autopilot), 'create', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.path, '/deviceManagement/windowsAutopilotDeploymentProfiles');
+  assert.equal(post.version, 'beta');
+  assert.equal(post.body['@odata.type'], '#microsoft.graph.azureADWindowsAutopilotDeploymentProfile');
+  assert.deepEqual(post.body.outOfBoxExperienceSettings, autopilot.outOfBoxExperienceSettings);
+  for (const field of ['id', 'assignedDevices', 'assignments', 'createdDateTime', 'lastModifiedDateTime']) assert.equal(field in post.body, false, field);
+});
+
+test('an Autopilot profile update puts its settings back and never changes its kind', async () => {
+  const path = '/deviceManagement/windowsAutopilotDeploymentProfiles/ap-1';
+  const live = { ...autopilot, id: 'ap-1', deviceNameTemplate: 'CHANGED-%SERIAL%', assignedDevices: undefined, assignments: undefined };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('windowsAutopilotDeploymentProfile', { ...autopilot, id: 'ap-1' }, {
+    live: { state: 'present', targetId: 'ap-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(graph.calls.find((call) => call.method === 'PATCH').body, {
+    '@odata.type': '#microsoft.graph.azureADWindowsAutopilotDeploymentProfile', deviceNameTemplate: 'KEELRT-%RAND:4%',
+  });
+
+  const hybrid = idoFakeGraph({ seed: { [path]: live } });
+  const changedKind = await applyIntuneExtendedWrite(hybrid, resourceOf('windowsAutopilotDeploymentProfile', {
+    ...autopilot, id: 'ap-1', '@odata.type': '#microsoft.graph.activeDirectoryWindowsAutopilotDeploymentProfile',
+  }, { live: { state: 'present', targetId: 'ap-1', payload: live } }), 'update', FAST);
+  assert.ok(changedKind.failed || changedKind.skipped, 'a profile never changes kind');
+  assert.equal(hybrid.calls.filter((call) => call.method !== 'GET').length, 0);
+});
+
+const SET_PATH = '/deviceAppManagement/policySets';
+const setItem = (kind, payloadId, extra = {}) => ({
+  '@odata.type': `#microsoft.graph.${kind}`, id: `item-${payloadId}`, payloadId, displayName: `KEEL-RT-${payloadId}`, status: 'notAssigned',
+  createdDateTime: 'x', itemType: `#microsoft.graph.${kind}`, guidedDeploymentTags: [], ...extra,
+});
+const policySet = Object.freeze({
+  id: 'set-src', displayName: 'KEEL-RT-Set', description: 'Fixture', status: 'notAssigned', errorCode: 'noError', roleScopeTags: ['0'], guidedDeploymentTags: [],
+  items: [
+    setItem('deviceConfigurationPolicySetItem', 'cfg-1'),
+    setItem('mobileAppPolicySetItem', 'app-1', { intent: 'required', settings: null }),
+  ],
+});
+const itemTargets = {
+  '/deviceManagement/deviceConfigurations/cfg-1': { id: 'cfg-1' },
+  '/deviceAppManagement/mobileApps/app-1': { id: 'app-1' },
+};
+
+test('a policy set is created, then its apps and policies are added through its update action', async () => {
+  const graph = idoFakeGraph({ seed: itemTargets });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('policySet', policySet), 'create', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = graph.calls.filter((call) => call.method !== 'GET');
+  assert.deepEqual(writes.map((call) => `${call.method} ${call.path}`), ['POST /deviceAppManagement/policySets', `POST ${SET_PATH}/${result.applied.targetId}/update`]);
+  assert.equal(writes[0].version, 'beta');
+  for (const field of ['id', 'items', 'status', 'errorCode', 'assignments']) assert.equal(field in writes[0].body, false, field);
+  assert.deepEqual(writes[1].body, {
+    addedPolicySetItems: [
+      { '@odata.type': '#microsoft.graph.deviceConfigurationPolicySetItem', payloadId: 'cfg-1', guidedDeploymentTags: [] },
+      { '@odata.type': '#microsoft.graph.mobileAppPolicySetItem', payloadId: 'app-1', guidedDeploymentTags: [], intent: 'required', settings: null },
+    ],
+    updatedPolicySetItems: [], deletedPolicySetItemIds: [],
+  });
+  assert.equal('assignments' in writes[1].body, false);
+  assert.deepEqual(result.applied.changes.items, { removed: 0, added: 2 });
+});
+
+test('a policy set update removes extra or changed items, then adds the backup ones', async () => {
+  const path = `${SET_PATH}/set-1`;
+  const liveItems = [
+    { ...setItem('deviceConfigurationPolicySetItem', 'cfg-1'), id: 'live-cfg' },
+    { ...setItem('mobileAppPolicySetItem', 'app-1', { intent: 'available' }), id: 'live-app' },
+    { ...setItem('deviceCompliancePolicyPolicySetItem', 'extra-1'), id: 'live-extra' },
+  ];
+  const live = { id: 'set-1', displayName: 'KEEL-RT-Set', description: 'Fixture', roleScopeTags: ['0'], guidedDeploymentTags: [] };
+  const graph = idoFakeGraph({ seed: { ...itemTargets, [path]: live } });
+  graph.objects.set(path, { ...live, items: liveItems });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('policySet', { ...policySet, id: 'set-1' }, {
+    live: { state: 'present', targetId: 'set-1', payload: { ...live, items: liveItems } },
+  }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const actions = graph.calls.filter((call) => call.method === 'POST').map((call) => call.body);
+  assert.deepEqual(actions.map((body) => body.deletedPolicySetItemIds), [['live-app', 'live-extra'], []]);
+  assert.deepEqual(actions[1].addedPolicySetItems.map((item) => item.payloadId), ['app-1']);
+  assert.deepEqual(result.applied.changes.items, { removed: 2, added: 1 });
+});
+
+test('a policy set without its items, with an unknown item, or with an item missing in the target is never written', async () => {
+  const { items, ...withoutItems } = policySet;
+  for (const [payload, reason] of [
+    [withoutItems, /not the apps and policies in it/],
+    [{ ...policySet, items: [setItem('somethingNewPolicySetItem', 'x-1')] }, /a kind of item KEEL does not write/],
+  ]) {
+    const graph = idoFakeGraph({ seed: itemTargets });
+    const result = await applyIntuneExtendedWrite(graph, resourceOf('policySet', payload), 'create', FAST);
+    assert.match(result.skipped?.reason ?? '', reason);
+    assert.equal(graph.calls.length, 0);
+  }
+  const graph = idoFakeGraph({ seed: { '/deviceManagement/deviceConfigurations/cfg-1': { id: 'cfg-1' } } });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('policySet', policySet), 'create', FAST);
+  assert.match(result.failed?.error ?? '', /dependency: the item KEEL-RT-app-1 in this set does not exist in the target/);
+  assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
+});
+
 test('a policy delete passes the deletion guard and refuses a policy that is still assigned', async () => {
   for (const type of ['deviceCompliancePolicy', 'deviceConfiguration', 'configurationPolicy']) {
     const collection = INTUNE_RECORDS[type].collection;

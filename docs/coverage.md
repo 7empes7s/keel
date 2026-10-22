@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 133 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 69 at least in part; the other 98 are restored by hand from the backup.
+KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 133 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 72 at least in part; the other 95 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -399,7 +399,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Intune admin roles | Yes (Tier 1, critical, every hour) | Incomplete | By hand (KEEL choice) | None |
 | Device categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Terms and conditions | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
-| Windows Autopilot profiles | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
+| Windows Autopilot profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Security baselines (older format) | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
 | Enrolled devices | Yes (Tier 3, low impact, weekly) | Microsoft-managed | Nothing to restore | None |
 | Apps | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
@@ -427,11 +427,11 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Remote help partners | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Exchange on-premises connectors | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 | Exchange on-premises access settings | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| App categories | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| App categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Company Portal branding | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Settings catalog compliance policies | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
 | Reusable settings groups | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Policy sets | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Policy sets | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Apple Volume Purchase tokens | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | Apple automated enrollment tokens | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | Managed Google Play connection | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
@@ -478,9 +478,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 - **Terms and conditions** (Microsoft limit). Who accepted cannot be recreated: a recreated policy asks every user to accept again.
   - *Not brought back:* who accepted the terms (no tool can write it).
   - *You do:* Recreate the terms by hand from the backup and tell users they will be asked to accept again.
-- **Windows Autopilot profiles** (KEEL choice). Microsoft offers these only through a preview API, and a profile applies to registered device hardware that KEEL does not back up.
-  - *Not brought back:* the registered device hardware it applies to (stored separately and not in the backup yet).
-  - *You do:* Recreate the profile by hand from the backup, which includes its assignments.
+- **Windows Autopilot profiles.** Recreates profiles and puts their settings back (out-of-box experience, device name template, language), keeping each profile's kind.
+  - *Not brought back:* the registered device hardware it applies to (stored separately and not in the backup yet); who the profile is assigned to (in the backup, but KEEL does not write it yet).
+  - *You do:* Who a profile is assigned to is not put back yet, so assign it again by hand from the backup. The registered device hardware is not backed up; devices are imported again from the devices themselves.
 - **Security baselines (older format)** (KEEL choice). This older format is preview-only and replaced by the settings catalog, and its settings are stored separately and not backed up.
   - *Not brought back:* the baseline's settings (stored separately and not in the backup yet).
   - *You do:* Rebuild the baseline in the settings catalog. KEEL restores settings catalog policies.
@@ -555,9 +555,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Use the backup for the server and settings. Download the connector from the Intune admin center and install it on that server again.
 - **Exchange on-premises access settings** (not built yet). KEEL backs these up but does not restore them yet.
   - *You do:* Put the settings back in the Intune admin center from the backup.
-- **App categories** (not built yet). KEEL backs these up but does not restore them yet. The built-in categories come with every tenant.
-  - *Not brought back:* built-in categories (set by Microsoft).
-  - *You do:* Recreate your own categories in the Intune admin center from the backup, then add the apps to them again.
+- **App categories.** Recreates your own categories and puts their names back. The built-in categories come with every tenant and are never changed.
+  - *Not brought back:* built-in categories (set by Microsoft); which apps are in the category (stored separately and not in the backup yet).
+  - *You do:* Which apps are in a category is set on each app; add the apps to a recreated category again by hand.
 - **Company Portal branding** (not built yet). KEEL backs up the branding settings but does not restore them yet. The logo images are not backed up.
   - *Not brought back:* logo images (stored separately and not in the backup yet).
   - *You do:* Recreate the branding in the Intune admin center from the backup, upload the logos from your own copy, and assign it to the groups in the backup.
@@ -566,9 +566,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Recreate the policy in the Intune admin center from the backup, add its actions for noncompliance, and assign it again. Conditional Access that requires compliant devices needs it back first.
 - **Reusable settings groups.** Recreates groups and puts their settings back, before the settings catalog policies that use them.
   - *You do:* A group is never moved to another setting definition; recreate it by hand if that changed.
-- **Policy sets** (not built yet). KEEL backs up each set's name and settings but not yet the apps and policies in it.
-  - *Not brought back:* the apps and policies in each set (stored separately and not in the backup yet); who the set is assigned to (stored separately and not in the backup yet).
-  - *You do:* Recreate the set in the Intune admin center, add the same apps and policies, and assign it again.
+- **Policy sets.** Recreates sets and puts back their names and the apps and policies in them.
+  - *Not brought back:* who the set is assigned to (in the backup, but KEEL does not write it yet).
+  - *You do:* Every app and policy in a set must be back first with the same id. Who a set is assigned to is not put back yet, so assign it again by hand. A backup taken before the apps and policies in a set were read is refused; take a new backup.
 - **Apple Volume Purchase tokens** (Microsoft limit). Apple issues the token. No tool can upload it from a backup, and the token itself is never read.
   - *Not brought back:* the token file (Microsoft never returns it).
   - *You do:* Use the backup for the Apple ID, organization and expiry. Download a new token from Apple Business Manager with that Apple ID and upload it in the Intune admin center.

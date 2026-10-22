@@ -212,6 +212,22 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-admx`, drift: 'delete it: the restore recreates it with the same setting and value',
     note: 'Use a built-in setting, not one from an imported template file.',
   },
+  // Restore gaps, batch 6: an app category, an Autopilot profile and a policy
+  // set, each assigned to nobody, so no device or app is affected.
+  mobileAppCategory: {
+    kind: 'named-object', fixture: `app category ${FIXTURE_PREFIX}-apps (no app is in it)`,
+    select: `${FIXTURE_PREFIX}-apps`, drift: 'delete it: the restore recreates it with the same name',
+  },
+  windowsAutopilotDeploymentProfile: {
+    kind: 'named-object', fixture: `Windows Autopilot profile ${FIXTURE_PREFIX}-autopilot (Microsoft Entra joined, device name template KEELRT-%RAND:4%), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-autopilot`, drift: 'change its device name template: the restore puts back KEELRT-%RAND:4%',
+    note: 'Assigned to nobody and the test tenant has no registered Autopilot devices, so no device picks it up.',
+  },
+  policySet: {
+    kind: 'named-object', fixture: `policy set ${FIXTURE_PREFIX}-set holding one existing ${FIXTURE_PREFIX}- device configuration profile, assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-set`, drift: 'delete it: the restore recreates it and adds the same profile back',
+    note: 'Back up after the set holds its profile; the profile itself is not deleted.',
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons. None touches sign-in,
   // Conditional Access or any account; each is set back to its value after the run.
   externalIdentitiesPolicy: {

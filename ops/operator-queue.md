@@ -5501,8 +5501,8 @@ item that needs it stays untouched.
   (`deviceShellScript`), remediations (`deviceHealthScript`, Microsoft-published ones are never written) and custom compliance
   scripts (`deviceComplianceScript`). Who a script runs on is **not** written; fixtures stay unassigned.
 - Needs: /opt/keel-live at the #435 merge or later (`grep -q scriptRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission
   to add: the Restorer and collector hold DeviceManagementConfiguration.ReadWrite.All / .Read.All. If Graph answers 403 (or 400
@@ -5541,8 +5541,8 @@ item that needs it stays untouched.
   `deviceCustomAttributeShellScript` and `groupPolicyConfiguration` (template, then its settings and values through
   `updateDefinitionValues`). Who either is assigned to is **not** written; fixtures stay unassigned.
 - Needs: /opt/keel-live at the #436 merge or later (`grep -q groupPolicySettingsAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission
   to add: the Restorer and collector hold DeviceManagementConfiguration.ReadWrite.All / .Read.All. If Graph answers 403, report
@@ -5616,8 +5616,8 @@ item that needs it stays untouched.
   never changed) and `policySet` (beta; the set, then its items through `POST .../policySets/{id}/update`, remove then add).
   Who any of them is assigned to is **not** written; fixtures stay unassigned.
 - Needs: /opt/keel-live at the #442 merge or later (`grep -q policySetItemsAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementApps.ReadWrite.All (categories, policy sets) and DeviceManagementServiceConfig.ReadWrite.All (Autopilot).
@@ -5708,8 +5708,8 @@ item that needs it stays untouched.
   `POST .../compliancePolicies/{id}/setScheduledActions` with `{ scheduledActions: [...] }`, read back. Who the policy is
   assigned to is **not** written; the fixture stays unassigned.
 - Needs: /opt/keel-live at the #451 merge or later (`grep -q complianceActionsAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementConfiguration.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing.
@@ -5786,8 +5786,8 @@ item that needs it stays untouched.
   `appleUserInitiatedEnrollmentProfile` (name, description, enrollment type options, default type; `platform` on create only;
   `priority` and assignments are **not** written). Fixtures stay unassigned and unused.
 - Needs: /opt/keel-live at the #453 merge or later (`grep -q appleUserInitiatedEnrollmentProfile: /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementApps.ReadWrite.All (e-book categories), DeviceManagementConfiguration.ReadWrite.All (Tunnel) and
@@ -5828,8 +5828,8 @@ item that needs it stays untouched.
   `isDefaultProfile` and assignments are **never** sent; the **default profile is refused**) and `exchangeCustomAppScope`
   (`displayName`, `customAttributes` with the recipient filter; `type` on create only; app role assignments not written).
 - Needs: /opt/keel-live at the #454 merge or later (`grep -q exchangeCustomAppScope: /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
-- Status: todo
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementServiceConfig.ReadWrite.All (branding) and RoleManagement.ReadWrite.Exchange (app scopes); both are in the
@@ -5870,8 +5870,8 @@ item that needs it stays untouched.
   only; a profile on a **secured Wi-Fi network is refused** unless the live profile already joins it). Tokens, QR codes and the Wi-Fi
   password are never read or sent.
 - Needs: /opt/keel-live at the #455 merge or later (`grep -q androidDeviceOwnerEnrollmentProfile: /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementConfiguration.ReadWrite.All (baselines, carts) and DeviceManagementServiceConfig.ReadWrite.All (Android
@@ -5952,8 +5952,8 @@ item that needs it stays untouched.
   - `hardwareConfiguration`: **update only** (PATCH displayName, description, roleScopeTagIds, perDevicePasswordDisabled). A restore
     that would turn per-device BIOS passwords off is refused. The settings file is never read or sent.
 - Needs: /opt/keel-live at the #457 merge or later (`grep -q admxUploadAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementConfiguration.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing.
@@ -6021,8 +6021,8 @@ item that needs it stays untouched.
     expirationDateTime. An expired file, or one that expires before the live one, is refused. Assignments not written.
   - Also in #458: an ADMX upload is skipped when Intune already holds a file with the same file name (see Q126 step 5).
 - Needs: /opt/keel-live at the #458 merge or later (`grep -q admxNotImported /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementApps.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing.
@@ -6061,8 +6061,8 @@ item that needs it stays untouched.
     both apps and `/beta/deviceAppManagement/mobileApps/{sourceId}/relationships`; a link already there to the same target is skipped.
     A supersedence set to `replace` is a content effect (never use one here).
 - Needs: /opt/keel-live at the #459 merge or later (`grep -q appRelationshipPreflight /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementApps.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing.
@@ -6104,8 +6104,8 @@ item that needs it stays untouched.
     `keel-restore` (only the three built-in policy kinds were), so they were never written. They are now.
   - A policy whose only change is its assignments is planned as an `update`; the object itself is not patched.
 - Needs: /opt/keel-live at the #460 merge or later (`grep -q SCRIPT_ASSIGNMENTS /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementConfiguration.ReadWrite.All and DeviceManagementServiceConfig.ReadWrite.All. If Graph answers 403, report
@@ -6148,8 +6148,8 @@ item that needs it stays untouched.
     and each extra one `DELETE .../assignments/{id}`, then read back.
   - A policy whose only change is its assignments is planned as an `update`; the object itself is not patched.
 - Needs: /opt/keel-live at the #462 merge or later (`grep -q "assignmentWrite: 'per-item'" /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementConfiguration.ReadWrite.All, DeviceManagementApps.ReadWrite.All and DeviceManagementServiceConfig.ReadWrite.All.
@@ -6192,8 +6192,8 @@ item that needs it stays untouched.
   - Unmeasured: both assignment reads; whether `/update` accepts empty item lists plus `assignments`; whether an items-only `/update`
     (no `assignments` key) leaves assignments alone; whether `/assign` accepts the iOS list without the group list.
 - Needs: /opt/keel-live at the #463 merge or later (`grep -q "assignmentAction: 'update'" /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementApps.ReadWrite.All and DeviceManagementConfiguration.ReadWrite.All.

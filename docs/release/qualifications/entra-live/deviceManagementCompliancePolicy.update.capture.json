@@ -1,0 +1,116 @@
+{
+  "restoreRef": "6edd5b49-d193-8730-8011-a0d36f4646b7",
+  "entry": {
+    "naturalKey": "deviceManagementCompliancePolicy:ac8c1231-ec32-8e02-b632-155883567b1c",
+    "resourceType": "deviceManagementCompliancePolicy",
+    "operation": "update",
+    "targetId": "ac8c1231-ec32-8e02-b632-155883567b1c",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T17:31:49.109Z",
+    "priorState": {
+      "id": "ac8c1231-ec32-8e02-b632-155883567b1c",
+      "name": "KEEL-RT-150-compliance",
+      "settings": [
+        {
+          "id": "0",
+          "settingInstance": {
+            "@odata.type": "#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance",
+            "choiceSettingValue": {
+              "value": "linux_deviceencryption_required_true",
+              "children": [],
+              "settingValueTemplateReference": null
+            },
+            "settingDefinitionId": "linux_deviceencryption_required",
+            "auditRuleInformation": null,
+            "settingInstanceTemplateReference": null
+          }
+        }
+      ],
+      "platforms": "linux",
+      "description": "KEEL restore fixture",
+      "settingCount": 1,
+      "technologies": "linuxMdm",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies(settings())/$entity",
+      "creationSource": null,
+      "createdDateTime": "2026-10-22T17:25:54.296179Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-10-22T17:25:54.296179Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies('ac8c1231-ec32-8e02-b632-155883567b1c')/settings"
+    },
+    "intendedState": {
+      "name": "KEEL-RT-150-compliance",
+      "settings": [
+        {
+          "@odata.type": "#microsoft.graph.deviceManagementConfigurationSetting",
+          "settingInstance": {
+            "@odata.type": "#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance",
+            "choiceSettingValue": {
+              "value": "linux_deviceencryption_required_true",
+              "children": [],
+              "settingValueTemplateReference": null
+            },
+            "settingDefinitionId": "linux_deviceencryption_required",
+            "auditRuleInformation": null,
+            "settingInstanceTemplateReference": null
+          }
+        }
+      ],
+      "platforms": "linux",
+      "description": "KEEL restore fixture",
+      "technologies": "linuxMdm",
+      "roleScopeTagIds": [
+        "0"
+      ]
+    },
+    "postState": {
+      "id": "ac8c1231-ec32-8e02-b632-155883567b1c",
+      "name": "KEEL-RT-150-compliance",
+      "settings": [
+        {
+          "id": "0",
+          "settingInstance": {
+            "@odata.type": "#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance",
+            "choiceSettingValue": {
+              "value": "linux_deviceencryption_required_true",
+              "children": [],
+              "settingValueTemplateReference": null
+            },
+            "settingDefinitionId": "linux_deviceencryption_required",
+            "auditRuleInformation": null,
+            "settingInstanceTemplateReference": null
+          }
+        }
+      ],
+      "platforms": "linux",
+      "description": "KEEL restore fixture",
+      "settingCount": 1,
+      "technologies": "linuxMdm",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies(settings())/$entity",
+      "creationSource": null,
+      "createdDateTime": "2026-10-22T17:25:54.296179Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-10-22T17:25:54.296179Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/compliancePolicies('ac8c1231-ec32-8e02-b632-155883567b1c')/settings",
+      "scheduledActionsForRule": [
+        {
+          "id": "ac8c1231-ec32-8e02-b632-155883567b1c",
+          "ruleName": null,
+          "scheduledActionConfigurations": [
+            {
+              "id": "e0df713e-eea5-8107-acc1-b3201e1e7ff1",
+              "actionType": "block",
+              "gracePeriodHours": 0,
+              "notificationTemplateId": "766d6357-cf13-863e-ac98-f99d551c3da0",
+              "notificationMessageCCList": []
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -5089,7 +5089,7 @@ item that needs it stays untouched.
   imports (SharePoint, Teams, Exchange, OneDrive + Purview), from the grants declared at capture time. The Wave 2 writer
   and read imports never change it.
 - Needs: nothing.
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** reads only. Graph GETs and PowerShell `Get-` cmdlets only. Grant, assign, remove or register nothing; no
   `New-`, `Set-`, `Add-` or `Remove-` cmdlet. Read with the Collector first; only where the Collector is refused, repeat

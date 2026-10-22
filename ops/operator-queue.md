@@ -5679,11 +5679,10 @@ item that needs it stays untouched.
   scripts (`deviceComplianceScript`). Who a script runs on is **not** written; fixtures stay unassigned.
 - Needs: /opt/keel-live at the #435 merge or later (`grep -q scriptRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
 - Status: in-progress
-- Result: blocked (2026-10-22 08:13 UTC) on **#471**: the Restorer lacks `DeviceManagementScripts.ReadWrite.All`. B = c396a2c. Nothing created; nothing granted.
-  - Fixture creates (Restorer, POST beta): `deviceManagementScripts`, `deviceShellScripts`, `deviceHealthScripts` and `deviceComplianceScripts` all answered **403**: "Application is not authorized to perform this operation. Application must have one of the following scopes: DeviceManagementScripts.ReadWrite.All". KEEL's writers declare DeviceManagementConfiguration.ReadWrite.All, so a restore would hit the same 403.
-  - Backup side is fine: in snapshot ac991228, all four kinds are complete or complete-empty (200). One existing non-fixture PowerShell script is backed up.
-  - Plan at B: `~/keel-rg4/plan-B.md` (these types are steps 44–51).
-  - Waiting on Marouane: add `DeviceManagementScripts.ReadWrite.All` to the Restorer and grant admin consent (D-93a says to add what the tool needs; consent is his).
+- Result: in progress (2026-10-22 09:55 UTC). The Restorer now holds `DeviceManagementScripts.ReadWrite.All` (#471 closed). Waiting for **#480** (fixes #473) to deploy: the create-round dry run `18801eeb` failed with `listing /deviceManagement/deviceHealthScripts/{parent} failed: String policy id is invalid. Provided id: {parent}`.
+  - Fixtures created (Restorer, 201 each): `KEEL-RT-script`, `KEEL-RT-shell`, `KEEL-RT-remediation`, `KEEL-RT-compliance-script`, all unassigned.
+  - Snapshot S = `db596a38`: all four kinds `complete`. Each fixture has a non-empty body (`scriptContent` or `detectionScriptContent`) and runAsAccount system. Microsoft-published remediations in the tenant: 0 (so step 5 does not apply).
+  - For the create round I deleted `KEEL-RT-script` and `KEEL-RT-remediation`. They are in S, and I will restore them once #480 is live. `KEEL-RT-shell` and `KEEL-RT-compliance-script` are still in the tenant.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission
   to add: the Restorer and collector hold DeviceManagementConfiguration.ReadWrite.All / .Read.All. If Graph answers 403 (or 400

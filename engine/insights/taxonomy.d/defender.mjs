@@ -6,5 +6,8 @@ export default Object.freeze({
     defenderRoleDefinition: { name: 'Defender admin role' },
     defenderRoleAssignment: { name: 'Defender admin role assignment' },
     defenderCustomAppScope: { name: 'Defender app access scope' },
+    // Remaining kinds, batch 7.
+    simulationAutomation: { name: 'Attack simulation automation' },
+    attackSimulation: { name: 'Attack simulation' },
   }),
 });

@@ -2,6 +2,10 @@
 export default Object.freeze({
   service: 'SharePoint',
   entries: Object.freeze({
+    // Remaining kinds, batch 7: catalogue types; priority comes from the catalogue.
+    sharepointSettings: { name: 'SharePoint and OneDrive tenant setting' },
+    itemInsightsSettings: { name: 'Item insights setting' },
+    externalConnection: { name: 'Copilot connector' },
     'sharepoint-site-settings': {
       name: 'SharePoint setting',
       priority: 'high',

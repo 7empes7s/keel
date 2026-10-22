@@ -33,6 +33,7 @@ const INTUNE = 'Microsoft Intune admin center';
 const M365 = 'Microsoft 365 admin center';
 const EXCHANGE = 'Exchange admin center';
 const DEFENDER = 'Microsoft Defender portal';
+const SHAREPOINT = 'SharePoint admin center';
 const at = (center, ...steps) => [center, ...steps].join(' > ');
 
 /**
@@ -178,6 +179,12 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   enterpriseCodeSigningCertificate: at(INTUNE, 'Tenant administration', 'Connectors and tokens', 'Windows enterprise certificate'),
   symantecCodeSigningCertificate: at(INTUNE, 'Tenant administration', 'Connectors and tokens', 'Windows Symantec certificate'),
   userExperienceAnalyticsBaseline: at(INTUNE, 'Reports', 'Endpoint analytics', 'Settings', 'Baselines'),
+  // Remaining kinds, batch 7: Microsoft 365 settings.
+  sharepointSettings: at(SHAREPOINT, 'Settings'),
+  itemInsightsSettings: at(M365, 'Settings', 'Org settings', 'Search and intelligence'),
+  externalConnection: at(M365, 'Copilot', 'Connectors'),
+  simulationAutomation: at(DEFENDER, 'Email and collaboration', 'Attack simulation training', 'Automations'),
+  attackSimulation: at(DEFENDER, 'Email and collaboration', 'Attack simulation training', 'Simulations'),
 });
 
 export function adminCenterPathFor(resourceType) {

@@ -2,6 +2,7 @@ import { CATALOG, catalogReadPath } from '../../tools/tenant-probe/catalog.mjs';
 import { redactSecrets } from '../../tools/tenant-probe/graph.mjs';
 import { DESCRIPTORS } from './descriptors.mjs';
 import { register, get } from './registry.mjs';
+import { ID_KEY_TYPES } from '../cir/naturalKey.mjs';
 
 export const M1_TYPES = DESCRIPTORS.map((d) => d.type);
 
@@ -38,6 +39,23 @@ function graphNativeAdapter(type) {
       pageCap: entry.pageCap ?? Infinity,
       ...(entry.acceptLanguage ? { acceptLanguage: entry.acceptLanguage } : {}),
     });
+    // Issue #438: the beta Exchange role reads return the same object on more
+    // than one page, and a different one each run. Exact repeats are dropped
+    // here so they never reach the canonicalizer, whose natural-key collision
+    // fails the whole collect. A repeat that differs from the first copy is
+    // kept: for an id-keyed kind it would still collide, so only that kind
+    // fails and the rest of the collect goes on.
+    if (!result?.error && Array.isArray(result?.items)) {
+      const { items, conflicts } = dropRepeatedIds(result.items);
+      result.items = items;
+      if (conflicts.length > 0 && ID_KEY_TYPES.has(type)) {
+        return {
+          entry, path, startedAt, completedAt: new Date(), items, pages: Number.isSafeInteger(result.pages) ? result.pages : null,
+          status: Number.isInteger(result.status) ? result.status : null, capped: result.capped === true,
+          error: { error: `the read returned different objects under one id: ${conflicts.join(', ')}` },
+        };
+      }
+    }
     // Restore gaps batch 5: a kind whose objects hold children with one more
     // collection each (an administrative template's settings and their values)
     // reads that collection per child.
@@ -84,6 +102,39 @@ function graphNativeAdapter(type) {
       return items;
     },
   };
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+/**
+ * Drops a repeat of an object already in the list: same id, same content.
+ * A repeat whose content differs is kept, and its id is returned in
+ * `conflicts`. Objects without a string id are kept as they are.
+ * Exported for tests.
+ */
+export function dropRepeatedIds(list) {
+  const firstById = new Map();
+  const items = [];
+  const conflicts = new Set();
+  for (const item of list) {
+    const id = typeof item?.id === 'string' && item.id.length > 0 ? item.id : null;
+    if (id === null) { items.push(item); continue; }
+    const seen = firstById.get(id);
+    if (seen === undefined) {
+      firstById.set(id, stableStringify(item));
+      items.push(item);
+    } else if (seen !== stableStringify(item)) {
+      conflicts.add(item.id);
+      items.push(item);
+    }
+  }
+  return { items, conflicts: [...conflicts] };
 }
 
 // Wave 1 CAT-ENTRA: objects that exist only under one parent (a partner's

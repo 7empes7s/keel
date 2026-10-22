@@ -37,6 +37,7 @@
  *    content this project holds no rights to reproduce.
  */
 import { classifyForOperation, exportProjection } from '../contracts/fieldProjection.mjs';
+import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 
 export const BENCHMARK_REGISTRY_CONTRACT_VERSION = 1;
 
@@ -112,6 +113,7 @@ export function fixMatcherFor(name) {
  */
 function frozenFix(controlId, fix, requiredObservations) {
   if (fix === null || fix === undefined) return null;
+  if (fix.workload !== undefined) return frozenWorkloadFix(controlId, fix, requiredObservations);
   const { resourceType, field, to, matcher } = fix;
   if (!requiredObservations.some((req) => req.resourceType === resourceType)) {
     throw new TypeError(`${controlId}: fix.resourceType must be one the control reads`);
@@ -129,6 +131,35 @@ function frozenFix(controlId, fix, requiredObservations) {
     throw new TypeError(`${controlId}: fix matcher '${matcher}' is not allowlisted — call registerFixMatcher() first`);
   }
   return Object.freeze({ resourceType, field, to, matcher });
+}
+
+/**
+ * A fix on a service read (the mail protection policies): one of `settings` on one
+ * object of `family`, written by that family's declared Set- cmdlet through the
+ * workload restore (restore/workloads/cmdletSettings.mjs). Each setting must be one
+ * that write declares; `to` is plain JSON, or null to empty a list. The matcher is
+ * called with (fact, setting) and says whether that setting of that object fails.
+ */
+function frozenWorkloadFix(controlId, fix, requiredObservations) {
+  const { workload, family, settings, matcher } = fix;
+  if (!requiredObservations.some((req) => req.resourceType === workload && (req.parts ?? []).includes(family))) {
+    throw new TypeError(`${controlId}: fix.family must be a kind of a service read the control reads`);
+  }
+  const write = Object.values(WKLD_WRITE_OPERATIONS).find((entry) => entry.workload === workload && entry.family === family && entry.method.startsWith('Set-'));
+  if (!write) throw new TypeError(`${controlId}: Keel declares no write for ${family}`);
+  if (!settings || typeof settings !== 'object' || Object.keys(settings).length === 0) {
+    throw new TypeError(`${controlId}: fix.settings must name at least one setting`);
+  }
+  for (const [field, to] of Object.entries(settings)) {
+    if (!write.fields.includes(field)) throw new TypeError(`${controlId}: fix setting ${field} is not one ${write.method} is declared to write`);
+    if (to !== null && !['boolean', 'string', 'number'].includes(typeof to)) {
+      throw new TypeError(`${controlId}: fix setting ${field} must be a plain value or null`);
+    }
+  }
+  if (!FIX_MATCHERS.has(matcher)) {
+    throw new TypeError(`${controlId}: fix matcher '${matcher}' is not allowlisted — call registerFixMatcher() first`);
+  }
+  return Object.freeze({ workload, family, resourceType: write.resourceType, settings: Object.freeze({ ...settings }), matcher });
 }
 
 function frozenFrameworkRef(ref) {
@@ -364,12 +395,15 @@ const MAIL_PROTECTION = 'exchange-mail-flow';
 // read up to a day and a half old still counts.
 const MAIL_PROTECTION_MAX_AGE_MS = 36 * 60 * 60 * 1000;
 
-const isOn = Object.freeze({ test: (value) => value === true, expected: true });
-const isOff = Object.freeze({ test: (value) => value === false, expected: false });
-const isEmpty = Object.freeze({ test: (value) => Array.isArray(value) && value.length === 0, expected: [] });
+// `fixTo` is the value "Make it pass" writes. An empty list is written as null, the
+// documented way to clear one, and reads back as an empty list.
+const isOn = Object.freeze({ test: (value) => value === true, expected: true, fixTo: true });
+const isOff = Object.freeze({ test: (value) => value === false, expected: false, fixTo: false });
+const isEmpty = Object.freeze({ test: (value) => Array.isArray(value) && value.length === 0, expected: [], fixTo: null });
 const is = (word) => Object.freeze({
   test: (value) => typeof value === 'string' && value.toLowerCase() === word.toLowerCase(),
   expected: word,
+  fixTo: word,
 });
 
 function policyName(fact) {
@@ -395,9 +429,14 @@ function checkPolicies(facts, { kind, settings, applies = () => true }) {
   return { verdict: details.length ? 'fail' : 'pass', details };
 }
 
-function mailControl({ controlId, kind, title, description, severity, settings, applies }) {
+function mailControl({ controlId, kind, title, description, severity, settings, applies = () => true }) {
   const predicateName = `${MAIL_PROTECTION}.${controlId.slice(controlId.lastIndexOf('.') + 1)}`;
   registerPredicate(predicateName, (facts) => checkPolicies(facts, { kind, settings, applies }));
+  // "Make it pass": each failing setting of each policy the check looks at can be set
+  // to what the check expects, one setting at a time.
+  registerFixMatcher(predicateName, (fact, setting) => (
+    fact?.kind === kind && applies(fact) && Boolean(settings[setting]) && !settings[setting].test(fact[setting])
+  ));
   registerControl({
     controlId,
     title,
@@ -409,6 +448,12 @@ function mailControl({ controlId, kind, title, description, severity, settings, 
     severity,
     requiredObservations: [{ resourceType: MAIL_PROTECTION, maxAgeMs: MAIL_PROTECTION_MAX_AGE_MS, parts: [kind] }],
     predicate: { name: predicateName, args: {} },
+    fix: {
+      workload: MAIL_PROTECTION,
+      family: kind,
+      settings: Object.fromEntries(Object.entries(settings).map(([field, rule]) => [field, rule.fixTo])),
+      matcher: predicateName,
+    },
   });
 }
 

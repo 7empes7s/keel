@@ -320,7 +320,9 @@ export interface ComplianceFinding {
   };
   // "Make it pass" (gap 6): the one setting this control's fix changes, and the
   // objects in the newest backup it would change. Absent from older readers.
-  fix?: { resourceType: string; field: string; to: unknown } | null;
+  // A fix on a service read (the Defender email checks) changes one of several
+  // settings: `field` is null and each candidate names its own.
+  fix?: { resourceType: string; field: string | null; to: unknown; settings?: Record<string, unknown> } | null;
   fixCandidates?: ComplianceFixCandidate[];
 }
 

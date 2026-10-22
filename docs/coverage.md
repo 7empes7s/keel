@@ -751,6 +751,10 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: Mail flow (transport) rules (switched on only after the restore of mailbox client access settings is proven)
 - Put back: Inbound connectors (switched on only after the restore of mailbox client access settings is proven)
 - Put back: Outbound connectors (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Anti-phishing policies (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Anti-spam (hosted content filter) policies (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Anti-malware policies (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Safe Links policies (switched on only after the restore of mailbox client access settings is proven)
 
 **You do:** Domains, anti-spam, anti-phish, malware, DKIM, Safe Links and Safe Attachments policies, a rule turned on or off, and a deleted rule or connector are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a mail flow rule other than its comment needs a second approver. Safe Links and Safe Attachments are backed up only when the tenant has Defender for Office 365.
 

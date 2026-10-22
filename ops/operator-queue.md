@@ -865,6 +865,30 @@ being triggered by queue updates.
   - whether a task-67 recovery manifest exists for the reconstruction, or which tool builds it.
   Run nothing that writes; don't start a Setup run. Report a short ordered list of the remaining steps.
 
+### Q134: Read-only check that the Exchange app scope guard fails closed on unstable assignment reads (after #469, fixes #467)
+- Drafted by the "App scope guard misses assignments" thread (2026-10-22), from your Q125 finding **#467**. Code: PR #469. The guard
+  now reads `beta /roleManagement/exchange/roleAssignments?$filter=appScopeId eq '<id>'` first (only rows naming the scope count; a
+  rejected or ignored filter proves nothing). If that finds none, it reads the full list 3 times
+  (`APP_SCOPE_ASSIGNMENT_READS`). The filter update is written only when every read succeeds, no read repeats an id or lacks one,
+  all reads return the same id set, and none names the scope. Otherwise it is skipped as a manual step (`exchangeAppScopeFilter`).
+  The count is of distinct ids, with "at least" when the reads were in doubt.
+- Needs: /opt/keel-live at the #469 merge or later (`grep -q APP_SCOPE_ASSIGNMENT_READS /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
+- Status: todo
+- Result:
+- **Read-only. Nothing is written to the tenant.** Restorer credentials, test tenant only. Never change L or any app scope, never
+  create or change an app role assignment.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with the same one-off script as Q125 (writer `read` = your
+  Graph read client, `write` = a stub that throws), L = `KEEL-RT-test-mailboxes`:
+  1. Does Graph honour the filter? One read of `beta /roleManagement/exchange/roleAssignments?$filter=appScopeId eq '<L.id>'`
+     (URL-encoded): report the status, the row count, and whether every row has `appScopeId` equal to L's id.
+  2. Step 2 of Q125 (broader filter `PrimarySmtpAddress -like '*'`, `live.payload` = L), **20 runs**. Expect every run `skipped`
+     with requirement `exchangeAppScopeFilter`; report each run's reason (the "used by N" / "could not be confirmed" text) and that
+     `write` was never called.
+  3. Step 3 of Q125 (no `live.payload`), 5 runs, same expectations.
+  4. Only if Q123 runs at #469 or later: the unused `KEEL-RT-app-scope` update is now expected to be a manual step too while the
+     assignment reads repeat rows (the intended fail-closed side). Report the outcome.
+- **Report:** B; step 1 status/count/match; the 25 reasons; confirmation that no write was attempted.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

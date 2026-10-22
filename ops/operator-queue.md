@@ -7271,3 +7271,29 @@ item that needs it stays untouched.
 - **Report:** all outputs verbatim (step 1 may be long for voice; commit it as `ops/q155/unknown-fields.txt` on a new
   branch `claude/q155-teams-unknown-fields`, never master, if it is over 60 rows, and give the commit). Nothing is
   written to the tenant or the DB.
+
+### Q156: Live re-check of the compliance policy create round (fixes #513, after #531)
+- Drafted by the "Compliance create post-check" thread (2026-10-22), from your Q120 finding **#513**. Code: PR #531. Fixture-tested only.
+  - **Change:** the create's post-state check no longer looks for `scheduledActionsForRule` in the policy read (`$expand=settings`,
+    which never returns it). The actions are checked from `/compliancePolicies/{id}/scheduledActionsForRule?$expand=scheduledActionConfigurations`
+    right after, and the journalled post-state now holds them. Lost or different actions still fail the create. Update is unchanged.
+- Needs: /opt/keel-live at the #531 merge or later (`grep -q checkedAfterWrite /opt/keel-live/engine/restore/recordWriter.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q120. Under the 2026-10-14 standing
+  authorization, approve this restore yourself and log the approval id. Restorer only; global admin not used. If Graph answers 403,
+  report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.
+  **Never assign the fixture to a group, user or device.** No tenant-wide setting is changed.
+- **Fixture:** as in Q120: Linux settings catalog compliance policy `KEEL-RT-compliance`, `linux_deviceencryption_required_true`,
+  block after 0 h (add the notification action only if a notification template can now be made), assigned to nobody.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Create the fixture, then take snapshot S (one tier 1 run). Confirm its payload holds `settings` (1) and `scheduledActionsForRule` (block 0 h).
+  2. **Create round:** delete the policy. Restore from S, approve, enforce, capture `create`. Expect the journal entry **`succeeded`**,
+     and its `post_state` to hold `scheduledActionsForRule` with block 0 h. Read the tenant through the actions route and confirm the same.
+     If it is `uncertain` again, report the exact detail text and the `post_state` keys.
+  3. If verified, promote the create (replace `deviceManagementCompliancePolicy.create.demotion.json`).
+  4. Cleanup: delete every `KEEL-RT-compliance*` policy. Report anything left.
+  5. Commit the record and `.capture.json` under `docs/release/qualifications/entra-live/` on `claude/live-evidence-compliance-create`,
+     branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR. Run
+     `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; S; dry run, approval and job ids; the journal outcome and `post_state` keys; promoted or not; the evidence branch and commit; anything left in the tenant.

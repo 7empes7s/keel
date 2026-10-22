@@ -7647,3 +7647,24 @@ item that needs it stays untouched.
      `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; step 1 line and outcome; step 2 dry run, approval and job ids and the result; step 3; the evidence branch and
   commit; anything left in the tenant. If the expanded read fails, report the exact Graph answer and comment on #546.
+
+### Q163: Live re-check that the Intune audit log ingests again (fixes #552, after #554)
+- Drafted by the "Intune audit ingest stuck" thread (2026-10-22). Code: PR #554. Re-runs the part of Q154 that failed.
+  - **Change:** a long CamelCase word in a Microsoft activity name (`UpdateWindowsFeatureUpdateProfileAssignmentsAsync`) is now
+    split into words (`Update Windows Feature Update Profile Assignments Async ...`) instead of being taken for a secret, so the
+    page is no longer refused as `invalid-page`. A token-shaped activity is dropped (stored as null) and the event is kept.
+- Needs: /opt/keel-live at the #554 merge or later (`grep -q CAMEL_WORDS /opt/keel-live/engine/identity/auditSources.mjs`).
+- Status: open
+- **Tenant:** Collector reads only. No tenant writes, no CA policies, break-glass or Marouane's account.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. After the next scheduled collect (or one `collect` job), report the stdout line starting `Microsoft Intune audit log:`
+     (and the Entra one, to confirm it still reads).
+  2. `SELECT source, status, window_from, window_until, evidence->>'insertedEvents' FROM audit_ingest_run WHERE source='intune-audit' ORDER BY started_at DESC LIMIT 6;`
+     and `SELECT * FROM audit_ingest_state;`. Expect intune-audit windows moving past `2026-10-22T17:13:47.681Z`.
+  3. `SELECT source_event_id, occurred_at, activity, actor_kind FROM audit_change_fact WHERE activity LIKE 'Update Windows Feature Update Profile%' ORDER BY occurred_at DESC LIMIT 5;`
+     Expect the Q129 fixture assignment events (servicePrincipal actor) with the split activity name.
+     Also `SELECT count(*) FROM audit_change_fact WHERE source_event_id LIKE 'intune:%' AND activity IS NULL;` (report the number).
+- **Expected:** Intune read status `complete` or `complete-empty` once caught up (first runs may stop at the time budget and
+  continue next run), and the three previously failing events stored. If `invalid-page` remains, re-run the Q154 reproduction
+  on the stuck window, report which check throws and the activity's shape (length, character classes), and comment on #552.
+- **Report:** per step, the result.

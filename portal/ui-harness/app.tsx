@@ -64,6 +64,7 @@ import { CheckAgain } from "@/components/setup/check-again";
 import { SetupPage as SetupBody } from "@/components/setup/setup-page";
 import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICES } from "../../engine/bootstrap/permissionCatalog.mjs";
 import { setupStatus as setupPageStatus, type PermissionEntry, type PermissionGrant, type SetupApp, type SetupPermissions, type SetupState } from "@/lib/setup-view";
+import { serviceStatuses } from "@/lib/setup-services";
 import { AlertsPage } from "@/components/alerts/alerts-page";
 import { alertCounts, alertsStatus, type AlertItem } from "@/lib/alerts-view";
 import { ReadinessPage } from "@/components/readiness/readiness-page";
@@ -1178,6 +1179,11 @@ const SETUP_CHECKED: SetupState = {
   checkFailed: false,
   collect: { allowed: true, basis: "read-access-confirmed", missing: [] },
   firstCollection: null,
+  // The settings reader's certificate runs out in 12 days; the restorer's is fine.
+  connections: [
+    { role: "settings-reader", name: "Keel Settings Reader", appId: READER_APP.appId, credentialExpiresAt: "2026-10-14T09:00:00Z" },
+    { role: "settings-restorer", name: "Keel Settings Restorer", appId: null, credentialExpiresAt: "2027-04-01T00:00:00Z" },
+  ],
   scopes: [
     {
       scope: "read", workloads: ["entra-collect", "intune-collect"], observed: true,
@@ -2175,7 +2181,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/setup/checked": {
       const state = path === "/setup" ? SETUP : SETUP_CHECKED;
       return <><PageHeader actions={<CheckAgain />} description="Connect Keel to your Microsoft tenant: what is in place, what waits on you, and when the first backup can run." generatedAt={now} section="Settings" status={setupPageStatus(state)} title="Setup" />
-        <SetupBody canBackup canStart state={state} /></>;
+        <SetupBody canBackup canStart services={serviceStatuses(path === "/setup" ? [] : COVERAGE.types, now)} state={state} /></>;
     }
     case "/emergency-changes": case "/emergency-changes/none": {
       const data: ChangeIntentsData = path === "/emergency-changes"

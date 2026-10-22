@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { useBackup } from "@/components/backup-controls";
+import { CredentialAlerts, ServiceStatusSection } from "@/components/setup/service-status";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { PermissionsPanel } from "@/components/setup/permissions-panel";
@@ -19,6 +20,7 @@ import {
   progressCounts, runSentence, setupPrimary, setupVerdict, stepHelp, stepLink, stepTitle, workloadChip, workloadLabel,
   type SetupPrimary, type SetupScope, type SetupState, type SetupStep,
 } from "@/lib/setup-view";
+import type { ServiceStatus } from "@/lib/setup-services";
 import { toast } from "@/lib/toast";
 
 // Setup (portal audit, pick A): the verdict, four tiles, then the two setups side by
@@ -29,7 +31,13 @@ import { toast } from "@/lib/toast";
 // continuing go through the guarded setup route; the page then re-reads with
 // router.refresh. The page has one amber action at most (setupPrimary).
 
-export function SetupPage({ state, canStart, canBackup }: { state: SetupState; canStart: boolean; canBackup: boolean }) {
+export function SetupPage({ state, canStart, canBackup, services = null }: {
+  state: SetupState;
+  canStart: boolean;
+  canBackup: boolean;
+  // One line per Microsoft 365 service; null when the coverage report could not be read.
+  services?: ServiceStatus[] | null;
+}) {
   const verdict = setupVerdict(state);
   const primary = setupPrimary(state, { canStart, canBackup });
   const { backUp, busy: backingUp, feedback } = useBackup();
@@ -50,6 +58,7 @@ export function SetupPage({ state, canStart, canBackup }: { state: SetupState; c
         tone={verdict.tone}
       />
       {feedback}
+      <CredentialAlerts canCheck={state.canCheck} credentials={state.connections} now={state.generatedAt} />
       <div className="su-body" data-layer="explanation">
         <section aria-label="Setup at a glance" className="su-tiles">
           {[read, restore].map((scope) => scope ? (
@@ -77,6 +86,9 @@ export function SetupPage({ state, canStart, canBackup }: { state: SetupState; c
           </Link>
         </section>
 
+        {/* Once Keel can read the tenant, how each service is doing comes first; before
+            that, the setup steps do. */}
+        {state.collect.allowed ? <ServiceStatusSection now={state.generatedAt} services={services} /> : null}
         <div className="su-tracks">
           {state.scopes.map((scope) => (
             <SetupTrack
@@ -89,6 +101,7 @@ export function SetupPage({ state, canStart, canBackup }: { state: SetupState; c
           ))}
         </div>
         <PermissionsPanel state={state} />
+        {state.collect.allowed ? null : <ServiceStatusSection now={state.generatedAt} services={services} />}
       </div>
     </div>
   );

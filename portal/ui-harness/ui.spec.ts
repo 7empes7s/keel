@@ -2558,6 +2558,43 @@ test("Setup · missing permissions come first with a consent link, and the table
   await expect(page.locator(".su-page")).not.toContainText("Extra:");
 });
 
+// Setup shows, for every Microsoft 365 service, whether its backup works, what Keel can
+// put back, the last good read and the one thing to fix; and warns 30 days before a Keel
+// app certificate runs out, with the Entra page to add a new one.
+test("Setup · one status tile per service, worst first, and a warning before a Keel app certificate expires", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/setup/checked", "dark");
+  const expiry = page.locator(".su-expiry-row");
+  await expect(expiry).toHaveCount(1);
+  await expect(expiry).toHaveAttribute("data-tone", "soon");
+  await expect(expiry.locator("b")).toHaveText("Keel Settings Reader: its certificate expires in 12 days, on 14 Oct 2026");
+  await expect(expiry).toContainText("When it expires, settings backups stop.");
+  await expect(expiry.getByRole("link", { name: /Add a new certificate in Entra ID/ })).toHaveAttribute("href",
+    "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Credentials/appId/c011ec70-0000-4000-8000-0000000000c1");
+  // The warning comes before the setup steps; with read access done, so do the services.
+  const order = await page.evaluate(() => ["su-expiry", "su-svc", "su-tracks"].map((name) => document.querySelector(`.${name}`)!.getBoundingClientRect().top));
+  expect(order).toEqual([...order].sort((a, b) => a - b));
+
+  const tiles = page.locator(".su-svc-tile");
+  // One tile per Microsoft 365 service; Entra ID and Purview both have a failed kind.
+  await expect(tiles).toHaveCount(8);
+  await expect(page.locator(".su-svc-head p")).toHaveText("2 of 8 services are failing to back up.");
+  await expect(tiles.first().locator(".su-svc-name b")).toHaveText("Entra ID");
+  const entra = tiles.filter({ hasText: "Entra ID" });
+  await expect(entra).toHaveAttribute("data-tone", "urgent");
+  await expect(entra.locator(".badge")).toHaveText("Failing");
+  await expect(entra.locator(".su-svc-blocker")).toContainText("Keel's backup app is missing a permission Microsoft asks for.");
+  await expect(entra.getByRole("link", { name: "Check read access" })).toHaveAttribute("href", "#setup-read");
+  const teams = tiles.filter({ hasText: "Teams" });
+  await expect(teams.locator(".badge")).toHaveText("Out of date");
+  await expect(teams.getByRole("link", { name: "See what is out of date" })).toHaveAttribute("href", /\/protect\?service=Teams&health=out-of-date$/);
+  const exchange = tiles.filter({ hasText: "Exchange Online" });
+  await expect(exchange.locator(".badge")).toHaveText("Working");
+  await expect(exchange.locator(".su-svc-lines")).toContainText("Backup");
+  await expect(exchange.locator(".su-svc-read")).toHaveText(/^Last good read /);
+  await expect(tiles.last().locator(".badge")).toHaveText("Not set up");
+});
+
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
     for (const hash of ["/setup", "/setup/checked"]) {

@@ -7412,7 +7412,7 @@ item that needs it stays untouched.
   live read record is imported. Once on, Exchange role assignments that Graph names `/RoleGroups/<id>` read with the group's name.
 - Needs: /opt/keel-live at the #535 merge or later (`test -f /opt/keel-live/engine/collect/workloads/exchangeRoleGroups.mjs`).
 - Status: done
-- Result: done (2026-10-22 21:13 UTC). **exchange-role-groups is on: `complete`, 39 role groups.** Assignments name role groups by name, and 205 of 206 resolve. Collector reads only; nothing granted. B = 3010d22.
+- Result: done (2026-10-22 21:13 UTC). **exchange-role-groups is on: `complete`, 39 role groups.** Assignments name role groups by name, and all 201 resolve. Collector reads only; nothing granted. B = 3010d22.
   1. Capture (`exchange-collector.json`): exit 0, outcome `complete`, proven `["exchange-role-groups.role-groups"]`, notProven `[]`, verify ok. `pseudonymize.mjs check`: exit 0.
   2. Evidence: `claude/live-evidence-exchange-role-groups` @ **d9452023** (that record only; my scan is clean).
   3. Import (`--dir` my clone): exit 0. Imported 17, including `workload-reads-exchange-role-groups-live-acceptance.json`; refused `[]`; absent: sharepoint-site-settings reads, sharepoint-site-grants, sharepoint-site-permissions.
@@ -7420,7 +7420,7 @@ item that needs it stays untouched.
      onedrive-site-settings complete 1, power-platform-settings disabled, purview-governance partial 2, purview-labels complete 21, purview-retention-dlp complete 10, sharepoint-site-settings complete 21,
      teams-org-policies partial 25, teams-settings complete 11, teams-voice-policies partial 143.
   5. Names check: the item's query gives `by_id 0 | named 0`, because `exchangeRoleAssignment.principalId` holds the role group **name** (`/RoleGroups/<name>`), not an id.
-     Matching by name instead: **206** assignments to a role group, **205** match a role group name in the newest exchange-role-groups run (39 groups).
+     Matching by name instead: **201** assignments to a role group, and **201** match a role group name in the newest exchange-role-groups run (39 groups).
 - **Tenant:** reads only. `Get-RoleGroup` with the Collector credential. No `New-`, `Set-`, `Add-` or `Remove-` cmdlet. Grant,
   assign or create nothing.
 - Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from

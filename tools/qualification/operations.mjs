@@ -319,6 +319,11 @@ const FIXTURE_PAYLOADS = Object.freeze({
     displayName: 'Fixture provisioning profile', description: 'Fixture', payloadFileName: 'fixture.mobileprovision', payload: 'PHBsaXN0Lz4=',
     expirationDateTime: '2099-01-01T00:00:00Z', roleScopeTagIds: ['0'],
   },
+  // Restore gaps, batch 13: one app that needs another installed first.
+  mobileAppRelationship: {
+    '@odata.type': '#microsoft.graph.mobileAppDependency', sourceId: 'fixture-app-source', sourceDisplayName: 'Fixture app',
+    targetId: 'fixture-app-target', targetDisplayName: 'Fixture runtime', targetType: 'child', dependencyType: 'detect',
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons.
   externalIdentitiesPolicy: { allowExternalIdentitiesToLeave: true, allowDeletedIdentitiesDataRemoval: false },
   accessReviewPolicy: { isGroupOwnerManagementEnabled: true },
@@ -595,6 +600,16 @@ export function fakeGraph() {
       if (/^\/deviceManagement\/groupPolicyDefinitions\/[^/]+$/.test(path)) return { ok: true, status: 200, body: { id: decodeURIComponent(path.split('/').pop()) } };
       const settings = /^(\/deviceManagement\/groupPolicyConfigurations\/[^/]+)\/definitionValues$/.exec(path);
       if (settings && !objects.has(path) && objects.has(settings[1])) return { ok: true, status: 200, body: { value: [] } };
+      // Restore gaps batch 13: the apps a dependency or supersedence links exist
+      // in every fixture tenant; an app lists the links it has.
+      const appLinks = /^\/deviceAppManagement\/mobileApps\/([^/]+)\/relationships$/.exec(path);
+      if (appLinks) {
+        const value = [...objects.entries()]
+          .filter(([key, object]) => key.startsWith('/deviceAppManagement/mobileAppRelationships/') && object.sourceId === decodeURIComponent(appLinks[1]))
+          .map(([, object]) => object);
+        return { ok: true, status: 200, body: { value } };
+      }
+      if (/^\/deviceAppManagement\/mobileApps\/[^/]+$/.test(path)) return { ok: true, status: 200, body: { id: decodeURIComponent(path.split('/').pop()) } };
       // Restore gaps batch 12: the imported ADMX files are listed before an upload.
       if (path === '/deviceManagement/groupPolicyUploadedDefinitionFiles') {
         const value = [...objects.entries()].filter(([key]) => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes('/')).map(([, object]) => object);

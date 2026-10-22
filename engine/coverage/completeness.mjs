@@ -192,8 +192,8 @@ export const COMPLETENESS = Object.freeze({
   deviceManagementIntent: { whole: 'not-written', missing: [part('The baseline\'s settings', 'other-route')] },
   managedDevice: { managed: true },
   mobileApp: { whole: 'not-written', missing: [part('The app package', 'binary-route')] },
-  managedAppPolicy: { missing: [part('The list of protected apps, which a new policy needs', 'other-route'), part('Windows protection policies', 'not-written')] },
-  targetedManagedAppConfiguration: { missing: [part('The apps it targets, which a new configuration needs', 'other-route')] },
+  managedAppPolicy: { missing: [part('Windows Information Protection policies', 'not-written')] },
+  targetedManagedAppConfiguration: {},
   mobileAppConfiguration: {},
   // Wave 1 CAT-INTUNE. Assignments are backed up as relationship reads
   // (engine/collect/relationships.mjs); none of these writers puts them back yet.
@@ -265,7 +265,7 @@ export const COMPLETENESS = Object.freeze({
   microsoftTunnelConfiguration: { missing: [part('The sites and servers that use it', 'other-route')] },
   microsoftTunnelHealthThreshold: { whole: 'not-written' },
   iosLobAppProvisioningConfiguration: { missing: [part('Who the profile is assigned to', 'other-route')] },
-  mobileAppRelationship: { whole: 'not-written' },
+  mobileAppRelationship: { missing: [part('The app packages on both ends, added again by hand before the link', 'binary-route')] },
   managedEBook: { whole: 'not-written', missing: [part('Who the book is assigned to', 'other-route')] },
   managedEBookCategory: { missing: [part('Which books are in the category', 'other-route')] },
   cartToClassAssociation: { missing: [part('The devices and classes it names', 'other-route')] },

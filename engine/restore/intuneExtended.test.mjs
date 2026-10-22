@@ -1259,3 +1259,96 @@ test('every record operation is in the ledger, and best-effort types have no rec
   }
   for (const type of Object.keys(INTUNE_BEST_EFFORT)) assert.equal(INTUNE_EXTENDED_RECORDS[type], undefined, type);
 });
+
+// ------------------------------------------- restore gaps, batch 13
+
+const APP_LINKS = '/deviceAppManagement/mobileAppRelationships';
+const appLink = Object.freeze({
+  '@odata.type': '#microsoft.graph.mobileAppDependency',
+  id: 'app-main_app-dep', sourceId: 'app-main', sourceDisplayName: 'KEEL-RT-app-main', sourceDisplayVersion: '1', sourcePublisherDisplayName: 'Fixture',
+  targetId: 'app-dep', targetDisplayName: 'KEEL-RT-app-dep', targetDisplayVersion: '1', targetPublisher: 'Fixture', targetPublisherDisplayName: 'Fixture',
+  targetType: 'child', dependencyType: 'detect', dependentAppCount: 0, dependsOnAppCount: 1,
+});
+const bothApps = () => ({
+  '/deviceAppManagement/mobileApps/app-main': { id: 'app-main', displayName: 'KEEL-RT-app-main' },
+  '/deviceAppManagement/mobileApps/app-dep': { id: 'app-dep', displayName: 'KEEL-RT-app-dep' },
+});
+
+test('an app dependency is created on beta between the two apps the backup names, with only its kind, ends and type', async () => {
+  const graph = idoFakeGraph({ seed: bothApps() });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('mobileAppRelationship', appLink), 'create', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.version, 'beta');
+  assert.equal(post.path, APP_LINKS);
+  assert.deepEqual(post.body, {
+    '@odata.type': '#microsoft.graph.mobileAppDependency', sourceId: 'app-main', targetId: 'app-dep', targetType: 'child', dependencyType: 'detect',
+  });
+  // Both apps were checked, and the app's links listed, before the write.
+  const reads = graph.calls.filter((call) => call.method === 'GET').map((call) => call.path.split('?')[0]);
+  assert.deepEqual(reads.slice(0, 3), ['/deviceAppManagement/mobileApps/app-main', '/deviceAppManagement/mobileApps/app-dep', '/deviceAppManagement/mobileApps/app-main/relationships']);
+});
+
+test('an app link to an app that is not in Intune is never written', async () => {
+  const graph = idoFakeGraph({ seed: { '/deviceAppManagement/mobileApps/app-main': { id: 'app-main' } } });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('mobileAppRelationship', appLink), 'create', FAST);
+  assert.match(result.failed.error, /dependency: the app it points to \(KEEL-RT-app-dep\) is not in Intune; add the app again first/);
+  assert.equal(graph.calls.some((call) => call.method !== 'GET'), false);
+});
+
+test('an app link already set between the same two apps is skipped, also in a dry run', async () => {
+  const seed = { ...bothApps(), '/deviceAppManagement/mobileApps/app-main/relationships/new-id': { ...appLink, id: 'new-id' } };
+  for (const mode of ['enforce', 'dry-run']) {
+    const graph = idoFakeGraph({ seed });
+    const result = await applyIntuneExtendedWrite(graph, resourceOf('mobileAppRelationship', appLink), 'create', { ...FAST, mode });
+    assert.match(result.skipped.reason, /already set: KEEL-RT-app-main already has a dependency link to KEEL-RT-app-dep/);
+    assert.equal(graph.calls.some((call) => call.method !== 'GET'), false);
+  }
+});
+
+test('an app link update changes only how it applies; a link between other apps is never rewritten', async () => {
+  const path = `${APP_LINKS}/link-live`;
+  const live = { ...appLink, id: 'link-live', dependencyType: 'autoInstall' };
+  const graph = idoFakeGraph({ seed: { ...bothApps(), [path]: live } });
+  const updated = await applyIntuneExtendedWrite(graph, resourceOf('mobileAppRelationship', appLink, {
+    live: { state: 'present', targetId: 'link-live', payload: live },
+  }), 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  const patch = graph.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.path, path);
+  assert.deepEqual(patch.body, { '@odata.type': '#microsoft.graph.mobileAppDependency', dependencyType: 'detect' });
+  assert.equal(graph.objects.get(path).dependencyType, 'detect');
+
+  const moved = { ...live, targetId: 'app-other' };
+  const other = idoFakeGraph({ seed: { ...bothApps(), [path]: moved } });
+  const refused = await applyIntuneExtendedWrite(other, resourceOf('mobileAppRelationship', appLink, {
+    live: { state: 'present', targetId: 'link-live', payload: moved },
+  }), 'update', FAST);
+  assert.match(refused.skipped.reason, /a link is never changed into another one/);
+  assert.equal(other.calls.length, 0);
+});
+
+test('an app link without its kind or both apps in the backup is refused before any call', async () => {
+  const { sourceId: _source, ...noSource } = appLink;
+  const { '@odata.type': _kind, ...noKind } = appLink;
+  for (const payload of [noSource, noKind]) {
+    const graph = idoFakeGraph({ seed: bothApps() });
+    const result = await applyIntuneExtendedWrite(graph, resourceOf('mobileAppRelationship', payload), 'create', FAST);
+    assert.ok(result.failed, JSON.stringify(result));
+    assert.equal(graph.calls.length, 0);
+  }
+});
+
+test('a supersedence that replaces the older app needs the content approval, on create too; a dependency does not', () => {
+  const replace = { ...appLink, '@odata.type': '#microsoft.graph.mobileAppSupersedence', supersedenceType: 'replace', dependencyType: undefined };
+  const [effect] = classifyContentEffects([{ ...resourceOf('mobileAppRelationship', replace), verb: 'create' }]).effects;
+  assert.equal(effect.field, 'supersedenceType');
+  assert.equal(effect.effect, 'irreversible');
+  const toReplace = classifyContentEffects([{ ...resourceOf('mobileAppRelationship', replace, {
+    live: { state: 'present', payload: { ...replace, supersedenceType: 'update' } },
+  }), verb: 'update' }]).effects;
+  assert.equal(toReplace.length, 1);
+  const upgrade = classifyContentEffects([{ ...resourceOf('mobileAppRelationship', { ...replace, supersedenceType: 'update' }), verb: 'create' }]);
+  assert.deepEqual(upgrade.effects, []);
+  assert.deepEqual(classifyContentEffects([{ ...resourceOf('mobileAppRelationship', appLink), verb: 'create' }]).effects, []);
+});

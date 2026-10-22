@@ -64,6 +64,13 @@ function graphNativeAdapter(type) {
       if (children.error) return { entry, path, startedAt, completedAt: new Date(), items: [], pages: result.pages ?? null, status: children.error.status ?? null, capped: false, error: children.error };
       result.pages = (Number.isSafeInteger(result.pages) ? result.pages : 0) + children.pages;
     }
+    // Restore gaps batch 13: a kind whose objects each hold one more collection
+    // (the apps an app protection policy covers) reads it per object.
+    if (entry.itemReads && !result?.error && !result?.capped && Array.isArray(result?.items)) {
+      const extra = await withItemReads(reader, entry, result.items);
+      if (extra.error) return { entry, path, startedAt, completedAt: new Date(), items: [], pages: result.pages ?? null, status: extra.error.status ?? null, capped: false, error: extra.error };
+      result.pages = (Number.isSafeInteger(result.pages) ? result.pages : 0) + extra.pages;
+    }
     const completedAt = new Date();
     // Issue #156: a type Graph answers with 404 when the tenant never set it
     // up (company branding) is an observed absence, not a failed read. Only a
@@ -207,6 +214,28 @@ async function withChildReads(reader, entry, items) {
       pages += Number.isSafeInteger(result.pages) ? result.pages : 0;
       child[as] = result.items;
     }
+  }
+  return { pages, error: null };
+}
+
+/**
+ * Restore gaps batch 13: each object gets the collection at `itemReads.path`
+ * (or at `itemReads.byType[its @odata.type]`; other kinds are left as they
+ * are), with {item} filled with its id, as its `itemReads.as`. Any failed read
+ * fails the kind, so a backup never holds a policy without the apps it covers.
+ */
+async function withItemReads(reader, entry, items) {
+  const { as, path, byType } = entry.itemReads;
+  let pages = 0;
+  for (const item of items) {
+    const template = byType ? byType[item?.['@odata.type']] : path;
+    if (!template) continue;
+    if (typeof item?.id !== 'string' || item.id.length === 0) return { error: { error: `reading ${entry.type}: an object has no id` } };
+    const result = await reader.collect(entry.version, template.replace('{item}', encodeURIComponent(item.id)), { pageCap: Infinity });
+    if (result?.error) return { error: result.error };
+    if (result?.capped || !Array.isArray(result?.items)) return { error: { error: `reading ${entry.type}: ${as} of ${item.id} was incomplete` } };
+    pages += Number.isSafeInteger(result.pages) ? result.pages : 0;
+    item[as] = result.items;
   }
   return { pages, error: null };
 }

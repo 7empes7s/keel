@@ -1395,7 +1395,63 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     },
     refusal: provisioningProfileRefusal, permission: 'DeviceManagementApps.ReadWrite.All',
   }),
+  // Restore gaps, batch 13. Which app depends on or replaces which: the two
+  // apps and the direction are set on create; an update changes only how
+  // (install automatically or detect; update or replace).
+  mobileAppRelationship: defineRecord({
+    resourceType: 'mobileAppRelationship', version: 'beta', collection: '/deviceAppManagement/mobileAppRelationships',
+    odataType: 'required', operations: ['create', 'update'],
+    writable: ['dependencyType', 'supersedenceType'], createOnly: ['sourceId', 'targetId', 'targetType'],
+    refusal: appRelationshipRefusal, preflight: appRelationshipPreflight, permission: 'DeviceManagementApps.ReadWrite.All',
+  }),
 });
+
+// Restore gaps batch 13: a dependency or supersedence between two Intune
+// apps. Apps are not backed up (packages are content), so both must already be
+// in Intune with the ids the backup names. Its id is the backup's, so a re-run
+// after a recreate looks for the link between the same two apps first.
+const RELATIONSHIP_KINDS = new Set(['mobileAppDependency', 'mobileAppSupersedence']);
+const appPath = (id) => `/deviceAppManagement/mobileApps/${encodeURIComponent(id)}`;
+
+function appRelationshipRefusal(resource, verb) {
+  const payload = resource.payload ?? {};
+  if (!RELATIONSHIP_KINDS.has(stripGraph(payload['@odata.type']))) {
+    return { outcome: 'failed', reason: `the backup does not say whether this link is a dependency or a supersedence (${stripGraph(payload['@odata.type']) ?? 'no kind'}), so it is not written` };
+  }
+  if (!hasText(payload.sourceId) || !hasText(payload.targetId)) {
+    return { outcome: 'failed', reason: 'the backup does not name both apps of this link, so it is not written' };
+  }
+  if (verb === 'update') {
+    const live = resource.live?.payload ?? {};
+    const sameEnds = lower(live.sourceId) === lower(payload.sourceId) && lower(live.targetId) === lower(payload.targetId)
+      && stripGraph(live['@odata.type']) === stripGraph(payload['@odata.type']);
+    if (!sameEnds) {
+      return {
+        outcome: 'skipped',
+        reason: 'manual: this link now joins other apps or is of another kind than in the backup; a link is never changed into another one, so set it by hand in the Intune admin center, under Apps, All apps, the app, Dependencies or Supersedence',
+      };
+    }
+  }
+  return null;
+}
+
+/** Both apps must be in Intune; on create, a link already set between them is not added again. */
+async function appRelationshipPreflight(io, { payload, verb }) {
+  const ends = [['the app that has the link', payload.sourceId, payload.sourceDisplayName], ['the app it points to', payload.targetId, payload.targetDisplayName]];
+  for (const [end, id, name] of ends) {
+    const found = await io.retryOperation(() => io.writer.read('beta', `${appPath(id)}?$select=id,displayName`));
+    if (recordNotFound(found)) return `${end} (${name ?? id}) is not in Intune; add the app again first, then restore`;
+    if (found?.ok !== true) return `${end} could not be read (${outcomeDetail(found)})`;
+  }
+  if (verb !== 'create') return null;
+  const listed = await io.retryOperation(() => io.writer.read('beta', `${appPath(payload.sourceId)}/relationships`));
+  if (listed?.ok !== true) return `the app's current links could not be read (${outcomeDetail(listed)})`;
+  const same = (listed.body?.value ?? []).find((link) => lower(link?.targetId) === lower(payload.targetId));
+  if (!same) return null;
+  return {
+    skipped: `already set: ${payload.sourceDisplayName ?? payload.sourceId} already has a ${stripGraph(same['@odata.type']) === 'mobileAppSupersedence' ? 'supersedence' : 'dependency'} link to ${payload.targetDisplayName ?? payload.targetId}, so it is not added again; check it in the Intune admin center if the backup holds another kind of link`,
+  };
+}
 
 /** A cleanup rule is never made to retire devices sooner than it does now. */
 export function cleanupRuleRefusal(resource, verb) {

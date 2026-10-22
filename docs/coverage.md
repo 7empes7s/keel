@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 133 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 86 at least in part; the other 81 are restored by hand from the backup.
+KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 28 are full, 132 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 87 at least in part; the other 80 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -405,7 +405,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Enrolled devices | Yes (Tier 3, low impact, weekly) | Microsoft-managed | Nothing to restore | None |
 | Apps | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
 | App protection policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
-| Managed app configuration | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
+| Managed app configuration | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | App configuration for managed devices | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Windows PowerShell scripts | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | macOS shell scripts | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -449,7 +449,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Microsoft Tunnel server configurations | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Microsoft Tunnel health thresholds | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Apple app provisioning profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| App dependencies and supersedence | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| App dependencies and supersedence | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Managed e-books | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | E-book categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Classroom device cart assignments | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -490,12 +490,11 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 - **Apps** (KEEL choice). App packages are content, not configuration, and KEEL does not back them up.
   - *Not brought back:* the app package (a file the backup does not hold).
   - *You do:* Add the apps again in the Intune admin center from their store or package, using the backup as the list.
-- **App protection policies.** Puts the settings of iOS and Android app protection policies back, recreates them when the backup holds their protected apps, and removes an unassigned policy added since the backup.
-  - *Not brought back:* the list of protected apps, which a new policy needs (stored separately and not in the backup yet); windows protection policies (in the backup, but KEEL does not write it yet).
-  - *You do:* The list of protected apps is not backed up yet, so a missing policy is recreated by hand until it is. Windows protection policies are restored by hand.
-- **Managed app configuration.** Puts the settings back, recreates a configuration when the backup holds its apps, and removes an unassigned one added since the backup.
-  - *Not brought back:* the apps it targets, which a new configuration needs (stored separately and not in the backup yet).
-  - *You do:* The apps it targets are not backed up yet, so a missing configuration is recreated by hand until they are.
+- **App protection policies.** Puts the settings of iOS and Android app protection policies back, recreates them with the apps they protect, and removes an unassigned policy added since the backup.
+  - *Not brought back:* windows Information Protection policies (in the backup, but KEEL does not write it yet).
+  - *You do:* A backup taken before the protected apps were read cannot recreate a policy; take a new backup. Windows Information Protection policies are restored by hand. Windows app protection policies are restored on their own.
+- **Managed app configuration.** Puts the settings back, recreates a configuration with the apps it targets, and removes an unassigned one added since the backup.
+  - *You do:* A backup taken before the targeted apps were read cannot recreate a configuration; take a new backup.
 - **App configuration for managed devices.** Recreates configurations and puts their settings back when the app they configure exists, and removes an unassigned one added since the backup.
   - *You do:* Add the app first. Values Microsoft never returns are entered again by hand.
 - **Windows PowerShell scripts.** Recreates scripts and puts the script and its settings back.
@@ -613,8 +612,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 - **Apple app provisioning profiles.** Recreates profiles and puts back their name, description, scope tags and the profile file from Apple.
   - *Not brought back:* who the profile is assigned to (stored separately and not in the backup yet).
   - *You do:* Who a profile is assigned to is not backed up yet, so assign a recreated profile again by hand. An expired file, or one that expires before the profile in Intune now, is never uploaded: renew it with Apple and upload it in the Intune admin center, under Apps, iOS/iPadOS, App provisioning profiles. A backup taken before the profile file was read is refused; take a new backup.
-- **App dependencies and supersedence** (not built yet). KEEL backs up which app depends on or replaces which, but does not restore them yet.
-  - *You do:* Recreate both apps first, then set the same dependencies and supersedence on each app in the Intune admin center, under Apps, All apps, from the backup.
+- **App dependencies and supersedence.** Puts back which app depends on or replaces which, and how (install automatically or detect; update or replace), when both apps are in Intune.
+  - *Not brought back:* the app packages on both ends, added again by hand before the link (a file the backup does not hold).
+  - *You do:* Apps are not backed up, so add a deleted app again by hand first: a link to a missing app is not written. Setting an app to replace another uninstalls the older app on devices, so that needs the separate content approval.
 - **Managed e-books** (not built yet). KEEL backs up each book's details but not yet who it is assigned to, and does not restore it yet.
   - *Not brought back:* who the book is assigned to (stored separately and not in the backup yet).
   - *You do:* Sync the books again from Apple Business Manager in the Intune admin center, under Apps, eBooks, and assign them again from the backup.

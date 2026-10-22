@@ -797,6 +797,64 @@ export async function runOwnershipCommand(client, config, { report = false } = {
   return resolveOwnership(client, { ...config, adapter, config: config.ownership });
 }
 
+// Issue #448: how the worker leaves. drain() lets the running job finish and claims nothing
+// new; stop() also terminates the running job. A stop during a drain still terminates it.
+export function createShutdownControl({ workerId, log = console.log, logError = console.error } = {}) {
+  let draining = false;
+  let stopping = false;
+  let inFlight = null;
+  return {
+    get done() { return draining || stopping; },
+    get draining() { return draining && !stopping; },
+    setInFlight(execution) { inFlight = execution; },
+    drain(signal) {
+      if (draining || stopping) return;
+      draining = true;
+      log(`worker ${workerId}: received ${signal} — finishing current job, then exiting`);
+    },
+    stop(signal) {
+      if (stopping) return;
+      stopping = true;
+      log(`worker ${workerId}: received ${signal} — stopping now`);
+      if (inFlight) {
+        const { job, terminate } = inFlight;
+        log(`worker ${workerId}: terminating in-flight job ${job.id}`);
+        void terminate().catch((err) => {
+          logError(`worker ${workerId}: could not terminate job ${job.id}: ${err.message}`);
+        });
+      }
+    },
+  };
+}
+
+// SIGUSR2 (`systemctl reload keel-worker`) drains: the running job finishes, nothing new is
+// claimed, and the worker exits 0 so systemd starts it again on the new tree. Deploys use it
+// so they never kill a long job (issue #448). SIGTERM and SIGINT still stop now.
+export function installShutdownSignals(shutdown, proc = process) {
+  proc.on('SIGUSR2', () => shutdown.drain('SIGUSR2'));
+  proc.on('SIGTERM', () => shutdown.stop('SIGTERM'));
+  proc.on('SIGINT', () => shutdown.stop('SIGINT'));
+}
+
+export async function runWorkerLoop({
+  shutdown, pollIntervalMs, claim, idle, run, requeue, failUnrun, wait = sleep,
+}) {
+  while (!shutdown.done) {
+    const job = await claim();
+    if (!job) {
+      await idle();
+      if (!shutdown.done) await wait(pollIntervalMs);
+      continue;
+    }
+    if (shutdown.done) {
+      if (shutdown.draining) await requeue(job);
+      else await failUnrun(job);
+      continue;
+    }
+    await run(job);
+  }
+}
+
 async function main() {
   if (process.argv.includes('--help')) {
     console.log('usage: keel-worker.mjs [--worker-id ID] [--db-url $KEEL_DB_URL] [--poll-interval-ms 2000] [--audit-config FILE [--audit-report] | --audit-migrate | --ownership-config FILE [--ownership-report]]');
@@ -842,43 +900,33 @@ async function main() {
     );
   }
 
-  let shuttingDown = false;
-  let inFlight = null;
-  const stop = (signal) => {
-    if (shuttingDown) return;
-    console.log(`worker ${workerId}: received ${signal} — finishing current job, then exiting`);
-    shuttingDown = true;
-    if (inFlight) {
-      console.log(`worker ${workerId}: terminating in-flight job ${inFlight.job.id}`);
-      void inFlight.terminate().catch((err) => {
-        console.error(`worker ${workerId}: could not terminate job ${inFlight.job.id}: ${err.message}`);
-      });
-    }
-  };
-  process.on('SIGTERM', () => stop('SIGTERM'));
-  process.on('SIGINT', () => stop('SIGINT'));
+  const shutdown = createShutdownControl({ workerId });
+  installShutdownSignals(shutdown);
 
   console.log(`worker ${workerId}: polling for jobs every ${pollIntervalMs}ms`);
-  while (!shuttingDown) {
-    const job = await claimNext(client, { workerId });
-    if (!job) {
+  await runWorkerLoop({
+    shutdown,
+    pollIntervalMs,
+    claim: () => claimNext(client, { workerId }),
+    idle: async () => {
       // Between job polls, drain any due SIEM outbox events (task-79). The outbox is
       // durable, so a drain failure must not kill the worker: the next poll retries.
       await drainSiemOutbox(client, { workerId });
       await sweepAlertEscalations(client, { workerId });
       await sweepBreakGlassCanary(client, { workerId });
-      await sleep(pollIntervalMs);
-      continue;
-    }
-    if (shuttingDown) {
-      await fail(client, { id: job.id, error: 'worker stopped before job execution' });
-      continue;
-    }
-    await runJob(client, job, {
+    },
+    run: (job) => runJob(client, job, {
       dbUrl,
-      onInFlightChange: (execution) => { inFlight = execution; },
-    });
-  }
+      onInFlightChange: (execution) => shutdown.setInFlight(execution),
+    }),
+    // A job claimed while a drain began goes back to the queue for the next worker; a job
+    // claimed while stopping fails, as before.
+    requeue: (job) => client.query(
+      `UPDATE job SET status = 'queued', started_at = NULL, heartbeat_at = NULL, worker_id = NULL
+       WHERE id = $1 AND status = 'running'`, [job.id],
+    ),
+    failUnrun: (job) => fail(client, { id: job.id, error: 'worker stopped before job execution' }),
+  });
 
   await client.end();
   console.log(`worker ${workerId}: exited cleanly`);

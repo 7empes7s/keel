@@ -28,7 +28,12 @@ node cli/keel-schedules-host.mjs health                    # after those jobs fi
   timers and `keel-prune.timer` are always disabled. `keel-offsite.timer` is left alone unless
   `offsite` is seeded, because until then it is what runs the daily vol2 copy.
 - `keel-worker` is long-running, so a deploy that moves the tree should also run
-  `systemctl try-restart keel-worker` (a no-op when it is not installed).
+  `systemctl try-reload-or-restart keel-worker` (a no-op when it is not running). Do not use
+  `restart` or `try-restart`: those send SIGTERM, which ends the running job (a nightly content
+  backup takes hours, issue #448). Reload sends SIGUSR2: the worker finishes its running job,
+  claims nothing new, exits 0, and systemd starts it again on the new tree. Queued jobs wait for
+  the new worker. After changing `keel-worker.service`, re-install it and run
+  `systemctl daemon-reload`, or reload falls back to a restart.
 
 ## KEEL status dashboard
 

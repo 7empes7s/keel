@@ -64,6 +64,7 @@ export function StorageRecordFields({ storage }: { storage: StorageResidency }) 
       <RecordField copy={false} label="Boundary" value={storage.boundary} />
       <RecordField copy={false} label="Immutability claim" value={storage.immutability} />
       <RecordField copy={false} label="Recovery manifest" usage={<>set with <code>KEEL_RECOVERY_MANIFEST_PATH</code></>} value={storage.source} />
+      <RecordField copy={false} label="Read from" value={storage.basis === "database-location" ? "where Keel's database runs (no recovery manifest set)" : storage.basis === "recovery-manifest" ? "the recovery manifest" : null} />
       <RecordField copy={false} label="Manifest generated at" value={storage.generatedAt} />
       <RecordField copy={false} label="Certifies" value="nothing: configuration statement only" />
     </>

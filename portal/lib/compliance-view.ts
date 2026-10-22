@@ -243,7 +243,7 @@ export interface ComplianceVerdict { text: string; detail?: string; tone: "urgen
 export function complianceVerdict(data: ComplianceData): ComplianceVerdict {
   const counts = complianceCounts(data.findings);
   const now = data.generatedAt;
-  if (counts.total === 0) return { text: "No control has been checked on this tenant yet.", detail: "Keel does not run these checks on its own yet.", tone: "neutral" };
+  if (counts.total === 0) return { text: "No control has been checked on this tenant yet.", detail: NOT_CHECKED_YET, tone: "neutral" };
   if (counts.failing === 1) {
     const finding = data.findings.find((entry) => entry.exposed)!;
     const text = finding.exceptionState === "expired"
@@ -483,4 +483,17 @@ export function immutabilitySentence(storage: StorageResidency): string {
 export const NOT_A_CERTIFICATION =
   "This states where backups are kept. It is not a certification of compliance with any regulation.";
 
-export const NOT_RUN_YET = "Keel does not run these checks on its own yet. Results come from the last check.";
+/** How the checks run, said where results are shown. */
+export const NOT_RUN_YET = "Keel checks these after each backup. Results come from the last check.";
+
+/** The empty state's next step. */
+export const NOT_CHECKED_YET = "Keel checks these after each backup. Results show here after the next backup or check.";
+
+/** When the newest result was recorded, or null when nothing was checked. */
+export function lastChecked(findings: ComplianceFinding[], now: string): string | null {
+  const times = findings.map((finding) => Date.parse(finding.evaluatedAt ?? "")).filter(Number.isFinite);
+  return times.length ? `Last checked ${ago(new Date(Math.max(...times)).toISOString(), now)}.` : null;
+}
+
+/** What to do when Keel cannot say where backups are kept. */
+export const STORAGE_UNSET_TODO = "Ask whoever runs the Keel server to record where backups are stored. Until then, this page and Resilience cannot say where they are.";

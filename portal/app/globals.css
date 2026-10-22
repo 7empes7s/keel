@@ -9596,6 +9596,15 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .cp-storage p b { color: var(--text); font-weight: 600; }
 .cp-storage-icon { display: inline-grid; width: 2rem; height: 2rem; flex: none; place-items: center; border-radius: var(--radius-md); background: var(--neutral-bg); color: var(--text-soft); }
 .cp-storage-icon .icon, .cp-help .icon { width: 1rem; height: 1rem; }
+.cp-storage[data-tone="soon"] { border-color: var(--check-soon); background: var(--check-soon-bg); }
+.cp-storage[data-tone="soon"] .cp-storage-icon { background: var(--surface); color: var(--check-soon); }
+.cp-storage-todo { display: block; margin-top: 2px; }
+.cp-storage .btn { flex: none; }
+@media (max-width: 640px) { .cp-storage { flex-wrap: wrap; } .cp-storage .btn { width: 100%; justify-content: center; } }
+.cp-context .btn { align-self: center; }
+.cp-empty { display: flex; flex-direction: column; align-items: center; gap: var(--space-sm); }
+.cp-empty p { margin: 0; }
+.cp-empty .btn { margin-left: 0; }
 .cp-help { display: inline-grid; flex: none; place-items: center; width: 1.75rem; height: 1.75rem; border-radius: var(--radius-pill); color: var(--text-soft); cursor: help; }
 
 /* The control panel and the exception sheet. */

@@ -6161,7 +6161,7 @@ item that needs it stays untouched.
   `POST .../compliancePolicies/{id}/setScheduledActions` with `{ scheduledActions: [...] }`, read back. Who the policy is
   assigned to is **not** written; the fixture stays unassigned.
 - Needs: /opt/keel-live at the #451 merge or later (`grep -q complianceActionsAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
+- Status: in-progress
 - Result: blocked (2026-10-22 08:42 UTC) on **#473** (comment on it covers this type). B = c396a2c. Restorer only; nothing granted; no restore approved.
   - Fixture `KEEL-RT-compliance` (Linux, linuxMdm, `linux_deviceencryption_required_true`). The notification action was not possible: creating `KEEL-RT-notice`
     (`notificationMessageTemplates`, beta and v1.0) answered **400** "An error has occurred" (StatelessNotification service), so the fixture had **block 0 h** only.

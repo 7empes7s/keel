@@ -27,6 +27,7 @@ import { runCmdlet } from '../../powershell/jobQueue.mjs';
 import { redactPayload } from '../../telemetry/events.mjs';
 import { structuredFailure } from './exchange.mjs';
 import { teamsActivation } from './teams.mjs';
+import { unknownFieldsOf } from './cmdletFamilies.mjs';
 
 export const TEAMS_POLICY_WORKLOAD = 'teams-org-policies';
 export const TEAMS_POLICY_MODULE = 'MicrosoftTeams';
@@ -252,6 +253,7 @@ export async function readTeamsPolicies({ powershell = {}, families = FAMILY_NAM
     resources,
     failures,
     fieldCounts,
+    unknownFields: unknownFieldsOf(resources),
   };
 }
 
@@ -281,6 +283,7 @@ export async function recordTeamsPolicyRun(client, { tenantRef, result }) {
       [tenantRef, TEAMS_POLICY_WORKLOAD, result.outcome, result.observedFrom, result.observedTo, {
         discovery: result.discovery ?? null,
         fieldCounts: result.fieldCounts ?? {},
+        unknownFields: result.unknownFields ?? {},
         failures: result.failures ?? [],
         reasons: result.reasons ?? [],
       }],

@@ -312,6 +312,9 @@ test('every policy and configuration is one observation under its Identity, with
   const allOn = result.resources.find((resource) => resource.resourceKey === 'meeting-policy:tag:allon');
   assert.equal(allOn.fieldCoverage.AllowTranscription.status, 'unknown');
   assert.equal(allOn.fields.AllowTranscription, undefined);
+  // The run names each unknown field per family, so a partial run says what it lacks.
+  assert.equal(result.unknownFields.meetingPolicy.AllowTranscription, 1);
+  assert.ok(Object.values(result.unknownFields).every((family) => Object.values(family).every((count) => count > 0)));
 
   const contractors = result.resources.find((resource) => resource.resourceKey === 'messaging-policy:tag:contractors');
   assert.equal(contractors.fieldCoverage.Description.status, 'redacted');
@@ -340,6 +343,7 @@ test('every policy and configuration is one observation under its Identity, with
 
   const clean = await readTeamsPolicies({ powershell: fakeTeams({ base: COMPLETE }).powershell, now: () => NOW });
   assert.equal(clean.outcome, 'complete');
+  assert.deepEqual(clean.unknownFields, {});
   assert.equal(clean.resources.length, 11);
   assert.ok(Object.values(clean.discovery.families).every((family) => family.status === 'read'));
 });
@@ -400,6 +404,7 @@ test('collection stays off until Teams and every policy read are qualified', asy
   // Everything live: complete, one stored observation per object.
   const full = await collectTeamsPolicies(client, { tenantRef, ledger: ledgerWith(tenantRef, ALL_READS), powershell: session.powershell, now: () => NOW });
   assert.equal(full.run.outcome, 'complete');
+  assert.deepEqual(full.run.digest.unknownFields, {}, 'the stored run names its unknown fields (none here)');
   assert.equal(session.calls.length, FAMILY_NAMES.length);
   const { rows } = await client.query(`SELECT resource_key, fields, field_coverage FROM workload_observation WHERE collection_id = $1 ORDER BY resource_key`, [full.run.id]);
   assert.equal(rows.length, 11);

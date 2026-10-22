@@ -157,6 +157,14 @@ test('a fixture read of every family is complete, keyed by identity, with declar
   const complete = await readTeamsExtended({ powershell: container(full).powershell, now: () => NOW });
   assert.equal(complete.outcome, 'complete');
   assert.deepEqual(Object.keys(complete.fieldCounts), ['observed']);
+  assert.deepEqual(complete.unknownFields, {});
+  // A declared field an answer lacks is named in the run, per family, with its object count.
+  const lacking = await readTeamsExtended({
+    powershell: container({ ...full, 'Get-CsTeamsCallParkPolicy': full['Get-CsTeamsCallParkPolicy'].map(({ PickupRangeEnd, ...body }) => body) }).powershell,
+    now: () => NOW,
+  });
+  assert.equal(lacking.outcome, 'partial');
+  assert.deepEqual(lacking.unknownFields, { callParkPolicy: { PickupRangeEnd: full['Get-CsTeamsCallParkPolicy'].length } });
   // A policy list with no Global policy is a gap on its own; no group assignments is not.
   const noVoicemail = await readTeamsExtended({ powershell: container({ ...full, 'Get-CsOnlineVoicemailPolicy': [] }).powershell, now: () => NOW });
   assert.equal(noVoicemail.outcome, 'partial');
@@ -216,6 +224,7 @@ test('without qualification nothing is sent; once qualified the run and its obje
   assert.equal(teamsExtendedActivation(ledger).enabled, true);
   const live = await collectTeamsExtended(client, { tenantRef, ledger, powershell: fake.powershell, maxUsers: 50, now: () => NOW });
   assert.equal(live.run.outcome, 'partial');
+  assert.deepEqual(live.run.digest.unknownFields, live.result.unknownFields, 'the stored run names its unknown fields');
   const { rows } = await client.query('SELECT resource_key, fields FROM workload_observation WHERE collection_id = $1 ORDER BY resource_key', [live.run.id]);
   assert.equal(rows.length, live.result.resources.length);
   const alice = rows.find((row) => row.resource_key === `user-policy-assignment:${oid(1)}`);

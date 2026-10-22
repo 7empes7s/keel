@@ -92,7 +92,7 @@ import {
   RELATIONSHIP_RESTORE_FAMILIES, applyRelationshipOperations, planRelationshipOperations,
 } from '../engine/restore/relationshipWriter.mjs';
 import { planMechanism, selectRecoveryMechanism } from '../engine/restore/recoveryMechanism.mjs';
-import { assignmentTargetResolver, attachIntuneAssignments, isIntuneGoverned } from '../engine/restore/intuneOperations.mjs';
+import { assignmentTargetResolver, attachIntuneAssignments, writesIntuneAssignments } from '../engine/restore/intuneOperations.mjs';
 import { closeEnforcementItem, emitCompletionItems, findEnforcementItem } from '../engine/restore/completion.mjs';
 import { listJournal } from '../engine/restore/rollbackJournal.mjs';
 import { loadSnapshotBrandingAssets } from '../engine/store/brandingAssets.mjs';
@@ -663,8 +663,10 @@ export async function runRestore({
     // assignments is planned as an update. Selection scope only (an operator-picked
     // restore and its promotion), like group edges: a remediation or legacy plan
     // scope leaves assignments untouched, and the plan says so for each policy.
+    // Restore gaps batch 14: the Wave 2 records that write assignments (scripts,
+    // remediations, templates, update profiles, branding, app policies) too.
     if (selection !== undefined && reconciliationResources === undefined) {
-      const intuneParents = resources.filter((resource) => isIntuneGoverned(resource.resourceType) && resource.verb !== 'delete');
+      const intuneParents = resources.filter((resource) => writesIntuneAssignments(resource.resourceType) && resource.verb !== 'delete');
       if (intuneParents.length > 0) {
         const desiredAssignments = await loadSnapshotRelationshipsFn(client, {
           snapshotId: sourceSnapshot, families: ['assignment'], parentNaturalKeys: intuneParents.map((resource) => resource.naturalKey),

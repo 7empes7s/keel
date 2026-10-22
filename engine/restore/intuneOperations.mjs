@@ -392,7 +392,16 @@ function filterOf(attributes) {
   return id && type ? { id, type } : null;
 }
 
-const edgeIdentity = (targetType, targetId, filter) => `${targetType}|${targetId}|${filter?.id ?? ''}|${filter?.type ?? 'none'}`;
+const edgeIdentity = (targetType, targetId, filter, extras = '') => `${targetType}|${targetId}|${filter?.id ?? ''}|${filter?.type ?? 'none'}${extras}`;
+
+/**
+ * The per-assignment settings a type's /assign body carries besides its target
+ * (a remediation's schedule and whether its fix runs), in the comparable form.
+ */
+function extrasIdentity(attributes, extras) {
+  if (!extras || extras.length === 0) return '';
+  return extras.map((field) => `|${JSON.stringify(normalised(attributes?.[field] ?? null) ?? null)}`).join('');
+}
 
 /**
  * The assignments a restore writes for one policy, from the backup's
@@ -410,7 +419,7 @@ const edgeIdentity = (targetType, targetId, filter) => `${targetType}|${targetId
  *  - 'ready': `assignments` is the /assign list, `identities` the comparable
  *    set and `filters` the assignment filter ids the target must hold.
  */
-export function assignmentPlan(resource, resolve) {
+export function assignmentPlan(resource, resolve, { extras = [] } = {}) {
   const desired = resource?.assignments;
   // Only a selection restore attaches assignments (cli/keel-restore.mjs); any
   // other scope never looked, which is not the same as a backup without them.
@@ -455,8 +464,12 @@ export function assignmentPlan(resource, resolve) {
       body.deviceAndAppManagementAssignmentFilterType = filter.type;
       filters.add(filter.id);
     }
-    identities.add(edgeIdentity(targetType, targetId, filter));
-    assignments.push({ target: body });
+    identities.add(edgeIdentity(targetType, targetId, filter, extrasIdentity(attributes, extras)));
+    const item = { target: body };
+    for (const field of extras) {
+      if (attributes[field] !== undefined && attributes[field] !== null) item[field] = withoutAnnotations(attributes[field]);
+    }
+    assignments.push(item);
   }
   if (problems.length > 0) {
     return { state: 'refused', reason: `assignments cannot be restored: ${[...new Set(problems)].join('; ')}. Nothing was written for this policy` };
@@ -466,13 +479,13 @@ export function assignmentPlan(resource, resolve) {
 }
 
 /** The comparable identities of live assignments (Graph's /assignments items or observed edges). */
-export function liveAssignmentIdentities(items, { observed = false } = {}) {
+export function liveAssignmentIdentities(items, { observed = false, extras = [] } = {}) {
   const identities = new Set();
   for (const item of items ?? []) {
     const edge = observed ? item : projectAssignment(item);
     if (!edge) continue;
     const targetType = edge.attributes?.targetType ?? edge.edgeKey?.split('|')[0] ?? null;
-    identities.add(edgeIdentity(targetType, String(edge.targetId).toLowerCase(), filterOf(edge.attributes)));
+    identities.add(edgeIdentity(targetType, String(edge.targetId).toLowerCase(), filterOf(edge.attributes), extrasIdentity(edge.attributes, extras)));
   }
   return identities;
 }
@@ -497,6 +510,22 @@ export function assignmentsReadPath(resourceType, targetId) {
 export const ASSIGNMENT_FILTER_PATH = (filterId) => `/deviceManagement/assignmentFilters/${encodeURIComponent(filterId)}`;
 
 /**
+ * How a type's assignments are written through /assign, or null when they are
+ * not: the built-in policy types, and the Wave 2 records that name an
+ * `assignmentType`. `bodyKey` is the /assign body's list (scripts use their
+ * own name for it); `extras` are the per-assignment fields sent besides the target.
+ */
+export function assignmentWriteFor(resourceType) {
+  const entry = INTUNE_RECORDS[resourceType]
+    ?? (INTUNE_EXTENDED_RECORDS[resourceType]?.assignmentType ? INTUNE_EXTENDED_RECORDS[resourceType] : null);
+  if (!entry?.assignmentType) return null;
+  return { assignmentType: entry.assignmentType, bodyKey: entry.assignmentBodyKey ?? 'assignments', extras: entry.assignmentExtras ?? [] };
+}
+
+/** Whether a restore attaches and writes a type's assignments. */
+export const writesIntuneAssignments = (resourceType) => assignmentWriteFor(resourceType) !== null;
+
+/**
  * Restore planning (selection scope): attaches the backup's assignment reads
  * to the Intune policies a restore covers, and plans an update for a policy
  * whose settings match but whose assignments differ from live (the policy's
@@ -509,23 +538,24 @@ export const ASSIGNMENT_FILTER_PATH = (filterId) => `/deviceManagement/assignmen
  */
 export function attachIntuneAssignments(resources, { desired, live = new Map(), resolve = () => null, recoveryFor = null }) {
   return resources.map((resource) => {
-    if (!isIntuneGoverned(resource.resourceType) || resource.verb === 'delete') return resource;
+    if (!writesIntuneAssignments(resource.resourceType) || resource.verb === 'delete') return resource;
+    const { extras } = assignmentWriteFor(resource.resourceType);
     const key = `${resource.naturalKey}|assignment`;
     const want = desired?.get(key);
     if (!want) return { ...resource, assignments: { outcome: 'absent', targets: [] } };
     const observed = live.get(key);
-    const liveCount = observed && isComplete(observed.outcome) ? liveAssignmentIdentities(observed.targets, { observed: true }).size : null;
+    const liveCount = observed && isComplete(observed.outcome) ? liveAssignmentIdentities(observed.targets, { observed: true, extras }).size : null;
     const withAssignments = {
       ...resource,
       assignments: { outcome: want.outcome, targets: want.targets },
       ...(liveCount === null ? {} : { liveAssignmentCount: liveCount }),
     };
     if (resource.verb !== 'noop' || resource.live?.state !== 'present') return withAssignments;
-    const plan = assignmentPlan(withAssignments, resolve);
+    const plan = assignmentPlan(withAssignments, resolve, { extras });
     let reason = null;
     if (plan.state === 'refused') reason = plan.reason;
     else if (plan.state === 'ready' && liveCount !== null
-      && !sameIdentities(plan.identities, liveAssignmentIdentities(observed.targets, { observed: true }))) {
+      && !sameIdentities(plan.identities, liveAssignmentIdentities(observed.targets, { observed: true, extras }))) {
       reason = `assignments differ: ${assignmentChange(plan, liveCount)}`;
     }
     if (!reason) return withAssignments;
@@ -707,11 +737,12 @@ const sameApps = (left, right) => left.size === right.size && [...left].every((a
 async function assignmentsAfterWrite(io, { payload, verb, targetId, resource }) {
   const record = resource.record;
   if (!record.assignmentType) return null;
+  const extras = record.assignmentExtras ?? [];
   const plan = assignmentPlan(resource, (symbol) => {
     const result = resolveSymbol(symbol, resource.referenceContext ?? { targetIndex: new Map(), mappingTable: new Map(), runProvenance: new Map() });
     if (!result.resolved || result.via === 'global-constant') return null;
     return result.stale ? { stale: true } : result.targetId;
-  });
+  }, { extras });
   if (plan.state === 'not-observed') return { changes: { assignments: plan.reason } };
   if (plan.state === 'refused') return { error: plan.reason };
   for (const filterId of plan.filters) {
@@ -723,15 +754,15 @@ async function assignmentsAfterWrite(io, { payload, verb, targetId, resource }) 
   if (verb !== 'create') {
     const listed = await io.retryOperation(() => io.writer.read(record.version, `${base}/assignments`));
     if (listed?.ok !== true) return { error: 'the policy\'s live assignments could not be read, so they were not changed' };
-    current = liveAssignmentIdentities(listed.body?.value ?? []);
+    current = liveAssignmentIdentities(listed.body?.value ?? [], { extras });
   }
   if (sameIdentities(plan.identities, current)) return { changes: { assignments: 'already as in the backup' } };
-  const body = { assignments: plan.assignments.map((assignment) => ({ '@odata.type': record.assignmentType, ...assignment })) };
+  const body = { [record.assignmentBodyKey ?? 'assignments']: plan.assignments.map((assignment) => ({ '@odata.type': record.assignmentType, ...assignment })) };
   const result = await io.retryOperation(() => io.writer.write(record.version, `${base}/assign`, { method: 'POST', body }));
   if (!result.ok) return { error: `assigning the policy failed: ${outcomeDetail(result)}` };
   const check = await readUntil(io, record.version, `${base}/assignments`, (r) => recordNotFound(r)
-    || (r?.ok === true && !sameIdentities(plan.identities, liveAssignmentIdentities(r.body?.value ?? []))), io.readOptions);
-  if (check?.ok !== true || !sameIdentities(plan.identities, liveAssignmentIdentities(check.body?.value ?? []))) {
+    || (r?.ok === true && !sameIdentities(plan.identities, liveAssignmentIdentities(r.body?.value ?? [], { extras }))), io.readOptions);
+  if (check?.ok !== true || !sameIdentities(plan.identities, liveAssignmentIdentities(check.body?.value ?? [], { extras }))) {
     return { error: 'post-state: the assignments did not read back as written' };
   }
   return { changes: { assignments: 'written' } };
@@ -953,6 +984,35 @@ async function groupPolicySettingsAfterWrite(io, { payload, verb, targetId }) {
   const check = await readGroupPolicySettings(io, targetId);
   if (check.error || !sameValue(settingSet(check.settings), settingSet(want))) return { error: 'post-state: the template\'s settings did not read back as written' };
   return { changes: { settings: { removed: removed.length, added: added.length } } };
+}
+
+/**
+ * Script and remediation /assign bodies (beta). Scripts name their list
+ * deviceManagementScriptAssignments, remediations and compliance scripts
+ * deviceHealthScriptAssignments. A custom attribute script's assignments are
+ * not backed up (no assignments route is read), so it has no entry.
+ */
+const SCRIPT_ASSIGNMENTS = Object.freeze({
+  deviceManagementScript: { assignmentType: '#microsoft.graph.deviceManagementScriptAssignment', assignmentBodyKey: 'deviceManagementScriptAssignments' },
+  deviceShellScript: { assignmentType: '#microsoft.graph.deviceManagementScriptAssignment', assignmentBodyKey: 'deviceManagementScriptAssignments' },
+  deviceHealthScript: {
+    assignmentType: '#microsoft.graph.deviceHealthScriptAssignment', assignmentBodyKey: 'deviceHealthScriptAssignments',
+    assignmentExtras: ['runRemediationScript', 'runSchedule'],
+  },
+  deviceComplianceScript: { assignmentType: '#microsoft.graph.deviceHealthScriptAssignment', assignmentBodyKey: 'deviceHealthScriptAssignments' },
+});
+
+/** Child writes one after another; the first error stops them, and their changes merge. */
+function inOrder(...steps) {
+  return async (io, step) => {
+    const changes = {};
+    for (const run of steps) {
+      const out = await run(io, step);
+      if (out?.error) return out;
+      if (out?.changes) Object.assign(changes, out.changes);
+    }
+    return Object.keys(changes).length > 0 ? { changes } : null;
+  };
 }
 
 /** The Wave 2 Intune records (resourceType -> record). */
@@ -1191,9 +1251,11 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     refusal: secretRefusal, preflight: mobileAppsExist, afterWrite: assignmentsAfterWrite,
     assignmentType: '#microsoft.graph.managedDeviceMobileAppConfigurationAssignment', permission: 'DeviceManagementApps.ReadWrite.All', ...DELETE_POLICY,
   }),
+  // Restore gaps, batch 14: who each profile is assigned to is written through /assign.
   ...Object.fromEntries(['windowsFeatureUpdateProfile', 'windowsQualityUpdateProfile', 'windowsDriverUpdateProfile'].map((resourceType) => [resourceType, defineRecord({
     resourceType, version: 'beta', collection: `/deviceManagement/${resourceType}s`, operations: ['create', 'update', 'delete'],
-    excluded: UPDATE_PROFILE_SERVER_FIELDS, permission: 'DeviceManagementConfiguration.ReadWrite.All', ...DELETE_POLICY,
+    excluded: UPDATE_PROFILE_SERVER_FIELDS, afterWrite: assignmentsAfterWrite,
+    assignmentType: `#microsoft.graph.${resourceType}Assignment`, permission: 'DeviceManagementConfiguration.ReadWrite.All', ...DELETE_POLICY,
   })])),
   assignmentFilter: defineRecord({
     resourceType: 'assignmentFilter', version: 'beta', collection: '/deviceManagement/assignmentFilters', operations: ['create', 'update'],
@@ -1236,21 +1298,23 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   }),
   // Restore gaps, batch 4: scripts and remediations. The backup reads each
   // script on its own, so it holds the script body; a backup without it is
-  // refused. Who a script runs on is not written (its /assign body differs
-  // from a policy's), so a recreated script is assigned again by hand.
+  // refused. Batch 14: who a script runs on is written through /assign, whose
+  // body names its list per kind (SCRIPT_ASSIGNMENTS); a remediation also
+  // carries its schedule and whether its fix runs.
   ...Object.fromEntries(Object.entries(SCRIPT_BODY_FIELDS).map(([resourceType, bodies]) => [resourceType, defineRecord({
     resourceType, version: 'beta', collection: `/deviceManagement/${resourceType}s`, operations: ['create', 'update'],
     excluded: SCRIPT_SERVER_FIELDS, refusal: scriptRefusal(bodies), permission: 'DeviceManagementConfiguration.ReadWrite.All',
+    ...(SCRIPT_ASSIGNMENTS[resourceType] ? { afterWrite: assignmentsAfterWrite, ...SCRIPT_ASSIGNMENTS[resourceType] } : {}),
   })])),
   // Restore gaps, batch 5: administrative templates. The backup reads the
   // values of each setting, so the template, its settings and their values
-  // come back; every setting it uses must exist in the target first. Who it
-  // is assigned to is not written, as for scripts.
+  // come back; every setting it uses must exist in the target first. Batch 14:
+  // then who it is assigned to, through /assign.
   groupPolicyConfiguration: defineRecord({
     resourceType: 'groupPolicyConfiguration', version: 'beta', collection: '/deviceManagement/groupPolicyConfigurations', operations: ['create', 'update'],
     excluded: ['definitionValues', 'assignments', 'policyConfigurationIngestionType'],
-    refusal: groupPolicyRefusal, preflight: groupPolicyDefinitionsExist, afterWrite: groupPolicySettingsAfterWrite,
-    permission: 'DeviceManagementConfiguration.ReadWrite.All',
+    refusal: groupPolicyRefusal, preflight: groupPolicyDefinitionsExist, afterWrite: inOrder(groupPolicySettingsAfterWrite, assignmentsAfterWrite),
+    assignmentType: '#microsoft.graph.groupPolicyConfigurationAssignment', permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
   // Restore gaps, batch 6. An app category is only a name; Microsoft's
   // built-in categories are in every tenant and are never written.
@@ -1317,7 +1381,8 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   intuneBrandingProfile: defineRecord({
     resourceType: 'intuneBrandingProfile', version: 'beta', collection: '/deviceManagement/intuneBrandingProfiles',
     operations: ['create', 'update'], excluded: ['isDefaultProfile', 'assignments', ...BRANDING_PROFILE_IMAGES],
-    refusal: defaultBrandingProfile, permission: 'DeviceManagementServiceConfig.ReadWrite.All',
+    refusal: defaultBrandingProfile, afterWrite: assignmentsAfterWrite, assignmentType: '#microsoft.graph.intuneBrandingProfileAssignment',
+    permission: 'DeviceManagementServiceConfig.ReadWrite.All',
   }),
   // Restore gaps, batch 10. A custom Endpoint analytics baseline is only a
   // name: Graph takes the scores to compare against when it is created, so a

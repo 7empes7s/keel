@@ -50,6 +50,7 @@ import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { loadLedgerInputs, loadWorkloadLedger, proofExpiry, saveLedgerInputs } from '../engine/collect/workloadLedgerStore.mjs';
 import { WORKLOAD_COLLECTORS } from '../engine/collect/workloads/registry.mjs';
 import { detectWorkloadDrift } from '../engine/govern/workloadDrift.mjs';
+import { runComplianceChecks } from '../engine/benchmarks/runChecks.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 export const DEFAULT_RECORD_DIR = join(__dirname, '..', 'docs', 'release', 'qualifications');
@@ -170,6 +171,17 @@ export async function runWorkloadCollection(client, { tenantRef, config, scope =
     logger.log(`${step.workload}: ${run.outcome}${run.outcome === 'disabled' ? ' (not qualified; nothing was read)' : ''}`);
     if (drift.status === 'detected') logger.log(`${step.workload}: ${drift.changes} new change(s) against the approved setup`);
     if (drift.status === 'failed') logger.log(`${step.workload}: drift detection failed: ${drift.error}`);
+  }
+  // Compliance controls that rest on these reads (Defender email protection...) are
+  // checked again now, as they are after each backup. A failed check is logged and
+  // never fails the collection, which is already stored.
+  let checks;
+  try {
+    checks = await runComplianceChecks(client, { tenantRef, actor: 'scheduler', now: now() });
+    logger.log(`compliance checks: ${checks.checked} run (${checks.pass} pass, ${checks.fail} fail, ${checks.unknown} could not check)`);
+  } catch (error) {
+    checks = { status: 'failed', error: String(error?.message ?? error) };
+    logger.log(`compliance checks failed: ${checks.error}`);
   }
   const proof = proofExpiry([...inputs.reads, ...inputs.writes], { now: now() });
   for (const entry of proof.filter((item) => item.status !== 'current')) logger.log(entry.message);

@@ -4,10 +4,9 @@ import { GET as loadIntegrations } from "@/app/api/integrations/route";
 import { GET as loadServiceNow } from "@/app/api/integrations/servicenow/route";
 import { PageHeader } from "@/components/page-header";
 import { DataUnavailable } from "@/components/data-unavailable";
-import { IntegrationConsole } from "@/components/integration-console";
-import { ServiceNowPanel } from "@/components/servicenow-panel";
 import { Verdict } from "@/components/verdict";
-import { integrationsPageVerdict } from "@/lib/integrations-view";
+import { integrationAlerts, integrationsPageVerdict, integrationsStatus } from "@/lib/integrations-view";
+import { IntegrationsBody } from "@/components/integrations-body";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { Destination, DestinationStatus } from "@/lib/integrations";
 import type { ServiceNowStatus } from "@/lib/servicenow";
@@ -38,12 +37,12 @@ export default async function IntegrationsPage() {
     servicenow = null;
   }
   const verdict = integrationsPageVerdict(destinations, statuses, servicenow);
+  const alerts = integrationAlerts(destinations, statuses, servicenow);
   return <>
-    <PageHeader section="Settings" title="Integrations" description={DESCRIPTION} generatedAt={generatedAt} />
-    <Verdict text={verdict.text} tone={verdict.tone} />
+    <PageHeader section="Settings" title="Integrations" description={DESCRIPTION} generatedAt={generatedAt} status={integrationsStatus(alerts)} />
+    <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ig-attention" } : null} text={verdict.text} tone={verdict.tone} />
     <div data-layer="explanation">
-      {servicenow ? <ServiceNowPanel status={servicenow} /> : <DataUnavailable service={{ name: "ServiceNow" }} surface="ServiceNow approvals" />}
-      <IntegrationConsole canConfiguration={canConfiguration} destinations={destinations} statuses={statuses} />
+      <IntegrationsBody alerts={alerts} canConfiguration={canConfiguration} destinations={destinations} servicenow={servicenow} statuses={statuses} />
     </div>
   </>;
 }

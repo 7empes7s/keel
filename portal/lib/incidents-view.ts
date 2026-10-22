@@ -279,6 +279,21 @@ export function failureWords(status: number, message?: string | null): string {
 }
 
 /** One service backup against the attack window, in words. */
+/** Each other service's backup as a status: is there a good one from outside the attack? */
+export function serviceBackupStatus(entry: IncidentServiceBackup): { label: string; tone: BadgeTone; rank: number } {
+  const newest = entry.newestGood;
+  if (!newest) return { label: "No good backup", tone: "urgent", rank: 0 };
+  if (newest.inCompromiseWindow && !entry.beforeWindow) return { label: "Only during the attack", tone: "urgent", rank: 1 };
+  if (newest.inCompromiseWindow) return { label: "Use the one from before", tone: "soon", rank: 2 };
+  return { label: "Outside the attack", tone: "fine", rank: 3 };
+}
+
+/** Problems first, then by name; settings before content for the same name. */
+export function orderServiceBackups(entries: IncidentServiceBackup[]): IncidentServiceBackup[] {
+  return [...entries].sort((a, b) => serviceBackupStatus(a).rank - serviceBackupStatus(b).rank
+    || a.name.localeCompare(b.name) || a.kind.localeCompare(b.kind));
+}
+
 export function serviceBackupLine(entry: IncidentServiceBackup, now: string): string {
   const newest = entry.newestGood;
   if (!newest) return "No good backup yet.";

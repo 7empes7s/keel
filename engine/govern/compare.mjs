@@ -28,6 +28,7 @@
  * collectWithOutcomes, whose reader has no write method.
  */
 import { createHash } from 'node:crypto';
+import { objectName } from '../cir/objectName.mjs';
 import { canonicalizeAll } from '../cir/canonicalize.mjs';
 import { HASH_VERSION, canonicalHash } from '../cir/canonicalHash.mjs';
 import { ID_KEY_TYPES } from '../cir/naturalKey.mjs';
@@ -86,8 +87,7 @@ export function serviceOf(kind, name) {
 const sha = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const iso = (value) => (value == null ? null : new Date(value).toISOString());
 const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
-const nameOf = (payload) => (typeof payload?.displayName === 'string' ? payload.displayName
-  : typeof payload?.name === 'string' ? payload.name : null);
+const nameOf = (payload, resourceType) => objectName(payload, resourceType);
 
 /** A type's read outcome on one side. A side with no digest (fixtures, old rows) is 'unknown' and compared. */
 export function typeOutcome(coverage, type) {
@@ -212,13 +212,13 @@ export function compareSettings(left, right, { portable = false } = {}) {
       if (was && !now) {
         group.removed += 1;
         const payload = portable ? portablePayload(was.payload, was.references) : was.payload;
-        group.items.push({ naturalKey, name: nameOf(was.payload), changeType: 'removed', blastRadius: changeBlastRadius(resourceType, was.payload, null, was.blast_radius ?? null), ...presenceFields(resourceType, payload, 'removed') });
+        group.items.push({ naturalKey, name: nameOf(was.payload, resourceType), changeType: 'removed', blastRadius: changeBlastRadius(resourceType, was.payload, null, was.blast_radius ?? null), ...presenceFields(resourceType, payload, 'removed') });
         continue;
       }
       if (!was && now) {
         group.added += 1;
         const payload = portable ? portablePayload(now.payload, now.references) : now.payload;
-        group.items.push({ naturalKey, name: nameOf(now.payload), changeType: 'added', blastRadius: changeBlastRadius(resourceType, null, now.payload, now.blast_radius ?? null), ...presenceFields(resourceType, payload, 'added') });
+        group.items.push({ naturalKey, name: nameOf(now.payload, resourceType), changeType: 'added', blastRadius: changeBlastRadius(resourceType, null, now.payload, now.blast_radius ?? null), ...presenceFields(resourceType, payload, 'added') });
         continue;
       }
       if (settingsFingerprint(was, { portable }) === settingsFingerprint(now, { portable })) {
@@ -229,7 +229,7 @@ export function compareSettings(left, right, { portable = false } = {}) {
       const differences = portable
         ? fieldDifferences(resourceType, portablePayload(was.payload, was.references), portablePayload(now.payload, now.references))
         : fieldDifferences(resourceType, was.payload, now.payload);
-      group.items.push({ naturalKey, name: nameOf(now.payload) ?? nameOf(was.payload), changeType: 'changed', blastRadius: changeBlastRadius(resourceType, was.payload, now.payload, now.blast_radius ?? null), ...differences });
+      group.items.push({ naturalKey, name: nameOf(now.payload, resourceType) ?? nameOf(was.payload, resourceType), changeType: 'changed', blastRadius: changeBlastRadius(resourceType, was.payload, now.payload, now.blast_radius ?? null), ...differences });
     }
     if (unkeyed.left || unkeyed.right) unmatched.push({ resourceType, service, ...unkeyed });
     for (const key of ['added', 'removed', 'changed', 'unchanged']) totals[key] += group[key];

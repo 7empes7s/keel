@@ -79,8 +79,8 @@ test("a failed, partial or old run says so, and content stored before runs were 
   const rows = contentRows(data);
   const state = Object.fromEntries(rows.map((row) => [row.workload.code, row.state]));
   assert.deepEqual(state, { "exchange-mail": "failed", onedrive: "partial", "sharepoint-sites": "held", teams: "stale", planner: "never" });
-  assert.equal(runLine(rows[0]), "Last run failed: KEEL-RT-group: HTTP 503");
-  assert.equal(runLine(rows[1]), "Last run could not read 1 part: KEEL-RT-group: HTTP 503");
+  assert.equal(runLine(rows[0]), "Last run failed. Microsoft 365 had a temporary fault.");
+  assert.equal(runLine(rows[1]), "Last run could not read 1 part. Microsoft 365 had a temporary fault.");
   assert.match(runLine(rows[2])!, /Stored before Keel recorded each run/);
   assert.equal(runLine(rows[4]), null);
   assert.match(contentHeadline(rows), /did not finish for Mail, OneDrive files\.$/);

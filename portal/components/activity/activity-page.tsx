@@ -8,6 +8,7 @@ import { useBackup } from "@/components/backup-controls";
 import { ChangedObjects, ChangedValuesStyles } from "@/components/changed-values";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { BaselinesStyles } from "@/components/baselines/styles";
+import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { DatePicker } from "@/components/pickers/date-picker";
 import { OptionPicker } from "@/components/pickers/option-picker";
@@ -15,6 +16,7 @@ import { Segmented, type ChoiceOption } from "@/components/pickers/segmented";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { JobRecordFields } from "@/components/job-table";
 import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { ErrorNotice } from "@/components/ui/error-notice";
 import { Badge } from "@/components/ui/badge";
 import { Person } from "@/components/ui/person";
 import { Verdict } from "@/components/verdict";
@@ -50,6 +52,7 @@ import { rangeToParam, toDay, type DayRange } from "@/lib/date-range";
 import type { ChainIntegrity, EvidenceEntry } from "@/lib/evidence";
 import type { NamedKeys } from "@/lib/job-names";
 import type { JobRecord } from "@/lib/portal-jobs";
+import { byRisk, byText, byTime } from "@/lib/paging";
 import { formatTimestamp } from "@/lib/presentation";
 import { jobStatusSentence, personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
@@ -68,6 +71,13 @@ const SHOW: ChoiceOption<"all" | "jobs" | "records">[] = [
   { value: "all", label: "Everything" },
   { value: "jobs", label: "Jobs" },
   { value: "records", label: "Audit record" },
+];
+
+// Order by: when, outcome (failures first) and what happened.
+const SORTS: ListSort<ActivityRow>[] = [
+  { key: "when", label: "When", desc: true, compare: (a, b) => byTime(a.at, b.at) },
+  { key: "outcome", label: "Outcome", desc: true, compare: (a, b) => byRisk(outcomeTone(a.outcome), outcomeTone(b.outcome)) },
+  { key: "what", label: "What happened", compare: (a, b) => byText(a.title, b.title) },
 ];
 
 const WHO_ANY = "";
@@ -245,7 +255,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
               matches={(item, text) => `${item.title} ${item.line} ${item.person ? personLabel(item.person) : "keel"} ${OUTCOMES[item.outcome].label}`.toLowerCase().includes(text)}
               noun={{ one: "entry", many: "entries" }}
               renderRow={renderRow}
-              rowLimit={25}
+              sorts={SORTS}
               rowName={(item) => `${item.title} at ${clockWords(item.at) || "an unknown time"}`}
               toneOf={(item) => outcomeTone(item.outcome)}
             />
@@ -370,13 +380,11 @@ function RowPanel({ row, now, canBackup, retryBusy, retryLabel, onRetry, onClose
           {job ? <div><dt>Status</dt><dd>{capital(jobStatusSentence(job, now))}</dd></div> : null}
         </dl>
         {job?.status === "failed" && job.error ? (
-          <div className="ac-note" data-tone="urgent">
-            <Icon name="alert" />
-            <div>
-              <b>{String(job.error).split("\n")[0].replace(/^[A-Za-z]*Error:\s*/, "") || "It stopped with an error."}</b>
-              <p>{retry && retry.kind !== "plan" ? "Running it again usually works; Keel only reads your tenant." : retry?.kind === "plan" ? "Nothing was changed by the failed part. Plan it again to try once more." : "The full error is in Technical details."}</p>
-            </div>
-          </div>
+          <ErrorNotice
+            error={job.error}
+            id="activity-error"
+            todo={retry && retry.kind !== "plan" ? "Run it again: it usually works, and Keel only reads your tenant." : retry?.kind === "plan" ? "Nothing was changed by the failed part. Plan it again to try once more." : undefined}
+          />
         ) : null}
         {row.outcome === "refused" ? (
           <div className="ac-note" data-tone="soon">

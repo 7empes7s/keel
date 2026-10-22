@@ -7,7 +7,7 @@ import { compareSettings } from "../../engine/govern/compare.mjs";
 import { CompareView } from "@/components/compare-view";
 import { NAV_MAP, visibleNavLinks } from "@/components/nav-links";
 import {
-  compareInputFrom, compareValueWords, compareVerdict, containerWords, defaultInput, labelTenants,
+  compareInputFrom, compareValueWords, compareVerdict, containerWords, defaultInput, labelTenants, notComparedReasons,
   type CompareData, type CompareResult, type SettingsSection,
 } from "@/lib/compare-view";
 
@@ -77,4 +77,42 @@ test("Compare sits under Baselines and needs read", () => {
   assert.ok(NAV_MAP.Baselines.some((route) => route.href === "/compare"));
   assert.equal(visibleNavLinks({}).some((link) => link.href === "/compare"), false);
   assert.equal(visibleNavLinks({ canRead: true }).some((link) => link.href === "/compare"), true);
+});
+
+test("not compared folds into a few reasons, worst first, never a sentence per kind", () => {
+  const reasons = notComparedReasons([
+    { resourceType: "accessPackage", service: "Entra ID", left: "complete", right: "not-requested" },
+    { resourceType: "deviceConfiguration", service: "Intune", left: "complete", right: "failed" },
+    { resourceType: "accessReview", service: "Entra ID", left: "complete", right: "not-requested" },
+    { resourceType: "namedLocation", service: "Entra ID", left: "partial", right: "complete-empty" },
+    { resourceType: "user", service: "Entra ID", left: "failed", right: "failed" },
+  ]);
+  assert.deepEqual(reasons.map((reason) => [reason.reason, reason.side, reason.tone, reason.entries.length]), [
+    ["Could not be read", "after", "failed", 1],
+    ["Could not be read", "both", "failed", 1],
+    ["Read only in part", "before", "partial", 1],
+    ["Not in that backup", "after", "neutral", 2],
+  ]);
+});
+
+test("whole added and removed objects are one line with a badge, settings folded; no There or Not there", () => {
+  const section = compareSettings(
+    { rows: [row("group:Old team", { displayName: "Old team", description: "Closed" }, "a"), row("group:Finance", { displayName: "Finance", securityEnabled: true }, "b")], coverage: null },
+    { rows: [row("group:New team", { displayName: "New team" }, "c"), row("group:Finance", { displayName: "Finance", securityEnabled: false }, "d")], coverage: null },
+  ) as SettingsSection;
+  const settings: SettingsSection = { ...section, notCompared: [
+    { resourceType: "accessPackage", service: "Entra ID", left: "complete", right: "not-requested" },
+    { resourceType: "accessReview", service: "Entra ID", left: "complete", right: "not-requested" },
+  ] };
+  const data: CompareData = { generatedAt: "2026-10-03T00:00:00.000Z", tenants: TENANTS, input: { from: ID(1), to: ID(2) }, result: result(settings), problem: null };
+  const html = renderToStaticMarkup(createElement(CompareView, { data }));
+  assert.match(html, /data-change="removed"[^>]*>.*?Removed/);
+  assert.match(html, /data-change="added"[^>]*>.*?Added/);
+  assert.match(html, /Show its 2 settings/);
+  // Settings of a whole item stay folded: only the changed object has before/after rows.
+  assert.equal((html.match(/class="cc-row"/g) ?? []).length, 1);
+  assert.doesNotMatch(html, />(Not )?[Tt]here</);
+  assert.doesNotMatch(html, /not there/i);
+  assert.match(html, /Not in that backup/);
+  assert.doesNotMatch(html, /First side read in full/);
 });

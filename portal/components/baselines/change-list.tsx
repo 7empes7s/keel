@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
 import { ChangeDecision } from "@/components/baselines/change-decision";
+import { ChangeFacts } from "@/components/baselines/change-facts";
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { RiskChip } from "@/components/baselines/parts";
 import { BaselinesStyles } from "@/components/baselines/styles";
@@ -12,6 +13,7 @@ import { ChangeAttributionPanel } from "@/components/change-attribution";
 import { ChangeEvidencePanel } from "@/components/decision-workbook";
 import { DriftDiff } from "@/components/drift-diff";
 import { WorkloadRestore } from "@/components/restore/workload-restore";
+import { type ListSort } from "@/components/list/list-paging";
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { SemanticDiff } from "@/components/semantic-diff";
@@ -29,8 +31,9 @@ import { driftActionControls } from "@/lib/drift-actions";
 import { changeTiles, SERVICES_TILE, tileParams } from "@/lib/change-tiles";
 import { applyFilters, pickedTiles, tileCounts, toggleTile } from "@/lib/filter-set";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
-import { ago, BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
+import { ago, BLAST_RADIUS_ORDER, brandCase, formatTimestamp } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
+import { byRisk, byText, byTime } from "@/lib/paging";
 import { orderGroups, smartOrder } from "@/lib/selection";
 import { serviceFor, serviceOrder } from "@/lib/services";
 import { kindParts } from "@/lib/type-groups";
@@ -59,6 +62,12 @@ const RISK_ABOUT: Record<string, string> = {
   cosmetic: "Names, labels and descriptions: nobody gains or loses access",
 };
 
+// Order by: when it was found, risk, and name.
+const SORTS: ListSort<DriftRecord>[] = [
+  { key: "found", label: "When found", desc: true, compare: (a, b) => byTime(a.detectedAt, b.detectedAt) },
+  { key: "risk", label: "Risk", desc: true, compare: (a, b) => byRisk(toneOf(a), toneOf(b)) },
+  { key: "name", label: "Name", compare: (a, b) => byText(changeName(a), changeName(b)) },
+];
 const changeText = (item: DriftRecord) => `${changeName(item)} ${plainKind(item.resourceType)} ${typeName(item.resourceType)} ${changedBy(item) ?? ""}`.toLowerCase();
 
 const GROUPINGS: Grouping<DriftRecord>[] = [
@@ -261,6 +270,12 @@ export function ChangeList({
     ...(canDispose && serviceIds.size ? [{ label: "Acknowledge service setting changes", run: acknowledge }] : []),
   ];
 
+  // Picks stay picked while tiles, services, kinds and the find change the view, so
+  // someone can gather changes from several services and decide on them together.
+  const keepPicks = useMemo(() => ({ pool: open, groupOf: (item: DriftRecord) => {
+    const where = itemService(item);
+    return { key: where.code, label: where.name, icon: where.icon, rank: serviceOrder(where.code) };
+  } }), [open]);
   const waiting = open.filter((item) => item.serviceRead && isWaiting(item)).length;
   const tileLink = (key: string | null) => {
     const changes = { ...tileParams(key === null ? [] : toggleTile(tiles, picked, key)), open: null };
@@ -343,9 +358,11 @@ export function ChangeList({
             getId={(item) => item.id}
             groupings={GROUPINGS}
             items={shown}
+            keepPicks={keepPicks}
             label="Open changes"
             matches={(item, text) => changeText(item).includes(text.trim())}
             more={more}
+            sorts={SORTS}
             noun={{ one: "change", many: "changes" }}
             renderRow={(item) => {
               const who = changedBy(item);
@@ -411,19 +428,15 @@ export function ChangeList({
           title={changeName(opened)}
           wide
         >
+          <ChangeFacts item={opened} now={now} />
           <section className="bl-why" aria-label="Why it matters">
             <h3>Why it matters</h3>
             <p>{whyItMatters(opened.resourceType)}</p>
-            <p className="bl-help">
-              {opened.serviceRead
-                ? `Keel found it ${ago(opened.detectedAt, now)}, when it compared the newest ${workloadLabel(opened.serviceRead.workload).toLowerCase()} read in ${itemService(opened).name} with ${opened.serviceRead.comparedWith === "approved" ? "the approved setup" : "the one before"}. It does not know who made it.`
-                : `${changedBy(opened) ? `${changedBy(opened)} made it` : "Keel does not know who made it yet"}; Keel found it ${ago(opened.detectedAt, now)}, in ${itemService(opened).name}.`}
-            </p>
           </section>
           {opened.semantic
             ? <SemanticDiff change={opened.semantic} item={opened} record={<OpenedRecord item={opened} />} />
             : <DriftDiff item={opened} record={<OpenedRecord item={opened} />} />}
-          {opened.evidence !== undefined ? <ChangeEvidencePanel attribution={opened.attribution} evidence={opened.evidence} now={now} /> : null}
+          {opened.evidence !== undefined ? <ChangeEvidencePanel attribution={opened.attribution} evidence={opened.evidence} gap={opened.evidenceGap} now={now} /> : null}
           {opened.attribution !== undefined ? <ChangeAttributionPanel attribution={opened.attribution} now={now} /> : null}
         </DetailsSheet>
       ) : null}

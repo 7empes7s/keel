@@ -16,6 +16,7 @@ import {
 import { formatTimestamp } from "@/lib/presentation";
 
 const TITLE = "Changes to kept or shared content";
+const PARENTS = [{ href: "/approvals", label: "Approvals" }];
 const DESCRIPTION = "A restore that shortens how long content is kept, releases a hold, widens sharing or deletes content needs its own approval.";
 
 // Q45: opened from the approval inbox or from a restore's refusal, for a dry run made
@@ -33,7 +34,7 @@ export default async function ContentEffectsPage({ params }: { params: Promise<{
   } catch {
     return (
       <>
-        <PageHeader description={DESCRIPTION} section="Inbox" title={TITLE} />
+        <PageHeader description={DESCRIPTION} parents={PARENTS} section="Inbox" title={TITLE} />
         <DataUnavailable surface="These content effects" />
       </>
     );
@@ -45,12 +46,12 @@ export default async function ContentEffectsPage({ params }: { params: Promise<{
       <PageHeader
         description={DESCRIPTION}
         generatedAt={new Date().toISOString()}
+        parents={PARENTS}
         section="Inbox"
         status={review.effects.length === 0 || review.approvals.length > 0 ? { tone: "fine", label: "Approved" } : { tone: "soon", label: "Waiting for you" }}
         title={TITLE}
       />
       <Verdict text={contentEffectVerdict(review)} tone={review.effects.length === 0 || review.approvals.length > 0 ? "fine" : "soon"} />
-      <Link className="text-link back-link" href="/approvals"><span aria-hidden="true">←</span> All approvals</Link>
       <section aria-labelledby="content-effects-plan-heading" className="report-section ce-section">
         <h2 id="content-effects-plan-heading">The restore</h2>
         <p className="ce-plan">

@@ -1,3 +1,4 @@
+import { PagedRows } from "@/components/list/paged-rows";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
   catalogueSentence,
@@ -43,14 +44,24 @@ function ItemRow({ item }: { item: DiscoveryItem }) {
   );
 }
 
-function ItemList({ items, summary }: { items: DiscoveryItem[]; summary: string }) {
+function ItemList({ items, summary, prefix, label }: { items: DiscoveryItem[]; summary: string; prefix: string; label: string }) {
   if (!items.length) return null;
   return (
     <details className="technical-details">
       <summary>{summary}</summary>
-      <ul className="activity-list">
-        {items.map((item) => <ItemRow item={item} key={`${item.source}|${item.name}`} />)}
-      </ul>
+      <PagedRows
+        label={label}
+        listClassName="activity-list"
+        noun={{ one: "kind", many: "kinds" }}
+        prefix={prefix}
+        rows={items.map((item) => ({
+          id: `${item.source}|${item.name}`,
+          node: <ItemRow item={item} />,
+          text: `${typeLabel(item)} ${sourceLabel(item.source)}`,
+          values: { name: typeLabel(item), source: sourceLabel(item.source), objects: item.objects ?? -1 },
+        }))}
+        sorts={[{ key: "name", label: "Name" }, { key: "source", label: "Found in" }, { key: "objects", label: "Objects", desc: true }]}
+      />
     </details>
   );
 }
@@ -89,9 +100,9 @@ export function DiscoveryInventoryView({ data, now }: { data: DiscoveryInventory
       <p>{catalogueSentence(data)}</p>
       {containers ? <p className="activity-meta">{containers}</p> : null}
       {sourceProblems(data).map((line) => <p className="action-error" key={line}>{line}</p>)}
-      <ItemList items={uncatalogued} summary={`Not backed up yet (${uncatalogued.length.toLocaleString("en-GB")})`} />
-      <ItemList items={unreadable} summary={`KEEL cannot read (${unreadable.length.toLocaleString("en-GB")})`} />
-      <ItemList items={skipped} summary={`Not worth backing up (${skipped.length.toLocaleString("en-GB")})`} />
+      <ItemList items={uncatalogued} label="Not backed up yet" prefix="new-" summary={`Not backed up yet (${uncatalogued.length.toLocaleString("en-GB")})`} />
+      <ItemList items={unreadable} label="KEEL cannot read" prefix="unread-" summary={`KEEL cannot read (${unreadable.length.toLocaleString("en-GB")})`} />
+      <ItemList items={skipped} label="Not worth backing up" prefix="skip-" summary={`Not worth backing up (${skipped.length.toLocaleString("en-GB")})`} />
       {missing.length ? (
         <details className="technical-details">
           <summary>{`Backed-up types not found (${missing.length})`}</summary>

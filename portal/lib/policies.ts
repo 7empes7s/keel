@@ -147,7 +147,7 @@ export async function previewNames(client: QueryClient, tenantRef: string, previ
         [tenantRef, driftIds],
       );
       for (const row of rows) {
-        const name = payloadName(row.after_payload) ?? payloadName(row.before_payload);
+        const name = payloadName(row.after_payload, String(row.resource_type)) ?? payloadName(row.before_payload, String(row.resource_type));
         if (name) names[String(row.natural_key)] = { name, resourceType: String(row.resource_type) };
       }
     }

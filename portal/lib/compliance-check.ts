@@ -10,10 +10,10 @@ const NO_STORE = { "cache-control": "no-store" };
 export function guardedComplianceCheck(deps: GuardDeps = {}) {
   return guarded({ action: "compliance:check", capability: "collect", recordAttempt: true }, async ({ client, principalId, tenantRef }) => {
     const checks = (await runComplianceChecks(client, { tenantRef, actor: principalId })) as {
-      checked: number; pass: number; fail: number; unknown: number; notApplicable: number;
+      checked: number; pass: number; fail: number; unknown: number; notApplicable: number; notConfigured: number;
     };
     return Response.json({
-      checked: checks.checked, pass: checks.pass, fail: checks.fail, unknown: checks.unknown, notApplicable: checks.notApplicable,
+      checked: checks.checked, pass: checks.pass, fail: checks.fail, unknown: checks.unknown, notApplicable: checks.notApplicable, notConfigured: checks.notConfigured,
     }, { status: 201, headers: NO_STORE });
   }, deps);
 }

@@ -10,6 +10,7 @@ import { Person } from "@/components/ui/person";
 import {
   EXCEPTION_EFFECT,
   NOT_RUN_YET,
+  NOT_SET_UP_HELP,
   RESULTS,
   canGrantOn,
   controlName,
@@ -37,7 +38,7 @@ const SEVERITY: Record<string, string> = { high: "High", medium: "Medium", low: 
 
 // One control, opened from its row (`?open=<evaluationId>`): what it checks and why,
 // the result, the backup it rests on, its exception and the changes linked to it.
-// Grant or renew is the one amber action, on a failing control only.
+// Grant or renew is the one amber action, on a control that fails or is not set up yet.
 export function ControlSheet({ finding, now, canConfigure, grantHref, onClose }: {
   finding: ComplianceFinding;
   now: string;
@@ -62,7 +63,7 @@ export function ControlSheet({ finding, now, canConfigure, grantHref, onClose }:
   return (
     <DetailsSheet
       footer={(canGrant || changeCount) ? <>
-        {canGrant ? <Link className={result === "failing" ? "btn btn-primary" : "btn"} href={grantHref}>{grantLabel(finding)}</Link> : null}
+        {canGrant ? <Link className={result === "failing" || result === "not-set-up" ? "btn btn-primary" : "btn"} href={grantHref}>{grantLabel(finding)}</Link> : null}
         {changeCount ? <Link className="btn" href="/drift">{changeCount === 1 ? "Review the change" : `Review the ${changeCount} changes`}</Link> : null}
         {canGrant ? <p className="bl-help">{EXCEPTION_EFFECT}</p> : null}
       </> : undefined}
@@ -91,6 +92,7 @@ export function ControlSheet({ finding, now, canConfigure, grantHref, onClose }:
         </dl>
         {!snapshot ? <p className="cp-muted">{evidenceSentence(finding, now)}</p> : null}
         {result === "unknown" ? <p className="cp-muted">{NOT_RUN_YET}</p> : null}
+        {result === "not-set-up" ? <p className="cp-callout" data-tone="soon"><Icon name="plus" />{NOT_SET_UP_HELP}</p> : null}
 
         {finding.exception ? (
           <section aria-labelledby="cp-exception-heading" className="cp-block">

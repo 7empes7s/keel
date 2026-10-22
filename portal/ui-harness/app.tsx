@@ -684,7 +684,7 @@ const ROLE_EVIDENCE = evidenceWindow("roleAssignment", "2026-10-02T09:00:00Z", "
 const COMPLIANCE: ComplianceData = {
   generatedAt: now,
   activeBaseline: BASELINES[0],
-  summary: { controls: 4, exposed: 1, excepted: 1, expiredExceptions: 1, incompleteExceptions: 0, passing: 1, unknown: 1, notApplicable: 0 },
+  summary: { controls: 5, exposed: 2, notConfigured: 1, excepted: 1, expiredExceptions: 1, incompleteExceptions: 0, passing: 1, unknown: 1, notApplicable: 0 },
   storage: { configured: true, provider: "local-disk", region: "westeurope", boundary: "keel-vps-backup-volume", immutability: "unsupported", generatedAt: "2026-10-02T05:00:00Z", certifies: null, source: "/opt/backups/keel-recovery-manifest.json" },
   findings: [
     { id: "e7a10000-0000-4000-8000-0000000000e1", controlId: "keel-custom.role-assignment.admin-count-at-most", title: "Global Administrator assignment count stays at or below a set limit",
@@ -716,11 +716,18 @@ const COMPLIANCE: ComplianceData = {
       framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "unknown", reason: "group:stale", evaluatedAt: "2026-10-01T09:20:00Z", evidenceSeq: "4101",
       exceptionState: "none", exposed: false, exception: null, evidence: [],
       links: { backup: { state: "none", linked: [], mismatched: [] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } } },
-    { id: "e7a10000-0000-4000-8000-0000000000e4", controlId: "keel-custom.conditional-access.block-legacy", title: "Legacy authentication is blocked",
-      framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "pass", reason: null, evaluatedAt: "2026-09-28T09:20:00Z", evidenceSeq: "3990",
-      exceptionState: "none", exposed: false, exception: null,
+    // No policy blocks old sign-in methods at all: "Not set up yet", not a wrong setting.
+    { id: "e7a10000-0000-4000-8000-0000000000e4", controlId: "keel-custom.conditional-access.block-legacy", title: "Legacy authentication is blocked", severity: "high",
+      framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "fail", reason: "not-configured", evaluatedAt: "2026-09-28T09:20:00Z", evidenceSeq: "3990",
+      exceptionState: "none", exposed: true, exception: null,
       evidence: [evidenceWindow("conditionalAccessPolicy", "2026-09-28T09:00:00Z", "2026-09-28T09:11:00Z", null)],
       links: { backup: { state: "mismatch", linked: [], mismatched: [evidenceWindow("conditionalAccessPolicy", "2026-09-28T09:00:00Z", "2026-09-28T09:11:00Z", null)] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } } },
+    // A control from an imported standard, so the score shows per standard.
+    { id: "e7a10000-0000-4000-8000-0000000000e5", controlId: "nist-sample.account-management", title: "Unused accounts are reviewed", severity: "medium",
+      framework: "nist-800-53", edition: "rev5", profile: "moderate", evaluatorVersion: 1, verdict: "pass", reason: null, evaluatedAt: "2026-10-02T09:20:00Z", evidenceSeq: "4184",
+      exceptionState: "none", exposed: false, exception: null,
+      evidence: [evidenceWindow("user", "2026-10-02T09:00:00Z", "2026-10-02T09:12:00Z", "0b5e0000-0000-4000-8000-0000000000d6")],
+      links: { backup: { state: "linked", linked: [evidenceWindow("user", "2026-10-02T09:00:00Z", "2026-10-02T09:12:00Z", "0b5e0000-0000-4000-8000-0000000000d6")], mismatched: [] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } } },
   ],
 };
 const PLAN_REF = { kind: "dry-run", id: "7f3c0000-0000-4000-8000-000000000011", name: null, readable: true, status: "completed", undo: false, resources: 12, snapshotAt: "2026-10-02T09:12:00Z", dryRunJobId: "a3" };
@@ -1808,7 +1815,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/kit": return <KitPage />;
     case "/kit/many": return <KitPage many />;
     // Waiting work matches the Alerts and Incidents fixtures (3 open alerts, 1 open incident).
-    case "/": return <DashboardView data={{ ...dashboard(posture), waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } }} pendingApprovals={posture === 2 ? 0 : 2} />;
+    case "/": return <DashboardView data={{ ...dashboard(posture), compliance: posture === 2 ? { ...COMPLIANCE.summary, exposed: 0, notConfigured: 0, passing: 3 } : COMPLIANCE.summary, waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } }} pendingApprovals={posture === 2 ? 0 : 2} />;
     case "/activity": case "/activity/viewer": {
       const all = activityJobs(jobs);
       const viewer = path === "/activity/viewer";

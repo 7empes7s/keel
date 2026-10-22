@@ -1388,6 +1388,12 @@ export async function getDashboardData(): Promise<DashboardData> {
       alerts: [],
       headline,
       waiting: await waitingFor(client, ref),
+      compliance: await complianceFindings(client, { tenantRef: ref, now: generatedAt })
+        .then(({ summary }: { summary: ComplianceSummary }) => summary)
+        .catch((error: unknown) => {
+          console.error("[keel-portal] overview compliance score unavailable", error);
+          return null;
+        }),
     };
 
     data.alerts = buildAlerts(data);

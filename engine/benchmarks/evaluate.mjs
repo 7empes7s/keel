@@ -34,7 +34,7 @@
 import { CrossTenantObservationError } from '../contracts/observation.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
-import { controlFor, predicateFor, semanticFacts, PREDICATE_VERDICTS } from './registry.mjs';
+import { controlFor, predicateFor, semanticFacts, NOT_CONFIGURED, PREDICATE_VERDICTS } from './registry.mjs';
 
 export const EVALUATION_CONTRACT_VERSION = 1;
 
@@ -140,12 +140,16 @@ export function evaluateControl({ controlId, tenantRef, observations = {}, now =
     : factsByType;
 
   const predicate = predicateFor(control.predicate.name);
-  const verdict = predicate(factsArg, control.predicate.args);
+  const returned = predicate(factsArg, control.predicate.args);
+  // The one structured return: a fail because the setting does not exist at all.
+  const notConfigured = returned !== null && typeof returned === 'object'
+    && returned.verdict === 'fail' && returned.reason === NOT_CONFIGURED;
+  const verdict = notConfigured ? 'fail' : returned;
   if (!PREDICATE_VERDICTS.includes(verdict)) {
-    throw new TypeError(`${controlId}: predicate must return one of ${PREDICATE_VERDICTS.join(', ')}, got ${JSON.stringify(verdict)}`);
+    throw new TypeError(`${controlId}: predicate must return one of ${PREDICATE_VERDICTS.join(', ')} or { verdict: 'fail', reason: '${NOT_CONFIGURED}' }, got ${JSON.stringify(returned)}`);
   }
 
-  return freezeResult({ control, verdict, reason: null, evidenceRefs, observationWindows, now });
+  return freezeResult({ control, verdict, reason: notConfigured ? NOT_CONFIGURED : null, evidenceRefs, observationWindows, now });
 }
 
 /**

@@ -20,7 +20,10 @@
 //           tools/qualification/workloadReadsLive.mjs), the site app grant and site permissions records (absent ones are listed, not refused), verifies each through
 //           its own import seam, and stores the evidence rows, the collector and restorer
 //           grants and the module versions. A record that does not verify stores nothing.
-//           Run it after every recapture.
+//           The collector's roles are also read live from the tenant (its Entra directory
+//           roles, GET only, with the tenant config's app, which is the collector), so a
+//           role granted after the records were captured counts on the next import.
+//           Run it after every recapture, and after a role is granted to the collector.
 //           Each record is verified at the build it was captured on, not the running
 //           build (see importLedgerInputs). --build, when given, names the running build
 //           for the report only.
@@ -218,6 +221,38 @@ export async function importSeams() {
   ];
 }
 
+const graphUrl = (path) => `https://${GRAPH_HOST}/v1.0${path}`;
+
+async function graphPages(transport, url, what) {
+  const items = [];
+  for (let next = url; next;) {
+    const response = await transport(next, { method: 'GET' });
+    if (response.status !== 200) {
+      throw new Error(`reading ${what} returned HTTP ${response.status}${response.body?.error?.code ? ` (${response.body.error.code})` : ''}`);
+    }
+    items.push(...(response.body?.value ?? []));
+    next = response.body?.['@odata.nextLink'] ?? null;
+  }
+  return items;
+}
+
+/**
+ * The collector app's tenant-wide Entra directory roles, read live (GET only). A role
+ * scoped to an administrative unit or an app is left out: the workload reads need it
+ * tenant-wide. Purview role groups (eDiscovery Manager) are not Entra roles and never
+ * show here.
+ */
+export async function observeCollectorRoles(transport, { appId }) {
+  if (typeof appId !== 'string' || !appId) throw new Error('the tenant config names no clientId for the collector app');
+  const principal = await transport(graphUrl(`/servicePrincipals(appId='${encodeURIComponent(appId)}')?$select=id`), { method: 'GET' });
+  if (principal.status !== 200 || !principal.body?.id) throw new Error(`reading the collector's service principal returned HTTP ${principal.status}`);
+  const query = new URLSearchParams({ $filter: `principalId eq '${principal.body.id}'`, $expand: 'roleDefinition' });
+  const assignments = await graphPages(transport, graphUrl(`/roleManagement/directory/roleAssignments?${query}`), 'the collector\'s directory roles');
+  return [...new Set(assignments
+    .filter((item) => item.directoryScopeId === '/' && item.roleDefinition?.displayName)
+    .map((item) => item.roleDefinition.displayName))].sort();
+}
+
 const union = (list) => {
   const present = list.filter(Boolean);
   if (!present.length) return null;
@@ -243,7 +278,9 @@ const union = (list) => {
  * rule the Entra live records and the portal's live records view already use.
  * `verify.build` (the running build) is only reported.
  */
-export async function importLedgerInputs(client, { tenantRef, dir, seams, verify = {}, readFile = (path) => readFileSync(path, 'utf8') }) {
+export async function importLedgerInputs(client, {
+  tenantRef, dir, seams, verify = {}, readFile = (path) => readFileSync(path, 'utf8'), observeRoles = null,
+}) {
   const { build: runningBuild = null, ...checks } = verify;
   const imported = [];
   const refused = [];
@@ -274,7 +311,19 @@ export async function importLedgerInputs(client, { tenantRef, dir, seams, verify
     Object.assign(versions, item.runtime?.modules ?? {});
   }
   const evidence = imported.flatMap((item) => [...item.reads, ...item.writes]);
-  const grants = union(imported.map((item) => item.grants));
+  let grants = union(imported.map((item) => item.grants));
+  // The roles the records declared, plus the roles the collector holds live now. A failed
+  // live read keeps the declared roles only, as before, and says why.
+  let collectorRoles = { source: 'declared', live: null, error: null };
+  if (grants && observeRoles) {
+    try {
+      const live = await observeRoles();
+      grants = union([grants, { permissions: [], roles: live }]);
+      collectorRoles = { source: 'declared+live', live, error: null };
+    } catch (error) {
+      collectorRoles = { source: 'declared', live: null, error: error.message ?? String(error) };
+    }
+  }
   const restorerGrants = union(imported.map((item) => item.restorerGrants));
   const runtime = { modules: Object.assign({}, ...imported.map((item) => item.runtime?.modules ?? {})) };
   if (imported.length) await saveLedgerInputs(client, { tenantRef, evidence, grants, restorerGrants, runtime });
@@ -284,6 +333,7 @@ export async function importLedgerInputs(client, { tenantRef, dir, seams, verify
     imported: imported.map((item) => ({ file: item.file, evidenceBuild: item.evidenceBuild, reads: item.reads.length, writes: item.writes.length })),
     refused,
     absent,
+    collectorRoles: { ...collectorRoles, stored: grants?.roles ?? null },
     exitCode: refused.length ? 1 : 0,
   };
 }
@@ -313,6 +363,9 @@ export async function main(argv = process.argv.slice(2), {
       const result = await importLedgerInputs(client, {
         tenantRef, dir, seams: seams ?? await importSeams(), readFile,
         verify: { build: arg(argv, 'build', null), hmacKey: env.KEEL_QUALIFICATION_HMAC_KEY ?? null },
+        observeRoles: () => observeCollectorRoles(
+          readOnlyGraphTransport(async () => (await getTokenFn(config)).accessToken, fetchImpl), { appId: config.clientId },
+        ),
       });
       logger.log(JSON.stringify(result, null, 2));
       return result.exitCode;

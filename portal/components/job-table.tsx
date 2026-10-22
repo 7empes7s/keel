@@ -6,7 +6,7 @@ import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, RecordGroup, ReferenceFields, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import { refUsage } from "@/lib/record-refs";
 import { Person } from "@/components/ui/person";
-import { jobErrorLine } from "@/lib/job-names";
+import { incompleteTypesLine, jobDisplayStatus, jobErrorLine, jobIncompleteTypes } from "@/lib/job-names";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import { jobName, jobStatusSentence } from "@/lib/sentences";
@@ -64,15 +64,17 @@ export function jobKindIcon(kind: string): IconName {
 export function JobRow({ job, now }: { job: JobRecord; now: string }) {
   const at = job.finishedAt ?? job.startedAt ?? job.createdAt ?? null;
   const failed = job.status === "failed";
+  const gaps = jobIncompleteTypes(job);
   return (
-    <li className={`activity-item list-row job-row job-row-${job.status}`} data-tone={failed ? "urgent" : undefined}>
+    <li className={`activity-item list-row job-row job-row-${jobDisplayStatus(job)}`} data-tone={failed ? "urgent" : gaps.length ? "soon" : undefined}>
       <span aria-hidden="true" className="row-kind"><Icon name={jobKindIcon(job.kind)} /></span>
       <span className="row-name">
         <Link href={`/jobs/${encodeURIComponent(job.id)}`}>{jobName(job)}</Link>
         {failed && job.error ? <small className="job-error-line">{jobErrorLine(job.error)}</small> : null}
+        {gaps.length ? <small className="job-gap-line">{incompleteTypesLine(gaps)}</small> : null}
       </span>
       <span className="row-mid">
-        <span className="row-status"><JobStatusBadge status={job.status} /></span>
+        <span className="row-status"><JobStatusBadge status={jobDisplayStatus(job)} /></span>
         <span className="row-meta">
           <time dateTime={at ?? undefined} title={`${jobStatusSentence(job, now)} · ${formatTimestamp(at)}`}>{ago(at, now)}</time>
           <span aria-hidden="true">·</span>

@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { ALWAYS_NEEDED_TYPES, collectM1, collectWithOutcomes, neededTypes, unavailableOnTenant, M1_TYPES, MISSING_PREREQUISITE } from './entraAdapter.mjs';
 import { exitCodeForDigest } from '../../cli/keel-collect.mjs';
+import { PARTIAL_EXIT_CODE, incompleteTypesOf } from './incomplete.mjs';
 import { snapshotHasFullCoverage } from '../schedules/completions.mjs';
 
 // Issue #289: the tenant answers lifecycle workflows with a licence refusal and
@@ -121,11 +122,13 @@ assert.deepEqual([...neededTypes(undefined)], []);
   assert.equal(snapshotHasFullCoverage({ status: 'complete', coverage_digest: coverageDigest }), true);
 }
 
-// A missing permission is still a failed type and a failed run.
+// A missing permission is still a failed type. The other types read in full, so
+// the run is partial (exit 3, #447), never a clean exit 0, and the type is named.
 {
   const { coverageDigest } = await collectWithOutcomes(reader([['/identity/apiConnectors', denied]]));
   assert.equal(coverageDigest.identityApiConnector.outcome, 'failed');
-  assert.equal(exitCodeForDigest(coverageDigest), 1);
+  assert.equal(exitCodeForDigest(coverageDigest), PARTIAL_EXIT_CODE);
+  assert.deepEqual(incompleteTypesOf(coverageDigest), [{ type: 'identityApiConnector', outcome: 'failed', httpStatus: 403 }]);
   assert.equal(snapshotHasFullCoverage({ status: 'complete', coverage_digest: coverageDigest }), false);
 }
 
@@ -140,5 +143,18 @@ assert.deepEqual([...neededTypes(undefined)], []);
   };
   const { coverageDigest } = await collectWithOutcomes(midway);
   assert.equal(coverageDigest.lifecycleWorkflow.outcome, 'partial');
-  assert.equal(exitCodeForDigest(coverageDigest), 1);
+  assert.equal(exitCodeForDigest(coverageDigest), PARTIAL_EXIT_CODE);
+  assert.deepEqual(incompleteTypesOf(coverageDigest).map((entry) => entry.type), ['lifecycleWorkflow']);
 }
+
+// Issue #447: nothing read in full is still a failed run (exit 1), and a digest of
+// only unavailable or out-of-tier types has no gaps.
+assert.equal(exitCodeForDigest({ a: { outcome: 'failed', httpStatus: 400 }, b: { outcome: 'not-requested' } }), 1);
+assert.equal(exitCodeForDigest({ a: { outcome: 'partial' }, b: { outcome: 'unavailable' } }), 1);
+assert.equal(exitCodeForDigest({ a: { outcome: 'complete' }, b: { outcome: 'unavailable' }, c: { outcome: 'not-requested' } }), 0);
+assert.equal(exitCodeForDigest({ a: { outcome: 'complete-empty' }, z: { outcome: 'failed', httpStatus: 400 }, m: { outcome: 'partial' } }), PARTIAL_EXIT_CODE);
+assert.deepEqual(incompleteTypesOf({ a: { outcome: 'complete' }, z: { outcome: 'failed', httpStatus: 400 }, m: { outcome: 'partial' }, n: {} }), [
+  { type: 'm', outcome: 'partial', httpStatus: null },
+  { type: 'n', outcome: 'unknown', httpStatus: null },
+  { type: 'z', outcome: 'failed', httpStatus: 400 },
+]);

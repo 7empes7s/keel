@@ -75,6 +75,14 @@ const CONTENT_NOUN = /(File|ListItem|FolderItem|Folder|Message(?!ing)|Attachment
 const CONFIGURATION_NOUN = /(Policy|Rule|Configuration|Config|Settings)$/;
 const AUTHZ_FAILURE = /\b(401|403)\b|forbidden|access (is )?denied|insufficient privileges|unauthori[sz]ed|not authorized|does not have permission/i;
 
+// Tenant setup a read needs that is neither a permission nor a role (rbac.setup).
+export const POWER_PLATFORM_SETUP = Object.freeze([
+  'register the collector app as a Power Platform management app (New-PowerAppManagementApp)',
+]);
+export const FABRIC_READ_ONLY_ADMIN_SETUP = Object.freeze([
+  'turn on the Fabric setting "Service principals can access read-only admin APIs" for a security group whose only member is the collector app',
+  'keep every Power BI permission off the collector app',
+]);
 const doc = (path) => Object.freeze({ url: `${LEARN}${path}`, retrievedAt: null });
 const graph = (endpoint, version = 'v1.0') => Object.freeze({ kind: 'graph', method: 'GET', endpoint, version });
 const cmdlet = (name, module, { parameters = [], probeName = name } = {}) => Object.freeze({ kind: 'cmdlet', cmdlet: name, parameters, module, probeName });
@@ -380,26 +388,30 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
   })),
   // READ-PP: Power Platform environments, DLP policies and connectors, and Power BI
-  // (Fabric) tenant settings, from the admin REST APIs. App-only access to the Power
-  // Platform admin API needs the app registered as a Power Platform management app.
+  // (Fabric) tenant settings, from the admin REST APIs. Neither route needs an admin
+  // role: app-only Power Platform reads need the app registered as a Power Platform
+  // management app, and app-only Fabric reads go through the read-only admin APIs,
+  // which need a Fabric tenant setting and an app holding no Power BI permission.
+  // `rbac.setup` names those steps; they are not roles, so observed grants never
+  // hold them and a capture is what proves them.
   // engine/collect/workloads/powerPlatform.mjs holds the fields and identities.
   ...[
     ['powerplatform.environments', 'Power Platform environments',
       rest('api.bap.microsoft.com', '/providers/Microsoft.BusinessAppPlatform/scopes/admin/environments?api-version=2020-10-01', '2020-10-01', { audience: 'https://service.powerapps.com/' }),
-      'next-link', [], ['Power Platform Administrator'], '/en-us/connectors/powerplatformforadmins/'],
+      'next-link', POWER_PLATFORM_SETUP, '/en-us/connectors/powerplatformforadmins/'],
     ['powerplatform.dlp-policies', 'Power Platform data loss prevention (DLP) policies',
       rest('api.bap.microsoft.com', '/providers/PowerPlatform.Governance/v2/policies', 'v2', { audience: 'https://service.powerapps.com/' }),
-      'next-link', [], ['Power Platform Administrator'], '/en-us/power-platform/admin/wp-data-loss-prevention'],
+      'next-link', POWER_PLATFORM_SETUP, '/en-us/power-platform/admin/wp-data-loss-prevention'],
     ['powerplatform.connectors', 'Power Platform connectors in each environment',
       rest('api.powerapps.com', '/providers/Microsoft.PowerApps/scopes/admin/environments/{environment-name}/apis?api-version=2016-11-01', '2016-11-01', { audience: 'https://service.powerapps.com/' }),
-      'next-link', [], ['Power Platform Administrator'], '/en-us/connectors/powerappsforadmins/'],
+      'next-link', POWER_PLATFORM_SETUP, '/en-us/connectors/powerappsforadmins/'],
     ['powerbi.tenant-settings', 'Power BI tenant settings',
       rest('api.fabric.microsoft.com', '/v1/admin/tenantsettings', 'v1', { audience: 'https://api.fabric.microsoft.com/', items: 'tenantSettings' }),
-      'next-link', ['Tenant.Read.All'], ['Fabric Administrator'], '/en-us/rest/api/fabric/admin/tenants/list-tenant-settings'],
-  ].map(([id, resource, operation, paging, permissions, roles, path]) => ({
+      'next-link', FABRIC_READ_ONLY_ADMIN_SETUP, '/en-us/rest/api/fabric/admin/tenants/list-tenant-settings'],
+  ].map(([id, resource, operation, paging, setup, path]) => ({
     id, workload: 'power-platform-settings', resource, operation,
     auth: { application: true, delegated: true },
-    rbac: { permissions, roles },
+    rbac: { permissions: [], roles: [], setup },
     paging, throttle: 'rest-429-retry-after', consistency: 'eventual',
     source: doc(path),
   })),
@@ -478,6 +490,10 @@ export function descriptorProblems(descriptor) {
   if (!Array.isArray(descriptor?.rbac?.permissions) || !Array.isArray(descriptor?.rbac?.roles)) {
     problems.push('rbac must list permissions and roles (empty lists are fine)');
   }
+  if (descriptor?.rbac?.setup !== undefined
+    && (!Array.isArray(descriptor.rbac.setup) || !descriptor.rbac.setup.every((step) => typeof step === 'string' && step))) {
+    problems.push('rbac.setup, when present, lists setup steps as text');
+  }
   if (!PAGING.includes(descriptor?.paging)) problems.push(`paging must be one of ${PAGING.join(', ')}`);
   if (!descriptor?.source?.url) problems.push('a declared operation cites its documentation');
   return problems;
@@ -540,6 +556,7 @@ function prerequisiteSentence(descriptor, missing) {
   const parts = [];
   if (missing.permissions.length) parts.push(`grant ${missing.permissions.join(', ')} to the collector app`);
   if (missing.roles.length) parts.push(`assign it the ${missing.roles.join(', ')} role${missing.roles.length > 1 ? 's' : ''}`);
+  if (missing.setup?.length) parts.push(...missing.setup);
   return `To read ${descriptor.resource.toLowerCase()}, ${parts.join(' and ')}.`;
 }
 
@@ -594,7 +611,7 @@ export function workloadRow(descriptor, { evidence = [], grants = null, runtime 
   } else if (!live && deniedCapture) {
     // A refusal names what the operation needs; nothing else is guessed.
     state = 'pending-prerequisite';
-    const missing = { permissions: descriptor.rbac.permissions, roles: descriptor.rbac.roles };
+    const missing = { permissions: descriptor.rbac.permissions, roles: descriptor.rbac.roles, setup: descriptor.rbac.setup ?? [] };
     prerequisite = { ...missing, source: 'authorization failure', message: prerequisiteSentence(descriptor, missing) };
   } else if (live) {
     state = 'live-qualified';

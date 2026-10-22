@@ -24,6 +24,14 @@ function graphNativeAdapter(type) {
     if (entry.parent) {
       const startedAt = new Date();
       const result = await collectPerParent(reader, entry);
+      // Issue #473: an object read per parent can still need one more read
+      // (a compliance policy's actions for noncompliance).
+      if (entry.itemReads && !result.error && !result.capped) {
+        // A policy deleted before its extra read is gone, like one deleted before its own read.
+        const extra = await withItemReads(reader, entry, result.items, { dropWhenNotFound: entry.absentWhenNotFound === true });
+        if (extra.error) return { entry, path: catalogReadPath(entry), startedAt, completedAt: new Date(), items: [], pages: result.pages, status: extra.error.status ?? null, capped: false, error: extra.error };
+        result.pages += extra.pages;
+      }
       return { entry, path: catalogReadPath(entry), startedAt, completedAt: new Date(), ...result };
     }
     // Issue #156: the organization id read in this run wins over the configured
@@ -56,6 +64,16 @@ function graphNativeAdapter(type) {
         };
       }
     }
+    // Restore gaps batch 13: a kind whose objects each hold one more collection
+    // (the apps an app protection policy covers) reads it per object.
+    // Issue #472: item reads run before child reads, so the children a child
+    // read walks can come from an item read (an administrative template's
+    // settings, which Graph leaves out of an $expand).
+    if (entry.itemReads && !result?.error && !result?.capped && Array.isArray(result?.items)) {
+      const extra = await withItemReads(reader, entry, result.items);
+      if (extra.error) return { entry, path, startedAt, completedAt: new Date(), items: [], pages: result.pages ?? null, status: extra.error.status ?? null, capped: false, error: extra.error };
+      result.pages = (Number.isSafeInteger(result.pages) ? result.pages : 0) + extra.pages;
+    }
     // Restore gaps batch 5: a kind whose objects hold children with one more
     // collection each (an administrative template's settings and their values)
     // reads that collection per child.
@@ -63,13 +81,6 @@ function graphNativeAdapter(type) {
       const children = await withChildReads(reader, entry, result.items);
       if (children.error) return { entry, path, startedAt, completedAt: new Date(), items: [], pages: result.pages ?? null, status: children.error.status ?? null, capped: false, error: children.error };
       result.pages = (Number.isSafeInteger(result.pages) ? result.pages : 0) + children.pages;
-    }
-    // Restore gaps batch 13: a kind whose objects each hold one more collection
-    // (the apps an app protection policy covers) reads it per object.
-    if (entry.itemReads && !result?.error && !result?.capped && Array.isArray(result?.items)) {
-      const extra = await withItemReads(reader, entry, result.items);
-      if (extra.error) return { entry, path, startedAt, completedAt: new Date(), items: [], pages: result.pages ?? null, status: extra.error.status ?? null, capped: false, error: extra.error };
-      result.pages = (Number.isSafeInteger(result.pages) ? result.pages : 0) + extra.pages;
     }
     const completedAt = new Date();
     // Issue #156: a type Graph answers with 404 when the tenant never set it
@@ -224,14 +235,18 @@ async function withChildReads(reader, entry, items) {
  * are), with {item} filled with its id, as its `itemReads.as`. Any failed read
  * fails the kind, so a backup never holds a policy without the apps it covers.
  */
-async function withItemReads(reader, entry, items) {
+async function withItemReads(reader, entry, items, { dropWhenNotFound = false } = {}) {
   const { as, path, byType } = entry.itemReads;
   let pages = 0;
-  for (const item of items) {
+  for (const item of [...items]) {
     const template = byType ? byType[item?.['@odata.type']] : path;
     if (!template) continue;
     if (typeof item?.id !== 'string' || item.id.length === 0) return { error: { error: `reading ${entry.type}: an object has no id` } };
     const result = await reader.collect(entry.version, template.replace('{item}', encodeURIComponent(item.id)), { pageCap: Infinity });
+    if (dropWhenNotFound && result?.error?.status === 404 && !(result.pages > 0)) {
+      items.splice(items.indexOf(item), 1);
+      continue;
+    }
     if (result?.error) return { error: result.error };
     if (result?.capped || !Array.isArray(result?.items)) return { error: { error: `reading ${entry.type}: ${as} of ${item.id} was incomplete` } };
     pages += Number.isSafeInteger(result.pages) ? result.pages : 0;

@@ -7,7 +7,7 @@ import { WORKLOAD_LABELS } from "@/lib/compare-view";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
 import { ago, displayEnum } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
-import { serviceFor, serviceOrder, type CloudService } from "@/lib/services";
+import { madeInSharePoint, serviceFor, serviceOrder, type CloudService } from "@/lib/services";
 import type { BaselineRecord, DriftRecord } from "@/lib/types";
 
 function plural(count: number, one: string, many = `${one}s`): string {
@@ -28,6 +28,12 @@ export const impactWords = (blastRadius: string): string => displayEnum("blastRa
 /** The Microsoft service a stored type belongs to (engine taxonomy), never the code alone. */
 export function typeService(type: string): CloudService {
   return serviceFor(typeInfo(type).service);
+}
+
+/** The service one setting sits under: its type's, except the sign-in rules SharePoint
+ * admin center made, which are SharePoint settings. */
+export function itemService(item: { resourceType: string; name?: string | null }): CloudService {
+  return madeInSharePoint(item.resourceType, item.name) ? serviceFor("SharePoint") : typeService(item.resourceType);
 }
 
 /** Why a kind of setting matters, from the taxonomy's priority reason. */
@@ -104,7 +110,7 @@ export interface ServiceReadKind {
  * carry `serviceRead`) join the Entra ID and Intune kinds, so every service shows. */
 export function serviceSummaries(
   baseline: Pick<BaselineRecord, "capture"> | null,
-  items: (Pick<DriftRecord, "resourceType" | "blastRadius"> & Partial<Pick<DriftRecord, "serviceRead">>)[],
+  items: (Pick<DriftRecord, "resourceType" | "blastRadius"> & Partial<Pick<DriftRecord, "serviceRead" | "name">>)[],
   backedUp: string[],
   serviceReads: ServiceReadKind[] = [],
 ): ServiceSummary[] {
@@ -115,8 +121,7 @@ export function serviceSummaries(
   const captured = new Set(baseline?.capture?.types ?? []);
   const changedTypes = new Set(items.map((item) => item.resourceType));
   const byCode = new Map<string, ServiceSummary>();
-  const entry = (type: string) => {
-    const service = typeService(type);
+  const entry = (type: string, service: CloudService = typeService(type)) => {
     let summary = byCode.get(service.code);
     if (!summary) {
       summary = { service, basis: "previous-backup", inLine: [], changed: 0, changedKinds: [], notCovered: [], tone: "fine" };
@@ -128,7 +133,7 @@ export function serviceSummaries(
   };
   for (const type of captured) if (!changedTypes.has(type)) entry(type).inLine.push(type);
   for (const item of items) {
-    const summary = entry(item.resourceType);
+    const summary = entry(item.resourceType, itemService(item));
     summary.changed += 1;
     if (!summary.changedKinds.includes(item.resourceType)) summary.changedKinds.push(item.resourceType);
     summary.tone = worstTone([summary.tone, impactTone(item.blastRadius)]) ?? summary.tone;

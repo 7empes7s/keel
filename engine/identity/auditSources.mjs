@@ -81,13 +81,13 @@ function typeName(value) {
 // is split into its parts: capitalised words, short acronyms ("IOS"), short numbers
 // ("Windows10") and an optional lowercase first word ("ios..."). A two-letter part must
 // be a known short word ("To", "By", "Id"). At least three quarters of the letters must
-// sit in words (three or more letters with a vowel, or a known short word). Random
-// tokens fail this as often as the old CamelCase-only rule did or more (letters-only
-// tokens) and always in practice for tokens with digits, hex or all-caps.
+// sit in words (three or more letters with a vowel, or a known short word). Overall,
+// random letters-only tokens pass this less often than the old CamelCase-only rule
+// (a different, smaller set), and tokens with digits, hex or all-caps never in practice.
 // Anything still token-shaped drops the activity (it is optional); the event is kept.
 const SHORT_WORDS = new Set(['To', 'Of', 'In', 'On', 'By', 'Up', 'As', 'At', 'Is', 'Or', 'No', 'An', 'If', 'Me', 'My',
-  'Id', 'Do', 'Go', 'Be', 'Os', 'Ad', 'Ip', 'Pc', 'Vm', 'Ui', 'Ux', 'Ok', 'Us']);
-const NAME_PART = /[A-Z][a-z]{1,15}(?![a-z])|[A-Z]{2,5}(?=[A-Z][a-z]|\d|$)|\d{1,4}(?!\d)/y;
+  'Id', 'Do', 'Go', 'Be', 'Os', 'Ad', 'Ip', 'Pc', 'Vm', 'Ui', 'Ux', 'Ok', 'Us', 'Wi', 'Fi', 'Co', 'Tv']);
+const NAME_PART = /[A-Z][a-z]{1,19}(?![a-z])|[A-Z]{2,5}(?=[A-Z][a-z]|\d|$)|\d{1,4}(?!\d)/y;
 const isWord = (part) => SHORT_WORDS.has(part) || (/^[A-Z]?[a-z]{2,}$/.test(part) && /[aeiouy]/i.test(part));
 function nameParts(word) {
   const lead = /^[a-z]{2,12}(?=[A-Z])/.exec(word)?.[0] ?? '';

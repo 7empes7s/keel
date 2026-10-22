@@ -254,6 +254,9 @@ test('long activity names with numbers or acronyms are split too, and tokens sti
     ['UpdateMacOSCustomConfigurationAssignmentsAsyncAgain', 'Update Mac OS Custom Configuration Assignments Async Again'],
     ['PatchWindows10VpnConfigurationAssignmentsAsyncNow', 'Patch Windows 10 Vpn Configuration Assignments Async Now'],
     ['UpdateIpRangeNamedLocationForAdUsersAndGroupsAsync', 'Update Ip Range Named Location For Ad Users And Groups Async'],
+    // Names the old CamelCase-only rule already split keep splitting.
+    ['CreateAndroidDeviceOwnerEnterpriseWiFiConfigurationAsync', 'Create Android Device Owner Enterprise Wi Fi Configuration Async'],
+    ['UpdateTelecommunicationsExpenseManagementPartnerAsync', 'Update Telecommunications Expense Management Partner Async'],
   ];
   for (const [name, split] of cases) assert.equal(await activity(`${name} DeviceConfiguration`), `${split} DeviceConfiguration`, name);
   const [entra] = directoryAuditEvents(directoryAudit('Directory_digits', 1, { activityDisplayName: cases[0][0] }));

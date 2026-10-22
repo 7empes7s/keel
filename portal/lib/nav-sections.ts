@@ -26,3 +26,18 @@ export const SECTION_ICONS: Record<NavSection, IconName> = {
   Settings: "settings",
   Inbox: "bell",
 };
+
+export interface Crumb {
+  label: string;
+  // A page above this one; none on the section (a label) and on the current page.
+  href?: string;
+}
+
+/** The page header's "you are here" line: section, the pages above this one, then this
+ * page. A crumb that repeats the one before it (Restore › Restore) is dropped, and a
+ * line with only one crumb left is not shown. */
+export function breadcrumbTrail(section: NavSection, title: string, parents: readonly Crumb[] = []): Crumb[] {
+  const all: Crumb[] = [{ label: section }, ...parents, { label: title }];
+  const trail = all.filter((crumb, index) => index === 0 || crumb.label.trim().toLowerCase() !== all[index - 1].label.trim().toLowerCase());
+  return trail.length > 1 ? trail : [];
+}

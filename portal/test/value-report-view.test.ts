@@ -6,7 +6,7 @@ import {
 } from "../../engine/reports/value.mjs";
 import {
   estimateNote, findingLine, findingSentence, findingTitle, orderOutcomes, outcomeHref, outcomeName, outcomeReason, outcomeSentence, ownerName,
-  parseEntity, parsePeriod, periodParam, periodRange, recoverySentence, resolvePeriod, valueStatus, valueVerdict, type FindingRow, type OutcomeRow,
+  parseEntities, parseEntity, parsePeriod, periodParam, periodRange, recoverySentence, resolvePeriod, valueStatus, valueVerdict, type FindingRow, type OutcomeRow,
   type ValueReport,
 } from "@/lib/value-report-view";
 import { valueReportSheets, valueReportXlsx } from "@/lib/value-report-export";
@@ -79,6 +79,19 @@ function report({ estimate = null, central = true }: { estimate?: unknown; centr
     recovery: central
       ? { withheld: false, recoveryTime: { state: "unmeasured", samples: 0, medianMs: null, worstMs: null, notCounted: 1, drills: 0, restores: 0 }, freshness: { state: "measured", achievedRpoMs: 3_600_000, gaps: 0, asOf: NOW }, recoverablePoint: { state: "unmeasured", ageMs: null, asOf: NOW } }
       : { withheld: true },
+    backups: central
+      ? {
+        withheld: false,
+        settings: { backups: 30, lastAt: NOW },
+        serviceSettings: { runs: 20, workloads: 1, expected: 2, partial: 0, failed: 1, notRun: 0, lastAt: NOW, areas: [
+          { workload: "exchange-mail-flow", state: "good", goodRuns: 20, partialRuns: 0, failedRuns: 0, lastGoodAt: NOW },
+          { workload: "teams-org-policies", state: "failed", goodRuns: 0, partialRuns: 0, failedRuns: 2, lastGoodAt: null },
+        ] },
+        content: { runs: 0, workloads: 0, expected: 1, partial: 1, failed: 0, notRun: 0, lastAt: null, itemsStored: 40, bytesStored: 4096, areas: [
+          { workload: "exchange-mail", state: "partial", goodRuns: 0, partialRuns: 1, failedRuns: 0, lastGoodAt: null },
+        ] },
+      }
+      : { withheld: true },
     estimate: configured.state === "configured" ? { state: "configured", source: configured.source } : { state: configured.state, source: configured.source, problems: configured.problems ?? [] },
     hoursSaved: estimateHours(configured, { restore: summarizeOutcomes(restore).states.verified, remediation: 0, finding: findings.withheld ? 0 : 1 }),
     complianceClaim: null,
@@ -102,7 +115,7 @@ const FINDINGS: FindingRow[] = [
 ];
 
 function render(value: ValueReport, search = ""): Promise<string> {
-  return renderValueReportAt(search, { data: { report: value, period: resolvePeriod("30d", NOW), entity: null, owners: ["FIN", "SALES"] } });
+  return renderValueReportAt(search, { data: { report: value, period: resolvePeriod("30d", NOW), entities: [], owners: ["FIN", "SALES"] } });
 }
 
 /** Visible text: everything outside the "Technical details" record layer and the style block. */
@@ -157,7 +170,9 @@ test("the tiles and the chart add up, every request links to its job, and the pa
 test("the result filter narrows the list", async () => {
   const value = report();
   const filtered = await render(value, "result=verified");
-  assert.match(filtered, /Showing put back and checked only: 1 of 2\./);
+  assert.match(filtered, /Showing <b>1<\/b> of 2 requests/);
+  const both = await render(value, "result=verified,open");
+  assert.match(both, /Showing <b>2<\/b> of 2 requests/, "the tiles add up");
   assert.doesNotMatch(visible(filtered), /Undo a change to a group/);
 });
 
@@ -213,10 +228,15 @@ test("period and entity parameters are validated; an entity never widens a reade
   assert.equal(ownerName("IT_OPS"), "It ops");
   assert.equal(parseEntity("FIN"), "FIN");
   assert.equal(parseEntity("fin; DROP"), null);
-  assert.deepEqual(reportScope({ central: true, entities: [] }, null), { central: true, entities: [] });
-  assert.deepEqual(reportScope({ central: true, entities: [] }, "HR"), { central: false, entities: ["HR"] });
-  assert.deepEqual(reportScope({ central: false, entities: ["FIN"] }, "HR"), { central: false, entities: [] });
-  assert.deepEqual(reportScope({ central: false, entities: ["FIN", "HR"] }, "HR"), { central: false, entities: ["HR"] });
+  assert.deepEqual(parseEntities("FIN,HR,FIN,fin; DROP"), ["FIN", "HR"], "several owners, repeats and bad codes dropped");
+  assert.deepEqual(parseEntities("FIN"), ["FIN"], "an old single-owner link still works");
+  assert.deepEqual(parseEntities(undefined), []);
+  assert.deepEqual(reportScope({ central: true, entities: [] }, []), { central: true, entities: [] });
+  assert.deepEqual(reportScope({ central: true, entities: [] }, ["HR"]), { central: false, entities: ["HR"] });
+  assert.deepEqual(reportScope({ central: true, entities: [] }, ["HR", "FIN"]), { central: false, entities: ["HR", "FIN"] }, "several owners add up");
+  assert.deepEqual(reportScope({ central: false, entities: ["FIN"] }, ["HR"]), { central: false, entities: [] });
+  assert.deepEqual(reportScope({ central: false, entities: ["FIN", "HR"] }, ["HR"]), { central: false, entities: ["HR"] });
+  assert.deepEqual(reportScope({ central: false, entities: ["FIN"] }, ["HR", "FIN"]), { central: false, entities: ["FIN"] }, "an owner outside the reader's scope is dropped, never widening it");
 });
 
 test("security check rows read in words", () => {
@@ -244,4 +264,55 @@ test("the Excel workbook is a valid zip with the report's sheets in plain words"
   const size = view.getUint32(18, true);
   assert.equal(view.getUint32(14, true), crc32(bytes.subarray(30 + nameLength, 30 + nameLength + size)));
   assert.equal(crc32(new TextEncoder().encode("123456789")), 0xcbf43926, "the standard CRC-32 check value");
+});
+
+// Page design rule: no card may be text only. Every card on the Value report carries a
+// status badge or a visual (tiles, meter, ring, chart, figures or a table), in every
+// state, including sections withheld from a scoped reader.
+const VISUALS = /class="(?:badge|vr-meter|vr-ring|vr-chart|vr-figures|vr-table|vr-stat)[ "]/;
+
+test("every Value report card shows a status or a visual, never text alone", async () => {
+  for (const [label, value] of [["central", report({ estimate: null })], ["scoped", report({ central: false })]] as const) {
+    const markup = await render(value);
+    const cards = markup.match(/<section[^>]*class="vr-card[^"]*"[\s\S]*?<\/section>/g) ?? [];
+    assert.ok(cards.length >= 5, `${label}: found ${cards.length} cards`);
+    for (const card of cards) {
+      const title = card.match(/<h2[^>]*>([\s\S]*?)<\/h2>/)?.[1].replace(/<[^>]+>/g, "") ?? card.slice(0, 80);
+      assert.match(card, VISUALS, `${label}: the "${title}" card is text only`);
+      assert.match(card.match(/class="vr-card-head"[\s\S]*?<\/div>/)?.[0] ?? "", /class="badge/, `${label}: the "${title}" card has no status badge`);
+    }
+  }
+});
+
+test("the backups card shows tiles, a problems-first table and explains stored items from runs read in part", async () => {
+  const markup = await render(report());
+  const card = markup.match(/<section[^>]*id="vr-backups"[\s\S]*?<\/section>/)?.[0] ?? "";
+  assert.equal((card.match(/class="vr-stat"/g) ?? []).length, 3);
+  assert.match(card, /2 areas need a look/);
+  const states = [...card.matchAll(/<tr data-state="([a-z-]+)"/g)].map((match) => match[1]);
+  assert.deepEqual(states, ["failed", "good", "partial"], "the group with a failure first, problems first inside it");
+  assert.match(card, /Backed up in part/);
+  assert.match(card, /including items from areas backed up only in part/);
+  assert.doesNotMatch(visible(card), /exchange-mail|teams-org-policies/, "areas are named, never by their codes");
+});
+
+test("no report card renders a list of plain text lines", async () => {
+  const { readdir, readFile } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const root = join(import.meta.dirname, "..", "components");
+  const files: string[] = [];
+  const walk = async (dir: string) => {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) await walk(join(dir, entry.name));
+      else if (entry.name.endsWith(".tsx")) files.push(join(dir, entry.name));
+    }
+  };
+  await walk(root);
+  const offenders = [];
+  for (const file of files) {
+    const source = await readFile(file, "utf8");
+    // A card body made of sentences mapped into muted list items (the old "What we backed up").
+    if (/\.map\(\((?:line|text|sentence)\) => <li className="[^"]*(?:muted|soft)[^"]*"/.test(source)) offenders.push(file);
+  }
+  assert.deepEqual(offenders, []);
 });

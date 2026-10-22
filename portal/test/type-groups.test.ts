@@ -39,3 +39,18 @@ test("type lists across services sort by service, then kind", () => {
   assert.deepEqual(sorted, ["user", "conditionalAccessPolicy", "exchange-mail-flow", "deviceConfiguration"]);
   assert.ok(compareKinds("managedDevice", "deviceConfiguration", "Intune") < 0);
 });
+
+test("Exchange and the other app services split by kind too, including codes stored without a service prefix", () => {
+  const rows = ["exchangeOrganizationConfig", "transportRule", "exchangeMailboxSettings", "exchangeRoleDefinition", "exchangeInboundConnector"].map((type) => ({ type }));
+  const parts = kindParts(rows, (row) => row.type, "Exchange");
+  assert.deepEqual(parts.map((part) => [part.label, part.items.length]), [
+    ["Mailboxes", 1], ["Admin roles", 1], ["Mail flow and protection", 2], ["Organization settings", 1],
+  ]);
+  const teams = kindParts([{ type: "teamsMeetingPolicy" }, { type: "teamsMembership" }], (row) => row.type, "Teams");
+  assert.deepEqual(teams.map((part) => part.label), ["Teams and members", "Calling and meetings"]);
+});
+
+test("a service with one kind still gets its kind heading", () => {
+  const parts = kindParts([{ type: "exchangeRoleDefinition" }, { type: "exchangeRoleAssignment" }], (row) => row.type, "Exchange");
+  assert.deepEqual(parts.map((part) => part.label), ["Admin roles"]);
+});

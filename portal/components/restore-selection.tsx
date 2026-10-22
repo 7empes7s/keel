@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { postAction } from "@/lib/action-client";
+import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { RecoveryMechanismTable, type RecoveryMechanism } from "@/components/recovery-mechanism";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
@@ -16,6 +17,7 @@ import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/
 import { Verdict, type VerdictTone } from "@/components/verdict";
 import { toast } from "@/lib/toast";
 import { fieldWords, refusalSentence } from "@/lib/changes-view";
+import { SettingRows } from "@/components/change-comparison";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
 import type { RestoreResource } from "@/lib/portal-data";
 import type { SnapshotOption } from "@/lib/portal-jobs";
@@ -43,13 +45,13 @@ import {
   whoWords,
   type NameBook,
 } from "@/lib/restore-view";
+import { byRisk, byText, byTime } from "@/lib/paging";
 import { orderGroups, smartOrder } from "@/lib/selection";
 import { madeInSharePoint, serviceFor, serviceOrder } from "@/lib/services";
 import { typeService } from "@/lib/baselines-view";
 import { kindOrder, kindParts } from "@/lib/type-groups";
 
 const DRY_RUN_POLL_MS = 3000;
-const ROWS_PER_GROUP = 8;
 
 interface AdditionReason {
   requiredBy: string;
@@ -263,6 +265,14 @@ function serviceGroup(code: string): Omit<ListGroup<RestoreItem>, "items" | "key
   const service = serviceFor(code === "other" ? null : code);
   return { label: service.name, icon: service.icon, about: service.about };
 }
+
+// Order by: name, kind of setting, risk, and when it changed.
+const SORTS: ListSort<RestoreItem>[] = [
+  { key: "name", label: "Name", compare: (a, b) => byText(a.label, b.label) },
+  { key: "kind", label: "Kind of setting", compare: (a, b) => byText(resourceTypeLabel(a.resourceType), resourceTypeLabel(b.resourceType)) || byText(a.label, b.label) },
+  { key: "risk", label: "Risk", desc: true, compare: (a, b) => byRisk(toneOf(a), toneOf(b)) },
+  { key: "changed", label: "When it changed", desc: true, compare: (a, b) => byTime(a.change?.seenAt, b.change?.seenAt) },
+];
 
 const GROUPINGS: Grouping<RestoreItem>[] = [
   {
@@ -607,7 +617,7 @@ export function RestoreSelection({
                 matches={(item, query) => `${item.label} ${plainType(item.resourceType)} ${resourceTypeLabel(item.resourceType)} ${serviceFor(item.service).name}`.toLowerCase().includes(query)}
                 noun={{ one: "setting", many: "settings" }}
                 renderRow={(item) => <RestoreRow compared={changes !== null} item={item} undo={item.change ? undoButton([item.naturalKey], item.change.kind === "deleted" ? "Bring back" : "Undo change", item.label) : null} />}
-                rowLimit={ROWS_PER_GROUP}
+                sorts={SORTS}
                 rowName={(item) => plainLabel(item.naturalKey, names)}
                 toneOf={toneOf}
               />
@@ -987,18 +997,13 @@ function BeforeAfter({ keys, changes, names }: { keys: string[]; changes: Map<st
             {change.kind === "deleted" ? (
               <p className="restore-ba-line"><span>Now: gone</span><Icon name="chevron" /><span>After: recreated as in the backup</span></p>
             ) : (
-              <table className="restore-ba-table">
-                <thead><tr><th scope="col">Setting</th><th scope="col">Now</th><th scope="col">After the restore</th></tr></thead>
-                <tbody>
-                  {change.fields.map((field) => (
-                    <tr key={field.path}>
-                      <th scope="row">{fieldWords(field.path)}</th>
-                      <td data-label="Now">{field.after}</td>
-                      <td data-label="After">{field.before}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="restore-ba-table">
+                <SettingRows
+                  label={`${plainLabel(change.naturalKey, names)}: settings`}
+                  rows={change.fields.map((field) => ({ path: field.path, section: "General", label: fieldWords(field.path), diff: "changed", before: field.after, after: field.before, entries: null }))}
+                  sides={{ before: "Now", after: "After the restore" }}
+                />
+              </div>
             )}
             {change.fieldCount > change.fields.length ? <p className="restore-ba-more">{plural(change.fieldCount - change.fields.length, "more setting")} also go back.</p> : null}
           </li>

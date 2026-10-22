@@ -1,19 +1,16 @@
 import { headers } from "next/headers";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 
 import { GET as loadJob } from "@/app/api/jobs/[id]/route";
-import { CompensationPanel } from "@/components/compensation-panel";
 import { DataUnavailable } from "@/components/data-unavailable";
-import { JobDetail, jobVerdict } from "@/components/job-detail";
-import { JobRefresher } from "@/components/job-refresher";
+import { JobPageBody } from "@/components/job-page-body";
 import { PageHeader } from "@/components/page-header";
-import { Verdict } from "@/components/verdict";
-import { RecoveryCompletion } from "@/components/recovery-completion";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
+
+const PARENTS = [{ href: "/activity", label: "Activity" }];
 
 export default async function JobPage({ params }: { params: Promise<{ id: string }> }) {
   await connection();
@@ -29,38 +26,15 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
       job = (await response.json() as { job: JobRecord }).job;
     }
   } catch {
-    return <><PageHeader section="Audit log" title="Job" description="What this job did and how it ended." /><DataUnavailable surface="This job" /></>;
+    return <><PageHeader parents={PARENTS} section="Audit log" title="Job" description="What this job did and how it ended." /><DataUnavailable surface="This job" /></>;
   }
   if (!job) notFound();
   const now = new Date().toISOString();
-  // Roadmap task-65: an enforced restore (it always promotes a dry-run artifact)
-  // shows the follow-up work the restore could not do itself.
-  const jobParams = (job.params ?? {}) as Record<string, unknown>;
-  const restoreRef = job.kind === "restore" && typeof jobParams.artifactId === "string" ? jobParams.artifactId : null;
   const capabilities = ((await headers()).get(CAPABILITIES_HEADER) ?? "").split(" ");
-  const canComplete = capabilities.includes("restore");
-  // Roadmap task-70: an enforced restore (succeeded or failed) can be undone; a
-  // compensation dry-run job shows the undo plan it computed.
-  const compensates = restoreRef && typeof jobParams.compensates === "string" ? jobParams.compensates : null;
-  const enforced = restoreRef && jobParams.mode === "enforce" && (job.status === "succeeded" || job.status === "failed");
   return (
     <>
-      <PageHeader section="Audit log" title="Job" description="What this job did and how it ended." generatedAt={now} />
-      <Verdict text={jobVerdict(job, now)} tone={job.status === "failed" ? "critical" : job.status === "succeeded" ? "good" : "attention"} />
-      <Link className="text-link back-link" href="/activity"><span aria-hidden="true">←</span> All activity</Link>
-      <JobDetail job={job} now={now} />
-      {restoreRef && job.status === "failed" && String(job.error ?? "").includes("blocked-content-effect") ? (
-        // Q45: the refusal names where its content effects are approved; link straight there.
-        <Link className="text-link" href={`/approvals/content-effects/${encodeURIComponent(restoreRef)}`}>Review content effects</Link>
-      ) : null}
-      {restoreRef && !compensates && job.status === "succeeded" ? <RecoveryCompletion canComplete={canComplete} restoreRef={restoreRef} /> : null}
-      {enforced && restoreRef ? (
-        <CompensationPanel canApprove={capabilities.includes("approve")} canRestore={canComplete} failed={job.status === "failed"} restoreArtifactId={restoreRef} />
-      ) : null}
-      {compensates && job.status === "succeeded" ? (
-        <CompensationPanel canApprove={capabilities.includes("approve")} canRestore={canComplete} compensationArtifactId={restoreRef} failed={false} restoreArtifactId={compensates} />
-      ) : null}
-      <JobRefresher active={job.status === "queued" || job.status === "running"} />
+      <PageHeader parents={PARENTS} section="Audit log" title="Job" description="What this job did and how it ended." generatedAt={now} />
+      <JobPageBody capabilities={capabilities} job={job} now={now} />
     </>
   );
 }

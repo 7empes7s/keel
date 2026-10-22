@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 
 import { type ContentEffect, ContentEffectsPanel } from "@/components/content-effects";
+import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { refusalSentence } from "@/lib/changes-view";
 import { type NamedKeys, namedResource } from "@/lib/job-names";
 import { toast } from "@/lib/toast";
@@ -46,7 +48,7 @@ interface CompensationArtifact {
   names?: NamedKeys;
 }
 
-const STATUS_TONES: Record<CompensationArtifact["status"], string> = { completed: "ok", refused: "warn", failed: "bad" };
+const STATUS_TONES: Record<CompensationArtifact["status"], BadgeTone> = { completed: "fine", refused: "soon", failed: "urgent" };
 const STATUS_LABELS: Record<CompensationArtifact["status"], string> = {
   completed: "Ready for approval",
   refused: "Refused by a safety check",
@@ -58,11 +60,13 @@ function operationLabel(op: CompensationPlan["operations"][number]): string {
   return `Revert ${fieldList(op.revertedFields ?? []) || "changed fields"}`;
 }
 
+const SECTION_TONES: Record<string, BadgeTone> = { ok: "fine", warn: "soon", bad: "urgent", neutral: "neutral" };
+
 function Section({ title, tone, items, names }: { title: string; tone: string; items: { naturalKey: string; resourceType?: string; text: string }[]; names: NamedKeys }) {
   if (items.length === 0) return null;
   return (
-    <section className="compensation-section">
-      <p className="severity-label">{title}</p>
+    <section className="compensation-section" data-tone={SECTION_TONES[tone]}>
+      <h3 className="compensation-head"><Badge icon={null} tone={SECTION_TONES[tone] ?? "neutral"}>{String(items.length)}</Badge>{title}</h3>
       <ul className="compensation-list">
         {items.map((item, index) => (
           <li className={`compensation-item compensation-${tone}`} key={`${item.naturalKey}-${index}`}>
@@ -79,11 +83,11 @@ export function CompensationPlanView({ plan, names = {} }: { plan: CompensationP
   return (
     <div className="compensation-plan">
       <p className="compensation-statement">{UNDO_STATEMENT}</p>
-      <Section items={plan.operations.map((op) => ({ naturalKey: op.naturalKey, resourceType: op.resourceType, text: operationLabel(op) }))} names={names} title="WILL BE UNDONE" tone="ok" />
-      <Section items={plan.conflicts.map((item) => ({ naturalKey: item.naturalKey, text: conflictSentence(item.reason) }))} names={names} title="CHANGED SINCE · NOT OVERWRITTEN" tone="warn" />
-      <Section items={plan.irrecoverable.map((item) => ({ naturalKey: item.naturalKey, text: irrecoverableSentence(item, names) }))} names={names} title="CANNOT BE UNDONE" tone="bad" />
-      <Section items={plan.manual.map((item) => ({ naturalKey: item.naturalKey, text: manualSentence(item.reason) }))} names={names} title="NEEDS MANUAL REVIEW" tone="warn" />
-      <Section items={plan.notApplied.map((item) => ({ naturalKey: item.naturalKey, text: notAppliedSentence(item.reason) }))} names={names} title="NOTHING TO UNDO" tone="neutral" />
+      <Section items={plan.operations.map((op) => ({ naturalKey: op.naturalKey, resourceType: op.resourceType, text: operationLabel(op) }))} names={names} title="Will be undone" tone="ok" />
+      <Section items={plan.conflicts.map((item) => ({ naturalKey: item.naturalKey, text: conflictSentence(item.reason) }))} names={names} title="Changed since, so not overwritten" tone="warn" />
+      <Section items={plan.irrecoverable.map((item) => ({ naturalKey: item.naturalKey, text: irrecoverableSentence(item, names) }))} names={names} title="Cannot be undone" tone="bad" />
+      <Section items={plan.manual.map((item) => ({ naturalKey: item.naturalKey, text: manualSentence(item.reason) }))} names={names} title="Needs a manual review" tone="warn" />
+      <Section items={plan.notApplied.map((item) => ({ naturalKey: item.naturalKey, text: notAppliedSentence(item.reason) }))} names={names} title="Nothing to undo" tone="neutral" />
       <TechnicalDetails>
         <RecordField label="Undoes restore plan" value={plan.compensates} usage={<code>GET /api/actions/restore/dry-run/{plan.compensates}</code>} />
         <RecordField copy={false} label="Statement" value={plan.statement} />
@@ -189,15 +193,12 @@ export function CompensationPanel({ restoreArtifactId, compensationArtifactId = 
   return (
     <section aria-labelledby="compensation-heading" className="panel compensation-panel">
       <div className="section-head">
-        <p className="section-kicker">Undo</p>
-        <h2 id="compensation-heading">{failed ? "Undo what this failed restore changed" : "Undo this restore"}</h2>
+        <h2 className="job-section-head" id="compensation-heading"><Icon name="restore" />{failed ? "Undo what this failed restore changed" : "Undo this restore"}</h2>
       </div>
       {!artifactId ? (
         <div className="compensation-intro">
           <p>
-            {failed ? "This restore stopped partway. " : ""}
-            Planning an undo re-reads the tenant and reverses only the writes this restore actually made.
-            Anything changed since is left alone and listed. Nothing is written until the plan is approved.
+            {failed ? "It stopped part way. " : ""}Undo reverses only what this restore wrote. Later changes are kept. Nothing changes until it is approved.
           </p>
           {canRestore ? (
             <button aria-busy={busy || undefined} className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void planUndo()} type="button">
@@ -212,7 +213,7 @@ export function CompensationPanel({ restoreArtifactId, compensationArtifactId = 
       ) : (
         <>
           <p className="compensation-status">
-            <span className={`pill pill-${STATUS_TONES[artifact.status]}`}>{STATUS_LABELS[artifact.status]}</span>
+            <Badge tone={STATUS_TONES[artifact.status]}>{STATUS_LABELS[artifact.status]}</Badge>
           </p>
           <TechnicalDetails summary="Technical details for this undo plan">
             <RecordField label="Undo plan ID" value={artifact.id} usage={<code>GET /api/actions/restore/dry-run/{artifact.id}</code>} />
@@ -221,7 +222,7 @@ export function CompensationPanel({ restoreArtifactId, compensationArtifactId = 
           </TechnicalDetails>
           {artifact.guardRefusals?.length ? (
             <>
-              <Section items={artifact.guardRefusals.map((item) => ({ naturalKey: item.naturalKey, text: refusalSentence(item, namedResource(item.naturalKey, artifact.names ?? {})) }))} names={artifact.names ?? {}} title="REFUSED BY A SAFETY CHECK" tone="bad" />
+              <Section items={artifact.guardRefusals.map((item) => ({ naturalKey: item.naturalKey, text: refusalSentence(item, namedResource(item.naturalKey, artifact.names ?? {})) }))} names={artifact.names ?? {}} title="Refused by a safety check" tone="bad" />
               <TechnicalDetails summary="Technical details for the refusals">
                 {artifact.guardRefusals.map((item, index) => <RecordField copy={false} key={index} label={`Guard refusal · ${item.naturalKey}`} value={item.reason} />)}
               </TechnicalDetails>

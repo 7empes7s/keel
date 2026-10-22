@@ -12,12 +12,13 @@ import {
 import { NextRequest } from "next/server";
 
 import { GET as healthCheck } from "@/app/api/health/route";
-import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
+import { ACCESS_IDENTITY_PATH, AUTHENTICATED_EMAIL_HEADER, accessIdentityOrigin, fetchAccessIdentity } from "@/lib/cloudflare-access";
 import {
   CAPABILITIES_HEADER,
   ENTITY_CAPABILITIES_HEADER,
   PRINCIPAL_ID_HEADER,
   type ResolvedIdentity,
+  type SignInHints,
 } from "@/lib/principal";
 import { createAccessMiddleware } from "@/proxy";
 
@@ -196,6 +197,46 @@ test("a caller-supplied entity scope header is replaced by the resolved one", as
   );
   assert.equal(response.status, 200);
   assert.equal(response.headers.get(`x-middleware-request-${ENTITY_CAPABILITIES_HEADER}`), "");
+});
+
+test("sign-in hands identity resolution the verified claims and an identity lookup on the portal's public host only", async () => {
+  const address = jwksServer.address();
+  assert(address && typeof address !== "string");
+  const seen: { email: string; hints?: SignInHints }[] = [];
+  const recording = createAccessMiddleware(
+    () => ({ audience, issuer, jwksUrl: new URL(`http://127.0.0.1:${address.port}/cdn-cgi/access/certs`) }),
+    async (email, hints) => { seen.push({ email, hints }); return { principalId: "principal-1", capabilities: ["read"] }; },
+  );
+  const token = await accessToken();
+  assert.equal((await recording(request("/", token, "GET", { host: "keel.example.com" }))).status, 200);
+  assert.equal((await recording(request("/", token, "GET", { host: "127.0.0.1:3000" }))).status, 200);
+  assert.equal(seen[0].email, authenticatedEmail);
+  assert.equal(seen[0].hints?.claims?.email, authenticatedEmail);
+  assert.equal(seen[0].hints?.claims?.sub, "operator-id");
+  assert.equal(typeof seen[0].hints?.lookupIdentity, "function");
+  assert.equal(seen[1].hints?.lookupIdentity, undefined);
+});
+
+test("the identity lookup goes only to the configured or a public https origin", () => {
+  assert.equal(accessIdentityOrigin("keel.techinsiderbytes.com", {}), "https://keel.techinsiderbytes.com");
+  assert.equal(accessIdentityOrigin("Keel.Example.com", {}), "https://keel.example.com");
+  for (const host of [null, "", "localhost", "localhost:3000", "127.0.0.1", "10.0.0.5:443", "keel.example.com:8443", "metadata.internal", "box.local", "evil.example.com/x"]) {
+    assert.equal(accessIdentityOrigin(host, {}), null, String(host));
+  }
+  assert.equal(accessIdentityOrigin("anything", { KEEL_PORTAL_URL: "https://portal.example.com/app" }), "https://portal.example.com");
+  assert.equal(accessIdentityOrigin("keel.example.com", { KEEL_PORTAL_URL: "http://portal.example.com" }), null);
+});
+
+test("the identity lookup sends the sign-in token as Access's cookie and never throws", async () => {
+  const calls: { url: string; cookie: string | null }[] = [];
+  const answer = (body: unknown, status = 200) => (async (url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(url), cookie: new Headers(init?.headers).get("cookie") });
+    return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  assert.deepEqual(await fetchAccessIdentity("https://keel.example.com", "a.b.c", answer({ name: "Lee Chen" })), { name: "Lee Chen" });
+  assert.deepEqual(calls[0], { url: `https://keel.example.com${ACCESS_IDENTITY_PATH}`, cookie: "CF_Authorization=a.b.c" });
+  assert.equal(await fetchAccessIdentity("https://keel.example.com", "a.b.c", answer({ err: "no" }, 401)), null);
+  assert.equal(await fetchAccessIdentity("https://keel.example.com", "a.b.c", (async () => { throw new Error("offline"); }) as typeof fetch), null);
 });
 
 test("a valid Access JWT for an unregistered email is refused", async () => {

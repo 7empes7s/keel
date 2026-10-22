@@ -31,8 +31,15 @@ function objectIdOf(resource) {
  * key and is planned as an update that puts the name back, never as a create of a
  * duplicate beside it. Cross-tenant restores keep the natural key: the ids differ.
  * The live tenant's own ids (targetResources) come second, so the live object's
- * current name never hides the snapshot's. */
-function keyForLiveObject(targetResources, resources, { sameTenant }) {
+ * current name never hides the snapshot's.
+ *
+ * Issue #485: an object an earlier restore created into this tenant has a new
+ * id, so its backup key (built from the old id) matches nothing live. The ids
+ * the journal recorded for each create (`createdTargetIds`, scoped to the
+ * target tenant) come after the snapshot's own ids and before the live tenant's,
+ * so the created object takes the backup's key and a re-run plans an update or
+ * a noop, never a second create. */
+function keyForLiveObject(targetResources, resources, { sameTenant, createdTargetIds = null }) {
   const naturalKeyByTypeAndId = new Map();
   const symbolById = new Map();
   const targetByNaturalKey = new Map(targetResources.map((resource) => [resource.naturalKey, resource]));
@@ -45,6 +52,11 @@ function keyForLiveObject(targetResources, resources, { sameTenant }) {
   };
 
   if (sameTenant) for (const resource of resources) index(resource);
+  for (const resource of resources) {
+    for (const id of createdTargetIds?.get(resource.naturalKey)?.targetIds ?? []) {
+      index({ resourceType: resource.resourceType, naturalKey: resource.naturalKey, sourceId: id });
+    }
+  }
   for (const resource of targetResources) index(resource);
   // Gap B4: the target's current collection never holds a deleted item, so a
   // deleted item is matched by the SNAPSHOT's source id (the same tenant keeps
@@ -54,6 +66,13 @@ function keyForLiveObject(targetResources, resources, { sameTenant }) {
   for (const resource of resources) {
     if (typeof resource.sourceId !== 'string' || resource.sourceId.length === 0) continue;
     snapshotKeyByTypeAndId.set(`${resource.resourceType}:${resource.sourceId.toLowerCase()}`, resource.naturalKey);
+  }
+  // Issue #485: a created object that was deleted since is found the same way.
+  for (const resource of resources) {
+    for (const id of createdTargetIds?.get(resource.naturalKey)?.targetIds ?? []) {
+      const typeAndId = `${resource.resourceType}:${id.toLowerCase()}`;
+      if (!snapshotKeyByTypeAndId.has(typeAndId)) snapshotKeyByTypeAndId.set(typeAndId, resource.naturalKey);
+    }
   }
 
   function naturalKeyForLiveObject(resourceType, object) {
@@ -76,11 +95,35 @@ function keyForLiveObject(targetResources, resources, { sameTenant }) {
   };
 }
 
+/** The name an object is known by, for adopting it after an earlier create. */
+function nameOf(payload) {
+  const name = payload?.displayName ?? payload?.name;
+  return typeof name === 'string' && name.trim().length > 0 ? name.trim().toLowerCase() : null;
+}
+
+/** Issue #485: the one present live object of the resource's type that carries
+ * the backup's name and that no planned resource already holds, or null. Two
+ * candidates are never guessed between. */
+function adoptByUniqueName(liveIndex, resource, plannedKeys, adoptedKeys) {
+  const name = nameOf(resource.payload);
+  if (!name) return null;
+  const matches = [...liveIndex.entries()].filter(([key, entry]) => entry.state === 'present'
+    && !plannedKeys.has(key)
+    && !adoptedKeys.has(key)
+    && key.startsWith(`${resource.resourceType}:`)
+    && nameOf(entry.payload) === name);
+  if (matches.length !== 1) return null;
+  adoptedKeys.add(matches[0][0]);
+  return matches[0][1];
+}
+
 /** Builds the one executable reconciliation plan for both restore and remediation.
  * Current facts are collected with the reader, desired state comes from the supplied
  * resource set, and decideVerb remains the only write-verb table. */
-export async function buildReconciliationPlan(reader, resources, { targetResources = [], sameTenant = false, nativeLookups = null, now = new Date() } = {}) {
-  const { targetByNaturalKey, naturalKeyForLiveObject, naturalKeyForDeletedObject } = keyForLiveObject(targetResources, resources, { sameTenant });
+export async function buildReconciliationPlan(reader, resources, {
+  targetResources = [], sameTenant = false, nativeLookups = null, createdTargetIds = null, now = new Date(),
+} = {}) {
+  const { targetByNaturalKey, naturalKeyForLiveObject, naturalKeyForDeletedObject } = keyForLiveObject(targetResources, resources, { sameTenant, createdTargetIds });
   const resourceTypes = [...new Set(resources.map((resource) => resource.resourceType))];
   // Task-64: a failed deleted-items read is kept per type, so an absent object
   // of that type is refused rather than recreated beside a possible original.
@@ -94,6 +137,7 @@ export async function buildReconciliationPlan(reader, resources, { targetResourc
   const resolved = [];
   const noops = [];
   const plannedKeys = new Set(resources.map((resource) => resource.naturalKey));
+  const adoptedKeys = new Set();
 
   for (const resource of resources) {
     let current = liveIndex.get(resource.naturalKey) ?? null;
@@ -117,6 +161,18 @@ export async function buildReconciliationPlan(reader, resources, { targetResourc
       if (adopted) {
         current = candidates.find(([, entry]) => entry.payload === adopted)[1];
         decision = { verb: 'noop', reason: `adopts live ${adopted.id}: same name and definition as the backup, nothing to write` };
+      }
+    }
+    // Issue #485: a create an earlier restore sent for this backup key may have
+    // landed without recording its id (a lost response). The live object of
+    // the same type with the same name, when exactly one exists and no other
+    // planned resource holds it, is that object: it is updated, not duplicated.
+    if (decision.verb === 'create' && createdTargetIds?.get(resource.naturalKey)?.unknownIdCreates > 0) {
+      const adopted = adoptByUniqueName(liveIndex, resource, plannedKeys, adoptedKeys);
+      if (adopted) {
+        current = adopted;
+        decision = decideVerb({ desired, live: { payloadHash: adopted.payloadHash }, softDeleted: false });
+        decision = { ...decision, reason: `adopts live ${adopted.targetId}, created by an earlier restore of this backup: ${decision.reason}` };
       }
     }
     const targetResource = targetByNaturalKey.get(resource.naturalKey);

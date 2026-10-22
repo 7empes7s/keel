@@ -9,6 +9,7 @@ import { GraphReader } from '../tools/tenant-probe/graph.mjs';
 import { collectSnapshot } from '../engine/collect/snapshot.mjs';
 import { connect } from '../engine/store/db.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
+import { progressWriter } from '../engine/jobs/progress.mjs';
 import { ingestCollectorAudit } from '../engine/identity/auditSources.mjs';
 import { schedulerPrincipal } from './keel-scheduler.mjs';
 import {
@@ -125,10 +126,14 @@ export async function readAuditLogs(client, { tenantRef, reader, logger = consol
   }
 }
 
+// Job page: each type's progress is written onto the running job (engine/jobs/progress.mjs).
+export { progressWriter };
+
 export async function runCollect({
   config,
   dbUrl = process.env.KEEL_DB_URL,
   tier,
+  jobId = process.env.KEEL_JOB_ID,
   dependencies = {},
   logger = console,
   readAudit = false,
@@ -155,6 +160,7 @@ export async function runCollect({
     // Gap register M6: the company branding files are backed up with the snapshot.
     const { snapshotId, coverageDigest, relationshipsByFamily, brandingAssets } = await collectSnapshotFn(client, {
       reader, tenantRef, tenantId: config.tenantId, tier, relationships: COLLECT_RELATIONSHIPS, brandingAssets: true,
+      onProgress: progressWriter(client, jobId),
     });
     logger.log(`snapshot ${snapshotId} complete`);
     const assignmentLine = describeAssignmentReads(relationshipsByFamily?.assignment);

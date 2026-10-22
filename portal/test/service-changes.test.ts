@@ -8,7 +8,7 @@ import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { typeService, plainKind } from "@/lib/baselines-view";
 import { changesVerdict } from "@/lib/changes-view";
 import { loadServiceChanges } from "@/lib/service-changes";
-import { serviceChangeFrom, serviceChangeName } from "@/lib/service-changes-view";
+import { serviceChangeFrom, serviceChangeName, serviceUndo } from "@/lib/service-changes-view";
 import type { DriftRecord } from "@/lib/types";
 
 // Service setting changes: a change a service read finds against the read before it
@@ -92,7 +92,18 @@ test("the loader lists the newest open change per resource in every service, wit
     assert.equal(archive.after, null);
     assert.equal((archive.before as { displayName?: string }).displayName, "Archive");
     assert.equal(finance.serviceRead?.collectionId, renamed);
-    assert.equal(finance.blastRadius, "cosmetic");
+    // Compared with the approved setup, Finance still has the grant nobody accepted, so
+    // the read that renamed it is not only cosmetic.
+    assert.equal(finance.serviceRead?.comparedWith, "approved");
+    assert.equal(finance.blastRadius, "access-affecting");
+    // Undo: a mail flow rule goes back through the service restore; SharePoint cannot be
+    // written back from the portal yet, and says so.
+    assert.deepEqual(rule.serviceRead?.undo, { possible: true, reason: null });
+    assert.equal(rule.serviceRead?.comparedWith, "approved");
+    for (const site of [finance, archive]) {
+      assert.equal(site.serviceRead?.undo.possible, false);
+      assert.match(site.serviceRead?.undo.reason ?? "", /Keel cannot write SharePoint site settings back yet/);
+    }
 
     // An acknowledged change stays listed as seen; a resolved one leaves the list.
     const setState = (state: string) => client.query(
@@ -118,6 +129,18 @@ const serviceRow = (over: Record<string, unknown> = {}) => serviceChangeFrom({
   collection_id: "c0110000-0000-4000-8000-0000000000c2", previous_collection_id: "c0110000-0000-4000-8000-0000000000c1",
   observed_to: "2026-10-15T02:00:00.000Z", current_fields: { identity: "Global" }, previous_fields: { identity: "Global" },
   alert_id: "a1e70000-0000-4000-8000-0000000000a1", alert_state: "open", ...over,
+});
+
+test("an undo is offered only where the service restore can write the setting back", () => {
+  const rule = { workload: "exchange-mail-flow", resourceKey: "transport-rule:KEEL-RT-rule", changeType: "modified" };
+  assert.deepEqual(serviceUndo(rule, { restorable: true, reason: null }), { possible: true, reason: null });
+  assert.match(serviceUndo({ ...rule, changeType: "added" }, { restorable: true, reason: null }).reason ?? "", /never deletes settings/);
+  assert.match(serviceUndo(rule, null).reason ?? "", /no longer has this setting/);
+  assert.equal(serviceUndo(rule, { restorable: false, reason: "Deleted since this backup." }).reason, "Deleted since this backup.");
+  assert.match(serviceUndo({ ...rule, workload: "exchange-mailbox-settings", resourceKey: "organization" }, { restorable: true, reason: null }).reason ?? "", /together with a mailbox/);
+  for (const workload of ["sharepoint-site-settings", "onedrive-site-settings", "power-platform-settings"]) {
+    assert.equal(serviceUndo({ ...rule, workload }, { restorable: true, reason: null }).possible, false, `${workload} has no portal restore yet`);
+  }
 });
 
 test("each service change is named and placed in its service", () => {

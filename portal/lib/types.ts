@@ -245,7 +245,18 @@ export interface ComplianceEvidence {
   resourceType: string;
   window: { startedAt: string | null; endedAt: string | null };
   snapshotId: string | null;
+  // A control resting on a service read (Exchange mail protection policies...) links to
+  // that read's run instead of a backup snapshot.
+  collectionId?: string | null;
   completedAt: string | null;
+}
+
+/** One object and setting that made a control fail: its value now and what it should be. */
+export interface ComplianceDetail {
+  subject: string;
+  setting: string;
+  value: unknown;
+  expected: unknown;
 }
 
 export interface ComplianceChangeLink {
@@ -284,6 +295,8 @@ export interface ComplianceFinding {
   evaluatorVersion: number;
   verdict: "pass" | "fail" | "unknown" | "not-applicable";
   reason: string | null;
+  // Which policy and setting made it fail (engine/benchmarks/evaluate.mjs details).
+  details?: ComplianceDetail[];
   evaluatedAt: string | null;
   evidenceSeq: string | null;
   exceptionState: "none" | "authorized" | "expired" | "incomplete";
@@ -305,6 +318,21 @@ export interface ComplianceFinding {
     change: ComplianceLinks<ComplianceChangeLink>;
     restorePlan: ComplianceLinks<CompliancePlanLink>;
   };
+  // "Make it pass" (gap 6): the one setting this control's fix changes, and the
+  // objects in the newest backup it would change. Absent from older readers.
+  fix?: { resourceType: string; field: string; to: unknown } | null;
+  fixCandidates?: ComplianceFixCandidate[];
+}
+
+export interface ComplianceFixCandidate {
+  naturalKey: string;
+  resourceType: string;
+  name: string | null;
+  field: string;
+  from: unknown;
+  to: unknown;
+  snapshotId: string;
+  seenAt: string | null;
 }
 
 export interface ComplianceSummary {
@@ -328,6 +356,9 @@ export interface StorageResidency {
   certifies: null;
   // Where the residency was read from (the recovery manifest path), or null.
   source: string | null;
+  // How it is known: from the recovery manifest, or, with no manifest set, from
+  // where Keel's own database runs (on this server). Absent means not known.
+  basis?: "recovery-manifest" | "database-location" | null;
 }
 
 export interface ComplianceData {
@@ -365,9 +396,12 @@ export interface DriftRecord {
   // did not compute them; evidence is null when it could not be read.
   semantic?: SemanticChange;
   evidence?: ChangeEvidence | null;
-  // Set on a change found by comparing a service read (Exchange, SharePoint, Teams,
-  // Purview, Power Platform) with the read before it. Those settings have no approved
-  // setup, so the change has no accept or undo: its alert is where someone reviews it.
+  // Why evidence is null: the read failed, the change was past the number of changes
+  // whose records are read at once, or its row was not found (settled since).
+  evidenceGap?: "read-failed" | "over-limit" | "not-found";
+  // Set on a change found by a service read (Exchange, SharePoint, Teams, Purview,
+  // Power Platform), compared with that service's approved setup. Accept adds it to that
+  // setup; undo goes through the service restore when Keel can write the setting back.
   serviceRead?: ServiceRead;
 }
 
@@ -378,9 +412,23 @@ export interface ServiceRead {
   // As stored: "transport-rule:Block forwarding", "site:<id>" or "tenant".
   resourceKey: string;
   collectionId: string;
+  // The read that holds the approved value (or, for a change recorded before the
+  // service had an approved setup, the read before the change): an undo restores from it.
   previousCollectionId: string;
+  // When that read was taken; null when unknown.
+  previousReadAt: string | null;
+  // What the read was compared with: the service's approved setup, or (older changes)
+  // the read before it.
+  comparedWith: "approved" | "previous";
   alertId: string | null;
   alertState: string | null;
+  // Whether Keel can put the earlier value back, and why not when it cannot.
+  undo: ServiceUndo;
+}
+
+export interface ServiceUndo {
+  possible: boolean;
+  reason: string | null;
 }
 
 // engine/govern/semanticDrift.mjs#semanticChange.

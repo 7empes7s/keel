@@ -48,6 +48,7 @@ import { createHash } from 'node:crypto';
 import { CENTRAL, ownershipOfResources, ownershipVisibleTo } from '../authz/entityScope.mjs';
 import { controlFor } from '../benchmarks/registry.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
+import { CONTENT_COLLECTORS } from '../content/collectors.mjs';
 import { readCoverageOutcome } from '../coverage/snapshots.mjs';
 import { loadRecoveryMetrics } from '../coverage/recoveryMetrics.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
@@ -636,6 +637,11 @@ async function visibleOutcomes(client, { tenantRef, scope, restore, change, at }
  * What KEEL backed up in the period, per backup family. Counts runs that finished in
  * [from, to) and were good; a workload switched off (only `disabled` runs) is not
  * counted as expected. Tenant-wide, like findings and recovery.
+ *
+ * Each family also lists its areas (one per workload) with the period's state: `good`
+ * (at least one good run), `partial` (only runs that read part of it), `failed` (only
+ * failed runs) or `not-run`. Every content run reads every content collector, so once
+ * any content run exists all of them are expected, not only those that recorded a run.
  */
 export async function loadBackupSection(client, { tenantRef, from, to }) {
   const { rows: [settings] } = await client.query(
@@ -647,30 +653,43 @@ export async function loadBackupSection(client, { tenantRef, from, to }) {
     `SELECT to_regclass('workload_collection') IS NOT NULL AS workload, to_regclass('content_run') IS NOT NULL AS content_run,
             to_regclass('content_item') IS NOT NULL AS content_item`,
   );
-  let service = { runs: 0, workloads: 0, expected: 0, lastAt: null };
+  let service = familySummary([]);
   if (tables?.workload) {
-    const { rows: [row] } = await client.query(
-      `SELECT count(*) FILTER (WHERE good)::int AS runs, count(DISTINCT workload) FILTER (WHERE good)::int AS workloads,
-              max(observed_to) FILTER (WHERE good) AS last_at,
-              (SELECT count(DISTINCT workload)::int FROM workload_collection
-                WHERE tenant_ref = $1 AND outcome <> 'disabled' AND created_at < $3) AS expected
-         FROM (SELECT workload, observed_to, outcome IN ('complete','complete-empty') AS good FROM workload_collection
-                WHERE tenant_ref = $1 AND observed_to >= $2 AND observed_to < $3) runs`,
+    const { rows } = await client.query(
+      `WITH known AS (SELECT DISTINCT workload FROM workload_collection
+                       WHERE tenant_ref = $1 AND outcome <> 'disabled' AND created_at < $3),
+            runs AS (SELECT workload,
+                            count(*) FILTER (WHERE outcome IN ('complete','complete-empty'))::int AS good,
+                            count(*) FILTER (WHERE outcome = 'partial')::int AS partial,
+                            count(*) FILTER (WHERE outcome NOT IN ('complete','complete-empty','partial','disabled'))::int AS failed,
+                            max(observed_to) FILTER (WHERE outcome IN ('complete','complete-empty')) AS last_good
+                       FROM workload_collection WHERE tenant_ref = $1 AND observed_to >= $2 AND observed_to < $3
+                      GROUP BY workload)
+       SELECT k.workload, COALESCE(r.good, 0) AS good, COALESCE(r.partial, 0) AS partial, COALESCE(r.failed, 0) AS failed, r.last_good
+         FROM known k LEFT JOIN runs r USING (workload) ORDER BY k.workload`,
       [tenantRef, from, to],
     );
-    service = { runs: row.runs, workloads: row.workloads, expected: row.expected, lastAt: iso(row.last_at) };
+    service = familySummary(rows);
   }
-  let content = { runs: 0, workloads: 0, expected: 0, lastAt: null, itemsStored: 0, bytesStored: 0 };
+  let content = { ...familySummary([]), itemsStored: 0, bytesStored: 0 };
   if (tables?.content_run) {
-    const { rows: [row] } = await client.query(
-      `SELECT count(*) FILTER (WHERE outcome = 'succeeded')::int AS runs,
-              count(DISTINCT workload) FILTER (WHERE outcome = 'succeeded')::int AS workloads,
-              max(completed_at) FILTER (WHERE outcome = 'succeeded') AS last_at,
-              (SELECT count(DISTINCT workload)::int FROM content_run WHERE tenant_ref = $1 AND completed_at < $3) AS expected
-         FROM content_run WHERE tenant_ref = $1 AND completed_at >= $2 AND completed_at < $3`,
+    const { rows } = await client.query(
+      `WITH known AS (SELECT DISTINCT workload FROM content_run WHERE tenant_ref = $1 AND completed_at < $3)
+       SELECT k.workload,
+              count(r.*) FILTER (WHERE r.outcome = 'succeeded')::int AS good,
+              count(r.*) FILTER (WHERE r.outcome = 'partial')::int AS partial,
+              count(r.*) FILTER (WHERE r.outcome NOT IN ('succeeded','partial'))::int AS failed,
+              max(r.completed_at) FILTER (WHERE r.outcome = 'succeeded') AS last_good
+         FROM known k LEFT JOIN content_run r
+           ON r.tenant_ref = $1 AND r.workload = k.workload AND r.completed_at >= $2 AND r.completed_at < $3
+        GROUP BY k.workload ORDER BY k.workload`,
       [tenantRef, from, to],
     );
-    content = { ...content, runs: row.runs, workloads: row.workloads, expected: row.expected, lastAt: iso(row.last_at) };
+    if (rows.length) {
+      const seen = new Set(rows.map((row) => row.workload));
+      for (const { workload } of CONTENT_COLLECTORS) if (!seen.has(workload)) rows.push({ workload, good: 0, partial: 0, failed: 0, last_good: null });
+    }
+    content = { ...content, ...familySummary(rows) };
   }
   if (tables?.content_item) {
     const { rows: [row] } = await client.query(
@@ -685,6 +704,28 @@ export async function loadBackupSection(client, { tenantRef, from, to }) {
     settings: { backups: settings.backups, lastAt: iso(settings.last_at) },
     serviceSettings: service,
     content,
+  };
+}
+
+/** One family's totals and areas from per-workload rows { workload, good, partial, failed, last_good }. */
+function familySummary(rows) {
+  const areas = rows.map((row) => ({
+    workload: row.workload,
+    state: row.good > 0 ? 'good' : row.partial > 0 ? 'partial' : row.failed > 0 ? 'failed' : 'not-run',
+    goodRuns: Number(row.good), partialRuns: Number(row.partial), failedRuns: Number(row.failed),
+    lastGoodAt: iso(row.last_good),
+  }));
+  const count = (state) => areas.filter((area) => area.state === state).length;
+  const lastGood = areas.map((area) => area.lastGoodAt).filter(Boolean).sort().at(-1) ?? null;
+  return {
+    runs: areas.reduce((sum, area) => sum + area.goodRuns, 0),
+    workloads: count('good'),
+    expected: areas.length,
+    partial: count('partial'),
+    failed: count('failed'),
+    notRun: count('not-run'),
+    lastAt: lastGood,
+    areas,
   };
 }
 
@@ -877,8 +918,12 @@ export function valueReportCsv(report) {
     meta.push(['settings_backups', report.backups.settings.backups]);
     meta.push(['service_settings_runs', report.backups.serviceSettings.runs]);
     meta.push(['service_settings_workloads', `${report.backups.serviceSettings.workloads} of ${report.backups.serviceSettings.expected}`]);
+    meta.push(['service_settings_partial', report.backups.serviceSettings.partial ?? 0]);
+    meta.push(['service_settings_failed', report.backups.serviceSettings.failed ?? 0]);
     meta.push(['content_runs', report.backups.content.runs]);
     meta.push(['content_workloads', `${report.backups.content.workloads} of ${report.backups.content.expected}`]);
+    meta.push(['content_partial', report.backups.content.partial ?? 0]);
+    meta.push(['content_failed', report.backups.content.failed ?? 0]);
     meta.push(['content_items_stored', report.backups.content.itemsStored]);
     meta.push(['content_bytes_stored', report.backups.content.bytesStored]);
   }

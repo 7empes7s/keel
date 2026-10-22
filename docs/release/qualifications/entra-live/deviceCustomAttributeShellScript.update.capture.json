@@ -1,0 +1,56 @@
+{
+  "restoreRef": "ad8e4e1d-5953-8bcc-9c57-26bb15fb8ee9",
+  "entry": {
+    "naturalKey": "deviceCustomAttributeShellScript:602369fe-a07c-891d-80aa-03d412a1074c",
+    "resourceType": "deviceCustomAttributeShellScript",
+    "operation": "update",
+    "targetId": "602369fe-a07c-891d-80aa-03d412a1074c",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T11:54:15.644Z",
+    "priorState": {
+      "id": "602369fe-a07c-891d-80aa-03d412a1074c",
+      "fileName": "keel-rt-attr.sh",
+      "description": "drift",
+      "displayName": "KEEL-RT-attribute",
+      "runAsAccount": "system",
+      "scriptContent": "ZWNobyBkcmlmdGVk",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceCustomAttributeShellScripts/$entity",
+      "createdDateTime": "2026-10-22T11:49:24.6655017Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "customAttributeName": null,
+      "customAttributeType": "string",
+      "lastModifiedDateTime": "2026-10-22T11:52:18.5396054Z"
+    },
+    "intendedState": {
+      "fileName": "keel-rt-attr.sh",
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-attribute",
+      "runAsAccount": "system",
+      "scriptContent": "ZWNobyBLRUVMLVJU",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "customAttributeName": null,
+      "customAttributeType": "string"
+    },
+    "postState": {
+      "id": "602369fe-a07c-891d-80aa-03d412a1074c",
+      "fileName": "keel-rt-attr.sh",
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-attribute",
+      "runAsAccount": "system",
+      "scriptContent": "ZWNobyBLRUVMLVJU",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceCustomAttributeShellScripts/$entity",
+      "createdDateTime": "2026-10-22T11:49:24.6655017Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "customAttributeName": null,
+      "customAttributeType": "string",
+      "lastModifiedDateTime": "2026-10-22T11:54:15.8494328Z"
+    }
+  }
+}

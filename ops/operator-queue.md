@@ -1246,30 +1246,6 @@ being triggered by queue updates.
      "Keel cannot undo this" with a reason, and whether mail flow changes show Accept and Undo.
 - **Report:** B; step 1 table; each step's row ids, change types and alert states; the restore's artifact and approval ids; what is left in the tenant.
 
-### Q152: Live check that a signed-in person's missing display name gets filled (after #510)
-- Drafted by the "Requester display names" thread (2026-10-22). Code: PR #510. Fixture-tested only.
-  - **Change:** on sign-in, a principal with an empty `display_name` gets it filled once, from the first source with a name:
-    the verified Access token claims (`name`, given + family, or `custom`), then the Entra `user` in the latest complete
-    snapshot whose mail, userPrincipalName or otherMails equal the sign-in email, then Access's
-    `https://<portal host>/cdn-cgi/access/get-identity` for the same token. It never overwrites a set name, and it retries at most
-    once an hour per portal process.
-- Needs: /opt/keel-live at the #510 merge or later (`test -f /opt/keel-live/engine/authz/displayName.mjs`).
-- Status: todo
-- Result:
-- **Tenant:** none. Reads Keel's own database only. Never set `display_name` by hand.
-- Do:
-  1. `SELECT email, display_name FROM principal WHERE system_kind IS NULL ORDER BY email;` Report the rows (name the email's
-     domain only, e.g. `…@gmail.com`).
-  2. If the operator's principal (`marouanedefili@gmail.com`) still has no name: check if it has signed in since the deploy
-     (any `job`, `evidence` or portal request by that principal after the deploy time). If it has, report which source had no
-     name: (a) whether an Entra `user` in the latest complete snapshot has that address in mail, userPrincipalName or otherMails,
-     and (b) the `keel-portal` journal around the sign-in for any error. Report whether `KEEL_PORTAL_URL` is set for `keel-portal`.
-  3. `curl` the portal locally (as for other live checks) at one finished job's page and report the "Person" value.
-- **Expected:** the operator's row shows a real name (not empty) after their next visit, and job pages show it instead of
-  "Marouanedefili". If no source has a name (for example, Access one-time PIN sign-in gives none), report it: the follow-up is
-  a People-page name edit, not a manual DB write.
-- **Report:** per step, the result.
-
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every
@@ -7154,3 +7130,27 @@ item that needs it stays untouched.
 - **Report:** each step's exit code; the per-row verdict table printed by step 2 (verbatim); for rows 2, 6, 8, 12 and 20 the
   outcome, HTTP status and code of each call; for rows 16, 17, 18 the sweep counts and every cmdlet that did not work; the
   evidence branch and commit.
+
+### Q152: Live check that a signed-in person's missing display name gets filled (after #510)
+- Drafted by the "Requester display names" thread (2026-10-22). Code: PR #510. Fixture-tested only.
+  - **Change:** on sign-in, a principal with an empty `display_name` gets it filled once, from the first source with a name:
+    the verified Access token claims (`name`, given + family, or `custom`), then the Entra `user` in the latest complete
+    snapshot whose mail, userPrincipalName or otherMails equal the sign-in email, then Access's
+    `https://<portal host>/cdn-cgi/access/get-identity` for the same token. It never overwrites a set name, and it retries at most
+    once an hour per portal process.
+- Needs: /opt/keel-live at the #510 merge or later (`test -f /opt/keel-live/engine/authz/displayName.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** none. Reads Keel's own database only. Never set `display_name` by hand.
+- Do:
+  1. `SELECT email, display_name FROM principal WHERE system_kind IS NULL ORDER BY email;` Report the rows (name the email's
+     domain only, e.g. `…@gmail.com`).
+  2. If the operator's principal (`marouanedefili@gmail.com`) still has no name: check if it has signed in since the deploy
+     (any `job`, `evidence` or portal request by that principal after the deploy time). If it has, report which source had no
+     name: (a) whether an Entra `user` in the latest complete snapshot has that address in mail, userPrincipalName or otherMails,
+     and (b) the `keel-portal` journal around the sign-in for any error. Report whether `KEEL_PORTAL_URL` is set for `keel-portal`.
+  3. `curl` the portal locally (as for other live checks) at one finished job's page and report the "Person" value.
+- **Expected:** the operator's row shows a real name (not empty) after their next visit, and job pages show it instead of
+  "Marouanedefili". If no source has a name (for example, Access one-time PIN sign-in gives none), report it: the follow-up is
+  a People-page name edit, not a manual DB write.
+- **Report:** per step, the result.

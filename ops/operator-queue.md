@@ -5310,7 +5310,7 @@ item that needs it stays untouched.
   device cleanup rules (`managedDeviceCleanupRule`, beta, **update only**, refused when the backup retires devices sooner than now).
 - Needs: /opt/keel-live at the #430 merge or later (`grep -q cleanupRuleRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
 - Status: blocked
-- Result: blocked (2026-10-22 07:00 UTC) on **#466**. Every restore from a snapshot stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported). Hotpatch is separately **blocked** by a 403. B = **e1a811b**. Restorer only; global admin not used; nothing granted. No approval filed yet.
+- Result: blocked (2026-10-22 06:52 UTC) on **#466**. Every restore from a snapshot stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported). Hotpatch is separately **blocked** by a 403. B = **e1a811b**. Restorer only; global admin not used; nothing granted. No approval filed yet.
   - Plan: `~/keel-rg1/plan-B.md` (168 operations, 169 steps). These types are steps 37–43, and their fixture names are `KEEL-RT-148-*`.
   - Tenant had none of the four types before (categories: only the three `KEEL-RT-20260908` ones; 0 managed devices; no cleanup rule for any platform).
   - Fixtures created (Restorer):
@@ -5455,8 +5455,20 @@ item that needs it stays untouched.
 - Drafted by the "Back up remaining Intune kinds" thread (2026-10-21). Code: PR #431 (batch 5, 6 Exchange and Defender
   admin role kinds) and PR #434 (batch 6, 17 Intune kinds). All are GET-only catalogue reads; no writer.
 - Needs: PR #434 live (`git -C /opt/keel-live log --oneline | grep -c "#434"` is 1).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-22 07:04 UTC). All 23 kinds read 200 except `deviceManagementSettings` (#447). Counts match discovery run 3, and the secret check returns no rows. Collector reads only.
+  1. Collect by hand, no `--tier` (06:47 UTC, build e1a811b, the Q109 snapshot S `2b450888-07cd-4ba6-b250-96306b941b53`, which was the newest snapshot when queried): exit **1**.
+     The only listed type with an error: `deviceManagementSettings` 400 "No OData route exists that match template ~/singleton with
+     http verb GET for request /StatelessOnboardingService/deviceManagement." Every other listed type is `complete` or `complete-empty` (200).
+     The other failed types in that collect (not in this list) are in #466.
+  2. Objects (query run with `snapshot_id = S`): androidDeviceOwnerEnrollmentProfile 0, androidForWorkEnrollmentProfile 0,
+     **androidForWorkSettings 1**, appleUserInitiatedEnrollmentProfile 0, cartToClassAssociation 0, defenderCustomAppScope 0,
+     defenderRoleAssignment 0, defenderRoleDefinition 0, deviceManagementDerivedCredentialSettings 0, **deviceManagementSettings 0**
+     (read failed), enterpriseCodeSigningCertificate 0, **exchangeCustomAppScope 1**, **exchangeRoleAssignment 227**,
+     **exchangeRoleDefinition 106**, iosLobAppProvisioningConfiguration 0, managedEBook 0, managedEBookCategory 0,
+     microsoftTunnelConfiguration 0, **microsoftTunnelHealthThreshold 13**, mobileAppRelationship 0, **symantecCodeSigningCertificate 1**,
+     userExperienceAnalyticsBaseline 0, windowsManagedAppProtection 0.
+  3. Secret check: `(0 rows)`.
 - **Tenant:** reads only, with the collector credential. No grants, no role or config changes, nothing written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. `node cli/keel-collect.mjs` once by hand (no `--tier`, so every tier is read). Report its exit code and any log
@@ -5565,8 +5577,20 @@ item that needs it stays untouched.
 - Drafted by the "Back up Microsoft 365 settings left" thread (2026-10-21). Code: PR #440 (batch 7, 5 Microsoft 365
   settings kinds). All are GET-only v1.0 catalogue reads; no writer.
 - Needs: PR #440 live (`git -C /opt/keel-live log --oneline | grep -c "#440"` is 1). Can run together with Q112.
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-22 07:04 UTC). All five kinds read 200. Counts are as expected: 29 SharePoint setting keys, no `report`. Collector reads only.
+  1. Collect by hand, no `--tier` (06:47 UTC, build e1a811b, the Q109 snapshot S `2b450888-07cd-4ba6-b250-96306b941b53`, which was the newest snapshot when queried): exit **1**. That exit code comes from `deviceManagementSettings` (#447) and the types in #466; none of the five types below has an error.
+  2. attackSimulation 0, externalConnection 0, **itemInsightsSettings 1**, **sharepointSettings 1**, simulationAutomation 0 (query run with
+     `snapshot_id = S`). The 0s are `complete-empty` 200.
+  3. `sharepointSettings` top-level keys (29, including `@odata.context`): @odata.context, allowedDomainGuidsForSyncApp,
+     availableManagedPathsForSiteCreation, deletedUserPersonalSiteRetentionPeriodInDays, excludedFileExtensionsForSyncApp,
+     idleSessionSignOut, imageTaggingOption, isCommentingOnSitePagesEnabled, isFileActivityNotificationEnabled,
+     isLegacyAuthProtocolsEnabled, isLoopEnabled, isMacSyncAppEnabled, isResharingByExternalUsersEnabled,
+     isSharePointMobileNotificationEnabled, isSharePointNewsfeedEnabled, isSiteCreationEnabled, isSiteCreationUIEnabled,
+     isSitePagesCreationEnabled, isSitesStorageLimitAutomatic, isSyncButtonHiddenOnPersonalSite, isUnmanagedSyncAppForTenantRestricted,
+     personalSiteDefaultStorageLimitInMB, sharingAllowedDomainList, sharingBlockedDomainList, sharingCapability,
+     sharingDomainRestrictionMode, siteCreationDefaultManagedPath, siteCreationDefaultStorageLimitInMB, tenantDefaultTimezone.
+     attackSimulation payloads with `report`: 0.
 - **Tenant:** reads only, with the collector credential. No grants, no role or config changes, nothing written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. `node cli/keel-collect.mjs` once by hand (no `--tier`, so every tier is read). Report its exit code and any log
@@ -5632,8 +5656,20 @@ item that needs it stays untouched.
   `schemaExtension` (`/schemaExtensions?$filter=owner eq '{appId}'`, once per app registration). Discovery now skips the
   last gaps with a reason (new reasons `holds-secrets`, `retired`, `other-tenant`).
 - Needs: PR #446 live (`git -C /opt/keel-live log --oneline | grep -c "#446"` is 1). Can run together with Q115.
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-22 07:04 UTC). All 14 kinds read 200, and the two filtered reads gave no 400. Discovery run 4: **0 uncatalogued**. Collector reads only.
+  1. Collect by hand, no `--tier` (06:47 UTC, build e1a811b, the Q109 snapshot S `2b450888-07cd-4ba6-b250-96306b941b53`, which was the newest snapshot when queried): exit **1**. That exit code comes from `deviceManagementSettings` (#447) and the types in #466; none of the 14 types below has an error.
+  2. certificateBasedApplicationConfiguration 0, crossTenantM365Capability 0, deviceTemplate 0, entitlementManagementRoleAssignment 0,
+     externalOriginResourceConnector 0, hardwareConfiguration 0, **lifecyclePolicy 1**, privilegedAccessGroupResource 0,
+     roleManagementCustomExtension 0, schemaExtension 0, securityZone 0, sharedEmailDomain 0, signInIdentifier 0, verifiedIdProfile 0
+     (query run with `snapshot_id = S`). Every 0 is `complete-empty` 200, including entitlementManagementRoleAssignment and schemaExtension.
+  3. hardwareConfiguration with `configurationFileContent`: 0. roleManagementCustomExtension with `endpointConfiguration`: 0.
+  4. `time node cli/keel-discover.mjs run`: exit **0**, real 4m44.9s.
+     - First line: `Discovery 2026-10-22T06:58:07.758Z: 1004 types; 187 catalogued, 0 uncatalogued, 171 skipped (not worth backing up), 574 unreadable, 72 not listed.`
+     - `Stored discovery run 4.`
+     - Status and reason (kind <> cmdlet): catalogued 290; skipped holds-secrets 2, microsoft-published 31, not-configuration 199,
+       other-tenant 6, retired 1; unreadable error 60, missing-grant 227, not-licensed 44, not-listable 345, refused-with-grant 146.
+     - Uncatalogued: `(0 rows)`.
 - **Tenant:** reads only, with the collector credential. No grants, no role or config changes, nothing written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. `node cli/keel-collect.mjs` once by hand (no `--tier`, so every tier is read). Report its exit code and any log

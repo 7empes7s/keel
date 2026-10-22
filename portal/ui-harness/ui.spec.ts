@@ -792,7 +792,7 @@ test("the undo preview speaks in words and states a refusal as a sentence", asyn
   await expect(sheet.getByRole("button", { name: "Send for approval" })).toBeDisabled();
   const record = preview.locator('[data-layer="record"]');
   await record.locator("summary").click();
-  await expect(record).toContainText("Write wave 1");
+  await expect(record).toContainText("Write step 1");
   await expect(record).toContainText("onPremisesSyncEnabled=true");
   expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
 });
@@ -1019,9 +1019,14 @@ test("a kind's details panel states its standing and keeps the recovery decision
   expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
   const record = sheet.locator('[data-layer="record"]');
   await record.locator("summary").click();
-  await expect(record.locator(".technical-field").filter({ hasText: "Recovery decision" })).toContainText("automated");
-  await expect(record.locator(".technical-field").filter({ hasText: "Remapping · create" })).toContainText("proven");
-  await expect(record.locator(".technical-field").filter({ hasText: "Proof reference · update" })).toContainText("docs/release/qualification/ca-update.json");
+  await expect(record.locator(".technical-field").filter({ hasText: "Restore decision" })).toContainText("Automated");
+  await expect(record.locator(".technical-field").filter({ hasText: "Fixes changed links · create" })).toContainText("Proven");
+  // The proof file is a support detail: hidden until the switch is on.
+  const proof = record.locator(".technical-field").filter({ hasText: "Proof reference · update" });
+  await expect(proof).toBeHidden();
+  await record.getByRole("button", { name: /Show support details/ }).click();
+  await expect(proof).toBeVisible();
+  await expect(proof).toContainText("docs/release/qualification/ca-update.json");
   await page.goBack();
   await expect(sheet).toBeHidden();
   await expect(page).not.toHaveURL(/open=/);
@@ -1196,7 +1201,8 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
   await expect(page.locator('.rs-tile[data-tile="drill"] .rs-tile-value')).toHaveText("None yet");
   await expect(page.locator(".rs-tiles")).not.toContainText(/\b0 (minutes|hours)\b/);
   for (const card of ["freshness", "point", "time", "drills"]) {
-    await expect(page.locator(`.resilience-${card} .badge`)).toHaveText("Not measured");
+    // Badges inside the card's Technical details describe single fields, not the card.
+    await expect(page.locator(`.resilience-${card} .badge:not([data-layer="record"] .badge)`)).toHaveText("Not measured");
     await expect(page.locator(`.resilience-${card} .resilience-sentence`)).toContainText("Not measured");
   }
   await expect(page.locator('.rs-alert[data-alert="never-backed-up"]')).toContainText("2 setting types never backed up");
@@ -1706,9 +1712,9 @@ const RECORD_IDS: Record<string, string[]> = {
   "job-restore-completion": ["7f3c0000-0000-4000-8000-000000000011"],
   "job-restore-undo": ["7f3c0000-0000-4000-8000-000000000010"],
   resilience: ["18190", "18201", "type:group", "relationship:group/members", "b7c10000-0000-4000-8000-000000000074", "1c1d0000-0000-4000-8000-000000000071", "5a2be911-0000-4000-8000-000000000002", "5c4e0000-0000-4000-8000-000000000005", "/opt/backups/keel-recovery-manifest.json"],
-  "resilience-unmeasured": ["type:conditionalAccessPolicy", "unmeasured"],
+  "resilience-unmeasured": ["type:conditionalAccessPolicy", "Not measured yet"],
   reports: ["restore-plan:7f3c0000-0000-4000-8000-000000000100", "job:a1000000-0000-4000-8000-000000000002", "change:d1f70000-0000-4000-8000-000000000101", "keel.mfa.admins", "e7a10000-0000-4000-8000-000000000203", "4c".repeat(32), "9b".repeat(32), "/etc/keel/value-estimate.json"],
-  "reports-scoped": ["restore-plan:7f3c0000-0000-4000-8000-000000000100", "EntityFIN", "not-configured"],
+  "reports-scoped": ["restore-plan:7f3c0000-0000-4000-8000-000000000100", "covers.FIN", "not-configured"],
   ask: ["a5c00000-0000-4000-8000-000000000991", "c0110000-0000-4000-8000-000000000992", "group:Sales Admins", "conditionalAccessPolicy:Sales VPN", "not-compared-yet"],
   "ask-unknown": ["no-history", "2020-01-01T00:00:00.000Z"],
   compare: ["c0a10000-0000-4000-8000-000000000001", "c0a10000-0000-4000-8000-000000000002", "conditionalAccessPolicy:Block legacy auth", "mailbox:finance@contoso.com", "drive:b!Xc9", "3e".repeat(32)],

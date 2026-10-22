@@ -150,7 +150,7 @@ export function dropRepeatedIds(list) {
 // and each object is tagged with its parent's key. Any failed read fails the
 // type, so a denied read is never reported as an empty one; only `pages` of
 // child reads count, so a denial before any child was read is `failed`.
-async function collectPerParent(reader, entry) {
+export async function collectPerParent(reader, entry) {
   const { parent } = entry;
   const options = { pageCap: entry.pageCap ?? Infinity };
   const listed = await reader.collect(entry.version, catalogReadPath(parent), options);

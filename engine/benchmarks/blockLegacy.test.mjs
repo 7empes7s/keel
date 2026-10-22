@@ -31,9 +31,9 @@ function check(policies, controlId = CONTROL, resourceType = 'conditionalAccessP
   });
 }
 
-const policy = (id, state, clientAppTypes, builtInControls = ['block']) => ({
+const policy = (id, state, clientAppTypes, builtInControls = ['block'], includeUsers = ['All'], includeApplications = ['All']) => ({
   id, displayName: `KEEL-RT-${id}`, state,
-  conditions: { clientAppTypes, users: { includeUsers: ['All'] }, applications: { includeApplications: ['All'] } },
+  conditions: { clientAppTypes, users: { includeUsers, excludeUsers: [] }, applications: { includeApplications } },
   grantControls: { operator: 'OR', builtInControls },
 });
 
@@ -65,6 +65,23 @@ test('a report-only, off or half policy fails, and is not "not set up"', () => {
     assert.equal(result.verdict, 'fail');
     assert.equal(result.reason, null);
   }
+});
+
+test('a block that covers only some users or apps fails, and is not "not set up"', () => {
+  for (const policies of [
+    [policy('legacy', 'enabled', ['exchangeActiveSync', 'other'], ['block'], ['user-1'])],
+    [policy('legacy', 'enabled', ['exchangeActiveSync', 'other'], ['block'], ['All'], ['00000002-0000-0ff1-ce00-000000000000'])],
+  ]) {
+    const result = check(policies);
+    assert.equal(result.verdict, 'fail');
+    assert.equal(result.reason, null);
+  }
+});
+
+test('a block for all users with break-glass accounts left out passes', () => {
+  const legacy = policy('legacy', 'enabled', ['exchangeActiveSync', 'other']);
+  legacy.conditions.users.excludeUsers = ['break-glass-1'];
+  assert.equal(check([legacy]).verdict, 'pass');
 });
 
 test('a missing read is still could not check, never not set up', () => {

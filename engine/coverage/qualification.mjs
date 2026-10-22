@@ -242,6 +242,21 @@ export const TYPE_DECISIONS = Object.freeze({
   externalConnection: manual('no writer yet; the schema and items are read per connection'),
   simulationAutomation: manual('no writer yet; automations are created in the Defender portal'),
   attackSimulation: manual('no writer yet; a simulation is launched again, not restored'),
+  // Remaining kinds, batch 8: the last readable kinds, backed up read-only; no writer is built yet.
+  hardwareConfiguration: manual('no writer yet; the BIOS settings file can hold the BIOS password and is not backed up'),
+  certificateBasedApplicationConfiguration: manual('no writer yet; beta only'),
+  signInIdentifier: manual('no writer yet; beta only'),
+  verifiedIdProfile: manual('no writer yet; beta only'),
+  externalOriginResourceConnector: manual('no writer yet; beta only'),
+  lifecyclePolicy: manual('no writer yet; beta only'),
+  roleManagementCustomExtension: manual('no writer yet; the Logic App address is not backed up'),
+  privilegedAccessGroupResource: manual('no writer yet; beta only'),
+  crossTenantM365Capability: manual('no writer yet; beta only'),
+  entitlementManagementRoleAssignment: manual('no writer yet; beta only, listed one role at a time'),
+  deviceTemplate: manual('no writer yet; beta only'),
+  securityZone: manual('no writer yet; beta only'),
+  sharedEmailDomain: manual('no writer yet; beta only'),
+  schemaExtension: manual('no writer yet; only extensions owned by this tenant\'s apps are read'),
 });
 
 // Why a retried operation can never double-apply — each names the mechanism in
@@ -1124,6 +1139,35 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'backed up; Graph cannot create an automation'),
   attackSimulation: byHand('policy', 'POST /security/attackSimulation/simulations', 'AttackSimulation.ReadWrite.All',
     'backed up without results; no writer yet'),
+  // Remaining kinds, batch 8: the last readable kinds, backed up read-only; manual until a writer is built.
+  hardwareConfiguration: byHand('device-management', 'POST /deviceManagement/hardwareConfigurations (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'backed up without the BIOS settings file'),
+  certificateBasedApplicationConfiguration: byHand('identity-application', 'POST /directory/certificateAuthorities/certificateBasedApplicationConfigurations (beta)', 'AppCertTrustConfiguration.ReadWrite.All',
+    'backed up without the trusted authorities; no writer yet'),
+  signInIdentifier: byHand('policy', 'PATCH /identity/signInIdentifiers/{id} (beta)', 'IdentityProvider.ReadWrite.All',
+    'backed up; no writer yet'),
+  verifiedIdProfile: byHand('identity-application', 'POST /identity/verifiedId/profiles (beta)', 'VerifiedId-Profile.ReadWrite.All',
+    'backed up; no writer yet'),
+  externalOriginResourceConnector: byHand('identity-application', 'POST /identityGovernance/entitlementManagement/externalOriginResourceConnectors (beta)', 'EntitlementManagement.ReadWrite.All',
+    'backed up; no writer yet'),
+  lifecyclePolicy: byHand('policy', 'POST /identityGovernance/lifecycleWorkflows/lifecyclePolicies (beta)', 'LifecycleWorkflows.ReadWrite.All',
+    'backed up without rules or versions; no writer yet'),
+  roleManagementCustomExtension: byHand('identity-application', 'POST /identityGovernance/privilegedAccess/customExtensions', 'RoleManagementPolicy.ReadWrite.Directory',
+    'backed up without the Logic App address; no writer yet'),
+  privilegedAccessGroupResource: byHand('identity-application', null, 'PrivilegedAccess.ReadWrite.AzureADGroup',
+    'backed up; a group comes under PIM when it gets its first eligible or time-bound member'),
+  crossTenantM365Capability: byHand('policy', 'PATCH /policies/crossTenantAccessPolicy/default/m365Capabilities/{id} (beta)', 'Policy.ReadWrite.CrossTenantAccess',
+    'backed up; no writer yet'),
+  entitlementManagementRoleAssignment: byHand('identity-application', 'POST /roleManagement/entitlementManagement/roleAssignments (beta)', 'EntitlementManagement.ReadWrite.All',
+    'backed up one role at a time; no writer yet'),
+  deviceTemplate: byHand('identity-application', 'POST /templates/deviceTemplates (beta)', 'DeviceTemplate.ReadWrite.All',
+    'backed up without owners or devices; no writer yet'),
+  securityZone: byHand('administrative-configuration', 'POST /security/zones (beta)', 'SecurityZone.ReadWrite.All',
+    'backed up without its environments; no writer yet'),
+  sharedEmailDomain: byHand('administrative-configuration', null, 'Domain.ReadWrite.All',
+    'backed up; Microsoft provisions the domain'),
+  schemaExtension: byHand('administrative-configuration', 'POST /schemaExtensions', 'Application.ReadWrite.All',
+    'backed up for this tenant\'s apps only; no writer yet'),
 });
 
 const INVENTORY_FIELDS = new Set(['batch', 'status', 'api', 'permission', 'reason']);
@@ -1263,6 +1307,18 @@ export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
   externalConnection: Object.freeze([
     lost('configuration', 'connection', 'no writer yet; recreated by hand from the backup'),
     lost('relationship', 'schema and items', 'read per connection and not backed up; the connector syncs its items again'),
+  ]),
+  // Remaining kinds, batch 8.
+  securityZone: Object.freeze([
+    lost('configuration', 'zone', 'no writer yet; recreated by hand from the backup'),
+    lost('relationship', 'environments', 'read per zone and not backed up; added to the zone again by hand'),
+  ]),
+  sharedEmailDomain: Object.freeze([
+    lost('configuration', 'shared domain', 'Microsoft provisions it; there is nothing to write'),
+  ]),
+  schemaExtension: Object.freeze([
+    lost('configuration', 'extension definition', 'no writer yet; created again by hand with the same id, owner app and properties'),
+    lost('relationship', 'values stored on users and groups', 'the values live on each object, not in the definition, and are not restored'),
   ]),
 });
 

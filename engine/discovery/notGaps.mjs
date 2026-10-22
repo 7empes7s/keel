@@ -12,18 +12,23 @@
  * backup already holds); `microsoft-published` is a catalogue Microsoft ships the same
  * in every tenant (templates, setting definitions, ADMX definitions, app gallery).
  * Discovery reports them as `skipped`, so they do not count as readable but not
- * backed up. A path that can hold something the tenant made (schema extensions,
- * uploaded GPO files, eSIM pools, custom analytics baselines, device templates,
- * attack simulations, Tunnel health thresholds) stays a gap even when the export
- * filed it as a catalogue or a log.
+ * backed up. A path that can hold something the tenant made stays a gap even when
+ * the export filed it as a catalogue or a log, until it is backed up or given one
+ * of the reasons below (remaining kinds, batch 8): `holds-secrets` is a kind whose
+ * settings are mostly secrets Keel will not store (uploaded GPO files can carry
+ * passwords, eSIM pools are activation codes); `retired` configures a product
+ * Microsoft retired or never shipped; `other-tenant` only exists while another
+ * tenant or a partner takes part, so it is set up again together with them.
  */
 
-export const SKIP_REASONS = Object.freeze(['not-configuration', 'microsoft-published']);
+export const SKIP_REASONS = Object.freeze(['not-configuration', 'microsoft-published', 'holds-secrets', 'retired', 'other-tenant']);
 
 export const ALIAS_PATHS = Object.freeze({
   '/administrativeUnits': 'administrativeUnit',
   '/agreements': 'agreement',
   '/authenticationMethodsPolicy': 'authenticationMethodsPolicy',
+  // Remaining kinds, batch 8: the same configurations under the directory route.
+  '/certificateAuthorities/certificateBasedApplicationConfigurations': 'certificateBasedApplicationConfiguration',
   '/conditionalAccess/authenticationContextClassReferences': 'authenticationContextClassReference',
   '/conditionalAccess/authenticationStrength/policies': 'authenticationStrengthPolicy',
   '/conditionalAccess/authenticationStrengths/policies': 'authenticationStrengthPolicy',
@@ -35,11 +40,15 @@ export const ALIAS_PATHS = Object.freeze({
   '/deviceAppManagement/mdmWindowsInformationProtectionPolicies': 'managedAppPolicy',
   '/deviceAppManagement/windowsInformationProtectionPolicies': 'managedAppPolicy',
   '/directory/featureRolloutPolicies': 'featureRolloutPolicy',
+  // Remaining kinds, batch 8: the same templates under the root route.
+  '/directory/templates/deviceTemplates': 'deviceTemplate',
   '/directorySettingTemplates': 'directorySettingTemplate',
   '/identity/conditionalAccess/authenticationStrength/policies': 'authenticationStrengthPolicy',
   '/identity/conditionalAccess/authenticationStrengths/policies': 'authenticationStrengthPolicy',
   // Same object as /policies/accessReviewPolicy.
   '/identityGovernance/accessReviews/policy': 'accessReviewPolicy',
+  // Remaining kinds, batch 8: the same definitions, through the newer access reviews service.
+  '/identityGovernance/accessReviews/unified/definitions': 'accessReviewScheduleDefinition',
   '/identityGovernance/catalogs': 'accessPackageCatalog',
   '/identityGovernance/entitlementManagement/accessPackageAssignmentPolicies': 'accessPackageAssignmentPolicy',
   '/identityGovernance/entitlementManagement/accessPackageAssignments': 'accessPackageAssignment',
@@ -68,6 +77,8 @@ export const SKIPPED_PATHS = Object.freeze({
   '/auditLogs/signIns': 'not-configuration',
   '/auditLogs/signUps': 'not-configuration',
   '/businessFlowTemplates': 'microsoft-published',
+  // An empty container for eDiscovery; it holds no settings itself.
+  '/compliance': 'not-configuration',
   '/conditionalAccess/authenticationStrength/authenticationMethodModes': 'microsoft-published',
   '/conditionalAccess/authenticationStrengths/authenticationMethodModes': 'microsoft-published',
   '/conditionalAccess/deletedItems/namedLocations': 'not-configuration',
@@ -101,11 +112,16 @@ export const SKIPPED_PATHS = Object.freeze({
   '/deviceManagement/deviceConfigurationUserStateSummaries': 'not-configuration',
   '/deviceManagement/domainJoinConnectors': 'not-configuration',
   '/deviceManagement/elevationRequests': 'not-configuration',
+  // eSIM activation codes (the codes are the pool); re-imported from the carrier's file.
+  '/deviceManagement/embeddedSIMActivationCodePools': 'holds-secrets',
   '/deviceManagement/endpointPrivilegeManagementProvisioningStatus': 'not-configuration',
   '/deviceManagement/groupPolicyCategories': 'microsoft-published',
   '/deviceManagement/groupPolicyDefinitionFiles': 'microsoft-published',
   '/deviceManagement/groupPolicyDefinitions': 'microsoft-published',
   '/deviceManagement/groupPolicyMigrationReports': 'not-configuration',
+  // Copies of on-premises group policy objects uploaded for analysis; the file can
+  // carry group policy preference passwords, and the source stays in Active Directory.
+  '/deviceManagement/groupPolicyObjectFiles': 'holds-secrets',
   '/deviceManagement/importedDeviceIdentities': 'not-configuration',
   '/deviceManagement/importedWindowsAutopilotDeviceIdentities': 'not-configuration',
   '/deviceManagement/macOSSoftwareUpdateAccountSummaries': 'not-configuration',
@@ -114,6 +130,9 @@ export const SKIPPED_PATHS = Object.freeze({
   '/deviceManagement/operationApprovalRequests': 'not-configuration',
   '/deviceManagement/privilegeManagementElevations': 'not-configuration',
   '/deviceManagement/remoteActionAudits': 'not-configuration',
+  // Windows 10X certificate, VPN and Wi-Fi profiles. Windows 10X never shipped, and
+  // the Wi-Fi XML can carry the network key.
+  '/deviceManagement/resourceAccessProfiles': 'retired',
   '/deviceManagement/resourceOperations': 'not-configuration',
   '/deviceManagement/reusableSettings': 'microsoft-published',
   '/deviceManagement/settingDefinitions': 'microsoft-published',
@@ -156,6 +175,9 @@ export const SKIPPED_PATHS = Object.freeze({
   '/deviceManagement/windowsInformationProtectionNetworkLearningSummaries': 'not-configuration',
   '/deviceManagement/windowsMalwareInformation': 'not-configuration',
   '/deviceManagement/windowsUpdateCatalogItems': 'microsoft-published',
+  // Device registrations each device makes when it joins; Intune devices are backed up
+  // as managedDevice.
+  '/devices': 'not-configuration',
   '/directory/authenticationMethodDevices/hardwareOathDevices': 'not-configuration',
   '/directory/externalUserProfiles': 'not-configuration',
   '/directory/pendingExternalUserProfiles': 'not-configuration',
@@ -166,6 +188,8 @@ export const SKIPPED_PATHS = Object.freeze({
   '/identity/conditionalAccess/deletedItems/namedLocations': 'not-configuration',
   '/identity/conditionalAccess/deletedItems/policies': 'not-configuration',
   '/identity/conditionalAccess/templates': 'microsoft-published',
+  // Requests for an access review history report and its download link.
+  '/identityGovernance/accessReviews/historyDefinitions': 'not-configuration',
   '/identityGovernance/appConsent/appConsentRequests': 'not-configuration',
   '/identityGovernance/entitlementManagement/accessPackageAssignmentApprovals': 'not-configuration',
   '/identityGovernance/entitlementManagement/accessPackageAssignmentRequests': 'not-configuration',
@@ -177,6 +201,8 @@ export const SKIPPED_PATHS = Object.freeze({
   '/identityGovernance/privilegedAccess/group/eligibilityScheduleRequests': 'not-configuration',
   '/identityProtection/riskDetections': 'not-configuration',
   '/identityProtection/servicePrincipalRiskDetections': 'not-configuration',
+  // An empty container with no settings.
+  '/network': 'not-configuration',
   '/networkAccess/reports': 'not-configuration',
   '/policies/deletedItems/crossTenantPartners': 'not-configuration',
   '/policies/deletedItems/crossTenantSyncPolicyPartners': 'not-configuration',
@@ -216,5 +242,11 @@ export const SKIPPED_PATHS = Object.freeze({
   '/teamwork': 'not-configuration',
   '/teamwork/deletedTeams': 'not-configuration',
   '/tenantRelationships/delegatedAdminCustomers': 'not-configuration',
+  // Partner admin (GDAP) relationships: the partner requests them and the tenant approves.
+  '/tenantRelationships/delegatedAdminRelationships': 'other-tenant',
+  // Membership in another tenant's multitenant organization; the organization itself
+  // is backed up as multiTenantOrganization.
+  '/tenantRelationships/multiTenantOrganization/joinRequest': 'other-tenant',
+  '/tenantRelationships/multiTenantOrganization/tenants': 'other-tenant',
   '/workplace/sensorDevices': 'not-configuration',
 });

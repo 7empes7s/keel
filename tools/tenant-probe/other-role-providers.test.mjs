@@ -41,7 +41,9 @@ test('no other role providers type duplicates an existing catalogue path or type
   for (const entry of otherRoleProviders) assert.ok(!otherPaths.has(`${entry.version}${entry.path}`.toLowerCase()), entry.type);
   // Entitlement management roles are all Microsoft's, so discovery skips them instead.
   assert.equal(SKIPPED_PATHS['/roleManagement/entitlementManagement/roleDefinitions'], 'microsoft-published');
-  assert.equal(CATALOG.filter((entry) => entry.path.startsWith('/roleManagement/entitlementManagement/')).length, 0);
+  // Their assignments are read per role, in batch 8; the roles themselves never are.
+  assert.deepEqual(CATALOG.filter((entry) => entry.path.startsWith('/roleManagement/entitlementManagement/')).map((entry) => [entry.type, entry.parent?.path]),
+    [['entitlementManagementRoleAssignment', '/roleManagement/entitlementManagement/roleDefinitions']]);
 });
 
 test('each other role providers type reads KEEL-RT- fixtures with GET only, across every page', async () => {

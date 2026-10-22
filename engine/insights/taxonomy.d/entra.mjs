@@ -90,5 +90,18 @@ export default Object.freeze({
     crossTenantIdentitySyncPolicyPartner: { name: 'Cross-tenant sync partner' },
     synchronizationJob: { name: 'Provisioning or cross-tenant sync job' },
     accessPackageResourceRoleScope: { name: 'Access package resource role' },
+    // Remaining kinds, batch 8.
+    certificateBasedApplicationConfiguration: { name: 'App certificate authority trust' },
+    signInIdentifier: { name: 'Sign-in identifier' },
+    verifiedIdProfile: { name: 'Verified ID profile' },
+    externalOriginResourceConnector: { name: 'Entitlement management outside connector' },
+    lifecyclePolicy: { name: 'Lifecycle policy' },
+    roleManagementCustomExtension: { name: 'PIM custom extension' },
+    privilegedAccessGroupResource: { name: 'PIM managed group' },
+    crossTenantM365Capability: { name: 'Default cross-tenant sharing setting' },
+    entitlementManagementRoleAssignment: { name: 'Entitlement management role assignment' },
+    deviceTemplate: { name: 'Device template' },
+    sharedEmailDomain: { name: 'Shared email domain' },
+    schemaExtension: { name: 'Schema extension' },
   }),
 });

@@ -279,6 +279,21 @@ export const COMPLETENESS = Object.freeze({
   externalConnection: { whole: 'not-written', missing: [part('The connection schema and the items pushed into it', 'other-route')] },
   simulationAutomation: { whole: 'not-written', missing: [part('Each run of the automation', 'other-route')] },
   attackSimulation: { whole: 'not-written', missing: [part('The payload, landing page and login page the simulation uses', 'other-route')] },
+  // Remaining kinds, batch 8.
+  hardwareConfiguration: { whole: 'not-written', missing: [part('The BIOS settings file, which can hold the BIOS password', 'secret', always)] },
+  certificateBasedApplicationConfiguration: { whole: 'not-written', missing: [part('The trusted certificate authorities', 'other-route')] },
+  signInIdentifier: { whole: 'not-written' },
+  verifiedIdProfile: { whole: 'not-written' },
+  externalOriginResourceConnector: { whole: 'not-written' },
+  lifecyclePolicy: { whole: 'not-written', missing: [part('Its rules and past versions', 'other-route')] },
+  roleManagementCustomExtension: { whole: 'not-written', missing: [part('The Logic App address it calls', 'secret', always)] },
+  privilegedAccessGroupResource: { whole: 'not-written' },
+  crossTenantM365Capability: { whole: 'not-written' },
+  entitlementManagementRoleAssignment: { whole: 'not-written' },
+  deviceTemplate: { whole: 'not-written', missing: [part('Its owners and the devices made from it', 'other-route')] },
+  securityZone: { whole: 'not-written', missing: [part('The environments in the zone', 'other-route')] },
+  sharedEmailDomain: { whole: 'not-written' },
+  schemaExtension: { whole: 'not-written', missing: [part('Extensions owned by apps in other tenants', 'microsoft-managed')] },
 });
 
 const RECORD_FIELDS = new Set(['managed', 'unreadable', 'whole', 'missing']);

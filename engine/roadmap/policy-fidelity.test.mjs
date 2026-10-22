@@ -371,8 +371,9 @@ test('the policy batch runner drives the subset through applyWave and prints the
   // 20 before wave 1 added the app management and multitenant organization types,
   // 23 before the per-partner cross-tenant sync settings,
   // 24 before remaining kinds batch 4 added 7 Entra ID tenant settings (manual, no writer),
-  // 31 before remaining kinds batch 7 added the attack simulations and their automations.
-  assert.equal(report.policyLedger.families.length, 33);
+  // 31 before remaining kinds batch 7 added the attack simulations and their automations,
+  // 33 before batch 8 added sign-in identifiers, lifecycle policies and default cross-tenant sharing.
+  assert.equal(report.policyLedger.families.length, 36);
 
   const lines = [];
   const out = { log: (line) => lines.push(line), error: (line) => lines.push(`ERR ${line}`) };

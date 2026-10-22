@@ -185,6 +185,21 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   externalConnection: at(M365, 'Copilot', 'Connectors'),
   simulationAutomation: at(DEFENDER, 'Email and collaboration', 'Attack simulation training', 'Automations'),
   attackSimulation: at(DEFENDER, 'Email and collaboration', 'Attack simulation training', 'Simulations'),
+  // Remaining kinds, batch 8: the last readable kinds.
+  hardwareConfiguration: at(INTUNE, 'Devices', 'Windows', 'Configuration', 'BIOS configurations and other settings'),
+  certificateBasedApplicationConfiguration: 'Microsoft Graph: /directory/certificateAuthorities/certificateBasedApplicationConfigurations (beta, no admin center page)',
+  signInIdentifier: at(ENTRA, 'External Identities', 'All identity providers', 'Sign-in identifiers'),
+  verifiedIdProfile: at(ENTRA, 'Verified ID', 'Verification profiles'),
+  externalOriginResourceConnector: 'Microsoft Graph: /identityGovernance/entitlementManagement/externalOriginResourceConnectors (beta, no admin center page)',
+  lifecyclePolicy: at(ENTRA, 'Identity Governance', 'Lifecycle workflows', 'Lifecycle policies'),
+  roleManagementCustomExtension: at(ENTRA, 'Identity Governance', 'Privileged Identity Management', 'Custom extensions'),
+  privilegedAccessGroupResource: at(ENTRA, 'Identity Governance', 'Privileged Identity Management', 'Groups'),
+  crossTenantM365Capability: at(ENTRA, 'External Identities', 'Cross-tenant access settings', 'Default settings'),
+  entitlementManagementRoleAssignment: at(ENTRA, 'Identity Governance', 'Entitlement management', 'Catalogs', '<catalog>', 'Roles and administrators'),
+  deviceTemplate: 'Microsoft Graph: /templates/deviceTemplates (beta, no admin center page)',
+  securityZone: at(DEFENDER, 'Exposure management', 'Settings', 'Zones'),
+  sharedEmailDomain: 'Microsoft Graph: /directory/sharedEmailDomains (beta, no admin center page)',
+  schemaExtension: 'Microsoft Graph: /schemaExtensions (no admin center page)',
 });
 
 export function adminCenterPathFor(resourceType) {

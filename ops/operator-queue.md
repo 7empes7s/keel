@@ -7667,8 +7667,15 @@ item that needs it stays untouched.
     without the `assignments` list (or with `assignments@odata.nextLink`) is `failed`, never empty. Restore writes through
     `/assign` with `deviceManagementScriptAssignments`, as before, and reads them back the same expanded way.
 - Needs: /opt/keel-live at the #551 merge or later (`grep -q "assignmentsRead: 'expand'" /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 22:50 UTC). **#551 works: a custom attribute script's assignment is backed up and restored, and the update is promoted.** B = **03139ab**. Restorer only; global admin not used; assigned only to empty groups.
+  1. Fixtures: empty groups `KEEL-RT-546-assign` and `-assign-b`; `KEEL-RT-546-attr` (`echo KEEL-RT`, string) assigned to `-assign`. S = `a4922ef0` (both groups present).
+     `policy assignment reads: 31 complete, 0 partial, 0 failed, 688 not supported`. The fixture's read is `complete`, 1 target = `KEEL-RT-546-assign`, endpoint `/deviceManagement/deviceCustomAttributeShellScripts/<id>?$expand=assignments`.
+  2. Assignment round: moved it to `-assign-b`. Dry run `083c8cb0` planned an update (assignments differ; 1 `runs-on-devices` effect for the new reach), content approval + approval **f76bae56**, job `d3731b3c`:
+     `update | succeeded` (verified). Live: assigned to `KEEL-RT-546-assign` only. **Promoted.**
+  3. Re-run (`A2` from S): 0 changed fields, 0 effects (**0 planned writes**).
+  4. Cleanup: deleted the script and both groups. Nothing left.
+  5. Evidence: `claude/live-evidence-546` @ **335c12f7**. pseudonymize check exit 0; my scan is clean. `live evidence deviceCustomAttributeShellScript.update.json: fixture-tested -> live-qualified`.
 - **Test tenant only.** Same hard rules and standing approval as Q130: approve the restore yourself and log the approval id.
   Restorer only (it holds `DeviceManagementScripts.ReadWrite.All`, Q130 step 0); grant nothing. Never touch CA policies,
   break-glass or Marouane's account. No tenant-wide setting is changed. **Assign the fixture only to the empty groups below.**

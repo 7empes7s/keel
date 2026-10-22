@@ -1082,7 +1082,7 @@ being triggered by queue updates.
   Exchange Online and Security & Compliance connect with the collector certificate to list; Teams and PnP are only imported.
   Cmdlets are listed, never run.
 - Needs: PR #497 live (`test -f /opt/keel-live/ops/powershell/list-commands.ps1`).
-- Status: todo
+- Status: in-progress
 - **Tenant:** reads only, with the collector credential. Nothing written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. List each session on its own and report exit code plus the first 300 characters of stdout (no secrets are printed):

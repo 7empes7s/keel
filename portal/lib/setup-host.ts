@@ -96,7 +96,14 @@ export function composeSetupHost(
   const setup: SetupConfig = existsSync(setupPath) ? readJson(setupPath) : {};
   const tenant = readJson(env.KEEL_TENANT_CONFIG_PATH ?? DEFAULT_TENANT_CONFIG_PATH) as { tenantId?: string };
   const readerPath = env.KEEL_CONTENT_READER_PATH || DEFAULT_CONTENT_READER_PATH;
-  const readerAppId = existsSync(readerPath) ? (readJson(readerPath) as { clientId?: string }).clientId ?? null : null;
+  // An unreadable content reader file only leaves that app out of the table; it never
+  // takes the whole setup host down.
+  let readerAppId: string | null = null;
+  try {
+    readerAppId = existsSync(readerPath) ? (readJson(readerPath) as { clientId?: string }).clientId ?? null : null;
+  } catch {
+    console.error("setup host: the content reader file could not be read");
+  }
   const build = setup.build ?? env.KEEL_BUILD ?? deployedRevision();
   if (!build) throw new Error("setup host: no build identifier (set build in the setup config or KEEL_BUILD)");
   return createGraphSetupHost({

@@ -1116,7 +1116,7 @@ being triggered by queue updates.
     setting child whose definition ends in `_{id}_id` (the key guid Graph regenerates on every write). Every other value, such as the
     addresses, is still compared. The PUT body is unchanged: the backup's values are sent whole, key child included.
 - Needs: /opt/keel-live at the #482 merge or later (`grep -q withoutRegeneratedKeys /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Test tenant only.** Same hard rules, capture tooling, requester/approver split and standing approval as Q135. Restorer only;
   global admin not used. If Graph answers 403, report blocked with what Graph names; grant nothing. Never touch CA policies,

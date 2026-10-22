@@ -6596,3 +6596,29 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; step 1 backup check; step 2 reason; per operation: promoted / refused (exact Graph message) / blocked; step 5;
   approval ids; the evidence branch and commit; anything left in the tenant.
+
+### Q137: Live update of an app category and an e-book category (fixes #474, after #479)
+- Drafted by the "App category updates always refused" thread (2026-10-22), from your Q116 and Q122 finding **#474**. Code: PR #479 (merge df9295a). Fixture-tested only.
+  - **Change:** the restore's current-state fingerprint now ignores `lastModifiedDateTime` for `mobileAppCategory` and `managedEBookCategory` only,
+    because Graph returns it as the time of the read. Every other kind still counts it. Nothing else changed: same writers as Q116 and Q122.
+- Needs: /opt/keel-live at df9295a or later (`grep -q READ_TIME_FIELDS /opt/keel-live/engine/restore/dryRunArtifact.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q116 and Q122. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used; it holds
+  DeviceManagementApps.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing.
+  Never touch CA policies, break-glass or Marouane's account.
+- **Fixtures:** app category `KEEL-RT-apps` (no app in it) and e-book category `KEEL-RT-books` (no book in it), as in Q116 and Q122.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Create both fixtures, then take snapshot S (a run that reads both types). Confirm both are in S.
+  2. **Fingerprint check (no write):** two dry runs from S selecting both types, a few seconds apart, with nothing changed. Expect the same
+     current-state fingerprint (and 0 planned writes).
+  3. **Update round:** rename them to `KEEL-RT-apps-drift` and `KEEL-RT-books-drift`. Restore from S selecting both, approve, enforce,
+     capture each `update`. Expect no "the target has changed since the dry run" refusal, and read-back names `KEEL-RT-apps` / `KEEL-RT-books`.
+  4. **Re-run check:** dry run from S after step 3. Expect 0 planned writes for both.
+  5. Cleanup: delete every `KEEL-RT-apps*` and `KEEL-RT-books*` category. Report anything left.
+  6. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-category-update`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; step 2 fingerprints; per operation: promoted / refused (exact message) / blocked; step 4; approval ids; the evidence
+  branch and commit; anything left in the tenant.

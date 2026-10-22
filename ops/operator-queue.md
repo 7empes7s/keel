@@ -924,6 +924,42 @@ being triggered by queue updates.
      `KEEL-RT-collector-fabric-readers` and holds no Power BI permission.
 - **Report:** per read, the status and the item count only (no names or values). Nothing changes in the tenant, the host or the DB.
 
+### Q144: Live check of "who made each change" from the Entra and Intune audit logs (after #493)
+- Drafted by the "Who made each change" thread (2026-10-22). Code: PR #493. After each backup, `keel-collect` now reads the
+  Microsoft Entra audit log (`/auditLogs/directoryAudits`) and the Intune audit log (`/deviceManagement/auditEvents`) with the
+  Collector token into `audit_change_fact` (30 days back on the first run, a day per read). The Changes page's "Who made this
+  change" panel matches those records to each change by Microsoft object id and shows the person or app, the time, a
+  Confirmed / Likely / Not known badge, and a next step when it cannot tell. Schema fragment `37-audit-ingest.sql` creates the
+  tables on deploy.
+- Needs: PR #493 live (`test -f /opt/keel-live/engine/identity/auditSources.mjs`).
+- Status: todo
+- **Tenant:** one change to a `KEEL-RT-` fixture, put back at the end (standing approval for test fixtures). Reads otherwise.
+  Never touch CA policies, break-glass or Marouane's account.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. Tables exist: `SELECT to_regclass('audit_change_fact'), to_regclass('audit_ingest_run');`
+  2. After the next scheduled collect (or one `collect` job from the portal), report the job's stdout lines starting
+     `Microsoft Entra audit log:` and `Intune audit log:` (or `audit logs not read:`), then:
+     ```sql
+     SELECT source, evidence->>'status' AS status, evidence->'window' AS window, evidence->>'insertedEvents' AS inserted
+       FROM audit_ingest_run ORDER BY started_at DESC LIMIT 6;
+     SELECT source, cursor, window_from, window_until, complete FROM audit_ingest_state;
+     SELECT count(*) AS facts, min(occurred_at), max(occurred_at) FROM audit_change_fact;
+     ```
+     If a status is `read-scope-revoked`, report the Graph error (status, code, message, masked) from one direct GET of
+     `/v1.0/auditLogs/directoryAudits?$top=1` or `/v1.0/deviceManagement/auditEvents?$top=1` with the Collector token, and
+     which permission or role is missing. Do not grant anything.
+  3. Make one change: with the Restorer, set the `description` of an existing `KEEL-RT-` security group to
+     `KEEL-RT who-check <UTC time>` (note the old value). Wait about 20 minutes (audit records settle; the read stops 15
+     minutes before now), then run one collect and let drift detection finish.
+  4. Open that group's change on https://keel.techinsiderbytes.com/drift (the change details sheet). Report the "Who made this
+     change" panel verbatim: badge, sentence, "Changed ..." line, any next-step line. Expected: **Confirmed**, the Restorer app
+     by name, a time within a minute of your change, "from the Microsoft Entra audit log". Also report one Intune or SharePoint
+     change's panel if one is open (expected for SharePoint: "Not known" and the Purview next step).
+  5. Put the description back to the old value and confirm it with a GET. Report done.
+- **Report:** per step, the result; anything that says "could not check" or "Not known" where Confirmed was expected, with the
+  portal log line `[keel-portal] change attribution unavailable` or `approval route unavailable` if present
+  (`journalctl -u keel-portal --since -1h | grep -i attribution`).
+
 ### Q143: Recheck the hourly backup shows "Partly done", and probe the Intune settings route (read-only, urgent, after #489)
 - Drafted by the "Hourly backup shows Failed" thread (2026-10-22). Code: PR #489 (refs #447). A collect whose snapshot holds at
   least one fully read type, but some types failed or were read in part, now exits **3** and prints one `incomplete types: [...]`

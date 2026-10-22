@@ -341,9 +341,9 @@ test("an Exchange role assignment names its role group from the newest usable ro
   const payload = { id: id(24), roleDefinitionId: EXO_ROLE, principalId: `/RoleGroups/${ROLE_GROUP_ID}`, directoryScopeId: "/" };
   await client.query(
     `INSERT INTO resource_version (snapshot_id, natural_key, resource_type, payload, payload_hash, criticality, blast_radius, fidelity, provenance)
-     VALUES ($1, $2, 'exchangeRoleAssignment', $3, $3, 'critical', 'access-affecting', 'full', '{}')`,
-    [snapshot.id, id(24), JSON.stringify(payload)],
+     VALUES ($1, $2, 'exchangeRoleAssignment', $3, $4, 'critical', 'access-affecting', 'full', '{}')`,
+    [snapshot.id, id(24), JSON.stringify(payload), JSON.stringify(payload)],
   );
   const names = await savedNames(client, TENANT, [id(24)]);
-  assert.equal(namedSubject(id(24), names), "Mail Recipients → Recipient Management (exchange role assignment)");
+  assert.equal(namedSubject(id(24), names), "Mail Recipients → Recipient Management (Exchange role assignment)");
 });

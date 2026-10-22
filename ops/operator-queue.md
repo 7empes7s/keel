@@ -7187,7 +7187,7 @@ item that needs it stays untouched.
     "Check now" (`POST /api/actions/compliance/check`). With no `KEEL_RECOVERY_MANIFEST_PATH`, the portal reads the storage
     location from where its database runs: a loopback or socket host means "this server's disk".
 - Needs: /opt/keel-live at the #505 merge or later (`test -f /opt/keel-live/engine/benchmarks/runChecks.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** none. Reads and writes Keel's own database only.
 - Do:

@@ -190,7 +190,7 @@ family(TEAMS, TEAMS_DOCS, {
   readBack: 'teams.federation-configuration', set: 'Set-CsTenantFederationConfiguration', identity: 'policy',
   fields: [
     'AllowFederatedUsers', 'BlockAllSubdomains', 'AllowTeamsConsumer', 'AllowTeamsConsumerInbound', 'RestrictTeamsConsumerToExternalUserProfiles',
-    'AllowPublicUsers', 'TreatDiscoveredPartnersAsUnverified', 'SharedSipAddressSpace', 'ExternalAccessWithTrialTenants',
+    'TreatDiscoveredPartnersAsUnverified', 'SharedSipAddressSpace', 'ExternalAccessWithTrialTenants',
   ],
 });
 family(TEAMS, TEAMS_DOCS, {
@@ -260,7 +260,8 @@ voice('eventsPolicy', 'events-policy', 'events-policies', 'Set-CsTeamsEventsPoli
   'TownhallChatExperience', 'RecordingForTownhall', 'RecordingForWebinar', 'TranscriptionForTownhall', 'TranscriptionForWebinar',
 ]);
 voice('liveEventsConfiguration', 'live-events-configuration', 'live-events-configuration', 'Set-CsTeamsMeetingBroadcastConfiguration', null, 'teamsLiveEventsConfiguration', [
-  'SupportURL', 'AllowSdnProviderForBroadcastMeeting', 'SdnName', 'SdnLicenseId', 'SdnApiTemplateUrl',
+  // The Sdn* provider fields are never read back (Q155), so KEEL never has a value to write.
+  'SupportURL', 'AllowSdnProviderForBroadcastMeeting',
 ]);
 
 // ---------------------------------------------- Purview retention and DLP

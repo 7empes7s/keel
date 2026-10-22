@@ -209,7 +209,6 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
     rule('AllowFederatedUsers', SHARING, disabledToEnabled),
     rule('AllowTeamsConsumer', SHARING, disabledToEnabled),
     rule('AllowTeamsConsumerInbound', SHARING, disabledToEnabled),
-    rule('AllowPublicUsers', SHARING, disabledToEnabled),
     rule('RestrictTeamsConsumerToExternalUserProfiles', SHARING, enabledToDisabled),
     rule('BlockAllSubdomains', SHARING, enabledToDisabled),
     rule('ExternalAccessWithTrialTenants', SHARING, becomes('Allowed')),
@@ -244,8 +243,6 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
     rule('TownhallEventAttendeeAccess', SHARING, widensAudience),
     ...['RecordingForTownhall', 'RecordingForWebinar', 'TranscriptionForTownhall', 'TranscriptionForWebinar'].map((field) => rule(field, SHARING, changes)),
   ],
-  // The stream delivery provider a live event sends its video to.
-  teamsLiveEventsConfiguration: [rule('SdnApiTemplateUrl', SHARING, changes), rule('SdnName', SHARING, changes)],
   // Turning a retention policy or rule off releases what it preserved.
   purviewRetentionPolicy: [rule('Enabled', HOLD, enabledToDisabled)],
   purviewRetentionRule: [

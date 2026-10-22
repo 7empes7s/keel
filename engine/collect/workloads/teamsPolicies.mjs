@@ -27,6 +27,7 @@ import { runCmdlet } from '../../powershell/jobQueue.mjs';
 import { redactPayload } from '../../telemetry/events.mjs';
 import { structuredFailure } from './exchange.mjs';
 import { teamsActivation } from './teams.mjs';
+import { unknownFieldsOf } from './cmdletFamilies.mjs';
 
 export const TEAMS_POLICY_WORKLOAD = 'teams-org-policies';
 export const TEAMS_POLICY_MODULE = 'MicrosoftTeams';
@@ -41,7 +42,11 @@ export const DEFAULT_MAX_OBJECTS = 1000;
  *    `Identity` field;
  *  - `singleton`: a tenant configuration. There is exactly one, `Global`; anything
  *    else in the answer is not trusted and is counted as unidentified.
- * Fields were declared from Microsoft's cmdlet documentation, not measured live.
+ * Fields were declared from Microsoft's cmdlet documentation, then checked against the
+ * live module (Q155, 2026-10-22, MicrosoftTeams 7.9.0): Get-CsTeamsMeetingPolicy carries
+ * no AllowUserToJoinExternalMeeting and Get-CsTenantFederationConfiguration no
+ * AllowPublicUsers (both retired), so neither is declared. A declared field an answer
+ * does not carry is `unknown` and makes the run partial.
  */
 export const FAMILIES = Object.freeze({
   meetingPolicy: Object.freeze({
@@ -54,7 +59,7 @@ export const FAMILIES = Object.freeze({
       'NewMeetingRecordingExpirationDays', 'AllowAnonymousUsersToJoinMeeting', 'AllowAnonymousUsersToStartMeeting', 'AutoAdmittedUsers',
       'AllowPSTNUsersToBypassLobby', 'AllowExternalNonTrustedMeetingChat', 'DesignatedPresenterRoleMode', 'AllowBreakoutRooms',
       'AllowMeetingReactions', 'AllowMeetingRegistration', 'WhoCanRegister', 'AllowEngagementReport', 'AllowOutlookAddIn',
-      'AllowUserToJoinExternalMeeting', 'StreamingAttendeeMode', 'MediaBitRateKb', 'VideoFiltersMode',
+      'StreamingAttendeeMode', 'MediaBitRateKb', 'VideoFiltersMode',
       'AllowWatermarkForScreenSharing', 'AllowWatermarkForCameraVideo', 'ExplicitRecordingConsent',
     ]),
   }),
@@ -84,7 +89,7 @@ export const FAMILIES = Object.freeze({
     operation: 'teams.federation-configuration', cmdlet: 'Get-CsTenantFederationConfiguration', prefix: 'federation-configuration', key: 'singleton',
     fields: Object.freeze([
       'Identity', 'AllowFederatedUsers', 'AllowedDomains', 'BlockedDomains', 'BlockAllSubdomains', 'AllowTeamsConsumer',
-      'AllowTeamsConsumerInbound', 'RestrictTeamsConsumerToExternalUserProfiles', 'AllowPublicUsers', 'TreatDiscoveredPartnersAsUnverified',
+      'AllowTeamsConsumerInbound', 'RestrictTeamsConsumerToExternalUserProfiles', 'TreatDiscoveredPartnersAsUnverified',
       'SharedSipAddressSpace', 'ExternalAccessWithTrialTenants', 'AllowedTrialTenantDomains',
     ]),
   }),
@@ -252,6 +257,7 @@ export async function readTeamsPolicies({ powershell = {}, families = FAMILY_NAM
     resources,
     failures,
     fieldCounts,
+    unknownFields: unknownFieldsOf(resources),
   };
 }
 
@@ -281,6 +287,7 @@ export async function recordTeamsPolicyRun(client, { tenantRef, result }) {
       [tenantRef, TEAMS_POLICY_WORKLOAD, result.outcome, result.observedFrom, result.observedTo, {
         discovery: result.discovery ?? null,
         fieldCounts: result.fieldCounts ?? {},
+        unknownFields: result.unknownFields ?? {},
         failures: result.failures ?? [],
         reasons: result.reasons ?? [],
       }],

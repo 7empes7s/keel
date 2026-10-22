@@ -98,6 +98,22 @@ export function objectsFrom(family, spec, output, { maxObjects, extra = () => ({
   return { resources, conflicts, unidentified, capped };
 }
 
+/**
+ * Which declared fields an answer did not carry, per family, with how many objects
+ * lacked each, so a partial run names what it is missing (names only, never values).
+ */
+export function unknownFieldsOf(resources) {
+  const unknownFields = {};
+  for (const entry of resources) {
+    for (const [field, coverage] of Object.entries(entry.fieldCoverage)) {
+      if (coverage.status !== 'unknown') continue;
+      const family = (unknownFields[entry.kind] ??= {});
+      family[field] = (family[field] ?? 0) + 1;
+    }
+  }
+  return unknownFields;
+}
+
 /** A family read that did not start or did not succeed, with nothing kept. */
 export const emptyRead = (extra = {}) => ({ resources: [], conflicts: [], unidentified: 0, capped: false, failure: null, unavailable: null, ...extra });
 
@@ -140,6 +156,7 @@ export function summarize({ workload, families, reads, skipped = [], required = 
     unavailable,
     skipped,
     fieldCounts,
+    unknownFields: unknownFieldsOf(resources),
   };
 }
 
@@ -166,6 +183,7 @@ export async function recordCmdletRun(client, workload, { tenantRef, result }) {
       [tenantRef, workload, result.outcome, result.observedFrom, result.observedTo, {
         discovery: result.discovery ?? null,
         fieldCounts: result.fieldCounts ?? {},
+        unknownFields: result.unknownFields ?? {},
         failures: result.failures ?? [],
         unavailable: result.unavailable ?? [],
         skipped: result.skipped ?? [],

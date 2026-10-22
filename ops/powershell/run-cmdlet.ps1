@@ -223,11 +223,11 @@ $AllowedTeamsWrites = @{
     'Set-CsTeamsGuestCallingConfiguration'     = @('Identity', 'AllowPrivateCalling')
     'Set-CsTeamsGuestMeetingConfiguration'     = @('Identity', 'AllowIPVideo', 'AllowMeetNow', 'AllowTranscription', 'LiveCaptionsEnabledType')
     'Set-CsTeamsGuestMessagingConfiguration'   = @('Identity', 'AllowGiphy', 'AllowImmersiveReader', 'AllowMemes', 'AllowStickers', 'AllowUserChat', 'AllowUserDeleteChat', 'AllowUserDeleteMessage', 'AllowUserEditMessage', 'GiphyRatingType')
-    'Set-CsTeamsMeetingBroadcastConfiguration' = @('Identity', 'AllowSdnProviderForBroadcastMeeting', 'SdnApiTemplateUrl', 'SdnLicenseId', 'SdnName', 'SupportURL')
+    'Set-CsTeamsMeetingBroadcastConfiguration' = @('Identity', 'AllowSdnProviderForBroadcastMeeting', 'SupportURL')
     'Set-CsTeamsMeetingBroadcastPolicy'        = @('Identity', 'AllowBroadcastScheduling', 'AllowBroadcastTranscription', 'BroadcastAttendeeVisibilityMode', 'BroadcastRecordingMode', 'Description')
     'Set-CsTeamsMessagingPolicy'               = @('Identity', 'AllowCommunicationComplianceEndUserReporting', 'AllowFullChatPermissionUserToDeleteAnyMessage', 'AllowGiphy', 'AllowGiphyDisplay', 'AllowGroupChatJoinLinks', 'AllowImmersiveReader', 'AllowMemes', 'AllowOwnerDeleteMessage', 'AllowPasteInternetImage', 'AllowPriorityMessages', 'AllowRemoveUser', 'AllowSecurityEndUserReporting', 'AllowSmartCompose', 'AllowSmartReply', 'AllowStickers', 'AllowUrlPreviews', 'AllowUserChat', 'AllowUserDeleteChat', 'AllowUserDeleteMessage', 'AllowUserEditMessage', 'AllowUserTranslation', 'AllowVideoMessages', 'AudioMessageEnabledType', 'ChannelsInChatListEnabledType', 'ChatPermissionRole', 'Description', 'GiphyRatingType', 'ReadReceiptsEnabledType')
     'Set-CsTenantDialPlan'                     = @('Identity', 'Description', 'ExternalAccessPrefix', 'OptimizeDeviceDialing', 'SimpleName')
-    'Set-CsTenantFederationConfiguration'      = @('Identity', 'AllowFederatedUsers', 'AllowPublicUsers', 'AllowTeamsConsumer', 'AllowTeamsConsumerInbound', 'BlockAllSubdomains', 'ExternalAccessWithTrialTenants', 'RestrictTeamsConsumerToExternalUserProfiles', 'SharedSipAddressSpace', 'TreatDiscoveredPartnersAsUnverified')
+    'Set-CsTenantFederationConfiguration'      = @('Identity', 'AllowFederatedUsers', 'AllowTeamsConsumer', 'AllowTeamsConsumerInbound', 'BlockAllSubdomains', 'ExternalAccessWithTrialTenants', 'RestrictTeamsConsumerToExternalUserProfiles', 'SharedSipAddressSpace', 'TreatDiscoveredPartnersAsUnverified')
 }
 
 # Task-106: OneDrive site-level settings through PnP, one named site at a time.

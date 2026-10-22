@@ -1,0 +1,56 @@
+{
+  "restoreRef": "fa24fe23-716d-8bb5-bcfa-46e42ef7a678",
+  "entry": {
+    "naturalKey": "deviceCustomAttributeShellScript:0857e104-d829-8abb-af3f-bd1d2729f101",
+    "resourceType": "deviceCustomAttributeShellScript",
+    "operation": "update",
+    "targetId": "0857e104-d829-8abb-af3f-bd1d2729f101",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T22:49:03.986Z",
+    "priorState": {
+      "id": "0857e104-d829-8abb-af3f-bd1d2729f101",
+      "fileName": "keel-rt-546.sh",
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-546-attr",
+      "runAsAccount": "system",
+      "scriptContent": "ZWNobyBLRUVMLVJU",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceCustomAttributeShellScripts/$entity",
+      "createdDateTime": "2026-10-22T22:43:28.8338216Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "customAttributeName": null,
+      "customAttributeType": "string",
+      "lastModifiedDateTime": "2026-10-22T22:43:28.8338216Z"
+    },
+    "intendedState": {
+      "fileName": "keel-rt-546.sh",
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-546-attr",
+      "runAsAccount": "system",
+      "scriptContent": "ZWNobyBLRUVMLVJU",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "customAttributeName": null,
+      "customAttributeType": "string"
+    },
+    "postState": {
+      "id": "0857e104-d829-8abb-af3f-bd1d2729f101",
+      "fileName": "keel-rt-546.sh",
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-546-attr",
+      "runAsAccount": "system",
+      "scriptContent": "ZWNobyBLRUVMLVJU",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceCustomAttributeShellScripts/$entity",
+      "createdDateTime": "2026-10-22T22:43:28.8338216Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "customAttributeName": null,
+      "customAttributeType": "string",
+      "lastModifiedDateTime": "2026-10-22T22:43:28.8338216Z"
+    }
+  }
+}

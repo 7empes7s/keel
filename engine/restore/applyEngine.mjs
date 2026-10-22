@@ -22,6 +22,7 @@ import { recordPriorState, recordWriteOutcome, classifyWriteOutcome, listJournal
 import { VERBATIM_RESOLUTIONS, isServerOwnedReference, resolveSymbol } from '../graph/resolver.mjs';
 import { compareSignInPaths, recordSignInPath } from '../safety/signInPathGate.mjs';
 import { lockoutDeleteRefusal } from '../safety/lockoutDeleteGate.mjs';
+import { gateBlastRadius } from '../safety/blastRadius.mjs';
 import { RETRY_AFTER_FALLBACK_SECONDS } from './graphWriter.mjs';
 import { isDeepStrictEqual } from 'node:util';
 import {
@@ -333,7 +334,7 @@ export const DEFAULT_WAVE_CONCURRENCY = 8;
 /** Wave 2 RST: resources that read or change the sign-in path run one at a
  * time, never alongside each other or the rest of the wave. */
 function runsAlone(resource) {
-  return resource.blastRadius === 'tenant-lockout'
+  return gateBlastRadius(resource.resourceType, resource.blastRadius) === 'tenant-lockout'
     || resource.resourceType === 'conditionalAccessPolicy'
     || isTenantPolicyGoverned(resource.resourceType);
 }
@@ -606,7 +607,7 @@ export async function applyWave(writer, governor, wave, {
       const guarded = { ...resource, payload: resource.live?.payload ?? resource.payload };
       const guard = effectiveVerb === 'delete' ? refuseUnsafeDeletion(guarded, deletionGuardOptions) : refuseIfSynced(guarded);
       if (guard.refused) { skipped.push({ naturalKey: resource.naturalKey, reason: guard.reason }); return; }
-      if (effectiveVerb === 'delete' && resource.blastRadius === 'tenant-lockout') {
+      if (effectiveVerb === 'delete' && gateBlastRadius(resource.resourceType, resource.blastRadius) === 'tenant-lockout') {
         skipped.push({ naturalKey: resource.naturalKey, reason: 'a tenant-lockout delete is never written through a registered writer' });
         return;
       }
@@ -675,7 +676,7 @@ export async function applyWave(writer, governor, wave, {
         return;
       }
       const targetId = resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey);
-      const isLockoutDelete = resource.blastRadius === 'tenant-lockout';
+      const isLockoutDelete = gateBlastRadius(resource.resourceType, resource.blastRadius) === 'tenant-lockout';
       if (isLockoutDelete && simulationPassed !== true) {
         const lockoutRefusal = await lockoutDeleteRefusal(
           { resourceType: resource.resourceType, naturalKey: resource.naturalKey, targetId },

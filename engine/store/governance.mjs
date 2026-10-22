@@ -1,6 +1,7 @@
 import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE, OPEN_DRIFT_PREDICATE } from './openDrift.mjs';
 import { evaluateDrift } from '../policy/evaluate.mjs';
 import { executeAutoRemediation } from '../policy/execute.mjs';
+import { changeBlastRadius } from '../safety/blastRadius.mjs';
 
 export async function createBaseline(client, { tenantRef, setBy }) {
   const { rows } = await client.query(
@@ -30,11 +31,19 @@ export async function getActiveBaseline(client, { tenantRef }) {
 
 export async function recordDrift(client, {
   tenantRef, baselineId, observedSnapshot, naturalKey, resourceType, changeType,
-  beforeHash, afterHash, beforePayload, afterPayload, blastRadius,
+  beforeHash, afterHash, beforePayload, afterPayload, blastRadius: storedBlastRadius,
 }) {
+  // Conditional Access changes are rated by what the rule does, not by its type.
+  const blastRadius = changeBlastRadius(resourceType, beforePayload, afterPayload, storedBlastRadius);
   const reused = await reuseDrift(client, {
     tenantRef, baselineId, naturalKey, changeType, beforeHash, afterHash,
   });
+  // A change seen again takes the current rating, so a row recorded before
+  // per-rule rating reads the same as a new one.
+  if (reused && reused.row.blast_radius !== blastRadius) {
+    await client.query('UPDATE drift SET blast_radius = $2 WHERE id = $1', [reused.row.id, blastRadius]);
+    reused.row.blast_radius = blastRadius;
+  }
   // An ignored change seen again stays ignored: its row is kept and nothing acts on it,
   // just as evaluateOpenDrifts (a policy created later) reads open rows only.
   if (reused?.ignored) return reused.row.id;

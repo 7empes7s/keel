@@ -90,7 +90,7 @@ import type { RestoreWorkload } from "@/lib/restore-workloads-view";
 // a short delay so the real component walks its real states.
 const DEPENDS: Record<string, string[]> = {
   "conditionalAccessPolicy:Block legacy auth": ["group:Break-glass admins", "namedLocation:HQ egress"],
-  "conditionalAccessPolicy:Require MFA for admins": ["group:Break-glass admins", "authenticationStrength:Phishing-resistant"],
+  "conditionalAccessPolicy:Require MFA for admins": ["group:Break-glass admins", "authenticationStrengthPolicy:Phishing-resistant"],
   "deviceConfiguration:Windows baseline": ["group:All managed devices"],
 };
 let jobPolls = 0;
@@ -325,7 +325,7 @@ const DRIFT = [
   { id: "dr1", naturalKey: "conditionalAccessPolicy:Block legacy auth", resourceType: "conditionalAccessPolicy", changeType: "modified", blastRadius: "tenant-lockout", detectedAt: "2026-10-02T09:12:00Z",
     before: { displayName: "Block legacy auth", state: "enabled", conditions: { clientAppTypes: ["exchangeActiveSync", "other"], users: { includeUsers: ["All"], excludeGroups: ["Break-glass admins"] } }, grantControls: { operator: "OR", builtInControls: ["block"] } },
     after: { displayName: "Block legacy auth", state: "enabledForReportingButNotEnforced", conditions: { clientAppTypes: ["exchangeActiveSync", "other"], users: { includeUsers: ["All"], excludeGroups: ["Break-glass admins", "Finance"] } }, grantControls: { operator: "OR", builtInControls: ["block"] } },
-    attribution: { verdict: "exact", reason: "audit-record-names-resource", actors: [{ kind: "user", id: "a71ce000-0000-4000-8000-0000000000a7", name: "Amara Okafor" }],
+    attribution: { verdict: "exact", reason: "audit-record-names-resource", source: "audit", service: "Entra", actors: [{ kind: "user", id: "a71ce000-0000-4000-8000-0000000000a7", name: "Amara Okafor" }],
       evidence: [{ sourceEventId: "Directory_8f2c1d7a-4b3e-4f61-9a20-1c5d7e9b3a44", occurredAt: "2026-10-02T08:47:00Z", operation: "update", activity: "Update conditional access policy", fields: ["conditions", "state"] }],
       resourceObjectId: "c0a10000-0000-4000-8000-0000000000ca", window: { from: "2026-10-02T06:00:00Z", until: "2026-10-02T09:12:00Z" }, coverage: { audit: "covered", signIn: "covered" },
       route: { route: "central", reason: "cross-entity", approverCount: 2, routedAt: "2026-10-02T10:00:00Z" } } },
@@ -334,7 +334,7 @@ const DRIFT = [
     after: { state: "enabled", grantControls: { builtInControls: ["mfa"] }, sessionControls: { signInFrequency: { value: 24, type: "hours" } } } },
   { id: "dr3", naturalKey: "group:Finance", resourceType: "group", changeType: "modified", blastRadius: "access-affecting", detectedAt: "2026-10-01T15:02:00Z",
     before: { displayName: "Finance", membershipRule: null, mailEnabled: false, owners: ["cfo@contoso.com"] }, after: { displayName: "Finance", membershipRule: null, mailEnabled: true, owners: ["cfo@contoso.com", "temp.contractor@contoso.com"] },
-    attribution: { verdict: "unknown", reason: "audit-retention-gap", actors: [], evidence: [], resourceObjectId: "f1a40000-0000-4000-8000-0000000000f1",
+    attribution: { verdict: "unknown", reason: "audit-retention-gap", source: "audit", service: "Entra", actors: [], evidence: [], resourceObjectId: "f1a40000-0000-4000-8000-0000000000f1",
       window: { from: "2026-08-01T06:00:00Z", until: "2026-10-01T15:02:00Z" }, coverage: { audit: "retention-gap", signIn: "not-read" },
       route: { route: "entity", entityCode: "CREOS", approverCount: 1, routedAt: "2026-10-02T10:00:00Z" } } },
   { id: "dr4", naturalKey: "namedLocation:Branch offices", resourceType: "namedLocation", changeType: "added", blastRadius: "access-affecting", detectedAt: "2026-09-30T10:00:00Z", before: null, after: { displayName: "Branch offices", ipRanges: ["203.0.113.0/24"] } },
@@ -1747,7 +1747,7 @@ const RESTORE_RESOURCES: [string, string, string][] = [
   ["group:Contractors", "access-affecting", "Entra"],
   ["namedLocation:HQ egress", "access-affecting", "Entra"],
   ["namedLocation:Branch offices", "access-affecting", "Entra"],
-  ["authenticationStrength:Phishing-resistant", "access-affecting", "Entra"],
+  ["authenticationStrengthPolicy:Phishing-resistant", "access-affecting", "Entra"],
   ["organizationalBranding:Contoso sign-in page", "cosmetic", "Entra"],
   ["groupLifecyclePolicy:Group expiry", "cosmetic", "Entra"],
   ["deviceConfiguration:Windows baseline", "access-affecting", "Intune"],

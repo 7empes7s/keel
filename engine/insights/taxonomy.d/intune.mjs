@@ -1,6 +1,24 @@
 // Intune types. Priority comes from the catalogue (see ../taxonomy.mjs).
 export default Object.freeze({
   service: 'Intune',
+  // Types by kind, in the order a list shows them: people and objects first, then
+  // roles and access, then policies, then tenant-wide settings. taxonomy.test.mjs fails
+  // on an entry that is in no group, so a new type has to be placed here.
+  categories: Object.freeze([
+    { key: 'devices', name: 'Devices', types: ['managedDevice', 'windowsAutopilotDeviceIdentity', 'deviceCategory', 'cartToClassAssociation', 'managedDeviceCleanupRule'] },
+    { key: 'apps', name: 'Apps', types: ['mobileApp', 'mobileAppCategory', 'mobileAppRelationship', 'mobileAppConfiguration', 'targetedManagedAppConfiguration', 'managedAppPolicy', 'windowsManagedAppProtection', 'iosLobAppProvisioningConfiguration', 'managedEBook', 'managedEBookCategory', 'vppToken'] },
+    { key: 'roles', name: 'Admin roles and scope', types: ['deviceManagementRoleDefinition', 'deviceManagementRoleAssignment', 'roleScopeTag', 'operationApprovalPolicy'] },
+    { key: 'enrollment', name: 'Enrollment', types: ['deviceEnrollmentConfiguration', 'windowsAutopilotDeploymentProfile', 'depOnboardingSetting', 'appleUserInitiatedEnrollmentProfile', 'androidDeviceOwnerEnrollmentProfile', 'androidForWorkEnrollmentProfile', 'termsAndConditions'] },
+    { key: 'compliance', name: 'Compliance', types: ['deviceCompliancePolicy', 'deviceManagementCompliancePolicy', 'deviceComplianceScript', 'notificationMessageTemplate'] },
+    { key: 'configuration', name: 'Configuration profiles', types: ['deviceConfiguration', 'configurationPolicy', 'deviceManagementIntent', 'groupPolicyConfiguration', 'groupPolicyUploadedDefinitionFile', 'deviceManagementReusablePolicySetting', 'assignmentFilter', 'policyAssignment', 'policySet', 'hardwareConfiguration', 'microsoftTunnelConfiguration', 'microsoftTunnelHealthThreshold', 'deviceManagementDerivedCredentialSettings', 'enterpriseCodeSigningCertificate', 'symantecCodeSigningCertificate', 'userExperienceAnalyticsBaseline'] },
+    { key: 'updates', name: 'Windows updates', types: ['windowsFeatureUpdateProfile', 'windowsQualityUpdateProfile', 'windowsQualityUpdatePolicy', 'windowsDriverUpdateProfile'] },
+    { key: 'scripts', name: 'Scripts', types: ['deviceManagementScript', 'deviceShellScript', 'deviceCustomAttributeShellScript', 'deviceHealthScript'] },
+    { key: 'tenant', name: 'Connectors and tenant settings', types: ['deviceManagementSettings', 'intuneBrandingProfile', 'applePushNotificationCertificate', 'androidManagedStoreAccountEnterpriseSettings', 'androidForWorkSettings', 'mobileThreatDefenseConnector', 'deviceManagementPartner', 'complianceManagementPartner', 'remoteAssistancePartner', 'deviceManagementExchangeConnector', 'onPremisesConditionalAccessSettings'] },
+  ]),
+  // Who a policy applies to, as edge changes store it (engine/govern/diffSnapshots.mjs).
+  edges: Object.freeze({
+    policyAssignment: { name: 'Policy assignment', priority: 'normal', reason: 'Changes which devices or people a policy applies to.' },
+  }),
   entries: Object.freeze({
     deviceConfiguration: { name: 'Device configuration profile' },
     deviceCompliancePolicy: { name: 'Device compliance policy' },

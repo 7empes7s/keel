@@ -1038,7 +1038,24 @@ being triggered by queue updates.
   set up (404 on an `absentWhenNotFound` entry). Anything else stays a problem with its reason and permission. Stored runs
   are re-judged on load, so no new discovery run is needed.
 - Needs: PR #495 live (`grep -q notUsedReason /opt/keel-live/engine/discovery/discover.mjs`).
-- Status: in-progress
+- Status: done
+- Result: done (2026-10-22 16:20 UTC). The "not used" split works: 7 types are not used, as expected plus `applePushNotificationCertificate` (not-set-up). The only 2 unreadable ones are a discovery false alarm (no filter). Step 3 (portal) is not reachable from this box. Collector reads only.
+  1. `keel-discover.mjs show` (stored run 4, 06:58 UTC):
+     ```
+     Catalogue: 142 covered, 16 under-item, 2 unreadable, 7 not-used.
+       unreadable unifiedRoleManagementPolicy (v1.0 /policies/roleManagementPolicies): not-listable
+       unreadable unifiedRoleManagementPolicyAssignment (v1.0 /policies/roleManagementPolicyAssignments): not-listable
+       not-used lifecycleWorkflow (v1.0 /identityGovernance/lifecycleWorkflows/workflows): not-licensed
+       not-used lifecycleWorkflowCustomTaskExtension (v1.0 /identityGovernance/lifecycleWorkflows/customTaskExtensions): not-licensed
+       not-used lifecycleManagementSettings (v1.0 /identityGovernance/lifecycleWorkflows/settings): not-licensed
+       not-used identityApiConnector (v1.0 /identity/apiConnectors): feature-off
+       not-used applePushNotificationCertificate (v1.0 /deviceManagement/applePushNotificationCertificate): not-set-up
+       not-used deviceManagementExchangeConnector (v1.0 /deviceManagement/exchangeConnectors): feature-off
+       not-used onPremisesConditionalAccessSettings (v1.0 /deviceManagement/conditionalAccessSettings): feature-off
+     ```
+     As expected: lifecycleWorkflow, lifecycleWorkflowCustomTaskExtension, lifecycleManagementSettings (not-licensed), identityApiConnector, deviceManagementExchangeConnector and onPremisesConditionalAccessSettings (feature-off) are **not-used**. Also not-used: applePushNotificationCertificate (not-set-up). deviceManagementSettings is not listed.
+  2. Stored refusals for the 2 unreadable types, beta and v1.0: `400 | not-listable | missing_grant – | UnknownError: {"errorCode":"MissingProvider","message":"The provider is missing."}` for `/policies/roleManagementPolicies` and `/policies/roleManagementPolicyAssignments`. The collector reads both with the scopeId/scopeType filter (`complete`, 150 each), so no permission is missing and the path is right; discovery just probes without the filter. Commented on PR #495.
+  3. Not possible from this box: the portal needs a Cloudflare Access login.
 - **Tenant:** nothing read or written. DB and portal reads only.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. `node cli/keel-discover.mjs show --config /etc/keel/tenant.json | sed -n '1,/^Uncatalogued/p'`. Report the

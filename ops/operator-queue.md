@@ -7526,8 +7526,22 @@ item that needs it stays untouched.
   (Set-SafeLinksPolicy). They stay off until a live writer capture is imported. Compliance's Defender email checks then offer
   "Make it pass" per failing setting; the fix is a one-setting workload restore (dry run, approval, content-effect approval, write, read-back).
 - Needs: /opt/keel-live at a499c2d or later (`grep -q mailflow.anti-spam-policy /opt/keel-live/engine/restore/workloads/writeDeclarations.mjs`).
-- Status: in-progress
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 21:35 UTC) for the enforce in step 4: it waits for **#548** (fixes #542) to deploy (live is 3010d22, `workloadPowershellConfigPath` absent). Steps 1–3 and the step 4 dry run are done. B = **3010d22**. Restorer (Exchange) for writes; Collector for reads; global admin not used.
+  1. Fixtures (no rules, apply to nobody; no rule found for any of them): `KEEL-RT-mailfix-spam` guid 839e8b32-… created (PhishSpamAction MoveToJmf, PhishZapEnabled false); `KEEL-RT-mailfix-phish` f56f609e-… created;
+     `KEEL-RT-mailfix-malware` 6dd556b7-… created; `KEEL-RT-mailfix-links` f309e049-… created (Safe Links is licensed).
+  2. Writer capture: capture exit **0**, `verify --require-live --gate workload-writers-live-acceptance` exit **0**.
+     - **Proven** (written, read back, put back): `mailflow.anti-phish-policy.update`, `mailflow.anti-spam-policy.update`, `mailflow.safe-links-policy.update` (plus transport-rule and inbound-connector).
+     - **Not proven:** `mailflow.anti-malware-policy.update`, error `Set-MalwareFilterPolicy failed: … CustomFromAddress: The CustomFromAddress value is not set. Custom notifications cannot be enabled without a valid CustomFromAddress.`
+       The switch the capture picks needs a sender address.
+     - Skipped: outbound connector (no KEEL-RT- object). `needsManualRevert` `[]`, so nothing is left changed.
+  3. Evidence: `claude/live-evidence-workload-writers-mailfix` @ 7488c53c, **PR #555** with `automerge`. pseudonymize check exit 0; my scan is clean.
+     Import from that checkout: exit 0, `workload-writers-exchange-mail-flow-live-acceptance.json` imported (5 writes, build 3010d22); refused `[]`.
+  4. `workload-collect run` (21:33): exchange-mail-flow `complete`, 4 new changes (the four fixtures); `compliance checks: 9 run (5 pass, 4 fail, 0 could not check)`.
+     - "Anti-spam policies quarantine phishing" (`keel-custom.defender-email.anti-spam-phish-quarantined`) **fails**, with KEEL-RT-mailfix-spam rows `PhishSpamAction MoveToJmf → expected Quarantine` and `PhishZapEnabled false → expected true` (and the Default policy, which I did not touch).
+     - Make it pass, by CLI: `keel-restore --compliance-fix keel-custom.defender-email.anti-spam-phish-quarantined --object 'anti-spam-policy:<guid>#PhishSpamAction'`. Dry run **5776fc9b**: 1 change, `Set-HostedContentFilterPolicy` PhishSpamAction MoveToJmf → Quarantine, and 1 content effect (`irreversible`).
+     - **Not approved or enforced:** the worker enforce reconnects with restorer.json (#542) and would fail as in Q149. Run it once #548 is live. (Note: the object key needs the `#<setting>` suffix; the bare key is refused with "does not name a setting this control's fix changes".)
+  5. Not needed yet: PhishSpamAction is still MoveToJmf. The four KEEL-RT-mailfix-* policies are left in place, as the item asks.
 - **Test tenant only. KEEL-RT- policies only, each with NO rule, so it applies to nobody.** Never change a Default or built-in policy, a
   rule, a CA policy, break-glass or Marouane's account. Restorer for writes, Collector for reads; global admin not used. Under the
   2026-10-14 standing authorization approve the restore and its content effects yourself and log both approval ids. No tenant-wide

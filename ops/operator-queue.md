@@ -6720,8 +6720,19 @@ item that needs it stays untouched.
 - Needs: steps 1 to 4 need nothing. Steps 5 and 6 need PR #484 live
   (`grep -q observeCollectorRoles /opt/keel-live/cli/keel-workload-collect.mjs`). If it is not live yet, do 1 to 4, set `blocked`
   with that reason, and finish 5 and 6 on a later pass.
-- Status: in-progress
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 09:58 UTC): steps 1 to 4 are done; steps 5 and 6 wait for **#484** to deploy (live is 56d9682; master CI is still running). Collector reads only; nothing granted.
+  1. Collector Entra roles (200), all at `/`: Compliance Administrator, Exchange Administrator, Security Reader, **Teams Administrator**, SharePoint Administrator, Global Reader.
+     Teams Administrator at scope `/`: **yes**.
+  2. `workload-scope.json` has no `powershellConfigs.teams`, so the Teams workloads use the default tenant config `/etc/keel/tenant.json` (the Collector).
+     `Connect-MicrosoftTeams` as the Collector, then `Get-CsTeamsMeetingPolicy`: exit 0, **8** policies: Global, Tag:KEEL-RT-meeting, Tag:AllOn,
+     Tag:RestrictedAnonymousAccess, Tag:AllOff, Tag:RestrictedAnonymousNoRecording, Tag:Default, Tag:Kiosk.
+  3. Captures (build 56d9682, `--collector-config /etc/keel/tenant.json`):
+     - teams-org-policies: exit 0, outcome `partial`, **proven 9**: `["teams.meeting-policies","teams.messaging-policies","teams.app-setup-policies","teams.app-permission-policies","teams.federation-configuration","teams.client-configuration","teams.guest-meeting-configuration","teams.guest-messaging-configuration","teams.guest-calling-configuration"]`, notProven `[]`, verify ok.
+     - teams-voice-policies: exit 0, `partial`, **proven 13**: `["teams.calling-policies","teams.voice-routing-policies","teams.dial-plans","teams.emergency-calling-policies","teams.emergency-call-routing-policies","teams.call-park-policies","teams.caller-id-policies","teams.voicemail-policies","teams.live-events-policies","teams.events-policies","teams.live-events-configuration","teams.user-policy-assignments","teams.group-policy-assignments"]`, notProven `[]`, verify ok.
+     - `pseudonymize.mjs check`: exit **0** (every id is a pseudonym). My own scan is clean.
+  4. Evidence: `claude/live-evidence-teams-reads` @ **8c103a7** (no PR).
+  5. and 6. pending #484.
 - **Tenant:** reads only. Graph GETs and the workloads' declared `Get-` cmdlets with the Collector credential. No `New-`, `Set-`,
   `Grant-` or `Remove-` cmdlet. Grant, assign or register nothing.
 - Do, from your clone checked out at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from

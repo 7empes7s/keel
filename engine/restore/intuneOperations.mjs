@@ -545,10 +545,13 @@ export function attachIntuneAssignments(resources, { desired, live = new Map(), 
     if (!want) return { ...resource, assignments: { outcome: 'absent', targets: [] } };
     const observed = live.get(key);
     const liveCount = observed && isComplete(observed.outcome) ? liveAssignmentIdentities(observed.targets, { observed: true, extras }).size : null;
+    const attached = { ...resource, assignments: { outcome: want.outcome, targets: want.targets } };
+    const reach = newAssignmentReach(attached, observed, resolve, extras);
     const withAssignments = {
-      ...resource,
-      assignments: { outcome: want.outcome, targets: want.targets },
+      ...attached,
       ...(liveCount === null ? {} : { liveAssignmentCount: liveCount }),
+      // Nothing is written when the plan is not ready, so it reaches no one new.
+      newAssignments: reach ?? [],
     };
     if (resource.verb !== 'noop' || resource.live?.state !== 'present') return withAssignments;
     const plan = assignmentPlan(withAssignments, resolve, { extras });
@@ -562,6 +565,60 @@ export function attachIntuneAssignments(resources, { desired, live = new Map(), 
     const promoted = { ...withAssignments, verb: 'update', verbReason: reason };
     return recoveryFor ? { ...promoted, recovery: recoveryFor(promoted) } : promoted;
   });
+}
+
+const EXCLUSION = 'exclusionGroupAssignmentTarget';
+const targetTypeOf = (identity) => identity.split('|')[0];
+
+/** A target in plain words for the people who review the restore: the group's key, or the kind of target. */
+function targetLabel(targetType, key, attributes, extras) {
+  const base = GROUP_TARGETS.has(targetType) ? (key ?? 'a group not in the backup') : ({
+    allLicensedUsersAssignmentTarget: 'all users', allDevicesAssignmentTarget: 'all devices',
+  }[targetType] ?? targetType ?? 'a target of unknown kind');
+  const filter = filterOf(attributes);
+  const details = [
+    ...(filter ? [`with an assignment filter (${filter.type})`] : []),
+    ...extras.filter((field) => attributes?.[field] !== undefined && attributes?.[field] !== null)
+      .map((field) => `${field}: ${JSON.stringify(withoutAnnotations(attributes[field]))}`),
+  ];
+  return details.length ? `${base}, ${details.join(', ')}` : base;
+}
+
+/**
+ * Issue #461: who a restore's assignment write reaches that the object does not
+ * reach now, in plain words, sorted; null when no assignments are written. A new
+ * include target (or the same one with its remediation fix turned on; a schedule,
+ * or a fix turned off, alone never counts) counts, and so does a live exclusion the backup does not have.
+ * An added exclusion only narrows, so it never counts. When the live assignments
+ * were not read (a create, or a read that did not complete), every include target
+ * counts: the safe direction. The content-effect review (engine/safety/
+ * contentEffects.mjs) judges an object that reaches new devices as if it were new.
+ */
+export function newAssignmentReach(resource, observed, resolve, assignmentExtras = []) {
+  // When a script runs is not who it reaches: a schedule alone never counts.
+  const extras = assignmentExtras.filter((field) => field !== 'runSchedule');
+  const plan = assignmentPlan(resource, resolve, { extras });
+  if (plan.state !== 'ready') return null;
+  const liveEdges = resource.live?.state === 'present' && observed && isComplete(observed.outcome) ? (observed.targets ?? []) : null;
+  const liveIdentities = liveEdges === null ? new Set() : liveAssignmentIdentities(liveEdges, { observed: true, extras });
+  // The same targets without their settings: a fix turned off reaches no one new.
+  const liveTargets = liveEdges === null ? new Set() : liveAssignmentIdentities(liveEdges, { observed: true });
+  const reach = new Set();
+  for (const target of resource.assignments.targets ?? []) {
+    const single = { assignments: { outcome: resource.assignments.outcome, targets: [target] } };
+    const [identity] = assignmentPlan(single, resolve, { extras }).identities ?? [];
+    if (!identity || targetTypeOf(identity) === EXCLUSION || liveIdentities.has(identity)) continue;
+    const attributes = target.attributes ?? {};
+    const [bare] = assignmentPlan(single, resolve).identities ?? [];
+    if (attributes.runRemediationScript !== true && liveTargets.has(bare)) continue;
+    reach.add(targetLabel(attributes.targetType ?? null, target.targetNaturalKey ?? null, attributes, extras));
+  }
+  for (const edge of liveEdges ?? []) {
+    const [identity] = liveAssignmentIdentities([edge], { observed: true, extras });
+    if (!identity || targetTypeOf(identity) !== EXCLUSION || plan.identities.has(identity)) continue;
+    reach.add(`no longer excluded: ${targetLabel(EXCLUSION, edge.targetNaturalKey ?? edge.targetId ?? null, edge.attributes, [])}`);
+  }
+  return [...reach].sort();
 }
 
 /**
@@ -902,16 +959,19 @@ function scriptRefusal([body]) {
 
 /**
  * PR #435 follow-up: putting back a script's text runs it on every device the script
- * is assigned to, so an update that changes the text is written only when the
- * restore's promotion checked a separate approval of exactly that text (the
- * 'runs-on-devices' content effect). A dry run cannot carry that approval yet, so it
- * simulates the write and lists the effect for review.
+ * is assigned to, so an update that changes the text, a recreated script the
+ * restore assigns, and a script the restore assigns to more devices (issue #461)
+ * are written only when the restore's promotion checked a separate approval of
+ * exactly that text and those targets (the 'runs-on-devices' content effect). A
+ * dry run cannot carry that approval yet, so it simulates the write and lists the
+ * effect for review.
  */
 function scriptTextUnapproved(resource, verb, { mode, approvedContentEffects = [] } = {}) {
-  if (verb !== 'update' || mode === 'dry-run') return null;
+  if (verb === 'delete' || mode === 'dry-run') return null;
   const { effects } = classifyContentEffects([{ ...resource, verb }]);
   const approved = (effect) => (approvedContentEffects ?? []).some((entry) => entry?.effect === effect.effect
-    && entry.naturalKey === effect.naturalKey && entry.field === effect.field && entry.before === effect.before && entry.after === effect.after);
+    && entry.naturalKey === effect.naturalKey && entry.field === effect.field && entry.before === effect.before && entry.after === effect.after
+    && JSON.stringify(entry.newAssignments ?? null) === JSON.stringify(effect.newAssignments ?? null));
   if (effects.every(approved)) return null;
   return {
     outcome: 'skipped',

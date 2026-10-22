@@ -26,6 +26,8 @@ export interface ContentEffect {
   disclosure: string;
   // "runs-on-devices" only: the script text a restore puts back, and the text now.
   script?: { before: string | null; after: string | null };
+  // Who the restore's assignment write reaches that the item does not reach now.
+  newAssignments?: string[];
 }
 
 const EFFECT_LABELS: Record<ContentEffectName, string> = {
@@ -68,6 +70,11 @@ export function ContentEffectList({ effects, names }: { effects: ContentEffect[]
               <code className="value-after">{show(effect.after)}</code>
             </span>
           </p>
+          {effect.newAssignments?.length ? (
+            <p className="content-effect-reach">
+              <span className="content-effect-field">Newly assigned to</span> {effect.newAssignments.join("; ")}
+            </p>
+          ) : null}
           <p className="content-effect-disclosure">{effect.disclosure}</p>
           {effect.script ? <ScriptText script={effect.script} /> : null}
         </li>

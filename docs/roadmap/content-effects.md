@@ -84,9 +84,23 @@ How a change is judged:
   not read counts as different. The effect's before and after are the text's
   size and full sha256, so an approval binds to exactly that text. The effect
   also carries the text itself (`script`), which the review shows to the person
-  approving. Creates are not judged: a restore never assigns a script. The
-  script writer re-checks the approval before it writes (a dry run only plans
-  the write).
+  approving. The script writer re-checks the approval before it writes, for
+  creates as well as updates (a dry run only plans the write).
+- **Assignments reach devices (issue #461).** A restore writes assignments for
+  scripts, remediations, app policies and the other Intune kinds that have them.
+  The plan records who that write reaches that the item does not reach now
+  (`newAssignments`, from `attachIntuneAssignments`): a new include target, the
+  same target with a remediation's fix turned on, or a live exclusion the backup
+  does not have. A changed schedule alone, and an added exclusion, reach no one
+  new. When the live assignments were not read, every include target counts.
+  On a device type (`judgesCreates`), those devices get the item as if it were
+  new, so its rules are judged from nothing even when the setting itself does
+  not change: a script assigned wider needs `runs-on-devices`, a policy with a
+  wipe assigned wider needs `irreversible`. Scripts and Windows app protection
+  judge creates only when the restore assigns them (`judgesCreates:
+  'when-assigned'`). The effect carries the list (`newAssignments`), the review
+  shows it, and it is bound into the digest only when present, so every other
+  effect keeps its digest.
 
 ## Plan binding and the separate approval
 

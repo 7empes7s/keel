@@ -5788,8 +5788,15 @@ item that needs it stays untouched.
   `POST .../compliancePolicies/{id}/setScheduledActions` with `{ scheduledActions: [...] }`, read back. Who the policy is
   assigned to is **not** written; the fixture stays unassigned.
 - Needs: /opt/keel-live at the #451 merge or later (`grep -q complianceActionsAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
+- Status: blocked
+- Result: blocked (2026-10-22 08:42 UTC) on **#473** (comment on it covers this type). B = c396a2c. Restorer only; nothing granted; no restore approved.
+  - Fixture `KEEL-RT-compliance` (Linux, linuxMdm, `linux_deviceencryption_required_true`). The notification action was not possible: creating `KEEL-RT-notice`
+    (`notificationMessageTemplates`, beta and v1.0) answered **400** "An error has occurred" (StatelessNotification service), so the fixture had **block 0 h** only.
+  - **Backup check fails** (S = `94ad1b37`, tier 1): read outcome `complete` (1), `settings` 1 item, but **`scheduledActionsForRule: []`**. Graph returns `[]` for the
+    double `$expand` on the policy; the `/scheduledActionsForRule?$expand=scheduledActionConfigurations` navigation returns the action.
+  - Update round: drifted the description to `drift` (`PUT` 204) and block to 72 h (`setScheduledActions` 200); both routes work live by hand.
+    The dry run `85342bea` exited 1 before planning: `listing /deviceManagement/compliancePolicies/{parent}?$expand=... failed` (#473). Create and update: **blocked**.
+  - Cleanup: deleted the policy; no KEEL-RT compliance policy is left. No template was created. Nothing left.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementConfiguration.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing.

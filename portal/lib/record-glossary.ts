@@ -620,6 +620,8 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Roles as stored": fact("Roles", "The access roles granted."),
   "Web address": fact("Web address", "The site's address."),
   "Name as stored": fact("Name", "The name as Microsoft stores it."),
+  "Value as stored": fact("Sharing setting", "The site's own sharing setting, as SharePoint names it."),
+  "Tenant default as stored": fact("Organisation default", "The organisation-wide sharing setting this site is compared with."),
 
   // Value report.
   "Requests": count("Requests", "How many were asked for."),

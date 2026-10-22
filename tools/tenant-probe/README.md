@@ -56,3 +56,18 @@ fixture is built to distinguish a correct implementation from the plausible
 wrong ones — self-references, appId-only resolution, well-known Microsoft ids,
 GUIDs nested in arrays, and genuine dangling references each change the totals.
 All ten mutations tried against it are killed by the suite.
+
+## Delegated-only probe
+
+`delegated-probe.mjs` checks, app-only, each area that Microsoft documentation says may
+need a signed-in user (the delegated access design, section 4, rows marked Docs or
+Unsure). It records works / refused / not supported / not found / no token per call, with
+names, ids and hosts masked. It sends GET only, plus Power Platform's `listtenantsettings`
+read with no body. `ops/powershell/sweep-get-cmdlets.ps1` does the same for every `Get-`
+cmdlet in Exchange, Purview and Teams (and the PnP search schema and term store reads);
+pass its outputs with `--cmdlets`.
+
+```bash
+node tools/tenant-probe/delegated-probe.mjs run --config /etc/keel/tenant.json --out <dir> \
+  --cmdlets sweep-exo.json,sweep-scc.json,sweep-teams.json,sweep-spo.json
+```

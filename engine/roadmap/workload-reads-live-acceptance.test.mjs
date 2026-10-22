@@ -25,10 +25,11 @@ import {
   READ_FAMILIES, WORKLOAD_READS_LIVE_GATE, captureWorkloadReads, ledgerEvidenceFromWorkloadReadsAcceptance, main, workloadReadsRecordFile,
 } from '../../tools/qualification/workloadReadsLive.mjs';
 import { main as pseudonymizeCheck } from '../../tools/qualification/pseudonymize.mjs';
-import { WRITTEN_WORKLOADS } from '../../tools/qualification/workloadWritesAcceptance.mjs';
+import { readModule } from '../../tools/qualification/workloadReadsAcceptance.mjs';
 import { WORKLOAD_DESCRIPTORS, buildWorkloadLedger } from '../collect/workloadContract.mjs';
 import { exchangeExtendedActivation } from '../collect/workloads/exchangeExtended.mjs';
 import { mailFlowActivation } from '../collect/workloads/mailFlow.mjs';
+import { siteSharingActivation } from '../collect/workloads/sharepoint.mjs';
 import { purviewExtendedActivation } from '../collect/workloads/purviewExtended.mjs';
 import { retentionDlpActivation } from '../collect/workloads/purviewRetentionDlp.mjs';
 import { teamsExtendedActivation } from '../collect/workloads/teamsExtended.mjs';
@@ -50,10 +51,13 @@ const ACTIVATION = {
   'teams-voice-policies': teamsExtendedActivation,
   'purview-retention-dlp': retentionDlpActivation,
   'purview-governance': purviewExtendedActivation,
+  // SharePoint's per-site sharing read: the rest of the SharePoint read never waits for it.
+  'sharepoint-site-settings': siteSharingActivation,
 };
 const TABLES = {
   ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
   MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended'],
+  'PnP.PowerShell': ['AllowedPnP'],
 };
 // The run-cmdlet.ps1 allowlists, cmdlet names with digits included (Get-AtpPolicyForO365).
 const SCRIPT = readFileSync(new URL('../../ops/powershell/run-cmdlet.ps1', import.meta.url), 'utf8');
@@ -66,7 +70,7 @@ const allowlistFor = (module) => Object.assign({}, ...TABLES[module].map(contain
 
 /** A tenant that answers every allowed Get- with nothing, or with `fail[cmdlet]`. */
 function fakeTenant(workload, fail = {}) {
-  const { module } = WRITTEN_WORKLOADS[workload];
+  const module = readModule(workload);
   return fakeCmdletContainer({
     module,
     allowlist: allowlistFor(module),
@@ -76,13 +80,14 @@ function fakeTenant(workload, fail = {}) {
 
 const capture = (workload, live, extra = {}) => captureWorkloadReads({
   workload, collector: live.powershell, tenantRef, build, credential: 'app:collector',
-  moduleVersion: MODULE_VERSIONS[WRITTEN_WORKLOADS[workload].module], now, ...extra,
+  moduleVersion: MODULE_VERSIONS[readModule(workload)], now, ...extra,
 });
 const verifyOptions = (extra = {}) => ({ gate: WORKLOAD_READS_LIVE_GATE, tenantRef, build, hmacKey: KEY, requireLive: true, now: NOW, ...extra });
 const signed = (record) => signEvidence(record, KEY, 'keel-release-runner');
 
-/** Live proof for every read outside the six Wave 2 workloads: what those workloads follow. */
-const BASE = WORKLOAD_DESCRIPTORS.filter((descriptor) => !READ_FAMILIES[descriptor.workload]).map((descriptor) => ({
+/** Live proof for every read this gate does not capture: what those workloads follow. */
+const CAPTURED = new Set(Object.values(READ_FAMILIES).flatMap((families) => Object.values(families).map((spec) => spec.operation)));
+const BASE = WORKLOAD_DESCRIPTORS.filter((descriptor) => !CAPTURED.has(descriptor.id)).map((descriptor) => ({
   operationId: descriptor.id, kind: 'live-capture', synthetic: false, tenantRef, capturedAt: '2026-10-20T00:00:00Z', ok: true,
   version: descriptor.operation.kind === 'graph' || descriptor.operation.kind === 'rest' ? descriptor.operation.version : MODULE_VERSIONS[descriptor.operation.module],
   proofRef: `${descriptor.id}@base`,
@@ -105,7 +110,7 @@ for (const workload of Object.keys(READ_FAMILIES)) {
     assert.ok(seam.reads.every((item) => item.kind === 'live-capture' && item.synthetic === false && item.tenantRef === tenantRef));
     assert.deepEqual(seam.writes, []);
     assert.equal(seam.grants, null, 'grants are left as the other records stored them');
-    const { module } = WRITTEN_WORKLOADS[workload];
+    const module = readModule(workload);
     assert.deepEqual(seam.runtime, { modules: { [module]: MODULE_VERSIONS[module] } });
 
     assert.equal(ACTIVATION[workload](ledger([])).enabled, false, 'off without the read proof');

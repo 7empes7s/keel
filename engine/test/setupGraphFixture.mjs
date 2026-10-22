@@ -8,6 +8,7 @@ export const GRAPH_APP_ID = '00000003-0000-0000-c000-000000000000';
 export const TENANT_ID = '00000000-0000-0000-0000-0000000000c1';
 export const COLLECTOR_APP_ID = '11111111-1111-4111-8111-111111111111';
 export const RESTORER_APP_ID = '22222222-2222-4222-8222-222222222222';
+export const CONTENT_READER_APP_ID = '44444444-4444-4444-8444-444444444444';
 export const OPERATOR_ID = '33333333-3333-4333-8333-333333333333';
 export const PRIVILEGED_ROLE_ADMIN = 'e8611ab8-c189-46e8-94e1-60213ab1f814';
 
@@ -16,7 +17,11 @@ const COLLECTOR_SCOPES = ['User.Read.All', 'Group.Read.All', 'RoleManagement.Rea
   'LifecycleWorkflows.Read.All', 'CustomSecAttributeDefinition.Read.All', 'Agreement.Read.All',
   'MultiTenantOrganization.Read.All', 'IdentityUserFlow.Read.All', 'APIConnectors.Read.All'];
 const RESTORER_SCOPES = ['Group.ReadWrite.All', 'Policy.ReadWrite.ConditionalAccess', 'RoleManagement.ReadWrite.Directory'];
-const ALL_SCOPES = [...new Set([...COLLECTOR_SCOPES, ...RESTORER_SCOPES, 'MailboxSettings.ReadWrite', 'Directory.ReadWrite.All'])];
+export const CONTENT_READER_SCOPES = ['Mail.Read', 'Calendars.Read', 'Contacts.Read', 'MailboxSettings.Read', 'User.Read.All',
+  'MailboxFolder.Read.All', 'MailboxItem.Read.All', 'Files.Read.All', 'Sites.Read.All', 'Group.Read.All', 'Team.ReadBasic.All',
+  'Channel.ReadBasic.All', 'ChannelSettings.Read.All', 'ChannelMember.Read.All', 'TeamsTab.Read.All',
+  'TeamsAppInstallation.ReadForTeam.All', 'Tasks.Read.All'];
+const ALL_SCOPES = [...new Set([...COLLECTOR_SCOPES, ...RESTORER_SCOPES, ...CONTENT_READER_SCOPES, 'MailboxSettings.ReadWrite', 'Directory.ReadWrite.All'])];
 
 const guid = (seed) => {
   const h = createHash('sha256').update(seed).digest('hex');
@@ -32,10 +37,13 @@ export const fakeGetToken = (tenantId = TENANT_ID) => async () => ({ accessToken
 /**
  * A tenant where the Collector and Restorer registrations exist and are
  * consented. `restorerExtra` are grants beyond what setup asks for.
+ * `contentReaderScopes` (when not null) also registers the content reader with
+ * those grants.
  */
 export function fixtureTenant({
   collectorScopes = COLLECTOR_SCOPES, restorerScopes = RESTORER_SCOPES, restorerExtra = ['MailboxSettings.ReadWrite'],
   intuneAssigned = true, intuneReadable = true, operatorActive = false, operatorEligible = true,
+  contentReaderScopes = null,
 } = {}) {
   const graphSp = { id: guid('graph-sp'), appId: GRAPH_APP_ID, appRoles: ALL_SCOPES.map((value) => ({ id: roleId(value), value, allowedMemberTypes: ['Application'] })) };
   const apps = new Map();
@@ -51,6 +59,7 @@ export function fixtureTenant({
   };
   register(COLLECTOR_APP_ID, 'KEEL Collector', COLLECTOR_SCOPES, collectorScopes);
   register(RESTORER_APP_ID, 'KEEL Restorer', [...RESTORER_SCOPES, ...restorerExtra], [...restorerScopes, ...restorerExtra]);
+  if (contentReaderScopes) register(CONTENT_READER_APP_ID, 'KEEL Content Reader', CONTENT_READER_SCOPES, contentReaderScopes);
   const collectorSp = sps.get(COLLECTOR_APP_ID).id;
   const state = {
     graphSp, apps, sps, grants,

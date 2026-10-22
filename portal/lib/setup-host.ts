@@ -30,6 +30,13 @@ export interface CredentialReference {
   identityRef: string;
 }
 
+// Connections: one Keel app as the host knows it. References only, never a secret.
+export interface ConnectionApp {
+  appId: string;
+  credentialRef: string;
+  credentialExpiresAt: string | null;
+}
+
 export interface SetupHost {
   // The tenant's Entra id: an identifier, not a secret. The page builds Microsoft
   // admin links from it and shows it in Technical details only.
@@ -37,6 +44,8 @@ export interface SetupHost {
   readers: ReadAdapters | null;
   adapters: ProvisioningAdapters | null;
   credentials: { collector: CredentialReference; restorer: CredentialReference } | null;
+  // Each Keel app the host has a credential file for (null: none for that app).
+  apps?: { collector: ConnectionApp | null; restorer: ConnectionApp | null; "content-reader": ConnectionApp | null } | null;
   build: string | null;
   qualificationMode: "live-qualified" | "fixture-tested";
   // The onboarding operator's Entra object id, when the host can name it; without
@@ -49,6 +58,7 @@ export const NO_SETUP_HOST: SetupHost = Object.freeze({
   readers: null,
   adapters: null,
   credentials: null,
+  apps: null,
   build: null,
   qualificationMode: "live-qualified",
   operatorPrincipalId: null,
@@ -56,6 +66,8 @@ export const NO_SETUP_HOST: SetupHost = Object.freeze({
 
 const DEFAULT_SETUP_CONFIG_PATH = "/etc/keel/setup.json";
 const DEFAULT_TENANT_CONFIG_PATH = "/etc/keel/tenant.json";
+// The content-reader file content backup reads (cli/keel-content-collect.mjs). Optional.
+const DEFAULT_CONTENT_READER_PATH = "/etc/keel/content-reader.json";
 
 interface SetupConfig {
   operatorPrincipalId?: string | null;
@@ -92,6 +104,10 @@ export function composeSetupHost(
   const setupPath = env.KEEL_SETUP_CONFIG_PATH || DEFAULT_SETUP_CONFIG_PATH;
   const setup: SetupConfig = existsSync(setupPath) ? readJson(setupPath) : {};
   const tenant = readJson(env.KEEL_TENANT_CONFIG_PATH ?? DEFAULT_TENANT_CONFIG_PATH) as { tenantId?: string };
+  const contentReaderPath = env.KEEL_CONTENT_READER_PATH || DEFAULT_CONTENT_READER_PATH;
+  const contentReader = existsSync(contentReaderPath)
+    ? { config: readJson(contentReaderPath), credentialRef: `file:${contentReaderPath}` }
+    : null;
   const build = setup.build ?? env.KEEL_BUILD ?? deployedRevision();
   if (!build) throw new Error("setup host: no build identifier (set build in the setup config or KEEL_BUILD)");
   return createGraphSetupHost({
@@ -99,6 +115,7 @@ export function composeSetupHost(
     tenantId: tenant.tenantId,
     collector: { config: readJson(paths.collectorConfig), credentialRef: `file:${paths.collectorConfig}` },
     restorer: { config: readJson(paths.targetConfig), credentialRef: `file:${paths.targetConfig}` },
+    contentReader,
     operatorPrincipalId: setup.operatorPrincipalId ?? env.KEEL_SETUP_OPERATOR_ID ?? null,
     build,
     qualificationMode: setup.qualificationMode ?? "live-qualified",

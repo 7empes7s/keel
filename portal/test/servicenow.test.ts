@@ -46,7 +46,9 @@ test("a held-back update is shown and the decision is said to stand", () => {
   assert.equal(heldBackSentence(held.heldBack[0]), "The decision update was held back: ServiceNow refused it.");
   const html = renderToStaticMarkup(createElement(ServiceNowPanel, { status: held }));
   assert.match(html, /gate passed/);
-  assert.match(html, /Not yet proven against a real ServiceNow instance/);
+  assert.match(html, /Not yet tested on a real ServiceNow/);
+  // The raw error waits behind "Show details".
+  assert.match(html, /<details[^>]*data-show-details[\s\S]*HTTP 403/);
   assert.ok(!/adapter/i.test(html.replace(/<details[\s\S]*<\/details>/, "")), "no internal vocabulary outside the record");
 });
 

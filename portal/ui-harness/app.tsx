@@ -21,7 +21,6 @@ import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
 import { NotificationsPage } from "@/components/notifications/notifications-page";
-import { IntegrationConsole } from "@/components/integration-console";
 import { ActivityPage } from "@/components/activity/activity-page";
 import { activityCounts, activityStatus } from "@/lib/activity-view";
 import { ApprovedSetup } from "@/components/baselines/approved-setup";
@@ -54,8 +53,8 @@ import { CompliancePage, ExportEvidence } from "@/components/compliance/complian
 import { complianceCounts, complianceStatus } from "@/lib/compliance-view";
 import { accessSummary } from "@/lib/presentation";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
-import { integrationsPageVerdict } from "@/lib/integrations-view";
-import { ServiceNowPanel } from "@/components/servicenow-panel";
+import { integrationAlerts, integrationsPageVerdict, integrationsStatus } from "@/lib/integrations-view";
+import { IntegrationsBody } from "@/components/integrations-body";
 import type { ServiceNowStatus } from "@/lib/servicenow";
 import type { ActivationPreview, Policy, PolicyAction } from "@/lib/policies";
 import { RULE_KINDS, RULE_STATES, ruleCounts, ruleKind, ruleState, rulesStatus } from "@/lib/policy-view";
@@ -75,11 +74,11 @@ import { ValueReportPage } from "@/components/value-report/value-report-page";
 import { resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
 import { AskView } from "@/components/ask-view";
 import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
-import { ApproveIntentForm, IntentCard } from "@/components/change-intent";
+import { EmergencyChangesView } from "@/components/change-intent";
 import { CompareView } from "@/components/compare-view";
 import { compareVerdict, WORKLOAD_LABELS, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
 import type { ActivityChanges } from "@/lib/changed-values";
-import { changeIntentsVerdict, type ChangeIntent, type IntentCandidate } from "@/lib/change-intents-view";
+import { changeIntentsVerdict, intentAlerts, intentsStatus, type ChangeIntent, type ChangeIntentsData, type IntentCandidate } from "@/lib/change-intents-view";
 import { SiteDetail, SiteList } from "@/components/site-permissions";
 import { sitePermissionsFrom, siteName, siteVerdict, sitesVerdict, type SitePermissionsData } from "@/lib/site-permissions-view";
 import { WorkloadServices } from "@/components/restore/workload-services";
@@ -1446,6 +1445,44 @@ const ASK_UNKNOWN: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"],
   sentence: "Not known.",
 } };
 
+// A broad question: many changes across services, more than one page, a summary of
+// every match beyond the rows listed, and a word the reading did not use.
+const ASK_KINDS: [string, string, string, string][] = [
+  ["teams-org-policies", "Teams meeting policy", "modified", "access-affecting"],
+  ["teams-voice-policies", "Calling policy", "added", "cosmetic"],
+  ["exchangeRoleAssignment", "Mail recipients role assignment", "added", "access-affecting"],
+  ["group", "Project team", "removed", "access-affecting"],
+  ["conditionalAccessPolicy", "Require MFA for guests", "modified", "tenant-lockout"],
+  ["roleAssignment", "Global Reader role assignment", "added", "tenant-lockout"],
+];
+const ASK_MANY_RECORDS = Array.from({ length: 36 }, (_, index) => {
+  const [resourceType, name, changeType, impact] = ASK_KINDS[index % ASK_KINDS.length];
+  const hour = String(23 - (index % 24)).padStart(2, "0");
+  const day = index < 24 ? "01" : "30";
+  const month = index < 24 ? "10" : "09";
+  const id = `a5c10000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+  return {
+    kind: "change" as const, id, resourceType, naturalKey: `${resourceType}:${name} ${index + 1}`, name: `${name} ${index + 1}`, changeType, impact,
+    decision: index % 5 === 0 ? "accept" : null, seenAt: `2026-${month}-${day}T${hour}:00:00.000Z`,
+    window: { from: `2026-${month}-${day}T${hour === "00" ? "00" : String(Number(hour) - 1).padStart(2, "0")}:00:00.000Z`, to: `2026-${month}-${day}T${hour}:00:00.000Z` },
+    source: { kind: "change" as const, id, href: "/drift", collectionId: null },
+  };
+});
+const ASK_MANY: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: {
+  ...ASK_BASE, scope: { central: true, entities: [] }, status: "partial", intent: "changes", question: "What Teams policies, groups and printers changed this week?",
+  plan: { intent: "changes", params: { entity: null, from: "2026-09-28T00:00:00.000Z", to: now, resourceType: null, resourceTypes: null, name: null, changeType: null, limit: 100 } },
+  ignored: ["printers"], total: 276, shown: 36, truncated: true, sentence: "276 matching changes found.",
+  summary: [
+    { resourceType: "exchangeRoleAssignment", changeType: "added", impact: "access-affecting", count: 180 },
+    { resourceType: "teams-org-policies", changeType: "modified", impact: "access-affecting", count: 40 },
+    { resourceType: "teams-voice-policies", changeType: "added", impact: "cosmetic", count: 20 },
+    { resourceType: "group", changeType: "removed", impact: "access-affecting", count: 22 },
+    { resourceType: "conditionalAccessPolicy", changeType: "modified", impact: "tenant-lockout", count: 8 },
+    { resourceType: "roleAssignment", changeType: "added", impact: "tenant-lockout", count: 6 },
+  ],
+  records: ASK_MANY_RECORDS,
+} };
+
 function askPage(data: AskData) {
   const verdict = askVerdict(data.answer);
   return <>{header("Reports", "Ask", "Ask about changes, backup coverage or failed jobs. Every answer comes from KEEL's own records and names them.")}
@@ -1847,6 +1884,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/compare/tenants": return comparePage(COMPARE_ACROSS);
     case "/ask": return askPage(ASK_ANSWERED);
     case "/ask/unknown": return askPage(ASK_UNKNOWN);
+    case "/ask/many": return askPage(ASK_MANY);
     case "/readiness": return readinessPage(READINESS);
     case "/readiness/ready": return readinessPage(READINESS_READY);
     case "/readiness/empty": return readinessPage(READINESS_EMPTY);
@@ -1883,9 +1921,10 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/integrations": case "/integrations/servicenow-off": {
       const servicenow = path === "/integrations" ? SERVICENOW_ON : SERVICENOW_OFF;
       const verdict = integrationsPageVerdict(DESTINATIONS, DESTINATION_STATUSES, servicenow);
-      return <>{header("Settings", "Integrations", "Where KEEL copies its audit record, and where approvals can also be decided.")}
-      <Verdict text={verdict.text} tone={verdict.tone} />
-      <div data-layer="explanation"><ServiceNowPanel status={servicenow} /><IntegrationConsole canConfiguration destinations={DESTINATIONS} statuses={DESTINATION_STATUSES} /></div></>; }
+      const alerts = integrationAlerts(DESTINATIONS, DESTINATION_STATUSES, servicenow);
+      return <>{header("Settings", "Integrations", "Where KEEL copies its audit record, and where approvals can also be decided.", undefined, integrationsStatus(alerts))}
+      <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ig-attention" } : null} text={verdict.text} tone={verdict.tone} />
+      <div data-layer="explanation"><IntegrationsBody alerts={alerts} canConfiguration destinations={DESTINATIONS} servicenow={servicenow} statuses={DESTINATION_STATUSES} /></div></>; }
     case "/baselines": {
       const verdict = approvedVerdict(BASELINES[0], DRIFT_DECIDED, now);
       // As on the live page: Entra ID and Intune kinds from the coverage types, the other
@@ -1931,16 +1970,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <><PageHeader actions={<CheckAgain />} description="Connect Keel to your Microsoft tenant: what is in place, what waits on you, and when the first backup can run." generatedAt={now} section="Settings" status={setupPageStatus(state)} title="Setup" />
         <SetupBody canBackup canStart state={state} /></>;
     }
-    case "/emergency-changes": { const verdict = changeIntentsVerdict(INTENTS, now); return <>{header("Automation center", "Emergency changes", "Changes made outside the baseline on purpose, approved for a limited time.")}
-      <Verdict text={verdict.text} tone={verdict.tone} />
-      <div data-layer="explanation">
-        <h2>Approved now</h2>
-        <ul className="change-intent-list">{INTENTS.filter((intent) => intent.state === "active").map((intent) => <IntentCard intent={intent} key={intent.id} now={now} />)}</ul>
-        <h2>Approve an emergency change</h2>
-        <ApproveIntentForm changes={INTENT_CHANGES} people={[{ id: PERSON_AMARA.id, name: PERSON_AMARA.name }, { id: PERSON_ONCALL.id, name: PERSON_ONCALL.name }]} />
-        <h2>Ended</h2>
-        <ul className="change-intent-list">{INTENTS.filter((intent) => intent.state !== "active").map((intent) => <IntentCard intent={intent} key={intent.id} now={now} />)}</ul>
-      </div></>; }
+    case "/emergency-changes": case "/emergency-changes/none": {
+      const data: ChangeIntentsData = path === "/emergency-changes"
+        ? { intents: INTENTS, changes: INTENT_CHANGES, people: [{ id: PERSON_AMARA.id, name: PERSON_AMARA.name }, { id: PERSON_ONCALL.id, name: PERSON_ONCALL.name }], generatedAt: now }
+        : { intents: [], changes: [], people: [], generatedAt: now };
+      const verdict = changeIntentsVerdict(data.intents, now);
+      const alerts = intentAlerts(data);
+      return <>{header("Automation center", "Emergency changes", "Changes made outside the baseline on purpose, approved for a limited time.", undefined, intentsStatus(data.intents))}
+      <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ec-attention" } : null} text={verdict.text} tone={verdict.tone} />
+      <div data-layer="explanation"><EmergencyChangesView data={data} /></div></>; }
     case "/policies/p1": case "/policies/p2": case "/policies/p3": {
       const policy = path === "/policies/p1" ? POLICY : path === "/policies/p2" ? OFF_POLICY : PAUSED_POLICY;
       const state = RULE_STATES[ruleState(policy)];

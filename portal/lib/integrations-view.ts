@@ -1,5 +1,7 @@
 // Roadmap task-130: audit-record export destinations in words. Pure helpers shared by
 // the server page and the client console.
+import type { AlertItem } from "@/components/ui/alert-list";
+import type { StatTile } from "@/components/ui/stat-tiles";
 import type { Destination, DestinationStatus } from "@/lib/integrations";
 import type { ServiceNowHeldBack, ServiceNowStatus } from "@/lib/servicenow";
 
@@ -74,4 +76,139 @@ export function integrationsPageVerdict(destinations: Destination[], statuses: D
     text: integrationsVerdict(destinations, statuses),
     tone: statuses.some((status) => status.quarantined > 0) ? "attention" : "good",
   };
+}
+
+// The redesigned page: alerts first, four tiles, then ServiceNow and each destination
+// with coloured counts. Raw error text waits behind "Show details".
+
+export type IntegrationTone = "urgent" | "soon" | "low" | "fine" | "neutral";
+
+/** Behind by more than this reads as amber. */
+export const LAG_WARN_MS = 5 * 60_000;
+
+function count(n: number, one: string, many = `${one}s`): string {
+  return `${n.toLocaleString("en-GB")} ${n === 1 ? one : many}`;
+}
+
+/** "41 seconds", "6 minutes", "2 hours"; null reads "Nothing". */
+export function lagWords(ms: number | null): string {
+  if (ms === null || ms <= 0) return "Nothing";
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 120) return count(seconds, "second");
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 120) return count(minutes, "minute");
+  return count(Math.round(minutes / 60), "hour");
+}
+
+/** A destination's state as a badge: held back outranks paused, paused outranks behind. */
+export function destinationBadge(destination: Pick<Destination, "enabled" | "revoked_at">, status: DestinationStatus | null): { tone: IntegrationTone; label: string } {
+  if (status && status.quarantined > 0) return { tone: "urgent", label: `${status.quarantined} held back` };
+  if (isPaused(destination)) return { tone: "soon", label: "Paused" };
+  if (status && (status.lagMs ?? 0) > LAG_WARN_MS) return { tone: "soon", label: "Falling behind" };
+  return { tone: "fine", label: "Sending" };
+}
+
+/** ServiceNow's state as a badge. */
+export function serviceNowBadge(status: ServiceNowStatus | null): { tone: IntegrationTone; label: string } {
+  if (!status) return { tone: "neutral", label: "Not known" };
+  if (!status.configured) return { tone: "neutral", label: "Not set up" };
+  if (!status.enabled) return { tone: "soon", label: "Off" };
+  if (status.mirror.heldBack > 0) return { tone: "urgent", label: "On, updates held back" };
+  return { tone: "fine", label: "On" };
+}
+
+/** What needs the reader, worst first. */
+export function integrationAlerts(destinations: Destination[], statuses: DestinationStatus[], servicenow: ServiceNowStatus | null): AlertItem[] {
+  const urgent: AlertItem[] = [];
+  const soon: AlertItem[] = [];
+  const low: AlertItem[] = [];
+  if (servicenow && servicenow.mirror.heldBack > 0) {
+    urgent.push({
+      key: "servicenow-held", tone: "urgent", icon: "x-circle",
+      title: `${count(servicenow.mirror.heldBack, "ServiceNow update was", "ServiceNow updates were")} held back`,
+      todo: "Check that KEEL may still write to ServiceNow. KEEL's own decisions stand.",
+      more: servicenow.heldBack.flatMap((event) => [heldBackSentence(event), ...(event.lastError ? [`ServiceNow said: ${event.lastError}`] : [])]),
+      action: { label: "Open ServiceNow", href: "#ig-servicenow" },
+    });
+  }
+  for (const destination of destinations) {
+    const status = statuses.find((entry) => entry.destinationId === destination.id) ?? null;
+    const href = `#destination-${destination.id}`;
+    if (status && status.quarantined > 0) {
+      urgent.push({
+        key: `held-${destination.id}`, tone: "urgent", icon: "x-circle",
+        title: `${count(status.quarantined, "audit entry", "audit entries")} could not be sent to ${destination.name}`,
+        todo: "Open the held-back entries, fix the cause, then send them again.",
+        action: { label: "Open", href },
+      });
+    }
+    if (isPaused(destination)) {
+      soon.push({
+        key: `paused-${destination.id}`, tone: "soon", icon: "pause",
+        title: `${destination.name} is paused`,
+        todo: "Resume it, or remove it if it is no longer used. New entries wait meanwhile.",
+        action: { label: "Open", href },
+      });
+    } else if (status && (status.lagMs ?? 0) > LAG_WARN_MS) {
+      soon.push({
+        key: `behind-${destination.id}`, tone: "soon", icon: "clock",
+        title: `${destination.name} is ${lagWords(status.lagMs)} behind`,
+        todo: "Check that it is reachable and accepting entries.",
+        action: { label: "Open", href },
+      });
+    }
+  }
+  if (servicenow && servicenow.configured && !servicenow.enabled) {
+    soon.push({
+      key: "servicenow-off", tone: "soon", icon: "alert",
+      title: `ServiceNow approvals are off: ${count(servicenow.problems.length, "setting is", "settings are")} missing`,
+      todo: "Fill in the missing settings. Until then, approvals are decided only in KEEL.",
+      action: { label: "See what is missing", href: "#ig-servicenow" },
+    });
+  }
+  if (servicenow && servicenow.mirror.conflicts > 0) {
+    soon.push({
+      key: "servicenow-conflicts", tone: "soon", icon: "swap",
+      title: `${count(servicenow.mirror.conflicts, "ServiceNow record disagrees", "ServiceNow records disagree")} with KEEL`,
+      todo: "Check those records in ServiceNow. KEEL's decision stands.",
+      action: { label: "Open ServiceNow", href: "#ig-servicenow" },
+    });
+  }
+  if (destinations.length === 0) {
+    low.push({
+      key: "no-destination", tone: "low", icon: "info",
+      title: "The audit record stays only in KEEL",
+      todo: "Add a destination to copy it to your SIEM or another system.",
+      action: null,
+    });
+  }
+  return [...urgent, ...soon, ...low];
+}
+
+/** Four tiles: audit copies, waiting to send, held back, and ServiceNow. */
+export function integrationTiles(destinations: Destination[], statuses: DestinationStatus[], servicenow: ServiceNowStatus | null): StatTile[] {
+  const sending = destinations.filter((destination) => !isPaused(destination)).length;
+  const pending = statuses.reduce((sum, status) => sum + status.pending + status.delivering, 0);
+  const lag = statuses.reduce((worst, status) => Math.max(worst, status.lagMs ?? 0), 0);
+  const held = statuses.reduce((sum, status) => sum + status.quarantined, 0) + (servicenow?.mirror.heldBack ?? 0);
+  const snow = serviceNowBadge(servicenow);
+  return [
+    { key: "destinations", label: "Audit copies", icon: "audit", value: destinations.length ? `${sending} of ${destinations.length}` : "None",
+      about: destinations.length ? (sending === destinations.length ? "All destinations sending" : "Some are paused") : "Stays only in KEEL",
+      tone: !destinations.length ? "low" : sending === destinations.length ? "fine" : "soon", href: "#ig-destinations" },
+    { key: "pending", label: "Waiting to send", icon: "clock", value: pending.toLocaleString("en-GB"),
+      about: lag ? `Behind by ${lagWords(lag).toLowerCase()}` : "Nothing waiting", tone: lag > LAG_WARN_MS ? "soon" : "neutral", href: "#ig-destinations" },
+    { key: "held", label: "Held back", icon: "x-circle", value: held.toLocaleString("en-GB"),
+      about: held ? "Could not be sent" : "Everything went through", tone: held ? "urgent" : "fine", href: "#ig-attention" },
+    { key: "servicenow", label: "ServiceNow approvals", icon: "inbox", value: snow.label.split(",")[0],
+      about: servicenow?.enabled ? `${count(servicenow.mirror.waiting, "record")} waiting` : servicenow?.configured ? "Settings missing" : "Decided only in KEEL",
+      tone: snow.tone === "urgent" ? "fine" : snow.tone, href: "#ig-servicenow" },
+  ];
+}
+
+/** The header pill. */
+export function integrationsStatus(alerts: AlertItem[]): { tone: "urgent" | "soon" | "low" | "fine"; label: string } {
+  if (alerts.some((alert) => alert.tone === "urgent")) return { tone: "urgent", label: "Needs attention" };
+  if (alerts.some((alert) => alert.tone === "soon")) return { tone: "soon", label: "Check soon" };
+  return { tone: "fine", label: "Working" };
 }

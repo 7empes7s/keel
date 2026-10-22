@@ -1,13 +1,15 @@
+import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { ErrorNotice } from "@/components/ui/error-notice";
+import { Badge } from "@/components/ui/badge";
 import { formatTimestamp } from "@/lib/presentation";
-import { heldBackSentence, serviceNowSentence, stateValueWords } from "@/lib/integrations-view";
+import { heldBackSentence, serviceNowBadge, serviceNowSentence, stateValueWords } from "@/lib/integrations-view";
 import type { ServiceNowStatus } from "@/lib/servicenow";
 
 // Roadmap task-97: the ServiceNow approval mirror on the Integrations page. Whether it is
-// on, every missing setting in words, how a ServiceNow decision counts, and updates held
-// back after a failed write; table, field names, raw state values, secret names and
-// record ids are in the record.
+// on, every missing setting, how a ServiceNow decision counts, and updates held back
+// after a failed write (the raw error behind "Show details"); table, field names, raw
+// state values, secret names and record ids are in the record.
 
 const FIELD_LABELS: Record<string, string> = {
   state: "Field holding the approval state",
@@ -20,30 +22,37 @@ const FIELD_LABELS: Record<string, string> = {
 
 export function ServiceNowPanel({ status }: { status: ServiceNowStatus }) {
   const mapping = status.mapping;
-  return <section aria-labelledby="servicenow-heading" className="report-section">
-    <div className="section-heading-row report-heading">
-      <div><p className="section-kicker">Where approvals can also be decided</p><h2 id="servicenow-heading">ServiceNow change approvals</h2></div>
-      <span className={status.enabled ? "active-indicator" : "inactive-indicator"}>{status.enabled ? "On" : "Off"}</span>
+  const badge = serviceNowBadge(status);
+  return <section aria-labelledby="servicenow-heading" className="pg-panel" id="ig-servicenow">
+    <div className="rs-section-head">
+      <div>
+        <h2 id="servicenow-heading"><Icon name="inbox" />ServiceNow change approvals</h2>
+        <p className="rs-sub">Approvals can also be decided in ServiceNow.</p>
+      </div>
+      <Badge tone={badge.tone}>{badge.label}</Badge>
     </div>
-    <div className="item-card">
-      <p>{serviceNowSentence(status)}</p>
-      {status.configured && !status.enabled ? <>
-        <p>KEEL neither sends to nor reads from ServiceNow until these are filled in:</p>
-        <ul className="quarantine-list">{status.problems.map((problem) => <li key={problem.code}>{problem.message}</li>)}</ul>
-      </> : null}
+    <div className="pg-card" data-tone={badge.tone}>
+      <p className="servicenow-sentence">{serviceNowSentence(status)}</p>
+      {status.configured && !status.enabled ? (
+        <ul aria-label="Missing settings" className="pg-rows">
+          {status.problems.map((problem) => <li key={problem.code}><Badge tone="soon">Missing</Badge><span>{problem.message}</span></li>)}
+        </ul>
+      ) : null}
       {status.enabled && mapping ? <>
-        <p>Counts as approved: {mapping.approvedValues.map(stateValueWords).join(", ")}. Counts as rejected: {mapping.rejectedValues.map(stateValueWords).join(", ")}. Any other state decides nothing.</p>
-        <p>A ServiceNow decision counts only from a person linked to KEEL who may approve that request in KEEL now, and only for the plan KEEL last sent.</p>
-        <p>{mapping.callbacks === "signed"
-          ? "ServiceNow calls KEEL with a signed message; KEEL reads the record back before it counts. KEEL also checks each waiting record, so a lost call is caught."
-          : "ServiceNow does not call KEEL; KEEL checks each waiting record instead."}</p>
-        <dl className="stat-strip">
+        <dl className="pg-stats">
           <div><dt>Records linked</dt><dd>{status.mirror.records}</dd></div>
-          <div><dt>Waiting for a decision</dt><dd>{status.mirror.waiting}</dd></div>
-          <div><dt>Updates waiting to send</dt><dd>{status.mirror.pendingUpdates}</dd></div>
-          <div className={status.mirror.heldBack > 0 ? "stat-warn" : undefined}><dt>Held back</dt><dd>{status.mirror.heldBack}</dd></div>
-          <div className={status.mirror.conflicts > 0 ? "stat-warn" : undefined}><dt>Disagreements</dt><dd>{status.mirror.conflicts}</dd></div>
+          <div data-tone={status.mirror.waiting ? "low" : undefined}><dt>Waiting for a decision</dt><dd>{status.mirror.waiting}</dd></div>
+          <div><dt>Updates to send</dt><dd>{status.mirror.pendingUpdates}</dd></div>
+          <div data-tone={status.mirror.heldBack > 0 ? "urgent" : "fine"}><dt>Held back</dt><dd>{status.mirror.heldBack}</dd></div>
+          <div data-tone={status.mirror.conflicts > 0 ? "soon" : "fine"}><dt>Disagreements</dt><dd>{status.mirror.conflicts}</dd></div>
         </dl>
+        <dl className="pg-facts">
+          <div><dt>Instance</dt><dd>{mapping.instanceHost}</dd></div>
+          <div><dt>Counts as approved</dt><dd className="pg-chips">{mapping.approvedValues.map((value) => <Badge key={value} tone="fine">{stateValueWords(value)}</Badge>)}</dd></div>
+          <div><dt>Counts as rejected</dt><dd className="pg-chips">{mapping.rejectedValues.map((value) => <Badge key={value} tone="urgent">{stateValueWords(value)}</Badge>)}</dd></div>
+          <div><dt>How KEEL hears back</dt><dd>{mapping.callbacks === "signed" ? "Signed calls, plus its own checks" : "Its own checks of each record"}</dd></div>
+        </dl>
+        <p className="pg-help"><Icon name="info" />Other states decide nothing. A decision counts only from someone who may approve it in KEEL, for the latest plan.</p>
       </> : null}
       {status.heldBack.length > 0 ? <div className="ui-alerts">{status.heldBack.map((event) => <ErrorNotice
         error={[`${formatTimestamp(event.createdAt)} · after ${event.attempts} ${event.attempts === 1 ? "attempt" : "attempts"}`, event.lastError ?? event.reason ?? null].filter(Boolean).join("\n")}
@@ -54,7 +63,7 @@ export function ServiceNowPanel({ status }: { status: ServiceNowStatus }) {
         todo="Nothing to do now: KEEL's decision stands. If more are held back, check the ServiceNow connection."
         tone="soon"
       />)}</div> : null}
-      {status.configured ? <p className="field-help">Not yet proven against a real ServiceNow instance.</p> : null}
+      {status.configured ? <p className="pg-chips"><Badge tone="low">Not yet tested on a real ServiceNow</Badge></p> : null}
       <TechnicalDetails>
         <RecordField copy={false} label="Mapping API" usage={<>set with <code>PUT /api/integrations/servicenow</code>; check with <code>node tools/qualification/servicenow.mjs check --config &lt;file&gt;</code></>} value="GET /api/integrations/servicenow" />
         {mapping ? <>

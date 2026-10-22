@@ -19,7 +19,7 @@ import { scopePredicate } from '../authz/entityScope.mjs';
 import { contentWorkloadInfo, loadServiceBackups } from '../coverage/serviceBackups.mjs';
 import { typeInfo } from '../insights/taxonomy.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
-import { BUDGET, PLAN_VERSION, QueryRefusal, describePlan, isValidatedPlan, planQuestion, validateRequest } from './intent.mjs';
+import { BUDGET, PLAN_VERSION, QueryRefusal, RESOURCE_TYPES, describePlan, isValidatedPlan, planQuestion, validateRequest } from './intent.mjs';
 
 export const ANSWER_VERSION = 1;
 const MAX_ERROR_TEXT = 300;
@@ -89,13 +89,18 @@ const TEMPLATES = Object.freeze({
   async changes(client, { tenantRef, scope, params, now }) {
     const where = filters({
       tenantRef, scope, entity: params.entity, at: now,
-      typeExpr: 'd.resource_type', keyExpr: 'd.natural_key', asOfExpr: 'd.detected_at', nextParam: 6,
+      typeExpr: 'd.resource_type', keyExpr: 'd.natural_key', asOfExpr: 'd.detected_at', nextParam: 8,
     });
-    const base = [tenantRef, params.from, params.to, params.resourceType, params.changeType];
+    // A name is looked for anywhere in the saved name or key, as typed (no wildcards).
+    const name = params.name ? `%${String(params.name).replace(/[\\%_]/g, (char) => `\\${char}`)}%` : null;
+    const base = [tenantRef, params.from, params.to, params.resourceType, params.changeType, params.resourceTypes ? [...params.resourceTypes] : null, name];
     const condition = `d.tenant_ref = $1 AND ${SEEN_AT} >= $2 AND ${SEEN_AT} < $3
          AND ($4::text IS NULL OR d.resource_type = $4) AND ($5::text IS NULL OR d.change_type = $5)
+         AND ($6::text[] IS NULL OR d.resource_type = ANY($6::text[]))
+         AND ($7::text IS NULL OR COALESCE(d.after_payload->>'displayName', d.before_payload->>'displayName', d.natural_key) ILIKE $7
+              OR d.natural_key ILIKE $7)
          AND ${where.sql}`;
-    const limitParam = 6 + where.values.length;
+    const limitParam = 8 + where.values.length;
     const { rows } = await client.query(
       `SELECT d.id::text AS id, d.natural_key, d.resource_type, d.change_type, d.blast_radius, d.detected_at,
               d.observed_snapshot::text AS collection_id, ${SEEN_AT} AS seen_at,
@@ -110,12 +115,17 @@ const TEMPLATES = Object.freeze({
         LIMIT $${limitParam}`,
       [...base, ...where.values, params.limit],
     );
-    const { rows: [counted] } = await client.query(
-      `SELECT count(*)::int AS total FROM drift d
+    // Every matching change counted by kind, change and risk, so the answer can be
+    // summarised beyond the rows it lists.
+    const { rows: grouped } = await client.query(
+      `SELECT d.resource_type, d.change_type, d.blast_radius, count(*)::int AS n FROM drift d
          LEFT JOIN snapshot os ON os.id = d.observed_snapshot AND os.tenant_ref = d.tenant_ref
-        WHERE ${condition}`,
+        WHERE ${condition}
+        GROUP BY d.resource_type, d.change_type, d.blast_radius
+        ORDER BY d.resource_type, d.change_type, d.blast_radius`,
       [...base, ...where.values],
     );
+    const counted = { total: grouped.reduce((sum, row) => sum + Number(row.n), 0) };
     // What KEEL has compared: complete collections a drift comparison is recorded for.
     // A type-filtered question needs that type to have been read completely.
     const { rows: [history] } = await client.query(
@@ -132,6 +142,7 @@ const TEMPLATES = Object.freeze({
     return {
       total: Number(counted?.total ?? 0),
       known,
+      summary: grouped.map((row) => ({ resourceType: row.resource_type, changeType: row.change_type, impact: row.blast_radius, count: Number(row.n) })),
       records: rows.map((row) => ({
         kind: 'change',
         id: row.id,
@@ -175,7 +186,7 @@ const TEMPLATES = Object.freeze({
       const counts = new Map(rows.map((row) => [row.resource_type, Number(row.count)]));
       const digest = latest.coverage_digest && typeof latest.coverage_digest === 'object' && !Array.isArray(latest.coverage_digest)
         ? latest.coverage_digest : {};
-      const types = params.resourceType
+      const types = params.resourceType && RESOURCE_TYPES.includes(params.resourceType)
         ? [params.resourceType]
         : [...new Set([...Object.keys(digest), ...counts.keys()])].sort();
       for (const type of types) {
@@ -201,7 +212,7 @@ const TEMPLATES = Object.freeze({
     // whole tenant sees them, and a question about one Entra ID or Intune type leaves them out.
     // They come first: there are a dozen or so, while the settings types run past the
     // row budget, so listing them after the types would cut them from the answer.
-    if (scope.central === true && !params.entity && !params.resourceType) {
+    if (scope.central === true && !params.entity && (!params.resourceType || !RESOURCE_TYPES.includes(params.resourceType))) {
       const typeRecords = records.splice(0);
       const services = await loadServiceBackups(client, { tenantRef });
       for (const entry of services.settings) {
@@ -249,8 +260,13 @@ const TEMPLATES = Object.freeze({
           : { from: times[0], to: times.at(-1) };
       }
     }
-    if (records.length === 0) return { total: 0, known: null, records: [] };
-    return { total: records.length, known, records: records.slice(0, BUDGET.maxRows) };
+    // Kinds and names asked about narrow every row, settings types and service reads alike.
+    const kinds = params.resourceTypes ? new Set(params.resourceTypes) : params.resourceType ? new Set([params.resourceType]) : null;
+    const needle = params.name ? String(params.name).toLowerCase() : null;
+    const kept = records.filter((record) => (!kinds || kinds.has(record.resourceType))
+      && (!needle || `${record.name ?? ''} ${typeInfo(record.resourceType).name}`.toLowerCase().includes(needle)));
+    if (kept.length === 0) return { total: 0, known: records.length ? known : null, records: [] };
+    return { total: kept.length, known, records: kept.slice(0, BUDGET.maxRows) };
   },
 
   async 'failed-jobs'(client, { tenantRef, params }) {
@@ -358,6 +374,7 @@ export async function executePlan(client, plan, { tenantRef, scope, now = new Da
     total: result.total,
     shown,
     truncated: shown < result.total,
+    summary: result.summary ?? null,
     records: result.records,
     sentence: sentenceFor({ intent: plan.intent, status, total: result.total, shown, gaps, known: result.known }),
     generatedAt: now.toISOString(),
@@ -405,5 +422,6 @@ export async function answerQuestion(client, { tenantRef, scope, question = null
   else planned = await planQuestion(question, { helper, now, knownEntities: entities, scope });
   if (!planned.ok) return refusalAnswer(planned.refusal, { scope, now, readBy: planned.readBy, question });
   const answer = await executePlan(client, planned.plan, { tenantRef, scope, now });
-  return { ...answer, readBy: planned.readBy, question: typeof question === 'string' ? question.slice(0, BUDGET.maxQuestionLength) : null };
+  // Words the reading did not use are returned, so the page can say what it ignored.
+  return { ...answer, readBy: planned.readBy, ignored: planned.ignored ?? [], question: typeof question === 'string' ? question.slice(0, BUDGET.maxQuestionLength) : null };
 }

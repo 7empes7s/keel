@@ -142,6 +142,23 @@ export function computePlanDigest({
   }));
 }
 
+// Issue #474: for these kinds Graph returns lastModifiedDateTime as the time of the
+// read, not of the last change, so two reads of an unchanged object differ. Left in,
+// the fingerprint never matches and every update is refused. Only kinds observed live
+// to do this are listed; for the rest the field stays in, as a real change signal.
+export const READ_TIME_FIELDS = Object.freeze({
+  mobileAppCategory: Object.freeze(['lastModifiedDateTime']),
+  managedEBookCategory: Object.freeze(['lastModifiedDateTime']),
+});
+
+function withoutReadTimeFields(payload, resourceType) {
+  const fields = READ_TIME_FIELDS[resourceType];
+  if (!fields || !payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+  const rest = { ...payload };
+  for (const field of fields) delete rest[field];
+  return rest;
+}
+
 /** What the target looks like right now, restricted to the resources this restore
  * would touch. Recomputed fresh at execution: any drift in the target between the
  * dry run and promotion — a resource created, changed, or removed out from under the
@@ -159,7 +176,7 @@ export function computeCurrentStateFingerprint(targetResources, closureKeys, { r
     .map((resource) => ({
       naturalKey: resource.naturalKey,
       sourceId: resource.sourceId ?? null,
-      payload: resource.payload ?? null,
+      payload: withoutReadTimeFields(resource.payload ?? null, resource.resourceType),
     }))
     .sort((a, b) => a.naturalKey.localeCompare(b.naturalKey));
   if (!relationships?.length) return sha256(canonicalStringify(relevant));

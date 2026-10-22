@@ -932,7 +932,11 @@ being triggered by queue updates.
   Confirmed / Likely / Not known badge, and a next step when it cannot tell. Schema fragment `37-audit-ingest.sql` creates the
   tables on deploy.
 - Needs: PR #493 live (`test -f /opt/keel-live/engine/identity/auditSources.mjs`).
-- Status: todo
+- Status: in-progress
+- Result: in progress (2026-10-22 11:49 UTC).
+  - Step 1: `audit_change_fact`, `audit_ingest_run` and `audit_ingest_state` all exist.
+  - Step 3 change made at 11:48:46 UTC with the Restorer: the description of `KEEL-RT-20260908 Blocked Sign-in Test` set to `KEEL-RT who-check 2026-10-22 11:48:46 UTC`. Old value: "KEEL-RT-20260908 Users targeted by blocking Conditional Access tests".
+  - Waiting for the 12:00 collect (step 2), then a collect by hand after 12:10 (step 3).
 - **Tenant:** one change to a `KEEL-RT-` fixture, put back at the end (standing approval for test fixtures). Reads otherwise.
   Never touch CA policies, break-glass or Marouane's account.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:

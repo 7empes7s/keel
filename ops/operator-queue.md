@@ -5154,7 +5154,7 @@ item that needs it stays untouched.
 - PR #428 (merge f149729) fixes #427: `workloadReadsLive.mjs capture` now pseudonymizes the record before signing, so
   `subject.credentials.collector` carries `app:<pseudonym>` like the writer records.
 - Needs: PR #428 live (`git -C /opt/keel-live log --oneline | grep -c "#428"` is 1).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** reads only, same as Q103 step 2. Each capture sends only the workload's declared `Get-` cmdlets with the
   collector credential. Nothing is created, changed or deleted. No grant or role changes.

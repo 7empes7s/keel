@@ -7411,7 +7411,7 @@ item that needs it stays untouched.
   `Get-RoleGroup` read, no parameters, Collector credential (Exchange Administrator, already held). It ships `disabled` until a
   live read record is imported. Once on, Exchange role assignments that Graph names `/RoleGroups/<id>` read with the group's name.
 - Needs: /opt/keel-live at the #535 merge or later (`test -f /opt/keel-live/engine/collect/workloads/exchangeRoleGroups.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** reads only. `Get-RoleGroup` with the Collector credential. No `New-`, `Set-`, `Add-` or `Remove-` cmdlet. Grant,
   assign or create nothing.

@@ -1043,6 +1043,31 @@ being triggered by queue updates.
   Resilience no longer lists the not-used types as never backed up.
 - **Report:** steps 1 to 3 verbatim (mask tenant ids). Comment the step 1 and 2 output on PR #495.
 
+### Q146: Run discovery once and confirm it lists the PowerShell cmdlets (read-only, after #497)
+- Drafted by the "Discovery cmdlet list warnings" thread (2026-10-22). Code: PR #497. Discovery used to show "PowerShell,
+  ExchangeOnlineManagement / MicrosoftTeams / PnP.PowerShell: the cmdlet list was not supplied". `keel-discover run` now
+  lists each module's Get cmdlets in the PowerShell container (`ops/powershell/list-commands.ps1`, job mode `commands`).
+  Exchange Online and Security & Compliance connect with the collector certificate to list; Teams and PnP are only imported.
+  Cmdlets are listed, never run.
+- Needs: PR #497 live (`test -f /opt/keel-live/ops/powershell/list-commands.ps1`).
+- Status: todo
+- **Tenant:** reads only, with the collector credential. Nothing written.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. List each session on its own and report exit code plus the first 300 characters of stdout (no secrets are printed):
+     ```bash
+     for s in exo ipps teams pnp; do
+       echo "{\"mode\":\"commands\",\"session\":\"$s\"}" | docker run --rm -i --memory 1g --memory-swap 1g --network host \
+         -v /etc/keel:/etc/keel:ro -v /opt/keel-live/ops/powershell:/app:ro keel-powershell:latest | head -c 300; echo " exit=$?"
+     done
+     ```
+  2. Run discovery the way the schedule does and keep the log: `node cli/keel-discover.mjs run 2>&1 | tee /tmp/q146-discover.log | grep -E '^PowerShell|powershell:|^Discovery'`
+  3. Open https://keel.techinsiderbytes.com/protect, Discovery section. Report whether any red "cmdlet list was not supplied"
+     line remains, and the text of the blue "Not checked this run" note if one shows.
+- **Expected:** step 1 each session `{"ok":true,...,"commands":[...]}` exit 0 (exo and ipps take up to a minute each). Step 2
+  prints `PowerShell ExchangeOnlineManagement: listed N Get cmdlets.` (N well above 49), the same for MicrosoftTeams and
+  PnP.PowerShell, and no `powershell:` line marked unknown. Step 3: no red PowerShell lines and no note.
+- **Report:** steps 1 to 3 verbatim. If a session fails, its `error.message` verbatim (mask tenant ids). Comment on PR #497.
+
 ### Q137: Check that retention labels and eDiscovery cases land in a collect (read-only, after #481)
 - Drafted by the "Turn on retention labels backup" thread (2026-10-22). Code: PR #481. The four eDiscovery reads in
   `purview-governance` now declare Compliance Administrator (which Q106 showed carries Case Management and Hold) instead of

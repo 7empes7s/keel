@@ -379,9 +379,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates templates and puts back which settings are turned on or off and the values entered for them.',
     todo: 'Who a template is assigned to is not put back yet, so assign it again by hand from the backup. A setting from an imported template file needs that file imported first. A backup taken before setting values were read is refused; take a new backup.',
   }),
-  groupPolicyUploadedDefinitionFile: manual('Imported administrative template files', NOT_BUILT,
-    'KEEL backs up the list of imported files but does not restore them yet. The file content is not backed up.',
-    'Import the files again in the Intune admin center from your own copy.'),
+  groupPolicyUploadedDefinitionFile: auto('Imported administrative template files', {
+    keeps: 'Imports a deleted ADMX file again, with its ADML language files, from the backup.',
+    todo: 'Intune gives the settings in a re-imported file new ids, so administrative templates that used them are set up again by hand. A file is never changed in place: upload a new version in the Intune admin center, under Devices, Configuration, Import ADMX. A backup taken before the file content was read is refused; take a new backup.',
+  }),
   notificationMessageTemplate: auto('Compliance notification emails', {
     keeps: 'Recreates templates and puts their settings and the message text for each language back.',
   }),
@@ -589,9 +590,10 @@ export const TYPE_GUIDE = Object.freeze({
     'KEEL backs up each simulation\'s settings and targets but not its results, and does not restore it yet.',
     'Launch the simulation again in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Simulations, with the same technique, payload and targets from the backup.'),
   // Remaining kinds, batch 8.
-  hardwareConfiguration: manual('BIOS configurations', NOT_BUILT,
-    'KEEL backs up each BIOS configuration\'s name, format and password setting but not the settings file, which can hold the BIOS password, and does not restore it yet.',
-    'Create the configuration again in the Intune admin center, under Devices, Windows, Configuration, BIOS configurations and other settings, and upload the settings file from your own copy.'),
+  hardwareConfiguration: auto('BIOS configurations', {
+    keeps: 'Puts back each BIOS configuration\'s name, description, scope tags and whether every device gets its own BIOS password.',
+    todo: 'The settings file is not backed up, because it can hold the BIOS password: a deleted configuration is created again in the Intune admin center, under Devices, Windows, Configuration, BIOS configurations and other settings, with the file from your own copy. KEEL never turns per-device BIOS passwords off; do that there by hand if it is wanted.',
+  }),
   certificateBasedApplicationConfiguration: manual('App certificate authority trust', NOT_BUILT,
     'KEEL backs up which apps have a certificate authority trust list, but not the authorities on it, and does not restore it yet.',
     'Create the configuration again with PowerShell, then add the same certificate authorities from your own copies.'),

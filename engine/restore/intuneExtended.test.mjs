@@ -954,6 +954,105 @@ test('an Android Enterprise profile on a secured Wi-Fi network is written only w
   assert.equal('wifiPassword' in patch.body, false);
 });
 
+// ------------------------------------------- restore gaps, batch 11
+
+const admxFile = Object.freeze({
+  id: 'gp-src', fileName: 'keel-rt-fixture.admx', displayName: 'keel-rt-fixture.admx', defaultLanguageCode: 'en-US', languageCodes: ['en-US'],
+  targetPrefix: 'keelrt', targetNamespace: 'KEEL.RT.Fixture', policyType: 'admxIngested', revision: '1.0', status: 'available',
+  uploadDateTime: 'x', lastModifiedDateTime: 'x', content: 'PHBvbGljeURlZmluaXRpb25zLz4=',
+  groupPolicyUploadedLanguageFiles: [{ id: 'lf-1', fileName: 'keel-rt-fixture.adml', languageCode: 'en-US', content: 'PHJlc291cmNlcy8+', lastModifiedDateTime: 'x' }],
+});
+
+// A fake Graph whose uploaded ADMX file reads back with the status Intune gives it.
+function admxGraph(status) {
+  const graph = idoFakeGraph();
+  const write = graph.write.bind(graph);
+  graph.write = async (version, path, request) => {
+    const result = await write(version, path, request);
+    const created = `${path}/${result.body?.id}`;
+    if (request.method === 'POST' && result.ok) graph.objects.set(created, { ...graph.objects.get(created), status });
+    return result;
+  };
+  return graph;
+}
+
+test('an imported ADMX file is uploaded again with its ADML files, and waits for Intune to read it', async () => {
+  const graph = admxGraph('available');
+  const created = await applyIntuneExtendedWrite(graph, resourceOf('groupPolicyUploadedDefinitionFile', admxFile), 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.path, '/deviceManagement/groupPolicyUploadedDefinitionFiles');
+  assert.equal(post.version, 'beta');
+  assert.deepEqual(post.body, {
+    fileName: 'keel-rt-fixture.admx', defaultLanguageCode: 'en-US', content: admxFile.content,
+    groupPolicyUploadedLanguageFiles: [{ fileName: 'keel-rt-fixture.adml', languageCode: 'en-US', content: 'PHJlc291cmNlcy8+' }],
+  });
+  assert.equal(created.applied.changes.status, 'available');
+  assert.deepEqual(created.applied.completion, undefined);
+  // Never updated in place.
+  const update = await applyIntuneExtendedWrite(idoFakeGraph(), resourceOf('groupPolicyUploadedDefinitionFile', admxFile, {
+    live: { state: 'present', targetId: 'gp-src', payload: admxFile },
+  }), 'update', FAST);
+  assert.match(update.failed.error, /unsupported operation/);
+});
+
+test('an ADMX upload Intune fails to read fails the restore; one still being read leaves a step', async () => {
+  for (const [status, check] of [
+    ['uploadFailed', (result) => assert.match(result.failed.error, /uploadFailed/)],
+    ['uploadInProgress', (result) => {
+      assert.equal(result.failed, undefined, result.failed?.error);
+      assert.deepEqual(result.applied.completion.map((step) => step.requirement), ['admxUploadProcessing']);
+    }],
+  ]) {
+    check(await applyIntuneExtendedWrite(admxGraph(status), resourceOf('groupPolicyUploadedDefinitionFile', admxFile), 'create', FAST));
+  }
+});
+
+test('an ADMX file backed up without its file content is never uploaded', async () => {
+  for (const payload of [
+    { ...admxFile, content: undefined },
+    { ...admxFile, groupPolicyUploadedLanguageFiles: [] },
+    { ...admxFile, groupPolicyUploadedLanguageFiles: [{ fileName: 'keel-rt-fixture.adml', languageCode: 'en-US' }] },
+  ]) {
+    const graph = idoFakeGraph();
+    const result = await applyIntuneExtendedWrite(graph, resourceOf('groupPolicyUploadedDefinitionFile', payload), 'create', FAST);
+    assert.match(result.skipped.reason, /does not hold its ADMX and ADML file content/);
+    assert.equal(writesOf(graph).length, 0);
+  }
+});
+
+const bios = Object.freeze({
+  id: 'hw-1', displayName: 'KEEL-RT-bios', description: 'Fixture', fileName: 'keel-rt.cctk', hardwareConfigurationFormat: 'dell',
+  perDevicePasswordDisabled: false, roleScopeTagIds: ['0'], version: 2, createdDateTime: 'x', lastModifiedDateTime: 'x',
+});
+
+test('a BIOS configuration is updated in place, never its settings file, and is never created', async () => {
+  const path = '/deviceManagement/hardwareConfigurations/hw-1';
+  const live = { ...bios, description: 'Changed', perDevicePasswordDisabled: true, version: 3 };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const updated = await applyIntuneExtendedWrite(graph, resourceOf('hardwareConfiguration', bios, {
+    live: { state: 'present', targetId: 'hw-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  const patch = graph.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.path, path);
+  assert.equal(patch.version, 'beta');
+  assert.deepEqual(patch.body, { description: 'Fixture', perDevicePasswordDisabled: false });
+
+  const create = await applyIntuneExtendedWrite(idoFakeGraph(), resourceOf('hardwareConfiguration', bios), 'create', FAST);
+  assert.match(create.failed.error, /unsupported operation/);
+});
+
+test('a restore never turns per-device BIOS passwords off', async () => {
+  const path = '/deviceManagement/hardwareConfigurations/hw-1';
+  const graph = idoFakeGraph({ seed: { [path]: bios } });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('hardwareConfiguration', { ...bios, perDevicePasswordDisabled: true, description: 'Old' }, {
+    live: { state: 'present', targetId: 'hw-1', payload: bios },
+  }), 'update', FAST);
+  assert.match(result.skipped.reason, /never weakens BIOS passwords/);
+  assert.equal(writesOf(graph).length, 0);
+});
+
 test('a policy delete passes the deletion guard and refuses a policy that is still assigned', async () => {
   for (const type of ['deviceCompliancePolicy', 'deviceConfiguration', 'configurationPolicy']) {
     const collection = INTUNE_RECORDS[type].collection;

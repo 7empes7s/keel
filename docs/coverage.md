@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 133 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 82 at least in part; the other 85 are restored by hand from the backup.
+KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 133 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 84 at least in part; the other 83 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -417,7 +417,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Windows quality update profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Windows driver update profiles | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Administrative templates | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Imported administrative template files | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Imported administrative template files | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Compliance notification emails | Yes (Tier 3, low impact, weekly) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Windows Autopilot devices | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | Intune admin role assignments | Yes (Tier 1, critical, every hour) | Incomplete | By hand (KEEL choice) | None |
@@ -457,7 +457,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Windows code signing certificates | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Symantec code signing certificate | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (KEEL choice) | None |
 | Endpoint analytics baselines | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| BIOS configurations | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| BIOS configurations | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 
 ### Details and what you do
 
@@ -527,9 +527,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 - **Administrative templates.** Recreates templates and puts back which settings are turned on or off and the values entered for them.
   - *Not brought back:* who the template is assigned to (in the backup, but KEEL does not write it yet).
   - *You do:* Who a template is assigned to is not put back yet, so assign it again by hand from the backup. A setting from an imported template file needs that file imported first. A backup taken before setting values were read is refused; take a new backup.
-- **Imported administrative template files** (not built yet). KEEL backs up the list of imported files but does not restore them yet. The file content is not backed up.
-  - *Not brought back:* the template file content (a file the backup does not hold).
-  - *You do:* Import the files again in the Intune admin center from your own copy.
+- **Imported administrative template files.** Imports a deleted ADMX file again, with its ADML language files, from the backup.
+  - *Not brought back:* the ids of the settings in it: Intune gives them new ones, so templates that used them are set up again (in the backup, but KEEL does not write it yet).
+  - *You do:* Intune gives the settings in a re-imported file new ids, so administrative templates that used them are set up again by hand. A file is never changed in place: upload a new version in the Intune admin center, under Devices, Configuration, Import ADMX. A backup taken before the file content was read is refused; take a new backup.
 - **Compliance notification emails.** Recreates templates and puts their settings and the message text for each language back.
 - **Windows Autopilot devices** (Microsoft limit). Microsoft never returns the hardware hash that registers a device, so no tool can register it again from a backup.
   - *Not brought back:* the device hardware hash (Microsoft never returns it).
@@ -635,9 +635,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 - **Endpoint analytics baselines.** Recreates custom baselines and puts their names back. The built-in baseline is set by Microsoft and never changed.
   - *Not brought back:* built-in baselines (set by Microsoft); the scores taken when it was created (set by Microsoft).
   - *You do:* A recreated baseline takes today's scores to compare against, not the scores it held before; compare against the backup by hand if you need the old ones.
-- **BIOS configurations** (not built yet). KEEL backs up each BIOS configuration's name, format and password setting but not the settings file, which can hold the BIOS password, and does not restore it yet.
-  - *Not brought back:* the BIOS settings file, which can hold the BIOS password (Microsoft never returns it).
-  - *You do:* Create the configuration again in the Intune admin center, under Devices, Windows, Configuration, BIOS configurations and other settings, and upload the settings file from your own copy.
+- **BIOS configurations.** Puts back each BIOS configuration's name, description, scope tags and whether every device gets its own BIOS password.
+  - *Not brought back:* the BIOS settings file, which can hold the BIOS password (Microsoft never returns it); a deleted configuration, and turning per-device BIOS passwords off (in the backup, but KEEL does not write it yet).
+  - *You do:* The settings file is not backed up, because it can hold the BIOS password: a deleted configuration is created again in the Intune admin center, under Devices, Windows, Configuration, BIOS configurations and other settings, with the file from your own copy. KEEL never turns per-device BIOS passwords off; do that there by hand if it is wanted.
 
 ## Microsoft 365 workloads
 

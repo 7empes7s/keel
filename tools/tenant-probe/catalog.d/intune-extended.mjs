@@ -43,8 +43,13 @@ export default [
       path: '/deviceManagement/groupPolicyConfigurations/{item}/definitionValues/{child}/presentationValues',
     },
     note: 'The values of each setting are read per setting.' },
-  { type: 'groupPolicyUploadedDefinitionFile', path: '/deviceManagement/groupPolicyUploadedDefinitionFiles', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic',
-    note: 'Imported custom ADMX files. The file content is returned only per file.' },
+  // Imported custom ADMX files. Graph returns the ADMX and ADML file content
+  // only on a GET of one file, so each file is listed, then read on its own
+  // (restore gaps batch 11), like scripts.
+  { type: 'groupPolicyUploadedDefinitionFile', path: '/deviceManagement/groupPolicyUploadedDefinitionFiles/{parent}', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic',
+    parent: { path: '/deviceManagement/groupPolicyUploadedDefinitionFiles', select: 'id', key: 'id', as: 'id' },
+    absentWhenNotFound: true,
+    note: 'Imported custom ADMX files. The file content is read per file.' },
   // Compliance notification emails. The message text per language is a
   // separate collection, listed only when expanded.
   { type: 'notificationMessageTemplate', path: '/deviceManagement/notificationMessageTemplates', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic',

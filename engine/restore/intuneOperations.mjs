@@ -1061,6 +1061,58 @@ function androidWifiPassword(resource, verb) {
   };
 }
 
+// Batch 11: an imported ADMX file. The backup reads each file on its own, so
+// it holds the ADMX content and each ADML language file; a backup without
+// them (all before batch 11) is refused. Only the name, language and content
+// of a language file are sent; Graph adds its id and dates.
+const ADMX_LANGUAGE_FIELDS = Object.freeze(['fileName', 'languageCode', 'content']);
+const admxLanguageFiles = (files) => (Array.isArray(files) ? files : [])
+  .map((file) => Object.fromEntries(ADMX_LANGUAGE_FIELDS.filter((field) => file?.[field] !== undefined && file?.[field] !== null)
+    .map((field) => [field, file[field]])))
+  .sort((left, right) => lower(left.languageCode).localeCompare(lower(right.languageCode)));
+const hasText = (value) => typeof value === 'string' && value.length > 0;
+
+function admxFileRefusal(resource) {
+  const payload = resource.payload ?? {};
+  const files = Array.isArray(payload.groupPolicyUploadedLanguageFiles) ? payload.groupPolicyUploadedLanguageFiles : [];
+  if (!hasText(payload.content) || files.length === 0 || files.some((file) => !hasText(file?.content))) {
+    return {
+      outcome: 'skipped',
+      reason: 'manual: this backup lists the imported ADMX file but does not hold its ADMX and ADML file content (backups before the file read was added), so it is not uploaded; take a new backup, or import the files again by hand from your own copy',
+    };
+  }
+  return null;
+}
+
+/** Waits for Intune to finish reading an uploaded ADMX file; a failed upload fails the restore. */
+async function admxUploadAfterWrite(io, { targetId, live }) {
+  const path = `/deviceManagement/groupPolicyUploadedDefinitionFiles/${encodeURIComponent(targetId)}`;
+  let now = live;
+  if (now?.status === 'uploadInProgress') {
+    const result = await readUntil(io, 'beta', path, (r) => r?.ok === true && r.body?.status === 'uploadInProgress', io.readOptions);
+    if (result?.ok === true) now = result.body;
+  }
+  if (now?.status === 'uploadFailed') return { error: 'Intune could not read the uploaded ADMX file (status uploadFailed); check it in the Intune admin center, under Devices, Configuration, Import ADMX' };
+  const completion = now?.status === 'uploadInProgress'
+    ? [{ kind: 'manual-setting', requirement: 'admxUploadProcessing', fields: ['status'], description: 'Intune was still reading the uploaded ADMX file when the restore finished: check that it shows as Available in the Intune admin center, under Devices, Configuration, Import ADMX, before restoring templates that use it.' }]
+    : [];
+  return { live: now, completion, changes: { status: now?.status ?? 'unknown' } };
+}
+
+// Batch 11: a BIOS configuration is updated in place. Its settings file is
+// not backed up (it can hold the BIOS password), so a deleted one is imported
+// again by hand. A restore never turns per-device BIOS passwords off.
+function biosPasswordRefusal(resource, verb) {
+  if (verb !== 'update') return null;
+  if (resource.payload?.perDevicePasswordDisabled === true && resource.live?.payload?.perDevicePasswordDisabled === false) {
+    return {
+      outcome: 'skipped',
+      reason: 'manual: the backup turns off the per-device BIOS password, which is on now; a restore never weakens BIOS passwords, so change it by hand in the Intune admin center if that is wanted',
+    };
+  }
+  return null;
+}
+
 export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // Delete only: create and update stay on the built-in path above.
   ...Object.fromEntries(Object.values(INTUNE_RECORDS).map((entry) => [entry.resourceType, defineRecord({
@@ -1247,6 +1299,25 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     createOnly: ['enrollmentMode', 'enrollmentTokenType', 'isTeamsDeviceProfile'],
     refusal: androidWifiPassword, permission: 'DeviceManagementServiceConfig.ReadWrite.All',
   }),
+  // Restore gaps, batch 11. An imported ADMX file is uploaded again with its
+  // ADML language files; Intune gives the settings in it new ids, so the
+  // templates that used them are set up again. It is never updated in place
+  // (a new version is a separate upload action).
+  groupPolicyUploadedDefinitionFile: defineRecord({
+    resourceType: 'groupPolicyUploadedDefinitionFile', version: 'beta', collection: '/deviceManagement/groupPolicyUploadedDefinitionFiles',
+    operations: ['create'], writable: ['fileName', 'content', 'defaultLanguageCode', 'groupPolicyUploadedLanguageFiles'],
+    transform: (body) => ('groupPolicyUploadedLanguageFiles' in body
+      ? { ...body, groupPolicyUploadedLanguageFiles: admxLanguageFiles(body.groupPolicyUploadedLanguageFiles) } : body),
+    sameField: (field, left, right) => (field === 'groupPolicyUploadedLanguageFiles' ? sameValue(admxLanguageFiles(left), admxLanguageFiles(right)) : null),
+    refusal: admxFileRefusal, afterWrite: admxUploadAfterWrite, permission: 'DeviceManagementConfiguration.ReadWrite.All',
+  }),
+  // A BIOS configuration: its name, description, scope tags and whether each
+  // device gets its own BIOS password, updated in place only.
+  hardwareConfiguration: defineRecord({
+    resourceType: 'hardwareConfiguration', version: 'beta', collection: '/deviceManagement/hardwareConfigurations',
+    operations: ['update'], writable: ['displayName', 'description', 'perDevicePasswordDisabled', 'roleScopeTagIds'],
+    refusal: biosPasswordRefusal, permission: 'DeviceManagementConfiguration.ReadWrite.All',
+  }),
 });
 
 /** A cleanup rule is never made to retire devices sooner than it does now. */
@@ -1398,7 +1469,6 @@ async function policySetItemsAfterWrite(io, { payload, verb, targetId }) {
 
 /** Intune types read in wave 1 that no record can write in full, and why. */
 export const INTUNE_BEST_EFFORT = Object.freeze({
-  groupPolicyUploadedDefinitionFile: 'the ADMX and ADML file content is returned only per file and is not backed up',
   windowsAutopilotDeviceIdentity: 'the hardware hash is never returned; a device is re-imported from the device itself',
   deviceManagementRoleAssignment: 'it grants Intune admin access to groups by id; remapping them is not qualified',
 });

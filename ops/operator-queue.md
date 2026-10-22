@@ -7772,7 +7772,7 @@ item that needs it stays untouched.
   module never returned. PR #532 stops declaring the retired and Sdn* ones, reads `LineUri` (not `LineURI`), and adds
   `digest.unknownFields` to the Teams runs.
 - Needs: /opt/keel-live at the #532 merge or later (`grep -q LineUri /opt/keel-live/engine/collect/workloads/teamsExtended.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** Collector reads only (the normal scheduled Teams reads). Nothing is written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:

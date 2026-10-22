@@ -7753,8 +7753,17 @@ item that needs it stays untouched.
     A window with skipped entries is reported as `events-skipped` (never "exact" or "nobody on record").
     Page-level problems (bad cursor, oversized page) still stop as `invalid-page`.
 - Needs: /opt/keel-live at the #557 merge or later (`grep -q checkEvent /opt/keel-live/engine/identity/auditIngest.mjs`).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-22 23:02 UTC). **#557 works: the Intune audit log is no longer stuck.** The stuck window caught up in one run, and no new `invalid-page` runs appeared after the deploy. B = **03139ab**. Collector reads only.
+  1. Collect `5bb35372` (23:00): `Microsoft Entra audit log: complete (1 day(s) read, 27 new record(s))` / `Intune audit log: complete (1 day(s) read, 4 new record(s))`.
+  2. Newest 10 runs (source | status | window | inserted | skipped | reasons):
+     - intune-audit | complete | 22:31:58 → 22:46:59 | 4 | 0 | {}
+     - audit | complete | 22:31:58 → 22:46:59 | 27 | 0 | {}
+     - intune-audit | **complete** | **17:13:47 → 22:31:58** | **173** | 0 | {}  (the window that was stuck)
+     - audit | complete-empty | 21:46:57 → 22:31:58 | 0 | 0 | {}
+     - before the deploy (no skipped/reasons fields yet): intune-audit invalid-page ×3 (17:13:47 → 19:47 / 20:46 / 21:46), audit complete 127, complete-empty 0, complete 30.
+  3. Last day by status: audit complete 41, complete-empty 3, invalid-page 15 (the #514 period); intune-audit complete 19, complete-empty 28, invalid-page 11 (the #552 period, 17:13–22:00).
+  - `skipped` is 0 on every new run, so the bad entry did not need skipping. Even before #554 (not yet live), the activity check passed on this build. No comment on #552 needed.
 - **Tenant:** Collector reads only. No tenant writes, no CA policies, break-glass or Marouane's account.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. After the next scheduled collect (or one `collect` job), report the stdout lines starting `Microsoft Entra audit log:` and

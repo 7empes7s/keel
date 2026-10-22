@@ -34,6 +34,7 @@ import { assertTokenFree, decodeRoles, getToken as defaultGetToken } from '../..
 import { certificateExpiry } from './connections.mjs';
 import { planBootstrap } from './plan.mjs';
 import { GRAPH_RESOURCE_APP_ID, registeredWorkloads, rolesSatisfying } from './prerequisites.mjs';
+import { apiForAppId } from './permissionCatalog.mjs';
 
 export const SETUP_HOST_PROJECTION = 'identity-v1';
 
@@ -141,6 +142,28 @@ export async function observeTenant({ graph, tenantRef, bindings, operatorPrinci
   };
   const principals = [];
 
+  // Permissions on every Microsoft API (Graph, Exchange Online, SharePoint), for the
+  // setup page's permission table. A resource app that cannot be read leaves those
+  // grants out and marks the table "not fully checked", never "missing".
+  const resources = new Map([[graphSp.id, { api: 'graph', roleById }], [`appId:${GRAPH_RESOURCE_APP_ID}`, { api: 'graph', roleById }]]);
+  const resource = async (key, path) => {
+    if (!resources.has(key)) {
+      let found = null;
+      try {
+        const sp = await getOne(graph, `${path}?$select=id,appId,appRoles`, 'a Microsoft API app');
+        if (sp) found = { api: apiForAppId(sp.appId) ?? sp.appId, roleById: new Map((sp.appRoles ?? []).map((role) => [role.id, role])) };
+        else snapshot.unchecked.add('permissions');
+      } catch (error) {
+        if (!(error instanceof SetupReadError)) throw error;
+        snapshot.unchecked.add('permissions');
+      }
+      resources.set(key, found);
+    }
+    return resources.get(key);
+  };
+  const permissionName = (found, id) => found.roleById.get(id)?.value ?? `unknown-app-role:${id}`;
+  snapshot.permissions = {};
+
   for (const [identity, appId] of Object.entries(bindings)) {
     const app = await getOne(graph, `/applications(appId=${quoted(appId)})?$select=id,appId,displayName,requiredResourceAccess`, `the ${identity} app registration`);
     const sp = await getOne(graph, `/servicePrincipals(appId=${quoted(appId)})?$select=id,appId,displayName,accountEnabled`, `the ${identity} service principal`);
@@ -153,6 +176,14 @@ export async function observeTenant({ graph, tenantRef, bindings, operatorPrinci
         resourceAccess: (entry.resourceAccess ?? []).map((access) => ({ id: access.id, type: access.type })),
       })),
     };
+    const permissions = { granted: [], requested: [] };
+    snapshot.permissions[identity] = permissions;
+    for (const entry of app?.requiredResourceAccess ?? []) {
+      const roles = (entry.resourceAccess ?? []).filter((access) => access.type === 'Role');
+      if (!roles.length) continue;
+      const found = await resource(`appId:${entry.resourceAppId}`, `/servicePrincipals(appId=${quoted(entry.resourceAppId)})`);
+      if (found) for (const access of roles) permissions.requested.push({ api: found.api, name: permissionName(found, access.id) });
+    }
     if (app) {
       snapshot.applications.push({
         tenantRef, id: app.id, appId: app.appId, displayName: app.displayName, keelIdentity: identity,
@@ -174,6 +205,8 @@ export async function observeTenant({ graph, tenantRef, bindings, operatorPrinci
     principals.push(sp.id);
     // Application permissions granted to this identity (admin consent).
     for (const grant of await getAll(graph, `/servicePrincipals/${sp.id}/appRoleAssignments?$select=principalId,resourceId,appRoleId`, `the ${identity} granted permissions`)) {
+      const found = await resource(grant.resourceId, `/servicePrincipals/${grant.resourceId}`);
+      if (found) permissions.granted.push({ api: found.api, name: permissionName(found, grant.appRoleId) });
       if (grant.resourceId !== graphSp.id) continue;
       snapshot.appRoleAssignments.push({ tenantRef, principalId: sp.id, resourceAppId: GRAPH_RESOURCE_APP_ID, scope: roleName(grant.appRoleId) });
     }
@@ -247,6 +280,8 @@ export function readersFor(observe) {
     listRoleEligibilitySchedules: async () => (await snapshot()).roleEligibilitySchedules,
     listSubscribedSkus: async () => (await snapshot()).subscribedSkus,
     uncheckedKinds: async () => [...(await snapshot()).unchecked],
+    // Per identity: the permissions granted, and those the app registration asks for.
+    listPermissions: async () => (await snapshot()).permissions ?? {},
   };
 }
 

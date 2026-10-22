@@ -207,6 +207,18 @@ function Everything({ capabilities, statuses, pathname, onNavigate }: { capabili
   const { prefs } = useShellState();
   const entries = visibleNavEntries(capabilities);
   const active = sectionForPath(pathname);
+  // Each section's pages can be shown without leaving the page you are on. The section
+  // you are in opens by itself whenever you arrive in it; any other stays as you left it.
+  const [toggled, setToggled] = useState<Partial<Record<NavSection, boolean>>>({});
+  useEffect(() => {
+    if (!active) return;
+    setToggled((current) => {
+      if (!(active in current)) return current;
+      const next = { ...current };
+      delete next[active];
+      return next;
+    });
+  }, [active, pathname]);
   const closed = prefs.closed.includes("everything");
   const attention = entries.filter((entry) => statuses[entry.group] && statuses[entry.group]!.tone !== "fine");
   const tone = worstTone(attention.map((entry) => statuses[entry.group]?.tone));
@@ -223,8 +235,11 @@ function Everything({ capabilities, statuses, pathname, onNavigate }: { capabili
             const section = entry.group as NavSection;
             const subs = sectionLinks(section, capabilities);
             const isActive = active === section;
+            const expandable = subs.length > 1;
+            const open = expandable && (toggled[section] ?? isActive);
+            const subId = `menu-sub-${section.toLowerCase().replace(/\s+/g, "-")}`;
             return (
-              <li className="menu-section" data-active={isActive || undefined} key={section}>
+              <li className="menu-section" data-active={isActive || undefined} data-open={open || undefined} key={section}>
                 <div className="menu-row">
                   <Link
                     aria-current={isActive ? (isCurrentPath(pathname, entry.href) && subs.length === 1 ? "page" : "true") : undefined}
@@ -238,10 +253,23 @@ function Everything({ capabilities, statuses, pathname, onNavigate }: { capabili
                     <span className="menu-label">{section}</span>
                     <StatusBadge status={statuses[section]} />
                   </Link>
+                  {expandable ? (
+                    <button
+                      aria-controls={open ? subId : undefined}
+                      aria-expanded={open}
+                      aria-label={`${open ? "Hide" : "Show"} the ${subs.length} ${section} pages`}
+                      className="menu-tool menu-expand"
+                      onClick={() => setToggled((current) => ({ ...current, [section]: !open }))}
+                      title={open ? "Hide pages" : `Show pages: ${subs.map((sub) => sub.label).join(", ")}`}
+                      type="button"
+                    >
+                      <Icon name="chevron-down" />
+                    </button>
+                  ) : null}
                   <PinButton item={{ href: entry.href, label: section, icon: SECTION_ICONS[section] }} />
                 </div>
-                {isActive && subs.length > 1 ? (
-                  <ul className="menu-sub">
+                {open ? (
+                  <ul className="menu-sub" id={subId}>
                     {subs.map((sub) => (
                       <li className="menu-row" key={sub.href}>
                         <Link aria-current={isCurrentPath(pathname, sub.href) ? "page" : undefined} className="menu-sublink" href={sub.href} onClick={onNavigate} prefetch={false}>

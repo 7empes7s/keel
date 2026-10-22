@@ -36,40 +36,52 @@ function Chips({ filters, onClear }: { filters: readonly ActiveFilter[]; onClear
 
 /** The filters on a list as removable chips, how many rows they leave, and Clear all.
  *  Nothing shows while no filter is on. */
-export function ActiveFilters({ filters, shown, total, noun, extra = {} }: {
+export function ActiveFilters({ filters, shown, total, noun, extra = {}, totalWords = "", onChange }: {
   filters: readonly ActiveFilter[];
   shown: number;
   total: number;
   noun: { one: string; many: string };
   // Other address keys Clear all should drop too, such as an open details panel.
   extra?: Record<string, null>;
+  // Words after the total, such as "loaded" when the server sent only part of the list.
+  totalWords?: string;
+  // How a change reaches the page. By default it only rewrites the address; a page whose
+  // server applies the filters passes a navigation that loads the page again.
+  onChange?: (changes: Record<string, string | null>) => void;
 }) {
   const view = useViewState();
+  const apply = onChange ?? view.set;
   if (!filters.length) return null;
   return (
     <div className="filter-bar" data-empty={shown === 0 || undefined}>
       <p className="filter-count" role="status">
-        Showing <b>{shown}</b> of {plural(total, noun)}
+        Showing <b>{shown}</b> of {plural(total, noun)}{totalWords ? ` ${totalWords}` : null}
       </p>
-      <Chips filters={filters} onClear={(changes) => view.set(changes)} />
-      <button className="btn btn-sm filter-clear" onClick={() => view.set({ ...clearAll(filters), ...extra })} type="button">Clear all</button>
+      <Chips filters={filters} onClear={(changes) => apply(changes)} />
+      <button className="btn btn-sm filter-clear" onClick={() => apply({ ...clearAll(filters), ...extra })} type="button">Clear all</button>
     </div>
   );
 }
 
 /** What a filtered list shows when nothing matches: never a dead end. Each filter can
  *  be dropped on its own, or all at once. */
-export function NoMatches({ filters, noun, extra = {} }: { filters: readonly ActiveFilter[]; noun: { one: string; many: string }; extra?: Record<string, null> }) {
+export function NoMatches({ filters, noun, extra = {}, onChange }: {
+  filters: readonly ActiveFilter[];
+  noun: { one: string; many: string };
+  extra?: Record<string, null>;
+  onChange?: (changes: Record<string, string | null>) => void;
+}) {
   const view = useViewState();
+  const apply = onChange ?? view.set;
   return (
     <div className="filter-empty" role="status">
       <span aria-hidden="true" className="filter-empty-icon"><Icon name="filter" /></span>
       <div>
         <h3>No {noun.many} match these filters</h3>
         <p>{filters.length > 1 ? "Remove a filter to see more, or clear them all." : "Remove the filter to see everything."}</p>
-        <Chips filters={filters} onClear={(changes) => view.set(changes)} />
+        <Chips filters={filters} onClear={(changes) => apply(changes)} />
       </div>
-      <button className="btn btn-primary" onClick={() => view.set({ ...clearAll(filters), ...extra })} type="button">{filters.length > 1 ? "Clear all filters" : "Clear the filter"}</button>
+      <button className="btn btn-primary" onClick={() => apply({ ...clearAll(filters), ...extra })} type="button">{filters.length > 1 ? "Clear all filters" : "Clear the filter"}</button>
     </div>
   );
 }

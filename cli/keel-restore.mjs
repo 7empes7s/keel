@@ -29,6 +29,13 @@
 // only by promoting that artifact with --artifact <id> --enforce after an approver
 // other than the requester approved it; the break-glass lockout gate runs at both.
 //
+// node keel-restore.mjs --compliance-fix <controlId> --object <naturalKey> --collector-config ... --target-config ... [--persist-artifact <id>] [--requested-by <who>]
+// plans "Make it pass" for one object a compliance control fails on (CoreView gap 6):
+// the one setting the control's fix names is changed and everything else on the
+// object is written back as it is live. A dry run only; it is executed only by
+// promoting that artifact with --artifact <id> --enforce after an approver other
+// than the requester approved it. The source is the newest backup holding the object.
+//
 // node keel-restore.mjs --workload <name> --collection <id> <workload options> [--collector-config <path>] [--persist-artifact <id>] [--requested-by <who>]
 // plans a workload configuration restore (SharePoint, Exchange, Teams, Purview) from
 // one recorded workload collection, as a dry run (gap register W2). Workload options:
@@ -103,6 +110,7 @@ import {
 import { compensationDigestInput, planCompensation } from '../engine/restore/compensation.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
 import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
+import { ComplianceFixRefusal, fixedPayload, newestSnapshotWith, planComplianceFix } from '../engine/benchmarks/fix.mjs';
 import { credentialPaths } from '../engine/restore/credentialPaths.mjs';
 import { workloadWriteQualification } from '../engine/coverage/qualification.mjs';
 import { loadWorkloadLedger } from '../engine/collect/workloadLedgerStore.mjs';
@@ -280,6 +288,10 @@ export async function runRestore({
   // workload collection: { workload, collectionId, ...workload options }. A dry run
   // only; the resulting artifact is promoted with artifactId after approval.
   workloadRestore,
+  // CoreView gap 6, "Make it pass": plan the one-value fix a failing compliance
+  // control declares, for one object: { controlId, naturalKey }. A dry run only;
+  // the resulting artifact is promoted with artifactId after approval.
+  complianceFix,
   // Roadmap task-55: the automation policies a remediation is executing under,
   // discovered server-side by cli/keel-remediate.mjs from the durable
   // auto_remediation_execution link table. Only identities travel here — the
@@ -331,6 +343,7 @@ export async function runRestore({
     incidentsCoveringSnapshot: incidentsCoveringSnapshotFn = incidentsCoveringSnapshot,
     loadLockoutGateInputs: loadLockoutGateInputsFn = loadLockoutGateInputs,
     loadGroupMembership: loadGroupMembershipFn = loadGroupMembership,
+    newestSnapshotWith: newestSnapshotWithFn = newestSnapshotWith,
     // W2: the workload table, how a workload run reaches the tenant, and which
     // workload writes are qualified. Tests inject fakes; nothing here is a tenant.
     workloadRestores = WORKLOAD_RESTORES,
@@ -391,6 +404,21 @@ export async function runRestore({
     }
     if (!collectorConfig?.tenantId) throw new Error('a workload restore dry run needs the collector config');
   }
+  if (complianceFix !== undefined) {
+    if (planId !== undefined || snapshotId !== undefined || selection !== undefined || reconciliationResources !== undefined
+      || artifactId !== undefined || automationPolicyIds !== undefined || compensateArtifactId !== undefined
+      || enforceConditionalAccess !== undefined || workloadRestore !== undefined || incidentId !== undefined || deleteKeys !== undefined) {
+      throw new Error('complianceFix is its own scope: one setting of one object');
+    }
+    if (typeof complianceFix?.controlId !== 'string' || !complianceFix.controlId
+      || typeof complianceFix?.naturalKey !== 'string' || !complianceFix.naturalKey) {
+      throw new Error('complianceFix needs the controlId and the object naturalKey');
+    }
+    if (mode !== 'dry-run') {
+      throw new Error('a compliance fix is only ever planned as a dry run; execute it by promoting that artifact through the normal approval');
+    }
+    if (!collectorConfig?.tenantId) throw new Error('a compliance fix dry run needs the collector config');
+  }
   if (compensateArtifactId !== undefined) {
     if (planId !== undefined || snapshotId !== undefined || selection !== undefined
       || reconciliationResources !== undefined || artifactId !== undefined || automationPolicyIds !== undefined) {
@@ -414,7 +442,7 @@ export async function runRestore({
   if (persistArtifactId !== undefined) {
     if (mode === 'enforce') throw new Error('persistArtifactId may only be used for a dry run, never an enforce run');
     if (compensateArtifactId === undefined && enforceConditionalAccess === undefined && workloadRestore === undefined
-      && (planId !== undefined || snapshotId === undefined)) {
+      && complianceFix === undefined && (planId !== undefined || snapshotId === undefined)) {
       throw new Error('persistArtifactId requires the snapshotId/selection restore scope');
     }
   }
@@ -422,7 +450,7 @@ export async function runRestore({
     throw new Error('planId and snapshotId/selection/reconciliationResources are mutually exclusive restore scopes');
   }
   if (planId === undefined && snapshotId === undefined && artifactId === undefined && compensateArtifactId === undefined
-    && enforceConditionalAccess === undefined && workloadRestore === undefined) {
+    && enforceConditionalAccess === undefined && workloadRestore === undefined && complianceFix === undefined) {
     throw new Error('a restore scope is required: planId, snapshotId with a selection, artifactId, compensateArtifactId, or workloadRestore');
   }
   if (selection !== undefined) {
@@ -487,6 +515,15 @@ export async function runRestore({
         client, request: workloadRestore, collectorConfig, collectorConfigPath, persistArtifactId, requestedBy, logger, deps: workloadDeps,
       });
     }
+    // Gap 6: the source of a compliance fix is the newest complete backup that
+    // holds the object, found here, never named by the caller.
+    if (complianceFix !== undefined) {
+      snapshotId = await newestSnapshotWithFn(client, {
+        tenantRef: tenantRefFor(collectorConfig.tenantId), naturalKey: complianceFix.naturalKey,
+      });
+      if (!snapshotId) throw new Error(`compliance fix refused: no complete backup holds ${complianceFix.naturalKey}`);
+      selection = [complianceFix.naturalKey];
+    }
     let sourceSnapshot = snapshotId;
     let plan = null;
     let artifact = null;
@@ -523,6 +560,11 @@ export async function runRestore({
           client, artifact, collectorConfig, targetConfig, readFile, logger, deps: compensationDeps,
         });
       }
+      // Gap 6: a compliance fix is promoted through the restore path below, but
+      // only with an approval decided by someone other than the requester.
+      if (artifact.complianceFix && !(await enforcementApproval(client, artifact.id))) {
+        throw new Error('restore promotion refused: a compliance fix needs an approved request from someone other than the requester');
+      }
       // Task-152: turning a Conditional Access policy on is promoted here too.
       if (artifact.conditionalAccessEnforcement) {
         return await executeEnforcementRun({
@@ -530,6 +572,9 @@ export async function runRestore({
         });
       }
     }
+    // Gap 6: the fix this run plans (a dry run) or promotes (from its artifact).
+    const fixRequest = artifact ? (artifact.complianceFix ?? null) : (complianceFix ?? null);
+    let fixPlan = null;
     if (planId !== undefined) {
       const { rows } = await client.query('SELECT * FROM plan WHERE id = $1', [planId]);
       plan = rows[0];
@@ -581,6 +626,10 @@ export async function runRestore({
       const closure = dependencyClosureFn(resources, selection);
       resources = closure.resources;
       closureKeys = closure.keys;
+      // Gap 6: a compliance fix writes one object and nothing it depends on.
+      if (fixRequest && (resources.length !== 1 || (resources[0].references ?? []).length > 0)) {
+        throw new Error(`${artifact ? 'restore promotion refused: ' : ''}compliance fix refused: ${fixRequest.naturalKey} points to other objects, so Keel cannot change one setting on its own`);
+      }
       for (const unresolved of closure.unresolvedReferences) {
         logger.log(`unresolved reference: ${unresolved.from} at ${unresolved.field} -> ${unresolved.symbol} (no resource in this snapshot provides it)`);
       }
@@ -643,6 +692,26 @@ export async function runRestore({
     const unreadTypes = unreadTypesOf(targetCollected);
     for (const { type, error } of targetCollected?.unread ?? []) logger.log(`current state: ${type} not read (not in this restore): ${error}`);
     const targetResources = canonicalizeAllFn(targetCollected);
+    // Gap 6: the desired state of a compliance fix is the object as it is live,
+    // with the one setting changed, so nothing else on it is written back from
+    // the backup. Planned from this fresh read at the dry run and again at
+    // promotion; the digest binds the plan and the fingerprint the live object.
+    if (fixRequest) {
+      const live = targetResources.find((resource) => resource.naturalKey === fixRequest.naturalKey
+        && resource.resourceType === resources[0]?.resourceType);
+      try {
+        fixPlan = planComplianceFix({ controlId: fixRequest.controlId, naturalKey: fixRequest.naturalKey, live });
+      } catch (error) {
+        if (error instanceof ComplianceFixRefusal) throw new Error(`${artifact ? 'restore promotion refused: ' : ''}compliance fix refused: ${error.message}`);
+        throw error;
+      }
+      if (artifact && (fixPlan.field !== artifact.complianceFix.field || fixPlan.to !== artifact.complianceFix.to)) {
+        throw new Error('restore promotion refused: the control\'s fix changed since the dry run — a new dry run is required');
+      }
+      const payload = fixedPayload(live.payload, fixPlan);
+      resources = [{ ...resources[0], payload, payloadHash: canonicalHash(payload, fixPlan.resourceType) }];
+      logger.log(`compliance fix: ${fixPlan.naturalKey} ${fixPlan.field} ${JSON.stringify(fixPlan.from)} -> ${JSON.stringify(fixPlan.to)}`);
+    }
     const existingTargetIds = new Map(targetResources.map((r) => [r.naturalKey, r.sourceId]));
     const protectedPrincipalIds = globalAdministratorPrincipalIds(targetResources);
     const deletionGuardOptions = {
@@ -659,6 +728,9 @@ export async function runRestore({
     const createdTargetIds = await loadCreatedTargetIdsFn(client, { targetTenantId: targetConfig?.tenantId ?? collectorConfig.tenantId });
     const reconciliation = await buildReconciliationPlanFn(targetReader, resources, { targetResources, sameTenant, createdTargetIds });
     resources = reconciliation.resources;
+    if (fixPlan && resources[0]?.verb !== 'update') {
+      throw new Error(`${artifact ? 'restore promotion refused: ' : ''}compliance fix refused: ${fixPlan.naturalKey} would be ${resources[0]?.verb ?? 'left out'}, not updated in place`);
+    }
     // An object matched by id under another name is known to the plan alone: its
     // snapshot key resolves to the live id for references and relationship edges.
     for (const resource of resources) {
@@ -673,7 +745,7 @@ export async function runRestore({
     // scope leaves assignments untouched, and the plan says so for each policy.
     // Restore gaps batch 14: the Wave 2 records that write assignments (scripts,
     // remediations, templates, update profiles, branding, app policies) too.
-    if (selection !== undefined && reconciliationResources === undefined) {
+    if (selection !== undefined && reconciliationResources === undefined && !fixRequest) {
       const intuneParents = resources.filter((resource) => writesIntuneAssignments(resource.resourceType) && resource.verb !== 'delete');
       if (intuneParents.length > 0) {
         const desiredAssignments = await loadSnapshotRelationshipsFn(client, {
@@ -750,7 +822,7 @@ export async function runRestore({
     // that never observed a group's edges (legacy, or collected without
     // relationships) plans nothing for it — absence of evidence is never an empty set.
     let relationshipPlan = { operations: [], refusals: [], notes: [], observed: [] };
-    if (selection !== undefined && reconciliationResources === undefined) {
+    if (selection !== undefined && reconciliationResources === undefined && !fixRequest) {
       const groupParents = resources.filter((resource) => resource.resourceType === 'group' && resource.verb !== 'delete');
       const desiredEdges = groupParents.length === 0
         ? new Map()
@@ -801,7 +873,7 @@ export async function runRestore({
     // hash; only those that differ are uploaded, after the objects' own writes.
     // A snapshot that holds no files plans nothing.
     let brandingPlan = { uploads: [], unchanged: [], refusals: [], notes: [] };
-    if (selection !== undefined && reconciliationResources === undefined) {
+    if (selection !== undefined && reconciliationResources === undefined && !fixRequest) {
       const brandingResources = resources.filter((resource) => BRANDING_RESOURCE_TYPES.includes(resource.resourceType) && resource.verb !== 'delete');
       const locales = [...new Set(brandingResources.map(brandingLocaleFor).filter(Boolean))].sort();
       const desiredFiles = locales.length === 0 ? [] : await loadSnapshotBrandingAssetsFn(client, { snapshotId: sourceSnapshot, locales });
@@ -983,6 +1055,7 @@ export async function runRestore({
         recoveryMechanisms: artifact.recoveryMechanisms == null ? null : recoveryMechanisms,
         contentEffects: contentEffects.effects,
         incidentRecovery: incidentDigest,
+        complianceFix: fixPlan,
       });
       const freshFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys, relationshipFingerprint);
       const validation = validateArtifactForExecutionFn(artifact, {
@@ -1252,6 +1325,7 @@ export async function runRestore({
         recoveryMechanisms,
         contentEffects: contentEffects.effects,
         incidentRecovery: incidentDigest,
+        complianceFix: fixPlan,
       });
       const currentStateFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys, relationshipFingerprint);
 
@@ -1278,6 +1352,7 @@ export async function runRestore({
         recoveryMechanisms,
         contentEffects: contentEffects.effects,
         incidentRecovery,
+        complianceFix: fixPlan,
       });
       createdArtifactId = persistArtifactId;
       logger.log(`persisted dry-run artifact ${persistArtifactId} (status: ${status})`);
@@ -1286,6 +1361,7 @@ export async function runRestore({
     return {
       plan, resources, waves, deletionWaves, patches, appliedIds, results, relationshipOperations, brandingUploads, recoveryMechanisms,
       completionItems, pendingSteps, contentEffects: contentEffects.effects, incidentRecovery, incidentChecks,
+      ...(fixPlan ? { complianceFix: fixPlan } : {}),
       selection: immutableSelection.length ? immutableSelection : null,
       artifactId: createdArtifactId ?? artifactId ?? null,
     };
@@ -1832,6 +1908,32 @@ export async function main({
     }
     return runRestore({
       enforceConditionalAccess: { restoreArtifactId: enforceRestoreArtifactId, naturalKey: enforcePolicy },
+      persistArtifactId, requestedBy, mode, readFile, dbUrl, dependencies, logger,
+    });
+  }
+
+  // Gap 6: a compliance fix is planned for one control and one object — never
+  // with --enforce, and never alongside another scope.
+  const fixControlId = arg('compliance-fix', undefined, argv);
+  if (fixControlId !== undefined) {
+    if (planId || snapshotId || selection.length || deleteKeys.length || artifactId !== undefined || incidentId !== undefined) {
+      throw new Error('--compliance-fix is mutually exclusive with --plan/--snapshot-id/--select/--delete/--artifact/--incident');
+    }
+    const object = arg('object', undefined, argv);
+    if (!object) throw new Error('--compliance-fix requires --object <naturalKey>');
+    if (mode === 'enforce') {
+      throw new Error('--compliance-fix is a dry run only; execute it by promoting that artifact with --artifact <id> --enforce after approval');
+    }
+    const fixCollectorPath = arg('collector-config', undefined, argv);
+    const fixTargetPath = arg('target-config', undefined, argv);
+    if (!fixCollectorPath || !fixTargetPath) throw new Error('--compliance-fix requires --collector-config and --target-config');
+    const fixCollector = JSON.parse(readFile(fixCollectorPath, 'utf8'));
+    const fixTarget = JSON.parse(readFile(fixTargetPath, 'utf8'));
+    assertSeparateRestorer(fixCollector, fixTarget);
+    return runRestore({
+      complianceFix: { controlId: fixControlId, naturalKey: object },
+      collectorConfig: fixCollector, targetConfig: fixTarget,
+      collectorConfigPath: fixCollectorPath, targetConfigPath: fixTargetPath,
       persistArtifactId, requestedBy, mode, readFile, dbUrl, dependencies, logger,
     });
   }

@@ -510,6 +510,26 @@ export const JOB_HANDLERS = {
         ];
       }
 
+      // CoreView gap 6: "Make it pass" from the Compliance page. One control and one
+      // object; the source backup and the setting come from the CLI, never the job.
+      if (params.complianceFix !== undefined) {
+        const extra = paramKeys.filter((key) => !['complianceFix', 'artifactId', 'collectorConfig', 'targetConfig'].includes(key));
+        if (extra.length > 0) {
+          throw new Error(`a compliance fix dry run carries only params.complianceFix, the two config paths and params.artifactId (unexpected: ${extra.join(', ')})`);
+        }
+        const request = params.complianceFix ?? {};
+        const fields = Object.keys(request).filter((key) => key !== 'controlId' && key !== 'naturalKey');
+        if (fields.length > 0) throw new Error(`params.complianceFix may carry only controlId and naturalKey (unexpected: ${fields.join(', ')})`);
+        return [
+          '--compliance-fix', requireString(request.controlId, 'params.complianceFix.controlId'),
+          '--object', requireString(request.naturalKey, 'params.complianceFix.naturalKey'),
+          '--collector-config', requireString(params.collectorConfig, 'params.collectorConfig'),
+          '--target-config', requireString(params.targetConfig, 'params.targetConfig'),
+          '--persist-artifact', requireString(params.artifactId, 'params.artifactId'),
+          '--requested-by', requireString(job.requested_by, 'job.requested_by'),
+        ];
+      }
+
       // A workload restore dry run from the Restore page (Exchange, Teams, Purview):
       // one recorded workload collection and the objects chosen from it. The CLI reads
       // with the server's collector file; promotion is the artifact path above.
@@ -716,8 +736,9 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
     emitJobEvent(job, 'job.running', eventSink);
     const timeoutMs = JOB_TIMEOUT_MS[job.kind] ?? JOB_TIMEOUT_MS.default;
     const execution = startJobChild(handler.script, args, { timeoutMs, executable: handler.executable,
-      // The requester is passed on so a collection reads the audit logs as them.
-      env: { ...process.env, KEEL_EVENT_CORRELATION_ID: jobCorrelationId(job), KEEL_JOB_REQUESTED_BY: String(job.requested_by ?? '') },
+      // The requester is passed on so a collection reads the audit logs as them, and the
+      // job's id so a backup can report each type's progress onto its own job row.
+      env: { ...process.env, KEEL_EVENT_CORRELATION_ID: jobCorrelationId(job), KEEL_JOB_REQUESTED_BY: String(job.requested_by ?? ''), KEEL_JOB_ID: String(job.id) },
     });
     onInFlightChange({ job, terminate: execution.terminate });
     const heartbeat = setInterval(() => {

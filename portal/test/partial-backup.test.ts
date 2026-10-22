@@ -48,7 +48,7 @@ test("the backups list and the job page say Partly done and name the type", () =
 
   const page = renderToStaticMarkup(createElement(JobDetail, { job: partial, now }));
   assert.match(page, /job-summary-partial/);
-  assert.match(page, /What was not backed up/);
+  assert.match(page, /1 kind could not be backed up in full/);
   assert.match(page, /<li>Intune tenant settings<\/li>/);
 
   const plain = renderToStaticMarkup(createElement(JobRow, { job: finished, now }));

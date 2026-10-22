@@ -9,6 +9,7 @@ import { RestoreStepper } from "@/components/restore-selection";
 import { RecordCompare, RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import { postAction } from "@/lib/action-client";
 import { fieldWords, valueWords } from "@/lib/changes-view";
+import { SettingRows } from "@/components/change-comparison";
 import { toast } from "@/lib/toast";
 import { plural } from "@/lib/restore-view";
 import {
@@ -155,13 +156,15 @@ export function manualWords(reason: string): string {
   return sentence(reason.replace(/\ban administrator\b/g, "an admin"));
 }
 
-export function WorkloadRestore({ workload, name, canRestore, canApprove, now, onClose }: {
+export function WorkloadRestore({ workload, name, canRestore, canApprove, now, onClose, start }: {
   workload: string;
   name: string;
   canRestore: boolean;
   canApprove: boolean;
   now: string;
   onClose: () => void;
+  // Opens on this backup with these objects chosen (an undo from the Changes page).
+  start?: { collectionId: string; targets: string[] };
 }) {
   const [choices, setChoices] = useState<WorkloadChoices | null>(null);
   const [loading, setLoading] = useState(true);
@@ -193,8 +196,11 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
       const found = await fetchChoices(workload, collectionId);
       setChoices(found);
       // Start with what changed since: the likely thing to put back. Settings that
-      // affect the whole tenant are never ticked for you.
-      setSelected(new Set(found.groups.flatMap((group) => group.items.filter((item) => item.restorable && !item.tenantWide && item.change === "changed").map((item) => item.key))));
+      // affect the whole tenant are never ticked for you, unless an undo asked for them.
+      const asked = start && found.chosen.collectionId === start.collectionId ? new Set(start.targets) : null;
+      setSelected(new Set(found.groups.flatMap((group) => group.items
+        .filter((item) => item.restorable && (asked ? asked.has(item.key) : !item.tenantWide && item.change === "changed"))
+        .map((item) => item.key))));
     } catch {
       setError("KEEL could not read this backup. Reload in a minute.");
     } finally {
@@ -202,7 +208,7 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
     }
   }
 
-  useEffect(() => { void load(null); }, [workload]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load(start?.collectionId ?? null); }, [workload, start?.collectionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const snapshots = useMemo<SnapshotOption[]>(() => (choices?.backups ?? []).map((backup) => ({
     id: backup.collectionId, startedAt: backup.takenAt, completedAt: backup.takenAt, resourceCount: backup.items,
@@ -530,18 +536,23 @@ function RunReview({ run, heading, nameOf, canApprove, onApproved }: {
             {tables.map((table) => (
               <li key={table.key}>
                 {table.title !== heading ? <strong>{table.title}</strong> : null}
-                <table className="restore-ba-table">
-                  <thead><tr><th scope="col">{table.key === "members" ? "Member" : "Setting"}</th><th scope="col">Now in your tenant</th><th scope="col">After the restore</th></tr></thead>
-                  <tbody>
-                    {table.rows.map((change) => (
-                      <tr key={change.field}>
-                        <th scope="row">{table.key === "members" ? change.field : fieldWords(change.field)}</th>
-                        <td data-label="Now">{table.key === "members" ? String(change.before) : settingValueWords(change.field, change.before)}</td>
-                        <td data-label="After">{table.key === "members" ? String(change.after) : settingValueWords(change.field, change.after)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div className="restore-ba-table">
+                  <SettingRows
+                    label={`${table.title}: what will change`}
+                    rows={table.rows.map((change) => {
+                      const members = table.key === "members";
+                      const diff = members && change.before === "Not in the team" ? "added" : members && change.after === "Removed from the team" ? "removed" : "changed";
+                      return {
+                        path: change.field, section: "General", label: members ? change.field : fieldWords(change.field), diff,
+                        before: diff === "added" ? null : members ? String(change.before) : settingValueWords(change.field, change.before),
+                        after: diff === "removed" ? null : members ? String(change.after) : settingValueWords(change.field, change.after),
+                        entries: null,
+                        absent: members ? (diff === "added" ? "Not in the team" : "Removed from the team") : undefined,
+                      };
+                    })}
+                    sides={{ before: "Now in your tenant", after: "After the restore" }}
+                  />
+                </div>
               </li>
             ))}
           </ul>

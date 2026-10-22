@@ -6,7 +6,7 @@ import { DownloadMenu } from "@/components/value-report/download-menu";
 import { ValueReportPage } from "@/components/value-report/value-report-page";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import { getReportOwners, getValueReport } from "@/lib/value-report";
-import { parseEntity, resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
+import { parseEntities, resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
 
 const DESCRIPTION = "What Keel put back and checked, which security checks were fixed, and how fast recovery was, for a period you choose.";
 
@@ -18,10 +18,10 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const access = await requireReadAccess(DATA_SURFACES.reportsPage);
   const params = await searchParams;
   const period = resolvePeriod(params.period, new Date());
-  const entity = parseEntity(params.entity);
+  const entities = parseEntities(params.entity);
   let report: ValueReport;
   try {
-    report = await getValueReport({ scope: access.scope, period, entity });
+    report = await getValueReport({ scope: access.scope, period, entities });
   } catch {
     return <><PageHeader description={DESCRIPTION} section="Reports" title="Value report" /><DataUnavailable surface="Value report" /></>;
   }
@@ -29,7 +29,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   return (
     <>
       <PageHeader actions={<DownloadMenu />} description={DESCRIPTION} generatedAt={report.generatedAt} section="Reports" status={valueStatus(report)} title="Value report" />
-      <ValueReportPage data={{ report, period, entity, owners }} />
+      <ValueReportPage data={{ report, period, entities, owners }} />
     </>
   );
 }

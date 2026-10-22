@@ -8,6 +8,7 @@ import { BaselinesStyles } from "@/components/baselines/styles";
 import { ControlSheet } from "@/components/compliance/control-sheet";
 import { FindingRecordFields, StorageRecordFields } from "@/components/compliance/compliance-record";
 import { ExceptionSheet, type Granted } from "@/components/compliance/exception-sheet";
+import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
@@ -18,6 +19,7 @@ import {
   NOT_A_CERTIFICATION,
   NOT_RUN_YET,
   RESULTS,
+  canFixOn,
   STORAGE_UNSET_TODO,
   canGrantOn,
   complianceCounts,
@@ -26,9 +28,9 @@ import {
   controlService,
   controlShort,
   findingTypes,
+  fixableSentence,
   grantLabel,
   immutabilitySentence,
-  isResult,
   lastChecked,
   orderFindings,
   ownerPerson,
@@ -38,6 +40,7 @@ import {
   storageSentence,
   type ControlResult,
 } from "@/lib/compliance-view";
+import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { ago } from "@/lib/presentation";
 import { serviceOrder } from "@/lib/services";
 import { toast } from "@/lib/toast";
@@ -58,12 +61,14 @@ const TILES: { key: ControlResult; small: string }[] = [
   { key: "unknown", small: "The backup it needs is missing or too old" },
   { key: "passing", small: "Met on the last check" },
 ];
+const RESULT_TILES: FilterTile<ComplianceFinding>[] = (Object.keys(RESULTS) as ControlResult[]).map((key) => ({ key, test: (finding: ComplianceFinding) => resultOf(finding) === key }));
 
-export function CompliancePage({ data, canConfigure, canCheck = false, now = data.generatedAt }: {
+export function CompliancePage({ data, canConfigure, canCheck = false, canRestore = false, now = data.generatedAt }: {
   data: ComplianceData;
   canConfigure: boolean;
   // Holds `collect`, the permission that runs backups: offered "Check now".
   canCheck?: boolean;
+  canRestore?: boolean;
   now?: string;
 }) {
   const router = useRouter();
@@ -92,9 +97,12 @@ export function CompliancePage({ data, canConfigure, canCheck = false, now = dat
   })), [data.findings, granted, now]);
   const counts = useMemo(() => complianceCounts(findings), [findings]);
   const verdict = complianceVerdict({ ...data, findings });
-  const resultParam = params?.get("result") ?? null;
-  const filter = isResult(resultParam) ? resultParam : null;
-  const shown = useMemo(() => (filter ? findings.filter((finding) => resultOf(finding) === filter) : findings), [findings, filter]);
+  // The result tiles add up: `result=failing,unknown` shows controls in either.
+  const filter = readPicked(RESULT_TILES, params?.get("result")) as ControlResult[];
+  const filterKey = filter.join(",");
+  const shown = useMemo(() => applyFilters(findings, RESULT_TILES, filterKey ? filterKey.split(",") : []), [findings, filterKey]);
+  const tileTotals = useMemo(() => new Map(tileCounts(findings, RESULT_TILES, filterKey ? filterKey.split(",") : []).map((entry) => [entry.key, entry])), [findings, filterKey]);
+  const activeFilters: ActiveFilter[] = filter.map((key) => ({ key: `result:${key}`, label: RESULTS[key].plural, clear: { result: withoutTile(filter, key) } }));
   const opened = findings.find((finding) => finding.id === view.get("open")) ?? null;
   const grantIds = view.get("grant").split(",").filter(Boolean);
   const granting = canConfigure ? findings.filter((finding) => grantIds.includes(finding.id) && finding.verdict === "fail") : [];
@@ -148,9 +156,11 @@ export function CompliancePage({ data, canConfigure, canCheck = false, now = dat
         <span className="cp-row-mid">
           <Badge icon={words.icon} tone={words.badge}>{words.label}</Badge>
           <small>{resultLine(finding, now)}</small>
+          {fixableSentence(finding) ? <small className="cp-fixable"><Icon name="check-circle" />{fixableSentence(finding)}</small> : null}
           {owner ? <small className="cp-owner">Owner <Person person={owner} /></small> : null}
         </span>
         <span className="cp-row-acts">
+          {canFixOn(finding, canRestore) ? <Link className="btn btn-sm" href={openHref(finding.id)} onClick={(event) => follow(event, openHref(finding.id))}><Icon name="check-circle" />Make it pass</Link> : null}
           {result === "failing" && canGrantOn(finding, canConfigure) ? <Link className="btn btn-sm" href={grantHref([finding.id])}>{finding.exception ? "Renew exception" : "Grant exception"}</Link> : null}
           {result === "unknown" ? <Link className="btn btn-sm" href="/protect"><Icon name="backup" />Run a backup</Link> : null}
         </span>
@@ -175,13 +185,15 @@ export function CompliancePage({ data, canConfigure, canCheck = false, now = dat
         <section aria-label="Results at a glance" className="cp-tiles">
           {TILES.map((tile) => {
             const words = RESULTS[tile.key];
-            const active = filter === tile.key;
+            const active = filter.includes(tile.key);
+            const adds = addsWords(tileTotals.get(tile.key), filter.length);
             const tone = tile.key === "failing" && counts.failing ? "urgent" : (tile.key === "unknown" || tile.key === "excepted") && counts[tile.key] ? "soon" : undefined;
             return (
-              <Link aria-current={active || undefined} className="cp-tile" data-tone={tone} href={href({ result: active ? null : tile.key, open: null, grant: null })} key={tile.key}>
-                <span className="cp-tile-label"><Icon name={words.icon} />{words.label}</span>
+              <Link aria-current={active || undefined} className="cp-tile" data-tone={tone} href={href({ result: tileParam(RESULT_TILES, filter, tile.key), open: null, grant: null })} key={tile.key} title={active ? "Picked: click to remove it from the view" : "Click to add these to the view"}>
+                <span className="cp-tile-label"><Icon name={words.icon} />{words.label}{active ? <Icon className="tile-check" name="check" /> : null}</span>
                 <b className="cp-tile-count">{counts[tile.key]}</b>
                 <small>{tile.small}</small>
+                {adds ? <small className="tile-adds">{adds}</small> : null}
               </Link>
             );
           })}
@@ -216,19 +228,14 @@ export function CompliancePage({ data, canConfigure, canCheck = false, now = dat
 
         <section aria-labelledby="cp-controls-heading" className="cp-section">
           <h2 className="visually-hidden" id="cp-controls-heading">Controls</h2>
-          {filter ? (
-            <p className="cp-filter-note" role="status">
-              Showing {RESULTS[filter].label.toLowerCase()} only: {shown.length} of {findings.length}.
-              <Link className="cp-inline-link" href={href({ result: null })}>Show every control</Link>
-            </p>
-          ) : null}
+          <ActiveFilters extra={{ open: null, grant: null }} filters={activeFilters} noun={{ one: "control", many: "controls" }} shown={shown.length} total={findings.length} />
           {findings.length === 0 ? (
             <div className="sel-empty cp-empty">
               <p>No control has been checked on this tenant yet.</p>
               {canCheck ? <CheckNowButton check={check} /> : <Link className="btn btn-sm" href="/schedules"><Icon name="clock" />See when backups run</Link>}
             </div>
           ) : shown.length === 0 ? (
-            <p className="sel-empty">No control matches this filter.</p>
+            <NoMatches extra={{ open: null, grant: null }} filters={activeFilters} noun={{ one: "control", many: "controls" }} />
           ) : (
             <SelectableList
               action={canConfigure ? {
@@ -274,6 +281,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, now = dat
         <TechnicalDetails summary="Technical details for these results">
           <RecordField copy={false} label="Read with" value="GET /api/evidence?kind=benchmark-evaluation,benchmark-exception" />
           <RecordField copy={false} label="Grant with" value="POST /api/actions/compliance/exception {evaluationId, owner, reason, expiresAt}" />
+          <RecordField copy={false} label="Make it pass with" value="POST /api/actions/compliance/fix {evaluationId, naturalKey}, then POST /api/actions/restore {artifactId, justification}" />
           <RecordField copy={false} label="Check with" value="POST /api/actions/compliance/check (also runs after each backup)" />
           {baseline ? <RecordField label="Approved setup ID" value={baseline.id} /> : null}
           {findings.map((finding) => <FindingRecordFields finding={finding} key={finding.id} />)}
@@ -283,7 +291,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, now = dat
 
       {opened || granting.length ? <BaselinesStyles /> : null}
       {opened && !granting.length ? (
-        <ControlSheet canConfigure={canConfigure} finding={opened} grantHref={grantHref([opened.id])} key={opened.id} now={now} onClose={() => view.set({ open: null })} />
+        <ControlSheet canConfigure={canConfigure} canRestore={canRestore} finding={opened} grantHref={grantHref([opened.id])} key={opened.id} now={now} onClose={() => view.set({ open: null })} />
       ) : null}
       {granting.length ? (
         <ExceptionSheet

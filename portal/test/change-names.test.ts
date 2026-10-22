@@ -132,7 +132,8 @@ test("the Changes data names each change and the objects its settings point to",
   const assignment = byKey.get(changes[2].key)!;
   const name = changeName(assignment);
   assert.doesNotMatch(name, GUID);
-  assert.match(name, /^Unnamed /);
+  // A role assignment is named from its role and holder, even when the holder is not backed up.
+  assert.equal(name, "Global Administrator → someone Keel has no name for");
   assert.doesNotMatch(changeLabel(assignment), GUID);
 
   const review = byKey.get(changes[3].key)!;
@@ -159,7 +160,7 @@ test("names fall back to words, never to an id", () => {
 });
 
 test("a list or object value reads as its first settings, not a pointer to Technical details", () => {
-  assert.equal(valueWords([{ appId: "x", scope: "Sites.Read.All" }]), "App id: x; Scope: Sites.Read.All");
+  assert.equal(valueWords([{ appId: "x", scope: "Sites.Read.All" }]), "Scope: Sites.Read.All");
   assert.equal(valueWords({ a: 1, b: { c: true, d: [1, 2] }, e: "x", f: null }), "A: 1; B › c: yes; B › d: 1, 2; and 2 more");
   assert.ok(!valueWords([{ a: 1 }, { a: 2 }]).includes("Technical details"));
 });

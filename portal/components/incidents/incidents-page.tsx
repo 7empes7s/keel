@@ -11,6 +11,7 @@ import { CheckSheet } from "@/components/incidents/check-sheet";
 import { ConfirmSheet } from "@/components/incidents/confirm-sheet";
 import { IncidentRecord } from "@/components/incidents/incident-record";
 import { AttackWindowSheet, NewIncidentSheet } from "@/components/incidents/incident-sheets";
+import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { OptionPicker } from "@/components/pickers/option-picker";
 import { Segmented } from "@/components/pickers/segmented";
@@ -21,10 +22,11 @@ import { Verdict } from "@/components/verdict";
 import { incidentAction } from "@/lib/incident-calls";
 import {
   ALLOW_EFFECT, CLOSE_EFFECT, HISTORY_HREF, KEPT_HELP, READ_ONLY_LINE, STATES, WINDOW_HELP,
-  backupAge, backupName, backupsWord, checkLine, serviceBackupLine, incidentCounts, incidentVerdict, isStateFilter, orderBackups,
+  backupAge, backupName, backupsWord, checkLine, orderServiceBackups, serviceBackupLine, serviceBackupStatus, incidentCounts, incidentVerdict, isStateFilter, orderBackups,
   personOf, restoreHref, stateChip, stateOf, type BackupState, type StateFilter,
 } from "@/lib/incidents-view";
 import type { IncidentDetail, IncidentRecoveryPoint, IncidentSummary } from "@/lib/portal-data";
+import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { ago } from "@/lib/presentation";
 import { personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
@@ -40,6 +42,12 @@ import { useViewState } from "@/lib/use-view-state";
 // backups a bulk keep acts on), `new=1` (the new incident sheet).
 
 type Show = "open" | "closed" | "all";
+
+// The backup tiles: each state, and kept from clean-up.
+const STATE_TILES: FilterTile<IncidentRecoveryPoint>[] = [
+  ...(["cleared", "unchecked", "unsafe"] as const).map((key) => ({ key, test: (point: IncidentRecoveryPoint) => stateOf(point) === key })),
+  { key: "kept", test: (point: IncidentRecoveryPoint) => Boolean(point.pinned) },
+];
 
 const TILE_SMALL: Record<StateFilter, string> = {
   cleared: "Safe to restore from",
@@ -63,11 +71,15 @@ export function IncidentsPage({ incidents, selected, canInvestigate, now }: {
   const showParam = view.get("show");
   const show: Show = showParam === "open" || showParam === "closed" || showParam === "all" ? showParam : counts.open ? "open" : "all";
   const stateParam = view.get("state");
-  const filter = isStateFilter(stateParam) ? stateParam : null;
+  // The backup tiles add up: `state=unchecked,kept` shows backups in either.
+  const filter = readPicked(STATE_TILES, stateParam) as StateFilter[];
+  const filterKey = filter.join(",");
   const incident = selected?.incident ?? null;
   const canChange = canInvestigate && incident?.status === "open";
   const points = useMemo(() => (selected ? orderBackups(selected.points, selected.recommended) : []), [selected]);
-  const shown = useMemo(() => (filter ? points.filter((point) => (filter === "kept" ? point.pinned : stateOf(point) === filter)) : points), [points, filter]);
+  const shown = useMemo(() => applyFilters(points, STATE_TILES, filterKey ? filterKey.split(",") : []), [points, filterKey]);
+  const tileTotals = useMemo(() => new Map(tileCounts(points, STATE_TILES, filterKey ? filterKey.split(",") : []).map((entry) => [entry.key, entry])), [points, filterKey]);
+  const activeFilters: ActiveFilter[] = filter.map((key) => ({ key: `state:${key}`, label: key === "kept" ? "Kept from clean-up" : `${STATES[key].label} backups`, clear: { state: withoutTile(filter, key) } }));
   const opened = points.find((point) => point.snapshotId === view.get("open")) ?? null;
   const step = view.get("do");
   const picked = view.get("pick").split(",").filter(Boolean);
@@ -189,16 +201,18 @@ export function IncidentsPage({ incidents, selected, canInvestigate, now }: {
               <small>{counts.closed} closed</small>
             </Link>
             {(["cleared", "unchecked", "kept"] as const).map((key) => {
-              const active = filter === key;
+              const active = filter.includes(key);
+              const adds = addsWords(tileTotals.get(key), filter.length);
               const count = counts[key];
               const tone = key === "unchecked" && count ? "soon" : key === "cleared" && !count && incident.status === "open" ? "urgent" : undefined;
               const label = key === "cleared" ? "Cleared backups" : key === "unchecked" ? "Not checked yet" : "Kept from clean-up";
               const icon: IconName = key === "cleared" ? "check-circle" : key === "unchecked" ? "clock" : "pin";
               return (
-                <Link aria-current={active || undefined} className="ir-tile" data-tone={tone} href={href({ state: active ? null : key, open: null, do: null })} key={key}>
-                  <span className="ir-tile-label"><Icon name={icon} />{label}</span>
+                <Link aria-current={active || undefined} className="ir-tile" data-tone={tone} href={href({ state: tileParam(STATE_TILES, filter, key), open: null, do: null })} key={key} title={active ? "Picked: click to remove it from the view" : "Click to add these to the view"}>
+                  <span className="ir-tile-label"><Icon name={icon} />{label}{active ? <Icon className="tile-check" name="check" /> : null}</span>
                   <b className="ir-tile-count">{count}</b>
                   <small>{key === "unchecked" && counts.uncheckedInWindow ? `${counts.uncheckedInWindow} during the attack` : TILE_SMALL[key]}</small>
+                  {adds ? <small className="tile-adds">{adds}</small> : null}
                 </Link>
               );
             })}
@@ -227,16 +241,11 @@ export function IncidentsPage({ incidents, selected, canInvestigate, now }: {
 
           <section aria-labelledby="ir-backups-heading" className="ir-section">
             <h2 id="ir-backups-heading">Backups</h2>
-            {filter ? (
-              <p className="ir-filter-note" role="status">
-                Showing {filter === "kept" ? "kept backups" : `${STATES[filter].label.toLowerCase()} backups`} only: {shown.length} of {points.length}.
-                <Link className="ir-inline-link" href={href({ state: null })}>Show every backup</Link>
-              </p>
-            ) : null}
+            <ActiveFilters extra={{ open: null, do: null }} filters={activeFilters} noun={{ one: "backup", many: "backups" }} shown={shown.length} total={points.length} />
             {points.length === 0 ? (
               <p className="sel-empty">No completed backups exist for this tenant yet.</p>
             ) : shown.length === 0 ? (
-              <p className="sel-empty">No backup matches this filter.</p>
+              <NoMatches extra={{ open: null, do: null }} filters={activeFilters} noun={{ one: "backup", many: "backups" }} />
             ) : (
               <SelectableList
                 action={canChange ? {
@@ -270,12 +279,16 @@ export function IncidentsPage({ incidents, selected, canInvestigate, now }: {
               <h2 id="ir-services-heading">Other services&apos; backups</h2>
               <p className="ir-muted">Exchange, SharePoint, OneDrive, Teams, Purview and Power Platform settings, and content. The check above covers Entra ID and Intune only, so check these by hand before you restore from them.</p>
               <ul className="ir-service-list">
-                {selected.serviceBackups.map((entry) => (
-                  <li className="ir-service-row" key={`${entry.kind}:${entry.workload}`}>
-                    <span className="ir-service-name">{entry.name}{entry.kind === "content" ? " (content)" : " (settings)"}</span>
-                    <span className="ir-muted">{serviceBackupLine(entry, now)}</span>
-                  </li>
-                ))}
+                {orderServiceBackups(selected.serviceBackups).map((entry) => {
+                  const status = serviceBackupStatus(entry);
+                  return (
+                    <li className="ir-service-row" data-tone={status.tone} key={`${entry.kind}:${entry.workload}`}>
+                      <span className="ir-service-name">{entry.name}<small>{entry.kind === "content" ? "Content" : "Settings"}</small></span>
+                      <Badge tone={status.tone}>{status.label}</Badge>
+                      <span className="ir-muted">{serviceBackupLine(entry, now)}</span>
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           ) : null}

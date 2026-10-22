@@ -306,7 +306,7 @@ export function RecordCompare({ label, before, after, sides = { before: "Approve
             <div className="technical-side" data-side={side} key={side}>
               <small>{sides[side]}</small>
               {compared[side] === null ? (
-                <span className="technical-none">{side === "before" ? `Not in the ${sides.before.toLowerCase()}` : "Not there now"}</span>
+                <span className="technical-none">{side === "before" ? `Not in the ${sides.before.toLowerCase()}` : `Not in the ${sides.after.toLowerCase()}`}</span>
               ) : (
                 <ul className="technical-lines">
                   {compared[side]!.map((line, index) => (

@@ -21,13 +21,13 @@ export function conditionalAccessGroupIds(canonical) {
 }
 
 /** Persist outcomes independently of resources, including completed empty reads. */
-export async function collectSnapshot(client, { reader, tenantRef, tenantId, tier, relationships = false, brandingAssets = false }) {
+export async function collectSnapshot(client, { reader, tenantRef, tenantId, tier, relationships = false, brandingAssets = false, onProgress }) {
   // Tier selection (task 49) happens inside collectWithOutcomes, before any
   // HTTP read: an excluded type's endpoint is never called, so `collected`
   // below already holds only the requested tier's types (or every type when
   // tier is unset) and result.coverageDigest already carries the
   // not-requested marker for everything this run did not fetch.
-  const result = await collectWithOutcomes(reader, { tenantId, tier });
+  const result = await collectWithOutcomes(reader, { tenantId, tier, onProgress });
   // Tenant-scoped historical identity context (task-48): resolve references
   // and composed keys for types absent from this run against the aliases
   // evidenced by earlier successful enumerations. On the first run after the

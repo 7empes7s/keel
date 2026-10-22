@@ -132,9 +132,11 @@ test("rows name backups and people; every id stays in Technical details", async 
 
 test("a tile filters the list by state and keeps it in the URL", async () => {
   const html = await renderIncidentsAt("state=unsafe", { incidents: [detail.incident], selected: detail, now: NOW, canInvestigate: true });
-  assert.match(html, /Showing unsafe backups only: 1 of 2\./);
+  assert.match(html, /Showing <b>1<\/b> of 2 backups/);
   assert.equal(html.split('class="ir-row"').length - 1, 1);
-  assert.match(html, /href="\/incidents\?state=cleared"/);
+  assert.match(html, /href="\/incidents\?state=cleared%2Cunsafe"/, "Cleared adds to the picked state");
+  const both = await renderIncidentsAt("state=unsafe,cleared", { incidents: [detail.incident], selected: detail, now: NOW, canInvestigate: true });
+  assert.match(both, /Showing <b>2<\/b> of 2 backups/);
 });
 
 test("engine refusals become plain sentences, with no key or id in them", () => {

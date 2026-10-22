@@ -126,7 +126,13 @@ test("the page body: tiles filter by state, closed groups stay counted, a viewer
   assert.equal([...html.matchAll(/class="al-row-link"/g)].length, 3, "only the open groups show rows");
   const filtered = await renderAlertsAt("state=overdue", props);
   assert.equal([...filtered.matchAll(/class="al-row-link"/g)].length, 1);
-  assert.match(filtered, /Showing alerts past their deadline only: 1 of 6\./);
+  assert.match(filtered, /Showing <b>1<\/b> of 6 alerts/);
+  assert.match(filtered, /Remove filter: Past deadline/);
+  // Tiles add up: from Past deadline, Resolved adds to it.
+  assert.ok(filtered.includes(`href="/alerts?state=overdue%2Cresolved"`), "a second tile adds to the first");
+  const both = await renderAlertsAt("state=overdue,resolved", props);
+  assert.equal([...both.matchAll(/class="al-row-link"/g)].length, 3, "past deadline or resolved: 1 + 2");
+  assert.match(both, /Showing <b>3<\/b> of 6 alerts/);
   const resolved = await renderAlertsAt("state=resolved", props);
   assert.equal([...resolved.matchAll(/class="al-row-link"/g)].length, 2, "a filter opens the group it picks");
   const viewer = await renderAlertsAt("", { ...props, canRespond: false, canMute: false });

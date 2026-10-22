@@ -105,11 +105,36 @@ function newest(observations) {
 }
 
 /**
- * Live freshness over the required dependencies. `observations` may hold any
- * mix of attempts; only successes count toward age.
+ * Splits required dependencies into those still required and those the tenant
+ * does not use: a type whose newest read was `unavailable` (no licence or
+ * feature for it, #309) holds nothing to back up, so it is neither a gap nor
+ * an age. It counts again as soon as a newer read is anything else.
  */
-export function computeFreshness({ required, observations, now }) {
+export function splitNotUsed(required, observations) {
+  const latestByDependency = new Map();
+  for (const observation of observations) {
+    const previous = latestByDependency.get(observation.dependency);
+    if (!previous || newest([previous, observation]) === observation) latestByDependency.set(observation.dependency, observation);
+  }
+  const kept = [];
+  const notUsed = [];
+  for (const dependency of required) {
+    const latest = latestByDependency.get(dependency.key);
+    if (dependency.kind === 'type' && latest?.outcome === 'unavailable') {
+      notUsed.push({ key: dependency.key, kind: dependency.kind, type: dependency.type ?? null, parentType: null, family: null, checkedAt: latest.completedAt ?? latest.startedAt });
+    } else kept.push(dependency);
+  }
+  return { required: kept, notUsed };
+}
+
+/**
+ * Live freshness over the required dependencies. `observations` may hold any
+ * mix of attempts; only successes count toward age. A type the tenant does not
+ * use (splitNotUsed) is listed in `notUsed` and left out of the rest.
+ */
+export function computeFreshness({ required: allRequired, observations, now }) {
   const at = instant(now) ?? new Date();
+  const { required, notUsed } = splitNotUsed(allRequired, observations);
   const byDependency = new Map(required.map((dependency) => [dependency.key, []]));
   for (const observation of observations) byDependency.get(observation.dependency)?.push(observation);
   const dependencies = required.map((dependency) => {
@@ -146,6 +171,7 @@ export function computeFreshness({ required, observations, now }) {
         failedAt: latestAttempt.completedAt ?? latestAttempt.startedAt, outcome: latestAttempt.outcome,
         lastSuccessAt: lastSuccess.startedAt,
       })),
+    notUsed,
     required: required.length,
   };
 }
@@ -468,6 +494,8 @@ export async function loadRecoveryMetrics(client, { tenantRef, requiredTypes, no
     ...await loadRelationshipObservations(client, { tenantRef }),
     ...services.observations,
   ];
+  // A type the tenant does not use is not required of an off-site copy either.
+  const inUse = splitNotUsed(required, observations).required;
   const copies = await loadOffsiteCopies(client, { tenantRef });
   const listed = copies.flatMap((copy) => (Array.isArray(copy.subject?.observationIds) ? copy.subject.observationIds : []));
   const { observationsById, relationshipsBySnapshot } = await loadListedObservations(client, { tenantRef, observationIds: listed });
@@ -488,7 +516,7 @@ export async function loadRecoveryMetrics(client, { tenantRef, requiredTypes, no
     generatedAt: generatedAt.toISOString(),
     freshness: computeFreshness({ required: [...required, ...services.required], observations, now: generatedAt }),
     recoverablePoint: {
-      ...computeRecoverablePoint({ required, copies, observationsById, relationshipsBySnapshot, tenantRef, now: generatedAt }),
+      ...computeRecoverablePoint({ required: inUse, copies, observationsById, relationshipsBySnapshot, tenantRef, now: generatedAt }),
       scope: 'entra-intune-settings',
     },
     // The latest and last good run of every service-settings and content workload.

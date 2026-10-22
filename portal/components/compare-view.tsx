@@ -1,12 +1,13 @@
 import { CompareForm, type QuickPick } from "@/components/baselines/compare-form";
-import { ChangedFieldList, ChangedValuesStyles } from "@/components/changed-values";
+import { ChangeChip, ChangedFieldList, ChangedValuesStyles } from "@/components/changed-values";
+import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { Icon } from "@/components/shell/icons";
 import { RecordCompare, RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import {
-  CHANGE_WORDS, bytesWords, containerWords, contentItemWords, countsWords, differenceTotals, notComparedSentence,
+  bytesWords, containerWords, contentItemWords, countsWords, differenceTotals, notComparedReasons,
   sideWords, workloadLabel, workloadNotComparedSentence,
-  type CompareData, type CompareField, type CompareResult, type ContentHoldingsSection, type ContentItemsSection,
+  type ChangeType, type CompareData, type CompareField, type CompareResult, type GapTone, type ContentHoldingsSection, type ContentItemsSection,
   type SettingsGroup, type SettingsItem, type SettingsSection, type WorkloadGroup, type WorkloadsSection,
 } from "@/lib/compare-view";
 import { formatTimestamp, resourceTypeLabel } from "@/lib/presentation";
@@ -31,7 +32,7 @@ const CSS = `
 .compare-section { display: grid; gap: var(--space-sm); }
 .compare-section h3 { margin: var(--space-sm) 0 0; font-size: 0.9375rem; }
 .compare-kind { display: grid; gap: var(--space-xs); }
-.compare-kind-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-xs) var(--space-sm); margin: var(--space-xs) 0 0; color: var(--text-soft); font-size: 0.75rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; }
+.compare-kind-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-xs) var(--space-sm); margin: var(--space-xs) 0 0; color: var(--text-soft); font-size: 0.75rem; font-weight: 650; }
 .compare-kind-heading small { font-size: 0.8125rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .compare-group { border: 1px solid var(--line); border-radius: 0.5rem; background: var(--surface); }
 .compare-group > summary { cursor: pointer; padding: var(--space-sm) var(--space-md); display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-md); justify-content: space-between; }
@@ -43,14 +44,31 @@ const CSS = `
 .compare-item p { margin: 0; }
 .compare-item-head { display: flex; flex-wrap: wrap; gap: var(--space-xs); align-items: baseline; }
 .compare-item-name { font-weight: 600; }
-.compare-change { font-size: 0.75rem; font-weight: 750; letter-spacing: 0.04em; text-transform: uppercase; }
-.compare-change-changed { color: var(--partial); }
-.compare-change-added { color: var(--protected); }
-.compare-change-removed { color: var(--failed); }
+.compare-item[data-whole] { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.compare-item[data-whole] > .cc-whole { display: contents; }
+.compare-item[data-whole] .cc-whole-list { grid-column: 1 / -1; }
+@media (max-width: 640px) {
+  .compare-item[data-whole] { grid-template-columns: minmax(0, 1fr); }
+  .compare-item[data-whole] .cc-whole-toggle { justify-self: start; }
+}
 .compare-item.compare-changed { border-left-color: var(--partial); }
 .compare-item.compare-added { border-left-color: var(--protected); }
 .compare-item.compare-removed { border-left-color: var(--failed); }
 .compare-note { margin: 0; color: var(--text-soft); }
+.compare-gaps { display: grid; gap: var(--space-xs); }
+.compare-gaps-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs) var(--space-sm); }
+.compare-gaps-head h3 { margin: 0; }
+.compare-gap > summary { align-items: center; flex-wrap: nowrap; }
+.compare-gap-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-xs); margin-left: auto; }
+@media (max-width: 640px) { .compare-gap > summary { flex-wrap: wrap; } .compare-gap-meta { justify-content: flex-start; margin-left: 0; } }
+.compare-gap-reason { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); font-weight: 650; }
+.compare-gap-side { color: var(--text-soft); font-size: 0.8125rem; font-weight: 500; }
+.compare-gap-services { display: flex; flex-wrap: wrap; gap: var(--space-2xs, 0.25rem); }
+.compare-gap-services > span { padding: 1px var(--space-xs); border: 1px solid var(--line); border-radius: 999px; color: var(--text-soft); font-size: 0.75rem; font-weight: 600; }
+.compare-gap-body { display: grid; gap: var(--space-xs); padding: 0 var(--space-md) var(--space-md); }
+.compare-gap-body h4 { display: flex; align-items: center; gap: var(--space-xs); margin: var(--space-xs) 0 0; font-size: 0.8125rem; }
+.compare-gap-body h4 svg { width: 1rem; height: 1rem; }
+.compare-gap-kinds { margin: 0; color: var(--text-soft); font-size: 0.8125rem; line-height: 1.5; }
 .compare-list { margin: 0; padding-left: var(--space-lg); display: grid; gap: var(--space-2xs); }
 .compare-fields { width: 100%; }
 `;
@@ -85,24 +103,19 @@ function FieldTable({ fields, total, id, sides, change = "changed" }: { fields: 
   return <ChangedFieldList change={change} fields={fields} label={`${id}: settings`} names={sides.names} sides={sides} total={total} />;
 }
 
-const PRESENCE: Record<string, { before: string; after: string }> = {
-  added: { before: "Not there", after: "There" },
-  removed: { before: "There", after: "Not there" },
-};
+// Removed first, then added, then changed: what is gone matters most.
+const CHANGE_ORDER: Record<ChangeType, number> = { removed: 0, added: 1, changed: 2 };
+function byChange<T extends { changeType: ChangeType }>(items: readonly T[]): T[] {
+  return items.map((item, index) => ({ item, index })).sort((a, b) => CHANGE_ORDER[a.item.changeType] - CHANGE_ORDER[b.item.changeType] || a.index - b.index).map(({ item }) => item);
+}
 
-function ItemHead({ name, changeType, id, sides }: { name: string; changeType: SettingsItem["changeType"]; id: string; sides?: Sides }) {
-  const presence = PRESENCE[changeType];
+/** An item's name and a coloured badge saying what happened to it. A whole item added or
+ *  removed says no more here: its settings sit folded under it. */
+function ItemHead({ name, changeType, id }: { name: string; changeType: SettingsItem["changeType"]; id: string }) {
   return (
     <div className="compare-item-head">
       <span className="compare-item-name" id={id}>{name}</span>
-      <span className={`compare-change compare-change-${changeType}`}>{CHANGE_WORDS[changeType]}</span>
-      {presence && sides ? (
-        <span className="bl-presence">
-          <span className="bl-side" data-side="before"><small>{sides.before}</small>{presence.before}</span>
-          <Icon className="bl-sides-arrow" name="chevron" />
-          <span className="bl-side" data-side="after"><small>{sides.after}</small>{presence.after}</span>
-        </span>
-      ) : null}
+      <ChangeChip change={changeType} />
     </div>
   );
 }
@@ -122,11 +135,11 @@ function SettingsGroupView({ group, index, sides }: { group: SettingsGroup; inde
         <Icon className="compare-group-chevron" name="chevron-down" />
       </summary>
       <ul className="compare-items">
-        {group.items.map((item, itemIndex) => {
+        {byChange(group.items).map((item, itemIndex) => {
           const id = `compare-setting-${index}-${itemIndex}`;
           return (
-            <li className={`compare-item compare-${item.changeType}`} key={item.naturalKey}>
-              <ItemHead changeType={item.changeType} id={id} name={itemName(item, group.resourceType)} sides={sides} />
+            <li className={`compare-item compare-${item.changeType}`} data-whole={item.changeType !== "changed" && item.fields?.length ? "" : undefined} key={item.naturalKey}>
+              <ItemHead changeType={item.changeType} id={id} name={itemName(item, group.resourceType)} />
               {item.changeType === "changed" || item.fields?.length ? <FieldTable change={item.changeType} fields={item.fields ?? []} id={itemName(item, group.resourceType)} sides={sides} total={item.fieldsTotal} /> : null}
             </li>
           );
@@ -161,14 +174,110 @@ function sumCounts(groups: { added?: number; removed?: number; changed?: number 
   return groups.reduce<{ added: number; removed: number; changed: number }>((sum, group) => ({ added: sum.added + (group.added ?? 0), removed: sum.removed + (group.removed ?? 0), changed: sum.changed + (group.changed ?? 0) }), { added: 0, removed: 0, changed: 0 });
 }
 
-/** A kind group's heading inside a service, when the service has more than one. */
-function KindHeading<T extends { added?: number; removed?: number; changed?: number }>({ part, show }: { part: KindPart<T>; show: boolean }) {
-  if (!show) return null;
+/** A kind group's heading inside a service, shown even when the service has one group,
+ * so every service reads the same way. */
+function KindHeading<T extends { added?: number; removed?: number; changed?: number }>({ part }: { part: KindPart<T> }) {
   return (
     <h4 className="compare-kind-heading">
       {part.label}
       <small>{part.items.length === 1 ? "1 kind" : `${part.items.length} kinds`} · {countsWords(sumCounts(part.items))}</small>
     </h4>
+  );
+}
+
+const GAP_TONES: Record<GapTone, BadgeTone> = { failed: "urgent", partial: "soon", neutral: "neutral" };
+
+/** Kinds in a gap list by service, in the portal's service order, and by kind inside it.
+ *  Blocks that read as the same service merge, so a service is counted once. */
+function gapBlocks<T extends { resourceType: string; service: string }>(entries: T[]): { key: string; heading: string; kinds: T[] }[] {
+  const merged = new Map<string, { key: string; heading: string; kinds: T[] }>();
+  for (const block of byService(entries, (entry) => entry.resourceType)) {
+    const entry = merged.get(block.heading) ?? { key: block.key, heading: block.heading, kinds: [] as T[] };
+    entry.kinds.push(...block.parts.flatMap((part) => part.items));
+    merged.set(block.heading, entry);
+  }
+  return [...merged.values()];
+}
+
+function GapServices<T extends { resourceType: string; service: string }>({ entries, words }: { entries: T[]; words: (entry: T) => string }) {
+  return (
+    <>
+      {gapBlocks(entries).map((block) => {
+        const kinds = block.kinds;
+        return (
+          <div key={block.key}>
+            <h4><Icon name={SERVICES.find((entry) => entry.name === block.heading)?.icon ?? "cloud"} />{block.heading} ({kinds.length})</h4>
+            <p className="compare-gap-kinds">{kinds.map(words).join(" · ")}</p>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function serviceCounts<T extends { resourceType: string; service: string }>(entries: T[]): string[] {
+  return gapBlocks(entries).map((block) => `${block.heading} ${block.kinds.length}`);
+}
+
+/** Kinds one side did not read in full: a few reasons with counts, each folded, never a
+ *  sentence per kind. */
+function NotCompared({ entries, sides }: { entries: SettingsSection["notCompared"]; sides: Sides }) {
+  const reasons = notComparedReasons(entries);
+  const sideWords = { before: `in ${sides.before}`, after: `in ${sides.after}`, both: "on both sides" } as const;
+  return (
+    <div className="compare-gaps" data-gaps="not-compared">
+      <div className="compare-gaps-head">
+        <h3>Not compared</h3>
+        <Badge tone="neutral">{entries.length === 1 ? "1 kind" : `${entries.length.toLocaleString("en-GB")} kinds`}</Badge>
+      </div>
+      <p className="compare-note">Keel compares a kind only when both sides read it in full, so nothing here is reported as added or removed.</p>
+      {reasons.map((reason) => (
+        <details className="compare-group compare-gap" data-reason={reason.key} key={reason.key}>
+          <summary>
+            <span className="compare-gap-reason">
+              <Badge tone={GAP_TONES[reason.tone]}>{reason.reason}</Badge>
+              <span className="compare-gap-side">{sideWords[reason.side]}</span>
+            </span>
+            <span className="compare-gap-meta">
+              <span className="compare-group-counts">{reason.entries.length === 1 ? "1 kind" : `${reason.entries.length.toLocaleString("en-GB")} kinds`}</span>
+              <span className="compare-gap-services">
+                {serviceCounts(reason.entries).map((line) => <span key={line}>{line}</span>)}
+              </span>
+            </span>
+            <Icon className="compare-group-chevron" name="chevron-down" />
+          </summary>
+          <div className="compare-gap-body">
+            <GapServices entries={reason.entries} words={(entry) => plainKind(entry.resourceType)} />
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
+/** Kinds known only by an id each tenant gives them, folded, by service. */
+function Unmatched({ entries }: { entries: SettingsSection["unmatched"] }) {
+  return (
+    <div className="compare-gaps" data-gaps="unmatched">
+      <details className="compare-group compare-gap">
+        <summary>
+          <span className="compare-gap-reason">
+            <Badge tone="neutral">Cannot be matched across tenants</Badge>
+          </span>
+          <span className="compare-gap-meta">
+            <span className="compare-group-counts">{entries.length === 1 ? "1 kind" : `${entries.length.toLocaleString("en-GB")} kinds`}</span>
+            <span className="compare-gap-services">
+              {serviceCounts(entries).map((line) => <span key={line}>{line}</span>)}
+            </span>
+          </span>
+          <Icon className="compare-group-chevron" name="chevron-down" />
+        </summary>
+        <div className="compare-gap-body">
+          <p className="compare-note">These kinds are known only by an id each tenant gives them, so the same object cannot be found in the other tenant.</p>
+          <GapServices entries={entries} words={(entry) => `${plainKind(entry.resourceType)} (${entry.left} in the first, ${entry.right} in the second)`} />
+        </div>
+      </details>
+    </div>
   );
 }
 
@@ -186,34 +295,14 @@ function SettingsPanel({ settings, portable, sides }: { settings: SettingsSectio
           <ServiceHeading service={block.heading} />
           {block.parts.map((part) => (
             <div className="compare-kind" key={part.key}>
-              <KindHeading part={part} show={block.parts.length > 1} />
+              <KindHeading part={part} />
               {part.items.map((group) => <SettingsGroupView group={group} index={settings.groups.indexOf(group)} key={group.resourceType} sides={sides} />)}
             </div>
           ))}
         </div>
       ))}
-      {settings.notCompared.length ? (
-        <>
-          <h3>Not compared</h3>
-          <p className="compare-note">A side that did not read a kind in full proves nothing about it, so nothing is reported as removed.</p>
-          <ul className="compare-list">
-            {settings.notCompared.map((entry) => (
-              <li key={entry.resourceType}>{plainKind(entry.resourceType)} ({entry.service}): {notComparedSentence(entry)}</li>
-            ))}
-          </ul>
-        </>
-      ) : null}
-      {settings.unmatched.length ? (
-        <>
-          <h3>Cannot be matched across tenants</h3>
-          <p className="compare-note">These kinds are known only by an id each tenant gives them, so the same object cannot be found in the other tenant.</p>
-          <ul className="compare-list">
-            {settings.unmatched.map((entry) => (
-              <li key={entry.resourceType}>{plainKind(entry.resourceType)} ({entry.service}): {entry.left} in the first, {entry.right} in the second.</li>
-            ))}
-          </ul>
-        </>
-      ) : null}
+      {settings.notCompared.length ? <NotCompared entries={settings.notCompared} sides={sides} /> : null}
+      {settings.unmatched.length ? <Unmatched entries={settings.unmatched} /> : null}
       {settings.groups.length ? (
         <TechnicalDetails summary="Technical details: settings">
           {settings.groups.flatMap((group) => group.items.map((item) => (
@@ -256,11 +345,11 @@ function WorkloadGroupView({ group, index, sides }: { group: WorkloadGroup; inde
           <Icon className="compare-group-chevron" name="chevron-down" />
         </summary>
         <ul className="compare-items">
-          {(group.items ?? []).map((item, itemIndex) => {
+          {byChange(group.items ?? []).map((item, itemIndex) => {
             const id = `compare-workload-${index}-${itemIndex}`;
             return (
-              <li className={`compare-item compare-${item.changeType}`} key={item.resourceKey}>
-                <ItemHead changeType={item.changeType} id={id} name={resourceKeyWords(item.resourceKey, item.name)} sides={sides} />
+              <li className={`compare-item compare-${item.changeType}`} data-whole={item.changeType !== "changed" && item.fields?.length ? "" : undefined} key={item.resourceKey}>
+                <ItemHead changeType={item.changeType} id={id} name={resourceKeyWords(item.resourceKey, item.name)} />
                 {item.changeType === "changed" || item.fields?.length ? <FieldTable change={item.changeType} fields={item.fields ?? []} id={resourceKeyWords(item.resourceKey, item.name)} sides={sides} total={item.fieldsTotal} /> : null}
               </li>
             );
@@ -288,7 +377,7 @@ function WorkloadsPanel({ workloads, liveStored, sides }: { workloads: Workloads
           <ServiceHeading service={block.heading} />
           {block.parts.map((part) => (
             <div className="compare-kind" key={part.key}>
-              <KindHeading part={part} show={block.parts.length > 1} />
+              <KindHeading part={part} />
               <ul className="compare-list" style={{ listStyle: "none", paddingLeft: 0 }}>
                 {part.items.map((group) => <WorkloadGroupView group={group} index={workloads.groups.indexOf(group)} key={group.workload} sides={sides} />)}
               </ul>
@@ -339,7 +428,7 @@ function ContentItemsPanel({ content }: { content: ContentItemsSection }) {
                     <Icon className="compare-group-chevron" name="chevron-down" />
                   </summary>
                   <ul className="compare-items">
-                    {container.items.map((item, index) => (
+                    {byChange(container.items).map((item, index) => (
                       <li className={`compare-item compare-${item.changeType}`} key={item.itemKey}>
                         <ItemHead changeType={item.changeType} id={`compare-content-${group.workload}-${index}`} name={contentItemWords(item)} />
                         {item.changeType === "changed" && item.beforeBytes !== null && item.afterBytes !== null ? (

@@ -25,7 +25,7 @@ test("each service sums up what is in line, changed and not covered, worst first
 
 test("every service shows: service reads are measured against the previous backup", () => {
   const summaries = serviceSummaries(active, [
-    { resourceType: "exchange-mail-flow", blastRadius: "access-affecting", serviceRead: { workload: "exchange-mail-flow", resourceKey: "transport-rule:Forward", collectionId: "c2", previousCollectionId: "c1", alertId: null, alertState: null } },
+    { resourceType: "exchange-mail-flow", blastRadius: "access-affecting", serviceRead: { workload: "exchange-mail-flow", resourceKey: "transport-rule:Forward", collectionId: "c2", previousCollectionId: "c1", previousReadAt: null, comparedWith: "approved", alertId: null, alertState: null, undo: { possible: true, reason: null } } },
   ], ["group"], [
     { type: "exchange-mail-flow", read: true },
     { type: "exchange-mailbox-settings", read: true },

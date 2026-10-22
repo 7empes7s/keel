@@ -91,9 +91,12 @@ export function ChangeDecision({
     setSubmitting(true);
     setError(null);
     try {
-      const settled = await Promise.all(ids.map(async (driftId) => {
-        await post("/api/actions/dispose", { driftId, action, reason: justification, ...(expiresAt ? { expiresAt } : {}) });
-        return driftId;
+      // A service setting change is accepted into its service's approved setup.
+      const settled = await Promise.all(items.map(async (item) => {
+        await post("/api/actions/dispose", item.serviceRead
+          ? { serviceChangeId: item.id, action, reason: justification }
+          : { driftId: item.id, action, reason: justification, ...(expiresAt ? { expiresAt } : {}) });
+        return item.id;
       }));
       onDone(settled, `${action === "accept" ? "Accepted" : "Ignored"} ${settled.length} ${settled.length === 1 ? "change" : "changes"}.`);
     } catch {

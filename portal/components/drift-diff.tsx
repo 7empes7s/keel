@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 
-import { ChangedValuesStyles, SidesRow, Value } from "@/components/changed-values";
+import { ChangeComparison } from "@/components/change-comparison";
 import { RecordCompare, RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
-import { changeKindWords, changeLabel, fieldWords } from "@/lib/changes-view";
+import { changeLabel, fieldWords } from "@/lib/changes-view";
 import { diffPayloads } from "@/lib/drift-diff";
 import type { DriftRecord } from "@/lib/types";
 
@@ -27,47 +27,32 @@ function displayPayload(payload: unknown): string {
   return JSON.stringify(payload, null, 2) ?? "not captured";
 }
 
-// The comparison for one change: each field that differs, in words, first; the field
-// paths and both full payloads stay in the record for anything the words do not explain.
+// The comparison for one change: each setting that differs, next to its approved value,
+// first; the field paths and both full payloads stay in the record.
 // A service setting change compares two reads, not the approved setup and now.
 // `record` adds the fields the caller knows (the service read, when it was found) to the
 // same Technical details, so a change has one record, not two.
 export function DriftDiff({ item, record }: { item: DriftRecord; record?: ReactNode }) {
   const changes = diffPayloads(item.before, item.after);
-  const read = Boolean(item.serviceRead);
-  const summary = item.changeType === "added"
-    ? read ? "This is new since the previous read." : "This exists in the tenant but not in the approved setup."
-    : item.changeType === "removed"
-      ? read ? "This was missing from the newest read." : "This is in the approved setup but no longer exists in the tenant."
-      : changes.length
-        ? `${changes.length} ${changes.length === 1 ? "setting" : "settings"} ${read ? `changed since the previous read` : changes.length === 1 ? "differs from the approved setup" : "differ from the approved setup"}.`
-        : "The settings compare equal one by one; the full copies are in Technical details.";
-  const beforeLabel = read ? "Previous read" : "Approved";
+  // An older service change compares two reads; the rest compare with an approved setup.
+  const read = item.serviceRead?.comparedWith === "previous";
 
   return (
     <section aria-labelledby={`drift-diff-heading-${item.id}`} className="drift-diff" id={`drift-diff-${item.id}`}>
-      <ChangedValuesStyles />
       <div className="drift-diff-head">
-        <h3 id={`drift-diff-heading-${item.id}`}>{changeLabel(item)}</h3>
-        <p className="field-help">{summary}</p>
+        <h3 id={`drift-diff-heading-${item.id}`}>{read ? "Compared with the previous read" : "Compared with the approved setup"}</h3>
       </div>
-      {changes.length ? (
-        <ul aria-label={`${changeLabel(item)}: settings`} className="cv-list">
-          {changes.map((change) => (
-            <SidesRow
-              after={change.kind === "removed" ? null : <Value names={item.refNames ?? {}} value={change.after} />}
-              before={change.kind === "added" ? null : <Value names={item.refNames ?? {}} value={change.before} />}
-              key={change.path}
-              name={fieldWords(change.path)}
-              note={changeKindWords(change.kind)}
-              sides={{ before: beforeLabel, after: "Now" }}
-            />
-          ))}
-        </ul>
-      ) : null}
+      <ChangeComparison
+        after={item.after}
+        against={read ? "the previous read" : "the approved setup"}
+        before={item.before}
+        label={`${changeLabel(item)}: settings`}
+        names={item.refNames ?? {}}
+        sides={read ? { before: "Previous read", after: "Newest read" } : { before: "Approved setup", after: "Now" }}
+      />
       <TechnicalDetails>
         <RecordField label="Natural key" value={item.naturalKey} />
-        {read ? null : <RecordField label="Drift ID" value={item.id} usage={<>The <code>driftId</code> for <code>POST /api/actions/dispose</code></>} />}
+        {item.serviceRead ? null : <RecordField label="Drift ID" value={item.id} usage={<>The <code>driftId</code> for <code>POST /api/actions/dispose</code></>} />}
         <RecordField copy={false} label="Change type" value={item.changeType} />
         <RecordField copy={false} label="Blast radius" value={item.blastRadius} />
         {record}

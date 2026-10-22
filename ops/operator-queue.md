@@ -6259,8 +6259,8 @@ item that needs it stays untouched.
   - A schedule-only change, a fix turned off, or an added exclusion reaches no one new and needs no approval.
   - The review page shows "Newly assigned to ..." on each such effect.
 - Needs: /opt/keel-live at the #464 merge or later (`grep -q newAssignmentReach /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 07:45 UTC) on **#466**, not started (no fixtures created). The Needs are met at 1856809, but a snapshot dry run still stops in the current-state read (`collecting deviceManagementExchangeConnector failed`). I re-checked at 1856809 with the Q109 dry run at 07:45 UTC.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores and content effects yourself and log every approval id. Restorer only; global admin not used.
   If Graph answers 403, report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.
@@ -6304,8 +6304,11 @@ item that needs it stays untouched.
     guest account match dropped.
   - Unmeasured: every PATCH above and its read-back (the `/deviceManagement` read uses `$select=id,settings,managedDeviceCleanupSettings`).
 - Needs: /opt/keel-live at the #465 merge or later (`grep -q onPremisesAccessRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-22 07:45 UTC), not started; nothing drifted.
+  - **#466:** the restore from S cannot plan at 1856809 (current-state read fails on deviceManagementExchangeConnector).
+  - **#447:** `deviceManagementSettings` still answers 400 to the collector (`/StatelessOnboardingService/deviceManagement`), so step 1 cannot back it up.
+  - **Approval:** this item changes tenant-wide settings. Marouane told keel-operator to hold tenant-wide items (Q110, Q111) until he approves them directly, so Q133 waits for the same go.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementConfiguration.ReadWrite.All, DeviceManagementServiceConfig.ReadWrite.All and SharePointTenantSettings.ReadWrite.All.

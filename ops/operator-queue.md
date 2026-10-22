@@ -6161,15 +6161,17 @@ item that needs it stays untouched.
   `POST .../compliancePolicies/{id}/setScheduledActions` with `{ scheduledActions: [...] }`, read back. Who the policy is
   assigned to is **not** written; the fixture stays unassigned.
 - Needs: /opt/keel-live at the #451 merge or later (`grep -q complianceActionsAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result: blocked (2026-10-22 08:42 UTC) on **#473** (comment on it covers this type). B = c396a2c. Restorer only; nothing granted; no restore approved.
-  - Fixture `KEEL-RT-compliance` (Linux, linuxMdm, `linux_deviceencryption_required_true`). The notification action was not possible: creating `KEEL-RT-notice`
-    (`notificationMessageTemplates`, beta and v1.0) answered **400** "An error has occurred" (StatelessNotification service), so the fixture had **block 0 h** only.
-  - **Backup check fails** (S = `94ad1b37`, tier 1): read outcome `complete` (1), `settings` 1 item, but **`scheduledActionsForRule: []`**. Graph returns `[]` for the
-    double `$expand` on the policy; the `/scheduledActionsForRule?$expand=scheduledActionConfigurations` navigation returns the action.
-  - Update round: drifted the description to `drift` (`PUT` 204) and block to 72 h (`setScheduledActions` 200); both routes work live by hand.
-    The dry run `85342bea` exited 1 before planning: `listing /deviceManagement/compliancePolicies/{parent}?$expand=... failed` (#473). Create and update: **blocked**.
-  - Cleanup: deleted the policy; no KEEL-RT compliance policy is left. No template was created. Nothing left.
+- Status: done
+- Result: done (2026-10-22 12:07 UTC). **Update promoted; create demoted (#513).** The create writes correctly, but its post-state read has no actions. B = 944ed34. Restorer only; global admin not used; nothing assigned.
+  - Fixture `KEEL-RT-compliance` (Linux, linuxMdm, `linux_deviceencryption_required_true`, **block 0 h** only). The notification action is still not possible: `notificationMessageTemplates` create returns 400.
+  - **Backup check** (S = `3903c788`, tier 1): read `complete` (1). `settings` 1 item; `scheduledActionsForRule` holds `block:0` (the per-item read now works; Q120's earlier `[]` is fixed). No notification action, because none could be made.
+  - **Update** (run first, because of #485): description `drift` (PUT 204), block 72 h (`setScheduledActions` 200). Dry run `da592b50` (plan shows description), approval **591c3c14**, job `1b3fa2eb`:
+    verified. Read back "KEEL restore fixture" and block **0 h**, so the actions were written too. **Promoted.**
+  - **Re-run** (`c7303d61`, before the create): **0 changed fields**.
+  - **Create:** deleted it. Dry run `e7c0a517`, approval **7087c7b4**, job `86aeb6b7`: tenant correct (description, linux, the setting, block 0 h), but the journal says `uncertain`: "post-state: scheduledActionsForRule did not read back
+    as written". The post-state has no `scheduledActionsForRule` key. **Demoted**, filed #513.
+  - Cleanup: deleted the recreated policy. No KEEL-RT compliance policy is left; no template was created. **Nothing left.**
+  - Evidence: `claude/live-evidence-restore-gaps-7` @ **3b743229** (update record and capture; create record, capture and demotion). pseudonymize check exit 0; my scan is clean.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
   needs DeviceManagementConfiguration.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing.

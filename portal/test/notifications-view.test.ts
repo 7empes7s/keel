@@ -94,7 +94,7 @@ test("provider errors become a sentence and a next step; codes stay out of them"
   assert.equal(deliveryProblem({ status: "failed", attempts: 5, channel_kind: "teams", last_error: "Teams refused the message (HTTP 403)", provider_receipt: { httpStatus: 403 } })?.sentence, "Microsoft Teams refused it: the key or address is no longer accepted.");
   assert.equal(deliveryProblem({ status: "retrying", attempts: 1, channel_kind: "pagerduty", last_error: "PagerDuty asked Keel to slow down (HTTP 429)", provider_receipt: { httpStatus: 429 } })?.whatToDo, "Keel tries again on its own.");
   assert.equal(deliveryProblem({ status: "retrying", attempts: 2, channel_kind: "webhook", last_error: "the webhook did not answer in time", provider_receipt: null })?.sentence, "It did not answer in time.");
-  assert.equal(deliveryProblem({ status: "failed", attempts: 1, channel_kind: "webhook", last_error: "the hook said no (HTTP 418)", provider_receipt: null })?.sentence, "The hook said no.");
+  assert.equal(deliveryProblem({ status: "failed", attempts: 1, channel_kind: "webhook", last_error: "the hook said no (HTTP 418)", provider_receipt: null })?.sentence, "Web address refused the message.");
   assert.equal(deliveryProblem({ status: "delivered", attempts: 1, channel_kind: "email", last_error: null, provider_receipt: null }), null);
 });
 
@@ -156,7 +156,7 @@ test("the status pill and the verdict name the failing channel first", () => {
   assert.deepEqual(notificationsStatus(counts, { channels: CHANNELS, subscriptions: RULES }), { tone: "urgent", label: "Slack is failing" });
   const verdict = notificationsVerdict({ channels: CHANNELS, subscriptions: RULES, deliveries: DELIVERIES }, NOW);
   assert.equal(verdict.text, "Slack has been failing for 28 minutes; the other 3 channels work.");
-  assert.equal(verdict.detail, "Slack refused it: the address was removed. Make a new address in Slack, add it here as a new channel, then turn this one off.");
+  assert.equal(verdict.detail, "Slack refused it: the address was removed.");
   assert.equal(verdict.action, "test");
   assert.equal(verdict.channelId, SLACK.id);
   assert.equal(verdict.tone, "attention");

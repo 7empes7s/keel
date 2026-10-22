@@ -203,13 +203,14 @@ test('an unreadable Intune role check is not checked, never missing; the run sto
   assert.deepEqual(writesIn(tenant), []);
 });
 
-test("the restorer's over-broad grant is reported as observed, not fixed", async (t) => {
-  const tenant = graph(t, fixtureTenant({ operatorActive: true, restorerExtra: ['MailboxSettings.ReadWrite', 'Directory.ReadWrite.All'] }));
+test("a grant Keel never uses is reported as observed, not fixed; grants other backups use are not extra", async (t) => {
+  // Directory.ReadWrite.All is used by another restore (group expiry); Channel.Create by none.
+  const tenant = graph(t, fixtureTenant({ operatorActive: true, restorerExtra: ['Channel.Create', 'Directory.ReadWrite.All'] }));
   const { client, owner } = await database(t);
   const composed = host({ operatorPrincipalId: OPERATOR_ID });
   const restore = await run({ client, owner, setupHost: composed, workloads: ['entra-restore'] });
   const consent = restore.plan.steps.find((step) => step.kind === 'graph-permission');
-  assert.deepEqual(consent.excessScopes, ['Directory.ReadWrite.All', 'MailboxSettings.ReadWrite']);
+  assert.deepEqual(consent.excessScopes, ['Channel.Create']);
   assert.deepEqual(consent.missingScopes, []);
   assert.equal(restore.result.status, 'complete', restore.result.error?.message);
   assert.deepEqual(writesIn(tenant), [], 'nothing is removed or narrowed');
@@ -222,7 +223,32 @@ test("the restorer's over-broad grant is reported as observed, not fixed", async
   assert.ok(restoreScope.steps.every((step) => step.progress === 'done'));
   const fresh = await loadSetupState(client, { tenantRef: 'sha256:setup-host-other', viewerId: owner.id, readers: host({ tenantRef: 'sha256:setup-host-other' }).readers });
   assert.deepEqual(fresh.scopes.find((scope) => scope.scope === 'restore').steps.find((step) => step.kind === 'graph-permission').excessScopes,
-    ['Directory.ReadWrite.All', 'MailboxSettings.ReadWrite'], 'the setup page carries the extra grants');
+    ['Channel.Create'], 'the setup page carries the unused grant');
+});
+
+test('the permission table reads fresh grants on every Microsoft API, even after a finished run', async (t) => {
+  const tenant = graph(t, fixtureTenant({ operatorActive: true, restorerExchange: true }));
+  const { client, owner } = await database(t);
+  await run({ client, owner, setupHost: host({ operatorPrincipalId: OPERATOR_ID }), workloads: ['entra-restore'] });
+
+  const state = await loadSetupState(client, { tenantRef, viewerId: owner.id, readers: host().readers });
+  assert.equal(state.scopes.find((scope) => scope.scope === 'restore').run.state, 'complete');
+  const { observed, permissions } = state.permissions;
+  assert.ok(permissions.some((entry) => entry.identity === 'restorer' && entry.name === 'Exchange.ManageAsApp' && entry.api === 'exchange'));
+  assert.equal(observed.complete, true);
+  assert.ok(observed.byIdentity.restorer.granted.some((grant) => grant.api === 'exchange' && grant.name === 'Exchange.ManageAsApp'));
+  assert.ok(observed.byIdentity.restorer.granted.some((grant) => grant.api === 'graph' && grant.name === 'Group.ReadWrite.All'));
+  assert.ok(observed.byIdentity.collector.requested.some((grant) => grant.api === 'graph' && grant.name === 'User.Read.All'));
+
+  // A grant removed after the run shows up on the next load: the table never trusts the run.
+  const restorerSp = tenant.sps.get(RESTORER_APP_ID).id;
+  tenant.grants.set(restorerSp, tenant.grants.get(restorerSp).filter((grant) => grant.resourceId !== tenant.exchangeSp.id));
+  const later = await loadSetupState(client, { tenantRef, viewerId: owner.id, readers: host().readers });
+  assert.ok(!later.permissions.observed.byIdentity.restorer.granted.some((grant) => grant.name === 'Exchange.ManageAsApp'));
+  assert.deepEqual(writesIn(tenant), []);
+
+  const offline = await loadSetupState(client, { tenantRef, viewerId: owner.id, readers: null });
+  assert.equal(offline.permissions.observed, null, 'without readers nothing is claimed');
 });
 
 test('disabled write adapters never write; an enabled operation writes only the missing grant', async (t) => {

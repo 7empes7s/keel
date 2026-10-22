@@ -220,7 +220,8 @@ export const COMPLETENESS = Object.freeze({
   complianceManagementPartner: { whole: 'not-written', missing: [part('The connection made from the partner console', 'other-route')] },
   remoteAssistancePartner: { whole: 'not-written', missing: [part('The onboarding made from the partner console', 'other-route')] },
   deviceManagementExchangeConnector: { whole: 'not-written', missing: [part('The connector installed on the Exchange server', 'other-route')] },
-  onPremisesConditionalAccessSettings: { whole: 'not-written' },
+  // Restore gaps batch 17: updated in place; a restore never turns it on.
+  onPremisesConditionalAccessSettings: { missing: [part('Turning it on', 'not-written')] },
   mobileAppCategory: { missing: [part('Built-in categories', 'microsoft-managed'), part('Which apps are in the category', 'other-route')] },
   intuneBrandingProfile: { missing: [part('Logo images', 'other-route')] },
   customAuthenticationExtension: { whole: 'not-written' },
@@ -258,14 +259,15 @@ export const COMPLETENESS = Object.freeze({
   defenderRoleAssignment: { whole: 'not-written' },
   defenderCustomAppScope: { whole: 'not-written' },
   // Remaining kinds, batch 6.
-  deviceManagementSettings: { whole: 'not-written' },
+  // Restore gaps batch 17: compliance settings and device cleanup updated in place.
+  deviceManagementSettings: { missing: [part('The Company Portal brand, written as the default branding profile', 'other-route'), part('Marking devices with no compliance policy as compliant, and a shorter device cleanup', 'not-written')] },
   androidDeviceOwnerEnrollmentProfile: { missing: [part('Enrollment token, QR code and Wi-Fi password', 'secret')] },
   androidForWorkEnrollmentProfile: { missing: [part('Enrollment token and QR code', 'secret')] },
   appleUserInitiatedEnrollmentProfile: { missing: [part('Its place in the priority order', 'not-written'), part('Who the profile is assigned to', 'not-written')] },
   androidForWorkSettings: { whole: 'not-written' },
   deviceManagementDerivedCredentialSettings: { whole: 'not-written' },
   microsoftTunnelConfiguration: { missing: [part('The sites and servers that use it', 'other-route')] },
-  microsoftTunnelHealthThreshold: { whole: 'not-written' },
+  microsoftTunnelHealthThreshold: { missing: [part('The default limits', 'microsoft-managed')] },
   // Restore gaps batch 16: assignments read per profile and written through /assign.
   iosLobAppProvisioningConfiguration: {},
   mobileAppRelationship: { missing: [part('The app packages on both ends, added again by hand before the link', 'binary-route')] },
@@ -277,7 +279,8 @@ export const COMPLETENESS = Object.freeze({
   symantecCodeSigningCertificate: { whole: 'not-written', missing: [part('Certificate file and password', 'secret')] },
   userExperienceAnalyticsBaseline: { missing: [part('Built-in baselines', 'microsoft-managed'), part('The scores taken when it was created', 'microsoft-managed')] },
   // Remaining kinds, batch 7.
-  sharepointSettings: { whole: 'not-written' },
+  // Restore gaps batch 17: the settings other than sharing (the SharePoint workload writes those).
+  sharepointSettings: { missing: [part('Legacy authentication turned on, unmanaged sync allowed or the guest account match dropped', 'not-written')] },
   itemInsightsSettings: { whole: 'not-written' },
   externalConnection: { whole: 'not-written', missing: [part('The connection schema and the items pushed into it', 'other-route')] },
   simulationAutomation: { whole: 'not-written', missing: [part('Each run of the automation', 'other-route')] },

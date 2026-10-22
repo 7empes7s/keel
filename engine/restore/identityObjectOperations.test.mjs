@@ -660,3 +660,46 @@ test('every record operation is in the ledger, and best-effort types have no rec
   }
   for (const type of Object.keys(IDENTITY_BEST_EFFORT)) assert.equal(IDENTITY_RECORDS[type], undefined, type);
 });
+
+// ------------------------------------------- restore gaps, batch 17
+
+const sharepoint = Object.freeze({
+  isLoopEnabled: true, isSiteCreationEnabled: false, idleSessionSignOut: { isEnabled: true, warnAfterInSeconds: 3000, signOutAfterInSeconds: 3600 },
+  isLegacyAuthProtocolsEnabled: false, isUnmanagedSyncAppForTenantRestricted: true, isRequireAcceptingUserToMatchInvitedUserEnabled: true,
+  sharingCapability: 'externalUserAndGuestSharing', sharingAllowedDomainList: ['partner.example'], isResharingByExternalUsersEnabled: true,
+  availableManagedPathsForSiteCreation: ['/sites/'], tenantDefaultTimezone: '(UTC) Coordinated Universal Time',
+});
+
+test('restore gaps batch 17: SharePoint tenant settings are updated in place, never the sharing fields', async () => {
+  const path = '/admin/sharepoint/settings';
+  assert.equal(IDENTITY_RECORDS.sharepointSettings.singleton, true);
+  assert.deepEqual(IDENTITY_RECORDS.sharepointSettings.operations, ['update']);
+  const live = { ...sharepoint, isLoopEnabled: false, sharingCapability: 'disabled', sharingAllowedDomainList: [], isResharingByExternalUsersEnabled: false, availableManagedPathsForSiteCreation: ['/teams/'] };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await applyIdentityObjectWrite(graph, { naturalKey: 'sharepointSettings', resourceType: 'sharepointSettings', payload: sharepoint, references: [], live: { state: 'present', payload: live } }, 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = graph.calls.filter((call) => call.method !== 'GET' && call.method !== undefined);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].method, 'PATCH');
+  assert.equal(writes[0].version, 'v1.0');
+  assert.equal(writes[0].path, path);
+  assert.deepEqual(writes[0].body, { isLoopEnabled: true }, 'sharing fields stay with the SharePoint workload; read-only paths are never sent');
+});
+
+test('restore gaps batch 17: a SharePoint restore never loosens who can reach files', async () => {
+  const path = '/admin/sharepoint/settings';
+  for (const [field, loose] of [['isLegacyAuthProtocolsEnabled', true], ['isUnmanagedSyncAppForTenantRestricted', false], ['isRequireAcceptingUserToMatchInvitedUserEnabled', false]]) {
+    const graph = idoFakeGraph({ seed: { [path]: sharepoint } });
+    const backup = { ...sharepoint, [field]: loose, isLoopEnabled: false };
+    const result = await applyIdentityObjectWrite(graph, { naturalKey: 'sharepointSettings', resourceType: 'sharepointSettings', payload: backup, references: [], live: { state: 'present', payload: sharepoint } }, 'update', FAST);
+    assert.match(result.skipped?.reason ?? '', /never loosens who can reach files/, field);
+    assert.deepEqual(result.skipped.completion.fields, [field]);
+    assert.equal(graph.calls.filter((call) => call.method === 'PATCH').length, 0, field);
+  }
+  // Tightening is written.
+  const loose = { ...sharepoint, isLegacyAuthProtocolsEnabled: true };
+  const graph = idoFakeGraph({ seed: { [path]: loose } });
+  const result = await applyIdentityObjectWrite(graph, { naturalKey: 'sharepointSettings', resourceType: 'sharepointSettings', payload: sharepoint, references: [], live: { state: 'present', payload: loose } }, 'update', FAST);
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.deepEqual(graph.calls.find((call) => call.method === 'PATCH').body, { isLegacyAuthProtocolsEnabled: false });
+});

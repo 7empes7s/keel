@@ -390,7 +390,8 @@ test('the administrative batch runner drives the subset through applyWave and re
   const report = await runExpansionBatch('administrative-configuration');
   assert.deepEqual(report.operations.map((op) => `${op.resourceType} ${op.operation} ${op.result}`).sort(),
     ['administrativeUnit update passed', 'groupLifecyclePolicy update passed', 'groupSetting delete passed', 'groupSetting update passed',
-      'organizationalBranding update passed', 'organizationalBrandingLocalization update passed']);
+      'organizationalBranding update passed', 'organizationalBrandingLocalization update passed',
+      'sharepointSettings update passed']);
   assert.ok(report.operations.every((op) => op.synthetic === true));
   assert.ok(report.administrativeLedger.families.some((family) => family.resourceType === 'administrativeUnit'
     && family.unrecoverable.some((item) => item.name === 'members')));

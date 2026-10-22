@@ -324,6 +324,14 @@ const FIXTURE_PAYLOADS = Object.freeze({
     '@odata.type': '#microsoft.graph.mobileAppDependency', sourceId: 'fixture-app-source', sourceDisplayName: 'Fixture app',
     targetId: 'fixture-app-target', targetDisplayName: 'Fixture runtime', targetType: 'child', dependencyType: 'detect',
   },
+  // Restore gaps, batch 17: tenant-wide settings, updated in place.
+  deviceManagementSettings: {
+    settings: { deviceComplianceCheckinThresholdDays: 30, isScheduledActionEnabled: true, secureByDefault: true, enhancedJailBreak: false },
+    managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '180' },
+  },
+  microsoftTunnelHealthThreshold: { healthyThreshold: 70, unhealthyThreshold: 90 },
+  onPremisesConditionalAccessSettings: { enabled: false, includedGroups: [], excludedGroups: [], overrideDefaultRule: false },
+  sharepointSettings: { isLoopEnabled: true, idleSessionSignOut: { isEnabled: false, warnAfterInSeconds: 0, signOutAfterInSeconds: 0 }, siteCreationDefaultStorageLimitInMB: 26214400 },
   // Restore gaps, batch 2: Entra ID tenant singletons.
   externalIdentitiesPolicy: { allowExternalIdentitiesToLeave: true, allowDeletedIdentitiesDataRemoval: false },
   accessReviewPolicy: { isGroupOwnerManagementEnabled: true },
@@ -386,6 +394,11 @@ const FIXTURE_DRIFT = Object.freeze({
   attributeSet: () => ({ description: 'Drifted' }),
   customSecurityAttributeDefinition: () => ({ description: 'Drifted' }),
   entitlementManagementSettings: () => ({ externalUserLifecycleAction: 'none' }),
+  // Restore gaps, batch 17: each drifts one setting its restore puts back.
+  deviceManagementSettings: (payload) => ({ settings: { ...payload.settings, deviceComplianceCheckinThresholdDays: 25 } }),
+  microsoftTunnelHealthThreshold: () => ({ healthyThreshold: 60 }),
+  onPremisesConditionalAccessSettings: () => ({ overrideDefaultRule: true }),
+  sharepointSettings: () => ({ isLoopEnabled: false }),
   // Restore gaps, batch 2: each singleton drifts one writable setting.
   externalIdentitiesPolicy: () => ({ allowExternalIdentitiesToLeave: false }),
   accessReviewPolicy: () => ({ isGroupOwnerManagementEnabled: false }),

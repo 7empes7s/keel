@@ -134,6 +134,11 @@ const REGISTERED = Object.freeze({
   // Restore gaps, batch 11.
   groupPolicyUploadedDefinitionFile: ['create'],
   hardwareConfiguration: ['update'],
+  // Restore gaps, batch 17: tenant-wide settings.
+  deviceManagementSettings: ['update'],
+  microsoftTunnelHealthThreshold: ['update'],
+  onPremisesConditionalAccessSettings: ['update'],
+  sharepointSettings: ['update'],
   // Restore gaps, batch 12.
   windowsManagedAppProtection: ['create', 'update'],
   iosLobAppProvisioningConfiguration: ['create', 'update'],

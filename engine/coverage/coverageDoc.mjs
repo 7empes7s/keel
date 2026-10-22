@@ -410,16 +410,17 @@ export const TYPE_GUIDE = Object.freeze({
   deviceManagementExchangeConnector: manual('Exchange on-premises connectors', MS,
     'The connector is a program installed on an Exchange server. No tool can install it from a backup.',
     'Use the backup for the server and settings. Download the connector from the Intune admin center and install it on that server again.'),
-  onPremisesConditionalAccessSettings: manual('Exchange on-premises access settings', NOT_BUILT,
-    'KEEL backs these up but does not restore them yet.',
-    'Put the settings back in the Intune admin center from the backup.'),
+  onPremisesConditionalAccessSettings: auto('Exchange on-premises access settings', {
+    keeps: 'Puts back whether Exchange on-premises access control is on and which groups it covers or leaves out.',
+    todo: 'A restore never turns it on, because that could block mail on devices that are not managed: turn it on by hand in the Intune admin center, under Tenant administration, Connectors and tokens, Exchange on-premises access.',
+  }),
   mobileAppCategory: auto('App categories', {
     keeps: 'Recreates your own categories and puts their names back. The built-in categories come with every tenant and are never changed.',
     todo: 'Which apps are in a category is set on each app; add the apps to a recreated category again by hand.',
   }),
   intuneBrandingProfile: auto('Company Portal branding', {
-    keeps: 'Recreates branding profiles for your groups and puts back their name, colours, contact details, links and Company Portal options. The default branding, which every user sees, is not changed.',
-    todo: 'Logo images are not backed up: upload them again from your own copy. Who a profile is assigned to is put back only when it is picked for a restore. Set the default branding by hand from the backup.',
+    keeps: 'Recreates branding profiles for your groups and puts back their name, colours, contact details, links and Company Portal options. The default branding, which every user sees, is put back in place.',
+    todo: 'Logo images are not backed up: upload them again from your own copy. Who a profile is assigned to is put back only when it is picked for a restore.',
   }),
   deviceManagementCompliancePolicy: auto('Settings catalog compliance policies', {
     keeps: 'Recreates policies and puts back their settings, actions for noncompliance (block, emails, grace periods) and who they are assigned to.',
@@ -516,9 +517,10 @@ export const TYPE_GUIDE = Object.freeze({
   defenderCustomAppScope: manual('Defender app access scopes', NOT_BUILT,
     'KEEL backs these up but does not restore them yet.',
     'Recreate each scope with PowerShell from the backup, before the assignments that use it. There is no admin center page for it.'),
-  deviceManagementSettings: manual('Intune tenant settings', NOT_BUILT,
-    'KEEL backs up the tenant-wide Intune settings, such as how devices with no compliance policy are marked and the Company Portal contact details, but does not restore them yet.',
-    'Set the same values in the Intune admin center, under Endpoint security, Device compliance, Compliance settings, and under Tenant administration, Customization, from the backup.'),
+  deviceManagementSettings: auto('Intune tenant settings', {
+    keeps: 'Puts back the compliance settings, such as how devices with no compliance policy are marked and how long a device may go without checking in, and the device cleanup window.',
+    todo: 'A restore never marks devices with no compliance policy as compliant and never makes device cleanup retire devices sooner: change those by hand in the Intune admin center, under Endpoint security, Device compliance, Compliance settings, and under Devices, Device clean-up rules. The Company Portal contact details are put back with the default branding profile.',
+  }),
   androidDeviceOwnerEnrollmentProfile: auto('Android Enterprise enrollment profiles', {
     keeps: 'Recreates profiles and puts back their name, description, device name template and Wi-Fi network; the enrollment mode is set when a profile is recreated. A profile on a secured Wi-Fi network is recreated by hand, because the Wi-Fi password is not backed up.',
     todo: 'A recreated profile has a new enrollment token and QR code: make a token in the Intune admin center, under Devices, Enrollment, Android, and hand it out again. Recreate a profile on a secured Wi-Fi network by hand and type the password again.',
@@ -541,9 +543,9 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates configurations and puts back their network, DNS servers, routes and port.',
     todo: 'A site points to its configuration by id: point the site at a recreated configuration again by hand.',
   }),
-  microsoftTunnelHealthThreshold: manual('Microsoft Tunnel health thresholds', NOT_BUILT,
-    'KEEL backs up the healthy and unhealthy limits but does not restore them yet.',
-    'Set the same limits in the Intune admin center, under Tenant administration, Microsoft Tunnel Gateway, Health status, from the backup.'),
+  microsoftTunnelHealthThreshold: auto('Microsoft Tunnel health thresholds', {
+    keeps: 'Puts back the healthy and unhealthy limits of each health check.',
+  }),
   iosLobAppProvisioningConfiguration: auto('Apple app provisioning profiles', {
     keeps: 'Recreates profiles and puts back their name, description, scope tags, the profile file from Apple and who they are assigned to.',
     todo: 'Who a profile is assigned to is put back only when it is picked for a restore, from backups taken after assignments were read. An expired file, or one that expires before the profile in Intune now, is never uploaded: renew it with Apple and upload it in the Intune admin center, under Apps, iOS/iPadOS, App provisioning profiles. A backup taken before the profile file was read is refused; take a new backup.',
@@ -577,9 +579,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates custom baselines and puts their names back. The built-in baseline is set by Microsoft and never changed.',
     todo: 'A recreated baseline takes today\'s scores to compare against, not the scores it held before; compare against the backup by hand if you need the old ones.',
   }),
-  sharepointSettings: manual('SharePoint and OneDrive tenant settings', NOT_BUILT,
-    'KEEL backs up every tenant-wide SharePoint and OneDrive setting, such as site creation, sync app limits, idle session sign-out and storage limits. It restores only the sharing settings, through the SharePoint service backup.',
-    'Set the same values in the SharePoint admin center, under Settings and Policies, from the backup.'),
+  sharepointSettings: auto('SharePoint and OneDrive tenant settings', {
+    keeps: 'Puts back the tenant-wide SharePoint and OneDrive settings, such as site creation, sync app limits, idle session sign-out, Loop and storage limits. The sharing settings are put back by the SharePoint service backup.',
+    todo: 'A restore never turns legacy authentication on, lets devices outside the domain sync, or lets a guest invitation be accepted by another account: when the backup does, nothing is written and you set those by hand in the SharePoint admin center, under Policies, Access control.',
+  }),
   itemInsightsSettings: manual('Item insights setting', NOT_BUILT,
     'KEEL backs up whether people cards and search show the documents a person worked on, and the group it is turned off for, but does not restore it yet.',
     'Set the same value in the Microsoft 365 admin center, under Settings, Org settings, Search and intelligence, from the backup, and pick the same group again.'),

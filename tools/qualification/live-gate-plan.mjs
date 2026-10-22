@@ -300,6 +300,30 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-bios`, drift: 'change its description: the restore puts it back',
     note: 'Update only: a deleted configuration is imported again by hand. If Intune refuses to create it without a real OEM settings file, record that and skip this kind. Never assign it.',
   },
+  // Restore gaps, batch 17: tenant-wide settings, approved by the user on
+  // 2026-10-22 for a live proof. Each drifts one harmless value and is set back
+  // to its original right after the run. None turns on anything that blocks
+  // access, and Conditional Access is never touched.
+  deviceManagementSettings: {
+    kind: 'tenant-setting', fixture: 'the Intune tenant compliance settings (how long a device may go without checking in before it is not compliant)',
+    select: 'deviceManagementSettings', drift: 'change settings.deviceComplianceCheckinThresholdDays by a few days (for example 30 to 25); write the original down first; never change secureByDefault or the device cleanup window',
+    note: 'The test tenant has no managed devices, so no device changes compliance. Set the original value back right after the run.',
+  },
+  microsoftTunnelHealthThreshold: {
+    kind: 'tenant-setting', fixture: 'one Microsoft Tunnel health limit (for example the CPU usage check)',
+    select: 'microsoftTunnelHealthThreshold', drift: 'change its healthyThreshold by a few points; write the original down first',
+    note: 'Only changes when a Tunnel server reads as healthy in reports; the test tenant runs no Tunnel server. If Graph lists no limits, record that and skip this kind.',
+  },
+  onPremisesConditionalAccessSettings: {
+    kind: 'tenant-setting', fixture: 'the Exchange on-premises access settings (off)',
+    select: 'onPremisesConditionalAccessSettings', drift: 'switch overrideDefaultRule to the other value while enabled stays false; write the original down first; never set enabled to true',
+    note: 'Stays off the whole time, so no device or mailbox is affected; the test tenant has no Exchange on-premises server. Set the original value back right after the run.',
+  },
+  sharepointSettings: {
+    kind: 'tenant-setting', fixture: 'the SharePoint tenant settings other than sharing (Loop, site creation, idle session sign-out)',
+    select: 'sharepointSettings', drift: 'switch isLoopEnabled to the other value; write the original down first; never change legacy authentication, unmanaged sync or any sharing field',
+    note: 'Set the original value back right after the run.',
+  },
   // Restore gaps, batch 12: a Windows app protection policy and an iOS
   // provisioning profile, both assigned to nobody. No device or user is affected.
   windowsManagedAppProtection: {

@@ -7214,8 +7214,29 @@ item that needs it stays untouched.
 - Drafted by the "Probe user-only areas" thread (2026-10-22). Build step 1 of the delegated access design
   (`/mnt/project-files/handoff/delegated-access/DESIGN.md` section 8). Code: PR #527.
 - Needs: /opt/keel-live at the #527 merge or later (`test -f /opt/keel-live/tools/tenant-probe/delegated-probe.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 22:02 UTC). Probe run at **3010d22**; the report is on `claude/live-evidence-delegated-probe` @ **c7fd9e33** (`docs/release/qualifications/delegated-probe.md`). Collector app-only reads, GET and `Get-` only; nothing written.
+  1. Sweep: exo exit 0 (JSON ok); teams exit 0, but its stdout began with Teams-module "Correlation id for this request" lines, which I stripped, leaving valid JSON with 206 entries; spo exit 0 (JSON ok, 462 bytes); scc: first run killed by my own 1200 s timeout (exit 124, empty), rerun exit 0 (JSON ok, 134 entries). All four went into step 2.
+  2. Probe: exit **0**. Verdicts: row 2 inconclusive; 3 nothing to call; 5 app-only works; 6 inconclusive; 7 partly app-only; 8 inconclusive; 9 not probed (see reasons); 11 app-only works; 12 partly app-only; 14 partly app-only; 15 app-only refused; 16 partly app-only; 17 partly app-only; 18 partly app-only; 20 app-only refused; 21 app-only works; 22 nothing to call; 23 app-only refused; 24 app-only refused; 25 app-only refused; 26 nothing to call; 27 nothing to call; 28 app-only refused.
+     - Row 2 (Planner premium / Project for the web): skipped, `not-found 404 0x8004a104`, skipped, `not-found 404 0x8004a104`.
+     - Row 6 (Power Apps and flows in solutions): 3× (skipped, `not-found 404 0x8004a104`).
+     - Row 8 (Dynamics 365 / Dataverse): skipped, `not-found 404 0x8004a104`.
+     - Row 12 (Power BI My workspace): `works 200`, `refused 401 PowerBINotAuthorizedException`.
+     - Row 20 (Viva Engage / Yammer): `refused 403 unauthorized`, `refused 401`.
+     - Row 16 (Exchange PowerShell): works 188, needs-parameter 79, error 69, refused 6, not-found 3, not-supported 1.
+       refused (6): Get-AccessToCustomerDataRequest, Get-DefaultTenantBriefingConfig, Get-MailboxCalendarConfiguration, Get-MailboxFolder, Get-MailboxRegionalConfiguration, Get-PublicFolder
+       error (69): Get-App, Get-AuditConfig, Get-BlockedConnector, Get-BlockedSenderAddress, Get-BookingMailbox, Get-CalendarSettings, Get-CompliancePolicyFileSyncNotification, Get-CompliancePolicySyncNotification, Get-CrossTenantAccessPolicy, Get-CrossTenantRecallConfiguration, Get-DeviceComplianceUserReport, Get-DlpDetailReport, Get-DlpDetectionsReport, Get-DlpIncidentDetailReport, Get-DlpKeywordD
+       not-found (3): Get-ApplicationAccessPolicy, Get-RecipientStatisticsReport, Get-ServiceStatus
+       not-supported (1): Get-RbacDiagnosticInfo
+       (the full lists are in the committed report)
+     - Row 17 (Purview / Security & Compliance PowerShell): works 102, needs-parameter 14, error 15, refused 2, not-found 1.
+       error (15): Get-AuditConfig, Get-CaseHoldPolicy, Get-ComplianceCaseMemberCandidate, Get-ComplianceCustodian, Get-ComplianceNotice, Get-CompliancePreservationSetting, Get-HoldComplianceRule, Get-InsiderRiskEntityList, Get-LongTermAuditStats, Get-MailFilterListReport, Get-ScopeEntities, Get-ServiceDomainGroupStorage, Get-TeamsRetentionComplianceRule, Get-ThreatResponsePolicy, Get-ThreatResponseRule
+       refused (2): Get-ComplianceSecurityFilter, Get-RetentionEvent
+       not-found (1): Get-PrivacyManagementCaseAdmin
+     - Row 18 (Teams module): works 147, needs-parameter 38, error 14, refused 7.
+       error (14): Get-AllM365TeamsApps, Get-AssociatedTeam, Get-CsHybridTelephoneNumber, Get-CsOnlineDialInConferencingServiceNumber, Get-CsOnlineDirectoryTenant, Get-CsOnlineTelephoneNumber, Get-CsOnlineVoiceUser, Get-CsTeamsAudioConferencingCustomPromptsConfiguration, Get-CsTenant, Get-M365UnifiedCustomPendingApps, Get-M365UnifiedTenantSettings, Get-TeamsArtifacts, Get-TeamTargetingHierarchyStatus, Get-TenantPrivateChannelMigrationStatus
+       refused (7): Get-CsCloudCallDataConnection, Get-CsLocationPolicy, Get-CsPolicyPackage, Get-CsSdgBulkSignInRequestsSummary, Get-CsTeamsCarrierEmergencyCallRoutingPolicy, Get-CsTeamsTenantAbuseConfiguration, Get-TeamsApp
+  3. `delegated-probe.md` and `.json`: no tenant name, tenant id, tokens or GUIDs found. Only the `.md` is committed.
 - **Tenant:** reads only, Collector credential (`/etc/keel/tenant.json`). The Node probe sends GETs plus the Power Platform
   `listtenantsettings` read (POST, no body). The sweep calls only `Get-` cmdlets. Grant, assign, register or create nothing,
   even if a call is refused: a refusal is the result.

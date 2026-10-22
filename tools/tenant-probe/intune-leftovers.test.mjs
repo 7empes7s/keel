@@ -7,7 +7,7 @@ import { GraphReader } from './graph.mjs';
 
 // Independent expectations: the documented Graph route for each type, written
 // out here rather than derived from the catalogue under test.
-const DM_SELECT = 'id,settings,intuneBrand,managedDeviceCleanupSettings,adminConsent,dataProcessorServiceForWindowsFeaturesOnboarding,userExperienceAnalyticsSettings,legacyPcManangementEnabled,unlicensedAdminstratorsEnabled';
+const DM_SELECT = 'id,settings,intuneBrand,managedDeviceCleanupSettings';
 const OWNER_SELECT = 'id,accountId,configureWifi,createdDateTime,description,deviceNameTemplate,displayName,enrollmentMode,enrollmentTokenType,isTeamsDeviceProfile,lastModifiedDateTime,roleScopeTagIds,tokenCreationDateTime,tokenExpirationDateTime,wifiHidden,wifiSecurityType,wifiSsid';
 const WORK_SELECT = 'id,accountId,createdDateTime,description,displayName,lastModifiedDateTime,tokenExpirationDateTime';
 const SYMANTEC_SELECT = 'id,expirationDateTime,issuer,issuerName,status,subject,subjectName,uploadDateTime';
@@ -61,6 +61,10 @@ test('enrollment tokens, QR codes, Wi-Fi passwords and certificate files are lef
   const dm = fields('deviceManagementSettings');
   assert.ok(dm.includes('settings') && dm.includes('intuneBrand'));
   for (const counter of ['deviceProtectionOverview', 'windowsMalwareOverview', 'connectorStatus', 'subscriptionState']) assert.ok(!dm.includes(counter), counter);
+  // Issue #447: a $select naming fields outside the core Intune object sent the
+  // whole read to another backend, which answered HTTP 400.
+  for (const foreign of ['adminConsent', 'dataProcessorServiceForWindowsFeaturesOnboarding', 'userExperienceAnalyticsSettings',
+    'legacyPcManangementEnabled', 'unlicensedAdminstratorsEnabled']) assert.ok(!dm.includes(foreign), foreign);
   // Types read whole have no secret field.
   for (const entry of intuneLeftovers.filter((e) => !e.select)) assert.ok(!/password|token|secret/i.test(entry.path), entry.type);
 });

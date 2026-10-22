@@ -4,7 +4,7 @@
 // node keel-drift.mjs detect --config /etc/keel/tenant.json [--db-url $KEEL_DB_URL]
 // node keel-drift.mjs list [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
 // node keel-drift.mjs show <driftId> [--db-url $KEEL_DB_URL]
-import { snapshotHasFullCoverage } from '../engine/schedules/completions.mjs';
+import { snapshotReadyForDrift } from '../engine/schedules/completions.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
@@ -142,7 +142,7 @@ async function detect() {
     let snapshotId = suppliedSnapshotId;
     if (suppliedSnapshotId) {
       const { rows: [snapshot] } = await client.query('SELECT * FROM snapshot WHERE id = $1 AND tenant_ref = $2', [snapshotId, tenantRef]);
-      if (!snapshotHasFullCoverage(snapshot)) throw new Error('drift-detect deferred: snapshot coverage is incomplete');
+      if (!snapshotReadyForDrift(snapshot)) throw new Error('drift-detect deferred: snapshot coverage is incomplete');
     } else {
       const { accessToken } = await getToken(config);
       const reader = new GraphReader(async () => accessToken);
@@ -171,7 +171,11 @@ async function detect() {
       ? Object.entries((await client.query('SELECT coverage_digest FROM snapshot WHERE id = $1', [snapshotId])).rows[0].coverage_digest)
         .filter(([, entry]) => ['complete', 'complete-empty'].includes(entry?.outcome)).map(([type]) => type)
       : null;
-    const drift = diffSnapshots(coveredTypes ? before.filter((row) => coveredTypes.includes(row.resource_type)) : before, after);
+    // Only types read in full are compared on both sides (issue #447): a failed
+    // type has no rows and a partial type has only some, so neither can show
+    // as removed or added.
+    const covered = (rows) => (coveredTypes ? rows.filter((row) => coveredTypes.includes(row.resource_type)) : rows);
+    const drift = diffSnapshots(covered(before), covered(after));
     const beforeByNaturalKey = new Map(before.map((row) => [row.natural_key, row]));
     const afterByNaturalKey = new Map(after.map((row) => [row.natural_key, row]));
 

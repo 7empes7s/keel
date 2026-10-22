@@ -17,7 +17,11 @@ export default [
   // the device cleanup window. Runtime counters on the same object are left out.
   { type: 'deviceManagementSettings', path: '/deviceManagement', version: 'beta', singleton: true, absentWhenNotFound: true,
     criticality: 'tier1', blastRadius: 'access-affecting',
-    select: 'id,settings,intuneBrand,managedDeviceCleanupSettings,adminConsent,dataProcessorServiceForWindowsFeaturesOnboarding,userExperienceAnalyticsSettings,legacyPcManangementEnabled,unlicensedAdminstratorsEnabled',
+    // Issue #447: Graph sends a $select naming fields owned by other Intune
+    // services (Windows data onboarding, admin consent, Endpoint analytics) to
+    // the wrong backend, which answers HTTP 400. Only the core Intune fields
+    // are read here.
+    select: 'id,settings,intuneBrand,managedDeviceCleanupSettings',
     note: 'settings.secureByDefault marks devices with no compliance policy as not compliant, which Conditional Access reads.' },
   // Android Enterprise fully managed and dedicated device enrollment profiles.
   { type: 'androidDeviceOwnerEnrollmentProfile', path: '/deviceManagement/androidDeviceOwnerEnrollmentProfiles', version: 'beta',

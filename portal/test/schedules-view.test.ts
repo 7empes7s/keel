@@ -6,8 +6,9 @@ import { forecastSentence } from "@/lib/schedule-forecast-view";
 import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import {
   cadenceWords, lastResult, loadChip, parseScheduleFilter, previewNextRun, runNowRoute, scheduleCounts, scheduleErrorWords,
-  scheduleGroup, schedulesStatus, schedulesVerdict, turnOffEffect, utcToZoned, zonedToUtc, zonedTime, zonedWithUtc,
+  scheduleGroup, scheduleState, scheduleTone, schedulesStatus, schedulesVerdict, turnOffEffect, utcToZoned, zonedToUtc, zonedTime, zonedWithUtc,
 } from "@/lib/schedules-view";
+import { lastRunSentence } from "@/lib/protect-view";
 import { renderSchedulesAt } from "./render-schedules";
 
 const now = "2026-10-02T09:40:00Z";
@@ -145,4 +146,16 @@ test("the page body: tiles filter by address, rows open their panel, ids stay in
   const viewer = await renderSchedulesAt("", { ...props, canEdit: false, canRun: false });
   assert.ok(!viewer.includes("sel-check"));
   assert.ok(!viewer.includes("Review the load warning"));
+});
+
+test("a backup that could not read some types reads as partly done, not finished or failed (#447)", () => {
+  const partial = { ...TIER1, last_status: "partial" };
+  assert.equal(scheduleState(partial, undefined), "partial");
+  assert.equal(scheduleTone(partial, undefined), "soon");
+  assert.deepEqual(
+    { label: lastResult(partial, now).label, tone: lastResult(partial, now).tone },
+    { label: "Partly done 40 minutes ago", tone: "soon" },
+  );
+  assert.equal(lastRunSentence(partial, now), "Last run partly done 40 minutes ago: some types were not backed up.");
+  assert.equal(scheduleCounts([partial], undefined).failed, 0, "partial is not counted as failed");
 });

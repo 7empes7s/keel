@@ -73,7 +73,13 @@ export interface SchedulesData {
 export function guardedScheduleList(deps: GuardDeps = {}) {
   return guarded({ action: "schedules:list", capability: "read" }, async ({ client, tenantRef, principalId }) => {
     const { rows: schedules } = await client.query(
-      `SELECT s.*, j.started_at AS last_run_at, j.status AS last_status, j.error AS last_error
+      // Issue #447: a finished backup that could not read some types in full is "partial".
+      `SELECT s.*, j.started_at AS last_run_at,
+              CASE WHEN j.status = 'succeeded' AND j.result->>'partial' = 'true'
+                   AND jsonb_typeof(j.result->'incompleteTypes') = 'array'
+                   AND jsonb_array_length(j.result->'incompleteTypes') > 0
+                   THEN 'partial' ELSE j.status END AS last_status,
+              j.error AS last_error
        FROM schedule s LEFT JOIN job j ON j.id = s.last_job_id AND j.params->>'tenantRef' = s.tenant_ref
        WHERE s.tenant_ref = $1 ORDER BY s.job_kind, s.tier NULLS LAST, s.id`, [tenantRef],
     );

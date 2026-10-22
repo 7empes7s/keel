@@ -4,6 +4,7 @@ import { fieldWords } from "@/lib/changes-view";
 import { holdsObjectId } from "@/lib/object-ids";
 import { displayEnum } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
+import { madeInSharePoint } from "@/lib/services";
 import type { RestoreChange, RestoreChangesData } from "@/lib/restore-changes";
 import type { JobRecord, SnapshotOption } from "@/lib/portal-jobs";
 import { jobStatusSentence } from "@/lib/sentences";
@@ -173,6 +174,21 @@ export function whenWords(change: RestoreChange): string {
 /** How much a wrong restore of this item could break, in words. */
 export function impactWords(blastRadius: string): string {
   return displayEnum("blastRadius", blastRadius);
+}
+
+/**
+ * The impact a row shows when nothing changed since the backup. Once KEEL has compared the
+ * backup with the tenant, an unchanged item is "Same now" and a restore writes nothing to
+ * it, so a lockout warning there would only alarm. Before the comparison the impact stays,
+ * since KEEL cannot yet tell what a restore would write.
+ */
+export function rowImpact(blastRadius: string, compared: boolean): string | null {
+  return compared ? null : blastRadius;
+}
+
+/** The service a restore row sits under: SharePoint for the sign-in rules SharePoint made. */
+export function restoreService(resource: { resourceType: string; service: string | null; name?: string | null }, label?: string): string | null {
+  return madeInSharePoint(resource.resourceType, resource.name, label) ? "SharePoint" : resource.service;
 }
 
 export const IMPACT_ORDER = ["tenant-lockout", "access-affecting", "cosmetic"];

@@ -610,6 +610,9 @@ export function fakeGraph() {
       // Issue #155: an Intune policy that exists and was never assigned lists no assignments.
       const assignments = /^(\/device(?:Management|AppManagement)\/[^/]+\/[^/]+)\/assignments$/.exec(path);
       if (assignments && !objects.has(path) && objects.has(assignments[1])) return { ok: true, status: 200, body: { value: [] } };
+      // Issue #473: a compliance policy's actions for noncompliance are read from their own collection.
+      const complianceActions = /^(\/deviceManagement\/compliancePolicies\/[^/]+)\/scheduledActionsForRule$/.exec(path);
+      if (complianceActions && objects.has(complianceActions[1])) return { ok: true, status: 200, body: { value: objects.get(complianceActions[1]).scheduledActionsForRule ?? [] } };
       // Restore gaps batch 5: every built-in administrative template setting
       // exists in every tenant, and a template that exists starts with no settings.
       if (/^\/deviceManagement\/groupPolicyDefinitions\/[^/]+$/.test(path)) return { ok: true, status: 200, body: { id: decodeURIComponent(path.split('/').pop()) } };

@@ -9,6 +9,9 @@ import { GraphReader } from '../tools/tenant-probe/graph.mjs';
 import { collectSnapshot } from '../engine/collect/snapshot.mjs';
 import { connect } from '../engine/store/db.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
+import {
+  FULL_READ_OUTCOMES, INCOMPLETE_TYPES_PREFIX, PARTIAL_EXIT_CODE, incompleteTypesOf,
+} from '../engine/collect/incomplete.mjs';
 
 function arg(name, fallback, argv = process.argv) {
   const i = argv.indexOf(`--${name}`);
@@ -92,11 +95,16 @@ export function describeBrandingFileReads(summary) {
     : ''}`;
 }
 
-// A partial read fails completeness exactly like a failure; only
-// complete / complete-empty / not-requested / unavailable outcomes keep a zero
-// exit. Unavailable is a type the tenant has no licence or feature for (#309).
+// Exit codes. 0: every requested type read in full (complete, complete-empty,
+// not-requested, or unavailable: a type the tenant has no licence or feature for,
+// #309). 3: the snapshot holds at least one type read in full, but some types
+// failed or were read only in part; they are named on stdout and the run is
+// partial, not failed (#447). 1: nothing was read in full, or the run crashed.
 export function exitCodeForDigest(coverageDigest) {
-  return Object.values(coverageDigest).some((entry) => entry.outcome === 'failed' || entry.outcome === 'partial') ? 1 : 0;
+  const incomplete = incompleteTypesOf(coverageDigest);
+  if (incomplete.length === 0) return 0;
+  const anyFullRead = Object.values(coverageDigest).some((entry) => FULL_READ_OUTCOMES.includes(entry?.outcome));
+  return anyFullRead ? PARTIAL_EXIT_CODE : 1;
 }
 
 export async function runCollect({
@@ -139,6 +147,10 @@ export async function runCollect({
     const brandingLine = describeBrandingFileReads(brandingAssets);
     if (brandingLine) logger.log(brandingLine);
     logger.table?.(coverageDigest);
+    // One machine-readable line the worker turns into the job's result, so the
+    // portal can name what was not backed up.
+    const incomplete = incompleteTypesOf(coverageDigest);
+    if (incomplete.length) logger.log(`${INCOMPLETE_TYPES_PREFIX}${JSON.stringify(incomplete)}`);
     return { snapshotId, coverageDigest, exitCode: exitCodeForDigest(coverageDigest) };
   } finally {
     await client.end();

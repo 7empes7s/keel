@@ -4,7 +4,7 @@
 // references the engine resolved. One module, so every page says the same thing the
 // same way. Raw codes and ids never appear in these strings; they live in the record.
 import { ago, displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel, words } from "@/lib/presentation";
-import { holdsObjectId, type NamedKeys, namedResource } from "@/lib/job-names";
+import { holdsObjectId, jobIncompleteTypes, type NamedKeys, namedResource } from "@/lib/job-names";
 
 export interface EngineRef {
   kind: string;
@@ -133,6 +133,7 @@ interface JobLike {
   kind: string;
   status: string;
   params: unknown;
+  result?: unknown;
   createdAt?: string | null;
   startedAt?: string | null;
   finishedAt?: string | null;
@@ -177,7 +178,9 @@ export function jobStatusSentence(job: JobLike, now: string): string {
     case "running": return `Running, started ${ago(job.startedAt ?? job.createdAt ?? null, now)}`;
     case "succeeded": {
       const took = duration(job.startedAt, job.finishedAt);
-      return `Finished ${ago(job.finishedAt ?? null, now)}${took ? ` after ${took}` : ""}`;
+      const gaps = jobIncompleteTypes(job).length;
+      const done = `${ago(job.finishedAt ?? null, now)}${took ? ` after ${took}` : ""}`;
+      return gaps ? `Partly done ${done}: ${plural(gaps, "type")} not backed up` : `Finished ${done}`;
     }
     case "failed": return `Failed ${ago(job.finishedAt ?? job.startedAt ?? null, now)}`;
     case "cancelled": return `Cancelled ${ago(job.finishedAt ?? job.createdAt ?? null, now)}`;

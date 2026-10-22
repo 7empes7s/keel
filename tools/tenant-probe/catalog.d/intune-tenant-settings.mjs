@@ -8,12 +8,14 @@
 export default [
   // Compliance policies built in the settings catalog (Linux and newer platforms).
   // Like configurationPolicy, the settings are a separate collection, listed
-  // only when expanded. The actions for noncompliance are returned only when one
-  // policy is read with them expanded, so each policy is listed, then read on its
-  // own with both (restore gaps batch 7).
+  // only when expanded, so each policy is listed, then read on its own with its
+  // settings (restore gaps batch 7). Issue #473: expanded next to the settings,
+  // the actions for noncompliance come back empty, so they are read from the
+  // policy's own scheduledActionsForRule collection.
   { type: 'deviceManagementCompliancePolicy', path: '/deviceManagement/compliancePolicies/{parent}', version: 'beta', criticality: 'tier1', blastRadius: 'access-affecting',
     parent: { path: '/deviceManagement/compliancePolicies', select: 'id', key: 'id', as: 'id' },
-    query: '$expand=settings,scheduledActionsForRule($expand=scheduledActionConfigurations)',
+    query: '$expand=settings',
+    itemReads: { as: 'scheduledActionsForRule', path: '/deviceManagement/compliancePolicies/{item}/scheduledActionsForRule?$expand=scheduledActionConfigurations' },
     // A policy deleted between the list and its own read is gone, not a failed read.
     absentWhenNotFound: true,
     note: 'Compliance feeds Conditional Access. The settings and actions for noncompliance are read per policy.' },

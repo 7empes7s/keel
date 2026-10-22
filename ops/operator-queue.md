@@ -5735,3 +5735,68 @@ item that needs it stays untouched.
      skip (the guard reads L itself first).
   4. If Q123 runs at #456 or later, its step 4 also proves the other side: the unused `KEEL-RT-app-scope` filter update is written.
 - **Report:** B; step 1 counts and the id check; the exact result objects of steps 2 and 3; confirmation that no write was attempted.
+
+### Q126: Live backup and restore of imported ADMX files and BIOS configurations (restore gaps batch 11, after #457)
+- Drafted by the "Restore batch 11" thread (2026-10-22). Code: PR #457. **Backup change:** `groupPolicyUploadedDefinitionFile` is now
+  listed, then each file read on its own (`/beta/deviceManagement/groupPolicyUploadedDefinitionFiles/{id}`), so the backup holds the
+  ADMX `content` and `groupPolicyUploadedLanguageFiles[].content`. New record writers, fixture-tested only, beta:
+  - `groupPolicyUploadedDefinitionFile`: **create only** (POST fileName, defaultLanguageCode, content, language files: name, language,
+    content). Then waits for `status` to leave `uploadInProgress`; `uploadFailed` fails the restore. A backup without content is refused.
+  - `hardwareConfiguration`: **update only** (PATCH displayName, description, roleScopeTagIds, perDevicePasswordDisabled). A restore
+    that would turn per-device BIOS passwords off is refused. The settings file is never read or sent.
+- Needs: /opt/keel-live at the #457 merge or later (`grep -q admxUploadAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
+  needs DeviceManagementConfiguration.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing.
+  Never touch CA policies, break-glass or Marouane's account. **Never assign either fixture, never use the ADMX file in a template,
+  and never import a real vendor ADMX.** No tenant-wide setting is changed.
+- **Fixtures** (the reviewed guidance in `live-gate-plan.mjs` at B says the same; nothing applies them):
+  - imported ADMX file `keel-rt-148-fixture.admx` with ADML `keel-rt-148-fixture.adml` (en-US), exactly these two files:
+    ```xml
+    <?xml version="1.0" encoding="utf-8"?>
+    <policyDefinitions revision="1.0" schemaVersion="1.0">
+      <policyNamespaces><target prefix="keelrt" namespace="KEEL.RT.Fixture" /></policyNamespaces>
+      <resources minRequiredRevision="1.0" />
+      <categories><category name="KeelRtFixture" displayName="$(string.KeelRtFixture)" /></categories>
+      <policies>
+        <policy name="KeelRtFixtureFlag" class="Machine" displayName="$(string.KeelRtFixtureFlag)" explainText="$(string.KeelRtFixtureFlag_Help)" key="Software\Policies\KEEL-RT\Fixture" valueName="Flag">
+          <parentCategory ref="KeelRtFixture" /><supportedOn ref="windows:SUPPORTED_Windows_10_0" />
+          <enabledValue><decimal value="1" /></enabledValue><disabledValue><decimal value="0" /></disabledValue>
+        </policy>
+      </policies>
+    </policyDefinitions>
+    ```
+    ```xml
+    <?xml version="1.0" encoding="utf-8"?>
+    <policyDefinitionResources revision="1.0" schemaVersion="1.0">
+      <displayName>KEEL-RT fixture</displayName><description>KEEL-RT fixture</description>
+      <resources><stringTable>
+        <string id="KeelRtFixture">KEEL-RT fixture</string>
+        <string id="KeelRtFixtureFlag">KEEL-RT fixture flag</string>
+        <string id="KeelRtFixtureFlag_Help">Fixture only. Sets nothing on any device unless assigned, and it is never assigned.</string>
+      </stringTable></resources>
+    </policyDefinitionResources>
+    ```
+    If Intune refuses it because `windows:SUPPORTED_Windows_10_0` needs windows.admx, drop the `supportedOn` line and report that.
+  - BIOS configuration `KEEL-RT-148-bios` (per-device password on), assigned to nobody. If Intune refuses to create it without a real
+    OEM settings file, report the exact message and skip this kind; do not upload a real BIOS file.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/live-gate-plan.mjs > ~/keel-rg11/plan-B.md`. Use its steps for these two types (collect, restore
+     dry run, approve, `--enforce`, `entraLive.mjs capture`, promote).
+  2. Create the fixtures, wait until the ADMX file shows `available`, then take snapshot S. **Backup check:** both fixtures are in S;
+     report each type's read outcome, and whether the ADMX record in S has non-empty `content` and a language file with `content`
+     (this is the unmeasured per-file read: if `content` is missing, stop and report; the restore would refuse it).
+  3. **Create round (ADMX):** delete the ADMX file, restore from S selecting `groupPolicyUploadedDefinitionFile`, approve, enforce,
+     capture the `create`. Report the status it reads back with and the restore result (applied / completion `admxUploadProcessing`).
+  4. **Update round (BIOS):** change the BIOS configuration's description to `drift`. Restore from S, approve, enforce, capture the
+     `update`. Expect the description back. Report the exact Graph answer for any refused POST or PATCH (all routes are unmeasured).
+  5. **Re-run check:** dry run from S after step 4. Expect 0 planned writes for the BIOS configuration. For the ADMX file, report what
+     is planned: it is keyed by id and the re-upload has a new id, so a planned create here is a known gap to report, not to run.
+  6. Cleanup: delete both fixtures. Report anything left.
+  7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-11`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / skipped (fixture could not be
+  created) / blocked; step 5; approval ids; the evidence branch and commit; anything left in the tenant.

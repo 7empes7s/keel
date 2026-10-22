@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
+import { ChangeComparisonStyles, EveryToggle } from "@/components/change-comparison";
 import { FindingRecord } from "@/components/compliance/compliance-record";
 import { FixPanel } from "@/components/compliance/fix-panel";
 import { Icon } from "@/components/shell/icons";
@@ -16,7 +17,8 @@ import {
   RESULTS,
   canFixOn,
   canGrantOn,
-  controlMisses,
+  checkSubjectWord,
+  controlChecks,
   controlName,
   controlService,
   controlWhat,
@@ -36,6 +38,7 @@ import {
   standardName,
 } from "@/lib/compliance-view";
 import { ago, formatTimestamp } from "@/lib/presentation";
+import type { ControlCheck } from "@/lib/compliance-view";
 import type { SheetStep } from "@/lib/sheet-step";
 import { toast } from "@/lib/toast";
 import type { ComplianceFinding } from "@/lib/types";
@@ -74,8 +77,8 @@ export function ControlSheet({ finding, now, canConfigure, canRestore = false, g
   const changeCount = change.linked.length;
   // Fixing beats accepting: when Keel can fix it, the exception is the second choice.
   const fixable = canFixOn(finding, canRestore);
-  // What fails, by policy and setting: shown while the control fails (with or without an exception).
-  const misses = result === "failing" || result === "excepted" ? controlMisses(finding) : [];
+  // Every setting the control checked, current against expected (none while it could not check).
+  const checks = result === "unknown" || result === "not-relevant" ? [] : controlChecks(finding);
   const removable = canConfigure && Boolean(finding.own);
   const [removing, setRemoving] = useState(false);
 
@@ -135,24 +138,7 @@ export function ControlSheet({ finding, now, canConfigure, canRestore = false, g
         {result === "unknown" ? <p className="cp-muted">{NOT_RUN_YET}</p> : null}
         {result === "not-set-up" ? <p className="cp-callout" data-tone="soon"><Icon name="plus" />{NOT_SET_UP_HELP}</p> : null}
 
-        {misses.length ? (
-          <section aria-labelledby="cp-misses-heading" className="cp-block">
-            <h3 id="cp-misses-heading">What fails <Badge tone="urgent">{misses.length === 1 ? "1 setting" : `${misses.length} settings`}</Badge></h3>
-            <table className="cp-misses">
-              <thead><tr><th scope="col">Policy</th><th scope="col">Setting</th><th scope="col">Now</th><th scope="col">Should be</th></tr></thead>
-              <tbody>
-                {misses.map((miss, index) => (
-                  <tr key={`${miss.subject}-${miss.setting}-${index}`}>
-                    <th data-label="Policy" scope="row">{miss.subject}</th>
-                    <td data-label="Setting">{miss.setting}</td>
-                    <td data-label="Now"><span className="cp-miss-now">{miss.now}</span></td>
-                    <td data-label="Should be"><span className="cp-miss-want">{miss.shouldBe}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        ) : null}
+        {checks.length ? <ControlChecks checks={checks} key={finding.id} subject={checkSubjectWord(finding)} /> : null}
 
         {finding.exception ? (
           <section aria-labelledby="cp-exception-heading" className="cp-block">
@@ -193,5 +179,50 @@ export function ControlSheet({ finding, now, canConfigure, canRestore = false, g
         <FindingRecord finding={finding} />
       </div>
     </DetailsSheet>
+  );
+}
+
+// Expected against current for each setting the control checked. Failing rows come first
+// and are highlighted; when some fail, the ones that meet the standard wait behind the
+// "Show every setting" switch, as on the Changes panel.
+function ControlChecks({ checks, subject }: { checks: ControlCheck[]; subject: string }) {
+  const failing = checks.filter((check) => !check.ok).length;
+  const passing = checks.length - failing;
+  const [every, setEvery] = useState(false);
+  const shown = failing && !every ? checks.filter((check) => !check.ok) : checks;
+  return (
+    <section aria-labelledby="cp-checks-heading" className="cp-block">
+      <h3 id="cp-checks-heading">
+        {failing ? "What fails" : "Settings checked"}{" "}
+        {failing ? <Badge tone="urgent">{failing === 1 ? "1 setting" : `${failing} settings`}</Badge> : null}{" "}
+        {passing ? <Badge tone="fine">{failing ? `${passing} meet the standard` : passing === 1 ? "Meets the standard" : `All ${passing} meet the standard`}</Badge> : null}
+      </h3>
+      {failing && passing ? (
+        <div className="cp-checks-tools">
+          <ChangeComparisonStyles />
+          <EveryToggle on={every} onChange={setEvery} total={checks.length} />
+          {every ? null : <small>Hidden: {passing === 1 ? "1 setting meets" : `${passing} settings meet`} the standard.</small>}
+        </div>
+      ) : null}
+      <table className="cp-misses">
+        <thead><tr><th scope="col">{subject}</th><th scope="col">Setting</th><th scope="col">Now</th><th scope="col">Should be</th></tr></thead>
+        <tbody>
+          {shown.map((check, index) => (
+            <tr data-ok={check.ok ? "true" : "false"} key={`${check.subject}-${check.setting}-${index}`}>
+              <th data-label={subject} scope="row">
+                <span className="cp-check-subject">
+                  <Icon name={check.ok ? "check-circle" : "x-circle"} />
+                  <span className="visually-hidden">{check.ok ? "Meets the standard: " : "Fails: "}</span>
+                  {check.subject}
+                </span>
+              </th>
+              <td data-label="Setting">{check.setting}</td>
+              <td data-label="Now"><span className={check.ok ? "cp-check-now" : "cp-miss-now"}>{check.now}</span></td>
+              <td data-label="Should be"><span className={check.ok ? "cp-check-want" : "cp-miss-want"}>{check.shouldBe}</span></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }

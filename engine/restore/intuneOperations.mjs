@@ -1361,6 +1361,13 @@ function provisioningProfileRefusal(resource, verb) {
   return null;
 }
 
+/**
+ * The fields of a reusable settings group the backup reads and a write
+ * re-reads. Graph leaves settingInstance out of a read unless it is selected
+ * ($expand is refused), issue #470.
+ */
+export const REUSABLE_SETTING_SELECT = 'id,displayName,description,settingDefinitionId,settingInstance,lastModifiedDateTime';
+
 export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // Delete only: create and update stay on the built-in path above.
   ...Object.fromEntries(Object.values(INTUNE_RECORDS).map((entry) => [entry.resourceType, defineRecord({
@@ -1406,11 +1413,15 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // Restore gaps, batch 1: Intune tenant settings whose backup is complete.
   // A reusable settings group is referenced by id from settings catalog
   // policies, so it is rebuilt before them; its setting definition never changes.
+  // Issue #470: Graph returns a group's values (settingInstance) only when
+  // they are selected, and routes no PATCH, so the group is read with
+  // REUSABLE_SETTING_SELECT and written whole with PUT. A backup without the
+  // values is refused.
   deviceManagementReusablePolicySetting: defineRecord({
     resourceType: 'deviceManagementReusablePolicySetting', version: 'beta', collection: '/deviceManagement/reusablePolicySettings',
-    operations: ['create', 'update'], createOnly: ['settingDefinitionId'],
+    operations: ['create', 'update'], updateMethod: 'PUT', readQuery: `$select=${REUSABLE_SETTING_SELECT}`,
     excluded: ['version', 'referencingConfigurationPolicyCount', 'referencingConfigurationPolicies'],
-    permission: 'DeviceManagementConfiguration.ReadWrite.All',
+    refusal: reusableSettingRefusal, permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
   windowsQualityUpdatePolicy: defineRecord({
     resourceType: 'windowsQualityUpdatePolicy', version: 'beta', collection: '/deviceManagement/windowsQualityUpdatePolicies',
@@ -1734,6 +1745,31 @@ async function appRelationshipPreflight(io, { payload, verb }) {
   return {
     skipped: `already set: ${payload.sourceDisplayName ?? payload.sourceId} already has a ${stripGraph(same['@odata.type']) === 'mobileAppSupersedence' ? 'supersedence' : 'dependency'} link to ${payload.targetDisplayName ?? payload.targetId}, so it is not added again; check it in the Intune admin center if the backup holds another kind of link`,
   };
+}
+
+/**
+ * A reusable settings group is written whole, so a backup taken before the
+ * group's values were read (issue #470) is never written: Intune refuses a
+ * group without them. Its setting definition is never changed on update.
+ */
+export function reusableSettingRefusal(resource, verb) {
+  if (verb === 'delete') return null;
+  const payload = resource.payload ?? {};
+  const instance = payload.settingInstance;
+  if (!instance || typeof instance !== 'object' || Array.isArray(instance)) {
+    return {
+      outcome: 'skipped',
+      reason: 'manual: this backup holds the group\'s name but not its values (backups before the values were read), so it is not written; take a new backup, or set the values by hand in the Intune admin center',
+    };
+  }
+  const live = resource.live?.payload?.settingDefinitionId;
+  if (verb === 'update' && typeof live === 'string' && live !== payload.settingDefinitionId) {
+    return {
+      outcome: 'skipped',
+      reason: `manual: the backup's group is for setting ${payload.settingDefinitionId}, but the group in the tenant is for ${live}; a group's setting never changes, so recreate it by hand`,
+    };
+  }
+  return null;
 }
 
 /** A cleanup rule is never made to retire devices sooner than it does now. */

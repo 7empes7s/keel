@@ -18,8 +18,11 @@ export default [
     absentWhenNotFound: true,
     note: 'Compliance feeds Conditional Access. The settings and actions for noncompliance are read per policy.' },
   // Reusable settings groups (for example firewall rule addresses) that settings
-  // catalog policies reference by id.
+  // catalog policies reference by id. Graph returns a group's values
+  // (settingInstance) only when they are selected (issue #470); the restore
+  // re-reads with the same fields (REUSABLE_SETTING_SELECT).
   { type: 'deviceManagementReusablePolicySetting', path: '/deviceManagement/reusablePolicySettings', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
+    select: 'id,displayName,description,settingDefinitionId,settingInstance,lastModifiedDateTime',
     note: 'Policies that use a group refer to it by id, so it is rebuilt before them.' },
   // Policy sets: bundles of apps and policies assigned together. What a set
   // holds (its items) is returned only when one set is read with the items

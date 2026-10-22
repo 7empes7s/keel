@@ -234,15 +234,49 @@ test('reusable settings groups, hotpatch policies and device categories are crea
   }
 });
 
-test('a reusable settings group update never changes its setting definition', async () => {
-  const path = '/deviceManagement/reusablePolicySettings/r-1';
-  const live = { id: 'r-1', displayName: 'KEEL-RT-Firewall addresses', description: 'old', settingDefinitionId: 'def-a' };
-  const graph = idoFakeGraph({ seed: { [path]: live } });
-  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementReusablePolicySetting', { ...live, description: 'Fixture', settingDefinitionId: 'def-b' }, {
+const REUSABLE_PATH = '/deviceManagement/reusablePolicySettings/r-1';
+const ADDRESSES = Object.freeze({
+  '@odata.type': '#microsoft.graph.deviceManagementConfigurationGroupSettingCollectionInstance', settingDefinitionId: 'def-a',
+  groupSettingCollectionValue: [{ children: [{ '@odata.type': '#microsoft.graph.deviceManagementConfigurationSimpleSettingCollectionInstance', settingDefinitionId: 'def-a_addresses', simpleSettingCollectionValue: [{ '@odata.type': '#microsoft.graph.deviceManagementConfigurationStringSettingValue', value: '203.0.113.10' }] }] }],
+});
+
+test('a reusable settings group update is written whole with PUT, its values included, and re-read with them selected', async () => {
+  const live = { id: 'r-1', displayName: 'KEEL-RT-Firewall addresses', description: 'old', settingDefinitionId: 'def-a', settingInstance: { ...ADDRESSES, groupSettingCollectionValue: [] } };
+  const graph = idoFakeGraph({ seed: { [REUSABLE_PATH]: live } });
+  const backup = { ...live, description: 'Fixture', settingInstance: ADDRESSES };
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementReusablePolicySetting', backup, {
     live: { state: 'present', targetId: 'r-1', payload: live },
   }), 'update', FAST);
   assert.equal(result.failed, undefined, result.failed?.error);
-  assert.deepEqual(graph.calls.find((call) => call.method === 'PATCH').body, { description: 'Fixture' });
+  assert.equal(graph.calls.some((call) => call.method === 'PATCH'), false, 'Graph routes no PATCH for this type');
+  const put = graph.calls.find((call) => call.method === 'PUT');
+  assert.equal(put.path, REUSABLE_PATH);
+  assert.deepEqual(put.body, { displayName: live.displayName, description: 'Fixture', settingDefinitionId: 'def-a', settingInstance: ADDRESSES });
+  const reRead = graph.calls.filter((call) => call.method === 'GET').at(-1);
+  assert.match(reRead.path, /\$select=[^&]*settingInstance/);
+});
+
+test('a reusable settings group update never changes its setting definition', async () => {
+  const live = { id: 'r-1', displayName: 'KEEL-RT-Firewall addresses', description: 'old', settingDefinitionId: 'def-a', settingInstance: ADDRESSES };
+  const graph = idoFakeGraph({ seed: { [REUSABLE_PATH]: live } });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementReusablePolicySetting', { ...live, description: 'Fixture', settingDefinitionId: 'def-b' }, {
+    live: { state: 'present', targetId: 'r-1', payload: live },
+  }), 'update', FAST);
+  assert.match(result.skipped.reason, /a group's setting never changes/);
+  assert.equal(graph.calls.length, 0);
+});
+
+test('a reusable settings group from a backup without its values is refused, never written (issue #470)', async () => {
+  // The shape older backups hold: the list read left settingInstance out.
+  const old = { id: 'r-1', displayName: 'KEEL-RT-Firewall addresses', description: 'Fixture', settingDefinitionId: 'def-a', lastModifiedDateTime: 'x' };
+  for (const verb of ['create', 'update']) {
+    const graph = idoFakeGraph({ seed: verb === 'update' ? { [REUSABLE_PATH]: { ...old, settingInstance: ADDRESSES } } : {} });
+    const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementReusablePolicySetting', old, verb === 'update'
+      ? { live: { state: 'present', targetId: 'r-1', payload: { ...old, description: 'old', settingInstance: ADDRESSES } } } : {}), verb, FAST);
+    assert.equal(result.failed, undefined, verb);
+    assert.match(result.skipped.reason, /^manual: this backup holds the group's name but not its values/, verb);
+    assert.equal(graph.calls.length, 0, `${verb}: nothing is read or written`);
+  }
 });
 
 test('a cleanup rule is only ever made to wait longer before retiring devices, and is never created', async () => {

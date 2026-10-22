@@ -439,10 +439,15 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 1000
     await expect(policy.locator(".cc-row", { hasText: "Exclude groups" }).locator('.cc-entry[data-diff="added"]')).toContainText("an object Keel has no name for");
     const removed = changes.locator(".cv-object", { hasText: "Old project team" });
     await expect(removed.locator(".cv-chip")).toHaveText("Removed");
-    await expect(removed.locator(".cc-row", { hasText: "Description" }).locator('[data-side="before"]')).toContainText("Project Atlas, closed in September");
-    await expect(removed.locator(".cc-row", { hasText: "Description" }).locator('[data-side="after"]')).toContainText("Not there");
-    await expect(removed.locator(".cc-row", { hasText: "Description" })).toHaveAttribute("data-diff", "removed");
+    // A whole removed object is one line with a red badge; its settings stay folded until asked for.
+    await expect(removed.locator(".cc-row")).toHaveCount(0);
+    await expect(removed.locator(".cc-whole")).toHaveAttribute("data-diff", "removed");
+    await expect(removed.locator(".cc-whole-list")).toHaveCount(0);
+    await removed.getByRole("button", { name: "Show its 2 settings" }).click();
+    await expect(removed.locator(".cc-whole-list")).toContainText("Project Atlas, closed in September");
+    await expect(removed).not.toContainText(/not there/i);
     // A list of objects reads one entry per line, never as "#1 › …" paths.
+    await changes.locator(".cv-object", { hasText: "Windows compliance" }).getByRole("button", { name: "Show its 2 settings" }).click();
     await expect(changes.locator(".cv-object", { hasText: "Windows compliance" })).toContainText("Grace period hours: 24");
     await expect(changes.locator(".cv-object", { hasText: "Windows compliance" })).not.toContainText("#1 ›");
     await expect(changes.getByRole("link", { name: "See every difference in Compare" })).toHaveAttribute("href", /\/compare\?from=0b5e0000-0000-4000-8000-0000000000c8&to=0b5e0000-0000-4000-8000-0000000000d5/);
@@ -1571,6 +1576,17 @@ test("a change compares each setting with its earlier value, coloured, and many 
   await expect(windows.getByRole("button", { name: "Undo this change" })).toBeVisible();
   const results = await new AxeBuilder({ page }).include(".bl-sheet").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
   expect(results.violations.map((violation) => violation.id)).toEqual([]);
+
+  // A whole new item says so in one line with a green badge; its settings fold away.
+  await open(page, "/drift", "light");
+  const added = await openChange(page, "Branch offices");
+  const whole = added.locator('.cc[data-whole="added"]');
+  await expect(whole.locator(".cc-chip")).toHaveText("Added");
+  await expect(whole.locator(".cc-sentence")).toHaveText("Not in the approved setup. It holds 2 settings.");
+  await expect(whole.locator(".cc-row")).toHaveCount(0);
+  await whole.getByRole("button", { name: "Show its 2 settings" }).click();
+  await expect(whole.locator(".cc-whole-list")).toContainText("203.0.113.0/24");
+  await expect(added).not.toContainText(/not there/i);
 });
 
 // The Service settings tile keeps service changes only; acknowledging two posts one call
@@ -2823,15 +2839,37 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(exclude.locator('.cc-entry[data-diff="added"]')).toContainText("an object Keel has no name for");
     await exclude.getByRole("button", { name: "Show the 1 entry that stayed" }).click();
     await expect(exclude).toContainText("Break-glass admins");
-    // Added and removed objects list the settings they hold, each with its value.
+    // Whole added and removed objects are one compact line each, removed first, with a red
+    // or green badge; their settings fold away until asked for. Only changed objects list
+    // settings before and after.
     const groups = settings.locator("details.compare-group").filter({ has: page.locator(".compare-group-name", { hasText: /^Group$/ }) });
     await groups.locator("summary").click();
-    await expect(groups.locator(".compare-item", { hasText: "Old project team" }).locator(".cc-row", { hasText: "Description" })).toContainText("Project Atlas, closed in September");
+    await expect(groups.locator(".compare-item .compare-item-name")).toHaveText(["Old project team", "KEEL-RT-Contractors", "Finance"]);
+    const gone = groups.locator(".compare-item", { hasText: "Old project team" });
+    await expect(gone.locator(".cv-chip")).toHaveText("Removed");
+    await expect(gone.locator(".cv-chip")).toHaveAttribute("data-change", "removed");
+    await expect(gone.locator(".cc-row")).toHaveCount(0);
+    await expect(gone.locator(".cc-whole-list")).toHaveCount(0);
+    await gone.getByRole("button", { name: "Show its 3 settings" }).click();
+    await expect(gone.locator(".cc-whole-list")).toContainText("Project Atlas, closed in September");
     const contractors = groups.locator(".compare-item", { hasText: "KEEL-RT-Contractors" });
-    await expect(contractors.locator(".cc-row", { hasText: "Membership rule" }).locator('[data-side="after"]')).toContainText("Processing state: On");
-    await expect(contractors.locator(".cc-row", { hasText: "Membership rule" }).locator('[data-side="before"]')).toContainText("Not there");
-    await expect(contractors.locator(".cc-row", { hasText: "Membership rule" })).toHaveAttribute("data-diff", "added");
-    await expect(settings).toContainText("Device configuration (Intune): First side read in full, second side failed to read.");
+    await expect(contractors.locator(".cv-chip")).toHaveText("Added");
+    await contractors.getByRole("button", { name: "Show its 3 settings" }).click();
+    await expect(contractors.locator(".cc-whole-list")).toContainText("Processing state: On");
+    await expect(groups.locator(".compare-item", { hasText: "Finance" }).locator(".cc-row", { hasText: "Security enabled" })).toHaveAttribute("data-diff", "changed");
+    await expect(settings).not.toContainText(/\b(not )?there\b/i);
+    // Not compared: a few reasons with counts by service, worst first, each folded.
+    const gaps = settings.locator('[data-gaps="not-compared"]');
+    await expect(gaps.locator(".compare-gaps-head")).toContainText("5 kinds");
+    await expect(gaps.locator("details.compare-gap .compare-gap-reason .badge")).toHaveText(["Could not be read", "Read only in part", "Not in that backup"]);
+    const notRead = gaps.locator("details.compare-gap", { hasText: "Not in that backup" });
+    await expect(notRead.locator("summary")).toContainText("3 kinds");
+    await expect(notRead.locator(".compare-gap-services")).toContainText("Entra ID 2");
+    await expect(notRead.locator(".compare-gap-services")).toContainText("Intune 1");
+    await expect(notRead.locator(".compare-gap-kinds").first()).not.toBeVisible();
+    await notRead.locator("summary").click();
+    await expect(notRead.locator(".compare-gap-kinds").first()).toBeVisible();
+    await expect(gaps).not.toContainText("First side read in full");
     const content = page.locator("section", { has: page.locator("#compare-content-heading") });
     await content.locator("details.compare-group", { hasText: "Drive" }).locator("summary").click();
     await expect(content).toContainText("Budget 2027 v2.xlsx");
@@ -2846,7 +2884,10 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await across.getByRole("button", { name: "Show the 1 entry that stayed" }).click();
     await expect(across).toContainText("Break-glass admins (group)");
     await expect(across).toContainText("an object Keel could not name");
-    await expect(across).toContainText("Device category (Intune): 3 in the first, 2 in the second.");
+    const unmatched = across.locator('[data-gaps="unmatched"] details');
+    await expect(unmatched.locator("summary")).toContainText("1 kind");
+    await unmatched.locator("summary").click();
+    await expect(unmatched).toContainText("Device category (3 in the first, 2 in the second)");
     await expect(page.locator("section", { has: page.locator("#compare-content-heading") })).toContainText("812 items in both");
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   });

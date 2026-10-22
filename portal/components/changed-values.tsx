@@ -1,4 +1,4 @@
-import { SettingRows } from "@/components/change-comparison";
+import { ItemSettings, SettingRows } from "@/components/change-comparison";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { fieldRow } from "@/lib/change-comparison";
 import { CHANGE_LABELS, changeLine, type ChangeKind, type ChangedField, type ChangedObject } from "@/lib/changed-values";
@@ -28,8 +28,11 @@ const CSS = `
 .cv-object-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2xs) var(--space-sm); }
 .cv-object-name { font-weight: 650; overflow-wrap: anywhere; }
 .cv-object-kind { color: var(--text-soft); font-size: 0.8125rem; }
-.cv-chip { display: inline-flex; align-items: center; gap: var(--space-2xs); padding: 1px var(--space-xs); border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); font-size: 0.75rem; font-weight: 600; }
+.cv-chip { white-space: nowrap; display: inline-flex; align-items: center; gap: var(--space-2xs); padding: 1px var(--space-xs); border: 1px solid var(--line-strong); border-radius: 999px; color: var(--text); font-size: 0.75rem; font-weight: 600; }
 .cv-chip svg { width: 0.875rem; height: 0.875rem; }
+.cv-chip[data-change="changed"] { border-color: transparent; background: var(--check-soon-bg); color: var(--check-soon); }
+.cv-chip[data-change="added"] { border-color: transparent; background: var(--fine-bg); color: var(--fine); }
+.cv-chip[data-change="removed"] { border-color: transparent; background: var(--urgent-bg); color: var(--urgent); }
 .cv-object-line { margin: 0; color: var(--text-soft); font-size: 0.8125rem; }
 @media (max-width: 640px) {
   .cv-row { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
@@ -47,7 +50,8 @@ export function ChangeChip({ change }: { change: ChangeKind }) {
   return <span className="cv-chip" data-change={change}><Icon name={CHANGE_ICONS[change]} />{CHANGE_LABELS[change]}</span>;
 }
 
-/** Each setting that differs, with its value on both sides. */
+/** Each setting that differs, with its value on both sides. A whole item that was added
+ *  or removed lists its settings folded away instead, one value each. */
 export function ChangedFieldList({ fields, total, sides, names, change = "changed", label }: {
   fields: ChangedField[];
   total?: number;
@@ -59,9 +63,13 @@ export function ChangedFieldList({ fields, total, sides, names, change = "change
   if (!fields.length) {
     return <p className="cv-more">{change === "changed" ? "Only settings Microsoft sets itself differ." : "It holds no settings Keel lists."}</p>;
   }
+  const rows = fields.map((field) => fieldRow(field.path, field.before, field.after, change, names));
+  if (change !== "changed") {
+    return <ItemSettings diff={change} held={change === "added" ? sides.after : sides.before} label={label} more={total && total > fields.length ? total - fields.length : 0} rows={rows} />;
+  }
   return (
     <>
-      <SettingRows label={label} rows={fields.map((field) => fieldRow(field.path, field.before, field.after, change, names))} sides={sides} />
+      <SettingRows label={label} rows={rows} sides={sides} />
       {total && total > fields.length ? <p className="cv-more">And {total - fields.length} more {total - fields.length === 1 ? "setting" : "settings"}.</p> : null}
     </>
   );
@@ -78,7 +86,7 @@ export function ChangedObjects({ changes, sides, names }: { changes: ChangedObje
             <span className="cv-object-kind">{resourceTypeLabel(change.resourceType)}</span>
             <ChangeChip change={change.change} />
           </div>
-          <p className="cv-object-line">{changeLine(change)}</p>
+          {change.change === "changed" ? <p className="cv-object-line">{changeLine(change)}</p> : null}
           <ChangedFieldList change={change.change} fields={change.fields} label={`${change.name}: settings`} names={names} sides={sides} total={change.fieldsTotal} />
         </li>
       ))}

@@ -27,6 +27,8 @@ export interface SettingRow {
   after: string | null;
   // Set when the setting is a list: each entry and whether it was added or removed.
   entries: EntryDiff[] | null;
+  // What an empty side reads; "Not set" when not given.
+  absent?: string;
 }
 
 export interface Comparison {
@@ -156,8 +158,8 @@ export function comparisonSentence(comparison: Comparison, against: string): str
   if (!comparison.rows.length) return "Keel holds no settings for this item.";
   if (counts.unknown) return `${plural(counts.unknown, "setting is", "settings are")} set now. Keel did not keep the earlier copy, so nothing is shown as removed.`;
   if (!differing) return `Every setting matches ${against}.`;
-  if (counts.added === comparison.rows.length) return `New: not in ${against}. It holds ${plural(counts.added, "setting", "settings")}.`;
-  if (counts.removed === comparison.rows.length) return `Gone: it is in ${against} but not in the tenant. It held ${plural(counts.removed, "setting", "settings")}.`;
+  if (wholeItem(comparison) === "added") return `Not in ${against}. It holds ${plural(counts.added, "setting", "settings")}.`;
+  if (wholeItem(comparison) === "removed") return `In ${against} but no longer in the tenant. It held ${plural(counts.removed, "setting", "settings")}.`;
   const kinds = (["changed", "added", "removed"] as const).filter((kind) => counts[kind]);
   if (kinds.length === 1) return `${plural(differing, "setting", "settings")} ${kinds[0]} since ${against}.`;
   const parts = ([["changed", "changed"], ["added", "added"], ["removed", "removed"]] as const)
@@ -165,4 +167,21 @@ export function comparisonSentence(comparison: Comparison, against: string): str
     .map(([kind, word]) => `${counts[kind].toLocaleString("en-GB")} ${word}`);
   const list = parts.length < 2 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
   return `${plural(differing, "setting differs", "settings differ")} from ${against}: ${list}.`;
+}
+
+/** "added" when every setting is new (the whole item is new), "removed" when every
+ *  setting is gone (the whole item is gone), else null. A whole item reads as one line
+ *  with its settings folded away, never as a before/after row per setting. */
+export function wholeItem(comparison: Pick<Comparison, "rows" | "counts">): "added" | "removed" | null {
+  if (!comparison.rows.length) return null;
+  if (comparison.counts.added === comparison.rows.length) return "added";
+  if (comparison.counts.removed === comparison.rows.length) return "removed";
+  return null;
+}
+
+/** The word an empty side reads: "Not known" when the earlier copy was not kept,
+ *  else "Not set" (or the row's own word, such as "Not in the team"). */
+export function absentWords(row: Pick<SettingRow, "diff" | "absent">, which: "before" | "after"): string {
+  if (row.absent) return row.absent;
+  return which === "before" && row.diff === "unknown" ? "Not known" : "Not set";
 }

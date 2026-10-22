@@ -542,6 +542,7 @@ function RunReview({ run, heading, nameOf, canApprove, onApproved }: {
                         before: diff === "added" ? null : members ? String(change.before) : settingValueWords(change.field, change.before),
                         after: diff === "removed" ? null : members ? String(change.after) : settingValueWords(change.field, change.after),
                         entries: null,
+                        absent: members ? (diff === "added" ? "Not in the team" : "Removed from the team") : undefined,
                       };
                     })}
                     sides={{ before: "Now in your tenant", after: "After the restore" }}

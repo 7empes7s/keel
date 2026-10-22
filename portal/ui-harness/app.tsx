@@ -1475,7 +1475,7 @@ const COMPARE_SNAPSHOTS: CompareResult = {
   left: { kind: "snapshot", tenantRef: "sha256:5a1e00000000c0a1", snapshotId: CMP_SNAP_OLD, at: "2026-10-01T09:10:00Z" },
   right: { kind: "snapshot", tenantRef: "sha256:5a1e00000000c0a1", snapshotId: CMP_SNAP_NEW, at: "2026-10-02T09:12:00Z" },
   settings: {
-    totals: { added: 1, removed: 1, changed: 2, unchanged: 4806, notCompared: 1, unmatched: 0 },
+    totals: { added: 1, removed: 1, changed: 2, unchanged: 4806, notCompared: 5, unmatched: 0 },
     groups: [
       { service: "Entra ID", resourceType: "conditionalAccessPolicy", added: 0, removed: 0, changed: 1, unchanged: 11, total: 1, items: [
         { naturalKey: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", changeType: "changed", blastRadius: "tenant-lockout", fieldsTotal: 2, fields: [
@@ -1497,7 +1497,13 @@ const COMPARE_SNAPSHOTS: CompareResult = {
         ] },
       ] },
     ],
-    notCompared: [{ resourceType: "deviceConfiguration", service: "Intune", left: "complete", right: "failed" }],
+    notCompared: [
+      { resourceType: "deviceConfiguration", service: "Intune", left: "complete", right: "failed" },
+      { resourceType: "accessPackage", service: "Entra ID", left: "complete", right: "not-requested" },
+      { resourceType: "accessReview", service: "Entra ID", left: "complete", right: "not-requested" },
+      { resourceType: "deviceCategory", service: "Intune", left: "complete", right: "not-requested" },
+      { resourceType: "namedLocation", service: "Entra ID", left: "partial", right: "complete" },
+    ],
     unmatched: [],
   },
   workloads: {

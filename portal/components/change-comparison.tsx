@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 
 import { Icon, type IconName } from "@/components/shell/icons";
-import { compareSettings, comparisonSentence, DIFF_WORDS, type Diff, type EntryDiff, type SettingRow } from "@/lib/change-comparison";
+import { absentWords, compareSettings, comparisonSentence, DIFF_WORDS, wholeItem, type Diff, type EntryDiff, type SettingRow } from "@/lib/change-comparison";
 
 // The comparison for one change: a summary with filters, then each setting that differs
 // next to its approved (or previous) value, coloured by what happened to it (added green,
@@ -32,7 +32,7 @@ const CSS = `
 .cc-row[data-list] { grid-template-columns: minmax(8rem, 0.9fr) minmax(0, 2.4fr); }
 .cc-name { display: grid; gap: 0.3rem; align-content: start; min-width: 0; font-weight: 600; font-size: 0.875rem; overflow-wrap: anywhere; }
 .cc-name small { color: var(--text-soft); font-weight: 500; font-size: 0.75rem; }
-.cc-chip { justify-self: start; display: inline-flex; align-items: center; gap: 0.25rem; padding: 1px var(--space-xs); border-radius: var(--radius-pill); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.02em; background: var(--neutral-bg); color: var(--text); }
+.cc-chip { white-space: nowrap; justify-self: start; display: inline-flex; align-items: center; gap: 0.25rem; padding: 1px var(--space-xs); border-radius: var(--radius-pill); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.02em; background: var(--neutral-bg); color: var(--text); }
 .cc-chip svg { width: 0.8rem; height: 0.8rem; }
 .cc-chip[data-diff="changed"] { background: var(--check-soon-bg); color: var(--check-soon); }
 .cc-chip[data-diff="added"] { background: var(--fine-bg); color: var(--fine); }
@@ -60,13 +60,24 @@ const CSS = `
 .cc-same dl { display: grid; grid-template-columns: minmax(8rem, 0.9fr) minmax(0, 2fr); gap: 0.3rem var(--space-sm); margin: 0; padding: 0 var(--space-sm) var(--space-sm); font-size: 0.8125rem; }
 .cc-same dt { color: var(--text-soft); overflow-wrap: anywhere; }
 .cc-same dd { margin: 0; overflow-wrap: anywhere; }
+.cc-whole { display: grid; gap: var(--space-xs); min-width: 0; }
+.cc-whole-toggle { justify-self: start; display: inline-flex; align-items: center; gap: var(--space-2xs, 0.25rem); min-height: 2rem; padding: 0 var(--space-sm); border: 1px solid var(--line-strong); border-radius: var(--radius-pill); background: var(--surface); color: var(--text); font: inherit; font-size: 0.8125rem; font-weight: 600; cursor: pointer; }
+.cc-whole-toggle svg { width: 0.9rem; height: 0.9rem; }
+.cc-whole-toggle:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.cc-whole-list { display: grid; grid-template-columns: minmax(8rem, 0.9fr) minmax(0, 2fr); gap: 0.3rem var(--space-sm); margin: 0; padding: var(--space-xs) var(--space-sm); border-left: 4px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-muted); font-size: 0.8125rem; }
+.cc-whole[data-diff="added"] .cc-whole-list { border-left-color: var(--fine); background: var(--fine-bg); }
+.cc-whole[data-diff="removed"] .cc-whole-list { border-left-color: var(--urgent); background: var(--urgent-bg); }
+.cc-whole-list > p { grid-column: 1 / -1; margin: 0; color: var(--text-soft); font-size: 0.75rem; font-weight: 600; }
+.cc-whole-list dt { color: var(--text-soft); overflow-wrap: anywhere; }
+.cc-whole-list dd { margin: 0; overflow-wrap: anywhere; }
 .cc-empty { margin: 0; color: var(--text-soft); }
 @media (max-width: 640px) {
   .cc-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: var(--space-xs) var(--space-sm); }
   .cc-row > .cc-name { grid-column: 1 / -1; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
   .cc-row > .cc-name > small { grid-column: 1 / -1; grid-row: 2; }
   .cc-row[data-list] { grid-template-columns: minmax(0, 1fr); }
-  .cc-same dl { grid-template-columns: minmax(0, 1fr); }
+  .cc-same dl, .cc-whole-list { grid-template-columns: minmax(0, 1fr); }
+  .cc-whole-list dd { margin-bottom: var(--space-xs); }
   .cc-same dd { margin-bottom: var(--space-xs); }
 }
 `;
@@ -126,17 +137,17 @@ export function SettingRowView({ row, sides, note }: { row: SettingRow; sides: {
       </li>
     );
   }
-  const side = (which: "before" | "after", value: string | null, empty: string) => (
+  const side = (which: "before" | "after", value: string | null) => (
     <span className="cc-side" data-empty={value === null || undefined} data-side={which}>
       <small>{sides[which]}</small>
-      <span>{value ?? empty}</span>
+      <span>{value ?? absentWords(row, which)}</span>
     </span>
   );
   return (
-    <li aria-label={`${row.label}: ${row.before ?? "not there"} to ${row.after ?? "not there"}`} className="cc-row" data-diff={row.diff} data-section={row.section}>
+    <li aria-label={`${row.label}: ${row.before ?? absentWords(row, "before").toLowerCase()} to ${row.after ?? absentWords(row, "after").toLowerCase()}`} className="cc-row" data-diff={row.diff} data-section={row.section}>
       {name}
-      {side("before", row.before, row.diff === "unknown" ? "Not known" : "Not there")}
-      {side("after", row.after, "Not there")}
+      {side("before", row.before)}
+      {side("after", row.after)}
     </li>
   );
 }
@@ -150,6 +161,43 @@ export function SettingRows({ rows, sides, label }: { rows: SettingRow[]; sides:
         {rows.map((row) => <SettingRowView key={row.path} row={row} sides={sides} />)}
       </ul>
     </>
+  );
+}
+
+/** A whole item that was added or removed. Its badge already says what happened, so its
+ *  settings stay folded until asked for, then read as one value each (the side that holds
+ *  them), tinted green when added and red when removed. Never a before/after row each. */
+export function ItemSettings({ rows, diff, held, label, more = 0 }: {
+  rows: SettingRow[];
+  diff: "added" | "removed";
+  // The side that holds the settings ("Approved setup", "22 Oct 2026").
+  held: string;
+  label?: string;
+  // Settings the item holds beyond `rows`.
+  more?: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const count = rows.length + more;
+  const what = count === 1 ? "its 1 setting" : `its ${count.toLocaleString("en-GB")} settings`;
+  return (
+    <div className="cc-whole" data-diff={diff}>
+      <ChangeComparisonStyles />
+      <button aria-expanded={open} className="cc-whole-toggle" onClick={() => setOpen(!open)} type="button">
+        <Icon name={open ? "up" : "down"} />{open ? `Hide ${what}` : `Show ${what}`}
+      </button>
+      {open ? (
+        <dl aria-label={label} className="cc-whole-list">
+          <p>{diff === "added" ? "Added with these settings" : "Held these settings"} ({held})</p>
+          {rows.map((row) => (
+            <div key={row.path} style={{ display: "contents" }}>
+              <dt>{row.section === "General" ? row.label : `${row.section} › ${row.label.toLowerCase()}`}</dt>
+              <dd>{(diff === "added" ? row.after : row.before) ?? absentWords(row, diff === "added" ? "after" : "before")}</dd>
+            </div>
+          ))}
+          {more > 0 ? <p>And {more.toLocaleString("en-GB")} more {more === 1 ? "setting" : "settings"}.</p> : null}
+        </dl>
+      ) : null}
+    </div>
   );
 }
 
@@ -194,6 +242,20 @@ export function ChangeComparison({ before, after, names = {}, sides, against, be
     ? `Only ${quietCount === 1 ? "1 setting Microsoft manages itself differs" : `${quietCount} settings Microsoft manages itself differ`}. Nothing that changes behaviour was changed.`
     : comparisonSentence({ ...comparison, rows: comparison.rows.filter((row) => !isQuiet(row.path)), differing: loud.length, counts: { ...comparison.counts, ...Object.fromEntries((["changed", "added", "removed", "unknown"] as const).map((kind) => [kind, loud.filter((row) => row.diff === kind).length])) } }, against);
 
+  const whole = wholeItem(comparison);
+  if (whole) {
+    return (
+      <div className="cc" aria-label={label} data-whole={whole} role="group">
+        <ChangeComparisonStyles />
+        <div className="cc-summary">
+          <DiffChip diff={whole} />
+          <p className="cc-sentence">{comparisonSentence(comparison, against)}</p>
+        </div>
+        {extra}
+        <ItemSettings diff={whole} held={whole === "added" ? sides.after : sides.before} label={`${label}: its settings`} rows={comparison.rows} />
+      </div>
+    );
+  }
   return (
     <div className="cc" aria-label={label} role="group">
       <ChangeComparisonStyles />
@@ -241,7 +303,7 @@ function Folded({ rows, summary, sides }: { rows: SettingRow[]; summary: string;
           {rows.map((row) => (
             <div key={row.path} style={{ display: "contents" }}>
               <dt>{row.section === "General" ? row.label : `${row.section} › ${row.label.toLowerCase()}`}</dt>
-              <dd>{row.diff === "same" ? row.after : `${sides.before}: ${row.before ?? "not there"}. ${sides.after}: ${row.after ?? "not there"}.`}</dd>
+              <dd>{row.diff === "same" ? row.after : `${sides.before}: ${row.before ?? absentWords(row, "before").toLowerCase()}. ${sides.after}: ${row.after ?? absentWords(row, "after").toLowerCase()}.`}</dd>
             </div>
           ))}
         </dl>

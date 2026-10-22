@@ -268,7 +268,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Grant with": support("Grant with", COMMAND),
   "Add with": support("Add with", COMMAND),
   "Checked with": support("Checked with", COMMAND),
-  "Check with": support("Check now with", COMMAND),
+  "Check with": support("Run a check with", COMMAND),
   "Changes": support("Change with", COMMAND),
   "Items in a backup": support("List items with", COMMAND),
   "Mapping API": support("Settings address", COMMAND),

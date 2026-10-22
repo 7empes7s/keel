@@ -1,3 +1,4 @@
+import { loadConnections, syncConnections } from "../../engine/bootstrap/connections.mjs";
 import { loadSetupState } from "../../engine/bootstrap/onboarding.mjs";
 import { guarded, type GuardDeps } from "@/lib/action";
 import { canCheck, canProvision, setupHost, type SetupHost } from "@/lib/setup-host";
@@ -36,8 +37,22 @@ export function guardedSetupState(deps: SetupReadDeps = {}) {
       state = await load(null);
       checkFailed = true;
     }
+    // Connections: record each Keel app's state from the same tenant read. A failure here
+    // never hides the setup steps; the page shows connections as unavailable instead.
+    let connections: Awaited<ReturnType<typeof loadConnections>> | null = null;
+    try {
+      // A host without credential files knows no app, so it records nothing and only shows what was recorded.
+      if (host.apps) await syncConnections(client, {
+        tenantRef,
+        apps: host.apps ?? {},
+        readers: checkFailed ? null : host.readers,
+      } as unknown as Parameters<typeof syncConnections>[1]);
+      connections = await loadConnections(client, { tenantRef });
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : "setup: connections could not be recorded");
+    }
     return Response.json(
-      { ...state, tenantId: host.tenantId ?? null, canCheck: canCheck(host), canProvision: canProvision(host), checkFailed },
+      { ...state, connections, tenantId: host.tenantId ?? null, canCheck: canCheck(host), canProvision: canProvision(host), checkFailed },
       { headers: NO_STORE },
     );
   }, deps);

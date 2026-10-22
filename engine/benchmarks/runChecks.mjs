@@ -86,7 +86,7 @@ function workloadObservation(run, { tenantRef, resourceType, completeness }) {
  * read did not finish. Runs refused for lack of qualification read nothing and count
  * as no read at all.
  */
-async function newestWorkloadRead(client, { tenantRef, resourceType, parts, now }) {
+export async function newestWorkloadRead(client, { tenantRef, resourceType, parts, now }) {
   const { rows: runs } = await client.query(
     `SELECT id, outcome, observed_from, observed_to, digest
        FROM workload_collection
@@ -108,11 +108,11 @@ async function newestWorkloadRead(client, { tenantRef, resourceType, parts, now 
   const resources = rows
     .filter((row) => !parts || parts.includes(row.fields?.kind))
     .map((row) => ({ ...row.fields, id: row.resource_key }));
-  return { observation: workloadObservation(run, { tenantRef, resourceType, completeness: 'complete' }), resources };
+  return { observation: workloadObservation(run, { tenantRef, resourceType, completeness: 'complete' }), resources, collectionId: String(run.id) };
 }
 
 /**
- * @returns {Promise<{ checked: number, pass: number, fail: number, unknown: number, notApplicable: number, evaluations: object[] }>}
+ * @returns {Promise<{ checked: number, pass: number, fail: number, unknown: number, notApplicable: number, notConfigured: number, evaluations: object[] }>}
  */
 export async function runComplianceChecks(client, { tenantRef, actor, now = new Date(), controls = listControls() }) {
   assertTenantRef(tenantRef);
@@ -151,6 +151,8 @@ export async function runComplianceChecks(client, { tenantRef, actor, now = new 
     fail: count('fail'),
     unknown: count('unknown'),
     notApplicable: count('not-applicable'),
+    // Of the fails, those where the setting does not exist yet.
+    notConfigured: evaluations.filter((evaluation) => evaluation.reason === 'not-configured').length,
     evaluations,
   };
 }

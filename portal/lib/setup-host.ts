@@ -30,6 +30,13 @@ export interface CredentialReference {
   identityRef: string;
 }
 
+// Connections: one Keel app as the host knows it. References only, never a secret.
+export interface ConnectionApp {
+  appId: string;
+  credentialRef: string | null;
+  credentialExpiresAt: string | null;
+}
+
 export interface SetupHost {
   // The tenant's Entra id: an identifier, not a secret. The page builds Microsoft
   // admin links from it and shows it in Technical details only.
@@ -37,6 +44,8 @@ export interface SetupHost {
   readers: ReadAdapters | null;
   adapters: ProvisioningAdapters | null;
   credentials: { collector: CredentialReference; restorer: CredentialReference } | null;
+  // Each Keel app the host has a credential file for (null: none for that app).
+  apps?: { collector: ConnectionApp | null; restorer: ConnectionApp | null; "content-reader": ConnectionApp | null } | null;
   build: string | null;
   qualificationMode: "live-qualified" | "fixture-tested";
   // The onboarding operator's Entra object id, when the host can name it; without
@@ -49,6 +58,7 @@ export const NO_SETUP_HOST: SetupHost = Object.freeze({
   readers: null,
   adapters: null,
   credentials: null,
+  apps: null,
   build: null,
   qualificationMode: "live-qualified",
   operatorPrincipalId: null,
@@ -56,6 +66,10 @@ export const NO_SETUP_HOST: SetupHost = Object.freeze({
 
 const DEFAULT_SETUP_CONFIG_PATH = "/etc/keel/setup.json";
 const DEFAULT_TENANT_CONFIG_PATH = "/etc/keel/tenant.json";
+// The content reader's credential file (the same default cli/keel-restore.mjs reads).
+// Setup only takes its app id from it, to show the app in the permission table.
+const DEFAULT_CONTENT_READER_PATH = "/etc/keel/content-reader.json";
+const APP_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface SetupConfig {
   operatorPrincipalId?: string | null;
@@ -92,6 +106,25 @@ export function composeSetupHost(
   const setupPath = env.KEEL_SETUP_CONFIG_PATH || DEFAULT_SETUP_CONFIG_PATH;
   const setup: SetupConfig = existsSync(setupPath) ? readJson(setupPath) : {};
   const tenant = readJson(env.KEEL_TENANT_CONFIG_PATH ?? DEFAULT_TENANT_CONFIG_PATH) as { tenantId?: string };
+  const readerPath = env.KEEL_CONTENT_READER_PATH || DEFAULT_CONTENT_READER_PATH;
+  // An unreadable content reader file only leaves that app out of the table; it never
+  // takes the whole setup host down.
+  let readerAppId: string | null = null;
+  // Its certificate, for the expiry Connections shows. Only the path is passed on.
+  let readerCertPath: string | null = null;
+  try {
+    const reader = existsSync(readerPath) ? (readJson(readerPath) as { clientId?: string; certPath?: string }) : null;
+    readerAppId = reader?.clientId ?? null;
+    // Only an app id of its own: anything else leaves the content reader out, never the whole host.
+    const own = (path: string) => { try { return (readJson(path) as { clientId?: string }).clientId; } catch { return null; } };
+    if (readerAppId !== null && (!APP_ID.test(readerAppId) || [own(paths.collectorConfig), own(paths.targetConfig)].includes(readerAppId))) {
+      console.error("setup host: the content reader file does not name an app of its own");
+      readerAppId = null;
+    }
+    readerCertPath = typeof reader?.certPath === "string" ? reader.certPath : null;
+  } catch {
+    console.error("setup host: the content reader file could not be read");
+  }
   const build = setup.build ?? env.KEEL_BUILD ?? deployedRevision();
   if (!build) throw new Error("setup host: no build identifier (set build in the setup config or KEEL_BUILD)");
   return createGraphSetupHost({
@@ -99,6 +132,7 @@ export function composeSetupHost(
     tenantId: tenant.tenantId,
     collector: { config: readJson(paths.collectorConfig), credentialRef: `file:${paths.collectorConfig}` },
     restorer: { config: readJson(paths.targetConfig), credentialRef: `file:${paths.targetConfig}` },
+    contentReader: readerAppId ? { config: { clientId: readerAppId, certPath: readerCertPath }, credentialRef: `file:${readerPath}` } : null,
     operatorPrincipalId: setup.operatorPrincipalId ?? env.KEEL_SETUP_OPERATOR_ID ?? null,
     build,
     qualificationMode: setup.qualificationMode ?? "live-qualified",

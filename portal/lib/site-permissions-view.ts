@@ -58,6 +58,18 @@ export interface SitePermissions {
   appGrants: PermissionPart<AppGrant>;
   backup: SiteBackup | null;
   people: PeopleSummary | null;
+  // The site's own sharing setting (SharePoint admin centre), and the tenant's default
+  // it is compared with. `value` is set only when the read observed it.
+  sharing: SiteSharing;
+}
+
+export interface SiteSharing {
+  status: PartStatus;
+  value: string | null;
+  // The tenant's own setting, which caps every site; null when it was not read.
+  tenant: string | null;
+  // The read is approved but the host names no PnP config for it.
+  unconfigured?: boolean;
 }
 
 // The newest nightly backup of SharePoint sites (content_run, workload sharepoint-sites).
@@ -123,7 +135,20 @@ export function sitePermissionsFrom(resourceKey: string, fieldsValue: unknown, c
     })),
     backup: null,
     people: null,
+    sharing: sharingFrom(fields, coverage),
   };
+}
+
+// Before the per-site sharing read is switched on, the engine records the field as
+// unknown with no answer from Microsoft: that is "not read yet", not a gap in a read.
+function sharingFrom(fields: Record<string, unknown>, coverage: Coverage): SiteSharing {
+  const entry = coverage.sharingCapability as { status?: string; operation?: string | null; reason?: string } | undefined;
+  const value = text(fields.sharingCapability);
+  if (entry?.status === "observed" && value) return { status: "observed", value, tenant: null };
+  if (entry?.status === "denied" || entry?.status === "failed") return { status: entry.status, value: null, tenant: null };
+  const notRead = !entry || !entry.operation || /not live-qualified|not read/i.test(entry.reason ?? "");
+  const unconfigured = /powershellConfigs\.sharepoint/.test(entry?.reason ?? "");
+  return { status: notRead ? "not-read" : "unknown", value: null, tenant: null, ...(unconfigured ? { unconfigured } : {}) };
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -278,7 +303,7 @@ export function backupWords(site: SitePermissions): string | null {
 
 /** 0 is the most urgent. A site's rank is its worst badge. */
 export function siteRank(site: SitePermissions, run: SitesContentRun | null | undefined): number {
-  const tones = [backupStatus(site, run), appStatus(site), peopleStatus(site, run), externalStatus(site)].filter(Boolean).map((status) => TONE_RANK[status!.tone]);
+  const tones = [backupStatus(site, run), appStatus(site), peopleStatus(site, run), externalStatus(site), sharingStatus(site)].filter(Boolean).map((status) => TONE_RANK[status!.tone]);
   return Math.min(...tones);
 }
 
@@ -293,6 +318,7 @@ export const SITE_TILES = [
   { key: "unprotected", label: "Not backed up", icon: "backup", test: (site: SitePermissions, run: SitesContentRun | null | undefined) => ["outside", "none", "failed"].includes(backupStatus(site, run).key) },
   { key: "apps", label: "Apps with access", icon: "link", test: (site: SitePermissions) => (site.appGrants.entries?.length ?? 0) > 0 },
   { key: "guests", label: "Guests or links", icon: "person", test: (site: SitePermissions) => Boolean(site.people && (site.people.guests || site.people.sharingLinks)) },
+  { key: "wider", label: "Shared wider than default", icon: "link", test: (site: SitePermissions) => sharingStatus(site).key === "wider" },
   { key: "no-owner", label: "No owner", icon: "x-circle", test: (site: SitePermissions) => site.people?.ownerCount === 0 },
 ] as const;
 
@@ -303,10 +329,58 @@ const SHARING_WORDS: Record<string, string> = {
   externaluserandguestsharing: "Anyone, including links that need no sign-in",
 };
 
+// Short badge labels, from closed to open.
+const SHARING_SHORT: Record<string, string> = {
+  disabled: "Organisation only",
+  existingexternalusersharingonly: "Existing guests",
+  externalusersharingonly: "New and existing guests",
+  externaluserandguestsharing: "Anyone with the link",
+};
+const SHARING_ORDER = ["disabled", "existingexternalusersharingonly", "externalusersharingonly", "externaluserandguestsharing"];
+
 /** The tenant's sharing setting in words. */
 export function tenantSharingWords(value: string | null | undefined): string | null {
   if (!value) return null;
   return SHARING_WORDS[value.toLowerCase()] ?? roleLabel(value);
+}
+
+/** How open a sharing setting is: 0 (organisation only) to 3 (anyone); -1 when unknown. */
+export function sharingLevel(value: string | null | undefined): number {
+  return value ? SHARING_ORDER.indexOf(value.toLowerCase()) : -1;
+}
+
+/** A sharing setting as a short badge label. */
+export function sharingShort(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return SHARING_SHORT[value.toLowerCase()] ?? roleLabel(value);
+}
+
+/**
+ * The site's own sharing setting against the tenant's default. More open than the
+ * default is urgent: SharePoint is meant to cap a site at the tenant's setting, so it
+ * needs a person. Anyone-links are worth a look even when the tenant allows them.
+ */
+export function sharingStatus(site: SitePermissions): SiteStatus {
+  const { status, value, tenant } = site.sharing;
+  if (status === "denied") return { key: "unknown", label: "Not allowed", tone: "soon", detail: "Microsoft refused to show this site's sharing setting to KEEL." };
+  if (status === "failed") return { key: "unknown", label: "Read failed", tone: "soon", detail: "Reading this site's sharing setting failed." };
+  if (status === "not-read" && site.sharing.unconfigured) {
+    return { key: "not-read", label: "Not set up", tone: "soon", detail: "The sharing read is approved, but the server has no SharePoint sign-in set up for it, so it did not run." };
+  }
+  if (status === "not-read") return { key: "not-read", label: "Not read yet", tone: "neutral", detail: "KEEL starts reading each site's own sharing setting once that read is approved for this tenant." };
+  if (status !== "observed" || !value) return { key: "unknown", label: "Unknown", tone: "neutral", detail: "Microsoft did not list this site's sharing setting." };
+  const level = sharingLevel(value);
+  const tenantLevel = sharingLevel(tenant);
+  const label = sharingShort(value)!;
+  const words = tenantSharingWords(value);
+  const tenantWords = tenantSharingWords(tenant);
+  if (level >= 0 && tenantLevel >= 0 && level > tenantLevel) {
+    return { key: "wider", label, tone: "urgent", detail: `More open than your organisation's default (${tenantWords}). This site allows: ${words}.` };
+  }
+  const compared = tenantLevel < 0 || level < 0 ? "" : level < tenantLevel ? ` Stricter than your organisation's default (${tenantWords}).` : " Same as your organisation's default.";
+  if (level === 3) return { key: "anyone", label, tone: "soon", detail: `Files can be shared with links that work without signing in.${compared}` };
+  if (level === 0) return { key: "internal", label, tone: "fine", detail: `Only people in your organisation can be given access.${compared}` };
+  return { key: "guests", label, tone: "low", detail: `This site allows: ${words}.${compared}` };
 }
 
 export function sitesVerdict(data: SitePermissionsData): { text: string; tone: VerdictTone } {
@@ -322,15 +396,17 @@ export function sitesVerdict(data: SitePermissionsData): { text: string; tone: V
   const unprotected = sites.filter((site) => ["outside", "none"].includes(backupStatus(site, run).key)).length;
   const partial = sites.filter((site) => backupStatus(site, run).key === "partial").length;
   const unreadable = sites.filter((site) => site.appGrants.status === "denied" || site.appGrants.status === "failed").length;
+  const wider = sites.filter((site) => sharingStatus(site).key === "wider").length;
   const problems = [
     noOwner ? `${count(noOwner, "site has", "sites have")} no owner` : null,
+    wider ? `${count(wider, "site is", "sites are")} shared more widely than your organisation's default` : null,
     unprotected ? `${count(unprotected, "site is", "sites are")} not backed up` : null,
     partial ? `${count(partial, "site was", "sites were")} only partly backed up` : null,
     unreadable ? `app access on ${count(unreadable, "site", "sites")} could not be read` : null,
   ].filter(Boolean) as string[];
   if (problems.length) {
     const text = problems.slice(0, 2).join(", and ");
-    return { text: `${text[0].toUpperCase()}${text.slice(1)}.`, tone: noOwner ? "critical" : "attention" };
+    return { text: `${text[0].toUpperCase()}${text.slice(1)}.`, tone: noOwner || wider ? "critical" : "attention" };
   }
   if (data.run.capped) return { text: `Only the first ${count(sites.length, "site was", "sites were")} read; the read stops there, so other sites are missing.`, tone: "attention" };
   if (data.latest) return { text: `The newest SharePoint read did not finish; this shows the one from ${ago(data.run.observedTo, data.generatedAt)}.`, tone: "attention" };
@@ -348,8 +424,10 @@ export function siteVerdict(site: SitePermissions, run: SitesContentRun | null |
   const people = peopleStatus(site, run);
   const external = externalStatus(site);
   const full = fullControlApps(site);
+  const sharing = sharingStatus(site);
   const problems = [
     people.key === "no-owner" ? "nobody owns this site" : null,
+    sharing.key === "wider" ? "it is shared more widely than your organisation's default" : null,
     ["outside", "none"].includes(backup.key) ? "it is not backed up" : null,
     backup.key === "partial" ? "parts of it were not backed up last night" : null,
     full ? `${count(full, "app has", "apps have")} full control` : null,
@@ -358,7 +436,7 @@ export function siteVerdict(site: SitePermissions, run: SitesContentRun | null |
   ].filter(Boolean) as string[];
   if (problems.length) {
     const text = problems.slice(0, 2).join(", and ");
-    return { text: `${text[0].toUpperCase()}${text.slice(1)}.`, tone: people.key === "no-owner" ? "critical" : "attention" };
+    return { text: `${text[0].toUpperCase()}${text.slice(1)}.`, tone: people.key === "no-owner" || sharing.key === "wider" ? "critical" : "attention" };
   }
   if (people.key !== "owned") return { text: "Backed up. Owners, groups and guests are not known yet.", tone: "attention" };
   const apps = site.appGrants.entries?.length ?? 0;

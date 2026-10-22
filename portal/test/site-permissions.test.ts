@@ -9,7 +9,7 @@ import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { SiteDetail, SiteList } from "@/components/site-permissions";
 import { loadSitePermissions } from "@/lib/site-permissions";
 import {
-  SITE_TILES, appStatus, backupStatus, externalStatus, peopleStatus, roleLabel, siteVerdict, sitePermissionsFrom, sitesInOrder, sitesVerdict,
+  SITE_TILES, appStatus, backupStatus, externalStatus, peopleStatus, roleLabel, sharingStatus, siteVerdict, sitePermissionsFrom, sitesInOrder, sitesVerdict,
   tenantSharingWords, type PeopleSummary, type SitePermissions, type SitePermissionsData, type SitesContentRun,
 } from "@/lib/site-permissions-view";
 
@@ -85,7 +85,12 @@ test("the loader joins each site's nightly backup: items, size, last stored, own
   try {
     await client.query(schemaSql());
     const now = new Date("2026-10-15T12:00:00.000Z");
-    const result = run("2026-10-15T02:00:00.000Z", "complete", [site(FINANCE, "Finance", []), site(ARCHIVE, "Archive", [])]);
+    const financeRow = site(FINANCE, "Finance", []);
+    Object.assign(financeRow.fields, { sharingCapability: "ExternalUserAndGuestSharing" });
+    Object.assign(financeRow.fieldCoverage, { sharingCapability: observed("sharepoint.site-sharing") });
+    const archiveRow = site(ARCHIVE, "Archive", []);
+    Object.assign(archiveRow.fieldCoverage, { sharingCapability: { status: "unknown", operation: "sharepoint.site-sharing", reason: "not read yet: the per-site sharing read is not live-qualified" } });
+    const result = run("2026-10-15T02:00:00.000Z", "complete", [financeRow, archiveRow]);
     result.tenant = { fields: { sharingCapability: "ExternalUserSharingOnly" }, fieldCoverage: { sharingCapability: { status: "observed", operation: "sharepoint.tenant-settings" } } } as never;
     await recordSharePointRun(client, { tenantRef: TENANT, result });
     const item = (container: string, itemKey: string, version: string, bytes: number, at: string, metadata: unknown = {}) => client.query(
@@ -111,6 +116,10 @@ test("the loader joins each site's nightly backup: items, size, last stored, own
     assert.equal(data.tenantSharing, "ExternalUserSharingOnly");
     assert.deepEqual(data.contentRun, { outcome: "partial", completedAt: "2026-10-15T01:30:00.000Z", namePrefix: "Fin", reasons: ["Finance: 1 part(s) not fully read, first permissions: denied (403)"] });
     const [archive, finance] = data.sites;
+    // Each site's own sharing setting, compared with the tenant default it was read with.
+    assert.deepEqual(finance.sharing, { status: "observed", value: "ExternalUserAndGuestSharing", tenant: "ExternalUserSharingOnly" });
+    assert.equal(sharingStatus(finance).key, "wider");
+    assert.deepEqual(archive.sharing, { status: "not-read", value: null, tenant: "ExternalUserSharingOnly" });
     assert.equal(archive.backup, null);
     assert.deepEqual(finance.backup, { items: 2, bytes: 3100, lastStoredAt: "2026-10-15T01:02:00.000Z" });
     // The newest summary wins.
@@ -227,7 +236,7 @@ test("the list is a table that links each site; a site's page shows status tiles
   assert.doesNotMatch(list, /not read yet/);
 
   const detail = renderToStaticMarkup(createElement(SiteDetail, { site: FINANCE_SITE, run: RUN, latest: null, now: NOW, contentRun: NIGHTLY, tenantSharing: null }));
-  for (const tile of ["Backup", "Apps with access", "Guests and sharing", "Owners"]) assert.match(detail, new RegExp(`st-status-label[^>]*>.*?${tile}`));
+  for (const tile of ["Backup", "Apps with access", "Sharing setting", "Guests and links", "Owners"]) assert.match(detail, new RegExp(`st-status-label[^>]*>.*?${tile}`));
   assert.match(detail, /Payroll connector/);
   assert.match(detail, /Full control/);
   assert.match(detail, /An app with no name/);
@@ -249,4 +258,51 @@ test("the list is a table that links each site; a site's page shows status tiles
   assert.match(refused, /href="\/setup"/);
   assert.match(refused, /Show the error/);
   assert.match(refused, /The newest SharePoint read failed 10 hours ago/);
+});
+
+const withSharing = (base: SitePermissions, value: string | null, tenant: string | null, status: SitePermissions["sharing"]["status"] = value ? "observed" : "not-read"): SitePermissions => ({
+  ...base, sharing: { status, value, tenant },
+});
+
+test("each site's own sharing setting reads against the tenant default; more open than the default is urgent and sorts first", () => {
+  const tenant = "ExternalUserSharingOnly";
+  const wider = withSharing(QUIET, "ExternalUserAndGuestSharing", tenant);
+  assert.equal(sharingStatus(wider).key, "wider");
+  assert.equal(sharingStatus(wider).tone, "urgent");
+  assert.equal(sharingStatus(wider).label, "Anyone with the link");
+  assert.match(sharingStatus(wider).detail ?? "", /More open than your organisation's default \(Guests who sign in\)/);
+  // Case does not matter: Graph says externalUserSharingOnly, PnP ExternalUserSharingOnly.
+  assert.equal(sharingStatus(withSharing(QUIET, "ExternalUserSharingOnly", "externalUserSharingOnly")).key, "guests");
+  assert.match(sharingStatus(withSharing(QUIET, "ExternalUserSharingOnly", tenant)).detail ?? "", /Same as your organisation's default/);
+  const stricter = sharingStatus(withSharing(QUIET, "Disabled", tenant));
+  assert.deepEqual([stricter.key, stricter.tone, stricter.label], ["internal", "fine", "Organisation only"]);
+  assert.match(stricter.detail ?? "", /Stricter than your organisation's default/);
+  // Anyone-links are worth a look even when the tenant allows them.
+  assert.equal(sharingStatus(withSharing(QUIET, "ExternalUserAndGuestSharing", "ExternalUserAndGuestSharing")).tone, "soon");
+  // Not read yet is neutral, never a guessed value; a refused read says so.
+  assert.deepEqual([sharingStatus(QUIET).key, sharingStatus(QUIET).tone], ["not-read", "neutral"]);
+  assert.equal(sharingStatus(withSharing(QUIET, null, tenant, "denied")).label, "Not allowed");
+  // Approved but the host has no PnP config: says so, instead of "not approved yet".
+  const unconfigured = sitePermissionsFrom(`site:${ARCHIVE}`, { displayName: "Archive" }, { sharingCapability: { status: "unknown", operation: "sharepoint.site-sharing", reason: "not read: the scope file names no PnP config for SharePoint (powershellConfigs.sharepoint)" } });
+  assert.deepEqual([sharingStatus(unconfigured).label, sharingStatus(unconfigured).tone], ["Not set up", "soon"]);
+  // Unknown tenant default: shown, but never called wider.
+  assert.equal(sharingStatus(withSharing(QUIET, "ExternalUserAndGuestSharing", null)).key, "anyone");
+
+  const named = { ...wider, siteId: "w", displayName: "Wider" };
+  assert.deepEqual(sitesInOrder([QUIET, named], NIGHTLY).map((entry) => entry.displayName), ["Wider", "Archive"]);
+  const tile = SITE_TILES.find((entry) => entry.key === "wider")!;
+  assert.ok(tile.test(named));
+  assert.ok(!tile.test(QUIET));
+  const data: SitePermissionsData = { generatedAt: NOW, run: RUN, latest: null, sites: [QUIET, named], contentRun: NIGHTLY, tenantSharing: tenant };
+  assert.deepEqual(sitesVerdict(data), { text: "1 site is shared more widely than your organisation's default.", tone: "critical" });
+  assert.equal(siteVerdict(named, NIGHTLY).tone, "critical");
+
+  const list = renderToStaticMarkup(createElement(SiteList, { data }));
+  assert.match(list, /Sharing setting/);
+  assert.match(list, /Anyone with the link/);
+  assert.match(list, /More open than the default/);
+  assert.match(list, /Shared wider than default/);
+  const detail = renderToStaticMarkup(createElement(SiteDetail, { site: named, run: RUN, latest: null, now: NOW, contentRun: NIGHTLY, tenantSharing: tenant }));
+  assert.match(detail, /Organisation default: Guests who sign in/);
+  assert.match(detail, /data-tone="urgent"[^>]*>\s*<span class="st-status-label">.*?Sharing setting/);
 });

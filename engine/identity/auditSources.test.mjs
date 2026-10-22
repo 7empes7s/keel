@@ -190,3 +190,26 @@ test('a refused or oversized read is recorded, never taken as an empty log', asy
   const page2 = await adapter.readPage({ source: 'audit', from: at(3), until: at(0), cursor: 3, limit: 3 });
   assert.deepEqual([page2.events.map((event) => event.id), page2.nextCursor], [['entra:b:1'], null]);
 });
+
+test('a long Entra record id (B2C) is stored by a stable hash, not rejected as a secret (#514)', async (t) => {
+  // Shape of the ids the test tenant returns: B2C_<guid>_<guid>_<5 chars>, 82 characters.
+  const LONG = 'B2C_0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d_5e6f7a8b-9c0d-4e1f-8a2b-3c4d5e6f7a8b_AbC12';
+  const [first, second] = directoryAuditEvents(directoryAudit(LONG, 2));
+  assert.match(first.id, /^entra:h[a-f0-9]{32}:0$/);
+  assert.equal(second.id, first.id.replace(/:0$/, ':1'));
+  assert.equal(directoryAuditEvents(directoryAudit(LONG, 2))[0].id, first.id, 'the same record always gets the same id');
+  assert.notEqual(directoryAuditEvents(directoryAudit(`${LONG}x`, 2))[0].id, first.id);
+  assert.ok(!first.id.includes('B2C_'), 'the Microsoft id is not stored verbatim');
+
+  const { client, collector } = await setup(t);
+  const reader = fakeReader({ audit: { items: [directoryAudit(LONG, 30)] }, 'intune-audit': { items: [] } });
+  const result = await ingestCollectorAudit(client, { tenantRef: TENANT, reader, requestedBy: collector, now: NOW });
+  assert.equal(result.sources.audit.status, 'complete-empty', 'the whole lookback is read, not stuck on the first day');
+  assert.equal(result.sources.audit.windows, 30);
+  assert.equal(result.sources.audit.insertedEvents, 2);
+  const [member] = await attributeChanges(client, {
+    tenantRef: TENANT,
+    changes: [change('member', 'groupMembership', `edge:member:${GROUP}:${USER}`, changeObjectIds({ naturalKey: `edge:member:${GROUP}:${USER}` }), 48, 24)],
+  });
+  assert.deepEqual([member.verdict, member.actors], ['exact', [{ kind: 'user', id: ALICE, name: null }]]);
+});

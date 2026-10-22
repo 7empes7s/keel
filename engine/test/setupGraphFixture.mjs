@@ -10,6 +10,7 @@ export const TENANT_ID = '00000000-0000-0000-0000-0000000000c1';
 export const COLLECTOR_APP_ID = '11111111-1111-4111-8111-111111111111';
 export const RESTORER_APP_ID = '22222222-2222-4222-8222-222222222222';
 export const OPERATOR_ID = '33333333-3333-4333-8333-333333333333';
+export const CONTENT_READER_APP_ID = '44444444-4444-4444-8444-444444444444';
 export const PRIVILEGED_ROLE_ADMIN = 'e8611ab8-c189-46e8-94e1-60213ab1f814';
 
 const COLLECTOR_SCOPES = ['User.Read.All', 'Group.Read.All', 'RoleManagement.Read.Directory', 'Policy.Read.All',
@@ -17,7 +18,13 @@ const COLLECTOR_SCOPES = ['User.Read.All', 'Group.Read.All', 'RoleManagement.Rea
   'LifecycleWorkflows.Read.All', 'CustomSecAttributeDefinition.Read.All', 'Agreement.Read.All',
   'MultiTenantOrganization.Read.All', 'IdentityUserFlow.Read.All', 'APIConnectors.Read.All'];
 const RESTORER_SCOPES = ['Group.ReadWrite.All', 'Policy.ReadWrite.ConditionalAccess', 'RoleManagement.ReadWrite.Directory'];
-const ALL_SCOPES = [...new Set([...COLLECTOR_SCOPES, ...RESTORER_SCOPES, 'MailboxSettings.ReadWrite', 'Directory.ReadWrite.All', 'Channel.Create'])];
+const CONTENT_SCOPES = ['Mail.Read', 'Files.Read.All'];
+// Every Graph permission the content reader is registered for (the content-backup prerequisite).
+export const CONTENT_READER_SCOPES = ['Mail.Read', 'Calendars.Read', 'Contacts.Read', 'MailboxSettings.Read', 'User.Read.All',
+  'MailboxFolder.Read.All', 'MailboxItem.Read.All', 'Files.Read.All', 'Sites.Read.All', 'Group.Read.All', 'Team.ReadBasic.All',
+  'Channel.ReadBasic.All', 'ChannelSettings.Read.All', 'ChannelMember.Read.All', 'TeamsTab.Read.All',
+  'TeamsAppInstallation.ReadForTeam.All', 'Tasks.Read.All'];
+const ALL_SCOPES = [...new Set([...COLLECTOR_SCOPES, ...RESTORER_SCOPES, ...CONTENT_SCOPES, ...CONTENT_READER_SCOPES, 'MailboxSettings.ReadWrite', 'Directory.ReadWrite.All', 'Channel.Create'])];
 
 const guid = (seed) => {
   const h = createHash('sha256').update(seed).digest('hex');
@@ -39,6 +46,12 @@ export function fixtureTenant({
   intuneAssigned = true, intuneReadable = true, operatorActive = false, operatorEligible = true,
   // The restorer also holds Exchange Online's Exchange.ManageAsApp (another Microsoft API).
   restorerExchange = false,
+  // A content reader app that holds Mail.Read only (Files.Read.All is on its list).
+  contentReader = false,
+  // Or: a content reader registered for all its permissions, holding these grants.
+  contentReaderScopes = null,
+  // Directory roles the apps hold: { collector: [{ roleDefinitionId, directoryScopeId }] }.
+  appDirectoryRoles = {},
 } = {}) {
   const graphSp = { id: guid('graph-sp'), appId: GRAPH_APP_ID, appRoles: ALL_SCOPES.map((value) => ({ id: roleId(value), value, allowedMemberTypes: ['Application'] })) };
   const exchangeSp = { id: guid('exchange-sp'), appId: EXCHANGE_APP_ID, appRoles: [{ id: roleId('Exchange.ManageAsApp'), value: 'Exchange.ManageAsApp', allowedMemberTypes: ['Application'] }] };
@@ -59,10 +72,16 @@ export function fixtureTenant({
     const restorerSp = sps.get(RESTORER_APP_ID).id;
     grants.get(restorerSp).push({ id: guid(`grant:${restorerSp}:exchange`), principalId: restorerSp, resourceId: exchangeSp.id, appRoleId: roleId('Exchange.ManageAsApp') });
   }
+  if (contentReader) register(CONTENT_READER_APP_ID, 'KEEL Content Reader', CONTENT_SCOPES, ['Mail.Read']);
+  else if (contentReaderScopes) register(CONTENT_READER_APP_ID, 'KEEL Content Reader', CONTENT_READER_SCOPES, contentReaderScopes);
   const collectorSp = sps.get(COLLECTOR_APP_ID).id;
+  const appIdOf = { collector: COLLECTOR_APP_ID, restorer: RESTORER_APP_ID, 'content-reader': CONTENT_READER_APP_ID };
+  const held = Object.entries(appDirectoryRoles).flatMap(([identity, roles]) => roles.map((role) => ({
+    principalId: sps.get(appIdOf[identity]).id, roleDefinitionId: role.roleDefinitionId, directoryScopeId: role.directoryScopeId ?? '/' })));
   const state = {
     graphSp, exchangeSp, apps, sps, grants,
-    directoryRoles: operatorActive ? [{ principalId: OPERATOR_ID, roleDefinitionId: PRIVILEGED_ROLE_ADMIN, directoryScopeId: '/' }] : [],
+    directoryRoles: [...(operatorActive ? [{ principalId: OPERATOR_ID, roleDefinitionId: PRIVILEGED_ROLE_ADMIN, directoryScopeId: '/' }] : []), ...held],
+    roleDefinitions: [{ id: 'custom-role-1', templateId: 'custom-role-1', displayName: 'KEEL-RT Custom Reader' }],
     eligibility: operatorEligible ? [{ principalId: OPERATOR_ID, roleDefinitionId: PRIVILEGED_ROLE_ADMIN }] : [],
     intune: { readable: intuneReadable, definitions: [{ id: 'rd-read-only-operator', displayName: 'Read Only Operator' }],
       assignments: { 'rd-read-only-operator': [{ id: 'ra-1', members: ['group-intune-readers'] }] },
@@ -105,6 +124,7 @@ function route(state, method, url, body) {
       const who = principalFilter(url.searchParams.get('$filter'));
       return json(200, { value: state.directoryRoles.filter((a) => a.principalId === who) });
     }
+    if (path === '/roleManagement/directory/roleDefinitions') return json(200, { value: state.roleDefinitions.map((definition) => pick(definition, select)) });
     if (path === '/roleManagement/directory/roleEligibilitySchedules') {
       const who = principalFilter(url.searchParams.get('$filter'));
       return json(200, { value: state.eligibility.filter((a) => a.principalId === who) });

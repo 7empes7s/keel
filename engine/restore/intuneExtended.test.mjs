@@ -12,7 +12,7 @@ import {
   INTUNE_BEST_EFFORT, INTUNE_EXTENDED_RECORDS, INTUNE_RECORDS, applyIntuneExtendedWrite, attachIntuneAssignments, buildIntuneExtendedLedger,
   SCRIPT_WRITE_PERMISSION, intuneExtendedOperations, targetAppsBody, writesIntuneAssignments,
 } from './intuneOperations.mjs';
-import { changedRecordFields } from './recordWriter.mjs';
+import { changedRecordFields, defineRecord, recordPostStateRefusal } from './recordWriter.mjs';
 import { EXPANSION_INVENTORY } from '../coverage/qualification.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
 import { classifyContentEffects } from '../safety/contentEffects.mjs';
@@ -823,6 +823,42 @@ test('compliance actions are read back from their own collection, not from the e
   assert.deepEqual(graph.calls.filter((call) => call.method !== 'GET').map((call) => `${call.method} ${call.path}`), [`POST ${path}/setScheduledActions`]);
   assert.equal(result.applied.changes.scheduledActions, 'written');
   assert.equal(graph.objects.get(path).scheduledActionsForRule[0].scheduledActionConfigurations[0].gracePeriodHours, 0);
+});
+
+// Issue #513: like Graph, a policy read without the actions in its $expand
+// leaves them out, so the create's post-state read never lists them.
+const plainReadOmitsActions = (graph) => ({
+  ...graph,
+  async read(version, path) {
+    const result = await graph.read(version, path);
+    if (!/\$expand=[^&]*scheduledActionsForRule/.test(path) && !/\/scheduledActionsForRule(\?|$)/.test(path) && result.ok && result.body && !Array.isArray(result.body.value)) {
+      const { scheduledActionsForRule: _actions, ...rest } = result.body;
+      return { ...result, body: rest };
+    }
+    return result;
+  },
+});
+
+test('a compliance create verifies its actions through their own collection, not the policy read (#513)', async () => {
+  const graph = idoFakeGraph();
+  const result = await applyIntuneExtendedWrite(plainReadOmitsActions(graph), resourceOf('deviceManagementCompliancePolicy', compliance), 'create', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const reads = graph.calls.filter((call) => call.method === 'GET').map((call) => call.path);
+  const id = result.applied.targetId;
+  assert.deepEqual(reads, [`${CP_PATH}/${id}?$expand=settings`, `${CP_PATH}/${id}/scheduledActionsForRule?$expand=scheduledActionConfigurations`],
+    'one policy read, then the actions from their own collection');
+
+  // Actions that did not take still fail the create.
+  const wrong = idoFakeGraph();
+  const lost = {
+    ...plainReadOmitsActions(wrong),
+    async read(version, path) {
+      const out = await plainReadOmitsActions(wrong).read(version, path);
+      return path.includes('/scheduledActionsForRule') && out.ok ? { ...out, body: { value: [] } } : out;
+    },
+  };
+  const failed = await applyIntuneExtendedWrite(lost, resourceOf('deviceManagementCompliancePolicy', compliance), 'create', FAST);
+  assert.match(failed.failed?.error ?? '', /actions for noncompliance did not read back as written/);
 });
 
 test('a backup whose actions list is empty (taken before #473) never removes the live actions', async () => {
@@ -1672,6 +1708,47 @@ test('scripts are assigned through their own /assign list', async () => {
   }
 });
 
+// Issue #546: Graph has no /assignments route for custom attribute scripts
+// (400), so their live assignments are read expanded on the script.
+test('a custom attribute script\'s live assignments are read expanded, never at /assignments', async () => {
+  const fields = Object.fromEntries(SCRIPT_CASES).deviceCustomAttributeShellScript;
+  const path = '/deviceManagement/deviceCustomAttributeShellScripts/s-1';
+  const live = { id: 's-1', displayName: 'KEEL-RT-attr', ...fields };
+  const resource = resourceOf('deviceCustomAttributeShellScript', live, {
+    live: { state: 'present', targetId: 's-1', payload: live },
+    assignments: { outcome: 'complete', targets: [groupTarget()] },
+    newAssignments: [],
+  });
+  const noRoute = (graph) => {
+    const read = graph.read.bind(graph);
+    graph.read = async (version, target, options) => {
+      if (/\/assignments(\?|$)/.test(target)) {
+        graph.calls.push({ version, method: 'GET', path: target });
+        return { ok: false, status: 400, body: { error: { code: 'No method match route template' } } };
+      }
+      return read(version, target, options);
+    };
+    return graph;
+  };
+  const moved = noRoute(idoFakeGraph({ seed: {
+    [path]: { ...live, assignments: [{ id: 'a-1', target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: 'other-group' } }] },
+  } }));
+  let result = await applyIntuneExtendedWrite(moved, resource, 'update', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(result.applied.changes.assignments, 'written');
+  assert.equal(moved.calls.some((call) => /\/assignments(\?|$)/.test(call.path)), false);
+  assert.ok(moved.calls.some((call) => call.method === 'GET' && call.path === `${path}?$expand=assignments`));
+  assert.deepEqual(moved.calls.find((call) => call.path.endsWith('/assign')).body.deviceManagementScriptAssignments
+    .map((entry) => entry.target.groupId), ['target-group']);
+
+  const same = noRoute(idoFakeGraph({ seed: {
+    [path]: { ...live, assignments: [{ id: 'a-1', target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: 'target-group' } }] },
+  } }));
+  result = await applyIntuneExtendedWrite(same, resource, 'update', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.applied.changes.assignments, 'already as in the backup');
+  assert.equal(same.calls.some((call) => call.method !== 'GET'), false);
+});
+
 test('an administrative template is assigned after its settings are written', async () => {
   const graph = idoFakeGraph({ seed: definitionsSeed('d-1', 'd-2') });
   const result = await applyIntuneExtendedWrite(graph, resourceOf('groupPolicyConfiguration', template, {
@@ -2063,4 +2140,13 @@ test('Exchange on-premises access settings are updated in place and never turned
   const turnedOff = await applyIntuneExtendedWrite(off, resourceOf('onPremisesConditionalAccessSettings', backup, { live: { state: 'present', payload: live2 } }), 'update', FAST);
   assert.equal(turnedOff.failed ?? turnedOff.skipped, undefined, JSON.stringify(turnedOff));
   assert.deepEqual(writesOf(off)[0].body, { enabled: false });
+});
+
+test('a field left out of the post-state read is only allowed when afterWrite checks it (#513)', () => {
+  assert.throws(() => defineRecord({ resourceType: 'x', operations: ['create'], checkedAfterWrite: ['children'] }), /needs an afterWrite/);
+  const checked = defineRecord({ resourceType: 'x', operations: ['create'], checkedAfterWrite: ['children'], afterWrite: async () => null });
+  assert.equal(recordPostStateRefusal(checked, { name: 'a', children: [1] }, { name: 'a' }), null);
+  assert.match(recordPostStateRefusal(checked, { name: 'a', children: [1] }, { name: 'b' }), /name did not read back/);
+  const plain = defineRecord({ resourceType: 'x', operations: ['create'] });
+  assert.match(recordPostStateRefusal(plain, { name: 'a', children: [1] }, { name: 'a' }), /children did not read back/);
 });

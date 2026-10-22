@@ -46,8 +46,8 @@ export function FixPanel({ finding, canRestore, now }: { finding: ComplianceFind
       </h3>
       {effect ? <p className="cp-muted">{effect}</p> : null}
       <ul aria-label="Objects to fix" className="cp-fix-list">
-        {candidates.map((candidate) => (
-          <FixRow candidate={candidate} canRestore={canRestore} finding={finding} key={candidate.naturalKey} now={now} primary={candidates.length === 1} />
+        {candidates.map((candidate, index) => (
+          <FixRow candidate={candidate} canRestore={canRestore} finding={finding} key={candidate.naturalKey} now={now} primary={index === 0} />
         ))}
       </ul>
       <p className="cp-muted">{canRestore ? FIX_STEPS : "Ask someone with the restore permission to make this change."}</p>
@@ -60,7 +60,7 @@ function FixRow({ finding, candidate, canRestore, now, primary }: {
   candidate: ComplianceFixCandidate;
   canRestore: boolean;
   now: string;
-  // One object: its button is the panel's one main action. Several: each is secondary.
+  // The first row's button is the panel's one main action; the others are secondary.
   primary: boolean;
 }) {
   const [state, setState] = useState<RowState>({ step: "idle" });
@@ -120,12 +120,12 @@ function FixRow({ finding, candidate, canRestore, now, primary }: {
       <div className="cp-fix-main">
         <span className="cp-fix-name">
           <b>{name}</b>
-          <small>{fixSetting(finding)} · in the backup taken {ago(candidate.seenAt, now)}</small>
+          <small>{fixSetting(finding, candidate)} · in the backup taken {ago(candidate.seenAt, now)}</small>
         </span>
-        <span aria-label={`${fixSetting(finding)}: now ${fixValue(candidate.from)}, after ${fixValue(candidate.to)}`} className="cp-fix-values" role="img">
-          <Badge icon="x-circle" tone="urgent">{fixValue(candidate.from)}</Badge>
+        <span aria-label={`${fixSetting(finding, candidate)}: now ${fixValue(candidate.from, candidate.field)}, after ${fixValue(candidate.to, candidate.field)}`} className="cp-fix-values" role="img">
+          <Badge icon="x-circle" tone="urgent">{fixValue(candidate.from, candidate.field)}</Badge>
           <Icon name="chevron" />
-          <Badge icon="check-circle" tone="fine">{fixValue(candidate.to)}</Badge>
+          <Badge icon="check-circle" tone="fine">{fixValue(candidate.to, candidate.field)}</Badge>
         </span>
         <span className="cp-fix-act">
           {state.step === "idle" && canRestore ? (
@@ -143,7 +143,7 @@ function FixRow({ finding, candidate, canRestore, now, primary }: {
       {plan && ready ? (
         <div className="cp-fix-confirm">
           <p className="cp-muted">
-            Keel will change only “{fixSetting(finding)}” on {name}, from {fixValue(plan.complianceFix?.from)} to {fixValue(plan.complianceFix?.to)}, and write every other setting back as it is now.
+            Keel will change only “{fixSetting(finding, candidate)}” on {name}, from {fixValue(plan.complianceFix?.from, candidate.field)} to {fixValue(plan.complianceFix?.to, candidate.field)}, and write every other setting back as it is now.
           </p>
           <label className="filter-field">
             <span>Why make this change?</span>

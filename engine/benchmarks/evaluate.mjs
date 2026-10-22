@@ -34,7 +34,7 @@
 import { CrossTenantObservationError } from '../contracts/observation.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
-import { controlFor, predicateFor, semanticFacts, PREDICATE_VERDICTS } from './registry.mjs';
+import { controlFor, predicateFor, semanticFacts, NOT_CONFIGURED, PREDICATE_VERDICTS } from './registry.mjs';
 
 export const EVALUATION_CONTRACT_VERSION = 1;
 
@@ -169,8 +169,13 @@ export function evaluateControl({ controlId, tenantRef, observations = {}, now =
     throw new TypeError(`${controlId}: predicate must return one of ${PREDICATE_VERDICTS.join(', ')}, got ${JSON.stringify(answer)}`);
   }
   const details = typeof answer === 'string' ? null : answer.details ?? null;
+  // A fail because the setting does not exist at all ("not set up yet").
+  const reason = verdict === 'fail' && typeof answer === 'object' && answer?.reason === NOT_CONFIGURED ? NOT_CONFIGURED : null;
+  if (typeof answer === 'object' && answer?.reason != null && reason === null) {
+    throw new TypeError(`${controlId}: only a fail may give a reason, and only '${NOT_CONFIGURED}'`);
+  }
 
-  return freezeResult({ control, verdict, reason: null, evidenceRefs, observationWindows, now, details });
+  return freezeResult({ control, verdict, reason, evidenceRefs, observationWindows, now, details });
 }
 
 /**

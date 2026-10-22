@@ -127,3 +127,21 @@ test('drift detection after a backup runs the checks, even with no active baseli
   const { rows } = await client.query("SELECT actor FROM evidence WHERE tenant_ref = $1 AND kind = 'benchmark-evaluation'", [tenantRef]);
   assert.deepEqual(rows.map((row) => row.actor), Array(ALL).fill('scheduler'));
 });
+
+test('a Conditional Access read with no legacy block is recorded as not set up yet', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenant();
+  const now = new Date();
+  await snapshot(client, tenantRef, new Date(now.getTime() - HOUR), { conditionalAccessPolicy: 'complete' }, [
+    ['conditionalAccessPolicy:KEEL-RT-mfa', { id: 'ca-1', displayName: 'KEEL-RT-mfa', state: 'enabled', conditions: { clientAppTypes: ['all'] }, grantControls: { builtInControls: ['mfa'] } }],
+  ]);
+  const result = await runComplianceChecks(client, { tenantRef, actor: 'scheduler', now });
+  const legacy = result.evaluations.find((evaluation) => evaluation.control_id === 'keel-custom.conditional-access.block-legacy');
+  assert.equal(legacy.verdict, 'fail');
+  assert.equal(legacy.reason, 'not-configured');
+  assert.equal(result.notConfigured, 1);
+  const { findings, summary } = await complianceFindings(client, { tenantRef, now });
+  assert.equal(findings.find((finding) => finding.controlId === legacy.control_id).reason, 'not-configured');
+  assert.equal(summary.notConfigured, 1);
+  assert.equal(summary.exposed, 1);
+});

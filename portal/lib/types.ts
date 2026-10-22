@@ -320,7 +320,9 @@ export interface ComplianceFinding {
   };
   // "Make it pass" (gap 6): the one setting this control's fix changes, and the
   // objects in the newest backup it would change. Absent from older readers.
-  fix?: { resourceType: string; field: string; to: unknown } | null;
+  // A fix on a service read (the Defender email checks) changes one of several
+  // settings: `field` is null and each candidate names its own.
+  fix?: { resourceType: string; field: string | null; to: unknown; settings?: Record<string, unknown> } | null;
   fixCandidates?: ComplianceFixCandidate[];
 }
 
@@ -344,6 +346,8 @@ export interface ComplianceSummary {
   passing: number;
   unknown: number;
   notApplicable: number;
+  // Of the exposed fails, those where the setting does not exist yet. Absent in older reads.
+  notConfigured?: number;
 }
 
 export interface StorageResidency {
@@ -569,6 +573,9 @@ export interface DashboardData {
   // Overview can point at it: open or reopened alerts, open incidents, and follow-up
   // steps restores left open. Absent in fixtures that predate it.
   waiting?: DashboardWaiting;
+  // The Compliance summary, for the score card. Null when it could not be read; absent
+  // in fixtures that predate it.
+  compliance?: ComplianceSummary | null;
 }
 
 export interface RestoreFollowUp {

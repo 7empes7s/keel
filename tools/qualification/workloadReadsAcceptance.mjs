@@ -4,11 +4,13 @@
  * tools/release/qualification.mjs can register the gate without an import cycle.
  */
 import { FAMILIES as EXCHANGE_EXTENDED } from '../../engine/collect/workloads/exchangeExtended.mjs';
+import { EXCHANGE_ROLE_GROUPS_MODULE, FAMILIES as EXCHANGE_ROLE_GROUPS } from '../../engine/collect/workloads/exchangeRoleGroups.mjs';
 import { FAMILIES as MAIL_FLOW } from '../../engine/collect/workloads/mailFlow.mjs';
 import { FAMILIES as PURVIEW_EXTENDED } from '../../engine/collect/workloads/purviewExtended.mjs';
 import { FAMILIES as RETENTION_DLP } from '../../engine/collect/workloads/purviewRetentionDlp.mjs';
 import { FAMILIES as TEAMS_EXTENDED } from '../../engine/collect/workloads/teamsExtended.mjs';
 import { FAMILIES as TEAMS_POLICIES } from '../../engine/collect/workloads/teamsPolicies.mjs';
+import { SHAREPOINT_WORKLOAD, SITE_SHARING_FAMILIES, SITE_SHARING_MODULE } from '../../engine/collect/workloads/sharepoint.mjs';
 import { WORKLOAD_DESCRIPTORS } from '../../engine/collect/workloadContract.mjs';
 import { WRITTEN_WORKLOADS } from './workloadWritesAcceptance.mjs';
 
@@ -24,11 +26,22 @@ export const workloadReadsRecordFile = (workload) => `workload-reads-${workload}
 export const READ_FAMILIES = Object.freeze({
   'exchange-mail-flow': MAIL_FLOW,
   'exchange-extended': EXCHANGE_EXTENDED,
+  'exchange-role-groups': EXCHANGE_ROLE_GROUPS,
   'teams-org-policies': TEAMS_POLICIES,
   'teams-voice-policies': TEAMS_EXTENDED,
   'purview-retention-dlp': RETENTION_DLP,
   'purview-governance': PURVIEW_EXTENDED,
+  // Not a written workload: only its per-site sharing read runs through PowerShell.
+  [SHAREPOINT_WORKLOAD]: SITE_SHARING_FAMILIES,
 });
+
+// Read-only workloads name their module here; a written workload's comes from its writes.
+const READ_ONLY_MODULES = Object.freeze({ [SHAREPOINT_WORKLOAD]: SITE_SHARING_MODULE, 'exchange-role-groups': EXCHANGE_ROLE_GROUPS_MODULE });
+
+/** The PowerShell module a workload's read capture runs in. */
+export function readModule(workload) {
+  return READ_ONLY_MODULES[workload] ?? WRITTEN_WORKLOADS[workload]?.module ?? null;
+}
 
 const MODULE_VERSION_RE = /^\d+\.\d+\.\d+(\.\d+)?$/;
 const DESCRIPTOR_IDS = new Set(WORKLOAD_DESCRIPTORS.map((descriptor) => descriptor.id));
@@ -63,7 +76,7 @@ export function validateWorkloadReadsLiveSubject(evidence, { tenantRef, build, r
   const subject = evidence.subject;
   if (!subject || typeof subject !== 'object') return [...failures, 'subject is missing'];
   if (!READ_FAMILIES[subject.workload]) return [...failures, `unknown workload '${subject.workload ?? 'missing'}'`];
-  const { module } = WRITTEN_WORKLOADS[subject.workload];
+  const module = readModule(subject.workload);
   const execution = subject.execution ?? {};
   if (execution.transport !== WORKLOAD_READS_TRANSPORT || execution.module !== module) {
     failures.push(`cmdlets must run through the bounded ${WORKLOAD_READS_TRANSPORT} transport (${module})`);

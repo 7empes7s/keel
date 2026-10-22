@@ -4,6 +4,7 @@ import { afterEach, test } from "node:test";
 import { addDays, endOfDay, grantException } from "@/lib/compliance-change";
 import {
   complianceCounts,
+  complianceScore,
   complianceStatus,
   complianceVerdict,
   controlMisses,
@@ -20,9 +21,16 @@ import {
   reasonWords,
   resultLine,
   resultOf,
+  countsFromSummary,
+  scoreFromSummary,
+  scoreSentence,
+  scoresByService,
+  scoresByStandard,
+  scoreTone,
   settingValueWords,
   storageSentence,
 } from "@/lib/compliance-view";
+import { serviceOrder } from "@/lib/services";
 import { databaseIsLocal } from "@/lib/runtime-config";
 import type { ComplianceData, ComplianceFinding } from "@/lib/types";
 import { renderComplianceAt } from "./render-compliance";
@@ -61,7 +69,8 @@ test("Compliance words: plain titles, results, reasons, owners and the verdict",
   assert.equal(findingTypes(ACCEPTED), "trusted locations");
   assert.equal(controlService(STALE).name, "Entra ID");
   assert.deepEqual([ENDED, ACCEPTED, STALE, PASS].map(resultOf), ["failing", "excepted", "unknown", "passing"]);
-  assert.deepEqual(orderFindings(DATA.findings).map((item) => item.id), [ENDED.id, ACCEPTED.id, STALE.id, PASS.id]);
+  // Worst first: a fail, then a control that could not be checked, then an accepted exception.
+  assert.deepEqual(orderFindings(DATA.findings).map((item) => item.id), [ENDED.id, STALE.id, ACCEPTED.id, PASS.id]);
   assert.equal(resultLine(ENDED, NOW), "Exception ended 2 days ago");
   assert.equal(resultLine(ACCEPTED, NOW), "Accepted until 30 Nov 2026");
   assert.equal(reasonWords(STALE), "The newest group backup is too old for this check.");
@@ -187,4 +196,53 @@ test("Grant an exception posts to the compliance route and words a refusal", asy
   assert.deepEqual(await grantException(body), { ok: false, reason: "Pick an end date after today." });
   assert.equal(calls[0].url, "/api/actions/compliance/exception");
   assert.deepEqual(calls[0].body, { ...body, expiresAt: "2026-12-31T23:59:59.000Z" });
+});
+
+const MISSING = finding("e5", "keel-custom.conditional-access.block-legacy", "fail", { reason: "not-configured" });
+const NOT_RELEVANT = finding("e6", LOCATION, "not-applicable");
+
+test("Not set up yet: a fail because the setting does not exist reads apart from a wrong setting", () => {
+  assert.equal(resultOf(MISSING), "not-set-up");
+  assert.equal(resultLine(MISSING, NOW), "The setting does not exist yet");
+  // Under an exception in force it is accepted like any other fail.
+  assert.equal(resultOf({ ...MISSING, exposed: false, exceptionState: "authorized" }), "excepted");
+  const counts = complianceCounts([MISSING, PASS]);
+  assert.deepEqual([counts.failing, counts["not-set-up"], counts.passing], [0, 1, 1]);
+  assert.deepEqual(complianceStatus(counts), { tone: "soon", label: "1 not set up yet" });
+  assert.equal(complianceVerdict({ ...DATA, findings: [MISSING, PASS] }).text, "No control fails, but 1 is not set up yet.");
+  assert.equal(complianceVerdict({ ...DATA, findings: [ENDED, MISSING] }).text, "1 control fails, and its exception ended 2 days ago; 1 control is not set up yet.");
+  assert.deepEqual(orderFindings([PASS, MISSING, ENDED]).map(resultOf), ["failing", "not-set-up", "passing"]);
+  // The summary form agrees with the findings form.
+  const fromSummary = countsFromSummary({ controls: 2, exposed: 1, notConfigured: 1, excepted: 0, expiredExceptions: 0, incompleteExceptions: 0, passing: 1, unknown: 0, notApplicable: 0 });
+  assert.deepEqual([fromSummary.failing, fromSummary["not-set-up"]], [0, 1]);
+});
+
+test("Compliance score: passes over every control Keel could judge, exceptions shown apart", () => {
+  // PASS passes; ENDED and MISSING fail; ACCEPTED is excepted; STALE and NOT_RELEVANT are left out.
+  const score = complianceScore([PASS, ENDED, MISSING, ACCEPTED, STALE, NOT_RELEVANT]);
+  assert.deepEqual(score, { passed: 1, evaluated: 4, excepted: 1, percent: 25 });
+  assert.equal(scoreSentence(score), "1 of 4 checked controls passes · 1 accepted exception");
+  assert.equal(scoreTone(score), "urgent");
+  // Rounded down: 2 of 3 is 66%, and 99.x% never reads as 100%.
+  assert.equal(complianceScore([PASS, PASS, ENDED]).percent, 66);
+  assert.equal(complianceScore([...Array.from({ length: 199 }, () => PASS), ENDED]).percent, 99);
+  assert.deepEqual(complianceScore([PASS, PASS]), { passed: 2, evaluated: 2, excepted: 0, percent: 100 });
+  assert.equal(scoreTone(complianceScore([PASS, PASS])), "fine");
+  assert.equal(scoreTone(complianceScore([PASS, PASS, PASS, ENDED])), "soon");
+  // Nothing Keel could judge: no score, never 0% or 100%.
+  const none = complianceScore([STALE, NOT_RELEVANT]);
+  assert.equal(none.percent, null);
+  assert.equal(scoreTone(none), "neutral");
+  assert.equal(scoreSentence(none), "Nothing checked yet");
+  assert.equal(complianceScore([]).percent, null);
+  // The summary gives the same score as the findings.
+  assert.deepEqual(scoreFromSummary({ controls: 6, exposed: 2, notConfigured: 1, excepted: 1, expiredExceptions: 1, incompleteExceptions: 0, passing: 1, unknown: 1, notApplicable: 1 }), score);
+});
+
+test("Compliance score per standard and per service", () => {
+  const other = finding("f1", "pack.sample", "pass", { framework: "nist-800-53", evidence: [{ resourceType: "conditionalAccessPolicy" } as never] });
+  const standards = scoresByStandard([PASS, ENDED, other]);
+  assert.deepEqual(standards.map((group) => [group.label, group.score.percent]), [["Keel checks", 50], ["NIST SP 800-53", 100]]);
+  const services = scoresByService([PASS, ENDED, ACCEPTED], serviceOrder);
+  assert.deepEqual(services.map((group) => [group.label, group.score.passed, group.score.evaluated]), [["Entra ID", 1, 3]]);
 });

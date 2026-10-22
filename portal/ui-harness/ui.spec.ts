@@ -1268,7 +1268,10 @@ test("restore completion closes an item with a reference and refuses a pasted se
   await expect(credential.locator(".completion-hint")).toHaveText("Where the proof lives. Never the secret itself.");
   await credential.getByLabel("Evidence reference").fill("-----BEGIN PRIVATE KEY----- secret");
   await credential.getByRole("button", { name: "Mark verified" }).click();
-  await expect(page.getByText("never the credential")).toBeVisible();
+  const refusal = page.locator(".toast[data-error-notice]");
+  await expect(refusal).toContainText("That looks like a secret or key.");
+  await expect(refusal.locator(".toast-todo")).toContainText("never the credential itself");
+  await expect(refusal.locator(".ui-raw-error")).toBeHidden();
   await credential.getByLabel("Evidence reference").fill("CHG-5120");
   await credential.getByRole("button", { name: "Mark verified" }).click();
   await expect(credential.getByRole("button", { name: "Reopen" })).toBeVisible();
@@ -1618,16 +1621,20 @@ test("recovery surfaces fit a phone without sideways scrolling", async ({ page }
 });
 
 // Sites: the list is a table with problems first and tiles that add up; a site's page
-// leads with four status tiles. Both fit a phone; long names wrap.
+// leads with five status tiles. Both fit a phone; long names wrap.
 test("sites list and a site's page fit a phone without sideways scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   await open(page, "/sites", "dark");
   const rows = page.locator(".st-table tbody tr");
   await expect(rows).toHaveCount(4);
-  // Problems first: the site with no owner leads.
-  await expect(rows.first()).toContainText("Project Falcon");
-  await expect(rows.first()).toContainText("No owner");
+  // Problems first: the site shared wider than the tenant default and the site with no owner lead.
+  await expect(rows.nth(0)).toContainText("Finance");
+  await expect(rows.nth(0)).toContainText("Anyone with the link");
+  await expect(rows.nth(0)).toContainText("More open than the default");
+  await expect(rows.nth(1)).toContainText("Project Falcon");
+  await expect(rows.nth(1)).toContainText("No owner");
+  await expect(page.getByRole("button", { name: /Shared wider than default/ })).toContainText("1");
   await expect(page.locator(".st-list")).not.toContainText("not read yet");
   expect(await overflow()).toBeLessThanOrEqual(0);
   // Tiles add up: No owner + Guests or links shows both sites.
@@ -1639,8 +1646,9 @@ test("sites list and a site's page fit a phone without sideways scrolling", asyn
   await expect(rows).toHaveCount(4);
   await page.getByRole("link", { name: "Finance" }).click();
   await expect(page.locator("main#main-content h1")).toHaveText("Finance");
-  await expect(page.locator('[data-layer="verdict"]')).toContainText("1 app has full control, and 2 guests have access.");
-  await expect(page.locator(".st-status")).toHaveCount(4);
+  await expect(page.locator('[data-layer="verdict"]')).toContainText("It is shared more widely than your organisation's default, and 1 app has full control.");
+  await expect(page.locator(".st-status")).toHaveCount(5);
+  await expect(page.locator('.st-status[data-tone="urgent"]', { hasText: "Sharing setting" })).toContainText("More open than your organisation's default");
   await expect(page.getByRole("rowheader", { name: "Payroll connector" })).toBeVisible();
   await expect(page.getByRole("cell", { name: "Edit" })).toBeVisible();
   expect(await overflow()).toBeLessThanOrEqual(0);
@@ -1715,8 +1723,18 @@ test("a change compares each setting with its earlier value, coloured, and many 
   await windows.getByRole("button", { name: /^All 11$/ }).click();
   await windows.getByRole("button", { name: "Show 3 more settings" }).click();
   await expect(windows.locator(".cc-row")).toHaveCount(11);
-  await windows.getByRole("button", { name: "6 settings are the same" }).click();
-  await expect(windows.locator(".cc-same")).toContainText("Defender scheduled scan time");
+  // Changed settings only by default; the switch shows every setting, the same ones
+  // uncoloured, and switches back.
+  await expect(windows.locator(".cc-hidden")).toHaveText("Hidden: 6 settings are the same.");
+  const every = windows.getByRole("switch", { name: /Show every setting/ });
+  await expect(every).toHaveAttribute("aria-checked", "false");
+  await every.click();
+  await expect(every).toHaveAttribute("aria-checked", "true");
+  await expect(windows.locator(".cc-row")).toHaveCount(17);
+  await expect(windows.locator('.cc-row[data-diff="same"]', { hasText: "Defender scheduled scan time" })).toBeVisible();
+  await expect(windows.locator(".cc-filters")).toHaveCount(0);
+  await every.click();
+  await expect(windows.locator('.cc-row[data-diff="same"]')).toHaveCount(0);
   await expect(windows.getByRole("button", { name: "Accept this change" })).toBeVisible();
   await expect(windows.getByRole("button", { name: "Undo this change" })).toBeVisible();
   const results = await new AxeBuilder({ page }).include(".bl-sheet").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
@@ -2406,6 +2424,63 @@ test("Setup · the step waiting on you is open, links to Microsoft, and continue
   expect(await page.evaluate(() => (window as unknown as { __stay?: boolean }).__stay)).toBe(true);
 });
 
+// Connections (delegated-access step 3): every Keel app grouped Required / Optional /
+// Service accounts, problems first with a sentence saying what stops, and each app's
+// wanted permissions next to what the tenant grants, the difference highlighted. Read only.
+test("Setup · Connections lists each Keel app by group, problems first, with wanted next to granted", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/setup", "light");
+  const panel = page.locator("section#setup-connections");
+  await expect(panel.getByRole("heading", { level: 2 })).toHaveText("Connections");
+  await expect(panel.locator(".su-cn-group-title")).toHaveText([/^Required apps/, /^Optional apps/, /^Service accounts/]);
+  await expect(panel.locator(".su-pp-alert")).toHaveText([
+    /Keel Settings Reader is missing 1 role: settings backups may be incomplete\./,
+    /Keel Settings Restorer is waiting for an administrator to approve it: restores cannot run yet\./,
+  ]);
+  await expect(panel.locator(".su-pp-alert").first()).toHaveAttribute("data-tone", "urgent");
+  // Optional apps: the one waiting for approval sorts above the one not set up.
+  const optional = panel.locator(".su-cn-group", { has: page.getByRole("heading", { name: /^Optional apps/ }) });
+  await expect(optional.locator(".su-cn-name")).toHaveText(["Keel Settings Restorer", "Keel Content Reader"]);
+  await expect(optional.locator(".su-cn-row").first().locator(".su-cn-main .badge")).toHaveText("Waiting for approval");
+  await expect(optional.locator(".su-cn-row").nth(1).locator(".su-cn-main .badge")).toHaveText("Not set up");
+  await expect(panel.locator(".su-cn-group").nth(2)).toContainText("None yet.");
+
+  // A row with something missing is open; the difference is highlighted and comes first.
+  const reader = panel.locator(".su-cn-row", { hasText: "Keel Settings Reader" });
+  await expect(reader.locator(".su-cn-main .badge")).toHaveText("Missing permission");
+  const grants = reader.getByRole("table", { name: "Keel Settings Reader: wanted and granted" });
+  await expect(grants.locator("tbody tr").first()).toHaveAttribute("data-status", "missing");
+  await expect(grants.locator("tbody tr").first()).toContainText("Role: Read Only Operator");
+  await expect(grants.locator('tbody tr[data-status="extra"]')).toContainText("Not used by Keel");
+  await expect(grants.locator("tbody tr").last()).toHaveAttribute("data-status", "extra");
+  await reader.getByRole("button", { name: "Hide permissions" }).click();
+  await expect(grants).toHaveCount(0);
+
+  // The restorer's wanted permissions are missing; Keel cannot see its role, so that is not checked.
+  const restorer = panel.locator(".su-cn-row", { hasText: "Keel Settings Restorer" });
+  await expect(restorer.locator(".su-cn-facts")).toContainText("3 missing · 0 of 4 granted");
+  await expect(restorer.locator('tbody tr[data-status="not-checked"]')).toContainText("Role: Privileged Role Administrator");
+
+  // Read only: no action buttons beyond showing permissions.
+  for (const label of await panel.getByRole("button").allInnerTexts()) expect(label).toMatch(/^(Show|Hide) permissions$/);
+});
+
+test("Setup · Connections on a working host: a certificate ending soon is amber, a restorer switched off is grey", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/setup/checked", "dark");
+  const panel = page.locator("section#setup-connections");
+  await expect(panel.locator(".su-pp-alert")).toHaveCount(0);
+  await expect(panel.locator(".su-cn-row", { hasText: "Keel Settings Reader" }).locator(".su-cn-main .badge")).toHaveText("Expires in 12 days");
+  await expect(panel.locator(".su-cn-row", { hasText: "Keel Settings Reader" })).toHaveAttribute("data-tone", "soon");
+  const restorer = panel.locator(".su-cn-row", { hasText: "Keel Settings Restorer" });
+  await expect(restorer.locator(".su-cn-main .badge")).toHaveText("Switched off");
+  await expect(restorer).toHaveAttribute("data-tone", "neutral");
+  await expect(panel.getByRole("table")).toHaveCount(0);
+  await restorer.getByRole("button", { name: "Show permissions" }).click();
+  await expect(restorer.locator('tbody tr[data-status="extra"]')).toContainText("Channel.Create");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
 // Production host: a grant Keel never uses is reported as found in the tenant, grey and
 // last in the permission table, never as a warning or something Keel will remove. With
 // read access confirmed, the first backup is the page's one amber action.
@@ -2440,6 +2515,35 @@ test("Setup · a grant Keel never uses is listed grey and last, and the first ba
   await expect.poll(() => page.evaluate(() => (window as unknown as { __harnessCalls: { url: string }[] }).__harnessCalls.filter((call) => call.url.endsWith("/api/actions/backup")).length)).toBeGreaterThan(0);
 });
 
+// Admin roles sit in the same table: a missing role links to where it is assigned in
+// Entra ID, never to admin consent, which cannot assign a role.
+test("Setup · a missing admin role is listed with the permissions and links to its assignment page", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/setup", "light");
+  const panel = page.locator("#setup-permissions");
+  const alert = panel.locator(".su-pp-alert", { hasText: "backup reader app" });
+  await expect(alert.locator(".su-pp-alert-title")).toHaveText("The backup reader app is missing 1 admin role. Backups that need it stay incomplete until an admin assigns it.");
+  await expect(alert).toContainText("Approving permissions never assigns an admin role.");
+  await expect(alert.getByRole("link", { name: /Approve in Microsoft/ })).toHaveCount(0);
+  const assign = alert.getByRole("link", { name: /Assign Teams Administrator/ });
+  await expect(assign).toHaveAttribute("href", /RoleMembers\/objectId\/69091246-20e8-4a56-aa4d-066075b2a7a8\//);
+  await expect(assign).toHaveAttribute("target", "_blank");
+
+  await panel.locator(".su-pp-tile", { hasText: "Missing" }).click();
+  const row = panel.locator('.su-ptable-row[data-status="missing"]', { hasText: "Teams Administrator" });
+  await expect(row.locator(".su-ptable-words")).toHaveText("Teams admin role");
+  await expect(row.locator(".su-ptable-api")).toHaveText("Entra admin role");
+  await expect(row.locator(".badge")).toHaveText("Missing");
+  await expect(row.getByRole("link", { name: /Assign in Entra ID/ })).toHaveAttribute("href", /roleName\/Teams%20Administrator\//);
+  // Held roles show as granted, grouped with their service; Find matches "admin role".
+  await panel.getByRole("button", { name: "Clear all" }).click();
+  await panel.getByPlaceholder("Find permissions").fill("admin role");
+  await expect(panel.locator('.su-ptable-row[data-status="granted"]', { hasText: "Exchange Administrator" })).toHaveCount(2);
+  await expect(panel.locator(".su-ptable-row", { hasText: "Read Only Operator" })).toHaveCount(0);
+  await panel.getByPlaceholder("Find permissions").fill("Intune role");
+  await expect(panel.locator(".su-ptable-row", { hasText: "Read Only Operator" }).locator(".badge")).toHaveText("Granted");
+});
+
 // The permission table: what is missing comes first with Microsoft's consent page one
 // click away, tiles of the same kind add up, the app picker and Find narrow, and coming
 // back from Microsoft checks the tenant again on its own.
@@ -2448,10 +2552,10 @@ test("Setup · missing permissions come first with a consent link, and the table
   await open(page, "/setup", "light");
   const panel = page.locator("#setup-permissions");
   await expect(page.locator(".su-tile", { hasText: "Permissions" })).toHaveAttribute("data-tone", "urgent");
-  await expect(page.locator(".su-tile", { hasText: "Permissions" }).locator(".su-tile-count")).toHaveText("4 missing");
+  await expect(page.locator(".su-tile", { hasText: "Permissions" }).locator(".su-tile-count")).toHaveText("5 missing");
 
-  const alert = panel.locator(".su-pp-alert");
-  await expect(alert).toHaveCount(1);
+  await expect(panel.locator(".su-pp-alert")).toHaveCount(2);
+  const alert = panel.locator(".su-pp-alert", { hasText: "restore writer app" });
   await expect(alert.locator(".su-pp-alert-title")).toHaveText("The restore writer app is missing 4 permissions. Restores that need them stop until an admin approves them.");
   await expect(alert).toContainText("1 of them is not on the app's permission list yet, so approving cannot grant it. Add it in Entra ID first: Exchange.ManageAsApp.");
   await expect(alert.getByRole("link", { name: /Approve in Microsoft/ })).toHaveAttribute("href",
@@ -2460,6 +2564,7 @@ test("Setup · missing permissions come first with a consent link, and the table
   await expect(alert.getByRole("link", { name: /Add in Entra ID/ })).toHaveAttribute("href", /CallAnAPI\/appId\/2e570e00-0000-4000-8000-0000000000c2$/);
 
   // Rows: plain words, the Microsoft name beside them, what Keel uses it for, a badge.
+  // The restore writer, with the most missing, comes first; the backup reader's role is on a later page.
   const missing = panel.locator('.su-ptable-row[data-status="missing"]');
   await expect(missing).toHaveCount(4);
   const groups = missing.filter({ hasText: "Change groups" });
@@ -2470,25 +2575,30 @@ test("Setup · missing permissions come first with a consent link, and the table
   const exchange = missing.filter({ hasText: "Exchange.ManageAsApp" });
   await expect(exchange.locator(".su-ptable-api")).toHaveText("Exchange Online");
   await expect(exchange.getByRole("link", { name: /Add in Entra ID/ })).toBeVisible();
-  // The app with something missing is listed first.
-  await expect(panel.locator(".su-ptable-app").first()).toContainText("Restore writer app");
+  // The app with the most missing is listed first.
+  await expect(panel.locator(".su-ptable-app")).toHaveText([/Restore writer app/, /Backup reader app/]);
 
   // Tiles of one kind add up (OR); the app picker and Find narrow (AND).
   const tile = (name: string) => panel.locator(".su-pp-tile", { hasText: name });
   await tile("Optional").click();
   const optional = panel.locator('.su-ptable-row[data-status="optional"]');
-  await expect(panel.locator(".su-ptable-row")).toHaveCount(1);
-  await expect(optional).toContainText("AuditLogsQuery.Read.All");
-  await expect(optional.locator(".badge")).toHaveAttribute("data-tone", "low");
-  await expect(optional.getByRole("link", { name: /Approve/ })).toHaveAttribute("href", /adminconsent\?client_id=c011ec70/);
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(2);
+  await expect(optional.first()).toContainText("AuditLogsQuery.Read.All");
+  await expect(optional.first().locator(".badge")).toHaveAttribute("data-tone", "low");
+  await expect(optional.first().getByRole("link", { name: /Approve/ })).toHaveAttribute("href", /adminconsent\?client_id=c011ec70/);
+  // The content reader's own app, from the one the tenant check found: the planned
+  // permission is not on its list yet, so the link adds it in Entra ID.
+  await expect(optional.nth(1)).toContainText("ChannelMessage.Read.All");
+  await expect(optional.nth(1).getByRole("link", { name: /Add in Entra ID/ })).toHaveAttribute("href", /CallAnAPI\/appId\/c0e7e700/);
   await tile("Optional").click();
-  await expect(tile("Missing").locator("b")).toHaveText("4");
+  await expect(tile("Missing").locator("b")).toHaveText("5");
   await tile("Missing").click();
-  await expect(panel.locator(".su-ptable-row")).toHaveCount(4);
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(5);
   await expect(tile("Not used by Keel").locator("small")).toHaveText("+1 if added");
   await tile("Not used by Keel").click();
-  await expect(panel.locator(".su-ptable-row")).toHaveCount(5);
-  await panel.getByRole("radio", { name: "Restore writer" }).click();
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(6);
+  await panel.getByRole("button", { name: "App: All apps" }).click();
+  await page.getByRole("option", { name: "Restore writer" }).click();
   await expect(panel.locator(".su-ptable-row")).toHaveCount(4);
   await panel.getByPlaceholder("Find permissions").fill("sign-in rules");
   await expect(panel.locator(".su-ptable-row")).toHaveCount(1);
@@ -2503,6 +2613,43 @@ test("Setup · missing permissions come first with a consent link, and the table
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(page.getByText("Checking permissions again")).toBeVisible();
   await expect(page.locator(".su-page")).not.toContainText("Extra:");
+});
+
+// Setup shows, for every Microsoft 365 service, whether its backup works, what Keel can
+// put back, the last good read and the one thing to fix; and warns 30 days before a Keel
+// app certificate runs out, with the Entra page to add a new one.
+test("Setup · one status tile per service, worst first, and a warning before a Keel app certificate expires", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/setup/checked", "dark");
+  const expiry = page.locator(".su-expiry-row");
+  await expect(expiry).toHaveCount(1);
+  await expect(expiry).toHaveAttribute("data-tone", "soon");
+  await expect(expiry.locator("b")).toHaveText("Keel Settings Reader: its certificate expires in 12 days, on 14 Oct 2026");
+  await expect(expiry).toContainText("When it expires, settings backups stop.");
+  await expect(expiry.getByRole("link", { name: /Add a new certificate in Entra ID/ })).toHaveAttribute("href",
+    "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Credentials/appId/c011ec70-0000-4000-8000-0000000000c1");
+  // The warning comes before the setup steps; with read access done, so do the services.
+  const order = await page.evaluate(() => ["su-expiry", "su-svc", "su-tracks"].map((name) => document.querySelector(`.${name}`)!.getBoundingClientRect().top));
+  expect(order).toEqual([...order].sort((a, b) => a - b));
+
+  const tiles = page.locator(".su-svc-tile");
+  // One tile per Microsoft 365 service; Entra ID and Purview both have a failed kind.
+  await expect(tiles).toHaveCount(8);
+  await expect(page.locator(".su-svc-head p")).toHaveText("2 of 8 services are failing to back up.");
+  await expect(tiles.first().locator(".su-svc-name b")).toHaveText("Entra ID");
+  const entra = tiles.filter({ hasText: "Entra ID" });
+  await expect(entra).toHaveAttribute("data-tone", "urgent");
+  await expect(entra.locator(".badge")).toHaveText("Failing");
+  await expect(entra.locator(".su-svc-blocker")).toContainText("Keel's backup app is missing a permission Microsoft asks for.");
+  await expect(entra.getByRole("link", { name: "Check read access" })).toHaveAttribute("href", "#setup-read");
+  const teams = tiles.filter({ hasText: "Teams" });
+  await expect(teams.locator(".badge")).toHaveText("Out of date");
+  await expect(teams.getByRole("link", { name: "See what is out of date" })).toHaveAttribute("href", /\/protect\?service=Teams&health=out-of-date$/);
+  const exchange = tiles.filter({ hasText: "Exchange Online" });
+  await expect(exchange.locator(".badge")).toHaveText("Working");
+  await expect(exchange.locator(".su-svc-lines")).toContainText("Backup");
+  await expect(exchange.locator(".su-svc-read")).toHaveText(/^Last good read /);
+  await expect(tiles.last().locator(".badge")).toHaveText("Not set up");
 });
 
 for (const theme of ["dark", "light"] as const) {
@@ -2973,18 +3120,57 @@ for (const theme of ["dark", "light"] as const) {
   }
 }
 
+// The details panel steps through the list it was opened from, in the list's own order
+// ("2 of N"), stops at the ends, keeps its address in step, and keeps the decision
+// buttons pinned in view at the foot however far the panel scrolls.
+for (const width of [390, 1440]) {
+  for (const [hash, link, noun] of [["/drift", ".sel-row .bl-row-link", "change"], ["/benchmarks", ".sel-row .cp-row-link", "control"]] as const) {
+    test(`details panel · previous and next · ${hash} · ${width}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await open(page, hash, width === 390 ? "light" : "dark");
+      const names = (await page.locator(link).allTextContents()).map((name) => name.trim());
+      expect(names.length).toBeGreaterThan(2);
+      await page.locator(link).first().click();
+      let sheet = page.getByRole("dialog", { name: names[0], exact: true });
+      await expect(sheet.locator(".bl-sheet-step")).toHaveText(`1 of ${names.length}`);
+      await expect(sheet.getByRole("button", { name: `Previous ${noun}` })).toBeDisabled();
+      await sheet.getByRole("button", { name: `Next ${noun}` }).click();
+      sheet = page.getByRole("dialog", { name: names[1], exact: true });
+      await expect(sheet.locator(".bl-sheet-step")).toHaveText(`2 of ${names.length}`);
+      expect(page.url()).toContain("open=");
+      const foot = sheet.locator(".bl-sheet-foot");
+      if (await foot.count()) {
+        await sheet.locator(".bl-sheet-body").evaluate((body) => { body.scrollTop = body.scrollHeight; });
+        await expect(foot.locator(".btn").first()).toBeInViewport();
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+      const head = await sheet.locator(".bl-sheet-head").boundingBox();
+      const step = await sheet.locator(".bl-sheet-step").boundingBox();
+      expect(step && head && step.x + step.width <= head.x + head.width).toBeTruthy();
+      for (let index = 2; index < names.length; index += 1) await page.getByRole("button", { name: `Next ${noun}` }).click();
+      sheet = page.getByRole("dialog", { name: names[names.length - 1], exact: true });
+      await expect(sheet.getByRole("button", { name: `Next ${noun}` })).toBeDisabled();
+      // Reaching the end keeps focus in the panel, on the other step button.
+      await expect(sheet.getByRole("button", { name: `Previous ${noun}` })).toBeFocused();
+      const results = await new AxeBuilder({ page }).include(".bl-sheet").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+      expect(results.violations.map((violation) => violation.id)).toEqual([]);
+    });
+  }
+}
+
 test("Compliance · tiles filter, a control opens its panel, renew an exception, export evidence", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await open(page, "/benchmarks");
   await expect(page.locator("main#main-content h1")).toHaveText("Compliance");
   await expect(page.locator(".status-pill")).toHaveText("1 failing");
-  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("1 control fails, and its exception ended 2 days ago.");
+  await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("1 control fails, and its exception ended 2 days ago; 1 control is not set up yet.");
   await expect(page.locator(".cp-context")).toContainText("Measured against Post-migration golden state");
   const tiles = page.locator(".cp-tile");
-  await expect(tiles).toHaveCount(4);
+  // Fails, Not set up yet, Could not check (one could not be), Passes, Accepted exception.
+  await expect(tiles.locator(".cp-tile-label")).toHaveText(["Fails", "Not set up yet", "Could not check", "Passes", "Accepted exception"]);
   await expect(page.locator(".sel-group .sel-group-name b")).toHaveText(["Entra ID"]);
   const rows = page.locator(".sel-row");
-  await expect(rows).toHaveCount(4);
+  await expect(rows).toHaveCount(5);
   await expect(rows.nth(0)).toContainText("No more than 5 people hold the top admin role");
   await expect(rows.nth(0)).toContainText("Exception ended 2 days ago");
   await expect(rows.filter({ hasText: "No trusted location" })).toContainText("Owner Amara Okafor");
@@ -2998,17 +3184,22 @@ test("Compliance · tiles filter, a control opens its panel, renew an exception,
   expectPlainText(visible);
   for (const word of ["secops@", "@contoso", "westeurope", "KEEL", "Baseline", "Conditional Access", "Named location"]) expect(visible).not.toContain(word);
 
-  // (1) The Failing tile sets result=failing and shows only the failing control.
-  await tiles.filter({ hasText: "Failing" }).click();
+  // (1) The Fails tile sets result=failing and shows only the failing control.
+  await tiles.filter({ hasText: "Fails" }).click();
   await expect(page).toHaveURL(/result=failing/);
   await expect(page.locator(".sel-row")).toHaveCount(1);
-  await expect(page.locator(".filter-count")).toHaveText("Showing 1 of 4 controls");
-  // Result tiles add up: Passing adds to Failing.
-  await tiles.filter({ hasText: "Passing" }).click();
-  await expect(page).toHaveURL(/result=failing%2Cpassing|result=failing,passing/);
-  await expect.poll(() => page.locator(".sel-row").count()).toBeGreaterThan(1);
+  await expect(page.locator(".filter-count")).toHaveText("Showing 1 of 5 controls");
+  // Result tiles add up: Not set up yet adds to Fails.
+  await tiles.filter({ hasText: "Not set up yet" }).click();
+  await expect(page).toHaveURL(/result=failing%2Cnot-set-up|result=failing,not-set-up/);
+  await expect(page.locator(".sel-row")).toHaveCount(2);
+  // Search narrows what the tiles show (AND).
+  await page.locator(".sel-find input").fill("old sign-in");
+  await expect(page.locator(".sel-row")).toHaveCount(1);
+  await expect(page.locator(".sel-row")).toContainText("Old sign-in methods are blocked");
+  await page.locator(".sel-find input").fill("");
   await page.getByRole("button", { name: "Clear all" }).click();
-  await expect(page.locator(".sel-row")).toHaveCount(4);
+  await expect(page.locator(".sel-row")).toHaveCount(5);
 
   // (2) A control's name opens its panel with open=<evaluationId>; Esc closes it and focus returns.
   const name = page.locator(".cp-row-link", { hasText: "No more than 5 people hold the top admin role" });
@@ -3059,6 +3250,26 @@ test("Compliance · tiles filter, a control opens its panel, renew an exception,
   expect((await calls()).some((call) => call.url.startsWith("/api/evidence?kind=benchmark-evaluation,benchmark-exception"))).toBe(true);
 });
 
+test("Compliance · score overall, per standard and per service; not set up yet explained", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/benchmarks");
+  const score = page.locator(".cp-score");
+  // Judged: 1 pass, 1 fail, 1 not set up yet, 1 accepted exception; the stale one is left out.
+  await expect(score.locator(".cp-score-main .score-ring")).toHaveAttribute("aria-label", "Overall: 25% pass. 1 of 4 checked controls passes · 1 accepted exception.");
+  await expect(score.locator(".cp-score-main .score-ring")).toHaveAttribute("data-tone", "urgent");
+  await expect(score.locator(".cp-score-words b")).toHaveText("1 of 4 checked controls passes");
+  await expect(score.locator(".cp-score-words .badge")).toHaveText("1 accepted exception, counted as not passing");
+  await expect(score.locator(".cp-score-list").first().locator("li > span:last-child b")).toHaveText(["Keel checks", "NIST SP 800-53"]);
+  await expect(score.locator(".cp-score-list").first().locator("li").nth(1)).toContainText("100%");
+  await expect(score.locator('.cp-score-list[data-kind="service"] li')).toHaveText([/Entra ID.*1 of 4 checked controls passes/]);
+  // The control that is not set up yet says what that means, and can still be accepted.
+  await page.locator(".cp-row-link", { hasText: "Old sign-in methods are blocked" }).click();
+  const panel = page.getByRole("dialog", { name: "Old sign-in methods are blocked" });
+  await expect(panel.locator(".cp-sheet-result .badge")).toHaveText("Not set up yet");
+  await expect(panel.locator(".cp-callout")).toContainText("does not exist in Microsoft 365 yet");
+  await expect(panel.locator(".bl-sheet-foot .btn-primary")).toHaveText("Grant an exception");
+});
+
 test("Compliance · make it pass: the panel shows the one setting, plans it, and sends it to the approvers", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await open(page, "/benchmarks");
@@ -3101,7 +3312,7 @@ test("Compliance · make it pass: the panel shows the one setting, plans it, and
 
 test("Compliance · a reader sees results and no exception controls", async ({ page }) => {
   await open(page, "/benchmarks/viewer");
-  await expect(page.locator(".sel-row")).toHaveCount(4);
+  await expect(page.locator(".sel-row")).toHaveCount(5);
   await expect(page.getByRole("link", { name: /^(Grant|Renew|Extend)/ })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Make it pass" })).toHaveCount(0);
   await expect(page.locator("main .btn-primary")).toHaveCount(0);
@@ -3166,6 +3377,40 @@ test("Compliance · Defender email controls sit under Defender; a failing one li
   expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
 });
 
+test("Compliance · Defender make it pass: one row per failing setting, in plain words, planned and sent to the approvers", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${HARNESS}#/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1`);
+  const panel = page.getByRole("dialog", { name: "Phishing mail goes to quarantine" });
+  const fix = panel.locator(".cp-fix");
+  await expect(fix.locator("h3")).toContainText("Quarantine phishing");
+  await expect(fix).toContainText("An approver also reviews that");
+  const rows = fix.locator(".cp-fix-row");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0)).toContainText("High-confidence phishing goes to");
+  await expect(rows.nth(0).locator(".cp-fix-values")).toHaveAttribute("aria-label", "High-confidence phishing goes to: now Junk folder, after Quarantine");
+  await expect(rows.nth(1).locator(".cp-fix-values")).toHaveAttribute("aria-label", "Pulls back delivered phishing: now Off, after On");
+  // Several rows: the first row's fix is the panel's one main action, the others are secondary.
+  await expect(panel.locator(".btn-primary")).toHaveCount(1);
+  await expect(rows.nth(0).getByRole("button", { name: "Make it pass" })).toHaveClass(/btn-primary/);
+  await expect(rows.nth(1).getByRole("button", { name: "Make it pass" })).not.toHaveClass(/btn-primary/);
+
+  const item = rows.nth(2);
+  await item.getByRole("button", { name: "Make it pass" }).click();
+  await expect(item.locator(".badge", { hasText: "Ready for approval" })).toBeVisible();
+  await expect(item).toContainText("Keel will change only “Phishing goes to” on KEEL-RT-Finance inbound filtering for the accounts payable team, from Inbox, with a header added to Quarantine");
+  await item.getByLabel("Why make this change?").fill("Quarantine phishing for accounts payable");
+  await item.getByRole("button", { name: "Ask for approval" }).click();
+  await expect(item.locator(".badge", { hasText: "Waiting for approval" })).toBeVisible();
+
+  type Call = { url: string; method: string; body: string | null };
+  const calls = await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+  const planned = calls.filter((call) => call.method === "POST" && call.url === "/api/actions/compliance/fix");
+  expect(planned.map((call) => JSON.parse(call.body ?? "{}"))).toEqual([{ evaluationId: "e7a10000-0000-4000-8000-0000000000f1", naturalKey: "anti-spam-policy:0c0f5000-0000-4000-8000-000000000002#PhishSpamAction" }]);
+  const visible = await textOutside(page, ".bl-sheet", ".technical-details");
+  expectPlainText(visible);
+  for (const word of ["PhishSpamAction", "AddXHeader", "MoveToJmf", "anti-spam-policy", "0c0f5000"]) expect(visible).not.toContain(word);
+});
+
 test("Compliance · phone: the failing settings stack, one card per setting, with no sideways scroll", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page, "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1", "light");
@@ -3183,7 +3428,10 @@ test("Compliance · phone: pass and fail tiles per service open the same panel",
   const card = page.locator(".cp-by-service .cp-service");
   await expect(card).toHaveCount(1);
   await expect(card.locator(".cp-service-head")).toContainText("Entra ID");
-  await expect(card.locator(".cp-ctile")).toHaveCount(4);
+  await expect(card.locator(".cp-ctile")).toHaveCount(5);
+  await expect(card.locator(".cp-service-head .score-ring")).toHaveAttribute("aria-label", /^Entra ID: 25% pass/);
+  // The service list in the score is the cards' job on a phone.
+  await expect(page.locator('.cp-score-list[data-kind="service"]')).toBeHidden();
   await card.locator(".cp-ctile", { hasText: "At most 5 top admins" }).click();
   await expect(page.getByRole("dialog", { name: "No more than 5 people hold the top admin role" })).toBeVisible();
 });
@@ -3201,7 +3449,7 @@ for (const theme of ["dark", "light"] as const) {
           .map((element) => element.textContent));
         expect(clipped).toEqual([]);
         const tiles = await page.locator(".cp-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
-        expect(tiles.length).toBe(4);
+        expect(tiles.length).toBe(hash === "/benchmarks/empty" ? 4 : 5);
         expect(new Set(tiles).size).toBe(1);
         if (width === 390 && hash !== "/benchmarks/empty") {
           // Tiles are equal within each service's scorecard (each service is its own grid).
@@ -3220,7 +3468,7 @@ for (const theme of ["dark", "light"] as const) {
           await expect(sheet).toBeVisible();
           // One main action per panel: the fix when Keel can make it pass, else the exception.
           await expect(sheet.locator(".btn-primary")).toHaveCount(1);
-          if (hash.includes("0000000000e2")) {
+          if (hash.includes("0000000000e2") || hash.includes("0000000000f1")) {
             await expect(sheet.locator(".cp-fix .btn-primary")).toBeInViewport();
           } else {
             await expect(sheet.locator(".bl-sheet-foot .btn-primary")).toBeInViewport();
@@ -3338,12 +3586,28 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(settings.locator("h3").first()).toHaveText("Entra ID");
     const policies = settings.locator("details.compare-group", { hasText: "Sign-in rule" });
     await policies.locator("summary").click();
-    await expect(policies).toContainText("Block legacy auth");
-    await expect(policies).toContainText("enabled for reporting but not enforced");
-    const exclude = policies.locator(".cc-row", { hasText: "Exclude groups" });
+    // A changed object is one line in the list; its settings open in the details panel,
+    // which steps through every changed object on the page and pins the restore link.
+    const block = policies.locator(".compare-item", { hasText: "Block legacy auth" });
+    await expect(block.locator(".compare-item-line")).toHaveText(/^2 settings differ: State and Conditions › users › exclude groups\.\s*See what changed$/);
+    await expect(block.locator(".cc-row")).toHaveCount(0);
+    await block.getByRole("button", { name: "See what changed in Block legacy auth" }).click();
+    const panel = page.getByRole("dialog", { name: "Block legacy auth" });
+    await expect(panel).toContainText("enabled for reporting but not enforced");
+    await expect(panel.locator(".bl-sheet-step")).toContainText("2 of 2");
+    await expect(panel.getByRole("button", { name: "Next item" })).toBeDisabled();
+    await expect(panel.getByRole("link", { name: /^Restore from / })).toHaveAttribute("href", /\/restore\?snapshot=/);
+    const exclude = panel.locator(".cc-row", { hasText: "Exclude groups" });
     await expect(exclude.locator('.cc-entry[data-diff="added"]')).toContainText("an object Keel has no name for");
     await exclude.getByRole("button", { name: "Show the 1 entry that stayed" }).click();
     await expect(exclude).toContainText("Break-glass admins");
+    await panel.getByRole("button", { name: "Previous item" }).click();
+    const finance = page.getByRole("dialog", { name: "Finance" });
+    await expect(finance.locator(".bl-sheet-step")).toContainText("1 of 2");
+    await expect(finance.locator(".cc-row", { hasText: "Security enabled" })).toHaveAttribute("data-diff", "changed");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    await page.keyboard.press("Escape");
+    await expect(finance).toHaveCount(0);
     // Whole added and removed objects are one compact line each, removed first, with a red
     // or green badge; their settings fold away until asked for. Only changed objects list
     // settings before and after.
@@ -3361,7 +3625,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(contractors.locator(".cv-chip")).toHaveText("Added");
     await contractors.getByRole("button", { name: "Show its 3 settings" }).click();
     await expect(contractors.locator(".cc-whole-list")).toContainText("Processing state: On");
-    await expect(groups.locator(".compare-item", { hasText: "Finance" }).locator(".cc-row", { hasText: "Security enabled" })).toHaveAttribute("data-diff", "changed");
+    await expect(groups.locator(".compare-item", { hasText: "Finance" }).locator(".compare-item-line")).toContainText("1 setting differs: Security enabled.");
     await expect(settings).not.toContainText(/\b(not )?there\b/i);
     // Not compared: a few reasons with counts by service, worst first, each folded.
     const gaps = settings.locator('[data-gaps="not-compared"]');
@@ -3386,9 +3650,14 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(page.locator('[data-layer="verdict"]')).toContainText("between the two tenants");
     const across = page.locator("section", { has: page.locator("#compare-settings-heading") });
     await across.locator("details.compare-group").first().locator("summary").click();
-    await across.getByRole("button", { name: "Show the 1 entry that stayed" }).click();
-    await expect(across).toContainText("Break-glass admins (group)");
-    await expect(across).toContainText("an object Keel could not name");
+    await across.getByRole("button", { name: /^See what changed in / }).first().click();
+    const acrossPanel = page.getByRole("dialog");
+    await acrossPanel.getByRole("button", { name: "Show the 1 entry that stayed" }).click();
+    await expect(acrossPanel).toContainText("Break-glass admins (group)");
+    await expect(acrossPanel).toContainText("an object Keel could not name");
+    // Another tenant's backup is not restored from here.
+    await expect(acrossPanel.getByRole("link", { name: /^Restore from / })).toHaveCount(0);
+    await page.keyboard.press("Escape");
     const unmatched = across.locator('[data-gaps="unmatched"] details');
     await expect(unmatched.locator("summary")).toContainText("1 kind");
     await unmatched.locator("summary").click();
@@ -3784,7 +4053,7 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "See the 4 failed" })).toHaveAttribute("href", /protect\?health=failed$/);
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(1);
   await expect(page.locator(".ov-tile")).toHaveCount(4);
-  const routes = ["protect", "resilience", "drift", "approvals", "alerts", "incidents", "baselines", "restore", "activity"];
+  const routes = ["protect", "resilience", "drift", "approvals", "alerts", "incidents", "baselines", "restore", "activity", "benchmarks"];
   for (const link of await page.locator(".ov-tile, .ov-legend-link, .ov-row, .ov-side-card, .ov-chart-link").all()) {
     expect(await link.evaluate((item) => item.tagName)).toBe("A");
     const href = (await link.getAttribute("href")) ?? "";
@@ -3795,6 +4064,11 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   // The verdict's own sentence is not a "Needs attention" row.
   await expect(page.locator(".ov-row", { hasText: "failed their last backup" })).toHaveCount(0);
   await expect(page.locator(".ov-side-card", { hasText: "Approved setup" })).toContainText("by Marouane Defili");
+  // The compliance score opens Compliance on what fails.
+  const compliance = page.locator(".ov-score-card");
+  await expect(compliance).toContainText("25% pass");
+  await expect(compliance).toContainText("1 failing");
+  await expect(compliance).toHaveAttribute("href", /\/benchmarks\?result=failing$/);
   const visible = await textOutside(page, "main#main-content", '[data-layer="record"]');
   expect(visible).not.toMatch(/Baseline|Conditional Access|CRITICAL|WARNING|KEEL|@|[0-9a-f]{8}-[0-9a-f]{4}-/);
 
@@ -3900,6 +4174,28 @@ test("errors · no raw error text in plain view on any page", async ({ page }) =
     for (const line of text.split("\n")) if (RAW_ERROR_PATTERN.test(line)) leaks.push(`${hash}: ${line.trim().slice(0, 160)}`);
   }
   expect(leaks, "raw error text belongs behind Show details (components/ui/error-notice.tsx)").toEqual([]);
+});
+
+// Pop-up messages too: a refused request says what went wrong and what to do in plain
+// words; the server's own answer waits behind "Show details".
+test("errors · a refused request's pop-up keeps the raw answer behind Show details", async ({ page }) => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await open(page, "/kit");
+    await page.getByRole("button", { name: "Show a refused request" }).click();
+    const item = page.locator(".toast[data-error-notice]").last();
+    await expect(item).toContainText("You need the right role for that, or your sign-in has ended.");
+    await expect(item.locator(".toast-todo")).toContainText("What to do:");
+    const raw = item.locator(".ui-raw-error");
+    await expect(raw).toBeHidden();
+    const text = await page.locator("body").innerText();
+    expect(text.split("\n").filter((line) => RAW_ERROR_PATTERN.test(line)), "raw error text belongs behind Show details").toEqual([]);
+    await item.getByText("Show details").click();
+    await expect(raw).toContainText("Authorization_RequestDenied");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await item.getByRole("button", { name: "Dismiss notification" }).click();
+    await expect(page.locator(".toast[data-error-notice]")).toHaveCount(0);
+  }
 });
 
 test("errors · a failed job shows a plain cause and what to do; the raw error is one click away", async ({ page }) => {

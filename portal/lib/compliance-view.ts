@@ -283,27 +283,45 @@ export function controlService(finding: ComplianceFinding): CloudService {
   return own ? serviceFor(own) : typeService(controlTypes(finding)[0] ?? "other");
 }
 
+const STANDARD_WORDS: Record<string, string> = {
+  "keel-custom": "Keel checks",
+  "nist-800-53": "NIST SP 800-53",
+};
+
 export function standardName(finding: ComplianceFinding): string {
-  return finding.framework === "keel-custom" ? "Keel checks" : finding.framework.replace(/[-_]/g, " ").toUpperCase();
+  return STANDARD_WORDS[finding.framework] ?? finding.framework.replace(/[-_]/g, " ").toUpperCase();
 }
 
-export type ControlResult = "failing" | "excepted" | "unknown" | "passing" | "not-relevant";
+// The four states a control can be in (Fails, Not set up yet, Passes, Accepted exception),
+// plus two that say Keel could not judge it: no usable backup, or nothing to check here.
+export type ControlResult = "failing" | "not-set-up" | "unknown" | "excepted" | "passing" | "not-relevant";
 
 export const RESULTS: Record<ControlResult, { label: string; plural: string; tone: RiskTone | null; badge: "urgent" | "soon" | "fine" | "neutral"; icon: IconName; rank: number }> = {
-  failing: { label: "Failing", plural: "Failing", tone: "urgent", badge: "urgent", icon: "x-circle", rank: 0 },
-  excepted: { label: "With exception", plural: "With an exception", tone: "soon", badge: "soon", icon: "pause", rank: 1 },
+  failing: { label: "Fails", plural: "Fails", tone: "urgent", badge: "urgent", icon: "x-circle", rank: 0 },
+  "not-set-up": { label: "Not set up yet", plural: "Not set up yet", tone: "soon", badge: "soon", icon: "plus", rank: 1 },
   unknown: { label: "Could not check", plural: "Could not be checked", tone: "soon", badge: "soon", icon: "info", rank: 2 },
-  passing: { label: "Passing", plural: "Passing", tone: "fine", badge: "fine", icon: "check-circle", rank: 3 },
-  "not-relevant": { label: "Not relevant here", plural: "Not relevant here", tone: null, badge: "neutral", icon: "hide", rank: 4 },
+  excepted: { label: "Accepted exception", plural: "Accepted exceptions", tone: null, badge: "neutral", icon: "pause", rank: 3 },
+  passing: { label: "Passes", plural: "Passes", tone: "fine", badge: "fine", icon: "check-circle", rank: 4 },
+  "not-relevant": { label: "Not relevant here", plural: "Not relevant here", tone: null, badge: "neutral", icon: "hide", rank: 5 },
 };
 
 export function isResult(value: string | null): value is ControlResult {
   return value !== null && value in RESULTS;
 }
 
-/** A fail hides only behind an exception in force; an ended or incomplete one leaves it failing. */
+/** What "Not set up yet" means, said on the control's panel. */
+export const NOT_SET_UP_HELP = "The setting this control looks for does not exist in Microsoft 365 yet. It counts as not passing. Set it up there, and Keel checks again after the next backup.";
+
+/** The engine's reason when a control fails because the setting does not exist at all. */
+export const NOT_CONFIGURED = "not-configured";
+
+/** A fail hides only behind an exception in force; an ended or incomplete one leaves it
+ * failing. A fail because the setting does not exist yet reads "Not set up yet". */
 export function resultOf(finding: ComplianceFinding): ControlResult {
-  if (finding.verdict === "fail") return finding.exposed ? "failing" : "excepted";
+  if (finding.verdict === "fail") {
+    if (!finding.exposed) return "excepted";
+    return finding.reason === NOT_CONFIGURED ? "not-set-up" : "failing";
+  }
   if (finding.verdict === "unknown") return "unknown";
   if (finding.verdict === "pass") return "passing";
   return "not-relevant";
@@ -316,7 +334,7 @@ export function findingStatus(finding: ComplianceFinding): string {
 export type ComplianceCounts = Record<ControlResult, number> & { total: number; ended: number };
 
 export function complianceCounts(findings: ComplianceFinding[]): ComplianceCounts {
-  const counts: ComplianceCounts = { failing: 0, excepted: 0, unknown: 0, passing: 0, "not-relevant": 0, total: findings.length, ended: 0 };
+  const counts: ComplianceCounts = { failing: 0, "not-set-up": 0, excepted: 0, unknown: 0, passing: 0, "not-relevant": 0, total: findings.length, ended: 0 };
   for (const finding of findings) {
     counts[resultOf(finding)] += 1;
     if (finding.exposed && finding.exceptionState === "expired") counts.ended += 1;
@@ -326,7 +344,7 @@ export function complianceCounts(findings: ComplianceFinding[]): ComplianceCount
 
 export function countsFromSummary(summary: ComplianceSummary): ComplianceCounts {
   return {
-    failing: summary.exposed, excepted: summary.excepted, unknown: summary.unknown, passing: summary.passing,
+    failing: summary.exposed - (summary.notConfigured ?? 0), "not-set-up": summary.notConfigured ?? 0, excepted: summary.excepted, unknown: summary.unknown, passing: summary.passing,
     "not-relevant": summary.notApplicable, total: summary.controls, ended: summary.expiredExceptions,
   };
 }
@@ -335,6 +353,7 @@ export function countsFromSummary(summary: ComplianceSummary): ComplianceCounts 
 export function complianceStatus(counts: ComplianceCounts): { tone: RiskTone; label: string } {
   if (counts.total === 0) return { tone: "low", label: "Not checked yet" };
   if (counts.failing) return { tone: "urgent", label: `${counts.failing} failing` };
+  if (counts["not-set-up"]) return { tone: "soon", label: `${counts["not-set-up"]} not set up yet` };
   if (counts.unknown) return { tone: "soon", label: `${counts.unknown} could not be checked` };
   return { tone: "fine", label: "All pass" };
 }
@@ -345,19 +364,29 @@ export function complianceVerdict(data: ComplianceData): ComplianceVerdict {
   const counts = complianceCounts(data.findings);
   const now = data.generatedAt;
   if (counts.total === 0) return { text: "No control has been checked on this tenant yet.", detail: NOT_CHECKED_YET, tone: "neutral" };
+  const notSetUp = counts["not-set-up"]
+    ? `; ${plural(counts["not-set-up"], "control is", "controls are")} not set up yet`
+    : "";
   if (counts.failing === 1) {
-    const finding = data.findings.find((entry) => entry.exposed)!;
+    const finding = data.findings.find((entry) => resultOf(entry) === "failing")!;
     const text = finding.exceptionState === "expired"
-      ? `1 control fails, and its exception ended ${ago(finding.exception?.expiresAt ?? null, now)}.`
+      ? `1 control fails, and its exception ended ${ago(finding.exception?.expiresAt ?? null, now)}${notSetUp}.`
       : finding.exceptionState === "incomplete"
-        ? "1 control fails; its exception has no owner or end date, so it does not count."
-        : "1 control fails, with no exception.";
+        ? `1 control fails; its exception has no owner or end date, so it does not count${notSetUp}.`
+        : `1 control fails, with no exception${notSetUp}.`;
     const fixable = fixCandidates(finding).length > 0;
     return { text, detail: `${controlName(finding)}: ${fixable ? "let Keel fix it after an approval" : "fix it in Microsoft 365"}, or accept it for a while with an exception.`, tone: "urgent" };
   }
   if (counts.failing > 1) {
     const ended = counts.ended ? `; ${counts.ended === 1 ? "one exception has" : `${counts.ended} exceptions have`} ended` : "";
-    return { text: `${plural(counts.failing, "control fails", "controls fail")}${ended}.`, detail: "Open each one to see what it rests on, then fix it or accept it with an exception.", tone: "urgent" };
+    return { text: `${plural(counts.failing, "control fails", "controls fail")}${ended}${notSetUp}.`, detail: "Open each one to see what it rests on, then fix it or accept it with an exception.", tone: "urgent" };
+  }
+  if (counts["not-set-up"] === 1) {
+    const finding = data.findings.find((entry) => resultOf(entry) === "not-set-up")!;
+    return { text: "No control fails, but 1 is not set up yet.", detail: `${controlName(finding)}: the setting it looks for does not exist in Microsoft 365 yet.`, tone: "soon" };
+  }
+  if (counts["not-set-up"] > 1) {
+    return { text: `No control fails, but ${counts["not-set-up"]} are not set up yet.`, detail: "The settings they look for do not exist in Microsoft 365 yet. Open each one to see what to set up.", tone: "soon" };
   }
   if (counts.unknown) {
     return { text: `No control fails; ${plural(counts.unknown, "control")} could not be checked.`, detail: "The backup each one needs is missing or too old.", tone: "soon" };
@@ -383,10 +412,11 @@ export function reasonWords(finding: ComplianceFinding): string {
 /** The second line of a row and of a phone tile: the result in a few words. */
 export function resultLine(finding: ComplianceFinding, now: string): string {
   switch (resultOf(finding)) {
+    case "not-set-up":
     case "failing":
       if (finding.exceptionState === "expired") return `Exception ended ${ago(finding.exception?.expiresAt ?? null, now)}`;
       if (finding.exceptionState === "incomplete") return "Exception has no owner or end date";
-      return "No exception";
+      return resultOf(finding) === "not-set-up" ? "The setting does not exist yet" : "No exception";
     case "excepted":
       return `Accepted until ${formatDay(finding.exception?.expiresAt ?? null)}`;
     case "unknown":
@@ -404,7 +434,7 @@ export function formatDay(value: string | null): string {
   return Number.isNaN(date.getTime()) ? "an unknown date" : date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
-/** Worst first: failing, then excepted, could not check, passing; then by name. */
+/** Worst first: fails, not set up yet, could not check, accepted, passes; then by name. */
 export function orderFindings(findings: ComplianceFinding[]): ComplianceFinding[] {
   return [...findings].sort((left, right) => RESULTS[resultOf(left)].rank - RESULTS[resultOf(right)].rank || controlName(left).localeCompare(controlName(right)));
 }
@@ -499,6 +529,32 @@ const FIX_WORDS: Record<string, FixWords> = {
     setting: "Takes in unknown countries",
     effect: "The location stays trusted for the countries it lists. Sign-ins from places that cannot be told no longer count as trusted.",
   },
+  // The Defender email checks: one setting of one policy per row, named by the row.
+  "keel-custom.defender-email.anti-phish-spoof-protection": {
+    action: "Turn on spoof protection",
+    setting: "",
+    effect: "Mail that pretends to come from someone else is flagged, and may go to junk or quarantine. An approver also reviews that, because quarantined mail is deleted after a while.",
+  },
+  "keel-custom.defender-email.anti-spam-phish-quarantined": {
+    action: "Quarantine phishing",
+    setting: "",
+    effect: "Phishing goes to quarantine instead of the inbox or junk folder, and is pulled back after delivery. An approver also reviews that, because quarantined mail is deleted after a while.",
+  },
+  "keel-custom.defender-email.anti-spam-no-allowed-domains": {
+    action: "Remove allowed sender domains",
+    setting: "",
+    effect: "Mail from these domains is filtered like any other mail again, so some of it may go to junk or quarantine. An approver also reviews that.",
+  },
+  "keel-custom.defender-email.malware-file-filter": {
+    action: "Block risky attachments",
+    setting: "",
+    effect: "Mail with risky attachment types is blocked, and malware already delivered is pulled back. An approver also reviews that, because blocked mail does not reach the inbox.",
+  },
+  "keel-custom.defender-email.safe-links-email": {
+    action: "Check links in email",
+    setting: "",
+    effect: "Links in email are checked when clicked, and people can no longer click past the warning to a dangerous site.",
+  },
 };
 
 /** The objects Keel can fix for this control: only while it fails and has a fix. */
@@ -516,17 +572,23 @@ export function fixAction(finding: ComplianceFinding): string {
   return FIX_WORDS[finding.controlId]?.action ?? "Make it pass";
 }
 
-export function fixSetting(finding: ComplianceFinding): string {
-  const field = finding.fix?.field ?? "";
-  return FIX_WORDS[finding.controlId]?.setting ?? (field.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (first) => first.toUpperCase()) || "The setting");
+/** The setting a row changes in plain words: the row's own setting when the fix has several. */
+export function fixSetting(finding: ComplianceFinding, candidate?: ComplianceFixCandidate): string {
+  const field = candidate?.field ?? finding.fix?.field ?? "";
+  if (SETTING_WORDS[field]) return SETTING_WORDS[field];
+  return FIX_WORDS[finding.controlId]?.setting || (field.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (first) => first.toUpperCase()) || "The setting");
 }
 
 export function fixEffect(finding: ComplianceFinding): string | null {
   return FIX_WORDS[finding.controlId]?.effect ?? null;
 }
 
-/** A setting's value in words: Yes, No, Not set, or the value itself. */
-export function fixValue(value: unknown): string {
+// Settings that hold a list: the fix empties them by writing "not set".
+const LIST_SETTINGS = new Set(["AllowedSenderDomains"]);
+
+/** A setting's value in words: Yes, No, Not set, or the value itself. A mail protection setting reads as its check shows it. */
+export function fixValue(value: unknown, field?: string): string {
+  if (field && SETTING_WORDS[field]) return settingValueWords(value === null && LIST_SETTINGS.has(field) ? [] : value);
   if (value === true) return "Yes";
   if (value === false) return "No";
   if (value === null || value === undefined || value === "") return "Not set";
@@ -564,6 +626,8 @@ export function fixPlanProblem(message: string | null | undefined): string {
   if (/already passes/.test(text)) return "This object already passes in the live tenant. Nothing needs to change.";
   if (/not in the tenant now/.test(text)) return "This object is no longer in the tenant, so there is nothing to fix.";
   if (/no complete backup holds/.test(text)) return "No finished backup holds this object yet. Run a backup, then try again.";
+  if (/no complete service read holds/.test(text)) return "No finished backup holds this policy yet. Run a backup, then try again.";
+  if (/could not be checked/.test(text)) return "Keel could not read this policy in the live tenant just now. Try again in a few minutes.";
   if (/points to other objects/.test(text)) return "This object points to other objects, so Keel cannot change one setting on its own. Fix it in Microsoft 365.";
   if (/not updated in place/.test(text)) return "Keel would have to recreate this object, not change one setting. Fix it in Microsoft 365.";
   if (/incident/.test(text)) return "The backup lies inside an open incident. Plan the fix from the incident instead.";
@@ -691,3 +755,71 @@ export function lastChecked(findings: ComplianceFinding[], now: string): string 
 
 /** What to do when Keel cannot say where backups are kept. */
 export const STORAGE_UNSET_TODO = "Ask whoever runs the Keel server to record where backups are stored. Until then, this page and Resilience cannot say where they are.";
+
+/* ------------------------------------------------------------------- score -- */
+
+// How many checked controls pass. Only controls Keel could judge count: a control that
+// could not be checked, or has nothing to check here, is left out. An accepted
+// exception still counts as not passing, and is shown apart beside the score.
+export interface ComplianceScore {
+  passed: number;
+  // Controls Keel could judge: passes, fails, not set up yet and accepted exceptions.
+  evaluated: number;
+  excepted: number;
+  // Passes ÷ evaluated, rounded down so a score never reads 100% with a fail left.
+  percent: number | null;
+}
+
+/** How the score is worked out, said once beside it. */
+export const SCORE_EXPLAINED = "Passes out of every control Keel could check. Controls it could not check are left out.";
+
+export function scoreOf(passed: number, evaluated: number, excepted: number): ComplianceScore {
+  return { passed, evaluated, excepted, percent: evaluated ? Math.floor((passed / evaluated) * 100) : null };
+}
+
+export function complianceScore(findings: ComplianceFinding[]): ComplianceScore {
+  const judged = findings.filter((finding) => finding.verdict === "pass" || finding.verdict === "fail");
+  return scoreOf(
+    judged.filter((finding) => finding.verdict === "pass").length,
+    judged.length,
+    judged.filter((finding) => resultOf(finding) === "excepted").length,
+  );
+}
+
+/** The same score from the engine's summary (used where the findings are not loaded). */
+export function scoreFromSummary(summary: ComplianceSummary): ComplianceScore {
+  return scoreOf(summary.passing, summary.passing + summary.exposed + summary.excepted, summary.excepted);
+}
+
+/** Green at 90% and over, amber from 60%, red below; grey while nothing was judged. */
+export function scoreTone(score: ComplianceScore): "fine" | "soon" | "urgent" | "neutral" {
+  if (score.percent === null) return "neutral";
+  if (score.percent >= 90) return "fine";
+  return score.percent >= 60 ? "soon" : "urgent";
+}
+
+/** "3 of 4 checked controls pass", with any accepted exception said apart. */
+export function scoreSentence(score: ComplianceScore): string {
+  if (score.percent === null) return "Nothing checked yet";
+  const passes = `${score.passed} of ${plural(score.evaluated, "checked control")} ${score.passed === 1 ? "passes" : "pass"}`;
+  return score.excepted ? `${passes} · ${plural(score.excepted, "accepted exception")}` : passes;
+}
+
+export interface ScoreGroup { key: string; label: string; icon?: IconName; score: ComplianceScore }
+
+/** A score per standard, in name order (Keel's own checks first). */
+export function scoresByStandard(findings: ComplianceFinding[]): ScoreGroup[] {
+  const keys = [...new Set(findings.map(standardName))];
+  return keys
+    .sort((left, right) => (left === "Keel checks" ? -1 : right === "Keel checks" ? 1 : left.localeCompare(right)))
+    .map((key) => ({ key, label: key, score: complianceScore(findings.filter((finding) => standardName(finding) === key)) }));
+}
+
+/** A score per Microsoft service, in the portal's service order. */
+export function scoresByService(findings: ComplianceFinding[], order: (code: string) => number): ScoreGroup[] {
+  const services = new Map<string, CloudService>();
+  for (const finding of findings) services.set(controlService(finding).code, controlService(finding));
+  return [...services.values()]
+    .sort((left, right) => order(left.code) - order(right.code))
+    .map((service) => ({ key: service.code, label: service.name, icon: service.icon, score: complianceScore(findings.filter((finding) => controlService(finding).code === service.code)) }));
+}

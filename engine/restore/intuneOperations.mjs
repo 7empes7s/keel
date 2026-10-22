@@ -785,6 +785,18 @@ async function targetAppsAfterWrite(io, { payload, verb, targetId, live, resourc
   return out;
 }
 
+/**
+ * Where a policy's live assignments are read, and the items of that read
+ * (null when the read holds no list). Custom attribute scripts have no
+ * /assignments route (issue #546), so the script is read with them expanded.
+ */
+const assignmentsListPath = (record, base) => (record.assignmentsRead === 'expand' ? `${base}?$expand=assignments` : `${base}/assignments`);
+function liveAssignmentItems(record, read) {
+  if (record.assignmentsRead === 'expand' && read?.body?.['assignments@odata.nextLink']) return null; // a paged list is not all of it
+  const items = record.assignmentsRead === 'expand' ? read?.body?.assignments : (read?.body?.value ?? []);
+  return Array.isArray(items) ? items : null;
+}
+
 const sameApps = (left, right) => left.size === right.size && [...left].every((app) => right.has(app));
 
 /**
@@ -810,9 +822,10 @@ async function assignmentsAfterWrite(io, { payload, verb, targetId, resource }) 
   if (record.assignmentWrite === 'per-item') return perItemAssignments(io, { record, base, verb, plan, extras });
   let current = new Set();
   if (verb !== 'create') {
-    const listed = await io.retryOperation(() => io.writer.read(record.version, `${base}/assignments`));
-    if (listed?.ok !== true) return { error: 'the policy\'s live assignments could not be read, so they were not changed' };
-    current = liveAssignmentIdentities(listed.body?.value ?? [], { extras });
+    const listed = await io.retryOperation(() => io.writer.read(record.version, assignmentsListPath(record, base)));
+    const items = liveAssignmentItems(record, listed);
+    if (listed?.ok !== true || !items) return { error: 'the policy\'s live assignments could not be read, so they were not changed' };
+    current = liveAssignmentIdentities(items, { extras });
   }
   if (sameIdentities(plan.identities, current)) return { changes: { assignments: 'already as in the backup' } };
   // Most kinds take /assign; a policy set takes its assignments through its
@@ -823,9 +836,10 @@ async function assignmentsAfterWrite(io, { payload, verb, targetId, resource }) 
   };
   const result = await io.retryOperation(() => io.writer.write(record.version, `${base}/${record.assignmentAction ?? 'assign'}`, { method: 'POST', body }));
   if (!result.ok) return { error: `assigning the policy failed: ${outcomeDetail(result)}` };
-  const check = await readUntil(io, record.version, `${base}/assignments`, (r) => recordNotFound(r)
-    || (r?.ok === true && !sameIdentities(plan.identities, liveAssignmentIdentities(r.body?.value ?? [], { extras }))), io.readOptions);
-  if (check?.ok !== true || !sameIdentities(plan.identities, liveAssignmentIdentities(check.body?.value ?? [], { extras }))) {
+  const readBack = (r) => liveAssignmentIdentities(liveAssignmentItems(record, r) ?? [], { extras });
+  const check = await readUntil(io, record.version, assignmentsListPath(record, base), (r) => recordNotFound(r)
+    || (r?.ok === true && !sameIdentities(plan.identities, readBack(r))), io.readOptions);
+  if (check?.ok !== true || !liveAssignmentItems(record, check) || !sameIdentities(plan.identities, readBack(check))) {
     return { error: 'post-state: the assignments did not read back as written' };
   }
   return { changes: { assignments: 'written' } };
@@ -1122,7 +1136,11 @@ const SCRIPT_ASSIGNMENTS = Object.freeze({
   },
   deviceComplianceScript: { assignmentType: '#microsoft.graph.deviceHealthScriptAssignment', assignmentBodyKey: 'deviceHealthScriptAssignments' },
   // Batch 15: custom attribute scripts take the same list as other scripts.
-  deviceCustomAttributeShellScript: { assignmentType: '#microsoft.graph.deviceManagementScriptAssignment', assignmentBodyKey: 'deviceManagementScriptAssignments' },
+  // Issue #546: they have no /assignments route, so they are read expanded.
+  deviceCustomAttributeShellScript: {
+    assignmentType: '#microsoft.graph.deviceManagementScriptAssignment', assignmentBodyKey: 'deviceManagementScriptAssignments',
+    assignmentsRead: 'expand',
+  },
 });
 
 /**
@@ -1555,6 +1573,9 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     updateMethod: 'PUT', readQuery: COMPLIANCE_EXPAND,
     excluded: ['creationSource', 'isAssigned', 'settingCount', 'settings', 'scheduledActionsForRule', ...POLICY_NAVIGATION],
     transform: complianceBody, sameField: sameComplianceField, refusal: compliancePolicyRefusal,
+    // Issue #513: the policy read leaves the actions out; complianceActionsAfterWrite
+    // reads them from their own collection and checks them.
+    checkedAfterWrite: ['scheduledActionsForRule'],
     afterWrite: inOrder(complianceActionsAfterWrite, assignmentsAfterWrite),
     assignmentType: '#microsoft.graph.deviceManagementConfigurationPolicyAssignment', permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),

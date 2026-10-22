@@ -161,6 +161,23 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
     rule('TlsSettings', SHARING, changes),
     rule('TlsDomain', SHARING, changes),
   ],
+  // Mail protection that flags more mail sends it to junk or quarantine, or rejects it;
+  // quarantine is purged when its retention ends. Each switch turned on, each action
+  // moved to quarantine or delete, and each allowed domain taken away can do that.
+  exchangeAntiPhishPolicy: [
+    rule('EnableSpoofIntelligence', IRREVERSIBLE, disabledToEnabled),
+    rule('HonorDmarcPolicy', IRREVERSIBLE, disabledToEnabled),
+  ],
+  exchangeAntiSpamPolicy: [
+    rule('PhishSpamAction', IRREVERSIBLE, becomes('Quarantine', 'Delete')),
+    rule('HighConfidencePhishAction', IRREVERSIBLE, becomes('Quarantine', 'Delete')),
+    rule('PhishZapEnabled', IRREVERSIBLE, disabledToEnabled),
+    rule('AllowedSenderDomains', IRREVERSIBLE, (before, after) => addsEntry(after, before)),
+  ],
+  exchangeAntiMalwarePolicy: [
+    rule('EnableFileFilter', IRREVERSIBLE, disabledToEnabled),
+    rule('ZapEnabled', IRREVERSIBLE, disabledToEnabled),
+  ],
   exchangeOutboundSpamPolicy: [
     rule('AutoForwardingMode', SHARING, becomes('On')),
     rule('BccSuspiciousOutboundAdditionalRecipients', SHARING, addsEntry),
@@ -316,6 +333,7 @@ export const BENIGN_FIELDS = Object.freeze({
   AllowScopedPeopleSearchandAccess: 'limits people search to the user\'s address book; it only narrows',
   EnableTranscriptionProfanityMasking: 'masks words in a transcript; it only removes',
   EnableUserOverride: 'lets a user hide their own number on outbound calls; it only withholds',
+  EnableSafeLinksForEmail: 'checks the links in mail when clicked; no mail is deleted, kept or sent out',
   BlockIncomingPstnCallerID: 'hides the caller\'s number from the person called; it only withholds',
 });
 // The field-name heuristic of safety/contentEffects.mjs (unreviewed types), widened
@@ -704,6 +722,7 @@ export async function createWorkloadSettingsArtifact(client, { tenantRef, plan, 
     requestedBy,
     contentEffects: plan.contentEffects,
     workloadRestore: plan,
+    complianceFix: plan.complianceFix ?? null,
   });
 }
 
@@ -810,6 +829,9 @@ export async function executeWorkloadSettingsRestore(client, {
   return finish({ outcome, operations, reasons: [] });
 }
 
+// A list cleared with $null (the documented way to empty one) reads back as an empty list.
+const readsBackAs = (read, written) => same(read, written) || (written === null && Array.isArray(read) && read.length === 0);
+
 async function verify(op, { powershell, read, settle }, { ambiguous, cause }) {
   let entry = null;
   try {
@@ -825,7 +847,7 @@ async function verify(op, { powershell, read, settle }, { ambiguous, cause }) {
   const verified = [];
   const mismatched = [];
   for (const { field, after } of op.changes) {
-    (entry.fieldCoverage?.[field]?.status === 'observed' && same(entry.fields[field], after) ? verified : mismatched).push(field);
+    (entry.fieldCoverage?.[field]?.status === 'observed' && readsBackAs(entry.fields[field], after) ? verified : mismatched).push(field);
   }
   if (!mismatched.length) {
     await settle(op, {
@@ -882,6 +904,9 @@ export function workloadSettingsRestore({ workload, label, read }) {
     label,
     operations: Object.freeze(Object.keys(WKLD_WRITE_OPERATIONS).filter((id) => WKLD_WRITE_OPERATIONS[id].workload === workload)),
     usage: '--collection <id> [--target <key> ...]',
+    // The live read of the written families, for a plan made from the live state
+    // (Compliance "Make it pass", benchmarks/workloadFix.mjs).
+    read: readWritten,
     async plan(client, { tenantRef, tenantId, request, connection }) {
       if (typeof request.collectionId !== 'string' || !request.collectionId) throw new Error('--collection <id> is required for this workload');
       const source = await loadWorkloadSource(client, { tenantRef, collectionId: request.collectionId, workload });

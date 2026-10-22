@@ -31,9 +31,10 @@ import { GraphWriter } from '../restore/graphWriter.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { GraphReader } from '../../tools/tenant-probe/graph.mjs';
 import { assertTokenFree, decodeRoles, getToken as defaultGetToken } from '../../tools/tenant-probe/auth.mjs';
+import { certificateExpiry } from './connections.mjs';
 import { planBootstrap } from './plan.mjs';
 import { GRAPH_RESOURCE_APP_ID, registeredWorkloads, rolesSatisfying } from './prerequisites.mjs';
-import { apiForAppId } from './permissionCatalog.mjs';
+import { ADMIN_ROLE_TEMPLATES, apiForAppId } from './permissionCatalog.mjs';
 
 export const SETUP_HOST_PROJECTION = 'identity-v1';
 
@@ -125,9 +126,11 @@ const intuneRoleNames = () => [...new Set(registeredWorkloads()
 /**
  * One read-only look at what onboarding depends on. `bindings` maps each
  * identity to its configured app id. Returns the planner's reader shapes plus
- * what ensure() needs to converge without guessing.
+ * what ensure() needs to converge without guessing. `tableOnly` maps more
+ * identities (the content reader) whose permissions and roles feed the setup
+ * page's table only, never the planner.
  */
-export async function observeTenant({ graph, tenantRef, bindings, operatorPrincipalId = null }) {
+export async function observeTenant({ graph, tenantRef, bindings, operatorPrincipalId = null, tableOnly = {} }) {
   const graphSp = await getOne(graph, `/servicePrincipals(appId='${GRAPH_RESOURCE_APP_ID}')?$select=id,appId,appRoles`, 'the Microsoft Graph service principal');
   if (!graphSp?.id) throw new SetupReadError('the Microsoft Graph service principal', { status: 404 });
   const roleById = new Map((graphSp.appRoles ?? []).map((role) => [role.id, role]));
@@ -163,9 +166,41 @@ export async function observeTenant({ graph, tenantRef, bindings, operatorPrinci
   const permissionName = (found, id) => found.roleById.get(id)?.value ?? `unknown-app-role:${id}`;
   snapshot.permissions = {};
 
+  // Directory role assignments per identity, for the table: principal id -> identity.
+  const tablePrincipals = new Map();
+  // What one app holds and what its registration asks for, on every Microsoft API.
+  const tableEntry = async (identity, appId, app, sp) => {
+    const permissions = { granted: [], requested: [], app: { appId, displayName: app?.displayName ?? sp?.displayName ?? null },
+      // Connections: whether the app and its service principal exist, and whether it is switched on.
+      registered: Boolean(app), servicePrincipal: Boolean(sp), enabled: sp ? sp.accountEnabled !== false : null };
+    snapshot.permissions[identity] = permissions;
+    for (const entry of app?.requiredResourceAccess ?? []) {
+      const roles = (entry.resourceAccess ?? []).filter((access) => access.type === 'Role');
+      if (!roles.length) continue;
+      const found = await resource(`appId:${entry.resourceAppId}`, `/servicePrincipals(appId=${quoted(entry.resourceAppId)})`);
+      if (found) for (const access of roles) permissions.requested.push({ api: found.api, name: permissionName(found, access.id) });
+    }
+    return permissions;
+  };
+  const grantsOf = (identity, sp) => getAll(graph, `/servicePrincipals/${sp.id}/appRoleAssignments?$select=principalId,resourceId,appRoleId`, `the ${identity} granted permissions`);
+
+  for (const [identity, appId] of Object.entries(tableOnly)) {
+    if (bindings[identity]) continue;
+    const app = await getOne(graph, `/applications(appId=${quoted(appId)})?$select=id,appId,displayName,requiredResourceAccess`, `the ${identity} app registration`);
+    const sp = await getOne(graph, `/servicePrincipals(appId=${quoted(appId)})?$select=id,appId,displayName,accountEnabled`, `the ${identity} service principal`);
+    if ((app && app.appId !== appId) || (sp && sp.appId !== appId)) throw new SetupReadError(`the ${identity} app (app id mismatch)`, null);
+    const permissions = await tableEntry(identity, appId, app, sp);
+    if (!sp) continue;
+    tablePrincipals.set(sp.id, identity);
+    for (const grant of await grantsOf(identity, sp)) {
+      const found = await resource(grant.resourceId, `/servicePrincipals/${grant.resourceId}`);
+      if (found) permissions.granted.push({ api: found.api, name: permissionName(found, grant.appRoleId) });
+    }
+  }
+
   for (const [identity, appId] of Object.entries(bindings)) {
     const app = await getOne(graph, `/applications(appId=${quoted(appId)})?$select=id,appId,displayName,requiredResourceAccess`, `the ${identity} app registration`);
-    const sp = await getOne(graph, `/servicePrincipals(appId=${quoted(appId)})?$select=id,appId,displayName`, `the ${identity} service principal`);
+    const sp = await getOne(graph, `/servicePrincipals(appId=${quoted(appId)})?$select=id,appId,displayName,accountEnabled`, `the ${identity} service principal`);
     if (app && app.appId !== appId) throw new SetupReadError(`the ${identity} app registration (app id mismatch)`, null);
     if (sp && sp.appId !== appId) throw new SetupReadError(`the ${identity} service principal (app id mismatch)`, null);
     snapshot.byIdentity[identity] = {
@@ -175,14 +210,7 @@ export async function observeTenant({ graph, tenantRef, bindings, operatorPrinci
         resourceAccess: (entry.resourceAccess ?? []).map((access) => ({ id: access.id, type: access.type })),
       })),
     };
-    const permissions = { granted: [], requested: [] };
-    snapshot.permissions[identity] = permissions;
-    for (const entry of app?.requiredResourceAccess ?? []) {
-      const roles = (entry.resourceAccess ?? []).filter((access) => access.type === 'Role');
-      if (!roles.length) continue;
-      const found = await resource(`appId:${entry.resourceAppId}`, `/servicePrincipals(appId=${quoted(entry.resourceAppId)})`);
-      if (found) for (const access of roles) permissions.requested.push({ api: found.api, name: permissionName(found, access.id) });
-    }
+    const permissions = await tableEntry(identity, appId, app, sp);
     if (app) {
       snapshot.applications.push({
         tenantRef, id: app.id, appId: app.appId, displayName: app.displayName, keelIdentity: identity,
@@ -198,10 +226,13 @@ export async function observeTenant({ graph, tenantRef, bindings, operatorPrinci
       });
     }
     if (!sp) continue;
-    snapshot.servicePrincipals.push({ tenantRef, id: sp.id, appId: sp.appId, displayName: sp.displayName });
+    snapshot.servicePrincipals.push({ tenantRef, id: sp.id, appId: sp.appId, displayName: sp.displayName,
+      // Connections: a disabled service principal is a switched-off app. Absent means enabled.
+      ...(sp.accountEnabled === false ? { accountEnabled: false } : {}) });
     principals.push(sp.id);
+    tablePrincipals.set(sp.id, identity);
     // Application permissions granted to this identity (admin consent).
-    for (const grant of await getAll(graph, `/servicePrincipals/${sp.id}/appRoleAssignments?$select=principalId,resourceId,appRoleId`, `the ${identity} granted permissions`)) {
+    for (const grant of await grantsOf(identity, sp)) {
       const found = await resource(grant.resourceId, `/servicePrincipals/${grant.resourceId}`);
       if (found) permissions.granted.push({ api: found.api, name: permissionName(found, grant.appRoleId) });
       if (grant.resourceId !== graphSp.id) continue;
@@ -210,9 +241,35 @@ export async function observeTenant({ graph, tenantRef, bindings, operatorPrinci
   }
 
   if (operatorPrincipalId) principals.push(operatorPrincipalId);
-  for (const principalId of principals) {
+  const appRoles = []; // [identity, roleDefinitionId] held tenant-wide, for the table
+  for (const principalId of [...principals, ...[...tablePrincipals.keys()].filter((id) => !principals.includes(id))]) {
     for (const assignment of await getAll(graph, `/roleManagement/directory/roleAssignments?$filter=principalId eq ${quoted(principalId)}&$select=principalId,roleDefinitionId,directoryScopeId`, 'directory role assignments')) {
-      snapshot.roleAssignments.push({ tenantRef, principalId: assignment.principalId, roleDefinitionId: assignment.roleDefinitionId, directoryScopeId: assignment.directoryScopeId ?? null });
+      if (principals.includes(principalId)) {
+        snapshot.roleAssignments.push({ tenantRef, principalId: assignment.principalId, roleDefinitionId: assignment.roleDefinitionId, directoryScopeId: assignment.directoryScopeId ?? null });
+      }
+      // A role scoped to an administrative unit does not cover tenant-wide settings.
+      const identity = tablePrincipals.get(principalId);
+      if (identity && (assignment.directoryScopeId ?? '/') === '/') appRoles.push([identity, assignment.roleDefinitionId]);
+    }
+  }
+  // Role names: a built-in role's definition id is its template id. Others (custom
+  // roles) are named from the tenant's role definitions; unreadable ones are left out.
+  if (appRoles.length) {
+    const names = new Map(Object.entries(ADMIN_ROLE_TEMPLATES).map(([name, id]) => [id, name]));
+    if (appRoles.some(([, id]) => !names.has(id))) {
+      try {
+        for (const definition of await getAll(graph, '/roleManagement/directory/roleDefinitions?$select=id,templateId,displayName', 'directory role definitions')) {
+          names.set(definition.id, definition.displayName);
+          if (definition.templateId) names.set(definition.templateId, definition.displayName);
+        }
+      } catch (error) {
+        if (!(error instanceof SetupReadError)) throw error;
+      }
+    }
+    for (const [identity, id] of appRoles) {
+      const name = names.get(id);
+      const granted = snapshot.permissions[identity]?.granted;
+      if (name && granted && !granted.some((grant) => grant.api === 'directory' && grant.name === name)) granted.push({ api: 'directory', name });
     }
   }
   if (operatorPrincipalId) {
@@ -245,6 +302,7 @@ export async function observeTenant({ graph, tenantRef, bindings, operatorPrinci
         for (const [displayName, members] of groupsByRole) {
           if ([...members].some((member) => groups.has(member))) {
             snapshot.roleAssignments.push({ tenantRef, principalId: sp.id, displayName, source: 'intune' });
+            snapshot.permissions[tablePrincipals.get(sp.id)]?.granted.push({ api: 'intune', name: displayName });
           }
         }
       }
@@ -288,11 +346,12 @@ export function readersFor(observe) {
  * credential references, and nothing secret is held beyond the in-memory token.
  */
 export function createGraphSetupHost({
-  tenantRef, tenantId, collector, restorer, operatorPrincipalId = null, build,
+  tenantRef, tenantId, collector, restorer, contentReader = null, operatorPrincipalId = null, build,
   qualificationMode = 'live-qualified', operations = {},
   getToken = defaultGetToken, killSwitchPath = AUTOMATION_KILL_SWITCH_PATH,
   reader = (getAccessToken) => new GraphReader(getAccessToken),
   writer = (getAccessToken) => new GraphWriter(getAccessToken),
+  readCertificateExpiry = certificateExpiry,
 }) {
   assertTenantRef(tenantRef);
   assertCredentialConfig('collector', collector?.config, tenantId);
@@ -314,10 +373,22 @@ export function createGraphSetupHost({
     restorer: Object.freeze({ credentialRef: restorer.credentialRef, identityRef: restorer.config.clientId }),
   });
   const bindings = { collector: collector.config.clientId, restorer: restorer.config.clientId };
+  // The content reader (optional): only looked at for the permission table. Setup
+  // never plans for it, signs in as it, or changes it.
+  const readerAppId = contentReader?.config?.clientId ?? null;
+  if (readerAppId !== null && (typeof readerAppId !== 'string' || !readerAppId || Object.values(bindings).includes(readerAppId))) {
+    throw new TypeError('setup host: the content reader must be its own app registration');
+  }
+  const tableOnly = readerAppId ? { 'content-reader': readerAppId } : {};
+  // Connections: each app's id, credential reference and certificate expiry (read once
+  // here from the host's certificate file). No certificate or key path leaves the host.
+  const appFor = (part) => (part?.config?.clientId ? Object.freeze({ appId: part.config.clientId,
+    credentialRef: part.credentialRef ?? null, credentialExpiresAt: readCertificateExpiry(part.config.certPath) }) : null);
+  const apps = Object.freeze({ collector: appFor(collector), restorer: appFor(restorer), 'content-reader': appFor(contentReader) });
   const collectorToken = tokenSource(collector.config, getToken);
   const restorerToken = tokenSource(restorer.config, getToken);
   // A fresh reader per observation: nothing is cached between looks.
-  const observeNow = () => observeTenant({ graph: reader(collectorToken), tenantRef, bindings, operatorPrincipalId });
+  const observeNow = () => observeTenant({ graph: reader(collectorToken), tenantRef, bindings, operatorPrincipalId, tableOnly });
 
   const revision = `setup-host-${digest({ tenantRef, credentials, operatorPrincipalId, enabled, build, qualificationMode })}`;
 
@@ -425,6 +496,7 @@ export function createGraphSetupHost({
     readers: readersFor(observeNow),
     adapters: Object.freeze(adapters),
     credentials,
+    apps,
     build,
     qualificationMode,
     operatorPrincipalId,

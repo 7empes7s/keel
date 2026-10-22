@@ -1,6 +1,9 @@
 import "./next-async-storage";
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { type ReactElement } from "react";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { capabilitiesForPrincipal } from "../../engine/authz/principals.mjs";
@@ -46,10 +49,15 @@ test("live portal requests see role writes immediately and display the engine ca
   const db = await createIsolatedTestDatabase(import.meta.url);
   const client = await db.connect();
   const previous = process.env.KEEL_DB_URL;
+  const previousTenantConfig = process.env.KEEL_TENANT_CONFIG_PATH;
+  // The page reads the tenant from its config file; the test brings its own instead of relying on the shell.
+  const tenantConfigDir = mkdtempSync(join(tmpdir(), "keel-portal-principals-test-"));
   try {
     await client.query(schemaSql());
     await client.query("INSERT INTO principal(id,email) VALUES ($1,'portal@test')", [id]);
     process.env.KEEL_DB_URL = db.url;
+    writeFileSync(join(tenantConfigDir, "tenant.json"), JSON.stringify({ tenantId: "principals-portal-test" }));
+    process.env.KEEL_TENANT_CONFIG_PATH = join(tenantConfigDir, "tenant.json");
     const deps = { connect: () => db.connect(), databaseUrl: () => db.url, tenantRef: () => "test" };
     const list = guardedRead(DATA_SURFACES.principalsApi, guardedPrincipalList(deps));
     const liveRequest = async () => { const identity = await resolveIdentity("portal@test"); return request("", identity.principalId!, identity.capabilities); };
@@ -109,6 +117,8 @@ test("live portal requests see role writes immediately and display the engine ca
     assert.equal((await list(await liveRequest())).status, 403);
   } finally {
     if (previous === undefined) delete process.env.KEEL_DB_URL; else process.env.KEEL_DB_URL = previous;
+    if (previousTenantConfig === undefined) delete process.env.KEEL_TENANT_CONFIG_PATH; else process.env.KEEL_TENANT_CONFIG_PATH = previousTenantConfig;
+    rmSync(tenantConfigDir, { recursive: true, force: true });
     await client.end(); await db.cleanup();
   }
 });

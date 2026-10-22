@@ -17,6 +17,7 @@
  */
 import { collectExchange, recordExchangeRun } from './exchange.mjs';
 import { collectExchangeExtended, recordExchangeExtendedRun } from './exchangeExtended.mjs';
+import { collectExchangeRoleGroups, recordExchangeRoleGroupsRun } from './exchangeRoleGroups.mjs';
 import { collectMailFlow, recordMailFlowRun } from './mailFlow.mjs';
 import { collectOneDrive, recordOneDriveRun } from './onedrive.mjs';
 import { POWER_PLATFORM_WORKLOAD, collectPowerPlatform, powerPlatformTransportFor, recordPowerPlatformRun } from './powerPlatform.mjs';
@@ -36,6 +37,9 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   // exchangeExtended.mjs
   { workload: 'exchange-extended', powershellFamily: 'exchange', record: recordExchangeExtendedRun,
     collect: (client, { base, powershell }) => collectExchangeExtended(client, { ...base, powershell }) },
+  // exchangeRoleGroups.mjs
+  { workload: 'exchange-role-groups', powershellFamily: 'exchange', record: recordExchangeRoleGroupsRun,
+    collect: (client, { base, powershell }) => collectExchangeRoleGroups(client, { ...base, powershell }) },
   // mailFlow.mjs
   { workload: 'exchange-mail-flow', powershellFamily: 'exchange', record: recordMailFlowRun,
     collect: (client, { base, powershell }) => collectMailFlow(client, { ...base, powershell }) },
@@ -56,9 +60,12 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   { workload: 'purview-retention-dlp', powershellFamily: 'purview', record: recordRetentionDlpRun,
     collect: (client, { base, powershell }) => collectRetentionDlp(client, { ...base, powershell }) },
   // sharepoint.mjs
-  { workload: SHAREPOINT_WORKLOAD, powershellFamily: null, record: recordSharePointRun,
-    collect: (client, { base, transport, scope, sleep }) => collectSharePointSites(client, {
-      ...base, sleep, transport, tenantHost: scope.sharepointHost }) },
+  // Graph reads, plus the per-site sharing read through PnP once that read is qualified.
+  { workload: SHAREPOINT_WORKLOAD, powershellFamily: 'sharepoint', record: recordSharePointRun,
+    collect: (client, { base, transport, scope, sleep, powershell }) => collectSharePointSites(client, {
+      ...base, sleep, transport, tenantHost: scope.sharepointHost,
+      // Only its own PnP config can connect; the Graph tenant config has no certificate.
+      powershell: scope.powershellConfigs?.sharepoint ? powershell : null }) },
   // teams.mjs
   { workload: 'teams-settings', powershellFamily: null, record: recordTeamsRun,
     collect: (client, { base, transport, config, sleep }) => collectTeams(client, {

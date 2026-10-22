@@ -37,6 +37,7 @@
  *    content this project holds no rights to reproduce.
  */
 import { classifyForOperation, exportProjection } from '../contracts/fieldProjection.mjs';
+import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 
 export const BENCHMARK_REGISTRY_CONTRACT_VERSION = 1;
 
@@ -47,6 +48,11 @@ export const BENCHMARK_REGISTRY_CONTRACT_VERSION = 1;
 // recorded against an existing 'fail' evaluation, never a verdict a predicate
 // computes (see evaluate.mjs's recordException/effectiveVerdict).
 export const PREDICATE_VERDICTS = Object.freeze(['pass', 'fail', 'not-applicable']);
+// A predicate may also say why it fails when the setting it looks for does not exist
+// at all ("not set up yet"), as opposed to existing with the wrong value. It returns
+// { verdict: 'fail', reason: NOT_CONFIGURED }. The stored verdict stays 'fail', so an
+// exception can still be granted and every reader that counts fails still counts it.
+export const NOT_CONFIGURED = 'not-configured';
 export const CONTROL_VERDICTS = Object.freeze(['pass', 'fail', 'unknown', 'not-applicable', 'exception']);
 export const PROVENANCE_SOURCES = Object.freeze(['original', 'licensed']);
 
@@ -112,6 +118,7 @@ export function fixMatcherFor(name) {
  */
 function frozenFix(controlId, fix, requiredObservations) {
   if (fix === null || fix === undefined) return null;
+  if (fix.workload !== undefined) return frozenWorkloadFix(controlId, fix, requiredObservations);
   const { resourceType, field, to, matcher } = fix;
   if (!requiredObservations.some((req) => req.resourceType === resourceType)) {
     throw new TypeError(`${controlId}: fix.resourceType must be one the control reads`);
@@ -129,6 +136,35 @@ function frozenFix(controlId, fix, requiredObservations) {
     throw new TypeError(`${controlId}: fix matcher '${matcher}' is not allowlisted — call registerFixMatcher() first`);
   }
   return Object.freeze({ resourceType, field, to, matcher });
+}
+
+/**
+ * A fix on a service read (the mail protection policies): one of `settings` on one
+ * object of `family`, written by that family's declared Set- cmdlet through the
+ * workload restore (restore/workloads/cmdletSettings.mjs). Each setting must be one
+ * that write declares; `to` is plain JSON, or null to empty a list. The matcher is
+ * called with (fact, setting) and says whether that setting of that object fails.
+ */
+function frozenWorkloadFix(controlId, fix, requiredObservations) {
+  const { workload, family, settings, matcher } = fix;
+  if (!requiredObservations.some((req) => req.resourceType === workload && (req.parts ?? []).includes(family))) {
+    throw new TypeError(`${controlId}: fix.family must be a kind of a service read the control reads`);
+  }
+  const write = Object.values(WKLD_WRITE_OPERATIONS).find((entry) => entry.workload === workload && entry.family === family && entry.method.startsWith('Set-'));
+  if (!write) throw new TypeError(`${controlId}: Keel declares no write for ${family}`);
+  if (!settings || typeof settings !== 'object' || Object.keys(settings).length === 0) {
+    throw new TypeError(`${controlId}: fix.settings must name at least one setting`);
+  }
+  for (const [field, to] of Object.entries(settings)) {
+    if (!write.fields.includes(field)) throw new TypeError(`${controlId}: fix setting ${field} is not one ${write.method} is declared to write`);
+    if (to !== null && !['boolean', 'string', 'number'].includes(typeof to)) {
+      throw new TypeError(`${controlId}: fix setting ${field} must be a plain value or null`);
+    }
+  }
+  if (!FIX_MATCHERS.has(matcher)) {
+    throw new TypeError(`${controlId}: fix matcher '${matcher}' is not allowlisted — call registerFixMatcher() first`);
+  }
+  return Object.freeze({ workload, family, resourceType: write.resourceType, settings: Object.freeze({ ...settings }), matcher });
 }
 
 function frozenFrameworkRef(ref) {
@@ -364,12 +400,15 @@ const MAIL_PROTECTION = 'exchange-mail-flow';
 // read up to a day and a half old still counts.
 const MAIL_PROTECTION_MAX_AGE_MS = 36 * 60 * 60 * 1000;
 
-const isOn = Object.freeze({ test: (value) => value === true, expected: true });
-const isOff = Object.freeze({ test: (value) => value === false, expected: false });
-const isEmpty = Object.freeze({ test: (value) => Array.isArray(value) && value.length === 0, expected: [] });
+// `fixTo` is the value "Make it pass" writes. An empty list is written as null, the
+// documented way to clear one, and reads back as an empty list.
+const isOn = Object.freeze({ test: (value) => value === true, expected: true, fixTo: true });
+const isOff = Object.freeze({ test: (value) => value === false, expected: false, fixTo: false });
+const isEmpty = Object.freeze({ test: (value) => Array.isArray(value) && value.length === 0, expected: [], fixTo: null });
 const is = (word) => Object.freeze({
   test: (value) => typeof value === 'string' && value.toLowerCase() === word.toLowerCase(),
   expected: word,
+  fixTo: word,
 });
 
 function policyName(fact) {
@@ -395,9 +434,14 @@ function checkPolicies(facts, { kind, settings, applies = () => true }) {
   return { verdict: details.length ? 'fail' : 'pass', details };
 }
 
-function mailControl({ controlId, kind, title, description, severity, settings, applies }) {
+function mailControl({ controlId, kind, title, description, severity, settings, applies = () => true }) {
   const predicateName = `${MAIL_PROTECTION}.${controlId.slice(controlId.lastIndexOf('.') + 1)}`;
   registerPredicate(predicateName, (facts) => checkPolicies(facts, { kind, settings, applies }));
+  // "Make it pass": each failing setting of each policy the check looks at can be set
+  // to what the check expects, one setting at a time.
+  registerFixMatcher(predicateName, (fact, setting) => (
+    fact?.kind === kind && applies(fact) && Boolean(settings[setting]) && !settings[setting].test(fact[setting])
+  ));
   registerControl({
     controlId,
     title,
@@ -409,6 +453,12 @@ function mailControl({ controlId, kind, title, description, severity, settings, 
     severity,
     requiredObservations: [{ resourceType: MAIL_PROTECTION, maxAgeMs: MAIL_PROTECTION_MAX_AGE_MS, parts: [kind] }],
     predicate: { name: predicateName, args: {} },
+    fix: {
+      workload: MAIL_PROTECTION,
+      family: kind,
+      settings: Object.fromEntries(Object.entries(settings).map(([field, rule]) => [field, rule.fixTo])),
+      matcher: predicateName,
+    },
   });
 }
 
@@ -473,4 +523,42 @@ mailControl({
     + 'without Defender for Office 365.',
   severity: 'medium',
   settings: { EnableSafeLinksForEmail: isOn, ScanUrls: isOn, AllowClickThrough: isOff },
+});
+
+// Blocking legacy authentication: an enabled Conditional Access policy that blocks
+// both legacy client app types (Exchange ActiveSync and other clients). A policy that
+// would do this but is off, report-only or misses one of the two fails; no such
+// policy at all is "not set up yet".
+const LEGACY_CLIENTS = ['exchangeActiveSync', 'other'];
+
+function blocksLegacy(fact) {
+  const clients = fact?.conditions?.clientAppTypes;
+  const controls = fact?.grantControls?.builtInControls;
+  return Array.isArray(clients) && Array.isArray(controls) && controls.includes('block')
+    && clients.some((client) => LEGACY_CLIENTS.includes(client));
+}
+
+registerPredicate('conditional-access-block-legacy', (facts) => {
+  const candidates = facts.filter(blocksLegacy);
+  if (candidates.length === 0) return { verdict: 'fail', reason: NOT_CONFIGURED };
+  const enforced = candidates.some((fact) => fact.state === 'enabled'
+    && LEGACY_CLIENTS.every((client) => fact.conditions.clientAppTypes.includes(client)));
+  return enforced ? 'pass' : 'fail';
+});
+
+registerControl({
+  controlId: 'keel-custom.conditional-access.block-legacy',
+  title: 'Legacy authentication is blocked',
+  description: 'Passes when an enabled conditionalAccessPolicy blocks both legacy '
+    + 'client app types (exchangeActiveSync and other). Fails when such a '
+    + 'policy is disabled, report-only or covers only one of them, and is '
+    + 'recorded as not configured when no policy blocks legacy clients at '
+    + 'all. An original check.',
+  framework: 'keel-custom',
+  edition: '1.0.0',
+  profile: 'default',
+  evaluatorVersion: 1,
+  severity: 'high',
+  requiredObservations: [{ resourceType: 'conditionalAccessPolicy', maxAgeMs: 6 * 60 * 60 * 1000 }],
+  predicate: { name: 'conditional-access-block-legacy', args: {} },
 });

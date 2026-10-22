@@ -61,9 +61,11 @@ import { RULE_KINDS, RULE_STATES, ruleCounts, ruleKind, ruleState, rulesStatus }
 import { peopleCounts, peopleStatus } from "@/lib/people-view";
 import type { PrincipalView } from "@/lib/principals";
 import { CheckAgain } from "@/components/setup/check-again";
+import type { Connection } from "@/lib/connections-view";
 import { SetupPage as SetupBody } from "@/components/setup/setup-page";
 import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICES } from "../../engine/bootstrap/permissionCatalog.mjs";
 import { setupStatus as setupPageStatus, type PermissionEntry, type PermissionGrant, type SetupApp, type SetupPermissions, type SetupState } from "@/lib/setup-view";
+import { serviceStatuses } from "@/lib/setup-services";
 import { AlertsPage } from "@/components/alerts/alerts-page";
 import { alertCounts, alertsStatus, type AlertItem } from "@/lib/alerts-view";
 import { ReadinessPage } from "@/components/readiness/readiness-page";
@@ -94,6 +96,8 @@ const DEPENDS: Record<string, string[]> = {
   "deviceConfiguration:Windows baseline": ["group:All managed devices"],
 };
 let jobPolls = 0;
+// The setting the last "Make it pass" asked for: a mail policy setting is named after a #.
+let fixTarget = "";
 let contentEffectsApproved = false;
 let lastClosure: string[] = [];
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -226,7 +230,11 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     return json({ runs: [{ target: null, job: { id: "job-wd-1" }, artifactId: "wd000000-0000-4000-8000-000000000001" }] }, 202);
   }
   // Compliance, "Make it pass": the fix is planned, and its dry run is ready.
-  if (url.endsWith("/api/actions/compliance/fix")) return json({ job: { id: "f1c0b000-0000-4000-8000-000000000001" }, artifactId: "f1c00000-0000-4000-8000-000000000001" }, 202);
+  if (url.endsWith("/api/actions/compliance/fix")) {
+    fixTarget = String((JSON.parse(String(init?.body ?? "{}")) as { naturalKey?: string }).naturalKey ?? "");
+    return json({ job: { id: "f1c0b000-0000-4000-8000-000000000001" }, artifactId: "f1c00000-0000-4000-8000-000000000001" }, 202);
+  }
+  if (url.includes("/api/actions/restore/dry-run/f1c00000") && fixTarget.includes("#")) return json({ artifact: { id: "f1c00000-0000-4000-8000-000000000001", status: "completed", guardRefusals: [], complianceFix: { naturalKey: fixTarget, field: fixTarget.slice(fixTarget.indexOf("#") + 1), from: "AddXHeader", to: "Quarantine" } } });
   if (url.includes("/api/actions/restore/dry-run/f1c00000")) return json({ artifact: { id: "f1c00000-0000-4000-8000-000000000001", status: "completed", guardRefusals: [], complianceFix: { naturalKey: "namedLocation:Branch offices", field: "includeUnknownCountriesAndRegions", from: true, to: false } } });
   if (url.includes("/api/actions/restore/dry-run/wd000000")) return json({ artifact: WORKLOAD_ARTIFACT });
   if (url.includes("/api/actions/restore/dry-run/mb000000")) return json({ artifact: mailboxArtifact(url.slice(-1)) });
@@ -714,7 +722,7 @@ const ROLE_EVIDENCE = evidenceWindow("roleAssignment", "2026-10-02T09:00:00Z", "
 const COMPLIANCE: ComplianceData = {
   generatedAt: now,
   activeBaseline: BASELINES[0],
-  summary: { controls: 4, exposed: 1, excepted: 1, expiredExceptions: 1, incompleteExceptions: 0, passing: 1, unknown: 1, notApplicable: 0 },
+  summary: { controls: 5, exposed: 2, notConfigured: 1, excepted: 1, expiredExceptions: 1, incompleteExceptions: 0, passing: 1, unknown: 1, notApplicable: 0 },
   storage: { configured: true, provider: "local-disk", region: "westeurope", boundary: "keel-vps-backup-volume", immutability: "unsupported", generatedAt: "2026-10-02T05:00:00Z", certifies: null, source: "/opt/backups/keel-recovery-manifest.json" },
   findings: [
     { id: "e7a10000-0000-4000-8000-0000000000e1", controlId: "keel-custom.role-assignment.admin-count-at-most", title: "Global Administrator assignment count stays at or below a set limit",
@@ -749,22 +757,43 @@ const COMPLIANCE: ComplianceData = {
       framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "unknown", reason: "group:stale", evaluatedAt: "2026-10-01T09:20:00Z", evidenceSeq: "4101",
       exceptionState: "none", exposed: false, exception: null, evidence: [],
       links: { backup: { state: "none", linked: [], mismatched: [] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } } },
-    { id: "e7a10000-0000-4000-8000-0000000000e4", controlId: "keel-custom.conditional-access.block-legacy", title: "Legacy authentication is blocked",
-      framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "pass", reason: null, evaluatedAt: "2026-09-28T09:20:00Z", evidenceSeq: "3990",
-      exceptionState: "none", exposed: false, exception: null,
+    // No policy blocks old sign-in methods at all: "Not set up yet", not a wrong setting.
+    { id: "e7a10000-0000-4000-8000-0000000000e4", controlId: "keel-custom.conditional-access.block-legacy", title: "Legacy authentication is blocked", severity: "high",
+      framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "fail", reason: "not-configured", evaluatedAt: "2026-09-28T09:20:00Z", evidenceSeq: "3990",
+      exceptionState: "none", exposed: true, exception: null,
       evidence: [evidenceWindow("conditionalAccessPolicy", "2026-09-28T09:00:00Z", "2026-09-28T09:11:00Z", null)],
       links: { backup: { state: "mismatch", linked: [], mismatched: [evidenceWindow("conditionalAccessPolicy", "2026-09-28T09:00:00Z", "2026-09-28T09:11:00Z", null)] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } } },
+    // A control from an imported standard, so the score shows per standard.
+    { id: "e7a10000-0000-4000-8000-0000000000e5", controlId: "nist-sample.account-management", title: "Unused accounts are reviewed", severity: "medium",
+      framework: "nist-800-53", edition: "rev5", profile: "moderate", evaluatorVersion: 1, verdict: "pass", reason: null, evaluatedAt: "2026-10-02T09:20:00Z", evidenceSeq: "4184",
+      exceptionState: "none", exposed: false, exception: null,
+      evidence: [evidenceWindow("user", "2026-10-02T09:00:00Z", "2026-10-02T09:12:00Z", "0b5e0000-0000-4000-8000-0000000000d6")],
+      links: { backup: { state: "linked", linked: [evidenceWindow("user", "2026-10-02T09:00:00Z", "2026-10-02T09:12:00Z", "0b5e0000-0000-4000-8000-0000000000d6")], mismatched: [] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } } },
   ],
 };
 // Defender email controls, read from the Exchange mail protection policies: one failing
 // on two policies, one passing, and Safe Links not relevant (no Defender for Office 365).
 const MAIL_EVIDENCE = { resourceType: "exchange-mail-flow", window: { startedAt: "2026-10-02T02:00:00Z", endedAt: "2026-10-02T02:03:00Z" }, snapshotId: null, collectionId: "0c0f0000-0000-4000-8000-0000000000f1", completedAt: "2026-10-02T02:03:00Z" };
-const mailFinding = (id: string, controlId: string, verdict: ComplianceData["findings"][number]["verdict"], details: ComplianceData["findings"][number]["details"] = []): ComplianceData["findings"][number] => ({
+const mailFinding = (id: string, controlId: string, verdict: ComplianceData["findings"][number]["verdict"], details: ComplianceData["findings"][number]["details"] = [], fix: Partial<ComplianceData["findings"][number]> = {}): ComplianceData["findings"][number] => ({
   id: `e7a10000-0000-4000-8000-0000000000${id}`, controlId, title: null, severity: "high", framework: "keel-custom", edition: "1.0.0", profile: "default", evaluatorVersion: 1,
   verdict, reason: null, details, evaluatedAt: "2026-10-02T09:20:00Z", evidenceSeq: "4190", exceptionState: "none", exposed: verdict === "fail", exception: null,
   evidence: [MAIL_EVIDENCE],
   links: { backup: { state: "linked", linked: [MAIL_EVIDENCE], mismatched: [] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } },
+  ...fix,
 });
+// "Make it pass" on a mail protection policy: one row per failing setting, like the miss lines.
+const mailFix = (guid: string, name: string, field: string, from: unknown, to: unknown) => ({
+  naturalKey: `anti-spam-policy:${guid}#${field}`, resourceType: "exchangeAntiSpamPolicy", name, field, from, to,
+  snapshotId: MAIL_EVIDENCE.collectionId, seenAt: MAIL_EVIDENCE.completedAt,
+});
+const SPAM_FIX = {
+  fix: { resourceType: "exchangeAntiSpamPolicy", field: null, to: null, settings: { PhishSpamAction: "Quarantine", HighConfidencePhishAction: "Quarantine", PhishZapEnabled: true } },
+  fixCandidates: [
+    mailFix("0c0f5000-0000-4000-8000-000000000001", "Default", "HighConfidencePhishAction", "MoveToJmf", "Quarantine"),
+    mailFix("0c0f5000-0000-4000-8000-000000000001", "Default", "PhishZapEnabled", false, true),
+    mailFix("0c0f5000-0000-4000-8000-000000000002", "KEEL-RT-Finance inbound filtering for the accounts payable team", "PhishSpamAction", "AddXHeader", "Quarantine"),
+  ],
+};
 const DEFENDER_COMPLIANCE: ComplianceData = {
   ...COMPLIANCE,
   findings: [
@@ -773,7 +802,7 @@ const DEFENDER_COMPLIANCE: ComplianceData = {
       { subject: "Default", setting: "HighConfidencePhishAction", value: "MoveToJmf", expected: "Quarantine" },
       { subject: "Default", setting: "PhishZapEnabled", value: false, expected: true },
       { subject: "KEEL-RT-Finance inbound filtering for the accounts payable team", setting: "PhishSpamAction", value: "AddXHeader", expected: "Quarantine" },
-    ]),
+    ], SPAM_FIX),
     mailFinding("f2", "keel-custom.defender-email.malware-file-filter", "pass"),
     mailFinding("f3", "keel-custom.defender-email.safe-links-email", "not-applicable"),
   ],
@@ -1081,6 +1110,7 @@ const BACKUP_ITEMS = [
 const SETUP_RUN = "5e7a" + "0b".repeat(30);
 const SETUP_TENANT_ID = "72f988bf-0000-4000-8000-0000000000aa";
 const READER_APP: SetupApp = { displayName: "Keel Backup Reader (Contoso)", appId: "c011ec70-0000-4000-8000-0000000000c1" };
+const CONTENT_APP: SetupApp = { displayName: "Keel Content Reader (Contoso)", appId: "c0e7e700-0000-4000-8000-0000000000c3" };
 const WRITER_APP: SetupApp = { displayName: "Keel Restore Writer (Contoso)", appId: "2e570e00-0000-4000-8000-0000000000c2" };
 const setupStep = (id: string, kind: SetupState["scopes"][number]["steps"][number]["kind"], identity: "collector" | "restorer", name: string, action: string, progress: SetupState["scopes"][number]["steps"][number]["progress"], workload: string | null = null, scopes: string[] = [], app: SetupApp | null = identity === "collector" ? READER_APP : WRITER_APP) =>
   ({ id, kind, identity, workload, name, action, requiredScopes: scopes, missingScopes: scopes, manual: kind === "workload-rbac" || kind === "pim-activation", progress, app });
@@ -1094,17 +1124,43 @@ const setupPermissions = (observed: SetupPermissions["observed"]): SetupPermissi
   apis: Object.fromEntries(Object.entries(PERMISSION_APIS).map(([key, api]) => [key, api.label])),
   observed,
 });
-const catalogFor = (identity: "collector" | "restorer", keep: (entry: PermissionEntry) => boolean = () => true): PermissionGrant[] =>
+const catalogFor = (identity: "collector" | "restorer" | "content-reader", keep: (entry: PermissionEntry) => boolean = () => true): PermissionGrant[] =>
   (KEEL_PERMISSIONS as unknown as PermissionEntry[]).filter((entry) => entry.identity === identity && keep(entry)).map((entry) => ({ api: entry.api, name: entry.name }));
+// Connections (/api/setup `connections`): one row per Keel app, as the engine records it.
+const CONTENT_SCOPES = ["Files.Read.All", "Mail.Read", "Sites.Read.All", "Team.ReadBasic.All", "Tasks.Read.All"];
+const connection = (role: string, name: string, purpose: string, required: boolean, state: string, fields: {
+  appId?: string | null; expires?: string | null; wanted?: string[]; roles?: string[]; granted?: string[]; missing?: string[]; extra?: string[]; missingRoles?: string[] | null; enabled?: boolean | null; observed?: boolean;
+} = {}): Connection => ({
+  id: `connection-${role}`,
+  kind: "app", role, name, purpose, required, state, appId: fields.appId ?? null,
+  credentialExpiresAt: fields.expires ?? null,
+  credentialExpiresInDays: fields.expires ? Math.floor((Date.parse(fields.expires) - Date.parse(now)) / 86_400_000) : null,
+  wanted: fields.observed === false ? null : { permissions: fields.wanted ?? [], roles: fields.roles ?? [] },
+  observed: fields.observed === false ? null : {
+    at: "2026-10-02T09:38:00Z", displayName: name, enabled: fields.enabled ?? true,
+    grantedPermissions: fields.granted ?? [], missingPermissions: fields.missing ?? [], extraPermissions: fields.extra ?? [], missingRoles: fields.missingRoles === undefined ? [] : fields.missingRoles,
+  },
+  lastUsedAt: null, lastSignInAt: null, updatedAt: "2026-10-02T09:38:00Z",
+});
+const READER_PURPOSE = "Backs up your Microsoft 365 settings. Read only.";
+const CONTENT_PURPOSE = "Backs up mail, files, Teams and Planner. Read only.";
+const RESTORER_PURPOSE = "Puts settings back when you approve a restore.";
 // Backup reader: everything it needs, the optional audit search not yet, and one grant
 // Keel never uses. Restore writer: waiting on consent for the three setup permissions
 // (already on its list), and Exchange Online's permission not on its list at all.
 const SETUP_PERMISSIONS = setupPermissions({
   complete: true,
   byIdentity: {
+    // The backup reader also waits on one admin role, Teams Administrator.
     collector: {
-      granted: [...catalogFor("collector", (entry) => entry.need === "required"), { api: "graph", name: "Policy.Read.PermissionGrant" }],
-      requested: catalogFor("collector"),
+      granted: [...catalogFor("collector", (entry) => entry.need === "required" && entry.name !== "Teams Administrator"), { api: "graph", name: "Policy.Read.PermissionGrant" }],
+      requested: catalogFor("collector", (entry) => entry.type !== "admin-role"),
+    },
+    // The content reader holds everything but the planned Teams channel messages.
+    "content-reader": {
+      granted: catalogFor("content-reader", (entry) => entry.need === "required"),
+      requested: catalogFor("content-reader", (entry) => entry.need === "required"),
+      app: CONTENT_APP,
     },
     restorer: {
       granted: catalogFor("restorer", (entry) => !RESTORE_SCOPES.includes(entry.name) && entry.api !== "exchange"),
@@ -1121,6 +1177,16 @@ const SETUP: SetupState = {
   checkFailed: false,
   collect: { allowed: false, basis: "read-access-unconfirmed", missing: ["Read Only Operator", "keel.collect"] },
   firstCollection: null,
+  // The reader still waits on its Intune role; the restorer waits on consent; content backup is not set up.
+  connections: [
+    connection("settings-reader", "Keel Settings Reader", READER_PURPOSE, true, "missing-permission", {
+      appId: READER_APP.appId, expires: "2027-03-01T00:00:00Z", wanted: READ_SCOPES, granted: READ_SCOPES, roles: ["Read Only Operator"], missingRoles: ["Read Only Operator"], extra: ["Policy.Read.PermissionGrant"],
+    }),
+    connection("content-reader", "Keel Content Reader", CONTENT_PURPOSE, false, "not-created", { observed: false }),
+    connection("settings-restorer", "Keel Settings Restorer", RESTORER_PURPOSE, false, "waiting-for-consent", {
+      appId: WRITER_APP.appId, expires: "2027-03-01T00:00:00Z", wanted: RESTORE_SCOPES, missing: RESTORE_SCOPES, roles: ["Privileged Role Administrator"], missingRoles: null,
+    }),
+  ],
   scopes: [
     {
       scope: "read", workloads: ["entra-collect", "intune-collect"], observed: true,
@@ -1154,6 +1220,7 @@ const SETUP_CHECKED: SetupState = {
     byIdentity: {
       collector: { granted: catalogFor("collector"), requested: catalogFor("collector") },
       restorer: { granted: [...catalogFor("restorer"), { api: "graph", name: "Channel.Create" }], requested: catalogFor("restorer") },
+      "content-reader": { granted: catalogFor("content-reader"), requested: catalogFor("content-reader"), app: CONTENT_APP },
     },
   }),
   tenantId: SETUP_TENANT_ID,
@@ -1162,6 +1229,19 @@ const SETUP_CHECKED: SetupState = {
   checkFailed: false,
   collect: { allowed: true, basis: "read-access-confirmed", missing: [] },
   firstCollection: null,
+  // The settings reader's certificate runs out in 12 days; the restorer's is fine.
+  // Content reader working; restorer switched off between restores, holding one grant Keel never uses.
+  connections: [
+    connection("settings-reader", "Keel Settings Reader", READER_PURPOSE, true, "working", {
+      appId: READER_APP.appId, expires: "2026-10-14T09:00:00Z", wanted: READ_SCOPES.slice(1), granted: READ_SCOPES.slice(1),
+    }),
+    connection("content-reader", "Keel Content Reader", CONTENT_PURPOSE, false, "working", {
+      appId: "c0a7e470-0000-4000-8000-0000000000c3", expires: "2027-02-01T00:00:00Z", wanted: CONTENT_SCOPES, granted: CONTENT_SCOPES,
+    }),
+    connection("settings-restorer", "Keel Settings Restorer", RESTORER_PURPOSE, false, "switched-off", {
+      appId: null, expires: "2027-04-01T00:00:00Z", wanted: RESTORE_SCOPES, granted: RESTORE_SCOPES, extra: ["Channel.Create"], enabled: false,
+    }),
+  ],
   scopes: [
     {
       scope: "read", workloads: ["entra-collect", "intune-collect"], observed: true,
@@ -1741,7 +1821,9 @@ const SITE_PEOPLE = (over: Partial<PeopleSummary>): PeopleSummary => ({
   ],
   ...over,
 });
-const SITES: SitePermissionsData = {
+// Each site's own sharing setting (one PnP read), compared with the tenant default below.
+const SITE_SHARING_READ = { status: "observed", operation: "sharepoint.site-sharing" };
+const SITES_READ: SitePermissionsData = {
   generatedAt: now,
   run: { id: "c0110000-0000-4000-8000-0000000000c5", outcome: "partial", observedTo: "2026-10-02T02:00:00Z" },
   latest: null,
@@ -1751,19 +1833,21 @@ const SITES: SitePermissionsData = {
     { ...sitePermissionsFrom(`site:${SITE_ARCHIVE}`, { displayName: "Records archive with a long name that wraps on a phone", webUrl: `https://${SITE_HOST}/sites/records-archive-with-a-long-name-that-wraps-on-a-phone` },
       { appPermissionGrants: { status: "denied", httpStatus: 403, operation: "sharepoint.site-permissions" } }),
     backup: { items: 1204, bytes: 734_003_200, lastStoredAt: "2026-10-01T01:15:00Z" } },
-    { ...sitePermissionsFrom(`site:${SITE_FINANCE}`, { displayName: "Finance", webUrl: `https://${SITE_HOST}/sites/finance`, appPermissionGrants: [
+    { ...sitePermissionsFrom(`site:${SITE_FINANCE}`, { displayName: "Finance", webUrl: `https://${SITE_HOST}/sites/finance`, sharingCapability: "ExternalUserAndGuestSharing", appPermissionGrants: [
       { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDE", roles: ["fullcontrol"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a1", displayName: "Payroll connector" }] },
       { id: "aTowaS50fG1zLnNwLmV4dGVybmFsfGFwcDI", roles: ["read"], applications: [{ id: "a9900000-0000-4000-8000-0000000000a2", displayName: "Board pack reader" }] },
-    ] }, { appPermissionGrants: SITE_READ }),
+    ] }, { appPermissionGrants: SITE_READ, sharingCapability: SITE_SHARING_READ }),
     backup: { items: 5320, bytes: 2_254_857_830, lastStoredAt: "2026-10-02T01:12:00Z" },
     people: SITE_PEOPLE({ owners: ["Amara Okafor", "Dev Patel", "Lena Fischer"], ownerCount: 3, people: 14, guests: 2, sharingLinks: 3, uniqueLists: 1 }) },
-    { ...sitePermissionsFrom(`site:${SITE_INTRANET}`, { displayName: "Intranet", webUrl: `https://${SITE_HOST}/sites/intranet`, appPermissionGrants: [] }, { appPermissionGrants: SITE_READ }),
+    { ...sitePermissionsFrom(`site:${SITE_INTRANET}`, { displayName: "Intranet", webUrl: `https://${SITE_HOST}/sites/intranet`, sharingCapability: "Disabled", appPermissionGrants: [] }, { appPermissionGrants: SITE_READ, sharingCapability: SITE_SHARING_READ }),
     backup: { items: 312, bytes: 48_234_496, lastStoredAt: "2026-10-01T23:40:00Z" }, people: SITE_PEOPLE({}) },
-    { ...sitePermissionsFrom(`site:${SITE_TEAM}`, { displayName: "Project Falcon", webUrl: `https://${SITE_HOST}/sites/falcon`, appPermissionGrants: [] }, { appPermissionGrants: SITE_READ }),
+    { ...sitePermissionsFrom(`site:${SITE_TEAM}`, { displayName: "Project Falcon", webUrl: `https://${SITE_HOST}/sites/falcon`, sharingCapability: "ExternalUserSharingOnly", appPermissionGrants: [] }, { appPermissionGrants: SITE_READ, sharingCapability: SITE_SHARING_READ }),
     backup: { items: 88, bytes: 5_242_880, lastStoredAt: "2026-09-28T01:05:00Z" },
     people: SITE_PEOPLE({ owners: [], ownerCount: 0, people: 3, groups: [{ name: "Project Falcon Members", members: 3, roles: ["Edit"] }] }) },
   ],
 };
+// The loader gives each site the tenant default it was read with.
+const SITES: SitePermissionsData = { ...SITES_READ, sites: SITES_READ.sites.map((site) => ({ ...site, sharing: { ...site.sharing, tenant: SITES_READ.tenantSharing ?? null } })) };
 
 // Site permissions audit: site settings that changed between two daily reads.
 // Service setting changes: each service read compared with the service's approved
@@ -2017,7 +2101,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/kit": return <KitPage />;
     case "/kit/many": return <KitPage many />;
     // Waiting work matches the Alerts and Incidents fixtures (3 open alerts, 1 open incident).
-    case "/": return <DashboardView data={{ ...dashboard(posture), waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } }} pendingApprovals={posture === 2 ? 0 : 2} />;
+    case "/": return <DashboardView data={{ ...dashboard(posture), compliance: posture === 2 ? { ...COMPLIANCE.summary, exposed: 0, notConfigured: 0, passing: 3 } : COMPLIANCE.summary, waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } }} pendingApprovals={posture === 2 ? 0 : 2} />;
     case "/activity": case "/activity/viewer": {
       const all = activityJobs(jobs);
       const viewer = path === "/activity/viewer";
@@ -2129,7 +2213,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/benchmarks/defender": {
       // Defender email controls beside the others: filed under Defender, failing settings in a table.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(DEFENDER_COMPLIANCE.findings))} title="Compliance" />
-      <CompliancePage canCheck canConfigure data={DEFENDER_COMPLIANCE} now={now} /></>;
+      <CompliancePage canCheck canConfigure canRestore data={DEFENDER_COMPLIANCE} now={now} /></>;
     }
     case "/benchmarks/empty": case "/benchmarks/empty-viewer": {
       // Nothing checked yet and the storage location not known: each empty state has its button.
@@ -2155,7 +2239,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/setup/checked": {
       const state = path === "/setup" ? SETUP : SETUP_CHECKED;
       return <><PageHeader actions={<CheckAgain />} description="Connect Keel to your Microsoft tenant: what is in place, what waits on you, and when the first backup can run." generatedAt={now} section="Settings" status={setupPageStatus(state)} title="Setup" />
-        <SetupBody canBackup canStart state={state} /></>;
+        <SetupBody canBackup canStart services={serviceStatuses(path === "/setup" ? [] : COVERAGE.types, now)} state={state} /></>;
     }
     case "/emergency-changes": case "/emergency-changes/none": {
       const data: ChangeIntentsData = path === "/emergency-changes"

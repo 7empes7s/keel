@@ -1,5 +1,6 @@
 import { canonicalHash } from '../cir/canonicalHash.mjs';
 import { CATALOG, catalogReadPath } from '../../tools/tenant-probe/catalog.mjs';
+import { collectPerParent } from '../collect/entraAdapter.mjs';
 
 const byType = new Map(CATALOG.map((entry) => [entry.type, entry]));
 
@@ -89,9 +90,12 @@ export async function buildLiveIndex(reader, { resourceTypes, naturalKeyFor, del
     const entry = byType.get(resourceType);
     if (!entry) throw new Error(`resource type ${resourceType} not found in tenant-probe CATALOG`);
 
-    const basePath = entry.needsOrgId ? entry.path.replace('{org}', encodeURIComponent(await resolveOrganizationId())) : entry.path;
-    const path = catalogReadPath(entry, basePath);
-    const live = await list(reader, entry.version, path, entry);
+    // Issue #473: a kind read per parent (a policy set with its items, a
+    // compliance policy with its settings) has `{parent}` in its path. The live
+    // read lists the parents and reads each one, exactly as the collector does.
+    const live = entry.parent
+      ? await listPerParent(reader, entry)
+      : await list(reader, entry.version, catalogReadPath(entry, entry.needsOrgId ? entry.path.replace('{org}', encodeURIComponent(await resolveOrganizationId())) : entry.path), entry);
     for (const object of live) {
       index.set(naturalKeyFor(resourceType, object), {
         targetId: object.id,
@@ -136,6 +140,13 @@ export async function buildLiveIndex(reader, { resourceTypes, naturalKeyFor, del
   }
 
   return index;
+}
+
+async function listPerParent(reader, entry) {
+  const { items, error, capped } = await collectPerParent(reader, entry);
+  if (error) throw new Error(`listing ${entry.type} per parent failed: ${error.error ?? error.status ?? error}`);
+  if (capped) throw new Error(`listing ${entry.type} per parent failed: pagination incomplete`);
+  return items;
 }
 
 async function list(reader, version, path, entry = null) {

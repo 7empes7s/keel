@@ -1005,7 +1005,7 @@ being triggered by queue updates.
   tenant settings". Step 3: which routes answer 200 decides the #447 fix.
 - **Report:** steps 1 to 3 verbatim. Comment the step 3 table on #447.
 
-### Q144: Check the "not used in this tenant" split on Discovery and Resilience (read-only, after #495)
+### Q145: Check the "not used in this tenant" split on Discovery and Resilience (read-only, after #495)
 - Drafted by the "Backed-up types not found" thread (2026-10-22). Code: PR #495. Discovery said "9 types KEEL backs up were
   not found or could not be read", and Resilience listed lifecycle workflows, API connectors and the Intune Exchange connector
   as "never backed up successfully". Those are now "Not used in this tenant" when Graph refuses them for a missing licence

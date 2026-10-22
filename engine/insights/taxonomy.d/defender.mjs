@@ -9,5 +9,7 @@ export default Object.freeze({
     // Remaining kinds, batch 7.
     simulationAutomation: { name: 'Attack simulation automation' },
     attackSimulation: { name: 'Attack simulation' },
+    // Remaining kinds, batch 8.
+    securityZone: { name: 'Exposure management zone' },
   }),
 });

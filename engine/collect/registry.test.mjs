@@ -171,7 +171,7 @@ const seen = [];
 const fakeReader = {
   collect: async (version, path, opts) => {
     seen.push({ version, path, pageCap: opts.pageCap });
-    return { items: [{ id: `${path}#1`, tenantId: 'fixture-partner', applicationTemplateId: 'fixture-template', resourceRoleScopes: [{ id: 'fixture-scope' }] }], error: null };
+    return { items: [{ id: `${path}#1`, tenantId: 'fixture-partner', appId: 'fixture-app', applicationTemplateId: 'fixture-template', resourceRoleScopes: [{ id: 'fixture-scope' }] }], error: null };
   },
 };
 const collected = await collectM1(fakeReader, { tenantId: 'fixture-tenant' });

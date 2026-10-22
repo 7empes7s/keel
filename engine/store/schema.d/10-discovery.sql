@@ -39,11 +39,11 @@ CREATE TABLE IF NOT EXISTS discovery_item (
 -- refused-with-grant: a 401/403 for a grant the app already holds. A CHECK cannot be
 -- altered in place; dropping and re-adding it under the same name keeps this idempotent.
 -- skipped: readable but not worth backing up (engine/discovery/notGaps.mjs), with the
--- reason not-configuration or microsoft-published.
+-- reason not-configuration, microsoft-published, holds-secrets, retired or other-tenant.
 ALTER TABLE discovery_item DROP CONSTRAINT IF EXISTS discovery_item_reason_check;
 ALTER TABLE discovery_item ADD CONSTRAINT discovery_item_reason_check
   CHECK (reason IS NULL OR reason IN ('missing-grant', 'refused-with-grant', 'not-licensed', 'not-listable', 'error', 'too-large',
-    'not-configuration', 'microsoft-published'));
+    'not-configuration', 'microsoft-published', 'holds-secrets', 'retired', 'other-tenant'));
 ALTER TABLE discovery_item DROP CONSTRAINT IF EXISTS discovery_item_status_check;
 ALTER TABLE discovery_item ADD CONSTRAINT discovery_item_status_check
   CHECK (status IN ('catalogued', 'uncatalogued', 'skipped', 'unreadable', 'not-listed'));

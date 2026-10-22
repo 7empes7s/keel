@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 153 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 119 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 69 at least in part; the other 84 are restored by hand from the backup.
+KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 133 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 69 at least in part; the other 98 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -67,6 +67,13 @@ KEEL tracks 153 kinds of Entra ID and Intune settings and backs up everything it
 | Defender admin roles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Defender admin role assignments | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Defender app access scopes | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| App certificate authority trust | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Verified ID profiles | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Entitlement management outside connectors | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| PIM custom extensions | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| PIM managed groups | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Entitlement management role assignments | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Device templates | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -175,6 +182,23 @@ KEEL tracks 153 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Check the backup with the person who approves admin access, then add the assignments again in the Microsoft Defender portal, under the role, Assignments.
 - **Defender app access scopes** (not built yet). KEEL backs these up but does not restore them yet.
   - *You do:* Recreate each scope with PowerShell from the backup, before the assignments that use it. There is no admin center page for it.
+- **App certificate authority trust** (not built yet). KEEL backs up which apps have a certificate authority trust list, but not the authorities on it, and does not restore it yet.
+  - *Not brought back:* the trusted certificate authorities (stored separately and not in the backup yet).
+  - *You do:* Create the configuration again with PowerShell, then add the same certificate authorities from your own copies.
+- **Verified ID profiles** (not built yet). KEEL backs up each verification profile's accepted issuer, claims and Face Check setting but does not restore it yet.
+  - *You do:* Create the profile again in the Entra admin center, under Verified ID, from the backup.
+- **Entitlement management outside connectors** (not built yet). KEEL backs up each connector to resources outside Entra ID but does not restore it yet.
+  - *You do:* Create the connector again with PowerShell from the backup.
+- **PIM custom extensions** (not built yet). KEEL backs up each extension's name and how it signs in, but not the Logic App address it calls, which can hold an access key. It does not restore it yet.
+  - *Not brought back:* the Logic App address it calls (Microsoft never returns it).
+  - *You do:* Create the extension again in the Entra admin center, under Privileged Identity Management, and pick the same Logic App.
+- **PIM managed groups** (not built yet). KEEL backs up which groups are managed by Privileged Identity Management. A group comes back under it when it gets its first eligible member.
+  - *You do:* Add an eligible member to each group again in the Entra admin center, under Privileged Identity Management, Groups.
+- **Entitlement management role assignments** (not built yet). KEEL backs up who is a catalog owner, catalog reader or access package manager, and over which catalog, but does not restore it yet.
+  - *You do:* Add the same people to the same roles in the Entra admin center, under Identity Governance, Entitlement management, from the backup.
+- **Device templates** (not built yet). KEEL backs up each device template's maker, model and operating system but not its owners or the devices made from it, and does not restore it yet.
+  - *Not brought back:* its owners and the devices made from it (stored separately and not in the backup yet).
+  - *You do:* Create the template again with PowerShell from the backup, then add its owners.
 
 ## Sign-in and security policies
 
@@ -213,6 +237,9 @@ KEEL tracks 153 kinds of Entra ID and Intune settings and backs up everything it
 | Guest SAML or WS-Fed sign-in | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Attack simulation automations | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Attack simulations | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Sign-in identifiers | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Lifecycle policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Default cross-tenant sharing settings | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -290,6 +317,13 @@ KEEL tracks 153 kinds of Entra ID and Intune settings and backs up everything it
 - **Attack simulations** (not built yet). KEEL backs up each simulation's settings and targets but not its results, and does not restore it yet.
   - *Not brought back:* the payload, landing page and login page the simulation uses (stored separately and not in the backup yet).
   - *You do:* Launch the simulation again in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Simulations, with the same technique, payload and targets from the backup.
+- **Sign-in identifiers** (not built yet). KEEL backs up which identifiers people can sign in with (email, user name, custom user name) and whether each is on, but does not restore them yet.
+  - *You do:* Turn the same identifiers on or off in the Entra admin center, under External Identities, from the backup.
+- **Lifecycle policies** (not built yet). KEEL backs up each lifecycle policy's scope, grace period and action (such as disabling accounts that stopped signing in), but not its rules or past versions, and does not restore it yet.
+  - *Not brought back:* its rules and past versions (stored separately and not in the backup yet).
+  - *You do:* Create the policy again in the Entra admin center, under Identity Governance, Lifecycle workflows, from the backup, and leave it off until you have checked who it covers.
+- **Default cross-tenant sharing settings** (not built yet). KEEL backs up the default calendar sharing, mail tips and room booking settings for other tenants but does not restore them yet.
+  - *You do:* Set the same values with PowerShell from the backup.
 
 ## Tenant settings
 
@@ -307,6 +341,9 @@ KEEL tracks 153 kinds of Entra ID and Intune settings and backs up everything it
 | SharePoint and OneDrive tenant settings | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
 | Item insights setting | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Copilot connectors | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Exposure management zones | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Shared email domains | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Schema extensions | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -341,6 +378,14 @@ KEEL tracks 153 kinds of Entra ID and Intune settings and backs up everything it
 - **Copilot connectors** (not built yet). KEEL backs up each connection's name, description and allowed apps but not its schema or the items pushed into it, and does not restore it yet.
   - *Not brought back:* the connection schema and the items pushed into it (stored separately and not in the backup yet).
   - *You do:* Recreate the connector in the Microsoft 365 admin center, under Copilot, Connectors, from the backup, then let it sync its items again.
+- **Exposure management zones** (not built yet). KEEL backs up each zone's name and description but not the environments in it, and does not restore it yet.
+  - *Not brought back:* the environments in the zone (stored separately and not in the backup yet).
+  - *You do:* Create the zone again in the Microsoft Defender portal, under Exposure management, and add the same environments.
+- **Shared email domains** (not built yet). KEEL backs up which shared email domains the tenant uses. Microsoft sets them up; there is nothing to restore.
+  - *You do:* Ask Microsoft support if a shared domain is missing.
+- **Schema extensions** (not built yet). KEEL backs up the schema extensions this tenant's own apps defined, but not the values stored in them on users and groups, and does not restore them yet.
+  - *Not brought back:* extensions owned by apps in other tenants (set by Microsoft).
+  - *You do:* Create the extension again with PowerShell, with the same id, owner app and properties from the backup.
 
 ## Intune device management
 
@@ -410,6 +455,7 @@ KEEL tracks 153 kinds of Entra ID and Intune settings and backs up everything it
 | Windows code signing certificates | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Symantec code signing certificate | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (KEEL choice) | None |
 | Endpoint analytics baselines | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| BIOS configurations | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -583,6 +629,9 @@ KEEL tracks 153 kinds of Entra ID and Intune settings and backs up everything it
 - **Endpoint analytics baselines** (not built yet). KEEL backs up the custom baselines but does not restore them yet. The built-in baseline is set by Microsoft.
   - *Not brought back:* built-in baselines (set by Microsoft).
   - *You do:* Create the baseline again in the Intune admin center, under Reports, Endpoint analytics, Settings, Baselines, with the same name.
+- **BIOS configurations** (not built yet). KEEL backs up each BIOS configuration's name, format and password setting but not the settings file, which can hold the BIOS password, and does not restore it yet.
+  - *Not brought back:* the BIOS settings file, which can hold the BIOS password (Microsoft never returns it).
+  - *You do:* Create the configuration again in the Intune admin center, under Devices, Windows, Configuration, BIOS configurations and other settings, and upload the settings file from your own copy.
 
 ## Microsoft 365 workloads
 

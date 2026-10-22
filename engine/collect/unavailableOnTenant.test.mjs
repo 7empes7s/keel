@@ -29,7 +29,8 @@ const unlicensed = reader([
   ['/identityGovernance/lifecycleWorkflows/', licence],
   ['/identity/apiConnectors', signUp],
 ]);
-const skipped = ['lifecycleWorkflow', 'lifecycleWorkflowCustomTaskExtension', 'lifecycleManagementSettings', 'identityApiConnector'];
+// lifecyclePolicy (batch 8) sits under the same unlicensed lifecycle workflows path.
+const skipped = ['lifecycleWorkflow', 'lifecycleWorkflowCustomTaskExtension', 'lifecycleManagementSettings', 'identityApiConnector', 'lifecyclePolicy'];
 
 // Without a needed set, collectM1 stays fail-fast on any failed type.
 await assert.rejects(() => collectM1(unlicensed), /collecting lifecycleWorkflow failed: Insufficient license/);

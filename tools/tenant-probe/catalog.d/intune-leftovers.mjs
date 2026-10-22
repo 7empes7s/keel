@@ -7,9 +7,10 @@
 // Secrets are left out with $select: enrollment tokens, QR codes, the Wi-Fi
 // password of an Android enrollment profile, and the Symantec certificate file
 // with its password.
-// Left out on purpose until each is checked for secrets: hardware (BIOS)
-// configurations, uploaded group policy object files, eSIM activation code
-// pools, and Windows 10X resource access profiles (their Wi-Fi XML can hold a key).
+// Checked for secrets in batch 8 (last-leftovers.mjs): hardware (BIOS)
+// configurations are read there without the settings file; uploaded group
+// policy object files, eSIM activation code pools and Windows 10X resource
+// access profiles are skipped with a reason (engine/discovery/notGaps.mjs).
 export default [
   // Tenant-wide Intune settings: the compliance check-in window, how devices
   // with no compliance policy are marked, Company Portal contact details and

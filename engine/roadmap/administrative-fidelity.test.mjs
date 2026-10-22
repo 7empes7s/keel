@@ -131,8 +131,8 @@ test('the evidence report names what cannot be recovered and carries no coverage
   const ledger = buildAdministrativeFamilyLedger();
   assert.deepEqual(ledger.families.map((family) => family.resourceType).sort(),
     ['administrativeUnit', 'directorySettingTemplate', 'domain', 'externalConnection', 'groupLifecyclePolicy', 'groupSetting',
-      'itemInsightsSettings', 'organization', 'organizationalBranding', 'organizationalBrandingLocalization', 'sharepointSettings',
-      'subscribedSku']);
+      'itemInsightsSettings', 'organization', 'organizationalBranding', 'organizationalBrandingLocalization', 'schemaExtension',
+      'securityZone', 'sharedEmailDomain', 'sharepointSettings', 'subscribedSku']);
   const byType = new Map(ledger.families.map((family) => [family.resourceType, family]));
   const unit = byType.get('administrativeUnit');
   assert.deepEqual({ status: unit.status, restoreScope: unit.restoreScope }, { status: 'qualified-subset', restoreScope: 'partial' });

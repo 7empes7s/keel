@@ -132,6 +132,9 @@ export function unreadableSentence(item: Pick<DiscoveryItem, "reason" | "missing
 const SKIP_REASONS: Record<string, string> = {
   "not-configuration": "it holds logs, reports or activity, not settings",
   "microsoft-published": "Microsoft publishes the same list in every tenant",
+  "holds-secrets": "it holds passwords or codes KEEL does not store, and little else",
+  retired: "it configures a product Microsoft retired or never shipped",
+  "other-tenant": "it only exists while another tenant or a partner takes part, so it is set up again with them",
 };
 
 /** Why a readable type is not worth backing up. */

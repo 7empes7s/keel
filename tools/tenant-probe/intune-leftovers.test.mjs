@@ -65,11 +65,14 @@ test('enrollment tokens, QR codes, Wi-Fi passwords and certificate files are lef
   for (const entry of intuneLeftovers.filter((e) => !e.select)) assert.ok(!/password|token|secret/i.test(entry.path), entry.type);
 });
 
-test('types left out until checked for secrets are not in the catalogue', () => {
-  for (const path of ['/deviceManagement/hardwareConfigurations', '/deviceManagement/groupPolicyObjectFiles',
-    '/deviceManagement/embeddedSIMActivationCodePools', '/deviceManagement/resourceAccessProfiles']) {
+test('types held back for secrets stay out of the catalogue, or are read without the secret (batch 8)', () => {
+  for (const path of ['/deviceManagement/groupPolicyObjectFiles', '/deviceManagement/embeddedSIMActivationCodePools',
+    '/deviceManagement/resourceAccessProfiles']) {
     assert.equal(CATALOG.filter((entry) => entry.path === path).length, 0, path);
   }
+  const hardware = CATALOG.filter((entry) => entry.path === '/deviceManagement/hardwareConfigurations');
+  assert.equal(hardware.length, 1);
+  assert.ok(hardware[0].select && !hardware[0].select.split(',').includes('configurationFileContent'), 'the BIOS settings file is never read');
 });
 
 test('no Intune leftovers type duplicates an existing catalogue path or type', () => {

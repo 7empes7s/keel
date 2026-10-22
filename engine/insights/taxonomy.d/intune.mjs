@@ -67,5 +67,7 @@ export default Object.freeze({
     userExperienceAnalyticsBaseline: { name: 'Endpoint analytics baseline' },
     windowsAutopilotDeviceIdentity: { name: 'Windows Autopilot device' },
     deviceManagementRoleAssignment: { name: 'Intune admin role assignment' },
+    // Remaining kinds, batch 8.
+    hardwareConfiguration: { name: 'BIOS configuration' },
   }),
 });

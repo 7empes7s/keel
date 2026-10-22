@@ -110,7 +110,7 @@ async function collectPerParent(reader, entry) {
     if (parent.requires && !object?.[parent.requires]) continue;
     const key = object?.[parent.key];
     if (typeof key !== 'string' || key.length === 0) return stop({ error: `a parent of ${entry.type} has no ${parent.key}` });
-    const result = await reader.collect(entry.version, catalogReadPath(entry, entry.path.replace('{parent}', encodeURIComponent(key))), options);
+    const result = await reader.collect(entry.version, perParentReadPath(entry, key), options);
     if (entry.absentWhenNotFound && result?.error?.status === 404 && !(result.pages > 0)) continue;
     pages += Number.isSafeInteger(result?.pages) ? result.pages : 0;
     status = result?.error?.status ?? result?.status ?? status;
@@ -124,6 +124,15 @@ async function collectPerParent(reader, entry) {
     }
   }
   return { items, pages, status, capped: false, error: null };
+}
+
+// The read for one parent: `{parent}` in the path is the key, encoded; in the
+// query it is an OData string literal (remaining kinds batch 8: Graph lists
+// some objects only through a filter, such as one role's assignments).
+export function perParentReadPath(entry, key) {
+  const path = entry.path.replace('{parent}', encodeURIComponent(key));
+  const query = entry.query?.replaceAll('{parent}', encodeURIComponent(key.replaceAll("'", "''")));
+  return catalogReadPath({ ...entry, query }, path);
 }
 
 /**

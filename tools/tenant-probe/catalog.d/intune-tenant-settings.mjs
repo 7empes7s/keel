@@ -32,19 +32,21 @@ export default [
     note: 'The apps and policies in each set are read per set.' },
   // Apple Volume Purchase Program tokens. The token itself is a secret and is
   // left out of the read; the Apple ID, organization and expiry are what a
-  // renewal needs.
+  // renewal needs. Issue #466: v1.0 has no countryOrRegionCode, so it is not
+  // selected (Graph answers 400 for an unknown property).
   { type: 'vppToken', path: '/deviceAppManagement/vppTokens', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
-    select: 'id,organizationName,vppTokenAccountType,appleId,expirationDateTime,lastSyncDateTime,lastModifiedDateTime,state,lastSyncStatus,automaticallyUpdateApps,countryOrRegionCode',
+    select: 'id,organizationName,vppTokenAccountType,appleId,expirationDateTime,lastSyncDateTime,lastModifiedDateTime,state,lastSyncStatus,automaticallyUpdateApps',
     note: 'An expired token stops app licences syncing. Renew it with the same Apple ID.' },
   // Apple Automated Device Enrollment (DEP) tokens. Graph never returns the
   // token file; the Apple ID and expiry are what a renewal needs.
   { type: 'depOnboardingSetting', path: '/deviceManagement/depOnboardingSettings', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
     note: 'An expired token stops new Apple devices enrolling. Renew it with the same Apple ID.' },
   // Managed Google Play binding. Company codes carry enrollment tokens and QR
-  // codes, so they are left out of the read.
+  // codes, so they are left out of the read. Issue #466: Graph has no
+  // androidDeviceAdministratorEnrollmentEnabled here, so it is not selected.
   { type: 'androidManagedStoreAccountEnterpriseSettings', path: '/deviceManagement/androidManagedStoreAccountEnterpriseSettings', version: 'beta', singleton: true,
     absentWhenNotFound: true, criticality: 'tier2', blastRadius: 'access-affecting',
-    select: 'id,bindStatus,lastAppSyncDateTime,lastAppSyncStatus,ownerUserPrincipalName,ownerOrganizationName,lastModifiedDateTime,enrollmentTarget,targetGroupIds,deviceOwnerManagementEnabled,androidDeviceAdministratorEnrollmentEnabled',
+    select: 'id,bindStatus,lastAppSyncDateTime,lastAppSyncStatus,ownerUserPrincipalName,ownerOrganizationName,lastModifiedDateTime,enrollmentTarget,targetGroupIds,deviceOwnerManagementEnabled',
     note: 'A broken binding stops Android Enterprise enrollment and app sync. Rebind with the same Google account.' },
   // Device cleanup rules: when Intune removes devices that stopped checking in.
   { type: 'managedDeviceCleanupRule', path: '/deviceManagement/managedDeviceCleanupRules', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic' },

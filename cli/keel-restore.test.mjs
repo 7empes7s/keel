@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { applyWave } from '../engine/restore/applyEngine.mjs';
 import { planWaves } from '../engine/restore/wavePlanner.mjs';
-import { runCli, runRestore } from './keel-restore.mjs';
+import { incompleteReadDeleteRefusals, runCli, runRestore, unreadTypesOf } from './keel-restore.mjs';
 
 const testDbUrl = process.env.KEEL_DB_TEST_URL;
 assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for restore CLI tests');
@@ -536,6 +536,43 @@ function runSelectionCli(selection, dependencies, extraArgv = []) {
   assert.match(errors.join('\n'), /blocked-dependent-impact: deleting group:Finance would leave conditionalAccessPolicy:Finance-MFA referencing it/);
 }
 
+// Issue #466: a type the restore does not touch that cannot be read no longer
+// stops the restore; it is logged. A delete is refused, before any write,
+// because the dependent-impact check cannot see references held by that type.
+{
+  const unreadCollect = async () => Object.defineProperty([], 'unread', {
+    value: [{ type: 'deviceManagementExchangeConnector', error: 'collecting deviceManagementExchangeConnector failed: HTTP 400' }],
+    enumerable: false,
+  });
+  {
+    const fixture = restoreFakes();
+    fixture.dependencies.collectM1 = unreadCollect;
+    const logs = [];
+    const exitCode = await runFixture(fixture.dependencies, { logger: { log: (line) => logs.push(String(line)), error() {} } });
+    assert.equal(exitCode, 0, 'an unread type the restore does not touch does not stop it');
+    assert.ok(fixture.state.waveCalls.length > 0);
+    assert.match(logs.join('\n'), /current state: deviceManagementExchangeConnector not read \(not in this restore\)/);
+  }
+  {
+    const group = {
+      naturalKey: 'group:Finance', resourceType: 'group', targetId: 'target-group-id',
+      payload: null, live: { targetId: 'target-group-id', payload: { id: 'target-group-id' } },
+      references: [], blastRadius: 'access-affecting', restorePriority: 100, verb: 'delete',
+    };
+    const fixture = restoreFakes({
+      applyWave: async () => { throw new Error('no wave may run when the read of the target was incomplete'); },
+      planWaves: () => ({ waves: [], patches: [] }),
+    });
+    fixture.dependencies.collectM1 = unreadCollect;
+    fixture.dependencies.buildReconciliationPlan = async () => ({ resources: [group] });
+    const errors = [];
+    const exitCode = await runFixture(fixture.dependencies, { logger: { log() {}, error: (e) => errors.push(String(e)) } });
+    assert.equal(exitCode, 1);
+    assert.equal(fixture.state.waveCalls.length, 0);
+    assert.match(errors.join('\n'), /blocked-incomplete-read: deleting group:Finance needs a full read of the target, but deviceManagementExchangeConnector could not be read/);
+  }
+}
+
 // --select without --snapshot-id (and vice versa) is a usage error, not a partial run.
 {
   const errors = [];
@@ -939,3 +976,15 @@ function runArtifactPromotion(artifactId, dependencies, errors = []) {
 }
 
 console.log('keel-restore.test.mjs — all assertions passed');
+
+// Issue #466: the helpers the forward restore and the compensation share.
+{
+  const collected = Object.defineProperty([], 'unread', { value: [{ type: 'vppToken' }, { type: 'deviceManagementExchangeConnector' }, { type: 'vppToken' }], enumerable: false });
+  assert.deepEqual(unreadTypesOf(collected), ['deviceManagementExchangeConnector', 'vppToken']);
+  assert.deepEqual(unreadTypesOf([]), []);
+  const planned = [{ naturalKey: 'group:A', verb: 'delete' }, { naturalKey: 'group:B', verb: 'update' }, { naturalKey: 'group:A', verb: 'delete' }];
+  assert.deepEqual(incompleteReadDeleteRefusals([], planned), [], 'a full read refuses nothing');
+  const refusals = incompleteReadDeleteRefusals(['vppToken'], planned);
+  assert.deepEqual(refusals.map((refusal) => refusal.naturalKey), ['group:A'], 'only deletes are refused, once each');
+  assert.match(refusals[0].reason, /^blocked-incomplete-read: deleting group:A .* vppToken could not be read$/);
+}

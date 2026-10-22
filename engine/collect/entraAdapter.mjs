@@ -251,10 +251,16 @@ export const MISSING_PREREQUISITE = 'missing prerequisite (licence or tenant fea
 // lacks the licence or feature for them, not that KEEL lacks a permission:
 // 403 "Insufficient license" (lifecycle workflows need Entra ID Governance) and
 // 400 AADB2C99039 (API connectors need self-service sign-up).
+//
+// Issue #466: Intune answers some tenant-wide reads (the Exchange connector,
+// on-premises Conditional Access) with 501 NotSupported when the tenant's
+// Intune service does not offer that feature. Nothing of that kind can exist
+// there, so it is unavailable, not a failed read.
 export function unavailableOnTenant(error) {
   if (!error) return false;
   const message = String(error.error ?? error.message ?? '');
   if (error.status === 403 && /insufficient licen[cs]e/i.test(message)) return true;
+  if (error.status === 501) return true;
   return error.code === 'AADB2C99039' || /\bAADB2C99039\b/.test(message);
 }
 
@@ -272,15 +278,31 @@ export function neededTypes(resources, extra = []) {
 }
 
 /**
+ * Issue #466: types every caller with `scope.needed` reads strictly, whatever
+ * it selected. The organization gives the tenant id; role assignment keys are
+ * built from the roles, principals and scopes they name; the deletion guard
+ * and break-glass checks read Global Administrator assignments and Conditional
+ * Access policies. A failed read of any of these always fails the collect.
+ */
+export const ALWAYS_NEEDED_TYPES = new Set([
+  'organization', 'user', 'group', 'servicePrincipal', 'application',
+  'roleDefinition', 'directoryRole', 'administrativeUnit', 'roleAssignment', 'conditionalAccessPolicy',
+].filter((type) => M1_TYPES.includes(type)));
+
+/**
  * Reads every M1 type and fails on the first type it cannot read.
- * `scope.needed` (a set of types), when given, relaxes that for one case only:
- * a type the tenant has no licence or feature for, and that is not needed, is
- * left out of the result (not read, never an invented empty list). A needed
- * type that is unavailable still fails, naming the type.
+ * `scope.needed` (a set of types), when given, relaxes that for types the
+ * caller does not need (not in `needed` and not in ALWAYS_NEEDED_TYPES):
+ * - a type the tenant has no licence or feature for is left out (issue #289);
+ * - a type whose read fails any other way is left out too, and listed on the
+ *   result's `unread` ({ type, error }) so the caller knows its view of the
+ *   tenant is incomplete (issue #466). It is never an invented empty list.
+ * A needed type that cannot be read still fails, naming the type.
  */
 export async function collectM1(reader, scope = {}) {
   const { needed, ...rest } = scope;
   const collected = [];
+  const unread = [];
   const context = { ...rest };
   for (const type of M1_TYPES) {
     const { adapter } = get(type);
@@ -288,7 +310,10 @@ export async function collectM1(reader, scope = {}) {
     try {
       items = await adapter.collect(reader, context);
     } catch (error) {
-      if (needed instanceof Set && error?.unavailableOnTenant === true && !needed.has(type)) continue;
+      if (needed instanceof Set && !needed.has(type) && !ALWAYS_NEEDED_TYPES.has(type)) {
+        if (error?.unavailableOnTenant !== true) unread.push({ type, error: redactSecrets(error?.message ?? String(error)) });
+        continue;
+      }
       throw error;
     }
     collected.push([type, items]);
@@ -297,6 +322,9 @@ export async function collectM1(reader, scope = {}) {
       context.organizationId = items[0]?.id ?? context.organizationId;
     }
   }
+  // Kept off the array's entries so callers that iterate [type, items] pairs
+  // are unchanged.
+  Object.defineProperty(collected, 'unread', { value: unread, enumerable: false });
   return collected;
 }
 

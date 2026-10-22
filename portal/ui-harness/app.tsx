@@ -245,7 +245,10 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.includes("/api/jobs/")) { jobPolls += 1; return json({ job: { status: jobPolls >= 2 ? "succeeded" : "running" } }); }
   if (url.includes("/api/actions/restore/dry-run/")) {
     return json({ artifact: { id: "dr-7f3c", status: "completed", closureKeys: lastClosure, guardRefusals: [], results: {
-      applied: lastClosure.map((naturalKey) => ({ naturalKey, reason: naturalKey.startsWith("group") ? "exists in target, unchanged" : "would update 3 properties" })),
+      applied: lastClosure.map((naturalKey) => ({ naturalKey, reason: naturalKey.startsWith("group") ? "exists in target, unchanged" : "would update 3 properties",
+        // Issue #546: the backup could not read this profile's assignments.
+        ...(naturalKey === "deviceConfiguration:Windows baseline" ? { completion: [{ kind: "integration", requirement: "assignments",
+          description: "Assignments not restored: the backup could not read who it is assigned to, so the groups it applies to were left as they are. Check its assignments in the Intune admin center and set them by hand" }] } : {}) })),
       skipped: [], failed: [], notRemediable: [] },
       effectsDigest: "digest-1",
       contentEffectApprovals: contentEffectsApproved ? [{ approvedBy: "approver@contoso.example", approvedAt: "2026-10-03T08:00:00Z" }] : [],

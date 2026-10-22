@@ -735,6 +735,11 @@ test("restore leads with what changed, by service, and undoes a change or a grou
   // Undo the whole group: every change goes to the check at once, with before and after.
   await groups.nth(0).getByRole("button", { name: "Undo all 5: Changed recently" }).click();
   await expect(page.getByText("Ready to send for approval")).toBeVisible({ timeout: 15_000 });
+  // Issue #546: a step left for a person on one object is shown before the changes.
+  const steps = page.locator(".object-steps");
+  await expect(steps).toContainText("1 step is left for a person");
+  await expect(steps).toContainText("Windows baseline");
+  await expect(steps).toContainText("Assignments not restored");
   const beforeAfter = page.locator(".restore-before-after");
   await expect(beforeAfter).toContainText("Branch offices (trusted location)Now: gone");
   const visibility = beforeAfter.locator(".cc-row", { hasText: "Visibility" });

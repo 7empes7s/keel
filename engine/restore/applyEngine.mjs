@@ -36,7 +36,7 @@ import {
 import {
   ASSIGNMENT_FILTER_PATH, assignRequest, assignmentChange, assignmentPlan, assignmentsReadPath, changedIntuneFields, intuneReadPath,
   intunePostStateRefusal, intuneRecordFor, intuneWriteBody, intuneWriteRefusal, isIntuneGoverned, liveAssignmentIdentities,
-  backupHoldsActions, sameIdentities, scheduledActionsBody, scheduledActionsDiffer,
+  backupHoldsActions, sameIdentities, scheduledActionsBody, scheduledActionsDiffer, unreadAssignmentsStep,
 } from './intuneOperations.mjs';
 import {
   adminRoleWriteRefusal, eligibilityLookupPath, eligibilityPostStateRefusal, eligibilityRequestBody, isAdminRoleGoverned,
@@ -1233,7 +1233,15 @@ export async function applyWave(writer, governor, wave, {
   const together = limit === 1 ? [] : lanes.filter((lane) => !runsAlone(lane.resource));
   await runBounded(together, limit, (lane) => applyOne(lane.resource, lane.sink));
   for (const lane of alone) await applyOne(lane.resource, lane.sink);
-  for (const { sink } of lanes) {
+  for (const { resource, sink } of lanes) {
+    // Issue #546: an object whose assignments the backup did not fully read
+    // carries that as a step for a person, in a dry run and an enforced run.
+    const unread = unreadAssignmentsStep(resource);
+    if (unread) {
+      for (const entry of sink.applied) {
+        if (entry.naturalKey === resource.naturalKey) entry.completion = [entry.completion ?? [], unread].flat();
+      }
+    }
     applied.push(...sink.applied);
     skipped.push(...sink.skipped);
     failed.push(...sink.failed);

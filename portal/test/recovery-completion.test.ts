@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { PendingSteps } from "@/components/pending-steps";
+import { ObjectSteps, PendingSteps, objectSteps } from "@/components/pending-steps";
 import { CompletionChecklist, completionStateLabel, type CompletionResource } from "@/components/recovery-completion";
 
 const resource = (state: CompletionResource["state"]): CompletionResource => ({
@@ -72,4 +72,19 @@ test("task-152: the pending steps list shows only when the restore left a policy
   assert.match(html, /Still to do after this restore/);
   assert.match(html, /report-only mode and protects no one/);
   assert.match(html, /second person approves/);
+});
+
+test("issue #546: a dry run shows each step left for a person on its object, one step or a list", () => {
+  assert.equal(renderToStaticMarkup(createElement(ObjectSteps, { entries: [{ naturalKey: "deviceConfiguration:KEEL-RT" }] })), "");
+  const entries = [
+    { naturalKey: "deviceCustomAttributeShellScript:KEEL-RT-attribute", completion: [{ kind: "integration", requirement: "assignments", description: "Assignments not restored: the backup could not read who it is assigned to" }] },
+    { naturalKey: "crossTenantAccessPolicyConfigurationPartner:KEEL-RT", completion: { kind: "manual-setting", requirement: "inboundTrust", description: "Set inbound trust by hand" } },
+    { naturalKey: "deviceConfiguration:KEEL-RT", completion: [{ requirement: "x" }] },
+  ];
+  assert.equal(objectSteps(entries).length, 2, "a step without words is not shown");
+  const html = renderToStaticMarkup(createElement(ObjectSteps, { entries, label: (key: string) => `name of ${key}` }));
+  assert.match(html, /alert-warning/);
+  assert.match(html, /2 steps are left for a person/);
+  assert.match(html, /name of deviceCustomAttributeShellScript:KEEL-RT-attribute<\/strong>: Assignments not restored/);
+  assert.match(html, /Set inbound trust by hand/);
 });

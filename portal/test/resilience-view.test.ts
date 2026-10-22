@@ -60,7 +60,7 @@ test("no samples is said to be unmeasured, never good, never zero, never the sch
   }
   assert.equal(formatDuration(null), "not measured");
   // The plan is described as a plan, apart from the measurements.
-  assert.equal(cadenceSentence(empty.configured.cadence[0]), "Tier 1 backup: every hour");
+  assert.equal(cadenceSentence(empty.configured.cadence[0]), "Critical settings (tier 1): every hour");
 });
 
 test("a measured point with no timed recovery still says recovery time is not measured", () => {
@@ -97,5 +97,5 @@ test("reasons and names are words, not codes", () => {
   assert.equal(formatDuration(125 * 60_000), "2 hours 5 minutes");
   const gaps = metrics({ observations: [success("user", "2026-10-03T06:00:00.000Z")] });
   assert.equal(gaps.freshness.state, "gaps");
-  assert.equal(freshnessSentence(gaps), "Not measured: 1 required item has never been backed up successfully.");
+  assert.equal(freshnessSentence(gaps), "Not measured: 1 setting type has never been backed up.");
 });

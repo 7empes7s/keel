@@ -1133,30 +1133,50 @@ test("restore completion closes an item with a reference and refuses a pasted se
   await expect(app.locator(".completion-badge-service-validation-pending")).toHaveText("Service validation pending");
 });
 
-// Task-73: the recovery point comes from the last complete off-site copy, a newer copy
-// that lacks a good backup is named and does not count, a failed restore is listed
-// apart from recovery time, and a tenant with nothing measured says so in every card.
-test("resilience shows measured values, names what does not count, and keeps unmeasured visible", async ({ page }) => {
+// Task-73 and the Resilience redesign: what needs the reader comes first as alerts that
+// each say what to do, error specifics wait behind "Show details", every backup sits in
+// one table by service, and a tenant with nothing measured never shows a zero.
+test("resilience puts alerts first, says what to do, and keeps unmeasured visible", async ({ page }) => {
   await open(page, "/resilience");
+  await expect(page.locator(".page-header .status-pill")).toHaveText("Needs attention");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("If this server were lost, KEEL could recover settings as of 29 hours ago. The last proven recovery took 20 minutes.");
-  const point = page.locator(".resilience-point");
-  await expect(point).toContainText("does not count: it holds no good backup of Group and Members of each group.");
-  const time = page.locator(".resilience-time");
-  await expect(time).toContainText("The last checked recovery took 20 minutes; the slowest of 2 checked recoveries took 20 minutes.");
-  await expect(time).toContainText("does not count: it failed.");
-  await expect(time.getByRole("link", { name: "View the restore" })).toHaveAttribute("href", /b7c10000-0000-4000-8000-000000000074/);
-  const freshness = page.locator(".resilience-freshness");
-  await expect(freshness).toContainText("The oldest good backup KEEL relies on is 3 hours 40 minutes old: Conditional Access policy.");
-  await expect(freshness).toContainText("This is the plan, not a result.");
-  await expect(page.locator(".resilience-incidents").getByRole("link", { name: "Admin consent phishing" })).toBeVisible();
+  await expect(page.locator('[data-layer="verdict"]')).toHaveAttribute("data-tone", "soon");
+  // Alerts come before the tiles and the table, worst first.
+  const order = await page.locator(".rs-page > section").evaluateAll((sections) => sections.map((section) => section.className));
+  expect(order[0]).toContain("rs-attention");
+  const alerts = page.locator(".rs-alert");
+  await expect(alerts.first()).toHaveAttribute("data-tone", "urgent");
+  const tones = await alerts.evaluateAll((rows) => rows.map((row) => row.getAttribute("data-tone")));
+  expect(tones).toEqual([...tones].sort((a, b) => ["urgent", "soon", "low"].indexOf(a!) - ["urgent", "soon", "low"].indexOf(b!)));
+  for (const alert of await alerts.all()) await expect(alert.locator(".rs-alert-todo")).toContainText("What to do:");
+  // Error details are hidden until asked for.
+  const mail = page.locator('.rs-alert[data-alert="service-never-worked"]');
+  await expect(mail.locator(".rs-alert-more li")).toBeHidden();
+  await mail.getByText("Show details").click();
+  await expect(mail.locator(".rs-alert-more li")).toContainText("Mail, calendars and contacts: last try stopped part way");
+  await expect(page.locator('.rs-alert[data-alert="restore-failed"]').getByRole("link", { name: "View restore" })).toHaveAttribute("href", /b7c10000-0000-4000-8000-000000000074/);
+  await expect(page.locator('.rs-alert[data-alert="incident:1c1d0000-0000-4000-8000-000000000071"]').getByRole("link", { name: "Open incident" })).toBeVisible();
+  // Tiles and the service table.
+  await expect(page.locator('.rs-tile[data-tile="point"] .rs-tile-value')).toHaveText("29 hours ago");
+  await expect(page.locator('.rs-tile[data-tile="services"] .rs-tile-value')).toHaveText("4 of 8");
+  await expect(page.locator('.rs-table tr[data-row="content:exchange-mail"]')).toContainText("Never worked");
+  await expect(page.locator('.rs-table tr[data-row="service-settings:teams-org-policies"]')).toContainText("Switched off");
+  const groups = await page.locator(".rs-group").allTextContents();
+  expect(groups).toEqual(["Entra ID and Intune", "Exchange Online", "SharePoint and OneDrive", "Teams", "Power Platform", "Purview"]);
+  // The measurements stay, last.
+  await expect(page.locator(".resilience-time")).toContainText("Does not count: it failed");
+  await expect(page.locator(".resilience-freshness")).toContainText("The plan, not a result.");
 
   await open(page, "/resilience/unmeasured");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Recovery is not measured yet: no checked off-site copy holds every backed-up type, and no recovery has been timed.");
+  for (const tile of ["point", "time"]) await expect(page.locator(`.rs-tile[data-tile="${tile}"] .rs-tile-value`)).toHaveText("Not measured");
+  await expect(page.locator('.rs-tile[data-tile="drill"] .rs-tile-value')).toHaveText("None yet");
+  await expect(page.locator(".rs-tiles")).not.toContainText(/\b0 (minutes|hours)\b/);
   for (const card of ["freshness", "point", "time", "drills"]) {
-    await expect(page.locator(`.resilience-${card} .pill`)).toHaveText("Not measured");
+    await expect(page.locator(`.resilience-${card} .badge`)).toHaveText("Not measured");
     await expect(page.locator(`.resilience-${card} .resilience-sentence`)).toContainText("Not measured");
   }
-  await expect(page.locator(".resilience-freshness")).toContainText("Group has never been backed up successfully.");
+  await expect(page.locator('.rs-alert[data-alert="never-backed-up"]')).toContainText("2 setting types never backed up");
 });
 
 // Task-100 and the Value report redesign (pick A): the tiles and chart add up, each

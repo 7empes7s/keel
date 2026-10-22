@@ -324,7 +324,8 @@ const FIXTURE_DRIFT = Object.freeze({
   // Restore gaps, batch 3: each drifts the setting its restore puts back.
   b2bManagementPolicy: () => ({ definition: ['{"B2BManagementPolicy":{"InvitationsAllowedAndBlockedDomainsPolicy":{"BlockedDomains":[]}}}'] }),
   permissionGrantPreApprovalPolicy: (payload) => ({ conditions: payload.conditions.map((condition) => ({ ...condition, scopeType: 'group' })) }),
-  externalDomainFederation: () => ({ passiveSignInUri: 'https://keel-rt-fed.example/drifted' }),
+  // A federation's sign-in endpoints are never restored, so its name drifts.
+  externalDomainFederation: () => ({ displayName: 'Fixture federation (drifted)' }),
 });
 
 // Roadmap task-149: lockout-sensitive tenant policies need a lockout gate; the

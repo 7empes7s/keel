@@ -618,6 +618,9 @@ test("restore leads with what changed, by service, and undoes a change or a grou
   await expect(groups.nth(1).locator(".sel-row")).toHaveCount(8);
   await groups.nth(1).getByRole("button", { name: "Show all 11 settings" }).click();
   await expect(groups.nth(1).locator(".sel-row")).toHaveCount(11);
+  // Unchanged rows say "Same now" and carry no lockout warning: a restore writes nothing to them.
+  await expect(groups.nth(1).locator(".restore-row-same")).toHaveCount(11);
+  await expect(groups.nth(1).locator(".restore-row-impact")).toHaveCount(0);
   // Undo the whole group: every change goes to the check at once, with before and after.
   await groups.nth(0).getByRole("button", { name: "Undo all 5: Changed recently" }).click();
   await expect(page.getByText("Ready to send for approval")).toBeVisible({ timeout: 15_000 });

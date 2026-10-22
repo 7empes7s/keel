@@ -24,6 +24,14 @@ function graphNativeAdapter(type) {
     if (entry.parent) {
       const startedAt = new Date();
       const result = await collectPerParent(reader, entry);
+      // Issue #473: an object read per parent can still need one more read
+      // (a compliance policy's actions for noncompliance).
+      if (entry.itemReads && !result.error && !result.capped) {
+        // A policy deleted before its extra read is gone, like one deleted before its own read.
+        const extra = await withItemReads(reader, entry, result.items, { dropWhenNotFound: entry.absentWhenNotFound === true });
+        if (extra.error) return { entry, path: catalogReadPath(entry), startedAt, completedAt: new Date(), items: [], pages: result.pages, status: extra.error.status ?? null, capped: false, error: extra.error };
+        result.pages += extra.pages;
+      }
       return { entry, path: catalogReadPath(entry), startedAt, completedAt: new Date(), ...result };
     }
     // Issue #156: the organization id read in this run wins over the configured
@@ -227,14 +235,18 @@ async function withChildReads(reader, entry, items) {
  * are), with {item} filled with its id, as its `itemReads.as`. Any failed read
  * fails the kind, so a backup never holds a policy without the apps it covers.
  */
-async function withItemReads(reader, entry, items) {
+async function withItemReads(reader, entry, items, { dropWhenNotFound = false } = {}) {
   const { as, path, byType } = entry.itemReads;
   let pages = 0;
-  for (const item of items) {
+  for (const item of [...items]) {
     const template = byType ? byType[item?.['@odata.type']] : path;
     if (!template) continue;
     if (typeof item?.id !== 'string' || item.id.length === 0) return { error: { error: `reading ${entry.type}: an object has no id` } };
     const result = await reader.collect(entry.version, template.replace('{item}', encodeURIComponent(item.id)), { pageCap: Infinity });
+    if (dropWhenNotFound && result?.error?.status === 404 && !(result.pages > 0)) {
+      items.splice(items.indexOf(item), 1);
+      continue;
+    }
     if (result?.error) return { error: result.error };
     if (result?.capped || !Array.isArray(result?.items)) return { error: { error: `reading ${entry.type}: ${as} of ${item.id} was incomplete` } };
     pages += Number.isSafeInteger(result.pages) ? result.pages : 0;

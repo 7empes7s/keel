@@ -7098,3 +7098,35 @@ item that needs it stays untouched.
   "Backups are kept on this server's disk. They cannot be locked against deletion." If the database host is not local, the row
   stays "not set": report it and do not change any setting.
 - **Report:** per step, the result.
+
+### Q151: Delegated-only probe: which "needs a signed-in user" areas really refuse an app (read-only toward the tenant, after #527)
+- Drafted by the "Probe user-only areas" thread (2026-10-22). Build step 1 of the delegated access design
+  (`/mnt/project-files/handoff/delegated-access/DESIGN.md` section 8). Code: PR #527.
+- Needs: /opt/keel-live at the #527 merge or later (`test -f /opt/keel-live/tools/tenant-probe/delegated-probe.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** reads only, Collector credential (`/etc/keel/tenant.json`). The Node probe sends GETs plus the Power Platform
+  `listtenantsettings` read (POST, no body). The sweep calls only `Get-` cmdlets. Grant, assign, register or create nothing,
+  even if a call is refused: a refusal is the result.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at, with `OUT=$HOME/delegated-probe` (outside any repo):
+  1. **Cmdlet sweep**, one process per workload (PnP has crashed this image before; an empty or missing file for spo is a result):
+     ```bash
+     mkdir -p "$OUT"
+     for w in exo scc teams spo; do
+       docker run --rm -i --memory 1g -v /etc/keel:/etc/keel:ro -v "$PWD/ops/powershell":/app:ro \
+         --entrypoint pwsh keel-powershell:latest -NoLogo -NoProfile -NonInteractive \
+         -File /app/sweep-get-cmdlets.ps1 -Workload "$w" > "$OUT/sweep-$w.json" 2> "$OUT/sweep-$w.log"; echo "$w exit $?"
+     done
+     ```
+     If a file is not valid JSON, delete it and leave it out of step 2 (report which).
+  2. **HTTP probe and report:**
+     ```bash
+     node tools/tenant-probe/delegated-probe.mjs run --config /etc/keel/tenant.json --out "$OUT" \
+       --cmdlets "$(ls "$OUT"/sweep-*.json | paste -sd,)"
+     ```
+  3. Check `$OUT/delegated-probe.md` and `.json` for secrets and tenant names (the probe masks them; check anyway).
+     Commit **only** `delegated-probe.md` to `claude/live-evidence-delegated-probe` (from `origin/master`) as
+     `docs/release/qualifications/delegated-probe.md`. No PR.
+- **Report:** each step's exit code; the per-row verdict table printed by step 2 (verbatim); for rows 2, 6, 8, 12 and 20 the
+  outcome, HTTP status and code of each call; for rows 16, 17, 18 the sweep counts and every cmdlet that did not work; the
+  evidence branch and commit.

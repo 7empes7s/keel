@@ -1249,8 +1249,23 @@ being triggered by queue updates.
     approved value; the read that matches again resolves the alert.
 - Needs: /opt/keel-live at the #504 merge or later (`grep -q acceptServiceChange /opt/keel-live/engine/govern/workloadApproved.mjs`)
   and its schema applied (`SELECT to_regclass('workload_approved')` is not null).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 17:13 UTC). **Accept works for an add, a modification and a removal; undo cannot be enforced (#542).** B = 4fadc0a. Restorer (Exchange) for the fixture writes; Collector for reads; nothing granted.
+  1. `workload-collect run` (16:30): every read workload reports "0 new change(s) against the approved setup"; power-platform is still disabled. `workload_approved_setup` (workload | seeded_from | count):
+     exchange-extended 23e8695d… 40 · exchange-mail-flow 97a9fc91… 35 · exchange-mailbox-settings 5377d377… 2 · onedrive-site-settings bb2097fa… 1 · purview-governance 5c49509e… 2 · purview-labels 45575eb4… 21 ·
+     purview-retention-dlp 0fe94e6f… 10 · sharepoint-site-settings cebb9b55… 21 · teams-org-policies 0a331c2a… 25 · teams-settings 2b4beabd… 11 · teams-voice-policies f3058a7b… 143.
+  2. Fixture `KEEL-RT-svc-change` (Exchange Restorer): disabled, Mode Audit, condition RecipientAddressContainsWords `keel-rt-nobody` (SentTo needs an existing recipient), PrependSubject `[KEEL-RT] `.
+     - Collect: 1 new mail-flow change. Row **1545b482** `transport-rule:129bee94…` `added`, `compared_with approved`. Alert **67033fb6**, control `baseline`, `open`.
+     - `acceptServiceChange` (run from `engine/`, where `pg` resolves) returned `{changeType: added, alertId: 67033fb6…}`. Next collect: 0 new; alert `resolved` (16:45:13).
+  3. Undo: set Mode Enforce. Collect: row **71c54318** `modified`, fields `[{"path":"Mode","before":"Audit","after":"Enforce"}]`, previous collection f2000d21; alert `reopened`.
+     - Dry run without `--collector-config`: 0 changes, 1 manual, "the live transportRule read was failed" (ConnectFailed: Organization cannot be null; it defaulted to tenant.json).
+     - With `--collector-config /etc/keel/exchange-collector.json`: artifact **6d3835ae**, 1 change: `Set-TransportRule` Mode Enforce → Audit (correct).
+     - Approval **75e8a0ea** (content effect approved too). Worker job `ef6eb50b` **failed**: "Mail flow restore partial: the live transportRule or its policy changed since the dry run, or could not be re-read; a new dry run is required".
+       The rule was unchanged (still Enforce). Cause: enforce connects with `credentialPaths()` = `/etc/keel/restorer.json` (no organization). Filed **#542**. No write happened.
+  4. Accept a modification: Mode is already Enforce, so I accepted row 71c54318. Collect: 0 changes; alert `resolved`. `workload_approved` holds Mode `Enforce`, approved_by keel-operator.
+  5. Cleanup: deleted the rule (absent). Collect: 1 change, row **8e34c8d5** `removed`. Accepted; collect again: **0 changes**, `workload_approved` rows for the rule: **0**, alert `resolved`.
+  6. /drift: not reachable from this box (Cloudflare Access login).
+  - **Left in the tenant:** nothing (the rule is deleted).
 - **Test tenant only.** Same hard rules as Q123 and Q135. Under the 2026-10-14 standing authorization, approve the restore yourself and
   log the approval id. Restorer for the write; Collector for reads. If Exchange answers 403, report blocked with what it names; grant nothing.
   Never touch CA policies, break-glass or Marouane's account.

@@ -533,6 +533,58 @@ export function workloadSettingsPlanDigest(plan) {
   return sha256(rest);
 }
 
+// ------------------------------------------------------------ weakening
+
+// How strongly a spam or phish action deals with the mail: higher is stricter. An
+// action not named here cannot be compared, so a move to or from it is never written.
+// Redirect sends the mail to whoever the policy names, so it ranks below junk.
+const ACTION_STRENGTH = Object.freeze({ delete: 4, quarantine: 4, movetojmf: 3, redirect: 2, modifysubject: 1, addxheader: 1, noaction: 0 });
+const strength = (value) => ACTION_STRENGTH[String(value ?? '').toLowerCase()] ?? -1;
+const weakerAction = (before, after) => !same(before, after) && (strength(before) < 0 || strength(after) < strength(before));
+// A protection switch is written only as a literal boolean in the stricter direction.
+// Anything else (1, 'TRUE', null) could bind as on or off in PowerShell, so it is
+// treated as the weaker value: listed, never written.
+const switchedOff = (before, after) => !same(before, after) && after !== true;
+const switchedOn = (before, after) => !same(before, after) && after !== false;
+
+/**
+ * The changes that would weaken mail protection, by written type. A restore source is
+ * a backup, and a tampered or old backup must not be able to open the filters: such a
+ * change is listed for an administrator and never written. Only the stricter
+ * direction is written, which is the only direction a compliance fix takes.
+ */
+export const WEAKENING_RULES = Object.freeze({
+  exchangeAntiPhishPolicy: Object.freeze({
+    EnableSpoofIntelligence: switchedOff,
+    HonorDmarcPolicy: switchedOff,
+    EnableUnauthenticatedSender: switchedOff,
+  }),
+  exchangeAntiSpamPolicy: Object.freeze({
+    PhishSpamAction: weakerAction,
+    HighConfidencePhishAction: weakerAction,
+    PhishZapEnabled: switchedOff,
+    InlineSafetyTipsEnabled: switchedOff,
+    AllowedSenderDomains: addsEntry,
+  }),
+  exchangeAntiMalwarePolicy: Object.freeze({
+    EnableFileFilter: switchedOff,
+    ZapEnabled: switchedOff,
+  }),
+  exchangeSafeLinksPolicy: Object.freeze({
+    EnableSafeLinksForEmail: switchedOff,
+    ScanUrls: switchedOff,
+    AllowClickThrough: switchedOn,
+  }),
+});
+
+/** Whether writing `after` over `before` would weaken the protection of this type. */
+export function weakensMailProtection(resourceType, field, before, after) {
+  const test = WEAKENING_RULES[resourceType]?.[field];
+  return typeof test === 'function' && test(before ?? null, after ?? null) === true;
+}
+
+const WEAKENING_REASON = 'this would weaken mail protection; KEEL only writes the stricter direction, so an administrator decides and applies it';
+
 /** The changes for one present object, and the manual entries it adds. */
 function planFields(write, { observation, current, manual }) {
   const changes = [];
@@ -557,6 +609,10 @@ function planFields(write, { observation, current, manual }) {
     }
     if (!sendable(after)) {
       manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: 'the value is structured, and KEEL only sends text, numbers, switches and lists of text; an administrator applies it' });
+      continue;
+    }
+    if (weakensMailProtection(write.resourceType, field, before, after)) {
+      manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: WEAKENING_REASON, weakensProtection: true });
       continue;
     }
     changes.push({ field, before, after });
@@ -820,6 +876,12 @@ export async function executeWorkloadSettingsRestore(client, {
       : `${op.operationId} is not a declared write`;
     if (notFixture) {
       await settle(op, { outcome: 'refused', reasons: [notFixture] });
+      continue;
+    }
+    // The weakening guard again, on the values about to be sent over the object read now.
+    const weakened = entry && write ? op.changes.filter(({ field }) => weakensMailProtection(write.resourceType, field, entry.fields?.[field], op.parameters?.[field])) : [];
+    if (weakened.length) {
+      await settle(op, { outcome: 'refused', reasons: [`${weakened.map(({ field }) => field).join(', ')}: ${WEAKENING_REASON}`] });
       continue;
     }
     await runOperation(op, { powershell, read, settle });

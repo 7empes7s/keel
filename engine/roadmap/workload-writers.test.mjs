@@ -33,7 +33,7 @@ import { FAMILIES as TEAMS_EXTENDED_FAMILIES, readTeamsExtended, recordTeamsExte
 import { FAMILIES as TEAMS_POLICY_FAMILIES, readTeamsPolicies, recordTeamsPolicyRun } from '../collect/workloads/teamsPolicies.mjs';
 import {
   BENIGN_FIELDS, WORKLOAD_EFFECT_RULES, WorkloadWriteScopeError, createWorkloadSettingsArtifact, executeWorkloadSettingsRestore,
-  loadWorkloadSource, planWorkloadSettingsRestore, restoreReadFamilies, unreviewedWrittenFields, workloadWriteCmdlet, writeCmdletParameters, writeFamilies,
+  loadWorkloadSource, planWorkloadSettingsRestore, restoreReadFamilies, unreviewedWrittenFields, weakensMailProtection, workloadWriteCmdlet, writeCmdletParameters, writeFamilies,
 } from '../restore/workloads/cmdletSettings.mjs';
 import { WORKLOAD_RESTORES } from '../restore/workloads/dispatch.mjs';
 import { fixtureProblem, isFixtureName } from '../restore/workloads/fixtureGuard.mjs';
@@ -231,18 +231,22 @@ for (const workload of Object.keys(WORKLOADS)) {
     const source = await recordSource(client, tenantRef, workload, live);
     assert.ok(['complete', 'partial'].includes(source.outcome));
 
-    // Drift the first written field of every object.
+    // Drift the first written field of every object. Putting back a value that would
+    // weaken mail protection (here: a spam action KEEL cannot rank) is listed, not written.
     const drifted = [];
+    const weakening = [];
     for (const [id, write] of Object.entries(WKLD_WRITE_OPERATIONS)) {
       if (write.workload !== workload || !id.endsWith('.update')) continue;
       for (const body of live.state[getKey(WORKLOADS[workload].families[write.family])]) {
         const field = write.fields[0];
-        body[field] = `${body[field]}-drifted`;
-        drifted.push(`${write.method}:${field}`);
+        const original = body[field];
+        body[field] = `${original}-drifted`;
+        (weakensMailProtection(write.resourceType, field, body[field], original) ? weakening : drifted).push(`${write.method}:${field}`);
       }
     }
     const { plan, artifact } = await planned(client, tenantRef, workload, { source, live });
     assert.deepEqual(plan.refusals, []);
+    assert.equal(plan.manual.filter((entry) => entry.weakensProtection === true).length, weakening.length, 'each weakening change is listed for an administrator');
     const updates = plan.operations.filter((op) => op.kind === 'update');
     assert.equal(updates.length, drifted.length, 'one update per drifted object');
     assert.ok(updates.every((op) => op.changes.length === 1 && op.changes[0].after.startsWith('KEEL-RT-')));

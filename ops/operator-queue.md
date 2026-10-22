@@ -924,6 +924,39 @@ being triggered by queue updates.
      `KEEL-RT-collector-fabric-readers` and holds no Power BI permission.
 - **Report:** per read, the status and the item count only (no names or values). Nothing changes in the tenant, the host or the DB.
 
+### Q137: Check that retention labels and eDiscovery cases land in a collect (read-only, after #481)
+- Drafted by the "Turn on retention labels backup" thread (2026-10-22). Code: PR #481. The four eDiscovery reads in
+  `purview-governance` now declare Compliance Administrator (which Q106 showed carries Case Management and Hold) instead of
+  eDiscovery Manager, so the workload is no longer `pending-prerequisite` and retention labels are collected. No grant involved.
+- Needs: /opt/keel-live at the #481 merge or later
+  (`grep -c "'eDiscovery Manager'" /opt/keel-live/engine/collect/workloadContract.mjs` prints 0).
+- Status: todo
+- Result:
+- **Tenant:** reads only. The run sends only the declared `Get-` cmdlets with the collector credential. No grants, no role
+  or config changes. Never touch CA policies, break-glass or Marouane's account.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. `node cli/keel-workload-collect.mjs run` once by hand (as in Q108). Report its exit code.
+  2. ```sql
+     SELECT workload, outcome, created_at, digest->'reasons' AS reasons,
+            (SELECT count(*) FROM workload_observation o WHERE o.collection_id = wc.id) AS observations
+       FROM workload_collection wc
+      WHERE workload = 'purview-governance' AND created_at > now() - interval '15 minutes'
+      ORDER BY created_at;
+     ```
+  3. For the newest purview-governance row, count observations by kind (no names or values):
+     ```sql
+     SELECT split_part(resource_key, ':', 1) AS kind, count(*)
+       FROM workload_observation
+      WHERE collection_id = (SELECT id FROM workload_collection WHERE workload = 'purview-governance' ORDER BY created_at DESC LIMIT 1)
+      GROUP BY 1 ORDER BY 1;
+     ```
+  4. Only if step 3 shows no `retention-label` rows and `Get-ComplianceTag` returns nothing in the Collector session: create one
+     unpublished retention label `KEEL-RT-retention-label` (no policy, no publishing) with the Restorer's purview config, rerun
+     steps 1-3, then leave the fixture in place for later restore checks and say so.
+- **Expected:** step 1 exit 0; purview-governance `complete` (or `partial` with reasons that do not mention a role); step 3
+  includes `retention-label` (and `ediscovery-case` / `case-hold` if the tenant has cases).
+- **Report:** step 1 exit code, step 2 and step 3 verbatim, step 4 if run.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

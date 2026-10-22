@@ -1246,7 +1246,7 @@ being triggered by queue updates.
      "Keel cannot undo this" with a reason, and whether mail flow changes show Accept and Undo.
 - **Report:** B; step 1 table; each step's row ids, change types and alert states; the restore's artifact and approval ids; what is left in the tenant.
 
-### Q151: Live check that a signed-in person's missing display name gets filled (after #510)
+### Q152: Live check that a signed-in person's missing display name gets filled (after #510)
 - Drafted by the "Requester display names" thread (2026-10-22). Code: PR #510. Fixture-tested only.
   - **Change:** on sign-in, a principal with an empty `display_name` gets it filled once, from the first source with a name:
     the verified Access token claims (`name`, given + family, or `custom`), then the Entra `user` in the latest complete

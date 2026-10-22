@@ -448,6 +448,14 @@ test('a family restorer file for another tenant, or the collector registration, 
   const sameApp = enforce({ exchange: '/etc/keel/exchange-collector.json' });
   await assert.rejects(sameApp.run, /separate Restorer/);
   assert.deepEqual(sameApp.deps.connections, []);
+  // A family with no collector file is still checked against the server's Graph collector.
+  configs.set('/etc/keel/graph-cert-restorer.json', JSON.stringify({ tenantId: TENANT_ID, clientId: 'restorer', certPath: 'c.pem' }));
+  const graphCert = (() => {
+    const deps = cliDependencies(fakeSharePoint({}), { scope: { powershellRestorerConfigs: { exchange: '/etc/keel/graph-cert-restorer.json' } } });
+    return { deps, run: runRestore({ artifactId: id, mode: 'enforce', readFile, dbUrl: database.url, logger: quiet, dependencies: deps.dependencies }) };
+  })();
+  await assert.rejects(graphCert.run, /separate Restorer/);
+  assert.deepEqual(graphCert.deps.connections, []);
 });
 
 // ------------------------------------------------------- stored qualification

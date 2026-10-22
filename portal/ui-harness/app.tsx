@@ -723,6 +723,28 @@ const COMPLIANCE: ComplianceData = {
       links: { backup: { state: "mismatch", linked: [], mismatched: [evidenceWindow("conditionalAccessPolicy", "2026-09-28T09:00:00Z", "2026-09-28T09:11:00Z", null)] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } } },
   ],
 };
+// Defender email controls, read from the Exchange mail protection policies: one failing
+// on two policies, one passing, and Safe Links not relevant (no Defender for Office 365).
+const MAIL_EVIDENCE = { resourceType: "exchange-mail-flow", window: { startedAt: "2026-10-02T02:00:00Z", endedAt: "2026-10-02T02:03:00Z" }, snapshotId: null, collectionId: "0c0f0000-0000-4000-8000-0000000000f1", completedAt: "2026-10-02T02:03:00Z" };
+const mailFinding = (id: string, controlId: string, verdict: ComplianceData["findings"][number]["verdict"], details: ComplianceData["findings"][number]["details"] = []): ComplianceData["findings"][number] => ({
+  id: `e7a10000-0000-4000-8000-0000000000${id}`, controlId, title: null, severity: "high", framework: "keel-custom", edition: "1.0.0", profile: "default", evaluatorVersion: 1,
+  verdict, reason: null, details, evaluatedAt: "2026-10-02T09:20:00Z", evidenceSeq: "4190", exceptionState: "none", exposed: verdict === "fail", exception: null,
+  evidence: [MAIL_EVIDENCE],
+  links: { backup: { state: "linked", linked: [MAIL_EVIDENCE], mismatched: [] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } },
+});
+const DEFENDER_COMPLIANCE: ComplianceData = {
+  ...COMPLIANCE,
+  findings: [
+    ...COMPLIANCE.findings,
+    mailFinding("f1", "keel-custom.defender-email.anti-spam-phish-quarantined", "fail", [
+      { subject: "Default", setting: "HighConfidencePhishAction", value: "MoveToJmf", expected: "Quarantine" },
+      { subject: "Default", setting: "PhishZapEnabled", value: false, expected: true },
+      { subject: "KEEL-RT-Finance inbound filtering for the accounts payable team", setting: "PhishSpamAction", value: "AddXHeader", expected: "Quarantine" },
+    ]),
+    mailFinding("f2", "keel-custom.defender-email.malware-file-filter", "pass"),
+    mailFinding("f3", "keel-custom.defender-email.safe-links-email", "not-applicable"),
+  ],
+};
 const PLAN_REF = { kind: "dry-run", id: "7f3c0000-0000-4000-8000-000000000011", name: null, readable: true, status: "completed", undo: false, resources: 12, snapshotAt: "2026-10-02T09:12:00Z", dryRunJobId: "a3" };
 const TWO_PERSON_REQUEST = "a9e10000-0000-4000-8000-000000000101";
 
@@ -1986,6 +2008,11 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       // The viewer variant holds read only: no exception controls and no Check now.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(COMPLIANCE.findings))} title="Compliance" />
       <CompliancePage canCheck={path === "/benchmarks"} canConfigure={path === "/benchmarks"} data={COMPLIANCE} now={now} /></>;
+    }
+    case "/benchmarks/defender": {
+      // Defender email controls beside the others: filed under Defender, failing settings in a table.
+      return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(DEFENDER_COMPLIANCE.findings))} title="Compliance" />
+      <CompliancePage canCheck canConfigure data={DEFENDER_COMPLIANCE} now={now} /></>;
     }
     case "/benchmarks/empty": case "/benchmarks/empty-viewer": {
       // Nothing checked yet and the storage location not known: each empty state has its button.

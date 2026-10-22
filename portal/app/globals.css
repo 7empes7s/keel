@@ -9686,6 +9686,22 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .cp-links { display: grid; gap: var(--space-2xs); margin: 0; padding: 0; list-style: none; font-size: 0.875rem; }
 .cp-links li { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2xs) var(--space-sm); min-width: 0; }
 .cp-links small { color: var(--text-soft); font-size: 0.8125rem; }
+.cp-misses { width: 100%; border-collapse: collapse; font-size: 0.8125rem; line-height: 1.35; table-layout: fixed; }
+.cp-misses th, .cp-misses td { padding: var(--space-2xs) var(--space-xs); border-top: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.cp-misses thead th { border-top: 0; color: var(--text-soft); font-weight: 600; }
+.cp-misses tbody th { font-weight: 600; }
+.cp-miss-now, .cp-miss-want { display: inline-block; max-width: 100%; padding: 0 0.375rem; border-radius: var(--radius-md); font-weight: 600; }
+.cp-miss-now { background: var(--urgent-bg); color: var(--urgent); }
+.cp-miss-want { background: var(--fine-bg); color: var(--fine); }
+@media (max-width: 640px) {
+  .cp-misses thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .cp-misses, .cp-misses tbody, .cp-misses tr, .cp-misses th, .cp-misses td { display: block; }
+  .cp-misses tr { padding: var(--space-xs) 0; border-top: 1px solid var(--line); }
+  .cp-misses tbody tr:first-child { border-top: 0; }
+  .cp-misses th, .cp-misses td { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: var(--space-xs); padding: 0.125rem 0; border: 0; }
+  .cp-misses th::before, .cp-misses td::before { content: attr(data-label); color: var(--text-soft); font-weight: 400; }
+  .cp-miss-now, .cp-miss-want { justify-self: start; }
+}
 .cp-form { display: grid; gap: var(--space-lg); }
 .cp-form fieldset { display: grid; gap: var(--space-sm); margin: 0; padding: 0; border: 0; min-width: 0; }
 .cp-form legend { margin-bottom: var(--space-2xs); padding: 0; font-size: 0.9375rem; font-weight: 650; }

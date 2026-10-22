@@ -2799,6 +2799,43 @@ test("Compliance · nothing checked yet, reader: no Check now, a link to when ba
   await expect(page.locator(".cp-empty").getByRole("link", { name: "See when backups run" })).toBeVisible();
 });
 
+test("Compliance · Defender email controls sit under Defender; a failing one lists each policy and setting, now and should be", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/benchmarks/defender");
+  const main = page.locator("main");
+  await expect(main).toContainText("Phishing mail goes to quarantine");
+  await expect(main).toContainText("Risky attachment types are blocked");
+  await expect(main).toContainText("Links in email are checked when clicked");
+  await page.goto(`${HARNESS}#/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1`);
+  const sheet = page.getByRole("dialog", { name: "Phishing mail goes to quarantine" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet).toContainText("Control · Defender");
+  await expect(sheet.locator("#cp-misses-heading")).toContainText("3 settings");
+  const rows = sheet.locator(".cp-misses tbody tr");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0)).toContainText("Default");
+  await expect(rows.nth(0)).toContainText("High-confidence phishing goes to");
+  await expect(rows.nth(0).locator(".cp-miss-now")).toHaveText("Junk folder");
+  await expect(rows.nth(0).locator(".cp-miss-want")).toHaveText("Quarantine");
+  await expect(rows.nth(1).locator(".cp-miss-now")).toHaveText("Off");
+  await expect(rows.nth(1).locator(".cp-miss-want")).toHaveText("On");
+  // The read it rests on is named, not left as "no backup matches".
+  await expect(sheet).toContainText("Checked against the backup collected");
+  await expect(sheet).not.toContainText("No stored backup matches");
+  expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
+});
+
+test("Compliance · phone: the failing settings stack, one card per setting, with no sideways scroll", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1", "light");
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.locator(".cp-misses tbody tr")).toHaveCount(3);
+  await expect(sheet.locator(".cp-misses thead")).toHaveCSS("position", "absolute");
+  const widths = await sheet.locator(".cp-misses tbody tr").evaluateAll((rows) => rows.map((row) => row.scrollWidth - row.clientWidth));
+  expect(Math.max(...widths)).toBeLessThanOrEqual(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
 test("Compliance · phone: pass and fail tiles per service open the same panel", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page, "/benchmarks");
@@ -2812,7 +2849,7 @@ test("Compliance · phone: pass and fail tiles per service open the same panel",
 
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
-    for (const hash of ["/benchmarks", "/benchmarks/empty", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1"]) {
+    for (const hash of ["/benchmarks", "/benchmarks/empty", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks/defender", "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1"]) {
       test(`Compliance · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await open(page, hash, theme);
@@ -2826,8 +2863,10 @@ for (const theme of ["dark", "light"] as const) {
         expect(tiles.length).toBe(4);
         expect(new Set(tiles).size).toBe(1);
         if (width === 390 && hash !== "/benchmarks/empty") {
-          const scorecard = await page.locator(".cp-ctile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
-          expect(new Set(scorecard).size).toBe(1);
+          // Tiles are equal within each service's scorecard (each service is its own grid).
+          const scorecards = await page.locator(".cp-ctiles").evaluateAll((grids) => grids.map((grid) => [...grid.querySelectorAll(".cp-ctile")].map((item) => Math.round(item.getBoundingClientRect().height))));
+          expect(scorecards.length).toBeGreaterThan(0);
+          for (const scorecard of scorecards) expect(new Set(scorecard).size).toBe(1);
         }
         // Rule 12: everything styled as clickable is a link with a target or a button.
         const dead = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>("main a, main .btn, .cp-tile, .cp-ctile, .cp-row-link, .bl-sheet a, .bl-sheet .btn")]

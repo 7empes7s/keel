@@ -213,3 +213,33 @@ test('a long Entra record id (B2C) is stored by a stable hash, not rejected as a
   });
   assert.deepEqual([member.verdict, member.actors], ['exact', [{ kind: 'user', id: ALICE, name: null }]]);
 });
+
+test('a long Intune activity name is kept readable, not rejected as a secret (#552)', async (t) => {
+  // The activity the test tenant returned: one 49-letter CamelCase word, 77 characters in all.
+  const LONG = 'UpdateWindowsFeatureUpdateProfileAssignmentsAsync WindowsFeatureUpdateProfile';
+  const SPLIT = 'Update Windows Feature Update Profile Assignments Async WindowsFeatureUpdateProfile';
+  const [event] = await intuneAuditEvents(intuneAudit('ia-long', 1, { activity: LONG }), async () => SYNC_SP);
+  assert.equal(event.change.activity, SPLIT);
+  const [entra] = directoryAuditEvents(directoryAudit('Directory_long', 1, { activityDisplayName: LONG }));
+  assert.equal(entra.change.activity, SPLIT, 'Entra activity names get the same treatment');
+  // A token-shaped word is not a name: the activity is dropped, the event and its actor are kept.
+  const TOKEN = 'aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3zA5bC7dE9fG1hJ3kL5';
+  const [tokenish] = await intuneAuditEvents(intuneAudit('ia-token', 1, { activity: `Patch ${TOKEN}` }), async () => SYNC_SP);
+  assert.equal(tokenish.change.activity, null);
+  assert.equal(tokenish.change.actorId, SYNC_SP);
+  assert.ok(!JSON.stringify(tokenish).includes(TOKEN));
+  const [allCaps] = await intuneAuditEvents(intuneAudit('ia-caps', 1, { activity: 'Patch ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ' }), async () => SYNC_SP);
+  assert.equal(allCaps.change.activity, null, 'only capitalised words are split');
+
+  const { client, collector } = await setup(t);
+  const reader = fakeReader({ audit: { items: [] }, 'intune-audit': { items: [intuneAudit('ia-long', 5, { activity: LONG }), intuneAudit('ia-token', 4, { activity: `Patch ${TOKEN}` })] } });
+  const result = await ingestCollectorAudit(client, { tenantRef: TENANT, reader, requestedBy: collector, now: NOW });
+  assert.equal(result.sources['intune-audit'].status, 'complete', 'the page is stored, not stuck at invalid-page');
+  assert.equal(result.sources['intune-audit'].insertedEvents, 2);
+  const { rows } = await client.query('SELECT source_event_id, activity FROM audit_change_fact ORDER BY source_event_id');
+  assert.deepEqual(rows.map((row) => [row.source_event_id, row.activity]), [['intune:ia-long:0', SPLIT], ['intune:ia-token:0', null]]);
+  const [policy] = await attributeChanges(client, {
+    tenantRef: TENANT, changes: [change('policy', 'deviceConfiguration', 'deviceConfiguration:Windows baseline', [POLICY], 10, 2)],
+  });
+  assert.deepEqual([policy.verdict, policy.actors[0].id], ['exact', SYNC_SP]);
+});

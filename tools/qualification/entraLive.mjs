@@ -72,6 +72,20 @@ const RUNNERS = Object.freeze({ [LIVE_RUNNER]: { synthetic: false }, [FIXTURE_RU
 // Anchored: a fixture's own name starts with the prefix.
 const DISPOSABLE = /^(?:KEEL-RT-|keel-rehearsal-)/i;
 const NAME_FIELDS = Object.freeze(['displayName', 'name', 'mailNickname', 'userPrincipalName']);
+/**
+ * Kinds whose own name is in another field (issue #478). Only these fields count
+ * for such a kind, and every one of them must name a fixture: a branding
+ * profile's displayName is the organization name it shows, not its own name,
+ * and an app relationship touches both of its apps.
+ */
+const OWN_NAME_FIELDS = Object.freeze({
+  intuneBrandingProfile: Object.freeze(['profileName']),
+  groupPolicyUploadedDefinitionFile: Object.freeze(['fileName']),
+  mobileAppRelationship: Object.freeze(['sourceDisplayName', 'targetDisplayName']),
+});
+
+/** The fields a kind's own name is read from when its fixture is checked. */
+export const nameFieldsFor = (resourceType) => OWN_NAME_FIELDS[resourceType] ?? NAME_FIELDS;
 
 /**
  * Whether a journal entry's 'succeeded' outcome means the write was verified by
@@ -154,6 +168,17 @@ const namesOf = (state) => (state && typeof state === 'object'
   : []);
 
 /**
+ * Whether a state names a fixture: one of the default name fields does, or, for
+ * a kind with its own name fields, all of them do.
+ */
+export function namesFixture(resourceType, state) {
+  if (!state || typeof state !== 'object') return false;
+  const disposable = (field) => typeof state[field] === 'string' && DISPOSABLE.test(state[field]);
+  const own = OWN_NAME_FIELDS[resourceType];
+  return own ? own.every(disposable) : NAME_FIELDS.some(disposable);
+}
+
+/**
  * The fixture's own name: its natural key (an edge's parent key), or a name in
  * its prior state. A create has no prior state, so the snapshot's own copy of
  * the object stands in for it. Never the intended or post-write state.
@@ -161,7 +186,7 @@ const namesOf = (state) => (state && typeof state === 'object'
 function looksDisposable(entry, snapshotPayload) {
   const own = edgeParent(entry.naturalKey)?.name ?? String(entry.naturalKey ?? '');
   if (DISPOSABLE.test(own)) return true;
-  return namesOf(entry.priorState ?? snapshotPayload ?? null).some((name) => DISPOSABLE.test(name));
+  return namesFixture(entry.resourceType, entry.priorState ?? snapshotPayload ?? null);
 }
 
 // Any KEEL-RT custom role: queue items recreate fixtures under a fresh prefix.

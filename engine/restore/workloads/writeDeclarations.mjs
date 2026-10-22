@@ -110,7 +110,7 @@ family(EXO, EXO_DOCS, {
 family(EXO, EXO_DOCS, {
   workload: MAIL_FLOW, prefix: 'mailflow.anti-malware-policy', family: 'antiMalwarePolicy', resourceType: 'exchangeAntiMalwarePolicy',
   readBack: 'mailflow.anti-malware-policies', set: 'Set-MalwareFilterPolicy',
-  fields: ['EnableFileFilter', 'ZapEnabled', 'CustomNotifications'],
+  fields: ['AdminDisplayName', 'EnableFileFilter', 'ZapEnabled', 'CustomNotifications'],
 });
 family(EXO, EXO_DOCS, {
   workload: MAIL_FLOW, prefix: 'mailflow.safe-links-policy', family: 'safeLinksPolicy', resourceType: 'exchangeSafeLinksPolicy',

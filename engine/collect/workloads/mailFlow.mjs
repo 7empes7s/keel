@@ -128,7 +128,7 @@ export const FAMILIES = Object.freeze({
   antiMalwarePolicy: Object.freeze({
     operation: 'mailflow.anti-malware-policies', cmdlet: 'Get-MalwareFilterPolicy', prefix: 'anti-malware-policy', key: 'guid',
     fields: Object.freeze([
-      'Name', 'IsDefault', 'EnableFileFilter', 'FileTypes', 'FileTypeAction', 'ZapEnabled', 'QuarantineTag',
+      'Name', 'IsDefault', 'AdminDisplayName', 'EnableFileFilter', 'FileTypes', 'FileTypeAction', 'ZapEnabled', 'QuarantineTag',
       'EnableInternalSenderAdminNotifications', 'InternalSenderAdminAddress', 'EnableExternalSenderAdminNotifications',
       'ExternalSenderAdminAddress', 'CustomNotifications', WHEN,
     ]),

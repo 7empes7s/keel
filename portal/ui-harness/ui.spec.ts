@@ -1568,7 +1568,7 @@ test("the Changes list groups and filters every service, and service changes can
   const sheet = page.getByRole("dialog");
   await expect(sheet).toContainText("Exchange mail flow or protection rule · changed");
   await expect(sheet.locator(".cc-side[data-side='before'] small").first()).toHaveText("Approved setup");
-  await expect(sheet.locator(".cc-sentence")).toHaveText("1 setting differs from the approved setup.");
+  await expect(sheet.locator(".cc-sentence")).toHaveText("1 setting changed since the approved setup.");
   await expect(sheet.getByRole("button", { name: "Accept this change" })).toBeVisible();
   await expect(sheet.getByRole("button", { name: "Undo this change" })).toBeVisible();
   await expect(sheet.getByRole("button", { name: "Acknowledge" })).toBeVisible();
@@ -1786,11 +1786,11 @@ test("Changes · picks stay picked across filters and services, in a tray", asyn
   await expect(list.locator("li[data-hidden]")).toContainText("Finance (group)");
   await expect(list.locator("li[data-hidden]")).toContainText("not shown here");
 
-  // The decision covers the hidden pick too; the service change is left out, and said so.
-  await expect(bar).toContainText("1 service setting change is left out");
+  // The decision covers the hidden pick too, service setting changes included.
+  await expect(bar).not.toContainText("left out");
   await bar.getByRole("button", { name: "Accept 2 changes" }).click();
-  const sheet = page.getByRole("dialog", { name: "Accept 1 change into the approved setup" });
-  await expect(sheet).toContainText("Applies only to: Finance (group).");
+  const sheet = page.getByRole("dialog", { name: "Accept 2 changes into the approved setup" });
+  await expect(sheet).toContainText("Finance (group)");
   await sheet.getByRole("button", { name: "Cancel" }).click();
 
   // Clearing the filters shows the pick again, still picked; remove and Clear work.

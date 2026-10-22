@@ -182,6 +182,8 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Observation ID": support("Read reference", ID),
   "Service read ID": support("Read reference", ID),
   "Compared with read": support("Earlier read reference", ID),
+  "Compared with": fact("Compared with", "What Keel compared the newest read with: the approved setup, or the read before it."),
+  "Read holding the approved value": support("Read holding the approved value", ID),
   "SharePoint read": support("SharePoint read reference", ID),
   "Step ID": support("Step reference", ID),
   "Worker ID": support("Worker reference", "Which Keel worker ran the task, for support."),

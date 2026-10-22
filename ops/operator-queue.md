@@ -5256,6 +5256,9 @@ item that needs it stays untouched.
 - Needs: /opt/keel-live at the #432 merge or later (`grep -q multiTenantOrganizationPartnerConfigurationTemplate: /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
 - Status: todo
 - Result:
+- **No longer held (2026-10-22 06:27 UTC):** Marouane approved changing tenant-wide settings in the test tenant for this item.
+  Put each tenant-wide value back to the value written down first right after its capture, not only at the end, and report
+  any that is not back. Tenant hard rules still hold: never enable a CA policy, never touch break-glass or Marouane's account.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission
   to add: per the Q-inventory the Restorer holds Policy.ReadWrite.ExternalIdentities, Policy.ReadWrite.AccessReview,
@@ -5293,6 +5296,9 @@ item that needs it stays untouched.
 - Needs: /opt/keel-live at the #433 merge or later (`grep -q sameJsonStrings /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
 - Status: todo
 - Result:
+- **No longer held (2026-10-22 06:27 UTC):** Marouane approved changing tenant-wide settings in the test tenant for this item.
+  Put each tenant-wide value back to the value written down first right after its capture, not only at the end, and report
+  any that is not back. Tenant hard rules still hold: never enable a CA policy, never touch break-glass or Marouane's account.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission
   to add: per the Q-inventory the Restorer holds Policy.ReadWrite.B2BManagementPolicy, Policy.ReadWrite.PermissionGrant and

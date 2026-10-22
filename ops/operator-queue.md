@@ -7593,6 +7593,11 @@ item that needs it stays untouched.
   5. **Put back:** `Set-HostedContentFilterPolicy -Identity <KEEL-RT-mailfix-spam Guid> -PhishSpamAction MoveToJmf` so the fixture keeps
      failing for the next proof. Leave the four KEEL-RT-mailfix-* policies in place (no rule, they apply to nobody).
 - **Report:** B; steps 1-5 as above; anything left changed in the tenant.
+- **Addendum (2026-10-22 22:05, PR #559):** the anti-malware capture failed only because it flipped `CustomNotifications` (needs a
+  CustomFromAddress). After #559 is live (`grep -q "'AdminDisplayName', 'EnableFileFilter'" /opt/keel-live/engine/restore/workloads/writeDeclarations.mjs`),
+  re-run step 2 (writer capture for `exchange-mail-flow`; it now writes the description of KEEL-RT-mailfix-malware and puts it back) and
+  step 3 (evidence PR plus import), and report `mailflow.anti-malware-policy.update` `ok`, `readBackVerified`, `restoredToOriginal`.
+  Then finish step 4 once #548 is live, as already noted.
 
 ### Q160: Re-run discovery and check the PIM role settings lists read as covered (read-only, after #547)
 - Drafted by the "Role policy discovery false alarm" thread (2026-10-22). Code: PR #547. Q145 found `unifiedRoleManagementPolicy` and

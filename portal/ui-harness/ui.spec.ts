@@ -927,8 +927,8 @@ test("changes · Shift+click range, select a service, select all, filter by risk
   await page.locator(".bl-tile", { hasText: "Could lock out admins" }).click();
   await expect(page).toHaveURL(/risk=tenant-lockout/);
   await expect(page.locator(".sel-row")).toHaveCount(2);
-  await expect(page.locator(".bl-filter-note")).toContainText("Showing could lock out admins only: 2 of 7.");
-  await page.getByRole("link", { name: "Show every change" }).click();
+  await expect(page.locator(".filter-bar")).toContainText("Showing 2 of 7 changes");
+  await page.locator(".filter-bar").getByRole("button", { name: "Clear all" }).click();
   await expect(page.locator(".sel-row")).toHaveCount(7);
 });
 
@@ -1518,7 +1518,7 @@ test("Changes · acknowledge and resolve service setting changes in place", asyn
   await tile.click();
   await expect(page).toHaveURL(/from=services/);
   await expect(page.locator(".sel-row")).toHaveCount(5);
-  await expect(page.locator(".bl-filter-note")).toContainText("Showing service setting changes only: 5 of");
+  await expect(page.locator(".filter-bar")).toContainText("Showing 5 of 12 changes");
 
   await page.getByLabel(/^Select Forward finance mail/).check();
   await page.getByLabel(/^Select Global/).check();
@@ -1534,8 +1534,9 @@ test("Changes · acknowledge and resolve service setting changes in place", asyn
   for (const name of ["Forward finance mail", "Global"]) {
     await expect(page.locator(".sel-row", { has: page.locator(".bl-row-link", { hasText: new RegExp(`^${name}$`) }) }).locator(".bl-row-who")).toContainText("Seen, not resolved");
   }
-  await expect(tile.locator(".bl-tile-count")).toHaveText("3");
-  await expect(tile).toContainText("2 seen");
+  // The count is what the tile shows; seen ones still show until resolved.
+  await expect(tile.locator(".bl-tile-count")).toHaveText("5");
+  await expect(tile).toContainText("3 waiting for review; 2 seen");
 
   // Resolve one from its panel: a note is required, then it leaves the list.
   const sheet = await openChange(page, "Global");
@@ -1552,10 +1553,66 @@ test("Changes · acknowledge and resolve service setting changes in place", asyn
   await expect(page.locator(".sel-row")).toHaveCount(4);
 });
 
+// Summary tiles add up (OR): Cosmetic and Service settings together show both sets.
+// Service, kind and find narrow them (AND). Each active filter is a chip that removes
+// it, the counts follow the view, the view lives in the address, and nothing matching
+// is never a dead end.
+test("Changes · tiles add up, other filters narrow, chips and no dead ends", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/drift/services");
+  const tile = (name: string) => page.locator(".bl-tile", { hasText: name });
+  const rows = page.locator(".sel-row");
+  await expect(rows).toHaveCount(12);
+
+  await tile("Cosmetic").click();
+  await expect(page).toHaveURL(/risk=cosmetic/);
+  await expect(rows).toHaveCount(3);
+  // Unpicked tiles say what they would add; one service setting change is cosmetic too, so it adds 4 of its 5.
+  await expect(tile("Service settings")).toContainText("+4 if added");
+  await expect(tile("Affects access")).toContainText("+7 if added");
+
+  await tile("Service settings").click();
+  await expect(page).toHaveURL(/risk=cosmetic&from=services/);
+  await expect(rows).toHaveCount(7);
+  await expect(tile("Cosmetic")).toHaveAttribute("aria-current", "true");
+  await expect(tile("Service settings")).toHaveAttribute("aria-current", "true");
+  await expect(page.locator(".filter-bar")).toContainText("Showing 7 of 12 changes");
+
+  // A find narrows what the tiles show, and every count follows it.
+  await page.getByPlaceholder("Find changes").fill("Forward finance mail");
+  await expect(rows).toHaveCount(1);
+  await expect(tile("Service settings").locator(".bl-tile-count")).toHaveText("1");
+  await expect(tile("Cosmetic").locator(".bl-tile-count")).toHaveText("0");
+  await expect(page.getByRole("button", { name: "Remove filter: Find: “Forward finance mail”" })).toBeVisible();
+
+  // Removing one chip drops only that filter.
+  await page.locator(".filter-bar").getByRole("button", { name: "Remove filter: Service settings" }).click();
+  await expect(page).not.toHaveURL(/from=services/);
+  await expect(page.locator(".filter-empty")).toContainText("No changes match these filters");
+  // The empty view offers a way out in one click.
+  await page.locator(".filter-empty").getByRole("button", { name: "Clear all filters" }).click();
+  await expect(rows).toHaveCount(12);
+  await expect(page.locator(".filter-bar")).toHaveCount(0);
+  await expect(page.getByPlaceholder("Find changes")).toHaveValue("");
+
+  // The same view comes back from the address, and from a saved filter.
+  await open(page, "/drift/services?risk=tenant-lockout,cosmetic");
+  await expect(rows).toHaveCount(5);
+  await page.getByRole("button", { name: "Save filter" }).click();
+  await page.getByLabel("Name for this filter").fill("Lockout and cosmetic");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.locator(".filter-bar").getByRole("button", { name: "Clear all" }).click();
+  await expect(rows).toHaveCount(12);
+  await page.locator(".saved-filter a", { hasText: "Lockout and cosmetic" }).click();
+  await expect(rows).toHaveCount(5);
+  await expect(page.getByRole("button", { name: /^Remove filter: / })).toHaveCount(2);
+});
+
 // Other pages link to a filtered list by kind; the filter note says so.
 test("Changes · a kind filter in the address and plain words on the page", async ({ page }) => {
   await open(page, "/drift?kind=namedLocation");
-  await expect(page.locator(".bl-filter-note")).toContainText("Showing trusted location changes only: 2 of 7.");
+  await expect(page.locator(".filter-bar")).toContainText("Showing 2 of 7 changes");
+  await expect(page.getByRole("button", { name: /^Remove filter: / })).toHaveCount(1);
   await expect(page.locator(".sel-row")).toHaveCount(2);
   await expect(page.locator(".bl-context")).toContainText("Checked after every backup.");
   await expect(page.locator(".bl-context").getByRole("link", { name: "Run a backup now" })).toHaveAttribute("href", /protect/);

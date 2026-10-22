@@ -58,6 +58,9 @@ interface Props<T> {
   // Groups that start closed (count still shown) until someone opens them, such as
   // resolved alerts. Opening every group keeps `closed=none` in the URL.
   closedByDefault?: string[];
+  // Shown instead of the plain line when no row matches, such as a page's filter chips
+  // with Clear all. Without it the list still offers to clear its own find.
+  empty?: ReactNode;
 }
 
 const LONG_PRESS_MS = 450;
@@ -71,7 +74,7 @@ function plural(count: number, noun: { one: string; many: string }) {
  * +click toggles, Ctrl or Cmd+A and Esc, select all or a whole group, long-press and
  * drag on a phone, and a bar that names the action with its count. Grouping, find and
  * closed groups live in the URL. */
-export function SelectableList<T>({ label, items, getId, rowName, renderRow, groupings, toneOf, noun, action, more = [], matches, rowLimit, groupAction, closedByDefault = [] }: Props<T>) {
+export function SelectableList<T>({ label, items, getId, rowName, renderRow, groupings, toneOf, noun, action, more = [], matches, rowLimit, groupAction, closedByDefault = [], empty }: Props<T>) {
   const view = useViewState();
   const groupKey = view.get("group", groupings[0]?.key ?? "");
   const grouping = groupings.find((entry) => entry.key === groupKey) ?? groupings[0];
@@ -280,7 +283,12 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
             </section>
           );
         })}
-        {groups.length === 0 ? <p className="sel-empty">No {noun.many} match {query ? `“${query}”` : "this view"}.</p> : null}
+        {groups.length === 0 ? (empty ?? (
+          <p className="sel-empty">
+            No {noun.many} match {query ? `“${query}”` : "this view"}.
+            {query ? <button className="btn btn-sm" onClick={() => view.set({ q: null })} type="button">Clear the search</button> : null}
+          </p>
+        )) : null}
       </div>
       {count ? (
         <div aria-label="Selection" className="sel-bar" role="region">

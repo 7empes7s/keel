@@ -12,6 +12,7 @@ import { ChangeAttributionPanel } from "@/components/change-attribution";
 import { ConfirmSheet } from "@/components/incidents/confirm-sheet";
 import { ChangeEvidencePanel } from "@/components/decision-workbook";
 import { DriftDiff } from "@/components/drift-diff";
+import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { SemanticDiff } from "@/components/semantic-diff";
 import { Icon } from "@/components/shell/icons";
@@ -24,6 +25,8 @@ import { changeLabel, changeName, isWaiting, respondDetail, respondResult, REVIE
 import { workloadLabel } from "@/lib/compare-view";
 import { toDay } from "@/lib/date-range";
 import { driftActionControls } from "@/lib/drift-actions";
+import { changeTiles, SERVICES_TILE, tileParams } from "@/lib/change-tiles";
+import { applyFilters, pickedTiles, tileCounts, toggleTile } from "@/lib/filter-set";
 import { worstTone, type RiskTone } from "@/lib/menu-status";
 import { ago, BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
@@ -31,7 +34,7 @@ import { orderGroups, smartOrder } from "@/lib/selection";
 import { serviceFor, serviceOrder } from "@/lib/services";
 import { toast } from "@/lib/toast";
 import type { BaselineRecord, DriftRecord, SemanticSummary } from "@/lib/types";
-import { useViewState } from "@/lib/use-view-state";
+import { readList, useViewState } from "@/lib/use-view-state";
 
 const toneOf = (item: DriftRecord): RiskTone => impactTone(item.blastRadius);
 
@@ -53,6 +56,8 @@ const RISK_ABOUT: Record<string, string> = {
   "access-affecting": "Changes who can sign in or reach apps and data",
   cosmetic: "Names, labels and descriptions: nobody gains or loses access",
 };
+
+const changeText = (item: DriftRecord) => `${changeName(item)} ${plainKind(item.resourceType)} ${typeName(item.resourceType)} ${changedBy(item) ?? ""}`.toLowerCase();
 
 const GROUPINGS: Grouping<DriftRecord>[] = [
   {
@@ -138,11 +143,20 @@ export function ChangeList({
 
   const open = useMemo(() => shownItems.filter((item) => !settled.includes(item.id)), [shownItems, settled]);
   const service = view.get("service");
-  const risk = view.get("risk");
   const kind = view.get("kind");
-  // `from=services` keeps service setting changes only (the Service settings tile).
-  const from = view.get("from") === "services" ? "services" : "";
-  const shown = useMemo(() => open.filter((item) => (!service || itemService(item).code === service) && (!risk || item.blastRadius === risk) && (!kind || item.resourceType === kind) && (!from || item.serviceRead)), [open, service, risk, kind, from]);
+  const query = view.get("q").trim().toLowerCase();
+  const radii = BLAST_RADIUS_ORDER.filter((radius) => open.some((item) => item.blastRadius === radius));
+  const tiles = useMemo(() => changeTiles(BLAST_RADIUS_ORDER), []);
+  const picked = pickedTiles(tiles, [...readList(view.get("risk")), ...(view.get("from") === SERVICES_TILE ? [SERVICES_TILE] : [])]);
+  const pickedKey = picked.join(",");
+  // Filters other than the tiles: each one narrows (AND).
+  const others = useMemo(() => [
+    ...(service ? [(item: DriftRecord) => itemService(item).code === service] : []),
+    ...(kind ? [(item: DriftRecord) => item.resourceType === kind] : []),
+    ...(query ? [(item: DriftRecord) => changeText(item).includes(query)] : []),
+  ], [service, kind, query]);
+  const shown = useMemo(() => applyFilters(open, tiles, pickedKey ? pickedKey.split(",") : [], others), [open, tiles, pickedKey, others]);
+  const counts = useMemo(() => new Map(tileCounts(open, tiles, pickedKey ? pickedKey.split(",") : [], others).map((entry) => [entry.key, entry])), [open, tiles, pickedKey, others]);
   const opened = open.find((item) => item.id === view.get("open")) ?? null;
   const deciding_items = deciding ? open.filter((item) => deciding.ids.includes(item.id)) : [];
   const serviceIds = useMemo(() => new Set(open.filter((item) => item.serviceRead).map((item) => item.id)), [open]);
@@ -196,7 +210,6 @@ export function ChangeList({
     view.set(changes);
   };
 
-  const radii = BLAST_RADIUS_ORDER.filter((radius) => open.some((item) => item.blastRadius === radius));
   const notes = summary ? [
     summary.mismatched ? `${summary.mismatched} ${summary.mismatched === 1 ? "change could not be fully checked. Its details say why." : "changes could not be fully checked. Their details say why."}` : null,
     summary.unknownBefore ? `${summary.unknownBefore} ${summary.unknownBefore === 1 ? "change was" : "changes were"} not in the approved setup, so the earlier values are not known.` : null,
@@ -235,41 +248,52 @@ export function ChangeList({
     ] : []),
   ];
 
-  const serviceName = service ? serviceFor(service).name : null;
-  const waiting = open.filter(isWaiting).length;
-  const filtered = Boolean(service || risk || kind || from);
-  const filterWords = [
-    risk ? impactWords(risk).toLowerCase() : null,
-    from ? "service setting changes" : null,
-    kind ? `${plainKind(kind).toLowerCase()} changes` : null,
-    serviceName ? `in ${serviceName}` : null,
-  ].filter(Boolean).join(" ");
+  const waiting = open.filter((item) => item.serviceRead && isWaiting(item)).length;
+  const tileLink = (key: string | null) => {
+    const changes = { ...tileParams(key === null ? [] : toggleTile(tiles, picked, key)), open: null };
+    return { href: href(changes), onClick: (event: MouseEvent) => follow(event, changes) };
+  };
+  const tileLabel = (key: string) => (key === SERVICES_TILE ? "Service settings" : impactWords(key));
+  const activeFilters: ActiveFilter[] = [
+    ...picked.map((key) => ({ key: `tile:${key}`, label: tileLabel(key), clear: tileParams(picked.filter((entry) => entry !== key)) })),
+    ...(service ? [{ key: "service", label: `In ${serviceFor(service).name}`, clear: { service: null } }] : []),
+    ...(kind ? [{ key: "kind", label: plainKind(kind), clear: { kind: null } }] : []),
+    ...(query ? [{ key: "q", label: `Find: “${view.get("q").trim()}”`, clear: { q: null } }] : []),
+  ];
+  // What a tile says it would add, once another tile is picked.
+  const addsWords = (key: string) => {
+    const entry = counts.get(key);
+    if (!picked.length || !entry || entry.picked) return null;
+    return entry.adds ? `+${entry.adds} if added` : "Adds none";
+  };
   const serviceReads = [...new Set(open.flatMap((item) => (item.serviceRead ? [itemService(item).name] : [])))];
   return (
     <div className="bl-page">
       <BaselinesStyles />
       <section aria-label="Open changes by risk" className="bl-tiles">
         {radii.map((radius) => {
-          const count = open.filter((item) => item.blastRadius === radius).length;
-          const active = risk === radius;
+          const active = picked.includes(radius);
+          const adds = addsWords(radius);
           return (
-            <Link aria-current={active || undefined} className="bl-card bl-tile bl-link" data-tone={impactTone(radius)} href={href({ risk: active ? null : radius, open: null })} key={radius} onClick={(event) => follow(event, { risk: active ? null : radius, open: null })}>
-              <span className="bl-tile-label"><Icon name={radius === "cosmetic" ? "info" : "alert"} />{impactWords(radius)}</span>
-              <b className="bl-tile-count">{count}</b>
+            <Link aria-current={active || undefined} className="bl-card bl-tile bl-link" data-tone={impactTone(radius)} key={radius} title={active ? "Picked: click to remove it from the view" : "Click to add these to the view"} {...tileLink(radius)}>
+              <span className="bl-tile-label"><Icon name={radius === "cosmetic" ? "info" : "alert"} />{impactWords(radius)}{active ? <Icon className="bl-tile-check" name="check" /> : null}</span>
+              <b className="bl-tile-count">{counts.get(radius)?.count ?? 0}</b>
               <small>{RISK_ABOUT[radius]}</small>
+              {adds ? <small className="bl-tile-adds">{adds}</small> : null}
             </Link>
           );
         })}
-        <Link aria-current={!risk || undefined} className="bl-card bl-tile bl-link" href={href({ risk: null, open: null })} onClick={(event) => follow(event, { risk: null, open: null })}>
+        <Link aria-current={!picked.length || undefined} className="bl-card bl-tile bl-link" {...tileLink(null)}>
           <span className="bl-tile-label"><Icon name="baselines" />All open changes</span>
-          <b className="bl-tile-count">{open.length}</b>
+          <b className="bl-tile-count">{applyFilters(open, tiles, [], others).length}</b>
           <small>{baseline && !serviceReads.length ? "Everything that differs from the approved setup" : "Everything waiting for review"}</small>
         </Link>
         {serviceIds.size ? (
-          <Link aria-current={from ? true : undefined} className="bl-card bl-tile bl-link" data-tone={waiting ? "soon" : undefined} href={href({ from: from ? null : "services", open: null })} onClick={(event) => follow(event, { from: from ? null : "services", open: null })}>
-            <span className="bl-tile-label"><Icon name="cloud" />Service settings</span>
-            <b className="bl-tile-count">{waiting}</b>
-            <small>{waiting === serviceIds.size ? "Waiting for review" : `Waiting for review; ${serviceIds.size - waiting} seen`}</small>
+          <Link aria-current={picked.includes(SERVICES_TILE) || undefined} className="bl-card bl-tile bl-link" data-tone={waiting ? "soon" : undefined} title={picked.includes(SERVICES_TILE) ? "Picked: click to remove it from the view" : "Click to add these to the view"} {...tileLink(SERVICES_TILE)}>
+            <span className="bl-tile-label"><Icon name="cloud" />Service settings{picked.includes(SERVICES_TILE) ? <Icon className="bl-tile-check" name="check" /> : null}</span>
+            <b className="bl-tile-count">{counts.get(SERVICES_TILE)?.count ?? 0}</b>
+            <small>{waiting === serviceIds.size ? "Waiting for review" : waiting ? `${waiting} waiting for review; ${serviceIds.size - waiting} seen` : "All seen; resolve them when done"}</small>
+            {addsWords(SERVICES_TILE) ? <small className="bl-tile-adds">{addsWords(SERVICES_TILE)}</small> : null}
           </Link>
         ) : null}
       </section>
@@ -295,23 +319,19 @@ export function ChangeList({
         {notes.map((note) => <p className="bl-note" key={note}><Icon name="info" /><span>{note}</span></p>)}
       </div>
 
-      {filtered ? (
-        <p className="bl-filter-note" role="status">
-          Showing {filterWords} only: {shown.length} of {open.length}.
-          <Link className="bl-inline-link" href={href({ service: null, risk: null, kind: null, from: null })} onClick={(event) => follow(event, { service: null, risk: null, kind: null, from: null })}>Show every change</Link>
-        </p>
-      ) : null}
+      <ActiveFilters extra={{ open: null }} filters={activeFilters} noun={{ one: "change", many: "changes" }} shown={shown.length} total={open.length} />
 
       <section aria-labelledby="open-drift-heading" className="bl-section">
         <h2 className="visually-hidden" id="open-drift-heading">Open changes</h2>
         {open.length ? (
           <SelectableList
             action={primary}
+            empty={<NoMatches extra={{ open: null }} filters={activeFilters} noun={{ one: "change", many: "changes" }} />}
             getId={(item) => item.id}
             groupings={GROUPINGS}
             items={shown}
             label="Open changes"
-            matches={(item, query) => `${changeName(item)} ${plainKind(item.resourceType)} ${typeName(item.resourceType)} ${changedBy(item) ?? ""}`.toLowerCase().includes(query)}
+            matches={(item, text) => changeText(item).includes(text.trim())}
             more={more}
             noun={{ one: "change", many: "changes" }}
             renderRow={(item) => {

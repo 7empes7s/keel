@@ -328,6 +328,9 @@ export interface StorageResidency {
   certifies: null;
   // Where the residency was read from (the recovery manifest path), or null.
   source: string | null;
+  // How it is known: from the recovery manifest, or, with no manifest set, from
+  // where Keel's own database runs (on this server). Absent means not known.
+  basis?: "recovery-manifest" | "database-location" | null;
 }
 
 export interface ComplianceData {

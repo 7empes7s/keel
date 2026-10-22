@@ -9,6 +9,7 @@
 // - A found change (an audit entry about one): the approved setup and what was found.
 import { CompareError, compareSnapshots, presenceFields, typeOutcome } from "../../engine/govern/compare.mjs";
 import { semanticChange } from "../../engine/govern/semanticDrift.mjs";
+import { payloadName } from "@/lib/changes-view";
 import { connect } from "@/lib/db";
 
 import type { ActivityChanges, ChangeKind, ChangedObject } from "@/lib/changed-values";
@@ -51,11 +52,7 @@ function presence(resourceType: string, payload: unknown, change: "added" | "rem
   return { fields: result.fields.map((field) => ({ path: field.path, before: field.before ?? null, after: field.after ?? null })), fieldsTotal: result.fieldsTotal };
 }
 
-const nameOf = (payload: unknown): string | null => {
-  const value = (payload ?? {}) as Record<string, unknown>;
-  for (const key of ["displayName", "name", "title", "userPrincipalName"]) if (typeof value[key] === "string" && value[key]) return value[key] as string;
-  return null;
-};
+const nameOf = (payload: unknown, resourceType: string): string | null => payloadName(payload, resourceType);
 
 interface Draft extends Omit<ChangedObject, "name"> { naturalKey: string; name: string | null }
 
@@ -98,7 +95,7 @@ function driftDraft(row: DriftRow, direction: "found" | "rollback"): Draft {
   if (row.change_type === "removed") change = direction === "found" ? "removed" : "added";
   const fields = change === "changed" ? settingsBetween(row.resource_type, before, after)
     : change === "added" ? presence(row.resource_type, after, "added") : presence(row.resource_type, before, "removed");
-  return { naturalKey: row.natural_key, resourceType: row.resource_type, name: nameOf(found) ?? nameOf(approved), change, ...fields };
+  return { naturalKey: row.natural_key, resourceType: row.resource_type, name: nameOf(found, row.resource_type) ?? nameOf(approved, row.resource_type), change, ...fields };
 }
 
 async function forDrift(client: Client, ref: string, id: string): Promise<ActivityChanges | null> {
@@ -224,10 +221,10 @@ async function forRestore(client: Client, ref: string, job: Record<string, unkno
     if (!to) continue;
     const type = String(to.resource_type);
     const from = before.get(key);
-    if (!from) { drafts.push({ naturalKey: key, resourceType: type, name: nameOf(to.payload), change: "added", ...presence(type, to.payload, "added") }); continue; }
+    if (!from) { drafts.push({ naturalKey: key, resourceType: type, name: nameOf(to.payload, type), change: "added", ...presence(type, to.payload, "added") }); continue; }
     const fields = settingsBetween(type, from.payload, to.payload);
     if (!fields.fieldsTotal) continue;
-    drafts.push({ naturalKey: key, resourceType: type, name: nameOf(to.payload) ?? nameOf(from.payload), change: "changed", ...fields });
+    drafts.push({ naturalKey: key, resourceType: type, name: nameOf(to.payload, type) ?? nameOf(from.payload, type), change: "changed", ...fields });
   }
   const done = job.status === "succeeded" && params.mode === "enforce";
   return finish(client, ref, {

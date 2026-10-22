@@ -169,6 +169,7 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   }
   if (/\/api\/snapshots\/[^/]+\/items$/.test(url)) return json({ generatedAt: now, snapshotId: "", resources: BACKUP_ITEMS });
   if (url.endsWith("/api/actions/compliance/exception")) return json({ exception: { id: "e7c10000-0000-4000-8000-0000000000c9" } }, 201);
+  if (url.endsWith("/api/actions/compliance/check")) return json({ checked: 3, pass: 1, fail: 1, unknown: 1, notApplicable: 0 }, 201);
   if (url.includes("/api/evidence?kind=benchmark-evaluation")) return json({ entries: [{ seq: "4182", kind: "benchmark-evaluation" }, { seq: "4183", kind: "benchmark-exception" }], nextBefore: null, generatedAt: "2026-10-04T09:00:00Z" });
   if (url.endsWith("/api/principals") && init?.method === "POST") return json({ principal: NEW_PERSON(JSON.parse(String(init.body))) }, 201);
   if (/\/api\/principals\/[^/]+\/(grant|revoke|disable|enable)$/.test(url)) return json({ result: {} }, 200);
@@ -1823,6 +1824,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
   if (path.startsWith("/sites/")) { const detail = sitePage(path); if (detail) return detail; }
   switch (path) {
     case "/kit": return <KitPage />;
+    case "/kit/many": return <KitPage many />;
     // Waiting work matches the Alerts and Incidents fixtures (3 open alerts, 1 open incident).
     case "/": return <DashboardView data={{ ...dashboard(posture), waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } }} pendingApprovals={posture === 2 ? 0 : 2} />;
     case "/activity": case "/activity/viewer": {
@@ -1925,9 +1927,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <CreateWizard completedSnapshotsExist disabled={false} snapshots={CAPTURE_SOURCES} today={toDay(new Date(now))} />
       </div></>;
     case "/benchmarks": case "/benchmarks/viewer": {
-      // The viewer variant holds read only: no exception controls.
+      // The viewer variant holds read only: no exception controls and no Check now.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(COMPLIANCE.findings))} title="Compliance" />
-      <CompliancePage canConfigure={path === "/benchmarks"} data={COMPLIANCE} now={now} /></>;
+      <CompliancePage canCheck={path === "/benchmarks"} canConfigure={path === "/benchmarks"} data={COMPLIANCE} now={now} /></>;
+    }
+    case "/benchmarks/empty": case "/benchmarks/empty-viewer": {
+      // Nothing checked yet and the storage location not known: each empty state has its button.
+      const empty: ComplianceData = { ...COMPLIANCE, findings: [], storage: { configured: false, provider: null, region: null, boundary: null, immutability: "unknown", generatedAt: null, certifies: null, source: null } };
+      return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts([]))} title="Compliance" />
+      <CompliancePage canCheck={path === "/benchmarks/empty"} canConfigure={false} data={empty} now={now} /></>;
     }
     case "/principals": case "/principals/viewer": {
       // A viewer here holds users but not roles: they see everyone and can disable, not grant.

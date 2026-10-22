@@ -2,6 +2,7 @@
 // Pure helpers shared by the Changes and Restore pages and the UI harness. Natural
 // keys, change-kind codes, planned verbs, waves, deferred references and refusal codes
 // stay in the record layer.
+import { objectName } from "../../engine/cir/objectName.mjs";
 import { plainKind } from "@/lib/baselines-view";
 import { holdsObjectId, isObjectId, objectIdsIn, replaceObjectIds } from "@/lib/object-ids";
 import { ago, resourceLabel, words } from "@/lib/presentation";
@@ -13,17 +14,10 @@ export function resourceName(naturalKey: string): string {
   return rest.join(" · ") || naturalKey;
 }
 
-/** The fields Microsoft names an object by, in the order the page prefers them. */
-export const NAME_FIELDS = ["displayName", "name", "title", "userPrincipalName", "mail", "subject"] as const;
-
-/** The readable name a saved copy carries, or null. */
-export function payloadName(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
-  for (const field of NAME_FIELDS) {
-    const value = (payload as Record<string, unknown>)[field];
-    if (typeof value === "string" && value.trim() && !holdsObjectId(value)) return value.trim();
-  }
-  return null;
+/** The readable name a saved copy carries, by the field its kind is named by, or null
+ * (engine/cir/objectName.mjs). Never an object id. */
+export function payloadName(payload: unknown, resourceType?: string | null): string | null {
+  return objectName(payload, resourceType ?? null, { skip: holdsObjectId });
 }
 
 // Many types are stored under their id, or point to users, groups, roles, apps and app

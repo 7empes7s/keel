@@ -622,6 +622,9 @@ test("restore leads with what changed, by service, and undoes a change or a grou
   await expect(page.locator(".restore-point-age")).toHaveText("2 days old · 19 settings saved · 3 backups taken after it");
   await expect(page.locator(".restore-tile").nth(0)).toContainText("Changed since4");
   await expect(page.locator(".restore-tile").nth(3).getByRole("link")).toHaveAttribute("href", "#/jobs/a3");
+  // 19 settings fit on one page of 25, so every row shows and there is no pager.
+  await expect(groups.nth(1).locator(".sel-row")).toHaveCount(11);
+  await expect(page.locator(".list-pager")).toHaveCount(0);
   // Inside a service, settings sit under their kind, in the service's order, each kind
   // with its count, its own select-all and its own open and close.
   const entraParts = groups.nth(1).locator(".sel-part");
@@ -2745,6 +2748,37 @@ test("Compliance · a reader sees results and no exception controls", async ({ p
   await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Export 1 control");
 });
 
+test("Compliance · nothing checked yet: Check now runs the checks; storage not known links to it", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/benchmarks/empty");
+  await expect(page.locator(".status-pill")).toHaveText("Not checked yet");
+  const verdict = page.locator('[data-layer="verdict"]');
+  await expect(verdict.locator(".verdict-sentence")).toHaveText("No control has been checked on this tenant yet.");
+  await expect(verdict).toContainText("Keel checks these after each backup.");
+  await expect(page.locator("main")).not.toContainText("does not run these checks");
+  await expect(page.locator(".cp-empty").getByRole("button", { name: "Check now" })).toBeVisible();
+  const storage = page.locator(".cp-storage");
+  await expect(storage).toHaveAttribute("data-tone", "soon");
+  await expect(storage).toContainText("Ask whoever runs the Keel server to record where backups are stored.");
+  await expect(storage.getByRole("link", { name: "See backup storage" })).toHaveAttribute("href", /\/resilience#storage$/);
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+
+  type Call = { url: string; method: string; body: string | null };
+  await verdict.getByRole("button", { name: "Check now" }).click();
+  await expect(page.locator(".toast").first()).toContainText("3 controls checked");
+  await expect(page.locator(".toast").first()).toContainText("1 failing, 1 could not be checked, 1 passing");
+  const posts = (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
+    .filter((call) => call.method === "POST" && call.url === "/api/actions/compliance/check");
+  expect(posts.length).toBe(1);
+});
+
+test("Compliance · nothing checked yet, reader: no Check now, a link to when backups run", async ({ page }) => {
+  await open(page, "/benchmarks/empty-viewer");
+  await expect(page.getByRole("button", { name: "Check now" })).toHaveCount(0);
+  await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "See when backups run" })).toHaveAttribute("href", /\/schedules$/);
+  await expect(page.locator(".cp-empty").getByRole("link", { name: "See when backups run" })).toBeVisible();
+});
+
 test("Compliance · phone: pass and fail tiles per service open the same panel", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page, "/benchmarks");
@@ -2758,7 +2792,7 @@ test("Compliance · phone: pass and fail tiles per service open the same panel",
 
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
-    for (const hash of ["/benchmarks", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1"]) {
+    for (const hash of ["/benchmarks", "/benchmarks/empty", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1"]) {
       test(`Compliance · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await open(page, hash, theme);
@@ -2771,7 +2805,7 @@ for (const theme of ["dark", "light"] as const) {
         const tiles = await page.locator(".cp-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
         expect(tiles.length).toBe(4);
         expect(new Set(tiles).size).toBe(1);
-        if (width === 390) {
+        if (width === 390 && hash !== "/benchmarks/empty") {
           const scorecard = await page.locator(".cp-ctile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
           expect(new Set(scorecard).size).toBe(1);
         }
@@ -3255,4 +3289,62 @@ test("Overview: every tile, legend row and attention row is a link, both charts 
   await expect(page.locator(".page-header .status-pill")).toHaveText("Protected");
   await expect(page.locator("main .btn-primary:visible")).toHaveCount(0);
   await expect(page.locator(".ov-calm")).toBeVisible();
+});
+
+// Shared list paging: 25 rows a page by default, a choice of 25, 50, 100 or all, page
+// buttons, Order by with a direction, and all of it kept in the address so a reload
+// brings the same view back. Group headers repeat on each page that has their rows.
+test("shared list · rows per page, pages and order are kept in the address", async ({ page }) => {
+  await open(page, "/kit/many");
+  const rows = page.locator(".sel-row");
+  const pager = page.getByRole("navigation", { name: "Pages of Changed settings" });
+  await expect(rows).toHaveCount(25);
+  await expect(pager.getByRole("status")).toHaveText("Showing 1–25 of 64 settings");
+  await expect(pager).toContainText("Page 1 of 3");
+  await pager.getByRole("button", { name: "Next" }).click();
+  await expect(pager.getByRole("status")).toHaveText("Showing 26–50 of 64 settings");
+  expect(page.url()).toContain("page=2");
+  // A group that began on page 1 keeps its header here, marked as continued.
+  await expect(page.locator(".sel-group-continued").first()).toHaveText("continued");
+  // Kinds inside a service page too: the page still holds 25 rows, under their kinds.
+  await expect(rows).toHaveCount(25);
+  await expect(page.locator(".sel-part").first()).toBeVisible();
+  await pager.getByRole("button", { name: "Last page" }).click();
+  await expect(rows).toHaveCount(14);
+  // A bigger page starts again from page 1.
+  await pager.getByRole("radio", { name: "50" }).click();
+  await expect(rows).toHaveCount(50);
+  expect(page.url()).toContain("size=50");
+  expect(page.url()).not.toContain("page=");
+  await pager.getByRole("radio", { name: "All" }).click();
+  await expect(rows).toHaveCount(64);
+  await expect(pager.getByRole("button", { name: "Next" })).toHaveCount(0);
+  // Order by name, then flip it; the first row of the first group follows.
+  await page.getByRole("button", { name: /Order by: Suggested/ }).click();
+  await page.getByRole("option", { name: "Name" }).click();
+  expect(page.url()).toContain("sort=name");
+  const firstGroup = page.locator(".sel-group").first().locator(".sel-row");
+  const ascending = await firstGroup.first().innerText();
+  await page.getByRole("button", { name: /Order: ascending/ }).click();
+  expect(page.url()).toContain("dir=desc");
+  await expect(firstGroup.first()).not.toHaveText(ascending);
+  // Find narrows the list and goes back to page 1.
+  await page.getByPlaceholder("Find settings").fill("Sample setting 0");
+  await expect(rows).toHaveCount(9);
+  // A reload brings the same view back.
+  await page.reload();
+  await page.locator("main#main-content h1").waitFor();
+  await expect(rows).toHaveCount(9);
+  await expect(page.getByRole("button", { name: /Order by: Name/ })).toBeVisible();
+});
+
+test("shared list · the pager fits a phone without sideways scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await open(page, "/kit/many");
+  const pager = page.locator(".list-pager");
+  await expect(pager).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+  await pager.getByRole("button", { name: "Next" }).click();
+  await expect(pager.getByRole("status")).toHaveText("Showing 26–50 of 64 settings");
 });

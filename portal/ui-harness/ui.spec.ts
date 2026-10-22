@@ -1154,7 +1154,10 @@ test("restore completion closes an item with a reference and refuses a pasted se
   const credential = app.locator(".completion-item").filter({ hasText: "client secrets" });
   await credential.getByLabel("Evidence reference").fill("-----BEGIN PRIVATE KEY----- secret");
   await credential.getByRole("button", { name: "Mark verified" }).click();
-  await expect(page.getByText("never the credential")).toBeVisible();
+  const refusal = page.locator(".toast[data-error-notice]");
+  await expect(refusal).toContainText("That looks like a secret or key.");
+  await expect(refusal.locator(".toast-todo")).toContainText("never the credential itself");
+  await expect(refusal.locator(".ui-raw-error")).toBeHidden();
   await credential.getByLabel("Evidence reference").fill("CHG-5120");
   await credential.getByRole("button", { name: "Mark verified" }).click();
   await expect(credential.getByRole("button", { name: "Reopen" })).toBeVisible();
@@ -3344,6 +3347,28 @@ test("errors · no raw error text in plain view on any page", async ({ page }) =
     for (const line of text.split("\n")) if (RAW_ERROR_PATTERN.test(line)) leaks.push(`${hash}: ${line.trim().slice(0, 160)}`);
   }
   expect(leaks, "raw error text belongs behind Show details (components/ui/error-notice.tsx)").toEqual([]);
+});
+
+// Pop-up messages too: a refused request says what went wrong and what to do in plain
+// words; the server's own answer waits behind "Show details".
+test("errors · a refused request's pop-up keeps the raw answer behind Show details", async ({ page }) => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await open(page, "/kit");
+    await page.getByRole("button", { name: "Show a refused request" }).click();
+    const item = page.locator(".toast[data-error-notice]").last();
+    await expect(item).toContainText("You need the right role for that, or your sign-in has ended.");
+    await expect(item.locator(".toast-todo")).toContainText("What to do:");
+    const raw = item.locator(".ui-raw-error");
+    await expect(raw).toBeHidden();
+    const text = await page.locator("body").innerText();
+    expect(text.split("\n").filter((line) => RAW_ERROR_PATTERN.test(line)), "raw error text belongs behind Show details").toEqual([]);
+    await item.getByText("Show details").click();
+    await expect(raw).toContainText("Authorization_RequestDenied");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await item.getByRole("button", { name: "Dismiss notification" }).click();
+    await expect(page.locator(".toast[data-error-notice]")).toHaveCount(0);
+  }
 });
 
 test("errors · a failed job shows a plain cause and what to do; the raw error is one click away", async ({ page }) => {

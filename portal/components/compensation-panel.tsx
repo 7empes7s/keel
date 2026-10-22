@@ -6,7 +6,7 @@ import { type ContentEffect, ContentEffectsPanel } from "@/components/content-ef
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { refusalSentence } from "@/lib/changes-view";
 import { type NamedKeys, namedResource } from "@/lib/job-names";
-import { toast } from "@/lib/toast";
+import { refused, toast } from "@/lib/toast";
 import {
   UNDO_STATEMENT,
   conflictSentence,
@@ -152,7 +152,7 @@ export function CompensationPanel({ restoreArtifactId, compensationArtifactId = 
       });
       const payload = (await response.json().catch(() => ({}))) as { artifactId?: string; message?: string };
       if (!response.ok || !payload.artifactId) {
-        toast({ tone: "warning", title: "Undo not planned", detail: payload.message ?? `Request failed (${response.status})` });
+        toast({ tone: "warning", title: "Undo not planned", ...refused(response.ok ? 500 : response.status, payload.message ?? (response.ok ? "No undo plan came back" : `HTTP ${response.status}`)) });
         return;
       }
       setError(false);
@@ -174,7 +174,7 @@ export function CompensationPanel({ restoreArtifactId, compensationArtifactId = 
       });
       const payload = (await response.json().catch(() => ({}))) as { message?: string };
       if (!response.ok) {
-        toast({ tone: "warning", title: "Approval not requested", detail: payload.message ?? `Request failed (${response.status})` });
+        toast({ tone: "warning", title: "Approval not requested", ...refused(response.status, payload.message ?? `HTTP ${response.status}`) });
         return;
       }
       setRequested(true);

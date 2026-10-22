@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { namedResource } from "@/lib/job-names";
 import { formatTimestamp, words } from "@/lib/presentation";
-import { toast } from "@/lib/toast";
+import { refused, toast } from "@/lib/toast";
 
 // Roadmap task-65: what a restore could not write back (secrets, certificates,
 // consent, a new id's downstream integrations) and the service check after it.
@@ -212,12 +212,14 @@ export function RecoveryCompletion({ restoreRef, canComplete }: { restoreRef: st
         headers: { "content-type": "application/json", "idempotency-key": `${item.id}:${body.action}:${Date.now()}` },
         body: JSON.stringify({ itemId: item.id, ...body }),
       });
-      const payload = (await response.json().catch(() => ({}))) as { message?: string };
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; message?: string };
       if (!response.ok) {
+        const words = refused(response.status, payload.message ?? payload.error ?? `HTTP ${response.status}`);
         toast({
           tone: "warning",
           title: "Not saved",
-          detail: payload.message ?? (response.status === 403 ? "You no longer hold the restore capability" : "The change was not saved"),
+          ...words,
+          ...(payload.error === "invalid_evidence" ? { detail: "That looks like a secret or key.", todo: "Paste a reference to the proof, such as a ticket number, never the credential itself." } : {}),
         });
         return;
       }

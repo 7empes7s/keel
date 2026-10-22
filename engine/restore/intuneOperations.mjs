@@ -758,8 +758,13 @@ async function assignmentsAfterWrite(io, { payload, verb, targetId, resource }) 
     current = liveAssignmentIdentities(listed.body?.value ?? [], { extras });
   }
   if (sameIdentities(plan.identities, current)) return { changes: { assignments: 'already as in the backup' } };
-  const body = { [record.assignmentBodyKey ?? 'assignments']: plan.assignments.map((assignment) => ({ '@odata.type': record.assignmentType, ...assignment })) };
-  const result = await io.retryOperation(() => io.writer.write(record.version, `${base}/assign`, { method: 'POST', body }));
+  // Most kinds take /assign; a policy set takes its assignments through its
+  // update action (batch 16), with empty item lists so its items stay.
+  const body = {
+    ...(record.assignmentBodyBase ?? {}),
+    [record.assignmentBodyKey ?? 'assignments']: plan.assignments.map((assignment) => ({ '@odata.type': record.assignmentType, ...assignment })),
+  };
+  const result = await io.retryOperation(() => io.writer.write(record.version, `${base}/${record.assignmentAction ?? 'assign'}`, { method: 'POST', body }));
   if (!result.ok) return { error: `assigning the policy failed: ${outcomeDetail(result)}` };
   const check = await readUntil(io, record.version, `${base}/assignments`, (r) => recordNotFound(r)
     || (r?.ok === true && !sameIdentities(plan.identities, liveAssignmentIdentities(r.body?.value ?? [], { extras }))), io.readOptions);
@@ -1386,11 +1391,14 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   }),
   // A policy set is written, then its items (the apps and policies in it)
   // are synced through the set's update action. Every app and policy it holds
-  // must exist in the target with the same id. Who it is assigned to is not written.
+  // must exist in the target with the same id. Batch 16: then who it is
+  // assigned to, through the same update action (a set has no /assign).
   policySet: defineRecord({
     resourceType: 'policySet', version: 'beta', collection: '/deviceAppManagement/policySets', operations: ['create', 'update'],
     excluded: ['items', 'assignments', 'status', 'errorCode'],
-    refusal: policySetRefusal, preflight: policySetItemsExist, afterWrite: policySetItemsAfterWrite,
+    refusal: policySetRefusal, preflight: policySetItemsExist, afterWrite: inOrder(policySetItemsAfterWrite, assignmentsAfterWrite),
+    assignmentType: '#microsoft.graph.policySetAssignment', assignmentAction: 'update',
+    assignmentBodyBase: Object.freeze({ addedPolicySetItems: [], updatedPolicySetItems: [], deletedPolicySetItemIds: [] }),
     permission: 'DeviceManagementApps.ReadWrite.All',
   }),
   // Restore gaps, batch 7: settings catalog compliance policies. The backup
@@ -1504,7 +1512,9 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     assignmentType: '#microsoft.graph.targetedManagedAppPolicyAssignment', permission: 'DeviceManagementApps.ReadWrite.All',
   }),
   // An iOS app provisioning profile: its name, description, scope tags and the
-  // profile file. Who it is assigned to is not backed up.
+  // profile file. Batch 16: who it is assigned to is read per profile and
+  // written through /assign, in the body's iOSLobAppProvisioningConfigAssignments
+  // list (the older group assignments list is not sent).
   iosLobAppProvisioningConfiguration: defineRecord({
     resourceType: 'iosLobAppProvisioningConfiguration', version: 'beta', collection: '/deviceAppManagement/iosLobAppProvisioningConfigurations',
     operations: ['create', 'update'], writable: ['displayName', 'description', 'payloadFileName', 'payload', 'expirationDateTime', 'roleScopeTagIds'],
@@ -1514,7 +1524,9 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
       const { payload: _file, payloadFileName: _name, expirationDateTime: _expiry, ...rest } = body;
       return rest;
     },
-    refusal: provisioningProfileRefusal, permission: 'DeviceManagementApps.ReadWrite.All',
+    refusal: provisioningProfileRefusal, afterWrite: assignmentsAfterWrite,
+    assignmentType: '#microsoft.graph.iosLobAppProvisioningConfigurationAssignment', assignmentBodyKey: 'iOSLobAppProvisioningConfigAssignments',
+    permission: 'DeviceManagementApps.ReadWrite.All',
   }),
   // Restore gaps, batch 13. Which app depends on or replaces which: the two
   // apps and the direction are set on create; an update changes only how

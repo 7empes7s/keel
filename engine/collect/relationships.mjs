@@ -183,6 +183,9 @@ const ASSIGNMENT_ROUTES = Object.freeze({
   deviceCustomAttributeShellScript: { version: 'beta', base: '/deviceManagement/deviceCustomAttributeShellScripts', requires: DEVICE_CONFIG },
   deviceManagementCompliancePolicy: { version: 'beta', base: '/deviceManagement/compliancePolicies', requires: DEVICE_CONFIG },
   windowsManagedAppProtection: { version: 'beta', base: '/deviceAppManagement/windowsManagedAppProtections', requires: APPS },
+  // Restore gaps batch 16: policy sets and iOS app provisioning profiles.
+  policySet: { version: 'beta', base: '/deviceAppManagement/policySets', requires: APPS },
+  iosLobAppProvisioningConfiguration: { version: 'beta', base: '/deviceAppManagement/iosLobAppProvisioningConfigurations', requires: APPS },
   managedAppPolicy: {
     version: 'v1.0',
     requires: APPS,

@@ -228,7 +228,8 @@ export const COMPLETENESS = Object.freeze({
   // Restore gaps batch 15: assignments read per policy and written through /assign.
   deviceManagementCompliancePolicy: {},
   deviceManagementReusablePolicySetting: {},
-  policySet: { missing: [part('Who the set is assigned to', 'not-written')] },
+  // Restore gaps batch 16: assignments read per set and written through its update action.
+  policySet: {},
   vppToken: { whole: 'not-written', missing: [part('The token file', 'secret')] },
   depOnboardingSetting: { whole: 'not-written', missing: [part('The token file', 'secret'), part('Enrollment profiles under each token', 'other-route')] },
   androidManagedStoreAccountEnterpriseSettings: { whole: 'not-written', missing: [part('Enrollment company codes and QR codes', 'secret')] },
@@ -265,7 +266,8 @@ export const COMPLETENESS = Object.freeze({
   deviceManagementDerivedCredentialSettings: { whole: 'not-written' },
   microsoftTunnelConfiguration: { missing: [part('The sites and servers that use it', 'other-route')] },
   microsoftTunnelHealthThreshold: { whole: 'not-written' },
-  iosLobAppProvisioningConfiguration: { missing: [part('Who the profile is assigned to', 'other-route')] },
+  // Restore gaps batch 16: assignments read per profile and written through /assign.
+  iosLobAppProvisioningConfiguration: {},
   mobileAppRelationship: { missing: [part('The app packages on both ends, added again by hand before the link', 'binary-route')] },
   managedEBook: { whole: 'not-written', missing: [part('Who the book is assigned to', 'other-route')] },
   managedEBookCategory: { missing: [part('Which books are in the category', 'other-route')] },

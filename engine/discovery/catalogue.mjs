@@ -33,7 +33,17 @@ const key = (path) => catalogPath(path).toLowerCase();
 export const isUnderItem = (path) => /\{[^}]+\}/.test(path);
 
 /**
- * Map<lowercase path, [{ type, version, source }]> of everything catalogued, from
+ * The `$filter` a catalogue query says a list needs before Graph will answer it
+ * (roleManagementPolicies answers 400 MissingProvider without its scope filter),
+ * or null. A filter naming a parent (`{parent}`) is read per parent, never here.
+ */
+export function requiredFilter(query) {
+  const filter = String(query ?? '').split('&').find((part) => part.startsWith('$filter='));
+  return filter && !/\{[^}]+\}/.test(filter) ? filter : null;
+}
+
+/**
+ * Map<lowercase path, [{ type, version, source, filter }]> of everything catalogued, from
  * `catalog` (default CATALOG), the workload paths and the alias paths (another path
  * to a catalogued kind, engine/discovery/notGaps.mjs).
  */
@@ -45,7 +55,7 @@ export function catalogedGraphPaths({ catalog = CATALOG, workloadPaths = WORKLOA
     out.set(key(path), list);
   };
   for (const entry of catalog) {
-    if (!isUnderItem(entry.path)) push(entry.path, { type: entry.type, version: entry.version, source: 'catalogue' });
+    if (!isUnderItem(entry.path)) push(entry.path, { type: entry.type, version: entry.version, source: 'catalogue', filter: requiredFilter(entry.query) });
   }
   // A kind read per object (Intune scripts: list, then one GET each) is backed up
   // through the list it reads first, when no other kind already claims that list.

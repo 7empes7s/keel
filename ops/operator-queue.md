@@ -986,6 +986,7 @@ being triggered by queue updates.
      `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; per operation: promoted / refused (exact Graph message) / blocked; step 4; step 5; approval ids; the evidence
   branch and commit; anything left in the tenant.
+
 ### Q142: Live backup and restore of administrative templates with their settings (fixes #472, after #487)
 - Drafted by the "Admin templates backed up empty" thread (2026-10-22), from your Q114 finding **#472**. Code: PR #487. Fixture-tested only.
   This replaces the administrative template part of Q114 (still blocked there on #472); the custom attribute script part stays in Q114.

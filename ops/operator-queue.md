@@ -6851,8 +6851,19 @@ item that needs it stays untouched.
   - A schedule-only change, a fix turned off, or an added exclusion reaches no one new and needs no approval.
   - The review page shows "Newly assigned to ..." on each such effect.
 - Needs: /opt/keel-live at the #464 merge or later (`grep -q newAssignmentReach /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result: blocked (2026-10-22 07:45 UTC) on **#466**, not started (no fixtures created). The Needs are met at 1856809, but a snapshot dry run still stops in the current-state read (`collecting deviceManagementExchangeConnector failed`). I re-checked at 1856809 with the Q109 dry run at 07:45 UTC.
+- Status: done
+- Result: done (2026-10-22 18:01 UTC). **The "Runs on devices" approval behaves as designed:** a recreated script and a widened remediation each needed it, and a schedule-only change did not. 2 records promoted. B = 0450b0f → **a60c774**. Restorer only; global admin not used; fixtures assigned only to empty groups.
+  - Fixtures: empty groups `KEEL-RT-152-assign` and `-assign-b`; `KEEL-RT-152-script` and `KEEL-RT-152-remediation` (daily 01:00), both assigned to `-assign`.
+  - **First try (my timing error):** S = `afcd4514`, taken seconds after the groups were created, missed both groups (57 groups). So the create dry run had **0 effects**, and the restore-only run (approval 6ee67075, job `ce5c9594`) created the script but said "assignments cannot be restored: an assigned group is not in the backup" (uncertain). This was not a KEEL bug: I reassigned by hand and took S2 = `fc42edb1` (both groups present).
+  - **Step 2, create round** (from S2): deleted the script. Dry run `18174994`: **1 effect**, `runs-on-devices` on `scriptContent`, newAssignments `["group:KEEL-RT-152-assign"]`.
+    - Restore approval only (**00441ae0**): job `90ff9013` **blocked**: "blocked-content-effect: 1 content effect(s) (runs-on-devices) need a separate, current high-impact approval of exactly these effects. …". Nothing written.
+    - Content effect approved (**1ccef18c**) plus approval **97206b75**: job `1f75be37` created the script with `Write-Output 'KEEL-RT'`, assigned to `-assign`. **Promoted** (deviceManagementScript.create).
+  - **Step 3, widening:** assigned the remediation to both groups, S3 = `b864469e` (2 assignments), then removed `-assign-b`. Dry run `d4b141d5`: update with **2 effects**, `runs-on-devices` on detectionScriptContent and remediationScriptContent (same text), newAssignments
+    `["group:KEEL-RT-152-assign-b, runRemediationScript: false"]`. Both approved (**3eae55c6**), approval **abe56de5**, job `2431c05f`: both groups assigned at 01:00. **Promoted** (deviceHealthScript.update).
+  - **Step 4, no approval needed:** schedule changed to 23:00 only. Dry run `A3` from S3: update, **0 content effects**. Restore approval only (**9d5d112f**), job `af072850`: succeeded, 01:00 back on both. Captured (separate folder, not promoted, so it does not overwrite the step 3 record).
+  - **Step 5, re-run:** **not done properly.** My dry run selected the script under its pre-S2 id, which is not in S3 ("selected key is not present"), and my cleanup ran straight after, so the fixtures were already gone. The #485 re-run behaviour itself was shown in Q129 (0 writes).
+  - **Step 6, cleanup:** deleted both scripts and both groups. **Nothing left.**
+  - **Evidence:** `claude/live-evidence-assigned-scripts` @ **d265293a**. pseudonymize check exit 0; my scan is clean. `live evidence`: deviceManagementScript.create and deviceHealthScript.update: `fixture-tested -> live-qualified`.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores and content effects yourself and log every approval id. Restorer only; global admin not used.
   If Graph answers 403, report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.

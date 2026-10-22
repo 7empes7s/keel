@@ -1,0 +1,36 @@
+{
+  "restoreRef": "ad056adb-c977-8f85-8ac1-0aa1c6dacfd9",
+  "entry": {
+    "naturalKey": "groupPolicyConfiguration:2d18bc0a-100a-8ba2-945e-95ceab96526b",
+    "resourceType": "groupPolicyConfiguration",
+    "operation": "update",
+    "targetId": "2d18bc0a-100a-8ba2-945e-95ceab96526b",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T11:44:10.789Z",
+    "priorState": {
+      "id": "2d18bc0a-100a-8ba2-945e-95ceab96526b",
+      "description": "drift",
+      "displayName": "KEEL-RT-admx",
+      "createdDateTime": "2026-10-22T11:38:06.1258711Z",
+      "roleScopeTagIds": [],
+      "lastModifiedDateTime": "2026-10-22T11:42:18.0243765Z",
+      "policyConfigurationIngestionType": "builtIn"
+    },
+    "intendedState": {
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-admx",
+      "roleScopeTagIds": []
+    },
+    "postState": {
+      "id": "2d18bc0a-100a-8ba2-945e-95ceab96526b",
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-admx",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/groupPolicyConfigurations/$entity",
+      "createdDateTime": "2026-10-22T11:38:06.1258711Z",
+      "roleScopeTagIds": [],
+      "lastModifiedDateTime": "2026-10-22T11:44:10.8474911Z",
+      "policyConfigurationIngestionType": "unknown"
+    }
+  }
+}

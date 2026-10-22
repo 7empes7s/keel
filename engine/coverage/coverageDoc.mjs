@@ -325,12 +325,12 @@ export const TYPE_GUIDE = Object.freeze({
     'App packages are content, not configuration, and KEEL does not back them up.',
     'Add the apps again in the Intune admin center from their store or package, using the backup as the list.'),
   managedAppPolicy: auto('App protection policies', {
-    keeps: 'Puts the settings of iOS and Android app protection policies back, recreates them when the backup holds their protected apps, and removes an unassigned policy added since the backup.',
-    todo: 'The list of protected apps is not backed up yet, so a missing policy is recreated by hand until it is. Windows protection policies are restored by hand.',
+    keeps: 'Puts the settings of iOS and Android app protection policies back, recreates them with the apps they protect, and removes an unassigned policy added since the backup.',
+    todo: 'A backup taken before the protected apps were read cannot recreate a policy; take a new backup. Windows Information Protection policies are restored by hand. Windows app protection policies are restored on their own.',
   }),
   targetedManagedAppConfiguration: auto('Managed app configuration', {
-    keeps: 'Puts the settings back, recreates a configuration when the backup holds its apps, and removes an unassigned one added since the backup.',
-    todo: 'The apps it targets are not backed up yet, so a missing configuration is recreated by hand until they are.',
+    keeps: 'Puts the settings back, recreates a configuration with the apps it targets, and removes an unassigned one added since the backup.',
+    todo: 'A backup taken before the targeted apps were read cannot recreate a configuration; take a new backup.',
   }),
   mobileAppConfiguration: auto('App configuration for managed devices', {
     keeps: 'Recreates configurations and puts their settings back when the app they configure exists, and removes an unassigned one added since the backup.',
@@ -548,9 +548,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates profiles and puts back their name, description, scope tags and the profile file from Apple.',
     todo: 'Who a profile is assigned to is not backed up yet, so assign a recreated profile again by hand. An expired file, or one that expires before the profile in Intune now, is never uploaded: renew it with Apple and upload it in the Intune admin center, under Apps, iOS/iPadOS, App provisioning profiles. A backup taken before the profile file was read is refused; take a new backup.',
   }),
-  mobileAppRelationship: manual('App dependencies and supersedence', NOT_BUILT,
-    'KEEL backs up which app depends on or replaces which, but does not restore them yet.',
-    'Recreate both apps first, then set the same dependencies and supersedence on each app in the Intune admin center, under Apps, All apps, from the backup.'),
+  mobileAppRelationship: auto('App dependencies and supersedence', {
+    keeps: 'Puts back which app depends on or replaces which, and how (install automatically or detect; update or replace), when both apps are in Intune.',
+    todo: 'Apps are not backed up, so add a deleted app again by hand first: a link to a missing app is not written. Setting an app to replace another uninstalls the older app on devices, so that needs the separate content approval.',
+  }),
   managedEBook: manual('Managed e-books', NOT_BUILT,
     'KEEL backs up each book\'s details but not yet who it is assigned to, and does not restore it yet.',
     'Sync the books again from Apple Business Manager in the Intune admin center, under Apps, eBooks, and assign them again from the backup.'),

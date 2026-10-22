@@ -182,7 +182,11 @@ for (const [type, items] of collected) {
 }
 const perParent = CATALOG.filter((entry) => entry.parent).length;
 assert.ok(perParent > 0);
-assert.equal(seen.length, M1_TYPES.length + perParent, 'one reader.collect call per type, plus the parent list for a type read per parent');
+// Restore gaps batch 13: a kind with one more read per object (the apps an app
+// configuration policy targets) reads it for its one object; a read chosen by
+// @odata.type finds none here (the fake objects carry no kind).
+const perItem = CATALOG.filter((entry) => entry.itemReads?.path).length;
+assert.equal(seen.length, M1_TYPES.length + perParent + perItem, 'one reader.collect call per type, plus the parent list for a type read per parent, plus one per object for a type with item reads');
 
 // collectM1 is order-independent against the reader: entries are keyed by type.
 const byType = Object.fromEntries(collected);

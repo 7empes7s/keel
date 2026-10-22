@@ -21,7 +21,18 @@ export default [
   { type: 'managedDevice', path: '/deviceManagement/managedDevices', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic', pageCap: 5,
     note: 'Device records are re-enrolled, not restored. Counted for scale only.' },
   { type: 'mobileApp', path: '/deviceAppManagement/mobileApps', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting', pageCap: 20 },
-  { type: 'managedAppPolicy', path: '/deviceAppManagement/managedAppPolicies', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
-  { type: 'targetedManagedAppConfiguration', path: '/deviceAppManagement/targetedManagedAppConfigurations', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
+  // Restore gaps batch 13: the apps an iOS or Android app protection policy (or
+  // an app configuration policy) covers are a separate collection, read per
+  // policy, so a restore can recreate a policy with its apps.
+  { type: 'managedAppPolicy', path: '/deviceAppManagement/managedAppPolicies', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
+    itemReads: {
+      as: 'apps',
+      byType: {
+        '#microsoft.graph.iosManagedAppProtection': '/deviceAppManagement/iosManagedAppProtections/{item}/apps',
+        '#microsoft.graph.androidManagedAppProtection': '/deviceAppManagement/androidManagedAppProtections/{item}/apps',
+      },
+    } },
+  { type: 'targetedManagedAppConfiguration', path: '/deviceAppManagement/targetedManagedAppConfigurations', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
+    itemReads: { as: 'apps', path: '/deviceAppManagement/targetedManagedAppConfigurations/{item}/apps' } },
   { type: 'mobileAppConfiguration', path: '/deviceAppManagement/mobileAppConfigurations', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting' },
 ];

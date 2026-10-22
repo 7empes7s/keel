@@ -312,6 +312,13 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-ios-prov`, drift: 'delete it: the restore uploads it again with the same file; then change its description: the restore puts it back',
     note: 'Back it up after this batch is deployed: an older backup may hold no file and is refused. Intune may refuse a file that is not signed by Apple; if it does, record that and skip this kind. Never assign it.',
   },
+  // Restore gaps, batch 13: a dependency between two fixture apps, neither
+  // assigned. No device installs or uninstalls anything.
+  mobileAppRelationship: {
+    kind: 'named-object', fixture: `two web link apps ${FIXTURE_PREFIX}-app-main and ${FIXTURE_PREFIX}-app-dep, neither assigned, with ${FIXTURE_PREFIX}-app-main depending on ${FIXTURE_PREFIX}-app-dep (detect only)`,
+    select: `${FIXTURE_PREFIX}-app-main`, drift: 'remove the dependency: the restore adds it back; then set it to install automatically: the restore sets it back to detect',
+    note: 'Use a dependency, never a supersedence set to replace (that uninstalls apps on devices). Never assign either app. If Intune refuses a dependency on a web link app, use two unassigned line-of-business test apps instead, or record that and skip this kind.',
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons. None touches sign-in,
   // Conditional Access or any account; each is set back to its value after the run.
   externalIdentitiesPolicy: {

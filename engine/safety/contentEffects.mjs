@@ -324,6 +324,14 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
     rule('appActionIfUnableToAuthenticateUser', 'irreversible', becomes('wipe')),
     rule('mobileThreatDefenseRemediationAction', 'irreversible', becomes('wipe')),
   ] },
+  // Restore gaps batch 13: a link between two Intune apps. Reviewed (every
+  // field of both beta kinds): a dependency installs or detects another app,
+  // and an "update" supersedence upgrades in place, both keeping app data. A
+  // supersedence set to "replace" uninstalls the older app on every device the
+  // newer one is assigned to, with its local data, so it is judged on create too.
+  mobileAppRelationship: { reviewed: true, judgesCreates: true, rules: [
+    rule('supersedenceType', 'irreversible', becomes('replace')),
+  ] },
   // PR #435 follow-up: Intune scripts and remediations. An update that changes a
   // script's text pushes that text to every device the script is assigned to, so it
   // needs the separate approval, showing the text. Which devices it is assigned to

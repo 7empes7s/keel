@@ -58,12 +58,19 @@ try {
       calls++;
       assert.equal(opts.method, 'GET');
       assert.equal(opts.headers['Accept-Language'], 'en-US');
+      // Restore gaps batch 13: a kind read with one more collection per object
+      // (the apps a policy covers) reads it after the list.
+      const itemRead = CATALOG.find((entry) => entry.type === type).itemReads?.path;
+      if (itemRead && calls === 2) {
+        assert.equal(url, `https://graph.microsoft.com/${endpoint.split('/')[1]}${itemRead.replace('{item}', object.id)}`, `${type}: one read per object`);
+        return respond({ value: [] });
+      }
       assert.equal(url, `https://graph.microsoft.com${endpoint}`, `${type}: measured endpoint, no unsolicited $top`);
       return respond(singleton ? object : { value: [object] });
     };
     const reader = new GraphReader(async () => 'fixture-token');
     const objects = await adapter.collect(reader, { tenantId });
-    assert.equal(calls, 1);
+    assert.equal(calls, CATALOG.find((entry) => entry.type === type).itemReads?.path ? 2 : 1);
     assert.deepEqual(objects, [object], `${type}: singleton/collection decoded without dropping payload`);
     const resources = canonicalizeAll([[type, objects]]);
     assert.equal(resources.length, 1);

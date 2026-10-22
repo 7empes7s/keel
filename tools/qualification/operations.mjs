@@ -310,6 +310,15 @@ const FIXTURE_PAYLOADS = Object.freeze({
     groupPolicyUploadedLanguageFiles: [{ fileName: 'fixture.adml', languageCode: 'en-US', content: 'PHBvbGljeURlZmluaXRpb25SZXNvdXJjZXMvPg==' }],
   },
   hardwareConfiguration: { displayName: 'Fixture BIOS configuration', description: 'Fixture', perDevicePasswordDisabled: false, roleScopeTagIds: ['0'] },
+  // Restore gaps, batch 12: Edge on Windows, and a provisioning profile file (base64) that expires far ahead.
+  windowsManagedAppProtection: {
+    displayName: 'Fixture Windows protection', description: 'Fixture', printBlocked: true, allowedOutboundClipboardSharingLevel: 'none', roleScopeTagIds: ['0'],
+    apps: [{ mobileAppIdentifier: { '@odata.type': '#microsoft.graph.windowsAppIdentifier', windowsAppId: 'com.microsoft.edge' } }],
+  },
+  iosLobAppProvisioningConfiguration: {
+    displayName: 'Fixture provisioning profile', description: 'Fixture', payloadFileName: 'fixture.mobileprovision', payload: 'PHBsaXN0Lz4=',
+    expirationDateTime: '2099-01-01T00:00:00Z', roleScopeTagIds: ['0'],
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons.
   externalIdentitiesPolicy: { allowExternalIdentitiesToLeave: true, allowDeletedIdentitiesDataRemoval: false },
   accessReviewPolicy: { isGroupOwnerManagementEnabled: true },
@@ -586,6 +595,11 @@ export function fakeGraph() {
       if (/^\/deviceManagement\/groupPolicyDefinitions\/[^/]+$/.test(path)) return { ok: true, status: 200, body: { id: decodeURIComponent(path.split('/').pop()) } };
       const settings = /^(\/deviceManagement\/groupPolicyConfigurations\/[^/]+)\/definitionValues$/.exec(path);
       if (settings && !objects.has(path) && objects.has(settings[1])) return { ok: true, status: 200, body: { value: [] } };
+      // Restore gaps batch 12: the imported ADMX files are listed before an upload.
+      if (path === '/deviceManagement/groupPolicyUploadedDefinitionFiles') {
+        const value = [...objects.entries()].filter(([key]) => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes('/')).map(([, object]) => object);
+        return { ok: true, status: 200, body: { value } };
+      }
       if (DIRECTORY_POLICY_COLLECTIONS.has(path)) {
         const clientId = /clientId eq '([^']*)'/.exec(decodeURIComponent(requested.split('?')[1] ?? ''))?.[1];
         const value = [...objects.entries()]

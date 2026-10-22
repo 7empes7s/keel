@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 133 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 84 at least in part; the other 83 are restored by hand from the backup.
+KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 133 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 86 at least in part; the other 81 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -448,12 +448,12 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Derived credential issuers | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Microsoft Tunnel server configurations | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Microsoft Tunnel health thresholds | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Apple app provisioning profiles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Apple app provisioning profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | App dependencies and supersedence | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Managed e-books | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | E-book categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Classroom device cart assignments | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Windows app protection policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Windows app protection policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Windows code signing certificates | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Symantec code signing certificate | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (KEEL choice) | None |
 | Endpoint analytics baselines | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -610,9 +610,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* A site points to its configuration by id: point the site at a recreated configuration again by hand.
 - **Microsoft Tunnel health thresholds** (not built yet). KEEL backs up the healthy and unhealthy limits but does not restore them yet.
   - *You do:* Set the same limits in the Intune admin center, under Tenant administration, Microsoft Tunnel Gateway, Health status, from the backup.
-- **Apple app provisioning profiles** (not built yet). KEEL backs up each profile with its file from Apple but not yet who it is assigned to, and does not restore it yet.
+- **Apple app provisioning profiles.** Recreates profiles and puts back their name, description, scope tags and the profile file from Apple.
   - *Not brought back:* who the profile is assigned to (stored separately and not in the backup yet).
-  - *You do:* Upload the profile file again in the Intune admin center, under Apps, iOS/iPadOS, App provisioning profiles, and assign it again. Renew it with Apple first if it has expired.
+  - *You do:* Who a profile is assigned to is not backed up yet, so assign a recreated profile again by hand. An expired file, or one that expires before the profile in Intune now, is never uploaded: renew it with Apple and upload it in the Intune admin center, under Apps, iOS/iPadOS, App provisioning profiles. A backup taken before the profile file was read is refused; take a new backup.
 - **App dependencies and supersedence** (not built yet). KEEL backs up which app depends on or replaces which, but does not restore them yet.
   - *You do:* Recreate both apps first, then set the same dependencies and supersedence on each app in the Intune admin center, under Apps, All apps, from the backup.
 - **Managed e-books** (not built yet). KEEL backs up each book's details but not yet who it is assigned to, and does not restore it yet.
@@ -624,9 +624,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 - **Classroom device cart assignments.** Recreates cart assignments and puts back their name, description, devices and classes.
   - *Not brought back:* the devices and classes it names (stored separately and not in the backup yet).
   - *You do:* Devices and classes are named by id and are not restored by KEEL: if a device or class was removed, add the cart to the new class again in Intune for Education.
-- **Windows app protection policies** (not built yet). KEEL backs up each policy's settings but not yet who it is assigned to or which apps it covers, and does not restore it yet.
-  - *Not brought back:* who the policy is assigned to and which apps it covers (stored separately and not in the backup yet).
-  - *You do:* Recreate the policy in the Intune admin center, under Apps, App protection policies, from the backup, then add the apps and assign it again.
+- **Windows app protection policies.** Recreates policies and puts back their settings and the apps they cover.
+  - *Not brought back:* who the policy is assigned to (stored separately and not in the backup yet).
+  - *You do:* Who a policy is assigned to is not backed up yet, so assign a recreated policy again by hand in the Intune admin center, under Apps, App protection policies. A backup taken before the apps were read is refused for a recreate; take a new backup.
 - **Windows code signing certificates** (not built yet). KEEL backs up each public certificate but does not restore it yet.
   - *You do:* Upload the same certificate again in the Intune admin center, under Tenant administration, Connectors and tokens, Windows enterprise certificate, from the backup.
 - **Symantec code signing certificate** (KEEL choice). KEEL backs up the certificate's subject, issuer and expiry but never the certificate file or its password.

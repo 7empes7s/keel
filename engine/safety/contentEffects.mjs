@@ -128,6 +128,21 @@ const catalogSetting = (definitionId) => (payload) => {
 // Windows DeviceLock/MaxDevicePasswordFailedAttempts in the settings catalog: wipes the device after that many failures (0 = never).
 const CATALOG_WIPE_THRESHOLD = 'device_vendor_msft_policy_config_devicelock_maxdevicepasswordfailedattempts';
 
+// Restore gaps batch 12: an app protection "wipe" version. A device or app
+// below it has its work data removed from the app. Introducing one, or raising
+// it, removes that data from more devices.
+const versionParts = (value) => String(value).split('.').map((part) => Number.parseInt(part, 10) || 0);
+const versionAbove = (left, right) => {
+  const a = versionParts(left);
+  const b = versionParts(right);
+  for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+  }
+  return false;
+};
+const hasVersion = (value) => typeof value === 'string' && value.trim().length > 0;
+const wipeVersionRises = (before, after) => hasVersion(after) && (!hasVersion(before) || versionAbove(after, before));
+
 /** groupSetting stores its values as [{ name, value }]; address one by name. */
 const settingValue = (name) => (payload) => payload?.values?.find?.((entry) => entry?.name === name)?.value;
 
@@ -294,6 +309,20 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   ] },
   configurationPolicy: { reviewed: true, judgesCreates: true, rules: [
     rule(`settings[${CATALOG_WIPE_THRESHOLD}]`, 'irreversible', wipeThresholdTightens, catalogSetting(CATALOG_WIPE_THRESHOLD)),
+  ] },
+  // Restore gaps batch 12: Windows app protection (Edge on unmanaged devices).
+  // Reviewed (every field of the beta resource): the data transfer, clipboard,
+  // print and threat level settings only restrict where work data may go, and
+  // the required and warning versions block or warn, keeping the data. What
+  // removes work data from the app is a wipe: a wipe version that is new or
+  // higher, or an action that becomes "wipe". A restore never assigns a
+  // recreated policy, so creates are not judged.
+  windowsManagedAppProtection: { reviewed: true, rules: [
+    rule('minimumWipeAppVersion', 'irreversible', wipeVersionRises),
+    rule('minimumWipeOsVersion', 'irreversible', wipeVersionRises),
+    rule('minimumWipeSdkVersion', 'irreversible', wipeVersionRises),
+    rule('appActionIfUnableToAuthenticateUser', 'irreversible', becomes('wipe')),
+    rule('mobileThreatDefenseRemediationAction', 'irreversible', becomes('wipe')),
   ] },
   // PR #435 follow-up: Intune scripts and remediations. An update that changes a
   // script's text pushes that text to every device the script is assigned to, so it

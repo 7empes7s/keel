@@ -300,6 +300,18 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-bios`, drift: 'change its description: the restore puts it back',
     note: 'Update only: a deleted configuration is imported again by hand. If Intune refuses to create it without a real OEM settings file, record that and skip this kind. Never assign it.',
   },
+  // Restore gaps, batch 12: a Windows app protection policy and an iOS
+  // provisioning profile, both assigned to nobody. No device or user is affected.
+  windowsManagedAppProtection: {
+    kind: 'named-object', fixture: `Windows app protection policy ${FIXTURE_PREFIX}-win-mam covering Microsoft Edge (printing blocked, no wipe version, no wipe action), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-win-mam`, drift: 'delete it: the restore recreates it with Edge as its app; then turn printing back on: the restore blocks it again',
+    note: 'Back it up after this batch is deployed: an older backup holds no apps and a recreate is refused. Never assign it. If the tenant has no Windows MAM (Edge for Business) support, record that and skip this kind.',
+  },
+  iosLobAppProvisioningConfiguration: {
+    kind: 'named-object', fixture: `iOS app provisioning profile ${FIXTURE_PREFIX}-ios-prov with a test .mobileprovision file, assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-ios-prov`, drift: 'delete it: the restore uploads it again with the same file; then change its description: the restore puts it back',
+    note: 'Back it up after this batch is deployed: an older backup may hold no file and is refused. Intune may refuse a file that is not signed by Apple; if it does, record that and skip this kind. Never assign it.',
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons. None touches sign-in,
   // Conditional Access or any account; each is set back to its value after the run.
   externalIdentitiesPolicy: {

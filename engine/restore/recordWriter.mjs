@@ -16,6 +16,9 @@
  *  - `odataType`: 'required' (sent and checked), 'keep' (sent when present) or
  *    'drop' (never sent);
  *  - `refusal(resource, verb, ctx)`: a type's own refusals before any call;
+ *  - `preflight(io, step)`: live reads before a write; returns null, the text
+ *    of a missing dependency (the write fails), or { skipped } when live
+ *    already holds what the write would make (the write is skipped);
  *  - `afterWrite(io, step)`: child writes made after the object (target apps,
  *    localized messages), each verified by the record;
  *  - `deleteGuard(io, step)`: a type's own reason not to delete;
@@ -307,6 +310,8 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   }
   if (record.preflight && writer) {
     const reason = await record.preflight(io, { resource, payload, verb, targetId, ctx });
+    // A preflight may also find the write already done another way: { skipped }.
+    if (reason?.skipped) return refusalEntry(naturalKey, { outcome: 'skipped', reason: reason.skipped });
     if (reason) return { failed: { naturalKey, error: `dependency: ${reason}; nothing was written` } };
   }
   if (verb === 'update' && record.updateGuard && writer && fields.length > 0) {

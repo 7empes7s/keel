@@ -50,9 +50,13 @@ export default [
   { type: 'microsoftTunnelHealthThreshold', path: '/deviceManagement/microsoftTunnelHealthThresholds', version: 'beta',
     criticality: 'tier3', blastRadius: 'cosmetic' },
   // iOS line-of-business app provisioning profiles (the Apple .mobileprovision file).
-  { type: 'iosLobAppProvisioningConfiguration', path: '/deviceAppManagement/iosLobAppProvisioningConfigurations', version: 'beta',
+  // Restore gaps batch 12: listed, then each profile read on its own, so the
+  // backup holds the file whether or not the list returns it (like ADMX files).
+  { type: 'iosLobAppProvisioningConfiguration', path: '/deviceAppManagement/iosLobAppProvisioningConfigurations/{parent}', version: 'beta',
     criticality: 'tier2', blastRadius: 'access-affecting',
-    note: 'An expired profile stops the apps it signs from opening. The payload is the profile file Apple issued, with no private key.' },
+    parent: { path: '/deviceAppManagement/iosLobAppProvisioningConfigurations', select: 'id', key: 'id', as: 'id' },
+    absentWhenNotFound: true,
+    note: 'An expired profile stops the apps it signs from opening. The payload is the profile file Apple issued, with no private key. Read per profile.' },
   // App dependencies and supersedence between Intune apps.
   { type: 'mobileAppRelationship', path: '/deviceAppManagement/mobileAppRelationships', version: 'beta',
     criticality: 'tier3', blastRadius: 'cosmetic',
@@ -63,10 +67,15 @@ export default [
   // Shared iPad cart to classroom associations (Intune for Education).
   { type: 'cartToClassAssociation', path: '/deviceManagement/cartToClassAssociations', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic' },
   // App protection policies for Windows (Edge on unmanaged Windows devices).
-  // Not in managedAppPolicies on v1.0, so read on their own path.
-  { type: 'windowsManagedAppProtection', path: '/deviceAppManagement/windowsManagedAppProtections', version: 'beta',
+  // Not in managedAppPolicies on v1.0, so read on their own path. The apps a
+  // policy covers are returned only when one policy is read with them
+  // expanded, so each is listed, then read on its own (restore gaps batch 12).
+  { type: 'windowsManagedAppProtection', path: '/deviceAppManagement/windowsManagedAppProtections/{parent}', version: 'beta',
     criticality: 'tier2', blastRadius: 'access-affecting',
-    note: 'Who the policy is assigned to and which apps it covers are read per policy and not backed up yet.' },
+    parent: { path: '/deviceAppManagement/windowsManagedAppProtections', select: 'id', key: 'id', as: 'id' },
+    query: '$expand=apps',
+    absentWhenNotFound: true,
+    note: 'The apps each policy covers are read per policy. Who it is assigned to is not backed up yet.' },
   // Windows enterprise code signing certificates for line-of-business apps.
   // The certificate is the public part only.
   { type: 'enterpriseCodeSigningCertificate', path: '/deviceAppManagement/enterpriseCodeSigningCertificates', version: 'beta',

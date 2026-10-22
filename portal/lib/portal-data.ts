@@ -22,6 +22,7 @@ import { captureApprovalScope, scopePredicate } from "../../engine/authz/entityS
 import { routeApproval } from "../../engine/govern/approvals.mjs";
 import { MAX_ATTRIBUTED_CHANGES, attributeChanges, changedFields } from "../../engine/identity/attribution.mjs";
 import { loadBreakGlassReadiness } from "../../engine/safety/breakGlassReadiness.mjs";
+import { withoutScriptBodies } from "../../engine/safety/scriptBodies.mjs";
 import { comparedSettings, driftEvidence, semanticChange, summarizeSemanticDrift } from "../../engine/govern/semanticDrift.mjs";
 import { answerQuestion, knownEntities } from "../../engine/query/execute.mjs";
 import {
@@ -382,16 +383,19 @@ function normalizeBaseline(raw: UnknownRecord): BaselineRecord {
   };
 }
 
+// A change as read views show it. An Intune script's text never leaves the server
+// here: it reads as its size and fingerprint (engine/safety/scriptBodies.mjs).
 function normalizeDrift(raw: UnknownRecord): DriftRecord {
+  const resourceType = String(raw.resource_type);
   return {
     id: String(raw.id),
     naturalKey: String(raw.natural_key),
-    resourceType: String(raw.resource_type),
+    resourceType,
     changeType: String(raw.change_type) as DriftRecord["changeType"],
     blastRadius: String(raw.blast_radius),
     detectedAt: iso(raw.detected_at) ?? "",
-    before: raw.before_payload ?? null,
-    after: raw.after_payload ?? null,
+    before: withoutScriptBodies(resourceType, raw.before_payload ?? null),
+    after: withoutScriptBodies(resourceType, raw.after_payload ?? null),
     name: payloadName(raw.after_payload) ?? payloadName(raw.before_payload),
   };
 }

@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 133 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 76 at least in part; the other 91 are restored by hand from the backup.
+KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 27 are full, 133 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 78 at least in part; the other 89 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -63,7 +63,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Authentication event listeners | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Exchange admin roles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Exchange admin role assignments | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
-| Exchange app access scopes | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Exchange app access scopes | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Defender admin roles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Defender admin role assignments | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Defender app access scopes | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
@@ -174,8 +174,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Recreate each custom role with Exchange Online PowerShell from the backup, from the same parent role, before the role groups or apps that use it.
 - **Exchange admin role assignments** (not built yet). KEEL backs up who holds each Exchange role and over which scope, but does not restore them yet. Admin access needs a privilege review first.
   - *You do:* Check the backup with the person who approves admin access, then add the role groups, people or apps again in the Exchange admin center, under Roles, Admin roles, or with Exchange Online PowerShell.
-- **Exchange app access scopes** (not built yet). KEEL backs these up but does not restore them yet. They limit which mailboxes an app role reaches.
-  - *You do:* Recreate each scope with Exchange Online PowerShell from the backup, before the app role assignments that use it. There is no admin center page for it.
+- **Exchange app access scopes.** Recreates scopes and puts back their name and which mailboxes they cover (the recipient filter).
+  - *Not brought back:* the app role assignments that use it (stored separately and not in the backup yet).
+  - *You do:* An app role assignment points to its scope by id and is not restored: point the assignment at a recreated scope again with Exchange Online PowerShell.
 - **Defender admin roles** (not built yet). KEEL backs these up but does not restore them yet.
   - *You do:* Recreate each role in the Microsoft Defender portal, under System, Permissions, Microsoft Defender XDR, Roles, from the backup.
 - **Defender admin role assignments** (not built yet). KEEL backs up who holds each Defender role and for which data sources, but does not restore them yet. Admin access needs a privilege review first.
@@ -428,7 +429,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Exchange on-premises connectors | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 | Exchange on-premises access settings | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | App categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Company Portal branding | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Company Portal branding | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Settings catalog compliance policies | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Reusable settings groups | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Policy sets | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -558,9 +559,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 - **App categories.** Recreates your own categories and puts their names back. The built-in categories come with every tenant and are never changed.
   - *Not brought back:* built-in categories (set by Microsoft); which apps are in the category (stored separately and not in the backup yet).
   - *You do:* Which apps are in a category is set on each app; add the apps to a recreated category again by hand.
-- **Company Portal branding** (not built yet). KEEL backs up the branding settings but does not restore them yet. The logo images are not backed up.
-  - *Not brought back:* logo images (stored separately and not in the backup yet).
-  - *You do:* Recreate the branding in the Intune admin center from the backup, upload the logos from your own copy, and assign it to the groups in the backup.
+- **Company Portal branding.** Recreates branding profiles for your groups and puts back their name, colours, contact details, links and Company Portal options. The default branding, which every user sees, is not changed.
+  - *Not brought back:* logo images (stored separately and not in the backup yet); who the profile is assigned to (in the backup, but KEEL does not write it yet).
+  - *You do:* Logo images are not backed up: upload them again from your own copy. Assign a recreated profile to its groups again by hand, and set the default branding by hand from the backup.
 - **Settings catalog compliance policies.** Recreates policies and puts back their settings and actions for noncompliance (block, emails, grace periods).
   - *Not brought back:* who the policy is assigned to (stored separately and not in the backup yet).
   - *You do:* Who a policy is assigned to is not backed up yet, so assign it again by hand; Conditional Access that requires compliant devices needs it assigned first. A backup taken before the actions for noncompliance were read cannot recreate a policy; take a new backup.

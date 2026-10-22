@@ -375,6 +375,14 @@ export const IDENTITY_RECORDS = Object.freeze({
     writable: FEDERATION_WRITABLE_FIELDS, refusal: federationRefusal, afterWrite: federationAfterWrite,
     permission: 'Domain.ReadWrite.All', docs: v1('samlorwsfedexternaldomainfederation-update'),
   }),
+  // Restore gaps, batch 9. An Exchange app access scope: a recipient filter
+  // that limits which mailboxes an app role assignment reaches. Its kind is
+  // set on create only. The app role assignments that name it are not written.
+  exchangeCustomAppScope: defineRecord({
+    resourceType: 'exchangeCustomAppScope', version: 'beta', collection: '/roleManagement/exchange/customAppScopes',
+    operations: ['create', 'update'], writable: ['displayName', 'customAttributes'], createOnly: ['type'],
+    permission: 'RoleManagement.ReadWrite.Exchange', docs: beta('customappscope-update'),
+  }),
 });
 
 /**

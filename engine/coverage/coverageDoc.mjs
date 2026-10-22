@@ -416,9 +416,10 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates your own categories and puts their names back. The built-in categories come with every tenant and are never changed.',
     todo: 'Which apps are in a category is set on each app; add the apps to a recreated category again by hand.',
   }),
-  intuneBrandingProfile: manual('Company Portal branding', NOT_BUILT,
-    'KEEL backs up the branding settings but does not restore them yet. The logo images are not backed up.',
-    'Recreate the branding in the Intune admin center from the backup, upload the logos from your own copy, and assign it to the groups in the backup.'),
+  intuneBrandingProfile: auto('Company Portal branding', {
+    keeps: 'Recreates branding profiles for your groups and puts back their name, colours, contact details, links and Company Portal options. The default branding, which every user sees, is not changed.',
+    todo: 'Logo images are not backed up: upload them again from your own copy. Assign a recreated profile to its groups again by hand, and set the default branding by hand from the backup.',
+  }),
   deviceManagementCompliancePolicy: auto('Settings catalog compliance policies', {
     keeps: 'Recreates policies and puts back their settings and actions for noncompliance (block, emails, grace periods).',
     todo: 'Who a policy is assigned to is not backed up yet, so assign it again by hand; Conditional Access that requires compliant devices needs it assigned first. A backup taken before the actions for noncompliance were read cannot recreate a policy; take a new backup.',
@@ -501,9 +502,10 @@ export const TYPE_GUIDE = Object.freeze({
   exchangeRoleAssignment: manual('Exchange admin role assignments', NOT_BUILT,
     'KEEL backs up who holds each Exchange role and over which scope, but does not restore them yet. Admin access needs a privilege review first.',
     'Check the backup with the person who approves admin access, then add the role groups, people or apps again in the Exchange admin center, under Roles, Admin roles, or with Exchange Online PowerShell.'),
-  exchangeCustomAppScope: manual('Exchange app access scopes', NOT_BUILT,
-    'KEEL backs these up but does not restore them yet. They limit which mailboxes an app role reaches.',
-    'Recreate each scope with Exchange Online PowerShell from the backup, before the app role assignments that use it. There is no admin center page for it.'),
+  exchangeCustomAppScope: auto('Exchange app access scopes', {
+    keeps: 'Recreates scopes and puts back their name and which mailboxes they cover (the recipient filter).',
+    todo: 'An app role assignment points to its scope by id and is not restored: point the assignment at a recreated scope again with Exchange Online PowerShell.',
+  }),
   defenderRoleDefinition: manual('Defender admin roles', NOT_BUILT,
     'KEEL backs these up but does not restore them yet.',
     'Recreate each role in the Microsoft Defender portal, under System, Permissions, Microsoft Defender XDR, Roles, from the backup.'),

@@ -252,6 +252,19 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-apple-enroll`, drift: 'change its description and default enrollment type: the restore puts back both',
     note: 'Assigned to nobody, so no user is offered it. If Intune refuses to create it (for example without an Apple MDM push certificate), record that and skip this kind.',
   },
+  // Restore gaps, batch 9: a Company Portal branding profile assigned to no
+  // group (never the default one) and an Exchange app access scope that no app
+  // role assignment uses, so no user, app or mailbox is affected.
+  intuneBrandingProfile: {
+    kind: 'named-object', fixture: `Company Portal branding profile ${FIXTURE_PREFIX}-branding (organization name ${FIXTURE_PREFIX} IT, theme colour #1B2A4A, help desk name and email, no logos), assigned to no group`,
+    select: `${FIXTURE_PREFIX}-branding`, drift: 'delete it: the restore recreates it with the same name, colour and contact details; then change its contact name and theme colour: the restore puts back both',
+    note: 'Never the default branding profile, which every user sees: KEEL refuses to write it. Logos are not backed up, so the fixture has none.',
+  },
+  exchangeCustomAppScope: {
+    kind: 'named-object', fixture: `Exchange app access scope ${FIXTURE_PREFIX}-app-scope (recipient scope, filter PrimarySmtpAddress -like 'keel-rt-scope-none*', which matches no mailbox), used by no app role assignment`,
+    select: `${FIXTURE_PREFIX}-app-scope`, drift: 'delete it: the restore recreates it with the same name and filter; then change its filter: the restore puts it back',
+    note: 'A separate scope: never the existing scope that limits the mail fixture app to keel-rt- mailboxes. No app role assignment names it, so no app reaches any mailbox through it.',
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons. None touches sign-in,
   // Conditional Access or any account; each is set back to its value after the run.
   externalIdentitiesPolicy: {

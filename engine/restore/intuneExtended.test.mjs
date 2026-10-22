@@ -768,6 +768,55 @@ test('an Apple user enrollment profile is created with its platform, and updated
   for (const field of ['platform', 'priority']) assert.equal(field in patch.body, false, field);
 });
 
+// ------------------------------------------- restore gaps, batch 9
+
+const branding = Object.freeze({
+  id: 'b-src', profileName: 'KEEL-RT-branding', profileDescription: 'Fixture', isDefaultProfile: false, displayName: 'KEEL-RT IT',
+  showLogo: false, themeColor: { r: 27, g: 42, b: 74 }, themeColorLogo: null, lightBackgroundLogo: null, landingPageCustomizedImage: null,
+  contactITName: 'Help desk', contactITEmailAddress: 'helpdesk@example.com', roleScopeTagIds: ['0'], assignments: [],
+  createdDateTime: 'x', lastModifiedDateTime: 'x',
+});
+
+test('a branding profile is created and updated through beta, never its logos, assignments or default flag', async () => {
+  const graph = idoFakeGraph();
+  const created = await applyIntuneExtendedWrite(graph, resourceOf('intuneBrandingProfile', branding), 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.path, '/deviceManagement/intuneBrandingProfiles');
+  assert.equal(post.version, 'beta');
+  for (const field of ['id', 'isDefaultProfile', 'themeColorLogo', 'lightBackgroundLogo', 'landingPageCustomizedImage', 'assignments', 'createdDateTime']) {
+    assert.equal(field in post.body, false, field);
+  }
+  assert.deepEqual(post.body.themeColor, { r: 27, g: 42, b: 74 });
+  assert.equal(post.body.contactITName, 'Help desk');
+
+  const path = '/deviceManagement/intuneBrandingProfiles/b-1';
+  const live = { ...branding, id: 'b-1', contactITName: 'Changed', themeColor: { r: 245, g: 166, b: 35 }, themeColorLogo: { type: 'image/png', value: 'bG9nbw==' } };
+  const drifted = idoFakeGraph({ seed: { [path]: live } });
+  const updated = await applyIntuneExtendedWrite(drifted, resourceOf('intuneBrandingProfile', { ...branding, id: 'b-1' }, {
+    live: { state: 'present', targetId: 'b-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  const patch = drifted.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.path, path);
+  assert.equal(patch.body.contactITName, 'Help desk');
+  assert.deepEqual(patch.body.themeColor, { r: 27, g: 42, b: 74 });
+  assert.equal('themeColorLogo' in patch.body, false, 'the live logo is kept');
+});
+
+test('the default branding profile is never written', async () => {
+  for (const [verb, extra] of [
+    ['create', {}],
+    ['update', { live: { state: 'present', targetId: 'd-1', payload: { ...branding, id: 'd-1', isDefaultProfile: true, contactITName: 'Changed' } } }],
+  ]) {
+    const graph = idoFakeGraph();
+    const result = await applyIntuneExtendedWrite(graph, resourceOf('intuneBrandingProfile', { ...branding, id: 'd-1', isDefaultProfile: true }, extra), verb, FAST);
+    assert.ok(result.skipped || result.failed, verb);
+    assert.match(JSON.stringify(result), /default Company Portal branding/, verb);
+    assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0, verb);
+  }
+});
+
 test('a policy delete passes the deletion guard and refuses a policy that is still assigned', async () => {
   for (const type of ['deviceCompliancePolicy', 'deviceConfiguration', 'configurationPolicy']) {
     const collection = INTUNE_RECORDS[type].collection;

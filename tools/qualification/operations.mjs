@@ -285,6 +285,17 @@ const FIXTURE_PAYLOADS = Object.freeze({
     displayName: 'Fixture Apple enrollment', description: 'Fixture', platform: 'iOS', defaultEnrollmentType: 'device',
     availableEnrollmentTypeOptions: [{ ownerType: 'company', enrollmentType: 'device' }, { ownerType: 'personal', enrollmentType: 'accountDrivenUserEnrollment' }],
   },
+  // Restore gaps, batch 9.
+  intuneBrandingProfile: {
+    profileName: 'Fixture branding', profileDescription: 'Fixture', displayName: 'Fixture IT', showLogo: false, showDisplayNameNextToLogo: true,
+    themeColor: { r: 27, g: 42, b: 74 }, contactITName: 'Fixture help desk', contactITEmailAddress: 'helpdesk@example.com',
+    onlineSupportSiteUrl: 'https://example.com/help', onlineSupportSiteName: 'Fixture help', privacyUrl: 'https://example.com/privacy',
+    isRemoveDeviceDisabled: false, isFactoryResetDisabled: false, roleScopeTagIds: ['0'],
+  },
+  exchangeCustomAppScope: {
+    type: 'RecipientScope', displayName: 'Fixture app scope',
+    customAttributes: { Exclusive: false, RecipientFilter: "PrimarySmtpAddress -like 'keel-rt-fixture*'" },
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons.
   externalIdentitiesPolicy: { allowExternalIdentitiesToLeave: true, allowDeletedIdentitiesDataRemoval: false },
   accessReviewPolicy: { isGroupOwnerManagementEnabled: true },

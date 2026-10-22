@@ -120,7 +120,7 @@ function FixRow({ finding, candidate, canRestore, now, primary }: {
       <div className="cp-fix-main">
         <span className="cp-fix-name">
           <b>{name}</b>
-          <small>{fixSetting(finding)} · seen in the backup of {ago(candidate.seenAt, now)}</small>
+          <small>{fixSetting(finding)} · in the backup taken {ago(candidate.seenAt, now)}</small>
         </span>
         <span aria-label={`${fixSetting(finding)}: now ${fixValue(candidate.from)}, after ${fixValue(candidate.to)}`} className="cp-fix-values" role="img">
           <Badge icon="x-circle" tone="urgent">{fixValue(candidate.from)}</Badge>

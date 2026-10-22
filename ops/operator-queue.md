@@ -5707,13 +5707,18 @@ item that needs it stays untouched.
   2026-10-22 06:27 UTC** (decision card in the "Deploys kill running jobs" thread).
 - Code: PR #449. `keel-worker` now treats SIGUSR2 (`systemctl reload keel-worker`) as drain: the running job finishes,
   nothing new is claimed, the worker exits 0 and systemd starts it on the new tree. SIGTERM still ends the running job.
-- Needs (check each, report the output):
+- Needs and step 0 (host; check each, fix 2 and 3 if needed, report the output):
   1. #449 live: `git -C /opt/keel-live log --oneline | grep -c "#449"` is at least 1.
-  2. The installed unit has the reload: `systemctl show keel-worker -p ExecReload` names `kill -USR2`. If not, vps-deployer
-     re-installs `ops/keel-worker.service` and runs `systemctl daemon-reload` (asked by the drafting thread).
-  3. The deploy drains instead of restarting: `grep -n "keel-worker" /opt/keel-deploy/deploy.sh` shows
-     `try-reload-or-restart`, and no `restart keel-worker` / `try-restart keel-worker` remains. If not, stop: vps-deployer
-     owns that change.
+  2. The installed unit has the reload: `systemctl show keel-worker -p ExecReload` names `kill -USR2`. If not, do it
+     yourself (Marouane's go above; the deploy script is yours to change): `install -m 0644
+     /opt/keel-live/ops/keel-worker.service /etc/systemd/system/ && systemctl daemon-reload`. Only this unit, so the full
+     install script and its quiet-moment preflight are not needed. No worker restart: the running worker already has the
+     SIGUSR2 handler from the #449 deploy.
+  3. The deploy drains instead of restarting. If `grep -n "keel-worker" /opt/keel-deploy/deploy.sh` still shows
+     `try-restart keel-worker` (lines 125 and 157 per your #448 comment): back it up
+     (`cp -p /opt/keel-deploy/deploy.sh /opt/keel-deploy/deploy.sh.bak-q121`), replace both with
+     `systemctl try-reload-or-restart keel-worker`, and `bash -n` it. No `restart keel-worker` / `try-restart keel-worker`
+     may remain. Report the diff on #448 too.
 - Status: todo
 - Result:
 - **Read-only toward the tenant**, same as Q101: collectors only read; no grants, no fixtures, no tenant writes. 403s are

@@ -7298,7 +7298,7 @@ item that needs it stays untouched.
   - **Change:** a long Microsoft record id (the test tenant's `B2C_<guid>_<guid>_<x>` ids) is now stored as `entra:h<32 hex>:<n>`
     (a SHA-256 prefix) instead of verbatim, so `redactSecrets` no longer rejects the page as `invalid-page`. Short ids are unchanged.
 - Needs: /opt/keel-live at the #528 merge or later (`grep -q recordRef /opt/keel-live/engine/identity/auditSources.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** Collector reads, plus one change to a `KEEL-RT-` fixture group put back at the end (standing approval for test
   fixtures). Never touch CA policies, break-glass or Marouane's account.

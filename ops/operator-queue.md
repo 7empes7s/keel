@@ -5665,3 +5665,49 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / blocked; steps 5 and 6;
   approval ids; the evidence branch and commit; anything left in the tenant.
+
+### Q124: Live backup and restore of Endpoint analytics baselines, classroom carts and Android enrollment profiles (restore gaps batch 10, after #455)
+- Drafted by the "Restore batch 10" thread (2026-10-22). Code: PR #455 (merged 2026-10-22T03:25:16+00:00, merge 0537e09). No backup change: all four kinds were already read
+  (list reads in `tools/tenant-probe/catalog.d/intune-leftovers.mjs`). New record writers, fixture-tested only, create + update, beta:
+  `userExperienceAnalyticsBaseline` (`displayName` only; **built-in baselines refused**), `cartToClassAssociation` (name, description,
+  `deviceIds`, `classroomIds`), `androidForWorkEnrollmentProfile` (name, description) and `androidDeviceOwnerEnrollmentProfile` (name,
+  description, device name template, Wi-Fi fields, scope tags; `enrollmentMode`, `enrollmentTokenType`, `isTeamsDeviceProfile` on create
+  only; a profile on a **secured Wi-Fi network is refused** unless the live profile already joins it). Tokens, QR codes and the Wi-Fi
+  password are never read or sent.
+- Needs: /opt/keel-live at the #455 merge or later (`grep -q androidDeviceOwnerEnrollmentProfile: /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
+  needs DeviceManagementConfiguration.ReadWrite.All (baselines, carts) and DeviceManagementServiceConfig.ReadWrite.All (Android
+  profiles). If Graph answers 403, report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or
+  Marouane's account. **Never change a built-in baseline, never put a device or class in the cart, never make or hand out an
+  enrollment token, and never connect managed Google Play or the legacy Android work profile connection.** No tenant-wide setting
+  is changed.
+- **Fixtures** (the reviewed guidance in `live-gate-plan.mjs` at B says the same; nothing applies them):
+  - custom Endpoint analytics baseline `KEEL-RT-baseline`;
+  - classroom cart association `KEEL-RT-cart`: description `Fixture`, no devices, no classes;
+  - legacy Android work profile enrollment profile `KEEL-RT-android-work`: description `Fixture`, no token;
+  - Android Enterprise dedicated device enrollment profile `KEEL-RT-android-owner`: device name template `KEEL-RT-{{SERIAL}}`, no
+    Wi-Fi, no token.
+  - If Intune refuses to create any fixture (Endpoint analytics not set up, no Intune for Education, no Android binding), report the
+    exact message and skip that kind; do not set anything up to make it work.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/live-gate-plan.mjs > ~/keel-rg10/plan-B.md`. Use its steps for these four types (collect, restore
+     dry run, approve, `--enforce`, `entraLive.mjs capture`, promote).
+  2. Create the fixtures, then take snapshot S (a run that reads all four types). **Backup check:** each created fixture is in S;
+     report each type's read outcome and, for baselines, whether a built-in baseline is also in S with `isBuiltIn: true`.
+  3. **Create round:** delete the created fixtures, restore from S selecting the four types, approve, enforce, capture each `create`.
+     Read back equal to the backup (baseline name; cart name and description; profile names, descriptions, mode, name template).
+  4. **Update round:** rename the baseline to `KEEL-RT-baseline-drift`; change the cart description to `drift`; change both Android
+     profiles' descriptions to `drift` and the owner profile's name template to `DRIFT-{{SERIAL}}`. Restore from S, approve, enforce,
+     capture each `update`. Expect all back as in S. Report the exact Graph answer for any refused POST or PATCH (all routes are
+     unmeasured live).
+  5. **Built-in check (read-only):** the dry run from S must list any built-in baseline as skipped, with no write.
+  6. **Re-run check:** dry run from S again after step 4. Expect 0 planned writes for the four.
+  7. Cleanup: delete the fixtures. Report anything left.
+  8. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-10`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / skipped (fixture could not be
+  created) / blocked; steps 5 and 6; approval ids; the evidence branch and commit; anything left in the tenant.

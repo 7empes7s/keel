@@ -49,7 +49,13 @@ test('the collector records measured requests and throttles per type, separately
   const tier1 = M1_TYPES.filter((type) => get(type).descriptor.criticality === 'tier1');
   // A kind read per parent (settings catalog compliance policies, restore gaps
   // batch 7) makes one list read, then one read per listed object: here 250.
-  const reads = (type) => (CATALOG.find((entry) => entry.type === type)?.parent ? 251 : 1);
+  // Its extra per-object read (the actions for noncompliance, #473) then runs
+  // once for each of the 250 * 250 objects those reads return.
+  const reads = (type) => {
+    const entry = CATALOG.find((candidate) => candidate.type === type);
+    if (!entry?.parent) return 1;
+    return 251 + (entry.itemReads ? 250 * 250 : 0);
+  };
   for (const type of tier1) {
     const perParent = reads(type) > 1;
     assert.equal(coverageDigest[type].itemCount, perParent ? 250 * 250 : 250, type);

@@ -69,7 +69,7 @@ import { alertCounts, alertsStatus, type AlertItem } from "@/lib/alerts-view";
 import { ReadinessPage } from "@/components/readiness/readiness-page";
 import { ResilienceView } from "@/components/resilience-view";
 import { readinessStatus, type Dimension, type ReadinessAccount, type ReadinessData } from "@/lib/readiness-view";
-import { resilienceVerdict, type ResilienceData } from "@/lib/resilience-view";
+import { pageVerdict, resilienceAlerts, resilienceStatus, verdictAction, type ResilienceData } from "@/lib/resilience-view";
 import { DownloadMenu } from "@/components/value-report/download-menu";
 import { ValueReportPage } from "@/components/value-report/value-report-page";
 import { resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
@@ -1190,6 +1190,21 @@ const RESILIENCE: ResilienceData = {
         { seq: "18201", recordedAt: "2026-10-02T05:12:00.000Z", shippedAt: "2026-10-02T05:10:00.000Z", dumpSha256: "e3".repeat(32), manifestGeneratedAt: "2026-10-02T05:00:00.000Z", counts: false, reason: "missing-required-observation", point: null, missing: ["type:group", "relationship:group/members"] },
       ],
     },
+    services: {
+      settings: [
+        { kind: "service-settings", workload: "exchange-org", name: "Exchange filtering, retention or mobile setting", service: "Exchange", switchedOn: true, latest: { id: "w1", outcome: "complete", at: "2026-10-02T06:05:00Z" }, lastGood: { id: "w1", from: "2026-10-02T06:00:00Z", at: "2026-10-02T06:05:00Z", settings: 40 } },
+        { kind: "service-settings", workload: "exchange-mail-flow", name: "Exchange mail flow or protection rule", service: "Exchange", switchedOn: true, latest: { id: "w2b", outcome: "failed", at: "2026-10-02T06:05:00Z" }, lastGood: { id: "w2", from: "2026-10-01T06:00:00Z", at: "2026-10-01T06:05:00Z", settings: 35 } },
+        { kind: "service-settings", workload: "sharepoint-tenant", name: "SharePoint setting", service: "SharePoint", switchedOn: true, latest: { id: "w3", outcome: "complete", at: "2026-10-02T06:05:00Z" }, lastGood: { id: "w3", from: "2026-10-02T06:00:00Z", at: "2026-10-02T06:05:00Z", settings: 21 } },
+        { kind: "service-settings", workload: "teams-org-policies", name: "Teams organization policy", service: "Teams", switchedOn: false, latest: { id: "w4", outcome: "disabled", at: "2026-10-02T06:05:00Z" }, lastGood: null },
+        { kind: "service-settings", workload: "power-platform", name: "Power Platform or Power BI setting", service: "Power Platform", switchedOn: false, latest: { id: "w5", outcome: "disabled", at: "2026-10-02T06:05:00Z" }, lastGood: null },
+        { kind: "service-settings", workload: "purview-labels", name: "Sensitivity label", service: "Purview", switchedOn: true, latest: { id: "w6", outcome: "complete", at: "2026-10-02T06:05:00Z" }, lastGood: { id: "w6", from: "2026-10-02T06:00:00Z", at: "2026-10-02T06:05:00Z", settings: 21 } },
+      ],
+      content: [
+        { kind: "content", workload: "exchange-mail", name: "Mail, calendars and contacts", service: "Exchange", switchedOn: true, latest: { id: "c1", outcome: "partial", at: "2026-10-02T05:00:00Z", reasons: [], namePrefix: null }, lastGood: null, stored: { items: 3006, versions: 3100, containers: 4, bytes: 187_695_104, storedBytes: 180_000_000, newestAt: "2026-10-02T05:00:00Z" } },
+        { kind: "content", workload: "onedrive", name: "OneDrive files", service: "SharePoint", switchedOn: true, latest: null, lastGood: null, stored: { items: 149, versions: 150, containers: 2, bytes: 34_603_008, storedBytes: 34_000_000, newestAt: null } },
+        { kind: "content", workload: "teams", name: "Teams, channels and tabs", service: "Teams", switchedOn: true, latest: { id: "c3", outcome: "succeeded", at: "2026-10-02T05:00:00Z", reasons: [], namePrefix: null }, lastGood: { id: "c3", from: "2026-10-02T04:55:00Z", at: "2026-10-02T05:00:00Z", items: 11, bytes: 303_104 }, stored: { items: 11, versions: 12, containers: 1, bytes: 303_104, storedBytes: 300_000, newestAt: null } },
+      ],
+    },
     recoveryTime: {
       state: "measured", samples: 2, latestMs: 1_200_000, latestAt: "2026-09-30T14:20:00.000Z", worstMs: 1_200_000, medianMs: 840_000,
       lastAttempt: { source: "restore", ref: "b7c10000-0000-4000-8000-000000000074", at: "2026-10-01T11:00:00.000Z", counts: false, reason: "restore-failed", elapsedMs: null, outcome: "failed" },
@@ -1224,6 +1239,7 @@ const RESILIENCE_EMPTY: ResilienceData = {
       { key: "type:group", kind: "type", type: "group", parentType: null, family: null, lastAttempt: { at: "2026-10-02T09:00:00.000Z", outcome: "failed" } },
     ] },
     recoverablePoint: { state: "unmeasured", point: null, ageMs: null, fromCopy: null, latestCopy: null, copies: [] },
+    services: { settings: [], content: [] },
     recoveryTime: { state: "unmeasured", samples: 0, latestMs: null, latestAt: null, worstMs: null, medianMs: null, lastAttempt: null, attempts: [] },
     readiness: { ...RESILIENCE.metrics.readiness, state: "unmeasured", countedDrills: 0, lastCountedDrill: null },
   },
@@ -1319,9 +1335,10 @@ function readinessPage(data: ReadinessData, { canConfigure = true, canRespond = 
 }
 
 function resiliencePage(data: ResilienceData) {
-  const verdict = resilienceVerdict(data.metrics, data.generatedAt);
-  return <>{header("Restore", "Resilience", "How recent a recovery KEEL could make if this server were lost, and how long a recovery has taken.")}
-    <Verdict headline={verdict.headline} text={verdict.text} tone={verdict.tone} />
+  const alerts = resilienceAlerts(data);
+  const verdict = pageVerdict(data.metrics, data.generatedAt, alerts);
+  return <>{header("Restore", "Resilience", "Could KEEL get your Microsoft 365 setup back if its server were lost, and how fast.", undefined, resilienceStatus(data.metrics, alerts))}
+    <Verdict action={verdictAction(verdict, alerts)} text={verdict.text} tone={verdict.tone} />
     <div data-layer="explanation"><ResilienceView data={data} /></div></>;
 }
 

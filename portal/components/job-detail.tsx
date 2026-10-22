@@ -4,7 +4,8 @@ import { JobStatusBadge } from "@/components/job-status-badge";
 import { JobRecordFields } from "@/components/job-table";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import type { JobRecord } from "@/lib/portal-jobs";
-import { ago, formatTimestamp } from "@/lib/presentation";
+import { jobDisplayStatus, jobIncompleteTypes } from "@/lib/job-names";
+import { ago, formatTimestamp, resourceTypeLabel } from "@/lib/presentation";
 import { jobName, jobStatusSentence, personLabel } from "@/lib/sentences";
 
 function gap(from: string | null, to: string | null): string | null {
@@ -26,14 +27,15 @@ export function jobVerdict(job: JobRecord, now: string): string {
 // the full error text in the record.
 export function JobDetail({ job, now = new Date().toISOString() }: { job: JobRecord; now?: string }) {
   const failed = job.status === "failed" && job.error !== null && job.error !== undefined;
+  const gaps = jobIncompleteTypes(job);
   const plan = job.references?.plan;
   const undoes = job.references?.undoes;
   return (
     <div data-layer="explanation">
-      <section aria-labelledby="job-heading" className={`job-summary job-summary-${job.status}`}>
+      <section aria-labelledby="job-heading" className={`job-summary job-summary-${jobDisplayStatus(job)}`}>
         <div className="job-summary-main">
           <h2 id="job-heading">{jobName(job)}</h2>
-          <JobStatusBadge status={job.status} />
+          <JobStatusBadge status={jobDisplayStatus(job)} />
         </div>
         <p>
           Asked for by {personLabel(job.references?.people.requested_by, "an unknown account")}{" "}
@@ -48,6 +50,14 @@ export function JobDetail({ job, now = new Date().toISOString() }: { job: JobRec
           <p><Link data-ref="dry-run" href={`/jobs/${undoes.dryRunJobId}`}>Open the dry run of the restore being undone</Link></p>
         ) : null}
       </section>
+
+      {gaps.length ? (
+        <section aria-labelledby="gaps-heading" className="report-section job-gaps-block">
+          <h2 id="gaps-heading">What was not backed up</h2>
+          <p>The backup was saved, but {gaps.length === 1 ? "this type" : "these types"} could not be read in full. The next backup tries again.</p>
+          <ul>{gaps.map((type) => <li key={type}>{resourceTypeLabel(type).replace(/^./, (letter) => letter.toUpperCase())}</li>)}</ul>
+        </section>
+      ) : null}
 
       {failed ? (
         <section aria-labelledby="error-heading" className="report-section job-error-block">

@@ -516,12 +516,11 @@ h3 {
   gap: var(--space-xs);
 }
 
+/* Detail labels are sentence case: never uppercase them here. */
 dt {
   color: var(--text-muted);
-  font-size: 0.6875rem;
-  font-weight: 750;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  font-size: 0.75rem;
+  font-weight: 650;
 }
 
 dd {
@@ -991,10 +990,8 @@ dd {
 
 .capability-row dt {
   color: var(--text-muted);
-  font-size: 0.625rem;
-  font-weight: 680;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+  font-size: 0.75rem;
+  font-weight: 650;
 }
 
 .capability-row dd {

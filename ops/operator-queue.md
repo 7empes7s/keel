@@ -5456,7 +5456,7 @@ item that needs it stays untouched.
   admin role kinds) and PR #434 (batch 6, 17 Intune kinds). All are GET-only catalogue reads; no writer.
 - Needs: PR #434 live (`git -C /opt/keel-live log --oneline | grep -c "#434"` is 1).
 - Status: done
-- Result: done (2026-10-22 07:04 UTC). All 23 kinds read 200 except `deviceManagementSettings` (#447). Counts match discovery run 3, and the secret check returns no rows. Collector reads only.
+- Result: done (2026-10-22 06:58 UTC). All 23 kinds read 200 except `deviceManagementSettings` (#447). Counts match discovery run 3, and the secret check returns no rows. Collector reads only.
   1. Collect by hand, no `--tier` (06:47 UTC, build e1a811b, the Q109 snapshot S `2b450888-07cd-4ba6-b250-96306b941b53`, which was the newest snapshot when queried): exit **1**.
      The only listed type with an error: `deviceManagementSettings` 400 "No OData route exists that match template ~/singleton with
      http verb GET for request /StatelessOnboardingService/deviceManagement." Every other listed type is `complete` or `complete-empty` (200).
@@ -5578,7 +5578,7 @@ item that needs it stays untouched.
   settings kinds). All are GET-only v1.0 catalogue reads; no writer.
 - Needs: PR #440 live (`git -C /opt/keel-live log --oneline | grep -c "#440"` is 1). Can run together with Q112.
 - Status: done
-- Result: done (2026-10-22 07:04 UTC). All five kinds read 200. Counts are as expected: 29 SharePoint setting keys, no `report`. Collector reads only.
+- Result: done (2026-10-22 06:58 UTC). All five kinds read 200. Counts are as expected: 29 SharePoint setting keys, no `report`. Collector reads only.
   1. Collect by hand, no `--tier` (06:47 UTC, build e1a811b, the Q109 snapshot S `2b450888-07cd-4ba6-b250-96306b941b53`, which was the newest snapshot when queried): exit **1**. That exit code comes from `deviceManagementSettings` (#447) and the types in #466; none of the five types below has an error.
   2. attackSimulation 0, externalConnection 0, **itemInsightsSettings 1**, **sharepointSettings 1**, simulationAutomation 0 (query run with
      `snapshot_id = S`). The 0s are `complete-empty` 200.
@@ -5657,7 +5657,7 @@ item that needs it stays untouched.
   last gaps with a reason (new reasons `holds-secrets`, `retired`, `other-tenant`).
 - Needs: PR #446 live (`git -C /opt/keel-live log --oneline | grep -c "#446"` is 1). Can run together with Q115.
 - Status: done
-- Result: done (2026-10-22 07:04 UTC). All 14 kinds read 200, and the two filtered reads gave no 400. Discovery run 4: **0 uncatalogued**. Collector reads only.
+- Result: done (2026-10-22 06:58 UTC). All 14 kinds read 200, and the two filtered reads gave no 400. Discovery run 4: **0 uncatalogued**. Collector reads only.
   1. Collect by hand, no `--tier` (06:47 UTC, build e1a811b, the Q109 snapshot S `2b450888-07cd-4ba6-b250-96306b941b53`, which was the newest snapshot when queried): exit **1**. That exit code comes from `deviceManagementSettings` (#447) and the types in #466; none of the 14 types below has an error.
   2. certificateBasedApplicationConfiguration 0, crossTenantM365Capability 0, deviceTemplate 0, entitlementManagementRoleAssignment 0,
      externalOriginResourceConnector 0, hardwareConfiguration 0, **lifecyclePolicy 1**, privilegedAccessGroupResource 0,

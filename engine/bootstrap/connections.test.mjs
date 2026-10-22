@@ -71,10 +71,12 @@ test('derive: unknown is never absent, and each state comes from what was observ
   assert.equal(derive(plan({ consent: { consentedScopes: [], missingScopes: ['A', 'B'] } })).state, 'waiting-for-consent');
   assert.equal(derive(plan({ consent: { consentedScopes: ['A'], missingScopes: ['B'] } })).state, 'missing-permission');
   assert.equal(derive(plan({}, ['pending-manual'])).state, 'missing-permission');
-  // A role Keel cannot see is not called missing.
+  // A role Keel cannot see is neither missing nor assigned; the last read stands when there is one.
   const unseen = derive(plan({}, ['pending-manual']), { uncheckedKinds: ['workload-rbac'] });
-  assert.equal(unseen.state, 'working');
+  assert.equal(unseen.state, 'not-checked');
   assert.equal(unseen.observed.missingRoles, null);
+  assert.equal(derive(plan({}, ['pending-manual']), { uncheckedKinds: ['workload-rbac'], previousMissingRoles: ['Read Only Operator'] }).state, 'missing-permission');
+  assert.equal(derive(plan({}, ['satisfied']), { uncheckedKinds: ['workload-rbac'], previousMissingRoles: [] }).state, 'working');
   assert.equal(derive(plan(), { servicePrincipals: [{ id: 'sp-1', accountEnabled: false }] }).state, 'switched-off');
   assert.equal(derive(plan(), { credentialExpiresAt: '2026-10-01T00:00:00Z' }).state, 'needs-reconnect');
   assert.deepEqual(derive(plan()).wanted, { permissions: ['A', 'B'], roles: [] });
@@ -155,7 +157,7 @@ test('sync: the three apps are recorded with state and certificate expiry, and o
   tenant.grants.get(contentSp).push({ id: 'grant-tasks', principalId: contentSp, resourceId: graphSp.id,
     appRoleId: graphSp.appRoles.find((role) => role.value === 'Tasks.Read.All').id });
   composed = host();
-  await syncConnections(client, { tenantRef, apps: composed.apps, readers: composed.readers, now: NOW });
+  await syncConnections(client, { tenantRef, apps: composed.apps, readers: composed.readers, now: new Date(NOW.getTime() + 2 * 60_000) });
   const changed = (await events(client)).slice(3);
   assert.deepEqual(changed.map((e) => [e.role, e.action]), [['content-reader', 'state-changed']]);
   assert.equal(changed[0].before.state, 'missing-permission');
@@ -164,17 +166,38 @@ test('sync: the three apps are recorded with state and certificate expiry, and o
   assert.deepEqual(changed[0].after.observed.missingPermissions, []);
 
   // The tenant cannot be read: nothing is claimed, the last observation stands.
-  await syncConnections(client, { tenantRef, apps: composed.apps, readers: null, now: NOW });
+  await syncConnections(client, { tenantRef, apps: composed.apps, readers: null, now: new Date(NOW.getTime() + 3 * 60_000) });
   const failing = { ...composed.readers, listApplications: async () => { throw new Error('graph down'); } };
-  await syncConnections(client, { tenantRef, apps: composed.apps, readers: failing, now: NOW });
+  await syncConnections(client, { tenantRef, apps: composed.apps, readers: failing, now: new Date(NOW.getTime() + 3 * 60_000) });
   assert.equal((await events(client)).length, 4);
   assert.equal(byRole(await loadConnections(client, { tenantRef }))['content-reader'].state, 'working');
 
   // The service principal is switched off in Entra.
   tenant.sps.get(COLLECTOR_APP_ID).accountEnabled = false;
   composed = host();
-  await syncConnections(client, { tenantRef, apps: composed.apps, readers: composed.readers, now: NOW });
+  await syncConnections(client, { tenantRef, apps: composed.apps, readers: composed.readers, now: new Date(NOW.getTime() + 4 * 60_000) });
   assert.equal(byRole(await loadConnections(client, { tenantRef }))['settings-reader'].state, 'switched-off');
+  let count = (await events(client)).length;
+
+  // An older read that commits after a newer one changes nothing.
+  tenant.sps.get(COLLECTOR_APP_ID).accountEnabled = true;
+  composed = host();
+  await syncConnections(client, { tenantRef, apps: composed.apps, readers: composed.readers, now: new Date(NOW.getTime() + 1 * 60_000) });
+  assert.equal(byRole(await loadConnections(client, { tenantRef }))['settings-reader'].state, 'switched-off');
+  assert.equal((await events(client)).length, count);
+
+  // The content-reader file goes missing on the host: the recorded connection stays as it was.
+  composed = host({ contentReader: false });
+  await syncConnections(client, { tenantRef, apps: composed.apps, readers: composed.readers, now: new Date(NOW.getTime() + 5 * 60_000) });
+  assert.equal(byRole(await loadConnections(client, { tenantRef }))['content-reader'].state, 'working');
+  assert.deepEqual((await events(client)).slice(count).map((e) => e.role), ['settings-reader'], 'only the switched-on reader changed');
+  count += 1;
+
+  // The restorer's certificate is renewed while the tenant cannot be read: no longer
+  // needs reconnecting, but not claimed working either.
+  const renewed = { ...composed.apps, restorer: { ...composed.apps.restorer, credentialExpiresAt: '2027-06-01T00:00:00.000Z' } };
+  await syncConnections(client, { tenantRef, apps: renewed, readers: null, now: new Date(NOW.getTime() + 6 * 60_000) });
+  assert.equal(byRole(await loadConnections(client, { tenantRef }))['settings-restorer'].state, 'not-checked');
 });
 
 test('sync: without a content-reader file it is not created, and a first look without a tenant read is not checked', async (t) => {

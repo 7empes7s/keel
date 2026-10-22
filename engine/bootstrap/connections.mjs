@@ -48,7 +48,7 @@ const sorted = (values) => [...values].sort();
  * null when the tenant could not be read. Returns { state, objectRef, wanted, observed }.
  */
 export function deriveConnection({ identity, appId, plan, servicePrincipals = [], uncheckedKinds = [],
-  credentialExpiresAt = null, now = new Date() }) {
+  credentialExpiresAt = null, previousMissingRoles = null, now = new Date() }) {
   if (!appId) return { state: 'not-created', objectRef: null, wanted: null, observed: null };
   const expired = credentialExpiresAt !== null && Date.parse(credentialExpiresAt) <= now.getTime();
   if (!plan) return { state: expired ? 'needs-reconnect' : 'not-checked', objectRef: appId, wanted: null, observed: null };
@@ -75,8 +75,11 @@ export function deriveConnection({ identity, appId, plan, servicePrincipals = []
     grantedPermissions: sorted(consent?.consentedScopes ?? []),
     missingPermissions: sorted(consent?.missingScopes ?? []),
     extraPermissions: sorted(consent?.excessScopes ?? []),
-    // null: Keel cannot see these role assignments, so none is called missing.
-    missingRoles: rolesChecked ? sorted(roles.filter((step) => step.status !== 'satisfied').map((step) => step.name)) : null,
+    // When Keel cannot see the role assignments this time, the last read stands; with
+    // none, null: no role is called missing, and none is called assigned either.
+    missingRoles: rolesChecked ? sorted(roles.filter((step) => step.status !== 'satisfied').map((step) => step.name))
+      : previousMissingRoles,
+    rolesChecked,
   };
 
   let state;
@@ -87,6 +90,7 @@ export function deriveConnection({ identity, appId, plan, servicePrincipals = []
   else if (wanted.permissions.length > 0 && observed.grantedPermissions.filter((p) => wanted.permissions.includes(p)).length === 0) {
     state = 'waiting-for-consent';
   } else if (observed.missingPermissions.length > 0 || (observed.missingRoles ?? []).length > 0) state = 'missing-permission';
+  else if (wanted.roles.length > 0 && observed.missingRoles === null) state = 'not-checked';
   else state = 'working';
   return { state, objectRef: appId, wanted, observed };
 }
@@ -140,17 +144,23 @@ export async function syncConnections(client, { tenantRef, apps = {}, readers = 
   try {
     for (const app of CONNECTION_APPS) {
       const bound = apps[app.identity] ?? null;
+      const { rows: [current] } = await client.query(
+        'SELECT * FROM access_connection WHERE tenant_ref = $1 AND role = $2 FOR UPDATE', [tenantRef, app.role]);
+      // No credential file on the host says nothing about the tenant: a recorded
+      // connection stays as it was (a missing file may be a redeploy or a move).
+      if (!bound?.appId && current) continue;
+      // A slower check that read the tenant before a newer one committed adds nothing.
+      if (current?.observed?.at && observation.plan && Date.parse(current.observed.at) > now.getTime()) continue;
       const derived = deriveConnection({
         identity: app.identity, appId: bound?.appId ?? null, ...observation,
         credentialExpiresAt: bound?.credentialExpiresAt ?? null, now,
+        previousMissingRoles: current?.object_ref === bound?.appId ? current?.observed?.missingRoles ?? null : null,
       });
       const next = assertTokenFree({
         state: derived.state, object_ref: derived.objectRef, wanted: derived.wanted, observed: derived.observed,
         credential_ref: bound?.credentialRef ?? null, credential_expires_at: bound?.credentialExpiresAt ?? null,
       }, 'access connection');
 
-      const { rows: [current] } = await client.query(
-        'SELECT * FROM access_connection WHERE tenant_ref = $1 AND role = $2 FOR UPDATE', [tenantRef, app.role]);
       if (!current) {
         const { rows: [created] } = await client.query(`INSERT INTO access_connection
             (tenant_ref, kind, role, object_ref, state, wanted, observed, credential_ref, credential_expires_at, created_by, updated_by, updated_at)
@@ -167,7 +177,8 @@ export async function syncConnections(client, { tenantRef, apps = {}, readers = 
       // Without a tenant read, keep what was last observed: not checked is not changed.
       // An expired certificate is known without a tenant read, so that state still applies.
       if (observation.plan === null && next.object_ref === current.object_ref) {
-        if (next.state === 'not-checked') next.state = current.state;
+        // A renewed certificate clears needs-reconnect, but nothing else is known yet.
+        if (next.state === 'not-checked') next.state = current.state === 'needs-reconnect' ? 'not-checked' : current.state;
         next.wanted = current.wanted;
         next.observed = current.observed;
       }

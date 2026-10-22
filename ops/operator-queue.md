@@ -5884,3 +5884,48 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / skipped (fixture could not be
   created) / blocked; step 5; approval ids; the evidence branch and commit; anything left in the tenant.
+
+### Q129: Live restore of who scripts, remediations, administrative templates and update profiles are assigned to (restore gaps batch 14, after #460)
+- Drafted by the "Restore batch 14" thread (2026-10-22). Code: PR #460. No backup change (assignments were already backed up).
+  A restore that picks these kinds now writes their assignments back through `/assign` (beta), fixture-tested only:
+  - `deviceManagementScript`, `deviceShellScript`: body `{ deviceManagementScriptAssignments: [...] }`.
+  - `deviceHealthScript`, `deviceComplianceScript`: body `{ deviceHealthScriptAssignments: [...] }`; a remediation also sends
+    `runSchedule` and `runRemediationScript` from the backup, and a drifted schedule is a change.
+  - `groupPolicyConfiguration` (after its settings), `windowsFeatureUpdateProfile`, `windowsQualityUpdateProfile`,
+    `windowsDriverUpdateProfile`, `intuneBrandingProfile`: body `{ assignments: [...] }`.
+  - Also fixed: app protection, managed app configuration and device app configuration assignments were never attached by
+    `keel-restore` (only the three built-in policy kinds were), so they were never written. They are now.
+  - A policy whose only change is its assignments is planned as an `update`; the object itself is not patched.
+- Needs: /opt/keel-live at the #460 merge or later (`grep -q SCRIPT_ASSIGNMENTS /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
+  needs DeviceManagementConfiguration.ReadWrite.All and DeviceManagementServiceConfig.ReadWrite.All. If Graph answers 403, report
+  blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account. No tenant-wide setting is changed.
+  **Assign fixtures only to the empty group below: never to All devices, All users or any group with members.**
+- **Fixtures:**
+  - Security group `KEEL-RT-149-assign` with **no members** (so nothing runs or applies anywhere), and a second empty group `KEEL-RT-149-assign-b`.
+  - PowerShell script `KEEL-RT-149-script` (body `Write-Output 'KEEL-RT'`), assigned to `KEEL-RT-149-assign`.
+  - Remediation `KEEL-RT-149-remediation` (detection and fix both `exit 0`), assigned to `KEEL-RT-149-assign`, daily at 01:00, fix runs.
+  - Administrative template `KEEL-RT-149-admx` with one built-in setting turned on (Edge home page `https://example.com`), assigned to `KEEL-RT-149-assign`.
+  - Windows feature update profile `KEEL-RT-149-feature` (any supported version), assigned to `KEEL-RT-149-assign`.
+  - Optional, if cheap: macOS shell script, custom compliance script, quality and driver update profiles, a non-default branding
+    profile, all named `KEEL-RT-149-*` and assigned to `KEEL-RT-149-assign`. Report and skip any that Intune refuses.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Create the fixtures, then take snapshot S. **Backup check:** for each fixture, the assignment read outcome in S and its target
+     (group `KEEL-RT-149-assign`; for the remediation, the `runSchedule` and `runRemediationScript` held).
+  2. **Assignment-only round:** in the portal, move each fixture's assignment from `KEEL-RT-149-assign` to `KEEL-RT-149-assign-b`,
+     and change the remediation's schedule to 23:00. Restore from S selecting the fixtures' kinds. Expect the dry run to plan an
+     `update` for each with "assignments differ", approve, enforce, capture each `update`. Expect every fixture assigned to
+     `KEEL-RT-149-assign` only, and the remediation back at 01:00 with the fix on. Report the exact Graph answer for any refused
+     `/assign` (the script and remediation bodies are unmeasured).
+  3. **Create round:** delete `KEEL-RT-149-script` and `KEEL-RT-149-remediation`. Restore from S, approve, enforce, capture both
+     `create`s. Expect both back with their bodies **and** assigned to `KEEL-RT-149-assign` (remediation schedule as in S).
+  4. **Re-run check:** dry run from S after step 3. Expect 0 planned writes.
+  5. Cleanup: delete every `KEEL-RT-149-*` fixture and both groups. Report anything left.
+  6. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-14`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; the step 1 backup check; per kind and round: assignments written / refused (exact message) / skipped (fixture could
+  not be created) / blocked; step 4; approval ids; the evidence branch and commit; anything left in the tenant.

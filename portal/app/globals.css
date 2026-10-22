@@ -264,10 +264,8 @@ select {
 .severity-label {
   margin: 0;
   color: var(--accent);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 
 .mode-marker,
@@ -758,7 +756,6 @@ dd {
 .honesty-note strong {
   color: var(--accent);
   font-size: 0.8125rem;
-  text-transform: uppercase;
 }
 
 .honesty-note p {
@@ -837,10 +834,8 @@ dd {
 
 .filter-field > span {
   color: var(--text-muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 750;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .filter-field input,
@@ -904,8 +899,7 @@ dd {
 .group-header > span {
   color: var(--text-muted);
   font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  text-transform: uppercase;
+  font-size: 0.75rem;
 }
 
 .state-badge {
@@ -1110,10 +1104,8 @@ dd {
 
 .data-table thead th {
   color: var(--text-muted);
-  font-size: 0.625rem;
+  font-size: 0.75rem;
   font-weight: 800;
-  letter-spacing: 0.075em;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -1420,9 +1412,7 @@ dd {
 .difference-payloads h4 {
   margin: 0 0 var(--space-sm);
   color: var(--text-muted);
-  font-size: 0.6875rem;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  font-size: 0.75rem;
 }
 
 .difference-payloads pre {
@@ -1651,10 +1641,8 @@ dd {
     content: attr(data-label);
     color: var(--text-muted);
     font-family: var(--font-sans);
-    font-size: 0.625rem;
+    font-size: 0.75rem;
     font-weight: 800;
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
   }
 
   .data-table time,
@@ -1760,10 +1748,8 @@ dd {
 }
 .evidence-filters label > span {
   color: var(--text-muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 750;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 .evidence-timeline {
   margin: 0;
@@ -2043,10 +2029,8 @@ input[type="checkbox"] {
   margin-bottom: var(--space-md);
   padding: 0;
   color: var(--accent);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 
 .form-card fieldset:disabled {
@@ -2182,10 +2166,8 @@ section.item-card + section.item-card {
 .item-card h3 {
   margin: var(--space-lg) 0 var(--space-xs);
   color: var(--text-muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .item-card-head {
@@ -2917,11 +2899,9 @@ kbd {
   margin: 0;
   align-items: center;
   color: var(--text-muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 800;
   gap: var(--space-xs);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 
 .status-hero-dot {
@@ -3277,10 +3257,8 @@ kbd {
 
 .ring-center span {
   color: var(--text-muted);
-  font-size: 0.625rem;
+  font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .ring-legend,
@@ -4309,10 +4287,8 @@ section.wizard-panel {
 
 .timeline-label {
   color: var(--text-muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 750;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
 }
 
 .job-timeline time {
@@ -4340,10 +4316,8 @@ section.wizard-panel {
 .job-data-grid h3,
 .job-error-block h3 {
   color: var(--text-muted);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .job-error-block {
@@ -4373,10 +4347,8 @@ section.wizard-panel {
 .policy-group h3 {
   margin-bottom: var(--space-xs);
   color: var(--accent);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 800;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
 }
 
 .policy-group .kv-grid {
@@ -5302,7 +5274,7 @@ section.wizard-panel {
 .change-intent-revoke input { flex: 1 1 16rem; min-width: 0; min-height: 2.25rem; padding: 0 var(--space-sm); border: 1px solid var(--control-border); background: var(--surface); color: var(--text); }
 .change-intent-form { display: grid; gap: var(--space-sm); max-width: 40rem; margin-bottom: var(--space-lg); }
 .change-intent-fields { border: 1px solid var(--line); padding: var(--space-sm); margin: 0; }
-.change-intent-fields legend { color: var(--text-muted); font-size: 0.6875rem; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; }
+.change-intent-fields legend { color: var(--text-muted); font-size: 0.75rem; font-weight: 750; }
 .change-intent-form .checkbox { display: flex; gap: var(--space-xs); align-items: center; }
 
 /* Approvals: a request that arrived while the page was open fades in with a brief
@@ -5644,8 +5616,6 @@ section.wizard-panel {
 .menu-group-title {
   font-size: 0.75rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .menu-group-count {
@@ -6089,8 +6059,6 @@ section.wizard-panel {
   color: var(--text-soft);
   font-size: 0.75rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .popover-subtitle {
@@ -7232,8 +7200,6 @@ section.wizard-panel {
   color: var(--text-soft);
   font-size: 0.75rem;
   font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .sel-part-toggle[aria-expanded="false"] .sel-group-chevron {
@@ -8748,7 +8714,7 @@ section.wizard-panel {
 .ap-card-body { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: var(--space-lg); align-items: start; }
 .ap-card-body > * { min-width: 0; }
 .ap-what, .ap-who { display: grid; gap: var(--space-sm); align-content: start; }
-.ap-what h4, .ap-who h4 { margin: 0; font-size: 0.8125rem; font-weight: 650; letter-spacing: 0.02em; color: var(--text-soft); text-transform: uppercase; }
+.ap-what h4, .ap-who h4 { margin: 0; font-size: 0.8125rem; font-weight: 650; color: var(--text-soft); }
 .ap-what h4 span { font-weight: 500; letter-spacing: 0; text-transform: none; }
 .ap-changes { display: grid; gap: var(--space-xs); margin: 0; padding: 0; list-style: none; }
 .ap-changes > li { display: grid; gap: var(--space-2xs); padding: var(--space-xs) var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); }
@@ -8903,7 +8869,7 @@ section.wizard-panel {
 .nf-sheet { display: grid; gap: var(--space-md); }
 .nf-sheet-kicker { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); }
 .nf-sheet-sect { display: grid; gap: var(--space-xs); }
-.nf-sheet-sect h3 { margin: 0; font-size: 0.8125rem; font-weight: 650; letter-spacing: 0.02em; color: var(--text-soft); text-transform: uppercase; }
+.nf-sheet-sect h3 { margin: 0; font-size: 0.8125rem; font-weight: 650; color: var(--text-soft); }
 .nf-note { display: flex; align-items: start; gap: var(--space-xs); padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-muted); font-size: 0.875rem; line-height: 1.45; }
 .nf-note > .icon { width: 1rem; height: 1rem; flex: none; margin-top: 0.125rem; }
 .nf-note[data-tone="urgent"] { border-color: color-mix(in srgb, var(--urgent) 45%, var(--line)); background: var(--urgent-bg); }
@@ -9509,7 +9475,7 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .technical-body:popover-open .technical-group .technical-field:first-child { border-top: 0; padding-top: 0; }
 .technical-body:popover-open .technical-group .technical-field > dd > code,
 .technical-body:popover-open .technical-group .technical-block { background: var(--surface); }
-.technical-panel-kicker { margin: 0; color: var(--text-soft); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.technical-panel-kicker { margin: 0; color: var(--text-soft); font-size: 0.75rem; font-weight: 600; }
 .technical-panel-title { margin: var(--space-2xs) 0 0; font-size: 1.125rem; font-weight: 650; overflow-wrap: anywhere; }
 @keyframes technical-panel-in { from { transform: translateX(2.5rem); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {

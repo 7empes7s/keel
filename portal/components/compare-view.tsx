@@ -31,7 +31,7 @@ const CSS = `
 .compare-section { display: grid; gap: var(--space-sm); }
 .compare-section h3 { margin: var(--space-sm) 0 0; font-size: 0.9375rem; }
 .compare-kind { display: grid; gap: var(--space-xs); }
-.compare-kind-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-xs) var(--space-sm); margin: var(--space-xs) 0 0; color: var(--text-soft); font-size: 0.75rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; }
+.compare-kind-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-xs) var(--space-sm); margin: var(--space-xs) 0 0; color: var(--text-soft); font-size: 0.75rem; font-weight: 650; }
 .compare-kind-heading small { font-size: 0.8125rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .compare-group { border: 1px solid var(--line); border-radius: 0.5rem; background: var(--surface); }
 .compare-group > summary { cursor: pointer; padding: var(--space-sm) var(--space-md); display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-md); justify-content: space-between; }

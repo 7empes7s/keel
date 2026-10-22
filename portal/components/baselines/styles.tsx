@@ -223,7 +223,7 @@ const CSS = `
 .bl-swap { margin-bottom: 0.125rem; }
 .bl-compare-title { display: flex; flex-wrap: wrap; align-items: center; margin: 0; gap: var(--space-xs) var(--space-sm); font-size: 1rem; font-weight: 600; }
 .bl-side { display: inline-grid; min-width: 0; padding: var(--space-2xs) var(--space-sm); border-radius: var(--radius-md); background: var(--surface-muted); overflow-wrap: anywhere; }
-.bl-side small { color: var(--text-soft); font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+.bl-side small { color: var(--text-soft); font-size: 0.75rem; font-weight: 600; }
 .bl-side[data-side="before"] { box-shadow: inset 3px 0 0 var(--neutral); }
 .bl-side[data-side="after"] { box-shadow: inset 3px 0 0 var(--text-soft); }
 .bl-sides-arrow { width: 1rem; height: 1rem; color: var(--text-muted); }

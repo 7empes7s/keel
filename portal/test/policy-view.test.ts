@@ -75,13 +75,16 @@ test("kind, state, counts, status and the verdict", () => {
 
 test("tiles filter by state, paused covering stopped; the note names the filter", () => {
   const get = (search: string) => (key: string) => new URLSearchParams(search).get(key);
-  assert.deepEqual(parseFilters(get("state=paused")), { state: "paused", what: null });
-  assert.deepEqual(parseFilters(get("state=bogus&what=alert")), { state: null, what: "alert" });
-  assert.deepEqual(all.filter((policy) => ruleMatches(policy, { state: "paused", what: null })).map((policy) => policy.name), ["Ask before changing sign-in rules", "Undo mail flow changes"]);
-  assert.deepEqual(all.filter((policy) => ruleMatches(policy, { state: "off", what: null })).map((policy) => policy.name), ["Undo changes to admin groups"]);
-  assert.deepEqual(all.filter((policy) => ruleMatches(policy, { state: "running", what: "undo" })).map((policy) => policy.name), ["Undo low-risk changes"]);
-  assert.equal(filterWords({ state: "paused", what: null }), "paused or stopped rules");
-  assert.equal(filterWords({ state: null, what: "alert" }), "alert only rules");
+  assert.deepEqual(parseFilters(get("state=paused")), { states: ["paused"], what: null });
+  assert.deepEqual(parseFilters(get("state=bogus&what=alert")), { states: [], what: "alert" });
+  assert.deepEqual(all.filter((policy) => ruleMatches(policy, { states: ["paused"], what: null })).map((policy) => policy.name), ["Ask before changing sign-in rules", "Undo mail flow changes"]);
+  assert.deepEqual(all.filter((policy) => ruleMatches(policy, { states: ["off"], what: null })).map((policy) => policy.name), ["Undo changes to admin groups"]);
+  assert.deepEqual(all.filter((policy) => ruleMatches(policy, { states: ["running"], what: "undo" })).map((policy) => policy.name), ["Undo low-risk changes"]);
+  assert.equal(filterWords({ states: ["paused"], what: null }), "paused or stopped rules");
+  assert.equal(filterWords({ states: [], what: "alert" }), "alert only rules");
+  // State tiles add up: running or off shows both.
+  assert.deepEqual(parseFilters(get("state=off,running")), { states: ["running", "off"], what: null });
+  assert.deepEqual(all.filter((policy) => ruleMatches(policy, { states: ["running", "off"], what: null })).length, all.filter((policy) => ruleMatches(policy, { states: ["running"], what: null }) || ruleMatches(policy, { states: ["off"], what: null })).length);
 });
 
 test("the last action, the run-as account and the action history read as names, never ids", () => {
@@ -102,7 +105,7 @@ test("the last action, the run-as account and the action history read as names, 
   assert.equal(actionKindLine(action), "Group · Entra ID · changed");
   assert.equal(actionLine(action, NOW), "Microsoft refused the write: not enough rights · 2 hours ago");
   assert.equal(failureWords("Graph 429: throttled after 5 retries"), "Microsoft throttled the request");
-  assert.equal(failureWords("conflict on 5d1c0000-0000-4000-8000-0000000000f2"), "conflict on an id");
+  assert.equal(failureWords("conflict on 5d1c0000-0000-4000-8000-0000000000f2"), "Microsoft 365 would not accept what Keel sent");
   assert.equal(failureWords(null), "It stopped with an error");
   assert.equal(actionLine({ ...action, status: "queued", finished_at: null, error: null }, NOW), "Waiting to run · queued 2 hours ago");
   assert.equal(actionLine({ ...action, status: "executed", error: null }, NOW), "Put back · 2 hours ago");
@@ -144,7 +147,8 @@ test("the controls call the guarded routes with an idempotency key, and read the
 test("the list and the rule page keep ids, emails and codes inside the record", async () => {
   const list = await renderPoliciesAt("state=paused", { canEdit: true, policies: all, halted: false, now: NOW });
   const [outside, record] = list.split('data-layer="record"');
-  assert.match(outside, /Showing paused or stopped rules only: 2 of 5\./);
+  assert.match(outside, /Showing <b>2<\/b> of 5 rules/);
+  assert.match(outside, /Remove filter: Paused or stopped/);
   assert.match(outside, /Ask before changing sign-in rules/);
   assert.doesNotMatch(outside, /Undo low-risk changes</, "the running rule is filtered out");
   assert.match(outside, />Resume</, "Resume is the page's action while a rule is paused");

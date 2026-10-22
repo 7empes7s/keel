@@ -2,12 +2,17 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { ErrorNotice } from "@/components/ui/error-notice";
+import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { AlertRow } from "@/components/ui/alert-list";
+import { Badge } from "@/components/ui/badge";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { formatTimestamp } from "@/lib/presentation";
+import { plainError } from "@/lib/error-words";
 import { toast } from "@/lib/toast";
 import type { Destination, DestinationStatus, QuarantinedEvent } from "@/lib/integrations";
-import { destinationKind, destinationTarget, isPaused } from "@/lib/integrations-view";
+import { LAG_WARN_MS, destinationBadge, destinationKind, destinationTarget, isPaused, lagWords } from "@/lib/integrations-view";
 
 // Roadmap task-130: destinations by name and kind in words, delivery health in words,
 // a register form with labelled fields; raw config, ids and sequence numbers in the record.
@@ -82,41 +87,50 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
   }
 
   return <>
-    {error ? <p className="action-error" role="alert">{error}</p> : null}
-    <section aria-labelledby="integrations-heading" className="report-section">
-      <div className="section-heading-row report-heading">
-        <div><p className="section-kicker">Where the audit record is copied</p><h2 id="integrations-heading">Destinations</h2></div>
-        <span className="result-count">{destinations.length} registered</span>
+    {error ? <AlertRow as="div" item={{ key: "write-error", tone: "urgent", icon: "x-circle", title: "That did not work", todo: "Check the details below, then try again.", more: [error] }} /> : null}
+    <section aria-labelledby="integrations-heading" className="pg-panel" id="ig-destinations">
+      <div className="rs-section-head">
+        <div>
+          <h2 id="integrations-heading"><Icon name="audit" />Audit record copies</h2>
+          <p className="rs-sub">Where KEEL sends a copy of every audit entry.</p>
+        </div>
+        <Badge tone="neutral">{`${destinations.length} set up`}</Badge>
       </div>
-      {destinations.length === 0 ? <p className="empty-state">No destination is set up.</p> : <ul className="item-list">{destinations.map((destination) => {
+      {destinations.length === 0 ? <p className="pg-empty"><Icon name="info" />No destination is set up.</p> : <ul className="pg-cards">{destinations.map((destination) => {
         const status = statusFor(statuses, destination.id);
         const paused = isPaused(destination);
+        const badge = destinationBadge(destination, status);
         const events = quarantined[destination.id];
-        return <li className="item-card" key={destination.id}>
-          <div className="item-card-head">
-            <strong>{destination.name}</strong>
-            <span className={paused ? "inactive-indicator" : "active-indicator"}>{paused ? "Paused" : "Sending"}</span>
+        return <li className="pg-card" data-tone={badge.tone} id={`destination-${destination.id}`} key={destination.id}>
+          <div className="pg-card-head">
+            <h3>{destination.name}</h3>
+            <Badge tone={badge.tone}>{badge.label}</Badge>
           </div>
-          <p>{destinationKind(destination)} to {destinationTarget(destination)}.</p>
-          {status ? <dl className="stat-strip">
-            <div><dt>Waiting to send</dt><dd>{status.pending}</dd></div>
-            <div><dt>Sending</dt><dd>{status.delivering}</dd></div>
-            <div><dt>Received</dt><dd>{status.acknowledged}</dd></div>
-            <div className={status.quarantined > 0 ? "stat-warn" : undefined}><dt>Held back</dt><dd>{status.quarantined}</dd></div>
-            <div><dt>Behind by</dt><dd>{status.lagMs === null ? "nothing" : `${Math.round(status.lagMs / 1000)} seconds`}</dd></div>
+          <p className="pg-card-sub">{destinationKind(destination)} to {destinationTarget(destination)}</p>
+          {status ? <dl className="pg-stats">
+            <div><dt>Waiting to send</dt><dd>{status.pending.toLocaleString("en-GB")}</dd></div>
+            <div><dt>Sending</dt><dd>{status.delivering.toLocaleString("en-GB")}</dd></div>
+            <div data-tone="fine"><dt>Received</dt><dd>{status.acknowledged.toLocaleString("en-GB")}</dd></div>
+            <div data-tone={status.quarantined > 0 ? "urgent" : "fine"}><dt>Held back</dt><dd>{status.quarantined.toLocaleString("en-GB")}</dd></div>
+            <div data-tone={(status.lagMs ?? 0) > LAG_WARN_MS ? "soon" : undefined}><dt>Behind by</dt><dd>{lagWords(status.lagMs)}</dd></div>
           </dl> : null}
           <div className="form-actions">
-            <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void loadQuarantined(destination.id)} type="button">Show held-back entries</button>
+            <button className="btn btn-sm" disabled={busy} onClick={() => void loadQuarantined(destination.id)} type="button">Show held-back entries</button>
             {canConfiguration ? (paused
-              ? <button className="btn btn-primary btn-sm" disabled={busy} onClick={() => void write(`/api/integrations/${destination.id}/resume`, "POST", undefined, "resume")} type="button">Resume</button>
+              ? <button className="btn btn-secondary btn-sm" disabled={busy} onClick={() => void write(`/api/integrations/${destination.id}/resume`, "POST", undefined, "resume")} type="button">Resume</button>
               : <ConfirmButton confirmLabel="Pause" description={<p>{destination.name} stops receiving audit entries until it is resumed. New entries wait, so it falls behind while paused.</p>} disabled={busy} onConfirm={() => write(`/api/integrations/${destination.id}/revoke`, "POST", undefined, "pause")} size="sm" title={`Pause ${destination.name}?`}>Pause</ConfirmButton>) : null}
           </div>
-          {events ? (events.length === 0 ? <p className="field-help">Nothing is held back.</p> : <ul className="quarantine-list">{events.map((quarantinedEvent) => <li key={quarantinedEvent.id}>
-            Held back <time dateTime={quarantinedEvent.quarantined_at}>{formatTimestamp(quarantinedEvent.quarantined_at)}</time> after {quarantinedEvent.attempts} {quarantinedEvent.attempts === 1 ? "attempt" : "attempts"}: {quarantinedEvent.quarantine_reason ?? "no reason recorded"}
-          </li>)}</ul>) : null}
-          {canConfiguration ? <form className="inline-form" onSubmit={(event) => replay(destination.id, event)}><fieldset disabled={busy}><legend>Send again</legend>
-            <label className="filter-field"><span>From audit entry number</span><input name="fromSeq" type="number" min={0} defaultValue={0} /></label>
-            <button className="btn btn-secondary" type="submit">Send again</button>
+          {events ? (events.length === 0 ? <p className="pg-help"><Icon name="check-circle" />Nothing is held back.</p> : <div className="ui-alerts">{events.map((quarantinedEvent) => <ErrorNotice
+            error={quarantinedEvent.quarantine_reason}
+            id={`quarantined-${quarantinedEvent.id}`}
+            key={quarantinedEvent.id}
+            service={destination.name}
+            title={`Held back ${formatTimestamp(quarantinedEvent.quarantined_at)} after ${quarantinedEvent.attempts} ${quarantinedEvent.attempts === 1 ? "attempt" : "attempts"}: ${plainError(quarantinedEvent.quarantine_reason, { service: destination.name }).cause}`}
+            tone="soon"
+          />)}</div>) : null}
+          {canConfiguration ? <form className="pg-resend" onSubmit={(event) => replay(destination.id, event)}><fieldset disabled={busy}>
+            <label className="filter-field"><span>Send again from audit entry number</span><input name="fromSeq" type="number" min={0} defaultValue={0} /></label>
+            <button className="btn btn-sm" type="submit">Send again</button>
           </fieldset></form> : null}
           <TechnicalDetails>
             <RecordField label="Destination ID" usage={<>use with <code>POST /api/integrations/&lt;id&gt;/replay</code></>} value={destination.id} />
@@ -129,32 +143,33 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
         </li>;
       })}</ul>}
     </section>
-    {canConfiguration ? <section aria-labelledby="register-heading" className="report-section">
-      <div className="section-heading-row report-heading">
-        <div><p className="section-kicker">New</p><h2 id="register-heading">Add a destination</h2></div>
-      </div>
-      <form className="form-card" onSubmit={register}><fieldset disabled={busy}><legend>New destination</legend>
-        <div className="form-grid">
-          <label className="filter-field"><span>Name</span><input autoComplete="off" name="name" required /></label>
-          <label className="filter-field"><span>Kind</span><select name="kind" onChange={(event) => setKind(event.target.value)} value={kind}><option value="webhook">Webhook</option><option value="cef">CEF (SIEM)</option></select></label>
-          {kind === "cef" ? <>
-            <label className="filter-field"><span>Transport</span><select onChange={(event) => setTransport(event.target.value)} value={transport}><option value="https">HTTPS</option><option value="udp">UDP (syslog)</option></select></label>
-            {transport === "udp" ? <>
-              <label className="filter-field"><span>Host</span><input autoComplete="off" name="host" placeholder="siem.contoso.com" required /></label>
-              <label className="filter-field"><span>Port</span><input max={65535} min={1} name="port" placeholder="514" required type="number" /></label>
-            </> : <>
-              <label className="filter-field form-grid-wide"><span>Address</span><input autoComplete="off" name="url" placeholder="https://siem.contoso.com/cef" required type="url" /></label>
-              <label className="filter-field"><span>Delivery confirmation</span><select name="acknowledgement"><option value="http-response">From the HTTP response</option><option value="none">None</option></select></label>
-            </>}
-          </> : <>
-            <label className="filter-field form-grid-wide"><span>Address</span><input autoComplete="off" name="url" placeholder="https://hooks.contoso.com/keel" required type="url" /></label>
-            <label className="filter-field"><span>Sign-in</span><select onChange={(event) => setAuth(event.target.value)} value={auth}><option value="none">None</option><option value="bearer">Bearer token</option><option value="hmac-sha256">HMAC signature</option></select></label>
-            {auth !== "none" ? <label className="filter-field"><span>Name of the stored secret (never the secret itself)</span><input autoComplete="off" name="credentialRef" placeholder="env:KEEL_WEBHOOK_TOKEN" required /></label> : null}
-          </>}
+    {canConfiguration ? <section aria-labelledby="register-heading" className="pg-panel" id="ig-add">
+      <div className="rs-section-head">
+        <div>
+          <h2 id="register-heading"><Icon name="plus" />Add a destination</h2>
+          <p className="rs-sub">A webhook or a SIEM that reads CEF.</p>
         </div>
-        <p className="field-help">UDP syslog cannot confirm delivery, so entries sent that way stay waiting until another destination confirms them.</p>
-        <div className="form-actions"><button aria-busy={busyAction === "register" || undefined} className="btn btn-primary" type="submit">Add destination</button></div>
-      </fieldset></form>
+      </div>
+      <form aria-label="New destination" className="pg-form" onSubmit={register}>
+        <label className="filter-field"><span>Name</span><input autoComplete="off" disabled={busy} name="name" required /></label>
+        <label className="filter-field"><span>Kind</span><select disabled={busy} name="kind" onChange={(event) => setKind(event.target.value)} value={kind}><option value="webhook">Webhook</option><option value="cef">CEF (SIEM)</option></select></label>
+        {kind === "cef" ? <>
+          <label className="filter-field"><span>Transport</span><select disabled={busy} onChange={(event) => setTransport(event.target.value)} value={transport}><option value="https">HTTPS</option><option value="udp">UDP (syslog)</option></select></label>
+          {transport === "udp" ? <>
+            <label className="filter-field"><span>Host</span><input autoComplete="off" disabled={busy} name="host" placeholder="siem.contoso.com" required /></label>
+            <label className="filter-field"><span>Port</span><input disabled={busy} max={65535} min={1} name="port" placeholder="514" required type="number" /></label>
+            <p className="pg-help pg-wide"><Icon name="info" />UDP cannot confirm delivery, so entries stay waiting until another destination confirms them.</p>
+          </> : <>
+            <label className="filter-field pg-wide"><span>Address</span><input autoComplete="off" disabled={busy} name="url" placeholder="https://siem.contoso.com/cef" required type="url" /></label>
+            <label className="filter-field"><span>Delivery confirmation</span><select disabled={busy} name="acknowledgement"><option value="http-response">From the HTTP response</option><option value="none">None</option></select></label>
+          </>}
+        </> : <>
+          <label className="filter-field"><span>Sign-in</span><select disabled={busy} onChange={(event) => setAuth(event.target.value)} value={auth}><option value="none">None</option><option value="bearer">Bearer token</option><option value="hmac-sha256">HMAC signature</option></select></label>
+          <label className="filter-field pg-wide"><span>Address</span><input autoComplete="off" disabled={busy} name="url" placeholder="https://hooks.contoso.com/keel" required type="url" /></label>
+          {auth !== "none" ? <label className="filter-field pg-wide"><span>Name of the stored secret (never the secret itself)</span><input autoComplete="off" disabled={busy} name="credentialRef" placeholder="env:KEEL_WEBHOOK_TOKEN" required /></label> : null}
+        </>}
+        <div className="pg-wide pg-form-foot"><span /><button aria-busy={busyAction === "register" || undefined} className="btn btn-secondary" disabled={busy} type="submit">Add destination</button></div>
+      </form>
     </section> : null}
   </>;
 }

@@ -84,7 +84,7 @@ export function PolicyPage({ canEdit, policy, actions, halted, now = new Date().
         {previewing ? (
           <section aria-labelledby="po-preview-heading" className="po-card po-activation">
             <h2 id="po-preview-heading"><Icon name="show" />Before it turns on</h2>
-            <p className="po-plain">The preview lists every change it would undo today and what it cannot do. It stays valid for 30 minutes, and turning the rule on approves nothing in advance.</p>
+            <p className="po-plain">What it would undo today, and what it would refuse. Turning it on approves nothing in advance.</p>
             <PolicyActivation initialPreview={initialPreview} name={policy.name} now={now} policyId={policy.id} />
           </section>
         ) : null}

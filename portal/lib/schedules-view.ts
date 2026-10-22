@@ -207,6 +207,7 @@ export function previewNextRun(cadence: Schedule["cadence"], now: Date): Date | 
 // ---- The page: counts, filter, pill, verdict --------------------------------------------
 
 export type ScheduleFilter = "on" | "off" | "failed" | "warning";
+export const SCHEDULE_FILTERS: ScheduleFilter[] = ["on", "off", "failed", "warning"];
 
 export function parseScheduleFilter(status: string | null | undefined, load: string | null | undefined): ScheduleFilter | null {
   if (load === "warning") return "warning";

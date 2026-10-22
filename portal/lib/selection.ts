@@ -1,3 +1,4 @@
+import type { IconName } from "@/components/shell/icons";
 import type { RiskTone } from "@/lib/menu-status";
 
 // Shared list behaviour (handoff/redesign/CHOICE.md, "Lists, Restore and Baselines"):
@@ -80,4 +81,22 @@ export function orderGroups<G extends { items: readonly unknown[] }>(groups: rea
     .map((group, index) => ({ group, index }))
     .sort((a, b) => (TONE_RANK[worst(a.group) ?? "fine"] - TONE_RANK[worst(b.group) ?? "fine"]) || (b.group.items.length - a.group.items.length) || (a.index - b.index))
     .map(({ group }) => group);
+}
+
+// Where a pick sits in the tray: its group (such as the service) and the group's place.
+export interface PickGroup { key: string; label: string; icon?: IconName; rank?: number }
+
+/** The picks for the tray, gathered by group: groups by `rank` (then first seen), and
+ * picks inside a group in the pool's order. */
+export function picksTray<T>(pool: readonly T[], getId: (item: T) => string, groupOf: (item: T) => PickGroup, picked: ReadonlySet<string>) {
+  const groups = new Map<string, PickGroup & { items: T[] }>();
+  for (const item of pool) {
+    if (!picked.has(getId(item))) continue;
+    const group = groupOf(item);
+    const entry = groups.get(group.key) ?? { ...group, items: [] };
+    entry.items.push(item);
+    groups.set(group.key, entry);
+  }
+  const order = [...groups.values()];
+  return { groups: order.map((group, index) => ({ group, index })).sort((a, b) => ((a.group.rank ?? 0) - (b.group.rank ?? 0)) || (a.index - b.index)).map(({ group }) => group) };
 }

@@ -39,7 +39,7 @@ export default async function BenchmarksPage() {
         status={complianceStatus(complianceCounts(data.findings))}
         title="Compliance"
       />
-      <CompliancePage canConfigure={access.capabilities.includes("configuration")} canRestore={access.capabilities.includes("restore")} data={data} now={data.generatedAt} />
+      <CompliancePage canCheck={access.capabilities.includes("collect")} canConfigure={access.capabilities.includes("configuration")} canRestore={access.capabilities.includes("restore")} data={data} now={data.generatedAt} />
     </>
   );
 }

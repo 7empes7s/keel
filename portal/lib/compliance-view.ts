@@ -5,7 +5,7 @@ import type { RiskTone } from "@/lib/menu-status";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
 import { type EngineRef, personLabel } from "@/lib/sentences";
-import type { CloudService } from "@/lib/services";
+import { type CloudService, serviceFor } from "@/lib/services";
 import type {
   BaselineCapture,
   BaselineChanges,
@@ -101,6 +101,9 @@ interface ControlWords {
   what: string;
   why: string;
   types: string[];
+  // The service a control is filed under, when it is not its kind's own service: the
+  // mail protection policies are read through Exchange but managed in Defender.
+  service?: string;
 }
 
 const CONTROL_WORDS: Record<string, ControlWords> = {
@@ -132,13 +135,109 @@ const CONTROL_WORDS: Record<string, ControlWords> = {
     why: "Old sign-in methods skip multi-factor sign-in, so a stolen password is enough.",
     types: ["conditionalAccessPolicy"],
   },
+  // Defender email protection, read from the Exchange mail protection policies.
+  "keel-custom.defender-email.anti-phish-spoof-protection": {
+    title: "Anti-phishing catches senders pretending to be someone else",
+    short: "Spoofed senders caught",
+    what: "Checks every anti-phishing policy that is on: spoof protection on, the sender domain's own anti-spoofing rule (DMARC) followed, and a question mark shown on senders that cannot be verified.",
+    why: "Without it, mail that pretends to come from your boss or a supplier lands in the inbox looking real.",
+    types: ["exchange-mail-flow"],
+    service: "Defender",
+  },
+  "keel-custom.defender-email.anti-spam-phish-quarantined": {
+    title: "Phishing mail goes to quarantine",
+    short: "Phishing quarantined",
+    what: "Checks every anti-spam policy: phishing and high-confidence phishing go to quarantine, and phishing already delivered is pulled back out of mailboxes.",
+    why: "Phishing left in the Junk folder is still one click away from a stolen password.",
+    types: ["exchange-mail-flow"],
+    service: "Defender",
+  },
+  "keel-custom.defender-email.anti-spam-no-allowed-domains": {
+    title: "No whole domain skips spam filtering",
+    short: "No domain skips filtering",
+    what: "Checks every anti-spam policy for allowed sender domains, whose mail skips spam filtering.",
+    why: "Anyone can fake a sender from an allowed domain, so its phishing skips the filter too.",
+    types: ["exchange-mail-flow"],
+    service: "Defender",
+  },
+  "keel-custom.defender-email.malware-file-filter": {
+    title: "Risky attachment types are blocked",
+    short: "Risky attachments blocked",
+    what: "Checks every malware policy: risky file types (such as .exe) are blocked, and malware already delivered is pulled back out of mailboxes.",
+    why: "Attachments are still the most common way malware gets in.",
+    types: ["exchange-mail-flow"],
+    service: "Defender",
+  },
+  "keel-custom.defender-email.safe-links-email": {
+    title: "Links in email are checked when clicked",
+    short: "Email links checked",
+    what: "Checks every Safe Links policy: links in email are checked when clicked, and nobody can click past the warning to a dangerous site.",
+    why: "A link that was safe when the mail arrived can turn malicious hours later.",
+    types: ["exchange-mail-flow"],
+    service: "Defender",
+  },
 };
+
+// The settings a control can name in its detail lines, in plain words.
+const SETTING_WORDS: Record<string, string> = {
+  EnableSpoofIntelligence: "Spoof protection",
+  HonorDmarcPolicy: "Follows the sender domain's DMARC rule",
+  EnableUnauthenticatedSender: "Question mark on unverified senders",
+  PhishSpamAction: "Phishing goes to",
+  HighConfidencePhishAction: "High-confidence phishing goes to",
+  PhishZapEnabled: "Pulls back delivered phishing",
+  AllowedSenderDomains: "Allowed sender domains",
+  EnableFileFilter: "Blocks risky file types",
+  ZapEnabled: "Pulls back delivered malware",
+  EnableSafeLinksForEmail: "Checks links in email",
+  ScanUrls: "Checks links when clicked",
+  AllowClickThrough: "Lets people click past the warning",
+};
+
+// Exchange's action codes in plain words.
+const ACTION_WORDS: Record<string, string> = {
+  quarantine: "Quarantine",
+  movetojmf: "Junk folder",
+  addxheader: "Inbox, with a header added",
+  modifysubject: "Inbox, with the subject changed",
+  redirect: "Another address",
+  delete: "Deleted",
+  noaction: "Inbox",
+};
+
+/** A setting's value in plain words: On / Off, an action, a list, or "None". */
+export function settingValueWords(value: unknown): string {
+  if (value === true) return "On";
+  if (value === false) return "Off";
+  if (value === null || value === undefined || value === "") return "Not set";
+  if (Array.isArray(value)) return value.length ? value.map((item) => String(item)).join(", ") : "None";
+  if (typeof value === "string") return ACTION_WORDS[value.toLowerCase()] ?? value;
+  return String(value);
+}
+
+export interface ControlMiss { subject: string; setting: string; now: string; shouldBe: string }
+
+/** What made a control fail, one line per policy and setting, in plain words. */
+export function controlMisses(finding: ComplianceFinding): ControlMiss[] {
+  return (finding.details ?? []).map((line) => ({
+    subject: line.subject,
+    setting: SETTING_WORDS[line.setting] ?? line.setting,
+    now: settingValueWords(line.value),
+    shouldBe: settingValueWords(line.expected),
+  }));
+}
 
 const CHECK_WORDS: Record<string, string> = {
   roleAssignment: "admin role assignments",
   namedLocation: "trusted locations",
   group: "groups",
   conditionalAccessPolicy: "sign-in rules",
+  "exchange-mail-flow": "mail protection policies",
+};
+
+// One backup of a kind, where dropping the plural "s" does not read ("mail protection policie").
+const ONE_WORDS: Record<string, string> = {
+  "exchange-mail-flow": "mail protection",
 };
 
 function kindWords(type: string): string {
@@ -180,7 +279,8 @@ export function controlWhy(finding: ComplianceFinding): string | null {
 }
 
 export function controlService(finding: ComplianceFinding): CloudService {
-  return typeService(controlTypes(finding)[0] ?? "other");
+  const own = CONTROL_WORDS[finding.controlId]?.service;
+  return own ? serviceFor(own) : typeService(controlTypes(finding)[0] ?? "other");
 }
 
 export function standardName(finding: ComplianceFinding): string {
@@ -244,7 +344,7 @@ export interface ComplianceVerdict { text: string; detail?: string; tone: "urgen
 export function complianceVerdict(data: ComplianceData): ComplianceVerdict {
   const counts = complianceCounts(data.findings);
   const now = data.generatedAt;
-  if (counts.total === 0) return { text: "No control has been checked on this tenant yet.", detail: "Keel does not run these checks on its own yet.", tone: "neutral" };
+  if (counts.total === 0) return { text: "No control has been checked on this tenant yet.", detail: NOT_CHECKED_YET, tone: "neutral" };
   if (counts.failing === 1) {
     const finding = data.findings.find((entry) => entry.exposed)!;
     const text = finding.exceptionState === "expired"
@@ -272,7 +372,7 @@ export function reasonWords(finding: ComplianceFinding): string {
   const type = split > 0 ? reason.slice(0, split) : controlTypes(finding)[0] ?? null;
   const code = split > 0 ? reason.slice(split + 1) : reason;
   const kind = type ? kindWords(type) : "settings";
-  const one = kind.replace(/s$/, "");
+  const one = (type ? ONE_WORDS[type] : undefined) ?? kind.replace(/s$/, "");
   if (code === "no-observation") return `No backup of ${kind} has been made yet.`;
   if (code === "stale" || code === "stale-observation") return `The newest ${one} backup is too old for this check.`;
   if (code.startsWith("observation-")) return `The newest ${one} backup did not finish.`;
@@ -577,4 +677,17 @@ export function immutabilitySentence(storage: StorageResidency): string {
 export const NOT_A_CERTIFICATION =
   "This states where backups are kept. It is not a certification of compliance with any regulation.";
 
-export const NOT_RUN_YET = "Keel does not run these checks on its own yet. Results come from the last check.";
+/** How the checks run, said where results are shown. */
+export const NOT_RUN_YET = "Keel checks these after each backup. Results come from the last check.";
+
+/** The empty state's next step. */
+export const NOT_CHECKED_YET = "Keel checks these after each backup. Results show here after the next backup or check.";
+
+/** When the newest result was recorded, or null when nothing was checked. */
+export function lastChecked(findings: ComplianceFinding[], now: string): string | null {
+  const times = findings.map((finding) => Date.parse(finding.evaluatedAt ?? "")).filter(Number.isFinite);
+  return times.length ? `Last checked ${ago(new Date(Math.max(...times)).toISOString(), now)}.` : null;
+}
+
+/** What to do when Keel cannot say where backups are kept. */
+export const STORAGE_UNSET_TODO = "Ask whoever runs the Keel server to record where backups are stored. Until then, this page and Resilience cannot say where they are.";

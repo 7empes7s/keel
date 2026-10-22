@@ -736,8 +736,9 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
     emitJobEvent(job, 'job.running', eventSink);
     const timeoutMs = JOB_TIMEOUT_MS[job.kind] ?? JOB_TIMEOUT_MS.default;
     const execution = startJobChild(handler.script, args, { timeoutMs, executable: handler.executable,
-      // The requester is passed on so a collection reads the audit logs as them.
-      env: { ...process.env, KEEL_EVENT_CORRELATION_ID: jobCorrelationId(job), KEEL_JOB_REQUESTED_BY: String(job.requested_by ?? '') },
+      // The requester is passed on so a collection reads the audit logs as them, and the
+      // job's id so a backup can report each type's progress onto its own job row.
+      env: { ...process.env, KEEL_EVENT_CORRELATION_ID: jobCorrelationId(job), KEEL_JOB_REQUESTED_BY: String(job.requested_by ?? ''), KEEL_JOB_ID: String(job.id) },
     });
     onInFlightChange({ job, terminate: execution.terminate });
     const heartbeat = setInterval(() => {

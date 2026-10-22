@@ -51,3 +51,26 @@ export function tileCounts<T>(items: readonly T[], tiles: readonly FilterTile<T>
     return { key: tile.key, count: inTile.length, adds: chosen.length ? inTile.filter((item) => !shown(item)).length : 0, picked: chosen.includes(tile) };
   });
 }
+
+/** The picked tiles from the address, where they are a comma list (`state=a,b`). Old
+ *  single-value links still work, and unknown keys are dropped. */
+export function readPicked<T>(tiles: readonly FilterTile<T>[], value: string | null | undefined): string[] {
+  return pickedTiles(tiles, value ? value.split(",").filter(Boolean) : []);
+}
+
+/** The address value after clicking a tile: it is added or removed, the others stay.
+ *  `null` (the "everything" tile) clears them all. */
+export function tileParam<T>(tiles: readonly FilterTile<T>[], picked: readonly string[], key: string | null): string | null {
+  return key === null ? null : toggleTile(tiles, picked, key).join(",") || null;
+}
+
+/** What a tile that is not picked would add to the view, once another tile is picked. */
+export function addsWords(entry: TileCount | undefined, pickedCount: number): string | null {
+  if (!pickedCount || !entry || entry.picked) return null;
+  return entry.adds ? `+${entry.adds} if added` : "Adds none";
+}
+
+/** The address value with one tile taken off, for its chip. */
+export function withoutTile(picked: readonly string[], key: string): string | null {
+  return picked.filter((entry) => entry !== key).join(",") || null;
+}

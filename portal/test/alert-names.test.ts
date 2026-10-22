@@ -144,11 +144,11 @@ test("the list shows names in its rows and keeps the keys in Technical details",
   assert.ok(html.includes(SITE_KEY), "the stored key stays available under Technical details");
 });
 
-test("SharePoint alerts say what changed since the previous read, never a baseline", () => {
-  assert.equal(causeSentence(alert({})), "Its settings changed since the previous read.");
-  assert.equal(causeSentence(alert({ cause: { changeType: "added", resourceType: "sharepoint-site-settings", snapshotId: null } })), "It is new since the previous read.");
+test("SharePoint alerts say what differs from the approved setup, never a baseline", () => {
+  assert.equal(causeSentence(alert({})), "Its settings differ from the approved setup.");
+  assert.equal(causeSentence(alert({ cause: { changeType: "added", resourceType: "sharepoint-site-settings", snapshotId: null } })), "It is new since the approved setup.");
   assert.equal(causeSentence(alert({ cause: { changeType: "removed", resourceType: "sharepoint-site-settings", snapshotId: null } })), "It was missing from the latest read.");
-  assert.equal(causeSentence(alert({ resourceKey: "sharepoint-site-settings:tenant", name: null })), "Its settings changed since the previous read.");
+  assert.equal(causeSentence(alert({ resourceKey: "sharepoint-site-settings:tenant", name: null })), "Its settings differ from the approved setup.");
   assert.doesNotMatch(causeSentence(alert({ conditionActive: false })), /baseline/);
   const backup = alert({ resourceKey: "group:Finance", name: null, cause: { changeType: "modified", resourceType: "group", snapshotId: null } });
   assert.equal(causeSentence(backup), "It differs from the approved setup.", "configuration drift is told against the approved setup");

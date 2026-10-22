@@ -8,6 +8,7 @@ import { BaselinesStyles } from "@/components/baselines/styles";
 import { ControlSheet } from "@/components/compliance/control-sheet";
 import { FindingRecordFields, StorageRecordFields } from "@/components/compliance/compliance-record";
 import { ExceptionSheet, type Granted } from "@/components/compliance/exception-sheet";
+import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
@@ -19,6 +20,7 @@ import {
   NOT_RUN_YET,
   RESULTS,
   canFixOn,
+  STORAGE_UNSET_TODO,
   canGrantOn,
   complianceCounts,
   complianceVerdict,
@@ -29,7 +31,7 @@ import {
   fixableSentence,
   grantLabel,
   immutabilitySentence,
-  isResult,
+  lastChecked,
   orderFindings,
   ownerPerson,
   resultLine,
@@ -38,6 +40,7 @@ import {
   storageSentence,
   type ControlResult,
 } from "@/lib/compliance-view";
+import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
 import { ago } from "@/lib/presentation";
 import { serviceOrder } from "@/lib/services";
 import { toast } from "@/lib/toast";
@@ -58,14 +61,18 @@ const TILES: { key: ControlResult; small: string }[] = [
   { key: "unknown", small: "The backup it needs is missing or too old" },
   { key: "passing", small: "Met on the last check" },
 ];
+const RESULT_TILES: FilterTile<ComplianceFinding>[] = (Object.keys(RESULTS) as ControlResult[]).map((key) => ({ key, test: (finding: ComplianceFinding) => resultOf(finding) === key }));
 
-export function CompliancePage({ data, canConfigure, canRestore = false, now = data.generatedAt }: {
+export function CompliancePage({ data, canConfigure, canCheck = false, canRestore = false, now = data.generatedAt }: {
   data: ComplianceData;
   canConfigure: boolean;
+  // Holds `collect`, the permission that runs backups: offered "Check now".
+  canCheck?: boolean;
   canRestore?: boolean;
   now?: string;
 }) {
   const router = useRouter();
+  const check = useCheckNow(() => router.refresh());
   const view = useViewState();
   const pathname = usePathname() ?? "/benchmarks";
   const params = useSearchParams();
@@ -90,9 +97,12 @@ export function CompliancePage({ data, canConfigure, canRestore = false, now = d
   })), [data.findings, granted, now]);
   const counts = useMemo(() => complianceCounts(findings), [findings]);
   const verdict = complianceVerdict({ ...data, findings });
-  const resultParam = params?.get("result") ?? null;
-  const filter = isResult(resultParam) ? resultParam : null;
-  const shown = useMemo(() => (filter ? findings.filter((finding) => resultOf(finding) === filter) : findings), [findings, filter]);
+  // The result tiles add up: `result=failing,unknown` shows controls in either.
+  const filter = readPicked(RESULT_TILES, params?.get("result")) as ControlResult[];
+  const filterKey = filter.join(",");
+  const shown = useMemo(() => applyFilters(findings, RESULT_TILES, filterKey ? filterKey.split(",") : []), [findings, filterKey]);
+  const tileTotals = useMemo(() => new Map(tileCounts(findings, RESULT_TILES, filterKey ? filterKey.split(",") : []).map((entry) => [entry.key, entry])), [findings, filterKey]);
+  const activeFilters: ActiveFilter[] = filter.map((key) => ({ key: `result:${key}`, label: RESULTS[key].plural, clear: { result: withoutTile(filter, key) } }));
   const opened = findings.find((finding) => finding.id === view.get("open")) ?? null;
   const grantIds = view.get("grant").split(",").filter(Boolean);
   const granting = canConfigure ? findings.filter((finding) => grantIds.includes(finding.id) && finding.verdict === "fail") : [];
@@ -114,7 +124,12 @@ export function CompliancePage({ data, canConfigure, canRestore = false, now = d
     pushUrl(to);
   };
 
-  const verdictAction = canConfigure && failing.length === 1 && !granting.length ? { label: grantLabel(failing[0]), href: grantHref([failing[0].id]) } : null;
+  // Nothing checked yet: the one action is to check now (or, without the permission
+  // that runs backups, to see when they run).
+  const verdictAction = findings.length === 0
+    ? (canCheck ? { label: check.busy ? "Checking..." : "Check now", onClick: check.run, busy: check.busy } : { label: "See when backups run", href: "/schedules" })
+    : canConfigure && failing.length === 1 && !granting.length ? { label: grantLabel(failing[0]), href: grantHref([failing[0].id]) } : null;
+  const checkedWhen = lastChecked(findings, now);
 
   const groupings = useMemo<Grouping<ComplianceFinding>[]>(() => [
     { key: "service", label: "Service", groupsOf: (items) => groupBy(items, (item) => controlService(item).code, (_key, list) => { const service = controlService(list[0]); return { label: service.name, icon: service.icon, about: `${service.about} · ${controlsWord(list.length)}${worstWords(list)}` }; }, (key) => serviceOrder(key)) },
@@ -163,19 +178,22 @@ export function CompliancePage({ data, canConfigure, canRestore = false, now = d
           <span>
             {baseline ? <>Measured against <Link className="cp-inline-link" href="/baselines">{baseline.label ?? "the approved setup"}</Link>{baseline.capture?.capturedAt ? `, captured ${ago(baseline.capture.capturedAt, now)}` : ""}.</> : <>No approved setup is active. <Link className="cp-inline-link" href="/baselines">Approved setups</Link></>}
           </span>
-          <span>{NOT_RUN_YET}</span>
+          <span>{NOT_RUN_YET}{checkedWhen ? ` ${checkedWhen}` : ""}</span>
+          {canCheck && findings.length ? <CheckNowButton check={check} /> : null}
         </p>
 
         <section aria-label="Results at a glance" className="cp-tiles">
           {TILES.map((tile) => {
             const words = RESULTS[tile.key];
-            const active = filter === tile.key;
+            const active = filter.includes(tile.key);
+            const adds = addsWords(tileTotals.get(tile.key), filter.length);
             const tone = tile.key === "failing" && counts.failing ? "urgent" : (tile.key === "unknown" || tile.key === "excepted") && counts[tile.key] ? "soon" : undefined;
             return (
-              <Link aria-current={active || undefined} className="cp-tile" data-tone={tone} href={href({ result: active ? null : tile.key, open: null, grant: null })} key={tile.key}>
-                <span className="cp-tile-label"><Icon name={words.icon} />{words.label}</span>
+              <Link aria-current={active || undefined} className="cp-tile" data-tone={tone} href={href({ result: tileParam(RESULT_TILES, filter, tile.key), open: null, grant: null })} key={tile.key} title={active ? "Picked: click to remove it from the view" : "Click to add these to the view"}>
+                <span className="cp-tile-label"><Icon name={words.icon} />{words.label}{active ? <Icon className="tile-check" name="check" /> : null}</span>
                 <b className="cp-tile-count">{counts[tile.key]}</b>
                 <small>{tile.small}</small>
+                {adds ? <small className="tile-adds">{adds}</small> : null}
               </Link>
             );
           })}
@@ -210,16 +228,14 @@ export function CompliancePage({ data, canConfigure, canRestore = false, now = d
 
         <section aria-labelledby="cp-controls-heading" className="cp-section">
           <h2 className="visually-hidden" id="cp-controls-heading">Controls</h2>
-          {filter ? (
-            <p className="cp-filter-note" role="status">
-              Showing {RESULTS[filter].label.toLowerCase()} only: {shown.length} of {findings.length}.
-              <Link className="cp-inline-link" href={href({ result: null })}>Show every control</Link>
-            </p>
-          ) : null}
+          <ActiveFilters extra={{ open: null, grant: null }} filters={activeFilters} noun={{ one: "control", many: "controls" }} shown={shown.length} total={findings.length} />
           {findings.length === 0 ? (
-            <p className="sel-empty">No control has been checked on this tenant yet.</p>
+            <div className="sel-empty cp-empty">
+              <p>No control has been checked on this tenant yet.</p>
+              {canCheck ? <CheckNowButton check={check} /> : <Link className="btn btn-sm" href="/schedules"><Icon name="clock" />See when backups run</Link>}
+            </div>
           ) : shown.length === 0 ? (
-            <p className="sel-empty">No control matches this filter.</p>
+            <NoMatches extra={{ open: null, grant: null }} filters={activeFilters} noun={{ one: "control", many: "controls" }} />
           ) : (
             <SelectableList
               action={canConfigure ? {
@@ -252,9 +268,13 @@ export function CompliancePage({ data, canConfigure, canRestore = false, now = d
           )}
         </section>
 
-        <div className="cp-storage">
+        <div className="cp-storage" data-tone={storage.configured ? undefined : "soon"}>
           <span aria-hidden="true" className="cp-storage-icon"><Icon name="cloud" /></span>
-          <p><b>{storageSentence(storage)}</b>{storage.configured ? ` ${immutabilitySentence(storage)}` : null}</p>
+          <p>
+            <b>{storageSentence(storage)}</b>{storage.configured ? ` ${immutabilitySentence(storage)}` : null}
+            {storage.configured ? null : <small className="cp-storage-todo">{STORAGE_UNSET_TODO}</small>}
+          </p>
+          {storage.configured ? null : <Link className="btn btn-sm" href="/resilience#storage"><Icon name="backup" />See backup storage</Link>}
           <span className="cp-help" tabIndex={0} title={NOT_A_CERTIFICATION}><Icon name="info" /><span className="visually-hidden">{NOT_A_CERTIFICATION}</span></span>
         </div>
 
@@ -262,6 +282,7 @@ export function CompliancePage({ data, canConfigure, canRestore = false, now = d
           <RecordField copy={false} label="Read with" value="GET /api/evidence?kind=benchmark-evaluation,benchmark-exception" />
           <RecordField copy={false} label="Grant with" value="POST /api/actions/compliance/exception {evaluationId, owner, reason, expiresAt}" />
           <RecordField copy={false} label="Make it pass with" value="POST /api/actions/compliance/fix {evaluationId, naturalKey}, then POST /api/actions/restore {artifactId, justification}" />
+          <RecordField copy={false} label="Check with" value="POST /api/actions/compliance/check (also runs after each backup)" />
           {baseline ? <RecordField label="Approved setup ID" value={baseline.id} /> : null}
           {findings.map((finding) => <FindingRecordFields finding={finding} key={finding.id} />)}
           <StorageRecordFields storage={storage} />
@@ -282,6 +303,41 @@ export function CompliancePage({ data, canConfigure, canRestore = false, now = d
         />
       ) : null}
     </div>
+  );
+}
+
+type CheckNow = { busy: boolean; run: () => void };
+
+/** "Check now": runs every control against the newest backups, then reloads the page's data. */
+function useCheckNow(onDone: () => void): CheckNow {
+  const [busy, setBusy] = useState(false);
+  async function run() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/actions/compliance/check", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      if (!response.ok) {
+        toast({ tone: "warning", title: "The check did not run", detail: response.status === 403 ? "You need the permission that runs backups." : "Try again in a moment." });
+        return;
+      }
+      const body = (await response.json()) as { checked: number; pass: number; fail: number; unknown: number };
+      const parts = [body.fail ? `${body.fail} failing` : null, body.unknown ? `${body.unknown} could not be checked` : null, body.pass ? `${body.pass} passing` : null].filter(Boolean);
+      toast({ tone: body.fail ? "warning" : undefined, title: `${controlsWord(body.checked)} checked`, detail: parts.join(", ") || undefined });
+      onDone();
+    } catch {
+      toast({ tone: "warning", title: "The check did not run", detail: "Keel could not be reached." });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return { busy, run: () => void run() };
+}
+
+function CheckNowButton({ check }: { check: CheckNow }) {
+  return (
+    <button aria-busy={check.busy || undefined} className="btn btn-sm" disabled={check.busy} onClick={check.run} type="button">
+      <Icon name="refresh" />{check.busy ? "Checking..." : "Check now"}
+    </button>
   );
 }
 

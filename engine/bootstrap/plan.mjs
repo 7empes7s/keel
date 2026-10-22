@@ -44,6 +44,7 @@ import {
   BOOTSTRAP_CONTRACT_VERSION, BOOTSTRAP_ROLE_TEMPLATES, CONSENT_SATISFIES, GRANT_KINDS,
   GRAPH_RESOURCE_APP_ID, assertRequestedGrantsDerived, prerequisiteForWorkload, rolesSatisfying,
 } from './prerequisites.mjs';
+import { permissionsFor } from './permissionCatalog.mjs';
 
 export const PLAN_STEP_STATES = Object.freeze([
   'satisfied', 'pending-consent', 'pending-provisioning', 'pending-manual',
@@ -103,6 +104,9 @@ const appReferenceFor = (app) => ({
   appId: app.appId,
   displayName: app.displayName,
 });
+
+// Every Microsoft Graph permission Keel uses for one identity, setup or not.
+const usedGraphScopes = (identity) => new Set(permissionsFor(identity).filter((p) => p.api === 'graph').map((p) => p.name));
 
 function requiredScopesFor(app) {
   const scopes = new Set();
@@ -211,9 +215,10 @@ export async function planBootstrap({
       requiredScopes: derivedScopes,
       consentedScopes: [...consentedScopes].sort(),
       missingScopes: missingConsent,
-      // Grants this identity already holds beyond the derivation. Reported as
+      // Graph grants this identity holds that Keel never uses: neither this setup
+      // nor any other backup or restore (permissionCatalog.mjs). Reported as
       // observed; the plan never asks for them and nothing ever removes them.
-      excessScopes: [...consentedScopes].filter((scope) => !derivedScopes.includes(scope)).sort(),
+      excessScopes: [...consentedScopes].filter((scope) => !derivedScopes.includes(scope) && !usedGraphScopes(identity).has(scope)).sort(),
     });
 
     // Workload RBAC: a separate authority from Graph consent.

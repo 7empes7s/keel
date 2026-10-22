@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 
+import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { byTime } from "@/lib/paging";
@@ -36,13 +37,14 @@ import {
   timeLeft,
   type WaitingSort,
 } from "@/lib/approval-view";
+import { addsWords, applyFilters, tileCounts, type FilterTile } from "@/lib/filter-set";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import { orderGroups } from "@/lib/selection";
 import { personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
 import { usePoll } from "@/lib/use-poll";
-import { useViewState } from "@/lib/use-view-state";
+import { readList, useViewState } from "@/lib/use-view-state";
 
 // Approvals (portal audit, pick B): one card per request, opened in place. Four tiles
 // filter the list (`soon=`, `effects=`, `show=decided&week=`), the open request sits
@@ -57,6 +59,9 @@ const REQUEST_SORTS: ListSort<ApprovalRequestRecord>[] = [
   { key: "expires", label: "Expires", compare: (a, b) => byTime(a.expiresAt ?? "9999-12-31T00:00:00Z", b.expiresAt ?? "9999-12-31T00:00:00Z") },
 ];
 const NOUN = { one: "request", many: "requests" };
+// How a decided request ended. Several can be picked; they add up.
+const OUTCOME_KEYS = ["approved", "rejected", "expired"];
+const OUTCOME_LABELS: Record<string, string> = { approved: "Approved", rejected: "Rejected", expired: "Expired" };
 
 /**
  * Q45: a restore whose dry run carries content effects needs a separate approval of
@@ -252,7 +257,8 @@ export function ApprovalInbox({
   const soonOnly = view.get("soon") === "1";
   const effectsOnly = view.get("effects") === "1";
   const weekOnly = view.get("week") === "1";
-  const outcome = view.get("outcome");
+  // Decided outcomes add up: `outcome=approved,expired` shows either.
+  const outcomes = readList(view.get("outcome")).filter((value) => OUTCOME_KEYS.includes(value));
   const query = view.get("q").toLowerCase();
   const opened = view.get("open");
 
@@ -263,14 +269,21 @@ export function ApprovalInbox({
 
   const counts = useMemo(() => approvalCounts({ pending, awaitingContentEffects, history }, now), [pending, awaitingContentEffects, history, now]);
   const waiting = useMemo(() => sortWaiting([...pending, ...awaitingContentEffects], sort), [pending, awaitingContentEffects, sort]);
-  const shown = useMemo(() => waiting.filter((request) => (!soonOnly || expiringSoon(request, now)) && (!effectsOnly || request.status !== "pending")), [waiting, soonOnly, effectsOnly, now]);
+  // The two waiting tiles add up: Expiring soon and Waiting on content changes show either.
+  const waitTiles = useMemo<FilterTile<ApprovalRequestRecord>[]>(() => [
+    { key: "soon", test: (request) => expiringSoon(request, now) },
+    { key: "effects", test: (request) => request.status !== "pending" },
+  ], [now]);
+  const waitPicked = [soonOnly ? "soon" : null, effectsOnly ? "effects" : null].filter((key): key is string => Boolean(key));
+  const shown = useMemo(() => applyFilters(waiting, waitTiles, [...(soonOnly ? ["soon"] : []), ...(effectsOnly ? ["effects"] : [])]), [waiting, waitTiles, soonOnly, effectsOnly]);
+  const waitCounts = new Map(tileCounts(waiting, waitTiles, waitPicked).map((entry) => [entry.key, entry]));
   const soonest = useMemo(() => sortWaiting(pending, "expiring")[0] ?? null, [pending]);
   const decided = useMemo(() => {
     const since = new Date(now).valueOf() - 7 * 24 * 3_600_000;
-    return history.filter((request) => (!outcome || request.status === outcome)
+    return history.filter((request) => (!outcomes.length || outcomes.includes(request.status))
       && (!weekOnly || new Date(request.decidedAt ?? request.expiresAt ?? 0).valueOf() >= since)
       && (!query || matchText(request).includes(query)));
-  }, [history, outcome, weekOnly, query, now]);
+  }, [history, outcomes.join(","), weekOnly, query, now]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // New requests appear without a reload: the page re-reads quietly, and a request that
   // was not on screen before is marked so it fades in.
@@ -362,16 +375,25 @@ export function ApprovalInbox({
   ], [now]);
 
   const verdict = approvalsVerdict(counts, soonest, now);
-  const filterWords = [
-    soonOnly ? `expiring within 4 hours` : null,
-    effectsOnly ? "waiting on content changes" : null,
-  ].filter(Boolean).join(" and ");
+  const waitFilters: ActiveFilter[] = [
+    ...(soonOnly ? [{ key: "soon", label: "Expiring within 4 hours", clear: { soon: null } }] : []),
+    ...(effectsOnly ? [{ key: "effects", label: "Waiting on content changes", clear: { effects: null } }] : []),
+  ];
+  const decidedFilters: ActiveFilter[] = [
+    ...outcomes.map((value) => ({ key: `outcome:${value}`, label: OUTCOME_LABELS[value], clear: { outcome: outcomes.filter((entry) => entry !== value).join(",") || null } })),
+    ...(weekOnly ? [{ key: "week", label: "Decided in the last 7 days", clear: { week: null } }] : []),
+    ...(query ? [{ key: "q", label: `Find: “${view.get("q").trim()}”`, clear: { q: null } }] : []),
+  ];
+  const toggleOutcome = (value: string) => {
+    const next = outcomes.includes(value) ? outcomes.filter((entry) => entry !== value) : [...outcomes, value];
+    return OUTCOME_KEYS.filter((key) => next.includes(key)).join(",") || null;
+  };
 
   const clear = { show: null, soon: null, effects: null, week: null, outcome: null, open: null };
   const tiles: { key: string; label: string; icon: "inbox" | "clock" | "page" | "check-circle"; value: string; small: string; changes: Record<string, string | null>; tone?: "urgent" | "soon"; active: boolean }[] = [
     { key: "waiting", label: "Waiting for you", icon: "inbox", value: String(counts.waiting), small: "Restores, undo changes and switches", changes: clear, active: show === "waiting" && !soonOnly && !effectsOnly },
-    { key: "soon", label: "Expiring within 4 hours", icon: "clock", value: String(counts.expiringSoon), small: counts.expiringSoon ? "Decide, or they must be asked again" : "Nothing expires soon", changes: { ...clear, soon: soonOnly ? null : "1" }, tone: counts.expiringSoon ? "urgent" : undefined, active: show === "waiting" && soonOnly },
-    { key: "effects", label: "Waiting on content changes", icon: "page", value: String(counts.contentEffects), small: counts.contentEffects ? "Approved, but kept content changes too" : "No restore waits on content changes", changes: { ...clear, effects: effectsOnly ? null : "1" }, tone: counts.contentEffects ? "soon" : undefined, active: show === "waiting" && effectsOnly },
+    { key: "soon", label: "Expiring within 4 hours", icon: "clock", value: String(counts.expiringSoon), small: counts.expiringSoon ? "Decide, or they must be asked again" : "Nothing expires soon", changes: { show: null, week: null, outcome: null, open: null, soon: soonOnly ? null : "1" }, tone: counts.expiringSoon ? "urgent" : undefined, active: show === "waiting" && soonOnly },
+    { key: "effects", label: "Waiting on content changes", icon: "page", value: String(counts.contentEffects), small: counts.contentEffects ? "Approved, but kept content changes too" : "No restore waits on content changes", changes: { show: null, week: null, outcome: null, open: null, effects: effectsOnly ? null : "1" }, tone: counts.contentEffects ? "soon" : undefined, active: show === "waiting" && effectsOnly },
     { key: "decided", label: "Decided this week", icon: "check-circle", value: String(counts.decidedThisWeek.approved + counts.decidedThisWeek.rejected + counts.decidedThisWeek.expired), small: `${counts.decidedThisWeek.approved} approved · ${counts.decidedThisWeek.rejected} rejected · ${counts.decidedThisWeek.expired} expired`, changes: { ...clear, show: "decided", week: weekOnly && show === "decided" ? null : "1" }, active: show === "decided" && weekOnly },
   ];
 
@@ -509,11 +531,13 @@ export function ApprovalInbox({
               href={href(tile.changes)}
               key={tile.key}
               onClick={(event) => follow(event, tile.changes)}
+              title={tile.key === "soon" || tile.key === "effects" ? (tile.active ? "Picked: click to remove it from the view" : "Click to add these to the view") : undefined}
             >
-              <span className="ap-tile-label"><Icon name={tile.icon} />{tile.label}</span>
+              <span className="ap-tile-label"><Icon name={tile.icon} />{tile.label}{tile.active && (tile.key === "soon" || tile.key === "effects") ? <Icon className="tile-check" name="check" /> : null}</span>
               <b className="ap-tile-count">{tile.value}</b>
               {tile.key === "decided" ? <Meter counts={counts.decidedThisWeek} /> : null}
               <small>{tile.small}</small>
+              {show === "waiting" && (tile.key === "soon" || tile.key === "effects") && addsWords(waitCounts.get(tile.key), waitPicked.length) ? <small className="tile-adds">{addsWords(waitCounts.get(tile.key), waitPicked.length)}</small> : null}
             </Link>
           ))}
         </section>
@@ -536,8 +560,9 @@ export function ApprovalInbox({
             <div className="picker-field">
               <span className="picker-label" id="ap-outcome-label">Outcome</span>
               <div aria-labelledby="ap-outcome-label" className="ap-chips" role="group">
-                {[["", "All"], ["approved", "Approved"], ["rejected", "Rejected"], ["expired", "Expired"]].map(([value, label]) => (
-                  <button aria-pressed={outcome === value} className="ap-chip" key={value || "all"} onClick={() => view.set({ outcome: value || null, open: null })} type="button">{label}</button>
+                <button aria-pressed={!outcomes.length} className="ap-chip" onClick={() => view.set({ outcome: null, open: null })} type="button">All</button>
+                {OUTCOME_KEYS.map((value) => (
+                  <button aria-pressed={outcomes.includes(value)} className="ap-chip" key={value} onClick={() => view.set({ outcome: toggleOutcome(value), open: null })} type="button">{OUTCOME_LABELS[value]}</button>
                 ))}
               </div>
             </div>
@@ -547,12 +572,7 @@ export function ApprovalInbox({
         {show === "waiting" ? (
           <section aria-labelledby="ap-waiting-heading" className="ap-section">
             <h2 className="visually-hidden" id="ap-waiting-heading">Waiting for a decision</h2>
-            {filterWords ? (
-              <p className="ap-filter-note" role="status">
-                Showing requests {filterWords} only: {shown.length} of {waiting.length}.
-                <Link className="ap-inline-link" href={href({ soon: null, effects: null })} onClick={(event) => follow(event, { soon: null, effects: null })}>Show every request</Link>
-              </p>
-            ) : null}
+            <ActiveFilters extra={{ open: null }} filters={waitFilters} noun={NOUN} shown={shown.length} total={waiting.length} />
             {bulk ? (
               <RejectSheet busy={busy?.id === "bulk"} count={bulk.length} noun="request" onCancel={() => setBulk(null)} onConfirm={(reason) => void rejectMany(bulk, reason)} who={peopleList(uniquePeople(pending.filter((request) => bulk.includes(request.id)))) || "The people who asked"} />
             ) : null}
@@ -567,6 +587,7 @@ export function ApprovalInbox({
                   },
                   run: (ids) => { const targets = ids.filter((id) => pending.some((request) => request.id === id)); if (targets.length) { setRejecting(null); setBulk(targets); } },
                 }}
+                empty={waitFilters.length ? <NoMatches extra={{ open: null }} filters={waitFilters} noun={NOUN} /> : undefined}
                 getId={(item) => item.id}
                 groupings={groupings}
                 items={shown}
@@ -592,12 +613,7 @@ export function ApprovalInbox({
                 <input className="bare-input" onChange={(event) => view.set({ q: event.target.value })} placeholder="Find a request or a person" type="search" value={view.get("q")} />
               </span>
             </label>
-            {weekOnly || outcome ? (
-              <p className="ap-filter-note" role="status">
-                Showing {[outcome ? `${outcome} requests` : null, weekOnly ? "decided in the last 7 days" : null].filter(Boolean).join(" ")} only: {decided.length} of {history.length}.
-                <Link className="ap-inline-link" href={href({ week: null, outcome: null })} onClick={(event) => follow(event, { week: null, outcome: null })}>Show every decision</Link>
-              </p>
-            ) : null}
+            <ActiveFilters extra={{ open: null }} filters={decidedFilters} noun={NOUN} shown={decided.length} total={history.length} />
             {decided.length ? (
               <ul className="activity-list ap-history">
                 {decided.map((request) => {
@@ -633,7 +649,7 @@ export function ApprovalInbox({
                 })}
               </ul>
             ) : (
-              <p className="sel-empty">{history.length ? `No ${outcome || "decided"} ${weekOnly ? "request in the last 7 days" : "request matches"}.` : "No request has been decided or has expired yet."}</p>
+              history.length && decidedFilters.length ? <NoMatches extra={{ open: null }} filters={decidedFilters} noun={NOUN} /> : <p className="sel-empty">No request has been decided or has expired yet.</p>
             )}
           </section>
         )}

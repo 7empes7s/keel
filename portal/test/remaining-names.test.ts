@@ -43,7 +43,8 @@ test("an emergency change names its resource and people, never their ids or emai
   const html = renderToStaticMarkup(createElement(IntentCard, { intent, now: NOW }));
   const shown = visible(html);
   assert.match(shown, /Disable USB storage \(device management script\)/);
-  assert.match(shown, /Approved by Ops Lead for Maro Defili/);
+  assert.match(shown, /Approved by<\/dt><dd>Ops Lead/);
+  assert.match(shown, /Change made by<\/dt><dd>Maro Defili/);
   assert.doesNotMatch(shown, GUID);
   assert.doesNotMatch(shown, /@contoso\.com/);
   assert.match(html, new RegExp(SCRIPT_ID), "the key stays in Technical details");
@@ -105,9 +106,10 @@ test("the activation preview lists every resource by its saved name", async () =
   assert.equal(names[GROUP_ID]?.name, "Finance");
   const html = renderToStaticMarkup(createElement(ActivationPreviewView, { preview: { ...preview, names }, now: NOW }));
   const shown = visible(html);
-  assert.match(shown, /Disable USB storage \(device management script\) was changed/);
-  assert.match(shown, /Finance \(group\), needed by Disable USB storage \(device management script\)/);
-  assert.match(shown, /Svc Policy can undo changes now/);
+  const words = shown.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  assert.match(words, /Disable USB storage \(device management script\) Changed/);
+  assert.match(words, /Finance \(group\) Needed by Disable USB storage \(device management script\)/);
+  assert.match(words, /Svc Policy Can undo changes/);
   assert.doesNotMatch(shown, GUID);
   // A failed lookup leaves names empty, never the preview down.
   assert.deepEqual(await previewNames({ async query() { throw new Error("down"); } }, "tenant", preview), {});

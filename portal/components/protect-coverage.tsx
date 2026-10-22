@@ -38,6 +38,7 @@ import {
 } from "@/lib/protect-view";
 import { orderGroups, smartOrder } from "@/lib/selection";
 import { serviceFor, serviceOrder } from "@/lib/services";
+import { kindParts } from "@/lib/type-groups";
 import type { CoverageData, CoverageType } from "@/lib/types";
 import { pushUrl } from "@/lib/url-history";
 import { useViewState } from "@/lib/use-view-state";
@@ -93,9 +94,15 @@ const STANDING_ABOUT: Record<RestoreStanding, string> = {
 const GROUPINGS: Grouping<CoverageType>[] = [
   {
     key: "service", label: "Service",
+    // Inside a service, kinds sit under what they are: users, groups, roles, then
+    // policies and tenant settings, in the taxonomy's order.
     groupsOf: (items) => groupBy(items, serviceCode, (code) => {
       const service = serviceFor(code);
       return { label: service.name, icon: service.icon, about: service.about };
+    }).map((group) => {
+      // Inside each kind group, failures and out-of-date kinds still come first.
+      const parts = kindParts(group.items, (item) => item.type, group.key).map((part) => ({ ...part, items: ordered(part.items) }));
+      return { ...group, items: parts.flatMap((part) => part.items), parts };
     }),
   },
   {

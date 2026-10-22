@@ -6,6 +6,9 @@ import { redactSecrets } from '../../tools/tenant-probe/graph.mjs';
 import { auditSizing } from './auditSizing.mjs';
 import { insertAttributionFact, migrateChangeAttribution, minimizeAttributionFact, pruneAttributionFacts } from './attribution.mjs';
 
+// 'audit' is the Entra audit log; 'intune-audit' the Intune one (auditSources.mjs).
+export const AUDIT_SOURCE_NAMES = Object.freeze(['audit', 'intune-audit', 'sign-in']);
+
 // Explicit, additive and retry-safe migration; never invoked by a read or disabled worker.
 export async function migrateAuditIngestion(client) {
   await client.query(`
@@ -47,7 +50,7 @@ async function authorize(client, options, capability) {
   // Existing KEEL tenant references include canonical SHA-256 digests; these
   // are identity references, not bearer tokens.
   if (!/^sha256:[a-f0-9]{64}$/.test(options.tenantRef)) safeRef(options.tenantRef);
-  if (!['audit', 'sign-in'].includes(options.source)) throw new Error('unsupported audit source');
+  if (!AUDIT_SOURCE_NAMES.includes(options.source)) throw new Error('unsupported audit source');
   const principal = await findPrincipalById(client, options.requestedBy);
   if (!principal || !await can(client, principal, capability)) throw new Error('not authorized for audit ingestion');
 }

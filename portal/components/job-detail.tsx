@@ -3,6 +3,7 @@ import Link from "next/link";
 import { JobStatusBadge } from "@/components/job-status-badge";
 import { JobRecordFields } from "@/components/job-table";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { ErrorNotice } from "@/components/ui/error-notice";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { jobDisplayStatus, jobIncompleteTypes } from "@/lib/job-names";
 import { ago, formatTimestamp, resourceTypeLabel } from "@/lib/presentation";
@@ -62,7 +63,7 @@ export function JobDetail({ job, now = new Date().toISOString() }: { job: JobRec
       {failed ? (
         <section aria-labelledby="error-heading" className="report-section job-error-block">
           <h2 id="error-heading">What went wrong</h2>
-          <p className="job-error-line">{String(job.error).split("\n")[0]}</p>
+          <ErrorNotice error={job.error} id="job-error" />
         </section>
       ) : null}
 

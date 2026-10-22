@@ -1,0 +1,91 @@
+// Plain words for a raw error (engine, Microsoft Graph, a webhook or ServiceNow).
+// The portal never shows raw error text in plain view: it shows `cause` and `todo`,
+// and the raw text only behind "Show details" (components/ui/error-notice.tsx).
+
+export interface PlainError {
+  /** What went wrong, in a short sentence a non-expert understands. */
+  cause: string;
+  /** The next step, one short sentence. */
+  todo: string;
+  /** The full raw text for "Show details"; null when there is none. */
+  raw: string | null;
+}
+
+export interface PlainErrorOptions {
+  /** Who answered, for the cause sentence. Default "Microsoft 365". */
+  service?: string;
+}
+
+interface Rule {
+  test: RegExp;
+  cause: (service: string) => string;
+  todo: (service: string) => string;
+}
+
+// First match wins, so the most specific causes come first.
+const RULES: Rule[] = [
+  {
+    test: /\b429\b|throttl|too many requests|rate.?limit/i,
+    cause: (service) => `${service} was busy and asked Keel to slow down.`,
+    todo: () => "Nothing to do now: the next run tries again. If it keeps happening, space out the schedules.",
+  },
+  {
+    test: /\b(401|403)\b|authorization_requestdenied|forbidden|unauthori[sz]ed|insufficient privileges|not enough rights|access (is )?denied|missing (a )?(permission|grant|role)/i,
+    cause: (service) => `Keel's app is missing a permission ${service} asked for.`,
+    todo: () => "Check the app's permissions on the Setup page, then try again.",
+  },
+  {
+    test: /\b(410)\b|address was removed|no longer exists|webhook.*(gone|removed|deleted)/i,
+    cause: (service) => `The ${service} address no longer works.`,
+    todo: () => "Make a new address, add it as a new channel, then turn this one off.",
+  },
+  {
+    test: /\b404\b|not ?found|does not exist/i,
+    cause: (service) => `What Keel asked for no longer exists in ${service}.`,
+    todo: () => "Check whether it was deleted on purpose. If it was, there is nothing to do.",
+  },
+  {
+    test: /timed? ?out|timeout|did not answer|no answer|econn|etimedout|enotfound|socket hang up|network|unreachable|could not reach/i,
+    cause: (service) => `${service} did not answer in time.`,
+    todo: () => "Nothing to do now: Keel tries again. If it keeps failing, check that the service is up.",
+  },
+  {
+    test: /\b5\d\d\b|service unavailable|internal server error|bad gateway/i,
+    cause: (service) => `${service} had a temporary fault.`,
+    todo: () => "Nothing to do now: the next run tries again.",
+  },
+  {
+    test: /\b(400|409|422)\b|would not accept|rejected|refused|invalid|bad request|conflict/i,
+    cause: (service) => `${service} would not accept what Keel sent.`,
+    todo: () => "Open the details to see what it refused, fix that, then try again.",
+  },
+  {
+    test: /deferred|waiting for|retry on next/i,
+    cause: () => "It waited for a complete backup first.",
+    todo: () => "Nothing to do: it runs after the next good backup.",
+  },
+];
+
+const FALLBACK: Omit<Rule, "test"> = {
+  cause: () => "It stopped with an error.",
+  todo: () => "Try again. If it fails again, share the details with whoever runs Keel.",
+};
+
+/** The raw text of an error value, trimmed; null when there is nothing to show. */
+export function rawErrorText(error: unknown): string | null {
+  if (error === null || error === undefined) return null;
+  const text = typeof error === "string" ? error : typeof error === "object" ? JSON.stringify(error) : String(error);
+  return text.trim() || null;
+}
+
+/** A raw error as a plain cause and next step, with the raw text kept for details. */
+export function plainError(error: unknown, options: PlainErrorOptions = {}): PlainError {
+  const raw = rawErrorText(error);
+  const service = options.service ?? "Microsoft 365";
+  const rule = raw ? RULES.find((candidate) => candidate.test.test(raw)) ?? FALLBACK : FALLBACK;
+  return { cause: rule.cause(service), todo: rule.todo(service), raw };
+}
+
+/** Text that looks like a raw error: status codes, exception names, API paths. Used by
+ *  the checks that keep raw error text out of plain view. */
+export const RAW_ERROR_PATTERN = /\b(Graph|HTTP)\s?[1-5]\d\d\b|\b[A-Z][A-Za-z]*(Error|Exception):|Authorization_Request|throttled after|(?<![\w.])\/(deviceManagement|groups|users|identity|policies|teams)\/|\bE(CONN\w*|TIMEDOUT|NOTFOUND)\b|\bsys_id\b|\b[a-z]+(_[a-z]+)+:\s/;

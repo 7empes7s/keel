@@ -170,9 +170,23 @@ test('the plan comes from a fixed set: intents, types, entities and periods are 
   assert.deepEqual([...TEMPLATE_INTENTS].sort(), [...INTENTS].sort(), 'every intent has exactly one fixed query');
   const known = ['FINANCE', 'SALES'];
   const read = readQuestion('What changed for Sales this week?', { now, knownEntities: known });
-  assert.deepEqual(read, { intent: 'changes', params: { entity: 'SALES', period: 'this-week' } });
+  assert.deepEqual(read, { intent: 'changes', params: { entity: 'SALES', period: 'this-week' }, ignored: [] });
 
-  const plan = validateRequest(read, { now, knownEntities: known, scope: SALES_SCOPE });
+  // Real phrasings: a service with a broad word, a kind's own name, a quoted name, and a
+  // word the rules do not know, which is reported instead of dropped.
+  const teams = readQuestion('What Teams policies changed this week?', { now, knownEntities: known });
+  assert.deepEqual(teams, { intent: 'changes', params: { resourceTypes: ['teams-org-policies', 'teams-voice-policies'], period: 'this-week' }, ignored: [] });
+  const exchange = readQuestion('Which Exchange admin roles were removed yesterday?', { now, knownEntities: known });
+  assert.deepEqual(exchange, { intent: 'changes', params: { resourceType: 'exchangeRoleDefinition', changeType: 'removed', period: 'yesterday' }, ignored: [] });
+  const service = readQuestion('What changed in Exchange in the last 7 days?', { now, knownEntities: known });
+  assert.ok(service.params.resourceTypes.length > 1 && service.params.resourceTypes.every((type) => /^exchange/i.test(type)), JSON.stringify(service));
+  const quoted = readQuestion('What changed on "Block legacy auth" this week?', { now, knownEntities: known });
+  assert.deepEqual(quoted, { intent: 'changes', params: { name: 'Block legacy auth', period: 'this-week' }, ignored: [] });
+  const unread = readQuestion('What changed with the printers and scanners this week?', { now, knownEntities: known });
+  assert.deepEqual(unread.ignored, ['printers', 'scanners']);
+  assert.deepEqual(readQuestion('What Defender labels changed this week?', { now }), { unsupported: 'no-such-kind' });
+
+  const plan = validateRequest({ intent: read.intent, params: read.params }, { now, knownEntities: known, scope: SALES_SCOPE });
   assert.equal(plan.ok, true);
   assert.equal(plan.plan.params.from, '2026-09-28T00:00:00.000Z');
   assert.equal(plan.plan.params.to, now.toISOString());
@@ -265,6 +279,9 @@ test('a Sales reader asking about this week gets only Sales records, each with i
   assert.notEqual(scoped.status, 'unknown');
   assert.deepEqual(scoped.records.map((record) => record.id), [fixture.ids.sales]);
   assert.equal(scoped.total, 1, 'the count is filtered by the same predicate');
+  // The summary counts every match by kind, change and risk, under the same predicate.
+  assert.equal(scoped.summary.reduce((sum, row) => sum + row.count, 0), scoped.total);
+  assert.deepEqual(scoped.summary.map((row) => Object.keys(row).sort()), [['changeType', 'count', 'impact', 'resourceType']]);
   const [record] = scoped.records;
   assert.equal(record.source.kind, 'change');
   assert.equal(record.source.href, '/drift');
@@ -295,6 +312,22 @@ test('a Sales reader asking about this week gets only Sales records, each with i
   const form = await answerQuestion(client, { tenantRef, scope: SALES_SCOPE, request: { intent: 'changes', params: { period: 'this-week' } } });
   assert.deepEqual(form.records.map((entry) => entry.id), [fixture.ids.sales]);
   assert.equal(form.readBy, 'form');
+  // A quoted name narrows to that resource; kinds named by a service and a broad word
+  // narrow to the taxonomy's kinds; words the reading did not use come back by name.
+  const named = await answerQuestion(client, { tenantRef, scope: CENTRAL, question: 'What changed on "Sales Admins" this week?' });
+  assert.deepEqual(named.records.map((entry) => entry.id), [fixture.ids.sales]);
+  assert.equal(named.plan.params.name, 'Sales Admins');
+  assert.deepEqual(named.ignored, []);
+  const teams = await answerQuestion(client, { tenantRef, scope: CENTRAL, question: 'What Teams policies changed this week?' });
+  assert.deepEqual([...teams.plan.params.resourceTypes], ['teams-org-policies', 'teams-voice-policies']);
+  assert.equal(teams.total, 0, 'group changes are not Teams policies');
+  const printers = await answerQuestion(client, { tenantRef, scope: CENTRAL, question: 'What changed with the printers this week?' });
+  assert.deepEqual(printers.ignored, ['printers']);
+  assert.equal(printers.records.length, 2, 'an ignored word never narrows the answer silently: it is reported');
+  const kinds = await answerQuestion(client, { tenantRef, scope: CENTRAL, request: { intent: 'changes', params: { period: 'this-week', resourceTypes: ['group', 'user'] } } });
+  assert.equal(kinds.total, 2);
+  const unknownKind = await answerQuestion(client, { tenantRef, scope: CENTRAL, request: { intent: 'changes', params: { period: 'this-week', resourceTypes: ['notAKind'] } } });
+  assert.equal(unknownKind.status, 'refused');
   // Coverage counts only what the reader may see.
   const coverage = await answerQuestion(client, { tenantRef, scope: SALES_SCOPE, question: 'How many groups are covered?' });
   assert.equal(coverage.records.length, 1);
@@ -316,7 +349,9 @@ test('prompt injection in a resource description or the question cannot change s
   });
   assert.deepEqual(injected.records.map((record) => record.id), [fixture.ids.sales]);
   assert.deepEqual(injected.scope, SALES_SCOPE);
-  assert.deepEqual(Object.keys(injected.plan.params).sort(), ['changeType', 'entity', 'from', 'limit', 'resourceType', 'to']);
+  // The injected words are not read as filters; they come back as not understood.
+  assert.ok(injected.ignored.includes('rules') && injected.ignored.includes('DROP'), JSON.stringify(injected.ignored));
+  assert.deepEqual(Object.keys(injected.plan.params).sort(), ['changeType', 'entity', 'from', 'limit', 'name', 'resourceType', 'resourceTypes', 'to']);
   // The stored description (which carries instructions) is never returned or summarized.
   const serialized = JSON.stringify(injected);
   assert.equal(serialized.includes('Ignore all previous instructions'), false);

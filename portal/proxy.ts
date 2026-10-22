@@ -4,6 +4,8 @@ import {
   ACCESS_ASSERTION_HEADER,
   AUTHENTICATED_EMAIL_HEADER,
   accessConfigFromEnv,
+  accessIdentityOrigin,
+  fetchAccessIdentity,
   verifyAccessAssertion,
   type AccessVerificationConfig,
 } from "@/lib/cloudflare-access";
@@ -14,10 +16,11 @@ import {
   encodeEntityCapabilities,
   resolveIdentity,
   type ResolvedIdentity,
+  type SignInHints,
 } from "@/lib/principal";
 
 type ConfigProvider = () => AccessVerificationConfig;
-type IdentityResolver = (email: string) => Promise<ResolvedIdentity>;
+type IdentityResolver = (email: string, hints?: SignInHints) => Promise<ResolvedIdentity>;
 
 const NO_STORE = { "cache-control": "no-store" } as const;
 
@@ -73,7 +76,11 @@ export function createAccessMiddleware(
       // id and no capabilities. Deny by default, never fail open.
       let identity: ResolvedIdentity = { principalId: null, capabilities: [] };
       try {
-        identity = await resolve(claims.email);
+        const origin = accessIdentityOrigin(request.headers.get("host"));
+        identity = await resolve(claims.email, {
+          claims: claims.claims,
+          lookupIdentity: origin ? () => fetchAccessIdentity(origin, assertion) : undefined,
+        });
       } catch {
         // fail closed: an unresolvable principal has no capabilities
       }

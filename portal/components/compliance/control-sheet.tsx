@@ -12,6 +12,7 @@ import {
   NOT_RUN_YET,
   RESULTS,
   canGrantOn,
+  controlMisses,
   controlName,
   controlService,
   controlWhat,
@@ -58,6 +59,8 @@ export function ControlSheet({ finding, now, canConfigure, grantHref, onClose }:
   const plan = planLinkSentence(finding);
   const canGrant = canGrantOn(finding, canConfigure);
   const changeCount = change.linked.length;
+  // What fails, by policy and setting: shown while the control fails (with or without an exception).
+  const misses = result === "failing" || result === "excepted" ? controlMisses(finding) : [];
 
   return (
     <DetailsSheet
@@ -91,6 +94,25 @@ export function ControlSheet({ finding, now, canConfigure, grantHref, onClose }:
         </dl>
         {!snapshot ? <p className="cp-muted">{evidenceSentence(finding, now)}</p> : null}
         {result === "unknown" ? <p className="cp-muted">{NOT_RUN_YET}</p> : null}
+
+        {misses.length ? (
+          <section aria-labelledby="cp-misses-heading" className="cp-block">
+            <h3 id="cp-misses-heading">What fails <Badge tone="urgent">{misses.length === 1 ? "1 setting" : `${misses.length} settings`}</Badge></h3>
+            <table className="cp-misses">
+              <thead><tr><th scope="col">Policy</th><th scope="col">Setting</th><th scope="col">Now</th><th scope="col">Should be</th></tr></thead>
+              <tbody>
+                {misses.map((miss, index) => (
+                  <tr key={`${miss.subject}-${miss.setting}-${index}`}>
+                    <th data-label="Policy" scope="row">{miss.subject}</th>
+                    <td data-label="Setting">{miss.setting}</td>
+                    <td data-label="Now"><span className="cp-miss-now">{miss.now}</span></td>
+                    <td data-label="Should be"><span className="cp-miss-want">{miss.shouldBe}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        ) : null}
 
         {finding.exception ? (
           <section aria-labelledby="cp-exception-heading" className="cp-block">

@@ -21,7 +21,6 @@ import type { Schedule, ScheduleForecast } from "@/lib/schedules";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
 import { NotificationsPage } from "@/components/notifications/notifications-page";
-import { IntegrationConsole } from "@/components/integration-console";
 import { ActivityPage } from "@/components/activity/activity-page";
 import { activityCounts, activityStatus } from "@/lib/activity-view";
 import { ApprovedSetup } from "@/components/baselines/approved-setup";
@@ -54,8 +53,8 @@ import { CompliancePage, ExportEvidence } from "@/components/compliance/complian
 import { complianceCounts, complianceStatus } from "@/lib/compliance-view";
 import { accessSummary } from "@/lib/presentation";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
-import { integrationsPageVerdict } from "@/lib/integrations-view";
-import { ServiceNowPanel } from "@/components/servicenow-panel";
+import { integrationAlerts, integrationsPageVerdict, integrationsStatus } from "@/lib/integrations-view";
+import { IntegrationsBody } from "@/components/integrations-body";
 import type { ServiceNowStatus } from "@/lib/servicenow";
 import type { ActivationPreview, Policy, PolicyAction } from "@/lib/policies";
 import { RULE_KINDS, RULE_STATES, ruleCounts, ruleKind, ruleState, rulesStatus } from "@/lib/policy-view";
@@ -63,7 +62,8 @@ import { peopleCounts, peopleStatus } from "@/lib/people-view";
 import type { PrincipalView } from "@/lib/principals";
 import { CheckAgain } from "@/components/setup/check-again";
 import { SetupPage as SetupBody } from "@/components/setup/setup-page";
-import { setupStatus as setupPageStatus, type SetupApp, type SetupState } from "@/lib/setup-view";
+import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICES } from "../../engine/bootstrap/permissionCatalog.mjs";
+import { setupStatus as setupPageStatus, type PermissionEntry, type PermissionGrant, type SetupApp, type SetupPermissions, type SetupState } from "@/lib/setup-view";
 import { AlertsPage } from "@/components/alerts/alerts-page";
 import { alertCounts, alertsStatus, type AlertItem } from "@/lib/alerts-view";
 import { ReadinessPage } from "@/components/readiness/readiness-page";
@@ -75,11 +75,11 @@ import { ValueReportPage } from "@/components/value-report/value-report-page";
 import { resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
 import { AskView } from "@/components/ask-view";
 import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
-import { ApproveIntentForm, IntentCard } from "@/components/change-intent";
+import { EmergencyChangesView } from "@/components/change-intent";
 import { CompareView } from "@/components/compare-view";
 import { compareVerdict, WORKLOAD_LABELS, type CompareData, type CompareResult, type CompareTenant } from "@/lib/compare-view";
 import type { ActivityChanges } from "@/lib/changed-values";
-import { changeIntentsVerdict, type ChangeIntent, type IntentCandidate } from "@/lib/change-intents-view";
+import { changeIntentsVerdict, intentAlerts, intentsStatus, type ChangeIntent, type ChangeIntentsData, type IntentCandidate } from "@/lib/change-intents-view";
 import { SiteDetail, SiteList } from "@/components/site-permissions";
 import { sitePermissionsFrom, siteName, siteVerdict, sitesVerdict, type PeopleSummary, type SitePermissionsData } from "@/lib/site-permissions-view";
 import { WorkloadServices } from "@/components/restore/workload-services";
@@ -723,6 +723,28 @@ const COMPLIANCE: ComplianceData = {
       links: { backup: { state: "mismatch", linked: [], mismatched: [evidenceWindow("conditionalAccessPolicy", "2026-09-28T09:00:00Z", "2026-09-28T09:11:00Z", null)] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } } },
   ],
 };
+// Defender email controls, read from the Exchange mail protection policies: one failing
+// on two policies, one passing, and Safe Links not relevant (no Defender for Office 365).
+const MAIL_EVIDENCE = { resourceType: "exchange-mail-flow", window: { startedAt: "2026-10-02T02:00:00Z", endedAt: "2026-10-02T02:03:00Z" }, snapshotId: null, collectionId: "0c0f0000-0000-4000-8000-0000000000f1", completedAt: "2026-10-02T02:03:00Z" };
+const mailFinding = (id: string, controlId: string, verdict: ComplianceData["findings"][number]["verdict"], details: ComplianceData["findings"][number]["details"] = []): ComplianceData["findings"][number] => ({
+  id: `e7a10000-0000-4000-8000-0000000000${id}`, controlId, title: null, severity: "high", framework: "keel-custom", edition: "1.0.0", profile: "default", evaluatorVersion: 1,
+  verdict, reason: null, details, evaluatedAt: "2026-10-02T09:20:00Z", evidenceSeq: "4190", exceptionState: "none", exposed: verdict === "fail", exception: null,
+  evidence: [MAIL_EVIDENCE],
+  links: { backup: { state: "linked", linked: [MAIL_EVIDENCE], mismatched: [] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } },
+});
+const DEFENDER_COMPLIANCE: ComplianceData = {
+  ...COMPLIANCE,
+  findings: [
+    ...COMPLIANCE.findings,
+    mailFinding("f1", "keel-custom.defender-email.anti-spam-phish-quarantined", "fail", [
+      { subject: "Default", setting: "HighConfidencePhishAction", value: "MoveToJmf", expected: "Quarantine" },
+      { subject: "Default", setting: "PhishZapEnabled", value: false, expected: true },
+      { subject: "KEEL-RT-Finance inbound filtering for the accounts payable team", setting: "PhishSpamAction", value: "AddXHeader", expected: "Quarantine" },
+    ]),
+    mailFinding("f2", "keel-custom.defender-email.malware-file-filter", "pass"),
+    mailFinding("f3", "keel-custom.defender-email.safe-links-email", "not-applicable"),
+  ],
+};
 const PLAN_REF = { kind: "dry-run", id: "7f3c0000-0000-4000-8000-000000000011", name: null, readable: true, status: "completed", undo: false, resources: 12, snapshotAt: "2026-10-02T09:12:00Z", dryRunJobId: "a3" };
 const TWO_PERSON_REQUEST = "a9e10000-0000-4000-8000-000000000101";
 
@@ -989,6 +1011,14 @@ const INCIDENT: IncidentDetail = {
     },
   ],
   recommended: SNAP_GOOD,
+  serviceBackups: [
+    { kind: "service-settings", workload: "exchange-mail-flow", name: "Mail flow", service: "Exchange", assessed: false,
+      newestGood: { id: "w1", from: "2026-10-02T02:00:00Z", at: "2026-10-02T02:05:00Z", inCompromiseWindow: true },
+      beforeWindow: { id: "w0", from: "2026-09-30T02:00:00Z", at: "2026-09-30T02:05:00Z", inCompromiseWindow: false } },
+    { kind: "content", workload: "planner", name: "Planner plans and tasks", service: "Planner", assessed: false, newestGood: null, beforeWindow: null },
+    { kind: "content", workload: "exchange-mail", name: "Mail, calendars and contacts", service: "Exchange", assessed: false,
+      newestGood: { id: "c1", from: "2026-09-29T01:00:00Z", at: "2026-09-29T01:05:00Z", inCompromiseWindow: false }, beforeWindow: null },
+  ],
 };
 const DRILL_SNAP = "d2110000-0000-4000-8000-000000000070";
 const INCIDENT_CLOSED: IncidentDetail = {
@@ -1024,8 +1054,35 @@ const setupStep = (id: string, kind: SetupState["scopes"][number]["steps"][numbe
   ({ id, kind, identity, workload, name, action, requiredScopes: scopes, missingScopes: scopes, manual: kind === "workload-rbac" || kind === "pim-activation", progress, app });
 const READ_SCOPES = ["DeviceManagementConfiguration.Read.All", "Group.Read.All", "Policy.Read.All", "RoleManagement.Read.Directory", "User.Read.All"];
 const RESTORE_SCOPES = ["Group.ReadWrite.All", "Policy.ReadWrite.ConditionalAccess", "RoleManagement.ReadWrite.Directory"];
+// The permission table: the engine's catalogue, and what each app holds in the tenant.
+const setupPermissions = (observed: SetupPermissions["observed"]): SetupPermissions => ({
+  permissions: KEEL_PERMISSIONS as unknown as PermissionEntry[],
+  services: PERMISSION_SERVICES.map((service) => ({ ...service })),
+  kinds: [...PERMISSION_KINDS],
+  apis: Object.fromEntries(Object.entries(PERMISSION_APIS).map(([key, api]) => [key, api.label])),
+  observed,
+});
+const catalogFor = (identity: "collector" | "restorer", keep: (entry: PermissionEntry) => boolean = () => true): PermissionGrant[] =>
+  (KEEL_PERMISSIONS as unknown as PermissionEntry[]).filter((entry) => entry.identity === identity && keep(entry)).map((entry) => ({ api: entry.api, name: entry.name }));
+// Backup reader: everything it needs, the optional audit search not yet, and one grant
+// Keel never uses. Restore writer: waiting on consent for the three setup permissions
+// (already on its list), and Exchange Online's permission not on its list at all.
+const SETUP_PERMISSIONS = setupPermissions({
+  complete: true,
+  byIdentity: {
+    collector: {
+      granted: [...catalogFor("collector", (entry) => entry.need === "required"), { api: "graph", name: "Policy.Read.PermissionGrant" }],
+      requested: catalogFor("collector"),
+    },
+    restorer: {
+      granted: catalogFor("restorer", (entry) => !RESTORE_SCOPES.includes(entry.name) && entry.api !== "exchange"),
+      requested: catalogFor("restorer", (entry) => entry.api !== "exchange"),
+    },
+  },
+});
 const SETUP: SetupState = {
   generatedAt: now,
+  permissions: SETUP_PERMISSIONS,
   tenantId: SETUP_TENANT_ID,
   canCheck: true,
   canProvision: true,
@@ -1060,6 +1117,13 @@ const SETUP: SetupState = {
 const SETUP_CHECKED_RUN = "5e7a" + "0c".repeat(30);
 const SETUP_CHECKED: SetupState = {
   generatedAt: now,
+  permissions: setupPermissions({
+    complete: true,
+    byIdentity: {
+      collector: { granted: catalogFor("collector"), requested: catalogFor("collector") },
+      restorer: { granted: [...catalogFor("restorer"), { api: "graph", name: "Channel.Create" }], requested: catalogFor("restorer") },
+    },
+  }),
   tenantId: SETUP_TENANT_ID,
   canCheck: true,
   canProvision: true,
@@ -1080,7 +1144,7 @@ const SETUP_CHECKED: SetupState = {
       scope: "restore", workloads: ["entra-restore"], observed: true, run: null, planId: "plan-8e7d6c5b4a392110",
       steps: [
         { ...setupStep("step-4a2b3c4d5e6f7a80", "registration", "restorer", "keel-restorer", "reuse-existing", "done", null, RESTORE_SCOPES, null), missingScopes: [] },
-        { ...setupStep("step-4a2b3c4d5e6f7a81", "graph-permission", "restorer", "keel-restorer admin consent", "grant-consent", "done", null, RESTORE_SCOPES, null), missingScopes: [], excessScopes: ["MailboxSettings.ReadWrite"] },
+        { ...setupStep("step-4a2b3c4d5e6f7a81", "graph-permission", "restorer", "keel-restorer admin consent", "grant-consent", "done", null, RESTORE_SCOPES, null), missingScopes: [], excessScopes: ["Channel.Create"] },
         setupStep("step-4a2b3c4d5e6f7a82", "pim-activation", "restorer", "Privileged Role Administrator", "pim-activate", "waiting-for-you", "entra-restore", [], null),
         setupStep("step-4a2b3c4d5e6f7a83", "keel-app-permission", "restorer", "keel.restore", "configure-keel-permission", "done", null, [], null),
       ],
@@ -1385,6 +1449,30 @@ const VALUE_REPORT: ValueReport = {
     freshness: { state: "measured", achievedRpoMs: 5 * 3_600_000, gaps: 0, asOf: now },
     recoverablePoint: { state: "unmeasured", ageMs: null, asOf: now },
   },
+  // As on the live report of 2026-10-22: mail content read in part by a run that stopped early.
+  backups: {
+    withheld: false,
+    settings: { backups: 420, lastAt: now },
+    serviceSettings: {
+      runs: 108, workloads: 3, expected: 4, partial: 0, failed: 1, notRun: 0, lastAt: now,
+      areas: [
+        { workload: "exchange-mail-flow", state: "good", goodRuns: 30, partialRuns: 0, failedRuns: 0, lastGoodAt: now },
+        { workload: "purview-labels", state: "good", goodRuns: 30, partialRuns: 0, failedRuns: 0, lastGoodAt: now },
+        { workload: "sharepoint-site-settings", state: "good", goodRuns: 48, partialRuns: 0, failedRuns: 0, lastGoodAt: now },
+        { workload: "teams-org-policies", state: "failed", goodRuns: 0, partialRuns: 0, failedRuns: 30, lastGoodAt: null },
+      ],
+    },
+    content: {
+      runs: 0, workloads: 0, expected: 5, partial: 1, failed: 0, notRun: 4, lastAt: null, itemsStored: 4094, bytesStored: 225_270_538,
+      areas: [
+        { workload: "exchange-mail", state: "partial", goodRuns: 0, partialRuns: 1, failedRuns: 0, lastGoodAt: null },
+        { workload: "onedrive", state: "not-run", goodRuns: 0, partialRuns: 0, failedRuns: 0, lastGoodAt: null },
+        { workload: "sharepoint-sites", state: "not-run", goodRuns: 0, partialRuns: 0, failedRuns: 0, lastGoodAt: null },
+        { workload: "teams", state: "not-run", goodRuns: 0, partialRuns: 0, failedRuns: 0, lastGoodAt: null },
+        { workload: "planner", state: "not-run", goodRuns: 0, partialRuns: 0, failedRuns: 0, lastGoodAt: null },
+      ],
+    },
+  },
   estimate: { state: "configured", source: "/etc/keel/value-estimate.json" },
   hoursSaved: {
     hours: 2, basis: "verified-outcomes-only", owner: "the IT lead", setAt: "2026-09-01T00:00:00.000Z", notEstimated: ["remediation"],
@@ -1407,6 +1495,7 @@ const VALUE_REPORT_SCOPED: ValueReport = {
   outcomes: { ...VALUE_REPORT.outcomes, ...VALUE_SUMMARY(1, 0, 0, 0, 0, 2), byFamily: { restore: VALUE_SUMMARY(1, 0, 0, 0, 0, 2), remediation: VALUE_SUMMARY(0, 0, 0, 0, 0, 0) }, rows: [VALUE_REPORT.outcomes.rows[0]], rowsShown: 1, undoRunsExcluded: null },
   findings: { withheld: true },
   recovery: { withheld: true },
+  backups: { withheld: true },
   estimate: { state: "not-configured", source: null, problems: [] },
   hoursSaved: null,
 };
@@ -1445,6 +1534,44 @@ const ASK_UNKNOWN: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"],
   window: { from: "2020-01-01T00:00:00.000Z", to: "2020-01-20T00:00:00.000Z" }, known: null,
   gaps: [{ from: "2020-01-01T00:00:00.000Z", to: "2020-01-20T00:00:00.000Z", reason: "no-history" }], total: 0, shown: 0, records: [],
   sentence: "Not known.",
+} };
+
+// A broad question: many changes across services, more than one page, a summary of
+// every match beyond the rows listed, and a word the reading did not use.
+const ASK_KINDS: [string, string, string, string][] = [
+  ["teams-org-policies", "Teams meeting policy", "modified", "access-affecting"],
+  ["teams-voice-policies", "Calling policy", "added", "cosmetic"],
+  ["exchangeRoleAssignment", "Mail recipients role assignment", "added", "access-affecting"],
+  ["group", "Project team", "removed", "access-affecting"],
+  ["conditionalAccessPolicy", "Require MFA for guests", "modified", "tenant-lockout"],
+  ["roleAssignment", "Global Reader role assignment", "added", "tenant-lockout"],
+];
+const ASK_MANY_RECORDS = Array.from({ length: 36 }, (_, index) => {
+  const [resourceType, name, changeType, impact] = ASK_KINDS[index % ASK_KINDS.length];
+  const hour = String(23 - (index % 24)).padStart(2, "0");
+  const day = index < 24 ? "01" : "30";
+  const month = index < 24 ? "10" : "09";
+  const id = `a5c10000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+  return {
+    kind: "change" as const, id, resourceType, naturalKey: `${resourceType}:${name} ${index + 1}`, name: `${name} ${index + 1}`, changeType, impact,
+    decision: index % 5 === 0 ? "accept" : null, seenAt: `2026-${month}-${day}T${hour}:00:00.000Z`,
+    window: { from: `2026-${month}-${day}T${hour === "00" ? "00" : String(Number(hour) - 1).padStart(2, "0")}:00:00.000Z`, to: `2026-${month}-${day}T${hour}:00:00.000Z` },
+    source: { kind: "change" as const, id, href: "/drift", collectionId: null },
+  };
+});
+const ASK_MANY: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: {
+  ...ASK_BASE, scope: { central: true, entities: [] }, status: "partial", intent: "changes", question: "What Teams policies, groups and printers changed this week?",
+  plan: { intent: "changes", params: { entity: null, from: "2026-09-28T00:00:00.000Z", to: now, resourceType: null, resourceTypes: null, name: null, changeType: null, limit: 100 } },
+  ignored: ["printers"], total: 276, shown: 36, truncated: true, sentence: "276 matching changes found.",
+  summary: [
+    { resourceType: "exchangeRoleAssignment", changeType: "added", impact: "access-affecting", count: 180 },
+    { resourceType: "teams-org-policies", changeType: "modified", impact: "access-affecting", count: 40 },
+    { resourceType: "teams-voice-policies", changeType: "added", impact: "cosmetic", count: 20 },
+    { resourceType: "group", changeType: "removed", impact: "access-affecting", count: 22 },
+    { resourceType: "conditionalAccessPolicy", changeType: "modified", impact: "tenant-lockout", count: 8 },
+    { resourceType: "roleAssignment", changeType: "added", impact: "tenant-lockout", count: 6 },
+  ],
+  records: ASK_MANY_RECORDS,
 } };
 
 function askPage(data: AskData) {
@@ -1868,6 +1995,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/compare/tenants": return comparePage(COMPARE_ACROSS);
     case "/ask": return askPage(ASK_ANSWERED);
     case "/ask/unknown": return askPage(ASK_UNKNOWN);
+    case "/ask/many": return askPage(ASK_MANY);
     case "/readiness": return readinessPage(READINESS);
     case "/readiness/ready": return readinessPage(READINESS_READY);
     case "/readiness/empty": return readinessPage(READINESS_EMPTY);
@@ -1904,9 +2032,10 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/integrations": case "/integrations/servicenow-off": {
       const servicenow = path === "/integrations" ? SERVICENOW_ON : SERVICENOW_OFF;
       const verdict = integrationsPageVerdict(DESTINATIONS, DESTINATION_STATUSES, servicenow);
-      return <>{header("Settings", "Integrations", "Where KEEL copies its audit record, and where approvals can also be decided.")}
-      <Verdict text={verdict.text} tone={verdict.tone} />
-      <div data-layer="explanation"><ServiceNowPanel status={servicenow} /><IntegrationConsole canConfiguration destinations={DESTINATIONS} statuses={DESTINATION_STATUSES} /></div></>; }
+      const alerts = integrationAlerts(DESTINATIONS, DESTINATION_STATUSES, servicenow);
+      return <>{header("Settings", "Integrations", "Where KEEL copies its audit record, and where approvals can also be decided.", undefined, integrationsStatus(alerts))}
+      <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ig-attention" } : null} text={verdict.text} tone={verdict.tone} />
+      <div data-layer="explanation"><IntegrationsBody alerts={alerts} canConfiguration destinations={DESTINATIONS} servicenow={servicenow} statuses={DESTINATION_STATUSES} /></div></>; }
     case "/baselines": {
       const verdict = approvedVerdict(BASELINES[0], DRIFT_DECIDED, now);
       // As on the live page: Entra ID and Intune kinds from the coverage types, the other
@@ -1931,6 +2060,11 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       // The viewer variant holds read only: no exception controls and no Check now.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(COMPLIANCE.findings))} title="Compliance" />
       <CompliancePage canCheck={path === "/benchmarks"} canConfigure={path === "/benchmarks"} data={COMPLIANCE} now={now} /></>;
+    }
+    case "/benchmarks/defender": {
+      // Defender email controls beside the others: filed under Defender, failing settings in a table.
+      return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(DEFENDER_COMPLIANCE.findings))} title="Compliance" />
+      <CompliancePage canCheck canConfigure data={DEFENDER_COMPLIANCE} now={now} /></>;
     }
     case "/benchmarks/empty": case "/benchmarks/empty-viewer": {
       // Nothing checked yet and the storage location not known: each empty state has its button.
@@ -1958,16 +2092,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <><PageHeader actions={<CheckAgain />} description="Connect Keel to your Microsoft tenant: what is in place, what waits on you, and when the first backup can run." generatedAt={now} section="Settings" status={setupPageStatus(state)} title="Setup" />
         <SetupBody canBackup canStart state={state} /></>;
     }
-    case "/emergency-changes": { const verdict = changeIntentsVerdict(INTENTS, now); return <>{header("Automation center", "Emergency changes", "Changes made outside the baseline on purpose, approved for a limited time.")}
-      <Verdict text={verdict.text} tone={verdict.tone} />
-      <div data-layer="explanation">
-        <h2>Approved now</h2>
-        <ul className="change-intent-list">{INTENTS.filter((intent) => intent.state === "active").map((intent) => <IntentCard intent={intent} key={intent.id} now={now} />)}</ul>
-        <h2>Approve an emergency change</h2>
-        <ApproveIntentForm changes={INTENT_CHANGES} people={[{ id: PERSON_AMARA.id, name: PERSON_AMARA.name }, { id: PERSON_ONCALL.id, name: PERSON_ONCALL.name }]} />
-        <h2>Ended</h2>
-        <ul className="change-intent-list">{INTENTS.filter((intent) => intent.state !== "active").map((intent) => <IntentCard intent={intent} key={intent.id} now={now} />)}</ul>
-      </div></>; }
+    case "/emergency-changes": case "/emergency-changes/none": {
+      const data: ChangeIntentsData = path === "/emergency-changes"
+        ? { intents: INTENTS, changes: INTENT_CHANGES, people: [{ id: PERSON_AMARA.id, name: PERSON_AMARA.name }, { id: PERSON_ONCALL.id, name: PERSON_ONCALL.name }], generatedAt: now }
+        : { intents: [], changes: [], people: [], generatedAt: now };
+      const verdict = changeIntentsVerdict(data.intents, now);
+      const alerts = intentAlerts(data);
+      return <>{header("Automation center", "Emergency changes", "Changes made outside the baseline on purpose, approved for a limited time.", undefined, intentsStatus(data.intents))}
+      <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ec-attention" } : null} text={verdict.text} tone={verdict.tone} />
+      <div data-layer="explanation"><EmergencyChangesView data={data} /></div></>; }
     case "/policies/p1": case "/policies/p2": case "/policies/p3": {
       const policy = path === "/policies/p1" ? POLICY : path === "/policies/p2" ? OFF_POLICY : PAUSED_POLICY;
       const state = RULE_STATES[ruleState(policy)];

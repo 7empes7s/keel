@@ -16,6 +16,8 @@
  * object id, operation, bounded activity name, actor kind and object id). No UPN,
  * display name, IP address or changed value leaves this module.
  */
+import { createHash } from 'node:crypto';
+import { redactSecrets } from '../../tools/tenant-probe/graph.mjs';
 import { typeInfo } from '../insights/taxonomy.mjs';
 import { ingestAudit } from './auditIngest.mjs';
 
@@ -83,7 +85,15 @@ const INTUNE_OPERATIONS = Object.freeze({
   create: 'create', delete: 'delete', patch: 'update', update: 'update', action: 'update', assign: 'update', set: 'update',
 });
 
-const ref = (prefix, id, index) => `${prefix}:${String(id).replace(/[^a-zA-Z0-9_:.-]/g, '').slice(0, 100)}:${index}`;
+// Microsoft record ids are kept as they are when short. A long one (Entra's B2C ids run
+// past 48 characters) looks like a token to redactSecrets, which would reject the whole
+// page (issue #514), so it becomes a stable SHA-256 prefix instead.
+function recordRef(id) {
+  const clean = String(id).replace(/[^a-zA-Z0-9_:.-]/g, '');
+  if (clean && clean.length <= 100 && redactSecrets(clean) === clean) return clean;
+  return `h${createHash('sha256').update(String(id)).digest('hex').slice(0, 32)}`;
+}
+const ref = (prefix, id, index) => `${prefix}:${recordRef(id)}:${index}`;
 
 function eventsFor(prefix, id, occurredAt, targets, base) {
   if (typeof id !== 'string' || !id || !Number.isFinite(Date.parse(occurredAt))) return [];

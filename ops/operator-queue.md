@@ -5560,6 +5560,11 @@ item that needs it stays untouched.
 - **Report:** step 1 exit code and error lines, steps 2 and 3 verbatim.
 
 ### Q113: Live backup and restore of Intune scripts and remediations (restore gaps batch 4, after #435)
+- Requeued by the coordinator (2026-10-22 09:40 UTC): **#471 is fixed** by PR #475 (master `56d9682`): every script writer declares `DeviceManagementScripts.ReadWrite.All`, and a 403 names the missing grant. Marouane has added `DeviceManagementScripts.ReadWrite.All` (Application) to the Restorer and granted admin consent (2026-10-22). Run once `/opt/keel-live` is at `56d9682` or later (`grep -q SCRIPT_WRITE_PERMISSION /opt/keel-live/engine/restore/intuneOperations.mjs`); that build also has the #466 fix (#468).
+  - **Step 0, before any fixture (read only; prints role names only, never the token):** get a fresh Restorer token and check its `roles` claim:
+    `cd /opt/keel-live && node --input-type=module -e "import { getToken } from './tools/tenant-probe/auth.mjs'; import { readFileSync } from 'node:fs'; const c = JSON.parse(readFileSync('/etc/keel/restorer.json','utf8')); const t = (await getToken(c)).accessToken; console.log(JSON.parse(Buffer.from(t.split('.')[1], 'base64url')).roles.sort().join('\n'))"`
+    - If the list includes `DeviceManagementScripts.ReadWrite.All`: log the list in Result and run the item. The "no permission to add" / "Restorer holds DeviceManagementConfiguration" wording below is superseded for script kinds.
+    - If it does not: create nothing, set `Status: blocked`, and report in Result that admin consent for `DeviceManagementScripts.ReadWrite.All` appears not applied, with the roles listed. Grant nothing.
 - Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 4" thread (2026-10-21). Code: PR #435. The backup now lists each script kind, then reads each
   script on its own so it holds the script body (Graph returns the body only on a single-script GET). New record writers,
@@ -5567,7 +5572,7 @@ item that needs it stays untouched.
   (`deviceShellScript`), remediations (`deviceHealthScript`, Microsoft-published ones are never written) and custom compliance
   scripts (`deviceComplianceScript`). Who a script runs on is **not** written; fixtures stay unassigned.
 - Needs: /opt/keel-live at the #435 merge or later (`grep -q scriptRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: blocked
+- Status: todo
 - Result: blocked (2026-10-22 08:13 UTC) on **#471**: the Restorer lacks `DeviceManagementScripts.ReadWrite.All`. B = c396a2c. Nothing created; nothing granted.
   - Fixture creates (Restorer, POST beta): `deviceManagementScripts`, `deviceShellScripts`, `deviceHealthScripts` and `deviceComplianceScripts` all answered **403**: "Application is not authorized to perform this operation. Application must have one of the following scopes: DeviceManagementScripts.ReadWrite.All". KEEL's writers declare DeviceManagementConfiguration.ReadWrite.All, so a restore would hit the same 403.
   - Backup side is fine: in snapshot ac991228, all four kinds are complete or complete-empty (200). One existing non-fixture PowerShell script is backed up.
@@ -5605,6 +5610,11 @@ item that needs it stays untouched.
   results; approval ids; the evidence branch and commit; anything left in the tenant.
 
 ### Q114: Live backup and restore of macOS custom attribute scripts and administrative templates (restore gaps batch 5, after #436)
+- Requeued by the coordinator (2026-10-22 09:40 UTC): **#471 is fixed** by PR #475 (master `56d9682`): every script writer declares `DeviceManagementScripts.ReadWrite.All`, and a 403 names the missing grant. Marouane has added `DeviceManagementScripts.ReadWrite.All` (Application) to the Restorer and granted admin consent (2026-10-22). Run once `/opt/keel-live` is at `56d9682` or later (`grep -q SCRIPT_WRITE_PERMISSION /opt/keel-live/engine/restore/intuneOperations.mjs`); that build also has the #466 fix (#468). **Run the custom attribute script part only** (`KEEL-RT-attribute`, `deviceCustomAttributeShellScript`: steps 1-7 for that type). The administrative template part stays blocked on **#472** (backup holds no settings): do not create `KEEL-RT-admx`, and report it as blocked on #472.
+  - **Step 0, before any fixture (read only; prints role names only, never the token):** get a fresh Restorer token and check its `roles` claim:
+    `cd /opt/keel-live && node --input-type=module -e "import { getToken } from './tools/tenant-probe/auth.mjs'; import { readFileSync } from 'node:fs'; const c = JSON.parse(readFileSync('/etc/keel/restorer.json','utf8')); const t = (await getToken(c)).accessToken; console.log(JSON.parse(Buffer.from(t.split('.')[1], 'base64url')).roles.sort().join('\n'))"`
+    - If the list includes `DeviceManagementScripts.ReadWrite.All`: log the list in Result and run the item. The "no permission to add" / "Restorer holds DeviceManagementConfiguration" wording below is superseded for script kinds.
+    - If it does not: create nothing, set `Status: blocked`, and report in Result that admin consent for `DeviceManagementScripts.ReadWrite.All` appears not applied, with the roles listed. Grant nothing.
 - Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 5" thread (2026-10-21). Code: PR #436. The backup now reads each macOS custom attribute script
   on its own (so it holds `scriptContent`), and reads the values of each administrative template setting
@@ -5612,7 +5622,7 @@ item that needs it stays untouched.
   `deviceCustomAttributeShellScript` and `groupPolicyConfiguration` (template, then its settings and values through
   `updateDefinitionValues`). Who either is assigned to is **not** written; fixtures stay unassigned.
 - Needs: /opt/keel-live at the #436 merge or later (`grep -q groupPolicySettingsAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: blocked
+- Status: todo
 - Result: blocked (2026-10-22 08:18 UTC). The custom attribute script is blocked by a missing permission (**#471**); the administrative template backup holds no settings (**#472**). B = c396a2c. Restorer only; nothing granted; no restore was run.
   - `deviceCustomAttributeShellScript`: fixture create `POST beta /deviceManagement/deviceCustomAttributeShellScripts` answered **403**: "Application is not authorized to
     perform this operation. Application must have one of the following scopes: DeviceManagementScripts.ReadWrite.All". Create and update are **blocked** (#471).
@@ -6242,6 +6252,11 @@ item that needs it stays untouched.
   created) / blocked; step 5; approval ids; the evidence branch and commit; anything left in the tenant.
 
 ### Q129: Live restore of who scripts, remediations, administrative templates and update profiles are assigned to (restore gaps batch 14, after #460)
+- Requeued by the coordinator (2026-10-22 09:40 UTC): **#471 is fixed** by PR #475 (master `56d9682`): every script writer declares `DeviceManagementScripts.ReadWrite.All`, and a 403 names the missing grant. Marouane has added `DeviceManagementScripts.ReadWrite.All` (Application) to the Restorer and granted admin consent (2026-10-22). Run once `/opt/keel-live` is at `56d9682` or later (`grep -q SCRIPT_WRITE_PERMISSION /opt/keel-live/engine/restore/intuneOperations.mjs`); that build also has the #466 fix (#468). The script parts (PowerShell script, remediation, and the optional macOS shell and custom compliance scripts) need this grant; the other kinds were blocked only on #466, which is fixed.
+  - **Step 0, before any fixture (read only; prints role names only, never the token):** get a fresh Restorer token and check its `roles` claim:
+    `cd /opt/keel-live && node --input-type=module -e "import { getToken } from './tools/tenant-probe/auth.mjs'; import { readFileSync } from 'node:fs'; const c = JSON.parse(readFileSync('/etc/keel/restorer.json','utf8')); const t = (await getToken(c)).accessToken; console.log(JSON.parse(Buffer.from(t.split('.')[1], 'base64url')).roles.sort().join('\n'))"`
+    - If the list includes `DeviceManagementScripts.ReadWrite.All`: log the list in Result and run the item. The "no permission to add" / "Restorer holds DeviceManagementConfiguration" wording below is superseded for script kinds.
+    - If it does not: create nothing, set `Status: blocked`, and report in Result that admin consent for `DeviceManagementScripts.ReadWrite.All` appears not applied, with the roles listed. Grant nothing.
 - Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 14" thread (2026-10-22). Code: PR #460. No backup change (assignments were already backed up).
   A restore that picks these kinds now writes their assignments back through `/assign` (beta), fixture-tested only:
@@ -6254,7 +6269,7 @@ item that needs it stays untouched.
     `keel-restore` (only the three built-in policy kinds were), so they were never written. They are now.
   - A policy whose only change is its assignments is planned as an `update`; the object itself is not patched.
 - Needs: /opt/keel-live at the #460 merge or later (`grep -q SCRIPT_ASSIGNMENTS /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: blocked
+- Status: todo
 - Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
@@ -6288,6 +6303,11 @@ item that needs it stays untouched.
   not be created) / blocked; step 4; approval ids; the evidence branch and commit; anything left in the tenant.
 
 ### Q130: Live restore of who compliance policies, Windows app protection, custom attribute scripts and Autopilot profiles are assigned to (restore gaps batch 15, after #462)
+- Requeued by the coordinator (2026-10-22 09:40 UTC): **#471 is fixed** by PR #475 (master `56d9682`): every script writer declares `DeviceManagementScripts.ReadWrite.All`, and a 403 names the missing grant. Marouane has added `DeviceManagementScripts.ReadWrite.All` (Application) to the Restorer and granted admin consent (2026-10-22). Run once `/opt/keel-live` is at `56d9682` or later (`grep -q SCRIPT_WRITE_PERMISSION /opt/keel-live/engine/restore/intuneOperations.mjs`); that build also has the #466 fix (#468). The custom attribute script (`KEEL-RT-150-attr`) needs this grant; the other kinds were blocked only on #466, which is fixed.
+  - **Step 0, before any fixture (read only; prints role names only, never the token):** get a fresh Restorer token and check its `roles` claim:
+    `cd /opt/keel-live && node --input-type=module -e "import { getToken } from './tools/tenant-probe/auth.mjs'; import { readFileSync } from 'node:fs'; const c = JSON.parse(readFileSync('/etc/keel/restorer.json','utf8')); const t = (await getToken(c)).accessToken; console.log(JSON.parse(Buffer.from(t.split('.')[1], 'base64url')).roles.sort().join('\n'))"`
+    - If the list includes `DeviceManagementScripts.ReadWrite.All`: log the list in Result and run the item. The "no permission to add" / "Restorer holds DeviceManagementConfiguration" wording below is superseded for script kinds.
+    - If it does not: create nothing, set `Status: blocked`, and report in Result that admin consent for `DeviceManagementScripts.ReadWrite.All` appears not applied, with the roles listed. Grant nothing.
 - Note (coordinator, 2026-10-22): **#466 is fixed** by PR #468 (master `7f7525d`). A restore now skips and logs an Intune type it does not touch that fails to read (501 NotSupported counts as not on the tenant; the vppToken and Managed Google Play `$select` fields are fixed). Deletes are refused while any type is unread. Re-run this item once `/opt/keel-live` is at `7f7525d` or later.
 - Drafted by the "Restore batch 15" thread (2026-10-22). Code: PR #462. Fixture-tested only.
   - **Backup change:** assignments are now read per object (beta) for `deviceCustomAttributeShellScript`, `deviceManagementCompliancePolicy`
@@ -6299,7 +6319,7 @@ item that needs it stays untouched.
     and each extra one `DELETE .../assignments/{id}`, then read back.
   - A policy whose only change is its assignments is planned as an `update`; the object itself is not patched.
 - Needs: /opt/keel-live at the #462 merge or later (`grep -q "assignmentWrite: 'per-item'" /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: blocked
+- Status: todo
 - Result: blocked (2026-10-22 07:03 UTC) on **#466**, not started. Needs are met at e1a811b, but every `keel-restore --snapshot-id ... --select` dry run stops in its current-state read on an unneeded Intune type (`deviceManagementExchangeConnector` 501 NotSupported; also `onPremisesConditionalAccessSettings` 501 and the vppToken and androidManagedStoreAccountEnterpriseSettings `$select` 400s), before planning. Seen in Q109. Nothing written for this item; I will start it once #466 is fixed and deployed.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
@@ -6375,6 +6395,11 @@ item that needs it stays untouched.
   not be created) / blocked; whether the set's item survived step 2; step 4; approval ids; the evidence branch and commit; anything left in the tenant.
 
 ### Q132: Live check that a recreated or wider-assigned script needs the "Runs on devices" approval (issue #461, after #464)
+- Requeued by the coordinator (2026-10-22 09:40 UTC): **#471 is fixed** by PR #475 (master `56d9682`): every script writer declares `DeviceManagementScripts.ReadWrite.All`, and a 403 names the missing grant. Marouane has added `DeviceManagementScripts.ReadWrite.All` (Application) to the Restorer and granted admin consent (2026-10-22). Run once `/opt/keel-live` is at `56d9682` or later (`grep -q SCRIPT_WRITE_PERMISSION /opt/keel-live/engine/restore/intuneOperations.mjs`); that build also has the #466 fix (#468). Both fixtures are scripts and need this grant; the #466 block is also fixed.
+  - **Step 0, before any fixture (read only; prints role names only, never the token):** get a fresh Restorer token and check its `roles` claim:
+    `cd /opt/keel-live && node --input-type=module -e "import { getToken } from './tools/tenant-probe/auth.mjs'; import { readFileSync } from 'node:fs'; const c = JSON.parse(readFileSync('/etc/keel/restorer.json','utf8')); const t = (await getToken(c)).accessToken; console.log(JSON.parse(Buffer.from(t.split('.')[1], 'base64url')).roles.sort().join('\n'))"`
+    - If the list includes `DeviceManagementScripts.ReadWrite.All`: log the list in Result and run the item. The "no permission to add" / "Restorer holds DeviceManagementConfiguration" wording below is superseded for script kinds.
+    - If it does not: create nothing, set `Status: blocked`, and report in Result that admin consent for `DeviceManagementScripts.ReadWrite.All` appears not applied, with the roles listed. Grant nothing.
 - Drafted by the "Approve recreated assigned scripts" thread (2026-10-22). Code: PR #464. Fixture-tested only.
   - Since #460/#462 a restore assigns scripts and app policies. #464 makes the content-effect review judge that: the plan records
     who an assignment write newly reaches (`newAssignments`), and a device type judges its rules for those devices as if new.
@@ -6383,7 +6408,7 @@ item that needs it stays untouched.
   - A schedule-only change, a fix turned off, or an added exclusion reaches no one new and needs no approval.
   - The review page shows "Newly assigned to ..." on each such effect.
 - Needs: /opt/keel-live at the #464 merge or later (`grep -q newAssignmentReach /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: blocked
+- Status: todo
 - Result: blocked (2026-10-22 07:45 UTC) on **#466**, not started (no fixtures created). The Needs are met at 1856809, but a snapshot dry run still stops in the current-state read (`collecting deviceManagementExchangeConnector failed`). I re-checked at 1856809 with the Q109 dry run at 07:45 UTC.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores and content effects yourself and log every approval id. Restorer only; global admin not used.

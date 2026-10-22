@@ -6653,3 +6653,51 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; per operation: promoted / refused (exact message) / blocked; step 4; step 5 plan; approval ids; the evidence branch and commit;
   anything left in the tenant. If this passes, Q131 (policy set assignments) is unblocked.
+
+### Q141: Confirm the Collector's new Teams Administrator role, capture the Teams policy reads, then turn them on (read-only toward the tenant)
+- Drafted by the "Turn on Teams policy backups" thread (2026-10-22). Marouane granted **Teams Administrator** to the Collector
+  (KEEL Collector) on 2026-10-22. `teams-org-policies` and `teams-voice-policies` are `disabled` every night because (a) no
+  read record exists for them (Q107 import: "Absent: reads for teams-org-policies and teams-voice-policies") and (b) the stored
+  collector grants lack "Teams Administrator".
+- Code: PR #484. `keel-workload-collect.mjs import` now also reads the Collector's tenant-wide Entra roles live (GET only, tenant
+  config app) and adds them to the stored collector grants. The result has a new `collectorRoles` field.
+- Needs: steps 1 to 4 need nothing. Steps 5 and 6 need PR #484 live
+  (`grep -q observeCollectorRoles /opt/keel-live/cli/keel-workload-collect.mjs`). If it is not live yet, do 1 to 4, set `blocked`
+  with that reason, and finish 5 and 6 on a later pass.
+- Status: todo
+- Result:
+- **Tenant:** reads only. Graph GETs and the workloads' declared `Get-` cmdlets with the Collector credential. No `New-`, `Set-`,
+  `Grant-` or `Remove-` cmdlet. Grant, assign or register nothing.
+- Do, from your clone checked out at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Role check (Graph):** as Q106 step 2, with the Collector token from `/etc/keel/tenant.json`:
+     `GET /v1.0/roleManagement/directory/roleAssignments?$filter=principalId eq '<Collector SP id>'&$expand=roleDefinition`.
+     Report each role's displayName and directoryScopeId. Say yes/no: Teams Administrator at scope `/`.
+  2. **Role check (Teams PowerShell):** connect MicrosoftTeams as the Collector with the config `powershellConfigs.teams` names
+     in `/etc/keel/workload-scope.json`, then `Get-CsTeamsMeetingPolicy | Select-Object -ExpandProperty Identity`.
+     Report the exit, the policy count and the identities (built-in names like `Global`, `Tag:...` are fine; mask anything else).
+     If it is refused, report the error verbatim (masked) and stop: role propagation can take up to an hour, so retry once later
+     before setting `blocked`.
+  3. **Captures:** one per workload, with the same Teams config:
+     ```bash
+     for w in teams-org-policies teams-voice-policies; do
+       node tools/qualification/workloadReadsLive.mjs capture --workload "$w" --tenant-ref <tenant ref> \
+         --collector-ref app:<that config's clientId> --collector-config <teams config> \
+         --build "$(git -C /opt/keel-live rev-parse HEAD)" \
+         --out docs/release/qualifications/workload-reads-$w-live-acceptance.json
+     done
+     node tools/qualification/pseudonymize.mjs check docs/release/qualifications/workload-reads-teams-*-live-acceptance.json
+     ```
+     Report each exit code and its `proven` / `notProven` JSON verbatim (mask tenant or org names), and the check exit code.
+     If the check is not exit 0, stop and file an issue; do not publish.
+  4. **Evidence:** commit the two records to `claude/live-evidence-teams-reads` (from `origin/master`, files under
+     `docs/release/qualifications/` only, checked for secrets) and push. No PR.
+  5. **Import** (needs #484 live), `--dir <clone>/docs/release/qualifications`:
+     `node cli/keel-workload-collect.mjs import --dir <clone>/docs/release/qualifications`. Report exit code, the `imported` /
+     `refused` / `absent` lists and `collectorRoles` verbatim. Then:
+     `SELECT app, roles, imported_at FROM workload_ledger_grants ORDER BY app;` (expect the collector row to include Teams Administrator).
+  6. `node cli/keel-workload-collect.mjs run` once by hand. Report the per-workload table as Q107 step 4 (outcome, n_reasons,
+     observations), and the reasons for teams-org-policies and teams-voice-policies if either is not `complete`.
+- **Expected:** steps 1 and 2 show the role. Both captures prove their reads (some voice reads may be not-licensed; those are
+  optional). After step 6, teams-org-policies and teams-voice-policies are on (`complete` or `partial`), no longer `disabled`.
+- **Report:** per step, the result; the evidence branch and commit; per Teams workload, on / off with the reason.

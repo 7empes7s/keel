@@ -6597,7 +6597,7 @@ item that needs it stays untouched.
 - **Report:** B; step 1 backup check; step 2 reason; per operation: promoted / refused (exact Graph message) / blocked; step 5;
   approval ids; the evidence branch and commit; anything left in the tenant.
 
-### Q137: Live update of an app category and an e-book category (fixes #474, after #479)
+### Q139: Live update of an app category and an e-book category (fixes #474, after #479)
 - Drafted by the "App category updates always refused" thread (2026-10-22), from your Q116 and Q122 finding **#474**. Code: PR #479 (merge df9295a). Fixture-tested only.
   - **Change:** the restore's current-state fingerprint now ignores `lastModifiedDateTime` for `mobileAppCategory` and `managedEBookCategory` only,
     because Graph returns it as the time of the read. Every other kind still counts it. Nothing else changed: same writers as Q116 and Q122.

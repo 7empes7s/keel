@@ -262,6 +262,19 @@ const FIXTURE_PAYLOADS = Object.freeze({
     outOfBoxExperienceSettings: { hidePrivacySettings: true, hideEULA: true, userType: 'standard', deviceUsageType: 'singleUser', skipKeyboardSelectionPage: true, hideEscapeLink: true },
   },
   policySet: { displayName: 'Fixture policy set', description: 'Fixture', roleScopeTags: ['0'], guidedDeploymentTags: [], items: [] },
+  // Restore gaps, batch 7: a Linux settings catalog compliance policy with its block action.
+  deviceManagementCompliancePolicy: {
+    name: 'Fixture compliance', description: 'Fixture', platforms: 'linux', technologies: 'linuxMdm', roleScopeTagIds: ['0'], settingCount: 1,
+    settings: [{
+      id: '0',
+      settingInstance: {
+        '@odata.type': '#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance',
+        settingDefinitionId: 'linux_deviceencryption_required', settingInstanceTemplateReference: null,
+        choiceSettingValue: { value: 'linux_deviceencryption_required_true', settingValueTemplateReference: null, children: [] },
+      },
+    }],
+    scheduledActionsForRule: [{ ruleName: null, scheduledActionConfigurations: [{ actionType: 'block', gracePeriodHours: 0, notificationTemplateId: '', notificationMessageCCList: [] }] }],
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons.
   externalIdentitiesPolicy: { allowExternalIdentitiesToLeave: true, allowDeletedIdentitiesDataRemoval: false },
   accessReviewPolicy: { isGroupOwnerManagementEnabled: true },

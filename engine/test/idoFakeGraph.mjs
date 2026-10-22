@@ -3,7 +3,8 @@
  * record writers. Objects live at their path; a collection lists the objects
  * under it (or, before any child write, the parent's inline array of the same
  * name); `$expand=x` adds the `x` collection to the object read. The actions
- * the writers use are modelled: /assign, /targetApps, a policy set's /update, owners/$ref,
+ * the writers use are modelled: /assign, /targetApps, a policy set's /update, a compliance
+ * policy's /setScheduledActions, owners/$ref,
  * appRoleAssignments, createNewVersion and assignLicense. Every call is kept in
  * `calls` (method, version, path, body) for the tests to inspect.
  */
@@ -77,6 +78,15 @@ export function idoFakeGraph({ seed = {}, failWrites = () => null } = {}) {
         }
         setCollection(`${owner}/items`, items);
         return ok(204, null);
+      }
+      if (method === 'POST' && action === 'setScheduledActions') {
+        // A settings catalog compliance policy's actions for noncompliance, replaced whole (restore gaps batch 7).
+        if (!objects.has(owner)) return notFound();
+        setCollection(`${owner}/scheduledActionsForRule`, (body.scheduledActions ?? []).map((rule, index) => ({
+          ...rule, id: `rule-${index}`,
+          scheduledActionConfigurations: (rule.scheduledActionConfigurations ?? []).map((item, at) => ({ ...item, id: `action-${index}-${at}` })),
+        })));
+        return ok(200, { value: collectionOf(`${owner}/scheduledActionsForRule`) });
       }
       if (method === 'POST' && action === 'createNewVersion') {
         if (!objects.has(owner)) return notFound();

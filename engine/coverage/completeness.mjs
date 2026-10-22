@@ -225,7 +225,7 @@ export const COMPLETENESS = Object.freeze({
   intuneBrandingProfile: { whole: 'not-written', missing: [part('Logo images', 'other-route')] },
   customAuthenticationExtension: { whole: 'not-written' },
   // Remaining kinds, batch 3.
-  deviceManagementCompliancePolicy: { whole: 'not-written', missing: [part('Actions for noncompliance', 'other-route'), part('Who the policy is assigned to', 'other-route')] },
+  deviceManagementCompliancePolicy: { missing: [part('Who the policy is assigned to', 'other-route')] },
   deviceManagementReusablePolicySetting: {},
   policySet: { missing: [part('Who the set is assigned to', 'not-written')] },
   vppToken: { whole: 'not-written', missing: [part('The token file', 'secret')] },

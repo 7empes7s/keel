@@ -47,13 +47,18 @@ function countingReader({ pages = 1, throttlesPerType = 0 } = {}) {
 test('the collector records measured requests and throttles per type, separately from the item count', async () => {
   const { coverageDigest } = await collectWithOutcomes(countingReader({ pages: 3, throttlesPerType: 1 }), { tenantId: 'fixture', tier: 'tier1' });
   const tier1 = M1_TYPES.filter((type) => get(type).descriptor.criticality === 'tier1');
+  // A kind read per parent (settings catalog compliance policies, restore gaps
+  // batch 7) makes one list read, then one read per listed object: here 250.
+  const reads = (type) => (CATALOG.find((entry) => entry.type === type)?.parent ? 251 : 1);
   for (const type of tier1) {
-    assert.equal(coverageDigest[type].itemCount, 250);
-    assert.equal(coverageDigest[type].requests, 4, `${type}: three pages plus one throttled retry`);
-    assert.equal(coverageDigest[type].throttles, 1);
+    const perParent = reads(type) > 1;
+    assert.equal(coverageDigest[type].itemCount, perParent ? 250 * 250 : 250, type);
+    assert.equal(coverageDigest[type].requests, 4 * reads(type), `${type}: three pages plus one throttled retry, per read`);
+    assert.equal(coverageDigest[type].throttles, reads(type));
   }
   const cost = collectionCostMetrics(coverageDigest);
-  assert.deepEqual(cost, { graphRequests: 4 * tier1.length, graphThrottles: tier1.length, measuredTypes: tier1.length, unmeasuredTypes: 0 });
+  const totalReads = tier1.reduce((sum, type) => sum + reads(type), 0);
+  assert.deepEqual(cost, { graphRequests: 4 * totalReads, graphThrottles: totalReads, measuredTypes: tier1.length, unmeasuredTypes: 0 });
 
   // A reader without counters leaves the fields out: unmeasured, never zero.
   const legacy = await collectWithOutcomes({ async collect() { return { items: [], pages: 1, status: 200, error: null }; } }, { tenantId: 'fixture', tier: 'tier1' });

@@ -189,7 +189,7 @@ export const TYPE_DECISIONS = Object.freeze({
   intuneBrandingProfile: manual('no writer yet; beta only, and logo images are read per profile'),
   customAuthenticationExtension: manual('no writer yet; the endpoint\'s own sign-in settings are checked by hand'),
   // Remaining kinds, batch 3: Intune tenant settings, backed up read-only; no writer is built yet.
-  deviceManagementCompliancePolicy: manual('no writer yet; beta only, and actions for noncompliance are read per policy'),
+  deviceManagementCompliancePolicy: automated('intune-deviceconfigv2-devicemanagementcompliancepolicy', 'restore gaps batch 7: create and update of the policy with its settings and actions for noncompliance through Graph beta; who it is assigned to is assigned again by hand', { view: 'graph-rest-beta' }),
   deviceManagementReusablePolicySetting: automated('intune-deviceconfigv2-devicemanagementreusablepolicysetting', 'restore gaps batch 1: create and update through Graph beta, before the settings catalog policies that use it; its setting definition is never changed', { view: 'graph-rest-beta' }),
   policySet: automated('intune-policyset-policyset', 'restore gaps batch 6: create and update of the set and the apps and policies in it through Graph beta; each must exist in the target with the same id; who it is assigned to is assigned again by hand', { view: 'graph-rest-beta' }),
   vppToken: manual('Apple issues the token; no tool can upload it from a backup'),
@@ -1037,8 +1037,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
   customAuthenticationExtension: byHand('identity-application', 'POST /identity/customAuthenticationExtensions', 'CustomAuthenticationExtension.ReadWrite.All',
     'backed up; the endpoint and its sign-in settings are checked by hand before a recreate'),
   // Remaining kinds, batch 3: Intune tenant settings, backed up read-only; manual until a writer is built.
-  deviceManagementCompliancePolicy: byHand('device-management', 'POST /deviceManagement/compliancePolicies (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
-    'backed up with its settings; actions for noncompliance and assignments are read per policy'),
+  deviceManagementCompliancePolicy: subset('device-management', 'POST /deviceManagement/compliancePolicies (beta); PUT .../{id} (beta); POST .../{id}/setScheduledActions (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
+    'create and update with settings and actions for noncompliance are fixture-tested; assignments are not written'),
   deviceManagementReusablePolicySetting: subset('device-management', 'POST /deviceManagement/reusablePolicySettings (beta); PATCH .../{id} (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
     'create and update are fixture-tested; the setting definition is never changed'),
   policySet: subset('device-management', 'POST /deviceAppManagement/policySets (beta); PATCH .../{id} (beta); POST .../{id}/update (beta)', 'DeviceManagementApps.ReadWrite.All',

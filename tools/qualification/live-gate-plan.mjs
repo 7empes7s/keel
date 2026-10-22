@@ -228,6 +228,13 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-set`, drift: 'delete it: the restore recreates it and adds the same profile back',
     note: 'Back up after the set holds its profile; the profile itself is not deleted.',
   },
+  // Restore gaps, batch 7: a settings catalog compliance policy assigned to
+  // nobody, so no device is judged by it and Conditional Access never sees it.
+  deviceManagementCompliancePolicy: {
+    kind: 'named-object', fixture: `Linux settings catalog compliance policy ${FIXTURE_PREFIX}-compliance (one setting: device encryption required; actions: block after 0 hours and email the user after 24 hours with any notification template), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-compliance`, drift: 'change its description and the block grace period to 72 hours: the restore puts back both (0 hours)',
+    note: 'Assigned to nobody and the test tenant has no Linux devices. Back up after restore gaps batch 7 deploys, since only then are the actions read.',
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons. None touches sign-in,
   // Conditional Access or any account; each is set back to its value after the run.
   externalIdentitiesPolicy: {

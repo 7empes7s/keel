@@ -272,6 +272,11 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   deviceCompliancePolicy: { reviewed: true, judgesCreates: true, rules: [
     rule('scheduledActionsForRule[actionType]', 'irreversible', addsDeviceDestroyingAction, complianceActionTypes),
   ] },
+  // Restore gaps batch 7: settings catalog compliance policies hold the same
+  // actions for noncompliance; their settings only judge compliance.
+  deviceManagementCompliancePolicy: { reviewed: true, judgesCreates: true, rules: [
+    rule('scheduledActionsForRule[actionType]', 'irreversible', addsDeviceDestroyingAction, complianceActionTypes),
+  ] },
   deviceConfiguration: { reviewed: true, judgesCreates: true, rules: [
     rule('passcodeSignInFailureCountBeforeWipe', 'irreversible', wipeThresholdTightens),
     rule('passwordSignInFailureCountBeforeFactoryReset', 'irreversible', wipeThresholdTightens),

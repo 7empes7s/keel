@@ -252,13 +252,13 @@ test('the import stores the proven writes, skips absent writer records, and refu
   const seams = (await importSeams()).filter((entry) => entry.optional);
   const result = await importLedgerInputs(client, { tenantRef, dir, seams, verify: { hmacKey: KEY } });
   assert.deepEqual(result.refused, []);
-  assert.deepEqual(result.imported.map(({ file, writes }) => ({ file, writes })), [{ file: workloadWritesRecordFile('exchange-mail-flow'), writes: 3 }]);
+  assert.deepEqual(result.imported.map(({ file, writes }) => ({ file, writes })), [{ file: workloadWritesRecordFile('exchange-mail-flow'), writes: 4 }]);
   assert.deepEqual(result.absent.sort(), [
     ...Object.keys(WRITTEN_WORKLOADS).filter((w) => w !== 'exchange-mail-flow').map(workloadWritesRecordFile), SITE_GRANTS_RECORD_FILE, SITE_PERMISSIONS_RECORD_FILE,
     ...Object.keys(READ_FAMILIES).map(workloadReadsRecordFile),
   ].sort());
   const inserted = saved.filter(({ sql }) => /INSERT INTO workload_ledger_evidence/.test(sql));
-  assert.equal(inserted.length, 3);
+  assert.equal(inserted.length, 4);
   assert.ok(inserted.every(({ params }) => params[3] === 'live-write-capture' && params[8] === true));
   t.diagnostic(`stored ${inserted.map(({ params }) => params[1]).join(', ')}`);
 
@@ -325,7 +325,7 @@ test('a write that is not put back is not proof and is reported for a manual fix
   assert.match(needsManualRevert[0].error, /PUTTING THE SETTING BACK FAILED/);
   assert.deepEqual(verifyEvidence(evidence, verifyOptions(dir)).failures, []);
   const seam = ledgerEvidenceFromWorkloadWritesAcceptance(evidence, { tenantRef, build, hmacKey: KEY, evidenceDir: dir });
-  assert.deepEqual(seam.writes.map((item) => item.operationId).sort(), ['mailflow.outbound-connector.update', 'mailflow.transport-rule.update']);
+  assert.deepEqual(seam.writes.map((item) => item.operationId).sort(), ['mailflow.anti-malware-policy.update', 'mailflow.outbound-connector.update', 'mailflow.transport-rule.update']);
 });
 
 test('the setting is put back even when its read-back fails', async () => {

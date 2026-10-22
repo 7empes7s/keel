@@ -36,6 +36,7 @@ import {
 } from '../restore/workloads/cmdletSettings.mjs';
 import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 import { approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
+import { chooseCaptureChange } from '../../tools/qualification/workloadWritesAcceptance.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
@@ -417,10 +418,10 @@ test('every Defender email fix is a check the evaluator itself would pass afterw
 
 const MAIL_PROTECTION_TYPES = ['exchangeAntiPhishPolicy', 'exchangeAntiSpamPolicy', 'exchangeAntiMalwarePolicy', 'exchangeSafeLinksPolicy'];
 
-test('every written mail protection setting has a weakening rule, except the notification switch', () => {
+test('every written mail protection setting has a weakening rule, except the description and the notification switch', () => {
   for (const write of Object.values(WKLD_WRITE_OPERATIONS).filter((item) => MAIL_PROTECTION_TYPES.includes(item.resourceType))) {
     for (const field of write.fields) {
-      if (write.resourceType === 'exchangeAntiMalwarePolicy' && field === 'CustomNotifications') continue;
+      if (field === 'AdminDisplayName' || (write.resourceType === 'exchangeAntiMalwarePolicy' && field === 'CustomNotifications')) continue;
       assert.equal(typeof WEAKENING_RULES[write.resourceType]?.[field], 'function', `${write.resourceType}.${field} has no weakening rule`);
     }
   }
@@ -505,4 +506,17 @@ test('a stored plan that would weaken mail protection is refused at the write, a
   assert.equal(result.operations[0].outcome, 'refused');
   assert.match(result.operations[0].reasons[0], /AllowClickThrough: this would weaken mail protection/);
   assert.deepEqual(tenant.writes, []);
+});
+
+test('the live writer capture changes a harmless field of each mail protection policy', () => {
+  // Live (Q159): the anti-malware capture flipped CustomNotifications, which Exchange refuses without a
+  // CustomFromAddress. It now writes the description instead.
+  const writes = Object.values(WKLD_WRITE_OPERATIONS).filter((item) => MAIL_PROTECTION_TYPES.includes(item.resourceType));
+  const expected = { antiPhishPolicy: 'EnableUnauthenticatedSender', antiSpamPolicy: 'InlineSafetyTipsEnabled', antiMalwarePolicy: 'AdminDisplayName', safeLinksPolicy: 'EnableSafeLinksForEmail' };
+  for (const write of writes) {
+    const body = policy(write.family);
+    const resource = { fields: body, fieldCoverage: Object.fromEntries(Object.keys(body).map((field) => [field, { status: 'observed' }])) };
+    const change = chooseCaptureChange(write, resource, { marker: 'KEEL capture marker' });
+    assert.equal(change.field, expected[write.family], `${write.family}: ${JSON.stringify(change)}`);
+  }
 });

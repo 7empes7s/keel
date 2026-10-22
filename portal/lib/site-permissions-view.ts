@@ -68,6 +68,8 @@ export interface SiteSharing {
   value: string | null;
   // The tenant's own setting, which caps every site; null when it was not read.
   tenant: string | null;
+  // The read is approved but the host names no PnP config for it.
+  unconfigured?: boolean;
 }
 
 // The newest nightly backup of SharePoint sites (content_run, workload sharepoint-sites).
@@ -145,7 +147,8 @@ function sharingFrom(fields: Record<string, unknown>, coverage: Coverage): SiteS
   if (entry?.status === "observed" && value) return { status: "observed", value, tenant: null };
   if (entry?.status === "denied" || entry?.status === "failed") return { status: entry.status, value: null, tenant: null };
   const notRead = !entry || !entry.operation || /not live-qualified|not read/i.test(entry.reason ?? "");
-  return { status: notRead ? "not-read" : "unknown", value: null, tenant: null };
+  const unconfigured = /powershellConfigs\.sharepoint/.test(entry?.reason ?? "");
+  return { status: notRead ? "not-read" : "unknown", value: null, tenant: null, ...(unconfigured ? { unconfigured } : {}) };
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -361,6 +364,9 @@ export function sharingStatus(site: SitePermissions): SiteStatus {
   const { status, value, tenant } = site.sharing;
   if (status === "denied") return { key: "unknown", label: "Not allowed", tone: "soon", detail: "Microsoft refused to show this site's sharing setting to KEEL." };
   if (status === "failed") return { key: "unknown", label: "Read failed", tone: "soon", detail: "Reading this site's sharing setting failed." };
+  if (status === "not-read" && site.sharing.unconfigured) {
+    return { key: "not-read", label: "Not set up", tone: "soon", detail: "The sharing read is approved, but the server has no SharePoint sign-in set up for it, so it did not run." };
+  }
   if (status === "not-read") return { key: "not-read", label: "Not read yet", tone: "neutral", detail: "KEEL starts reading each site's own sharing setting once that read is approved for this tenant." };
   if (status !== "observed" || !value) return { key: "unknown", label: "Unknown", tone: "neutral", detail: "Microsoft did not list this site's sharing setting." };
   const level = sharingLevel(value);

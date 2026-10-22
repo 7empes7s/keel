@@ -12,6 +12,7 @@ import {
   INTUNE_BEST_EFFORT, INTUNE_EXTENDED_RECORDS, INTUNE_RECORDS, applyIntuneExtendedWrite, attachIntuneAssignments, buildIntuneExtendedLedger,
   SCRIPT_WRITE_PERMISSION, intuneExtendedOperations, targetAppsBody, writesIntuneAssignments,
 } from './intuneOperations.mjs';
+import { changedRecordFields } from './recordWriter.mjs';
 import { EXPANSION_INVENTORY } from '../coverage/qualification.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
 import { classifyContentEffects } from '../safety/contentEffects.mjs';
@@ -255,6 +256,68 @@ test('a reusable settings group update is written whole with PUT, its values inc
   assert.deepEqual(put.body, { displayName: live.displayName, description: 'Fixture', settingDefinitionId: 'def-a', settingInstance: ADDRESSES });
   const reRead = graph.calls.filter((call) => call.method === 'GET').at(-1);
   assert.match(reRead.path, /\$select=[^&]*settingInstance/);
+});
+
+// Issue #477: a dynamic keyword item as Graph returns it. Its `..._{id}_id`
+// child is a guid Graph gives a new value on every write.
+const KEYWORD_DEF = 'vendor_msft_firewall_mdmstore_dynamickeywords_addresses_{id}';
+const keywordGroup = (guid, address = '203.0.113.10') => ({
+  '@odata.type': '#microsoft.graph.deviceManagementConfigurationGroupSettingCollectionInstance', settingDefinitionId: KEYWORD_DEF,
+  groupSettingCollectionValue: [{ children: [
+    { '@odata.type': '#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance', settingDefinitionId: `${KEYWORD_DEF}_id`,
+      simpleSettingValue: { '@odata.type': '#microsoft.graph.deviceManagementConfigurationStringSettingValue', value: guid } },
+    { '@odata.type': '#microsoft.graph.deviceManagementConfigurationSimpleSettingCollectionInstance', settingDefinitionId: `${KEYWORD_DEF}_addresses`,
+      simpleSettingCollectionValue: [{ '@odata.type': '#microsoft.graph.deviceManagementConfigurationStringSettingValue', value: address }] },
+  ] }],
+});
+
+/** A fake Graph that, like Intune, stores each PUT with `stored(body)` in place of the body sent. */
+function regeneratingGraph(live, stored) {
+  const graph = idoFakeGraph({ seed: { [REUSABLE_PATH]: live } });
+  const write = graph.write.bind(graph);
+  graph.write = async (version, path, request) => {
+    const result = await write(version, path, request);
+    if (request.method === 'PUT' && path === REUSABLE_PATH) graph.objects.set(REUSABLE_PATH, { ...graph.objects.get(REUSABLE_PATH), ...stored(request.body) });
+    return result;
+  };
+  return graph;
+}
+
+test('a reusable settings group update verifies although Graph gives its keyword item a new id (issue #477)', async () => {
+  const backup = { id: 'r-1', displayName: 'KEEL-RT-155-addresses', description: 'KEEL restore fixture', settingDefinitionId: KEYWORD_DEF, settingInstance: keywordGroup('{aee3fd94-0000-4000-8000-000000000001}') };
+  const live = { ...backup, description: 'changed', settingInstance: keywordGroup('{11111111-0000-4000-8000-000000000002}', '198.51.100.7') };
+  const graph = regeneratingGraph(live, (body) => ({ ...body, settingInstance: keywordGroup('{35c6b7f6-0000-4000-8000-000000000003}') }));
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementReusablePolicySetting', backup, {
+    live: { state: 'present', targetId: 'r-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const put = graph.calls.find((call) => call.method === 'PUT');
+  assert.deepEqual(put.body.settingInstance, backup.settingInstance, 'the backup\'s values are sent whole, key child included');
+});
+
+test('a reusable settings group update still fails its post-state when a value does not read back (issue #477)', async () => {
+  const backup = { id: 'r-1', displayName: 'KEEL-RT-155-addresses', description: 'KEEL restore fixture', settingDefinitionId: KEYWORD_DEF, settingInstance: keywordGroup('{aee3fd94-0000-4000-8000-000000000001}') };
+  const live = { ...backup, settingInstance: keywordGroup('{11111111-0000-4000-8000-000000000002}', '198.51.100.7') };
+  const graph = regeneratingGraph(live, (body) => ({ ...body, settingInstance: keywordGroup('{35c6b7f6-0000-4000-8000-000000000003}', '198.51.100.7') }));
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementReusablePolicySetting', backup, {
+    live: { state: 'present', targetId: 'r-1', payload: live },
+  }), 'update', FAST);
+  assert.match(result.failed?.error ?? '', /settingInstance did not read back as written/);
+});
+
+test('only the regenerated keyword id is left out of a reusable settings group comparison (issue #477)', () => {
+  const record = INTUNE_EXTENDED_RECORDS.deviceManagementReusablePolicySetting;
+  const base = { displayName: 'KEEL-RT-155-addresses', settingDefinitionId: KEYWORD_DEF };
+  const backup = { ...base, settingInstance: keywordGroup('{aee3fd94-0000-4000-8000-000000000001}') };
+  assert.deepEqual(changedRecordFields(record, backup, { ...base, settingInstance: keywordGroup('{35c6b7f6-0000-4000-8000-000000000003}') }), [],
+    'a new keyword id alone is not a change');
+  assert.deepEqual(changedRecordFields(record, backup, { ...base, settingInstance: keywordGroup('{aee3fd94-0000-4000-8000-000000000001}', '198.51.100.7') }), ['settingInstance'],
+    'a changed address still is');
+  // A guid child that is not the keyword item's own key still counts.
+  const other = (guid) => ({ ...keywordGroup('{aee3fd94-0000-4000-8000-000000000001}'), groupSettingCollectionValue: [{ children: [
+    { settingDefinitionId: `${KEYWORD_DEF}_ruleid`, simpleSettingValue: { value: guid } },
+  ] }] });
+  assert.deepEqual(changedRecordFields(record, { ...base, settingInstance: other('{a}') }, { ...base, settingInstance: other('{b}') }), ['settingInstance']);
 });
 
 test('a reusable settings group update never changes its setting definition', async () => {

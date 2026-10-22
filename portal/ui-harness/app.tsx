@@ -1088,6 +1088,7 @@ const BACKUP_ITEMS = [
 const SETUP_RUN = "5e7a" + "0b".repeat(30);
 const SETUP_TENANT_ID = "72f988bf-0000-4000-8000-0000000000aa";
 const READER_APP: SetupApp = { displayName: "Keel Backup Reader (Contoso)", appId: "c011ec70-0000-4000-8000-0000000000c1" };
+const CONTENT_APP: SetupApp = { displayName: "Keel Content Reader (Contoso)", appId: "c0e7e700-0000-4000-8000-0000000000c3" };
 const WRITER_APP: SetupApp = { displayName: "Keel Restore Writer (Contoso)", appId: "2e570e00-0000-4000-8000-0000000000c2" };
 const setupStep = (id: string, kind: SetupState["scopes"][number]["steps"][number]["kind"], identity: "collector" | "restorer", name: string, action: string, progress: SetupState["scopes"][number]["steps"][number]["progress"], workload: string | null = null, scopes: string[] = [], app: SetupApp | null = identity === "collector" ? READER_APP : WRITER_APP) =>
   ({ id, kind, identity, workload, name, action, requiredScopes: scopes, missingScopes: scopes, manual: kind === "workload-rbac" || kind === "pim-activation", progress, app });
@@ -1101,7 +1102,7 @@ const setupPermissions = (observed: SetupPermissions["observed"]): SetupPermissi
   apis: Object.fromEntries(Object.entries(PERMISSION_APIS).map(([key, api]) => [key, api.label])),
   observed,
 });
-const catalogFor = (identity: "collector" | "restorer", keep: (entry: PermissionEntry) => boolean = () => true): PermissionGrant[] =>
+const catalogFor = (identity: "collector" | "restorer" | "content-reader", keep: (entry: PermissionEntry) => boolean = () => true): PermissionGrant[] =>
   (KEEL_PERMISSIONS as unknown as PermissionEntry[]).filter((entry) => entry.identity === identity && keep(entry)).map((entry) => ({ api: entry.api, name: entry.name }));
 // Backup reader: everything it needs, the optional audit search not yet, and one grant
 // Keel never uses. Restore writer: waiting on consent for the three setup permissions
@@ -1109,9 +1110,16 @@ const catalogFor = (identity: "collector" | "restorer", keep: (entry: Permission
 const SETUP_PERMISSIONS = setupPermissions({
   complete: true,
   byIdentity: {
+    // The backup reader also waits on one admin role, Teams Administrator.
     collector: {
-      granted: [...catalogFor("collector", (entry) => entry.need === "required"), { api: "graph", name: "Policy.Read.PermissionGrant" }],
-      requested: catalogFor("collector"),
+      granted: [...catalogFor("collector", (entry) => entry.need === "required" && entry.name !== "Teams Administrator"), { api: "graph", name: "Policy.Read.PermissionGrant" }],
+      requested: catalogFor("collector", (entry) => entry.type !== "admin-role"),
+    },
+    // The content reader holds everything but the planned Teams channel messages.
+    "content-reader": {
+      granted: catalogFor("content-reader", (entry) => entry.need === "required"),
+      requested: catalogFor("content-reader", (entry) => entry.need === "required"),
+      app: CONTENT_APP,
     },
     restorer: {
       granted: catalogFor("restorer", (entry) => !RESTORE_SCOPES.includes(entry.name) && entry.api !== "exchange"),
@@ -1161,6 +1169,7 @@ const SETUP_CHECKED: SetupState = {
     byIdentity: {
       collector: { granted: catalogFor("collector"), requested: catalogFor("collector") },
       restorer: { granted: [...catalogFor("restorer"), { api: "graph", name: "Channel.Create" }], requested: catalogFor("restorer") },
+      "content-reader": { granted: catalogFor("content-reader"), requested: catalogFor("content-reader"), app: CONTENT_APP },
     },
   }),
   tenantId: SETUP_TENANT_ID,

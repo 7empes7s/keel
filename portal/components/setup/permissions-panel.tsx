@@ -5,6 +5,7 @@ import { Fragment, useEffect, useMemo, useRef } from "react";
 
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { ListPager, SortControl, useListPaging, type ListSort } from "@/components/list/list-paging";
+import { OptionPicker } from "@/components/pickers/option-picker";
 import { Segmented } from "@/components/pickers/segmented";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { Badge } from "@/components/ui/badge";
@@ -12,14 +13,15 @@ import { applyFilters, pickedTiles, tileCounts, toggleTile, type FilterTile } fr
 import { byText, pageGroups, sortRows } from "@/lib/paging";
 import {
   PERMISSION_STATUS_LABELS, PERMISSION_STATUS_ORDER, PERMISSION_STATUS_TONES,
-  apiPermissionsLink, appFor, appName, consentLink, missingSentence, permissionApps, permissionCounts, permissionRows,
+  apiPermissionsLink, appFor, appName, consentLink, missingSentence, permissionApps, permissionCounts, permissionRows, roleLink,
   type PermissionRow, type PermissionStatus, type SetupState,
 } from "@/lib/setup-view";
 import { toast } from "@/lib/toast";
 import { readList, useViewState } from "@/lib/use-view-state";
 
-// Setup's permission table (CoreView comparison, gaps 1 and 2): every permission each
-// Keel app uses, by app and service, with what it is for and whether the app holds it.
+// Setup's permission table (CoreView comparison, gaps 1 and 2): every permission and
+// admin role each Keel app uses, by app and service, with what it is for and whether the
+// app holds it. A missing role links to where it is assigned: consent never assigns one.
 // Missing ones come first with Microsoft's admin consent page one click away; when the
 // admin comes back to this tab, the page checks the tenant again on its own. Held
 // permissions Keel never uses are listed last, grey, never as a warning.
@@ -37,7 +39,9 @@ const STATUS_HINTS: Record<PermissionStatus, string> = {
   unused: "The app holds these, but Keel never uses them",
 };
 
-const NOUN = { one: "permission", many: "permissions" };
+const NOUN = { one: "permission or role", many: "permissions and roles" };
+
+const APP_ICONS: Record<string, IconName> = { collector: "backup", restorer: "restore", "content-reader": "inbox" };
 const PREFIX = "perm-";
 
 interface Group {
@@ -76,7 +80,7 @@ export function PermissionsPanel({ state }: { state: SetupState }) {
   const text = query.trim().toLowerCase();
   const others = useMemo(() => [
     ...(app ? [(row: PermissionRow) => row.identity === app] : []),
-    ...(text ? [(row: PermissionRow) => `${row.words} ${row.name} ${row.usedFor} ${row.serviceLabel}`.toLowerCase().includes(text)] : []),
+    ...(text ? [(row: PermissionRow) => `${row.words} ${row.name} ${row.usedFor} ${row.serviceLabel} ${row.apiLabel}`.toLowerCase().includes(text)] : []),
   ], [app, text]);
   const shown = useMemo(() => applyFilters(rows, tiles, picked, others), [rows, tiles, picked.join(","), others]);
   const counts = useMemo(() => new Map(tileCounts(rows, tiles, picked, others).map((entry) => [entry.key, entry])), [rows, tiles, picked.join(","), others]);
@@ -115,6 +119,11 @@ export function PermissionsPanel({ state }: { state: SetupState }) {
     };
   });
 
+  const appOptions = [
+    { value: "", label: identities.length === 2 ? "Both apps" : "All apps" },
+    ...identities.map((identity) => ({ value: identity, label: appName(identity).replace(/ app$/, ""), icon: APP_ICONS[identity] })),
+  ];
+  const pickApp = (value: string) => view.set({ [`${PREFIX}app`]: value || null, ...paging.resetPage });
   const setTiles = (next: string[]) => view.set({ [`${PREFIX}status`]: next.join(",") || null, ...paging.resetPage });
   const filters: ActiveFilter[] = [
     ...picked.map((status) => ({ key: `status:${status}`, label: PERMISSION_STATUS_LABELS[status as PermissionStatus], clear: { [`${PREFIX}status`]: picked.filter((entry) => entry !== status).join(",") || null } })),
@@ -129,7 +138,7 @@ export function PermissionsPanel({ state }: { state: SetupState }) {
         <div>
           <h2 id="setup-permissions-title"><Icon name="settings" />Permissions</h2>
           <p>
-            What each Keel app may do in Microsoft 365, and what Keel uses it for.{" "}
+            What each Keel app may do in Microsoft 365, the admin roles it needs, and what Keel uses them for.{" "}
             {observed
               ? <>Checked in your tenant when this page loaded{!observed.complete ? "; some Exchange or SharePoint permissions could not be read" : ""}.</>
               : "Keel could not look at your tenant just now, so only what setup saw is shown."}
@@ -138,33 +147,50 @@ export function PermissionsPanel({ state }: { state: SetupState }) {
       </header>
 
       {apps.filter((entry) => entry.missing.length).map((entry) => {
-        const unlisted = entry.missing.filter((row) => row.requested === false);
+        const permissions = entry.missing.filter((row) => row.type !== "admin-role");
+        const roles = entry.missing.filter((row) => row.type === "admin-role");
+        const unlisted = permissions.filter((row) => row.requested === false);
         return (
           <div className="su-pp-alert" data-tone="urgent" key={entry.identity} role="alert">
             <span aria-hidden="true" className="su-pp-alert-icon"><Icon name="x-circle" /></span>
             <div className="su-pp-alert-body">
               <p className="su-pp-alert-title">{missingSentence(entry.identity, entry.missing)}</p>
-              <p>
-                {entry.consent
-                  ? "Approve opens Microsoft's consent page for this app. A Global Administrator signs in once; Keel checks again when you come back to this tab."
-                  : "This server does not know the app's ID, so Keel cannot open its consent page. Approve it in Entra ID under the app's API permissions."}
-              </p>
+              {permissions.length ? (
+                <p>
+                  {entry.consent
+                    ? "Approve opens Microsoft's consent page for this app. A Global Administrator signs in once; Keel checks again when you come back to this tab."
+                    : "This server does not know the app's ID, so Keel cannot open its consent page. Approve it in Entra ID under the app's API permissions."}
+                </p>
+              ) : null}
               {unlisted.length ? (
                 <p>
-                  {unlisted.length === entry.missing.length ? "They are" : `${unlisted.length} of them ${unlisted.length === 1 ? "is" : "are"}`} not on the app&apos;s permission list yet, so approving cannot grant {unlisted.length === 1 ? "it" : "them"}. Add {unlisted.length === 1 ? "it" : "them"} in Entra ID first: {unlisted.map((row) => row.name).join(", ")}.
+                  {unlisted.length === permissions.length ? "They are" : `${unlisted.length} of them ${unlisted.length === 1 ? "is" : "are"}`} not on the app&apos;s permission list yet, so approving cannot grant {unlisted.length === 1 ? "it" : "them"}. Add {unlisted.length === 1 ? "it" : "them"} in Entra ID first: {unlisted.map((row) => row.name).join(", ")}.
+                </p>
+              ) : null}
+              {roles.length ? (
+                <p>
+                  Approving permissions never assigns an admin role. A Privileged Role Administrator assigns {roles.length === 1 ? "the role" : "each role"} to {entry.info?.displayName ?? `the ${appName(entry.identity).toLowerCase()}`}: {roles.map((row) => row.name).join(", ")}.
                 </p>
               ) : null}
               <div className="su-pp-alert-actions">
-                {entry.consent ? (
+                {permissions.length && entry.consent ? (
                   <a className="btn" href={entry.consent} onClick={arm} rel="noreferrer" target="_blank">
                     <Icon name="link" />Approve in Microsoft<span className="visually-hidden"> (opens in a new tab)</span>
                   </a>
                 ) : null}
-                {entry.entra && (unlisted.length || !entry.consent) ? (
+                {permissions.length && entry.entra && (unlisted.length || !entry.consent) ? (
                   <a className="btn" href={entry.entra} onClick={arm} rel="noreferrer" target="_blank">
                     <Icon name="link" />Add in Entra ID<span className="visually-hidden"> (opens in a new tab)</span>
                   </a>
                 ) : null}
+                {roles.map((row) => {
+                  const href = roleLink(row);
+                  return href ? (
+                    <a className="btn" href={href} key={row.id} onClick={arm} rel="noreferrer" target="_blank">
+                      <Icon name="person" />Assign {row.name}<span className="visually-hidden"> in {row.api === "intune" ? "Intune" : "Entra ID"} (opens in a new tab)</span>
+                    </a>
+                  ) : null;
+                })}
                 <CopyNames names={entry.missing.map((row) => row.name)} />
               </div>
             </div>
@@ -196,12 +222,12 @@ export function PermissionsPanel({ state }: { state: SetupState }) {
       </div>
 
       <div className="sel-toolbar su-pp-toolbar">
-        <Segmented
-          label="App"
-          onChange={(value) => view.set({ [`${PREFIX}app`]: value || null, ...paging.resetPage })}
-          options={[{ value: "", label: identities.length === 2 ? "Both apps" : "All apps" }, ...identities.map((identity) => ({ value: identity, label: appName(identity).replace(/ app$/, "") }))]}
-          value={app ?? ""}
-        />
+        {appOptions.length > 3 ? (
+          // Three apps or more do not fit side by side on a phone: a picker instead.
+          <OptionPicker label="App" onChange={pickApp} options={appOptions} value={app ?? ""} />
+        ) : (
+          <Segmented label="App" onChange={pickApp} options={appOptions} value={app ?? ""} />
+        )}
         <label className="picker-field sel-find">
           <span className="picker-label">Find</span>
           <span className="sel-find-box">
@@ -230,7 +256,7 @@ export function PermissionsPanel({ state }: { state: SetupState }) {
                     <tr className="su-ptable-app">
                       <th colSpan={3} scope="rowgroup"><div className="su-ptable-head">
                         <span className="su-ptable-app-name">
-                          <Icon name={group.identity === "collector" ? "backup" : "restore"} />
+                          <Icon name={APP_ICONS[group.identity] ?? "settings"} />
                           {appName(group.identity)}
                           {appEntry.info?.displayName ? <small>{appEntry.info.displayName}</small> : null}
                         </span>
@@ -285,9 +311,18 @@ export function PermissionsPanel({ state }: { state: SetupState }) {
 }
 
 // The one thing to do about a row, right beside it: approve a missing or optional
-// permission, or add it to the app first when consent cannot grant it.
+// permission, add it to the app first when consent cannot grant it, or assign a role.
 function RowAction({ row, app, arm }: { row: PermissionRow; app: { consent: string | null; entra: string | null }; arm: () => void }) {
   if (row.status !== "missing" && row.status !== "optional") return null;
+  if (row.type === "admin-role") {
+    const href = roleLink(row);
+    return href ? (
+      <a className="su-inline-link" href={href} onClick={arm} rel="noreferrer" target="_blank">
+        {row.api === "intune" ? "Assign in Intune" : "Assign in Entra ID"}
+        <span className="visually-hidden"> {row.name} (opens in a new tab)</span>
+      </a>
+    ) : null;
+  }
   const href = row.requested === false ? app.entra : app.consent ?? app.entra;
   if (!href) return null;
   return (
@@ -302,7 +337,7 @@ function CopyNames({ names }: { names: string[] }) {
   async function copy() {
     try {
       await navigator.clipboard.writeText(names.join("\n"));
-      toast({ title: "Permission names copied" });
+      toast({ title: "Microsoft names copied" });
     } catch {
       toast({ tone: "warning", title: "Could not copy", detail: "Your browser blocked the clipboard. The Microsoft names are in the table." });
     }

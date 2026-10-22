@@ -54,14 +54,18 @@ export interface SetupScope {
 
 export type SetupIdentity = SetupStep["identity"];
 
-// One permission a Keel app uses (engine/bootstrap/permissionCatalog.mjs). `identity`
-// names the app; today the backup reader and the restore writer, later more apps.
+// One permission or admin role a Keel app uses (engine/bootstrap/permissionCatalog.mjs).
+// `identity` names the app: the backup reader, the restore writer, the content reader.
 export interface PermissionEntry {
   identity: string;
-  // "application" (admin consent) or "delegated" (acts as a signed-in account).
-  type?: "application" | "delegated";
+  // "application" (admin consent), "delegated" (acts as a signed-in account) or
+  // "admin-role" (an Entra or Intune role assigned to the app; consent cannot grant it).
+  type?: "application" | "delegated" | "admin-role";
   // "graph", "exchange" or "sharepoint": the Microsoft API the permission belongs to.
+  // For a role, "directory" (an Entra admin role) or "intune" (an Intune role).
   api: string;
+  // An Entra role's template id, the same in every tenant; the role's fix link uses it.
+  templateId?: string | null;
   name: string;
   service: string;
   kind: string;
@@ -83,8 +87,10 @@ export interface SetupPermissions {
   // What each app holds now and what its registration asks for; null when the server
   // could not look. `complete` is false when an API's permission names could not be read.
   observed: {
-    byIdentity: Partial<Record<string, { granted: PermissionGrant[]; requested: PermissionGrant[] }>>;
+    byIdentity: Partial<Record<string, { granted: PermissionGrant[]; requested: PermissionGrant[]; app?: SetupApp }>>;
     complete: boolean;
+    // Where Keel could not look this time (for example "intune": Intune's role lists).
+    uncheckedApis?: string[];
   } | null;
 }
 
@@ -315,8 +321,8 @@ export function setupVerdict(state: SetupState): { text: string; tone: "good" | 
 export function setupStatus(state: SetupState): { tone: RiskTone; label: string } {
   const waiting = state.scopes.reduce((sum, scope) => sum + progressCounts(scope.steps).waitingForYou, 0);
   if (waiting) return { tone: "soon", label: `Waiting on you: ${waiting} ${waiting === 1 ? "step" : "steps"}` };
-  const missing = permissionCounts(permissionRows(state)).missing;
-  if (missing) return { tone: "urgent", label: `${missing} ${missing === 1 ? "permission" : "permissions"} missing` };
+  const missing = permissionRows(state).filter((row) => row.status === "missing");
+  if (missing.length) return { tone: "urgent", label: `${missingWords(missing)} missing` };
   if (state.collect.allowed) return { tone: "fine", label: "Connected" };
   if (state.checkFailed) return { tone: "urgent", label: "Keel cannot read the tenant" };
   return { tone: "low", label: "Not connected yet" };
@@ -391,6 +397,7 @@ export const PERMISSION_STATUS_TONES: Record<PermissionStatus, "urgent" | "low" 
 export const APP_NAMES: Record<string, string> = {
   collector: "Backup reader app",
   restorer: "Restore writer app",
+  "content-reader": "Content reader app",
 };
 
 export function appName(identity: string): string {
@@ -400,10 +407,11 @@ export function appName(identity: string): string {
 export interface PermissionRow {
   id: string;
   identity: string;
-  type: "application" | "delegated";
+  type: "application" | "delegated" | "admin-role";
   api: string;
   apiLabel: string;
   name: string;
+  templateId: string | null;
   words: string;
   usedFor: string;
   service: string;
@@ -416,7 +424,8 @@ export interface PermissionRow {
   requested: boolean | null;
 }
 
-const KNOWN_APPS: readonly string[] = ["collector", "restorer"];
+const KNOWN_APPS: readonly string[] = ["collector", "restorer", "content-reader"];
+const ROLE_APIS = new Set(["directory", "intune"]);
 
 /** Every app the catalogue names: the known ones in order, then any new one as listed. */
 export function permissionApps(catalog: SetupPermissions | undefined): string[] {
@@ -458,7 +467,8 @@ export function permissionRows(state: SetupState): PermissionRow[] {
       const id = key(entry.api, entry.name);
       if (held.has(id)) return "granted";
       if (observed) {
-        if (!catalog.observed!.complete && entry.api !== "graph") return "not-checked";
+        if (catalog.observed!.uncheckedApis?.includes(entry.api)) return "not-checked";
+        if (!catalog.observed!.complete && entry.api !== "graph" && !ROLE_APIS.has(entry.api)) return "not-checked";
         return entry.need === "optional" ? "optional" : "missing";
       }
       return fallback?.known.has(id) ? (entry.need === "optional" ? "optional" : "missing") : "not-checked";
@@ -469,30 +479,35 @@ export function permissionRows(state: SetupState): PermissionRow[] {
         name: entry.name, words: entry.words, usedFor: entry.usedFor, service: entry.service,
         serviceLabel: serviceLabel.get(entry.service) ?? entry.service, serviceOrder: serviceOrder.get(entry.service) ?? catalog.services.length,
         kind: entry.kind, kindOrder: Math.max(0, catalog.kinds.indexOf(entry.kind)), status: statusOf(entry),
-        requested: requested ? requested.has(key(entry.api, entry.name)) : null,
+        templateId: entry.templateId ?? null,
+        // A role is never on the registration's list: consent has nothing to say about it.
+        requested: requested && entry.type !== "admin-role" ? requested.has(key(entry.api, entry.name)) : null,
       });
     }
     for (const id of [...held].filter((candidate) => !listed.has(candidate)).sort()) {
       const [api, ...rest] = id.split(":");
       const name = rest.join(":");
+      const isRole = ROLE_APIS.has(api);
       rows.push({
-        id: `${identity}:application:${id}`, identity, type: "application", api, apiLabel: catalog.apis[api] ?? "Another Microsoft API", name,
-        words: wordsByName.get(name) ?? PERMISSION_WORDS[name] ?? name,
-        usedFor: "Nothing in Keel uses this. The app holds it anyway; you can remove it in Entra ID.",
+        id: `${identity}:${isRole ? "admin-role" : "application"}:${id}`, identity, type: isRole ? "admin-role" : "application", api, apiLabel: catalog.apis[api] ?? "Another Microsoft API", name,
+        words: isRole ? name : wordsByName.get(name) ?? PERMISSION_WORDS[name] ?? name,
+        usedFor: isRole
+          ? "Nothing in Keel needs this role. The app holds it anyway; you can remove it in Entra ID."
+          : "Nothing in Keel uses this. The app holds it anyway; you can remove it in Entra ID.",
         service: "unused", serviceLabel: "Not used by Keel", serviceOrder: catalog.services.length,
-        kind: "", kindOrder: 0, status: "unused", requested: requested ? requested.has(id) : null,
+        kind: "", kindOrder: 0, status: "unused", templateId: null, requested: requested && !isRole ? requested.has(id) : null,
       });
     }
   }
   return sortPermissionRows(rows, apps);
 }
 
-/** The app with something missing first (errors first), then the backup reader before the
- * restore writer; inside an app, services in order, kinds in order, the most urgent
- * first, then name. */
+/** The app with the most missing first (errors first), then the backup reader, the
+ * restore writer and the content reader; inside an app, services in order, kinds in
+ * order, the most urgent first, then name. */
 export function sortPermissionRows(rows: PermissionRow[], apps: readonly string[] = [...new Set(rows.map((row) => row.identity))]): PermissionRow[] {
   const missing = (identity: string) => rows.filter((row) => row.identity === identity && row.status === "missing").length;
-  const order = [...apps].sort((a, b) => Number(missing(b) > 0) - Number(missing(a) > 0));
+  const order = [...apps].sort((a, b) => missing(b) - missing(a));
   return [...rows].sort((a, b) => order.indexOf(a.identity) - order.indexOf(b.identity)
     || a.serviceOrder - b.serviceOrder
     || a.kindOrder - b.kindOrder
@@ -508,9 +523,11 @@ export function permissionCounts(rows: PermissionRow[]): PermissionCounts {
   return counts;
 }
 
-/** The app Keel signs in as for one identity: from the setup steps that saw it. */
+/** The app Keel signs in as for one identity: from the setup steps that saw it, else from
+ * the permission check (the content reader has no setup steps). */
 export function appFor(state: SetupState, identity: string): SetupApp | null {
-  return state.scopes.flatMap((scope) => scope.steps).find((step) => step.identity === identity && step.app)?.app ?? null;
+  return state.scopes.flatMap((scope) => scope.steps).find((step) => step.identity === identity && step.app)?.app
+    ?? state.permissions?.observed?.byIdentity[identity]?.app ?? null;
 }
 
 /**
@@ -527,10 +544,31 @@ export function apiPermissionsLink(appId: string | null | undefined): string | n
   return appId ? `${ENTRA}/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/CallAnAPI/appId/${encodeURIComponent(appId)}` : null;
 }
 
+/** Where an admin assigns one role to the app: the Entra role's assignments page, or
+ * Intune's roles page (an Intune role is given to a group the app is in). */
+export function roleLink(row: Pick<PermissionRow, "api" | "name" | "templateId">): string | null {
+  if (row.api === "intune") return "https://intune.microsoft.com/#view/Microsoft_Intune_DeviceSettings/RolesLandingMenuBlade/~/roles";
+  if (row.api !== "directory") return null;
+  if (!row.templateId) return `${ENTRA}/Microsoft_AAD_IAM/AllRolesBlade`;
+  const id = encodeURIComponent(row.templateId);
+  return `${ENTRA}/Microsoft_AAD_IAM/RoleMenuBlade/~/RoleMembers/objectId/${id}/roleName/${encodeURIComponent(row.name)}/roleTemplateId/${id}/adminUnitObjectId//customRole~/false/resourceScope/%2F`;
+}
+
+const counted = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
+/** "2 permissions and 1 admin role", for the page header and the alerts. */
+export function missingWords(missing: PermissionRow[]): string {
+  const roles = missing.filter((row) => row.type === "admin-role").length;
+  const permissions = missing.length - roles;
+  return [permissions ? counted(permissions, "permission", "permissions") : "", roles ? counted(roles, "admin role", "admin roles") : ""].filter(Boolean).join(" and ");
+}
+
 /** "2 permissions are missing", in plain words for the page and its alerts. */
 export function missingSentence(identity: string, missing: PermissionRow[]): string {
   const count = missing.length;
   const it = count === 1 ? "it" : "them";
-  const what = identity === "collector" ? `Backups that need ${it} stay incomplete` : identity === "restorer" ? `Restores that need ${it} stop` : `What needs ${it} stops`;
-  return `The ${appName(identity).toLowerCase()} is missing ${count === 1 ? "1 permission" : `${count} permissions`}. ${what} until an admin approves ${it}.`;
+  const what = identity === "collector" ? `Backups that need ${it} stay incomplete` : identity === "restorer" ? `Restores that need ${it} stop` : identity === "content-reader" ? `Content backups that need ${it} stay incomplete` : `What needs ${it} stops`;
+  const roles = missing.some((row) => row.type === "admin-role");
+  const fix = roles && missing.every((row) => row.type === "admin-role") ? "assigns" : "approves";
+  return `The ${appName(identity).toLowerCase()} is missing ${missingWords(missing)}. ${what} until an admin ${fix} ${it}.`;
 }

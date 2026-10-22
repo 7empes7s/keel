@@ -2458,6 +2458,35 @@ test("Setup · a grant Keel never uses is listed grey and last, and the first ba
   await expect.poll(() => page.evaluate(() => (window as unknown as { __harnessCalls: { url: string }[] }).__harnessCalls.filter((call) => call.url.endsWith("/api/actions/backup")).length)).toBeGreaterThan(0);
 });
 
+// Admin roles sit in the same table: a missing role links to where it is assigned in
+// Entra ID, never to admin consent, which cannot assign a role.
+test("Setup · a missing admin role is listed with the permissions and links to its assignment page", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/setup", "light");
+  const panel = page.locator("#setup-permissions");
+  const alert = panel.locator(".su-pp-alert", { hasText: "backup reader app" });
+  await expect(alert.locator(".su-pp-alert-title")).toHaveText("The backup reader app is missing 1 admin role. Backups that need it stay incomplete until an admin assigns it.");
+  await expect(alert).toContainText("Approving permissions never assigns an admin role.");
+  await expect(alert.getByRole("link", { name: /Approve in Microsoft/ })).toHaveCount(0);
+  const assign = alert.getByRole("link", { name: /Assign Teams Administrator/ });
+  await expect(assign).toHaveAttribute("href", /RoleMembers\/objectId\/69091246-20e8-4a56-aa4d-066075b2a7a8\//);
+  await expect(assign).toHaveAttribute("target", "_blank");
+
+  await panel.locator(".su-pp-tile", { hasText: "Missing" }).click();
+  const row = panel.locator('.su-ptable-row[data-status="missing"]', { hasText: "Teams Administrator" });
+  await expect(row.locator(".su-ptable-words")).toHaveText("Teams admin role");
+  await expect(row.locator(".su-ptable-api")).toHaveText("Entra admin role");
+  await expect(row.locator(".badge")).toHaveText("Missing");
+  await expect(row.getByRole("link", { name: /Assign in Entra ID/ })).toHaveAttribute("href", /roleName\/Teams%20Administrator\//);
+  // Held roles show as granted, grouped with their service; Find matches "admin role".
+  await panel.getByRole("button", { name: "Clear all" }).click();
+  await panel.getByPlaceholder("Find permissions").fill("admin role");
+  await expect(panel.locator('.su-ptable-row[data-status="granted"]', { hasText: "Exchange Administrator" })).toHaveCount(2);
+  await expect(panel.locator(".su-ptable-row", { hasText: "Read Only Operator" })).toHaveCount(0);
+  await panel.getByPlaceholder("Find permissions").fill("Intune role");
+  await expect(panel.locator(".su-ptable-row", { hasText: "Read Only Operator" }).locator(".badge")).toHaveText("Granted");
+});
+
 // The permission table: what is missing comes first with Microsoft's consent page one
 // click away, tiles of the same kind add up, the app picker and Find narrow, and coming
 // back from Microsoft checks the tenant again on its own.
@@ -2466,10 +2495,10 @@ test("Setup · missing permissions come first with a consent link, and the table
   await open(page, "/setup", "light");
   const panel = page.locator("#setup-permissions");
   await expect(page.locator(".su-tile", { hasText: "Permissions" })).toHaveAttribute("data-tone", "urgent");
-  await expect(page.locator(".su-tile", { hasText: "Permissions" }).locator(".su-tile-count")).toHaveText("4 missing");
+  await expect(page.locator(".su-tile", { hasText: "Permissions" }).locator(".su-tile-count")).toHaveText("5 missing");
 
-  const alert = panel.locator(".su-pp-alert");
-  await expect(alert).toHaveCount(1);
+  await expect(panel.locator(".su-pp-alert")).toHaveCount(2);
+  const alert = panel.locator(".su-pp-alert", { hasText: "restore writer app" });
   await expect(alert.locator(".su-pp-alert-title")).toHaveText("The restore writer app is missing 4 permissions. Restores that need them stop until an admin approves them.");
   await expect(alert).toContainText("1 of them is not on the app's permission list yet, so approving cannot grant it. Add it in Entra ID first: Exchange.ManageAsApp.");
   await expect(alert.getByRole("link", { name: /Approve in Microsoft/ })).toHaveAttribute("href",
@@ -2478,6 +2507,7 @@ test("Setup · missing permissions come first with a consent link, and the table
   await expect(alert.getByRole("link", { name: /Add in Entra ID/ })).toHaveAttribute("href", /CallAnAPI\/appId\/2e570e00-0000-4000-8000-0000000000c2$/);
 
   // Rows: plain words, the Microsoft name beside them, what Keel uses it for, a badge.
+  // The restore writer, with the most missing, comes first; the backup reader's role is on a later page.
   const missing = panel.locator('.su-ptable-row[data-status="missing"]');
   await expect(missing).toHaveCount(4);
   const groups = missing.filter({ hasText: "Change groups" });
@@ -2488,25 +2518,30 @@ test("Setup · missing permissions come first with a consent link, and the table
   const exchange = missing.filter({ hasText: "Exchange.ManageAsApp" });
   await expect(exchange.locator(".su-ptable-api")).toHaveText("Exchange Online");
   await expect(exchange.getByRole("link", { name: /Add in Entra ID/ })).toBeVisible();
-  // The app with something missing is listed first.
-  await expect(panel.locator(".su-ptable-app").first()).toContainText("Restore writer app");
+  // The app with the most missing is listed first.
+  await expect(panel.locator(".su-ptable-app")).toHaveText([/Restore writer app/, /Backup reader app/]);
 
   // Tiles of one kind add up (OR); the app picker and Find narrow (AND).
   const tile = (name: string) => panel.locator(".su-pp-tile", { hasText: name });
   await tile("Optional").click();
   const optional = panel.locator('.su-ptable-row[data-status="optional"]');
-  await expect(panel.locator(".su-ptable-row")).toHaveCount(1);
-  await expect(optional).toContainText("AuditLogsQuery.Read.All");
-  await expect(optional.locator(".badge")).toHaveAttribute("data-tone", "low");
-  await expect(optional.getByRole("link", { name: /Approve/ })).toHaveAttribute("href", /adminconsent\?client_id=c011ec70/);
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(2);
+  await expect(optional.first()).toContainText("AuditLogsQuery.Read.All");
+  await expect(optional.first().locator(".badge")).toHaveAttribute("data-tone", "low");
+  await expect(optional.first().getByRole("link", { name: /Approve/ })).toHaveAttribute("href", /adminconsent\?client_id=c011ec70/);
+  // The content reader's own app, from the one the tenant check found: the planned
+  // permission is not on its list yet, so the link adds it in Entra ID.
+  await expect(optional.nth(1)).toContainText("ChannelMessage.Read.All");
+  await expect(optional.nth(1).getByRole("link", { name: /Add in Entra ID/ })).toHaveAttribute("href", /CallAnAPI\/appId\/c0e7e700/);
   await tile("Optional").click();
-  await expect(tile("Missing").locator("b")).toHaveText("4");
+  await expect(tile("Missing").locator("b")).toHaveText("5");
   await tile("Missing").click();
-  await expect(panel.locator(".su-ptable-row")).toHaveCount(4);
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(5);
   await expect(tile("Not used by Keel").locator("small")).toHaveText("+1 if added");
   await tile("Not used by Keel").click();
-  await expect(panel.locator(".su-ptable-row")).toHaveCount(5);
-  await panel.getByRole("radio", { name: "Restore writer" }).click();
+  await expect(panel.locator(".su-ptable-row")).toHaveCount(6);
+  await panel.getByRole("button", { name: "App: All apps" }).click();
+  await page.getByRole("option", { name: "Restore writer" }).click();
   await expect(panel.locator(".su-ptable-row")).toHaveCount(4);
   await panel.getByPlaceholder("Find permissions").fill("sign-in rules");
   await expect(panel.locator(".su-ptable-row")).toHaveCount(1);

@@ -56,6 +56,9 @@ export const NO_SETUP_HOST: SetupHost = Object.freeze({
 
 const DEFAULT_SETUP_CONFIG_PATH = "/etc/keel/setup.json";
 const DEFAULT_TENANT_CONFIG_PATH = "/etc/keel/tenant.json";
+// The content reader's credential file (the same default cli/keel-restore.mjs reads).
+// Setup only takes its app id from it, to show the app in the permission table.
+const DEFAULT_CONTENT_READER_PATH = "/etc/keel/content-reader.json";
 
 interface SetupConfig {
   operatorPrincipalId?: string | null;
@@ -92,6 +95,15 @@ export function composeSetupHost(
   const setupPath = env.KEEL_SETUP_CONFIG_PATH || DEFAULT_SETUP_CONFIG_PATH;
   const setup: SetupConfig = existsSync(setupPath) ? readJson(setupPath) : {};
   const tenant = readJson(env.KEEL_TENANT_CONFIG_PATH ?? DEFAULT_TENANT_CONFIG_PATH) as { tenantId?: string };
+  const readerPath = env.KEEL_CONTENT_READER_PATH || DEFAULT_CONTENT_READER_PATH;
+  // An unreadable content reader file only leaves that app out of the table; it never
+  // takes the whole setup host down.
+  let readerAppId: string | null = null;
+  try {
+    readerAppId = existsSync(readerPath) ? (readJson(readerPath) as { clientId?: string }).clientId ?? null : null;
+  } catch {
+    console.error("setup host: the content reader file could not be read");
+  }
   const build = setup.build ?? env.KEEL_BUILD ?? deployedRevision();
   if (!build) throw new Error("setup host: no build identifier (set build in the setup config or KEEL_BUILD)");
   return createGraphSetupHost({
@@ -99,6 +111,7 @@ export function composeSetupHost(
     tenantId: tenant.tenantId,
     collector: { config: readJson(paths.collectorConfig), credentialRef: `file:${paths.collectorConfig}` },
     restorer: { config: readJson(paths.targetConfig), credentialRef: `file:${paths.targetConfig}` },
+    contentReader: readerAppId ? { config: { clientId: readerAppId } } : null,
     operatorPrincipalId: setup.operatorPrincipalId ?? env.KEEL_SETUP_OPERATOR_ID ?? null,
     build,
     qualificationMode: setup.qualificationMode ?? "live-qualified",

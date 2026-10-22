@@ -151,7 +151,10 @@ async function permissionsView(readers) {
   if (!readers?.listPermissions) return { ...catalog, observed: null };
   const byIdentity = await readers.listPermissions();
   const unchecked = readers.uncheckedKinds ? await readers.uncheckedKinds() : [];
-  return { ...catalog, observed: { byIdentity, complete: !unchecked.includes('permissions') } };
+  // Intune roles are read through Intune's own role lists; when those cannot be read,
+  // the Intune role rows say "not checked".
+  const uncheckedApis = unchecked.includes('workload-rbac') ? ['intune'] : [];
+  return { ...catalog, observed: { byIdentity, complete: !unchecked.includes('permissions'), uncheckedApis } };
 }
 
 /**

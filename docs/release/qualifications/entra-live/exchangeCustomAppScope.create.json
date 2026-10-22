@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "exchangeCustomAppScope",
+  "operation": "create",
+  "fieldProjectionContractVersion": 1,
+  "build": "56d968285bde1ecaee360420278905b97f554a68",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-22T09:18:15.622Z",
+  "restoreRef": "147ccf2c-f0ad-8afc-baaf-0037af2b4f7f",
+  "naturalKey": "exchangeCustomAppScope:22c63036-b4d9-8999-b1ff-97f0ff0a293f",
+  "fixtureKind": "named-object",
+  "captureSha256": "d60e02ce06ff6b4e44641630c365aaaeb05ba9ba9351536ff24a7d71ec096427",
+  "proofRef": "docs/release/qualifications/entra-live/exchangeCustomAppScope.create.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "4d14e81fd7a4d8c40cf5a8df8bd538aa0a92848b3df54d4090fdd02f3a4220fa"
+    }
+  }
+}

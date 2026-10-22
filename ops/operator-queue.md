@@ -6149,3 +6149,44 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; the step 1 backup check; per kind and round: assignments written / refused (exact message) / skipped (fixture could
   not be created) / blocked; whether the set's item survived step 2; step 4; approval ids; the evidence branch and commit; anything left in the tenant.
+
+### Q132: Live check that a recreated or wider-assigned script needs the "Runs on devices" approval (issue #461, after #464)
+- Drafted by the "Approve recreated assigned scripts" thread (2026-10-22). Code: PR #464. Fixture-tested only.
+  - Since #460/#462 a restore assigns scripts and app policies. #464 makes the content-effect review judge that: the plan records
+    who an assignment write newly reaches (`newAssignments`), and a device type judges its rules for those devices as if new.
+  - A recreated script or remediation that the restore assigns now needs the separate `runs-on-devices` approval (showing the text),
+    and so does an existing script assigned to more groups, or a remediation whose fix is turned on, even with the same text.
+  - A schedule-only change, a fix turned off, or an added exclusion reaches no one new and needs no approval.
+  - The review page shows "Newly assigned to ..." on each such effect.
+- Needs: /opt/keel-live at the #464 merge or later (`grep -q newAssignmentReach /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores and content effects yourself and log every approval id. Restorer only; global admin not used.
+  If Graph answers 403, report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.
+  No tenant-wide setting is changed. **Assign fixtures only to the empty groups below: never to All devices, All users or any group with members.**
+- **Fixtures:**
+  - Security groups `KEEL-RT-152-assign` and `KEEL-RT-152-assign-b`, both with **no members**.
+  - PowerShell script `KEEL-RT-152-script` (body `Write-Output 'KEEL-RT'`), assigned to `KEEL-RT-152-assign`.
+  - Remediation `KEEL-RT-152-remediation` (detection and fix both `exit 0`), assigned to `KEEL-RT-152-assign`, daily at 01:00, fix runs.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Create the fixtures, then take snapshot S.
+  2. **Create round:** delete `KEEL-RT-152-script`. Dry run from S selecting `deviceManagementScript`. Expect one `runs-on-devices`
+     effect on `scriptContent` with "Newly assigned to" naming `KEEL-RT-152-assign`. Try to promote with only the restore approval:
+     expect `blocked-content-effect`. Approve the content effect (log the id), enforce, capture the `create`. Expect the script back with
+     its text and assigned to `KEEL-RT-152-assign`.
+  3. **Widening round:** add `KEEL-RT-152-assign-b` to the backup's picture by assigning the remediation to both groups, take snapshot S2,
+     then remove `KEEL-RT-152-assign-b` from it in the portal. Dry run from S2 selecting `deviceHealthScript`. Expect an `update` with
+     "assignments differ" and `runs-on-devices` effects (same text) naming `KEEL-RT-152-assign-b`. Approve both approvals, enforce,
+     capture. Expect both groups assigned.
+  4. **No-approval round:** change only the remediation's schedule to 23:00 in the portal. Dry run from S2. Expect an `update` with
+     "assignments differ" and **no** content effect. Enforce with only the restore approval, capture. Expect 01:00 back.
+  5. **Re-run check:** dry run from S2. Expect 0 planned writes and no content effect.
+  6. Cleanup: delete every `KEEL-RT-152-*` fixture and both groups. Report anything left.
+  7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-assigned-scripts`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; per round: the effects listed (effect, field, newly assigned to), whether promotion was blocked before the content
+  approval, what was written; step 5; approval ids; the evidence branch and commit; anything left in the tenant.
+- Note for Q129 and Q130: on a build with #464, their create rounds (script, remediation, custom attribute script) and their
+  assignment-only rounds that move a script to a group it is not on now also list a `runs-on-devices` effect. Approve it too and log the id.

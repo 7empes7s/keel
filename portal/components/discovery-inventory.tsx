@@ -1,9 +1,12 @@
+import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
   catalogueSentence,
   containerLine,
   discoveryHeadline,
   objectCount,
+  powershellNoteSentence,
+  powershellNotes,
   sourceLabel,
   skippedSentence,
   sourceProblems,
@@ -40,6 +43,27 @@ function ItemRow({ item }: { item: DiscoveryItem }) {
         </TechnicalDetails>
       </div>
     </li>
+  );
+}
+
+/** A calm note: discovery could not list some PowerShell areas this run. */
+function PowerShellNote({ data }: { data: DiscoveryInventoryData }) {
+  const notes = powershellNotes(data);
+  const sentence = powershellNoteSentence(notes);
+  if (!sentence) return null;
+  const reasons = notes.filter((note) => note.reason);
+  return (
+    <div className="discovery-note" role="note">
+      <Icon name="info" />
+      <div>
+        <p>{sentence}</p>
+        {reasons.length ? (
+          <TechnicalDetails>
+            {reasons.map((note) => <RecordField copy={false} key={note.area} label={note.area} value={note.reason ?? ""} />)}
+          </TechnicalDetails>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -89,6 +113,7 @@ export function DiscoveryInventoryView({ data, now }: { data: DiscoveryInventory
       <p>{catalogueSentence(data)}</p>
       {containers ? <p className="activity-meta">{containers}</p> : null}
       {sourceProblems(data).map((line) => <p className="action-error" key={line}>{line}</p>)}
+      <PowerShellNote data={data} />
       <ItemList items={uncatalogued} summary={`Not backed up yet (${uncatalogued.length.toLocaleString("en-GB")})`} />
       <ItemList items={unreadable} summary={`KEEL cannot read (${unreadable.length.toLocaleString("en-GB")})`} />
       <ItemList items={skipped} summary={`Not worth backing up (${skipped.length.toLocaleString("en-GB")})`} />

@@ -104,8 +104,19 @@ export function typeLabel(item: Pick<DiscoveryItem, "kind" | "name" | "entityTyp
 export function sourceLabel(source: string): string {
   if (source === "graph:v1.0") return "Microsoft Graph";
   if (source === "graph:beta") return "Microsoft Graph (beta)";
-  if (source.startsWith("powershell:")) return `PowerShell, ${source.slice("powershell:".length)}`;
+  if (source.startsWith("powershell:")) return `${powershellArea(source)} (PowerShell)`;
   return source;
+}
+
+const POWERSHELL_AREAS: Record<string, string> = {
+  ExchangeOnlineManagement: "Exchange Online and Purview",
+  MicrosoftTeams: "Teams",
+  "PnP.PowerShell": "SharePoint",
+};
+
+function powershellArea(source: string): string {
+  const module = source.slice("powershell:".length);
+  return POWERSHELL_AREAS[module] ?? module;
 }
 
 export function objectCount(objects: number | null, exact: boolean | null): string {
@@ -161,13 +172,42 @@ export function catalogueSentence(data: DiscoveryInventoryData): string {
   return `${plural(missing.length, "type")} KEEL backs up ${missing.length === 1 ? "was" : "were"} not found or could not be read.`;
 }
 
-/** Sources that were not read in full, as sentences. */
+/** Microsoft Graph sources that were not read in full, as sentences. */
 export function sourceProblems(data: DiscoveryInventoryData): string[] {
   return data.sources
-    .filter((source) => source.status !== "complete")
-    .map((source) => source.source.startsWith("powershell:")
-      ? `${sourceLabel(source.source)}: the cmdlet list was not supplied, so its cmdlets are not checked.`
-      : `${sourceLabel(source.source)} was ${source.status === "partial" ? "only partly read" : "not read"}${source.error ? ` (${source.error})` : ""}.`);
+    .filter((source) => source.status !== "complete" && !source.source.startsWith("powershell:"))
+    .map((source) => `${sourceLabel(source.source)} was ${source.status === "partial" ? "only partly read" : "not read"}${source.error ? ` (${source.error})` : ""}.`);
+}
+
+// What engine/discovery/discover.mjs records when a run was given no list at all.
+const NO_COMMAND_LIST = "no command list was supplied for this module";
+
+export interface PowerShellNote {
+  area: string;
+  /** Why the list is missing, for Technical details; null when nobody tried. */
+  reason: string | null;
+}
+
+/**
+ * PowerShell areas whose cmdlets this run could not list. This only limits what
+ * discovery could look for; backups of those areas run on their own, so it is a
+ * note, not an error.
+ */
+export function powershellNotes(data: DiscoveryInventoryData): PowerShellNote[] {
+  return data.sources
+    .filter((source) => source.status !== "complete" && source.source.startsWith("powershell:"))
+    .map((source) => ({
+      area: powershellArea(source.source),
+      reason: source.error && source.error !== NO_COMMAND_LIST ? source.error : null,
+    }));
+}
+
+/** The note's one sentence. */
+export function powershellNoteSentence(notes: PowerShellNote[]): string | null {
+  if (!notes.length) return null;
+  const areas = notes.map((note) => note.area);
+  const list = areas.length === 1 ? areas[0] : `${areas.slice(0, -1).join(", ")} and ${areas.at(-1)}`;
+  return `Not checked this run: ${list} settings that need PowerShell. Their backups are not affected; the next discovery run tries again.`;
 }
 
 const CONTAINER_LABELS: Record<string, string> = { users: "Users", groups: "Groups", teams: "Teams", sites: "Sites" };

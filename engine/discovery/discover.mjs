@@ -164,12 +164,16 @@ export async function discoverGraphVersion(graph, version, metadataText, {
   };
 }
 
+/** A module's source error when nobody tried to list it (the run was given no list). */
+export const NO_COMMAND_LIST = 'no command list was supplied for this module';
+
 /**
  * Classifies each PowerShell module's Get cmdlets. `commands` is
  * { [module]: [cmdletName, ...] } as listed on the host (Get-Command -Module M -Verb Get);
- * a module Keel collects from that is missing from it is reported `not-listed`.
+ * a module Keel collects from that is missing from it is reported `not-listed`, with
+ * `errors[module]` (why the host could not list it) as the source's error when known.
  */
-export function discoverPowerShell(commands, cataloguedCmdlets) {
+export function discoverPowerShell(commands, cataloguedCmdlets, errors = {}) {
   const items = [];
   const sources = [];
   const modules = new Set([...cataloguedCmdlets.keys(), ...Object.keys(commands ?? {})]);
@@ -179,7 +183,8 @@ export function discoverPowerShell(commands, cataloguedCmdlets) {
     const knownLower = new Map([...known].map((name) => [name.toLowerCase(), name]));
     const listed = Array.isArray(commands?.[module]) ? commands[module] : null;
     if (!listed) {
-      sources.push({ source, status: 'unknown', error: 'no command list was supplied for this module', metadataVersion: null, paths: 0 });
+      const why = typeof errors?.[module] === 'string' && errors[module] ? clip(errors[module]) : NO_COMMAND_LIST;
+      sources.push({ source, status: 'unknown', error: why, metadataVersion: null, paths: 0 });
       for (const cmdlet of [...known].sort()) {
         items.push({ source, name: cmdlet, kind: 'cmdlet', entityType: null, status: 'not-listed', catalogTypes: [module], objects: null, objectsExact: null, httpStatus: null, reason: null, message: 'not in a supplied command list', missingGrant: null, grantSource: null });
       }
@@ -256,11 +261,12 @@ export function summarize(items, catalogue, extraContainers = {}) {
 /**
  * One discovery run. `metadata` is { [version]: text } for each Graph version to walk
  * (a version whose fetch failed maps to an Error and is reported `unknown`).
- * `powershellCommands` is the per-module command list, or null. `heldGrants` is the
+ * `powershellCommands` is the per-module command list, or null; `powershellErrors` says
+ * why a module could not be listed. `heldGrants` is the
  * app's granted roles (from its token), or null when they are not known.
  */
 export async function discover({
-  graph, metadata, powershellCommands = null, catalog = CATALOG, cataloguedCmdlets, now = () => new Date(),
+  graph, metadata, powershellCommands = null, powershellErrors = {}, catalog = CATALOG, cataloguedCmdlets, now = () => new Date(),
   pageCap, concurrency, maxPaths, containers = true, heldGrants = null,
 }) {
   const startedAt = now();
@@ -293,7 +299,7 @@ export async function discover({
       }
     }
   }
-  const shell = discoverPowerShell(powershellCommands ?? {}, cataloguedCmdlets ?? await catalogedCmdlets());
+  const shell = discoverPowerShell(powershellCommands ?? {}, cataloguedCmdlets ?? await catalogedCmdlets(), powershellErrors ?? {});
   sources.push(...shell.sources);
   items.push(...shell.items);
   const catalogue = catalogueCoverage(items, catalog);

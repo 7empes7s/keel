@@ -3,7 +3,7 @@
 //
 // node keel-discover.mjs run  [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
 //                             [--versions v1.0,beta] [--metadata-dir DIR]
-//                             [--powershell-commands FILE] [--out FILE] [--no-store]
+//                             [--powershell-commands FILE | --no-powershell] [--out FILE] [--no-store]
 //                             [--page-cap 5] [--concurrency 4] [--tenant-ref REF]
 // node keel-discover.mjs show [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
 //
@@ -17,11 +17,13 @@
 //         refused-with-grant, with no hint). Every request is a GET to Microsoft Graph;
 //         anything else is refused before it is sent. Bodies are counted and dropped.
 //         --metadata-dir reads <dir>/v1.0.xml and <dir>/beta.xml instead of fetching them.
-//         --powershell-commands names a JSON file { "<module>": ["Get-...", ...] }, as
-//         listed on the host with
-//           Get-Command -Module <module> -Verb Get | Select-Object -ExpandProperty Name
-//         after connecting. Cmdlets are listed, never run. A module it leaves out is
-//         reported "not listed", never as having no cmdlets.
+//         PowerShell: by default each module's Get cmdlets are listed live in the
+//         PowerShell container (ops/powershell/list-commands.ps1; Exchange Online and
+//         Security & Compliance connect with the --config certificate to list theirs).
+//         Cmdlets are listed, never run. --powershell-commands names a JSON file
+//         { "<module>": ["Get-...", ...] } to use instead; --no-powershell lists none.
+//         A module that was not listed is reported "not listed", with the reason,
+//         never as having no cmdlets.
 //         --out writes the inventory as JSON (the operator commits it); --no-store skips
 //         the database.
 //         Exits 1 when a Graph source could not be read in full.
@@ -36,6 +38,7 @@ import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { connect } from '../engine/store/db.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { GRAPH_VERSIONS, discover } from '../engine/discovery/discover.mjs';
+import { listPowerShellCommands } from '../engine/discovery/powershellCommands.mjs';
 import { tokenRoles } from '../engine/discovery/grants.mjs';
 import { loadLatestDiscovery, saveDiscoveryRun } from '../engine/discovery/store.mjs';
 import { readOnlyGraph } from '../engine/discovery/transport.mjs';
@@ -105,11 +108,11 @@ export function describeInventory(run) {
 
 export async function main(argv = process.argv.slice(2), {
   readFile = (path) => readFileSync(path, 'utf8'), writeFile = writeFileSync, connectFn = connect, getTokenFn = getToken,
-  fetchImpl = globalThis.fetch, env = process.env, logger = console, now,
+  fetchImpl = globalThis.fetch, env = process.env, logger = console, now, listCommandsFn = listPowerShellCommands,
 } = {}) {
   const command = argv[0];
   if (!['run', 'show'].includes(command) || argv.includes('--help')) {
-    logger.log('usage: keel-discover.mjs run|show [--config FILE] [--db-url URL] [--versions v1.0,beta] [--metadata-dir DIR] [--powershell-commands FILE] [--out FILE] [--no-store] [--tenant-ref REF]');
+    logger.log('usage: keel-discover.mjs run|show [--config FILE] [--db-url URL] [--versions v1.0,beta] [--metadata-dir DIR] [--powershell-commands FILE | --no-powershell] [--out FILE] [--no-store] [--tenant-ref REF]');
     return command === undefined || argv.includes('--help') ? 0 : 2;
   }
   const config = JSON.parse(readFile(arg(argv, 'config', '/etc/keel/tenant.json')));
@@ -140,9 +143,16 @@ export async function main(argv = process.argv.slice(2), {
   const versions = (arg(argv, 'versions', GRAPH_VERSIONS.join(','))).split(',').map((value) => value.trim()).filter(Boolean);
   for (const version of versions) if (!GRAPH_VERSIONS.includes(version)) throw new Error(`--versions takes ${GRAPH_VERSIONS.join(', ')}`);
   const commandsPath = arg(argv, 'powershell-commands');
-  const powershellCommands = commandsPath ? JSON.parse(readFile(commandsPath)) : null;
+  if (commandsPath && argv.includes('--no-powershell')) throw new Error('--powershell-commands and --no-powershell cannot be used together');
+  let powershellCommands = commandsPath ? JSON.parse(readFile(commandsPath)) : null;
+  let powershellErrors = {};
   if (powershellCommands !== null && (typeof powershellCommands !== 'object' || Array.isArray(powershellCommands))) {
     throw new Error('--powershell-commands must hold an object of module -> cmdlet names');
+  }
+  if (!commandsPath && !argv.includes('--no-powershell')) {
+    ({ commands: powershellCommands, errors: powershellErrors } = await listCommandsFn({ tenantConfigPath: arg(argv, 'config', '/etc/keel/tenant.json') }));
+    for (const [module, names] of Object.entries(powershellCommands)) logger.log(`PowerShell ${module}: listed ${plural(names.length, 'Get cmdlet')}.`);
+    for (const [module, reason] of Object.entries(powershellErrors)) logger.log(`PowerShell ${module}: not listed (${reason}).`);
   }
   // The token's roles say which grants the app holds, so a refusal for one of them is
   // not reported as a missing grant. The token itself is never printed or stored.
@@ -150,7 +160,7 @@ export async function main(argv = process.argv.slice(2), {
   const graph = readOnlyGraph(async () => token, { fetchImpl });
   const metadata = await loadMetadata(graph, versions, { dir: arg(argv, 'metadata-dir', null), readFile });
   const run = await discover({
-    graph, metadata, powershellCommands, heldGrants: tokenRoles(token), ...(now ? { now } : {}),
+    graph, metadata, powershellCommands, powershellErrors, heldGrants: tokenRoles(token), ...(now ? { now } : {}),
     pageCap: positive(arg(argv, 'page-cap'), 'page-cap'), concurrency: positive(arg(argv, 'concurrency'), 'concurrency'),
   });
   for (const line of describeInventory(run)) logger.log(line);

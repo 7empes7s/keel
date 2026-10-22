@@ -10443,3 +10443,9 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
   .rs-table tbody tr[data-tone="soon"]:not(.rs-group) { box-shadow: inset 3px 0 0 var(--check-soon); }
   .rs-table tr.rs-group th { padding: var(--space-xs) var(--space-sm); }
 }
+/* Discovery: a calm note when some PowerShell areas could not be listed this run. */
+.discovery-note { display: flex; align-items: start; gap: var(--space-xs); margin: var(--space-sm) 0 0; padding: var(--space-sm) var(--space-md); border: 1px solid color-mix(in oklab, var(--readonly) 40%, var(--line)); border-radius: var(--radius-md); background: var(--readonly-bg); font-size: 0.875rem; line-height: 1.45; }
+.discovery-note > .icon { width: 1rem; height: 1rem; flex: none; margin-top: 0.125rem; color: var(--readonly); }
+.discovery-note > div { display: grid; gap: var(--space-2xs); min-width: 0; }
+.discovery-note p { margin: 0; }
+.discovery-note .technical-details { margin: 0; }

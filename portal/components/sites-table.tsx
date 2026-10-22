@@ -11,13 +11,14 @@ import { applyFilters, pickedTiles, tileCounts, toggleTile } from "@/lib/filter-
 import { byText, byTime, pageWindow, sortRows } from "@/lib/paging";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import {
-  SITE_TILES, appStatus, backupStatus, backupWords, externalStatus, groupsWords, peopleStatus, siteAddress, siteName, sitesInOrder,
+  SITE_TILES, appStatus, backupStatus, backupWords, externalStatus, groupsWords, peopleStatus, sharingLevel, sharingStatus, siteAddress, siteName, sitesInOrder,
   type SitePermissions, type SitesContentRun,
 } from "@/lib/site-permissions-view";
 import { readList, useViewState } from "@/lib/use-view-state";
 
 // The Sites list: tiles that count sites needing attention, not backed up, reached by
-// apps, shared with guests or without an owner (picking several adds them up), Find
+// apps, shared with guests, shared wider than the tenant default or without an owner
+// (picking several adds them up), Find
 // (narrows), and a compact table with problems first. Columns turn into labelled lines
 // on a phone.
 
@@ -34,6 +35,7 @@ export function SitesTable({ sites, run, now }: { sites: SitePermissions[]; run:
     { key: "size", label: "Size", desc: true, compare: (a, b) => (a.backup?.bytes ?? -1) - (b.backup?.bytes ?? -1) },
     { key: "apps", label: "Apps with access", desc: true, compare: (a, b) => (a.appGrants.entries?.length ?? -1) - (b.appGrants.entries?.length ?? -1) },
     { key: "people", label: "People", desc: true, compare: (a, b) => (a.people?.people ?? -1) - (b.people?.people ?? -1) },
+    { key: "sharing", label: "Most open sharing", desc: true, compare: (a, b) => sharingLevel(a.sharing.value) - sharingLevel(b.sharing.value) },
   ], [run]);
   const paging = useListPaging<SitePermissions>({ sorts });
   const ordered = useMemo(() => sitesInOrder(sites, run), [sites, run]);
@@ -62,7 +64,7 @@ export function SitesTable({ sites, run, now }: { sites: SitePermissions[]; run:
         {SITE_TILES.map((tile) => {
           const entry = counts.get(tile.key);
           const value = entry?.count ?? 0;
-          const tone = value && tile.key !== "apps" ? (tile.key === "no-owner" || tile.key === "attention" ? "urgent" : "soon") : undefined;
+          const tone = value && tile.key !== "apps" ? (["no-owner", "attention", "wider"].includes(tile.key) ? "urgent" : "soon") : undefined;
           return (
             <button aria-pressed={entry?.picked ?? false} className="st-tile" data-tone={tone} key={tile.key} onClick={() => toggle(tile.key)} title={entry?.picked ? "Picked: click to remove it from the view" : "Click to add these to the view"} type="button">
               <span className="st-tile-label"><Icon name={tile.icon as IconName} />{tile.label}{entry?.picked ? <Icon className="st-tile-check" name="check" /> : null}</span>
@@ -94,7 +96,8 @@ export function SitesTable({ sites, run, now }: { sites: SitePermissions[]; run:
                 <th scope="col">Site</th>
                 <th scope="col">Backup</th>
                 <th scope="col">Apps with access</th>
-                <th scope="col">Guests and sharing</th>
+                <th scope="col">Sharing setting</th>
+                <th scope="col">Guests and links</th>
                 <th scope="col">Owners</th>
                 <th scope="col">Groups and people</th>
               </tr>
@@ -119,11 +122,12 @@ function SiteRow({ site, run, now }: { site: SitePermissions; run: SitesContentR
   const apps = appStatus(site);
   const people = peopleStatus(site, run);
   const external = externalStatus(site);
+  const sharing = sharingStatus(site);
   const held = backupWords(site);
   const groups = groupsWords(site);
   const owners = site.people?.owners ?? [];
   return (
-    <tr data-tone={rowTone([backup, apps, people, external])}>
+    <tr data-tone={rowTone([backup, apps, people, external, sharing])}>
       <th data-label="Site" scope="row">
         <Link className="st-name" href={`/sites/${encodeURIComponent(site.siteId)}`}>{siteName(site)}</Link>
         {siteAddress(site) ? <small className="st-address">{siteAddress(site)}</small> : null}
@@ -133,7 +137,11 @@ function SiteRow({ site, run, now }: { site: SitePermissions; run: SitesContentR
         {backup.at ? <small><time dateTime={backup.at} title={formatTimestamp(backup.at)}>{ago(backup.at, now)}</time>{held ? ` · ${held}` : ""}</small> : held ? <small>{held}</small> : null}
       </td>
       <td data-label="Apps with access"><Badge tone={apps.tone}>{apps.label}</Badge></td>
-      <td data-label="Guests and sharing">{external ? <Badge tone={external.tone}>{external.label}</Badge> : <span className="st-unknown">Not known yet</span>}</td>
+      <td data-label="Sharing setting">
+        <Badge tone={sharing.tone}>{sharing.label}</Badge>
+        {sharing.key === "wider" ? <small className="st-wider">More open than the default</small> : null}
+      </td>
+      <td data-label="Guests and links">{external ? <Badge tone={external.tone}>{external.label}</Badge> : <span className="st-unknown">Not known yet</span>}</td>
       <td data-label="Owners">
         {site.people ? (
           people.key === "no-owner" ? <Badge tone="urgent">No owner</Badge> : (

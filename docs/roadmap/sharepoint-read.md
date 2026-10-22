@@ -103,8 +103,12 @@ site's own app permission grants.
     listing site permissions before a capture.
 - **No scheduled job or portal view yet.** The coverage report carries the data. A job
   kind and a UI card would follow once the workload can be enabled.
-- **Graph v1.0 does not expose per-site sharing settings.** They stay unknown until the
-  PnP route (`sharepoint.site-sharing`) is qualified and wired in.
+- **Graph v1.0 does not expose per-site sharing settings.** Each site's own
+  `sharingCapability` is read through PnP (`sharepoint.site-sharing`): one
+  `Get-PnPTenantSite` per run for every site, matched by URL, with the scope file's
+  `powershellConfigs.sharepoint` PnP config. It runs only once that row is live-qualified
+  (`tools/qualification/workloadReadsLive.mjs capture --workload sharepoint-site-settings`);
+  until then the field is unknown and the rest of the read is unchanged.
 - `engine/roadmap/foundation.test.mjs` fails on master with or without this change
   (`Cannot read properties of null (reading 'revision')`). It is not part of CI, and
   it is unrelated to this task.

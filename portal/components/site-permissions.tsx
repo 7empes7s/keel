@@ -7,13 +7,13 @@ import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technic
 import { Badge } from "@/components/ui/badge";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import {
-  appName, appStatus, backupStatus, backupWords, externalStatus, peopleStatus, roleLabel, rolesLabel, siteAddress,
+  appName, appStatus, backupStatus, backupWords, externalStatus, peopleStatus, roleLabel, rolesLabel, sharingStatus, siteAddress,
   tenantSharingWords, type SitePermissions, type SitePermissionsData, type SiteStatus, type SitesContentRun, type SitesRun,
 } from "@/lib/site-permissions-view";
 
 // The Sites pages. The list is a compact table (components/sites-table.tsx) with
-// problems first; a site's page leads with four status tiles (backup, apps, guests,
-// owners), then compact tables of owners, groups and apps. Ids sit under Technical details.
+// problems first; a site's page leads with five status tiles (backup, apps, sharing
+// setting, guests, owners), then compact tables of owners, groups and apps. Ids sit under Technical details.
 
 function NewerRead({ latest, now }: { latest: SitesRun | null; now: string }) {
   if (!latest) return null;
@@ -99,6 +99,7 @@ export function SiteDetail({ site, run, latest, now, contentRun = null, tenantSh
   const external = externalStatus(site) ?? { ...people, key: "unknown", detail: people.key === "pending" ? "Guests and sharing links are read with the nightly backup." : people.detail, fix: null, error: null };
   const held = backupWords(site);
   const sharing = tenantSharingWords(tenantSharing);
+  const siteSharing = sharingStatus({ ...site, sharing: { ...site.sharing, tenant: site.sharing.tenant ?? tenantSharing } });
   const grants = site.appGrants.entries ?? [];
   const summary = site.people;
   return (
@@ -109,9 +110,10 @@ export function SiteDetail({ site, run, latest, now, contentRun = null, tenantSh
           {held ? <p className="st-status-fact">Holds {held}</p> : null}
         </StatusTile>
         <StatusTile icon="link" status={apps} title="Apps with access" />
-        <StatusTile icon="person" status={external} title="Guests and sharing">
-          {sharing ? <p className="st-status-fact">Tenant allows sharing with: {sharing}</p> : null}
+        <StatusTile icon="link" status={siteSharing} title="Sharing setting">
+          {sharing ? <p className="st-status-fact">Organisation default: {sharing}</p> : null}
         </StatusTile>
+        <StatusTile icon="person" status={external} title="Guests and links" />
         <StatusTile icon="person" status={people} title="Owners">
           {summary?.owners.length ? <p className="st-status-fact">{summary.owners.slice(0, 3).join(", ")}{summary.ownerCount > 3 ? ` and ${summary.ownerCount - 3} more` : ""}</p> : null}
         </StatusTile>
@@ -169,6 +171,11 @@ export function SiteDetail({ site, run, latest, now, contentRun = null, tenantSh
         <RecordField label="SharePoint read" value={run.id} />
         <RecordField copy={false} label="Read outcome" value={run.outcome} />
         <RecordField copy={false} label="Read finished" value={run.observedTo} />
+        <RecordGroup note={site.sharing.status} title="Sharing setting">
+          <RecordField copy={false} label="Read status" value={site.sharing.status} />
+          <RecordField copy={false} label="Value as stored" value={site.sharing.value} />
+          <RecordField copy={false} label="Tenant default as stored" value={site.sharing.tenant ?? tenantSharing} />
+        </RecordGroup>
         <RecordGroup note={site.appGrants.status} title="App grants">
           <RecordField copy={false} label="Read status" value={site.appGrants.status} />
           <RecordField copy={false} label="Microsoft answered (HTTP status)" value={site.appGrants.httpStatus} />

@@ -143,6 +143,8 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
     sentKey.current = orderKey;
     orderRef.current?.(allIds);
   }, [orderKey, allIds]);
+  // A list that goes away (nothing matches) leaves no order behind for the panel.
+  useEffect(() => () => { orderRef.current?.([]); }, []);
   const partsOf = (group: ListGroup<T>) => (group.parts && group.parts.length ? group.parts.map((part) => ({ ...part, key: `${group.key}.${part.key}` })) : null);
   // Paging counts rows in open groups and open parts; a page shows a slice of each.
   const units = useMemo<ListUnit<T>[]>(() => groups.flatMap((group): ListUnit<T>[] => {

@@ -7209,3 +7209,36 @@ item that needs it stays untouched.
   continue next run), Entra facts present, and the fixture change attributed. If `invalid-page` remains, report one failing
   event id shape (prefix only) and reopen #514.
 - **Report:** per step, the result.
+
+### Q155: Which Teams fields came back unknown after Q141 (read-only, DB only)
+- Drafted by the "Teams backups report complete" thread (2026-10-22). Q141 step 6: `teams-org-policies` and
+  `teams-voice-policies` are `partial` only because of unknown fields (9 and 108): declared properties the live
+  MicrosoftTeams module did not return. Same check as Q105 for Exchange. This item names them so the code can stop
+  declaring them.
+- Needs: nothing. No tenant calls, no job, schedule or config changes, no reruns.
+- Status: todo
+- Result:
+- Do (with `set -a; . /etc/keel/db.env; set +a`). Field names and family kinds only; no values are selected:
+  1. ```sql
+     WITH latest AS (
+       SELECT DISTINCT ON (workload) id, workload, outcome, created_at FROM workload_collection
+        WHERE workload IN ('teams-org-policies', 'teams-voice-policies') AND outcome <> 'disabled'
+        ORDER BY workload, created_at DESC)
+     SELECT l.workload, l.outcome, o.fields->>'kind' AS kind, c.key AS field, c.value->>'status' AS status, count(*) AS objects
+       FROM latest l JOIN workload_observation o ON o.collection_id = l.id
+       CROSS JOIN LATERAL jsonb_each(o.field_coverage) c
+      WHERE c.value->>'status' <> 'observed'
+      GROUP BY 1, 2, 3, 4, 5 ORDER BY 1, 3, 4;
+     ```
+  2. ```sql
+     SELECT workload, outcome, created_at, digest->'fieldCounts' AS field_counts,
+            jsonb_array_length(COALESCE(digest->'skipped','[]'::jsonb)) AS n_skipped,
+            jsonb_array_length(COALESCE(digest->'unavailable','[]'::jsonb)) AS n_unavailable
+       FROM workload_collection WHERE workload IN ('teams-org-policies', 'teams-voice-policies') AND outcome <> 'disabled'
+      ORDER BY created_at DESC LIMIT 4;
+     ```
+  3. If step 1 shows no rows but step 2 shows unknown counts, run step 1 again with `o.fields->>'kind'` replaced by
+     `o.kind` (or the column that holds the family), and report which column worked.
+- **Report:** all outputs verbatim (step 1 may be long for voice; commit it as `ops/q155/unknown-fields.txt` on a new
+  branch `claude/q155-teams-unknown-fields`, never master, if it is over 60 rows, and give the commit). Nothing is
+  written to the tenant or the DB.

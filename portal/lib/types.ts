@@ -305,6 +305,21 @@ export interface ComplianceFinding {
     change: ComplianceLinks<ComplianceChangeLink>;
     restorePlan: ComplianceLinks<CompliancePlanLink>;
   };
+  // "Make it pass" (gap 6): the one setting this control's fix changes, and the
+  // objects in the newest backup it would change. Absent from older readers.
+  fix?: { resourceType: string; field: string; to: unknown } | null;
+  fixCandidates?: ComplianceFixCandidate[];
+}
+
+export interface ComplianceFixCandidate {
+  naturalKey: string;
+  resourceType: string;
+  name: string | null;
+  field: string;
+  from: unknown;
+  to: unknown;
+  snapshotId: string;
+  seenAt: string | null;
 }
 
 export interface ComplianceSummary {

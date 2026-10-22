@@ -2672,10 +2672,51 @@ test("Compliance · tiles filter, a control opens its panel, renew an exception,
   expect((await calls()).some((call) => call.url.startsWith("/api/evidence?kind=benchmark-evaluation,benchmark-exception"))).toBe(true);
 });
 
+test("Compliance · make it pass: the panel shows the one setting, plans it, and sends it to the approvers", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/benchmarks");
+  const row = page.locator(".sel-row", { hasText: "No trusted location" });
+  await expect(row).toContainText("Keel can fix it for you, after an approval.");
+  await row.getByRole("link", { name: "Make it pass" }).click();
+  await expect(page).toHaveURL(/open=e7a10000-0000-4000-8000-0000000000e2/);
+  const panel = page.getByRole("dialog", { name: "No trusted location trusts unknown countries" });
+  const fix = panel.locator(".cp-fix");
+  await expect(fix.locator("h3")).toContainText("Stop trusting unknown countries");
+  const item = fix.locator(".cp-fix-row", { hasText: "Branch offices" });
+  await expect(item).toContainText("Takes in unknown countries");
+  await expect(item.locator(".cp-fix-values")).toHaveAttribute("aria-label", "Takes in unknown countries: now Yes, after No");
+  await expect(item.locator('.cp-fix-values .badge[data-tone="urgent"]')).toHaveText("Yes");
+  await expect(item.locator('.cp-fix-values .badge[data-tone="fine"]')).toHaveText("No");
+  // The fix is the panel's one main action; the exception is the second choice.
+  await expect(panel.locator(".btn-primary")).toHaveCount(1);
+  await expect(item.getByRole("button", { name: "Make it pass" })).toHaveClass(/btn-primary/);
+
+  await item.getByRole("button", { name: "Make it pass" }).click();
+  await expect(item.locator(".badge", { hasText: "Ready for approval" })).toBeVisible();
+  await expect(item).toContainText("Keel will change only “Takes in unknown countries” on Branch offices, from Yes to No");
+  const ask = item.getByRole("button", { name: "Ask for approval" });
+  await expect(ask).toBeDisabled();
+  await item.getByLabel("Why make this change?").fill("Close the unknown-country gap");
+  await ask.click();
+  await expect(item.locator(".badge", { hasText: "Waiting for approval" })).toBeVisible();
+  await expect(item.getByRole("link", { name: "Open approvals" })).toHaveAttribute("href", /\/approvals$/);
+
+  type Call = { url: string; method: string; body: string | null };
+  const calls = await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+  const planned = calls.filter((call) => call.method === "POST" && call.url === "/api/actions/compliance/fix");
+  expect(planned.map((call) => JSON.parse(call.body ?? "{}"))).toEqual([{ evaluationId: "e7a10000-0000-4000-8000-0000000000e2", naturalKey: "namedLocation:Branch offices" }]);
+  const sent = calls.filter((call) => call.method === "POST" && call.url === "/api/actions/restore");
+  expect(sent.map((call) => JSON.parse(call.body ?? "{}"))).toEqual([{ artifactId: "f1c00000-0000-4000-8000-000000000001", justification: "Close the unknown-country gap" }]);
+  const visible = await textOutside(page, ".bl-sheet", ".technical-details");
+  expectPlainText(visible);
+  for (const word of ["namedLocation", "includeUnknown", "f1c00000"]) expect(visible).not.toContain(word);
+});
+
 test("Compliance · a reader sees results and no exception controls", async ({ page }) => {
   await open(page, "/benchmarks/viewer");
   await expect(page.locator(".sel-row")).toHaveCount(4);
   await expect(page.getByRole("link", { name: /^(Grant|Renew|Extend)/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Make it pass" })).toHaveCount(0);
   await expect(page.locator("main .btn-primary")).toHaveCount(0);
   await page.locator(".sel-row").nth(0).locator(".sel-check").click();
   await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Export 1 control");
@@ -2694,7 +2735,7 @@ test("Compliance · phone: pass and fail tiles per service open the same panel",
 
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
-    for (const hash of ["/benchmarks", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1"]) {
+    for (const hash of ["/benchmarks", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e2", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1"]) {
       test(`Compliance · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await open(page, hash, theme);
@@ -2720,8 +2761,13 @@ for (const theme of ["dark", "light"] as const) {
         if (hash.includes("open=")) {
           const sheet = page.getByRole("dialog");
           await expect(sheet).toBeVisible();
-          await expect(sheet.locator(".bl-sheet-foot .btn-primary")).toBeInViewport();
-          await expect(sheet.locator(".bl-sheet-foot .btn-primary")).toHaveCount(1);
+          // One main action per panel: the fix when Keel can make it pass, else the exception.
+          await expect(sheet.locator(".btn-primary")).toHaveCount(1);
+          if (hash.includes("0000000000e2")) {
+            await expect(sheet.locator(".cp-fix .btn-primary")).toBeInViewport();
+          } else {
+            await expect(sheet.locator(".bl-sheet-foot .btn-primary")).toBeInViewport();
+          }
         }
       });
     }

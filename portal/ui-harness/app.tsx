@@ -224,6 +224,9 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     }
     return json({ runs: [{ target: null, job: { id: "job-wd-1" }, artifactId: "wd000000-0000-4000-8000-000000000001" }] }, 202);
   }
+  // Compliance, "Make it pass": the fix is planned, and its dry run is ready.
+  if (url.endsWith("/api/actions/compliance/fix")) return json({ job: { id: "f1c0b000-0000-4000-8000-000000000001" }, artifactId: "f1c00000-0000-4000-8000-000000000001" }, 202);
+  if (url.includes("/api/actions/restore/dry-run/f1c00000")) return json({ artifact: { id: "f1c00000-0000-4000-8000-000000000001", status: "completed", guardRefusals: [], complianceFix: { naturalKey: "namedLocation:Branch offices", field: "includeUnknownCountriesAndRegions", from: true, to: false } } });
   if (url.includes("/api/actions/restore/dry-run/wd000000")) return json({ artifact: WORKLOAD_ARTIFACT });
   if (url.includes("/api/actions/restore/dry-run/mb000000")) return json({ artifact: mailboxArtifact(url.slice(-1)) });
   // Task-70: the undo plan of failed restore r10.
@@ -710,7 +713,10 @@ const COMPLIANCE: ComplianceData = {
         backup: { state: "linked", linked: [evidenceWindow("namedLocation", "2026-10-02T09:00:00Z", "2026-10-02T09:12:00Z", "0b5e0000-0000-4000-8000-0000000000d6")], mismatched: [] },
         change: { state: "none", linked: [], mismatched: [] },
         restorePlan: { state: "none", linked: [], mismatched: [] },
-      } },
+      },
+      // Gap 6: Keel can make it pass, one object at a time.
+      fix: { resourceType: "namedLocation", field: "includeUnknownCountriesAndRegions", to: false },
+      fixCandidates: [{ naturalKey: "namedLocation:Branch offices", resourceType: "namedLocation", name: "Branch offices", field: "includeUnknownCountriesAndRegions", from: true, to: false, snapshotId: "0b5e0000-0000-4000-8000-0000000000d6", seenAt: "2026-10-02T09:12:00Z" }] },
     { id: "e7a10000-0000-4000-8000-0000000000e3", controlId: "keel-custom.group.role-assignable-not-synced", title: "Role-assignable groups are not synchronized from on-premises AD", severity: "high",
       framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "unknown", reason: "group:stale", evaluatedAt: "2026-10-01T09:20:00Z", evidenceSeq: "4101",
       exceptionState: "none", exposed: false, exception: null, evidence: [],
@@ -1910,7 +1916,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/benchmarks": case "/benchmarks/viewer": {
       // The viewer variant holds read only: no exception controls.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(COMPLIANCE.findings))} title="Compliance" />
-      <CompliancePage canConfigure={path === "/benchmarks"} data={COMPLIANCE} now={now} /></>;
+      <CompliancePage canConfigure={path === "/benchmarks"} canRestore={path === "/benchmarks"} data={COMPLIANCE} now={now} /></>;
     }
     case "/principals": case "/principals/viewer": {
       // A viewer here holds users but not roles: they see everyone and can disable, not grant.

@@ -9631,6 +9631,32 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .cp-preset:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .cp-error { margin: 0; color: var(--urgent); font-size: 0.875rem; }
 
+/* "Make it pass" (CoreView gap 6): one row per object to fix, the setting's value now
+   and after as coloured chips, and the row's step (planning, ready, sent, refused). */
+.cp-row-acts { flex-wrap: wrap; gap: var(--space-2xs); }
+.cp-fixable { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--fine); font-weight: 600; }
+.cp-fixable .icon { width: 0.875rem; height: 0.875rem; flex: none; }
+.cp-fix { border-color: color-mix(in srgb, var(--fine) 45%, var(--line)); }
+.cp-fix h3 .icon { width: 1rem; height: 1rem; color: var(--fine); }
+.cp-fix-list { display: grid; gap: var(--space-xs); margin: 0; padding: 0; list-style: none; }
+.cp-fix-row { display: grid; gap: var(--space-xs); padding: var(--space-xs) var(--space-sm); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-muted); min-width: 0; }
+.cp-fix-row[data-step="failed"] { border-color: color-mix(in srgb, var(--urgent) 45%, var(--line)); }
+.cp-fix-row[data-step="sent"] { border-color: color-mix(in srgb, var(--check-soon) 45%, var(--line)); }
+.cp-fix-main { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-xs) var(--space-sm); min-width: 0; }
+.cp-fix-name { display: grid; gap: 0.125rem; min-width: 0; line-height: 1.3; }
+.cp-fix-name b { font-size: 0.875rem; overflow-wrap: anywhere; }
+.cp-fix-name small { color: var(--text-soft); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.cp-fix-values { display: inline-flex; align-items: center; gap: 0.25rem; }
+.cp-fix-values > .icon { width: 0.875rem; height: 0.875rem; color: var(--text-soft); }
+.cp-fix-act { display: flex; justify-content: end; }
+.cp-fix-confirm { display: grid; gap: var(--space-xs); }
+.cp-fix-confirm .filter-field { width: 100%; }
+.cp-fix-confirm .filter-field input { width: 100%; min-width: 0; }
+.cp-fix-confirm .btn { justify-self: start; }
+.cp-fix-problem { display: grid; gap: var(--space-2xs); padding-left: var(--space-sm); border-left: 3px solid var(--urgent); font-size: 0.875rem; }
+.cp-fix-problem p { margin: 0; }
+.cp-fix-problem .btn { justify-self: start; }
+
 @media (max-width: 46rem) {
   .cp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cp-tile { padding: var(--space-xs) var(--space-sm); }
@@ -9641,6 +9667,8 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
   .cp-row-acts:empty { display: none; }
   .cp-facts > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .cp-form .picker-button { width: 100%; min-width: 0; }
+  .cp-fix-main { grid-template-columns: minmax(0, 1fr) auto; }
+  .cp-fix-act { grid-column: 1 / -1; justify-content: start; }
 }
 
 /* A changed value that holds several settings reads as one line per setting in the

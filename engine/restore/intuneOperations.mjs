@@ -792,6 +792,7 @@ async function targetAppsAfterWrite(io, { payload, verb, targetId, live, resourc
  */
 const assignmentsListPath = (record, base) => (record.assignmentsRead === 'expand' ? `${base}?$expand=assignments` : `${base}/assignments`);
 function liveAssignmentItems(record, read) {
+  if (record.assignmentsRead === 'expand' && read?.body?.['assignments@odata.nextLink']) return null; // a paged list is not all of it
   const items = record.assignmentsRead === 'expand' ? read?.body?.assignments : (read?.body?.value ?? []);
   return Array.isArray(items) ? items : null;
 }

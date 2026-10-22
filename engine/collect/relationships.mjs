@@ -261,12 +261,14 @@ export class CrossTenantRelationshipError extends Error {
 /**
  * A parent read with a collection expanded comes back as one object; its
  * items are that collection. An object without the collection is not a
- * complete read, so it never counts as an empty set.
+ * complete read, so it never counts as an empty set; nor does a list Graph
+ * paged.
  */
 function expandedItems(result, key) {
   if (result?.error || !Array.isArray(result?.items)) return result;
   const lists = result.items.map((parent) => parent?.[key]);
-  if (lists.length !== 1 || !Array.isArray(lists[0])) {
+  // A paged expanded list would be cut short, so it is never called complete.
+  if (lists.length !== 1 || !Array.isArray(lists[0]) || result.items[0]?.[`${key}@odata.nextLink`]) {
     return { ...result, items: undefined, pages: 0, error: { status: null, error: `the read did not include ${key}` } };
   }
   return { ...result, items: lists[0] };

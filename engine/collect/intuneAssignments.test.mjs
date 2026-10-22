@@ -111,4 +111,7 @@ test('a custom attribute script read without its assignments is failed, never an
   assert.equal(failed.outcome, 'failed');
   assert.equal(failed.itemCount, null);
   assert.match(failed.error, /assignments/);
+  const paged = { async collect() { return { items: [{ id: POLICY, assignments: [{ id: 'a-1', target: groupTarget }], 'assignments@odata.nextLink': 'https://graph.microsoft.com/beta/next' }], pages: 1, status: 200, capped: false, error: null }; } };
+  const [cut] = await collectRelationships(paged, { tenantRef: 'sha256:t', families: ['assignment'], parents });
+  assert.equal(cut.outcome, 'failed');
 });

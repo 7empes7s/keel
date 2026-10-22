@@ -5822,11 +5822,27 @@ item that needs it stays untouched.
   (`deviceShellScript`), remediations (`deviceHealthScript`, Microsoft-published ones are never written) and custom compliance
   scripts (`deviceComplianceScript`). Who a script runs on is **not** written; fixtures stay unassigned.
 - Needs: /opt/keel-live at the #435 merge or later (`grep -q scriptRefusal /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result: in progress (2026-10-22 09:55 UTC). The Restorer now holds `DeviceManagementScripts.ReadWrite.All` (#471 closed). Waiting for **#480** (fixes #473) to deploy: the create-round dry run `18801eeb` failed with `listing /deviceManagement/deviceHealthScripts/{parent} failed: String policy id is invalid. Provided id: {parent}`.
-  - Fixtures created (Restorer, 201 each): `KEEL-RT-script`, `KEEL-RT-shell`, `KEEL-RT-remediation`, `KEEL-RT-compliance-script`, all unassigned.
-  - Snapshot S = `db596a38`: all four kinds `complete`. Each fixture has a non-empty body (`scriptContent` or `detectionScriptContent`) and runAsAccount system. Microsoft-published remediations in the tenant: 0 (so step 5 does not apply).
-  - For the create round I deleted `KEEL-RT-script` and `KEEL-RT-remediation`. They are in S, and I will restore them once #480 is live. `KEEL-RT-shell` and `KEEL-RT-compliance-script` are still in the tenant.
+- Status: done
+- Result: done (2026-10-22 11:17 UTC). **6 of 6 asked operations promoted:** PowerShell script and remediation create, plus all four updates. B = 755b069 (create) / 905d075 (update; deploys during the run). Restorer only (now with DeviceManagementScripts.ReadWrite.All, #471); global admin not used; nothing assigned.
+  - **Per type and operation** (the item's create round covers the PowerShell script and remediation only):
+    | type | create | update |
+    |---|---|---|
+    | deviceManagementScript | **promoted** | **promoted** |
+    | deviceShellScript | (not in the create round) | **promoted** (body back to `echo KEEL-RT`, base64 `ZWNobyBLRUVMLVJU`) |
+    | deviceHealthScript | **promoted** | **promoted** |
+    | deviceComplianceScript | (not in the create round) | **promoted** |
+  - **Backup check** (S = `db596a38`): all four kinds `complete`. Each fixture payload holds its body (non-empty `scriptContent` or `detectionScriptContent`), runAsAccount system.
+    Microsoft-published remediations: **0**, so the step 5 refusal check does not apply.
+  - **Create round:** deleted the PowerShell script and the remediation. The first dry run (`18801eeb`, at 56d9682) failed on #473. After #480 deployed: dry run `90c4f66e`
+    (no content effects, because nothing is assigned), approval **bba1a114**, job `a7626f4e`. Read-back equals S: names, descriptions, system, bodies `Write-Output 'KEEL-RT'` / `exit 0`.
+  - **Update round:** S2 = `08adc6f2` (the collect printed `incomplete types: [{"type":"deviceManagementSettings","outcome":"failed","httpStatus":400}]`, exit 3, from #489).
+    Drifted all four descriptions and set the shell body to `echo drifted`.
+    - Dry run `004bbebf`: description on each, plus `scriptContent` on the shell, with one `runs-on-devices` content effect (text changed).
+    - Content effect approval **9e70403c**, restore approval **4432a11a**, job `963bf2e8`: 4 updates succeeded. Read back "KEEL restore fixture" and the original bodies.
+  - **Step 6, re-run** (`c3ece771` from S2): every entry has 0 changed fields (**0 planned writes**).
+  - **Cleanup:** deleted all four (the compliance script left the list after about 50 s). **Nothing left.**
+  - **Evidence:** `claude/live-evidence-restore-gaps-4` @ **8f48050**. pseudonymize check exit 0; my scan is clean. `live evidence`: deviceManagementScript.create and .update, deviceHealthScript.create
+    and .update, deviceShellScript.update, deviceComplianceScript.update: all `fixture-tested -> live-qualified`.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. No permission
   to add: the Restorer and collector hold DeviceManagementConfiguration.ReadWrite.All / .Read.All. If Graph answers 403 (or 400

@@ -5711,3 +5711,27 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / skipped (fixture could not be
   created) / blocked; steps 5 and 6; approval ids; the evidence branch and commit; anything left in the tenant.
+
+### Q125: Read-only check that a restore never changes the filter of an Exchange app scope an app role assignment uses (after #456)
+- Drafted by the "Guard Exchange app scope restore" thread (2026-10-22), from your review on #454. Code: PR #456. A restore of an
+  `exchangeCustomAppScope` update is now skipped as a manual step (completion requirement `exchangeAppScopeFilter`) when the backup's
+  `customAttributes` differ from the live scope and any Exchange app role assignment (beta `/roleManagement/exchange/roleAssignments`,
+  every page) has `appScopeId` equal to the scope's id. If the assignments or the live scope cannot be read, the update is skipped too.
+- Needs: /opt/keel-live at the #456 merge or later (`grep -q appScopeGuard /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
+- Status: todo
+- Result:
+- **Read-only. Nothing is written to the tenant.** Restorer credentials, test tenant only. Never change the existing scope that limits
+  the mail fixture app, never create or change an app role assignment.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`):
+  1. Read the live scope that limits the mail fixture app (call it L) and the Exchange app role assignments. Report how many
+     assignments name L (expected at least 1) and confirm `appScopeId` on them equals L's `id` exactly (same form, no prefix).
+  2. In a one-off node script, call `applyIdentityObjectWrite(writer, resource, 'update', { mode: 'dry-run' })` from
+     `engine/restore/identityObjectOperations.mjs` with a writer whose `read` is your Graph read client and whose `write` throws
+     (so any write fails loudly), and `resource = { naturalKey: L.id, resourceType: 'exchangeCustomAppScope', references: [],
+     payload: { ...L, customAttributes: { ...L.customAttributes, RecipientFilter: "PrimarySmtpAddress -like '*'" } },
+     live: { state: 'present', targetId: L.id, payload: L } }`. Expect `skipped` with a reason starting
+     `manual: This app access scope is used by N app role assignment`, and `write` never called.
+  3. Same call with `payload: { ...L, displayName: L.displayName }` but `live.payload` omitted and the broader filter: expect the same
+     skip (the guard reads L itself first).
+  4. If Q123 runs at #456 or later, its step 4 also proves the other side: the unused `KEEL-RT-app-scope` filter update is written.
+- **Report:** B; step 1 counts and the id check; the exact result objects of steps 2 and 3; confirmation that no write was attempted.

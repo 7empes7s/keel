@@ -7161,7 +7161,7 @@ item that needs it stays untouched.
   4. Drift: the recreated branding's contact name set to `drift`. Dry run `cedabc71`: **update** of 4329f6c9 with `contactITName` only. Approval **3815431f**, job `f06e3b81`: `update | succeeded`, read back "KEEL-RT help desk". **Promoted.**
      Next dry run from S: 0 changed fields.
   5. Cleanup: deleted the recreated branding and reusable group. Left: only the default branding; no KEEL-RT reusable group; no duplicates.
-  6. Evidence: `claude/live-evidence-rerun-after-create` @ **27acc534**. pseudonymize check exit 0; my scan is clean. `live evidence`: intuneBrandingProfile.create and .update, deviceManagementReusablePolicySetting.create: `fixture-tested -> live-qualified`.
+  6. Evidence: `claude/live-evidence-rerun-after-create` @ **00c5d6c0** (creates at a60c774, branding update at cbfce71). pseudonymize check exit 0; my scan is clean. `live evidence`: intuneBrandingProfile.create and .update, deviceManagementReusablePolicySetting.create: `fixture-tested -> live-qualified`.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q123 and Q135. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. If Graph answers 403,
   report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.

@@ -455,6 +455,8 @@ test('restore gaps batch 3: a guest federation updates its settings in place, ne
 });
 
 const APP_SCOPES = '/roleManagement/exchange/customAppScopes';
+const EXCHANGE = '/roleManagement/exchange';
+const appAssignment = (appScopeId, id = 'assignment-1') => ({ id, principalId: 'sp-keel-rt', roleDefinitionId: 'role-mail-read', directoryScopeId: null, appScopeId });
 const appScope = (filter) => ({ id: 'scope-src', type: 'RecipientScope', displayName: 'KEEL-RT-app-scope', customAttributes: { Exclusive: false, RecipientFilter: filter } });
 
 test('restore gaps batch 9: an Exchange app access scope is recreated with its filter and updated without its kind', async () => {
@@ -468,12 +470,62 @@ test('restore gaps batch 9: an Exchange app access scope is recreated with its f
   assert.deepEqual(post.body, { type: 'RecipientScope', displayName: 'KEEL-RT-app-scope', customAttributes: backup.customAttributes });
 
   const drifted = { ...appScope("PrimarySmtpAddress -like 'keel-rt-*'"), id: 'scope-1' };
-  const second = idoFakeGraph({ seed: { [`${APP_SCOPES}/scope-1`]: drifted } });
+  // An assignment that uses another scope does not hold this one back.
+  const second = idoFakeGraph({ seed: { [`${APP_SCOPES}/scope-1`]: drifted, [EXCHANGE]: { roleAssignments: [appAssignment('scope-other')] } } });
   const updated = await applyIdentityObjectWrite(second, { naturalKey: 'scope-1', resourceType: 'exchangeCustomAppScope', payload: { ...backup, id: 'scope-1' }, references: [], live: { state: 'present', targetId: 'scope-1', payload: drifted } }, 'update', FAST);
   assert.equal(updated.failed, undefined, updated.failed?.error);
   const patch = second.calls.find((call) => call.method === 'PATCH');
   assert.equal(patch.path, `${APP_SCOPES}/scope-1`);
   assert.deepEqual(patch.body, { customAttributes: backup.customAttributes });
+});
+
+test('an Exchange app access scope an app role assignment uses never has its filter changed by a restore', async () => {
+  const live = { ...appScope("PrimarySmtpAddress -like 'keel-rt-scope-mail*'"), id: 'scope-1' };
+  const broader = { ...live, customAttributes: { Exclusive: false, RecipientFilter: "PrimarySmtpAddress -like '*'" } };
+  const run = async (desired, { mode = 'enforce', exchange = { roleAssignments: [appAssignment('scope-1')] }, withLive = true } = {}) => {
+    const graph = idoFakeGraph({ seed: { [`${APP_SCOPES}/scope-1`]: live, ...(exchange ? { [EXCHANGE]: exchange } : {}) } });
+    const result = await applyIdentityObjectWrite(graph, {
+      naturalKey: 'scope-1', resourceType: 'exchangeCustomAppScope', payload: desired, references: [],
+      live: { state: 'present', targetId: 'scope-1', ...(withLive ? { payload: live } : {}) },
+    }, 'update', { ...FAST, mode });
+    return { result, writes: graph.calls.filter((call) => call.method !== 'GET') };
+  };
+
+  // A broader filter from the backup: nothing is written, a person changes it.
+  for (const mode of ['enforce', 'dry-run']) {
+    const { result, writes } = await run(broader, { mode });
+    assert.equal(result.applied, undefined, `${mode}: the filter is withheld`);
+    assert.match(result.skipped?.reason ?? '', /^manual: .*used by 1 app role assignment/);
+    assert.deepEqual(result.skipped.completion, {
+      kind: 'manual-setting', requirement: 'exchangeAppScopeFilter', fields: ['customAttributes'], description: result.skipped.reason.replace(/^manual: /, ''),
+    });
+    assert.equal(writes.length, 0, `${mode}: nothing is written`);
+  }
+  // A name change alone still writes.
+  const renamed = await run({ ...live, displayName: 'KEEL-RT-app-scope-renamed' });
+  assert.equal(renamed.result.failed, undefined, renamed.result.failed?.error);
+  assert.deepEqual(renamed.writes.map((call) => call.body), [{ displayName: 'KEEL-RT-app-scope-renamed' }]);
+  // With no live copy at hand, the live scope is read before deciding.
+  const unread = await run(broader, { withLive: false });
+  assert.match(unread.result.skipped?.reason ?? '', /used by 1 app role assignment/);
+  assert.equal(unread.writes.length, 0);
+  // Assignments that cannot be read hold the filter back too.
+  const unreadable = await run(broader, { exchange: null });
+  assert.match(unreadable.result.skipped?.reason ?? '', /^manual: The app role assignments could not be read/);
+  assert.equal(unreadable.writes.length, 0);
+  // An assignment on a later page counts.
+  const paged = idoFakeGraph({ seed: { [`${APP_SCOPES}/scope-1`]: live } });
+  const read = paged.read.bind(paged);
+  paged.read = async (version, path) => {
+    if (path === `${EXCHANGE}/roleAssignments`) return { ok: true, status: 200, body: { value: [appAssignment('scope-other')], '@odata.nextLink': 'page-2' } };
+    if (path === 'page-2') return { ok: true, status: 200, body: { value: [appAssignment('scope-1', 'assignment-2')] } };
+    return read(version, path);
+  };
+  const second = await applyIdentityObjectWrite(paged, {
+    naturalKey: 'scope-1', resourceType: 'exchangeCustomAppScope', payload: broader, references: [], live: { state: 'present', targetId: 'scope-1', payload: live },
+  }, 'update', FAST);
+  assert.match(second.skipped?.reason ?? '', /used by 1 app role assignment/);
+  assert.equal(paged.calls.filter((call) => call.method === 'PATCH').length, 0);
 });
 
 test('a guest federation restore never writes its sign-in endpoints or signing certificate', async () => {

@@ -19,6 +19,9 @@
  *  - `afterWrite(io, step)`: child writes made after the object (target apps,
  *    localized messages), each verified by the record;
  *  - `deleteGuard(io, step)`: a type's own reason not to delete;
+ *  - `updateGuard(io, step)`: a type's own reason not to update, worked out
+ *    from live reads; returns { reason, completion? } and the update is
+ *    skipped as a manual step;
  *  - `sameField(field, desired, live)`: a type's own equality for a field
  *    Graph may return in another form (a JSON string with other spacing).
  *
@@ -67,6 +70,7 @@ export function defineRecord(spec) {
     preflight: null,
     afterWrite: null,
     deleteGuard: null,
+    updateGuard: null,
     transform: null,
     sameField: null,
     ...spec,
@@ -304,6 +308,10 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   if (record.preflight && writer) {
     const reason = await record.preflight(io, { resource, payload, verb, targetId, ctx });
     if (reason) return { failed: { naturalKey, error: `dependency: ${reason}; nothing was written` } };
+  }
+  if (verb === 'update' && record.updateGuard && writer && fields.length > 0) {
+    const held = await record.updateGuard(io, { resource, payload, targetId, before, fields, ctx });
+    if (held) return refusalEntry(naturalKey, { outcome: 'skipped', ...held });
   }
   if (ctx.mode === 'dry-run') return { applied: { naturalKey, targetId, changes: { fields }, ...followUp } };
   if (verb === 'update' && fields.length === 0 && !record.afterWrite) return { applied: { naturalKey, targetId, changes: { fields } } };

@@ -2709,6 +2709,37 @@ test("Compliance · a reader sees results and no exception controls", async ({ p
   await expect(page.locator(".sel-bar .btn-primary")).toHaveText("Export 1 control");
 });
 
+test("Compliance · nothing checked yet: Check now runs the checks; storage not known links to it", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/benchmarks/empty");
+  await expect(page.locator(".status-pill")).toHaveText("Not checked yet");
+  const verdict = page.locator('[data-layer="verdict"]');
+  await expect(verdict.locator(".verdict-sentence")).toHaveText("No control has been checked on this tenant yet.");
+  await expect(verdict).toContainText("Keel checks these after each backup.");
+  await expect(page.locator("main")).not.toContainText("does not run these checks");
+  await expect(page.locator(".cp-empty").getByRole("button", { name: "Check now" })).toBeVisible();
+  const storage = page.locator(".cp-storage");
+  await expect(storage).toHaveAttribute("data-tone", "soon");
+  await expect(storage).toContainText("Ask whoever runs the Keel server to record where backups are stored.");
+  await expect(storage.getByRole("link", { name: "See backup storage" })).toHaveAttribute("href", /\/resilience#storage$/);
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+
+  type Call = { url: string; method: string; body: string | null };
+  await verdict.getByRole("button", { name: "Check now" }).click();
+  await expect(page.locator(".toast").first()).toContainText("3 controls checked");
+  await expect(page.locator(".toast").first()).toContainText("1 failing, 1 could not be checked, 1 passing");
+  const posts = (await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls))
+    .filter((call) => call.method === "POST" && call.url === "/api/actions/compliance/check");
+  expect(posts.length).toBe(1);
+});
+
+test("Compliance · nothing checked yet, reader: no Check now, a link to when backups run", async ({ page }) => {
+  await open(page, "/benchmarks/empty-viewer");
+  await expect(page.getByRole("button", { name: "Check now" })).toHaveCount(0);
+  await expect(page.locator('[data-layer="verdict"]').getByRole("link", { name: "See when backups run" })).toHaveAttribute("href", /\/schedules$/);
+  await expect(page.locator(".cp-empty").getByRole("link", { name: "See when backups run" })).toBeVisible();
+});
+
 test("Compliance · phone: pass and fail tiles per service open the same panel", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page, "/benchmarks");
@@ -2722,7 +2753,7 @@ test("Compliance · phone: pass and fail tiles per service open the same panel",
 
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
-    for (const hash of ["/benchmarks", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1"]) {
+    for (const hash of ["/benchmarks", "/benchmarks/empty", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1"]) {
       test(`Compliance · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await open(page, hash, theme);
@@ -2735,7 +2766,7 @@ for (const theme of ["dark", "light"] as const) {
         const tiles = await page.locator(".cp-tile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
         expect(tiles.length).toBe(4);
         expect(new Set(tiles).size).toBe(1);
-        if (width === 390) {
+        if (width === 390 && hash !== "/benchmarks/empty") {
           const scorecard = await page.locator(".cp-ctile").evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().height)));
           expect(new Set(scorecard).size).toBe(1);
         }

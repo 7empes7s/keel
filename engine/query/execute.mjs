@@ -15,6 +15,7 @@
  *   are never read as instructions or folded into the answer's sentence.
  * - A period KEEL has no comparison for is answered as unknown, never as "no changes".
  */
+import { objectNameSql } from '../cir/objectName.mjs';
 import { scopePredicate } from '../authz/entityScope.mjs';
 import { contentWorkloadInfo, loadServiceBackups } from '../coverage/serviceBackups.mjs';
 import { typeInfo } from '../insights/taxonomy.mjs';
@@ -101,7 +102,7 @@ const TEMPLATES = Object.freeze({
               d.observed_snapshot::text AS collection_id, ${SEEN_AT} AS seen_at,
               (SELECT max(ps.completed_at) FROM snapshot ps
                 WHERE ps.tenant_ref = d.tenant_ref AND ps.status = 'complete' AND ps.completed_at < ${SEEN_AT}) AS window_from,
-              COALESCE(d.after_payload->>'displayName', d.before_payload->>'displayName') AS display_name,
+              COALESCE(${objectNameSql('d.after_payload', 'd.resource_type')}, ${objectNameSql('d.before_payload', 'd.resource_type')}) AS display_name,
               (SELECT p.action FROM disposition p WHERE p.drift_id = d.id ORDER BY p.decided_at DESC, p.id DESC LIMIT 1) AS decision
          FROM drift d
          LEFT JOIN snapshot os ON os.id = d.observed_snapshot AND os.tenant_ref = d.tenant_ref

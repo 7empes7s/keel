@@ -1162,8 +1162,20 @@ being triggered by queue updates.
     be missing every setting, so it is not written; ...". Nothing is written.
   - Unmeasured: the per-template settings read inside the collector, and every write below.
 - Needs: /opt/keel-live at the #487 merge or later (`grep -q "definitionValues@odata.context" /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 11:48 UTC). **#487 works: administrative template create and update both promoted**, with every setting and value restored. The re-run after the create plans another create (**#485**). B = **22fbc27**. Restorer only; global admin not used; nothing assigned.
+  1. Fixture `KEEL-RT-admx` (Edge machine "Configure the home page URL" enabled = `https://example.com`; "Show Home button on toolbar" disabled). S = `6e1af5cd`: read `complete` (2).
+     **Backup check passes:** the fixture's `definitionValues` holds 2 settings, each with `definition.id`. The home page setting has 1 presentation value `https://example.com` with `presentation.id` set; the disabled one has an empty list.
+  2. Old-backup refusal: dry run `f7ce142b` from Q114's `c468ba6c`: skipped, status `refused`, 0 writes. Reason: "manual: this backup was taken before the template's settings were read on their own, and may be missing every setting, so it is not written; take a new backup, or recreate the template by hand from th…" (truncated at 200 characters).
+  3. (Run second, see the note.) Create: deleted the template. Dry run `81bc4595`, approval **d56f79e2**, job `19ae9ec9`: `create | succeeded`. Read-back: description, home page enabled with `https://example.com`, Show Home button disabled. **Promoted.**
+  4. (Run first.) Update: description `drift`, home page value `https://drifted.example`, and added "Hide the First-run experience and splash screen" enabled. Dry run `02d96bb8`, approval **845bc3ba**, job `25d92222`:
+     `update | succeeded`. Read-back: description back, home page `https://example.com`, the extra setting **gone**. **Promoted.**
+     - The dry-run plan listed only `description` as changed; the setting and value changes were written by the after-write step but are not shown in the plan.
+  5. Re-run (`35ced8bb` from S, after the create): plans **another create** (no targetId: description, displayName, roleScopeTagIds), because of #485.
+     - Note: I ran the update round before the create round. After a create from S, an update from S would plan a duplicate create (#485).
+  6. Cleanup: deleted the recreated template; no KEEL-RT template is left. **Nothing left.**
+  7. Evidence: `claude/live-evidence-admin-templates` @ **27bd63f6**. pseudonymize check exit 0; my scan is clean.
+     `live evidence groupPolicyConfiguration.create.json: fixture-tested -> live-qualified`; `... .update.json: fixture-tested -> live-qualified`.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67 and Q114. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used; it holds
   DeviceManagementConfiguration.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing.

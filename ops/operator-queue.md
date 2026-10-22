@@ -1077,7 +1077,7 @@ being triggered by queue updates.
   eDiscovery Manager, so the workload is no longer `pending-prerequisite` and retention labels are collected. No grant involved.
 - Needs: /opt/keel-live at the #481 merge or later
   (`grep -c "'eDiscovery Manager'" /opt/keel-live/engine/collect/workloadContract.mjs` prints 0).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** reads only. The run sends only the declared `Get-` cmdlets with the collector credential. No grants, no role
   or config changes. Never touch CA policies, break-glass or Marouane's account.

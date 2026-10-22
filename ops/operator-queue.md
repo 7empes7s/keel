@@ -7772,8 +7772,14 @@ item that needs it stays untouched.
   module never returned. PR #532 stops declaring the retired and Sdn* ones, reads `LineUri` (not `LineURI`), and adds
   `digest.unknownFields` to the Teams runs.
 - Needs: /opt/keel-live at the #532 merge or later (`grep -q LineUri /opt/keel-live/engine/collect/workloads/teamsExtended.mjs`).
-- Status: in-progress
-- Result:
+- Status: done
+- Result: done (2026-10-22 22:59 UTC). **#532 works: both Teams policy backups are `complete`, with no unknown fields.** B = **03139ab**. Collector reads only.
+  - `keel-workload-collect.mjs run` by hand (exit 1, from other workloads' partials): teams-org-policies `complete`, teams-voice-policies `complete`, 0 new changes each.
+    ```
+     teams-org-policies   | complete | 2026-10-22 22:59:41.148982+00 | {"observed": 630}  | {} | []
+     teams-voice-policies | complete | 2026-10-22 22:59:09.476575+00 | {"observed": 2601} | {} | []
+    ```
+    (Voice observed rose from 2497 to 2601: LineUri is now read for the 104 user assignments.)
 - **Tenant:** Collector reads only (the normal scheduled Teams reads). Nothing is written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. After the next scheduled collect that runs both Teams workloads (or one `keel-workload-collect.mjs run`), report:

@@ -1,24 +1,19 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { Icon, type IconName } from "@/components/shell/icons";
+import { SitesTable } from "@/components/sites-table";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
+import { Badge } from "@/components/ui/badge";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import {
-  appName, partProblem, rolesLabel, siteAddress, siteLine, siteName,
-  type PermissionPart, type SitePermissions, type SitePermissionsData, type SitesRun,
+  appName, appStatus, backupStatus, backupWords, externalStatus, peopleStatus, roleLabel, rolesLabel, siteAddress,
+  tenantSharingWords, type SitePermissions, type SitePermissionsData, type SiteStatus, type SitesContentRun, type SitesRun,
 } from "@/lib/site-permissions-view";
 
-// Gap 2 of the site permissions audit: each SharePoint site's stored permissions. The
-// list answers "which sites let which apps in"; a site's own page names each grant.
-// Site, app and grant ids sit under Technical details.
-
-function ReadTime({ run, now }: { run: SitesRun; now: string }) {
-  return (
-    <span className="result-count">
-      <time dateTime={run.observedTo} title={formatTimestamp(run.observedTo)}>read {ago(run.observedTo, now)}</time>
-    </span>
-  );
-}
+// The Sites pages. The list is a compact table (components/sites-table.tsx) with
+// problems first; a site's page leads with four status tiles (backup, apps, guests,
+// owners), then compact tables of owners, groups and apps. Ids sit under Technical details.
 
 function NewerRead({ latest, now }: { latest: SitesRun | null; now: string }) {
   if (!latest) return null;
@@ -26,34 +21,30 @@ function NewerRead({ latest, now }: { latest: SitesRun | null; now: string }) {
   return <p className="action-error">{`The newest SharePoint read ${what} ${ago(latest.observedTo, now)}, so what is shown may be out of date.`}</p>;
 }
 
+function ReadNote({ run, contentRun, now }: { run: SitesRun; contentRun: SitesContentRun | null | undefined; now: string }) {
+  return (
+    <p className="st-footnote">
+      Sites and app access are read every day (last <time dateTime={run.observedTo} title={formatTimestamp(run.observedTo)}>{ago(run.observedTo, now)}</time>).
+      {" "}Backup, owners, groups and guests come from the nightly backup{contentRun ? <> (last <time dateTime={contentRun.completedAt} title={formatTimestamp(contentRun.completedAt)}>{ago(contentRun.completedAt, now)}</time>)</> : " (not run yet)"}.
+    </p>
+  );
+}
+
 export function SiteList({ data }: { data: SitePermissionsData }) {
   const { run, sites } = data;
+  const sharing = tenantSharingWords(data.tenantSharing);
   return (
-    <section aria-labelledby="sites-heading" className="report-section">
-      <div className="section-heading-row report-heading">
-        <div>
-          <p className="section-kicker">SharePoint</p>
-          <h2 id="sites-heading">Sites</h2>
-        </div>
-        {run ? <ReadTime now={data.generatedAt} run={run} /> : null}
-      </div>
+    <section aria-label="Sites" className="st-page">
       <NewerRead latest={data.latest} now={data.generatedAt} />
       {run?.capped ? <p className="action-error">{`The read stops after ${sites.length.toLocaleString("en-GB")} sites, so sites beyond that are not listed.`}</p> : null}
+      {data.contentRun?.namePrefix ? (
+        <p className="st-note" data-tone="soon" role="note"><Icon name="alert" /><span>The backup only takes sites whose names start with <b>{data.contentRun.namePrefix}</b>. Other sites are listed but not backed up.</span></p>
+      ) : null}
       {!run ? <p className="empty-state">No SharePoint read has stored any sites yet. Sites appear here after the daily SharePoint read.</p> : null}
       {run && !sites.length ? <p className="empty-state">The last read found no sites.</p> : null}
-      {sites.length ? (
-        <ul className="item-list site-list">
-          {sites.map((site) => (
-            <li className="item-card site-card" key={site.siteId}>
-              <div className="item-card-head">
-                <Link className="text-link" href={`/sites/${encodeURIComponent(site.siteId)}`}><strong>{siteName(site)}</strong></Link>
-              </div>
-              {siteAddress(site) ? <p className="field-help site-address">{siteAddress(site)}</p> : null}
-              <p className="site-line">{siteLine(site)}</p>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      {sites.length ? <SitesTable now={data.generatedAt} run={data.contentRun ?? null} sites={sites} /> : null}
+      {sharing ? <p className="st-footnote"><Icon name="link" /> Sharing allowed across the tenant: <b>{sharing}</b>.</p> : null}
+      {run ? <ReadNote contentRun={data.contentRun} now={data.generatedAt} run={run} /> : null}
       {run ? (
         <TechnicalDetails>
           <RecordField label="SharePoint read" value={run.id} />
@@ -74,139 +65,126 @@ export function SiteList({ data }: { data: SitePermissionsData }) {
   );
 }
 
-function PartSection<T>({ id, kicker, title, part, what, children }: {
-  id: string;
-  kicker: string;
-  title: string;
-  part: PermissionPart<T>;
-  what: string;
-  children: (entries: T[]) => ReactNode;
-}) {
-  const problem = partProblem(part.status, what);
+function StatusTile({ icon, title, status, value, children }: { icon: IconName; title: string; status: SiteStatus; value?: ReactNode; children?: ReactNode }) {
   return (
-    <section aria-labelledby={id} className="report-section">
-      <div className="section-heading-row report-heading">
-        <div>
-          <p className="section-kicker">{kicker}</p>
-          <h2 id={id}>{title}</h2>
-        </div>
-        {part.entries ? <span className="result-count">{part.entries.length.toLocaleString("en-GB")}</span> : null}
-      </div>
-      {problem ? <p className={part.status === "not-read" ? "empty-state" : "action-error"}>{problem}</p> : null}
-      {part.entries && !part.entries.length ? <p className="empty-state">{`No ${what} on this site.`}</p> : null}
-      {part.entries?.length ? children(part.entries) : null}
-      {part.httpStatus !== null ? (
-        <TechnicalDetails>
-          <RecordField copy={false} label="Read status" value={part.status} />
-          <RecordField copy={false} label="Microsoft answered (HTTP status)" value={part.httpStatus} />
-        </TechnicalDetails>
+    <div className="st-status" data-tone={status.tone}>
+      <span className="st-status-label"><Icon name={icon} />{title}</span>
+      <span className="st-status-value"><Badge tone={status.tone}>{status.label}</Badge>{value}</span>
+      {status.detail ? <p>{status.detail}</p> : null}
+      {children}
+      {status.fix ? <Link className="btn btn-sm" href={status.fix.href}><Icon name="settings" />{status.fix.label}</Link> : null}
+      {status.error ? (
+        <details className="st-error">
+          <summary>Show the error</summary>
+          <p>{status.error}</p>
+        </details>
       ) : null}
-    </section>
+    </div>
   );
 }
 
-export function SiteDetail({ site, run, latest, now }: { site: SitePermissions; run: SitesRun; latest: SitesRun | null; now: string }) {
+const plainRole = (role: string) => roleLabel(role);
+
+export function SiteDetail({ site, run, latest, now, contentRun = null, tenantSharing = null }: {
+  site: SitePermissions;
+  run: SitesRun;
+  latest: SitesRun | null;
+  now: string;
+  contentRun?: SitesContentRun | null;
+  tenantSharing?: string | null;
+}) {
+  const backup = backupStatus(site, contentRun);
+  const apps = appStatus(site);
+  const people = peopleStatus(site, contentRun);
+  const external = externalStatus(site) ?? { ...people, key: "unknown", detail: people.key === "pending" ? "Guests and sharing links are read with the nightly backup." : people.detail, fix: null, error: null };
+  const held = backupWords(site);
+  const sharing = tenantSharingWords(tenantSharing);
+  const grants = site.appGrants.entries ?? [];
+  const summary = site.people;
   return (
-    <>
+    <div className="st-page">
       <Link className="text-link back-link" href="/sites"><span aria-hidden="true">←</span> All sites</Link>
       <NewerRead latest={latest} now={now} />
-      <PartSection id="site-apps-heading" kicker="Apps" part={site.appGrants} title="Apps with access" what="app grants">
-        {(grants) => (
-          <ul className="item-list">
-            {grants.map((grant, index) => (
-              <li className="item-card" key={grant.id ?? index}>
-                <div className="item-card-head"><strong>{appName(grant)}</strong></div>
-                <p className="site-line">{rolesLabel(grant.roles)}</p>
-                <TechnicalDetails>
-                  <RecordField label="Grant" value={grant.id} />
-                  {grant.applications.map((application, position) => (
-                    <RecordField key={application.id ?? position} label="App" value={application.id} />
-                  ))}
-                  <RecordField copy={false} label="Roles as stored" value={grant.roles.length ? grant.roles : null} />
-                </TechnicalDetails>
-              </li>
-            ))}
-          </ul>
-        )}
-      </PartSection>
-      {site.groups.status === "not-read" && site.roleAssignments.status === "not-read" ? (
-        <section aria-labelledby="site-people-heading" className="report-section">
-          <div className="section-heading-row report-heading">
-            <div>
-              <p className="section-kicker">People</p>
-              <h2 id="site-people-heading">SharePoint groups and roles</h2>
-            </div>
+      <section aria-label="This site at a glance" className="st-statuses">
+        <StatusTile icon="backup" status={backup} title="Backup" value={backup.at ? <small><time dateTime={backup.at} title={formatTimestamp(backup.at)}>{ago(backup.at, now)}</time></small> : null}>
+          {held ? <p className="st-status-fact">Holds {held}</p> : null}
+        </StatusTile>
+        <StatusTile icon="link" status={apps} title="Apps with access" />
+        <StatusTile icon="person" status={external} title="Guests and sharing">
+          {sharing ? <p className="st-status-fact">Tenant allows sharing with: {sharing}</p> : null}
+        </StatusTile>
+        <StatusTile icon="person" status={people} title="Owners">
+          {summary?.owners.length ? <p className="st-status-fact">{summary.owners.slice(0, 3).join(", ")}{summary.ownerCount > 3 ? ` and ${summary.ownerCount - 3} more` : ""}</p> : null}
+        </StatusTile>
+      </section>
+
+      {summary && summary.groups.length ? (
+        <section aria-labelledby="site-groups-heading" className="st-section">
+          <h2 id="site-groups-heading">Groups <span className="result-count">{summary.groups.length}</span></h2>
+          {summary.inherits ? <p className="st-footnote">This site takes its access from its parent site, so the access levels below are the parent&apos;s.</p> : null}
+          <div className="st-scroll">
+            <table className="st-table st-table-small">
+              <thead><tr><th scope="col">Group</th><th scope="col">Access</th><th scope="col">Members</th></tr></thead>
+              <tbody>
+                {summary.groups.map((group, index) => (
+                  <tr key={`${group.name}-${index}`}>
+                    <th data-label="Group" scope="row">{group.name ?? "A group with no name"}</th>
+                    <td data-label="Access">{group.roles === null ? <span className="st-unknown">From the parent site</span> : group.roles.length ? group.roles.map(plainRole).join(", ") : <span className="st-unknown">No access of its own</span>}</td>
+                    <td data-label="Members">{group.members === null ? <span className="st-unknown">Not read</span> : group.members.toLocaleString("en-GB")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <p className="field-help">KEEL does not read this site&apos;s SharePoint groups or the roles given to people yet. They will show here once it does.</p>
+          {summary.uniqueLists ? <p className="st-footnote">{summary.uniqueLists === 1 ? "1 list or library has" : `${summary.uniqueLists} lists or libraries have`} its own access, different from the site&apos;s.</p> : null}
         </section>
-      ) : <>
-        <PartSection id="site-groups-heading" kicker="People" part={site.groups} title="SharePoint groups" what="SharePoint groups">
-          {(groups) => (
-            <ul className="item-list">
-              {groups.map((group, index) => (
-                <li className="item-card" key={group.id ?? index}>
-                  <div className="item-card-head"><strong>{group.name ?? "A group with no name"}</strong></div>
-                  <p className="site-line">
-                    {rolesLabel(group.roles)}
-                    {group.members !== null ? ` · ${group.members.toLocaleString("en-GB")} ${group.members === 1 ? "member" : "members"}` : null}
-                  </p>
-                  {group.id ? (
-                    <TechnicalDetails>
-                      <RecordField label="Group" value={group.id} />
-                      <RecordField copy={false} label="Roles as stored" value={group.roles.length ? group.roles : null} />
-                      <RecordField copy={false} label="Members" value={group.members} />
-                    </TechnicalDetails>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </PartSection>
-        <PartSection id="site-roles-heading" kicker="People" part={site.roleAssignments} title="Roles given on this site" what="role assignments">
-          {(assignments) => (
-            <ul className="item-list">
-              {assignments.map((assignment, index) => (
-                <li className="item-card" key={assignment.id ?? index}>
-                  <div className="item-card-head"><strong>{assignment.name ?? "Someone KEEL could not name"}</strong></div>
-                  <p className="site-line">{rolesLabel(assignment.roles)}</p>
-                  {assignment.id ? (
-                    <TechnicalDetails>
-                      <RecordField label="Assignment" value={assignment.id} />
-                      <RecordField copy={false} label="Kind" value={assignment.kind} />
-                      <RecordField copy={false} label="Roles as stored" value={assignment.roles.length ? assignment.roles : null} />
-                    </TechnicalDetails>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </PartSection>
-      </>}
-      <section aria-labelledby="site-record-heading" className="report-section">
-        <div className="section-heading-row report-heading">
-          <div>
-            <p className="section-kicker">Read</p>
-            <h2 id="site-record-heading">Where this comes from</h2>
+      ) : null}
+
+      {grants.length ? (
+        <section aria-labelledby="site-apps-heading" className="st-section">
+          <h2 id="site-apps-heading">Apps with access <span className="result-count">{grants.length}</span></h2>
+          <div className="st-scroll">
+            <table className="st-table st-table-small">
+              <thead><tr><th scope="col">App</th><th scope="col">Access</th></tr></thead>
+              <tbody>
+                {grants.map((grant, index) => {
+                  const full = grant.roles.some((role) => ["fullcontrol", "owner"].includes(role.toLowerCase()));
+                  return (
+                    <tr data-tone={full ? "soon" : undefined} key={grant.id ?? index}>
+                      <th data-label="App" scope="row">{appName(grant)}</th>
+                      <td data-label="Access">{full ? <Badge tone="soon">{rolesLabel(grant.roles)}</Badge> : rolesLabel(grant.roles)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-          <ReadTime now={now} run={run} />
-        </div>
-        <p>KEEL reads site permissions from Microsoft once a day and keeps each read. Restoring app access to a site is a step done by hand.</p>
-        <TechnicalDetails>
-          <RecordField label="Site" value={site.siteId} />
-          <RecordField label="Web address" value={site.webUrl} />
-          <RecordField copy={false} label="Name as stored" value={site.displayName} />
-          <RecordField label="SharePoint read" value={run.id} />
-          <RecordField copy={false} label="Read outcome" value={run.outcome} />
-          <RecordField copy={false} label="Read finished" value={run.observedTo} />
-          {([["App grants", site.appGrants], ["SharePoint groups", site.groups], ["Role assignments", site.roleAssignments]] as const).map(([title, part]) => (
-            <RecordGroup key={title} note={part.status} title={title}>
-              <RecordField copy={false} label="Read status" value={part.status} />
-              <RecordField copy={false} label="Microsoft answered (HTTP status)" value={part.httpStatus} />
-              <RecordField copy={false} label="Entries" value={part.entries?.length ?? null} />
+        </section>
+      ) : null}
+
+      <ReadNote contentRun={contentRun} now={now} run={run} />
+      <TechnicalDetails>
+        <RecordField label="Site" value={site.siteId} />
+        <RecordField label="Web address" value={site.webUrl ?? siteAddress(site)} />
+        <RecordField copy={false} label="Name as stored" value={site.displayName} />
+        <RecordField label="SharePoint read" value={run.id} />
+        <RecordField copy={false} label="Read outcome" value={run.outcome} />
+        <RecordField copy={false} label="Read finished" value={run.observedTo} />
+        <RecordGroup note={site.appGrants.status} title="App grants">
+          <RecordField copy={false} label="Read status" value={site.appGrants.status} />
+          <RecordField copy={false} label="Microsoft answered (HTTP status)" value={site.appGrants.httpStatus} />
+          <RecordField copy={false} label="Entries" value={site.appGrants.entries?.length ?? null} />
+          {grants.map((grant, index) => (
+            <RecordGroup key={grant.id ?? index} title={appName(grant)}>
+              <RecordField label="Grant" value={grant.id} />
+              {grant.applications.map((application, position) => (
+                <RecordField key={application.id ?? position} label="App" value={application.id} />
+              ))}
+              <RecordField copy={false} label="Roles as stored" value={grant.roles.length ? grant.roles : null} />
             </RecordGroup>
           ))}
-        </TechnicalDetails>
-      </section>
-    </>
+        </RecordGroup>
+      </TechnicalDetails>
+    </div>
   );
 }

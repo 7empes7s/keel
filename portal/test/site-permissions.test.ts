@@ -9,7 +9,8 @@ import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { SiteDetail, SiteList } from "@/components/site-permissions";
 import { loadSitePermissions } from "@/lib/site-permissions";
 import {
-  roleLabel, siteLine, siteVerdict, sitePermissionsFrom, sitesVerdict, type SitePermissionsData,
+  SITE_TILES, appStatus, backupStatus, externalStatus, peopleStatus, roleLabel, siteVerdict, sitePermissionsFrom, sitesInOrder, sitesVerdict,
+  tenantSharingWords, type PeopleSummary, type SitePermissions, type SitePermissionsData, type SitesContentRun,
 } from "@/lib/site-permissions-view";
 
 const TENANT = "site-permissions-portal-test";
@@ -36,7 +37,7 @@ test("the loader reads the newest stored read of this tenant, one site or all, a
   try {
     await client.query(schemaSql());
     const now = new Date("2026-10-15T12:00:00.000Z");
-    assert.deepEqual(await loadSitePermissions(client, { tenantRef: TENANT, now }), { generatedAt: now.toISOString(), run: null, latest: null, sites: [] });
+    assert.deepEqual(await loadSitePermissions(client, { tenantRef: TENANT, now }), { generatedAt: now.toISOString(), run: null, latest: null, sites: [], contentRun: null, tenantSharing: null });
 
     await recordSharePointRun(client, { tenantRef: TENANT, result: run("2026-10-13T02:00:00.000Z", "complete", [site(FINANCE, "Finance", [])]) });
     const grant = { id: "aTowaS50fG1zLnNwLmV4dGVybmFs", roles: ["write"], applications: [{ id: PAYROLL_APP, displayName: "Payroll connector" }] };
@@ -57,7 +58,10 @@ test("the loader reads the newest stored read of this tenant, one site or all, a
     assert.deepEqual(data.sites.map((entry) => entry.displayName), ["Archive", "Finance"]);
     assert.deepEqual(data.sites[1].appGrants, { status: "observed", httpStatus: null, entries: [grant] });
     assert.deepEqual(data.sites[0].appGrants, { status: "denied", httpStatus: 403, entries: null });
-    assert.equal(data.sites[1].groups.status, "not-read");
+    // No content backup yet: nothing held and nobody known.
+    assert.equal(data.sites[1].backup, null);
+    assert.equal(data.sites[1].people, null);
+    assert.equal(data.contentRun, null);
 
     const one = await loadSitePermissions(client, { tenantRef: TENANT, siteId: FINANCE, now });
     assert.deepEqual(one.sites.map((entry) => entry.siteId), [FINANCE]);
@@ -75,73 +79,174 @@ test("the loader reads the newest stored read of this tenant, one site or all, a
   }
 });
 
-const NOW = "2026-10-15T12:00:00.000Z";
-const RUN = { id: "c0110000-0000-4000-8000-0000000000c1", outcome: "complete" as const, observedTo: "2026-10-15T02:00:00.000Z" };
-const FINANCE_SITE = sitePermissionsFrom(`site:${FINANCE}`, {
-  displayName: "Finance", webUrl: `https://${HOST}/sites/finance`,
-  appPermissionGrants: [
-    { id: "g1", roles: ["fullcontrol"], applications: [{ id: PAYROLL_APP, displayName: "Payroll connector" }] },
-    { id: "g2", roles: ["read"], applications: [{ id: "a0a00000-0000-4000-8000-0000000000a2", displayName: null }] },
-  ],
-}, { appPermissionGrants: observed("sharepoint.site-permissions") });
+test("the loader joins each site's nightly backup: items, size, last stored, owners and groups, and the tenant's sharing", async () => {
+  const database = await createIsolatedTestDatabase(import.meta.url);
+  const client = await database.connect();
+  try {
+    await client.query(schemaSql());
+    const now = new Date("2026-10-15T12:00:00.000Z");
+    const result = run("2026-10-15T02:00:00.000Z", "complete", [site(FINANCE, "Finance", []), site(ARCHIVE, "Archive", [])]);
+    result.tenant = { fields: { sharingCapability: "ExternalUserSharingOnly" }, fieldCoverage: { sharingCapability: { status: "observed", operation: "sharepoint.tenant-settings" } } } as never;
+    await recordSharePointRun(client, { tenantRef: TENANT, result });
+    const item = (container: string, itemKey: string, version: string, bytes: number, at: string, metadata: unknown = {}) => client.query(
+      `INSERT INTO content_item (tenant_ref, workload, container, item_key, version, metadata, sha256, bytes, chunks, key_id, created_at)
+       VALUES ($1, 'sharepoint-sites', $2, $3, $4, $5, $6, $7, '[]'::jsonb, 'k1', $8)`,
+      [TENANT, container, itemKey, version, metadata, "a".repeat(64), bytes, at],
+    );
+    const summary = { v: 1, inherits: false, groups: [{ name: "Finance Owners", members: 2, roles: ["Full Control"] }], owners: ["Amara Okafor", "Dev Patel"], ownerCount: 2, admins: 1, people: 7, guests: 1, sharingLinks: 2, directRoles: 0, uniqueLists: 1 };
+    await item(`site:${FINANCE}`, "site", "v1", 1000, "2026-10-14T01:00:00Z");
+    await item(`site:${FINANCE}`, "site", "v2", 1100, "2026-10-15T01:00:00Z");
+    await item(`site:${FINANCE}`, "site/permissions", "p1", 500, "2026-10-14T01:00:00Z", { contentType: "application/json", summary: { ...summary, ownerCount: 0, owners: [] } });
+    await item(`site:${FINANCE}`, "site/permissions", "p2", 500, "2026-10-15T01:02:00Z", { contentType: "application/json", summary });
+    // Another workload's and another tenant's rows are not counted.
+    await client.query(`INSERT INTO content_item (tenant_ref, workload, container, item_key, version, sha256, bytes, chunks, key_id) VALUES ($1, 'teams', $2, 'x', 'v', $3, 99, '[]'::jsonb, 'k1')`, [TENANT, `site:${FINANCE}`, "b".repeat(64)]);
+    await client.query(`INSERT INTO content_item (tenant_ref, workload, container, item_key, version, sha256, bytes, chunks, key_id) VALUES ('other', 'sharepoint-sites', $1, 'x', 'v', $2, 99, '[]'::jsonb, 'k1')`, [`site:${ARCHIVE}`, "c".repeat(64)]);
+    await client.query(
+      `INSERT INTO content_run (tenant_ref, workload, outcome, items, bytes, reasons, name_prefix, started_at, completed_at)
+       VALUES ($1, 'sharepoint-sites', 'partial', 4, 3100, $2, 'Fin', '2026-10-15T01:00:00Z', '2026-10-15T01:30:00Z')`,
+      [TENANT, JSON.stringify(["Finance: 1 part(s) not fully read, first permissions: denied (403)"])],
+    );
 
-test("each site's permissions read in words, with groups and roles marked as not read yet", () => {
-  assert.equal(roleLabel("fullcontrol"), "Full control");
-  assert.equal(roleLabel("write"), "Read and write");
-  assert.equal(roleLabel("limitedAccess"), "Limited access");
-  assert.equal(siteLine(FINANCE_SITE), "2 apps have access · groups and roles not read yet");
-  assert.deepEqual(siteVerdict(FINANCE_SITE), { text: "2 apps have access to this site; 1 has full control.", tone: "attention" });
+    const data = await loadSitePermissions(client, { tenantRef: TENANT, now });
+    assert.equal(data.tenantSharing, "ExternalUserSharingOnly");
+    assert.deepEqual(data.contentRun, { outcome: "partial", completedAt: "2026-10-15T01:30:00.000Z", namePrefix: "Fin", reasons: ["Finance: 1 part(s) not fully read, first permissions: denied (403)"] });
+    const [archive, finance] = data.sites;
+    assert.equal(archive.backup, null);
+    assert.deepEqual(finance.backup, { items: 2, bytes: 3100, lastStoredAt: "2026-10-15T01:02:00.000Z" });
+    // The newest summary wins.
+    assert.equal(finance.people?.ownerCount, 2);
+    assert.deepEqual(finance.people?.owners, ["Amara Okafor", "Dev Patel"]);
+    assert.equal(finance.people?.readAt, "2026-10-15T01:02:00.000Z");
+    // Outside the name filter: not backed up.
+    assert.equal(backupStatus(archive, data.contentRun).key, "outside");
+    assert.equal(backupStatus(finance, data.contentRun).key, "partial");
 
-  const denied = sitePermissionsFrom(`site:${ARCHIVE}`, { displayName: "Archive" }, { appPermissionGrants: { status: "denied", httpStatus: 403 } });
-  assert.equal(siteLine(denied), "App access unknown · groups and roles not read yet");
-  assert.deepEqual(siteVerdict(denied), { text: "App access to this site could not be read.", tone: "attention" });
-
-  // Once the SharePoint read stores groups and role assignments, they show without a portal change.
-  const withGroups = sitePermissionsFrom(`site:${ARCHIVE}`, {
-    displayName: "Archive", appPermissionGrants: [],
-    siteGroups: [{ id: 3, title: "Archive Owners", roles: ["fullcontrol"], members: [{}, {}] }],
-    roleAssignments: [{ id: 7, principal: { displayName: "Amara Okafor", kind: "user" }, roles: ["read"] }],
-  }, { appPermissionGrants: observed("x"), siteGroups: observed("y"), roleAssignments: observed("z") });
-  assert.deepEqual(withGroups.groups.entries, [{ id: "3", name: "Archive Owners", roles: ["fullcontrol"], members: 2 }]);
-  assert.deepEqual(withGroups.roleAssignments.entries, [{ id: "7", name: "Amara Okafor", kind: "user", roles: ["read"] }]);
-  assert.equal(siteLine(withGroups), "No app access · 1 group, 1 role given");
-  assert.deepEqual(siteVerdict(withGroups), { text: "No app has been given access to this site.", tone: "good" });
-});
-
-test("the verdict never hides a failed, switched-off or unread SharePoint read", () => {
-  const base: SitePermissionsData = { generatedAt: NOW, run: null, latest: null, sites: [] };
-  assert.deepEqual(sitesVerdict(base), { text: "KEEL has not read site permissions yet.", tone: "attention" });
-  assert.equal(sitesVerdict({ ...base, latest: { ...RUN, outcome: "disabled" } }).tone, "attention");
-  assert.deepEqual(sitesVerdict({ ...base, latest: { ...RUN, outcome: "failed" } }), { text: "The last SharePoint read failed, so site permissions are unknown.", tone: "critical" });
-  assert.deepEqual(sitesVerdict({ ...base, run: RUN, sites: [FINANCE_SITE] }), { text: "1 site read; 1 has apps with access.", tone: "good" });
-  assert.deepEqual(sitesVerdict({ ...base, run: { ...RUN, capped: true }, sites: [FINANCE_SITE] }), { text: "Only the first 1 site was read; the read stops there, so other sites are missing.", tone: "attention" });
-  assert.equal(sitesVerdict({ ...base, run: RUN, sites: [FINANCE_SITE], latest: { ...RUN, id: "x", outcome: "failed" } }).tone, "attention");
-  for (const data of [base, { ...base, run: RUN, sites: [FINANCE_SITE] }]) {
-    assert.ok(sitesVerdict(data).text.split(/\s+/).length <= 25);
+    const one = await loadSitePermissions(client, { tenantRef: TENANT, siteId: FINANCE, now });
+    assert.deepEqual(one.sites.map((entry) => entry.siteId), [FINANCE]);
+    assert.equal(one.sites[0].backup?.items, 2);
+    assert.equal(one.tenantSharing, "ExternalUserSharingOnly");
+  } finally {
+    await client.end();
+    await database.cleanup();
   }
 });
 
-test("ids stay under Technical details, and every site links to its own page", () => {
-  const list = renderToStaticMarkup(createElement(SiteList, { data: { generatedAt: NOW, run: RUN, latest: null, sites: [FINANCE_SITE] } }));
+const NOW = "2026-10-15T12:00:00.000Z";
+const RUN = { id: "c0110000-0000-4000-8000-0000000000c1", outcome: "complete" as const, observedTo: "2026-10-15T02:00:00.000Z" };
+const NIGHTLY: SitesContentRun = { outcome: "succeeded", completedAt: "2026-10-15T01:30:00.000Z", namePrefix: null, reasons: [] };
+const PEOPLE: PeopleSummary = {
+  inherits: false, groups: [{ name: "Finance Owners", members: 1, roles: ["Full Control"] }, { name: "Finance Members", members: 5, roles: ["Edit"] }],
+  owners: ["Amara Okafor"], ownerCount: 1, people: 6, guests: 0, sharingLinks: 0, uniqueLists: 0, readAt: "2026-10-15T01:10:00.000Z",
+};
+const HELD = { items: 1200, bytes: 5 * 1024 * 1024, lastStoredAt: "2026-10-15T01:10:00.000Z" };
+const FINANCE_SITE: SitePermissions = {
+  ...sitePermissionsFrom(`site:${FINANCE}`, {
+    displayName: "Finance", webUrl: `https://${HOST}/sites/finance`,
+    appPermissionGrants: [
+      { id: "g1", roles: ["fullcontrol"], applications: [{ id: PAYROLL_APP, displayName: "Payroll connector" }] },
+      { id: "g2", roles: ["read"], applications: [{ id: "a0a00000-0000-4000-8000-0000000000a2", displayName: null }] },
+    ],
+  }, { appPermissionGrants: observed("sharepoint.site-permissions") }),
+  backup: HELD, people: PEOPLE,
+};
+const QUIET: SitePermissions = {
+  ...sitePermissionsFrom(`site:${ARCHIVE}`, { displayName: "Archive", appPermissionGrants: [] }, { appPermissionGrants: observed("x") }),
+  backup: HELD, people: PEOPLE,
+};
+
+test("each site's backup, apps, owners and guests read as badges, problems first", () => {
+  assert.equal(roleLabel("fullcontrol"), "Full control");
+  assert.equal(roleLabel("Full Control"), "Full control");
+  assert.equal(roleLabel("limitedAccess"), "Limited access");
+  assert.deepEqual(backupStatus(QUIET, NIGHTLY), { key: "ok", label: "Backed up", tone: "fine", at: NIGHTLY.completedAt, detail: null });
+  assert.equal(backupStatus({ ...QUIET, backup: null }, null).key, "none");
+  assert.equal(backupStatus(QUIET, { ...NIGHTLY, outcome: "failed", reasons: ["site discovery: 500"] }).tone, "urgent");
+  assert.equal(backupStatus(QUIET, { ...NIGHTLY, namePrefix: "KEEL-RT-" }).key, "outside");
+  assert.equal(backupStatus({ ...QUIET, name: "keel-rt-archive" }, { ...NIGHTLY, namePrefix: "KEEL-RT-" }).key, "ok");
+
+  assert.deepEqual(appStatus(QUIET), { key: "none", label: "No apps", tone: "fine", detail: "No app has been given access to this site." });
+  assert.equal(appStatus(FINANCE_SITE).label, "2 apps, 1 full control");
+  assert.equal(appStatus(FINANCE_SITE).tone, "soon");
+  const denied = sitePermissionsFrom(`site:${ARCHIVE}`, { displayName: "Archive" }, { appPermissionGrants: { status: "denied", httpStatus: 403 } });
+  assert.equal(appStatus(denied).key, "unknown");
+
+  assert.equal(peopleStatus(QUIET, NIGHTLY).label, "1 owner");
+  assert.equal(peopleStatus({ ...QUIET, people: { ...PEOPLE, owners: [], ownerCount: 0 } }, NIGHTLY).key, "no-owner");
+  assert.equal(peopleStatus({ ...QUIET, people: null }, NIGHTLY).key, "pending");
+  // A refused permissions read names the grant and links to where it is fixed.
+  const refused = peopleStatus({ ...QUIET, people: null }, { ...NIGHTLY, reasons: ["Archive: 1 part(s) not fully read, first permissions: denied (403)"] });
+  assert.equal(refused.key, "denied");
+  assert.match(refused.detail ?? "", /Sites\.FullControl\.All/);
+  assert.deepEqual(refused.fix, { label: "Check app permissions", href: "/setup" });
+
+  assert.equal(externalStatus({ ...QUIET, people: null }), null);
+  assert.equal(externalStatus(QUIET)?.label, "No guests");
+  assert.equal(externalStatus({ ...QUIET, people: { ...PEOPLE, guests: 2, sharingLinks: 1 } })?.label, "2 guests");
+  assert.equal(externalStatus({ ...QUIET, people: { ...PEOPLE, sharingLinks: 3 } })?.label, "3 sharing links");
+  assert.equal(tenantSharingWords("ExternalUserSharingOnly"), "Guests who sign in");
+
+  // Problems first: no owner, then not backed up / full-control apps, then the quiet ones.
+  const orphan = { ...QUIET, siteId: "o", displayName: "Zeta", people: { ...PEOPLE, ownerCount: 0, owners: [] } };
+  assert.deepEqual(sitesInOrder([QUIET, FINANCE_SITE, orphan], NIGHTLY).map((entry) => entry.displayName), ["Zeta", "Finance", "Archive"]);
+  const tile = (key: string) => SITE_TILES.find((entry) => entry.key === key)!;
+  assert.ok(tile("no-owner").test(orphan, NIGHTLY));
+  assert.ok(tile("apps").test(FINANCE_SITE, NIGHTLY));
+  assert.ok(!tile("attention").test(QUIET, NIGHTLY));
+});
+
+test("the verdicts lead with problems and are green only when nothing needs a person", () => {
+  const base: SitePermissionsData = { generatedAt: NOW, run: null, latest: null, sites: [] };
+  assert.deepEqual(sitesVerdict(base), { text: "KEEL has not read your SharePoint sites yet.", tone: "attention" });
+  assert.equal(sitesVerdict({ ...base, latest: { ...RUN, outcome: "disabled" } }).tone, "attention");
+  assert.equal(sitesVerdict({ ...base, latest: { ...RUN, outcome: "failed" } }).tone, "critical");
+  const good = { ...base, run: RUN, sites: [QUIET, FINANCE_SITE], contentRun: NIGHTLY };
+  assert.deepEqual(sitesVerdict(good), { text: "All 2 sites are backed up and owned; 1 has apps with access.", tone: "good" });
+  assert.deepEqual(sitesVerdict({ ...good, contentRun: { ...NIGHTLY, namePrefix: "KEEL-RT-" } }), { text: "2 sites are not backed up.", tone: "attention" });
+  const orphan = { ...QUIET, people: { ...PEOPLE, ownerCount: 0, owners: [] } };
+  assert.equal(sitesVerdict({ ...good, sites: [orphan] }).text, "1 site has no owner.");
+  assert.equal(sitesVerdict({ ...good, sites: [orphan] }).tone, "critical");
+  assert.equal(sitesVerdict({ ...good, contentRun: { ...NIGHTLY, outcome: "failed" } }).tone, "critical");
+  assert.equal(sitesVerdict({ ...good, run: { ...RUN, capped: true } }).tone, "attention");
+
+  assert.deepEqual(siteVerdict(QUIET, NIGHTLY), { text: "Backed up and owned, with no guests and no apps. Nothing needs you here.", tone: "good" });
+  assert.deepEqual(siteVerdict(FINANCE_SITE, NIGHTLY), { text: "1 app has full control.", tone: "attention" });
+  assert.equal(siteVerdict({ ...QUIET, people: null }, NIGHTLY).tone, "attention");
+  assert.equal(siteVerdict(orphan, NIGHTLY).tone, "critical");
+  for (const data of [base, good]) assert.ok(sitesVerdict(data).text.split(/\s+/).length <= 25);
+});
+
+test("the list is a table that links each site; a site's page shows status tiles and compact tables, ids only in Technical details", () => {
+  const data: SitePermissionsData = { generatedAt: NOW, run: RUN, latest: null, sites: [FINANCE_SITE, QUIET], contentRun: NIGHTLY, tenantSharing: "ExternalUserSharingOnly" };
+  const list = renderToStaticMarkup(createElement(SiteList, { data }));
+  assert.match(list, /<table[^>]*aria-label="Sites"/);
   assert.ok(list.includes(`href="/sites/${HOST}%2C11111111-1111-4111-8111-111111111111%2C22222222-2222-4222-8222-222222222222"`));
-  assert.match(list, /read 10 hours ago/);
-  const detail = renderToStaticMarkup(createElement(SiteDetail, { site: FINANCE_SITE, run: RUN, latest: null, now: NOW }));
+  assert.match(list, /Backed up/);
+  assert.match(list, /1,200 items · 5\.0 MB/);
+  assert.match(list, /Amara Okafor/);
+  assert.match(list, /Guests who sign in/);
+  assert.doesNotMatch(list, /not read yet/);
+
+  const detail = renderToStaticMarkup(createElement(SiteDetail, { site: FINANCE_SITE, run: RUN, latest: null, now: NOW, contentRun: NIGHTLY, tenantSharing: null }));
+  for (const tile of ["Backup", "Apps with access", "Guests and sharing", "Owners"]) assert.match(detail, new RegExp(`st-status-label[^>]*>.*?${tile}`));
   assert.match(detail, /Payroll connector/);
   assert.match(detail, /Full control/);
   assert.match(detail, /An app with no name/);
-  assert.match(detail, /KEEL does not read this site&#x27;s SharePoint groups or the roles given to people yet\./);
+  assert.match(detail, /Finance Members/);
+  // No empty panels: a site with no apps has no apps table.
+  const quiet = renderToStaticMarkup(createElement(SiteDetail, { site: QUIET, run: RUN, latest: null, now: NOW, contentRun: NIGHTLY }));
+  assert.doesNotMatch(quiet, /site-apps-heading/);
+  assert.doesNotMatch(quiet, /No app grants on this site/);
   // Every id is inside a record (Technical details) block.
   const outside = detail.replace(/<details class="technical-details" data-layer="record">[\s\S]*?<\/details>/g, "");
   assert.doesNotMatch(outside, /[0-9a-f]{8}-[0-9a-f]{4}-/);
   assert.match(detail, new RegExp(PAYROLL_APP));
 
-  const read = sitePermissionsFrom(`site:${ARCHIVE}`, {
-    displayName: "Archive", siteGroups: [{ id: 3, title: "Archive Owners", roles: ["fullcontrol"], members: [{}] }],
-  }, { appPermissionGrants: { status: "failed" }, siteGroups: observed("y") });
-  const people = renderToStaticMarkup(createElement(SiteDetail, { site: read, run: RUN, latest: { ...RUN, id: "n", outcome: "failed" }, now: NOW }));
-  assert.match(people, /Reading app grants failed\./);
-  assert.match(people, /Archive Owners/);
-  assert.match(people, /Full control · 1 member/);
-  assert.match(people, /KEEL does not read role assignments yet\./);
-  assert.match(people, /The newest SharePoint read failed 10 hours ago/);
+  const refused = renderToStaticMarkup(createElement(SiteDetail, {
+    site: { ...QUIET, people: null }, run: RUN, latest: { ...RUN, id: "n", outcome: "failed" }, now: NOW,
+    contentRun: { ...NIGHTLY, outcome: "partial", reasons: ["Archive: 1 part(s) not fully read, first permissions: denied (HTTP 403)"] },
+  }));
+  assert.match(refused, /Not allowed/);
+  assert.match(refused, /href="\/setup"/);
+  assert.match(refused, /Show the error/);
+  assert.match(refused, /The newest SharePoint read failed 10 hours ago/);
 });

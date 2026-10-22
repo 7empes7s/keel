@@ -2,7 +2,7 @@ import { CompareForm, type QuickPick } from "@/components/baselines/compare-form
 import { ChangedFieldList, ChangedValuesStyles } from "@/components/changed-values";
 import { BaselinesStyles } from "@/components/baselines/styles";
 import { Icon } from "@/components/shell/icons";
-import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { RecordCompare, RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
 import {
   CHANGE_WORDS, bytesWords, containerWords, contentItemWords, countsWords, differenceTotals, notComparedSentence,
   sideWords, workloadLabel, workloadNotComparedSentence,
@@ -31,7 +31,7 @@ const CSS = `
 .compare-section { display: grid; gap: var(--space-sm); }
 .compare-section h3 { margin: var(--space-sm) 0 0; font-size: 0.9375rem; }
 .compare-kind { display: grid; gap: var(--space-xs); }
-.compare-kind-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-xs) var(--space-sm); margin: var(--space-xs) 0 0; color: var(--text-soft); font-size: 0.75rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; }
+.compare-kind-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-xs) var(--space-sm); margin: var(--space-xs) 0 0; color: var(--text-soft); font-size: 0.75rem; font-weight: 650; }
 .compare-kind-heading small { font-size: 0.8125rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
 .compare-group { border: 1px solid var(--line); border-radius: 0.5rem; background: var(--surface); }
 .compare-group > summary { cursor: pointer; padding: var(--space-sm) var(--space-md); display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-md); justify-content: space-between; }
@@ -237,7 +237,7 @@ function FieldRecords({ fields, prefix }: { fields?: CompareField[]; prefix?: st
   return (
     <>
       {(fields ?? []).map((field) => (
-        <RecordField copy={false} key={`${prefix ?? ""}#${field.path}`} label={`Field ${field.path}`} usage={prefix} value={{ kind: field.kind, before: field.before, after: field.after } as RecordValue} />
+        <RecordCompare after={field.kind === "removed" ? undefined : field.after} before={field.kind === "added" ? undefined : field.before} key={`${prefix ?? ""}#${field.path}`} label={`Field ${field.path}`} sides={{ before: "Earlier backup", after: "Later backup" }} />
       ))}
     </>
   );

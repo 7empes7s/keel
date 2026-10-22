@@ -20,6 +20,7 @@ import { getActiveBaseline, listOpenDrift, recordDrift } from '../engine/store/g
 import { diffSnapshots } from '../engine/govern/diffSnapshots.mjs';
 import { isSuppressed } from '../engine/govern/disposition.mjs';
 import { syncDriftAlerts } from '../engine/notify/alerts.mjs';
+import { runComplianceChecks } from '../engine/benchmarks/runChecks.mjs';
 
 function usage() {
   console.log(`usage:
@@ -132,6 +133,18 @@ async function detect() {
   if (!tenantRef) throw new Error('--tenant-ref is required with --snapshot-id');
   const client = await connect(dbUrl());
   try {
+    // The Compliance page's control checks run after each backup, before drift and
+    // whether or not a baseline is active. They read Keel's own database only. A
+    // failed check is reported here and never holds back drift detection.
+    if (suppliedSnapshotId) {
+      try {
+        const checks = await runComplianceChecks(client, { tenantRef, actor: 'scheduler' });
+        console.log(`compliance checks: ${checks.checked} run (${checks.pass} pass, ${checks.fail} fail, ${checks.unknown} could not check)`);
+      } catch (error) {
+        console.error(`compliance checks failed: ${error?.message ?? error}`);
+      }
+    }
+
     const baseline = await getActiveBaseline(client, { tenantRef });
     if (!baseline) throw new Error(`no active baseline for ${tenantRef}`);
 

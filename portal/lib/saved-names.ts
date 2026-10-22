@@ -1,5 +1,6 @@
 // The name each saved setting carries, read from the tenant's most recent backup that
 // holds one. The job page uses it so follow-ups and undo items never show a bare id.
+import { objectNameSql } from "../../engine/cir/objectName.mjs";
 import { DERIVED_NAME_TYPES, derivedName, edgeKeyType, type IdNames, NO_ID_NAMES, referencedIds } from "@/lib/app-names";
 import { holdsObjectId, type NamedKeys, namedSubject } from "@/lib/job-names";
 import type { ChangeRef } from "@/lib/sentences";
@@ -8,8 +9,7 @@ interface QueryClient {
   query(sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }>;
 }
 
-const NAME_FIELDS = ["displayName", "name", "title", "userPrincipalName", "mail", "subject"];
-const NAME_SQL = `COALESCE(${NAME_FIELDS.map((field) => `NULLIF(rv.payload->>'${field}', '')`).join(", ")})`;
+const NAME_SQL = objectNameSql("rv.payload", "rv.resource_type");
 
 /** Every key, and each side of a relationship edge ("parent|family|target"). */
 export function keysToName(keys: (string | null | undefined)[]): string[] {
@@ -64,13 +64,22 @@ export async function savedNames(client: QueryClient, tenantRef: string, keys: (
 
 // At most this many ids are looked up per page load; the rest stay unnamed (bounded).
 const MAX_LOOKUP_IDS = 5000;
-const LOOKUP_TYPES = ["servicePrincipal", "application", "user"];
+// What settings point to by id: apps and people, plus the groups, admin roles, scopes,
+// access packages and partner organizations that role assignments, access package
+// assignments and cross-tenant settings name (lib/app-names.ts).
+const LOOKUP_TYPES = [
+  "servicePrincipal", "application", "user", "group", "administrativeUnit",
+  "roleDefinition", "directoryRole", "directoryRoleTemplate", "deviceManagementRoleDefinition",
+  "exchangeRoleDefinition", "exchangeCustomAppScope", "defenderRoleDefinition", "defenderCustomAppScope",
+  "accessPackage", "accessPackageCatalog", "crossTenantIdentitySyncPolicyPartner",
+];
 
 /**
  * Names for the apps, people and app roles that settings point to by id, from the
  * tenant's newest backup that holds enterprise apps (or from the backup given, when a
  * page shows one backup). An app is found by its object id
- * or its app id (the enterprise app's name first), an app role by its id in an
+ * or its app id (the enterprise app's name first), an admin role by its id or template
+ * id, a partner organization by its tenant id, an app role by its id in an
  * enterprise app's appRoles. A failed read leaves them unnamed, never the page down.
  */
 export async function idNames(client: QueryClient, tenantRef: string, ids: string[], roleIds: string[] = [], snapshotId: string | null = null): Promise<IdNames> {
@@ -86,7 +95,10 @@ export async function idNames(client: QueryClient, tenantRef: string, ids: strin
             AND EXISTS (SELECT 1 FROM resource_version r WHERE r.snapshot_id = s.id AND r.resource_type = 'servicePrincipal')
           ORDER BY s.started_at DESC LIMIT 1
        )
-       SELECT rv.resource_type, lower(rv.payload->>'id') AS id, lower(rv.payload->>'appId') AS app_id, ${NAME_SQL} AS name,
+       SELECT rv.resource_type, lower(rv.payload->>'id') AS id, lower(rv.payload->>'appId') AS app_id,
+              lower(COALESCE(rv.payload->>'templateId', rv.payload->>'roleTemplateId')) AS template_id,
+              CASE WHEN rv.resource_type = 'crossTenantIdentitySyncPolicyPartner' THEN lower(rv.payload->>'tenantId') END AS tenant_id,
+              ${NAME_SQL} AS name,
               CASE WHEN rv.resource_type = 'servicePrincipal' AND jsonb_typeof(rv.payload->'appRoles') = 'array'
                    THEN rv.payload->'appRoles' END AS roles
          FROM resource_version rv
@@ -94,6 +106,8 @@ export async function idNames(client: QueryClient, tenantRef: string, ids: strin
           AND rv.resource_type = ANY($4::text[])
           AND (lower(rv.payload->>'id') = ANY($2::text[])
             OR lower(rv.payload->>'appId') = ANY($2::text[])
+            OR lower(COALESCE(rv.payload->>'templateId', rv.payload->>'roleTemplateId')) = ANY($2::text[])
+            OR (rv.resource_type = 'crossTenantIdentitySyncPolicyPartner' AND lower(rv.payload->>'tenantId') = ANY($2::text[]))
             OR (rv.resource_type = 'servicePrincipal' AND jsonb_typeof(rv.payload->'appRoles') = 'array'
                 AND EXISTS (SELECT 1 FROM jsonb_array_elements(rv.payload->'appRoles') role WHERE lower(role->>'id') = ANY($3::text[]))))
         ORDER BY (rv.resource_type = 'servicePrincipal') DESC`,
@@ -109,7 +123,7 @@ export async function idNames(client: QueryClient, tenantRef: string, ids: strin
   for (const row of rows) {
     const name = typeof row.name === "string" ? row.name.trim() : "";
     if (name && !holdsObjectId(name)) {
-      for (const id of [row.id, row.app_id]) {
+      for (const id of [row.id, row.app_id, row.template_id, row.tenant_id]) {
         if (typeof id === "string" && id && !(id in found)) found[id] = name;
       }
     }

@@ -5,6 +5,7 @@
 import { createHash } from 'node:crypto';
 
 export const GRAPH_APP_ID = '00000003-0000-0000-c000-000000000000';
+export const EXCHANGE_APP_ID = '00000002-0000-0ff1-ce00-000000000000';
 export const TENANT_ID = '00000000-0000-0000-0000-0000000000c1';
 export const COLLECTOR_APP_ID = '11111111-1111-4111-8111-111111111111';
 export const RESTORER_APP_ID = '22222222-2222-4222-8222-222222222222';
@@ -16,7 +17,7 @@ const COLLECTOR_SCOPES = ['User.Read.All', 'Group.Read.All', 'RoleManagement.Rea
   'LifecycleWorkflows.Read.All', 'CustomSecAttributeDefinition.Read.All', 'Agreement.Read.All',
   'MultiTenantOrganization.Read.All', 'IdentityUserFlow.Read.All', 'APIConnectors.Read.All'];
 const RESTORER_SCOPES = ['Group.ReadWrite.All', 'Policy.ReadWrite.ConditionalAccess', 'RoleManagement.ReadWrite.Directory'];
-const ALL_SCOPES = [...new Set([...COLLECTOR_SCOPES, ...RESTORER_SCOPES, 'MailboxSettings.ReadWrite', 'Directory.ReadWrite.All'])];
+const ALL_SCOPES = [...new Set([...COLLECTOR_SCOPES, ...RESTORER_SCOPES, 'MailboxSettings.ReadWrite', 'Directory.ReadWrite.All', 'Channel.Create'])];
 
 const guid = (seed) => {
   const h = createHash('sha256').update(seed).digest('hex');
@@ -36,8 +37,11 @@ export const fakeGetToken = (tenantId = TENANT_ID) => async () => ({ accessToken
 export function fixtureTenant({
   collectorScopes = COLLECTOR_SCOPES, restorerScopes = RESTORER_SCOPES, restorerExtra = ['MailboxSettings.ReadWrite'],
   intuneAssigned = true, intuneReadable = true, operatorActive = false, operatorEligible = true,
+  // The restorer also holds Exchange Online's Exchange.ManageAsApp (another Microsoft API).
+  restorerExchange = false,
 } = {}) {
   const graphSp = { id: guid('graph-sp'), appId: GRAPH_APP_ID, appRoles: ALL_SCOPES.map((value) => ({ id: roleId(value), value, allowedMemberTypes: ['Application'] })) };
+  const exchangeSp = { id: guid('exchange-sp'), appId: EXCHANGE_APP_ID, appRoles: [{ id: roleId('Exchange.ManageAsApp'), value: 'Exchange.ManageAsApp', allowedMemberTypes: ['Application'] }] };
   const apps = new Map();
   const sps = new Map();
   const grants = new Map();
@@ -51,9 +55,13 @@ export function fixtureTenant({
   };
   register(COLLECTOR_APP_ID, 'KEEL Collector', COLLECTOR_SCOPES, collectorScopes);
   register(RESTORER_APP_ID, 'KEEL Restorer', [...RESTORER_SCOPES, ...restorerExtra], [...restorerScopes, ...restorerExtra]);
+  if (restorerExchange) {
+    const restorerSp = sps.get(RESTORER_APP_ID).id;
+    grants.get(restorerSp).push({ id: guid(`grant:${restorerSp}:exchange`), principalId: restorerSp, resourceId: exchangeSp.id, appRoleId: roleId('Exchange.ManageAsApp') });
+  }
   const collectorSp = sps.get(COLLECTOR_APP_ID).id;
   const state = {
-    graphSp, apps, sps, grants,
+    graphSp, exchangeSp, apps, sps, grants,
     directoryRoles: operatorActive ? [{ principalId: OPERATOR_ID, roleDefinitionId: PRIVILEGED_ROLE_ADMIN, directoryScopeId: '/' }] : [],
     eligibility: operatorEligible ? [{ principalId: OPERATOR_ID, roleDefinitionId: PRIVILEGED_ROLE_ADMIN }] : [],
     intune: { readable: intuneReadable, definitions: [{ id: 'rd-read-only-operator', displayName: 'Read Only Operator' }],
@@ -77,6 +85,7 @@ function route(state, method, url, body) {
   if (method === 'GET') {
     if ((match = /^\/servicePrincipals\(appId='([^']+)'\)$/.exec(path))) {
       if (match[1] === GRAPH_APP_ID) return json(200, pick(state.graphSp, select));
+      if (match[1] === EXCHANGE_APP_ID) return json(200, pick(state.exchangeSp, select));
       const sp = state.sps.get(match[1]);
       return sp ? json(200, pick(sp, select)) : notFound();
     }
@@ -85,6 +94,10 @@ function route(state, method, url, body) {
       return app ? json(200, pick(app, select)) : notFound();
     }
     if ((match = /^\/servicePrincipals\/([^/]+)\/appRoleAssignments$/.exec(path))) return json(200, { value: state.grants.get(match[1]) ?? [] });
+    if ((match = /^\/servicePrincipals\/([^/(]+)$/.exec(path))) {
+      const sp = [state.graphSp, state.exchangeSp].find((candidate) => candidate.id === match[1]);
+      return sp ? json(200, pick(sp, select)) : notFound();
+    }
     if ((match = /^\/servicePrincipals\/([^/]+)\/transitiveMemberOf\/microsoft\.graph\.group$/.exec(path))) {
       return json(200, { value: (state.intune.memberships[match[1]] ?? []).map((id) => ({ id })) });
     }

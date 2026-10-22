@@ -18,6 +18,7 @@ import {
   NOT_A_CERTIFICATION,
   NOT_RUN_YET,
   RESULTS,
+  STORAGE_UNSET_TODO,
   canGrantOn,
   complianceCounts,
   complianceVerdict,
@@ -28,6 +29,7 @@ import {
   grantLabel,
   immutabilitySentence,
   isResult,
+  lastChecked,
   orderFindings,
   ownerPerson,
   resultLine,
@@ -57,12 +59,15 @@ const TILES: { key: ControlResult; small: string }[] = [
   { key: "passing", small: "Met on the last check" },
 ];
 
-export function CompliancePage({ data, canConfigure, now = data.generatedAt }: {
+export function CompliancePage({ data, canConfigure, canCheck = false, now = data.generatedAt }: {
   data: ComplianceData;
   canConfigure: boolean;
+  // Holds `collect`, the permission that runs backups: offered "Check now".
+  canCheck?: boolean;
   now?: string;
 }) {
   const router = useRouter();
+  const check = useCheckNow(() => router.refresh());
   const view = useViewState();
   const pathname = usePathname() ?? "/benchmarks";
   const params = useSearchParams();
@@ -111,7 +116,12 @@ export function CompliancePage({ data, canConfigure, now = data.generatedAt }: {
     pushUrl(to);
   };
 
-  const verdictAction = canConfigure && failing.length === 1 && !granting.length ? { label: grantLabel(failing[0]), href: grantHref([failing[0].id]) } : null;
+  // Nothing checked yet: the one action is to check now (or, without the permission
+  // that runs backups, to see when they run).
+  const verdictAction = findings.length === 0
+    ? (canCheck ? { label: check.busy ? "Checking..." : "Check now", onClick: check.run, busy: check.busy } : { label: "See when backups run", href: "/schedules" })
+    : canConfigure && failing.length === 1 && !granting.length ? { label: grantLabel(failing[0]), href: grantHref([failing[0].id]) } : null;
+  const checkedWhen = lastChecked(findings, now);
 
   const groupings = useMemo<Grouping<ComplianceFinding>[]>(() => [
     { key: "service", label: "Service", groupsOf: (items) => groupBy(items, (item) => controlService(item).code, (_key, list) => { const service = controlService(list[0]); return { label: service.name, icon: service.icon, about: `${service.about} · ${controlsWord(list.length)}${worstWords(list)}` }; }, (key) => serviceOrder(key)) },
@@ -158,7 +168,8 @@ export function CompliancePage({ data, canConfigure, now = data.generatedAt }: {
           <span>
             {baseline ? <>Measured against <Link className="cp-inline-link" href="/baselines">{baseline.label ?? "the approved setup"}</Link>{baseline.capture?.capturedAt ? `, captured ${ago(baseline.capture.capturedAt, now)}` : ""}.</> : <>No approved setup is active. <Link className="cp-inline-link" href="/baselines">Approved setups</Link></>}
           </span>
-          <span>{NOT_RUN_YET}</span>
+          <span>{NOT_RUN_YET}{checkedWhen ? ` ${checkedWhen}` : ""}</span>
+          {canCheck && findings.length ? <CheckNowButton check={check} /> : null}
         </p>
 
         <section aria-label="Results at a glance" className="cp-tiles">
@@ -212,7 +223,10 @@ export function CompliancePage({ data, canConfigure, now = data.generatedAt }: {
             </p>
           ) : null}
           {findings.length === 0 ? (
-            <p className="sel-empty">No control has been checked on this tenant yet.</p>
+            <div className="sel-empty cp-empty">
+              <p>No control has been checked on this tenant yet.</p>
+              {canCheck ? <CheckNowButton check={check} /> : <Link className="btn btn-sm" href="/schedules"><Icon name="clock" />See when backups run</Link>}
+            </div>
           ) : shown.length === 0 ? (
             <p className="sel-empty">No control matches this filter.</p>
           ) : (
@@ -247,15 +261,20 @@ export function CompliancePage({ data, canConfigure, now = data.generatedAt }: {
           )}
         </section>
 
-        <div className="cp-storage">
+        <div className="cp-storage" data-tone={storage.configured ? undefined : "soon"}>
           <span aria-hidden="true" className="cp-storage-icon"><Icon name="cloud" /></span>
-          <p><b>{storageSentence(storage)}</b>{storage.configured ? ` ${immutabilitySentence(storage)}` : null}</p>
+          <p>
+            <b>{storageSentence(storage)}</b>{storage.configured ? ` ${immutabilitySentence(storage)}` : null}
+            {storage.configured ? null : <small className="cp-storage-todo">{STORAGE_UNSET_TODO}</small>}
+          </p>
+          {storage.configured ? null : <Link className="btn btn-sm" href="/resilience#storage"><Icon name="backup" />See backup storage</Link>}
           <span className="cp-help" tabIndex={0} title={NOT_A_CERTIFICATION}><Icon name="info" /><span className="visually-hidden">{NOT_A_CERTIFICATION}</span></span>
         </div>
 
         <TechnicalDetails summary="Technical details for these results">
           <RecordField copy={false} label="Read with" value="GET /api/evidence?kind=benchmark-evaluation,benchmark-exception" />
           <RecordField copy={false} label="Grant with" value="POST /api/actions/compliance/exception {evaluationId, owner, reason, expiresAt}" />
+          <RecordField copy={false} label="Check with" value="POST /api/actions/compliance/check (also runs after each backup)" />
           {baseline ? <RecordField label="Approved setup ID" value={baseline.id} /> : null}
           {findings.map((finding) => <FindingRecordFields finding={finding} key={finding.id} />)}
           <StorageRecordFields storage={storage} />
@@ -276,6 +295,41 @@ export function CompliancePage({ data, canConfigure, now = data.generatedAt }: {
         />
       ) : null}
     </div>
+  );
+}
+
+type CheckNow = { busy: boolean; run: () => void };
+
+/** "Check now": runs every control against the newest backups, then reloads the page's data. */
+function useCheckNow(onDone: () => void): CheckNow {
+  const [busy, setBusy] = useState(false);
+  async function run() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const response = await fetch("/api/actions/compliance/check", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      if (!response.ok) {
+        toast({ tone: "warning", title: "The check did not run", detail: response.status === 403 ? "You need the permission that runs backups." : "Try again in a moment." });
+        return;
+      }
+      const body = (await response.json()) as { checked: number; pass: number; fail: number; unknown: number };
+      const parts = [body.fail ? `${body.fail} failing` : null, body.unknown ? `${body.unknown} could not be checked` : null, body.pass ? `${body.pass} passing` : null].filter(Boolean);
+      toast({ tone: body.fail ? "warning" : undefined, title: `${controlsWord(body.checked)} checked`, detail: parts.join(", ") || undefined });
+      onDone();
+    } catch {
+      toast({ tone: "warning", title: "The check did not run", detail: "Keel could not be reached." });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return { busy, run: () => void run() };
+}
+
+function CheckNowButton({ check }: { check: CheckNow }) {
+  return (
+    <button aria-busy={check.busy || undefined} className="btn btn-sm" disabled={check.busy} onClick={check.run} type="button">
+      <Icon name="refresh" />{check.busy ? "Checking..." : "Check now"}
+    </button>
   );
 }
 

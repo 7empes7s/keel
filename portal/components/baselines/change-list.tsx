@@ -12,6 +12,7 @@ import { ChangeAttributionPanel } from "@/components/change-attribution";
 import { ConfirmSheet } from "@/components/incidents/confirm-sheet";
 import { ChangeEvidencePanel } from "@/components/decision-workbook";
 import { DriftDiff } from "@/components/drift-diff";
+import { type ListSort } from "@/components/list/list-paging";
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { SemanticDiff } from "@/components/semantic-diff";
@@ -30,6 +31,7 @@ import { applyFilters, pickedTiles, tileCounts, toggleTile } from "@/lib/filter-
 import { worstTone, type RiskTone } from "@/lib/menu-status";
 import { ago, BLAST_RADIUS_ORDER, formatTimestamp } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
+import { byRisk, byText, byTime } from "@/lib/paging";
 import { orderGroups, smartOrder } from "@/lib/selection";
 import { serviceFor, serviceOrder } from "@/lib/services";
 import { kindParts } from "@/lib/type-groups";
@@ -58,6 +60,12 @@ const RISK_ABOUT: Record<string, string> = {
   cosmetic: "Names, labels and descriptions: nobody gains or loses access",
 };
 
+// Order by: when it was found, risk, and name.
+const SORTS: ListSort<DriftRecord>[] = [
+  { key: "found", label: "When found", desc: true, compare: (a, b) => byTime(a.detectedAt, b.detectedAt) },
+  { key: "risk", label: "Risk", desc: true, compare: (a, b) => byRisk(toneOf(a), toneOf(b)) },
+  { key: "name", label: "Name", compare: (a, b) => byText(changeName(a), changeName(b)) },
+];
 const changeText = (item: DriftRecord) => `${changeName(item)} ${plainKind(item.resourceType)} ${typeName(item.resourceType)} ${changedBy(item) ?? ""}`.toLowerCase();
 
 const GROUPINGS: Grouping<DriftRecord>[] = [
@@ -254,6 +262,12 @@ export function ChangeList({
     ] : []),
   ];
 
+  // Picks stay picked while tiles, services, kinds and the find change the view, so
+  // someone can gather changes from several services and decide on them together.
+  const keepPicks = useMemo(() => ({ pool: open, groupOf: (item: DriftRecord) => {
+    const where = itemService(item);
+    return { key: where.code, label: where.name, icon: where.icon, rank: serviceOrder(where.code) };
+  } }), [open]);
   const waiting = open.filter((item) => item.serviceRead && isWaiting(item)).length;
   const tileLink = (key: string | null) => {
     const changes = { ...tileParams(key === null ? [] : toggleTile(tiles, picked, key)), open: null };
@@ -336,9 +350,11 @@ export function ChangeList({
             getId={(item) => item.id}
             groupings={GROUPINGS}
             items={shown}
+            keepPicks={keepPicks}
             label="Open changes"
             matches={(item, text) => changeText(item).includes(text.trim())}
             more={more}
+            sorts={SORTS}
             noun={{ one: "change", many: "changes" }}
             renderRow={(item) => {
               const who = changedBy(item);

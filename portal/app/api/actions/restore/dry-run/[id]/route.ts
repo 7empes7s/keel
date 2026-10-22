@@ -1,3 +1,4 @@
+import { objectNameSql } from "../../../../../../../engine/cir/objectName.mjs";
 import { getDryRunArtifact } from "../../../../../../../engine/restore/dryRunArtifact.mjs";
 import { contentEffectsDigest } from "../../../../../../../engine/safety/contentEffects.mjs";
 
@@ -66,7 +67,7 @@ const getDryRunArtifactRoute = guarded(
       const people = await principalRefs(client, [incident.override?.authorizedBy]);
       const keys = incident.postRestoreChecks.map((check) => check.naturalKey);
       const { rows: names } = keys.length ? await client.query(
-        `SELECT natural_key, payload->>'displayName' AS display_name FROM resource_version
+        `SELECT natural_key, ${objectNameSql("payload", "resource_type")} AS display_name FROM resource_version
           WHERE snapshot_id::text = $1 AND natural_key = ANY($2::text[])`,
         [artifact.snapshotId, keys],
       ) : { rows: [] };

@@ -56,6 +56,16 @@ function graphNativeAdapter(type) {
         };
       }
     }
+    // Restore gaps batch 13: a kind whose objects each hold one more collection
+    // (the apps an app protection policy covers) reads it per object.
+    // Issue #472: item reads run before child reads, so the children a child
+    // read walks can come from an item read (an administrative template's
+    // settings, which Graph leaves out of an $expand).
+    if (entry.itemReads && !result?.error && !result?.capped && Array.isArray(result?.items)) {
+      const extra = await withItemReads(reader, entry, result.items);
+      if (extra.error) return { entry, path, startedAt, completedAt: new Date(), items: [], pages: result.pages ?? null, status: extra.error.status ?? null, capped: false, error: extra.error };
+      result.pages = (Number.isSafeInteger(result.pages) ? result.pages : 0) + extra.pages;
+    }
     // Restore gaps batch 5: a kind whose objects hold children with one more
     // collection each (an administrative template's settings and their values)
     // reads that collection per child.
@@ -63,13 +73,6 @@ function graphNativeAdapter(type) {
       const children = await withChildReads(reader, entry, result.items);
       if (children.error) return { entry, path, startedAt, completedAt: new Date(), items: [], pages: result.pages ?? null, status: children.error.status ?? null, capped: false, error: children.error };
       result.pages = (Number.isSafeInteger(result.pages) ? result.pages : 0) + children.pages;
-    }
-    // Restore gaps batch 13: a kind whose objects each hold one more collection
-    // (the apps an app protection policy covers) reads it per object.
-    if (entry.itemReads && !result?.error && !result?.capped && Array.isArray(result?.items)) {
-      const extra = await withItemReads(reader, entry, result.items);
-      if (extra.error) return { entry, path, startedAt, completedAt: new Date(), items: [], pages: result.pages ?? null, status: extra.error.status ?? null, capped: false, error: extra.error };
-      result.pages = (Number.isSafeInteger(result.pages) ? result.pages : 0) + extra.pages;
     }
     const completedAt = new Date();
     // Issue #156: a type Graph answers with 404 when the tenant never set it

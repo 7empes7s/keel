@@ -574,6 +574,37 @@ test('an administrative template without its setting values, or with a setting t
   assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
 });
 
+test('issue #472: an administrative template backed up through $expand (which returns no settings) is never written, so its live settings are not wiped', async () => {
+  // The shape Q114 found: the expanded list came back empty, with Graph's annotation on it.
+  const expanded = {
+    ...template,
+    'definitionValues@odata.context': "https://graph.microsoft.com/beta/$metadata#deviceManagement/groupPolicyConfigurations('gp-src')/definitionValues(definition())",
+    definitionValues: [],
+  };
+  const path = `${TEMPLATE_PATH}/gp-1`;
+  const live = { id: 'gp-1', displayName: 'KEEL-RT-admx', description: 'Fixture', roleScopeTagIds: ['0'] };
+  const graph = idoFakeGraph({
+    seed: {
+      ...definitionsSeed('d-1'),
+      [path]: { ...live, definitionValues: [setting('d-1', true, [], 'live-1')] },
+      [`${path}/definitionValues/live-1`]: { id: 'live-1', presentationValues: [textValue('p-1', 'https://example.com')] },
+    },
+  });
+  for (const verb of ['create', 'update']) {
+    const result = await applyIntuneExtendedWrite(graph, resourceOf('groupPolicyConfiguration', expanded, {
+      ...(verb === 'update' ? { live: { state: 'present', targetId: 'gp-1', payload: live } } : {}),
+    }), verb, FAST);
+    assert.match(result.skipped?.reason ?? '', /^manual: this backup was taken before the template's settings were read on their own/, verb);
+  }
+  assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0, 'nothing written');
+
+  // A template backed up the new way with no settings carries no annotation and is written.
+  const empty = { ...template, definitionValues: [] };
+  const result = await applyIntuneExtendedWrite(idoFakeGraph(), resourceOf('groupPolicyConfiguration', empty), 'create', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(result.skipped, undefined);
+});
+
 // ------------------------------------------------------------------- delete
 
 // ------------------------------------------- restore gaps, batch 6

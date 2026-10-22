@@ -6975,3 +6975,30 @@ item that needs it stays untouched.
   and the other records (as Q107 step 3), the verification key loaded. Then set Q141 to `done` with a pointer to this item.
 - **Report:** as Q141 steps 5 and 6: import exit code, `imported` / `refused` / `absent`, `collectorRoles` verbatim, the
   `workload_ledger_grants` rows, and the run table with teams-org-policies and teams-voice-policies outcome and reasons.
+
+### Q148: Live re-check that a second dry run after a create plans no second create (fixes #485, after #502)
+- Drafted by the "Repeat restore duplicates Intune items" thread (2026-10-22), from your Q123 and Q135 finding **#485**. Code: PR #502. Fixture-tested only.
+  - **Change:** planning now reads the journal's creates for the target tenant and maps each backup key to the id its create recorded,
+    for every kind (not only Intune). A create that recorded no id adopts the one live object of that kind with the backup's name
+    (never one of two). Writers are unchanged (same as Q123 and Q135).
+- Needs: /opt/keel-live at the #502 merge or later (`grep -q loadCreatedTargetIds /opt/keel-live/engine/restore/rollbackJournal.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q123 and Q135. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. If Graph answers 403,
+  report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.
+  **Never write the default branding profile. Never assign any fixture to a group, user or device.**
+- **Fixtures:** Company Portal branding profile `KEEL-RT-branding` (not default) and reusable settings group `KEEL-RT-reusable`, as in Q123 and Q135.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Create both fixtures (or reuse them), then take snapshot S (a run that reads both types). Confirm both are in S.
+  2. **Create round:** delete both fixtures. Restore from S selecting both, approve, enforce. Expect both created; note each new id.
+  3. **Re-run check (the fix), same snapshot S, no change in between:** dry run from S selecting both. Expect **0 planned writes**
+     for both (noop, or `applied` with 0 fields and the new id as target). Report each planned verb, target id and reason.
+     A plan with an empty target id and every field is the #485 failure: stop, do not enforce, and report it.
+  4. **Drift on the recreated object:** change `KEEL-RT-branding`'s contact name. Dry run from S. Expect an **update** of the new id
+     (contact name only), not a create. Approve and enforce it; expect the contact name back. Then dry run from S once more: expect 0 writes.
+  5. Cleanup: delete every `KEEL-RT-branding*` profile and `KEEL-RT-reusable*` group. Report anything left (and any duplicate you find).
+  6. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-rerun-after-create`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; step 2 new ids; step 3 plan per type; step 4 plan and outcome; approval ids; the evidence branch and commit; anything left in the tenant.

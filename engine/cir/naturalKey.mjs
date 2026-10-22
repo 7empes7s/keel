@@ -68,6 +68,12 @@ export const ID_KEY_TYPES = new Set([
   // Remaining kinds, batch 7: Microsoft 365 settings. A connection's id is the
   // name its admin chose; simulation names are unmeasured.
   'externalConnection', 'simulationAutomation', 'attackSimulation',
+  // Remaining kinds, batch 8: the last readable kinds, keyed by id (names are
+  // unmeasured; a schema extension's id is the name its app chose).
+  'hardwareConfiguration', 'certificateBasedApplicationConfiguration', 'signInIdentifier', 'verifiedIdProfile',
+  'externalOriginResourceConnector', 'lifecyclePolicy', 'roleManagementCustomExtension', 'privilegedAccessGroupResource',
+  'crossTenantM365Capability', 'entitlementManagementRoleAssignment', 'deviceTemplate', 'securityZone', 'sharedEmailDomain',
+  'schemaExtension',
 ]);
 
 // Tenant singletons: exactly one object per tenant, so the type name is the

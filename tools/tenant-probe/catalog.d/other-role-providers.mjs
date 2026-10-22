@@ -7,8 +7,8 @@
 // No writer is built for any of them yet: the backup is a record to rebuild from.
 // None of these objects holds a secret.
 // Entitlement management roles are left out: Microsoft defines all of them
-// (discovery skips the path), and their assignments are only listed per role or
-// per person, which this family does not read yet.
+// (discovery skips the path). Their assignments are listed only per role, so
+// batch 8 reads them per role (last-leftovers.mjs).
 export default [
   // Exchange management roles. Microsoft's built-in roles are listed beside the
   // tenant's own; isBuiltIn tells them apart.

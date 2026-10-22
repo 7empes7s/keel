@@ -11,7 +11,8 @@
  * capped enumeration yields an accurate size with a sampled payload.
  *
  * `parent` marks a type read per parent object (wave 1 CAT-ENTRA): its `path`
- * holds `{parent}`, filled from `parent.key` of each object in the list at
+ * (or, for a list Graph only answers filtered, its `query`) holds `{parent}`,
+ * filled from `parent.key` of each object in the list at
  * `parent.path` (with `parent.select`/`parent.query`). Parents without
  * `parent.requires` are skipped, each object read is tagged with the key as
  * `parent.as`, and `childField` takes the objects from that field of each
@@ -39,6 +40,7 @@ import entraTenantSettings from './catalog.d/entra-tenant-settings.mjs';
 import otherRoleProviders from './catalog.d/other-role-providers.mjs';
 import intuneLeftovers from './catalog.d/intune-leftovers.mjs';
 import m365Settings from './catalog.d/m365-settings.mjs';
+import lastLeftovers from './catalog.d/last-leftovers.mjs';
 
 export const CATALOG = [
   ...tenant,
@@ -57,6 +59,7 @@ export const CATALOG = [
   ...otherRoleProviders,
   ...intuneLeftovers,
   ...m365Settings,
+  ...lastLeftovers,
 ];
 
 /** Directory object types whose ids other resources reference by GUID. */

@@ -56,6 +56,9 @@ test("the discovery sentences lead with the answer", () => {
   assert.equal(unreadableSentence({ reason: "refused-with-grant", missingGrant: null, grantSource: null }), "Not read: Microsoft refused it, although KEEL's app holds the permission this area usually needs.");
   assert.equal(discoveryHeadline({ ...DATA, summary: { ...DATA.summary, skipped: undefined } }), "Discovery found 53 types: 48 types backed up, 2 readable but not backed up yet, 1 KEEL cannot read.");
   assert.equal(skippedSentence({ reason: "microsoft-published" }), "Not backed up: Microsoft publishes the same list in every tenant.");
+  assert.equal(skippedSentence({ reason: "holds-secrets" }), "Not backed up: it holds passwords or codes KEEL does not store, and little else.");
+  assert.equal(skippedSentence({ reason: "retired" }), "Not backed up: it configures a product Microsoft retired or never shipped.");
+  assert.equal(skippedSentence({ reason: "other-tenant" }), "Not backed up: it only exists while another tenant or a partner takes part, so it is set up again with them.");
   assert.equal(unreadableSentence({ reason: "not-licensed", missingGrant: null, grantSource: null }), "Not read: the tenant is not licensed for it.");
 });
 

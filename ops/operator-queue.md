@@ -967,8 +967,11 @@ being triggered by queue updates.
   the portal shows them as "Partly done" and names each type. Exit 1 stays for runs that read nothing in full or crash. Health
   (`fullCoverage`) still fails while a type is missing.
 - Needs: PR #489 live (`grep -q PARTIAL_EXIT_CODE /opt/keel-live/cli/keel-worker.mjs`).
-- Status: in-progress
-- Result: in progress (2026-10-22 10:23 UTC). Step 3 is done; step 1 waits for the 11:00 UTC hourly collect (the first one on 755b069, which has #489). Collector reads only.
+- Status: done
+- Result: done (2026-10-22 11:17 UTC). The hourly collect is now **succeeded / partial**, with the one failed type named. Step 2 (portal) could not be done from this box. Collector reads only.
+  - Step 1 (11:00 UTC collect, the first at 755b069):
+    - `b5ca323c-1280-44cc-b8a7-834429048932 | succeeded | error NULL | 2026-10-22 11:03:11 | partial true | incomplete [{"type": "deviceManagementSettings", "outcome": "failed", "httpStatus": 400}] | drift queued`
+    - previous: `09a0b71c-3208-4da5-bf59-6ac8f58708db | failed | exit code 1 ... | 2026-10-22 10:02:03 | partial – | incomplete – | drift queued` (old build).
   - Step 3 (Collector token, one GET each, at 755b069):
     - `beta/deviceManagement`: **200**: id, settings, maximumDepTokens, intuneAccountId, lastReportAggregationDateTime, deviceComplianceReportSummarizationDateTime, legacyPcManangementEnabled, unlicensedAdminstratorsEnabled
     - `beta/deviceManagement?$select=id,settings`: **200**: id, settings

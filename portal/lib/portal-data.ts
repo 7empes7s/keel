@@ -24,6 +24,7 @@ import { MAX_ATTRIBUTED_CHANGES, attributeChanges, changedFields } from "../../e
 import { changeObjectIds } from "../../engine/identity/auditSources.mjs";
 import { loadBreakGlassReadiness } from "../../engine/safety/breakGlassReadiness.mjs";
 import { withoutScriptBodies } from "../../engine/safety/scriptBodies.mjs";
+import { changeBlastRadius, itemBlastRadius } from "../../engine/safety/blastRadius.mjs";
 import { comparedSettings, driftEvidence, semanticChange, summarizeSemanticDrift } from "../../engine/govern/semanticDrift.mjs";
 import { answerQuestion, knownEntities } from "../../engine/query/execute.mjs";
 import {
@@ -393,7 +394,8 @@ function normalizeDrift(raw: UnknownRecord): DriftRecord {
     naturalKey: String(raw.natural_key),
     resourceType,
     changeType: String(raw.change_type) as DriftRecord["changeType"],
-    blastRadius: String(raw.blast_radius),
+    // Conditional Access is rated by what the rule does, before and after the change.
+    blastRadius: String(changeBlastRadius(resourceType, raw.before_payload ?? null, raw.after_payload ?? null, raw.blast_radius)),
     detectedAt: iso(raw.detected_at) ?? "",
     before: withoutScriptBodies(resourceType, raw.before_payload ?? null),
     after: withoutScriptBodies(resourceType, raw.after_payload ?? null),
@@ -937,7 +939,8 @@ export async function getRestoreResources(
     };
     const { rows } = await queryClient.query(
       `SELECT rv.natural_key, rv.resource_type, rv.blast_radius, ${PAYLOAD_NAME_SQL} AS display_name,
-              CASE WHEN ${PAYLOAD_NAME_SQL} IS NULL AND rv.resource_type = ANY($3::text[]) THEN rv.payload END AS payload
+              CASE WHEN ${PAYLOAD_NAME_SQL} IS NULL AND rv.resource_type = ANY($3::text[]) THEN rv.payload END AS payload,
+              CASE WHEN rv.resource_type = 'conditionalAccessPolicy' THEN rv.payload END AS rated_payload
        FROM resource_version rv
        JOIN snapshot s ON s.id = rv.snapshot_id
        WHERE rv.snapshot_id = $1 AND s.tenant_ref = $2
@@ -957,7 +960,8 @@ export async function getRestoreResources(
       resources: rows.map((row) => ({
         naturalKey: String(row.natural_key),
         resourceType: String(row.resource_type),
-        blastRadius: String(row.blast_radius),
+        // Conditional Access is rated by what this backed-up rule does.
+        blastRadius: String(itemBlastRadius(String(row.resource_type), row.rated_payload ?? null, row.blast_radius)),
         service: typeInfo(String(row.resource_type)).service,
         name: row.display_name != null
           ? String(row.display_name)

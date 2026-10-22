@@ -28,9 +28,9 @@ by the reconciliation plan gets the same key as its snapshot.
 | authenticationMethodsPolicy | update | `PATCH /policies/authenticationMethodsPolicy` and `PATCH .../authenticationMethodConfigurations/{id}` | registration campaign, suspicious-activity reporting, system-preferred MFA, each method's configuration | yes | Policy.ReadWrite.AuthenticationMethod |
 | identitySecurityDefaultsEnforcementPolicy | update | `PATCH /policies/identitySecurityDefaultsEnforcementPolicy` | `isEnabled` | yes | Policy.ReadWrite.SecurityDefaults |
 | crossTenantAccessPolicy | update | `PATCH /policies/crossTenantAccessPolicy` | `allowedCloudEndpoints` | no | Policy.ReadWrite.CrossTenantAccess |
-| crossTenantAccessPolicyConfigurationDefault | update | `PATCH /policies/crossTenantAccessPolicy/default` | B2B collaboration and direct connect in/out, inbound trust, automatic consent, tenant restrictions, redemption order | no | Policy.ReadWrite.CrossTenantAccess |
-| crossTenantAccessPolicyPartner | create | `POST /policies/crossTenantAccessPolicy/partners` | `tenantId` plus the partner settings | no | Policy.ReadWrite.CrossTenantAccess |
-| crossTenantAccessPolicyPartner | update | `PATCH /policies/crossTenantAccessPolicy/partners/{tenantId}` | the partner settings | no | Policy.ReadWrite.CrossTenantAccess |
+| crossTenantAccessPolicyConfigurationDefault | update | `PATCH /policies/crossTenantAccessPolicy/default` | B2B collaboration and direct connect in/out, automatic consent, tenant restrictions, redemption order (never inbound trust) | no | Policy.ReadWrite.CrossTenantAccess |
+| crossTenantAccessPolicyPartner | create | `POST /policies/crossTenantAccessPolicy/partners` | `tenantId` plus the partner settings, never inbound trust | no | Policy.ReadWrite.CrossTenantAccess |
+| crossTenantAccessPolicyPartner | update | `PATCH /policies/crossTenantAccessPolicy/partners/{tenantId}` | the partner settings, never inbound trust | no | Policy.ReadWrite.CrossTenantAccess |
 | adminConsentRequestPolicy | update | `PUT /policies/adminConsentRequestPolicy` | every writable field (PUT replaces) | no | Policy.ReadWrite.ConsentRequest |
 
 Proof for all eight: `engine/roadmap/tenant-policy-fidelity.test.mjs`. None of

@@ -52,10 +52,22 @@ export const TENANT_POLICY_OPERATIONS_CONTRACT_VERSION = 1;
 const DOCS = 'https://learn.microsoft.com/en-us/graph/api';
 const PARTNERS = '/policies/crossTenantAccessPolicy/partners';
 
+/**
+ * The cross-tenant settings a restore may write on the default and on a
+ * partner. Inbound trust (whether this tenant accepts a partner's MFA and
+ * device claims) is never written, as for the partner configuration template
+ * (identityObjectOperations.mjs): a wrong value changes how external users
+ * pass Conditional Access, so a difference is left for a person to change.
+ */
 const CROSS_TENANT_SETTINGS = Object.freeze([
   'automaticUserConsentSettings', 'b2bCollaborationInbound', 'b2bCollaborationOutbound',
-  'b2bDirectConnectInbound', 'b2bDirectConnectOutbound', 'inboundTrust', 'tenantRestrictions',
+  'b2bDirectConnectInbound', 'b2bDirectConnectOutbound', 'tenantRestrictions',
 ]);
+
+const INBOUND_TRUST_TYPES = new Set(['crossTenantAccessPolicyConfigurationDefault', 'crossTenantAccessPolicyPartner']);
+const INBOUND_TRUST_PORTAL_PATH = 'Entra admin center > External Identities > Cross-tenant access settings';
+const INBOUND_TRUST_STEP = 'Inbound trust (accepting a partner tenant\'s MFA, compliant device or hybrid joined device claims) '
+  + `differs from the backup. A restore never changes it: review it in ${INBOUND_TRUST_PORTAL_PATH}, and change it by hand if needed.`;
 
 const record = (fields) => Object.freeze({ guard: null, requestHeaders: null, sendable: null, ...fields, writableFields: Object.freeze(fields.writableFields) });
 
@@ -88,6 +100,21 @@ export const BRANDING_NESTED_FIELDS = Object.freeze({
     'hidePrivacyAndCookies', 'hideResetItNow', 'hideTermsOfUse',
   ]),
 });
+
+/**
+ * The follow-up step when the backup's inbound trust differs from the live
+ * one (on a create: when the backup sets any inbound trust), otherwise null.
+ */
+export function inboundTrustCompletion(resource, verb) {
+  if (!INBOUND_TRUST_TYPES.has(resource?.resourceType) || resource.payload?.inboundTrust === undefined) return null;
+  const desired = comparable(resource.payload.inboundTrust ?? null) ?? null;
+  const live = verb === 'create' ? null : comparable(resource.live?.payload?.inboundTrust ?? null) ?? null;
+  const empty = (value) => value === null || (typeof value === 'object' && Object.keys(value).length === 0);
+  if ((empty(desired) && empty(live)) || isDeepStrictEqual(desired, live)) return null;
+  return Object.freeze({
+    kind: 'manual-setting', requirement: 'inboundTrust', portalPath: INBOUND_TRUST_PORTAL_PATH, description: INBOUND_TRUST_STEP,
+  });
+}
 
 const isEmpty = (value) => value === null || value === undefined || value === '';
 
@@ -572,6 +599,12 @@ export function tenantPolicyWriteRefusal(resource, verb, { lockoutGate = null, m
       if (mode === 'dry-run') return Object.freeze({ outcome: 'pending-approval', reason: `manual: ${reason}`, completion });
       return Object.freeze({ ...refusal('skipped', `manual: ${reason}`), completion });
     }
+  }
+  // Inbound trust is never written: when it is the only difference, the
+  // update is skipped with the step to change it by hand.
+  const inboundTrust = verb === 'update' ? inboundTrustCompletion(resource, verb) : null;
+  if (inboundTrust && changedFields(entry, resource.payload, resource.live.payload).length === 0) {
+    return Object.freeze({ ...refusal('skipped', `manual: ${INBOUND_TRUST_STEP}`), completion: inboundTrust });
   }
   if (entry.lockout) {
     if (!lockoutGate || typeof lockoutGate.evaluate !== 'function') {

@@ -227,11 +227,12 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Puts the list of allowed Microsoft clouds back.',
   }),
   crossTenantAccessPolicyConfigurationDefault: auto('Cross-tenant access defaults', {
-    keeps: 'Puts the default guest collaboration, direct connect and inbound trust settings back.',
+    keeps: 'Puts the default guest collaboration and direct connect settings back.',
+    todo: 'Inbound trust (accepting another tenant\'s MFA and device claims) is never changed by a restore. If it differs from the backup, change it by hand in Cross-tenant access settings.',
   }),
   crossTenantAccessPolicyPartner: auto('Cross-tenant access per organization', {
     keeps: 'Recreates partner organization settings and puts their settings back.',
-    todo: 'A partner tenant that no longer exists cannot be added. Removing extra partners is done by hand.',
+    todo: 'A partner tenant that no longer exists cannot be added. Removing extra partners is done by hand. Inbound trust is never changed by a restore; change it by hand if it differs.',
   }),
   deviceRegistrationPolicy: manual('Device join and registration settings', KEEL,
     'These settings decide who may join devices and whether joining needs MFA. A wrong write could stop admins joining devices or quietly drop the MFA requirement, so KEEL only backs them up.',

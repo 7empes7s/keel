@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 import { KEEL_PERMISSIONS } from "../../engine/bootstrap/permissionCatalog.mjs";
 import {
-  connectionAlerts, connectionGroups, connectionStatus, grantRows, grantSummary,
+  connectionAlerts, connectionGroups, connectionStatus, grantRows, grantsFromEarlierCheck, grantSummary,
   type Connection,
 } from "../lib/connections-view";
 import type { PermissionEntry } from "../lib/setup-view";
@@ -31,8 +31,11 @@ test("a state the page does not know is never shown as working or as a problem",
   assert.equal(status.problem, false);
 });
 
-test("a restorer switched off between restores is not a problem; a required app switched off is", () => {
+test("a restorer switched off between restores is not a problem; any other app switched off is", () => {
   assert.equal(connectionStatus(connection({ role: "settings-restorer", required: false, state: "switched-off" }), NOW).problem, false);
+  const content = connectionStatus(connection({ role: "content-reader", required: false, state: "switched-off" }), NOW);
+  assert.equal(content.tone, "soon");
+  assert.equal(content.problem, true);
   const required = connectionStatus(connection({ state: "switched-off" }), NOW);
   assert.equal(required.tone, "urgent");
   assert.equal(required.problem, true);
@@ -97,4 +100,11 @@ test("without a tenant read nothing is called missing or granted", () => {
   assert.ok(rows.every((row) => row.status === "not-checked"));
   assert.equal(grantSummary(rows), "2 not checked");
   assert.deepEqual(connectionAlerts([connection({ state: "not-checked", observed: null })], NOW), []);
+});
+
+test("grants kept from an earlier check are marked as such, never as a fresh read", () => {
+  const seen = (at: string) => connection({ observed: { ...connection({}).observed!, at } });
+  assert.equal(grantsFromEarlierCheck(seen("2026-10-02T09:38:00Z"), NOW), false);
+  assert.equal(grantsFromEarlierCheck(seen("2026-10-01T09:38:00Z"), NOW), true);
+  assert.equal(grantsFromEarlierCheck(connection({ observed: null }), NOW), false);
 });

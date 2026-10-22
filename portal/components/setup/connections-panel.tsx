@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Icon } from "@/components/shell/icons";
 import { Badge } from "@/components/ui/badge";
 import {
-  GRANT_LABELS, GRANT_TONES, connectionAlerts, connectionGroups, connectionStatus, grantRows, grantSummary,
+  GRANT_LABELS, GRANT_TONES, connectionAlerts, grantsFromEarlierCheck, connectionGroups, connectionStatus, grantRows, grantSummary,
   type Connection,
 } from "@/lib/connections-view";
 import { ago, formatTimestamp } from "@/lib/presentation";
@@ -28,12 +28,18 @@ export function ConnectionsPanel({ state }: { state: SetupState }) {
       </header>
       {connections === null
         ? <p className="su-cn-note"><Icon name="info" />Keel could not read its connections just now. Press Check again in a minute.</p>
-        : <ConnectionsBody catalog={catalog} connections={connections} now={state.generatedAt} />}
+        : <ConnectionsBody catalog={catalog} connections={connections} hasPermissions={catalog.length > 0} now={state.generatedAt} />}
     </section>
   );
 }
 
-function ConnectionsBody({ connections, catalog, now }: { connections: Connection[]; catalog: NonNullable<SetupState["permissions"]>["permissions"]; now: string }) {
+function ConnectionsBody({ connections, catalog, hasPermissions, now }: {
+  connections: Connection[];
+  catalog: NonNullable<SetupState["permissions"]>["permissions"];
+  // The Permissions table below is shown, so its link has somewhere to go.
+  hasPermissions: boolean;
+  now: string;
+}) {
   const alerts = connectionAlerts(connections, now);
   const groups = connectionGroups(connections, now);
   return <>
@@ -42,7 +48,7 @@ function ConnectionsBody({ connections, catalog, now }: { connections: Connectio
         <span aria-hidden="true" className="su-pp-alert-icon"><Icon name={alert.tone === "urgent" ? "x-circle" : "clock"} /></span>
         <div className="su-pp-alert-body">
           <p className="su-pp-alert-title">{alert.text}</p>
-          <p><a className="su-inline-link" href="#setup-permissions">See the permissions</a></p>
+          {hasPermissions ? <p><a className="su-inline-link" href="#setup-permissions">See the permissions</a></p> : null}
         </div>
       </div>
     ))}
@@ -53,7 +59,7 @@ function ConnectionsBody({ connections, catalog, now }: { connections: Connectio
           <small>{group.connections.length ? `${group.connections.length} · ${group.hint}` : group.hint}</small>
         </h3>
         {group.connections.length
-          ? <ul className="su-cn-list">{group.connections.map((connection) => <ConnectionRow catalog={catalog} connection={connection} key={connection.id} now={now} />)}</ul>
+          ? <ul className="su-cn-list">{group.connections.map((connection) => <ConnectionRow catalog={catalog} connection={connection} key={`${connection.id}:${connection.state}`} now={now} />)}</ul>
           : <p className="su-cn-empty">{group.empty}</p>}
       </div>
     ))}
@@ -64,8 +70,10 @@ function ConnectionRow({ connection, catalog, now }: { connection: Connection; c
   const status = connectionStatus(connection, now);
   const rows = grantRows(connection, catalog, PERMISSION_WORDS);
   const missing = rows.filter((row) => row.status === "missing").length;
-  // A row with something missing opens on its own; the rest open on request.
-  const [open, setOpen] = useState(missing > 0);
+  const earlier = grantsFromEarlierCheck(connection, now);
+  // A row with something missing opens on its own (keyed by state, so a new problem
+  // after Check again opens it too); the rest open on request.
+  const [open, setOpen] = useState(missing > 0 && !earlier);
   const panelId = `su-cn-grants-${connection.id}`;
   const ended = connection.credentialExpiresAt !== null && Date.parse(connection.credentialExpiresAt) <= Date.parse(now);
   return (
@@ -98,9 +106,10 @@ function ConnectionRow({ connection, catalog, now }: { connection: Connection; c
       </dl>
       {rows.length ? (
         <>
-          <button aria-controls={panelId} aria-expanded={open} className="su-cn-toggle" onClick={() => setOpen(!open)} type="button">
+          <button aria-controls={open ? panelId : undefined} aria-expanded={open} className="su-cn-toggle" onClick={() => setOpen(!open)} type="button">
             <Icon name={open ? "up" : "down"} />{open ? "Hide permissions" : "Show permissions"}
           </button>
+          {open && earlier ? <p className="su-cn-note"><Icon name="info" />From the check {ago(connection.observed!.at, now)}. Keel could not look again this time.</p> : null}
           {open ? (
             <table aria-label={`${connection.name}: wanted and granted`} className="su-cn-grants" id={panelId}>
               <thead>

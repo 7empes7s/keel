@@ -59,6 +59,9 @@ export function connectionGroup(connection: Connection): ConnectionGroupKey {
 const DAY = 86_400_000;
 const EXPIRY_DAYS = 30;
 
+// Apps Keel switches on only for an approved restore (DESIGN 3.2).
+const RESTORER_ROLES = new Set(["settings-restorer", "content-restorer"]);
+
 export interface ConnectionStatus {
   label: string;
   tone: BadgeTone;
@@ -80,10 +83,10 @@ export function connectionStatus(connection: Connection, now: string): Connectio
     case "not-created": return connection.required
       ? { label: "Not set up", tone: "urgent", rank: 0, problem: true }
       : { label: "Not set up", tone: "neutral", rank: 5, problem: false };
-    // Restorers are meant to be off between restores; a required app is not.
-    case "switched-off": return connection.required
-      ? { label: "Switched off", tone: "urgent", rank: 0, problem: true }
-      : { label: "Switched off", tone: "neutral", rank: 4, problem: false };
+    // Restorers are meant to be off between restores; any other app switched off stops working.
+    case "switched-off": return RESTORER_ROLES.has(connection.role)
+      ? { label: "Switched off", tone: "neutral", rank: 4, problem: false }
+      : { label: "Switched off", tone: connection.required ? "urgent" : "soon", rank: connection.required ? 0 : 1, problem: true };
     case "waiting-for-consent": return { label: "Waiting for approval", tone: "soon", rank: 1, problem: true };
     case "working":
       if (Number.isFinite(left) && left <= EXPIRY_DAYS * DAY) {
@@ -111,6 +114,16 @@ const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : 
  * The problems to show above the list, worst first, one sentence each. Certificate
  * expiry is left out: the sign-in warning at the top of Setup already says it.
  */
+/**
+ * True when the grants shown are from an earlier check. Setup records each app on every
+ * load, so a fresh read is stamped with about the page's own time; when Keel could not
+ * look, the last observation (and its older time) is kept.
+ */
+export function grantsFromEarlierCheck(connection: Connection, now: string): boolean {
+  if (!connection.observed) return false;
+  return Date.parse(now) - Date.parse(connection.observed.at) > 5 * 60_000;
+}
+
 export function connectionAlerts(connections: Connection[], now: string): { id: string; tone: "urgent" | "soon"; text: string }[] {
   const out: { id: string; tone: "urgent" | "soon"; text: string; rank: number }[] = [];
   for (const connection of connections) {
@@ -125,7 +138,7 @@ export function connectionAlerts(connections: Connection[], now: string): { id: 
     } else if (connection.state === "waiting-for-consent") {
       text = `${connection.name} is waiting for an administrator to approve it: ${feature(connection)} cannot run yet.`;
     } else if (connection.state === "not-created") {
-      text = `${connection.name} is not set up in your tenant: ${feature(connection)} cannot run.`;
+      text = `${connection.name} is not set up yet: ${feature(connection)} cannot run.`;
     } else if (connection.state === "switched-off") {
       text = `${connection.name} is switched off in your tenant: ${feature(connection)} have stopped.`;
     }

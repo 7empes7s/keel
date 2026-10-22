@@ -257,6 +257,9 @@ export interface ComplianceDetail {
   setting: string;
   value: unknown;
   expected: unknown;
+  // Whether the value meets what the control wants. Results stored before passing
+  // lines were recorded only listed failing lines, so a missing `ok` means failing.
+  ok?: boolean;
 }
 
 export interface ComplianceChangeLink {
@@ -295,7 +298,7 @@ export interface ComplianceFinding {
   evaluatorVersion: number;
   verdict: "pass" | "fail" | "unknown" | "not-applicable";
   reason: string | null;
-  // Which policy and setting made it fail (engine/benchmarks/evaluate.mjs details).
+  // Each setting the control checked, current against expected (engine/benchmarks/evaluate.mjs details).
   details?: ComplianceDetail[];
   evaluatedAt: string | null;
   evidenceSeq: string | null;

@@ -78,6 +78,8 @@ test('the five Defender email controls are registered on the mail protection rea
   }
 });
 
+const failing = (details) => details.filter((line) => !line.ok).map(({ ok, ...line }) => line);
+
 test('recommended settings pass; each weak setting fails with the policy, setting, value and what it should be', () => {
   assert.equal(evaluate(PHISH, [['antiPhishPolicy', phish()]]).verdict, 'pass');
   assert.equal(evaluate(SPAM, [['antiSpamPolicy', spam()]]).verdict, 'pass');
@@ -87,29 +89,34 @@ test('recommended settings pass; each weak setting fails with the policy, settin
 
   const weakPhish = evaluate(PHISH, [['antiPhishPolicy', phish()], ['antiPhishPolicy', phish({ Name: 'Sales', IsDefault: false, EnableSpoofIntelligence: false, HonorDmarcPolicy: false })]]);
   assert.equal(weakPhish.verdict, 'fail');
-  assert.deepEqual(weakPhish.details, [
+  assert.deepEqual(failing(weakPhish.details), [
     { subject: 'Sales', setting: 'EnableSpoofIntelligence', value: false, expected: true },
     { subject: 'Sales', setting: 'HonorDmarcPolicy', value: false, expected: true },
   ]);
+  // Every setting checked is recorded, failing lines first, so the page can show
+  // expected against current for passing settings too.
+  assert.equal(weakPhish.details.length, 6, 'two policies, three settings each');
+  assert.deepEqual(weakPhish.details.map((line) => line.ok), [false, false, true, true, true, true]);
+  assert.deepEqual(weakPhish.details[2], { subject: 'Office365 AntiPhish Default', setting: 'EnableSpoofIntelligence', value: true, expected: true, ok: true });
 
   const weakSpam = evaluate(SPAM, [['antiSpamPolicy', spam({ HighConfidencePhishAction: 'MoveToJmf' })]]);
-  assert.deepEqual(weakSpam.details, [{ subject: 'Default', setting: 'HighConfidencePhishAction', value: 'MoveToJmf', expected: 'Quarantine' }]);
+  assert.deepEqual(failing(weakSpam.details), [{ subject: 'Default', setting: 'HighConfidencePhishAction', value: 'MoveToJmf', expected: 'Quarantine' }]);
   assert.equal(evaluate(SPAM, [['antiSpamPolicy', spam({ PhishSpamAction: 'quarantine' })]]).verdict, 'pass', 'Exchange values compare without case');
 
   const allowed = evaluate(DOMAINS, [['antiSpamPolicy', spam({ AllowedSenderDomains: ['partner.test'] })]]);
-  assert.deepEqual(allowed.details, [{ subject: 'Default', setting: 'AllowedSenderDomains', value: ['partner.test'], expected: [] }]);
+  assert.deepEqual(failing(allowed.details), [{ subject: 'Default', setting: 'AllowedSenderDomains', value: ['partner.test'], expected: [] }]);
 
   const weakMalware = evaluate(MALWARE, [['antiMalwarePolicy', malware({ EnableFileFilter: false })]]);
-  assert.deepEqual(weakMalware.details, [{ subject: 'Default', setting: 'EnableFileFilter', value: false, expected: true }]);
+  assert.deepEqual(failing(weakMalware.details), [{ subject: 'Default', setting: 'EnableFileFilter', value: false, expected: true }]);
 
   const clickThrough = evaluate(LINKS, [['safeLinksPolicy', links({ AllowClickThrough: true })]]);
-  assert.deepEqual(clickThrough.details, [{ subject: 'Built-In Protection Policy', setting: 'AllowClickThrough', value: true, expected: false }]);
+  assert.deepEqual(failing(clickThrough.details), [{ subject: 'Built-In Protection Policy', setting: 'AllowClickThrough', value: true, expected: false }]);
 });
 
 test('a missing value is never a pass, a turned-off custom anti-phishing policy is skipped, and no policy is not applicable', () => {
   const missing = evaluate(MALWARE, [['antiMalwarePolicy', { Name: 'Default', IsDefault: true }]]);
   assert.equal(missing.verdict, 'fail');
-  assert.deepEqual(missing.details.map((line) => [line.setting, line.value]), [['EnableFileFilter', null], ['ZapEnabled', null]]);
+  assert.deepEqual(missing.details.map((line) => [line.setting, line.value, line.ok]), [['EnableFileFilter', null, false], ['ZapEnabled', null, false]]);
 
   const off = evaluate(PHISH, [['antiPhishPolicy', phish()], ['antiPhishPolicy', phish({ Name: 'Old', IsDefault: false, Enabled: false, EnableSpoofIntelligence: false })]]);
   assert.equal(off.verdict, 'pass', 'a custom anti-phishing policy that is turned off applies to no one');
@@ -142,13 +149,16 @@ test('checks run against the newest mail protection read, record what failed, an
   const result = await runComplianceChecks(client, { tenantRef, actor: 'scheduler', now });
   const byControl = Object.fromEntries(result.evaluations.map((evaluation) => [evaluation.control_id, evaluation]));
   assert.deepEqual(MAIL.map((id) => byControl[id].verdict), ['pass', 'pass', 'fail', 'fail', 'pass']);
-  assert.deepEqual(byControl[MALWARE].details, [{ subject: 'Default', setting: 'ZapEnabled', value: false, expected: true }]);
-  assert.equal(byControl[PHISH].details, null);
+  assert.deepEqual(byControl[MALWARE].details, [
+    { subject: 'Default', setting: 'ZapEnabled', value: false, expected: true, ok: false },
+    { subject: 'Default', setting: 'EnableFileFilter', value: true, expected: true, ok: true },
+  ], 'stored with every setting checked, failing first');
+  assert.deepEqual(byControl[PHISH].details.map((line) => line.ok), [true, true, true], 'a passing control records what it checked');
   assert.deepEqual(byControl[MALWARE].evidence_refs.map((ref) => ref.id.split(':')[0]), ['antiMalwarePolicy'], 'only the kind the control reads is its evidence');
 
   const { findings } = await complianceFindings(client, { tenantRef, now });
   const found = findings.find((finding) => finding.controlId === DOMAINS);
-  assert.deepEqual(found.details, [{ subject: 'Default', setting: 'AllowedSenderDomains', value: ['partner.test'], expected: [] }]);
+  assert.deepEqual(found.details, [{ subject: 'Default', setting: 'AllowedSenderDomains', value: ['partner.test'], expected: [], ok: false }]);
   assert.equal(found.links.backup.state, 'linked');
   assert.deepEqual(found.evidence.map((entry) => [entry.collectionId, entry.snapshotId]), [[newest, null]]);
   assert.equal(found.title, 'No anti-spam policy lets whole sender domains skip filtering');

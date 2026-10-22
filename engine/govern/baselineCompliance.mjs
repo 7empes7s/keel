@@ -375,8 +375,11 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
       evaluatorVersion: Number(evaluation.evaluator_version),
       verdict,
       reason: evaluation.reason ?? null,
-      // Which object and setting made it fail, with its value and what it should be.
-      details: Array.isArray(evaluation.details) ? evaluation.details : [],
+      // Each setting the control checked: its value now, what it should be, and whether
+      // it meets that. Older results only stored failing lines, without `ok`.
+      details: Array.isArray(evaluation.details)
+        ? evaluation.details.map((line) => ({ ...line, ok: line?.ok === true }))
+        : [],
       evaluatedAt: iso(evaluation.evaluated_at),
       evidenceSeq: evaluation.evidence_seq === null || evaluation.evidence_seq === undefined ? null : String(evaluation.evidence_seq),
       exceptionState: state,

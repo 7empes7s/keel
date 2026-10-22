@@ -720,6 +720,7 @@ const COMPLIANCE: ComplianceData = {
     { id: "e7a10000-0000-4000-8000-0000000000e1", controlId: "keel-custom.role-assignment.admin-count-at-most", title: "Global Administrator assignment count stays at or below a set limit",
       description: "Counts active roleAssignment records against a named admin role definition.", severity: "high",
       framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "fail", reason: null, evaluatedAt: "2026-10-02T09:20:00Z", evidenceSeq: "4182",
+      details: [{ subject: "Global Administrator", setting: "assignmentCount", value: 7, expected: { atMost: 5 }, ok: false }],
       exceptionState: "expired", exposed: true,
       exception: { id: "e7c10000-0000-4000-8000-0000000000c1", owner: "secops@contoso.com", reason: "Two break-glass accounts during the migration", grantedBy: "8c1e0000-0000-4000-8000-0000000000a1", grantedAt: "2026-09-01T10:00:00Z", expiresAt: "2026-09-30T00:00:00Z",
         ownerRef: null, grantedByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane Defili", href: "/principals" } },
@@ -733,6 +734,10 @@ const COMPLIANCE: ComplianceData = {
       } },
     { id: "e7a10000-0000-4000-8000-0000000000e2", controlId: "keel-custom.named-location.no-untrusted-all-countries", title: "No named location marks unknown-country traffic as trusted", severity: "medium",
       framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 1, verdict: "fail", reason: null, evaluatedAt: "2026-10-02T09:20:00Z", evidenceSeq: "4183",
+      details: [
+        { subject: "KEEL-RT-Anywhere", setting: "includeUnknownCountriesAndRegions", value: true, expected: false, ok: false },
+        { subject: "KEEL-RT-Head office", setting: "includeUnknownCountriesAndRegions", value: false, expected: false, ok: true },
+      ],
       exceptionState: "authorized", exposed: false,
       exception: { id: "e7c10000-0000-4000-8000-0000000000c2", owner: "amara.okafor@contoso.example", reason: "Branch offices route through a trusted proxy until the November cutover.", grantedBy: "8c1e0000-0000-4000-8000-0000000000a1", grantedAt: "2026-09-15T10:00:00Z", expiresAt: "2026-11-30T00:00:00Z",
         ownerRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a2", name: "Amara Okafor", href: "/principals" }, grantedByRef: { kind: "person", id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane Defili", href: "/principals" } },
@@ -770,11 +775,16 @@ const DEFENDER_COMPLIANCE: ComplianceData = {
   findings: [
     ...COMPLIANCE.findings,
     mailFinding("f1", "keel-custom.defender-email.anti-spam-phish-quarantined", "fail", [
-      { subject: "Default", setting: "HighConfidencePhishAction", value: "MoveToJmf", expected: "Quarantine" },
-      { subject: "Default", setting: "PhishZapEnabled", value: false, expected: true },
-      { subject: "KEEL-RT-Finance inbound filtering for the accounts payable team", setting: "PhishSpamAction", value: "AddXHeader", expected: "Quarantine" },
+      { subject: "Default", setting: "HighConfidencePhishAction", value: "MoveToJmf", expected: "Quarantine", ok: false },
+      { subject: "Default", setting: "PhishZapEnabled", value: false, expected: true, ok: false },
+      { subject: "KEEL-RT-Finance inbound filtering for the accounts payable team", setting: "PhishSpamAction", value: "AddXHeader", expected: "Quarantine", ok: false },
+      { subject: "Default", setting: "PhishSpamAction", value: "Quarantine", expected: "Quarantine", ok: true },
+      { subject: "KEEL-RT-Finance inbound filtering for the accounts payable team", setting: "HighConfidencePhishAction", value: "Quarantine", expected: "Quarantine", ok: true },
     ]),
-    mailFinding("f2", "keel-custom.defender-email.malware-file-filter", "pass"),
+    mailFinding("f2", "keel-custom.defender-email.malware-file-filter", "pass", [
+      { subject: "Default", setting: "EnableFileFilter", value: true, expected: true, ok: true },
+      { subject: "Default", setting: "ZapEnabled", value: true, expected: true, ok: true },
+    ]),
     mailFinding("f3", "keel-custom.defender-email.safe-links-email", "not-applicable"),
   ],
 };

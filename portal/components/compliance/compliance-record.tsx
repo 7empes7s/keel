@@ -27,7 +27,7 @@ export function FindingRecordFields({ finding }: { finding: ComplianceFinding })
         <RecordField
           copy={false}
           key={`detail-${index}`}
-          label={`Failing setting · ${line.subject}`}
+          label={`${line.ok ? "Checked" : "Failing"} setting · ${line.subject}`}
           value={`${line.setting} = ${JSON.stringify(line.value)} (expected ${JSON.stringify(line.expected)})`}
         />
       ))}

@@ -10116,6 +10116,20 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .cp-miss-now, .cp-miss-want { display: inline-block; max-width: 100%; padding: 0 0.375rem; border-radius: var(--radius-md); font-weight: 600; }
 .cp-miss-now { background: var(--urgent-bg); color: var(--urgent); }
 .cp-miss-want { background: var(--fine-bg); color: var(--fine); }
+.cp-misses tbody tr[data-ok="false"] > * { background: color-mix(in srgb, var(--urgent-bg) 55%, transparent); }
+.cp-misses tbody tr[data-ok="false"] > th { box-shadow: inset 3px 0 0 var(--urgent); }
+.cp-check-subject { display: block; min-width: 0; }
+.cp-misses thead th:nth-child(1) { width: 31%; }
+.cp-misses thead th:nth-child(2) { width: 29%; }
+.cp-misses th, .cp-misses td { hyphens: auto; }
+.cp-misses tbody th { overflow-wrap: break-word; }
+.cp-misses tbody th .icon { width: 0.875rem; height: 0.875rem; margin-right: 0.25rem; vertical-align: -0.125rem; }
+.cp-misses tbody tr[data-ok="false"] th .icon { color: var(--urgent); }
+.cp-misses tbody tr[data-ok="true"] th .icon { color: var(--fine); }
+.cp-misses tbody tr[data-ok="true"] th { font-weight: 500; }
+.cp-check-now, .cp-check-want { display: inline-block; max-width: 100%; padding: 0 0.375rem; color: var(--text); }
+.cp-checks-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2xs) var(--space-sm); margin-bottom: var(--space-xs); }
+.cp-checks-tools small { color: var(--text-soft); }
 @media (max-width: 640px) {
   .cp-misses thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .cp-misses, .cp-misses tbody, .cp-misses tr, .cp-misses th, .cp-misses td { display: block; }
@@ -10123,7 +10137,9 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
   .cp-misses tbody tr:first-child { border-top: 0; }
   .cp-misses th, .cp-misses td { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: var(--space-xs); padding: 0.125rem 0; border: 0; }
   .cp-misses th::before, .cp-misses td::before { content: attr(data-label); color: var(--text-soft); font-weight: 400; }
-  .cp-miss-now, .cp-miss-want { justify-self: start; }
+  .cp-miss-now, .cp-miss-want, .cp-check-now, .cp-check-want { justify-self: start; }
+  .cp-misses tbody tr[data-ok="false"] { padding-left: var(--space-xs); box-shadow: inset 3px 0 0 var(--urgent); background: color-mix(in srgb, var(--urgent-bg) 55%, transparent); }
+  .cp-misses tbody tr[data-ok="false"] > th, .cp-misses tbody tr[data-ok="false"] > td { background: none; box-shadow: none; }
 }
 .cp-form { display: grid; gap: var(--space-lg); }
 .cp-form fieldset { display: grid; gap: var(--space-sm); margin: 0; padding: 0; border: 0; min-width: 0; }

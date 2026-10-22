@@ -267,7 +267,11 @@ registerPredicate('role-assignment-admin-count-at-most', (facts, args) => {
   }
   const limit = Number.isInteger(args?.limit) ? args.limit : 5;
   const count = facts.filter((fact) => fact.roleDefinitionId === roleDefinitionId).length;
-  return count <= limit ? 'pass' : 'fail';
+  const ok = count <= limit;
+  return {
+    verdict: ok ? 'pass' : 'fail',
+    details: [{ subject: args?.roleName ?? 'Admin role', setting: 'assignmentCount', value: count, expected: { atMost: limit }, ok }],
+  };
 });
 
 registerControl({
@@ -288,14 +292,24 @@ registerControl({
     // 62e90394-69f5-4237-9190-012177145e10 is the Microsoft-global Global
     // Administrator directory role template id (same basis as
     // engine/coverage/diagnosis.mjs's ROLE_TEMPLATES), not tenant-specific.
-    args: { roleDefinitionId: '62e90394-69f5-4237-9190-012177145e10', limit: 5 },
+    args: { roleDefinitionId: '62e90394-69f5-4237-9190-012177145e10', roleName: 'Global Administrator', limit: 5 },
   },
 });
 
+// The name a detail line gives one directory object: its display name, else its id.
+function objectName(fact, fallback) {
+  if (typeof fact?.displayName === 'string' && fact.displayName.length > 0) return fact.displayName;
+  return typeof fact?.id === 'string' && fact.id.length > 0 ? fact.id : fallback;
+}
+
 registerPredicate('named-location-no-untrusted-all-countries', (facts) => {
   if (facts.length === 0) return 'not-applicable';
-  const risky = facts.some((fact) => fact.isTrusted === true && fact.includeUnknownCountriesAndRegions === true);
-  return risky ? 'fail' : 'pass';
+  // Only a trusted location can make this fail, so each trusted one is a checked line.
+  const details = facts.filter((fact) => fact.isTrusted === true).map((fact) => {
+    const value = fact.includeUnknownCountriesAndRegions === true;
+    return { subject: objectName(fact, 'Unnamed location'), setting: 'includeUnknownCountriesAndRegions', value, expected: false, ok: !value };
+  });
+  return { verdict: details.some((line) => !line.ok) ? 'fail' : 'pass', details };
 });
 
 registerFixMatcher('named-location-trusts-unknown-countries', (fact) => (
@@ -330,8 +344,13 @@ registerControl({
 
 registerPredicate('group-role-assignable-not-synced', (facts) => {
   if (facts.length === 0) return 'not-applicable';
-  const risky = facts.some((fact) => fact.isAssignableToRole === true && fact.onPremisesSyncEnabled === true);
-  return risky ? 'fail' : 'pass';
+  // Only a role-assignable group can make this fail, so each one is a checked line. A
+  // cloud-only group has no sync flag at all (null): it is not synchronized.
+  const details = facts.filter((fact) => fact.isAssignableToRole === true).map((fact) => {
+    const value = fact.onPremisesSyncEnabled === true;
+    return { subject: objectName(fact, 'Unnamed group'), setting: 'onPremisesSyncEnabled', value, expected: false, ok: !value };
+  });
+  return { verdict: details.some((line) => !line.ok) ? 'fail' : 'pass', details };
 });
 
 registerControl({
@@ -357,7 +376,7 @@ registerControl({
 // phishing, anti-spam, malware and Safe Links. The settings checked follow
 // Microsoft's own published recommendations; the wording is Keel's. Each looks at
 // every policy of its kind, because any policy can be the one a mailbox gets, and
-// names each policy and setting that fails, with its value and what it should be.
+// records each policy and setting it checked, with its value and what it should be.
 
 const MAIL_PROTECTION = 'exchange-mail-flow';
 // The service read runs once a day (store/scheduleSeed.mjs workload-collect), so a
@@ -380,7 +399,8 @@ function policyName(fact) {
 /**
  * Checks each policy of `kind` against `settings` ({ field: rule }). Not applicable
  * when the tenant has no policy of that kind (Safe Links without Defender for Office
- * 365); fails when any setting of any policy misses its rule, listing each miss.
+ * 365); fails when any setting of any policy misses its rule. Every setting checked
+ * is a detail line, passing or not, so the page can show expected against current.
  */
 function checkPolicies(facts, { kind, settings, applies = () => true }) {
   const policies = facts.filter((fact) => fact?.kind === kind && applies(fact));
@@ -389,10 +409,10 @@ function checkPolicies(facts, { kind, settings, applies = () => true }) {
   for (const policy of policies) {
     for (const [setting, rule] of Object.entries(settings)) {
       const value = policy[setting];
-      if (!rule.test(value)) details.push({ subject: policyName(policy), setting, value: value ?? null, expected: rule.expected });
+      details.push({ subject: policyName(policy), setting, value: value ?? null, expected: rule.expected, ok: rule.test(value) });
     }
   }
-  return { verdict: details.length ? 'fail' : 'pass', details };
+  return { verdict: details.some((line) => !line.ok) ? 'fail' : 'pass', details };
 }
 
 function mailControl({ controlId, kind, title, description, severity, settings, applies }) {

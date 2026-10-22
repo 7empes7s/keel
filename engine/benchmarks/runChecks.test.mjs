@@ -80,6 +80,13 @@ test('checks every control against the newest complete read of each type and rec
   const byControl = Object.fromEntries(result.evaluations.map((evaluation) => [evaluation.control_id, evaluation]));
   assert.equal(byControl[ROLE].verdict, 'pass', 'the newest complete role read (2 admins) is used');
   assert.equal(byControl[GROUP].verdict, 'fail', 'a failed group read falls back to the newest complete one');
+  // Each check records the value it found next to the value it wants.
+  assert.deepEqual(byControl[ROLE].details, [
+    { subject: 'Global Administrator', setting: 'assignmentCount', value: 2, expected: { atMost: 5 }, ok: true },
+  ]);
+  assert.deepEqual(byControl[GROUP].details, [
+    { subject: 'Tier0', setting: 'onPremisesSyncEnabled', value: true, expected: false, ok: false },
+  ]);
   assert.equal(byControl[LOCATION].verdict, 'unknown', 'a type no backup read is never a guessed pass');
   assert.equal(byControl[LOCATION].reason, 'namedLocation:no-observation');
   assert.deepEqual([result.pass, result.fail, result.unknown], [1, 1, 1 + OTHERS]);
@@ -91,6 +98,52 @@ test('checks every control against the newest complete read of each type and rec
   assert.equal(findings.length, ALL);
   const role = findings.find((finding) => finding.controlId === ROLE);
   assert.deepEqual(role.evidence.map((entry) => entry.snapshotId), [newest]);
+});
+
+test('each identity control records expected and current values for what it checked', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenant();
+  const now = new Date();
+  await snapshot(client, tenantRef, new Date(now.getTime() - HOUR), { roleAssignment: 'complete', group: 'complete', namedLocation: 'complete' }, [
+    ...admins(6),
+    ['group:Cloud', { id: 'g1', displayName: 'Cloud admins', isAssignableToRole: true }],
+    ['group:Plain', { id: 'g2', displayName: 'Everyone', isAssignableToRole: false, onPremisesSyncEnabled: true }],
+    ['namedLocation:Office', { id: 'l1', displayName: 'Office', isTrusted: true, includeUnknownCountriesAndRegions: false }],
+    ['namedLocation:Anywhere', { id: 'l2', displayName: 'Anywhere', isTrusted: true, includeUnknownCountriesAndRegions: true }],
+    ['namedLocation:Blocked', { id: 'l3', displayName: 'Blocked', isTrusted: false, includeUnknownCountriesAndRegions: true }],
+  ]);
+  const result = await runComplianceChecks(client, { tenantRef, actor: 'scheduler', now });
+  const byControl = Object.fromEntries(result.evaluations.map((evaluation) => [evaluation.control_id, evaluation]));
+  assert.equal(byControl[ROLE].verdict, 'fail');
+  assert.deepEqual(byControl[ROLE].details, [
+    { subject: 'Global Administrator', setting: 'assignmentCount', value: 6, expected: { atMost: 5 }, ok: false },
+  ]);
+  // A cloud-only group has no sync flag; it is recorded as not synchronized. A group
+  // that cannot hold roles is not checked.
+  assert.equal(byControl[GROUP].verdict, 'pass');
+  assert.deepEqual(byControl[GROUP].details, [
+    { subject: 'Cloud admins', setting: 'onPremisesSyncEnabled', value: false, expected: false, ok: true },
+  ]);
+  // Only trusted locations are checked, and the failing one comes first.
+  assert.equal(byControl[LOCATION].verdict, 'fail');
+  assert.deepEqual(byControl[LOCATION].details, [
+    { subject: 'Anywhere', setting: 'includeUnknownCountriesAndRegions', value: true, expected: false, ok: false },
+    { subject: 'Office', setting: 'includeUnknownCountriesAndRegions', value: false, expected: false, ok: true },
+  ]);
+  const { findings } = await complianceFindings(client, { tenantRef, now });
+  assert.deepEqual(findings.find((finding) => finding.controlId === LOCATION).details.map((line) => line.ok), [false, true]);
+});
+
+test('a result stored before passing lines existed reads back as failing lines', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenant();
+  await client.query(
+    `INSERT INTO benchmark_evaluation (tenant_ref, control_id, framework, edition, profile, evaluator_version, verdict, evidence_refs, observation_windows, evaluated_at, details)
+     VALUES ($1, $2, 'keel-custom', '1.0.0', 'default', 1, 'fail', '[]', '[]', now(), $3)`,
+    [tenantRef, LOCATION, JSON.stringify([{ subject: 'Old', setting: 'includeUnknownCountriesAndRegions', value: true, expected: false }])],
+  );
+  const { findings } = await complianceFindings(client, { tenantRef, now: new Date() });
+  assert.deepEqual(findings[0].details, [{ subject: 'Old', setting: 'includeUnknownCountriesAndRegions', value: true, expected: false, ok: false }]);
 });
 
 test('a backup older than the control allows is recorded as could not check', async (t) => {

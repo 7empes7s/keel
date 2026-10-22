@@ -3,7 +3,7 @@
 //
 // node keel-discover.mjs run  [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
 //                             [--versions v1.0,beta] [--metadata-dir DIR]
-//                             [--powershell-commands FILE | --no-powershell] [--out FILE] [--no-store]
+//                             [--powershell-commands FILE | --no-powershell] [--scope FILE] [--out FILE] [--no-store]
 //                             [--page-cap 5] [--concurrency 4] [--tenant-ref REF]
 // node keel-discover.mjs show [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]
 //
@@ -18,8 +18,10 @@
 //         anything else is refused before it is sent. Bodies are counted and dropped.
 //         --metadata-dir reads <dir>/v1.0.xml and <dir>/beta.xml instead of fetching them.
 //         PowerShell: by default each module's Get cmdlets are listed live in the
-//         PowerShell container (ops/powershell/list-commands.ps1; Exchange Online and
-//         Security & Compliance connect with the --config certificate to list theirs).
+//         PowerShell container (ops/powershell/list-commands.ps1). Each session connects
+//         with its family's config from the workload scope file (--scope, default
+//         /etc/keel/workload-scope.json, powershellConfigs), as the workload collect does;
+//         a family it leaves out uses --config (issue #542).
 //         Cmdlets are listed, never run. --powershell-commands names a JSON file
 //         { "<module>": ["Get-...", ...] } to use instead; --no-powershell lists none.
 //         A module that was not listed is reported "not listed", with the reason,
@@ -30,7 +32,7 @@
 //         --tenant-ref is what the scheduled `discover` job sends; a run for another tenant
 //         than the config names is refused before any request.
 //   show  prints the latest stored run: totals, then every uncatalogued and unreadable type.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -39,6 +41,7 @@ import { connect } from '../engine/store/db.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { GRAPH_VERSIONS, discover } from '../engine/discovery/discover.mjs';
 import { listPowerShellCommands } from '../engine/discovery/powershellCommands.mjs';
+import { DEFAULT_SCOPE_PATH, powershellConfigPaths } from '../engine/collect/workloads/powershellConfigs.mjs';
 import { tokenRoles } from '../engine/discovery/grants.mjs';
 import { loadLatestDiscovery, saveDiscoveryRun } from '../engine/discovery/store.mjs';
 import { readOnlyGraph } from '../engine/discovery/transport.mjs';
@@ -116,11 +119,11 @@ export function describeInventory(run) {
 
 export async function main(argv = process.argv.slice(2), {
   readFile = (path) => readFileSync(path, 'utf8'), writeFile = writeFileSync, connectFn = connect, getTokenFn = getToken,
-  fetchImpl = globalThis.fetch, env = process.env, logger = console, now, listCommandsFn = listPowerShellCommands,
+  fetchImpl = globalThis.fetch, env = process.env, logger = console, now, listCommandsFn = listPowerShellCommands, existsFn = existsSync,
 } = {}) {
   const command = argv[0];
   if (!['run', 'show'].includes(command) || argv.includes('--help')) {
-    logger.log('usage: keel-discover.mjs run|show [--config FILE] [--db-url URL] [--versions v1.0,beta] [--metadata-dir DIR] [--powershell-commands FILE | --no-powershell] [--out FILE] [--no-store] [--tenant-ref REF]');
+    logger.log('usage: keel-discover.mjs run|show [--config FILE] [--db-url URL] [--versions v1.0,beta] [--metadata-dir DIR] [--powershell-commands FILE | --no-powershell] [--scope FILE] [--out FILE] [--no-store] [--tenant-ref REF]');
     return command === undefined || argv.includes('--help') ? 0 : 2;
   }
   const config = JSON.parse(readFile(arg(argv, 'config', '/etc/keel/tenant.json')));
@@ -158,7 +161,12 @@ export async function main(argv = process.argv.slice(2), {
     throw new Error('--powershell-commands must hold an object of module -> cmdlet names');
   }
   if (!commandsPath && !argv.includes('--no-powershell')) {
-    ({ commands: powershellCommands, errors: powershellErrors } = await listCommandsFn({ tenantConfigPath: arg(argv, 'config', '/etc/keel/tenant.json') }));
+    const scopePath = arg(argv, 'scope', DEFAULT_SCOPE_PATH);
+    const scope = arg(argv, 'scope') !== undefined || existsFn(scopePath) ? JSON.parse(readFile(scopePath)) : {};
+    ({ commands: powershellCommands, errors: powershellErrors } = await listCommandsFn({
+      tenantConfigPath: arg(argv, 'config', '/etc/keel/tenant.json'),
+      familyConfigPaths: powershellConfigPaths(scope, { config, readFile }),
+    }));
     for (const [module, names] of Object.entries(powershellCommands)) logger.log(`PowerShell ${module}: listed ${plural(names.length, 'Get cmdlet')}.`);
     for (const [module, reason] of Object.entries(powershellErrors)) logger.log(`PowerShell ${module}: not listed (${reason}).`);
   }

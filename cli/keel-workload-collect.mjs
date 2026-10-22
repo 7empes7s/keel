@@ -50,13 +50,13 @@ import { connect } from '../engine/store/db.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { loadLedgerInputs, loadWorkloadLedger, proofExpiry, saveLedgerInputs } from '../engine/collect/workloadLedgerStore.mjs';
 import { WORKLOAD_COLLECTORS } from '../engine/collect/workloads/registry.mjs';
+import { DEFAULT_SCOPE_PATH, POWERSHELL_FAMILY, powershellConfigPaths } from '../engine/collect/workloads/powershellConfigs.mjs';
 import { detectWorkloadDrift } from '../engine/govern/workloadDrift.mjs';
 import { progressTracker, progressWriter, reasonsLine } from '../engine/jobs/progress.mjs';
 import { runComplianceChecks } from '../engine/benchmarks/runChecks.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 export const DEFAULT_RECORD_DIR = join(__dirname, '..', 'docs', 'release', 'qualifications');
-export const DEFAULT_SCOPE_PATH = '/etc/keel/workload-scope.json';
 const GRAPH_HOST = 'graph.microsoft.com';
 
 function arg(argv, name, fallback) {
@@ -85,32 +85,9 @@ export function readOnlyGraphTransport(tokenSource, fetchImpl = globalThis.fetch
   };
 }
 
-// Which PowerShell config family each PowerShell workload connects with.
-export const POWERSHELL_FAMILY = Object.fromEntries(WORKLOAD_COLLECTORS
-  .filter((entry) => entry.powershellFamily).map((entry) => [entry.workload, entry.powershellFamily]));
-const POWERSHELL_FAMILIES = new Set(Object.values(POWERSHELL_FAMILY));
-const CONFIG_DIR = '/etc/keel/';
-
-/**
- * The PowerShell config path per family, from the scope file. Throws on an unknown
- * family, a path outside /etc/keel, or a file that names another tenant, so a
- * misconfigured host fails the run loudly instead of connecting somewhere else.
- */
-export function powershellConfigPaths(scope, { config, readFile }) {
-  const paths = scope?.powershellConfigs ?? {};
-  if (paths === null || typeof paths !== 'object' || Array.isArray(paths)) throw new Error('powershellConfigs must be an object');
-  for (const [family, path] of Object.entries(paths)) {
-    if (!POWERSHELL_FAMILIES.has(family)) throw new Error(`powershellConfigs.${family} is not a PowerShell family (${[...POWERSHELL_FAMILIES].join(', ')})`);
-    if (typeof path !== 'string' || !resolve(path).startsWith(CONFIG_DIR) || resolve(path) !== path) {
-      throw new Error(`powershellConfigs.${family} must be an absolute path under ${CONFIG_DIR}`);
-    }
-    const tenantId = JSON.parse(readFile(path)).tenantId;
-    if (tenantId !== undefined && tenantId !== config.tenantId) {
-      throw new Error(`powershellConfigs.${family} names another tenant than the tenant config: refusing to collect`);
-    }
-  }
-  return { ...paths };
-}
+// The family configs live in engine/collect/workloads/powershellConfigs.mjs, shared
+// with the restore and Discovery (issue #542).
+export { DEFAULT_SCOPE_PATH, POWERSHELL_FAMILY, powershellConfigPaths };
 
 function powershellForFamily(family, { scope = {}, powershell = {} }) {
   const path = family ? scope.powershellConfigs?.[family] : undefined;

@@ -337,6 +337,8 @@ test("an Exchange role assignment names its role group from the newest usable ro
   await read("complete", "2026-10-22T01:00:00Z", "Recipient Management");
   // A later run that read nothing does not hide the last good read.
   await read("disabled", "2026-10-22T02:00:00Z", null);
+  // Nor does a partial run whose read answered no groups at all.
+  await read("partial", "2026-10-22T03:00:00Z", null);
   const { rows: [snapshot] } = await client.query("SELECT id FROM snapshot WHERE tenant_ref = $1", [TENANT]);
   const payload = { id: id(24), roleDefinitionId: EXO_ROLE, principalId: `/RoleGroups/${ROLE_GROUP_ID}`, directoryScopeId: "/" };
   await client.query(

@@ -152,6 +152,7 @@ export async function roleGroupNames(client: QueryClient, tenantRef: string, ids
       `WITH latest AS (
          SELECT c.id FROM workload_collection c
           WHERE c.tenant_ref = $1 AND c.workload = $3 AND c.outcome IN ('complete', 'partial')
+            AND EXISTS (SELECT 1 FROM workload_observation w WHERE w.collection_id = c.id)
           ORDER BY c.observed_to DESC LIMIT 1
        )
        SELECT lower(o.fields->>'identity') AS id, lower(o.fields->>'ExchangeObjectId') AS object_id,

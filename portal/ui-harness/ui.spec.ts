@@ -2611,7 +2611,9 @@ test("Compliance · tiles filter, a control opens its panel, renew an exception,
   // The phone scorecard is hidden at desktop width.
   await expect(page.locator(".cp-by-service")).toBeHidden();
   expect(await page.locator("main .btn-primary:visible").count()).toBe(1);
-  const visible = await textOutside(page, "main#main-content", '[data-layer="record"]');
+  // The breadcrumb repeats the menu's own section name (Baselines), so it is left out
+  // like the menu is; the page's own copy still never says "Baseline".
+  const visible = await textOutside(page, "main#main-content", '[data-layer="record"], nav.breadcrumbs');
   expectPlainText(visible);
   for (const word of ["secops@", "@contoso", "westeurope", "KEEL", "Baseline", "Conditional Access", "Named location"]) expect(visible).not.toContain(word);
 

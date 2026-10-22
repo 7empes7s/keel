@@ -844,7 +844,6 @@ function ContentEffectsReviewHarness() {
   return (
     <>
       <Verdict text={approvals.length ? "These content changes are approved. The restore can run once its own request is approved." : "This restore changes kept or shared content. It cannot run until you approve those changes."} tone={approvals.length ? "fine" : "soon"} />
-      <a className="text-link back-link" href="#/approvals"><span aria-hidden="true">←</span> All approvals</a>
       <section aria-labelledby="content-effects-plan-heading" className="report-section ce-section">
         <h2 id="content-effects-plan-heading">The restore</h2>
         <p className="ce-plan">Restore of 1 setting, planned 2 Oct 2026, 09:12, asked for by Amara Okafor. Your approval covers exactly the changes below.</p>
@@ -900,8 +899,8 @@ const APPROVAL_HISTORY: ApprovalRequestRecord[] = [
     references: { ...EMPTY_REFERENCES, people: { requested_by: AMARA }, baseline: { kind: "baseline", id: BASELINES[1].id, name: "Stricter sign-in", readable: true } } },
 ];
 
-const header = (section: NavSection, title: string, description: string, marker?: string, status?: { tone: "urgent" | "soon" | "low" | "fine"; label: string }) =>
-  <PageHeader description={description} generatedAt={now} marker={marker} section={section} status={status} title={title} />;
+const header = (section: NavSection, title: string, description: string, marker?: string, status?: { tone: "urgent" | "soon" | "low" | "fine"; label: string }, parents?: { href: string; label: string }[]) =>
+  <PageHeader description={description} generatedAt={now} marker={marker} parents={parents} section={section} status={status} title={title} />;
 
 const trend = [3, 1, 0, 0, 2, 5, 4, 1, 0, 0, 0, 6, 9, 3, 2, 1, 0, 0, 4, 2, 2, 1, 0, 0, 7, 12, 5, 3, 2, 4];
 // As buildAlerts returns them: the "failed" row is the verdict's own sentence, so the
@@ -1619,7 +1618,7 @@ function sitePage(path: string) {
   const site = SITES.sites.find((entry) => entry.siteId === id);
   if (!site) return null;
   const verdict = siteVerdict(site);
-  return <>{header("Backup", siteName(site), "Who can reach this SharePoint site, as of KEEL's last read.")}
+  return <>{header("Backup", siteName(site), "Who can reach this SharePoint site, as of KEEL's last read.", undefined, undefined, [{ href: "/sites", label: "Sites" }])}
     <Verdict text={verdict.text} tone={verdict.tone} />
     <div data-layer="explanation"><SiteDetail latest={null} now={now} run={SITES.run!} site={site} /></div></>;
 }
@@ -1864,10 +1863,10 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
           <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate"]} items={items} now={now} summary={DRIFT_SUMMARY} />
         </div></>;
     }
-    case "/jobs/a4": { const detail = jobs.find((item) => item.id === "a4")!; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
-    case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>; }
-    case "/jobs/r10": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010" } }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} tone="critical" /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /><CompensationPanel canApprove canRestore failed restoreArtifactId="7f3c0000-0000-4000-8000-000000000010" /></>; }
-    case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Audit log", "Job", "What this job did and how it ended.")}<Verdict text={jobVerdict(detail, now)} /><a className="text-link back-link" href="#/activity"><span aria-hidden="true">←</span> All activity</a><JobDetail job={detail} now={now} /></>; }
+    case "/jobs/a4": { const detail = jobs.find((item) => item.id === "a4")!; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<Verdict text={jobVerdict(detail, now)} tone="critical" /><JobDetail job={detail} now={now} /></>; }
+    case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<Verdict text={jobVerdict(detail, now)} /><JobDetail job={detail} now={now} /><RecoveryCompletion canComplete restoreRef="7f3c0000-0000-4000-8000-000000000009" /></>; }
+    case "/jobs/r10": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010" } }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<Verdict text={jobVerdict(detail, now)} tone="critical" /><JobDetail job={detail} now={now} /><CompensationPanel canApprove canRestore failed restoreArtifactId="7f3c0000-0000-4000-8000-000000000010" /></>; }
+    case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<Verdict text={jobVerdict(detail, now)} /><JobDetail job={detail} now={now} /></>; }
     case "/approvals": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
       <ApprovalInbox awaitingContentEffects={[APPROVAL_AWAITING_EFFECTS]} history={APPROVAL_HISTORY} now={now} pending={APPROVALS_PENDING} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/cli-restore": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "1 waiting" })}
@@ -1876,7 +1875,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
           preview: { total: 1, services: [{ name: "Entra ID", count: 1 }], changes: [{ name: "Group expiry rule", kind: "Group expiry rule", line: "Put back as the backup holds it", fields: [], moreFields: 0 }], more: 0 },
           references: { ...EMPTY_REFERENCES, people: { requested_by: personRef("8c1e0000-0000-4000-8000-0000000000b2", "ops@contoso.com") }, plan: CLI_PLAN_REF } },
       ]} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
-    case "/approvals/content-effects": return <>{header("Inbox", "Changes to kept or shared content", "A restore that shortens how long content is kept, releases a hold, widens sharing or deletes content needs its own approval.", undefined, { tone: "soon", label: "Waiting for you" })}
+    case "/approvals/content-effects": return <>{header("Inbox", "Changes to kept or shared content", "A restore that shortens how long content is kept, releases a hold, widens sharing or deletes content needs its own approval.", undefined, { tone: "soon", label: "Waiting for you" }, [{ href: "/approvals", label: "Approvals" }])}
       <ContentEffectsReviewHarness /></>;
     case "/notifications": return <>{header("Settings", "Notifications", "Where Keel sends alerts, who gets which alerts, and what was sent.", undefined, { tone: "urgent", label: "Slack is failing" })}
       <NotificationsPage canConfiguration channels={CHANNELS} deliveries={DELIVERIES} escalationRules={ESCALATION_RULES} now={now} people={PEOPLE_CHOICES} subscriptions={SUBSCRIPTIONS} /></>;
@@ -1902,7 +1901,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <RecentWork jobs={jobs.filter((item) => item.kind.startsWith("baseline"))} now={now} />
       </div></>;
     }
-    case "/baselines/new": return <>{header("Baselines", "New approved setup", "Copy how the tenant looked in one complete backup, so every later change is measured against it.")}
+    case "/baselines/new": return <>{header("Baselines", "New approved setup", "Copy how the tenant looked in one complete backup, so every later change is measured against it.", undefined, undefined, [{ href: "/baselines", label: "Approved setups" }])}
       <Verdict text="Three short steps: pick a backup, name it, then check what will happen." />
       <div data-layer="explanation">
         <BaselinesStyles />
@@ -1952,7 +1951,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/policies/p1": case "/policies/p2": case "/policies/p3": {
       const policy = path === "/policies/p1" ? POLICY : path === "/policies/p2" ? OFF_POLICY : PAUSED_POLICY;
       const state = RULE_STATES[ruleState(policy)];
-      return <>{header("Automation center", policy.name, `${RULE_KINDS[ruleKind(policy)].label}: what it watches, who it acts as, and what it did.`, undefined, { tone: state.tone === "neutral" ? "low" : state.tone, label: state.label })}
+      return <>{header("Automation center", policy.name, `${RULE_KINDS[ruleKind(policy)].label}: what it watches, who it acts as, and what it did.`, undefined, { tone: state.tone === "neutral" ? "low" : state.tone, label: state.label }, [{ href: "/policies", label: "Policies" }])}
         <PolicyPage actions={policy === POLICY ? POLICY_ACTIONS : []} canEdit halted={false} initialPreview={policy === OFF_POLICY ? ACTIVATION_PREVIEW : null} now={now} policy={policy} />
       </>;
     }

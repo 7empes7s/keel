@@ -119,7 +119,6 @@ function PartSection<T>({ id, kicker, title, part, what, children }: {
 export function SiteDetail({ site, run, latest, now }: { site: SitePermissions; run: SitesRun; latest: SitesRun | null; now: string }) {
   return (
     <>
-      <Link className="text-link back-link" href="/sites"><span aria-hidden="true">←</span> All sites</Link>
       <NewerRead latest={latest} now={now} />
       <PartSection id="site-apps-heading" kicker="Apps" part={site.appGrants} title="Apps with access" what="app grants">
         {(grants) => (

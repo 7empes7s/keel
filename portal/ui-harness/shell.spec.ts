@@ -403,3 +403,52 @@ test("the menu keeps the open page in view, flags Settings and names the person"
   await expect(person.locator(".avatar")).toHaveText("MD");
   await expect(person).toContainText("your access");
 });
+
+test("menu: a section's pages show from its chevron without leaving the page", async ({ page }) => {
+  await page.setViewportSize(desktop);
+  await open(page, "/");
+  const backup = page.locator('section[data-group="everything"] .menu-section', { hasText: "Backup" });
+  const chevron = backup.getByRole("button", { name: "Show the 3 Backup pages" });
+  await expect(chevron).toHaveAttribute("aria-expanded", "false");
+  await expect(backup.locator("a.menu-sublink")).toHaveCount(0);
+  await chevron.click();
+  await expect(backup.getByRole("button", { name: "Hide the 3 Backup pages" })).toHaveAttribute("aria-expanded", "true");
+  await expect(backup.locator("a.menu-sublink")).toHaveText(["What's protected", "Schedules", "Sites"]);
+  await expect(page.locator("main h1")).toHaveText("Overview");
+  await backup.getByRole("link", { name: "Sites" }).click();
+  await expect(page.locator("main h1")).toHaveText("Sites");
+  // The section you are in is open by itself, and can be folded.
+  await expect(backup.locator("a.menu-sublink[aria-current='page']")).toHaveText("Sites");
+  await backup.getByRole("button", { name: "Hide the 3 Backup pages" }).click();
+  await expect(backup.locator("a.menu-sublink")).toHaveCount(0);
+  // A one-page section has no chevron.
+  await expect(page.locator('section[data-group="everything"] .menu-section', { hasText: "Dashboards" }).locator(".menu-expand")).toHaveCount(0);
+});
+
+test("breadcrumbs: every page says where it sits, and a detail page links back up", async ({ page }) => {
+  for (const viewport of [desktop, phone]) {
+    await page.setViewportSize(viewport);
+    await open(page, "/sites");
+    const crumbs = page.getByRole("navigation", { name: "Breadcrumb" });
+    await expect(crumbs.locator("li")).toHaveText(["Backup", "Sites"]);
+    await expect(crumbs.locator("[aria-current='page']")).toHaveText("Sites");
+    await page.locator("main").getByRole("link", { name: "Finance" }).click();
+    await expect(page.locator("main h1")).toHaveText("Finance");
+    await expect(crumbs.locator("li")).toHaveText(["Backup", "Sites", "Finance"]);
+    await expect(page.locator("main a.back-link")).toHaveCount(0);
+    await noSidewaysScroll(page);
+    await crumbs.getByRole("link", { name: "Sites" }).click();
+    await expect(page.locator("main h1")).toHaveText("Sites");
+  }
+  // A crumb that repeats the one before it is dropped: Restore's own page shows no line.
+  await open(page, "/restore");
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
+  for (const { hash, trail } of [
+    { hash: "/jobs/a4", trail: ["Audit log", "Activity", "Job"] },
+    { hash: "/baselines/new", trail: ["Baselines", "Approved setups", "New approved setup"] },
+    { hash: "/approvals/content-effects", trail: ["Inbox", "Approvals", "Changes to kept or shared content"] },
+  ]) {
+    await open(page, hash);
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" }).locator("li")).toHaveText(trail);
+  }
+});

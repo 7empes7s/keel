@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
 import { MENU_SECTIONS, NAV_MAP, NAV_SECTIONS, sectionForPath, visibleNavEntries } from "@/components/nav-links";
+import { breadcrumbTrail } from "@/lib/nav-sections";
 import { DISPLAY_ENUMS, accessSummary, displayEnum } from "@/lib/presentation";
 
 // Roadmap task-129: the portal experience contract's shell. Boundary checks over the
@@ -107,4 +108,44 @@ test("the menu says what you can do in words, never 'capabilities'", () => {
   assert.equal(accessSummary(["read"]), "You can view");
   assert.equal(accessSummary(["read", "approve", "restore"]), "You can approve and restore");
   assert.doesNotMatch(accessSummary(["read", "approve", "restore", "rollback", "collect", "backup", "configuration"]), /capabilit/i);
+});
+
+test("breadcrumbs: section, pages above, this page; a repeated crumb is dropped", () => {
+  assert.deepEqual(breadcrumbTrail("Backup", "Sites"), [{ label: "Backup" }, { label: "Sites" }]);
+  assert.deepEqual(breadcrumbTrail("Restore", "Restore"), []);
+  assert.deepEqual(breadcrumbTrail("Backup", "Finance", [{ href: "/sites", label: "Sites" }]), [
+    { label: "Backup" },
+    { href: "/sites", label: "Sites" },
+    { label: "Finance" },
+  ]);
+  assert.deepEqual(breadcrumbTrail("Audit log", "Activity", [{ href: "/activity", label: "Activity" }]), [{ label: "Audit log" }, { href: "/activity", label: "Activity" }]);
+});
+
+test("every page below a menu page names it in its breadcrumb, and no page keeps a lone back-link", () => {
+  const menuPages = new Map(NAV_SECTIONS.flatMap((section) => NAV_MAP[section].filter((route) => !route.hidden).map((route) => [route.href, { section, label: route.label }] as const)));
+  const checked: string[] = [];
+  for (const file of pages(appDirectory)) {
+    const source = readFileSync(file, "utf8");
+    const route = routeOf(file);
+    assert.doesNotMatch(source, /back-link/, `${route} still has a lone back-link`);
+    if (menuPages.has(route) || /\bredirect\(/.test(source) || !/<PageHeader/.test(source)) continue;
+    const declared = /const PARENTS = (\[[^\n]+\]);/.exec(source);
+    assert.ok(declared, `${route} is below a menu page but has no breadcrumb parents`);
+    assert.match(source, /parents=\{PARENTS\}/, `${route} declares parents but does not pass them`);
+    const parents = [...declared[1].matchAll(/\{ href: "([^"]+)", label: "([^"]+)" \}/g)];
+    assert.ok(parents.length > 0, `${route} has an empty breadcrumb`);
+    for (const [, href, label] of parents) {
+      const page = menuPages.get(href);
+      assert.ok(page, `${route}: ${href} is not a page in the menu`);
+      assert.equal(page.label, label, `${route}: ${href} is called "${page.label}" in the menu`);
+      assert.equal(page.section, sectionForPath(route), `${route}: ${href} sits in another section`);
+    }
+    checked.push(route);
+  }
+  assert.deepEqual(checked.sort(), ["/approvals/content-effects/x", "/baselines/new", "/jobs/x", "/policies/x", "/sites/x"]);
+  const components = fileURLToPath(new URL("../components/", import.meta.url));
+  for (const entry of readdirSync(components, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".tsx")) continue;
+    assert.doesNotMatch(readFileSync(resolve(entry.parentPath, entry.name), "utf8"), /back-link/, `${entry.name} still has a lone back-link`);
+  }
 });

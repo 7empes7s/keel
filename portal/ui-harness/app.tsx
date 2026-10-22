@@ -91,7 +91,7 @@ import type { RestoreWorkload } from "@/lib/restore-workloads-view";
 // a short delay so the real component walks its real states.
 const DEPENDS: Record<string, string[]> = {
   "conditionalAccessPolicy:Block legacy auth": ["group:Break-glass admins", "namedLocation:HQ egress"],
-  "conditionalAccessPolicy:Require MFA for admins": ["group:Break-glass admins", "authenticationStrength:Phishing-resistant"],
+  "conditionalAccessPolicy:Require MFA for admins": ["group:Break-glass admins", "authenticationStrengthPolicy:Phishing-resistant"],
   "deviceConfiguration:Windows baseline": ["group:All managed devices"],
 };
 let jobPolls = 0;
@@ -1764,7 +1764,7 @@ const RESTORE_RESOURCES: [string, string, string][] = [
   ["group:Contractors", "access-affecting", "Entra"],
   ["namedLocation:HQ egress", "access-affecting", "Entra"],
   ["namedLocation:Branch offices", "access-affecting", "Entra"],
-  ["authenticationStrength:Phishing-resistant", "access-affecting", "Entra"],
+  ["authenticationStrengthPolicy:Phishing-resistant", "access-affecting", "Entra"],
   ["organizationalBranding:Contoso sign-in page", "cosmetic", "Entra"],
   ["groupLifecyclePolicy:Group expiry", "cosmetic", "Entra"],
   ["deviceConfiguration:Windows baseline", "access-affecting", "Intune"],

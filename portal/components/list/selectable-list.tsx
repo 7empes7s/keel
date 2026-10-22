@@ -18,6 +18,10 @@ export interface ListGroup<T> {
   // One plain line under the name: what the group holds.
   about?: string;
   items: T[];
+  // Sub-groups inside the group, such as the kinds of setting inside a service. When
+  // set, `items` is every part's rows in order; each part has its own count, select-all
+  // and open/close (kept in the URL as `<group>.<part>`).
+  parts?: ListGroup<T>[];
 }
 
 export interface Grouping<T> {
@@ -89,7 +93,37 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
   const groups = useMemo(() => grouping.groupsOf(filtered), [grouping, filtered]);
   const shownOf = (group: ListGroup<T>) => (rowLimit && !expanded.has(group.key) && group.items.length > rowLimit + 1 ? group.items.slice(0, rowLimit) : group.items);
   const allIds = useMemo(() => groups.flatMap((group) => group.items.map(getId)), [groups, getId]);
-  const visibleIds = useMemo(() => groups.filter((group) => !closed.includes(group.key)).flatMap((group) => shownOf(group).map(getId)), [groups, closed, getId, expanded, rowLimit]);
+  const partsOf = (group: ListGroup<T>) => (group.parts && group.parts.length > 1 ? group.parts.map((part) => ({ ...part, key: `${group.key}.${part.key}` })) : null);
+  const visibleIds = useMemo(() => groups.filter((group) => !closed.includes(group.key)).flatMap((group) => {
+    const parts = partsOf(group);
+    return parts ? parts.filter((part) => !closed.includes(part.key)).flatMap((part) => shownOf(part).map(getId)) : shownOf(group).map(getId);
+  }), [groups, closed, getId, expanded, rowLimit]);
+  const toggleClosed = (key: string, isClosed: boolean) => view.set({ closed: (isClosed ? closed.filter((entry) => entry !== key) : [...closed, key]).join(",") || (closedByDefault.length ? "none" : null) });
+
+  function rowsOf(group: ListGroup<T>) {
+    return (
+      <ul className="sel-rows">
+        {shownOf(group).map((item) => {
+          const id = getId(item);
+          const selected = selection.ids.has(id);
+          return (
+            <li className="sel-row" data-row-id={id} data-selected={selected || undefined} data-tone={toneOf?.(item) ?? undefined} key={id} onClick={(event) => onRowClick(event, id)}>
+              <input aria-label={`Select ${rowName(item)}`} checked={selected} className="sel-check" onChange={() => {}} type="checkbox" />
+              <div className="sel-row-body">{renderRow(item)}</div>
+            </li>
+          );
+        })}
+        {shownOf(group).length < group.items.length ? (
+          <li className="sel-more">
+            <button className="btn btn-sm" onClick={() => setExpanded((current) => new Set([...current, group.key]))} type="button">
+              Show all {plural(group.items.length, noun)}
+            </button>
+            <span>{plural(group.items.length - shownOf(group).length, noun)} more in {group.label}</span>
+          </li>
+        ) : null}
+      </ul>
+    );
+  }
 
   // A filter that hides rows also drops them from the selection.
   useEffect(() => { setSelection((current) => prune(current, allIds)); }, [allIds]);
@@ -229,6 +263,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
           const ids = group.items.map(getId);
           const check = groupCheck(selection, ids);
           const isClosed = closed.includes(group.key);
+          const parts = partsOf(group);
           const tone = toneOf ? worstTone(group.items.map((item) => toneOf(item) ?? undefined)) : null;
           // The number counts only the rows at the badge's colour; the rest go in its note.
           const attention = toneOf && (tone === "urgent" || tone === "soon") ? group.items.filter((item) => toneOf(item) === tone).length : 0;
@@ -247,7 +282,7 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
                 <button
                   aria-expanded={!isClosed}
                   className="sel-group-toggle"
-                  onClick={() => view.set({ closed: (isClosed ? closed.filter((key) => key !== group.key) : [...closed, group.key]).join(",") || (closedByDefault.length ? "none" : null) })}
+                  onClick={() => toggleClosed(group.key, isClosed)}
                   type="button"
                 >
                   {group.icon ? <Icon name={group.icon} /> : null}
@@ -258,28 +293,35 @@ export function SelectableList<T>({ label, items, getId, rowName, renderRow, gro
                 </button>
                 {groupAction ? groupAction(group) : null}
               </header>
-              {isClosed ? null : (
-                <ul className="sel-rows">
-                  {shownOf(group).map((item) => {
-                    const id = getId(item);
-                    const selected = selection.ids.has(id);
+              {isClosed ? null : parts ? (
+                <div className="sel-parts">
+                  {parts.map((part) => {
+                    const partIds = part.items.map(getId);
+                    const partCheck = groupCheck(selection, partIds);
+                    const partClosed = closed.includes(part.key);
                     return (
-                      <li className="sel-row" data-row-id={id} data-selected={selected || undefined} data-tone={toneOf?.(item) ?? undefined} key={id} onClick={(event) => onRowClick(event, id)}>
-                        <input aria-label={`Select ${rowName(item)}`} checked={selected} className="sel-check" onChange={() => {}} type="checkbox" />
-                        <div className="sel-row-body">{renderRow(item)}</div>
-                      </li>
+                      <section className="sel-part" data-closed={partClosed || undefined} key={part.key}>
+                        <header className="sel-part-head">
+                          <input
+                            aria-label={`Select all ${plural(partIds.length, noun)} in ${group.label}: ${part.label}`}
+                            checked={partCheck === "all"}
+                            className="sel-check"
+                            onChange={() => setSelection((current) => setMany(current, partIds, partCheck !== "all"))}
+                            ref={(element) => { if (element) element.indeterminate = partCheck === "some"; }}
+                            type="checkbox"
+                          />
+                          <button aria-expanded={!partClosed} className="sel-part-toggle" onClick={() => toggleClosed(part.key, partClosed)} type="button">
+                            <span className="sel-part-name">{part.label}</span>
+                            <span className="sel-group-count">{plural(partIds.length, noun)}</span>
+                            <Icon className="sel-group-chevron" name="chevron-down" />
+                          </button>
+                        </header>
+                        {partClosed ? null : rowsOf(part)}
+                      </section>
                     );
                   })}
-                  {shownOf(group).length < group.items.length ? (
-                    <li className="sel-more">
-                      <button className="btn btn-sm" onClick={() => setExpanded((current) => new Set([...current, group.key]))} type="button">
-                        Show all {plural(group.items.length, noun)}
-                      </button>
-                      <span>{plural(group.items.length - shownOf(group).length, noun)} more in {group.label}</span>
-                    </li>
-                  ) : null}
-                </ul>
-              )}
+                </div>
+              ) : rowsOf(group)}
             </section>
           );
         })}

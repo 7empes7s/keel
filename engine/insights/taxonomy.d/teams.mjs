@@ -1,6 +1,14 @@
 // Teams workload reads.
 export default Object.freeze({
   service: 'Teams',
+  // Types by kind, in the order a list shows them: people and objects first, then
+  // roles and access, then policies, then tenant-wide settings. taxonomy.test.mjs fails
+  // on an entry that is in no group, so a new type has to be placed here.
+  categories: Object.freeze([
+    { key: 'teams', name: 'Teams and members', types: ['teams-settings'] },
+    { key: 'org', name: 'Organization policies', types: ['teams-org-policies'] },
+    { key: 'calling', name: 'Calling and meetings', types: ['teams-voice-policies'] },
+  ]),
   entries: Object.freeze({
     'teams-settings': {
       name: 'Team setting or membership',

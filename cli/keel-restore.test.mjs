@@ -119,6 +119,8 @@ function restoreFakes({
         state.priorStates.push(values);
         return { rows: [] };
       }
+      // Issue #485: no earlier restore created anything in the fixture tenant.
+      if (/FROM rollback_entry e/.test(sql)) return { rows: [] };
       throw new Error(`unexpected test-database query: ${sql}`);
     },
     end: async () => { state.clientEnds += 1; },
@@ -360,6 +362,8 @@ function selectionFakes({ resourceSet = selectionResources() } = {}) {
       // Task-71: the fixture snapshot belongs to the fixture tenant, which has no incidents.
       if (/SELECT tenant_ref FROM snapshot/.test(sql)) return { rows: [{ tenant_ref: 'sha256:task-8-test' }] };
       if (/FROM snapshot WHERE id = \$1 AND tenant_ref = \$2/.test(sql)) return { rows: [] };
+      // Issue #485: no earlier restore created anything in the fixture tenant.
+      if (/FROM rollback_entry e/.test(sql)) return { rows: [] };
       state.dbQueries += 1;
       throw new Error(`a selection restore must not query the plan table: ${sql}`);
     },
@@ -711,6 +715,8 @@ function artifactPromotionFakes(artifacts, { targetHasAdminsGroup = false } = {}
       if (/SELECT tenant_ref FROM snapshot/.test(sql)) return { rows: [{ tenant_ref: 'sha256:task-8-test' }] };
       if (/FROM snapshot WHERE id = \$1 AND tenant_ref = \$2/.test(sql)) return { rows: [] };
       if (/INSERT INTO rollback_entry/.test(sql)) return { rows: [] };
+      // Issue #485: no earlier restore created anything in the fixture tenant.
+      if (/FROM rollback_entry e/.test(sql)) return { rows: [] };
       throw new Error(`unexpected query: ${sql}`);
     },
     end: async () => { state.clientEnds += 1; },

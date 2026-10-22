@@ -1,6 +1,14 @@
 // Purview workload reads.
 export default Object.freeze({
   service: 'Purview',
+  // Types by kind, in the order a list shows them: people and objects first, then
+  // roles and access, then policies, then tenant-wide settings. taxonomy.test.mjs fails
+  // on an entry that is in no group, so a new type has to be placed here.
+  categories: Object.freeze([
+    { key: 'labels', name: 'Sensitivity labels', types: ['purview-labels'] },
+    { key: 'protection', name: 'Retention and data loss prevention', types: ['purview-retention-dlp'] },
+    { key: 'governance', name: 'Retention labels and eDiscovery', types: ['purview-governance'] },
+  ]),
   entries: Object.freeze({
     'purview-labels': {
       name: 'Sensitivity label',

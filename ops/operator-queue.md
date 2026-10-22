@@ -7320,8 +7320,31 @@ item that needs it stays untouched.
   MicrosoftTeams module did not return. Same check as Q105 for Exchange. This item names them so the code can stop
   declaring them.
 - Needs: nothing. No tenant calls, no job, schedule or config changes, no reruns.
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-22 18:39 UTC). **The Teams unknowns are 7 fields**: org AllowPublicUsers and AllowUserToJoinExternalMeeting; voice LineURI and four live events Sdn* fields. DB reads only; nothing written.
+  1. Unknown fields in the newest non-disabled collection of each workload (`o.fields->>'kind'` worked):
+     ```
+            workload       | outcome |          kind           |             field              | status  | objects 
+     ----------------------+---------+-------------------------+--------------------------------+---------+---------
+      teams-org-policies   | partial | federationConfiguration | AllowPublicUsers               | unknown |       1
+      teams-org-policies   | partial | meetingPolicy           | AllowUserToJoinExternalMeeting | unknown |       8
+      teams-voice-policies | partial | liveEventsConfiguration | SdnApiTemplateUrl              | unknown |       1
+      teams-voice-policies | partial | liveEventsConfiguration | SdnLicenseId                   | unknown |       1
+      teams-voice-policies | partial | liveEventsConfiguration | SdnName                        | unknown |       1
+      teams-voice-policies | partial | liveEventsConfiguration | SdnProviderName                | unknown |       1
+      teams-voice-policies | partial | userPolicyAssignment    | LineURI                        | unknown |     104
+     (7 rows)
+     
+     ```
+  2. Collections (newest 4):
+     ```
+     teams-org-policies   | partial | 2026-10-22 17:13:15 | {"unknown": 9, "observed": 630}    | 0 | 0
+     teams-voice-policies | partial | 2026-10-22 17:12:43 | {"unknown": 108, "observed": 2497} | 0 | 0
+     teams-org-policies   | partial | 2026-10-22 17:08:11 | {"unknown": 9, "observed": 630}    | 0 | 0
+     teams-voice-policies | partial | 2026-10-22 17:07:38 | {"unknown": 108, "observed": 2497} | 0 | 0
+     ```
+     (Org 9 = AllowPublicUsers ×1 + AllowUserToJoinExternalMeeting ×8. Voice 108 = LineURI ×104 + SdnApiTemplateUrl, SdnLicenseId, SdnName, SdnProviderName ×1 each.)
+  3. Not needed (step 1 had rows). Fewer than 60 rows, so no branch.
 - Do (with `set -a; . /etc/keel/db.env; set +a`). Field names and family kinds only; no values are selected:
   1. ```sql
      WITH latest AS (

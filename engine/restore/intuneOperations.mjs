@@ -1145,12 +1145,29 @@ async function complianceActionsAfterWrite(io, { payload, verb, targetId, live }
 // image bytes, so a backup never holds them.
 const BRANDING_PROFILE_IMAGES = Object.freeze(['themeColorLogo', 'lightBackgroundLogo', 'landingPageCustomizedImage']);
 
-/** The default branding profile reaches every user, so it is a tenant-wide setting KEEL leaves to a person. */
-function defaultBrandingProfile(resource) {
-  if (resource.payload?.isDefaultProfile === true || resource.live?.payload?.isDefaultProfile === true) {
-    return { outcome: 'skipped', reason: 'manual: this is the default Company Portal branding, which every user sees, so it is not written; set it by hand from the backup' };
+const isDefaultBranding = (payload) => payload?.isDefaultProfile === true;
+
+/**
+ * The default branding profile reaches every user. Restore gaps batch 17 (the
+ * user's OK for tenant-wide settings, 2026-10-22): it is updated in place when
+ * the backup and the live profile are both the default. It is never created,
+ * and a custom profile never takes the default's place (or the reverse).
+ */
+function defaultBrandingProfile(resource, verb) {
+  const backup = isDefaultBranding(resource.payload);
+  const live = isDefaultBranding(resource.live?.payload);
+  if (!backup && !live) return null;
+  if (verb === 'update' && backup && live) return null;
+  if (verb === 'create' && backup) {
+    return { outcome: 'skipped', reason: 'manual: the default Company Portal branding is made by Intune and is never created; update the default profile in place from the backup' };
   }
-  return null;
+  return { outcome: 'skipped', reason: 'manual: the backup and the live profile disagree on which one is the default Company Portal branding, so neither is written; check it by hand' };
+}
+
+/** The default profile applies to every user and has no assignments to write. */
+async function brandingAfterWrite(io, step) {
+  if (isDefaultBranding(step.payload)) return { changes: { assignments: 'the default profile applies to every user' } };
+  return assignmentsAfterWrite(io, step);
 }
 
 // Batch 10: an Endpoint analytics baseline Microsoft provides in every tenant.
@@ -1438,14 +1455,14 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     permission: 'DeviceManagementServiceConfig.ReadWrite.All',
   }),
   // Restore gaps, batch 9. A Company Portal branding profile for some groups.
-  // The default profile applies to every user in the tenant and is never
-  // written. Logo images are not backed up, so they are never sent: an update
+  // Batch 17: the default profile, which every user sees, is updated in place
+  // (never created). Logo images are not backed up, so they are never sent: an update
   // keeps the live logos and a recreated profile has none. Who a profile is
   // assigned to is not written.
   intuneBrandingProfile: defineRecord({
     resourceType: 'intuneBrandingProfile', version: 'beta', collection: '/deviceManagement/intuneBrandingProfiles',
     operations: ['create', 'update'], excluded: ['isDefaultProfile', 'assignments', ...BRANDING_PROFILE_IMAGES],
-    refusal: defaultBrandingProfile, afterWrite: assignmentsAfterWrite, assignmentType: '#microsoft.graph.intuneBrandingProfileAssignment',
+    refusal: defaultBrandingProfile, afterWrite: brandingAfterWrite, assignmentType: '#microsoft.graph.intuneBrandingProfileAssignment',
     permission: 'DeviceManagementServiceConfig.ReadWrite.All',
   }),
   // Restore gaps, batch 10. A custom Endpoint analytics baseline is only a
@@ -1537,7 +1554,80 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     writable: ['dependencyType', 'supersedenceType'], createOnly: ['sourceId', 'targetId', 'targetType'],
     refusal: appRelationshipRefusal, preflight: appRelationshipPreflight, permission: 'DeviceManagementApps.ReadWrite.All',
   }),
+  // Restore gaps, batch 17: Intune tenant-wide settings, approved by the user
+  // on 2026-10-22. Each is updated in place only.
+  // The Intune tenant settings: compliance settings (settings) and the device
+  // cleanup window. Graph sends a wide read to other backends (issue #447), so
+  // the read back names the same fields as the backup. The Company Portal
+  // brand on this object is the default branding profile, written there.
+  deviceManagementSettings: defineRecord({
+    resourceType: 'deviceManagementSettings', version: 'beta', collection: '/deviceManagement', singleton: true,
+    readQuery: '$select=id,settings,managedDeviceCleanupSettings', operations: ['update'],
+    writable: ['settings', 'managedDeviceCleanupSettings'], refusal: deviceManagementSettingsRefusal,
+    permission: 'DeviceManagementConfiguration.ReadWrite.All',
+  }),
+  // The Microsoft Tunnel health limits: only the two limits are written; the
+  // defaults beside them are Microsoft's.
+  microsoftTunnelHealthThreshold: defineRecord({
+    resourceType: 'microsoftTunnelHealthThreshold', version: 'beta', collection: '/deviceManagement/microsoftTunnelHealthThresholds',
+    operations: ['update'], writable: ['healthyThreshold', 'unhealthyThreshold'],
+    permission: 'DeviceManagementConfiguration.ReadWrite.All',
+  }),
+  // Exchange on-premises access for managed devices. A restore never turns it
+  // on: that could block mail on every device that is not managed.
+  onPremisesConditionalAccessSettings: defineRecord({
+    resourceType: 'onPremisesConditionalAccessSettings', version: 'v1.0', collection: '/deviceManagement/conditionalAccessSettings', singleton: true,
+    operations: ['update'], writable: ['enabled', 'includedGroups', 'excludedGroups', 'overrideDefaultRule'],
+    refusal: onPremisesAccessRefusal, permission: 'DeviceManagementConfiguration.ReadWrite.All',
+  }),
 });
+
+// ------------------------------------- batch 17: Intune tenant-wide settings
+
+const INTUNE_PORTAL = 'Intune admin center';
+
+/**
+ * The Intune tenant settings are never restored to a looser or harsher state
+ * than live in two ways a person must choose: devices with no compliance
+ * policy are never turned compliant (Conditional Access reads it), and the
+ * device cleanup never starts or retires devices sooner.
+ */
+export function deviceManagementSettingsRefusal(resource, verb) {
+  if (verb !== 'update') return null;
+  const want = resource.payload ?? {};
+  const now = resource.live?.payload ?? {};
+  if (want.settings?.secureByDefault === false && now.settings?.secureByDefault === true) {
+    return {
+      outcome: 'skipped',
+      reason: `manual: the backup marks devices with no compliance policy as compliant, which they are not now; Conditional Access reads that, so a restore never loosens it; change it by hand in the ${INTUNE_PORTAL}, under Endpoint security, Device compliance, Compliance settings`,
+    };
+  }
+  const days = (settings) => {
+    const value = Number(settings?.deviceInactivityBeforeRetirementInDays);
+    return Number.isFinite(value) && value > 0 ? value : null;
+  };
+  const wantDays = days(want.managedDeviceCleanupSettings);
+  const nowDays = days(now.managedDeviceCleanupSettings);
+  if (wantDays !== null && (nowDays === null || wantDays < nowDays)) {
+    return {
+      outcome: 'skipped',
+      reason: `manual: the backup retires devices after ${wantDays} days without check-in, ${nowDays === null ? 'and device cleanup is off now' : `sooner than the ${nowDays} days set now`}; that could retire devices at once, so a person changes it in the ${INTUNE_PORTAL}, under Devices, Device clean-up rules`,
+    };
+  }
+  return null;
+}
+
+/** Exchange on-premises access is never turned on by a restore. */
+export function onPremisesAccessRefusal(resource, verb) {
+  if (verb !== 'update') return null;
+  if (resource.payload?.enabled === true && resource.live?.payload?.enabled !== true) {
+    return {
+      outcome: 'skipped',
+      reason: `manual: the backup turns on Exchange on-premises access control, which is off now; that could block mail on devices that are not managed, so a restore never turns it on; turn it on by hand in the ${INTUNE_PORTAL}, under Tenant administration, Connectors and tokens, Exchange on-premises access`,
+    };
+  }
+  return null;
+}
 
 // Restore gaps batch 13: a dependency or supersedence between two Intune
 // apps. Apps are not backed up (packages are content), so both must already be

@@ -210,6 +210,53 @@ function partnerTemplateAfterWrite(_io, { resource }) {
   return { completion: inboundTrustDiffers(resource) ? [{ kind: 'enforcement', requirement: 'inboundTrust', description: INBOUND_TRUST_STEP }] : [] };
 }
 
+// ---------------------------------------------- SharePoint tenant settings
+
+/** The SharePoint tenant settings a restore writes; never the five sharing fields. */
+export const SHAREPOINT_SETTINGS_WRITABLE_FIELDS = Object.freeze([
+  'allowedDomainGuidsForSyncApp', 'deletedUserPersonalSiteRetentionPeriodInDays', 'excludedFileExtensionsForSyncApp',
+  'idleSessionSignOut', 'imageTaggingOption', 'isCommentingOnSitePagesEnabled', 'isFileActivityNotificationEnabled',
+  'isLegacyAuthProtocolsEnabled', 'isLoopEnabled', 'isMacSyncAppEnabled', 'isRequireAcceptingUserToMatchInvitedUserEnabled',
+  'isSharePointMobileNotificationEnabled', 'isSharePointNewsfeedEnabled', 'isSiteCreationEnabled', 'isSiteCreationUIEnabled',
+  'isSitePagesCreationEnabled', 'isSitesStorageLimitAutomatic', 'isSyncButtonHiddenOnPersonalSite',
+  'isUnmanagedSyncAppForTenantRestricted', 'personalSiteDefaultStorageLimitInMB', 'siteCreationDefaultManagedPath',
+  'siteCreationDefaultStorageLimitInMB', 'tenantDefaultTimezone',
+]);
+
+const SHAREPOINT_PORTAL_PATH = 'SharePoint admin center > Policies > Access control';
+
+/**
+ * Settings that let more devices or apps reach files. A restore never loosens
+ * them: a backup that turns legacy authentication on, lets unmanaged devices
+ * sync, or stops checking that the account accepting a guest invitation is the
+ * one invited is withheld whole for a person.
+ */
+const SHAREPOINT_LOOSENING = Object.freeze([
+  ['isLegacyAuthProtocolsEnabled', true, 'turns legacy authentication on (apps that skip multifactor sign-in)'],
+  ['isUnmanagedSyncAppForTenantRestricted', false, 'lets devices outside the domain sync files'],
+  ['isRequireAcceptingUserToMatchInvitedUserEnabled', false, 'lets a guest invitation be accepted by another account'],
+]);
+
+function sharepointAccessRefusal(resource, verb) {
+  if (verb !== 'update') return null;
+  const want = resource.payload ?? {};
+  const now = resource.live?.payload ?? {};
+  const loosened = SHAREPOINT_LOOSENING.filter(([field, loose]) => want[field] === loose && now[field] !== undefined && now[field] !== loose);
+  if (loosened.length === 0) return null;
+  const fields = loosened.map(([field]) => field);
+  return {
+    outcome: 'skipped',
+    reason: `manual: the backup ${loosened.map(([, , text]) => text).join(', and ')}; a restore never loosens who can reach files, so set it by hand if that is wanted`,
+    completion: Object.freeze({
+      kind: 'manual-setting',
+      requirement: 'sharepointAccessSettings',
+      fields: Object.freeze(fields),
+      portalPath: SHAREPOINT_PORTAL_PATH,
+      description: `Decide whether ${fields.join(', ')} should be as in the backup, then set them in the ${SHAREPOINT_PORTAL_PATH}. The other SharePoint settings in the backup were not written either: restore again after that.`,
+    }),
+  };
+}
+
 // ------------------------------------------------------------- governance
 
 /** Lifecycle workflow fields Entra computes, or that are read separately. */
@@ -436,6 +483,16 @@ export const IDENTITY_RECORDS = Object.freeze({
     operations: ['create', 'update'], writable: ['displayName', 'customAttributes'], createOnly: ['type'],
     updateGuard: appScopeGuard,
     permission: 'RoleManagement.ReadWrite.Exchange', docs: beta('customappscope-update'),
+  }),
+  // Restore gaps, batch 17 (tenant-wide, approved by the user on 2026-10-22).
+  // The SharePoint tenant settings other than sharing: sync app limits, idle
+  // session sign-out, site creation, Loop, legacy authentication and default
+  // storage. The five sharing fields stay with the SharePoint workload, which
+  // reviews their content effects, so this record never sends them.
+  sharepointSettings: defineRecord({
+    resourceType: 'sharepointSettings', version: 'v1.0', collection: '/admin/sharepoint/settings',
+    singleton: true, operations: ['update'], writable: SHAREPOINT_SETTINGS_WRITABLE_FIELDS, refusal: sharepointAccessRefusal,
+    permission: 'SharePointTenantSettings.ReadWrite.All', docs: v1('sharepointsettings-update'),
   }),
 });
 

@@ -804,16 +804,32 @@ test('a branding profile is created and updated through beta, never its logos, a
   assert.equal('themeColorLogo' in patch.body, false, 'the live logo is kept');
 });
 
-test('the default branding profile is never written', async () => {
-  for (const [verb, extra] of [
-    ['create', {}],
-    ['update', { live: { state: 'present', targetId: 'd-1', payload: { ...branding, id: 'd-1', isDefaultProfile: true, contactITName: 'Changed' } } }],
+test('the default branding profile is updated in place, never created, and never swapped with a custom one', async () => {
+  const path = '/deviceManagement/intuneBrandingProfiles/d-1';
+  const backup = { ...branding, id: 'd-1', isDefaultProfile: true };
+  const live = { ...backup, contactITName: 'Changed', themeColorLogo: { type: 'image/png', value: 'bG9nbw==' } };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const updated = await applyIntuneExtendedWrite(graph, resourceOf('intuneBrandingProfile', backup, {
+    live: { state: 'present', targetId: 'd-1', payload: live },
+  }), 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  const writes = graph.calls.filter((call) => call.method !== 'GET');
+  assert.equal(writes.length, 1, 'one PATCH, and no /assign: the default applies to every user');
+  assert.equal(writes[0].method, 'PATCH');
+  assert.equal(writes[0].path, path);
+  assert.deepEqual(writes[0].body, { contactITName: 'Help desk' });
+  assert.equal(updated.applied.changes.assignments, 'the default profile applies to every user');
+
+  for (const [verb, payload, extra] of [
+    ['create', backup, {}],
+    ['update', backup, { live: { state: 'present', targetId: 'd-1', payload: { ...live, isDefaultProfile: false } } }],
+    ['update', { ...backup, isDefaultProfile: false }, { live: { state: 'present', targetId: 'd-1', payload: live } }],
   ]) {
-    const graph = idoFakeGraph();
-    const result = await applyIntuneExtendedWrite(graph, resourceOf('intuneBrandingProfile', { ...branding, id: 'd-1', isDefaultProfile: true }, extra), verb, FAST);
-    assert.ok(result.skipped || result.failed, verb);
-    assert.match(JSON.stringify(result), /default Company Portal branding/, verb);
-    assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0, verb);
+    const refused = idoFakeGraph({ seed: { [path]: live } });
+    const result = await applyIntuneExtendedWrite(refused, resourceOf('intuneBrandingProfile', payload, extra), verb, FAST);
+    assert.ok(result.skipped, verb);
+    assert.match(result.skipped.reason, /default Company Portal branding/, verb);
+    assert.equal(refused.calls.filter((call) => call.method !== 'GET').length, 0, verb);
   }
 });
 
@@ -1704,4 +1720,101 @@ test('a skipped iOS provisioning profile is never assigned; a missing group fail
   }), 'create', FAST);
   assert.match(missing.failed?.error ?? '', /does not exist in the target/);
   assert.equal(graph.calls.some((call) => call.path.endsWith('/assign')), false);
+});
+
+// ------------------------------------------- restore gaps, batch 17
+
+const deviceManagement = Object.freeze({
+  id: 'tenant', settings: { deviceComplianceCheckinThresholdDays: 30, isScheduledActionEnabled: true, secureByDefault: true, enhancedJailBreak: false },
+  managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '180' },
+  intuneBrand: { displayName: 'KEEL-RT IT' },
+});
+
+test('the Intune tenant settings are updated in place through beta: only settings and the cleanup window', async () => {
+  const record = INTUNE_EXTENDED_RECORDS.deviceManagementSettings;
+  assert.equal(record.singleton, true);
+  assert.deepEqual(record.operations, ['update']);
+  const live = { ...deviceManagement, settings: { ...deviceManagement.settings, deviceComplianceCheckinThresholdDays: 25 }, intuneBrand: { displayName: 'Other' } };
+  const graph = idoFakeGraph({ seed: { '/deviceManagement': live } });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementSettings', deviceManagement, {
+    naturalKey: 'deviceManagementSettings', live: { state: 'present', payload: live },
+  }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = writesOf(graph);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].method, 'PATCH');
+  assert.equal(writes[0].version, 'beta');
+  assert.equal(writes[0].path, '/deviceManagement');
+  assert.deepEqual(writes[0].body, { settings: deviceManagement.settings }, 'never the brand, id or counters');
+  const reads = graph.calls.filter((call) => call.method === 'GET' || call.method === undefined);
+  assert.ok(reads.every((call) => String(call.path).includes('$select=id,settings,managedDeviceCleanupSettings')), 'the read back names its fields (issue #447)');
+
+  for (const verb of ['create', 'delete']) {
+    const refused = await applyIntuneExtendedWrite(idoFakeGraph(), resourceOf('deviceManagementSettings', deviceManagement), verb, FAST);
+    assert.match(refused.failed.error, /unsupported operation/, verb);
+  }
+});
+
+test('a restore never marks devices with no compliance policy compliant, nor retires devices sooner', async () => {
+  const cases = [
+    [{ ...deviceManagement, settings: { ...deviceManagement.settings, secureByDefault: false } }, deviceManagement, /no compliance policy as compliant/],
+    [{ ...deviceManagement, managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '90' } }, deviceManagement, /sooner than the 180 days/],
+    [deviceManagement, { ...deviceManagement, managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '0' } }, /device cleanup is off now/],
+  ];
+  for (const [backup, live, reason] of cases) {
+    const graph = idoFakeGraph({ seed: { '/deviceManagement': live } });
+    const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementSettings', backup, { live: { state: 'present', payload: live } }), 'update', FAST);
+    assert.match(result.skipped?.reason ?? '', reason);
+    assert.equal(writesOf(graph).length, 0);
+  }
+  // Longer cleanup and turning secure by default on are written.
+  const live = { ...deviceManagement, settings: { ...deviceManagement.settings, secureByDefault: false }, managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '90' } };
+  const graph = idoFakeGraph({ seed: { '/deviceManagement': live } });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementSettings', deviceManagement, { live: { state: 'present', payload: live } }), 'update', FAST);
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.equal(writesOf(graph).length, 1);
+});
+
+test('a Microsoft Tunnel health limit is updated in place, only its two limits', async () => {
+  const path = '/deviceManagement/microsoftTunnelHealthThresholds/cpuUsage';
+  const backup = { id: 'cpuUsage', healthyThreshold: 70, unhealthyThreshold: 90, defaultHealthyThreshold: 50, defaultUnhealthyThreshold: 75 };
+  const live = { ...backup, healthyThreshold: 60 };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('microsoftTunnelHealthThreshold', backup, {
+    live: { state: 'present', targetId: 'cpuUsage', payload: live },
+  }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = writesOf(graph);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].path, path);
+  assert.equal(writes[0].version, 'beta');
+  assert.deepEqual(writes[0].body, { healthyThreshold: 70 });
+  const create = await applyIntuneExtendedWrite(idoFakeGraph(), resourceOf('microsoftTunnelHealthThreshold', backup), 'create', FAST);
+  assert.match(create.failed.error, /unsupported operation/);
+});
+
+test('Exchange on-premises access settings are updated in place and never turned on', async () => {
+  const path = '/deviceManagement/conditionalAccessSettings';
+  const backup = { id: 'settings', enabled: false, includedGroups: [], excludedGroups: [], overrideDefaultRule: false };
+  const live = { ...backup, overrideDefaultRule: true };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await applyIntuneExtendedWrite(graph, resourceOf('onPremisesConditionalAccessSettings', backup, { live: { state: 'present', payload: live } }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = writesOf(graph);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].version, 'v1.0');
+  assert.equal(writes[0].path, path);
+  assert.deepEqual(writes[0].body, { overrideDefaultRule: false });
+
+  const on = idoFakeGraph({ seed: { [path]: backup } });
+  const refused = await applyIntuneExtendedWrite(on, resourceOf('onPremisesConditionalAccessSettings', { ...backup, enabled: true }, { live: { state: 'present', payload: backup } }), 'update', FAST);
+  assert.match(refused.skipped.reason, /never turns it on/);
+  assert.equal(writesOf(on).length, 0);
+
+  // Already on: a restore that keeps it on may change its groups; turning it off is written.
+  const live2 = { ...backup, enabled: true };
+  const off = idoFakeGraph({ seed: { [path]: live2 } });
+  const turnedOff = await applyIntuneExtendedWrite(off, resourceOf('onPremisesConditionalAccessSettings', backup, { live: { state: 'present', payload: live2 } }), 'update', FAST);
+  assert.equal(turnedOff.failed ?? turnedOff.skipped, undefined, JSON.stringify(turnedOff));
+  assert.deepEqual(writesOf(off)[0].body, { enabled: false });
 });

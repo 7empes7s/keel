@@ -9,7 +9,7 @@ import { BaselinesStyles } from "@/components/baselines/styles";
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { DatePicker } from "@/components/pickers/date-picker";
-import { OptionPicker } from "@/components/pickers/option-picker";
+import { MultiOptionPicker } from "@/components/pickers/option-picker";
 import { Icon } from "@/components/shell/icons";
 import { Badge } from "@/components/ui/badge";
 import { Verdict } from "@/components/verdict";
@@ -83,7 +83,7 @@ function plural(count: number, one: string, many = `${one}s`): string {
 }
 
 export function ValueReportPage({ data }: { data: ValueReportData }) {
-  const { report, period, entity, owners = [] } = data;
+  const { report, period, entities, owners = [] } = data;
   const { outcomes, findings, recovery, hoursSaved } = report;
   const router = useRouter();
   const view = useViewState();
@@ -158,7 +158,7 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
     setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
-  const ownerOptions = [{ value: "all", label: "Everyone" }, ...owners.map((code) => ({ value: code, label: ownerName(code) }))];
+  const ownerOptions = owners.map((code) => ({ value: code, label: ownerName(code) }));
 
   return (
     <div className="vr-page">
@@ -170,12 +170,13 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
           today={today}
           value={periodRange(period, today)}
         />
-        {ownerOptions.length > 1 ? (
-          <OptionPicker
+        {owners.length ? (
+          <MultiOptionPicker
+            anyLabel="Everyone"
             label="Owned by"
-            onChange={(value) => router.push(href({ entity: value === "all" ? null : value, result: null }))}
+            onChange={(values) => router.push(href({ entity: values.join(",") || null, result: null }))}
             options={ownerOptions}
-            value={entity ?? "all"}
+            values={entities}
           />
         ) : null}
       </div>

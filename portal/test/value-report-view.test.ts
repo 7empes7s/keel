@@ -6,7 +6,7 @@ import {
 } from "../../engine/reports/value.mjs";
 import {
   estimateNote, findingLine, findingSentence, findingTitle, orderOutcomes, outcomeHref, outcomeName, outcomeReason, outcomeSentence, ownerName,
-  parseEntity, parsePeriod, periodParam, periodRange, recoverySentence, resolvePeriod, valueStatus, valueVerdict, type FindingRow, type OutcomeRow,
+  parseEntities, parseEntity, parsePeriod, periodParam, periodRange, recoverySentence, resolvePeriod, valueStatus, valueVerdict, type FindingRow, type OutcomeRow,
   type ValueReport,
 } from "@/lib/value-report-view";
 import { valueReportSheets, valueReportXlsx } from "@/lib/value-report-export";
@@ -102,7 +102,7 @@ const FINDINGS: FindingRow[] = [
 ];
 
 function render(value: ValueReport, search = ""): Promise<string> {
-  return renderValueReportAt(search, { data: { report: value, period: resolvePeriod("30d", NOW), entity: null, owners: ["FIN", "SALES"] } });
+  return renderValueReportAt(search, { data: { report: value, period: resolvePeriod("30d", NOW), entities: [], owners: ["FIN", "SALES"] } });
 }
 
 /** Visible text: everything outside the "Technical details" record layer and the style block. */
@@ -215,10 +215,15 @@ test("period and entity parameters are validated; an entity never widens a reade
   assert.equal(ownerName("IT_OPS"), "It ops");
   assert.equal(parseEntity("FIN"), "FIN");
   assert.equal(parseEntity("fin; DROP"), null);
-  assert.deepEqual(reportScope({ central: true, entities: [] }, null), { central: true, entities: [] });
-  assert.deepEqual(reportScope({ central: true, entities: [] }, "HR"), { central: false, entities: ["HR"] });
-  assert.deepEqual(reportScope({ central: false, entities: ["FIN"] }, "HR"), { central: false, entities: [] });
-  assert.deepEqual(reportScope({ central: false, entities: ["FIN", "HR"] }, "HR"), { central: false, entities: ["HR"] });
+  assert.deepEqual(parseEntities("FIN,HR,FIN,fin; DROP"), ["FIN", "HR"], "several owners, repeats and bad codes dropped");
+  assert.deepEqual(parseEntities("FIN"), ["FIN"], "an old single-owner link still works");
+  assert.deepEqual(parseEntities(undefined), []);
+  assert.deepEqual(reportScope({ central: true, entities: [] }, []), { central: true, entities: [] });
+  assert.deepEqual(reportScope({ central: true, entities: [] }, ["HR"]), { central: false, entities: ["HR"] });
+  assert.deepEqual(reportScope({ central: true, entities: [] }, ["HR", "FIN"]), { central: false, entities: ["HR", "FIN"] }, "several owners add up");
+  assert.deepEqual(reportScope({ central: false, entities: ["FIN"] }, ["HR"]), { central: false, entities: [] });
+  assert.deepEqual(reportScope({ central: false, entities: ["FIN", "HR"] }, ["HR"]), { central: false, entities: ["HR"] });
+  assert.deepEqual(reportScope({ central: false, entities: ["FIN"] }, ["HR", "FIN"]), { central: false, entities: ["FIN"] }, "an owner outside the reader's scope is dropped, never widening it");
 });
 
 test("security check rows read in words", () => {

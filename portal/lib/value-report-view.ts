@@ -141,7 +141,8 @@ export interface ValueReport {
 export interface ValueReportData {
   report: ValueReport;
   period: ReportWindow;
-  entity: string | null;
+  // The owners the report is narrowed to; several add up (any of them). None: everyone.
+  entities: string[];
   // Owner codes the reader may narrow to: every owner for a tenant-wide reader, their own otherwise.
   owners?: string[];
 }
@@ -222,6 +223,13 @@ export function periodWords(window: ReportWindow, today: Day): string {
 export function parseEntity(value: string | string[] | undefined | null): string | null {
   const raw = Array.isArray(value) ? value[0] : value;
   return raw && /^[A-Z][A-Z0-9_]{1,31}$/.test(raw) ? raw : null;
+}
+
+/** `entity=FIN,HR`: the owners picked, valid codes only, repeats dropped. An old
+ * single-owner link reads as one. */
+export function parseEntities(value: string | string[] | undefined | null): string[] {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return [...new Set((raw ?? "").split(",").map((entry) => parseEntity(entry.trim())).filter((entry): entry is string => entry !== null))].slice(0, 50);
 }
 
 export function isWithheld<T extends object>(section: T | Withheld): section is Withheld {

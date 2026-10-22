@@ -418,6 +418,8 @@ test("Activity · tiles, day groups, panel, run again, who filter, one amber act
   await page.getByRole("button", { name: /^Who:/ }).click();
   await page.locator(".option-panel [role='option']", { hasText: "Amara Okafor" }).click();
   await expect(page).toHaveURL(/who=8c1e0000-0000-4000-8000-0000000000a2/);
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect(page.locator(".option-panel")).toHaveCount(0);
   await expect(page.locator(".sel-row")).toHaveCount(2);
   await expect(page.getByRole("button", { name: "Remove filter: By Amara Okafor" })).toBeVisible();
   // Group by outcome: failed first.
@@ -459,6 +461,78 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 1000
     await open(page, "/activity?open=record:18204", "light");
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(page.getByRole("dialog").locator(".ac-changes")).toHaveCount(0);
+  });
+}
+
+// Filter dropdowns take several values, and they add up (OR): the panel stays open
+// while you tick, the button names the first pick and counts the rest, each value is
+// its own chip, and Clear in the panel drops them all.
+for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 1000 }]) {
+  test(`Filter dropdowns · several values add up at ${viewport.width} px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await open(page, "/activity", viewport.width < 600 ? "light" : "dark");
+    const outcome = page.getByRole("button", { name: /^Outcome:/ });
+    await expect(outcome).toContainText("Any outcome");
+    await outcome.click();
+    const panel = page.locator(".option-panel");
+    await expect(panel.getByRole("listbox")).toHaveAttribute("aria-multiselectable", "true");
+    await panel.getByRole("option", { name: "Failed" }).click();
+    await expect(page).toHaveURL(/outcome=failed(&|$)/);
+    await panel.getByRole("option", { name: "Refused" }).click();
+    await expect(page).toHaveURL(/outcome=failed%2Crefused|outcome=failed,refused/);
+    await expect(panel.getByRole("option", { name: "Failed" })).toHaveAttribute("aria-selected", "true");
+    await expect(panel.getByRole("option", { name: "Refused" })).toHaveAttribute("aria-selected", "true");
+    await expect(panel.getByRole("option", { name: "Running" })).toHaveAttribute("aria-selected", "false");
+    await expect(panel.locator(".option-foot")).toContainText("2 picked, any can match");
+    if (viewport.width >= 600) await page.screenshot({ path: "test-results/multi-select-open-desktop-dark.png" });
+    else await page.screenshot({ path: "test-results/multi-select-open-phone-light.png" });
+    await panel.getByRole("button", { name: "Done" }).click();
+    await expect(panel).toHaveCount(0);
+    await expect(outcome).toContainText("Failed");
+    await expect(outcome.locator(".picker-count")).toHaveText("+1");
+    await expect(outcome).toHaveAttribute("aria-label", "Outcome: Failed or Refused");
+    await expect(page.getByRole("button", { name: "Remove filter: Failed" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Remove filter: Refused" })).toBeVisible();
+    const badges = await page.locator(".sel-row .ac-row-mid .badge").allTextContents();
+    expect(badges.length).toBeGreaterThan(2);
+    expect(new Set(badges)).toEqual(new Set(["Failed", "Refused"]));
+
+    // A second dropdown narrows (AND); its own values add up.
+    await page.getByRole("button", { name: /^What:/ }).click();
+    await panel.getByRole("option", { name: "Backups" }).click();
+    await panel.getByRole("option", { name: "Approvals" }).click();
+    await expect(page).toHaveURL(/what=backup%2Capproval|what=backup,approval/);
+    await page.keyboard.press("Escape");
+    for (const row of await page.locator(".sel-row .ac-row-mid .badge").allTextContents()) expect(["Failed", "Refused"]).toContain(row);
+    await expect(page.getByRole("button", { name: "Remove filter: Backups" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Remove filter: Approvals" })).toBeVisible();
+    if (viewport.width >= 600) await page.screenshot({ path: "test-results/multi-select-chips-desktop-dark.png" });
+    else await page.screenshot({ path: "test-results/multi-select-chips-phone-light.png" });
+
+    // Removing one chip keeps the other value; Clear in the panel drops them all.
+    await page.getByRole("button", { name: "Remove filter: Failed" }).click();
+    await expect(page).toHaveURL(/outcome=refused/);
+    await expect(outcome).toContainText("Refused");
+    await outcome.click();
+    await panel.getByRole("button", { name: "Clear" }).click();
+    await expect(page).not.toHaveURL(/outcome=/);
+    await expect(page).toHaveURL(/what=backup/);
+    await expect(panel.locator(".option-foot")).toContainText("Pick one or more");
+    await page.keyboard.press("Escape");
+    await expect(outcome).toContainText("Any outcome");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+
+    // The Value report owners add up the same way, and an old one-owner link still reads.
+    await open(page, "/reports?entity=FIN", viewport.width < 600 ? "light" : "dark");
+    const owners = page.getByRole("button", { name: /^Owned by:/ });
+    await expect(owners).toContainText("Fin");
+    await owners.click();
+    await panel.getByRole("option", { name: "Sales" }).click();
+    await expect(page).toHaveURL(/entity=FIN%2CSALES|entity=FIN,SALES/);
+    await page.keyboard.press("Escape");
+    await expect(owners).toHaveAttribute("aria-label", "Owned by: Fin or Sales");
+    await page.getByRole("button", { name: "Download this report" }).click();
+    await expect(page.getByRole("link", { name: /Excel workbook/ })).toHaveAttribute("href", /entity=FIN%2CSALES|entity=FIN,SALES/);
   });
 }
 
@@ -1270,6 +1344,7 @@ test("the value report adds up, shows hours only with an estimate, and withholds
   await page.getByRole("button", { name: /^Owned by:/ }).click();
   await page.getByRole("option", { name: "Fin" }).click();
   await expect(page).toHaveURL(/entity=FIN/);
+  await page.keyboard.press("Escape");
   await page.reload();
   await page.locator("main#main-content h1").waitFor();
   await expect(page.getByRole("button", { name: /^Period:/ })).toContainText("Last 90 days");

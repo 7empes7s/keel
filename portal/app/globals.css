@@ -6776,6 +6776,67 @@ section.wizard-panel {
   font-size: 0.875rem;
 }
 
+/* Multi-select pickers: a tick box per choice, a count on the button, and a foot with
+   Clear and Done. A picked row is tinted so the picks stand out in a long list. */
+.picker-count {
+  display: inline-flex;
+  min-width: 1.5rem;
+  padding: 0 0.375rem;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--low-risk-bg);
+  color: var(--low-risk);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.25rem;
+}
+
+.option > .option-box {
+  display: inline-flex;
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--control-border);
+  border-radius: 0.3rem;
+}
+
+.option-box .icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.option[data-picked] {
+  background: var(--low-risk-bg);
+}
+
+.option[data-picked][data-active] {
+  background: color-mix(in oklab, var(--low-risk) 18%, var(--low-risk-bg));
+}
+
+.option[data-picked] .option-box {
+  border-color: var(--low-risk);
+  background: var(--low-risk);
+  color: var(--surface);
+}
+
+.option-foot {
+  display: flex;
+  margin-top: var(--space-xs);
+  padding: var(--space-xs) var(--space-xs) 0;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  gap: var(--space-xs);
+}
+
+.option-foot > span {
+  min-width: 0;
+  flex: 1;
+  color: var(--text-soft);
+  font-size: 0.8125rem;
+}
+
 .date-panel {
   width: auto;
   max-width: calc(100vw - 2rem);

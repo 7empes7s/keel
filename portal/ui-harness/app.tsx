@@ -72,7 +72,7 @@ import { readinessStatus, type Dimension, type ReadinessAccount, type ReadinessD
 import { pageVerdict, resilienceAlerts, resilienceStatus, verdictAction, type ResilienceData } from "@/lib/resilience-view";
 import { DownloadMenu } from "@/components/value-report/download-menu";
 import { ValueReportPage } from "@/components/value-report/value-report-page";
-import { resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
+import { parseEntities, resolvePeriod, valueStatus, type ValueReport } from "@/lib/value-report-view";
 import { AskView } from "@/components/ask-view";
 import { askVerdict, type AskData, type GroundedAnswer } from "@/lib/ask-view";
 import { ApproveIntentForm, IntentCard } from "@/components/change-intent";
@@ -1414,9 +1414,9 @@ const VALUE_REPORT_SCOPED: ValueReport = {
 // The server reads `period=` and `entity=`; here they only change what the controls show.
 function HarnessReports({ report, owners }: { report: ValueReport; owners: string[] }) {
   const params = useSearchParams();
-  const entity = params.get("entity");
+  const entities = parseEntities(params.get("entity")).filter((entity) => owners.includes(entity));
   return <><PageHeader actions={<DownloadMenu />} description="What Keel put back and checked, which security checks were fixed, and how fast recovery was, for a period you choose." generatedAt={now} section="Reports" status={valueStatus(report)} title="Value report" />
-    <ValueReportPage data={{ report, period: resolvePeriod(params.get("period"), report.period.to), entity: entity && owners.includes(entity) ? entity : null, owners }} /></>;
+    <ValueReportPage data={{ report, period: resolvePeriod(params.get("period"), report.period.to), entities, owners }} /></>;
 }
 
 // Task-99: bounded, grounded answers. A partial answer (part of the week not compared

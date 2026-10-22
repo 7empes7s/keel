@@ -12,7 +12,7 @@ import { ActiveFilters, NoMatches } from "@/components/list/active-filters";
 import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { DatePicker } from "@/components/pickers/date-picker";
-import { OptionPicker } from "@/components/pickers/option-picker";
+import { MultiOptionPicker } from "@/components/pickers/option-picker";
 import { Segmented, type ChoiceOption } from "@/components/pickers/segmented";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { JobRecordFields } from "@/components/job-table";
@@ -26,6 +26,7 @@ import {
   ACTIVITY_KIND_ORDER,
   OUTCOMES,
   OUTCOME_ORDER,
+  type ActivityKind,
   type Outcome,
   activityCounts,
   activityCsv,
@@ -81,7 +82,6 @@ const SORTS: ListSort<ActivityRow>[] = [
   { key: "what", label: "What happened", compare: (a, b) => byText(a.title, b.title) },
 ];
 
-const WHO_ANY = "";
 const SERVER_KEYS = { show: null, range: null, who: null, what: null, outcome: null, before: null };
 
 export function ActivityPage({ canBackup, jobs, entries, integrity, people = {}, names = {}, now = new Date().toISOString(), nextBefore = null }: {
@@ -168,15 +168,15 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
   const failedTile = outcomeTile(["failed"]);
   const activeTile = outcomeTile(["running", "waiting"]);
   const tiles: { key: string; label: string; icon: IconName; value: string; small: string; changes: Record<string, string | null>; tone?: "urgent" | "soon"; active: boolean }[] = [
-    { key: "jobs", label: "Jobs in the last day", icon: "swap", value: String(counts.jobsDay), small: "Each bar is a day; red is what failed", changes: { ...SERVER_KEYS }, active: filters.show === "all" && !filters.outcomes.length && !filters.what && !filters.who && !filters.range },
+    { key: "jobs", label: "Jobs in the last day", icon: "swap", value: String(counts.jobsDay), small: "Each bar is a day; red is what failed", changes: { ...SERVER_KEYS }, active: filters.show === "all" && !filters.outcomes.length && !filters.what.length && !filters.who.length && !filters.range },
     { key: "failed", label: "Failed", icon: "x-circle", value: String(counts.failedDay), small: counts.failedWeek ? `${counts.failedWeek} failed in the last 7 days` : "Nothing failed in the last 7 days", changes: failedTile.changes, tone: counts.failedDay ? "urgent" : undefined, active: failedTile.active },
     { key: "active", label: "Running or waiting", icon: "play", value: String(counts.running + counts.waiting), small: counts.running + counts.waiting ? `${counts.running} running, ${counts.waiting} waiting to start` : "Nothing is running", changes: activeTile.changes, active: activeTile.active },
     { key: "record", label: "Audit record", icon: "audit", value: record.label, small: record.sentence, changes: { show: filters.show === "records" ? null : "records", before: null }, tone: record.state === "broken" ? "urgent" : record.state === "unchecked" ? "soon" : undefined, active: filters.show === "records" },
   ];
 
-  const whoOptions: ChoiceOption<string>[] = [{ value: WHO_ANY, label: "Anyone" }, ...who.map((person) => ({ value: person.id, label: person.name, icon: (person.system ? "clock" : undefined) as IconName | undefined }))];
-  const whatOptions: ChoiceOption<string>[] = [{ value: "", label: "All kinds" }, ...ACTIVITY_KIND_ORDER.map((kind) => ({ value: kind, label: ACTIVITY_KINDS[kind].label, icon: ACTIVITY_KINDS[kind].icon }))];
-  const outcomeOptions: ChoiceOption<string>[] = [{ value: "", label: "Any outcome" }, ...OUTCOME_ORDER.map((outcome) => ({ value: outcome, label: OUTCOMES[outcome].plural, icon: OUTCOMES[outcome].icon }))];
+  const whoOptions: ChoiceOption<string>[] = who.map((person) => ({ value: person.id, label: person.name, icon: (person.system ? "clock" : undefined) as IconName | undefined }));
+  const whatOptions: ChoiceOption<ActivityKind>[] = ACTIVITY_KIND_ORDER.map((kind) => ({ value: kind, label: ACTIVITY_KINDS[kind].label, icon: ACTIVITY_KINDS[kind].icon }));
+  const outcomeOptions: ChoiceOption<Outcome>[] = OUTCOME_ORDER.map((outcome) => ({ value: outcome, label: OUTCOMES[outcome].plural, icon: OUTCOMES[outcome].icon }));
   const chips = filterChips(filters, people, today);
   const filtering = chips.length > 0;
 
@@ -241,9 +241,9 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
         <div className="ac-filters">
           <Segmented label="Show" onChange={(value) => navigate({ show: value === "all" ? null : value })} options={SHOW} value={filters.show} />
           <DatePicker allowClear label="When" onChange={(range: DayRange | null) => navigate({ range: rangeToParam(range) || null })} today={today} value={filters.range} />
-          <OptionPicker label="Who" onChange={(value) => navigate({ who: value || null })} options={whoOptions} value={filters.who ?? WHO_ANY} />
-          <OptionPicker label="What" onChange={(value) => navigate({ what: value || null })} options={whatOptions} value={filters.what ?? ""} />
-          <OptionPicker label="Outcome" onChange={(value) => navigate({ outcome: value || null })} options={outcomeOptions} placeholder={`${filters.outcomes.length} outcomes`} value={filters.outcomes.length > 1 ? null : filters.outcomes[0] ?? ""} />
+          <MultiOptionPicker anyLabel="Anyone" label="Who" onChange={(values) => navigate({ who: values.join(",") || null })} options={whoOptions} values={filters.who} />
+          <MultiOptionPicker anyLabel="All kinds" label="What" onChange={(values) => navigate({ what: values.join(",") || null })} options={whatOptions} values={filters.what} />
+          <MultiOptionPicker anyLabel="Any outcome" label="Outcome" onChange={(values) => navigate({ outcome: values.join(",") || null })} options={outcomeOptions} values={filters.outcomes} />
         </div>
         {feedback}
         <ActiveFilters extra={{ open: null, before: null }} filters={chips} noun={{ one: "entry", many: "entries" }} onChange={navigate} shown={shown.length} total={rows.length} totalWords="loaded" />

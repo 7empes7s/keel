@@ -1147,21 +1147,21 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
   // Alerts come before the tiles and the table, worst first.
   const order = await page.locator(".rs-page > section").evaluateAll((sections) => sections.map((section) => section.className));
   expect(order[0]).toContain("rs-attention");
-  const alerts = page.locator(".rs-alert");
+  const alerts = page.locator(".ui-alert");
   await expect(alerts.first()).toHaveAttribute("data-tone", "urgent");
   const tones = await alerts.evaluateAll((rows) => rows.map((row) => row.getAttribute("data-tone")));
   expect(tones).toEqual([...tones].sort((a, b) => ["urgent", "soon", "low"].indexOf(a!) - ["urgent", "soon", "low"].indexOf(b!)));
-  for (const alert of await alerts.all()) await expect(alert.locator(".rs-alert-todo")).toContainText("What to do:");
+  for (const alert of await alerts.all()) await expect(alert.locator(".ui-alert-todo")).toContainText("What to do:");
   // Error details are hidden until asked for.
-  const mail = page.locator('.rs-alert[data-alert="service-never-worked"]');
-  await expect(mail.locator(".rs-alert-more li")).toBeHidden();
+  const mail = page.locator('.ui-alert[data-alert="service-never-worked"]');
+  await expect(mail.locator(".ui-alert-more li")).toBeHidden();
   await mail.getByText("Show details").click();
-  await expect(mail.locator(".rs-alert-more li")).toContainText("Mail, calendars and contacts: last try stopped part way");
-  await expect(page.locator('.rs-alert[data-alert="restore-failed"]').getByRole("link", { name: "View restore" })).toHaveAttribute("href", /b7c10000-0000-4000-8000-000000000074/);
-  await expect(page.locator('.rs-alert[data-alert="incident:1c1d0000-0000-4000-8000-000000000071"]').getByRole("link", { name: "Open incident" })).toBeVisible();
+  await expect(mail.locator(".ui-alert-more li")).toContainText("Mail, calendars and contacts: last try stopped part way");
+  await expect(page.locator('.ui-alert[data-alert="restore-failed"]').getByRole("link", { name: "View restore" })).toHaveAttribute("href", /b7c10000-0000-4000-8000-000000000074/);
+  await expect(page.locator('.ui-alert[data-alert="incident:1c1d0000-0000-4000-8000-000000000071"]').getByRole("link", { name: "Open incident" })).toBeVisible();
   // Tiles and the service table.
-  await expect(page.locator('.rs-tile[data-tile="point"] .rs-tile-value')).toHaveText("29 hours ago");
-  await expect(page.locator('.rs-tile[data-tile="services"] .rs-tile-value')).toHaveText("4 of 8");
+  await expect(page.locator('.ui-tile[data-tile="point"] .ui-tile-value')).toHaveText("29 hours ago");
+  await expect(page.locator('.ui-tile[data-tile="services"] .ui-tile-value')).toHaveText("4 of 8");
   await expect(page.locator('.rs-table tr[data-row="content:exchange-mail"]')).toContainText("Never worked");
   await expect(page.locator('.rs-table tr[data-row="service-settings:teams-org-policies"]')).toContainText("Switched off");
   const groups = await page.locator(".rs-group").allTextContents();
@@ -1172,14 +1172,14 @@ test("resilience puts alerts first, says what to do, and keeps unmeasured visibl
 
   await open(page, "/resilience/unmeasured");
   await expect(page.locator('[data-layer="verdict"] .verdict-sentence')).toHaveText("Recovery is not measured yet: no checked off-site copy holds every backed-up type, and no recovery has been timed.");
-  for (const tile of ["point", "time"]) await expect(page.locator(`.rs-tile[data-tile="${tile}"] .rs-tile-value`)).toHaveText("Not measured");
-  await expect(page.locator('.rs-tile[data-tile="drill"] .rs-tile-value')).toHaveText("None yet");
-  await expect(page.locator(".rs-tiles")).not.toContainText(/\b0 (minutes|hours)\b/);
+  for (const tile of ["point", "time"]) await expect(page.locator(`.ui-tile[data-tile="${tile}"] .ui-tile-value`)).toHaveText("Not measured");
+  await expect(page.locator('.ui-tile[data-tile="drill"] .ui-tile-value')).toHaveText("None yet");
+  await expect(page.locator(".ui-tiles")).not.toContainText(/\b0 (minutes|hours)\b/);
   for (const card of ["freshness", "point", "time", "drills"]) {
     await expect(page.locator(`.resilience-${card} .badge`)).toHaveText("Not measured");
     await expect(page.locator(`.resilience-${card} .resilience-sentence`)).toContainText("Not measured");
   }
-  await expect(page.locator('.rs-alert[data-alert="never-backed-up"]')).toContainText("2 setting types never backed up");
+  await expect(page.locator('.ui-alert[data-alert="never-backed-up"]')).toContainText("2 setting types never backed up");
 });
 
 // Task-100 and the Value report redesign (pick A): the tiles and chart add up, each

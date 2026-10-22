@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { typeService } from "@/lib/baselines-view";
 import { SERVICES } from "@/lib/services";
 import {
-  EXPIRY_WARNING_DAYS, credentialWarnings, credentialsFine, credentialsLink, lastReadWords, serviceStatuses, servicesSummary,
+  EXPIRY_WARNING_DAYS, credentialWarnings, credentialsFine, credentialsUnknown, credentialsLink, lastReadWords, serviceStatuses, servicesSummary,
   type ConnectionExpiry,
 } from "@/lib/setup-services";
 import type { CoverageType } from "@/lib/types";
@@ -42,8 +42,10 @@ test("every Microsoft 365 service gets one line, worst first, and Keel's own rec
 });
 
 test("kinds not placed in a service yet get their own line instead of being hidden", () => {
-  const statuses = serviceStatuses([kind("keelTestUnplacedKind", { outcome: "partial" })], NOW);
+  const statuses = serviceStatuses([kind("keelTestUnplacedKind", { outcome: "partial" }), kind("keelTestOtherKind")], NOW);
+  // Every unplaced kind shares one "Other services" tile.
   assert.equal(statuses.length, SERVICES.length);
+  assert.equal(statuses.filter((status) => status.name === "Other services").length, 1);
   assert.deepEqual([statuses[0].name, statuses[0].label], ["Other services", "Failing"]);
   assert.match(statuses[0].blocker!.text, /read only part of it/);
 });
@@ -76,6 +78,12 @@ test("a plain failure links to the failed kinds of that service; out of date lin
   assert.equal(teams.blocker!.fix!.href, "/protect?service=Teams&health=out-of-date");
   assert.match(teams.blocker!.text, /3 days ago, longer ago than its tier allows/);
   assert.deepEqual(servicesSummary([exchange, teams]), { tone: "urgent", text: "1 of 2 services is failing to back up." });
+});
+
+test("a failed read diagnosed as a missing licence still links to what failed", () => {
+  const [purview] = serviceStatuses([kind("purview-labels", { outcome: "failed", diagnosis: { diagnosis: "missing-license", original: { httpStatus: 403, graphCode: null } } })], NOW);
+  assert.match(purview.blocker!.text, /does not have the licence/);
+  assert.equal(purview.blocker!.fix!.href, "/protect?service=Purview&health=failed");
 });
 
 test("a service the tenant has no licence for is not a failure", () => {
@@ -118,6 +126,17 @@ test("an unknown date is never shown as fine, and the soonest certificate comes 
   assert.deepEqual(credentialWarnings(null, NOW), []);
   assert.equal(credentialsFine(null), null);
   assert.equal(credentialsFine([connection({ credentialExpiresAt: null })]), null);
+  // One unknown or unreadable date beside a known one: no "valid until" line; the unknown app is named.
+  const mixed = [connection({ credentialExpiresAt: null }), connection({ role: "settings-restorer", name: "Keel Settings Restorer", credentialExpiresAt: "2027-03-01T00:00:00.000Z" })];
+  assert.equal(credentialsFine(mixed), null);
+  assert.deepEqual(credentialsUnknown(mixed), ["Keel Settings Reader"]);
+  const garbage = [connection({ credentialExpiresAt: "garbage" })];
+  assert.equal(credentialsFine(garbage), null);
+  assert.deepEqual(credentialWarnings(garbage, NOW), []);
+  assert.deepEqual(credentialsUnknown(garbage), ["Keel Settings Reader"]);
+  // The earliest date wins whatever the offset format.
+  assert.equal(credentialsFine([connection({ credentialExpiresAt: "2027-03-01T01:00:00+02:00" }), connection({ credentialExpiresAt: "2027-02-28T23:30:00Z" })]),
+    "Keel's app certificates are valid until at least 28 Feb 2027.");
   const both = credentialWarnings([
     connection({ credentialExpiresAt: "2026-11-15T00:00:00.000Z" }),
     connection({ role: "content-reader", name: "Keel Content Reader", credentialExpiresAt: "2026-11-01T00:00:00.000Z" }),

@@ -59,7 +59,10 @@ function blockerFor(item: CoverageType, code: string, now: string): { text: stri
       return { text: `${name}: Keel's backup app is missing an admin role Microsoft asks for.`, fix: { label: "Check read access", href: "#setup-read" } };
     case "missing-license":
     case "disabled-plan":
-      return { text: `${name}: this tenant does not have the licence Microsoft needs for it.`, fix: null };
+      return {
+        text: `${name}: this tenant does not have the licence Microsoft needs for it.`,
+        fix: backupHealth(item) === "failed" ? { label: "See what failed", href: `/protect?service=${encodeURIComponent(code)}&health=failed` } : null,
+      };
     default:
       break;
   }
@@ -127,7 +130,8 @@ export function serviceStatus(code: string, types: CoverageType[], now: string):
 export function serviceStatuses(types: CoverageType[], now: string): ServiceStatus[] {
   const byService = new Map<string, CoverageType[]>();
   for (const item of types) {
-    const code = typeService(item.type).code;
+    const placed = typeService(item.type).code;
+    const code = SERVICES.some((service) => service.code === placed) ? placed : "other";
     if (code === "Keel") continue;
     byService.set(code, [...(byService.get(code) ?? []), item]);
   }
@@ -199,7 +203,7 @@ function dateWords(value: string): string {
 /** One warning per Keel app whose certificate runs out within 30 days, soonest first. */
 export function credentialWarnings(connections: ConnectionExpiry[] | null | undefined, now: string): CredentialWarning[] {
   return (connections ?? [])
-    .filter((connection) => connection.credentialExpiresAt
+    .filter((connection) => knownDate(connection.credentialExpiresAt)
       && Date.parse(connection.credentialExpiresAt) - Date.parse(now) <= EXPIRY_WARNING_DAYS * DAY)
     .sort((a, b) => Date.parse(a.credentialExpiresAt!) - Date.parse(b.credentialExpiresAt!))
     .map((connection) => {
@@ -221,8 +225,20 @@ export function credentialWarnings(connections: ConnectionExpiry[] | null | unde
     });
 }
 
-/** The quiet line when nothing runs out soon: the first date a Keel app certificate ends. */
+const knownDate = (value: string | null): value is string => value !== null && Number.isFinite(Date.parse(value));
+
+/**
+ * The quiet line when nothing runs out soon: the first date a Keel app certificate
+ * ends. Only when every app's date is known; otherwise null, so nothing unknown reads as fine.
+ */
 export function credentialsFine(connections: ConnectionExpiry[] | null | undefined): string | null {
-  const dates = (connections ?? []).map((connection) => connection.credentialExpiresAt).filter((value): value is string => Boolean(value)).sort();
-  return dates.length ? `Keel's app certificates are valid until at least ${dateWords(dates[0])}.` : null;
+  const list = connections ?? [];
+  if (!list.length || !list.every((connection) => knownDate(connection.credentialExpiresAt))) return null;
+  const first = list.map((connection) => Date.parse(connection.credentialExpiresAt!)).reduce((a, b) => Math.min(a, b));
+  return `Keel's app certificates are valid until at least ${dateWords(new Date(first).toISOString())}.`;
+}
+
+/** The apps whose certificate end date Keel does not know, by name. */
+export function credentialsUnknown(connections: ConnectionExpiry[] | null | undefined): string[] {
+  return (connections ?? []).filter((connection) => !knownDate(connection.credentialExpiresAt)).map((connection) => connection.name);
 }

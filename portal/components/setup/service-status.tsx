@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Icon } from "@/components/shell/icons";
 import { Badge, BADGE_ICONS } from "@/components/ui/badge";
 import {
-  credentialsFine, credentialWarnings, lastReadWords, servicesSummary,
+  credentialsFine, credentialsUnknown, credentialWarnings, lastReadWords, servicesSummary,
   type ConnectionExpiry, type ServiceFix, type ServiceStatus,
 } from "@/lib/setup-services";
 
@@ -35,6 +35,10 @@ export function CredentialAlerts({ credentials, canCheck, now }: {
   }
   const fine = credentialsFine(credentials);
   if (fine) return <p className="su-expiry-fine"><Icon name="check-circle" />{fine}</p>;
+  const unknown = credentialsUnknown(credentials);
+  if (unknown.length) {
+    return <p className="su-expiry-fine" data-tone="neutral"><Icon name="info" />Keel could not read when the certificate of {unknown.join(" and ")} ends.</p>;
+  }
   return canCheck && credentials === null
     ? <p className="su-expiry-fine" data-tone="neutral"><Icon name="info" />Keel could not read when its app certificates end. Press Check again to try again.</p>
     : null;

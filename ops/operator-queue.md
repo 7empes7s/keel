@@ -6622,3 +6622,34 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; step 2 fingerprints; per operation: promoted / refused (exact message) / blocked; step 4; approval ids; the evidence
   branch and commit; anything left in the tenant.
+
+### Q140: Live re-check of policy set restore now that the live read fills `{parent}` (fixes #473, after #480)
+- Drafted by the "Policy set restore path broken" thread (2026-10-22), from your Q116 and Q120 finding **#473**. Code: PR #480 (merge 60cd14d). Fixture-tested only.
+  - **Change:** the restore's live read now lists the parents of a per-parent kind and reads each one, the same way the backup does,
+    instead of sending `.../{parent}` to Graph. This covers all 15 per-parent kinds, including `policySet` and `deviceManagementCompliancePolicy`.
+    Writers are unchanged (same as Q116).
+  - Not fixed here: the compliance policy backup still holds `scheduledActionsForRule: []` (your Q120 comment on #473). That is a separate item.
+- Needs: /opt/keel-live at 60cd14d or later (`grep -q listPerParent /opt/keel-live/engine/reconcile/liveState.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q116. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. If Graph answers 403,
+  report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.
+  **Never assign any fixture to a group, user or device.**
+- **Fixtures:** policy set `KEEL-RT-set` holding one unassigned `KEEL-RT-` device configuration profile, and (for step 5 only) one existing
+  `KEEL-RT-` compliance policy, unassigned, as in Q116 and Q120.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Create the fixtures, then take snapshot S (a run that reads `policySet` and `deviceManagementCompliancePolicy`). Confirm the set is in S with its one item.
+  2. **Create round:** delete `KEEL-RT-set` (not the profile inside it). Restore from S selecting it, approve, enforce, capture `policySet.create`.
+     Expect no `listing .../{parent}` error, and the set reads back with its name, description and the one item.
+  3. **Update round:** change the set's description and remove its item. Restore from S, approve, enforce, capture `policySet.update`.
+     Expect the description back and the item added again.
+  4. **Re-run check:** dry run from S after step 3. Expect 0 planned writes for the set.
+  5. **Compliance dry run (no write):** dry run from S selecting the `KEEL-RT-` compliance policy. Expect it to plan without the
+     `listing /deviceManagement/compliancePolicies/{parent}` error. Report what it plans; do not enforce.
+  6. Cleanup: delete `KEEL-RT-set` and any `KEEL-RT-` profile or compliance policy you created. Report anything left.
+  7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-policy-set`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; per operation: promoted / refused (exact message) / blocked; step 4; step 5 plan; approval ids; the evidence branch and commit;
+  anything left in the tenant. If this passes, Q131 (policy set assignments) is unblocked.

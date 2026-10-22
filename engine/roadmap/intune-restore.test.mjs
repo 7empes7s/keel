@@ -45,8 +45,9 @@ const RESTORABLE = Object.freeze(['deviceCompliancePolicy', 'deviceConfiguration
 // Wave 2 IDO: an unassigned policy is deleted, and the app protection and app
 // configuration types are written, by intuneOperations.mjs's record writer.
 const WAVE2_PROOF = 'engine/restore/intuneExtended.test.mjs';
-// Restore gaps batch 1 made device categories restorable (the category, not which devices are in it).
-const WAVE2_AUTOMATED = Object.freeze(['managedAppPolicy', 'targetedManagedAppConfiguration', 'mobileAppConfiguration', 'deviceCategory']);
+// Restore gaps batch 1 made device categories restorable (the category, not which devices are in it),
+// and batch 6 Autopilot profiles (the profile, not the devices it applies to).
+const WAVE2_AUTOMATED = Object.freeze(['managedAppPolicy', 'targetedManagedAppConfiguration', 'mobileAppConfiguration', 'deviceCategory', 'windowsAutopilotDeploymentProfile']);
 const INTUNE_TYPES = Object.freeze([
   'deviceConfiguration', 'deviceCompliancePolicy', 'configurationPolicy', 'deviceEnrollmentConfiguration',
   'windowsAutopilotDeploymentProfile', 'managedAppPolicy', 'targetedManagedAppConfiguration', 'mobileAppConfiguration',

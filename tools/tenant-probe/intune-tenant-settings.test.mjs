@@ -14,7 +14,8 @@ const PLAY_SELECT = 'id,bindStatus,lastAppSyncDateTime,lastAppSyncStatus,ownerUs
 const EXPECTED = [
   ['deviceManagementCompliancePolicy', '/beta/deviceManagement/compliancePolicies?$expand=settings', 'tier1', 'list'],
   ['deviceManagementReusablePolicySetting', '/beta/deviceManagement/reusablePolicySettings', 'tier2', 'list'],
-  ['policySet', '/beta/deviceAppManagement/policySets', 'tier3', 'list'],
+  // Listed, then each set read on its own with its items expanded.
+  ['policySet', '/beta/deviceAppManagement/policySets', 'tier3', 'per-set'],
   ['vppToken', `/v1.0/deviceAppManagement/vppTokens?$select=${VPP_SELECT}`, 'tier2', 'list'],
   ['depOnboardingSetting', '/beta/deviceManagement/depOnboardingSettings', 'tier2', 'list'],
   ['androidManagedStoreAccountEnterpriseSettings', `/beta/deviceManagement/androidManagedStoreAccountEnterpriseSettings?$select=${PLAY_SELECT}`, 'tier2', 'singleton'],
@@ -36,7 +37,7 @@ test('the Intune tenant settings family holds exactly the planned types, all in 
     // A singleton never set up, or a script deleted after the list, may answer 404; a list read never hides one.
     assert.equal(entry.absentWhenNotFound === true, shape !== 'list', type);
     assert.ok(!entry.needsOrgId, type);
-    assert.equal(Boolean(entry.parent), shape === 'per-script', `${type} is read at a fixed path, or per script`);
+    assert.equal(Boolean(entry.parent), shape.startsWith('per-'), `${type} is read at a fixed path, or per object`);
     // A page cap would leave the backup incomplete; these types are read in full.
     assert.equal(entry.pageCap, undefined, type);
   }
@@ -62,7 +63,7 @@ test('no Intune tenant settings type duplicates an existing catalogue path or ty
 test('each Intune tenant settings type reads a KEEL-RT- fixture with GET only, across pages or as one object', async () => {
   const originalFetch = globalThis.fetch;
   try {
-    for (const [type, endpoint, , shape] of EXPECTED.filter(([, , , kind]) => kind !== 'per-script')) {
+    for (const [type, endpoint, , shape] of EXPECTED.filter(([, , , kind]) => !kind.startsWith('per-'))) {
       const entry = catalogEntryFor(type);
       const first = { id: `${type}-1`, displayName: `KEEL-RT-${type}-1` };
       const second = { id: `${type}-2`, displayName: `KEEL-RT-${type}-2` };
@@ -110,4 +111,26 @@ test('each macOS custom attribute script is listed, then read on its own so the 
   assert.equal(result.error, null);
   // A script deleted between the list and its own read is absent, not a failure.
   assert.deepEqual(result.items, [{ id: 's-1', displayName: 'KEEL-RT-attribute', scriptContent: 'ZWNobyBLRUVMLVJU' }]);
+});
+
+test('each policy set is listed, then read on its own with the apps and policies in it', async () => {
+  const entry = catalogEntryFor('policySet');
+  const list = '/beta/deviceAppManagement/policySets';
+  assert.equal(`/${entry.version}${entry.parent.path}`, list);
+  const urls = [];
+  const item = { '@odata.type': '#microsoft.graph.deviceConfigurationPolicySetItem', id: 'i-1', payloadId: 'cfg-1' };
+  const reader = {
+    async collect(version, path) {
+      urls.push(`/${version}${path}`);
+      if (path.startsWith(`${entry.parent.path}?`)) return { items: [{ id: 'set-1' }, { id: 'set-2' }], pages: 1, status: 200, capped: false, error: null };
+      const id = path.split('?')[0].split('/').pop();
+      if (id === 'set-2') return { items: [], pages: 0, status: 404, capped: false, error: { status: 404, error: 'gone' } };
+      return { items: [{ id, displayName: 'KEEL-RT-set', items: [item] }], pages: 1, status: 200, capped: false, error: null };
+    },
+  };
+  const result = await get('policySet').adapter.collectRaw(reader, {});
+  assert.deepEqual(urls, [`${list}?$select=id`, `${list}/set-1?$expand=items`, `${list}/set-2?$expand=items`], 'list, then one GET per set');
+  assert.equal(result.error, null);
+  // A set deleted between the list and its own read is absent, not a failure.
+  assert.deepEqual(result.items, [{ id: 'set-1', displayName: 'KEEL-RT-set', items: [item] }]);
 });

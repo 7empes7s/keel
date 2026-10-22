@@ -16,9 +16,15 @@ export default [
   // catalog policies reference by id.
   { type: 'deviceManagementReusablePolicySetting', path: '/deviceManagement/reusablePolicySettings', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
     note: 'Policies that use a group refer to it by id, so it is rebuilt before them.' },
-  // Policy sets: bundles of apps and policies assigned together.
-  { type: 'policySet', path: '/deviceAppManagement/policySets', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic',
-    note: 'What each set holds is listed per set and not backed up yet.' },
+  // Policy sets: bundles of apps and policies assigned together. What a set
+  // holds (its items) is returned only when one set is read with the items
+  // expanded, so each set is listed, then read on its own (restore gaps batch 6).
+  { type: 'policySet', path: '/deviceAppManagement/policySets/{parent}', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic',
+    parent: { path: '/deviceAppManagement/policySets', select: 'id', key: 'id', as: 'id' },
+    query: '$expand=items',
+    // A set deleted between the list and its own read is gone, not a failed read.
+    absentWhenNotFound: true,
+    note: 'The apps and policies in each set are read per set.' },
   // Apple Volume Purchase Program tokens. The token itself is a secret and is
   // left out of the read; the Apple ID, organization and expiry are what a
   // renewal needs.

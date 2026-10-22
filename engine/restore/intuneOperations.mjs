@@ -1026,6 +1026,29 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     refusal: groupPolicyRefusal, preflight: groupPolicyDefinitionsExist, afterWrite: groupPolicySettingsAfterWrite,
     permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
+  // Restore gaps, batch 6. An app category is only a name; Microsoft's
+  // built-in categories are in every tenant and are never written.
+  mobileAppCategory: defineRecord({
+    resourceType: 'mobileAppCategory', version: 'v1.0', collection: '/deviceAppManagement/mobileAppCategories',
+    operations: ['create', 'update'], refusal: builtInAppCategory, permission: 'DeviceManagementApps.ReadWrite.All',
+  }),
+  // An Autopilot profile is written with its kind (Entra joined or hybrid
+  // joined), which never changes. The devices it applies to and who it is
+  // assigned to are not written.
+  windowsAutopilotDeploymentProfile: defineRecord({
+    resourceType: 'windowsAutopilotDeploymentProfile', version: 'beta', collection: '/deviceManagement/windowsAutopilotDeploymentProfiles',
+    odataType: 'required', operations: ['create', 'update'], excluded: ['assignedDevices', 'assignments'],
+    refusal: sameAutopilotKind, permission: 'DeviceManagementServiceConfig.ReadWrite.All',
+  }),
+  // A policy set is written, then its items (the apps and policies in it)
+  // are synced through the set's update action. Every app and policy it holds
+  // must exist in the target with the same id. Who it is assigned to is not written.
+  policySet: defineRecord({
+    resourceType: 'policySet', version: 'beta', collection: '/deviceAppManagement/policySets', operations: ['create', 'update'],
+    excluded: ['items', 'assignments', 'status', 'errorCode'],
+    refusal: policySetRefusal, preflight: policySetItemsExist, afterWrite: policySetItemsAfterWrite,
+    permission: 'DeviceManagementApps.ReadWrite.All',
+  }),
 });
 
 /** A cleanup rule is never made to retire devices sooner than it does now. */
@@ -1040,6 +1063,139 @@ export function cleanupRuleRefusal(resource, verb) {
     };
   }
   return null;
+}
+
+// ------------------------------------------------- batch 6: app categories
+
+// Microsoft's built-in app categories, in every tenant (matched by name).
+const BUILT_IN_APP_CATEGORIES = new Set([
+  'other apps', 'books & reference', 'data management', 'productivity', 'business',
+  'development & design', 'photos & media', 'collaboration & social', 'computer management',
+]);
+
+function builtInAppCategory(resource) {
+  const names = [resource.payload?.displayName, resource.live?.payload?.displayName].map(lower);
+  if (names.some((name) => BUILT_IN_APP_CATEGORIES.has(name.trim()))) {
+    return { outcome: 'skipped', reason: 'built-in: Microsoft provides this app category in every tenant, so it is never written' };
+  }
+  return null;
+}
+
+/** An Autopilot profile never changes kind (Entra joined or hybrid joined): that is a new profile. */
+function sameAutopilotKind(resource, verb) {
+  if (verb !== 'update') return null;
+  const want = stripGraph(resource.payload?.['@odata.type']);
+  const now = stripGraph(resource.live?.payload?.['@odata.type']);
+  if (want && now && want !== now) {
+    return { outcome: 'skipped', reason: `manual: the live profile is a ${now}, not the ${want} in the backup; a profile cannot change kind, so recreate it by hand` };
+  }
+  return null;
+}
+
+// ---------------------------------------------------- batch 6: policy sets
+
+const POLICY_SETS = '/deviceAppManagement/policySets';
+const policySetPath = (targetId) => `${POLICY_SETS}/${encodeURIComponent(targetId)}`;
+
+// Where the app or policy each kind of item points at lives (declared from the
+// Graph beta policySetItem subtypes; unmeasured live).
+export const POLICY_SET_ITEM_TARGETS = Object.freeze({
+  mobileAppPolicySetItem: '/deviceAppManagement/mobileApps',
+  managedAppProtectionPolicySetItem: '/deviceAppManagement/managedAppPolicies',
+  targetedManagedAppConfigurationPolicySetItem: '/deviceAppManagement/targetedManagedAppConfigurations',
+  managedDeviceMobileAppConfigurationPolicySetItem: '/deviceAppManagement/mobileAppConfigurations',
+  iosLobAppProvisioningConfigurationPolicySetItem: '/deviceAppManagement/iosLobAppProvisioningConfigurations',
+  mdmWindowsInformationProtectionPolicyPolicySetItem: '/deviceAppManagement/mdmWindowsInformationProtectionPolicies',
+  deviceConfigurationPolicySetItem: '/deviceManagement/deviceConfigurations',
+  deviceCompliancePolicyPolicySetItem: '/deviceManagement/deviceCompliancePolicies',
+  deviceManagementConfigurationPolicyPolicySetItem: '/deviceManagement/configurationPolicies',
+  deviceManagementScriptPolicySetItem: '/deviceManagement/deviceManagementScripts',
+  enrollmentRestrictionsConfigurationPolicySetItem: '/deviceManagement/deviceEnrollmentConfigurations',
+  windows10EnrollmentCompletionPageConfigurationPolicySetItem: '/deviceManagement/deviceEnrollmentConfigurations',
+  windowsAutopilotDeploymentProfilePolicySetItem: '/deviceManagement/windowsAutopilotDeploymentProfiles',
+});
+
+// Fields Intune fills in on an item: never sent, never compared.
+const POLICY_SET_ITEM_SERVER_FIELDS = new Set(['id', 'createdDateTime', 'lastModifiedDateTime', 'displayName', 'status', 'errorCode', 'itemType']);
+
+/** The body that adds one item: its kind, what it points at and its own settings. */
+export function policySetItemBody(item) {
+  const body = {};
+  for (const [key, value] of Object.entries(item ?? {})) {
+    if (POLICY_SET_ITEM_SERVER_FIELDS.has(key) || (key.includes('@odata.') && key !== '@odata.type')) continue;
+    body[key] = withoutAnnotations(value);
+  }
+  return body;
+}
+
+const itemKey = (item) => `${stripGraph(item?.['@odata.type'])}:${lower(item?.payloadId)}`;
+const itemShape = (item) => normalisedItem(policySetItemBody(item));
+const normalisedItem = (body) => ({ ...body, '@odata.type': stripGraph(body['@odata.type']), payloadId: lower(body.payloadId) });
+
+/** A set is written only from a backup that holds its items, each saying what it points at. */
+function policySetRefusal(resource, verb) {
+  if (verb === 'delete') return null;
+  const items = resource.payload?.items;
+  const manual = (why) => ({ outcome: 'skipped', reason: `manual: ${why}, so it is not written; take a new backup, or recreate the set by hand from the backup` });
+  if (!Array.isArray(items)) return manual('this backup holds the set but not the apps and policies in it (backups before the items were read)');
+  for (const item of items) {
+    const kind = stripGraph(item?.['@odata.type']);
+    if (!kind || typeof item.payloadId !== 'string' || item.payloadId.length === 0) return manual('an item in this backup does not say which app or policy it is');
+    if (!POLICY_SET_ITEM_TARGETS[kind]) return manual(`an item in this backup is a ${kind}, a kind of item KEEL does not write`);
+  }
+  return null;
+}
+
+/** Every app and policy in the set must exist in the target with the id the backup holds. */
+async function policySetItemsExist(io, { payload }) {
+  for (const item of payload?.items ?? []) {
+    const collection = POLICY_SET_ITEM_TARGETS[stripGraph(item['@odata.type'])];
+    const found = await io.retryOperation(() => io.writer.read('beta', `${collection}/${encodeURIComponent(item.payloadId)}?$select=id`));
+    if (found?.ok !== true) {
+      return `the ${item.displayName ? `item ${item.displayName}` : `item ${item.payloadId}`} in this set ${recordNotFound(found) ? 'does not exist in the target with the same id (restore it first, then the set)' : 'could not be read'}`;
+    }
+  }
+  return null;
+}
+
+async function readPolicySetItems(io, targetId) {
+  const read = await io.retryOperation(() => io.writer.read('beta', `${policySetPath(targetId)}?$expand=items`));
+  if (read?.ok !== true) return { error: `the set's items could not be read (${outcomeDetail(read)})` };
+  return { items: read.body?.items ?? [] };
+}
+
+const itemSet = (items) => items.map(itemShape).sort((left, right) => itemKey(left).localeCompare(itemKey(right)));
+
+/**
+ * Puts a set's items back through its update action: a live item that is not
+ * in the backup, or differs from it, is removed, then each backup item live
+ * lacks is added. Two calls, so an item is never removed and added in the
+ * same request. Assignments are never sent.
+ */
+async function policySetItemsAfterWrite(io, { payload, verb, targetId }) {
+  const want = payload.items;
+  let have = [];
+  if (verb !== 'create') {
+    const read = await readPolicySetItems(io, targetId);
+    if (read.error) return { error: `${read.error}, so they were not changed` };
+    have = read.items;
+  }
+  const wantBy = new Map(want.map((item) => [itemKey(item), itemShape(item)]));
+  const haveBy = new Map(have.map((item) => [itemKey(item), itemShape(item)]));
+  const removed = have.filter((item) => !sameValue(wantBy.get(itemKey(item)), itemShape(item)));
+  const added = want.filter((item) => !sameValue(haveBy.get(itemKey(item)), itemShape(item)));
+  if (removed.length === 0 && added.length === 0) return verb === 'create' ? null : { changes: { items: 'already as in the backup' } };
+  const path = `${policySetPath(targetId)}/update`;
+  for (const body of [
+    removed.length > 0 ? { addedPolicySetItems: [], updatedPolicySetItems: [], deletedPolicySetItemIds: removed.map((item) => item.id) } : null,
+    added.length > 0 ? { addedPolicySetItems: added.map(policySetItemBody), updatedPolicySetItems: [], deletedPolicySetItemIds: [] } : null,
+  ].filter(Boolean)) {
+    const result = await io.retryOperation(() => io.writer.write('beta', path, { method: 'POST', body }));
+    if (!result.ok) return { error: `writing the set's items failed: ${outcomeDetail(result)}` };
+  }
+  const check = await readPolicySetItems(io, targetId);
+  if (check.error || !sameValue(itemSet(check.items), itemSet(want))) return { error: 'post-state: the set\'s items did not read back as written' };
+  return { changes: { items: { removed: removed.length, added: added.length } } };
 }
 
 /** Intune types read in wave 1 that no record can write in full, and why. */

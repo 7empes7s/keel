@@ -113,6 +113,10 @@ const REGISTERED = Object.freeze({
   // Restore gaps, batch 5.
   deviceCustomAttributeShellScript: ['create', 'update'],
   groupPolicyConfiguration: ['create', 'update'],
+  // Restore gaps, batch 6.
+  mobileAppCategory: ['create', 'update'],
+  windowsAutopilotDeploymentProfile: ['create', 'update'],
+  policySet: ['create', 'update'],
   // Wave 2 ENTRA: directory policies and delegated consents.
   tokenLifetimePolicy: ['create', 'update'],
   tokenIssuancePolicy: ['create', 'update'],

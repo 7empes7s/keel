@@ -3,7 +3,7 @@
  * record writers. Objects live at their path; a collection lists the objects
  * under it (or, before any child write, the parent's inline array of the same
  * name); `$expand=x` adds the `x` collection to the object read. The actions
- * the writers use are modelled: /assign, /targetApps, owners/$ref,
+ * the writers use are modelled: /assign, /targetApps, a policy set's /update, owners/$ref,
  * appRoleAssignments, createNewVersion and assignLicense. Every call is kept in
  * `calls` (method, version, path, body) for the tests to inspect.
  */
@@ -64,6 +64,18 @@ export function idoFakeGraph({ seed = {}, failWrites = () => null } = {}) {
             .map(({ 'presentation@odata.bind': bind, ...value }, index) => ({ ...value, id: `${id}-value-${index}`, presentation: { id: idOf(bind) } })));
         }
         setCollection(`${owner}/definitionValues`, settings);
+        return ok(204, null);
+      }
+      if (method === 'POST' && action === 'update' && parentOf(owner) === '/deviceAppManagement/policySets') {
+        // A policy set's items: removed by id, then added (restore gaps batch 6).
+        if (!objects.has(owner)) return notFound();
+        const removed = new Set(body.deletedPolicySetItemIds ?? []);
+        const items = collectionOf(`${owner}/items`).filter((item) => !removed.has(item.id));
+        for (const item of body.addedPolicySetItems ?? []) {
+          next += 1;
+          items.push({ ...item, id: `item-${next}`, status: 'notAssigned' });
+        }
+        setCollection(`${owner}/items`, items);
         return ok(204, null);
       }
       if (method === 'POST' && action === 'createNewVersion') {

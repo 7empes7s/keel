@@ -252,6 +252,15 @@ const FIXTURE_PAYLOADS = Object.freeze({
       presentationValues: [{ '@odata.type': '#microsoft.graph.groupPolicyPresentationValueText', id: 'fixture-value', value: 'fixture', presentation: { id: 'fixture-presentation' } }],
     }],
   },
+  // Restore gaps, batch 6: an app category, an Entra joined Autopilot profile,
+  // and a policy set with no items (items are covered in intuneExtended.test.mjs).
+  mobileAppCategory: { displayName: 'Fixture app category' },
+  windowsAutopilotDeploymentProfile: {
+    '@odata.type': '#microsoft.graph.azureADWindowsAutopilotDeploymentProfile', displayName: 'Fixture Autopilot profile', description: 'Fixture',
+    language: 'os-default', deviceNameTemplate: 'FIX-%RAND:4%', deviceType: 'windowsPc', extractHardwareHash: false, roleScopeTagIds: ['0'],
+    outOfBoxExperienceSettings: { hidePrivacySettings: true, hideEULA: true, userType: 'standard', deviceUsageType: 'singleUser', skipKeyboardSelectionPage: true, hideEscapeLink: true },
+  },
+  policySet: { displayName: 'Fixture policy set', description: 'Fixture', roleScopeTags: ['0'], guidedDeploymentTags: [], items: [] },
   // Restore gaps, batch 2: Entra ID tenant singletons.
   externalIdentitiesPolicy: { allowExternalIdentitiesToLeave: true, allowDeletedIdentitiesDataRemoval: false },
   accessReviewPolicy: { isGroupOwnerManagementEnabled: true },

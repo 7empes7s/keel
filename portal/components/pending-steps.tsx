@@ -59,8 +59,8 @@ export function ObjectSteps({ entries, label = resourceLabel }: { entries?: Obje
       <div>
         <h3>{steps.length === 1 ? "1 step is left for a person" : `${steps.length} steps are left for a person`}</h3>
         <ul className="closure-list">
-          {steps.map((step) => (
-            <li key={`${step.naturalKey}:${step.requirement}`}>
+          {steps.map((step, index) => (
+            <li key={`${step.naturalKey}:${step.requirement}:${index}`}>
               <strong>{label(step.naturalKey)}</strong>: {step.description}
             </li>
           ))}

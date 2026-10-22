@@ -1282,7 +1282,9 @@ export async function runRestore({
           && (resource.recovery.mechanism === 'recreate' || resource.recovery.mechanism === 'soft-delete-restore'
             || (resource.recovery.mechanism === 'update-existing' && enforcementPendingFor(resource))))))
         .map((resource) => ({
-          naturalKey: resource.naturalKey, resourceType: resource.resourceType, mechanism: resource.recovery?.mechanism ?? 'none',
+          naturalKey: resource.naturalKey, resourceType: resource.resourceType,
+          // An object left in place (unchanged or updated) reads as updated in place.
+          mechanism: !resource.recovery || resource.recovery.mechanism === 'none' ? 'update-existing' : resource.recovery.mechanism,
           enforcementPending: enforcementPendingFor(resource), payload: resource.payload,
           ...(followUpByKey.has(resource.naturalKey) ? { followUp: followUpByKey.get(resource.naturalKey) } : {}),
           ...(stepsByKey.has(resource.naturalKey) ? { steps: stepsByKey.get(resource.naturalKey) } : {}),

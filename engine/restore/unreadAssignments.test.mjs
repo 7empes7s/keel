@@ -58,6 +58,8 @@ test('the step says why in plain words', () => {
   assert.match(unreadAssignmentsStep(noop(type, 'partial')).description, /read only some of its assignments/);
   assert.match(unreadAssignmentsStep(noop(type, 'absent')).description, /did not read who it is assigned to/);
   assert.match(unreadAssignmentsStep(noop(type, 'too-large')).description, /was too-large/);
+  assert.match(unreadAssignmentsStep(noop(type, 'failed')).description, /groups it applies to were left as they are/);
+  assert.match(unreadAssignmentsStep({ ...noop(type, 'failed'), verb: 'create' }).description, /it is not assigned to anyone yet/);
 });
 
 test('a kind without assignments, and the default branding profile, have no step', () => {

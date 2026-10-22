@@ -503,7 +503,7 @@ export function unreadAssignmentsStep(resource) {
   return Object.freeze({
     kind: 'integration',
     requirement: 'assignments',
-    description: `Assignments not restored: ${why}, so the groups it applies to were left as they are. Check its assignments in the Intune admin center and set them by hand`,
+    description: `Assignments not restored: ${why}, so ${resource.verb === 'create' ? 'it is not assigned to anyone yet' : 'the groups it applies to were left as they are'}. Check its assignments in the Intune admin center and set them by hand`,
   });
 }
 

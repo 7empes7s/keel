@@ -430,6 +430,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Last read started": fact("Last read started", "When Keel last started reading this."),
   "Last read completed": fact("Last read finished", "When Keel last finished reading this."),
   "Observation window": fact("Read between", "When Keel started and finished reading."),
+  "Failing setting": fact("Failing setting", "A setting that fails this check: its value now, and the value expected."),
   "Observation evidence": fact("How complete the read was", "Whether Keel read everything, and the proof."),
 
   // Overview.

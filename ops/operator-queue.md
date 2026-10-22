@@ -7065,3 +7065,27 @@ item that needs it stays untouched.
      `claude/live-evidence-rerun-after-create`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; step 2 new ids; step 3 plan per type; step 4 plan and outcome; approval ids; the evidence branch and commit; anything left in the tenant.
+
+### Q150: Live check that the Compliance page now shows control results and where backups are kept (after #505)
+- Drafted by the "Compliance page shows no results" thread (2026-10-22). Code: PR #505. Fixture-tested only.
+  - **Change:** the control checks now run after each backup (inside the `drift-detect` job, before the baseline step) and on
+    "Check now" (`POST /api/actions/compliance/check`). With no `KEEL_RECOVERY_MANIFEST_PATH`, the portal reads the storage
+    location from where its database runs: a loopback or socket host means "this server's disk".
+- Needs: /opt/keel-live at the #505 merge or later (`test -f /opt/keel-live/engine/benchmarks/runChecks.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** none. Reads and writes Keel's own database only.
+- Do:
+  1. Wait for the next `drift-detect` job after a backup (or run one collect by hand as usual). Report its job id, status and the
+     `compliance checks: N run (...)` line from its output.
+  2. `SELECT control_id, verdict, reason, evaluated_at FROM benchmark_evaluation ORDER BY evaluated_at DESC LIMIT 6;`
+     Report the rows. Expect 3 controls; any `unknown` row's reason (e.g. `namedLocation:stale-observation`) tells which type
+     the backups do not read often enough.
+  3. Report only the **host part** of the portal's database URL (localhost / 127.0.0.1 / socket / other), never the URL or password,
+     and whether `KEEL_RECOVERY_MANIFEST_PATH` is set for `keel-portal`.
+  4. `curl` the portal locally (bypassing Access, as for other live checks) at `/benchmarks` and report the verdict sentence,
+     the status pill and the storage row's sentence.
+- **Expected:** step 1 shows 3 checks run; the page shows results instead of "No control has been checked"; the storage row says
+  "Backups are kept on this server's disk. They cannot be locked against deletion." If the database host is not local, the row
+  stays "not set": report it and do not change any setting.
+- **Report:** per step, the result.

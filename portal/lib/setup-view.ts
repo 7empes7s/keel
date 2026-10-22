@@ -3,7 +3,7 @@
 // and the unit tests can all use it.
 
 import type { RiskTone } from "@/lib/menu-status";
-import type { ConnectionExpiry } from "@/lib/setup-services";
+import type { Connection } from "@/lib/connections-view";
 
 export type StepProgress =
   | "done" | "waiting-for-you" | "needs-consent" | "to-do" | "unclear" | "in-progress" | "not-started" | "not-checked";
@@ -109,7 +109,7 @@ export interface SetupState {
   checkFailed?: boolean;
   // One row per Keel app (/api/setup `connections`), with when its certificate ends;
   // null when Keel could not record them. Only the fields this page reads are typed here.
-  connections?: ConnectionExpiry[] | null;
+  connections?: Connection[] | null;
 }
 
 export const SCOPE_TITLES: Record<SetupScope["scope"], string> = {

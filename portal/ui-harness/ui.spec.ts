@@ -2424,6 +2424,63 @@ test("Setup · the step waiting on you is open, links to Microsoft, and continue
   expect(await page.evaluate(() => (window as unknown as { __stay?: boolean }).__stay)).toBe(true);
 });
 
+// Connections (delegated-access step 3): every Keel app grouped Required / Optional /
+// Service accounts, problems first with a sentence saying what stops, and each app's
+// wanted permissions next to what the tenant grants, the difference highlighted. Read only.
+test("Setup · Connections lists each Keel app by group, problems first, with wanted next to granted", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/setup", "light");
+  const panel = page.locator("section#setup-connections");
+  await expect(panel.getByRole("heading", { level: 2 })).toHaveText("Connections");
+  await expect(panel.locator(".su-cn-group-title")).toHaveText([/^Required apps/, /^Optional apps/, /^Service accounts/]);
+  await expect(panel.locator(".su-pp-alert")).toHaveText([
+    /Keel Settings Reader is missing 1 role: settings backups may be incomplete\./,
+    /Keel Settings Restorer is waiting for an administrator to approve it: restores cannot run yet\./,
+  ]);
+  await expect(panel.locator(".su-pp-alert").first()).toHaveAttribute("data-tone", "urgent");
+  // Optional apps: the one waiting for approval sorts above the one not set up.
+  const optional = panel.locator(".su-cn-group", { has: page.getByRole("heading", { name: /^Optional apps/ }) });
+  await expect(optional.locator(".su-cn-name")).toHaveText(["Keel Settings Restorer", "Keel Content Reader"]);
+  await expect(optional.locator(".su-cn-row").first().locator(".su-cn-main .badge")).toHaveText("Waiting for approval");
+  await expect(optional.locator(".su-cn-row").nth(1).locator(".su-cn-main .badge")).toHaveText("Not set up");
+  await expect(panel.locator(".su-cn-group").nth(2)).toContainText("None yet.");
+
+  // A row with something missing is open; the difference is highlighted and comes first.
+  const reader = panel.locator(".su-cn-row", { hasText: "Keel Settings Reader" });
+  await expect(reader.locator(".su-cn-main .badge")).toHaveText("Missing permission");
+  const grants = reader.getByRole("table", { name: "Keel Settings Reader: wanted and granted" });
+  await expect(grants.locator("tbody tr").first()).toHaveAttribute("data-status", "missing");
+  await expect(grants.locator("tbody tr").first()).toContainText("Role: Read Only Operator");
+  await expect(grants.locator('tbody tr[data-status="extra"]')).toContainText("Not used by Keel");
+  await expect(grants.locator("tbody tr").last()).toHaveAttribute("data-status", "extra");
+  await reader.getByRole("button", { name: "Hide permissions" }).click();
+  await expect(grants).toHaveCount(0);
+
+  // The restorer's wanted permissions are missing; Keel cannot see its role, so that is not checked.
+  const restorer = panel.locator(".su-cn-row", { hasText: "Keel Settings Restorer" });
+  await expect(restorer.locator(".su-cn-facts")).toContainText("3 missing · 0 of 4 granted");
+  await expect(restorer.locator('tbody tr[data-status="not-checked"]')).toContainText("Role: Privileged Role Administrator");
+
+  // Read only: no action buttons beyond showing permissions.
+  for (const label of await panel.getByRole("button").allInnerTexts()) expect(label).toMatch(/^(Show|Hide) permissions$/);
+});
+
+test("Setup · Connections on a working host: a certificate ending soon is amber, a restorer switched off is grey", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/setup/checked", "dark");
+  const panel = page.locator("section#setup-connections");
+  await expect(panel.locator(".su-pp-alert")).toHaveCount(0);
+  await expect(panel.locator(".su-cn-row", { hasText: "Keel Settings Reader" }).locator(".su-cn-main .badge")).toHaveText("Expires in 12 days");
+  await expect(panel.locator(".su-cn-row", { hasText: "Keel Settings Reader" })).toHaveAttribute("data-tone", "soon");
+  const restorer = panel.locator(".su-cn-row", { hasText: "Keel Settings Restorer" });
+  await expect(restorer.locator(".su-cn-main .badge")).toHaveText("Switched off");
+  await expect(restorer).toHaveAttribute("data-tone", "neutral");
+  await expect(panel.getByRole("table")).toHaveCount(0);
+  await restorer.getByRole("button", { name: "Show permissions" }).click();
+  await expect(restorer.locator('tbody tr[data-status="extra"]')).toContainText("Channel.Create");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
 // Production host: a grant Keel never uses is reported as found in the tenant, grey and
 // last in the permission table, never as a warning or something Keel will remove. With
 // read access confirmed, the first backup is the page's one amber action.

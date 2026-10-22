@@ -5794,9 +5794,52 @@ item that needs it stays untouched.
      `update`. Expect the description back. Report the exact Graph answer for any refused POST or PATCH (all routes are unmeasured).
   5. **Re-run check:** dry run from S after step 4. Expect 0 planned writes for the BIOS configuration. For the ADMX file, report what
      is planned: it is keyed by id and the re-upload has a new id, so a planned create here is a known gap to report, not to run.
+     If B includes #458 (`grep -q admxNotImported /opt/keel-live/engine/restore/intuneOperations.mjs`), expect the ADMX file to be
+     skipped with `already imported: Intune holds an ADMX file named ...` instead; report which one you saw.
   6. Cleanup: delete both fixtures. Report anything left.
   7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
      `claude/live-evidence-restore-gaps-11`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / skipped (fixture could not be
+  created) / blocked; step 5; approval ids; the evidence branch and commit; anything left in the tenant.
+
+### Q127: Live backup and restore of Windows app protection policies and iOS app provisioning profiles (restore gaps batch 12, after #458)
+- Drafted by the "Restore batch 12" thread (2026-10-22). Code: PR #458. **Backup change:** both kinds are now listed, then each object
+  read on its own: `windowsManagedAppProtection` at `/beta/deviceAppManagement/windowsManagedAppProtections/{id}?$expand=apps` (so the
+  backup holds the apps it covers), `iosLobAppProvisioningConfiguration` at `/beta/deviceAppManagement/iosLobAppProvisioningConfigurations/{id}`
+  (so it holds the profile file `payload`). New record writers, fixture-tested only, beta:
+  - `windowsManagedAppProtection`: create + update (POST/PATCH the policy, then POST `.../{id}/targetApps` with the apps when they differ;
+    read back). Assignments not written. A new or higher wipe version, or an action that becomes `wipe`, is a content effect (approve it).
+  - `iosLobAppProvisioningConfiguration`: create + update of displayName, description, roleScopeTagIds, payload, payloadFileName,
+    expirationDateTime. An expired file, or one that expires before the live one, is refused. Assignments not written.
+  - Also in #458: an ADMX upload is skipped when Intune already holds a file with the same file name (see Q126 step 5).
+- Needs: /opt/keel-live at the #458 merge or later (`grep -q admxNotImported /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer
+  needs DeviceManagementApps.ReadWrite.All. If Graph answers 403, report blocked with what Graph names; grant nothing.
+  Never touch CA policies, break-glass or Marouane's account. **Never assign either fixture.** No tenant-wide setting is changed.
+- **Fixtures** (the reviewed guidance in `live-gate-plan.mjs` at B says the same; nothing applies them):
+  - Windows app protection policy `KEEL-RT-149-win-mam` covering Microsoft Edge (`windowsAppIdentifier` `com.microsoft.edge`),
+    printing blocked, no wipe version and no wipe action, assigned to nobody. If the tenant cannot create Windows app protection
+    policies, report the exact message and skip this kind.
+  - iOS app provisioning profile `KEEL-RT-149-ios-prov` with a test `.mobileprovision` file, assigned to nobody. If Intune refuses a
+    file that Apple did not sign, report the exact message and skip this kind; never upload a real company profile.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/live-gate-plan.mjs > ~/keel-rg12/plan-B.md`. Use its steps for these two types (collect, restore
+     dry run, approve, `--enforce`, `entraLive.mjs capture`, promote).
+  2. Create the fixtures, then take snapshot S. **Backup check:** both fixtures are in S; report each type's read outcome, whether the
+     Windows policy in S has `apps` with Edge, and whether the profile in S has a non-empty `payload` (the unmeasured per-object reads:
+     if either is missing, stop and report; the restore would refuse the create).
+  3. **Create round:** delete both fixtures, restore from S selecting both types, approve, enforce, capture both `create`s. Expect the
+     Windows policy back with Edge as its app, and the profile back with the same file.
+  4. **Update round:** turn printing back on for the Windows policy and change the profile's description to `drift`. Restore from S,
+     approve, enforce, capture both `update`s. Expect both back. Report the exact Graph answer for any refused write (all routes unmeasured).
+  5. **Re-run check:** dry run from S after step 4. Expect 0 planned writes for both.
+  6. Cleanup: delete both fixtures. Report anything left.
+  7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-12`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; the step 2 backup check; per type and operation: promoted / refused (exact message) / skipped (fixture could not be
   created) / blocked; step 5; approval ids; the evidence branch and commit; anything left in the tenant.

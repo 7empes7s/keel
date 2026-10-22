@@ -1,5 +1,5 @@
 import { strict as assert } from 'node:assert';
-import { collectM1, collectWithOutcomes, neededTypes, unavailableOnTenant, M1_TYPES, MISSING_PREREQUISITE } from './entraAdapter.mjs';
+import { ALWAYS_NEEDED_TYPES, collectM1, collectWithOutcomes, neededTypes, unavailableOnTenant, M1_TYPES, MISSING_PREREQUISITE } from './entraAdapter.mjs';
 import { exitCodeForDigest } from '../../cli/keel-collect.mjs';
 import { snapshotHasFullCoverage } from '../schedules/completions.mjs';
 
@@ -47,11 +47,55 @@ await assert.rejects(
   /collecting lifecycleWorkflow failed: Insufficient license/,
 );
 
-// Any other failure still fails, needed or not.
+// Issue #466: Intune answers 501 NotSupported for a feature the tenant's
+// service does not offer; nothing of that kind can exist, so it is unavailable.
+const notSupported = { status: 501, code: 'NotSupported', error: 'An error has occurred - Operation ID (for customer support): 00000000-0000-0000-0000-000000000000' };
+assert.equal(unavailableOnTenant(notSupported), true);
+assert.equal(unavailableOnTenant({ status: 500, code: 'InternalServerError', error: 'An error has occurred' }), false);
+
+// Without a needed set, any other failure still fails.
 await assert.rejects(
-  () => collectM1(reader([['/identity/apiConnectors', denied]]), { needed: new Set(['group']) }),
+  () => collectM1(reader([['/identity/apiConnectors', denied]])),
   /collecting identityApiConnector failed: Insufficient privileges/,
 );
+
+// Issue #466: with one, a type the caller does not need that fails any other
+// way (a bad $select, a 400) is left out and listed on `unread`, never stored
+// as an empty list. A restore of Intune settings no longer stops on it.
+{
+  const badSelect = { status: 400, code: 'BadRequest', error: "Could not find a property named 'x' on type 'microsoft.graph.vppToken'." };
+  const failing = reader([
+    ['/identity/apiConnectors', denied],
+    ['/deviceAppManagement/vppTokens', badSelect],
+    ['/deviceManagement/exchangeConnectors', notSupported],
+  ]);
+  const result = await collectM1(failing, { needed: new Set(['deviceCategory']) });
+  const read = result.map(([type]) => type);
+  assert.equal(read.includes('identityApiConnector'), false);
+  assert.equal(read.includes('vppToken'), false);
+  assert.equal(read.includes('deviceManagementExchangeConnector'), false);
+  assert.ok(read.includes('deviceCategory'));
+  assert.deepEqual(result.unread.map((entry) => entry.type).sort(), ['identityApiConnector', 'vppToken'],
+    'a failed read is listed; an unavailable feature (501) is not a failure');
+  assert.match(result.unread.find((entry) => entry.type === 'vppToken').error, /collecting vppToken failed: Could not find a property/);
+  assert.deepEqual(Object.keys(result).filter((key) => !/^\d+$/.test(key)), [], 'unread is not an entry of the result');
+
+  // A needed type that fails still fails, naming the type.
+  await assert.rejects(() => collectM1(failing, { needed: new Set(['vppToken']) }), /collecting vppToken failed: Could not find a property/);
+
+  // The types the restore's safety checks and role assignment keys rely on
+  // always fail, needed or not.
+  for (const [prefix, type] of [['/identity/conditionalAccess/policies', 'conditionalAccessPolicy'], ['/organization', 'organization'], ['/groups', 'group']]) {
+    assert.ok(ALWAYS_NEEDED_TYPES.has(type), type);
+    await assert.rejects(
+      () => collectM1(reader([[prefix, denied]]), { needed: new Set(['deviceCategory']) }),
+      new RegExp(`collecting ${type} failed: Insufficient privileges`),
+    );
+  }
+
+  // A clean read lists nothing as unread.
+  assert.deepEqual((await collectM1(reader([]), { needed: new Set(['group']) })).unread, []);
+}
 
 // neededTypes reads canonical resources and stored rows alike, plus extra types.
 assert.deepEqual(

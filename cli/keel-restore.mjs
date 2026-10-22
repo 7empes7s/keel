@@ -637,6 +637,10 @@ export async function runRestore({
     // restore touches it, so one unlicensed workload does not block every restore.
     const neededTypes = new Set(resources.map((resource) => resource.resourceType));
     const targetCollected = await collectM1Fn(targetReader, { needed: neededTypes });
+    // Issue #466: a type this restore does not touch that cannot be read is
+    // left out and listed, not read as empty. Deletes stay refused below.
+    const unreadTypes = unreadTypesOf(targetCollected);
+    for (const { type, error } of targetCollected?.unread ?? []) logger.log(`current state: ${type} not read (not in this restore): ${error}`);
     const targetResources = canonicalizeAllFn(targetCollected);
     const existingTargetIds = new Map(targetResources.map((r) => [r.naturalKey, r.sourceId]));
     const protectedPrincipalIds = globalAdministratorPrincipalIds(targetResources);
@@ -834,6 +838,16 @@ export async function runRestore({
         naturalKey: refusal.deleting,
         reason: `blocked-dependent-impact: deleting ${refusal.deleting} would leave ${refusal.dependent} referencing it at ${refusal.field}`,
       });
+    }
+    // Issue #466: with a type left unread, the check above cannot see whether
+    // an object of that type still references one being deleted, so every
+    // delete is refused, the same way as a dependent-impact refusal.
+    const incompleteReadRefusals = incompleteReadDeleteRefusals(unreadTypes, resources);
+    if (incompleteReadRefusals.length > 0 && !previewOnly && mode !== 'dry-run') {
+      throw new Error(`${incompleteReadRefusals[0].reason}${incompleteReadRefusals.length > 1 ? ` (and ${incompleteReadRefusals.length - 1} more)` : ''} — refusing before any write`);
+    }
+    for (const refusal of incompleteReadRefusals) {
+      if (!dependentImpactRefusals.has(refusal.naturalKey)) dependentImpactRefusals.set(refusal.naturalKey, refusal);
     }
     // A key another guard already refuses is not deleted anyway; report it once.
     const withDependentImpact = (refusals) => [
@@ -1283,6 +1297,27 @@ const WRITE_SEEDS = (tenantId) => ({
   [`${tenantId}/entra/write`]: { capacity: 100, refillPerSecond: 100 / 20 }, // Intune-tier seed, spec §11.1
 });
 
+/** Issue #466: the types collectM1 left unread (failed, not needed), sorted. */
+export function unreadTypesOf(collected) {
+  const unread = Array.isArray(collected?.unread) ? collected.unread : [];
+  return [...new Set(unread.map((entry) => entry?.type).filter((type) => typeof type === 'string'))].sort();
+}
+
+/**
+ * Issue #466: one refusal per planned delete when any type was left unread.
+ * The dependent-impact check reads references from the live state, and a type
+ * that was not read could still hold one, so a delete is never judged safe on
+ * an incomplete read.
+ */
+export function incompleteReadDeleteRefusals(unreadTypes, plannedResources) {
+  if (!Array.isArray(unreadTypes) || unreadTypes.length === 0) return [];
+  const keys = [...new Set((plannedResources ?? []).filter((resource) => resource?.verb === 'delete').map((resource) => resource.naturalKey))];
+  return keys.map((naturalKey) => ({
+    naturalKey,
+    reason: `blocked-incomplete-read: deleting ${naturalKey} needs a full read of the target, but ${unreadTypes.join(', ')} could not be read`,
+  }));
+}
+
 async function buildCompensation({ client, forward, collectorConfig, targetConfig, collectorConfigPath, targetConfigPath, deps }) {
   const entries = await deps.listJournalFn(client, { restoreRef: forward.id });
   if (entries.length === 0) {
@@ -1291,7 +1326,8 @@ async function buildCompensation({ client, forward, collectorConfig, targetConfi
   const { accessToken: collectorToken } = await deps.getTokenFn(collectorConfig);
   const targetReader = new deps.GraphReaderClass(async () => collectorToken);
   const needed = new Set(entries.map((entry) => entry.resourceType));
-  const targetResources = deps.canonicalizeAllFn(await deps.collectM1Fn(targetReader, { needed }));
+  const targetCollected = await deps.collectM1Fn(targetReader, { needed });
+  const targetResources = deps.canonicalizeAllFn(targetCollected);
   const current = new Map(targetResources.map((resource) => [resource.naturalKey, { targetId: resource.sourceId, payload: resource.payload }]));
   const plan = planCompensation({ restoreRef: forward.id, entries, current });
   const order = plan.operations.map((op) => op.naturalKey);
@@ -1304,6 +1340,9 @@ async function buildCompensation({ client, forward, collectorConfig, targetConfi
     naturalKey: refusal.deleting,
     reason: `dependent impact: ${refusal.dependent} still references ${refusal.deleting} at ${refusal.field}`,
   }));
+  for (const refusal of incompleteReadDeleteRefusals(unreadTypesOf(targetCollected), plan.operations)) {
+    if (!impactRefusals.some((existing) => existing.naturalKey === refusal.naturalKey)) impactRefusals.push(refusal);
+  }
   const digest = deps.computePlanDigestFn({
     snapshotId: forward.snapshotId,
     selection: scopeKeys,

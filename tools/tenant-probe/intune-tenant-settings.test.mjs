@@ -9,8 +9,8 @@ import '../../engine/collect/entraAdapter.mjs';
 
 // Independent expectations: the documented Graph route for each type, written
 // out here rather than derived from the catalogue under test.
-const VPP_SELECT = 'id,organizationName,vppTokenAccountType,appleId,expirationDateTime,lastSyncDateTime,lastModifiedDateTime,state,lastSyncStatus,automaticallyUpdateApps,countryOrRegionCode';
-const PLAY_SELECT = 'id,bindStatus,lastAppSyncDateTime,lastAppSyncStatus,ownerUserPrincipalName,ownerOrganizationName,lastModifiedDateTime,enrollmentTarget,targetGroupIds,deviceOwnerManagementEnabled,androidDeviceAdministratorEnrollmentEnabled';
+const VPP_SELECT = 'id,organizationName,vppTokenAccountType,appleId,expirationDateTime,lastSyncDateTime,lastModifiedDateTime,state,lastSyncStatus,automaticallyUpdateApps';
+const PLAY_SELECT = 'id,bindStatus,lastAppSyncDateTime,lastAppSyncStatus,ownerUserPrincipalName,ownerOrganizationName,lastModifiedDateTime,enrollmentTarget,targetGroupIds,deviceOwnerManagementEnabled';
 const EXPECTED = [
   // Listed, then each policy read on its own with its settings and actions for noncompliance.
   ['deviceManagementCompliancePolicy', '/beta/deviceManagement/compliancePolicies', 'tier1', 'per-policy'],

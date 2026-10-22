@@ -6720,7 +6720,7 @@ item that needs it stays untouched.
 - Needs: steps 1 to 4 need nothing. Steps 5 and 6 need PR #484 live
   (`grep -q observeCollectorRoles /opt/keel-live/cli/keel-workload-collect.mjs`). If it is not live yet, do 1 to 4, set `blocked`
   with that reason, and finish 5 and 6 on a later pass.
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** reads only. Graph GETs and the workloads' declared `Get-` cmdlets with the Collector credential. No `New-`, `Set-`,
   `Grant-` or `Remove-` cmdlet. Grant, assign or register nothing.

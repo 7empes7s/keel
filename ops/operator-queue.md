@@ -5583,6 +5583,42 @@ item that needs it stays untouched.
 - **Report:** B; the step 2 backup check; per operation: promoted / refused (exact message) / blocked; the step 5 result;
   approval ids; the evidence branch and commit; anything left in the tenant.
 
+### Q121: Retry the whole-tenant content backup now that deploys drain the worker (read-only, after #449)
+- Drafted by the "Deploys kill running jobs" thread (2026-10-22). Re-runs Q101's widening, which was rolled back only because
+  an auto-deploy restarted `keel-worker` mid-job (#448). Marouane's Q101 decision still holds: "get everything in the scope". **Marouane's go for this retry and the deploy change:
+  2026-10-22 06:27 UTC** (decision card in the "Deploys kill running jobs" thread).
+- Code: PR #449. `keel-worker` now treats SIGUSR2 (`systemctl reload keel-worker`) as drain: the running job finishes,
+  nothing new is claimed, the worker exits 0 and systemd starts it on the new tree. SIGTERM still ends the running job.
+- Needs (check each, report the output):
+  1. #449 live: `git -C /opt/keel-live log --oneline | grep -c "#449"` is at least 1.
+  2. The installed unit has the reload: `systemctl show keel-worker -p ExecReload` names `kill -USR2`. If not, vps-deployer
+     re-installs `ops/keel-worker.service` and runs `systemctl daemon-reload` (asked by the drafting thread).
+  3. The deploy drains instead of restarting: `grep -n "keel-worker" /opt/keel-deploy/deploy.sh` shows
+     `try-reload-or-restart`, and no `restart keel-worker` / `try-restart keel-worker` remains. If not, stop: vps-deployer
+     owns that change.
+- Status: todo
+- Result:
+- **Read-only toward the tenant**, same as Q101: collectors only read; no grants, no fixtures, no tenant writes. 403s are
+  reported (count and masked reason), never fixed by granting.
+- **A. Drain check (host only, no job running).** `SELECT count(*) FROM job WHERE status = 'running'` must be 0. Then
+  `systemctl reload keel-worker`, wait 15 s, and report: the journal lines since the reload
+  (`journalctl -u keel-worker --since "-1 min" | grep -E "SIGUSR2|exited cleanly|polling"`), and `systemctl is-active
+  keel-worker` (expected `active`, with a new main PID).
+- **B. Re-apply the whole-tenant scope.** `/etc/keel/content-scope.json.bak-q101` stays as the rollback copy. Then
+  `cp /root/q101-scope-wholetenant.json /etc/keel/content-scope.json`, `chown root:root` and `chmod 600` it, check it parses
+  (`node -e "JSON.parse(require('fs').readFileSync('/etc/keel/content-scope.json','utf8'))"`, exit 0) and paste it
+  (tenantHost masked). No manual run: the nightly `content-collect` at **01:00 UTC** is the run.
+- **C. After that run finishes:** everything Q101 part C asked for (job id, start, end, status, exit code; per workload the
+  outcome, items, bytes, containers found vs read, throttled count, `reasons` masked; `df -h` and `du -sh` for
+  `storage.root`; `content_chunk` count and bytes before vs after). Also:
+  - every deploy during the run window (`journalctl -u keel-deploy --since "<job start>"`), and for each one the worker's
+    `received SIGUSR2` line, if any;
+  - if the job ended in `failed`, whether its error is `execution timed out after 21600000ms` (the six-hour ceiling Q101 A3
+    warned about) or something else.
+- **Rollback:** as in Q101: if the run fails, times out, or free space on `storage.root` drops below 20 %, copy
+  `content-scope.json.bak-q101` back and say so. A `partial` outcome from 403s alone is not a rollback reason.
+- **Report:** Needs 1-3, A, B (masked), C. Open an issue labelled `operator-report` only if a rollback happened.
+
 ### Q122: Live backup and restore of e-book categories, Microsoft Tunnel configurations and Apple user enrollment profiles (restore gaps batch 8, after #453)
 - Drafted by the "Restore batch 8" thread (2026-10-22). Code: PR #453 (merged 2026-10-22 02:06 UTC, merge 3edc50d). No backup change: all three kinds were already read
   (list reads in `tools/tenant-probe/catalog.d/intune-leftovers.mjs`). New record writers, fixture-tested only, create + update, beta:

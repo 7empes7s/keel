@@ -36,6 +36,7 @@ import { CONTENT_WORKLOADS, createContentStore, parseContentKey } from '../engin
 import { contentReadTransport, sharePointReadTransport } from '../engine/content/transport.mjs';
 import { CONTENT_COLLECTORS } from '../engine/content/collectors.mjs';
 import { recordContentRun } from '../engine/coverage/serviceBackups.mjs';
+import { progressTracker, progressWriter, reasonsLine } from '../engine/jobs/progress.mjs';
 
 export const DEFAULT_READER_PATH = '/etc/keel/content-reader.json';
 export const DEFAULT_SCOPE_PATH = '/etc/keel/content-scope.json';
@@ -64,31 +65,44 @@ export function readerProblems(reader, config) {
   return problems;
 }
 
+// A content run's outcome as the Job page names it.
+const CONTENT_PROGRESS_OUTCOME = { succeeded: 'complete', failed: 'failed', partial: 'partial', skipped: 'unavailable', disabled: 'disabled' };
+
 /**
  * One scheduled run. A collector that throws is recorded as failed with the reason,
  * and the next one still runs. Exit code 1 when any collector failed or was partial.
  */
 export async function runContentCollection(client, {
   tenantRef, tenantId, store, transport, sharePointTransportFor, scope = {}, collectors = CONTENT_COLLECTORS, now = () => new Date(), logger = console,
+  onProgress,
 }) {
   const runs = [];
+  // Job page: every workload starts as waiting, is marked reading, then shows its outcome.
+  const progress = progressTracker(collectors.map((entry) => `content:${entry.workload}`), onProgress, now);
+  await progress.start();
   if (!collectors.length) logger.log('content backup: no content collectors are registered yet; nothing was read');
   for (const entry of collectors) {
     if (!CONTENT_WORKLOADS.includes(entry.workload)) throw new Error(`content collector for unknown workload ${entry.workload}`);
     let result;
     const startedAt = now();
+    await progress.reading(`content:${entry.workload}`, startedAt);
     try {
       result = await entry.collect(client, { tenantRef, tenantId, store, transport, sharePointTransportFor, scope, sleep, now, logger });
     } catch (error) {
       result = { outcome: 'failed', items: 0, bytes: 0, reasons: [String(error?.message ?? error)] };
     }
     runs.push({ workload: entry.workload, ...result });
+    const completedAt = now();
+    await progress.done(`content:${entry.workload}`, {
+      outcome: CONTENT_PROGRESS_OUTCOME[result.outcome] ?? 'failed', itemCount: Number(result.items ?? 0),
+      startedAt, completedAt, error: reasonsLine(result.reasons),
+    });
     // Each workload's run is kept so freshness and reports count content beside settings.
     const namePrefix = typeof scope?.namePrefix === 'string' && scope.namePrefix ? scope.namePrefix : null;
     try {
       await recordContentRun(client, {
         tenantRef, workload: entry.workload, outcome: result.outcome, items: result.items, bytes: result.bytes,
-        reasons: result.reasons ?? [], namePrefix, startedAt, completedAt: now(),
+        reasons: result.reasons ?? [], namePrefix, startedAt, completedAt,
       });
     } catch (error) {
       logger.log(`${entry.workload}: the run could not be recorded: ${error?.message ?? error}`);
@@ -132,7 +146,10 @@ export async function main(argv = process.argv.slice(2), {
     const sharePointTransportFor = config.certPath && config.keyPath
       ? (tenantHost) => sharePointReadTransport(() => getTokenFn(config, { scope: `https://${tenantHost}/.default` }), fetchImpl, { tenantHost })
       : undefined;
-    const result = await runContentCollection(client, { tenantRef, tenantId: config.tenantId, store, transport, sharePointTransportFor, scope, collectors, logger });
+    const result = await runContentCollection(client, {
+      tenantRef, tenantId: config.tenantId, store, transport, sharePointTransportFor, scope, collectors, logger,
+      onProgress: progressWriter(client, env.KEEL_JOB_ID),
+    });
     return result.exitCode;
   } finally {
     await client.end();

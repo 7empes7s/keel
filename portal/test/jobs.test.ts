@@ -160,3 +160,29 @@ test("a backup job lists every kind it reads by service, with state, count, time
   assert.match(html, /What it backs up/);
   assert.ok(!html.split("<details")[0].includes("Graph 429"), "raw errors wait behind Show details");
 });
+
+test("a running service or content backup shows each workload as waiting, reading or done", () => {
+  // The shape cli/keel-workload-collect.mjs and cli/keel-content-collect.mjs write live.
+  const progress = {
+    source: "live" as const, updatedAt: "2026-10-22T10:05:00Z",
+    types: {
+      "content:exchange-mail": { outcome: "complete", itemCount: 120, startedAt: "2026-10-22T10:00:00Z", completedAt: "2026-10-22T10:01:00Z", httpStatus: null, error: null },
+      "content:onedrive": { outcome: "reading", startedAt: "2026-10-22T10:01:00Z" },
+      "content:teams": { outcome: "waiting" },
+      "workload:sharepoint-site-settings": { outcome: "failed", itemCount: null, startedAt: "2026-10-22T10:00:00Z", completedAt: "2026-10-22T10:00:05Z", httpStatus: null, error: "HTTP 403 Forbidden" },
+    },
+  };
+  const rows = jobTypeRows({ status: "running", progress }, "2026-10-22T10:02:00Z");
+  const byType = Object.fromEntries(rows.map((row) => [row.type, row]));
+  assert.equal(byType["content:exchange-mail"].label, "Backed up");
+  assert.equal(byType["content:exchange-mail"].name, "Mail, calendars and contacts");
+  assert.equal(byType["content:onedrive"].label, "Reading now");
+  assert.equal(byType["content:onedrive"].took, "1 minute");
+  assert.equal(byType["content:teams"].label, "Waiting");
+  assert.equal(byType["sharepoint-site-settings"].tone, "urgent");
+  assert.equal(jobProgressPercent(rows), 50);
+  const html = renderToStaticMarkup(createElement(JobDetail, { job: { ...normalizeJob({ ...row, kind: "content-collect", status: "running", error: null, finished_at: null }), progress }, now: "2026-10-22T10:02:00Z" }));
+  assert.match(html, /role="progressbar"/);
+  assert.match(html, /Reading now/);
+  assert.match(html, /Waiting/);
+});

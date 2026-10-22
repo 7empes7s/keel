@@ -50,6 +50,7 @@ import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { loadLedgerInputs, loadWorkloadLedger, proofExpiry, saveLedgerInputs } from '../engine/collect/workloadLedgerStore.mjs';
 import { WORKLOAD_COLLECTORS } from '../engine/collect/workloads/registry.mjs';
 import { detectWorkloadDrift } from '../engine/govern/workloadDrift.mjs';
+import { progressTracker, progressWriter, reasonsLine } from '../engine/jobs/progress.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 export const DEFAULT_RECORD_DIR = join(__dirname, '..', 'docs', 'release', 'qualifications');
@@ -133,16 +134,33 @@ export function workloadSteps({ config, scope, transport, powershell, collectors
   }));
 }
 
+/** How many settings a workload run stored, for the Job page; null when it cannot be read. */
+async function settingsCount(client, collectionId) {
+  if (!collectionId) return null;
+  try {
+    const { rows } = await client.query('SELECT count(*)::int AS settings FROM workload_observation WHERE collection_id = $1', [collectionId]);
+    return Number.isSafeInteger(rows[0]?.settings) ? rows[0].settings : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * One scheduled run. A collector that throws (a missing scope entry, a container that
  * would not start) is recorded as a `failed` run with the reason, and the next
  * workload still runs.
  */
-export async function runWorkloadCollection(client, { tenantRef, config, scope = {}, transport, powershell = {}, now = () => new Date(), logger = console, collectors }) {
+export async function runWorkloadCollection(client, { tenantRef, config, scope = {}, transport, powershell = {}, now = () => new Date(), logger = console, collectors, onProgress }) {
   const { ledger, inputs } = await loadWorkloadLedger(client, { tenantRef, now: now() });
   const runs = [];
-  for (const step of workloadSteps({ config, scope, transport, powershell, collectors })) {
+  const steps = workloadSteps({ config, scope, transport, powershell, collectors });
+  // Job page: every workload starts as waiting, is marked reading, then shows its outcome.
+  const progress = progressTracker(steps.map((step) => `workload:${step.workload}`), onProgress, now);
+  await progress.start();
+  for (const step of steps) {
     const base = { tenantRef, ledger, now };
+    const startedAt = now();
+    await progress.reading(`workload:${step.workload}`, startedAt);
     let run;
     let reasons = [];
     try {
@@ -167,6 +185,10 @@ export async function runWorkloadCollection(client, { tenantRef, config, scope =
       drift = { status: 'failed', error: String(error?.message ?? error) };
     }
     runs.push({ workload: step.workload, outcome: run.outcome, collectionId: run.id, reasons, drift });
+    await progress.done(`workload:${step.workload}`, {
+      outcome: run.outcome, itemCount: progress.enabled ? await settingsCount(client, run.id) : null,
+      startedAt, completedAt: now(), error: reasonsLine(reasons.length ? reasons : run.digest?.reasons),
+    });
     logger.log(`${step.workload}: ${run.outcome}${run.outcome === 'disabled' ? ' (not qualified; nothing was read)' : ''}`);
     if (drift.status === 'detected') logger.log(`${step.workload}: ${drift.changes} drift change(s) since the previous run`);
     if (drift.status === 'failed') logger.log(`${step.workload}: drift detection failed: ${drift.error}`);
@@ -383,6 +405,7 @@ export async function main(argv = process.argv.slice(2), {
     const transport = readOnlyGraphTransport(async () => (await getTokenFn(config)).accessToken, fetchImpl);
     const result = await runWorkloadCollection(client, {
       tenantRef, config, scope, transport, powershell: { tenantConfigPath: configPath }, logger,
+      onProgress: progressWriter(client, env.KEEL_JOB_ID),
     });
     return result.exitCode;
   } finally {

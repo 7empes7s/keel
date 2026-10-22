@@ -9,6 +9,7 @@ import { GraphReader } from '../tools/tenant-probe/graph.mjs';
 import { collectSnapshot } from '../engine/collect/snapshot.mjs';
 import { connect } from '../engine/store/db.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
+import { progressWriter } from '../engine/jobs/progress.mjs';
 import { ingestCollectorAudit } from '../engine/identity/auditSources.mjs';
 import { schedulerPrincipal } from './keel-scheduler.mjs';
 import {
@@ -125,22 +126,8 @@ export async function readAuditLogs(client, { tenantRef, reader, logger = consol
   }
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * Job page redesign: when the worker runs this as a job it passes the job's id, and each
- * type's progress is written onto that running job so the portal can show it live.
- * Without a job id (a timer or an operator run) nothing is written.
- */
-export function progressWriter(client, jobId) {
-  if (typeof jobId !== 'string' || !UUID.test(jobId)) return undefined;
-  return async (types) => {
-    await client.query(
-      `UPDATE job SET progress = $2 WHERE id = $1 AND status = 'running'`,
-      [jobId, JSON.stringify({ types, updatedAt: new Date().toISOString() })],
-    );
-  };
-}
+// Job page: each type's progress is written onto the running job (engine/jobs/progress.mjs).
+export { progressWriter };
 
 export async function runCollect({
   config,

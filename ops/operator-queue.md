@@ -7153,7 +7153,7 @@ item that needs it stays untouched.
     for every kind (not only Intune). A create that recorded no id adopts the one live object of that kind with the backup's name
     (never one of two). Writers are unchanged (same as Q123 and Q135).
 - Needs: /opt/keel-live at the #502 merge or later (`grep -q loadCreatedTargetIds /opt/keel-live/engine/restore/rollbackJournal.mjs`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q123 and Q135. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. If Graph answers 403,

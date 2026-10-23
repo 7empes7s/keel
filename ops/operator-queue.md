@@ -7701,7 +7701,7 @@ item that needs it stays untouched.
     split into words (`Update Windows Feature Update Profile Assignments Async ...`) instead of being taken for a secret, so the
     page is no longer refused as `invalid-page`. A token-shaped activity is dropped (stored as null) and the event is kept.
 - Needs: /opt/keel-live at the #554 merge or later (`grep -q CAMEL_WORDS /opt/keel-live/engine/identity/auditSources.mjs`).
-- Status: todo
+- Status: superseded (by Q165, which confirmed live that the Intune audit log caught up: 173 records on the stuck window; #552 closed). Do not run.
 - **Tenant:** Collector reads only. No tenant writes, no CA policies, break-glass or Marouane's account.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. After the next scheduled collect (or one `collect` job), report the stdout line starting `Microsoft Intune audit log:`

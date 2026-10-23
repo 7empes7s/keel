@@ -7308,8 +7308,19 @@ item that needs it stays untouched.
     every workload starts `waiting`, turns `reading` when it starts, then shows its outcome, count, times and a short error.
     Keys are `workload:<name>` and `content:<name>`. Written only when the worker passes `KEEL_JOB_ID`.
 - Needs: /opt/keel-live at the #509 merge or later (`test -f /opt/keel-live/engine/jobs/progress.mjs`).
-- Status: in-progress
-- Result: in progress (2026-10-22 18:40 UTC). Waiting for the next scheduled runs (no run started by hand; there is no CLI "Run now" and the portal is not reachable from this box): content-collect at **2026-10-23 01:00 UTC** and workload-collect at **02:00 UTC**. A watcher samples each job's `progress` once a minute (counts only) into `/root/q153-progress.log`.
+- Status: done
+- Result: done (2026-10-23 02:09 UTC). **#509 works: both jobs show live progress, and no entry is left `waiting` or `reading` at the end.** Scheduled runs only (none started by hand); counts only. B = 03139ab.
+  1. **workload-collect** `496044f7` (02:00 schedule): queued 02:00:20, running 02:02:20. Samples a minute apart (states counted in the first 200 characters of `progress`):
+     02:03:20 waiting 2 / reading 1 / done 0; 02:04:20 purview-labels `reading` (exchange-extended done); 02:05:20 purview-labels `complete` (21); 02:06:20 done entries growing. Ended 02:07:41.
+  2. **content-collect** `c8d034ce` (01:00 schedule, the Q121 run): 01:03 waiting 3 / reading 1; from 01:04 to 01:44 onedrive `reading` (startedAt 01:04:22) with the rest waiting; 01:45 onedrive done and sharepoint reading;
+     01:48 teams reading, planner waiting. Ended 01:49:31.
+  3. Final `progress`:
+     - content-collect: status `failed` (exit 1 = partial). teams complete 11, planner complete 80, onedrive partial 2996, exchange-mail partial 43, sharepoint-sites partial 5328.
+     - workload-collect: status `failed` (exit 1 = purview-governance partial). purview-labels complete 21, teams-settings complete 11, exchange-extended complete 40, exchange-mail-flow complete 39, purview-governance partial 2, teams-org-policies complete 25,
+       exchange-role-groups complete 39, teams-voice-policies complete 143, purview-retention-dlp complete 10, onedrive-site-settings complete 1, power-platform-settings disabled 0, sharepoint-site-settings complete 21, exchange-mailbox-settings complete 2.
+     - No entry is `waiting` or `reading` in either final `progress`.
+  4. Portal `/jobs/<id>`: not reachable from this box (Cloudflare Access login, 401 locally).
+  - Note: my sampler logged only the first 200 characters of `progress`, so the per-sample counts are partial; the final `progress` (read in full) is complete.
 - **Tenant:** reads only (a normal backup run). No writes, no fixtures.
 - Do:
   1. Start one `workload-collect` job the usual way (Schedules "Run now" on the service settings schedule, or wait for its next run).

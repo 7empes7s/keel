@@ -2070,7 +2070,10 @@ test('the Intune tenant settings are updated in place through beta: only setting
   assert.equal(writes[0].path, '/deviceManagement');
   assert.deepEqual(writes[0].body, { settings: deviceManagement.settings }, 'never the brand, id or counters');
   const reads = graph.calls.filter((call) => call.method === 'GET' || call.method === undefined);
-  assert.ok(reads.every((call) => String(call.path).includes('$select=id,settings,managedDeviceCleanupSettings')), 'the read back names its fields (issue #447)');
+  // Issue #447: each field is read back on its own request.
+  assert.ok(reads.length > 0);
+  assert.ok(reads.every((call) => ['/deviceManagement?$select=settings', '/deviceManagement?$select=managedDeviceCleanupSettings'].includes(String(call.path))), 'the read back reads one field per request');
+  assert.ok(reads.some((call) => String(call.path).endsWith('managedDeviceCleanupSettings')));
 
   for (const verb of ['create', 'delete']) {
     const refused = await applyIntuneExtendedWrite(idoFakeGraph(), resourceOf('deviceManagementSettings', deviceManagement), verb, FAST);

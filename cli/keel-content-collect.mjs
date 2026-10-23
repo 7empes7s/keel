@@ -114,6 +114,8 @@ export async function runContentCollection(client, {
     } catch (error) {
       result = { outcome: 'failed', items: 0, bytes: 0, reasons: [String(error?.message ?? error)] };
     }
+    // A workload that could not list what it backs up failed, even if it read some items.
+    if (result.discoveryFailed && result.outcome === 'partial') result = { ...result, outcome: 'failed' };
     runs.push({ workload: entry.workload, ...result });
     const completedAt = now();
     await progress.done(`content:${entry.workload}`, {

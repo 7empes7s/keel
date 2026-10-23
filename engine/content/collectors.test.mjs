@@ -313,6 +313,8 @@ test('a refused users listing marks mail and OneDrive as a failed discovery, and
     scope: { namePrefix: 'KEEL-RT-' }, collectors: withState(createMemorySyncState()).filter((entry) => ['exchange-mail', 'onedrive'].includes(entry.workload)), logger: quiet,
   });
   for (const run of result.runs) assert.equal(run.discoveryFailed, true, run.workload);
+  // Shown and recorded as failed, never as read in part.
+  assert.ok(result.runs.every((run) => run.outcome === 'failed'), JSON.stringify(result.runs.map((run) => run.outcome)));
   assert.equal(result.exitCode, 1);
 
   // A run that lists everything has no failed discovery.

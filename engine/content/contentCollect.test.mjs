@@ -173,6 +173,16 @@ test('a content run with only partial workloads is partly done and lists what wa
   assert.equal(last['content:onedrive'].reasonCount, 10);
   assert.equal(last['content:teams'].reasons, undefined);
 
+  // A partial workload whose listing failed shows as failed and fails the run.
+  lines.length = 0;
+  const unlisted = [...collectors.slice(1), { workload: 'exchange-mail', collect: async () => ({ outcome: 'partial', items: 3, bytes: 1, reasons: ['groups: HTTP 403'], discoveryFailed: true }) }];
+  const unlistedWrites = [];
+  const unlistedRun = await runContentCollection(null, { tenantRef: 'sha256:KEEL-RT', store: createMemoryContentStore(), transport: null, collectors: unlisted, logger, onProgress: async (types) => { unlistedWrites.push(types); } });
+  assert.equal(unlistedRun.exitCode, 1);
+  assert.equal(unlistedRun.runs.at(-1).outcome, 'failed');
+  assert.equal(unlistedWrites.at(-1)['content:exchange-mail'].outcome, 'failed');
+  assert.ok(!lines.some((text) => text.startsWith(INCOMPLETE_TYPES_PREFIX)));
+
   // A failed workload beside partial ones fails the run, and no partial line is printed.
   lines.length = 0;
   const failing = [...collectors, { workload: 'planner', collect: async () => { throw new Error('KEEL-RT- token refused'); } }];

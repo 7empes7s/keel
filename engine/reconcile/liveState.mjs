@@ -153,8 +153,9 @@ async function listPerParent(reader, entry) {
 
 // Issue #447: a singleton read one field per request, as the collector reads it.
 async function listEachField(reader, entry) {
-  const { items, error } = await collectEntry(reader, entry);
-  if (error && entry.absentWhenNotFound && error.status === 404) return [];
+  const { items, error, pages } = await collectEntry(reader, entry);
+  // A 404 after a field was read is a failed read, not an absent singleton.
+  if (error && entry.absentWhenNotFound && error.status === 404 && !(pages > 0)) return [];
   if (error) throw new Error(`listing ${entry.path} failed: ${error.error ?? error.status ?? error}`);
   return items;
 }

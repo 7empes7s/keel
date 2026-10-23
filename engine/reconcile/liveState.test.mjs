@@ -138,4 +138,13 @@ assert.deepEqual(intuneIndex.get('deviceManagementSettings').payload, {
   managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '180' },
 });
 
+// A 404 after a field was read fails the live read; it is never absent.
+const halfReader = {
+  async collect(version, path) {
+    if (path.endsWith('managedDeviceCleanupSettings')) return { items: [], pages: 0, status: 404, error: { status: 404, error: 'gone' } };
+    return { items: [{ settings: {} }], pages: 1, status: 200, error: null };
+  },
+};
+await assert.rejects(buildLiveIndex(halfReader, { resourceTypes: ['deviceManagementSettings'], naturalKeyFor: (type) => type }), /listing \/deviceManagement failed/);
+
 console.log('liveState.test.mjs — all assertions passed');

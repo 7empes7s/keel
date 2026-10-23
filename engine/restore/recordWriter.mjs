@@ -62,6 +62,10 @@ export function defineRecord(spec) {
   if ((spec.checkedAfterWrite ?? []).length > 0 && typeof spec.afterWrite !== 'function') {
     throw new TypeError(`${spec.resourceType}: a field checked after the write needs an afterWrite that checks it`);
   }
+  // A record read field by field reads nothing else: every read is rewritten.
+  if (spec.readEach && (spec.readQuery || spec.preflight || spec.afterWrite || spec.updateGuard || spec.deleteGuard)) {
+    throw new TypeError(`${spec.resourceType}: a record read field by field takes no readQuery and no read hook`);
+  }
   if (spec.singleton && (spec.operations ?? []).some((verb) => verb !== 'update')) {
     throw new TypeError(`${spec.resourceType}: a singleton is only ever updated`);
   }

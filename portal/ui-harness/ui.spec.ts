@@ -3445,7 +3445,7 @@ test("Compliance · phone: pass and fail tiles per service open the same panel",
 
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
-    for (const hash of ["/benchmarks", "/benchmarks/empty", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e2", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks/defender", "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1"]) {
+    for (const hash of ["/benchmarks", "/benchmarks/empty", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e2", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks/defender", "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1", "/benchmarks/own", "/benchmarks/own?open=e7a10000-0000-4000-8000-0000000000a7", "/benchmarks/own?own=new"]) {
       test(`Compliance · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await open(page, hash, theme);
@@ -4333,4 +4333,69 @@ test("shared list · the pager fits a phone without sideways scrolling", async (
   expect(overflow).toBeLessThanOrEqual(0);
   await pager.getByRole("button", { name: "Next" }).click();
   await expect(pager.getByRole("status")).toHaveText("Showing 26–50 of 64 settings");
+});
+
+test("Compliance · measure against a known standard, write your own check, remove it", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/benchmarks/own");
+  type Call = { url: string; method: string; body: string | null };
+  const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+
+  // Known standards: SCuBA first, with the policies Keel checks and the gaps listed apart.
+  const known = page.locator(".cp-known");
+  await expect(known.locator("h2")).toHaveText("Measure against a known standard");
+  await expect(known).toContainText("Keel checks 3 of 43 CISA SCuBA policies");
+  await expect(known.locator(".cp-known-table tbody tr")).toHaveCount(3);
+  await expect(known.locator(".cp-known-table tbody tr", { hasText: "MS.AAD.7.1v1" })).toContainText("Checks part of this");
+  await expect(known.locator(".cp-known-gaps summary")).toHaveText("40 policies Keel does not check yet");
+  await known.getByRole("button", { name: "NIST SP 800-53" }).click();
+  await expect(known).toContainText("Keel maps 3 NIST SP 800-53 controls");
+  await expect(known.locator(".cp-known-gaps")).toHaveCount(0);
+  // A policy's check opens that control's panel.
+  await known.getByRole("button", { name: "CISA SCuBA" }).click();
+  await known.locator(".cp-known-table").getByRole("link", { name: "No more than 5 people hold the top admin role" }).click();
+  await expect(page.locator(".bl-sheet h2")).toContainText("No more than 5 people hold the top admin role");
+  await page.keyboard.press("Escape");
+
+  // The tenant's own check sits beside Keel's, filed under its own standard.
+  await expect(page.locator(".cp-score-list", { hasText: "By standard" })).toContainText("Contoso hardening");
+  await page.locator(".sel-row .cp-row-link", { hasText: "Every sign-in rule is on" }).click();
+  const sheet = page.locator(".bl-sheet");
+  await expect(sheet).toContainText("Every one of the sign-in rules has state set to enabled.");
+  await expect(sheet.locator(".cp-misses")).toContainText("Legacy pilot");
+  page.once("dialog", (dialog) => void dialog.accept());
+  await sheet.getByRole("button", { name: "Remove this check" }).click();
+  await expect(page.locator(".toast").first()).toContainText("Check removed");
+  const removes = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/actions/compliance/own-check/remove");
+  expect(removes.map((call) => JSON.parse(call.body ?? "{}"))).toEqual([{ checkId: "0c0c0000-0000-4000-8000-0000000000a7" }]);
+
+  // Write one: pick a kind and a setting from the newest backup, the value, then save.
+  await page.getByRole("link", { name: "Write your own check" }).click();
+  const form = page.locator(".bl-sheet");
+  await expect(form.locator("h2")).toContainText("Write your own check");
+  await expect(form.getByLabel("Belongs to")).toHaveValue("Contoso hardening");
+  await form.getByRole("button", { name: "Save and check" }).click();
+  await expect(form.locator(".cp-error")).toHaveText("Pick what to check and which setting.");
+  await form.getByRole("button", { name: /^Kind/ }).click();
+  await page.locator(".option-panel [role='option']", { hasText: "Named location" }).click();
+  await form.getByRole("button", { name: /^Setting/ }).click();
+  await page.locator(".option-panel [role='option']", { hasText: "isTrusted" }).click();
+  await form.getByLabel("Value").selectOption("true");
+  await form.getByLabel("Applies to").selectOption("any");
+  await expect(form.locator(".cp-callout")).toHaveText("At least one of the trusted locations has isTrusted set to On.");
+  const results = await new AxeBuilder({ page }).include(".bl-sheet").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  expect(results.violations.map((violation) => violation.id)).toEqual([]);
+  await form.getByRole("button", { name: "Save and check" }).click();
+  await expect(page.locator(".toast", { hasText: "Check saved" })).toContainText("Checked against the newest backup: it does not pass.");
+  const saves = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/actions/compliance/own-check");
+  expect(saves.map((call) => JSON.parse(call.body ?? "{}"))).toEqual([{
+    standard: "Contoso hardening", name: "At least one of the trusted locations has isTrusted set to On.", resourceType: "namedLocation",
+    field: "isTrusted", operator: "equals", expected: true, appliesTo: "any", severity: "medium",
+  }]);
+  await expect(form).toBeHidden();
+
+  // At phone width the page still fits.
+  await page.setViewportSize({ width: 375, height: 800 });
+  await expect(page.locator(".cp-known")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });

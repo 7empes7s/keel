@@ -323,6 +323,8 @@ export interface ComplianceFinding {
   // A fix on a service read (the Defender email checks) changes one of several
   // settings: `field` is null and each candidate names its own.
   fix?: { resourceType: string; field: string | null; to: unknown; settings?: Record<string, unknown> } | null;
+  // A check the tenant wrote itself; null or absent for Keel's own controls.
+  own?: OwnCheck | null;
   fixCandidates?: ComplianceFixCandidate[];
 }
 
@@ -371,6 +373,46 @@ export interface ComplianceData {
   summary: ComplianceSummary;
   storage: StorageResidency;
   activeBaseline: BaselineRecord | null;
+  // Known standards Keel measures against (engine/benchmarks/standards.mjs). Absent from older readers.
+  standards?: KnownStandard[];
+  // What an own check can be written on, read only for someone who may write one.
+  ownChoices?: OwnCheckChoices | null;
+}
+
+/** A check the tenant wrote itself (engine/benchmarks/ownChecks.mjs shapeOwnCheck). */
+export interface OwnCheck {
+  id: string;
+  controlId: string;
+  standard: string;
+  name: string;
+  resourceType: string;
+  field: string;
+  operator: "equals" | "not-equals";
+  expected: boolean | number | string | null;
+  appliesTo: "every" | "any";
+  severity: "low" | "medium" | "high";
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface OwnCheckChoices {
+  snapshotId: string | null;
+  types: { resourceType: string; count: number; fields: { field: string; values: (boolean | number | string | null)[] }[] }[];
+}
+
+export interface KnownStandardControl { controlId: string; match: "full" | "partial"; note: string | null }
+
+export interface KnownStandard {
+  id: string;
+  name: string;
+  publisher: string;
+  edition: string;
+  scope: string;
+  licence: string;
+  source: string;
+  // Whether `refs` is the whole published list, or only the policies Keel maps.
+  complete: boolean;
+  refs: { ref: string; area: string; areaName: string | null; controls: KnownStandardControl[] }[];
 }
 
 export interface DriftRecord {

@@ -46,6 +46,7 @@
 import { createHash } from 'node:crypto';
 
 import { CENTRAL, ownershipOfResources, ownershipVisibleTo } from '../authz/entityScope.mjs';
+import { OWN_PREFIX, controlFromRow, ownCheckRows } from '../benchmarks/ownChecks.mjs';
 import { controlFor } from '../benchmarks/registry.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { CONTENT_COLLECTORS } from '../content/collectors.mjs';
@@ -592,13 +593,18 @@ async function loadFindings(client, { tenantRef, to }) {
     [tenantRef, to, MAX_SOURCE_ROWS + 1],
   );
   const bounded = rows.length > MAX_SOURCE_ROWS;
+  // A tenant's own check counts while it is in force, under its own name; a removed
+  // one is left out, as on the Compliance page.
+  const own = new Map((await ownCheckRows(client, { tenantRef })).map((row) => [`${OWN_PREFIX}${row.id}`, row]));
   const groups = new Map();
   for (const row of rows.slice(0, MAX_SOURCE_ROWS)) {
+    if (row.control_id.startsWith(OWN_PREFIX) && (!own.has(row.control_id) || own.get(row.control_id).removed_at)) continue;
     const key = evaluationGroup(row);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
   }
-  const findings = [...groups.values()].map((group) => classifyControlFinding(group, { to })).filter(Boolean);
+  const findings = [...groups.values()].map((group) => classifyControlFinding(group, { to })).filter(Boolean)
+    .map((finding) => (own.has(finding.controlId) ? { ...finding, title: controlFromRow(own.get(finding.controlId)).title } : finding));
   return { findings, bounded, evaluationsRead: Math.min(rows.length, MAX_SOURCE_ROWS) };
 }
 

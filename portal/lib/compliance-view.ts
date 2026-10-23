@@ -14,6 +14,8 @@ import type {
   ComplianceFinding,
   ComplianceFixCandidate,
   ComplianceSummary,
+  KnownStandard,
+  OwnCheck,
   StorageResidency,
 } from "@/lib/types";
 
@@ -259,6 +261,7 @@ export function controlShort(finding: ComplianceFinding): string {
 
 /** The kinds of setting a control reads: from its own words, else from its evidence. */
 export function controlTypes(finding: ComplianceFinding): string[] {
+  if (finding.own) return [finding.own.resourceType];
   const own = CONTROL_WORDS[finding.controlId]?.types;
   if (own?.length) return own;
   return [...new Set(finding.evidence.map((entry) => entry.resourceType))];
@@ -271,7 +274,15 @@ export function findingTypes(finding: ComplianceFinding): string {
 }
 
 export function controlWhat(finding: ComplianceFinding): string {
+  if (finding.own) return ownCheckSentence(finding.own);
   return CONTROL_WORDS[finding.controlId]?.what ?? `Checks ${findingTypes(finding)}.`;
+}
+
+/** "Every one of the sign-in rules has State set to On." Said for a check the tenant wrote. */
+export function ownCheckSentence(check: Pick<OwnCheck, "resourceType" | "field" | "operator" | "expected" | "appliesTo">): string {
+  const who = check.appliesTo === "any" ? `At least one of the ${kindWords(check.resourceType)}` : `Every one of the ${kindWords(check.resourceType)}`;
+  const how = check.operator === "not-equals" ? "set to anything but" : "set to";
+  return `${who} has ${check.field} ${how} ${settingValueWords(check.expected)}.`;
 }
 
 export function controlWhy(finding: ComplianceFinding): string | null {
@@ -289,8 +300,91 @@ const STANDARD_WORDS: Record<string, string> = {
 };
 
 export function standardName(finding: ComplianceFinding): string {
+  // A check the tenant wrote is filed under the standard it was written for.
+  if (finding.framework === OWN_FRAMEWORK) return finding.own?.standard ?? finding.profile ?? OWN_DEFAULT_STANDARD;
   return STANDARD_WORDS[finding.framework] ?? finding.framework.replace(/[-_]/g, " ").toUpperCase();
 }
+
+export const OWN_FRAMEWORK = "own";
+export const OWN_DEFAULT_STANDARD = "Our standard";
+
+/** The names of the tenant's own standards, from the checks written for them. */
+export function ownStandards(findings: ComplianceFinding[]): string[] {
+  return [...new Set(findings.filter((finding) => finding.own).map((finding) => finding.own!.standard))].sort((a, b) => a.localeCompare(b));
+}
+
+/* ------------------------------------------------------ known standards -- */
+
+export type CoverageResult = ControlResult | "not-checked";
+
+export interface CoverageRow {
+  ref: string;
+  area: string;
+  areaName: string | null;
+  result: CoverageResult;
+  mapped: { controlId: string; match: "full" | "partial"; note: string | null; finding: ComplianceFinding | null }[];
+}
+
+export interface Coverage {
+  rows: CoverageRow[];
+  total: number;
+  checked: number;
+  passing: number;
+  // Policies whose only checks cover part of them, and those pass: never a full pass.
+  partlyPassing: number;
+  notPassing: number;
+  unknown: number;
+}
+
+/**
+ * How a known standard's policies stand on this tenant: each policy takes the worst
+ * result of the checks mapped to it. A policy no check maps to is "not checked"; one
+ * whose checks have no result yet is "could not check". Never a pass by default.
+ */
+export function standardCoverage(standard: KnownStandard, findings: ComplianceFinding[]): Coverage {
+  const byControl = new Map(findings.map((finding) => [finding.controlId, finding]));
+  const rows = standard.refs.map((entry): CoverageRow => {
+    const mapped = entry.controls.map((control) => ({ ...control, finding: byControl.get(control.controlId) ?? null }));
+    let result: CoverageResult = "not-checked";
+    if (mapped.length) {
+      const results = mapped.map((item) => (item.finding ? resultOf(item.finding) : "unknown" as ControlResult));
+      result = results.sort((left, right) => RESULTS[left].rank - RESULTS[right].rank)[0];
+    }
+    return { ref: entry.ref, area: entry.area, areaName: entry.areaName, result, mapped };
+  });
+  const checked = rows.filter((row) => row.result !== "not-checked");
+  return {
+    rows,
+    total: rows.length,
+    checked: checked.length,
+    passing: checked.filter((row) => (row.result === "passing" || row.result === "not-relevant") && !partOnly(row)).length,
+    partlyPassing: checked.filter((row) => (row.result === "passing" || row.result === "not-relevant") && partOnly(row)).length,
+    notPassing: checked.filter((row) => row.result === "failing" || row.result === "not-set-up" || row.result === "excepted").length,
+    unknown: checked.filter((row) => row.result === "unknown").length,
+  };
+}
+
+function partOnly(row: CoverageRow): boolean {
+  return row.mapped.every((item) => item.match === "partial");
+}
+
+/** "Keel checks 3 of 43 CISA SCuBA policies: 1 passes, 2 do not." */
+export function coverageSentence(standard: KnownStandard, coverage: Coverage): string {
+  const scope = standard.complete
+    ? `Keel checks ${coverage.checked} of ${plural(coverage.total, `${standard.name} policy`, `${standard.name} policies`)}`
+    : `Keel maps ${plural(coverage.checked, `${standard.name} control`)}`;
+  const parts = [
+    coverage.passing ? `${coverage.passing} ${coverage.passing === 1 ? "passes" : "pass"}` : null,
+    coverage.partlyPassing ? `${coverage.partlyPassing} ${coverage.partlyPassing === 1 ? "passes" : "pass"} in part` : null,
+    coverage.notPassing ? `${coverage.notPassing} ${coverage.notPassing === 1 ? "does not" : "do not"}` : null,
+    coverage.unknown ? `${coverage.unknown} could not be checked` : null,
+  ].filter(Boolean);
+  return parts.length ? `${scope}: ${parts.join(", ")}.` : `${scope}.`;
+}
+
+export const COVERAGE_WORDS: Record<"full" | "partial", string> = { full: "Checks this", partial: "Checks part of this" };
+
+export const KNOWN_STANDARDS_NOTE = "Keel's own reading of which checks cover which policy. Meeting it is not a certification. CIS Benchmarks are not included: their licence does not allow Keel to ship them.";
 
 // The four states a control can be in (Fails, Not set up yet, Passes, Accepted exception),
 // plus two that say Keel could not judge it: no usable backup, or nothing to check here.

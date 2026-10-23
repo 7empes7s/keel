@@ -10143,6 +10143,16 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
   .cp-misses th::before, .cp-misses td::before { content: attr(data-label); color: var(--text-soft); font-weight: 400; }
   .cp-miss-now, .cp-miss-want { justify-self: start; }
 }
+/* Measure against a known baseline: the policies Keel's checks cover, and the gaps. */
+.cp-known { display: grid; gap: var(--space-sm); }
+.cp-known p { margin: 0; }
+.cp-known-table td, .cp-known-table th { overflow-wrap: anywhere; }
+.cp-known-area, .cp-known-check small { display: block; color: var(--text-soft); font-weight: 400; }
+.cp-known-check { display: block; }
+.cp-known-check + .cp-known-check { margin-top: var(--space-2xs); }
+.cp-known-gaps { display: grid; gap: var(--space-xs); }
+.cp-known-gaps summary { cursor: pointer; font-weight: 600; }
+.cp-known-gaps p { margin-top: var(--space-xs); overflow-wrap: anywhere; }
 .cp-form { display: grid; gap: var(--space-lg); }
 .cp-form fieldset { display: grid; gap: var(--space-sm); margin: 0; padding: 0; border: 0; min-width: 0; }
 .cp-form legend { margin-bottom: var(--space-2xs); padding: 0; font-size: 0.9375rem; font-weight: 650; }

@@ -102,13 +102,12 @@ test("OneDrives Microsoft 365 has locked are listed as skipped, not as a problem
   const skipped = [
     "KEEL-RT-adele@keelrt.example: OneDrive locked in Microsoft 365",
     "KEEL-RT-alex@keelrt.example: OneDrive locked in Microsoft 365",
-    "KEEL-RT-bob@keelrt.example: no OneDrive",
   ];
   const onedrive = run("onedrive", "succeeded", { stored: stored(2, 1771) });
   const data: ContentBackupsData = { generatedAt: NOW, content: [{ ...onedrive, latest: { ...onedrive.latest!, skipped } }] };
   const row = contentRows(data).find((candidate) => candidate.workload.code === "onedrive")!;
   assert.equal(row.state, "backed-up");
-  assert.equal(skippedLine(row), "Skipped 2 OneDrives Microsoft 365 has locked and 1 user without a OneDrive. Keel cannot read them, so this is not counted as an error");
+  assert.equal(skippedLine(row), "Skipped 2 OneDrives Microsoft 365 has locked. Keel cannot read them, so this is not counted as an error");
   assert.deepEqual(runSkipped(row), skipped);
   const html = renderToStaticMarkup(createElement(ContentBackupsView, { data, now: NOW }));
   assert.match(html, /Skipped 2 OneDrives Microsoft 365 has locked/);

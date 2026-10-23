@@ -130,7 +130,6 @@ export function runReasons(row: ContentRow): string[] {
 // Skip reasons as the engine records them (engine/content/onedrives.mjs), in words.
 const SKIP_WORDS: Record<string, { one: string; many: string }> = {
   "OneDrive locked in Microsoft 365": { one: "OneDrive Microsoft 365 has locked", many: "OneDrives Microsoft 365 has locked" },
-  "no OneDrive": { one: "user without a OneDrive", many: "users without a OneDrive" },
 };
 
 /** The raw "name: reason" lines the last run skipped, for "Show details". */

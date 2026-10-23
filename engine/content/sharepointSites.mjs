@@ -592,6 +592,10 @@ export async function backupSharePointSites({
         }
       }
       entry.pages = pages;
+      // Every page listed answered 404: that is not a run of deletions, it is a failed read.
+      if (pages.gone && !pages.count && !pages.unchanged && !pages.failed.length) {
+        throw Object.assign(new Error(`all ${pages.gone} page(s) listed answered 404`), { status: 404 });
+      }
       if (pages.failed.length) throw Object.assign(new Error(`${pages.failed.length} page(s) not read`), { status: pages.failed[0].httpStatus });
     });
 

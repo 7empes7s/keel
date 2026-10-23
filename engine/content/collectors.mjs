@@ -65,6 +65,10 @@ async function collectMail(client, context) {
   const found = await discoverMailboxes(reader, { match: prefixOf(scope) });
   const reasons = found.errors.map((error) => `${error.route}${error.id ? ` ${error.id}` : ''}: ${error.error}`);
   let ok = 0;
+  // Read fine, by family: group mailboxes are read under other permissions than user,
+  // shared and archive mailboxes, so only a mailbox of the same family proves access.
+  const okFamily = { group: 0, mailbox: 0 };
+  const familyOf = (mailbox) => (mailbox.kind === 'group' ? 'group' : 'mailbox');
   const denied = [];
   for (const mailbox of found.mailboxes) {
     const ref = { tenantRef, workload: 'exchange-mail', key: mailbox.key };
@@ -76,7 +80,7 @@ async function collectMail(client, context) {
       });
       await syncState.save({ ...ref, state: result.state[mailbox.key] ?? null });
       const report = result.mailboxes[0];
-      if (report?.ok) ok += 1;
+      if (report?.ok) { ok += 1; okFamily[familyOf(mailbox)] += 1; }
       else {
         const errors = [...(report?.mail?.errors ?? []), ...(report?.items?.errors ?? [])];
         if (errors.length && errors.every((error) => ACCESS_DENIED.test(String(error.error ?? '')))) denied.push({ mailbox, errors });
@@ -86,12 +90,12 @@ async function collectMail(client, context) {
       reasons.push(`${mailbox.name} (${mailbox.kind}): ${errorText(error)}`);
     }
   }
-  // Refused on its own while other mailboxes read fine: Keel's app has the permission, and
+  // Refused on its own while other mailboxes of its family read fine: Keel's app has the permission, and
   // something in the tenant (an application access policy, a mailbox restriction) leaves
   // this mailbox out. Still not backed up, but the reason says so.
   for (const { mailbox, errors } of denied) {
-    reasons.push(ok > 0
-      ? `${mailbox.name} (${mailbox.kind}): Microsoft 365 refused access to this mailbox only; other mailboxes read fine (${errors[0].error})`
+    reasons.push(okFamily[familyOf(mailbox)] > 0
+      ? `${mailbox.name} (${mailbox.kind}): Microsoft 365 refused access to this mailbox only; other ${mailbox.kind === 'group' ? 'group ' : ''}mailboxes read fine (${errors[0].error})`
       : `${mailbox.name} (${mailbox.kind}): ${errors.length} read(s) failed (${errors[0].error})`);
   }
   const failedAll = found.mailboxes.length > 0 ? ok === 0 : found.errors.length > 0;
@@ -108,8 +112,9 @@ async function collectOneDrives(client, context) {
     ...result.errors.map((error) => `${error.name ?? error.step}: ${error.error}`),
     ...result.drives.filter((drive) => drive.outcome === 'partial').map((drive) => `${drive.name}: ${drive.stats.warnings.length} file warning(s), first: ${drive.stats.warnings[0].warning}`),
   ];
-  // Skipped drives (none, or locked by Microsoft 365) are not failures, but they are listed.
-  const skipped = result.skipped.map((drive) => `${drive.name}: ${drive.reason}`);
+  // A OneDrive Microsoft 365 has locked is not a failure, but it is listed. Users with no
+  // OneDrive at all hold nothing to back up and are left out.
+  const skipped = result.skipped.filter((drive) => drive.locked).map((drive) => `${drive.name}: ${drive.reason}`);
   return { outcome: result.outcome, ...tally, reasons, skipped, discoveryFailed: result.errors.some((error) => error.step === 'users') };
 }
 

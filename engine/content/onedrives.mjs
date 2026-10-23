@@ -72,7 +72,7 @@ export async function backupOneDrives({
       drive = await resolveUserDrive({ transport: send, userId: user.id, sleep, maxRetries });
     } catch (error) {
       if (error instanceof DriveSyncError && error.status === 404) skipped.push({ userId: user.id, name, reason: 'no OneDrive' });
-      else if (error instanceof DriveSyncError && error.status === 423) skipped.push({ userId: user.id, name, reason: 'OneDrive locked in Microsoft 365' });
+      else if (error instanceof DriveSyncError && error.status === 423) skipped.push({ userId: user.id, name, reason: 'OneDrive locked in Microsoft 365', locked: true });
       else errors.push({ userId: user.id, name, step: 'drive', error: errorText(error) });
       continue;
     }
@@ -91,6 +91,11 @@ export async function backupOneDrives({
     }
   }
 
+  // Every OneDrive found is locked: nothing was read, which is not a success.
+  const locked = skipped.filter((drive) => drive.locked).length;
+  if (locked > 0 && drives.length === 0 && errors.length === 0) {
+    errors.push({ step: 'drive', name: 'OneDrives', error: `all ${locked} OneDrive(s) found are locked in Microsoft 365; nothing was read` });
+  }
   let outcome = 'succeeded';
   const synced = drives.filter((drive) => drive.outcome !== 'failed').length;
   if ((listed.error && listed.users.length === 0) || (errors.length > 0 && synced === 0)) outcome = 'failed';

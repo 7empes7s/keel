@@ -16,6 +16,17 @@ export function progressWriter(client, jobId) {
   };
 }
 
+// The items a partial content workload could not read, as the Job page lists them: at
+// most this many, each cut to this length. The full list stays in the run's log.
+export const MAX_LISTED_REASONS = 50;
+export const MAX_REASON_LENGTH = 300;
+
+/** A run's reasons as a short list for the job's result and progress. */
+export function listedReasons(reasons) {
+  if (!Array.isArray(reasons)) return [];
+  return reasons.slice(0, MAX_LISTED_REASONS).map((reason) => (typeof reason === 'string' ? reason : JSON.stringify(reason)).slice(0, MAX_REASON_LENGTH));
+}
+
 /** A short error line from a run's reasons: never a payload, at most 500 characters. */
 export function reasonsLine(reasons) {
   if (!Array.isArray(reasons) || !reasons.length) return null;
@@ -40,7 +51,7 @@ export function progressTracker(keys, write, now = () => new Date()) {
       types[key] = { outcome: 'reading', startedAt: startedAt.toISOString() };
       await report();
     },
-    async done(key, { outcome, itemCount = null, startedAt, completedAt = now(), error = null }) {
+    async done(key, { outcome, itemCount = null, startedAt, completedAt = now(), error = null, reasons = null }) {
       types[key] = {
         outcome,
         itemCount: Number.isSafeInteger(itemCount) ? itemCount : null,
@@ -48,6 +59,12 @@ export function progressTracker(keys, write, now = () => new Date()) {
         completedAt: new Date(completedAt).toISOString(),
         httpStatus: null,
         error: typeof error === 'string' ? error.slice(0, 500) : null,
+        // Content workloads: each item not read (at most 50, each cut to 300 characters),
+        // and how many there were, so the Job page can list them.
+        ...(Array.isArray(reasons) && reasons.length ? {
+          reasons: listedReasons(reasons),
+          reasonCount: reasons.length,
+        } : {}),
       };
       await report();
     },

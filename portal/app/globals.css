@@ -4389,6 +4389,15 @@ section.wizard-panel {
 .job-types-table tbody tr[data-tone="low"] th[scope="row"] { box-shadow: inset 3px 0 0 var(--low-risk); }
 .job-problem { color: var(--text); }
 .job-types-table .ui-alert-more { margin-top: 0.125rem; }
+.job-gaps { display: grid; gap: var(--space-sm); min-width: 0; }
+.job-gaps-lead, .job-gaps-more { margin: 0; color: var(--text-soft); font-size: 0.875rem; }
+.job-gap-group { display: grid; gap: var(--space-xs); min-width: 0; }
+.job-gap-group h3 { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-xs); margin: 0; font-size: 1rem; }
+.job-gaps-table tbody tr[data-tone="soon"] th[scope="row"] { box-shadow: inset 3px 0 0 var(--partial); }
+.job-gaps-table tbody tr[data-tone="urgent"] th[scope="row"] { box-shadow: inset 3px 0 0 var(--urgent); }
+.job-gaps-table th[scope="row"] .rs-row-name { overflow-wrap: anywhere; }
+.job-gaps-table { table-layout: fixed; }
+.job-gaps-table thead th:first-child { width: 55%; }
 @media (max-width: 46rem) {
   .rs-table.job-types-table tbody tr:not(.rs-group):not(.job-kind-part) td[data-label="State"] { grid-column: 2; grid-row: 1; justify-self: end; }
   .rs-table.job-types-table tbody tr:not(.rs-group):not(.job-kind-part) td[data-label="Items"],

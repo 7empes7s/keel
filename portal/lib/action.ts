@@ -140,6 +140,9 @@ export interface TypeProgress {
   httpStatus?: number | null;
   error?: string | null;
   throttles?: number;
+  // Content backups: each item not read in full (at most 50) and how many there were.
+  reasons?: string[];
+  reasonCount?: number;
 }
 
 /** A backup job's progress by type: written live by the job, or read from its snapshot. */
@@ -165,10 +168,20 @@ function jobProgress(value: unknown): JobProgress | null {
       httpStatus: Number.isSafeInteger(entry.httpStatus) ? entry.httpStatus : null,
       error: typeof entry.error === "string" ? entry.error : null,
       ...(Number.isSafeInteger(entry.throttles) ? { throttles: entry.throttles } : {}),
+      ...listedReasons(entry.reasons, entry.reasonCount),
     }])),
     updatedAt: typeof updatedAt === "string" ? updatedAt : null,
     source: source === "snapshot" ? "snapshot" : "live",
   };
+}
+
+/** A content workload's unread items: at most 50 strings, and the total when known. */
+function listedReasons(reasons: unknown, count?: unknown): { reasons?: string[]; reasonCount?: number } {
+  if (!Array.isArray(reasons)) return {};
+  const listed = reasons.filter((reason): reason is string => typeof reason === "string" && reason.length > 0).slice(0, 50).map((reason) => reason.slice(0, 300));
+  if (!listed.length) return {};
+  const total = Number.isSafeInteger(count) && Number(count) >= listed.length ? Number(count) : Math.max(listed.length, reasons.length);
+  return { reasons: listed, reasonCount: total };
 }
 
 const SNAPSHOT_LINE = /snapshot ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}) complete/i;
@@ -222,6 +235,7 @@ async function workloadProgress(client: KeelClient, tenantRef: string, row: Reco
           startedAt: entry.started_at ? new Date(String(entry.started_at)).toISOString() : null,
           completedAt: entry.completed_at ? new Date(String(entry.completed_at)).toISOString() : null,
           error: Array.isArray(entry.reasons) && entry.reasons.length ? entry.reasons.map(String).join("\n").slice(0, 500) : null,
+          ...listedReasons(Array.isArray(entry.reasons) ? entry.reasons.map((reason: unknown) => (typeof reason === "string" ? reason : JSON.stringify(reason))) : null),
         }])),
       };
     }

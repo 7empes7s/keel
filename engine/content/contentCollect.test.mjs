@@ -12,7 +12,8 @@ import { contentReadTransport } from './transport.mjs';
 import { createMemoryContentStore } from './store.mjs';
 import { CONTENT_COLLECTORS } from './collectors.mjs';
 import { JOB_HANDLERS, JOB_TIMEOUT_MS } from '../../cli/keel-worker.mjs';
-import { main, readerProblems, runContentCollection } from '../../cli/keel-content-collect.mjs';
+import { contentExitCode, incompleteWorkloadsOf, main, MAX_LISTED_REASONS, readerProblems, runContentCollection } from '../../cli/keel-content-collect.mjs';
+import { INCOMPLETE_TYPES_PREFIX, PARTIAL_EXIT_CODE } from '../collect/incomplete.mjs';
 
 const messages = { kind: 'graph', method: 'GET', endpoint: '/users/{id}/messages' };
 
@@ -139,4 +140,60 @@ test('a content-collect run waits on the reader, checks it, and runs every regis
   assert.equal(result.exitCode, 1, 'a failed collector fails the job, after the others ran');
   assert.equal((await store.listItems({ container: 'team:KEEL-RT-team' })).length, 1);
   await assert.rejects(runContentCollection(null, { tenantRef: 't', store, collectors: [{ workload: 'calendar', collect: async () => ({}) }], logger }), /unknown workload/);
+});
+
+// A content backup where no workload failed but some were read only in part (locked
+// OneDrives, one refused mailbox) is partly done (exit 3) and names each workload with
+// the items it could not read. Any failed workload still fails the run (exit 1).
+test('a content run with only partial workloads is partly done and lists what was not read', async () => {
+  const lines = [];
+  const logger = { log: (line) => lines.push(line) };
+  const writes = [];
+  const locked = Array.from({ length: 10 }, (_, i) => `KEEL-RT-user-${i}: HTTP 423 notAllowed for /v1.0/users/x/drive`);
+  const collectors = [
+    { workload: 'exchange-mail', collect: async () => ({ outcome: 'partial', items: 43, bytes: 10, reasons: ['KEEL-RT-group (group): 1 read(s) failed (403 ErrorAccessDenied)'] }) },
+    { workload: 'onedrive', collect: async () => ({ outcome: 'partial', items: 2996, bytes: 10, reasons: locked }) },
+    { workload: 'teams', collect: async () => ({ outcome: 'succeeded', items: 11, bytes: 10, reasons: [] }) },
+  ];
+  const result = await runContentCollection(null, {
+    tenantRef: 'sha256:KEEL-RT', store: createMemoryContentStore(), transport: null, collectors, logger,
+    onProgress: async (types) => { writes.push(types); },
+  });
+  assert.equal(result.exitCode, PARTIAL_EXIT_CODE);
+  const line = lines.find((text) => text.startsWith(INCOMPLETE_TYPES_PREFIX));
+  assert.ok(line, 'the partial run prints the incomplete line');
+  const listed = JSON.parse(line.slice(INCOMPLETE_TYPES_PREFIX.length));
+  assert.deepEqual(listed.map((entry) => [entry.type, entry.outcome, entry.items, entry.reasonCount]), [
+    ['content:exchange-mail', 'partial', 43, 1], ['content:onedrive', 'partial', 2996, 10],
+  ]);
+  assert.deepEqual(listed[1].reasons, locked);
+  // The Job page reads each item from the progress too.
+  const last = writes.at(-1);
+  assert.deepEqual(last['content:onedrive'].reasons, locked);
+  assert.equal(last['content:onedrive'].reasonCount, 10);
+  assert.equal(last['content:teams'].reasons, undefined);
+
+  // A failed workload beside partial ones fails the run, and no partial line is printed.
+  lines.length = 0;
+  const failing = [...collectors, { workload: 'planner', collect: async () => { throw new Error('KEEL-RT- token refused'); } }];
+  const failed = await runContentCollection(null, { tenantRef: 'sha256:KEEL-RT', store: createMemoryContentStore(), transport: null, collectors: failing, logger });
+  assert.equal(failed.exitCode, 1);
+  assert.ok(!lines.some((text) => text.startsWith(INCOMPLETE_TYPES_PREFIX)));
+});
+
+test('content exit codes: full is 0, partial only is 3, anything failed or unknown is 1', () => {
+  const run = (outcome) => ({ workload: 'teams', outcome, reasons: [] });
+  assert.equal(contentExitCode([run('succeeded'), run('succeeded')]), 0);
+  assert.equal(contentExitCode([]), 0);
+  assert.equal(contentExitCode([run('succeeded'), run('partial')]), PARTIAL_EXIT_CODE);
+  assert.equal(contentExitCode([run('partial'), run('partial')]), PARTIAL_EXIT_CODE);
+  assert.equal(contentExitCode([run('partial'), run('failed')]), 1);
+  assert.equal(contentExitCode([run('succeeded'), run('failed')]), 1);
+  assert.equal(contentExitCode([run('succeeded'), run('skipped')]), 1);
+  assert.equal(contentExitCode([run('succeeded'), run(undefined)]), 1);
+  const many = Array.from({ length: 80 }, (_, i) => `item ${i}: ${'x'.repeat(400)}`);
+  const [entry] = incompleteWorkloadsOf([{ workload: 'onedrive', outcome: 'partial', items: 5, reasons: many }]);
+  assert.equal(entry.reasons.length, MAX_LISTED_REASONS);
+  assert.equal(entry.reasonCount, 80);
+  assert.ok(entry.reasons.every((reason) => reason.length <= 300));
 });

@@ -36,7 +36,10 @@ import { CONTENT_WORKLOADS, createContentStore, parseContentKey } from '../engin
 import { contentReadTransport, sharePointReadTransport } from '../engine/content/transport.mjs';
 import { CONTENT_COLLECTORS } from '../engine/content/collectors.mjs';
 import { recordContentRun } from '../engine/coverage/serviceBackups.mjs';
-import { progressTracker, progressWriter, reasonsLine } from '../engine/jobs/progress.mjs';
+import { MAX_LISTED_REASONS, listedReasons, progressTracker, progressWriter, reasonsLine } from '../engine/jobs/progress.mjs';
+
+export { MAX_LISTED_REASONS };
+import { INCOMPLETE_TYPES_PREFIX, PARTIAL_EXIT_CODE } from '../engine/collect/incomplete.mjs';
 
 export const DEFAULT_READER_PATH = '/etc/keel/content-reader.json';
 export const DEFAULT_SCOPE_PATH = '/etc/keel/content-scope.json';
@@ -69,8 +72,27 @@ export function readerProblems(reader, config) {
 const CONTENT_PROGRESS_OUTCOME = { succeeded: 'complete', failed: 'failed', partial: 'partial', skipped: 'unavailable', disabled: 'disabled' };
 
 /**
+ * Exit codes (#447 for settings, the same rule for content). 0: every workload read in
+ * full. 3: no workload failed, but some were read only in part (a locked OneDrive, one
+ * refused mailbox); they are named on stdout and the run is partial, not failed. 1: any
+ * workload failed or ended in any other state.
+ */
+export function contentExitCode(runs) {
+  if (runs.every((run) => run.outcome === 'succeeded')) return 0;
+  return runs.every((run) => run.outcome === 'succeeded' || run.outcome === 'partial') ? PARTIAL_EXIT_CODE : 1;
+}
+
+/** The workloads a run read only in part, in the shape the worker's partial result takes. */
+export function incompleteWorkloadsOf(runs) {
+  return runs.filter((run) => run.outcome !== 'succeeded').map((run) => ({
+    type: `content:${run.workload}`, outcome: run.outcome, httpStatus: null,
+    items: Number(run.items ?? 0), reasonCount: Array.isArray(run.reasons) ? run.reasons.length : 0, reasons: listedReasons(run.reasons),
+  }));
+}
+
+/**
  * One scheduled run. A collector that throws is recorded as failed with the reason,
- * and the next one still runs. Exit code 1 when any collector failed or was partial.
+ * and the next one still runs. See contentExitCode for the exit code.
  */
 export async function runContentCollection(client, {
   tenantRef, tenantId, store, transport, sharePointTransportFor, scope = {}, collectors = CONTENT_COLLECTORS, now = () => new Date(), logger = console,
@@ -95,7 +117,7 @@ export async function runContentCollection(client, {
     const completedAt = now();
     await progress.done(`content:${entry.workload}`, {
       outcome: CONTENT_PROGRESS_OUTCOME[result.outcome] ?? 'failed', itemCount: Number(result.items ?? 0),
-      startedAt, completedAt, error: reasonsLine(result.reasons),
+      startedAt, completedAt, error: reasonsLine(result.reasons), reasons: result.reasons,
     });
     // Each workload's run is kept so freshness and reports count content beside settings.
     const namePrefix = typeof scope?.namePrefix === 'string' && scope.namePrefix ? scope.namePrefix : null;
@@ -109,7 +131,11 @@ export async function runContentCollection(client, {
     }
     logger.log(`${entry.workload}: ${result.outcome} (${result.items ?? 0} items, ${result.bytes ?? 0} bytes)${result.reasons?.length ? `: ${result.reasons.join('; ')}` : ''}`);
   }
-  return { tenantRef, outcome: 'ran', runs, exitCode: runs.some((run) => run.outcome !== 'succeeded') ? 1 : 0 };
+  const exitCode = contentExitCode(runs);
+  // One machine-readable line the worker turns into the job's result, so the Job page
+  // can list what was not backed up.
+  if (exitCode === PARTIAL_EXIT_CODE) logger.log(`${INCOMPLETE_TYPES_PREFIX}${JSON.stringify(incompleteWorkloadsOf(runs))}`);
+  return { tenantRef, outcome: 'ran', runs, exitCode };
 }
 
 export async function main(argv = process.argv.slice(2), {

@@ -39,6 +39,9 @@ export interface ChangeRecord {
   impact: string;
   decision: string | null;
   seenAt: string | null;
+  // The settings that differ (modified changes only); moreFields when there were more.
+  fields?: string[] | null;
+  moreFields?: boolean;
   window: AnswerWindow;
   source: AnswerSource;
 }
@@ -102,6 +105,10 @@ export interface GroundedAnswer {
   summary?: { resourceType: string; changeType: string; impact: string; count: number }[] | null;
   // Words of the question the reading did not use.
   ignored?: string[];
+  // What the reading filled in because the question did not say it ("period").
+  assumed?: string[];
+  // When KEEL next reads the kind asked about, from its backup schedule.
+  nextRead?: { every: string | null; n: number; dueAt: string | null } | null;
   refusal?: { code: string; message: string };
   readBy?: "rules" | "helper" | "form";
   question?: string | null;
@@ -138,6 +145,7 @@ export const ASK_PERIODS: { value: string; label: string }[] = [
   { value: "last-7-days", label: "Last 7 days" },
   { value: "last-30-days", label: "Last 30 days" },
   { value: "this-month", label: "This month" },
+  { value: "last-month", label: "Last month" },
 ];
 
 export const ASK_INTENTS: { value: AskIntent; label: string }[] = [
@@ -315,6 +323,19 @@ const GAP_TODO: Record<AnswerGap["reason"], string> = {
   "no-history": "KEEL has no record for this period. Ask about a later one.",
 };
 
+const EVERY_WORDS: Record<string, [string, string]> = { hour: ["once an hour", "hours"], day: ["once a day", "days"], week: ["once a week", "weeks"] };
+
+/** "KEEL reads users once a day. The next read is due 24 Oct 2026, 00:00 UTC." */
+function nextReadTodo(answer: GroundedAnswer): string | null {
+  const next = answer.nextRead;
+  const type = answer.plan?.params.resourceType;
+  if (!next?.every || !EVERY_WORDS[next.every] || !type) return null;
+  const [once, many] = EVERY_WORDS[next.every];
+  const how = next.n > 1 ? `every ${next.n} ${many}` : once;
+  const due = next.dueAt ? ` The next read is due ${formatTimestamp(next.dueAt)}.` : "";
+  return `KEEL backs up ${plainKind(type).toLowerCase()}s ${how}, so this part is known after the next backup.${due}`;
+}
+
 export function askAlerts(answer: GroundedAnswer): AlertItem[] {
   const items: AlertItem[] = [];
   if (answer.refusal) {
@@ -328,10 +349,16 @@ export function askAlerts(answer: GroundedAnswer): AlertItem[] {
   } else if (answer.status === "unknown") {
     items.push({ key: "unsupported", tone: "soon", icon: "info", title: "KEEL cannot answer this question", todo: "Ask about changes, backup coverage or failed jobs, or choose below.", action: null });
   }
+  if (answer.assumed?.includes("period") && answer.plan?.params.from) {
+    items.push({
+      key: "assumed-period", tone: "low", icon: "calendar", title: "No period was named, so KEEL answered for this week",
+      todo: "Name a period to change it, for example \"this month\" or \"since 17 Oct\".", action: null,
+    });
+  }
   if (answer.status !== "unknown") {
     answer.gaps.forEach((gap, index) => items.push({
       key: `gap-${index}`, tone: "soon", icon: "clock", title: `Not known from ${formatTimestamp(gap.from)} to ${formatTimestamp(gap.to)}`,
-      todo: GAP_TODO[gap.reason] ?? GAP_TODO["not-compared-yet"],
+      todo: gap.reason === "not-compared-yet" ? nextReadTodo(answer) ?? GAP_TODO[gap.reason] : GAP_TODO[gap.reason] ?? GAP_TODO["not-compared-yet"],
       action: null,
     }));
   }
@@ -505,4 +532,11 @@ export function recordKind(record: AnswerRecord): string {
 /** A record's time, for sorting: when it was seen or when its window ended. */
 export function recordTime(record: AnswerRecord): string {
   return (record.kind === "change" ? record.seenAt : null) ?? record.window.to ?? "";
+}
+
+/** The settings a change touched, in words: "accountEnabled, department and 3 more". */
+export function recordFields(record: AnswerRecord): string {
+  if (record.kind !== "change" || !record.fields?.length) return "";
+  const list = record.fields.join(", ");
+  return record.moreFields ? `${list} and more` : list;
 }

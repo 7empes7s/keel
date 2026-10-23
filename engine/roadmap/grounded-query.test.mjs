@@ -211,10 +211,10 @@ test('the plan comes from a fixed set: intents, types, entities and periods are 
   assert.equal(validateRequest({ intent: 'changes', params: { period: 'this-week' } }, { now, scope: { central: false, entities: [] } }).refusal.code, 'no-access');
 });
 
-test('unbounded questions refuse: no period, a period over the budget, all time, or too many rows', async () => {
+test('unbounded questions refuse: a period over the budget, all time, or too many rows', async () => {
   const now = new Date('2026-10-03T12:00:00Z');
   const ask = (question, scope = CENTRAL) => planQuestion(question, { now, knownEntities: ['SALES'], scope });
-  for (const question of ['Show me every change ever', 'What changed?', 'What changed in the last 90 days?', 'What changed between 2026-01-01 and 2026-06-01?', 'Which jobs failed?']) {
+  for (const question of ['Show me every change ever', 'What changed in the last 90 days?', 'What changed between 2026-01-01 and 2026-06-01?', 'What changed since 2026-08-01?']) {
     const planned = await ask(question);
     assert.equal(planned.ok, false, question);
     assert.equal(planned.refusal.code, 'unbounded', question);
@@ -229,6 +229,71 @@ test('unbounded questions refuse: no period, a period over the budget, all time,
   assert.equal((await ask('Which jobs failed this week?', SALES_SCOPE)).refusal.code, 'central-only');
   // The budget allows exactly the maximum.
   assert.equal((await ask(`What changed in the last ${BUDGET.maxWindowDays} days?`)).ok, true);
+});
+
+test('a question with no period is read for this week, and days are read as people write them', async () => {
+  const now = new Date('2026-10-23T14:30:00Z');
+  const ask = (question) => planQuestion(question, { now, knownEntities: ['SALES'], scope: CENTRAL });
+  const window = (planned) => [planned.plan.params.from, planned.plan.params.to];
+  const week = ['2026-10-19T00:00:00.000Z', now.toISOString()];
+  const month = ['2026-10-01T00:00:00.000Z', now.toISOString()];
+
+  // No period named: this week, and the answer says it assumed one.
+  for (const question of ['Which users have changed?', 'What changed?', 'Which jobs failed?']) {
+    const planned = await ask(question);
+    assert.equal(planned.ok, true, question);
+    assert.deepEqual(window(planned), week, question);
+    assert.deepEqual(planned.assumed, ['period'], question);
+  }
+  assert.deepEqual((await ask('What changed this week?')).assumed, []);
+
+  // The start of the month or week is that period, not "since the beginning of time".
+  for (const question of ['Which users have changed since the beginning of the month?', 'What changed from the start of this month?']) {
+    const planned = await ask(question);
+    assert.equal(planned.ok, true, question);
+    assert.deepEqual(window(planned), month, question);
+    assert.deepEqual(planned.ignored, [], question);
+  }
+  assert.deepEqual(window(await ask('What changed since the start of the week?')), week);
+
+  // A day in either order when only one order is a date; "since" runs up to now.
+  const since17 = ['2026-10-17T00:00:00.000Z', now.toISOString()];
+  for (const question of ['Which users changed since 17/10', 'Which users changed since 10/17', 'Which users changed since 17/10/2026', 'Which users changed since 17 Oct', 'Which users changed since October 17th', 'Which users changed since 2026-10-17']) {
+    const planned = await ask(question);
+    assert.equal(planned.ok, true, question);
+    assert.deepEqual(window(planned), since17, question);
+    assert.deepEqual(planned.ignored, [], question);
+  }
+  const between = await ask('What changed between 1 Oct and Oct 5th?');
+  assert.deepEqual(window(between), ['2026-10-01T00:00:00.000Z', '2026-10-06T00:00:00.000Z'], 'the last day named is included');
+  // Other ways people name a period (23 Oct 2026 is a Friday).
+  const forms = {
+    'What changed last month?': ['2026-09-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z'],
+    'What changed 3 days ago?': ['2026-10-20T14:30:00.000Z', now.toISOString()],
+    'What changed in the last 48 hours?': ['2026-10-21T14:30:00.000Z', now.toISOString()],
+    'What changed in the past 2 weeks?': ['2026-10-09T14:30:00.000Z', now.toISOString()],
+    'What changed over the weekend?': ['2026-10-17T00:00:00.000Z', '2026-10-19T00:00:00.000Z'],
+    'What changed since Monday?': week,
+    'What changed since last Friday?': ['2026-10-16T00:00:00.000Z', now.toISOString()],
+    'What changed from Monday to Wednesday?': ['2026-10-19T00:00:00.000Z', '2026-10-22T00:00:00.000Z'],
+    'Which users changed since 1 October': month,
+  };
+  for (const [question, expected] of Object.entries(forms)) {
+    const planned = await ask(question);
+    assert.equal(planned.ok, true, question);
+    assert.deepEqual(window(planned), expected, question);
+    assert.deepEqual(planned.ignored, [], question);
+  }
+  // The start of the year is a real reading, but longer than the budget.
+  assert.equal((await ask('What changed since the beginning of the year?')).refusal.code, 'unbounded');
+  // A day with no year that has not come yet this year is last year's, and over budget.
+  assert.equal((await ask('What changed since 12/24?')).refusal.code, 'unbounded');
+  // 05/06 is 5 June or 6 May: KEEL asks instead of guessing.
+  const ambiguous = await ask('What changed since 05/06?');
+  assert.equal(ambiguous.ok, false);
+  assert.equal(ambiguous.refusal.code, 'malformed');
+  assert.match(ambiguous.refusal.message, /“05\/06” could be read day first or month first/);
+  assert.equal((await ask('What changed since 31/02?')).refusal.code, 'malformed');
 });
 
 test('an optional helper cannot run SQL or tools, and cannot add a value the question does not contain', async () => {
@@ -608,4 +673,58 @@ test('a coverage question counts service settings and content backups for a read
   const only = await answerQuestion(client, { tenantRef: servicesOnly, scope: CENTRAL, question: 'What is covered?' });
   assert.equal(only.status, 'answered');
   assert.deepEqual(only.records.map((record) => record.id), ['workload/teams-org-policies']);
+});
+
+test('a change is listed once, in the window since the last backup that read its kind, with the fields that differ', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenantRefFor('task-99-user-windows');
+  const now = new Date();
+  const setBy = await person(client, 'collector', [['operator', null]]);
+  const baselineId = await baseline(client, tenantRef, setBy);
+  const all = Object.fromEntries(DESCRIPTORS.map(({ type }) => [type, { outcome: 'complete', itemCount: 0 }]));
+  const withoutUsers = { ...all, user: { outcome: 'not-requested' } };
+  // Users are read at midnight (tier 2); the hourly read of other kinds finishes a moment
+  // before the midnight one does.
+  const daily = new Date(now.getTime() - 3 * HOUR);
+  const before = await collection(client, tenantRef, new Date(daily.getTime() - DAY), [], all);
+  const hourly = await collection(client, tenantRef, new Date(daily.getTime() - 30_000), [], withoutUsers);
+  const midnight = await collection(client, tenantRef, daily, [], all);
+  const later = await collection(client, tenantRef, new Date(daily.getTime() + HOUR), [], all);
+  for (const snapshotId of [before, hourly, midnight, later]) {
+    await client.query(`INSERT INTO job (kind, params, status, requested_by) VALUES ('drift-detect', $1, 'succeeded', 'fixture')`, [{ snapshotId, tenantRef }]);
+  }
+  const user = (key, fields) => ({ userPrincipalName: key, displayName: 'Admin Read Only 01', ...fields });
+  const sighting = async (snapshotId, key, beforeFields, afterFields, hash, at) => {
+    await client.query(
+      `INSERT INTO drift (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type,
+                          before_hash, after_hash, before_payload, after_payload, blast_radius, detected_at)
+       VALUES ($1, $2, $3, $4, 'user', 'modified', 'b', $5, $6, $7, 'access-affecting', $8)`,
+      [tenantRef, baselineId, snapshotId, `user:${key}`, hash, user(key, beforeFields), user(key, afterFields), at],
+    );
+  };
+  // One user seen changed by the midnight read and, changed again, by the next one.
+  await sighting(midnight, 'ro01@contoso.example', { accountEnabled: true }, { accountEnabled: false }, 'a1', daily);
+  await sighting(later, 'ro01@contoso.example', { accountEnabled: true }, { accountEnabled: false, department: 'IT' }, 'a2', new Date(daily.getTime() + HOUR));
+  await sighting(midnight, 'ro02@contoso.example', { jobTitle: 'Reader' }, { jobTitle: 'Admin' }, 'a3', daily);
+  await client.query(
+    `INSERT INTO schedule (tenant_ref, job_kind, tier, cadence, next_due_at) VALUES ($1, 'collect', 'tier2', $2, $3)`,
+    [tenantRef, { every: 'day', n: 1, atTime: '00:00' }, new Date(daily.getTime() + DAY)],
+  );
+
+  const answer = await answerQuestion(client, { tenantRef, scope: CENTRAL, request: { intent: 'changes', params: { period: 'last-7-days', resourceType: 'user' } } });
+  assert.equal(answer.total, 2, 'two users changed, whatever the number of sightings');
+  assert.equal(answer.records.length, 2);
+  assert.equal(answer.summary.reduce((sum, row) => sum + row.count, 0), 2);
+  const ro01 = answer.records.find((record) => record.naturalKey === 'user:ro01@contoso.example');
+  const ro02 = answer.records.find((record) => record.naturalKey === 'user:ro02@contoso.example');
+  // The newest sighting stands for the change; its window opens at the previous read of users.
+  assert.equal(ro01.seenAt, new Date(daily.getTime() + HOUR).toISOString());
+  assert.equal(ro01.window.from, daily.toISOString());
+  assert.deepEqual(ro01.fields, ['accountEnabled', 'department']);
+  // The hourly read finished 30 seconds before midnight's but never read users: the
+  // window opens at the read of users a day before, not at a zero-width moment.
+  assert.equal(ro02.window.from, new Date(daily.getTime() - DAY).toISOString());
+  assert.deepEqual(ro02.fields, ['jobTitle']);
+  // Users are read once a day: the answer says when the next read is due.
+  assert.deepEqual(answer.nextRead, { every: 'day', n: 1, dueAt: new Date(daily.getTime() + DAY).toISOString() });
 });

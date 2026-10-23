@@ -16,6 +16,7 @@
  * - A period KEEL has no comparison for is answered as unknown, never as "no changes".
  */
 import { objectNameSql } from '../cir/objectName.mjs';
+import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { scopePredicate } from '../authz/entityScope.mjs';
 import { contentWorkloadInfo, loadServiceBackups } from '../coverage/serviceBackups.mjs';
 import { typeInfo } from '../insights/taxonomy.mjs';
@@ -25,6 +26,7 @@ import { BUDGET, PLAN_VERSION, QueryRefusal, RESOURCE_TYPES, describePlan, isVal
 export const ANSWER_VERSION = 1;
 const MAX_ERROR_TEXT = 300;
 const MAX_NAME_TEXT = 200;
+const MAX_FIELDS = 12;
 
 function iso(value) {
   if (value === null || value === undefined) return null;
@@ -102,28 +104,44 @@ const TEMPLATES = Object.freeze({
               OR d.natural_key ILIKE $7)
          AND ${where.sql}`;
     const limitParam = 8 + where.values.length;
-    const { rows } = await client.query(
-      `SELECT d.id::text AS id, d.natural_key, d.resource_type, d.change_type, d.blast_radius, d.detected_at,
-              d.observed_snapshot::text AS collection_id, ${SEEN_AT} AS seen_at,
-              (SELECT max(ps.completed_at) FROM snapshot ps
-                WHERE ps.tenant_ref = d.tenant_ref AND ps.status = 'complete' AND ps.completed_at < ${SEEN_AT}) AS window_from,
-              COALESCE(${objectNameSql('d.after_payload', 'd.resource_type')}, ${objectNameSql('d.before_payload', 'd.resource_type')}) AS display_name,
-              (SELECT p.action FROM disposition p WHERE p.drift_id = d.id ORDER BY p.decided_at DESC, p.id DESC LIMIT 1) AS decision
+    // One row per resource: a change seen again in a later backup is the same change, so
+    // its newest sighting in the period stands for it, and the count is of resources.
+    const matched = `WITH matched AS (
+       SELECT DISTINCT ON (d.resource_type, d.natural_key)
+              d.id, d.tenant_ref, d.natural_key, d.resource_type, d.change_type, d.blast_radius,
+              d.detected_at, d.observed_snapshot, d.before_payload, d.after_payload, ${SEEN_AT} AS seen_at
          FROM drift d
          LEFT JOIN snapshot os ON os.id = d.observed_snapshot AND os.tenant_ref = d.tenant_ref
         WHERE ${condition}
-        ORDER BY ${SEEN_AT} DESC, d.id
+        ORDER BY d.resource_type, d.natural_key, ${SEEN_AT} DESC, d.id DESC
+     )`;
+    const { rows } = await client.query(
+      `${matched}
+       SELECT m.id::text AS id, m.natural_key, m.resource_type, m.change_type, m.blast_radius, m.detected_at,
+              m.observed_snapshot::text AS collection_id, m.seen_at,
+              -- The change happened after the last backup that read this kind completely:
+              -- a backup of other kinds that finished a moment before says nothing about it.
+              (SELECT max(ps.completed_at) FROM snapshot ps
+                WHERE ps.tenant_ref = m.tenant_ref AND ps.status = 'complete' AND ps.completed_at < m.seen_at
+                  AND ps.coverage_digest->m.resource_type->>'outcome' IN ('complete', 'complete-empty')) AS window_from,
+              COALESCE(${objectNameSql('m.after_payload', 'm.resource_type')}, ${objectNameSql('m.before_payload', 'm.resource_type')}) AS display_name,
+              CASE WHEN m.change_type = 'modified' AND jsonb_typeof(m.before_payload) = 'object' AND jsonb_typeof(m.after_payload) = 'object'
+                   THEN ARRAY(SELECT k FROM (SELECT jsonb_object_keys(m.before_payload) UNION SELECT jsonb_object_keys(m.after_payload)) keys(k)
+                               WHERE m.before_payload->k IS DISTINCT FROM m.after_payload->k ORDER BY k LIMIT ${MAX_FIELDS + 1})
+              END AS fields,
+              (SELECT p.action FROM disposition p WHERE p.drift_id = m.id ORDER BY p.decided_at DESC, p.id DESC LIMIT 1) AS decision
+         FROM matched m
+        ORDER BY m.seen_at DESC, m.id
         LIMIT $${limitParam}`,
       [...base, ...where.values, params.limit],
     );
     // Every matching change counted by kind, change and risk, so the answer can be
     // summarised beyond the rows it lists.
     const { rows: grouped } = await client.query(
-      `SELECT d.resource_type, d.change_type, d.blast_radius, count(*)::int AS n FROM drift d
-         LEFT JOIN snapshot os ON os.id = d.observed_snapshot AND os.tenant_ref = d.tenant_ref
-        WHERE ${condition}
-        GROUP BY d.resource_type, d.change_type, d.blast_radius
-        ORDER BY d.resource_type, d.change_type, d.blast_radius`,
+      `${matched}
+       SELECT m.resource_type, m.change_type, m.blast_radius, count(*)::int AS n FROM matched m
+        GROUP BY m.resource_type, m.change_type, m.blast_radius
+        ORDER BY m.resource_type, m.change_type, m.blast_radius`,
       [...base, ...where.values],
     );
     const counted = { total: grouped.reduce((sum, row) => sum + Number(row.n), 0) };
@@ -140,9 +158,20 @@ const TEMPLATES = Object.freeze({
       [tenantRef, params.resourceType],
     );
     const known = history?.collections > 0 ? { from: iso(history.first_at), to: iso(history.last_at) } : null;
+    // When the kind asked about is next read: users are read once a day, not every hour,
+    // so a gap since the last read is expected until then.
+    const tier = DESCRIPTORS.find((entry) => entry.type === params.resourceType)?.criticality ?? null;
+    const { rows: [schedule] } = tier ? await client.query(
+      `SELECT cadence, next_due_at FROM schedule
+        WHERE tenant_ref = $1 AND job_kind = 'collect' AND tier = $2 AND enabled
+        ORDER BY next_due_at LIMIT 1`,
+      [tenantRef, tier],
+    ) : { rows: [] };
+    const every = typeof schedule?.cadence?.every === 'string' ? schedule.cadence.every : null;
     return {
       total: Number(counted?.total ?? 0),
       known,
+      nextRead: schedule ? { every, n: Number(schedule.cadence?.n ?? 1) || 1, dueAt: iso(schedule.next_due_at) } : null,
       summary: grouped.map((row) => ({ resourceType: row.resource_type, changeType: row.change_type, impact: row.blast_radius, count: Number(row.n) })),
       records: rows.map((row) => ({
         kind: 'change',
@@ -154,6 +183,9 @@ const TEMPLATES = Object.freeze({
         impact: row.blast_radius,
         decision: row.decision ?? null,
         seenAt: iso(row.seen_at),
+        // The settings that differ; more than MAX_FIELDS reads as "many".
+        fields: Array.isArray(row.fields) ? row.fields.slice(0, MAX_FIELDS) : null,
+        moreFields: Array.isArray(row.fields) && row.fields.length > MAX_FIELDS,
         window: { from: iso(row.window_from), to: iso(row.seen_at) },
         source: { kind: 'change', id: row.id, href: '/drift', collectionId: row.collection_id },
       })),
@@ -376,6 +408,7 @@ export async function executePlan(client, plan, { tenantRef, scope, now = new Da
     shown,
     truncated: shown < result.total,
     summary: result.summary ?? null,
+    nextRead: result.nextRead ?? null,
     records: result.records,
     sentence: sentenceFor({ intent: plan.intent, status, total: result.total, shown, gaps, known: result.known }),
     generatedAt: now.toISOString(),
@@ -424,5 +457,5 @@ export async function answerQuestion(client, { tenantRef, scope, question = null
   if (!planned.ok) return refusalAnswer(planned.refusal, { scope, now, readBy: planned.readBy, question });
   const answer = await executePlan(client, planned.plan, { tenantRef, scope, now });
   // Words the reading did not use are returned, so the page can say what it ignored.
-  return { ...answer, readBy: planned.readBy, ignored: planned.ignored ?? [], question: typeof question === 'string' ? question.slice(0, BUDGET.maxQuestionLength) : null };
+  return { ...answer, readBy: planned.readBy, ignored: planned.ignored ?? [], assumed: planned.assumed ?? [], question: typeof question === 'string' ? question.slice(0, BUDGET.maxQuestionLength) : null };
 }

@@ -84,3 +84,19 @@ test('a later restore of the same object replaces the earlier restore\'s open st
   await client.query(`UPDATE recovery_completion_item SET state = 'verified' WHERE restore_ref = $1`, [second]);
   assert.equal(await countOpenCompletionSteps(client, { tenantRef }), otherSteps);
 });
+
+// An enforcement step closes only through the approved enforcement step of its own
+// restore, so a later restore of the same policy never hides it.
+test('an enforcement step is never replaced by a later restore', async (t) => {
+  const client = await database.connect();
+  t.after(async () => { await client.end(); });
+  await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
+  await client.query(schemaSql());
+  const tenantRef = 'sha256:enforcement-not-replaced';
+  const policy = { naturalKey: 'conditionalAccessPolicy:Require MFA', resourceType: 'conditionalAccessPolicy', mechanism: 'update-existing', enforcementPending: true };
+  const first = await emitCompletionItems(client, { tenantRef, restoreRef: '73000000-0000-4000-8000-000000000001', owner: null, applied: [policy] });
+  await client.query(`UPDATE recovery_completion_item SET created_at = now() - interval '1 hour' WHERE tenant_ref = $1`, [tenantRef]);
+  const second = await emitCompletionItems(client, { tenantRef, restoreRef: '73000000-0000-4000-8000-000000000002', owner: null, applied: [policy] });
+  assert.ok(first.some((entry) => entry.kind === 'enforcement'));
+  assert.equal(await countOpenCompletionSteps(client, { tenantRef }), first.length + second.length);
+});

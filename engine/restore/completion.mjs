@@ -292,13 +292,16 @@ export async function emitCompletionItems(client, { tenantRef, restoreRef, owner
  * A pending step a LATER restore opened again for the same object (same natural key,
  * kind and requirement) is replaced by that restore's step: restoring an app twice
  * leaves one "issue new secrets" step to do, not two. Replaced steps keep their row
- * and state; they are only left out of the open work, and a job page says which
- * restore replaced them. `i` is the item being checked.
+ * and state and can still be closed with evidence; they are only left out of the
+ * open work, and a job page says which restore replaced them. An enforcement step
+ * is never replaced: only the approved enforcement step of its own restore closes
+ * it. `i` is the item being checked.
  */
 const LATER_STEP = `FROM recovery_completion_item later
    WHERE later.tenant_ref = i.tenant_ref AND later.natural_key = i.natural_key
      AND later.kind = i.kind AND later.requirement = i.requirement
-     AND later.restore_ref <> i.restore_ref AND later.created_at > i.created_at`;
+     AND later.restore_ref <> i.restore_ref AND later.created_at > i.created_at
+     AND i.kind <> 'enforcement'`;
 const OPEN_STEP = `i.state = 'pending' AND NOT EXISTS (SELECT 1 ${LATER_STEP})`;
 
 export async function listCompletionItems(client, { tenantRef, restoreRef }) {

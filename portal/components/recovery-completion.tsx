@@ -93,7 +93,7 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
             {resource.items.map((item) => {
               const evidence = item.evidence[item.evidence.length - 1];
               const replaced = item.state === "pending" && Boolean(item.replacedBy);
-              const formOpen = !replaced && (openItem === item.id || busyItem === item.id);
+              const formOpen = openItem === item.id || busyItem === item.id;
               return (
                 <li className={`completion-item completion-item-${item.state}`} data-tone={item.state === "verified" ? "fine" : "soon"} key={item.id}>
                   <span aria-hidden="true" className="completion-kind"><Icon name={KIND_ICONS[item.kind] ?? "info"} /></span>
@@ -108,7 +108,7 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                     ) : null}
                     {replaced ? (
                       <small className="completion-evidence">
-                        A later restore of this item opened the same step. Close it there.
+                        A later restore of this item opened the same step, so this one no longer counts as waiting. You can still close it here.
                       </small>
                     ) : null}
                     {item.kind === "enforcement" && item.state === "pending" && !replaced ? (
@@ -121,7 +121,7 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                     {item.state === "verified" ? "Verified" : replaced ? "Replaced" : "Needs evidence"}
                   </Badge>
                   <span className="completion-act">
-                    {canComplete && !replaced ? (
+                    {canComplete ? (
                       item.state === "pending" ? (
                         item.kind === "enforcement" || formOpen ? null : (
                           <button className="btn btn-secondary btn-sm" disabled={busyItem !== null} onClick={() => setOpenItem(item.id)} type="button">

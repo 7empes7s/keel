@@ -66,6 +66,9 @@ test("each item a content backup could not read gets a name and a plain cause", 
   assert.equal(contentGapItem("something odd").why, "Could not be read in full");
   // An object id is never shown as a name.
   assert.equal(contentGapItem("group 3f2c9a1e-1111-4a2b-9c3d-123456789abc: HTTP 403").name, "Unnamed item");
+  // A site address reads as its last part; a name holding a status code never sets the cause.
+  assert.equal(contentGapItem("https://contoso.sharepoint.com/sites/hr: 1 part(s) not fully read, first pages: failed (HTTP 404)").name, "Hr");
+  assert.equal(contentGapItem("Room 403: 1 part(s) not fully read, first pages: failed (HTTP 404)").why, "Not found: deleted or moved during the backup");
 
   const rows = Object.fromEntries(jobTypeRows(partial, now).map((row) => [row.type, row]));
   assert.equal(rows["content:onedrive"].label, "Partly read");
@@ -79,6 +82,10 @@ test("each item a content backup could not read gets a name and a plain cause", 
   const older = { ...partial, progress: { ...progress, types: { "content:onedrive": entry("partial", 2996, locked.slice(0, 3)) } } };
   delete (older.progress.types["content:onedrive"] as { reasons?: unknown }).reasons;
   assert.equal(jobTypeRows(older, now)[0].items.length, 3);
+  // An error cut at 500 characters drops its cut-short last line.
+  const longLines = Array.from({ length: 12 }, (_, i) => `KEEL-RT-user-${i}: HTTP 423 notAllowed for /v1.0/users/x/drive`).join("\n").slice(0, 500);
+  const cut = { ...partial, progress: { ...progress, types: { "content:onedrive": { ...entry("partial", 1), error: longLines } } } };
+  assert.equal(jobTypeRows(cut, now)[0].items.length, longLines.split("\n").length - 1);
   // More than the 50 listed: the count is the full one.
   const many = { ...partial, progress: { ...progress, types: { "content:onedrive": { ...entry("partial", 1, locked), reasonCount: 64 } } } };
   assert.equal(jobTypeRows(many, now)[0].problem, "64 OneDrives could not be read in full: locked by Microsoft");
@@ -113,4 +120,10 @@ test("a content backup with a failed workload stays failed", () => {
   assert.match(jobStatusSentence(failed, now), /^Failed /);
   const alerts = jobAlerts(failed);
   assert.equal(alerts[0].tone, "urgent");
+  // The workload that failed outright keeps its plain cause and lists no items.
+  const planner = jobTypeRows(failed, now).find((row) => row.type === "content:planner")!;
+  assert.deepEqual(planner.items, []);
+  assert.equal(planner.problem, "Keel is missing a permission in Microsoft 365");
+  const html = renderToStaticMarkup(createElement(JobDetail, { job: failed, now }));
+  assert.doesNotMatch(html, /Everything else in this backup was saved/);
 });

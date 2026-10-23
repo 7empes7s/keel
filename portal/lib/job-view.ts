@@ -181,13 +181,27 @@ const ITEM_CAUSES: Array<[RegExp, string, ReadTone]> = [
   [/outside the backup scope/i, "Outside the backup scope", "soon"],
 ];
 
-/** "Ann Lee: HTTP 423 …" as an item: the name before the first colon, and a plain cause. */
+/** A site's address as a name: its last path part ("hr" from …/sites/hr), else its host. */
+function nameFromUrl(text: string): string {
+  try {
+    const url = new URL(text);
+    const last = url.pathname.split("/").filter(Boolean).at(-1);
+    return last ? decodeURIComponent(last) : url.hostname;
+  } catch {
+    return text;
+  }
+}
+
+/** "Ann Lee: HTTP 423 …" as an item: the name before the first ": ", and a plain cause
+ *  read from the text after it, so a name holding "403" never sets the cause. */
 export function contentGapItem(reason: string): GapItem {
   const index = reason.indexOf(": ");
   const head = index > 0 ? reason.slice(0, index).trim() : "";
-  const [, why, tone] = ITEM_CAUSES.find(([pattern]) => pattern.test(reason)) ?? [null, "Could not be read in full", "soon" as ReadTone];
+  const rest = index > 0 ? reason.slice(index + 2) : reason;
+  const [, why, tone] = ITEM_CAUSES.find(([pattern]) => pattern.test(rest)) ?? [null, "Could not be read in full", "soon" as ReadTone];
   // A name, never an object id or an API path.
-  const name = !head || head.startsWith("/") ? "Part of this backup" : holdsObjectId(head) ? "Unnamed item" : head.replace(/^./, (letter) => letter.toUpperCase());
+  const plain = /^https?:\/\//i.test(head) ? nameFromUrl(head) : head;
+  const name = !plain || plain.startsWith("/") ? "Part of this backup" : holdsObjectId(plain) ? "Unnamed item" : plain.replace(/^./, (letter) => letter.toUpperCase());
   return { name, why, tone, raw: reason };
 }
 
@@ -239,12 +253,14 @@ export function jobTypeRows(job: Pick<JobRecord, "status" | "progress">, now: st
     const state = entry.outcome === "reading" && !active ? "stopped" : READ_STATES[entry.outcome] ? entry.outcome : "failed";
     const look = READ_STATES[state];
     const raw = entry.error ?? (entry.httpStatus && entry.httpStatus >= 400 ? `HTTP ${entry.httpStatus}` : null);
-    // A content workload names each item it could not read, and a partial service
-    // workload each part (a refused family, a limit): from the list the job wrote, else
-    // from its error text, one item per line. A failed service workload keeps one line.
-    const listsItems = key.startsWith("content:") || (key.startsWith("workload:") && state === "partial");
-    const reasons = !look.problem || !listsItems ? []
-      : entry.reasons?.length ? entry.reasons : (entry.error ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+    // A content or service workload read in part names each item (or part: a refused
+    // family, a limit) it could not read: from the list the job wrote, else from its
+    // error text, one item per line. That text is cut at 500 characters, so a last line
+    // cut short is left out. A workload that failed outright keeps its one plain cause.
+    const errorLines = (entry.error ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+    if ((entry.error ?? "").length >= 500 && errorLines.length > 1) errorLines.pop();
+    const reasons = state !== "partial" || !(key.startsWith("content:") || key.startsWith("workload:")) ? []
+      : entry.reasons?.length ? entry.reasons : errorLines;
     const items = reasons.map(contentGapItem);
     const total = Math.max(items.length, entry.reasonCount ?? 0);
     const label = items.length ? itemsLabel(key, total) : null;

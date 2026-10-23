@@ -83,7 +83,8 @@ async function collectMail(client, context) {
   }
   const failedAll = found.mailboxes.length > 0 ? ok === 0 : found.errors.length > 0;
   const outcome = reasons.length === 0 ? 'succeeded' : failedAll ? 'failed' : 'partial';
-  return { outcome, ...tally, reasons };
+  // A failed users or groups listing hides whole sets of mailboxes: never "partly done".
+  return { outcome, ...tally, reasons, discoveryFailed: found.errors.some((error) => error.route === 'users' || error.route === 'groups') };
 }
 
 async function collectOneDrives(client, context) {
@@ -94,7 +95,7 @@ async function collectOneDrives(client, context) {
     ...result.errors.map((error) => `${error.name ?? error.step}: ${error.error}`),
     ...result.drives.filter((drive) => drive.outcome === 'partial').map((drive) => `${drive.name}: ${drive.stats.warnings.length} file warning(s), first: ${drive.stats.warnings[0].warning}`),
   ];
-  return { outcome: result.outcome, ...tally, reasons };
+  return { outcome: result.outcome, ...tally, reasons, discoveryFailed: result.errors.some((error) => error.step === 'users') };
 }
 
 async function tenantHostOf(send, scope) {
@@ -156,7 +157,7 @@ async function collectSites(client, context) {
       }
     }
   }
-  return { outcome: OUTCOMES[result.outcome] ?? 'failed', ...tally, reasons };
+  return { outcome: OUTCOMES[result.outcome] ?? 'failed', ...tally, reasons, discoveryFailed: result.discovery?.status !== 'observed' };
 }
 
 // The marker the sites collector saves for a library it read in full.
@@ -200,7 +201,7 @@ async function collectTeams(client, context) {
       reasons.push(`${team.fields?.displayName ?? team.teamId}: ${parts.length} part(s) not read, first ${name}: ${read.status}${read.error ? ` (${read.error})` : ''}`);
     }
   }
-  return { outcome: OUTCOMES[result.outcome] ?? 'failed', ...tally, reasons };
+  return { outcome: OUTCOMES[result.outcome] ?? 'failed', ...tally, reasons, discoveryFailed: result.discovery?.status !== 'observed' };
 }
 
 async function collectPlanner(client, context) {
@@ -218,7 +219,7 @@ async function collectPlanner(client, context) {
       if (section?.status && section.status !== 'observed') reasons.push(`${group.displayName ?? group.groupId} ${part}: ${section.status}${section.errors?.[0]?.error ? ` (${section.errors[0].error})` : ''}`);
     }
   }
-  return { outcome: OUTCOMES[result.outcome] ?? 'failed', ...tally, reasons };
+  return { outcome: OUTCOMES[result.outcome] ?? 'failed', ...tally, reasons, discoveryFailed: Boolean(result.discovery?.status && result.discovery.status !== 'observed') };
 }
 
 export const CONTENT_COLLECTORS = Object.freeze([

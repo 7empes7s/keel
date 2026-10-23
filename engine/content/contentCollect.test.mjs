@@ -173,6 +173,16 @@ test('a content run with only partial workloads is partly done and lists what wa
   assert.equal(last['content:onedrive'].reasonCount, 10);
   assert.equal(last['content:teams'].reasons, undefined);
 
+  // A partial workload whose listing failed shows as failed and fails the run.
+  lines.length = 0;
+  const unlisted = [...collectors.slice(1), { workload: 'exchange-mail', collect: async () => ({ outcome: 'partial', items: 3, bytes: 1, reasons: ['groups: HTTP 403'], discoveryFailed: true }) }];
+  const unlistedWrites = [];
+  const unlistedRun = await runContentCollection(null, { tenantRef: 'sha256:KEEL-RT', store: createMemoryContentStore(), transport: null, collectors: unlisted, logger, onProgress: async (types) => { unlistedWrites.push(types); } });
+  assert.equal(unlistedRun.exitCode, 1);
+  assert.equal(unlistedRun.runs.at(-1).outcome, 'failed');
+  assert.equal(unlistedWrites.at(-1)['content:exchange-mail'].outcome, 'failed');
+  assert.ok(!lines.some((text) => text.startsWith(INCOMPLETE_TYPES_PREFIX)));
+
   // A failed workload beside partial ones fails the run, and no partial line is printed.
   lines.length = 0;
   const failing = [...collectors, { workload: 'planner', collect: async () => { throw new Error('KEEL-RT- token refused'); } }];
@@ -191,6 +201,10 @@ test('content exit codes: full is 0, partial only is 3, anything failed or unkno
   assert.equal(contentExitCode([run('succeeded'), run('failed')]), 1);
   assert.equal(contentExitCode([run('succeeded'), run('skipped')]), 1);
   assert.equal(contentExitCode([run('succeeded'), run(undefined)]), 1);
+  // A partial run whose users, groups, sites or teams listing failed is a failure.
+  assert.equal(contentExitCode([run('succeeded'), { ...run('partial'), discoveryFailed: true }]), 1);
+  assert.equal(contentExitCode([{ ...run('succeeded'), discoveryFailed: true }]), 1);
+  assert.equal(contentExitCode([run('partial'), { ...run('succeeded'), discoveryFailed: false }]), PARTIAL_EXIT_CODE);
   const many = Array.from({ length: 80 }, (_, i) => `item ${i}: ${'x'.repeat(400)}`);
   const [entry] = incompleteWorkloadsOf([{ workload: 'onedrive', outcome: 'partial', items: 5, reasons: many }]);
   assert.equal(entry.reasons.length, MAX_LISTED_REASONS);

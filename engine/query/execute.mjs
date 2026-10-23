@@ -424,5 +424,5 @@ export async function answerQuestion(client, { tenantRef, scope, question = null
   if (!planned.ok) return refusalAnswer(planned.refusal, { scope, now, readBy: planned.readBy, question });
   const answer = await executePlan(client, planned.plan, { tenantRef, scope, now });
   // Words the reading did not use are returned, so the page can say what it ignored.
-  return { ...answer, readBy: planned.readBy, ignored: planned.ignored ?? [], question: typeof question === 'string' ? question.slice(0, BUDGET.maxQuestionLength) : null };
+  return { ...answer, readBy: planned.readBy, ignored: planned.ignored ?? [], assumed: planned.assumed ?? [], question: typeof question === 'string' ? question.slice(0, BUDGET.maxQuestionLength) : null };
 }

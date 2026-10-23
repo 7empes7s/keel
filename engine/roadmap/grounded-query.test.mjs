@@ -23,7 +23,9 @@ import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { createFixtureCmdbAdapter } from '../identity/adapters/cmdb.mjs';
 import { resolveOwnership } from '../identity/ownership.mjs';
 import { ANSWER_VERSION, TEMPLATE_INTENTS, answerQuestion, executePlan, readOnly } from '../query/execute.mjs';
-import { BUDGET, INTENTS, periodWindow, planQuestion, readQuestion, validateRequest } from '../query/intent.mjs';
+import { BUDGET, INTENTS, KNOWN_KINDS, periodWindow, planQuestion, readQuestion, validateRequest } from '../query/intent.mjs';
+import { CONCEPT_WORDS, TYPE_WORDS } from '../query/vocabulary.mjs';
+import { TAXONOMY } from '../insights/taxonomy.mjs';
 import { recordLineage } from '../store/resourceLineage.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
@@ -184,7 +186,10 @@ test('the plan comes from a fixed set: intents, types, entities and periods are 
   assert.deepEqual(quoted, { intent: 'changes', params: { name: 'Block legacy auth', period: 'this-week' }, ignored: [] });
   const unread = readQuestion('What changed with the printers and scanners this week?', { now, knownEntities: known });
   assert.deepEqual(unread.ignored, ['printers', 'scanners']);
-  assert.deepEqual(readQuestion('What Defender labels changed this week?', { now }), { unsupported: 'no-such-kind' });
+  // A service with a broad word it has no kind for is answered for the whole service, and says so.
+  const defender = readQuestion('What Defender labels changed this week?', { now });
+  assert.ok(defender.params.resourceTypes.every((type) => TAXONOMY[type].service === 'Defender'), JSON.stringify(defender));
+  assert.match(defender.assumed.join(' '), /no labels in Defender/);
 
   const plan = validateRequest({ intent: read.intent, params: read.params }, { now, knownEntities: known, scope: SALES_SCOPE });
   assert.equal(plan.ok, true);
@@ -209,6 +214,57 @@ test('the plan comes from a fixed set: intents, types, entities and periods are 
   const missing = validateRequest({ intent: 'changes', params: { period: 'this-week', entity: 'NOPE' } }, { now, knownEntities: known, scope: SALES_SCOPE });
   assert.deepEqual(outside, missing);
   assert.equal(validateRequest({ intent: 'changes', params: { period: 'this-week' } }, { now, scope: { central: false, entities: [] } }).refusal.code, 'no-access');
+});
+
+test('Microsoft cloud words, old product names and security concepts map to kinds KEEL backs up', () => {
+  const now = new Date('2026-10-03T12:00:00Z');
+  for (const { kinds } of CONCEPT_WORDS) for (const type of kinds) assert.ok(KNOWN_KINDS.includes(type), type);
+  for (const [, type] of TYPE_WORDS) assert.ok(KNOWN_KINDS.includes(type), type);
+  const read = (question) => readQuestion(question, { now });
+  const kinds = (question) => { const { params } = read(question); return params.resourceTypes ?? (params.resourceType ? [params.resourceType] : []); };
+
+  // Abbreviations and old names.
+  assert.deepEqual(kinds('Which CA policies changed this week?'), ['conditionalAccessPolicy']);
+  assert.deepEqual(kinds('What changed in Azure AD this week?'), kinds('What changed in Entra ID this week?'));
+  assert.ok(kinds('Endpoint Manager changes this week').every((type) => TAXONOMY[type].service === 'Intune'));
+  assert.deepEqual(kinds('Which DLP policies changed this week?'), ['purview-retention-dlp']);
+  assert.deepEqual(kinds('Were MIP labels changed this week?'), ['purview-labels']);
+  // The longest phrase wins: Defender for Office is mail protection, not the Defender service.
+  assert.deepEqual(kinds('Were Defender for Office safe links changed this week?'), ['exchange-extended', 'exchange-mail-flow']);
+  // Concepts span kinds, and the answer says how they were read.
+  const mfa = read('Who changed MFA yesterday?');
+  assert.ok(mfa.params.resourceTypes.includes('authenticationMethodsPolicy') && mfa.params.resourceTypes.includes('conditionalAccessPolicy'));
+  assert.ok(mfa.assumed.some((line) => line.startsWith('Read “MFA” as')));
+  assert.ok(mfa.assumed.some((line) => /not who made the change/.test(line)), 'KEEL does not know who made a change, and says so');
+  assert.ok(kinds('PIM changes last week').includes('roleEligibilitySchedule'));
+  const admins = read('Any new global admins this week?');
+  assert.equal(admins.params.changeType, 'added');
+  assert.ok(admins.params.resourceTypes.includes('roleAssignment') && admins.params.resourceTypes.includes('exchangeRoleAssignment'));
+  // A service narrows a concept: Exchange admins are Exchange's own roles.
+  assert.ok(kinds('Did Exchange admins change this week?').every((type) => TAXONOMY[type].service === 'Exchange'));
+  assert.ok(kinds('Did guest access settings change this month?').includes('b2bManagementPolicy'));
+  assert.ok(kinds('Is external sharing backed up?').includes('sharepointSettings'));
+  assert.ok(kinds('Show our security baselines').includes('deviceManagementIntent'));
+  // A user or group word that describes another kind does not add one.
+  assert.deepEqual(kinds('Conditional access policy for a group changed this week'), ['conditionalAccessPolicy']);
+  assert.deepEqual(kinds('Users and groups added this week'), ['group', 'user']);
+  // A name after "named" is looked for, and words inside it are not read as topics.
+  const named = read('Changes to the policy named Require MFA for admins this week');
+  assert.equal(named.params.name, 'Require MFA for admins');
+  assert.deepEqual(named.ignored, []);
+  assert.equal(named.params.resourceTypes, undefined);
+
+  // No verb: a time means what changed, none means what the backup holds; both are said.
+  const noVerb = read('MDE settings this week');
+  assert.equal(noVerb.intent, 'changes');
+  assert.ok(noVerb.assumed.includes('Read as a question about what changed.'));
+  assert.equal(read('What about Autopilot profiles?').intent, 'coverage');
+  // What KEEL does not back up, or answers elsewhere, is said plainly.
+  assert.deepEqual(read('Show me risky sign-ins'), { unsupported: 'not-held', notHeld: ['Identity Protection risk data'] });
+  assert.equal(read('Which baseline controls failed?').unsupported, 'elsewhere');
+  const failed = read('Which backups failed in Intune this week?');
+  assert.equal(failed.intent, 'failed-jobs');
+  assert.ok(failed.assumed.some((line) => /every service/.test(line)));
 });
 
 test('unbounded questions refuse: no period, a period over the budget, all time, or too many rows', async () => {

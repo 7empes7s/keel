@@ -102,6 +102,8 @@ export interface GroundedAnswer {
   summary?: { resourceType: string; changeType: string; impact: string; count: number }[] | null;
   // Words of the question the reading did not use.
   ignored?: string[];
+  // How a word was read when it could mean more than one thing, each as a sentence.
+  assumed?: string[];
   refusal?: { code: string; message: string };
   readBy?: "rules" | "helper" | "form";
   question?: string | null;
@@ -334,6 +336,13 @@ export function askAlerts(answer: GroundedAnswer): AlertItem[] {
       todo: GAP_TODO[gap.reason] ?? GAP_TODO["not-compared-yet"],
       action: null,
     }));
+  }
+  const readings = (answer.assumed ?? []).filter((line) => line !== "period");
+  if (readings.length) {
+    items.push({
+      key: "assumed-reading", tone: "low", icon: "info", title: "How KEEL read this question",
+      todo: readings.join(" "), action: null,
+    });
   }
   if (answer.ignored?.length) {
     const quoted = answer.ignored.map((word) => `“${word}”`).join(", ");

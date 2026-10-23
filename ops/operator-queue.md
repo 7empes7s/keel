@@ -7873,7 +7873,8 @@ item that needs it stays untouched.
   the parts not read). A `failed` workload or a failed drift detection still exits 1. The Job page lists each part not read
   (a refused family, not licensed, a read limit...) under "What was not backed up".
 - Needs: /opt/keel-live at the #562 merge or later (`grep -q workloadExitCode /opt/keel-live/cli/keel-workload-collect.mjs`).
-- Status: todo
+- Status: in-progress
+- Result: in-progress (2026-10-23 05:27 UTC). Build 68617a7 (#562 live). The 02:00 run is ~21 h away and the portal is behind Access from the box, so I queued the same read-only `workload-collect` job through the engine `enqueue` function (scheduler principal, `{tenantRef}`), which the worker runs.
 - **Tenant:** Collector reads only (the normal settings-by-service backup). No grants, no fixtures, no writes. A refused read is reported, never fixed by granting.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. Use the next scheduled `workload-collect` (02:00 UTC). If it is more than 2 hours away, use the Schedules page "Run now" on the settings backup instead (same read-only job) and say which you used. Do not run the CLI by hand for this check: it must go through the worker.

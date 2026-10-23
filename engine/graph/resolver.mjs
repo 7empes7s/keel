@@ -18,6 +18,21 @@ export function resolveSymbol(symbol, { targetIndex, mappingTable, runProvenance
   // resolve like a global constant: the value stays as it is and nothing is gated.
   if (symbol.startsWith('foreignTenant:')) return { resolved: true, targetId: symbol, via: 'foreign-tenant' };
   if (symbol.startsWith('readOnly:')) return { resolved: true, targetId: symbol, via: 'read-only' };
+  // An app's requiredResourceAccess names the API it calls by appId and each
+  // permission by the id that API publishes. canonicalize.mjs gives them index-only
+  // symbols (`object:<appId>`, `permission:<appId>/role:…`) that no restored resource
+  // has as a key, so they never matched the target and every app that asks for a
+  // permission failed to restore. Both values are the API's own: the same wherever
+  // the API exists (Microsoft Graph in every tenant), so they are written as stored;
+  // Graph refuses the write if the API is not there. Only an appId this run gave
+  // a recreated app is rewritten.
+  if (symbol.startsWith('permission:')) return { resolved: true, targetId: symbol, via: 'resource-permission' };
+  const appId = appIdOf(symbol);
+  if (appId) {
+    const recreated = runProvenance.get(`application:${appId}#appId`) ?? runProvenance.get(`servicePrincipal:${appId}#appId`);
+    if (typeof recreated === 'string' && recreated.length > 0) return { resolved: true, targetId: recreated, via: 'prior-restore' };
+    return { resolved: true, targetId: symbol, via: 'app-id' };
+  }
   if (targetIndex.has(symbol)) return { resolved: true, targetId: targetIndex.get(symbol), via: 'exact-match' };
   if (mappingTable.has(symbol)) {
     const mapped = mappingTable.get(symbol);
@@ -33,14 +48,25 @@ export function resolveSymbol(symbol, { targetIndex, mappingTable, runProvenance
   return { resolved: false, reason: 'not-found-in-target' };
 }
 
+const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The appId an `object:<appId>` symbol holds, or null. Only a GUID body: an
+ * `object:` symbol built from a display name is never written into an id field. */
+function appIdOf(symbol) {
+  if (typeof symbol !== 'string' || !symbol.startsWith('object:')) return null;
+  const body = symbol.slice('object:'.length);
+  return GUID.test(body) ? body.toLowerCase() : null;
+}
+
 /** Resolutions whose targetId is the symbol itself: the field keeps its source value. */
-export const VERBATIM_RESOLUTIONS = new Set(['global-constant', 'foreign-tenant', 'read-only']);
+export const VERBATIM_RESOLUTIONS = new Set(['global-constant', 'foreign-tenant', 'read-only', 'resource-permission', 'app-id']);
 
 /** Symbols that never name a target-tenant object, so they never gate a wave,
  * never pull a dependency into a selection and never count as unresolved. */
 export function isVerbatimSymbol(symbol) {
   return typeof symbol === 'string'
-    && (symbol.startsWith('global:') || symbol.startsWith('foreignTenant:') || symbol.startsWith('readOnly:'));
+    && (symbol.startsWith('global:') || symbol.startsWith('foreignTenant:') || symbol.startsWith('readOnly:')
+      || symbol.startsWith('permission:') || appIdOf(symbol) !== null);
 }
 
 /** A reference whose field is server-owned (engine/cir/serverOwned.mjs) sits in a

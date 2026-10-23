@@ -142,7 +142,7 @@ export function AnswerView({ answer }: { answer: GroundedAnswer }) {
       ) : null}
       <AnswerSummary answer={answer} />
       {answer.records.length ? <AskRecords records={answer.records} /> : null}
-      {answer.truncated ? <p className="pg-help ask-truncated"><Icon name="info" />The table lists the newest {answer.shown} of {answer.total}; the summary counts all {answer.total}. Narrow the question to list the rest.</p> : null}
+      {answer.truncated ? <p className="pg-help ask-truncated"><Icon name="info" />The table lists the newest {answer.shown.toLocaleString("en-GB")} of {answer.total.toLocaleString("en-GB")}; the summary counts all of them. Narrow the question to list the rest.</p> : null}
       <p className="ask-foot">Answered {formatTimestamp(answer.generatedAt)} from KEEL&apos;s own records. Nothing was changed.</p>
       <AnswerRecordLayer answer={answer} />
     </section>
@@ -170,7 +170,6 @@ export function AskView({ data, question = "" }: { data: AskData; question?: str
             {EXAMPLES.map((example) => <li key={example}><Link href={`/ask?q=${encodeURIComponent(example)}`}>{example}</Link></li>)}
           </ul>
         </section>
-        {data.answer ? <AnswerView answer={data.answer} /> : null}
         <section aria-labelledby="ask-form-heading" className="ask-form-card">
           <h2 id="ask-form-heading"><Icon name="filter" />Or choose</h2>
           <form action="/ask" className="ask-form" method="get">
@@ -205,6 +204,7 @@ export function AskView({ data, question = "" }: { data: AskData; question?: str
             </div>
           </form>
         </section>
+        {data.answer ? <AnswerView answer={data.answer} /> : null}
       </div>
     </div>
   );

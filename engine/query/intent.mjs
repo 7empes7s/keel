@@ -30,23 +30,24 @@ export const INTENTS = Object.freeze(['changes', 'coverage', 'failed-jobs']);
 export const BUDGET = Object.freeze({
   /** The longest period a changes or failed-jobs question may cover. */
   maxWindowDays: 31,
-  /** The most records an answer lists; the rest are counted. */
-  maxRows: 100,
-  defaultRows: 100,
+  /** The most records an answer lists; the rest are counted. The page pages and filters
+   *  them itself, so a month of changes to a tenant's users fits in one answer. */
+  maxRows: 1000,
+  defaultRows: 1000,
   /** The longest question read. */
   maxQuestionLength: 500,
   /** Statement timeout for each read, in milliseconds. */
   statementTimeoutMs: 5000,
 });
 
-const DAY = 86_400_000;
+const DAY_MS = 86_400_000;
 const CHANGE_TYPES = Object.freeze(['added', 'modified', 'removed']);
 const PARAM_KEYS = Object.freeze(['entity', 'from', 'to', 'period', 'resourceType', 'resourceTypes', 'name', 'changeType', 'limit']);
 /** The longest name a question can look for, and the most kinds one question can name. */
 const MAX_NAME = 120;
 const MAX_KINDS = 60;
 const ENTITY_CODE = /^[A-Z][A-Z0-9_]{1,31}$/;
-const PERIODS = Object.freeze(['today', 'yesterday', 'this-week', 'last-week', 'last-7-days', 'last-30-days', 'this-month']);
+const PERIODS = Object.freeze(['today', 'yesterday', 'this-week', 'last-week', 'last-7-days', 'last-30-days', 'this-month', 'last-month']);
 
 export const RESOURCE_TYPES = Object.freeze(DESCRIPTORS.map(({ type }) => type));
 /** Every kind a question can narrow to: collected types and service setting reads. */
@@ -121,15 +122,16 @@ function startOfDay(date) {
 /** The [from, to) window a named period covers at `now`, in UTC. */
 export function periodWindow(period, now = new Date()) {
   const today = startOfDay(now);
-  const monday = new Date(today.getTime() - ((today.getUTCDay() + 6) % 7) * DAY);
+  const monday = new Date(today.getTime() - ((today.getUTCDay() + 6) % 7) * DAY_MS);
   switch (period) {
     case 'today': return { from: today, to: now };
-    case 'yesterday': return { from: new Date(today.getTime() - DAY), to: today };
+    case 'yesterday': return { from: new Date(today.getTime() - DAY_MS), to: today };
     case 'this-week': return { from: monday, to: now };
-    case 'last-week': return { from: new Date(monday.getTime() - 7 * DAY), to: monday };
-    case 'last-7-days': return { from: new Date(now.getTime() - 7 * DAY), to: now };
-    case 'last-30-days': return { from: new Date(now.getTime() - 30 * DAY), to: now };
+    case 'last-week': return { from: new Date(monday.getTime() - 7 * DAY_MS), to: monday };
+    case 'last-7-days': return { from: new Date(now.getTime() - 7 * DAY_MS), to: now };
+    case 'last-30-days': return { from: new Date(now.getTime() - 30 * DAY_MS), to: now };
     case 'this-month': return { from: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)), to: now };
+    case 'last-month': return { from: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)), to: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)) };
     default: return null;
   }
 }
@@ -148,8 +150,92 @@ const PERIOD_WORDS = Object.freeze([
   [/\b(today)\b/i, 'today'],
   [/\b(yesterday)\b/i, 'yesterday'],
   [/\bthis month\b/i, 'this-month'],
+  [/\blast month\b/i, 'last-month'],
 ]);
 const UNBOUNDED = /\b(ever|all[- ]time|since (the )?beginning|everything|forever|any time)\b/i;
+/** "since the start of the month", "from the beginning of this week". */
+const START_OF = /\b(?:since|from) (?:the )?(?:beginning|start) of (?:the |this )?(month|week|year)\b/i;
+/** "3 days ago", "in the last 48 hours", "past 2 weeks". */
+const UNIT_MS = Object.freeze({ hour: 3_600_000, day: 86_400_000, week: 7 * 86_400_000 });
+const AGO = /\b(since )?(\d{1,4}) (hour|day|week)s? ago\b/i;
+const LAST_N = /\b(?:last|past|previous) (\d{1,4}) (hour|day|week)s?\b/i;
+const WEEKEND = /\b(?:over |during |on )?(?:the |this |last )?weekend\b/i;
+/** The period a question that names none is read for. */
+export const DEFAULT_PERIOD = 'this-week';
+
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const WEEKDAY_NAME = '(?:(?:last )?(?:mon|tues?|wed(?:nes)?|thu(?:rs?)?|fri|sat(?:ur)?|sun)(?:day)?)';
+const MONTH_NAME = '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+/** A day as people write it: 2026-10-17, 17/10, 10/17, 17.10.2026, 17 Oct, October 17th, Monday.
+ *  A dotted day needs its year, so a version ("since 1.5") is not read as a date. */
+const DAY = `(?:${WEEKDAY_NAME}|\\d{4}-\\d{2}-\\d{2}|\\d{1,2}/\\d{1,2}(?:/\\d{2,4})?|\\d{1,2}\\.\\d{1,2}\\.\\d{2,4}|\\d{1,2}(?:st|nd|rd|th)? (?:of )?${MONTH_NAME}(?:,? \\d{4})?|${MONTH_NAME} \\d{1,2}(?:st|nd|rd|th)?(?:,? \\d{4})?)`;
+
+function isoDay(year, month, day) {
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Read one written day as YYYY-MM-DD. Day and month are told apart when only one
+ * reading is a date (17/10 and 10/17 are both 17 October); 05/06 could be either, so it
+ * comes back { ambiguous }. A day with no year is the latest one not after `now`, and a
+ * weekday the latest such day; `rolls` says by how much a later reading would move it.
+ */
+export function readDay(text, now = new Date()) {
+  const value = text.trim().toLowerCase();
+  const weekday = new RegExp(`^${WEEKDAY_NAME}$`).test(value) ? WEEKDAYS.indexOf(value.replace(/^last /, '').slice(0, 3)) : -1;
+  if (weekday !== -1) {
+    // The latest such day up to today; "last Monday" is the one before when today is Monday.
+    const today = startOfDay(now);
+    let back = (today.getUTCDay() - weekday + 7) % 7;
+    if (back === 0 && value.startsWith('last ')) back = 7;
+    return { day: new Date(today.getTime() - back * DAY_MS).toISOString().slice(0, 10), rolls: 'week' };
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split('-').map(Number);
+    return isoDay(year, month, day) ? { day: value } : null;
+  }
+  let year = null;
+  let month = null;
+  let day = null;
+  const numeric = /^(\d{1,2})[/.](\d{1,2})(?:[/.](\d{2,4}))?$/.exec(value);
+  if (numeric) {
+    const [first, second] = [Number(numeric[1]), Number(numeric[2])];
+    if (numeric[3]) year = Number(numeric[3].length === 2 ? `20${numeric[3]}` : numeric[3]);
+    const dayFirst = second <= 12 && first <= 31;
+    const monthFirst = first <= 12 && second <= 31;
+    if (dayFirst && monthFirst && first !== second) return { ambiguous: text.trim() };
+    if (dayFirst) { day = first; month = second; } else if (monthFirst) { day = second; month = first; } else return null;
+  } else {
+    const named = new RegExp(`^(?:(\\d{1,2})(?:st|nd|rd|th)? (?:of )?(${MONTH_NAME})|(${MONTH_NAME}) (\\d{1,2})(?:st|nd|rd|th)?)(?:,? (\\d{4}))?$`).exec(value);
+    if (!named) return null;
+    day = Number(named[1] ?? named[4]);
+    month = MONTHS.indexOf((named[2] ?? named[3]).slice(0, 3)) + 1;
+    if (named[5]) year = Number(named[5]);
+  }
+  const rolls = year === null ? 'year' : null;
+  if (year === null) {
+    year = now.getUTCFullYear();
+    const candidate = isoDay(year, month, day);
+    if (candidate && new Date(`${candidate}T00:00:00Z`) > now) year -= 1;
+  }
+  const iso = isoDay(year, month, day);
+  return iso ? { day: iso, rolls } : null;
+}
+
+/** The end of a range, read after its start: "Monday to Friday" asked on a Wednesday
+ *  ends this Friday, "28 Dec to 5 Jan" ends in the new year. Validation cuts it at now. */
+function after(start, end) {
+  let day = new Date(`${end.day}T00:00:00Z`);
+  const from = new Date(`${start}T00:00:00Z`);
+  while (day < from && end.rolls) {
+    day = end.rolls === 'week' ? new Date(day.getTime() + 7 * DAY_MS)
+      : new Date(Date.UTC(day.getUTCFullYear() + 1, day.getUTCMonth(), day.getUTCDate()));
+  }
+  return day.toISOString().slice(0, 10);
+}
 
 /**
  * Read a question with fixed rules. Returns a candidate request (still to be validated)
@@ -174,6 +260,8 @@ export function readQuestion(question, { now = new Date(), knownEntities = [] } 
 
   // A quoted phrase is a name to look for ("Block legacy auth").
   const params = {};
+  // What the reading filled in because the question did not say it.
+  const assumed = [];
   const quoted = /["“”'‘’]([^"“”'‘’]{2,120})["“”'‘’]/.exec(text);
   if (quoted) {
     params.name = quoted[1].trim();
@@ -252,22 +340,75 @@ export function readQuestion(question, { now = new Date(), knownEntities = [] } 
   }
 
   if (intent !== 'coverage') {
-    const lastDays = /\b(?:last|past|previous) (\d{1,4}) days?\b/i;
-    const between = /\bbetween (\d{4}-\d{2}-\d{2}) and (\d{4}-\d{2}-\d{2})\b/i;
-    const since = /\bsince (\d{4}-\d{2}-\d{2})\b/i;
+    const between = new RegExp(`\\b(?:between|from) (${DAY}) (?:and|to|until) (${DAY})\\b`, 'i');
+    const since = new RegExp(`\\b(?:since|from|after) (${DAY})\\b`, 'i');
+    const on = new RegExp(`\\b(?:on|for) (${DAY})\\b`, 'i');
     const named = PERIOD_WORDS.find(([pattern]) => pattern.test(text));
+    const startOf = START_OF.exec(text);
     const betweenMatch = between.exec(text);
     const sinceMatch = since.exec(text);
-    const lastMatch = lastDays.exec(text);
-    if (betweenMatch) { params.from = betweenMatch[1]; params.to = betweenMatch[2]; hit(between); }
-    else if (sinceMatch) { params.from = sinceMatch[1]; params.to = now.toISOString(); hit(since); }
-    else if (lastMatch) {
-      const days = Number(lastMatch[1]);
-      params.from = new Date(now.getTime() - days * DAY).toISOString();
+    const onMatch = on.exec(text);
+    const lastMatch = LAST_N.exec(text);
+    const agoMatch = AGO.exec(text);
+    const days = (...written) => {
+      const read = written.map((value) => readDay(value, now));
+      const ambiguous = read.find((entry) => entry?.ambiguous);
+      if (ambiguous) return { ambiguous: ambiguous.ambiguous };
+      return read.every((entry) => entry?.day) ? read : null;
+    };
+    if (betweenMatch) {
+      const read = days(betweenMatch[1], betweenMatch[2]);
+      if (read?.ambiguous) return { unsupported: 'ambiguous-date', date: read.ambiguous };
+      if (!read) return { unsupported: 'unreadable-date' };
+      // The last day named is included: "between 1 Oct and 5 Oct" runs to the end of the 5th.
+      params.from = read[0].day;
+      params.to = new Date(new Date(`${after(read[0].day, read[1])}T00:00:00Z`).getTime() + DAY_MS).toISOString();
+      hit(between);
+    } else if (sinceMatch) {
+      const read = days(sinceMatch[1]);
+      if (read?.ambiguous) return { unsupported: 'ambiguous-date', date: read.ambiguous };
+      if (!read) return { unsupported: 'unreadable-date' };
+      params.from = read[0].day;
       params.to = now.toISOString();
-      hit(lastDays);
+      hit(since);
+    } else if (onMatch) {
+      // One day named: that whole day.
+      const read = days(onMatch[1]);
+      if (read?.ambiguous) return { unsupported: 'ambiguous-date', date: read.ambiguous };
+      if (!read) return { unsupported: 'unreadable-date' };
+      params.from = read[0].day;
+      params.to = new Date(new Date(`${read[0].day}T00:00:00Z`).getTime() + DAY_MS).toISOString();
+      hit(on);
+    } else if (startOf) {
+      const unit = startOf[1].toLowerCase();
+      if (unit === 'year') { params.from = `${now.getUTCFullYear()}-01-01`; params.to = now.toISOString(); }
+      else params.period = unit === 'month' ? 'this-month' : 'this-week';
+      hit(START_OF);
+    } else if (agoMatch && !agoMatch[1] && agoMatch[3].toLowerCase() === 'day') {
+      // "3 days ago" is that day; "since 3 days ago" runs to now.
+      const day = new Date(startOfDay(now).getTime() - Number(agoMatch[2]) * DAY_MS);
+      params.from = day.toISOString();
+      params.to = new Date(day.getTime() + DAY_MS).toISOString();
+      hit(AGO);
+    } else if (agoMatch || lastMatch) {
+      const [count, unit] = agoMatch ? agoMatch.slice(2) : lastMatch.slice(1);
+      params.from = new Date(now.getTime() - Number(count) * UNIT_MS[unit.toLowerCase()]).toISOString();
+      params.to = now.toISOString();
+      hit(agoMatch ? AGO : LAST_N);
+    } else if (WEEKEND.test(text) && !named) {
+      // The latest Saturday and Sunday: still running when asked on a weekend.
+      const today = startOfDay(now);
+      const saturday = new Date(today.getTime() - ((today.getUTCDay() + 1) % 7) * DAY_MS);
+      params.from = saturday.toISOString();
+      params.to = new Date(Math.min(saturday.getTime() + 2 * DAY_MS, now.getTime())).toISOString();
+      hit(WEEKEND);
     } else if (named) { params.period = named[1]; hit(named[0]); }
     else if (UNBOUNDED.test(text)) { params.unbounded = true; hit(UNBOUNDED); }
+    else {
+      // No period named: answer for this week, and say so.
+      params.period = DEFAULT_PERIOD;
+      assumed.push('period');
+    }
   }
 
   const ignored = [];
@@ -279,7 +420,7 @@ export function readQuestion(question, { now = new Date(), knownEntities = [] } 
     if (FILLER.has(word) || /^\d+$/.test(word)) continue;
     if (!ignored.includes(match[0])) ignored.push(match[0]);
   }
-  return { intent, params, ignored };
+  return assumed.length ? { intent, params, ignored, assumed } : { intent, params, ignored };
 }
 
 /* ------------------------------------------------------------ validate -- */
@@ -381,7 +522,7 @@ export function validateRequest(candidate, { now = new Date(), knownEntities = [
     if (!window) return refuse('unbounded', `KEEL answers for a period of at most ${BUDGET.maxWindowDays} days. Name one, for example "this week".`);
     if (window.to > now) window.to = now;
     if (!(window.from < window.to)) return refuse('malformed', 'The period asked about ends before it starts.');
-    if (window.to.getTime() - window.from.getTime() > BUDGET.maxWindowDays * DAY + 60_000) {
+    if (window.to.getTime() - window.from.getTime() > BUDGET.maxWindowDays * DAY_MS + 60_000) {
       return refuse('unbounded', `KEEL answers for a period of at most ${BUDGET.maxWindowDays} days. Ask about a shorter period.`);
     }
     plan.params.from = window.from.toISOString();
@@ -449,11 +590,15 @@ export async function planQuestion(question, { helper = null, now = new Date(), 
       'several-entities': 'Ask about one entity at a time.',
       'several-types': 'Ask about one kind of resource at a time.',
       'no-such-kind': 'KEEL backs up no kind of setting that matches those words.',
+      'ambiguous-date': `“${builtIn.date}” could be read day first or month first. Write the date as year-month-day, for example ${now.toISOString().slice(0, 10)}.`,
+      'unreadable-date': `KEEL could not read that date. Write it as year-month-day, for example ${now.toISOString().slice(0, 10)}.`,
     }[builtIn.unsupported] ?? 'KEEL can answer questions about changes, coverage and failed jobs only.';
-    return { ...refuse('unsupported', message), readBy: 'rules' };
+    // A date KEEL could not settle is the reader's to fix, not a question KEEL cannot answer.
+    const code = builtIn.unsupported === 'ambiguous-date' || builtIn.unsupported === 'unreadable-date' ? 'malformed' : 'unsupported';
+    return { ...refuse(code, message), readBy: 'rules' };
   }
-  const { ignored = [], ...candidate } = builtIn;
-  return { ...validateRequest(candidate, { now, knownEntities, scope }), readBy: 'rules', ignored };
+  const { ignored = [], assumed = [], ...candidate } = builtIn;
+  return { ...validateRequest(candidate, { now, knownEntities, scope }), readBy: 'rules', ignored, assumed };
 }
 
 /** The plan in words, for "Understood as". */

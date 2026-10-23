@@ -17,3 +17,6 @@ CREATE TABLE IF NOT EXISTS content_run (
   completed_at  timestamptz NOT NULL
 );
 CREATE INDEX IF NOT EXISTS content_run_latest_idx ON content_run (tenant_ref, workload, completed_at DESC);
+-- What Microsoft 365 holds but Keel could not read, and that is not a failure (a OneDrive
+-- that Microsoft 365 has locked). Listed beside the run; it never changes the outcome.
+ALTER TABLE content_run ADD COLUMN IF NOT EXISTS skipped jsonb NOT NULL DEFAULT '[]'::jsonb;

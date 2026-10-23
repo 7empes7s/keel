@@ -11,6 +11,7 @@ import { withExplicitReferences } from '../coverage/qualification.mjs';
 import { isVerbatimSymbol, resolveSymbol } from '../graph/resolver.mjs';
 import { rewriteReferences } from './applyEngine.mjs';
 import { dependencyClosure } from './selection.mjs';
+import { planWaves } from './wavePlanner.mjs';
 
 const GRAPH_APP_ID = '00000003-0000-0000-c000-000000000000';
 const graph = {
@@ -52,6 +53,37 @@ test('an API recreated in this run is named by its new appId', () => {
     resolveSymbol(`object:${ownApi}`, context(new Map([[`application:${ownApi}#appId`, recreated]]))),
     { resolved: true, targetId: recreated, via: 'prior-restore' },
   );
+});
+
+test('an API the target has neither as an app nor as a service principal still refuses', () => {
+  const empty = { targetIndex: new Map(), mappingTable: new Map(), runProvenance: new Map() };
+  assert.deepEqual(resolveSymbol(`object:${GRAPH_APP_ID}`, empty), { resolved: false, reason: 'not-found-in-target' });
+  assert.throws(() => rewriteReferences(app.payload, withExplicitReferences(app), empty, app.naturalKey, 'application'), /not-found-in-target/);
+});
+
+// Payroll calls the tenant's own Leave API. Restored together, the API is written
+// first, so a recreated API's new appId is known before Payroll names it.
+test('an app restored with the API it calls waits for that API', () => {
+  const leaveApi = {
+    id: '66666666-6666-4666-8666-666666666666', appId: '77777777-7777-4777-8777-777777777777', displayName: 'Leave API',
+    appRoles: [{ id: '88888888-8888-4888-8888-888888888888', value: 'Leave.Read' }],
+  };
+  const caller = {
+    ...payroll,
+    requiredResourceAccess: [{ resourceAppId: leaveApi.appId, resourceAccess: [{ id: '88888888-8888-4888-8888-888888888888', type: 'Role' }] }],
+  };
+  const both = canonicalizeAll([['application', [leaveApi, caller]]]);
+  const callerKey = `application:${caller.appId}`;
+  const apiKey = `application:${leaveApi.appId}`;
+  assert.ok(both.find((r) => r.naturalKey === callerKey).references.some((ref) => ref.symbol === `object:${leaveApi.appId}`));
+
+  const { waves } = planWaves(both);
+  const waveOf = (key) => waves.findIndex((wave) => wave.some((entry) => (entry.naturalKey ?? entry) === key));
+  assert.ok(waveOf(apiKey) >= 0 && waveOf(apiKey) < waveOf(callerKey), 'the API is written in an earlier wave');
+
+  const closure = dependencyClosure(both, [callerKey]);
+  assert.deepEqual(closure.added.map((entry) => entry.naturalKey), [apiKey], 'choosing the caller puts its API back too');
+  assert.deepEqual(closure.unresolvedReferences, []);
 });
 
 test('an object: symbol built from a name is never written into an id field', () => {

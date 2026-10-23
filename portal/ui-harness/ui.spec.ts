@@ -29,6 +29,7 @@ const PAGES = [
   { name: "job-failed", hash: "/jobs/a4" },
   { name: "job-backup-running", hash: "/jobs/a1" },
   { name: "job-backup-partial", hash: "/jobs/b2" },
+  { name: "job-content-partial", hash: "/jobs/c3" },
   { name: "job-restore-completion", hash: "/jobs/r9" },
   { name: "job-restore-undo", hash: "/jobs/r10" },
   { name: "policies", hash: "/policies" },
@@ -92,7 +93,7 @@ for (const theme of ["dark", "light"] as const) {
 }
 
 // Visual baselines for the pages most likely to regress, both themes, plus phone width.
-const VISUAL = ["dashboard", "drift", "restore", "approvals", "protect", "job-failed", "policy-activation", "job-backup-running", "job-backup-partial"];
+const VISUAL = ["dashboard", "drift", "restore", "approvals", "protect", "job-failed", "policy-activation", "job-backup-running", "job-backup-partial", "job-content-partial"];
 for (const theme of ["dark", "light"] as const) {
   for (const name of VISUAL) {
     test(`visual · ${name} · ${theme}`, async ({ page }) => {
@@ -4129,7 +4130,7 @@ test("Job · a failed job leads with a plain cause, keeps the raw error behind S
 
 test("Job page and rule preview fit a phone without sideways scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  for (const hash of ["/jobs/a1", "/jobs/b2", "/jobs/a4", "/jobs/r9", "/jobs/r10", "/policies/p2"]) {
+  for (const hash of ["/jobs/a1", "/jobs/b2", "/jobs/c3", "/jobs/a4", "/jobs/r9", "/jobs/r10", "/policies/p2"]) {
     await open(page, hash, "light");
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), hash).toBeLessThanOrEqual(0);
   }
@@ -4156,6 +4157,31 @@ test("Job · a partly done backup leads with the kinds it missed and why", async
   await failed.getByText("Show details").click();
   await expect(failed.locator(".ui-alert-more li")).toContainText("Graph 429");
   await expect(page.locator('[data-layer="verdict"]')).toHaveAttribute("data-tone", "soon");
+});
+
+test("Job · a partly done content backup lists each mailbox, OneDrive and site it could not read", async ({ page }) => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await open(page, "/jobs/c3", viewport.width < 400 ? "light" : "dark");
+    await expect(page.locator(".job-summary .badge")).toHaveText("Partly done");
+    const alert = page.locator('.ui-alert[data-alert="types"]');
+    await expect(alert.locator(".ui-alert-title")).toContainText("3 kinds were not backed up in full");
+    await expect(alert.getByRole("link", { name: "See what was not read" })).toHaveAttribute("href", /#job-gaps$/);
+    const onedrive = page.locator('.job-gap-group[data-gap-type="content:onedrive"]');
+    await expect(onedrive.locator("h3 .badge")).toHaveText("10 OneDrives not read");
+    await expect(onedrive.locator("tbody tr")).toHaveCount(10);
+    await expect(onedrive.locator("tbody tr").first()).toContainText("KEEL-RT-user-01");
+    await expect(onedrive.locator("tbody tr").first()).toContainText("Locked by Microsoft");
+    await expect(page.locator('.job-gap-group[data-gap-type="content:exchange-mail"] tbody tr')).toContainText("Access refused");
+    await expect(page.locator('.job-gap-group[data-gap-type="content:sharepoint-sites"] tbody tr')).toContainText("Not found");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  }
+  // The engine's text waits behind a click.
+  const onedrive = page.locator('.job-gap-group[data-gap-type="content:onedrive"]');
+  await page.reload();
+  await expect(onedrive.locator(".ui-alert-more li").first()).toBeHidden();
+  await onedrive.getByText("Show the error text").click();
+  await expect(onedrive.locator(".ui-alert-more li").first()).toContainText("HTTP 423");
 });
 
 // Raw error text (status codes, exception names, API paths) never shows in plain view:

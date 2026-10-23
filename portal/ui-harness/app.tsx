@@ -464,6 +464,27 @@ function tierProgress(mode: "running" | "failed" | "done") {
   });
   return { types, updatedAt: "2026-10-02T09:39:40Z", source: "live" as const };
 }
+// A whole-tenant content backup that saved every workload but could not read some items.
+function contentPartialProgress() {
+  const at = (minute: number) => new Date(Date.parse("2026-10-02T01:02:00Z") + minute * 60_000).toISOString();
+  const locked = Array.from({ length: 10 }, (_, i) => `KEEL-RT-user-${String(i + 1).padStart(2, "0")}: HTTP 423 notAllowed for /v1.0/users/0000/drive`);
+  const mail = ["KEEL-RT-team mailbox (group): 1 read(s) failed (403 ErrorAccessDenied Access is denied)"];
+  const sites = ["KEEL-RT-search: 1 part(s) not fully read, first pages: failed (HTTP 404 /pages/microsoft.graph.sitePage)"];
+  const row = (outcome: string, itemCount: number, from: number, to: number, reasons: string[] = []): TypeProgress => ({
+    outcome, itemCount, startedAt: at(from), completedAt: at(to), httpStatus: null,
+    error: reasons.length ? reasons.join("\n").slice(0, 500) : null, ...(reasons.length ? { reasons, reasonCount: reasons.length } : {}),
+  });
+  return {
+    types: {
+      "content:exchange-mail": row("partial", 43, 0, 2, mail),
+      "content:onedrive": row("partial", 2996, 2, 43, locked),
+      "content:sharepoint-sites": row("partial", 5328, 43, 46, sites),
+      "content:teams": row("complete", 11, 46, 47),
+      "content:planner": row("complete", 80, 47, 47),
+    },
+    updatedAt: at(47), source: "live" as const,
+  };
+}
 const initialJobs = [
   job("a1", "backup", "running"),
   job("a2", "collect", "queued"),
@@ -2163,6 +2184,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     }
     case "/jobs/a1": { const detail = { ...jobs.find((item) => item.id === "a1")!, status: "running", finishedAt: null, progress: tierProgress("running") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/b2": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "b2", status: "succeeded", error: null, result: { partial: true, incompleteTypes: [{ type: "deviceCompliancePolicy", outcome: "failed" }, { type: "oauth2PermissionGrant", outcome: "partial" }] }, progress: tierProgress("done") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
+    case "/jobs/c3": { const progress = contentPartialProgress(); const detail = { ...jobs.find((item) => item.id === "a4")!, id: "c3", kind: "content-collect", params: {}, status: "succeeded", error: null, result: { partial: true, incompleteTypes: ["content:exchange-mail", "content:onedrive", "content:sharepoint-sites"].map((type) => ({ type, outcome: "partial", httpStatus: null, reasons: progress.types[type as keyof typeof progress.types].reasons })) }, progress }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/a4": { const detail = { ...jobs.find((item) => item.id === "a4")!, progress: tierProgress("failed") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/r10": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010" } }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }

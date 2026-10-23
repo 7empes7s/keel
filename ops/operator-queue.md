@@ -7824,3 +7824,34 @@ item that needs it stays untouched.
 - **Expected:** both `complete`, `field_counts` with no `unknown`, `unknown_fields` `{}`. If `userPolicyAssignment.LineUri`
   is still unknown, report its object count and the total user count (some users may simply have no number); change nothing.
 - **Report:** the output verbatim and the build.
+
+### Q167: Live check that a whole-tenant content backup with locked OneDrives reads "Partly done", not Failed (after #560)
+- Drafted by the "Content backup partial status" thread (2026-10-23). Q121's run `c8d034ce` saved 36.7 GB but read `failed`
+  (exit 1) only because exchange-mail, onedrive and sharepoint-sites were `partial` (10 OneDrives HTTP 423, one group mailbox 403,
+  one site page 404). PR #560: `keel-content-collect` now exits 3 when no workload failed and some are partial, prints one
+  `incomplete types:` line, and the worker finishes the job as `succeeded` with `result.partial = true` and
+  `result.incompleteTypes`. A failed workload, or a failed users / groups / sites / teams listing, still exits 1. The Job page
+  lists each item not read under "What was not backed up".
+- Needs: /opt/keel-live at the #560 merge (f4073a7) or later (`grep -q contentExitCode /opt/keel-live/cli/keel-content-collect.mjs`).
+- Status: todo
+- **Tenant:** content reader reads only (the normal nightly content backup, whole-tenant scope from Q121 unchanged). No grants, no fixtures, no writes. 403s are reported, never fixed by granting.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. Use the next scheduled `content-collect` (01:00 UTC). If it is more than 2 hours away, use the Schedules page "Run now" on the content backup instead (same read-only job) and say which you used.
+  2. When it ends, report:
+     ```sql
+     SELECT id, status, started_at, finished_at, error,
+            result->'partial' AS partial,
+            (SELECT jsonb_agg(jsonb_build_object('type', e->'type', 'outcome', e->'outcome', 'items', e->'items', 'reasonCount', e->'reasonCount'))
+               FROM jsonb_array_elements(result->'incompleteTypes') e) AS incomplete
+       FROM job WHERE kind = 'content-collect' ORDER BY created_at DESC LIMIT 1;
+     SELECT key, value->>'outcome' AS outcome, value->>'itemCount' AS items, value->>'reasonCount' AS reason_count
+       FROM job, jsonb_each(progress->'types') WHERE id = '<that job id>' ORDER BY key;
+     ```
+     and the worker line: `journalctl -u keel-worker --since "<job start>" | grep "<job id prefix>"` (expect `partly done ... not read in full: content:...`).
+  3. Open the job on the portal (`/jobs/<id>`) and report: the status badge text, the alert title, and for each workload under
+     "What was not backed up" the badge text and the distinct "Why" values with counts (names masked). Screenshot not needed.
+- **Expected:** `status = succeeded`, `partial = true`, `error` null; `incomplete` lists only workloads with outcome `partial`
+  (likely content:exchange-mail, content:onedrive, content:sharepoint-sites); teams and planner `complete`. Portal: badge
+  "Partly done", OneDrive "10 OneDrives not read" with "Locked by Microsoft". If the job is `failed`, report its error and which
+  workload failed or which listing failed; change nothing and do not roll back the scope for that alone (same rule as Q121).
+- **Report:** the outputs above (names masked) and the build.

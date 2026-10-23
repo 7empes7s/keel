@@ -30,6 +30,7 @@ const PAGES = [
   { name: "job-backup-running", hash: "/jobs/a1" },
   { name: "job-backup-partial", hash: "/jobs/b2" },
   { name: "job-content-partial", hash: "/jobs/c3" },
+  { name: "job-service-partial", hash: "/jobs/w4" },
   { name: "job-restore-completion", hash: "/jobs/r9" },
   { name: "job-restore-undo", hash: "/jobs/r10" },
   { name: "policies", hash: "/policies" },
@@ -4130,7 +4131,7 @@ test("Job · a failed job leads with a plain cause, keeps the raw error behind S
 
 test("Job page and rule preview fit a phone without sideways scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  for (const hash of ["/jobs/a1", "/jobs/b2", "/jobs/c3", "/jobs/a4", "/jobs/r9", "/jobs/r10", "/policies/p2"]) {
+  for (const hash of ["/jobs/a1", "/jobs/b2", "/jobs/c3", "/jobs/w4", "/jobs/a4", "/jobs/r9", "/jobs/r10", "/policies/p2"]) {
     await open(page, hash, "light");
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), hash).toBeLessThanOrEqual(0);
   }
@@ -4182,6 +4183,31 @@ test("Job · a partly done content backup lists each mailbox, OneDrive and site 
   await expect(onedrive.locator(".ui-alert-more li").first()).toBeHidden();
   await onedrive.getByText("Show the error text").click();
   await expect(onedrive.locator(".ui-alert-more li").first()).toContainText("HTTP 423");
+});
+
+test("Job · a partly done service backup lists each part it could not read", async ({ page }) => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await open(page, "/jobs/w4", viewport.width < 400 ? "light" : "dark");
+    await expect(page.locator(".job-summary .badge")).toHaveText("Partly done");
+    const alert = page.locator('.ui-alert[data-alert="types"]');
+    await expect(alert.locator(".ui-alert-title")).toContainText("2 kinds were not backed up in full");
+    await expect(alert.getByRole("link", { name: "See what was not read" })).toHaveAttribute("href", /#job-gaps$/);
+    const flow = page.locator('.job-gap-group[data-gap-type="exchange-mail-flow"]');
+    await expect(flow.locator("h3 .badge")).toHaveText("2 parts not read");
+    await expect(flow.locator("tbody tr").first()).toContainText("Transport rule");
+    await expect(flow.locator("tbody tr").first()).toContainText("Access refused");
+    await expect(flow.locator("tbody tr").nth(1)).toContainText("Not licensed in this tenant");
+    await expect(page.locator('.job-gap-group[data-gap-type="exchange-mailbox-settings"] tbody tr').first()).toContainText("Too many to read in one run");
+    // Workloads read in full or not switched on list nothing.
+    await expect(page.locator(".job-gap-group")).toHaveCount(2);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  }
+  const flow = page.locator('.job-gap-group[data-gap-type="exchange-mail-flow"]');
+  await page.reload();
+  await expect(flow.locator(".ui-alert-more li").first()).toBeHidden();
+  await flow.getByText("Show the error text").click();
+  await expect(flow.locator(".ui-alert-more li").first()).toContainText("HTTP 403");
 });
 
 // Raw error text (status codes, exception names, API paths) never shows in plain view:

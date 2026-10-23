@@ -22,6 +22,7 @@
  */
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { TAXONOMY } from '../insights/taxonomy.mjs';
+import { ACTOR_WORDS, CONCEPT_WORDS, ELSEWHERE_WORDS, NOT_HELD_WORDS, SERVICE_WORDS, TYPE_WORDS } from './vocabulary.mjs';
 
 export const PLAN_VERSION = 1;
 
@@ -45,25 +46,14 @@ const CHANGE_TYPES = Object.freeze(['added', 'modified', 'removed']);
 const PARAM_KEYS = Object.freeze(['entity', 'from', 'to', 'period', 'resourceType', 'resourceTypes', 'name', 'changeType', 'limit']);
 /** The longest name a question can look for, and the most kinds one question can name. */
 const MAX_NAME = 120;
-const MAX_KINDS = 60;
 const ENTITY_CODE = /^[A-Z][A-Z0-9_]{1,31}$/;
 const PERIODS = Object.freeze(['today', 'yesterday', 'this-week', 'last-week', 'last-7-days', 'last-30-days', 'this-month', 'last-month']);
 
 export const RESOURCE_TYPES = Object.freeze(DESCRIPTORS.map(({ type }) => type));
 /** Every kind a question can narrow to: collected types and service setting reads. */
 export const KNOWN_KINDS = Object.freeze([...new Set([...RESOURCE_TYPES, ...Object.keys(TAXONOMY)])]);
-
-/** Words a person uses for a service, matched to the taxonomy's service names. */
-const SERVICE_WORDS = Object.freeze([
-  [/\b(entra(?: id)?|azure (?:ad|active directory)|aad)\b/i, 'Entra'],
-  [/\bintune\b/i, 'Intune'],
-  [/\bexchange(?: online)?\b/i, 'Exchange'],
-  [/\b(ms |microsoft )?teams\b/i, 'Teams'],
-  [/\b(sharepoint|onedrive)\b/i, 'SharePoint'],
-  [/\bpurview\b/i, 'Purview'],
-  [/\b(power platform|power apps|power automate)\b/i, 'Power Platform'],
-  [/\bdefender\b/i, 'Defender'],
-]);
+/** A question about a whole service ("What changed in Entra") names every kind in it. */
+const MAX_KINDS = KNOWN_KINDS.length;
 
 /** Broad words for a kind of setting; each keeps the kinds whose name holds the word. */
 const CATEGORY_WORDS = Object.freeze([
@@ -86,20 +76,58 @@ const FILLER = new Set(('a an the what which who whom whose when where how why d
   + 'happen happened happening anything something everything kind kinds type types setting settings resource resources thing things '
   + 'tenant microsoft 365 m365 office online new latest backup backups recent recently made make change changed changes changing '
   + 'modified added created removed deleted drift drifted edited updated covered coverage protected protection backed up fail failed '
-  + 'failure failures failing job jobs run runs task tasks collection collections now today yesterday month').split(' '));
+  + 'failure failures failing job jobs run runs task tasks collection collections now today yesterday month '
+  + 'o365 cloud configured configuration configurations config status state current currently still our org organization company '
+  + 'anyone someone everyone across within inside under over regarding related around more than whether if been could would should can '
+  + 'up off out going went got get gets having happened assigned target targets targeting apply applies scoped'.trim()).split(' '));
 
-/** Words a person uses for a resource type. Each maps to exactly one collected type. */
-const TYPE_WORDS = Object.freeze([
-  [/\bconditional access( polic(y|ies))?\b/i, 'conditionalAccessPolicy'],
-  [/\bnamed locations?\b/i, 'namedLocation'],
-  [/\brole assignments?\b/i, 'roleAssignment'],
-  [/\b(enterprise apps?|service principals?)\b/i, 'servicePrincipal'],
-  [/\bapp registrations?\b/i, 'application'],
-  [/\bgroups?\b/i, 'group'],
-  [/\busers?\b/i, 'user'],
-  [/\bauthori[sz]ation polic(y|ies)\b/i, 'authorizationPolicy'],
-  [/\bdevice configurations?\b/i, 'deviceConfiguration'],
-]);
+/** Each kind's own name ("Named location", "App consent policy") or its code, singular or
+ *  plural. A name with a qualifier ("Security baseline (older format)") matches by code only. */
+const NAMED_KINDS = Object.freeze(Object.entries(TAXONOMY).map(([type, entry]) => {
+  if (/\(/.test(entry.name)) return [new RegExp(`\\b${type.replace(/-/g, '\\-')}s?\\b`, 'i'), type];
+  const name = entry.name.trim();
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '[ -]');
+  const plural = /y$/i.test(name) ? `${escaped.slice(0, -1)}(?:y|ies)` : /(?:s|x|ch|sh)$/i.test(name) ? `${escaped}(?:es)?` : `${escaped}s?`;
+  return [new RegExp(`\\b(?:${plural}|${type.replace(/-/g, '\\-')}s?)\\b`, 'i'), type];
+}));
+
+const serviceOf = (type) => TAXONOMY[type]?.service ?? null;
+const nameOf = (type) => TAXONOMY[type]?.name ?? type;
+const listWords = (words) => (words.length < 2 ? words.join('') : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`);
+
+/**
+ * Every topic a question names: kinds by their own name, other words for one kind,
+ * concepts that span kinds, services, and things KEEL does not back up. Where phrases
+ * overlap the longest wins, so "Defender for Office" is not read as "Defender" and
+ * "settings catalog" is not read as "catalog".
+ */
+function readTopics(text) {
+  const found = [];
+  const add = (pattern, make) => {
+    for (const match of text.matchAll(new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`))) {
+      if (match[0].trim()) found.push({ start: match.index, end: match.index + match[0].length, word: match[0], ...make() });
+    }
+  };
+  for (const [pattern, type] of NAMED_KINDS) add(pattern, () => ({ kinds: [type], generic: type === 'user' || type === 'group' }));
+  for (const [pattern, type] of TYPE_WORDS) add(pattern, () => ({ kinds: [type], generic: type === 'user' || type === 'group' }));
+  for (const { pattern, kinds, label } of CONCEPT_WORDS) add(pattern, () => ({ kinds, label }));
+  for (const [pattern, service] of SERVICE_WORDS) add(pattern, () => ({ service }));
+  for (const [pattern, label] of NOT_HELD_WORDS) add(pattern, () => ({ notHeld: label }));
+  for (const [pattern, label, page] of ELSEWHERE_WORDS) add(pattern, () => ({ elsewhere: { label, page } }));
+  // Longest first; on a tie, the order above (a kind's own name before a concept).
+  const ranked = found.map((entry, order) => ({ entry, order }))
+    .sort((a, b) => (b.entry.end - b.entry.start) - (a.entry.end - a.entry.start) || a.order - b.order);
+  const picked = [];
+  for (const { entry } of ranked) {
+    if (!picked.some((other) => entry.start < other.end && entry.end > other.start)) picked.push(entry);
+  }
+  return picked.sort((a, b) => a.start - b.start);
+}
+
+/** "for a group", "assigned to users": a user or group word that describes another kind. */
+const DESCRIBES = /\b(?:for|to|of|on|in|with|assigned to|targets?|targeting|blocks?|blocking|includes?|including|excludes?|excluding|covering|that|which|by|appl(?:y|ies) to|scoped to)\s+(?:a|an|the|all|any|some|our|my|these|those|every|guest|external)?\s*$/i;
+/** A question that names a time is about changes, not the latest backup. */
+const TIME_WORDS = /\b(?:today|yesterday|tonight|this (?:week|month|year|morning)|last|past|previous|since|between|until|till|ago|during|recent(?:ly)?|week(?:end)?s?|months?|days?|hours?|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan(?:uary)?|feb(?:ruary)?|march|apr(?:il)?|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|december|\d{1,4}[/.-]\d{1,2}(?:[/.-]\d{1,4})?)\b/i;
 
 export class QueryRefusal extends Error {
   constructor(code, message) {
@@ -268,15 +296,45 @@ export function readQuestion(question, { now = new Date(), knownEntities = [] } 
     used.push([quoted.index, quoted.index + quoted[0].length]);
   }
 
+  // The text with every span a topic or intent word has claimed blanked out, so one
+  // phrase is read once: "app protection" is a kind, not the word "protection".
+  let mask = text;
+  for (const [from, to] of used) mask = `${mask.slice(0, from)}${' '.repeat(to - from)}${mask.slice(to)}`;
+  const take = (pattern) => {
+    let found = false;
+    for (const match of mask.matchAll(new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`))) {
+      if (!match[0].trim()) continue;
+      used.push([match.index, match.index + match[0].length]);
+      mask = `${mask.slice(0, match.index)}${' '.repeat(match[0].length)}${mask.slice(match.index + match[0].length)}`;
+      found = true;
+    }
+    return found;
+  };
+
+  // A name after "named" or "called" is looked for like a quoted one.
+  if (!params.name) {
+    const called = /\b(?:named|called|titled)\s+(?!locations?\b)([\p{L}\p{N}][\p{L}\p{N} _&'’-]{1,119}?)(?=\s+(?:this|last|past|since|between|from|during|in|on|before|after|yesterday|today|was|were|is|has|have|got|been|changed|modified|updated|edited|added|created|removed|deleted|backed|covered|protected|restorable|recoverable|failed|and|or)\b|[?!,;:]|\.(?:\s|$)|$)/iu.exec(mask);
+    if (called) {
+      params.name = called[1].trim();
+      take(new RegExp(called[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+    }
+  }
+
+  const unnamed = mask;
+  const topics = readTopics(mask);
+  for (const topic of topics) {
+    used.push([topic.start, topic.end]);
+    mask = `${mask.slice(0, topic.start)}${' '.repeat(topic.end - topic.start)}${mask.slice(topic.end)}`;
+  }
+
   let intent = null;
-  const failWords = /\bfail(ed|ures?|ing)?\b/i;
-  const jobWords = /\b(jobs?|runs?|tasks?|backups?|collections?)\b/i;
-  const coverageWords = /\b(coverage|covered|protected|protection|backed up)\b/i;
-  const changeWords = /\b(chang(e|ed|es)|modified|added|created|removed|deleted|drift(ed)?|edited|updated)\b/i;
-  if (failWords.test(text) && jobWords.test(text)) { intent = 'failed-jobs'; hit(failWords); hit(jobWords); }
-  else if (coverageWords.test(text)) { intent = 'coverage'; hit(coverageWords); }
-  else if (changeWords.test(text)) { intent = 'changes'; hit(changeWords); }
-  if (!intent) return { unsupported: 'unknown-intent' };
+  const failWords = /\b(?:fail(?:ed|ures?|ing|s)?|errors?|errored|broken|unsuccessful|did(?: not|n[’']t) (?:complete|finish|run|succeed|work)|went wrong|problems?|issues?)\b/i;
+  const jobWords = /\b(jobs?|runs?|tasks?|backups?|collections?|snapshots?|syncs?|restores?|exports?|comparisons?)\b/i;
+  const coverageWords = /\b(?:coverage|covered|protected|protection|backed up|back(?:ing)? up|restorable|recoverable|in (?:the|our|a) (?:latest |last )?backups?|backup (?:status|coverage|state|contents)|not backed up|missing from (?:the )?backups?|backups? (?:holds?|held|contains?|has|have)|(?:does|did) (?:the |our |a )?(?:latest |last )?backups? (?:hold|contain|have|include))\b/i;
+  const changeWords = /\b(?:chang(?:e|ed|es|ing)|modif(?:ied|ications?)|added|created|removed|deleted|drift(?:ed|s)?|edited|updated|altered|touch(?:ed)?|tamper(?:ed)?|enabled|disabled|turned (?:on|off)|switched (?:on|off)|toggled|granted|revoked|assigned(?! to\b)|unassigned|invited|activated|deactivated|new|differ(?:ent|ences?)|diffs?|history)\b/i;
+  if (failWords.test(mask) && jobWords.test(mask)) { intent = 'failed-jobs'; take(failWords); take(jobWords); }
+  else if (coverageWords.test(mask)) { intent = 'coverage'; take(coverageWords); }
+  else if (changeWords.test(mask)) intent = 'changes';
 
   const entities = knownEntities.filter((code) => new RegExp(`\\b${code.replace(/_/g, '[ _]')}\\b`, 'i').test(text));
   if (entities.length > 1) return { unsupported: 'several-entities' };
@@ -285,58 +343,86 @@ export function readQuestion(question, { now = new Date(), knownEntities = [] } 
     hit(new RegExp(`\\b${entities[0].replace(/_/g, '[ _]')}\\b`, 'i'));
   }
 
-  const types = [...new Set(TYPE_WORDS.filter(([pattern]) => pattern.test(text)).map(([, type]) => type))];
-  // "group" inside "conditional access policy for a group" is still one question;
-  // the more specific phrase wins only when exactly one specific type matched.
-  const specific = types.filter((type) => type !== 'group' && type !== 'user');
-  if (specific.length > 1 || (specific.length === 0 && types.length > 1)) return { unsupported: 'several-types' };
-  const services = [...new Set(SERVICE_WORDS.filter(([pattern]) => pattern.test(text)).map(([, service]) => service))];
-  if (types.length) {
-    for (const [pattern] of TYPE_WORDS) hit(pattern);
-    if (specific.length === 1) params.resourceType = specific[0];
-    else params.resourceType = types[0];
-  } else if (intent !== 'failed-jobs') {
-    // A service and broad kind words ("Teams policies") narrow to the taxonomy's kinds:
-    // a kind's full name first, then every kind of the service whose name holds the word.
-    const lower = text.toLowerCase();
-    const named = Object.values(TAXONOMY).filter((entry) => {
-      const name = entry.name.toLowerCase();
-      return lower.includes(name) || lower.includes(`${name}s`) || (name.endsWith('y') && lower.includes(`${name.slice(0, -1)}ies`));
-    });
+  const services = [...new Set(topics.filter((topic) => topic.service).map((topic) => topic.service))];
+  const notHeld = [...new Set(topics.filter((topic) => topic.notHeld).map((topic) => topic.notHeld))];
+  const elsewhere = topics.filter((topic) => topic.elsewhere).map((topic) => topic.elsewhere)
+    .filter((entry, index, all) => all.findIndex((other) => other.label === entry.label) === index);
+  const specific = topics.filter((topic) => topic.kinds && !topic.generic);
+  // "Conditional Access policies for a group": the group describes the policy.
+  // "policies assigned to all users": with a broad word, the users describe the policies.
+  const describing = topics.filter((topic) => topic.generic && DESCRIBES.test(text.slice(0, topic.start))
+    && (specific.length || CATEGORY_WORDS.some(([pattern]) => pattern.test(mask))));
+  const generic = topics.filter((topic) => topic.generic && !describing.includes(topic));
+  const named = [...specific, ...generic];
+  let kinds = [...new Set(named.flatMap((topic) => topic.kinds))];
+
+  if (intent === 'failed-jobs') {
+    if (named.length || services.length) assumed.push('Failed jobs are listed for every service: KEEL does not sort jobs by kind of setting.');
+    kinds = [];
+  } else {
     // A broad word narrows only as the subject ("Which policies changed") or next to a
     // service ("changed in Teams policies"); elsewhere it is reported as not understood.
-    const verbAt = text.search(intent === 'coverage' ? coverageWords : changeWords);
+    const verbAt = intent ? mask.search(intent === 'coverage' ? coverageWords : changeWords) : Infinity;
     const categoryWords = CATEGORY_WORDS.filter(([pattern]) => {
-      const at = text.search(pattern);
-      return at !== -1 && (services.length > 0 || at < verbAt);
+      const at = mask.search(pattern);
+      return at !== -1 && (services.length > 0 || named.length > 0 || describing.length > 0 || Boolean(params.name) || verbAt === -1 || at < verbAt);
     });
     const categories = categoryWords.map(([, test]) => test);
-    let kinds = [];
-    if (named.length) {
-      kinds = named;
-      for (const entry of named) hit(new RegExp(entry.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/y$/i, '(?:y|ies)'), 'i'));
+    if (!kinds.length && !services.length && params.name) {
+      // "the policy named Require MFA": the broad word describes the name.
+      for (const [pattern] of categoryWords) take(pattern);
+    } else if (kinds.length) {
+      if (services.length) {
+        const narrowed = kinds.filter((type) => services.includes(serviceOf(type)));
+        if (narrowed.length) kinds = narrowed;
+        else assumed.push(`KEEL backs up none of these in ${listWords(services)}, so this covers every service.`);
+      }
+      // A broad word next to a topic ("CA policies", "PIM roles") is part of that topic.
+      for (const [pattern, test] of categoryWords) if (kinds.some((type) => test.test(nameOf(type)))) take(pattern);
     } else if (services.length || categories.length) {
-      kinds = Object.values(TAXONOMY).filter((entry) => (!services.length || services.includes(entry.service))
-        && (!categories.length || categories.some((test) => test.test(entry.name))));
-      for (const [pattern] of categoryWords) hit(pattern);
+      const all = Object.entries(TAXONOMY);
+      kinds = all.filter(([, entry]) => (!services.length || services.includes(entry.service))
+        && (!categories.length || categories.some((test) => test.test(entry.name)))).map(([type]) => type);
+      if (!kinds.length && services.length) {
+        const words = categoryWords.map(([pattern]) => mask.match(pattern)[0].toLowerCase());
+        kinds = all.filter(([, entry]) => services.includes(entry.service)).map(([type]) => type);
+        assumed.push(`KEEL backs up no ${listWords(words)} in ${listWords(services)}, so this covers everything it backs up there.`);
+      }
+      for (const [pattern] of categoryWords) take(pattern);
       if (!kinds.length) return { unsupported: 'no-such-kind' };
     }
-    if (services.length) {
-      for (const [pattern] of SERVICE_WORDS) hit(pattern);
-      kinds = kinds.filter((entry) => services.includes(entry.service));
-      if (named.length && !kinds.length) return { unsupported: 'no-such-kind' };
-    }
-    if (kinds.length === 1) params.resourceType = kinds[0].type;
-    else if (kinds.length > 1) params.resourceTypes = kinds.map((entry) => entry.type).sort();
+    // How each concept was read, once per meaning: "Read “MDO” and “safe links” as ...".
+    const readings = new Map();
+    for (const topic of specific) if (topic.label) readings.set(topic.label, [...(readings.get(topic.label) ?? []), `“${topic.word}”`]);
+    for (const [label, words] of readings) assumed.push(`Read ${listWords([...new Set(words)])} as ${label}.`);
+    if (kinds.length === 1) params.resourceType = kinds[0];
+    else if (kinds.length > 1) params.resourceTypes = kinds.sort();
   }
 
+  // A question that names a topic but no verb ("CA policies this week", "Our MFA
+  // settings") is read as what changed when it names a time, else what the backup holds.
+  if (!intent) {
+    if (!kinds.length && !services.length && !params.name) {
+      if (elsewhere.length) return { unsupported: 'elsewhere', elsewhere };
+      return notHeld.length ? { unsupported: 'not-held', notHeld } : { unsupported: 'unknown-intent' };
+    }
+    intent = TIME_WORDS.test(mask) ? 'changes' : 'coverage';
+    assumed.push(intent === 'changes' ? 'Read as a question about what changed.' : 'Read as a question about what the latest backup holds.');
+  }
+  if (intent === 'changes') take(changeWords);
+  if (notHeld.length) assumed.push(`KEEL does not back up ${listWords(notHeld)}, so this answer leaves ${notHeld.length === 1 ? 'that' : 'those'} out.`);
+  for (const { label, page } of elsewhere) assumed.push(`Ask does not answer about ${label} yet: the ${page} page has them.`);
+  if (intent === 'changes' && ACTOR_WORDS.test(text)) assumed.push('KEEL compares backups, so it shows what changed and when, but not who made the change.');
+
   if (intent === 'changes') {
-    const added = /\b(added|created|new)\b/i;
-    const removed = /\b(removed|deleted)\b/i;
-    const modified = /\b(modified|edited|updated)\b/i;
-    if (added.test(text)) { params.changeType = 'added'; hit(added); }
-    else if (removed.test(text)) { params.changeType = 'removed'; hit(removed); }
-    else if (modified.test(text)) { params.changeType = 'modified'; hit(modified); }
+    // Read from the text without the name looked for ("Disabled accounts", "New Hires"),
+    // and "assigned to" or "enabled for" describe a setting, not a change to it.
+    const added = /\b(?:added|created|new|granted|assigned(?! to\b)|invited|activated)\b/i;
+    const removed = /\b(?:removed|deleted|revoked|unassigned|deactivated)\b/i;
+    const modified = /\b(?:modified|edited|updated|altered|enabled(?! for\b)|disabled(?! for\b)|turned (?:on|off)|switched (?:on|off)|toggled)\b/i;
+    if (added.test(unnamed)) { params.changeType = 'added'; hit(added); }
+    else if (removed.test(unnamed)) { params.changeType = 'removed'; hit(removed); }
+    else if (modified.test(unnamed)) { params.changeType = 'modified'; hit(modified); }
   }
 
   if (intent !== 'coverage') {
@@ -588,7 +674,8 @@ export async function planQuestion(question, { helper = null, now = new Date(), 
       empty: 'Ask a question about changes, coverage or failed jobs.',
       'too-long': `Ask in at most ${BUDGET.maxQuestionLength} characters.`,
       'several-entities': 'Ask about one entity at a time.',
-      'several-types': 'Ask about one kind of resource at a time.',
+      'not-held': `KEEL does not back up ${listWords(builtIn.notHeld ?? [])}. It answers questions about changes, backup coverage and failed jobs for the settings it backs up.`,
+      elsewhere: `Ask does not answer about ${listWords((builtIn.elsewhere ?? []).map(({ label }) => label))} yet: see the ${listWords((builtIn.elsewhere ?? []).map(({ page }) => page))} page.`,
       'no-such-kind': 'KEEL backs up no kind of setting that matches those words.',
       'ambiguous-date': `“${builtIn.date}” could be read day first or month first. Write the date as year-month-day, for example ${now.toISOString().slice(0, 10)}.`,
       'unreadable-date': `KEEL could not read that date. Write it as year-month-day, for example ${now.toISOString().slice(0, 10)}.`,

@@ -105,7 +105,8 @@ export interface GroundedAnswer {
   summary?: { resourceType: string; changeType: string; impact: string; count: number }[] | null;
   // Words of the question the reading did not use.
   ignored?: string[];
-  // What the reading filled in because the question did not say it ("period").
+  // What the reading filled in or how it read a word: "period" when the question named
+  // no period, else a sentence ("Read “MFA” as ...").
   assumed?: string[];
   // When KEEL next reads the kind asked about, from its backup schedule.
   nextRead?: { every: string | null; n: number; dueAt: string | null } | null;
@@ -363,6 +364,13 @@ export function askAlerts(answer: GroundedAnswer): AlertItem[] {
       todo: gap.reason === "not-compared-yet" ? nextReadTodo(answer) ?? GAP_TODO[gap.reason] : GAP_TODO[gap.reason] ?? GAP_TODO["not-compared-yet"],
       action: null,
     }));
+  }
+  const readings = (answer.assumed ?? []).filter((line) => line !== "period");
+  if (readings.length) {
+    items.push({
+      key: "assumed-reading", tone: "low", icon: "info", title: "How KEEL read this question",
+      todo: readings.join(" "), action: null,
+    });
   }
   if (answer.ignored?.length) {
     const quoted = answer.ignored.map((word) => `“${word}”`).join(", ");

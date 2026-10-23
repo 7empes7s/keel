@@ -9,7 +9,12 @@ import { bytesWords } from "@/lib/compare-view";
 /** One stored workload code, as loadServiceBackups(...).content[] returns it. */
 export interface ContentBackup {
   workload: string;
-  latest: { id: string; outcome: string; at: string | null; reasons: string[]; namePrefix: string | null } | null;
+  latest: {
+    id: string; outcome: string; at: string | null; reasons: string[];
+    // "name: reason" for what Microsoft 365 holds but Keel cannot read, and is not a failure.
+    skipped?: string[];
+    namePrefix: string | null;
+  } | null;
   lastGood: { id: string; from: string | null; at: string | null; items: number; bytes: number } | null;
   stored: { items: number; versions: number; containers: number; bytes: number; storedBytes: number; newestAt: string | null } | null;
 }
@@ -120,6 +125,34 @@ export function scopeWords(workload: ContentWorkload, prefix: string | null | un
 /** The raw reasons of a run that did not finish, for "Show details". */
 export function runReasons(row: ContentRow): string[] {
   return row.latest && row.latest.outcome !== "succeeded" ? row.latest.reasons : [];
+}
+
+// Skip reasons as the engine records them (engine/content/onedrives.mjs), in words.
+const SKIP_WORDS: Record<string, { one: string; many: string }> = {
+  "OneDrive locked in Microsoft 365": { one: "OneDrive Microsoft 365 has locked", many: "OneDrives Microsoft 365 has locked" },
+  "no OneDrive": { one: "user without a OneDrive", many: "users without a OneDrive" },
+};
+
+/** The raw "name: reason" lines the last run skipped, for "Show details". */
+export function runSkipped(row: ContentRow): string[] {
+  return row.latest?.skipped ?? [];
+}
+
+/** What the last run skipped because Microsoft 365 does not let Keel read it; null when nothing. */
+export function skippedLine(row: ContentRow): string | null {
+  const skipped = runSkipped(row);
+  if (!skipped.length) return null;
+  const byReason = new Map<string, number>();
+  for (const line of skipped) {
+    const reason = line.slice(line.lastIndexOf(": ") + 2);
+    byReason.set(reason, (byReason.get(reason) ?? 0) + 1);
+  }
+  const parts = [...byReason].map(([reason, n]) => {
+    const words = SKIP_WORDS[reason];
+    return words ? plural(n, words.one, words.many) : `${count(n)} ${reason}`;
+  });
+  const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : parts[0];
+  return `Skipped ${list}. Keel cannot read ${skipped.length === 1 ? "it" : "them"}, so this is not counted as an error`;
 }
 
 /** Why the last run did not finish, or what the last good run stored. */

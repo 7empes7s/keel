@@ -3,7 +3,9 @@
  * tenant's users, finds each one's drive (GET /users/{id}/drive) and syncs it, keeping
  * each drive's delta state in the content sync state between runs.
  *
- * - A user without a OneDrive (Graph answers 404) is reported as skipped, not failed.
+ * - A user without a OneDrive (Graph answers 404), or whose OneDrive Microsoft 365 has
+ *   locked (423: an admin lock, or a lapsed licence leaving it read-only or pending
+ *   deletion), is reported as skipped, not failed. Keel cannot read either.
  * - `namePrefix` narrows the run to users whose display name, sign-in name or mail
  *   starts with it (the operator's live check uses `KEEL-RT-`). Matching is on the prefix only.
  * - Read-only: every request goes through the GET-only content transport.
@@ -70,6 +72,7 @@ export async function backupOneDrives({
       drive = await resolveUserDrive({ transport: send, userId: user.id, sleep, maxRetries });
     } catch (error) {
       if (error instanceof DriveSyncError && error.status === 404) skipped.push({ userId: user.id, name, reason: 'no OneDrive' });
+      else if (error instanceof DriveSyncError && error.status === 423) skipped.push({ userId: user.id, name, reason: 'OneDrive locked in Microsoft 365' });
       else errors.push({ userId: user.id, name, step: 'drive', error: errorText(error) });
       continue;
     }

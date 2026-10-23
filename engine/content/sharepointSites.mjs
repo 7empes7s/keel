@@ -557,8 +557,19 @@ export async function backupSharePointSites({
     });
 
     await read('pages', async () => {
-      const summaries = await reader.all(`${base}/pages/microsoft.graph.sitePage?$select=id,name,title,eTag,lastModifiedDateTime`);
-      const pages = { count: 0, unchanged: 0, failed: [] };
+      let summaries;
+      try {
+        summaries = await reader.all(`${base}/pages/microsoft.graph.sitePage?$select=id,name,title,eTag,lastModifiedDateTime`);
+      } catch (error) {
+        // A site without a Site Pages library (the search centre and other classic templates)
+        // answers 404 for its pages. Only when its lists were read and none is a pages library.
+        const noLibrary = error.status === 404 && entry.reads.lists?.status === 'observed'
+          && !entry.lists.some((list) => list.template === 'webPageLibrary');
+        if (!noLibrary) throw error;
+        entry.pages = { count: 0, unchanged: 0, gone: 0, failed: [], library: 'none' };
+        return;
+      }
+      const pages = { count: 0, unchanged: 0, gone: 0, failed: [] };
       for (const summary of summaries) {
         // A page whose eTag is the one already stored is not fetched again.
         const tag = summary.eTag ?? summary.lastModifiedDateTime ?? null;
@@ -575,6 +586,8 @@ export async function backupSharePointSites({
           if (tag) next.pages[summary.id] = { tag, ref };
           pages.count += 1;
         } catch (error) {
+          // Deleted between the listing and the read: gone, not a failed page.
+          if (error.status === 404) { pages.gone += 1; continue; }
           pages.failed.push({ pageId: summary.id, ...failure(error) });
         }
       }

@@ -127,7 +127,7 @@ export async function runContentCollection(client, {
     try {
       await recordContentRun(client, {
         tenantRef, workload: entry.workload, outcome: result.outcome, items: result.items, bytes: result.bytes,
-        reasons: result.reasons ?? [], namePrefix, startedAt, completedAt,
+        reasons: result.reasons ?? [], skipped: result.skipped ?? [], namePrefix, startedAt, completedAt,
       });
     } catch (error) {
       logger.log(`${entry.workload}: the run could not be recorded: ${error?.message ?? error}`);

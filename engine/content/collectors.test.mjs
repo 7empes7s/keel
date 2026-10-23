@@ -222,6 +222,40 @@ test('OneDrive backup reports users without a drive as skipped and fails only wh
   assert.match(failed.errors[0].error, /HTTP 403/);
 });
 
+test('a locked OneDrive (HTTP 423) is skipped and listed, not a failed read', async () => {
+  const tenant = fixtureTenant();
+  const fetchImpl = async (href, init) => (decodeURIComponent(new URL(href).pathname) === '/v1.0/users/u-bob/drive'
+    ? json({ error: { code: 'notAllowed', message: 'The site is locked' } }, 423)
+    : tenant.fetchImpl(href, init));
+  const onedrive = CONTENT_COLLECTORS.find((entry) => entry.workload === 'onedrive');
+  const result = await onedrive.collect(null, {
+    tenantRef: 'sha256:KEEL-RT', store: createMemoryContentStore(), transport: contentReadTransport(async () => 'KEEL-RT-token', fetchImpl),
+    scope: { namePrefix: 'KEEL-RT-' }, sleep: async () => {}, now: () => new Date(), syncState: createMemorySyncState(),
+  });
+  assert.equal(result.outcome, 'succeeded', JSON.stringify(result.reasons));
+  assert.deepEqual(result.reasons, []);
+  assert.deepEqual(result.skipped, ['KEEL-RT-bob@keelrt.example: OneDrive locked in Microsoft 365']);
+});
+
+test('a mailbox Exchange refuses while others read fine says so, and the run stays partial', async () => {
+  const tenant = fixtureTenant();
+  const fetchImpl = async (href, init) => {
+    const path = decodeURIComponent(new URL(href).pathname);
+    if (path === '/v1.0/groups') return json({ value: [{ id: 'g-locked', displayName: 'KEEL-RT-group', mail: 'KEEL-RT-group@keelrt.example' }] });
+    if (path === '/v1.0/groups/g-locked/events') return json({ error: { code: 'ErrorAccessDenied', message: 'Access is denied. Check credentials and try again.' } }, 403);
+    return tenant.fetchImpl(href, init);
+  };
+  const mail = CONTENT_COLLECTORS.find((entry) => entry.workload === 'exchange-mail');
+  const context = {
+    tenantRef: 'sha256:KEEL-RT', store: createMemoryContentStore(), transport: contentReadTransport(async () => 'KEEL-RT-token', fetchImpl),
+    scope: { namePrefix: 'KEEL-RT-' }, sleep: async () => {}, now: () => new Date(), syncState: createMemorySyncState(),
+  };
+  const result = await mail.collect(null, context);
+  assert.equal(result.outcome, 'partial');
+  assert.equal(result.reasons.length, 1);
+  assert.match(result.reasons[0], /^KEEL-RT-group \(group\): Microsoft 365 refused access to this mailbox only; other mailboxes read fine \(403 ErrorAccessDenied/);
+});
+
 test('the adapters keep every request a Graph GET and only pass read headers', async () => {
   const seen = [];
   let throttled = 1;

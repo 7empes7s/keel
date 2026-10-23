@@ -16,9 +16,10 @@ type Value = OwnCheck["expected"];
 export function readValue(text: string, seen: Value[]): Value {
   const kinds = new Set(seen.filter((value) => value !== null).map((value) => typeof value));
   const trimmed = text.trim();
-  if (kinds.has("boolean") || (!kinds.size && /^(true|false)$/i.test(trimmed))) return /^(true|on|yes)$/i.test(trimmed);
+  // On or off only when the text says so and the setting holds on/off (or nothing seen yet).
+  if ((kinds.has("boolean") || !kinds.size) && /^(true|false|on|off)$/i.test(trimmed)) return /^(true|on)$/i.test(trimmed);
   if ((kinds.has("number") || !kinds.size) && trimmed !== "" && Number.isFinite(Number(trimmed))) return Number(trimmed);
-  return text;
+  return trimmed;
 }
 
 // Write your own check: pick a kind of setting Keel backs up, one of its settings and
@@ -45,7 +46,8 @@ export function OwnCheckSheet({ choices, standards, onDone, onClose }: {
   const type = types.find((entry) => entry.resourceType === resourceType) ?? null;
   const setting = type?.fields.find((entry) => entry.field === field) ?? null;
   const seen = setting?.values ?? [];
-  const isSwitch = seen.length > 0 && seen.every((value) => typeof value === "boolean");
+  const known = seen.filter((value) => value !== null);
+  const isSwitch = known.length > 0 && known.every((value) => typeof value === "boolean");
   const expected = readValue(typed, seen);
   const sentence = type && setting && typed.trim() !== "" ? ownCheckSentence({ resourceType: type.resourceType, field: setting.field, operator, expected, appliesTo }) : null;
   const typeOptions = useMemo(() => types.map((entry) => ({ value: entry.resourceType, label: typeName(entry.resourceType), hint: entry.count === 1 ? "1 in the newest backup" : `${entry.count} in the newest backup` })), [types]);

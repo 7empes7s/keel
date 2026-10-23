@@ -35,7 +35,8 @@ export const SEVERITIES = Object.freeze(['low', 'medium', 'high']);
 // The same freshness Keel's own checks on backed-up settings ask for.
 const MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const MAX_TEXT = 200;
-// A setting is a top-level field or a short path into one ("conditions.users.includeUsers").
+// A setting is a top-level field or a short path into one ("conditions.applications.applicationFilter.mode").
+// A list or an object never equals one plain value, so a check on one never passes with equals.
 const FIELD_PATH = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*){0,3}$/;
 // How many objects and sample values the field list offers for one type.
 const SAMPLE_OBJECTS = 200;
@@ -45,7 +46,8 @@ const SAMPLE_VALUES = 5;
 export function valueAt(fact, path) {
   let value = fact;
   for (const key of path.split('.')) {
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+    // Own fields only: a name such as "constructor" never reads the object's prototype.
+    if (value === null || typeof value !== 'object' || Array.isArray(value) || !Object.hasOwn(value, key)) return null;
     value = value[key];
   }
   return value === undefined ? null : value;
@@ -116,7 +118,8 @@ export function validateOwnCheck(input) {
   if (!APPLIES_TO.includes(appliesTo)) throw new TypeError(`a check applies to ${APPLIES_TO.join(' or ')}`);
   const severity = input?.severity ?? 'medium';
   if (!SEVERITIES.includes(severity)) throw new TypeError(`a check's weight is one of ${SEVERITIES.join(', ')}`);
-  return { standard, name, resourceType, field, operator, expected: input.expected, appliesTo, severity };
+  const expected = typeof input.expected === 'string' ? input.expected.trim() : input.expected;
+  return { standard, name, resourceType, field, operator, expected, appliesTo, severity };
 }
 
 function describe(row) {

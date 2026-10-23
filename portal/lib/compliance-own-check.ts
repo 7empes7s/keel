@@ -19,10 +19,17 @@ export function guardedOwnCheckCreate(deps: GuardDeps = {}) {
     if (!Object.hasOwn(params, "expected")) delete (input as Record<string, unknown>).expected;
     try {
       const row = (await createOwnCheck(client, { principalId, tenantRef, input })) as Record<string, unknown>;
-      const checks = (await runComplianceChecks(client, { tenantRef, actor: principalId, controls: [controlFromRow(row)] })) as {
-        evaluations: { id: string; verdict: string }[];
-      };
-      const evaluation = checks.evaluations[0];
+      // The check is saved: a failure of its first run must not read as "not saved" (a
+      // retry would write it twice). It runs again after the next backup.
+      let evaluation: { id: string; verdict: string } | undefined;
+      try {
+        const checks = (await runComplianceChecks(client, { tenantRef, actor: principalId, controls: [controlFromRow(row)] })) as {
+          evaluations: { id: string; verdict: string }[];
+        };
+        evaluation = checks.evaluations[0];
+      } catch {
+        evaluation = undefined;
+      }
       return Response.json({
         check: shapeOwnCheck(row),
         evaluationId: evaluation ? String(evaluation.id) : null,

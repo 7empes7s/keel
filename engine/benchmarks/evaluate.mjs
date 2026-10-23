@@ -130,6 +130,8 @@ export function evaluateControl({ controlId, control: given = null, tenantRef, o
   const control = given ?? controlFor(controlId);
   if (!control) throw new TypeError(`${controlId}: control is not registered`);
   if (control.controlId !== controlId) throw new TypeError(`${controlId}: the control passed is ${control.controlId}`);
+  // A registered id always evaluates as registered: a passed control may stand in only for one the registry does not hold.
+  if (given && controlFor(controlId) && controlFor(controlId) !== given) throw new TypeError(`${controlId}: a registered control cannot be replaced`);
 
   const factsByType = {};
   const evidenceRefs = [];

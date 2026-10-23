@@ -330,6 +330,8 @@ export interface Coverage {
   total: number;
   checked: number;
   passing: number;
+  // Policies whose only checks cover part of them, and those pass: never a full pass.
+  partlyPassing: number;
   notPassing: number;
   unknown: number;
 }
@@ -355,10 +357,15 @@ export function standardCoverage(standard: KnownStandard, findings: ComplianceFi
     rows,
     total: rows.length,
     checked: checked.length,
-    passing: checked.filter((row) => row.result === "passing" || row.result === "not-relevant").length,
+    passing: checked.filter((row) => (row.result === "passing" || row.result === "not-relevant") && !partOnly(row)).length,
+    partlyPassing: checked.filter((row) => (row.result === "passing" || row.result === "not-relevant") && partOnly(row)).length,
     notPassing: checked.filter((row) => row.result === "failing" || row.result === "not-set-up" || row.result === "excepted").length,
     unknown: checked.filter((row) => row.result === "unknown").length,
   };
+}
+
+function partOnly(row: CoverageRow): boolean {
+  return row.mapped.every((item) => item.match === "partial");
 }
 
 /** "Keel checks 3 of 43 CISA SCuBA policies: 1 passes, 2 do not." */
@@ -368,6 +375,7 @@ export function coverageSentence(standard: KnownStandard, coverage: Coverage): s
     : `Keel maps ${plural(coverage.checked, `${standard.name} control`)}`;
   const parts = [
     coverage.passing ? `${coverage.passing} ${coverage.passing === 1 ? "passes" : "pass"}` : null,
+    coverage.partlyPassing ? `${coverage.partlyPassing} ${coverage.partlyPassing === 1 ? "passes" : "pass"} in part` : null,
     coverage.notPassing ? `${coverage.notPassing} ${coverage.notPassing === 1 ? "does not" : "do not"}` : null,
     coverage.unknown ? `${coverage.unknown} could not be checked` : null,
   ].filter(Boolean);

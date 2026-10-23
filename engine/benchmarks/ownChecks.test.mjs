@@ -12,7 +12,8 @@ import { complianceFindings } from '../govern/baselineCompliance.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { NIST_MAPPINGS } from '../../tools/qualification/benchmarkLicense.mjs';
-import { createOwnCheck, listOwnControls, ownCheckChoices, removeOwnCheck, validateOwnCheck } from './ownChecks.mjs';
+import { controlFromRow, createOwnCheck, listOwnControls, valueAt, ownCheckChoices, removeOwnCheck, validateOwnCheck } from './ownChecks.mjs';
+import { evaluateControl } from './evaluate.mjs';
 import { controlFor, listControls } from './registry.mjs';
 import { runComplianceChecks } from './runChecks.mjs';
 import { NIST_REFS, SCUBA_COMMIT, SCUBA_POLICY_IDS, STANDARDS } from './standards.mjs';
@@ -162,6 +163,7 @@ test('a check is refused unless it names a backed-up type, one setting and one p
     assert.throws(() => validateOwnCheck(check({ expected })), /plain value/, String(expected));
   }
   assert.equal(validateOwnCheck(check({ expected: null })).expected, null);
+  assert.equal(validateOwnCheck(check({ expected: ' enabled ' })).expected, 'enabled', 'text is trimmed');
   assert.throws(() => validateOwnCheck(check({ operator: 'contains' })), /operator/);
   assert.throws(() => validateOwnCheck(check({ appliesTo: 'some' })), /applies to/);
   assert.throws(() => validateOwnCheck(check({ severity: 'urgent' })), /weight/);
@@ -205,4 +207,13 @@ test('the known standards match their pinned sources and name only real checks',
   }
   // Public-domain standards only: CIS Benchmarks' licence rules out shipping them.
   assert.deepEqual(STANDARDS.map((standard) => standard.id), ['cisa-scuba', 'nist-800-53']);
+});
+
+test('a setting is read from the object itself, and a registered check is never replaced', () => {
+  assert.equal(valueAt({ state: 'on' }, 'constructor'), null);
+  assert.equal(valueAt({ a: { toString: 1 } }, 'a.toString'), 1);
+  assert.equal(valueAt({ a: [1] }, 'a.length'), null);
+  const registered = 'keel-custom.conditional-access.block-legacy';
+  const fake = { ...controlFromRow({ id: 'x', standard: 's', name: 'n', resource_type: 'conditionalAccessPolicy', field: 'state', operator: 'equals', expected: 'x', applies_to: 'every', severity: 'low' }), controlId: registered };
+  assert.throws(() => evaluateControl({ controlId: registered, control: fake, tenantRef: 'sha256:0000000000000000' }), /cannot be replaced/);
 });

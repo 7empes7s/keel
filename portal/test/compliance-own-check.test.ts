@@ -54,6 +54,10 @@ test("a known standard's policies take the worst result of the checks mapped to 
   const excepted = standardCoverage(SCUBA, [finding("keel-custom.conditional-access.block-legacy", "fail", { exposed: false, exceptionState: "authorized" })]);
   assert.equal(excepted.rows.find((entry) => entry.ref === "MS.AAD.1.1v1")!.result, "excepted");
   assert.equal(excepted.notPassing, 1);
+  // A policy only part-checked never counts as a full pass.
+  const part = standardCoverage(SCUBA, [finding("keel-custom.role-assignment.admin-count-at-most", "pass")]);
+  assert.deepEqual([part.passing, part.partlyPassing], [0, 1]);
+  assert.match(coverageSentence(SCUBA, part), /1 passes in part/);
 });
 
 test("an own check is said in words and filed under its standard", () => {
@@ -76,6 +80,9 @@ test("a typed value is read as the kind the setting holds", () => {
   assert.equal(readValue("enabled", []), "enabled");
   assert.equal(readValue("TRUE", []), true);
   assert.equal(readValue("12", []), 12);
+  assert.equal(readValue(" enabled ", ["enabled"]), "enabled", "text is trimmed");
+  assert.equal(readValue("maybe", [true]), "maybe", "a word is never turned into off");
+  assert.equal(readValue("off", [true]), false);
 });
 
 interface Client {

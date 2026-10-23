@@ -1,4 +1,4 @@
-import { isVerbatimSymbol } from './resolver.mjs';
+import { dependencySymbol } from './resolver.mjs';
 
 /**
  * Nodes are natural keys. Edges are tenant-specific symbol references only —
@@ -18,8 +18,8 @@ export function buildGraph(resources) {
     // (from before classify() compared ids case-insensitively) plan cleanly.
     const deps = new Set(
       [...r.references.map((ref) => ref.symbol), ...assignmentTargetSymbols(r)]
-        .filter((symbol) => symbol && symbol !== r.naturalKey
-          && !isVerbatimSymbol(symbol) && nodes.has(symbol)),
+        .map((symbol) => dependencySymbol(symbol, nodes))
+        .filter((symbol) => symbol && symbol !== r.naturalKey),
     );
     edges.set(r.naturalKey, deps);
   }

@@ -11,7 +11,7 @@ import {
   storageResidency,
 } from "../../engine/govern/baselineCompliance.mjs";
 import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
-import { listOpenCompletionWork } from "../../engine/restore/completion.mjs";
+import { countOpenCompletionSteps, listOpenCompletionWork } from "../../engine/restore/completion.mjs";
 import {
   getActiveBaseline,
   listLatestOpenDrift,
@@ -1316,14 +1316,14 @@ export function buildAlerts({
 export async function waitingFor(client: KeelClient, ref: string): Promise<DashboardWaiting> {
   const { rows: [row] } = await client.query(
     `SELECT (SELECT count(*)::int FROM alert WHERE tenant_ref = $1 AND state IN ('open','reopened')) AS open_alerts,
-            (SELECT count(*)::int FROM incident WHERE tenant_ref = $1 AND status = 'open') AS open_incidents,
-            (SELECT count(*)::int FROM recovery_completion_item WHERE tenant_ref = $1 AND state = 'pending') AS follow_ups`,
+            (SELECT count(*)::int FROM incident WHERE tenant_ref = $1 AND status = 'open') AS open_incidents`,
     [ref],
   );
   return {
     openAlerts: Number(row?.open_alerts ?? 0),
     openIncidents: Number(row?.open_incidents ?? 0),
-    restoreFollowUps: Number(row?.follow_ups ?? 0),
+    // A step a later restore replaced is not waiting on anyone.
+    restoreFollowUps: await countOpenCompletionSteps(client, { tenantRef: ref }),
   };
 }
 

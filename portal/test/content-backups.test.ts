@@ -10,7 +10,9 @@ import {
   holdingLine,
   runLine,
   runScope,
+  runSkipped,
   scopeSentence,
+  skippedLine,
   scopeWords,
   CONTENT_WORKLOADS,
   type ContentBackup,
@@ -94,4 +96,21 @@ test("the section leads with the answer, lists every workload, and names the Tea
   assert.match(html, /Teams chat and channel messages are not backed up yet/);
   assert.match(html, /Only sites whose names start with KEEL-RT-/);
   assert.match(renderToStaticMarkup(createElement(ContentBackups, { data: undefined, now: NOW })), /could not read the content backups/);
+});
+
+test("OneDrives Microsoft 365 has locked are listed as skipped, not as a problem", () => {
+  const skipped = [
+    "KEEL-RT-adele@keelrt.example: OneDrive locked in Microsoft 365",
+    "KEEL-RT-alex@keelrt.example: OneDrive locked in Microsoft 365",
+  ];
+  const onedrive = run("onedrive", "succeeded", { stored: stored(2, 1771) });
+  const data: ContentBackupsData = { generatedAt: NOW, content: [{ ...onedrive, latest: { ...onedrive.latest!, skipped } }] };
+  const row = contentRows(data).find((candidate) => candidate.workload.code === "onedrive")!;
+  assert.equal(row.state, "backed-up");
+  assert.equal(skippedLine(row), "Skipped 2 OneDrives Microsoft 365 has locked. Keel cannot read them, so this is not counted as an error");
+  assert.deepEqual(runSkipped(row), skipped);
+  const html = renderToStaticMarkup(createElement(ContentBackupsView, { data, now: NOW }));
+  assert.match(html, /Skipped 2 OneDrives Microsoft 365 has locked/);
+  assert.match(html, /KEEL-RT-adele@keelrt.example: OneDrive locked in Microsoft 365/);
+  assert.equal(skippedLine(contentRows(DATA).find((candidate) => candidate.workload.code === "onedrive")!), null);
 });

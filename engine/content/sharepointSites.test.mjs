@@ -464,6 +464,49 @@ test('a changed page is fetched again on a repeat run', async () => {
   assert.ok(changed.requests.some((request) => request.url.includes(`/pages/${PAGE}/`)));
 });
 
+test('a site without a Site Pages library (404 on its pages) has no pages, not a failed read', async () => {
+  // The search centre site has no Site Pages library, and Graph answers 404 for its pages.
+  const routes = fixtureRoutes();
+  delete routes[`/sites/${SUB}/pages/microsoft.graph.sitePage`];
+  const result = await backupSharePointSites({ transport: fakeGraph(routes).transport, store: memoryStore(), tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]) });
+  assert.equal(result.outcome, 'complete');
+  const sub = result.sites.find((entry) => entry.siteId === SUB);
+  assert.equal(sub.reads.pages.status, 'observed');
+  assert.deepEqual(sub.pages, { count: 0, unchanged: 0, gone: 0, failed: [], library: 'none' });
+});
+
+test('a 404 on the pages of a site that has a Site Pages library is still a failed read', async () => {
+  const routes = fixtureRoutes();
+  delete routes[`/sites/${SUB}/pages/microsoft.graph.sitePage`];
+  routes[`/sites/${SUB}/lists`] = { value: [{ id: SUBLIST, displayName: 'Site Pages', list: { template: 'webPageLibrary' } }] };
+  routes[`/sites/${SUB}/lists/${SUBLIST}/drive`] = { id: 'b!pages', driveType: 'documentLibrary' };
+  const result = await backupSharePointSites({ transport: fakeGraph(routes).transport, store: memoryStore(), tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]) });
+  assert.equal(result.outcome, 'partial');
+  assert.equal(result.sites.find((entry) => entry.siteId === SUB).reads.pages.status, 'failed');
+});
+
+test('a page deleted between the listing and its read is gone, not a failed page', async () => {
+  const GONE = 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee';
+  const routes = fixtureRoutes();
+  routes[`/sites/${ROOT}/pages/microsoft.graph.sitePage`] = { value: [{ id: PAGE, name: 'Home.aspx', eTag: 'p1' }, { id: GONE, name: 'Old.aspx', eTag: 'g1' }] };
+  const store = memoryStore();
+  const result = await backupSharePointSites({ transport: fakeGraph(routes).transport, store, tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]) });
+  assert.equal(result.outcome, 'complete');
+  assert.equal(result.sites[0].reads.pages.status, 'observed');
+  assert.deepEqual([result.sites[0].pages.count, result.sites[0].pages.gone], [1, 1]);
+  assert.ok(store.items.some((item) => item.itemKey === `page/${PAGE}`));
+  assert.ok(!store.items.some((item) => item.itemKey === `page/${GONE}`));
+});
+
+test('every listed page answering 404 is a failed read, not a run of deletions', async () => {
+  const routes = fixtureRoutes();
+  delete routes[`/sites/${ROOT}/pages/${PAGE}/microsoft.graph.sitePage`];
+  const result = await backupSharePointSites({ transport: fakeGraph(routes).transport, store: memoryStore(), tenantRef: 't', tenantHost: HOST, siteFilter: keelRt, backupLibrary: completeLibrary([]) });
+  assert.equal(result.outcome, 'partial');
+  assert.equal(result.sites[0].reads.pages.status, 'failed');
+  assert.equal(result.sites[0].reads.pages.httpStatus, 404);
+});
+
 test('a delta item gone before its own read is a deletion, and a next link in another case is followed', async () => {
   const deltaState = memoryDeltaState();
   await deltaState.save(`items:${ROOT}/${LIST}`, { version: 1, nextLink: null, deltaLink: null, fullPass: null, items: { 8: 'e8' } });

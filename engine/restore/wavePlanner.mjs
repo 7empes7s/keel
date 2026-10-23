@@ -1,4 +1,5 @@
 import { buildGraph, topoWaves } from '../graph/dependencyGraph.mjs';
+import { dependencySymbol } from '../graph/resolver.mjs';
 
 function parseFieldPath(path) {
   const segments = [];
@@ -144,7 +145,10 @@ export function planWaves(resources) {
     const from = sorted[0];
     const to = cycle[(cycle.indexOf(from) + 1) % cycle.length];
     const resource = graph.nodes.get(from);
-    const ref = resource.references.find((r) => r.symbol === to);
+    // An appId reference waits for `application:<appId>` (resolver.mjs's
+    // dependencySymbol); the patch keeps the reference's own symbol, so an appId
+    // field is never patched with an object id: it fails closed instead.
+    const ref = resource.references.find((r) => dependencySymbol(r.symbol, graph.nodes) === to);
     if (ref) {
       // This is immutable phase metadata, not a transformed snapshot. The
       // original resource payload remains available for the second phase.
@@ -152,7 +156,7 @@ export function planWaves(resources) {
         naturalKey: from,
         resourceType: resource.resourceType,
         field: ref.field,
-        symbol: to,
+        symbol: ref.symbol,
         sourceValue: valueAtPath(resource.payload, ref.field),
         reference: Object.freeze({ ...ref }),
       }));

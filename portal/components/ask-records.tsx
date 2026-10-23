@@ -1,21 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ListPager, SortControl, useListPaging, type ListSort } from "@/components/list/list-paging";
-import { OptionPicker } from "@/components/pickers/option-picker";
+import { MultiOptionPicker, OptionPicker } from "@/components/pickers/option-picker";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { Badge } from "@/components/ui/badge";
 import {
-  recordBadges, recordKind, recordNote, recordService, recordTime, recordTitle, recordTone, sourceLabel, windowSentence,
+  recordBadges, recordFields, recordKind, recordNote, recordService, recordTime, recordTitle, recordTone, sourceLabel, windowSentence,
   type AnswerRecord,
 } from "@/lib/ask-view";
-import { byText, byTime, pageWindow } from "@/lib/paging";
+import { byText, byTime, pageGroups } from "@/lib/paging";
 import { serviceOrder } from "@/lib/services";
 
 // The records an answer rests on, as one table: filter tiles (the same kind adds up,
-// search narrows), grouping, and the shared Order by, rows per page and pages.
+// search narrows), grouping with groups that fold away, headers that sort, columns the
+// reader picks, and the shared Order by, rows per page and pages.
 
 const TONE_RANK: Record<string, number> = { urgent: 0, soon: 1, low: 2, fine: 3, neutral: 4 };
 
@@ -36,7 +37,26 @@ interface Row {
   time: string;
   service: { code: string; name: string; icon: string };
   kind: string;
+  fields: string;
 }
+
+type ColumnKey = "what" | "kind" | "service" | "state" | "fields" | "when" | "source";
+
+interface Column { key: ColumnKey; label: string; sort?: string; optional: boolean }
+
+// "What" always shows; the rest the reader may hide. Kind and service are off at first:
+// the name and the group already say them.
+const COLUMNS: readonly Column[] = [
+  { key: "what", label: "What", sort: "name", optional: false },
+  { key: "kind", label: "Kind", sort: "kind", optional: true },
+  { key: "service", label: "Service", sort: "service", optional: true },
+  { key: "state", label: "State", sort: "risk", optional: true },
+  { key: "fields", label: "Settings changed", sort: "fields", optional: true },
+  { key: "when", label: "When", sort: "when", optional: true },
+  { key: "source", label: "Where it comes from", optional: true },
+];
+const DEFAULT_COLUMNS: readonly ColumnKey[] = ["what", "state", "fields", "when", "source"];
+const COLUMNS_KEY = "keel-ask-columns";
 
 // Within a service, kinds follow the portal's order: people, groups, memberships, roles,
 // then policies and rules, then everything else.
@@ -64,18 +84,44 @@ const SORTS: readonly ListSort<Row>[] = [
   { key: "when", label: "When", desc: true, compare: (a, b) => byTime(a.time, b.time) },
   { key: "risk", label: "Risk", desc: true, compare: (a, b) => (TONE_RANK[b.tone] ?? 9) - (TONE_RANK[a.tone] ?? 9) },
   { key: "name", label: "Name", compare: (a, b) => byText(a.title, b.title) },
+  { key: "kind", label: "Kind", compare: (a, b) => byText(a.kind, b.kind) },
+  { key: "service", label: "Service", compare: (a, b) => byText(a.service.name, b.service.name) },
+  { key: "fields", label: "Settings changed", compare: (a, b) => byText(a.fields || "\uffff", b.fields || "\uffff") },
 ];
+
+/** The columns this reader chose last time, kept in this browser only. */
+function useColumns(hasFields: boolean): [ColumnKey[], (next: ColumnKey[]) => void] {
+  const fallback = DEFAULT_COLUMNS.filter((key) => hasFields || key !== "fields");
+  const [chosen, setChosen] = useState<ColumnKey[] | null>(null);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(COLUMNS_KEY) ?? "null");
+      if (Array.isArray(saved)) setChosen(COLUMNS.filter((column) => saved.includes(column.key)).map((column) => column.key));
+    } catch { /* no saved choice */ }
+  }, []);
+  const save = (next: ColumnKey[]) => {
+    const keys = COLUMNS.filter((column) => !column.optional || next.includes(column.key)).map((column) => column.key);
+    setChosen(keys);
+    try { window.localStorage.setItem(COLUMNS_KEY, JSON.stringify(keys)); } catch { /* storage off */ }
+  };
+  const keys = (chosen ?? fallback).filter((key) => key !== "what");
+  return [["what", ...keys], save];
+}
 const SUGGESTED = (a: Row, b: Row) => byTime(b.time, a.time) || byText(a.title, b.title);
 
 export function AskRecords({ records }: { records: AnswerRecord[] }) {
   const rows = useMemo<Row[]>(() => records.map((record) => ({
     record, title: recordTitle(record), badges: recordBadges(record), tone: recordTone(record),
-    time: recordTime(record), service: recordService(record), kind: recordKind(record),
+    time: recordTime(record), service: recordService(record), kind: recordKind(record), fields: recordFields(record),
   })), [records]);
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState<GroupKey>(records.some((record) => record.kind === "job") ? "none" : "service");
+  const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const paging = useListPaging<Row>({ prefix: "rec-", sorts: SORTS });
+  const hasFields = rows.some((row) => row.fields);
+  const [columns, setColumns] = useColumns(hasFields);
+  const shownColumns = COLUMNS.filter((column) => columns.includes(column.key));
 
   // Filter tiles: one per badge label, counted over every row. Tiles of the same column
   // (what changed, or risk) add up; the search box narrows what they keep.
@@ -88,33 +134,39 @@ export function AskRecords({ records }: { records: AnswerRecord[] }) {
     });
     return [...map.values()].sort((a, b) => a.column - b.column || (TONE_RANK[a.tone] ?? 9) - (TONE_RANK[b.tone] ?? 9));
   }, [rows]);
-  const columns = useMemo(() => [...new Set(tiles.map((tile) => tile.column))], [tiles]);
+  const badgeColumns = useMemo(() => [...new Set(tiles.map((tile) => tile.column))], [tiles]);
 
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    return rows.filter((row) => columns.every((column) => {
+    return rows.filter((row) => badgeColumns.every((column) => {
       const picked = tiles.filter((tile) => tile.column === column && chosen.has(tile.label));
       return !picked.length || picked.some((tile) => row.badges[column]?.label === tile.label);
-    }) && (!needle || `${row.title} ${row.kind} ${row.service.name}`.toLowerCase().includes(needle)));
-  }, [rows, columns, tiles, chosen, query]);
+    }) && (!needle || `${row.title} ${row.kind} ${row.service.name} ${row.fields}`.toLowerCase().includes(needle)));
+  }, [rows, badgeColumns, tiles, chosen, query]);
 
-  const ordered = useMemo(() => [...shown].sort((a, b) => {
-    const left = groupOf(a, group).rank;
-    const right = groupOf(b, group).rank;
-    const byGroup = typeof left === "number" && typeof right === "number" ? left - right : String(left).localeCompare(String(right));
-    const byKind = group === "service" ? kindRank(a.kind) - kindRank(b.kind) || a.kind.localeCompare(b.kind) : 0;
+  // Groups in order, each with its rows sorted: by the header or Order by chosen, else newest first.
+  const groups = useMemo(() => {
     const sign = paging.dir === "desc" ? -1 : 1;
-    return byGroup || byKind || (paging.sort ? sign * paging.sort.compare(a, b) : 0) || SUGGESTED(a, b);
-  }), [shown, group, paging.sort, paging.dir]);
+    const byRow = (a: Row, b: Row) => (group === "service" && !paging.sort ? kindRank(a.kind) - kindRank(b.kind) || a.kind.localeCompare(b.kind) : 0)
+      || (paging.sort ? sign * paging.sort.compare(a, b) : 0) || SUGGESTED(a, b);
+    const map = new Map<string, { key: string; label: string; icon?: string; rank: number | string; rows: Row[] }>();
+    for (const row of shown) {
+      const entry = groupOf(row, group);
+      const found = map.get(entry.key) ?? { ...entry, rows: [] };
+      found.rows.push(row);
+      map.set(entry.key, found);
+    }
+    return [...map.values()].map((entry) => ({ ...entry, rows: [...entry.rows].sort(byRow) })).sort((a, b) => (
+      typeof a.rank === "number" && typeof b.rank === "number" ? a.rank - b.rank : String(a.rank).localeCompare(String(b.rank))
+    ));
+  }, [shown, group, paging.sort, paging.dir]);
 
-  const { start, end } = pageWindow(paging.pageOf(ordered.length), ordered.length, paging.size);
-  const slice = ordered.slice(start, end);
+  const grouped = group !== "none";
+  // Groups the filters hide may still be folded; only the ones showing count.
+  const allFolded = groups.every((entry) => closed.has(entry.key));
+  const isClosed = (entry: { key: string }) => grouped && closed.has(entry.key);
+  const { groups: paged, total: open } = pageGroups(groups, (entry) => entry.rows.length, isClosed, paging.pageOf(groups.reduce((sum, entry) => sum + (isClosed(entry) ? 0 : entry.rows.length), 0)), paging.size);
   const restart = () => paging.setPage(1);
-  const groupCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const row of ordered) counts.set(groupOf(row, group).key, (counts.get(groupOf(row, group).key) ?? 0) + 1);
-    return counts;
-  }, [ordered, group]);
 
   const toggle = (label: string) => {
     setChosen((before) => {
@@ -124,8 +176,35 @@ export function AskRecords({ records }: { records: AnswerRecord[] }) {
     });
     restart();
   };
+  const toggleGroup = (key: string) => setClosed((before) => {
+    const next = new Set(before);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+  // A header sorts by its column; the same header again flips the direction.
+  const sortBy = (key: string) => {
+    if (paging.sort?.key === key) paging.setDir(paging.dir === "desc" ? "asc" : "desc");
+    else paging.setSort(key);
+  };
 
-  let lastGroup: string | null = null;
+  const cell = (row: Row, key: ColumnKey) => {
+    const record = row.record;
+    switch (key) {
+      case "kind": return <td data-label="Kind" key={key}>{row.kind}</td>;
+      case "service": return <td data-label="Service" key={key}><span className="ak-service"><Icon name={row.service.icon as IconName} />{row.service.name}</span></td>;
+      case "state": return (
+        <td data-label="State" key={key}>
+          <span className="ask-badges">{row.badges.map((badge) => <Badge key={badge.label} tone={badge.tone as "urgent"}>{badge.label}</Badge>)}</span>
+          {recordNote(record) ? <small>{recordNote(record)}</small> : null}
+        </td>
+      );
+      case "fields": return <td data-label="Settings changed" key={key}>{row.fields ? <span className="ak-fields">{row.fields}</span> : <span className="ak-none">{record.kind === "change" && record.changeType !== "modified" ? "The whole item" : "Not recorded"}</span>}</td>;
+      case "when": return <td data-label="When" key={key}><span className="ask-record-window">{windowSentence(record)}</span></td>;
+      case "source": return <td data-label="Source" key={key}><Link href={record.source.href}>{sourceLabel(record)}</Link></td>;
+      default: return null;
+    }
+  };
+
   return (
     <div className="ak-records">
       <div aria-label="Filter the records" className="ak-filters" role="group">
@@ -138,46 +217,75 @@ export function AskRecords({ records }: { records: AnswerRecord[] }) {
       </div>
       <div className="ak-controls">
         <label className="filter-field ak-search"><span>Find</span>
-          <input onChange={(event) => { setQuery(event.target.value); restart(); }} placeholder="Name, kind or service" type="search" value={query} />
+          <input onChange={(event) => { setQuery(event.target.value); restart(); }} placeholder="Name, kind, service or setting" type="search" value={query} />
         </label>
-        <OptionPicker label="Group by" onChange={(next) => { setGroup(next); restart(); }} options={GROUPS.map((option) => ({ value: option.key, label: option.label }))} value={group} />
+        <OptionPicker label="Group by" onChange={(next) => { setGroup(next); setClosed(new Set()); restart(); }} options={GROUPS.map((option) => ({ value: option.key, label: option.label }))} value={group} />
         <SortControl paging={paging} sorts={SORTS} />
+        <MultiOptionPicker
+          anyLabel="Only the name"
+          label="Columns"
+          onChange={(next) => setColumns(next as ColumnKey[])}
+          options={COLUMNS.filter((column) => column.optional).map((column) => ({ value: column.key, label: column.label }))}
+          values={columns.filter((key) => key !== "what")}
+        />
+        {grouped && groups.length > 1 ? (
+          <button className="btn ak-fold" onClick={() => setClosed(allFolded ? new Set() : new Set(groups.map((entry) => entry.key)))} type="button">
+            <Icon name={allFolded ? "chevron-down" : "chevron"} />{allFolded ? "Open all groups" : "Fold all groups"}
+          </button>
+        ) : null}
       </div>
-      {slice.length ? (
+      {paged.length ? (
         <div className="pg-table-wrap">
-          <table aria-label="Records this answer rests on" className="pg-table">
-            <thead><tr><th scope="col">What</th><th scope="col">State</th><th scope="col">When</th><th scope="col">Where it comes from</th></tr></thead>
+          <table aria-label="Records this answer rests on" className="pg-table ak-table">
+            <thead>
+              <tr>
+                {shownColumns.map((column) => {
+                  const active = column.sort && paging.sort?.key === column.sort;
+                  return (
+                    <th aria-sort={active ? (paging.dir === "desc" ? "descending" : "ascending") : undefined} key={column.key} scope="col">
+                      {column.sort ? (
+                        <button className="ak-sort" data-active={active || undefined} onClick={() => sortBy(column.sort!)} title={`Order by ${column.label.toLowerCase()}`} type="button">
+                          {column.label}<Icon name={active ? (paging.dir === "desc" ? "down" : "up") : "swap"} />
+                        </button>
+                      ) : column.label}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
             <tbody>
-              {slice.flatMap((row) => {
-                const entry = groupOf(row, group);
+              {paged.flatMap(({ group: entry, start, end, continued }) => {
                 const out = [];
-                if (group !== "none" && entry.key !== lastGroup) {
-                  lastGroup = entry.key;
+                const folded = isClosed(entry);
+                if (grouped) {
                   out.push(
-                    <tr className="pg-group" key={`group-${entry.key}`}>
-                      <th colSpan={4} scope="colgroup"><span className="ak-group">{entry.icon ? <Icon name={entry.icon as IconName} /> : null}{entry.label}<small>{groupCounts.get(entry.key) ?? 0}</small>{out.length === 0 && start > 0 && slice[0] === row && groupOf(ordered[start - 1], group).key === entry.key ? <em className="ak-continued">continued</em> : null}</span></th>
+                    <tr className="pg-group" data-closed={folded || undefined} key={`group-${entry.key}`}>
+                      <th colSpan={shownColumns.length} scope="colgroup">
+                        <button aria-expanded={!folded} className="ak-group ak-group-toggle" onClick={() => { toggleGroup(entry.key); }} type="button">
+                          <Icon className="ak-group-chevron" name="chevron-down" />
+                          {entry.icon ? <Icon name={entry.icon as IconName} /> : null}{entry.label}<small>{entry.rows.length}</small>
+                          {continued && !folded ? <em className="ak-continued">continued</em> : null}
+                        </button>
+                      </th>
                     </tr>,
                   );
                 }
-                const record = row.record;
-                out.push(
-                  <tr className={`ask-record ask-record-${record.kind}`} data-tone={row.tone} key={record.id}>
-                    <th scope="row"><span className="pg-row-name">{row.title}</span>{group !== "kind" && record.kind !== "job" && !row.title.toLowerCase().includes(`(${row.kind.toLowerCase()})`) ? <small>{row.kind}</small> : null}</th>
-                    <td data-label="State">
-                      <span className="ask-badges">{row.badges.map((badge) => <Badge key={badge.label} tone={badge.tone as "urgent"}>{badge.label}</Badge>)}</span>
-                      {recordNote(record) ? <small>{recordNote(record)}</small> : null}
-                    </td>
-                    <td data-label="When"><span className="ask-record-window">{windowSentence(record)}</span></td>
-                    <td data-label="Source"><Link href={record.source.href}>{sourceLabel(record)}</Link></td>
-                  </tr>,
-                );
+                for (const row of entry.rows.slice(start, end)) {
+                  const record = row.record;
+                  out.push(
+                    <tr className={`ask-record ask-record-${record.kind}`} data-tone={row.tone} key={record.id}>
+                      <th scope="row"><span className="pg-row-name">{row.title}</span>{!columns.includes("kind") && group !== "kind" && record.kind !== "job" && !row.title.toLowerCase().includes(`(${row.kind.toLowerCase()})`) ? <small>{row.kind}</small> : null}</th>
+                      {shownColumns.filter((column) => column.key !== "what").map((column) => cell(row, column.key))}
+                    </tr>,
+                  );
+                }
                 return out;
               })}
             </tbody>
           </table>
         </div>
       ) : <p className="pg-empty"><Icon name="filter" />No record matches these filters.</p>}
-      <ListPager label="Records this answer rests on" noun={{ one: "record", many: "records" }} paging={paging} total={ordered.length} />
+      <ListPager label="Records this answer rests on" noun={{ one: "record", many: "records" }} paging={paging} total={open} />
     </div>
   );
 }

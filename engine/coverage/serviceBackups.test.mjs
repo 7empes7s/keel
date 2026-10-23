@@ -61,7 +61,7 @@ test('each service-settings and content workload reads its latest and last good 
   await workloadRun(tenantRef, 'exchange-mail-flow', 'failed', '2026-10-03T02:00:00Z', '2026-10-03T02:01:00Z');
   await workloadRun(tenantRef, 'power-platform', 'disabled', '2026-10-03T02:00:00Z', '2026-10-03T02:00:00Z');
   await workloadRun('sha256:sb-other', 'teams-org-policies', 'complete', '2026-10-03T02:00:00Z', '2026-10-03T02:05:00Z', 1);
-  await recordContentRun(client, { tenantRef, workload: 'exchange-mail', outcome: 'succeeded', items: 2, bytes: 300, namePrefix: 'KEEL-RT-', startedAt: '2026-10-03T01:00:00Z', completedAt: '2026-10-03T01:02:00Z' });
+  await recordContentRun(client, { tenantRef, workload: 'exchange-mail', outcome: 'succeeded', items: 2, bytes: 300, skipped: ['KEEL-RT-x: no mailbox'], namePrefix: 'KEEL-RT-', startedAt: '2026-10-03T01:00:00Z', completedAt: '2026-10-03T01:02:00Z' });
   await recordContentRun(client, { tenantRef, workload: 'planner', outcome: 'failed', reasons: ['KEEL-RT- throttled'], startedAt: '2026-10-03T01:03:00Z', completedAt: '2026-10-03T01:04:00Z' });
   await contentItem(tenantRef, 'exchange-mail', 'mailbox:KEEL-RT-a', 'm1', 'v1', 100);
   await contentItem(tenantRef, 'exchange-mail', 'mailbox:KEEL-RT-a', 'm1', 'v2', 120);
@@ -81,12 +81,14 @@ test('each service-settings and content workload reads its latest and last good 
   assert.deepEqual(content.map((entry) => entry.workload), ['exchange-mail', 'onedrive', 'planner']);
   const mail = content[0];
   assert.equal(mail.latest.namePrefix, 'KEEL-RT-');
+  assert.deepEqual(mail.latest.skipped, ['KEEL-RT-x: no mailbox']);
   assert.equal(mail.lastGood.items, 2);
   assert.deepEqual(mail.stored, { items: 2, versions: 3, containers: 2, bytes: 300, storedBytes: 300, newestAt: mail.stored.newestAt });
   assert.equal(content[1].latest, null);
   assert.equal(content[1].stored.items, 1);
   assert.equal(content[2].lastGood, null);
   assert.deepEqual(content[2].latest.reasons, ['KEEL-RT- throttled']);
+  assert.deepEqual(content[2].latest.skipped, [], 'a run with nothing skipped lists nothing');
 
   const { required } = await loadServiceObservations(client, { tenantRef });
   assert.deepEqual(required.map((dependency) => dependency.key), ['workload:exchange-mail-flow', 'content:exchange-mail', 'content:planner'],
@@ -125,17 +127,18 @@ test('a content backup run records each workload, and a dry run without a databa
   let clock = Date.parse('2026-10-03T01:00:00Z');
   const now = () => { clock += 60_000; return new Date(clock); };
   const collectors = [
-    { workload: 'teams', collect: async () => ({ outcome: 'succeeded', items: 4, bytes: 40, reasons: [] }) },
+    { workload: 'teams', collect: async () => ({ outcome: 'succeeded', items: 4, bytes: 40, reasons: [], skipped: ['KEEL-RT-team: locked'] }) },
     { workload: 'planner', collect: async () => { throw new Error('KEEL-RT- planner read failed'); } },
   ];
   const store = createMemoryContentStore();
   await runContentCollection(client, { tenantRef, store, transport: null, collectors, scope: { namePrefix: 'KEEL-RT-' }, now, logger });
   const { rows } = await client.query(
-    'SELECT workload, outcome, items, bytes, reasons, name_prefix, started_at < completed_at AS ordered FROM content_run WHERE tenant_ref = $1 ORDER BY workload',
+    'SELECT workload, outcome, items, bytes, reasons, skipped, name_prefix, started_at < completed_at AS ordered FROM content_run WHERE tenant_ref = $1 ORDER BY workload',
     [tenantRef],
   );
   assert.deepEqual(rows.map((row) => [row.workload, row.outcome, Number(row.items), Number(row.bytes), row.name_prefix, row.ordered]),
     [['planner', 'failed', 0, 0, 'KEEL-RT-', true], ['teams', 'succeeded', 4, 40, 'KEEL-RT-', true]]);
   assert.deepEqual(rows[0].reasons, ['KEEL-RT- planner read failed']);
+  assert.deepEqual(rows[1].skipped, ['KEEL-RT-team: locked']);
   assert.deepEqual(await recordContentRun(null, { tenantRef, workload: 'teams', outcome: 'succeeded' }), { recorded: false, reason: 'no-database' });
 });

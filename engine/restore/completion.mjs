@@ -288,18 +288,38 @@ export async function emitCompletionItems(client, { tenantRef, restoreRef, owner
   return emitted;
 }
 
+/**
+ * A pending step a LATER restore opened again for the same object (same natural key,
+ * kind and requirement) is replaced by that restore's step: restoring an app twice
+ * leaves one "issue new secrets" step to do, not two. Replaced steps keep their row
+ * and state; they are only left out of the open work, and a job page says which
+ * restore replaced them. `i` is the item being checked.
+ */
+const LATER_STEP = `FROM recovery_completion_item later
+   WHERE later.tenant_ref = i.tenant_ref AND later.natural_key = i.natural_key
+     AND later.kind = i.kind AND later.requirement = i.requirement
+     AND later.restore_ref <> i.restore_ref AND later.created_at > i.created_at`;
+const OPEN_STEP = `i.state = 'pending' AND NOT EXISTS (SELECT 1 ${LATER_STEP})`;
+
 export async function listCompletionItems(client, { tenantRef, restoreRef }) {
   const { rows } = await client.query(
-    `SELECT * FROM recovery_completion_item WHERE tenant_ref = $1 AND restore_ref = $2 ORDER BY natural_key, kind, requirement`,
+    `SELECT i.*,
+            CASE WHEN i.state = 'pending' THEN
+              (SELECT later.restore_ref ${LATER_STEP} ORDER BY later.created_at DESC LIMIT 1)
+            END AS replaced_by
+       FROM recovery_completion_item i
+      WHERE i.tenant_ref = $1 AND i.restore_ref = $2
+      ORDER BY i.natural_key, i.kind, i.requirement`,
     [tenantRef, restoreRef],
   );
-  return rows.map(normalize);
+  return rows.map((row) => ({ ...normalize(row), replacedBy: row.replaced_by ?? null }));
 }
 
 /**
  * Restores that still have open follow-up steps, newest first, each with the job that
  * ran it, so the portal can list them instead of leaving them on a job page that has
- * scrolled out of every recent-jobs list. A compensation (undo) job is never the match.
+ * scrolled out of every recent-jobs list. A compensation (undo) job is never the match,
+ * and a step a later restore replaced is not open.
  */
 export async function listOpenCompletionWork(client, { tenantRef, limit = 50 }) {
   const { rows } = await client.query(
@@ -309,7 +329,7 @@ export async function listOpenCompletionWork(client, { tenantRef, limit = 50 }) 
                 AND j.params->>'compensates' IS NULL
               ORDER BY j.created_at DESC LIMIT 1) AS job_id
        FROM recovery_completion_item i
-      WHERE i.tenant_ref = $1 AND i.state = 'pending'
+      WHERE i.tenant_ref = $1 AND ${OPEN_STEP}
       GROUP BY i.restore_ref
       ORDER BY min(i.created_at) DESC
       LIMIT $2`,
@@ -321,6 +341,15 @@ export async function listOpenCompletionWork(client, { tenantRef, limit = 50 }) 
     since: row.since instanceof Date ? row.since.toISOString() : String(row.since),
     jobId: row.job_id ?? null,
   }));
+}
+
+/** How many follow-up steps are open across every restore (replaced steps left out). */
+export async function countOpenCompletionSteps(client, { tenantRef }) {
+  const { rows } = await client.query(
+    `SELECT count(*)::int AS open FROM recovery_completion_item i WHERE i.tenant_ref = $1 AND ${OPEN_STEP}`,
+    [tenantRef],
+  );
+  return rows[0]?.open ?? 0;
 }
 
 /** Per-resource summary for a restore: state plus its items. */

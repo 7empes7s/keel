@@ -25,6 +25,9 @@ export interface CompletionItem {
   evidence: { type: string; reference: string; recordedBy?: string; recordedAt?: string }[];
   closedAt: string | null;
   reopenCount: number;
+  // A later restore opened the same step for the same object; that one is the step
+  // to close, so this one is no longer waiting on anyone.
+  replacedBy?: string | null;
 }
 
 export interface CompletionResource {
@@ -71,12 +74,13 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
     return <p className="ui-calm"><Icon name="check-circle" />Nothing to follow up: everything was restored in full.</p>;
   }
   const items = resources.flatMap((resource) => resource.items);
-  const open = items.filter((item) => item.state === "pending").length;
+  const current = items.filter((item) => item.state === "verified" || !item.replacedBy);
+  const open = current.filter((item) => item.state === "pending").length;
   return (
     <div className="completion-list">
       <p className="completion-summary">
         {open ? <Badge tone="soon">{`${open} ${open === 1 ? "needs" : "need"} evidence`}</Badge> : null}
-        <Badge tone={open ? "neutral" : "fine"}>{`${items.length - open} of ${items.length} verified`}</Badge>
+        <Badge tone={open ? "neutral" : "fine"}>{`${current.length - open} of ${current.length} verified`}</Badge>
       </p>
       {resources.map((resource) => (
         <section className={`completion-resource completion-${resource.state}`} key={resource.naturalKey}>
@@ -88,7 +92,8 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
           <ul className="completion-items">
             {resource.items.map((item) => {
               const evidence = item.evidence[item.evidence.length - 1];
-              const formOpen = openItem === item.id || busyItem === item.id;
+              const replaced = item.state === "pending" && Boolean(item.replacedBy);
+              const formOpen = !replaced && (openItem === item.id || busyItem === item.id);
               return (
                 <li className={`completion-item completion-item-${item.state}`} data-tone={item.state === "verified" ? "fine" : "soon"} key={item.id}>
                   <span aria-hidden="true" className="completion-kind"><Icon name={KIND_ICONS[item.kind] ?? "info"} /></span>
@@ -101,15 +106,22 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                         {item.closedAt ? ` · ${formatTimestamp(item.closedAt)}` : null}
                       </small>
                     ) : null}
-                    {item.kind === "enforcement" && item.state === "pending" ? (
+                    {replaced ? (
+                      <small className="completion-evidence">
+                        A later restore of this item opened the same step. Close it there.
+                      </small>
+                    ) : null}
+                    {item.kind === "enforcement" && item.state === "pending" && !replaced ? (
                       <small className="completion-evidence completion-next-step">
                         Next: ask for the enforcement step. A second person approves it, and KEEL closes this once the policy reads back as on.
                       </small>
                     ) : null}
                   </div>
-                  <Badge tone={item.state === "verified" ? "fine" : "soon"}>{item.state === "verified" ? "Verified" : "Needs evidence"}</Badge>
+                  <Badge tone={item.state === "verified" ? "fine" : replaced ? "neutral" : "soon"}>
+                    {item.state === "verified" ? "Verified" : replaced ? "Replaced" : "Needs evidence"}
+                  </Badge>
                   <span className="completion-act">
-                    {canComplete ? (
+                    {canComplete && !replaced ? (
                       item.state === "pending" ? (
                         item.kind === "enforcement" || formOpen ? null : (
                           <button className="btn btn-secondary btn-sm" disabled={busyItem !== null} onClick={() => setOpenItem(item.id)} type="button">
@@ -188,6 +200,7 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
                 <RecordField label="Owner" value={item.owner} />
                 <RecordField copy={false} label="Closed" value={item.closedAt} />
                 <RecordField copy={false} label="Times reopened" value={item.reopenCount} />
+                {item.replacedBy ? <RecordField label="Replaced by restore" value={item.replacedBy} /> : null}
                 {item.evidence.map((evidence, index) => (
                   <RecordField
                     key={`${evidence.type}:${evidence.reference}:${index}`}

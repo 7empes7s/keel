@@ -21,6 +21,19 @@ import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 
 const BLAST_RADIUS_BY_TYPE = new Map(CATALOG.map((entry) => [entry.type, entry.blastRadius]));
 
+// Symbols canonicalize.mjs gives an id it found in the reference index but not as a
+// resource: a permission a service principal publishes (an app's
+// requiredResourceAccess), an object named by its appId, a licence or service plan.
+// No backed-up resource ever has such a key, so a snapshot can never be "missing"
+// one; the writer keeps the stored value. Reporting them made every permission an
+// app requests read as a separate missing item on the restore page.
+const INDEX_ONLY_SYMBOL_KINDS = new Set(['permission', 'object', 'sku', 'servicePlan']);
+
+function isIndexOnlySymbol(symbol) {
+  const colon = symbol.indexOf(':');
+  return colon > 0 && INDEX_ONLY_SYMBOL_KINDS.has(symbol.slice(0, colon));
+}
+
 function sortedKeys(keys) {
   return [...keys].sort((a, b) => a.localeCompare(b));
 }
@@ -35,7 +48,8 @@ function sortedKeys(keys) {
  *    what the UI shows, because a hidden addition is an unexplained restore;
  *  - resources: the closure's resource objects (the originals, never mutated or
  *    copied), sorted by natural key, ready for planWaves;
- *  - unresolvedReferences: in-scope references whose symbol no candidate provides.
+ *  - unresolvedReferences: in-scope references whose symbol no candidate provides
+ *    (index-only symbols, which no resource can provide, are left out).
  * Throws on a selected key absent from the candidate set: restoring "something the
  * operator did not choose" silently is worse than failing loudly.
  */
@@ -61,6 +75,7 @@ export function dependencyClosure(resources, selectedKeys) {
     for (const ref of resource.references ?? []) {
       if (!ref.symbol || isVerbatimSymbol(ref.symbol)) continue;
       if (!nodes.has(ref.symbol)) {
+        if (isIndexOnlySymbol(ref.symbol)) continue;
         unresolved.push({ from: key, field: ref.field, symbol: ref.symbol });
         continue;
       }

@@ -90,6 +90,26 @@ const candidates = [caPolicy, adminsGroup, parentGroup, unrelated];
   assert.deepEqual(closure.keys, ['conditionalAccessPolicy:Dangling']);
 }
 
+// --- an app's requested permissions are not missing items ---
+// canonicalize.mjs names a permission a service principal publishes, and an object
+// found by its appId, with index-only symbols no backed-up resource ever has. Each
+// was listed as missing from the backup, once per permission the app requests.
+{
+  const app = res('application:Payroll', [
+    { field: 'requiredResourceAccess[0].resourceAppId', symbol: 'object:00000003-0000-0000-c000-000000000000', required: true },
+    { field: 'requiredResourceAccess[0].resourceAccess[0].id', symbol: 'permission:00000003-0000-0000-c000-000000000000/role:User.Read.All', required: true },
+    { field: 'requiredResourceAccess[0].resourceAccess[1].id', symbol: 'permission:00000003-0000-0000-c000-000000000000/scope:User.Read', required: true },
+    { field: 'owners[0]', symbol: 'group:Gone', required: true },
+  ]);
+  const closure = dependencyClosure([...candidates, app], ['application:Payroll']);
+  assert.deepEqual(
+    closure.unresolvedReferences,
+    [{ from: 'application:Payroll', field: 'owners[0]', symbol: 'group:Gone' }],
+    'only a reference a backed-up resource could provide is reported as missing',
+  );
+  assert.deepEqual(closure.keys, ['application:Payroll']);
+}
+
 // --- an already-closed selection adds nothing ---
 {
   const closure = dependencyClosure(candidates, [

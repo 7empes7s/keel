@@ -392,6 +392,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Completion state": fact("Follow-up", "Whether the follow-up checks are done."),
   "Requirement": fact("What is needed", "What must be true to close this step."),
   "Times reopened": count("Times reopened", "How often the step was reopened.", { zeroIsGood: true }),
+  "Replaced by restore": support("Replaced by restore", "The later restore that opened this same step again; close it there."),
   "Reads": fact("Reads", "What Keel reads from this service."),
   "Writes": fact("Writes", "What Keel can write back to this service."),
   "Taken": fact("Backup taken", "When this backup was made."),

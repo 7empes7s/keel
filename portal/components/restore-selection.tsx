@@ -693,12 +693,16 @@ export function RestoreSelection({
                 <div className="data-error" role="alert">
                   <p className="severity-label">Missing from this backup</p>
                   <ul>
-                    {preview.unresolvedReferences.map((reference) => (
-                      <li key={`${reference.from}:${reference.field}`}>
-                        {plainLabel(reference.from, names)} refers to something this backup does not hold; the restore
-                        fails unless it already exists in the tenant.
-                      </li>
-                    ))}
+                    {/* One line per item, however many of its settings point outside the backup. */}
+                    {[...new Set(preview.unresolvedReferences.map((reference) => reference.from))].map((from) => {
+                      const count = preview.unresolvedReferences.filter((reference) => reference.from === from).length;
+                      return (
+                        <li key={from}>
+                          {plainLabel(from, names)} refers to {count === 1 ? "something" : `${count} things`} this backup does not hold; the restore
+                          fails unless {count === 1 ? "it already exists" : "they already exist"} in the tenant.
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ) : null}

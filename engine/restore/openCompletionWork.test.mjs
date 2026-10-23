@@ -3,7 +3,7 @@
 import { strict as assert } from 'node:assert';
 import { after, test } from 'node:test';
 
-import { emitCompletionItems, listOpenCompletionWork } from './completion.mjs';
+import { countOpenCompletionSteps, emitCompletionItems, listCompletionItems, listOpenCompletionWork } from './completion.mjs';
 import { enqueue } from '../jobs/queue.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
@@ -40,4 +40,47 @@ test('open follow-up work lists each restore with its pending count and restore 
   await client.query(`UPDATE recovery_completion_item SET state = 'verified' WHERE tenant_ref = $1`, [TENANT]);
   work = await listOpenCompletionWork(client, { tenantRef: TENANT });
   assert.deepEqual(work, [], 'a restore with nothing pending is not listed');
+});
+
+// Restoring the same object again opens the same steps again. The earlier restore's
+// steps are replaced, not stacked: one "issue new secrets" step to do, not one per run.
+test('a later restore of the same object replaces the earlier restore\'s open steps', async (t) => {
+  const client = await database.connect();
+  t.after(async () => { await client.end(); });
+  await client.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
+  await client.query(schemaSql());
+  const tenantRef = 'sha256:replaced-steps';
+  const first = '72000000-0000-4000-8000-000000000001';
+  const second = '72000000-0000-4000-8000-000000000002';
+  const app = { naturalKey: 'application:Payroll', resourceType: 'application', mechanism: 'recreate' };
+  const other = { naturalKey: 'group:Finance', resourceType: 'group', mechanism: 'recreate' };
+
+  const firstItems = await emitCompletionItems(client, { tenantRef, restoreRef: first, owner: null, applied: [app, other] });
+  // Set explicitly so the order never depends on two inserts landing in one tick.
+  await client.query(`UPDATE recovery_completion_item SET created_at = now() - interval '1 hour' WHERE restore_ref = $1`, [first]);
+  const secondItems = await emitCompletionItems(client, { tenantRef, restoreRef: second, owner: null, applied: [app] });
+  const appSteps = secondItems.length;
+  const otherSteps = firstItems.length - appSteps;
+  assert.ok(appSteps >= 2 && otherSteps >= 1);
+
+  const work = await listOpenCompletionWork(client, { tenantRef });
+  assert.deepEqual(
+    work.map((entry) => [entry.restoreRef, entry.pending]),
+    [[second, appSteps], [first, otherSteps]],
+    'the earlier restore keeps only the steps no later restore opened again',
+  );
+  assert.equal(await countOpenCompletionSteps(client, { tenantRef }), appSteps + otherSteps);
+
+  const earlier = await listCompletionItems(client, { tenantRef, restoreRef: first });
+  assert.deepEqual(
+    [...new Set(earlier.filter((entry) => entry.replacedBy).map((entry) => `${entry.naturalKey}>${entry.replacedBy}`))],
+    [`application:Payroll>${second}`],
+    'the job page says which restore replaced each step',
+  );
+  assert.ok(earlier.every((entry) => entry.state === 'pending'), 'a replaced step is never marked verified');
+  assert.ok((await listCompletionItems(client, { tenantRef, restoreRef: second })).every((entry) => entry.replacedBy === null));
+
+  // A step closed with evidence is never counted as replaced work.
+  await client.query(`UPDATE recovery_completion_item SET state = 'verified' WHERE restore_ref = $1`, [second]);
+  assert.equal(await countOpenCompletionSteps(client, { tenantRef }), otherSteps);
 });

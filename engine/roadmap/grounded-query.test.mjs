@@ -269,7 +269,10 @@ test('a question with no period is read for this week, and days are read as peop
   // Other ways people name a period (23 Oct 2026 is a Friday).
   const forms = {
     'What changed last month?': ['2026-09-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z'],
-    'What changed 3 days ago?': ['2026-10-20T14:30:00.000Z', now.toISOString()],
+    'What changed 3 days ago?': ['2026-10-20T00:00:00.000Z', '2026-10-21T00:00:00.000Z'],
+    'What changed since 3 days ago?': ['2026-10-20T14:30:00.000Z', now.toISOString()],
+    'What changed on 17 Oct?': ['2026-10-17T00:00:00.000Z', '2026-10-18T00:00:00.000Z'],
+    'What changed on Monday?': ['2026-10-19T00:00:00.000Z', '2026-10-20T00:00:00.000Z'],
     'What changed in the last 48 hours?': ['2026-10-21T14:30:00.000Z', now.toISOString()],
     'What changed in the past 2 weeks?': ['2026-10-09T14:30:00.000Z', now.toISOString()],
     'What changed over the weekend?': ['2026-10-17T00:00:00.000Z', '2026-10-19T00:00:00.000Z'],
@@ -284,6 +287,18 @@ test('a question with no period is read for this week, and days are read as peop
     assert.deepEqual(window(planned), expected, question);
     assert.deepEqual(planned.ignored, [], question);
   }
+  // A range's end is read after its start: a day still to come is not last year's.
+  const wednesday = new Date('2026-10-21T12:00:00Z');
+  const ahead = (question, at = wednesday) => planQuestion(question, { now: at, scope: CENTRAL });
+  for (const question of ['What changed between Oct 20 and Oct 25?', 'What changed between 18/10 and 22/10?']) {
+    const planned = await ahead(question);
+    assert.equal(planned.ok, true, question);
+    assert.equal(planned.plan.params.to, wednesday.toISOString(), question);
+  }
+  assert.deepEqual(window(await ahead('What changed from Monday to Friday?')), ['2026-10-19T00:00:00.000Z', wednesday.toISOString()]);
+  assert.deepEqual(window(await ahead('What changed between Dec 28 and Jan 5?', new Date('2027-01-03T12:00:00Z'))), ['2026-12-28T00:00:00.000Z', '2027-01-03T12:00:00.000Z']);
+  // A version number is not a date.
+  assert.equal((await ask('What changed since 1.5?')).ok, true);
   // The start of the year is a real reading, but longer than the budget.
   assert.equal((await ask('What changed since the beginning of the year?')).refusal.code, 'unbounded');
   // A day with no year that has not come yet this year is last year's, and over budget.

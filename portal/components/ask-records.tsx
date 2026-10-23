@@ -162,6 +162,8 @@ export function AskRecords({ records }: { records: AnswerRecord[] }) {
   }, [shown, group, paging.sort, paging.dir]);
 
   const grouped = group !== "none";
+  // Groups the filters hide may still be folded; only the ones showing count.
+  const allFolded = groups.every((entry) => closed.has(entry.key));
   const isClosed = (entry: { key: string }) => grouped && closed.has(entry.key);
   const { groups: paged, total: open } = pageGroups(groups, (entry) => entry.rows.length, isClosed, paging.pageOf(groups.reduce((sum, entry) => sum + (isClosed(entry) ? 0 : entry.rows.length), 0)), paging.size);
   const restart = () => paging.setPage(1);
@@ -227,8 +229,8 @@ export function AskRecords({ records }: { records: AnswerRecord[] }) {
           values={columns.filter((key) => key !== "what")}
         />
         {grouped && groups.length > 1 ? (
-          <button className="btn ak-fold" onClick={() => setClosed(closed.size === groups.length ? new Set() : new Set(groups.map((entry) => entry.key)))} type="button">
-            <Icon name={closed.size === groups.length ? "chevron-down" : "chevron"} />{closed.size === groups.length ? "Open all groups" : "Fold all groups"}
+          <button className="btn ak-fold" onClick={() => setClosed(allFolded ? new Set() : new Set(groups.map((entry) => entry.key)))} type="button">
+            <Icon name={allFolded ? "chevron-down" : "chevron"} />{allFolded ? "Open all groups" : "Fold all groups"}
           </button>
         ) : null}
       </div>

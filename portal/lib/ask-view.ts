@@ -329,11 +329,13 @@ const EVERY_WORDS: Record<string, [string, string]> = { hour: ["once an hour", "
 function nextReadTodo(answer: GroundedAnswer): string | null {
   const next = answer.nextRead;
   const type = answer.plan?.params.resourceType;
-  if (!next?.every || !EVERY_WORDS[next.every] || !type) return null;
+  if (!next || !type) return null;
+  const kind = `${plainKind(type).toLowerCase()}s`;
+  const due = next.dueAt ? ` The next one is due ${formatTimestamp(next.dueAt)}.` : "";
+  if (!next.every || !EVERY_WORDS[next.every]) return due ? `This part is known after the next backup of ${kind}.${due}` : null;
   const [once, many] = EVERY_WORDS[next.every];
   const how = next.n > 1 ? `every ${next.n} ${many}` : once;
-  const due = next.dueAt ? ` The next read is due ${formatTimestamp(next.dueAt)}.` : "";
-  return `KEEL backs up ${plainKind(type).toLowerCase()}s ${how}, so this part is known after the next backup.${due}`;
+  return `KEEL backs up ${kind} ${how}, so this part is known after the next backup.${due}`;
 }
 
 export function askAlerts(answer: GroundedAnswer): AlertItem[] {

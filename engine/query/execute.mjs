@@ -162,12 +162,13 @@ const TEMPLATES = Object.freeze({
     // so a gap since the last read is expected until then.
     const tier = DESCRIPTORS.find((entry) => entry.type === params.resourceType)?.criticality ?? null;
     const { rows: [schedule] } = tier ? await client.query(
-      `SELECT cadence, next_due_at FROM schedule
+      `SELECT cadence, cron_override, next_due_at FROM schedule
         WHERE tenant_ref = $1 AND job_kind = 'collect' AND tier = $2 AND enabled
         ORDER BY next_due_at LIMIT 1`,
       [tenantRef, tier],
     ) : { rows: [] };
-    const every = typeof schedule?.cadence?.every === 'string' ? schedule.cadence.every : null;
+    // A raw cron override sets the times itself: only the next due time is said then.
+    const every = !schedule?.cron_override && typeof schedule?.cadence?.every === 'string' ? schedule.cadence.every : null;
     return {
       total: Number(counted?.total ?? 0),
       known,

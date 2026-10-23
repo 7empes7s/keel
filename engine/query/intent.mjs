@@ -157,7 +157,7 @@ const UNBOUNDED = /\b(ever|all[- ]time|since (the )?beginning|everything|forever
 const START_OF = /\b(?:since|from) (?:the )?(?:beginning|start) of (?:the |this )?(month|week|year)\b/i;
 /** "3 days ago", "in the last 48 hours", "past 2 weeks". */
 const UNIT_MS = Object.freeze({ hour: 3_600_000, day: 86_400_000, week: 7 * 86_400_000 });
-const AGO = /\b(?:since )?(\d{1,4}) (hour|day|week)s? ago\b/i;
+const AGO = /\b(since )?(\d{1,4}) (hour|day|week)s? ago\b/i;
 const LAST_N = /\b(?:last|past|previous) (\d{1,4}) (hour|day|week)s?\b/i;
 const WEEKEND = /\b(?:over |during |on )?(?:the |this |last )?weekend\b/i;
 /** The period a question that names none is read for. */
@@ -167,8 +167,9 @@ const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', '
 const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const WEEKDAY_NAME = '(?:(?:last )?(?:mon|tues?|wed(?:nes)?|thu(?:rs?)?|fri|sat(?:ur)?|sun)(?:day)?)';
 const MONTH_NAME = '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
-/** A day as people write it: 2026-10-17, 17/10, 10/17, 17.10.2026, 17 Oct, October 17th, Monday. */
-const DAY = `(?:${WEEKDAY_NAME}|\\d{4}-\\d{2}-\\d{2}|\\d{1,2}[/.]\\d{1,2}(?:[/.]\\d{2,4})?|\\d{1,2}(?:st|nd|rd|th)? (?:of )?${MONTH_NAME}(?:,? \\d{4})?|${MONTH_NAME} \\d{1,2}(?:st|nd|rd|th)?(?:,? \\d{4})?)`;
+/** A day as people write it: 2026-10-17, 17/10, 10/17, 17.10.2026, 17 Oct, October 17th, Monday.
+ *  A dotted day needs its year, so a version ("since 1.5") is not read as a date. */
+const DAY = `(?:${WEEKDAY_NAME}|\\d{4}-\\d{2}-\\d{2}|\\d{1,2}/\\d{1,2}(?:/\\d{2,4})?|\\d{1,2}\\.\\d{1,2}\\.\\d{2,4}|\\d{1,2}(?:st|nd|rd|th)? (?:of )?${MONTH_NAME}(?:,? \\d{4})?|${MONTH_NAME} \\d{1,2}(?:st|nd|rd|th)?(?:,? \\d{4})?)`;
 
 function isoDay(year, month, day) {
   const date = new Date(Date.UTC(year, month - 1, day));
@@ -179,7 +180,8 @@ function isoDay(year, month, day) {
 /**
  * Read one written day as YYYY-MM-DD. Day and month are told apart when only one
  * reading is a date (17/10 and 10/17 are both 17 October); 05/06 could be either, so it
- * comes back { ambiguous }. A day with no year is the latest one not after `now`.
+ * comes back { ambiguous }. A day with no year is the latest one not after `now`, and a
+ * weekday the latest such day; `rolls` says by how much a later reading would move it.
  */
 export function readDay(text, now = new Date()) {
   const value = text.trim().toLowerCase();
@@ -189,7 +191,7 @@ export function readDay(text, now = new Date()) {
     const today = startOfDay(now);
     let back = (today.getUTCDay() - weekday + 7) % 7;
     if (back === 0 && value.startsWith('last ')) back = 7;
-    return { day: new Date(today.getTime() - back * DAY_MS).toISOString().slice(0, 10) };
+    return { day: new Date(today.getTime() - back * DAY_MS).toISOString().slice(0, 10), rolls: 'week' };
   }
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     const [year, month, day] = value.split('-').map(Number);
@@ -213,13 +215,26 @@ export function readDay(text, now = new Date()) {
     month = MONTHS.indexOf((named[2] ?? named[3]).slice(0, 3)) + 1;
     if (named[5]) year = Number(named[5]);
   }
+  const rolls = year === null ? 'year' : null;
   if (year === null) {
     year = now.getUTCFullYear();
     const candidate = isoDay(year, month, day);
     if (candidate && new Date(`${candidate}T00:00:00Z`) > now) year -= 1;
   }
   const iso = isoDay(year, month, day);
-  return iso ? { day: iso } : null;
+  return iso ? { day: iso, rolls } : null;
+}
+
+/** The end of a range, read after its start: "Monday to Friday" asked on a Wednesday
+ *  ends this Friday, "28 Dec to 5 Jan" ends in the new year. Validation cuts it at now. */
+function after(start, end) {
+  let day = new Date(`${end.day}T00:00:00Z`);
+  const from = new Date(`${start}T00:00:00Z`);
+  while (day < from && end.rolls) {
+    day = end.rolls === 'week' ? new Date(day.getTime() + 7 * DAY_MS)
+      : new Date(Date.UTC(day.getUTCFullYear() + 1, day.getUTCMonth(), day.getUTCDate()));
+  }
+  return day.toISOString().slice(0, 10);
 }
 
 /**
@@ -327,40 +342,56 @@ export function readQuestion(question, { now = new Date(), knownEntities = [] } 
   if (intent !== 'coverage') {
     const between = new RegExp(`\\b(?:between|from) (${DAY}) (?:and|to|until) (${DAY})\\b`, 'i');
     const since = new RegExp(`\\b(?:since|from|after) (${DAY})\\b`, 'i');
+    const on = new RegExp(`\\b(?:on|for) (${DAY})\\b`, 'i');
     const named = PERIOD_WORDS.find(([pattern]) => pattern.test(text));
     const startOf = START_OF.exec(text);
     const betweenMatch = between.exec(text);
     const sinceMatch = since.exec(text);
+    const onMatch = on.exec(text);
     const lastMatch = LAST_N.exec(text);
     const agoMatch = AGO.exec(text);
     const days = (...written) => {
       const read = written.map((value) => readDay(value, now));
       const ambiguous = read.find((entry) => entry?.ambiguous);
       if (ambiguous) return { ambiguous: ambiguous.ambiguous };
-      return read.every((entry) => entry?.day) ? read.map((entry) => entry.day) : null;
+      return read.every((entry) => entry?.day) ? read : null;
     };
     if (betweenMatch) {
       const read = days(betweenMatch[1], betweenMatch[2]);
       if (read?.ambiguous) return { unsupported: 'ambiguous-date', date: read.ambiguous };
       if (!read) return { unsupported: 'unreadable-date' };
-      // The last day named is included: "between 1 and 5 Oct" runs to the end of the 5th.
-      params.from = read[0];
-      params.to = new Date(new Date(`${read[1]}T00:00:00Z`).getTime() + DAY_MS).toISOString();
+      // The last day named is included: "between 1 Oct and 5 Oct" runs to the end of the 5th.
+      params.from = read[0].day;
+      params.to = new Date(new Date(`${after(read[0].day, read[1])}T00:00:00Z`).getTime() + DAY_MS).toISOString();
       hit(between);
     } else if (sinceMatch) {
       const read = days(sinceMatch[1]);
       if (read?.ambiguous) return { unsupported: 'ambiguous-date', date: read.ambiguous };
       if (!read) return { unsupported: 'unreadable-date' };
-      params.from = read[0];
+      params.from = read[0].day;
       params.to = now.toISOString();
       hit(since);
+    } else if (onMatch) {
+      // One day named: that whole day.
+      const read = days(onMatch[1]);
+      if (read?.ambiguous) return { unsupported: 'ambiguous-date', date: read.ambiguous };
+      if (!read) return { unsupported: 'unreadable-date' };
+      params.from = read[0].day;
+      params.to = new Date(new Date(`${read[0].day}T00:00:00Z`).getTime() + DAY_MS).toISOString();
+      hit(on);
     } else if (startOf) {
       const unit = startOf[1].toLowerCase();
       if (unit === 'year') { params.from = `${now.getUTCFullYear()}-01-01`; params.to = now.toISOString(); }
       else params.period = unit === 'month' ? 'this-month' : 'this-week';
       hit(START_OF);
+    } else if (agoMatch && !agoMatch[1] && agoMatch[3].toLowerCase() === 'day') {
+      // "3 days ago" is that day; "since 3 days ago" runs to now.
+      const day = new Date(startOfDay(now).getTime() - Number(agoMatch[2]) * DAY_MS);
+      params.from = day.toISOString();
+      params.to = new Date(day.getTime() + DAY_MS).toISOString();
+      hit(AGO);
     } else if (agoMatch || lastMatch) {
-      const [, count, unit] = agoMatch ?? lastMatch;
+      const [count, unit] = agoMatch ? agoMatch.slice(2) : lastMatch.slice(1);
       params.from = new Date(now.getTime() - Number(count) * UNIT_MS[unit.toLowerCase()]).toISOString();
       params.to = now.toISOString();
       hit(agoMatch ? AGO : LAST_N);

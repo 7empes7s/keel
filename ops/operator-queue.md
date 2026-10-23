@@ -6269,8 +6269,8 @@ item that needs it stays untouched.
      (`cp -p /opt/keel-deploy/deploy.sh /opt/keel-deploy/deploy.sh.bak-q121`), replace both with
      `systemctl try-reload-or-restart keel-worker`, and `bash -n` it. No `restart keel-worker` / `try-restart keel-worker`
      may remain. Report the diff on #448 too.
-- Status: in-progress
-- Result: in progress (2026-10-22 07:44 UTC). Step 0, A and B are done; C waits for the **2026-10-23 01:00 UTC** run. Marouane approved the host changes directly in this session (07:4x UTC). Read-only toward the tenant.
+- Status: done
+- Result: done (2026-10-23 01:50 UTC). **The first whole-tenant content backup ran to the end: 36.7 GB in 47 min, no deploy interruption, disk 39 % free.** The job reads `failed` (exit 1) only because three workloads are `partial`; **I did not roll back** (see C). Read-only toward the tenant.
   - **Step 0:**
     1. `#449` count in /opt/keel-live: **1** (f61ea92, 01:29 UTC).
     2. The unit had no reload. I installed `/opt/keel-live/ops/keel-worker.service` (old copy at `/root/keel-worker.service.bak-q121`) and ran
@@ -6284,7 +6284,19 @@ item that needs it stays untouched.
   - **B.** `content-scope.json.bak-q101` kept as the rollback copy (namePrefix `KEEL-RT-`). I copied `/root/q101-scope-wholetenant.json` over the scope
     file: root:root 600, parse exit 0. Contents: `{"tenantHost":"<org>.sharepoint.com"}`.
     - Before the run: `content_chunk` 4 054 / 225 270 538 bytes. `df -h /`: 150G, 51G used, 93G free (36 %). `du -sh` 229M.
-  - **C.** Pending. A watcher logs to `/root/q121-watch.log` every 5 minutes and copies `.bak-q101` back if free space drops below 20 %.
+  - **C. Run 2026-10-23 01:00 UTC:** job `c8d034ce`, queued 01:00:01, started 01:02:15, ended 01:49:31 (47 min, far inside the 6 h ceiling), status `failed`, exit code 1. The error is the partial summary, not `execution timed out after 21600000ms`.
+    | workload | outcome | items | bytes | reasons (masked) |
+    |---|---|---|---|---|
+    | exchange-mail | partial | 43 | 852 858 | 1: `<a group mailbox> (group): 1 read(s) failed (403 ErrorAccessDenied …)` |
+    | onedrive | partial | 2 996 | 46 114 215 584 | 10: `<user>: HTTP 423 notAllowed for /v1.0/users/<id>/drive` (the 10 locked drives from A2) |
+    | sharepoint-sites | partial | 5 328 | 13 512 745 | 1: `<the search site>: 1 part(s) not fully read, first pages: failed (HTTP 404 …/pages/microsoft.graph.sitePage)` |
+    | teams | succeeded | 11 | 271 885 | 0 |
+    | planner | succeeded | 80 | 211 107 | 0 |
+    - Containers found vs read and throttled counts are not in `content_run`. `progress` holds the per-workload outcome and error only, and shows no throttle field.
+    - `df -h /`: 150G, 87G used, **58G free (39 %)**. Before: 93G free (64 %). `du -sh /var/lib/keel/content`: **35G** (before 229M).
+    - `content_chunk`: before **4 054 / 225 270 538** bytes; after **29 206 / 36 690 073 967** bytes.
+    - Deploys in the window: the `keel-deploy` timer ran 10 times with nothing to deploy (live stayed 03139ab). `received SIGUSR2` lines: 0. The run was not interrupted.
+  - **Rollback: not done (my call; please overrule if you want).** The job is `failed` only because exit 1 marks a partial run. Every workload finished. The causes are 10 Microsoft-locked OneDrives (423, known in A2), one group mailbox refused (403), and one site page 404. That is the same class as the "partial from 403s alone is not a rollback reason" rule, not a crash, timeout or disk problem (free stayed 39 %, above the 20 % line). The whole-tenant scope stays on. `content-scope.json.bak-q101` is still the rollback copy. No issue opened, since no rollback happened.
 - **Read-only toward the tenant**, same as Q101: collectors only read; no grants, no fixtures, no tenant writes. 403s are
   reported (count and masked reason), never fixed by granting.
 - **A. Drain check (host only, no job running).** `SELECT count(*) FROM job WHERE status = 'running'` must be 0. Then

@@ -10,6 +10,8 @@ import {
   complianceFindings,
   storageResidency,
 } from "../../engine/govern/baselineCompliance.mjs";
+import { ownCheckChoices } from "../../engine/benchmarks/ownChecks.mjs";
+import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
 import { listOpenCompletionWork } from "../../engine/restore/completion.mjs";
 import {
@@ -56,6 +58,8 @@ import type {
   BaselinesData,
   ComplianceData,
   ComplianceFinding,
+  KnownStandard,
+  OwnCheckChoices,
   ComplianceSummary,
   StorageResidency,
   CapabilityClaim,
@@ -527,8 +531,15 @@ export async function getComplianceData(): Promise<ComplianceData> {
       summary,
       storage,
       activeBaseline: baselines.find((baseline) => baseline.active) ?? null,
+      standards: STANDARDS as unknown as KnownStandard[],
     };
   });
+}
+
+/** What an own compliance check can be written on: the types and settings in the newest backup. */
+export async function getOwnCheckChoices(): Promise<OwnCheckChoices> {
+  const ref = tenantRef();
+  return withClient(async (client) => (await ownCheckChoices(client, { tenantRef: ref })) as OwnCheckChoices);
 }
 
 /** An exception's owner by name when it is someone in Keel (the owner is stored as

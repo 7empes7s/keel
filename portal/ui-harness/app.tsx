@@ -46,7 +46,8 @@ import { IncidentsPage } from "@/components/incidents/incidents-page";
 import { DESCRIPTION as INCIDENTS_DESCRIPTION, incidentStatus } from "@/lib/incidents-view";
 import type { IncidentDetail } from "@/lib/portal-data";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
-import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, CoverageData, CoverageType, DashboardData, DriftRecord } from "@/lib/types";
+import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, ComplianceFinding, CoverageData, CoverageType, DashboardData, DriftRecord, KnownStandard, OwnCheckChoices } from "@/lib/types";
+import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { CompliancePage, ExportEvidence } from "@/components/compliance/compliance-page";
 import { complianceCounts, complianceStatus } from "@/lib/compliance-view";
 import { accessSummary } from "@/lib/presentation";
@@ -173,6 +174,8 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   }
   if (/\/api\/snapshots\/[^/]+\/items$/.test(url)) return json({ generatedAt: now, snapshotId: "", resources: BACKUP_ITEMS });
   if (url.endsWith("/api/actions/compliance/exception")) return json({ exception: { id: "e7c10000-0000-4000-8000-0000000000c9" } }, 201);
+  if (url.endsWith("/api/actions/compliance/own-check")) return json({ check: { id: "0c0c0000-0000-4000-8000-0000000000b1" }, evaluationId: "e7a10000-0000-4000-8000-0000000000b1", verdict: "fail" }, 201);
+  if (url.endsWith("/api/actions/compliance/own-check/remove")) return json({ removed: "0c0c0000-0000-4000-8000-0000000000a7" });
   if (url.endsWith("/api/actions/compliance/check")) return json({ checked: 3, pass: 1, fail: 1, unknown: 1, notApplicable: 0 }, 201);
   if (url.includes("/api/evidence?kind=benchmark-evaluation")) return json({ entries: [{ seq: "4182", kind: "benchmark-evaluation" }, { seq: "4183", kind: "benchmark-exception" }], nextBefore: null, generatedAt: "2026-10-04T09:00:00Z" });
   if (url.endsWith("/api/principals") && init?.method === "POST") return json({ principal: NEW_PERSON(JSON.parse(String(init.body))) }, 201);
@@ -766,6 +769,7 @@ const ROLE_EVIDENCE = evidenceWindow("roleAssignment", "2026-10-02T09:00:00Z", "
 const COMPLIANCE: ComplianceData = {
   generatedAt: now,
   activeBaseline: BASELINES[0],
+  standards: STANDARDS as unknown as KnownStandard[],
   summary: { controls: 5, exposed: 2, notConfigured: 1, excepted: 1, expiredExceptions: 1, incompleteExceptions: 0, passing: 1, unknown: 1, notApplicable: 0 },
   storage: { configured: true, provider: "local-disk", region: "westeurope", boundary: "keel-vps-backup-volume", immutability: "unsupported", generatedAt: "2026-10-02T05:00:00Z", certifies: null, source: "/opt/backups/keel-recovery-manifest.json" },
   findings: [
@@ -838,6 +842,28 @@ const SPAM_FIX = {
     mailFix("0c0f5000-0000-4000-8000-000000000002", "KEEL-RT-Finance inbound filtering for the accounts payable team", "PhishSpamAction", "AddXHeader", "Quarantine"),
   ],
 };
+// Your own checks: one written for the tenant's own standard, and what one can be written on.
+const OWN_CHECK_FINDING: ComplianceFinding = {
+  ...COMPLIANCE.findings[0],
+  id: "e7a10000-0000-4000-8000-0000000000a7", controlId: "own.0c0c0000-0000-4000-8000-0000000000a7", title: "Every sign-in rule is on",
+  description: "Every conditionalAccessPolicy has state = \"enabled\". A check written by this tenant.", severity: "medium",
+  framework: "own", edition: "1", profile: "Contoso hardening", verdict: "fail", reason: null, exceptionState: "none", exception: null, exposed: true,
+  details: [{ subject: "Legacy pilot", setting: "state", value: "disabled", expected: "enabled" }],
+  fix: null, fixCandidates: [],
+  own: {
+    id: "0c0c0000-0000-4000-8000-0000000000a7", controlId: "own.0c0c0000-0000-4000-8000-0000000000a7", standard: "Contoso hardening", name: "Every sign-in rule is on",
+    resourceType: "conditionalAccessPolicy", field: "state", operator: "equals", expected: "enabled", appliesTo: "every", severity: "medium", createdBy: "p", createdAt: "2026-10-02T09:00:00Z",
+  },
+};
+const OWN_COMPLIANCE: ComplianceData = { ...COMPLIANCE, findings: [...COMPLIANCE.findings, OWN_CHECK_FINDING] };
+const OWN_CHOICES: OwnCheckChoices = {
+  snapshotId: "s1",
+  types: [
+    { resourceType: "conditionalAccessPolicy", count: 4, fields: [{ field: "displayName", values: ["Require MFA", "Legacy pilot"] }, { field: "state", values: ["enabled", "disabled"] }] },
+    { resourceType: "namedLocation", count: 2, fields: [{ field: "isTrusted", values: [true, false] }] },
+  ],
+};
+
 const DEFENDER_COMPLIANCE: ComplianceData = {
   ...COMPLIANCE,
   findings: [
@@ -2255,6 +2281,11 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       // The viewer variant holds read only: no exception controls and no Check now.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(COMPLIANCE.findings))} title="Compliance" />
       <CompliancePage canCheck={path === "/benchmarks"} canConfigure={path === "/benchmarks"} canRestore={path === "/benchmarks"} data={COMPLIANCE} now={now} /></>;
+    }
+    case "/benchmarks/own": {
+      // A check the tenant wrote itself, beside Keel's, and the form that writes one.
+      return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(OWN_COMPLIANCE.findings))} title="Compliance" />
+      <CompliancePage canCheck canConfigure canRestore data={OWN_COMPLIANCE} now={now} ownChoices={OWN_CHOICES} /></>;
     }
     case "/benchmarks/defender": {
       // Defender email controls beside the others: filed under Defender, failing settings in a table.

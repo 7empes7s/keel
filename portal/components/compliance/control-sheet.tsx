@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
 import { FindingRecord } from "@/components/compliance/compliance-record";
@@ -36,6 +37,7 @@ import {
 } from "@/lib/compliance-view";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import type { SheetStep } from "@/lib/sheet-step";
+import { toast } from "@/lib/toast";
 import type { ComplianceFinding } from "@/lib/types";
 
 const SEVERITY: Record<string, string> = { high: "High", medium: "Medium", low: "Low", critical: "Critical" };
@@ -45,8 +47,10 @@ const SEVERITY: Record<string, string> = { high: "High", medium: "Medium", low: 
 // Grant or renew is the one amber action, on a control that fails or is not set up
 // yet. A control Keel can fix shows "Make it pass" per object first, since fixing
 // beats accepting.
-export function ControlSheet({ finding, now, canConfigure, canRestore = false, grantHref, onClose, step = null, onStep }: {
+export function ControlSheet({ finding, now, canConfigure, canRestore = false, grantHref, onClose, onRemoved, step = null, onStep }: {
   finding: ComplianceFinding;
+  // Called once one of the tenant's own checks is removed from this panel.
+  onRemoved?: () => void;
   step?: SheetStep | null;
   onStep?: (id: string) => void;
   now: string;
@@ -72,12 +76,31 @@ export function ControlSheet({ finding, now, canConfigure, canRestore = false, g
   const fixable = canFixOn(finding, canRestore);
   // What fails, by policy and setting: shown while the control fails (with or without an exception).
   const misses = result === "failing" || result === "excepted" ? controlMisses(finding) : [];
+  const removable = canConfigure && Boolean(finding.own);
+  const [removing, setRemoving] = useState(false);
+
+  async function remove() {
+    if (!finding.own || removing) return;
+    if (!window.confirm(`Remove the check "${controlName(finding)}"? It stops running; its past results stay in the evidence.`)) return;
+    setRemoving(true);
+    try {
+      const response = await fetch("/api/actions/compliance/own-check/remove", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ checkId: finding.own.id }) });
+      if (!response.ok) { toast({ tone: "warning", title: "The check was not removed", detail: response.status === 403 ? "You need the configuration permission." : "Try again in a moment." }); return; }
+      toast({ title: "Check removed" });
+      onRemoved?.();
+    } catch {
+      toast({ tone: "warning", title: "The check was not removed", detail: "Keel could not be reached." });
+    } finally {
+      setRemoving(false);
+    }
+  }
 
   return (
     <DetailsSheet
-      footer={(canGrant || changeCount) ? <>
+      footer={(canGrant || changeCount || removable) ? <>
         {canGrant ? <Link className={(result === "failing" || result === "not-set-up") && !fixable ? "btn btn-primary" : "btn"} href={grantHref}>{grantLabel(finding)}</Link> : null}
         {changeCount ? <Link className="btn" href="/drift">{changeCount === 1 ? "Review the change" : `Review the ${changeCount} changes`}</Link> : null}
+        {removable ? <button aria-busy={removing || undefined} className="btn" disabled={removing} onClick={() => void remove()} type="button"><Icon name="close" />Remove this check</button> : null}
         {canGrant ? <p className="bl-help">{EXCEPTION_EFFECT}</p> : null}
       </> : undefined}
       noun="control"

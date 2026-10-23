@@ -120,12 +120,16 @@ function freezeResult({ control, verdict, reason, evidenceRefs, observationWindo
 /**
  * `observations` maps resourceType -> { observation: <observation-contract
  * object, see engine/contracts/observation.mjs>, resources: [rawPayload,...] }.
+ * `control` is given only for a check that is not in the registry (a tenant's own).
  * Pure and synchronous: no DB access, no evidence write.
  */
-export function evaluateControl({ controlId, tenantRef, observations = {}, now = new Date() }) {
+export function evaluateControl({ controlId, control: given = null, tenantRef, observations = {}, now = new Date() }) {
   assertTenantRef(tenantRef);
-  const control = controlFor(controlId);
+  // A tenant's own check (ownChecks.mjs) is passed in as a control built from its row;
+  // its predicate must still be an allowlisted one, which predicateFor() enforces below.
+  const control = given ?? controlFor(controlId);
   if (!control) throw new TypeError(`${controlId}: control is not registered`);
+  if (control.controlId !== controlId) throw new TypeError(`${controlId}: the control passed is ${control.controlId}`);
 
   const factsByType = {};
   const evidenceRefs = [];

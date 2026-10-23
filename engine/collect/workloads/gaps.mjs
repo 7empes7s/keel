@@ -7,11 +7,19 @@
  * and never a family's raw key or a parent's object id.
  */
 
-/** "transportRule" as "Transport rule"; a family key is never shown raw. */
+// Short names Microsoft writes in capitals.
+const ACRONYMS = new Set(['atp', 'dlp', 'dkim', 'dmarc', 'owa', 'mfa', 'oauth', 'smtp', 'pop', 'imap', 'ews', 'url', 'ip']);
+
+/** "transportRule" as "Transport rule", "atpPolicy" as "ATP policy"; a family key is never shown raw. */
 export function familyWords(family) {
   const words = String(family ?? '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[-_]+/g, ' ').trim().toLowerCase();
-  return words ? words.replace(/^./, (letter) => letter.toUpperCase()) : 'Part of this backup';
+  if (!words) return 'Part of this backup';
+  const named = words.split(/\s+/).map((word) => (ACRONYMS.has(word) ? word.toUpperCase() : word)).join(' ');
+  return named.replace(/^./, (letter) => letter.toUpperCase());
 }
+
+// A setting's coverage status in words: "denied" reads as access denied.
+const STATUS_WORDS = { denied: 'access denied', refused: 'outside the backup scope' };
 
 const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 
@@ -44,7 +52,7 @@ export function workloadGapReasons(digest) {
     lines.push(`${familyWords(family)}: Microsoft returned nothing, though a working tenant always has some`);
   }
   if (discovery.capped) {
-    const limit = discovery.maxObjects ?? discovery.maxMailboxes ?? discovery.maxSites;
+    const limit = discovery.maxObjects ?? discovery.maxMailboxes ?? discovery.maxSites ?? discovery.maxTeams;
     lines.push(`More objects than one run reads${Number.isInteger(limit) ? ` (the limit is ${limit})` : ''}`);
   }
   const unidentified = Number(discovery.unidentified) || 0;
@@ -58,7 +66,7 @@ export function workloadGapReasons(digest) {
     if (name) lines.push(`${name}: ${typeof entry?.reason === 'string' && entry.reason ? entry.reason : 'outside the backup scope'}`);
   }
   for (const [status, count] of Object.entries(digest.fieldCounts ?? {})) {
-    if (status !== 'observed' && Number(count) > 0) lines.push(`${plural(Number(count), 'setting', 'settings')}: not read (${status.replaceAll('-', ' ')})`);
+    if (status !== 'observed' && Number(count) > 0) lines.push(`${plural(Number(count), 'setting', 'settings')}: not read (${STATUS_WORDS[status] ?? status.replaceAll('-', ' ')})`);
   }
   for (const reason of Array.isArray(digest.reasons) ? digest.reasons : []) {
     lines.push(typeof reason === 'string' ? reason : JSON.stringify(reason));

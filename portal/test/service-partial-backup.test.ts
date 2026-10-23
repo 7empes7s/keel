@@ -16,7 +16,7 @@ import { jobStatusSentence } from "@/lib/sentences";
 // writes as progress (engine/collect/workloads/gaps.mjs words the parts).
 
 const now = "2026-10-23T03:00:00Z";
-const flowGaps = ["Transport rule: access denied: HTTP 403: Access is denied", "Atp policy: not licensed in this tenant (Defender for Office 365)"];
+const flowGaps = ["Transport rule: access denied: HTTP 403: Access is denied", "ATP policy: not licensed in this tenant (Defender for Office 365)"];
 const mailboxGaps = ["More objects than one run reads (the limit is 50)", "KEEL-RT-mailbox-51@example.com: more than 50 mailboxes were named"];
 const incompleteTypes = [
   { type: "workload:exchange-mail-flow", outcome: "partial", httpStatus: null, items: 40, reasonCount: 2, reasons: flowGaps },
@@ -48,7 +48,7 @@ test("a service backup with only partial workloads reads Partly done, never Fail
   const line = incompleteTypesLine(jobIncompleteTypes(partial));
   assert.match(line, /^Not backed up: /);
   assert.doesNotMatch(line, /workload:|exchange-mail-flow/, "workload keys are named in words");
-  assert.match(jobStatusSentence(partial, now), /^Partly done .*: 2 areas incomplete$/);
+  assert.match(jobStatusSentence(partial, now), /^Partly done .*: 2 kinds incomplete$/);
   const row = renderToStaticMarkup(createElement(JobRow, { job: partial, now }));
   assert.match(row, /Partly done/);
   assert.doesNotMatch(row, />Failed</);
@@ -62,7 +62,10 @@ test("each part a service backup could not read gets a name and a plain cause", 
   assert.equal(contentGapItem(mailboxGaps[0]).name, "Part of this backup");
   assert.equal(contentGapItem(mailboxGaps[1]).why, "Too many to read in one run");
   assert.equal(contentGapItem("https://x-my.sharepoint.com/personal/a: outside the backup scope").why, "Outside the backup scope");
-  assert.equal(contentGapItem("3 settings: not read (denied)").why, "Access refused");
+  assert.equal(contentGapItem("3 settings: not read (access denied)").why, "Access refused");
+  // Keel's own read-only guard and a user's missing licence are not service gaps.
+  assert.equal(contentGapItem("Finance: refused a next page outside /drives/x/root/delta").why, "Could not be read in full");
+  assert.equal(contentGapItem("Ann Lee: HTTP 403 user not licensed").why, "Access refused");
 
   const rows = Object.fromEntries(jobTypeRows(partial, now).map((row) => [row.type, row]));
   assert.equal(rows["exchange-mail-flow"].label, "Partly read");
@@ -82,7 +85,7 @@ test("the Job page lists every part not read, errors behind a click", () => {
   assert.match(html, /job-summary-partial/);
   assert.match(html, /What was not backed up/);
   assert.match(html, /2 parts not read/);
-  for (const name of ["Transport rule", "Atp policy", "KEEL-RT-mailbox-51@example.com"]) assert.ok(html.includes(name), name);
+  for (const name of ["Transport rule", "ATP policy", "KEEL-RT-mailbox-51@example.com"]) assert.ok(html.includes(name), name);
   const gaps = html.slice(html.indexOf('id="job-gaps"'));
   assert.ok(!gaps.split("<details")[0].includes("Access is denied"), "raw errors wait behind a click");
   assert.doesNotMatch(html, />Failed</);

@@ -83,7 +83,7 @@ test('a backup where some workloads are only partial exits 3 and names what was 
   const listed = JSON.parse(marked[0].slice(INCOMPLETE_TYPES_PREFIX.length));
   assert.deepEqual(listed, [{
     type: 'workload:KEEL-RT-mail-flow', outcome: 'partial', httpStatus: null, items: 5, reasonCount: 2,
-    reasons: ['Transport rule: access denied: HTTP 403: Access is denied', 'Atp policy: not licensed in this tenant (Defender for Office 365)'],
+    reasons: ['Transport rule: access denied: HTTP 403: Access is denied', 'ATP policy: not licensed in this tenant (Defender for Office 365)'],
   }]);
   // The Job page lists each part the workload could not read.
   const { rows: [job] } = await client.query('SELECT progress FROM job WHERE id = $1', [jobId]);

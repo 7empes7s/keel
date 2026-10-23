@@ -488,7 +488,7 @@ function contentPartialProgress() {
 // A settings-by-service backup that saved every workload but read some only in part.
 function servicePartialProgress() {
   const at = (minute: number) => new Date(Date.parse("2026-10-02T02:00:00Z") + minute * 60_000).toISOString();
-  const flow = ["Transport rule: access denied: HTTP 403: Access is denied", "Atp policy: not licensed in this tenant (Defender for Office 365)"];
+  const flow = ["Transport rule: access denied: HTTP 403: Access is denied", "ATP policy: not licensed in this tenant (Defender for Office 365)"];
   const mailboxes = ["More objects than one run reads (the limit is 50)", "KEEL-RT-mailbox-51@example.com: more than 50 mailboxes were named"];
   const row = (outcome: string, itemCount: number, from: number, to: number, reasons: string[] = []): TypeProgress => ({
     outcome, itemCount, startedAt: at(from), completedAt: at(to), httpStatus: null,

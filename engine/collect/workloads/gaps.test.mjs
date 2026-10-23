@@ -7,7 +7,7 @@ import { familyWords, workloadGapReasons } from './gaps.mjs';
 
 test('family keys read as words', () => {
   assert.equal(familyWords('transportRule'), 'Transport rule');
-  assert.equal(familyWords('dlp-compliance_policy'), 'Dlp compliance policy');
+  assert.equal(familyWords('dlp-compliance_policy'), 'DLP compliance policy');
   assert.equal(familyWords(undefined), 'Part of this backup');
 });
 
@@ -28,14 +28,14 @@ test('a cmdlet-family digest lists each gap once, with a plain cause', () => {
   assert.deepEqual(lines, [
     'Transport rule: access denied: HTTP 403: Access is denied',
     'Retention rule: timed out after 60s (2 times)',
-    'Atp policy: not licensed in this tenant (Defender for Office 365 Plan 1)',
+    'ATP policy: not licensed in this tenant (Defender for Office 365 Plan 1)',
     'Journal rule: not switched on yet, so it was not read',
     'Teams meeting policy: Microsoft returned nothing, though a working tenant always has some',
     'More objects than one run reads (the limit is 500)',
     '2 objects: returned without an identity, so they could not be kept',
     '1 object: its parent was not read',
     '1 object: two answers with the same identity',
-    '3 settings: not read (denied)',
+    '3 settings: not read (access denied)',
     '1 setting: not read (not returned)',
   ]);
   assert.ok(lines.every((line) => !/[0-9a-f]{8}-[0-9a-f]{4}-/.test(line)), 'no object id is listed');
@@ -52,6 +52,10 @@ test('an Exchange or OneDrive digest names what was outside the scope', () => {
     'KEEL-RT-mailbox-3@example.com: more than 2 mailboxes were named',
     'https://example-my.sharepoint.com/personal/x: outside the backup scope',
   ]);
+});
+
+test('a capped Teams run names its limit', () => {
+  assert.deepEqual(workloadGapReasons({ discovery: { capped: true, maxTeams: 25 } }), ['More objects than one run reads (the limit is 25)']);
 });
 
 test('a digest that names nothing gives no lines', () => {

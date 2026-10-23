@@ -171,9 +171,9 @@ const ITEM_CAUSES: Array<[RegExp, string, ReadTone]> = [
   [/\b423\b|locked|notAllowed/i, "Locked by Microsoft", "soon"],
   [/\b429\b|throttl/i, "Microsoft 365 slowed Keel down", "soon"],
   // Service backups (#447): a family not licensed or not switched on is a known gap, not an error.
-  [/not licensed/i, "Not licensed in this tenant", "neutral"],
+  [/not licensed in this tenant/i, "Not licensed in this tenant", "neutral"],
   [/not switched on/i, "Not switched on yet", "neutral"],
-  [/\b40[13]\b|Access ?Denied|\bdenied\b|\brefused\b|forbidden|unauthori[sz]ed|Insufficient privileges/i, "Access refused", "urgent"],
+  [/\b40[13]\b|Access ?Denied|forbidden|unauthori[sz]ed|Insufficient privileges/i, "Access refused", "urgent"],
   [/\b404\b|not ?found/i, "Not found: deleted or moved during the backup", "soon"],
   [/timed? ?out|ETIMEDOUT|ECONNRESET|fetch failed|socket hang up|\b50[0234]\b/i, "Microsoft 365 did not answer", "soon"],
   [/file warning/i, "Some files could not be read", "soon"],

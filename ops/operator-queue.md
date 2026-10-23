@@ -7833,8 +7833,16 @@ item that needs it stays untouched.
   `result.incompleteTypes`. A failed workload, or a failed users / groups / sites / teams listing, still exits 1. The Job page
   lists each item not read under "What was not backed up".
 - Needs: /opt/keel-live at the #560 merge (f4073a7) or later (`grep -q contentExitCode /opt/keel-live/cli/keel-content-collect.mjs`).
-- Status: in-progress
-- Result: in-progress (2026-10-23 05:21 UTC). Build 68617a7 (#560 live). Next 01:00 run is ~20 h away and the portal is behind Access from the box, so I queued the same read-only `content-collect` job through the engine `enqueue` function (scheduler principal, `{tenantRef}`), which the worker runs.
+- Status: done
+- Result: done (2026-10-23 05:27 UTC). **Matches Expected: `succeeded`, `partial = true`, `error` null; only the three partial workloads are listed.** Build 68617a7. Read-only; no grants, no writes in the tenant, scope unchanged.
+  1. **Which run:** the 01:00 run was about 20 h away, and the Schedules page is behind Cloudflare Access from the box. I queued the same read-only job through the engine `enqueue` function: kind `content-collect`, `{tenantRef}`, scheduler principal, key `operator:q167:2026-10-23`. The worker ran it, so it was not a by-hand CLI run. Job `85aeb04b`, started 05:21:11, ended 05:26:56 (344 s).
+  2. **Job row:** status `succeeded`, error null, partial `true`. incomplete:
+     `[{content:exchange-mail, partial, items 1, reasonCount 1}, {content:onedrive, partial, items 0, reasonCount 10}, {content:sharepoint-sites, partial, items 146, reasonCount 1}]`.
+     - progress: exchange-mail partial 1/1; onedrive partial 0/10; planner complete 80; sharepoint-sites partial 146/1; teams complete 11.
+     - Worker: `job 85aeb04b…: partly done (344384ms), not read in full: content:exchange-mail, content:onedrive, content:sharepoint-sites`.
+     - Reasons (masked): onedrive 10× `<user>: HTTP 423 notAllowed for /v1.0/users/<id>/drive`; exchange-mail 1× `<group> (group): 1 read(s) failed (403 ErrorAccessDenied …)`; sharepoint-sites 1× `<search site>: 1 part(s) not fully read, first pages: failed (HTTP 404 …/pages/microsoft.graph.sitePage)`.
+     - Item counts are much lower than Q121's (onedrive 0 vs 2996, sharepoint 146 vs 5328): this run only read what changed since 01:00. Storage barely moved: content_chunk 29 206 → 29 353 chunks, 36 690 073 967 → 36 690 652 271 bytes; `du` 35G; free 39 %.
+  3. **Portal `/jobs/85aeb04b…`:** not checked. It is behind Cloudflare Access, and the box gets 401. **The badge "Partly done", the alert title and the "What was not backed up" rows are yours to confirm.**
 - **Tenant:** content reader reads only (the normal nightly content backup, whole-tenant scope from Q121 unchanged). No grants, no fixtures, no writes. 403s are reported, never fixed by granting.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. Use the next scheduled `content-collect` (01:00 UTC). If it is more than 2 hours away, use the Schedules page "Run now" on the content backup instead (same read-only job) and say which you used.

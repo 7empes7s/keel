@@ -329,6 +329,9 @@ export const JOB_HANDLERS = {
   // scheduler always sends and is checked against the config by the script.
   'workload-collect': {
     script: join(__dirname, 'keel-workload-collect.mjs'),
+    // A run where no workload failed but some were read only in part (one family
+    // refused, more objects than one run reads) is partly done, not failed (#447).
+    partialExitCode: PARTIAL_EXIT_CODE,
     argsFor(params = {}) {
       if (params === null || typeof params !== 'object' || Array.isArray(params)
           || Object.keys(params).some((key) => !['config', 'scope', 'tenantRef'].includes(key))) {
@@ -760,8 +763,8 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
       await recordAutoRemediationTerminalOutcome(client, { job, status: 'succeeded' });
       console.log(`job ${job.id}: succeeded (${Date.now() - startedAt}ms)`);
     } catch (err) {
-      // Issue #447: a collect that saved its snapshot (or a content backup that saved
-      // every workload) but could not read some types in full ends as a finished job
+      // Issue #447: a collect that saved its snapshot (or a service or content backup
+      // that saved every workload) but could not read some types in full ends as a finished job
       // that names those types, not as a failure.
       const partial = partialResult(handler, err, Date.now() - startedAt);
       if (partial) {

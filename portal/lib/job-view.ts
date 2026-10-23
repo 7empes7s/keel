@@ -166,15 +166,19 @@ export interface TypeRow {
 /** One thing a content backup could not read: its name, a plain cause, and the raw text. */
 export interface GapItem { name: string; why: string; tone: ReadTone; raw: string }
 
-// The plain cause of one item a content backup could not read, from its reason text.
+// The plain cause of one item a content or service backup could not read, from its reason text.
 const ITEM_CAUSES: Array<[RegExp, string, ReadTone]> = [
   [/\b423\b|locked|notAllowed/i, "Locked by Microsoft", "soon"],
   [/\b429\b|throttl/i, "Microsoft 365 slowed Keel down", "soon"],
-  [/\b40[13]\b|AccessDenied|forbidden|unauthori[sz]ed|Insufficient privileges/i, "Access refused", "urgent"],
+  // Service backups (#447): a family not licensed or not switched on is a known gap, not an error.
+  [/not licensed/i, "Not licensed in this tenant", "neutral"],
+  [/not switched on/i, "Not switched on yet", "neutral"],
+  [/\b40[13]\b|Access ?Denied|\bdenied\b|\brefused\b|forbidden|unauthori[sz]ed|Insufficient privileges/i, "Access refused", "urgent"],
   [/\b404\b|not ?found/i, "Not found: deleted or moved during the backup", "soon"],
   [/timed? ?out|ETIMEDOUT|ECONNRESET|fetch failed|socket hang up|\b50[0234]\b/i, "Microsoft 365 did not answer", "soon"],
   [/file warning/i, "Some files could not be read", "soon"],
-  [/than one run reads/i, "Too many to read in one run", "soon"],
+  [/than one run reads|more than \d+ \w+ were named/i, "Too many to read in one run", "soon"],
+  [/outside the backup scope/i, "Outside the backup scope", "soon"],
 ];
 
 /** "Ann Lee: HTTP 423 …" as an item: the name before the first colon, and a plain cause. */
@@ -187,9 +191,9 @@ export function contentGapItem(reason: string): GapItem {
   return { name, why, tone, raw: reason };
 }
 
-/** "10 OneDrives": how many items of a content workload could not be read. */
-function itemsLabel(workload: string, total: number): string {
-  const [one, many] = CONTENT_WORKLOADS[workload]?.item ?? ["item", "items"];
+/** "10 OneDrives": how many items of a content workload (or parts of a service backup) could not be read. */
+function itemsLabel(key: string, total: number): string {
+  const [one, many] = key.startsWith("workload:") ? ["part", "parts"] : CONTENT_WORKLOADS[key.slice("content:".length)]?.item ?? ["item", "items"];
   return `${total.toLocaleString("en-GB")} ${total === 1 ? one : many}`;
 }
 
@@ -235,13 +239,15 @@ export function jobTypeRows(job: Pick<JobRecord, "status" | "progress">, now: st
     const state = entry.outcome === "reading" && !active ? "stopped" : READ_STATES[entry.outcome] ? entry.outcome : "failed";
     const look = READ_STATES[state];
     const raw = entry.error ?? (entry.httpStatus && entry.httpStatus >= 400 ? `HTTP ${entry.httpStatus}` : null);
-    // A content workload names each item it could not read: from the list the job wrote,
-    // else from its error text, one item per line.
-    const reasons = !look.problem || !key.startsWith("content:") ? []
+    // A content workload names each item it could not read, and a partial service
+    // workload each part (a refused family, a limit): from the list the job wrote, else
+    // from its error text, one item per line. A failed service workload keeps one line.
+    const listsItems = key.startsWith("content:") || (key.startsWith("workload:") && state === "partial");
+    const reasons = !look.problem || !listsItems ? []
       : entry.reasons?.length ? entry.reasons : (entry.error ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
     const items = reasons.map(contentGapItem);
     const total = Math.max(items.length, entry.reasonCount ?? 0);
-    const label = items.length ? itemsLabel(key.slice("content:".length), total) : null;
+    const label = items.length ? itemsLabel(key, total) : null;
     return {
       type,
       name,

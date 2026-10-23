@@ -59,7 +59,7 @@ export function JobDetail({ job, now = new Date().toISOString() }: { job: JobRec
         <JobTypes job={job} rows={rows} />
       </> : <StatTiles label="Timing and result" tiles={summaryTiles(job, now)} />}
 
-      {rows.some((row) => row.items.length) ? <JobGapItems rows={rows} /> : null}
+      {rows.some((row) => row.items.length) ? <JobGapItems finished={job.status === "succeeded"} rows={rows} /> : null}
 
       <TechnicalDetails>
         <JobRecordFields job={job} />
@@ -70,12 +70,12 @@ export function JobDetail({ job, now = new Date().toISOString() }: { job: JobRec
 
 // A content backup that was partly done: each mailbox, OneDrive or site it could not
 // read, by workload, with a plain cause. The engine's own text waits behind a click.
-function JobGapItems({ rows }: { rows: TypeRow[] }) {
+function JobGapItems({ rows, finished }: { rows: TypeRow[]; finished: boolean }) {
   const withItems = rows.filter((row) => row.items.length);
   return (
     <section aria-labelledby="job-gaps-heading" className="job-gaps" id="job-gaps">
       <h2 className="job-section-head" id="job-gaps-heading"><Icon name="alert" />What was not backed up</h2>
-      <p className="job-gaps-lead">Everything else in this backup was saved. The next backup tries these again.</p>
+      <p className="job-gaps-lead">{finished ? "Everything else in this backup was saved. The next backup tries these again." : "These could not be read in full. The next backup tries them again."}</p>
       {withItems.map((row) => (
         <div className="job-gap-group" data-gap-type={row.type} key={row.type}>
           <h3><span>{row.name}</span><Badge tone={row.tone}>{`${row.itemsLabel} not read`}</Badge></h3>

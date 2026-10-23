@@ -299,3 +299,26 @@ test('the SharePoint transport refuses writes, bodies, other hosts and paths out
   assert.equal((await transport(`https://${HOST}/sites/x/_api/web`)).status, 200);
   assert.throws(() => sharePointReadTransport(async () => 't', undefined, { tenantHost: 'evil.example' }), /tenantHost/);
 });
+
+// A refused users listing hides whole sets of mailboxes and OneDrives: the collectors
+// say so, and the run fails rather than ending as partly done.
+test('a refused users listing marks mail and OneDrive as a failed discovery, and the run fails', async () => {
+  const tenant = fixtureTenant();
+  const transport = contentReadTransport(async () => 'KEEL-RT-token', async (href, init) => {
+    if (new URL(href).pathname === '/v1.0/users') return json({ error: { code: 'Authorization_RequestDenied' } }, 403);
+    return tenant.fetchImpl(href, init);
+  });
+  const result = await runContentCollection(null, {
+    tenantRef: 'sha256:KEEL-RT', tenantId: TENANT_ID, store: createMemoryContentStore(), transport,
+    scope: { namePrefix: 'KEEL-RT-' }, collectors: withState(createMemorySyncState()).filter((entry) => ['exchange-mail', 'onedrive'].includes(entry.workload)), logger: quiet,
+  });
+  for (const run of result.runs) assert.equal(run.discoveryFailed, true, run.workload);
+  assert.equal(result.exitCode, 1);
+
+  // A run that lists everything has no failed discovery.
+  const fine = await runContentCollection(null, {
+    tenantRef: 'sha256:KEEL-RT', tenantId: TENANT_ID, store: createMemoryContentStore(), transport: tenant.transport,
+    scope: { namePrefix: 'KEEL-RT-' }, collectors: withState(createMemorySyncState()), logger: quiet,
+  });
+  assert.ok(fine.runs.every((run) => run.discoveryFailed === false), JSON.stringify(fine.runs.map((run) => [run.workload, run.discoveryFailed])));
+});

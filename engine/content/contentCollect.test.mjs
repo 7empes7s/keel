@@ -191,6 +191,10 @@ test('content exit codes: full is 0, partial only is 3, anything failed or unkno
   assert.equal(contentExitCode([run('succeeded'), run('failed')]), 1);
   assert.equal(contentExitCode([run('succeeded'), run('skipped')]), 1);
   assert.equal(contentExitCode([run('succeeded'), run(undefined)]), 1);
+  // A partial run whose users, groups, sites or teams listing failed is a failure.
+  assert.equal(contentExitCode([run('succeeded'), { ...run('partial'), discoveryFailed: true }]), 1);
+  assert.equal(contentExitCode([{ ...run('succeeded'), discoveryFailed: true }]), 1);
+  assert.equal(contentExitCode([run('partial'), { ...run('succeeded'), discoveryFailed: false }]), PARTIAL_EXIT_CODE);
   const many = Array.from({ length: 80 }, (_, i) => `item ${i}: ${'x'.repeat(400)}`);
   const [entry] = incompleteWorkloadsOf([{ workload: 'onedrive', outcome: 'partial', items: 5, reasons: many }]);
   assert.equal(entry.reasons.length, MAX_LISTED_REASONS);

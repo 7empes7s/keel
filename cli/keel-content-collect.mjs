@@ -75,11 +75,12 @@ const CONTENT_PROGRESS_OUTCOME = { succeeded: 'complete', failed: 'failed', part
  * Exit codes (#447 for settings, the same rule for content). 0: every workload read in
  * full. 3: no workload failed, but some were read only in part (a locked OneDrive, one
  * refused mailbox); they are named on stdout and the run is partial, not failed. 1: any
- * workload failed or ended in any other state.
+ * workload failed or ended in any other state, or could not list what it backs up (a
+ * refused users, groups, sites or teams listing hides whole sets of items).
  */
 export function contentExitCode(runs) {
-  if (runs.every((run) => run.outcome === 'succeeded')) return 0;
-  return runs.every((run) => run.outcome === 'succeeded' || run.outcome === 'partial') ? PARTIAL_EXIT_CODE : 1;
+  if (runs.every((run) => run.outcome === 'succeeded' && !run.discoveryFailed)) return 0;
+  return runs.every((run) => (run.outcome === 'succeeded' || run.outcome === 'partial') && !run.discoveryFailed) ? PARTIAL_EXIT_CODE : 1;
 }
 
 /** The workloads a run read only in part, in the shape the worker's partial result takes. */

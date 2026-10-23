@@ -7855,3 +7855,30 @@ item that needs it stays untouched.
   "Partly done", OneDrive "10 OneDrives not read" with "Locked by Microsoft". If the job is `failed`, report its error and which
   workload failed or which listing failed; change nothing and do not roll back the scope for that alone (same rule as Q121).
 - **Report:** the outputs above (names masked) and the build.
+
+### Q168: Live check that a settings-by-service backup with partial workloads reads "Partly done", not Failed (after #562)
+- Drafted by the "Service backup partial status" thread (2026-10-23). Q166 noted `keel-workload-collect.mjs run` exits 1
+  "from other workloads' partials": every service backup with one partial workload read Failed. PR #562: it now exits 3 when
+  no workload failed and every drift detection ran, but some workloads are `partial`, prints one `incomplete types:` line, and
+  the worker finishes the job as `succeeded` with `result.partial = true` and `result.incompleteTypes` (`workload:<name>`, with
+  the parts not read). A `failed` workload or a failed drift detection still exits 1. The Job page lists each part not read
+  (a refused family, not licensed, a read limit...) under "What was not backed up".
+- Needs: /opt/keel-live at the #562 merge or later (`grep -q workloadExitCode /opt/keel-live/cli/keel-workload-collect.mjs`).
+- Status: todo
+- **Tenant:** Collector reads only (the normal settings-by-service backup). No grants, no fixtures, no writes. A refused read is reported, never fixed by granting.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. Use the next scheduled `workload-collect` (02:00 UTC). If it is more than 2 hours away, use the Schedules page "Run now" on the settings backup instead (same read-only job) and say which you used. Do not run the CLI by hand for this check: it must go through the worker.
+  2. When it ends, report:
+     ```sql
+     SELECT id, status, started_at, finished_at, error,
+            result->'partial' AS partial,
+            (SELECT jsonb_agg(jsonb_build_object('type', e->'type', 'items', e->'items', 'reasonCount', e->'reasonCount', 'reasons', e->'reasons'))
+               FROM jsonb_array_elements(result->'incompleteTypes') e) AS incomplete
+       FROM job WHERE kind = 'workload-collect' ORDER BY created_at DESC LIMIT 1;
+     SELECT key, value->>'outcome' AS outcome, value->>'itemCount' AS settings, value->>'reasonCount' AS reason_count
+       FROM job, jsonb_each(progress->'types') WHERE id = '<that job id>' ORDER BY key;
+     ```
+     and the worker line: `journalctl -u keel-worker --since "<job start>" | grep "<job id prefix>"` (expect `partly done ... not read in full: workload:...`).
+  3. Open the job on the portal (`/jobs/<id>`) and report: the status badge text, the verdict sentence, the alert title, and for each workload under "What was not backed up" the badge text and each row's "Not read" name and "Why" value (mask any mailbox or user name).
+- **Expected:** `status = succeeded`, `partial = true`, `error` null; `incomplete` lists only workloads whose outcome is `partial`, each with at least one reason line and no object id in it; every `failed` workload absent (if one failed, the job must be `failed` instead). Portal: badge "Partly done", rows named in words (e.g. "Transport rule", not `transportRule`). If a partial workload shows no rows, or a row reads "Could not be read in full" for a cause that should be named, quote its raw reason line. If the job is `failed`, report its error and which workload or drift detection failed; change nothing.
+- **Report:** the outputs above (names masked) and the build.

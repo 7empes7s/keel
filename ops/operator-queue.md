@@ -7833,7 +7833,8 @@ item that needs it stays untouched.
   `result.incompleteTypes`. A failed workload, or a failed users / groups / sites / teams listing, still exits 1. The Job page
   lists each item not read under "What was not backed up".
 - Needs: /opt/keel-live at the #560 merge (f4073a7) or later (`grep -q contentExitCode /opt/keel-live/cli/keel-content-collect.mjs`).
-- Status: todo
+- Status: in-progress
+- Result: in-progress (2026-10-23 05:21 UTC). Build 68617a7 (#560 live). Next 01:00 run is ~20 h away and the portal is behind Access from the box, so I queued the same read-only `content-collect` job through the engine `enqueue` function (scheduler principal, `{tenantRef}`), which the worker runs.
 - **Tenant:** content reader reads only (the normal nightly content backup, whole-tenant scope from Q121 unchanged). No grants, no fixtures, no writes. 403s are reported, never fixed by granting.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. Use the next scheduled `content-collect` (01:00 UTC). If it is more than 2 hours away, use the Schedules page "Run now" on the content backup instead (same read-only job) and say which you used.

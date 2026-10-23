@@ -254,6 +254,20 @@ test('Microsoft cloud words, old product names and security concepts map to kind
   assert.deepEqual(named.ignored, []);
   assert.equal(named.params.resourceTypes, undefined);
 
+  // A kind whose name holds "named", and a name that stops at the verb.
+  assert.deepEqual(read('What changed in named locations this week?').params, { resourceType: 'namedLocation', period: 'this-week' });
+  const called = read('Is the group called Sales backed up?');
+  assert.equal(called.intent, 'coverage');
+  assert.equal(called.params.name, 'Sales');
+  // Words in a name, and "assigned to", are not a kind of change.
+  assert.equal(read('What changed on "Disabled accounts" this week?').params.changeType, undefined);
+  assert.equal(read('What changed in the group named New Hires this week?').params.changeType, undefined);
+  const assigned = read('What changed in policies assigned to all users this week?');
+  assert.equal(assigned.params.changeType, undefined);
+  assert.ok(!assigned.params.resourceTypes.includes('user'), 'the users describe the policies');
+  assert.deepEqual(assigned.ignored, []);
+  assert.equal(read('Show me this CA policy').intent, 'coverage');
+
   // No verb: a time means what changed, none means what the backup holds; both are said.
   const noVerb = read('MDE settings this week');
   assert.equal(noVerb.intent, 'changes');

@@ -62,7 +62,7 @@ export const CONCEPT_WORDS = Object.freeze([
     kinds: ['roleEligibilitySchedule', 'roleAssignmentSchedule', 'unifiedRoleManagementPolicy', 'unifiedRoleManagementPolicyAssignment', 'privilegedAccessGroupResource', 'roleManagementCustomExtension'],
   },
   {
-    pattern: /\b(?:admin(?:istrator)? (?:roles?|rights|permissions|accounts?)|privileged (?:roles?|access|accounts?)|directory roles?|role[- ]based access(?: control)?|rbac|(?:global |privileged |tenant )?administrators?|(?:global |privileged |tenant )?admins?)\b/i,
+    pattern: /\b(?:admin(?:istrator)? (?:roles?|rights|permissions|accounts?)|privileged (?:roles?|access|accounts?)|directory roles?|role[- ]based access(?: control)?|rbac|(?:global |privileged |tenant )administrators?|(?:global |privileged |tenant )admins?|administrators|admins)\b/i,
     label: 'admin roles and who holds them, in Entra, Intune, Exchange and Defender',
     kinds: ['directoryRole', 'roleDefinition', 'roleAssignment', 'roleEligibilitySchedule', 'roleAssignmentSchedule', 'deviceManagementRoleDefinition', 'deviceManagementRoleAssignment', 'exchangeRoleDefinition', 'exchangeRoleAssignment', 'exchange-role-groups', 'defenderRoleDefinition', 'defenderRoleAssignment', 'entitlementManagementRoleAssignment'],
   },
@@ -312,7 +312,7 @@ export const NOT_HELD_WORDS = Object.freeze([
  * what it is, the page].
  */
 export const ELSEWHERE_WORDS = Object.freeze([
-  [/\b(?:(?:baseline|benchmark|compliance|cis) (?:controls?|checks?|results?|findings?|scores?)|controls?|compliance checks?|findings?|non-?conformities|deviations?)\b/i, 'compliance check results', 'Baselines'],
+  [/\b(?:(?:baseline|benchmark|compliance|cis) (?:controls?|checks?|results?|findings?|scores?)|compliance checks?|findings?|non-?conformities|deviations?)\b/i, 'compliance check results', 'Baselines'],
   [/\b(?:keel )?alerts?\b/i, 'KEEL alerts', 'Alerts'],
   [/\b(?:keel )?incidents?\b/i, 'incidents', 'Incidents'],
   [/\b(?:approvals?|pending approvals?|change requests?)\b/i, 'approvals', 'Approvals'],

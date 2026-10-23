@@ -78,7 +78,7 @@ const FILLER = new Set(('a an the what which who whom whose when where how why d
   + 'failure failures failing job jobs run runs task tasks collection collections now today yesterday month '
   + 'o365 cloud configured configuration configurations config status state current currently still our org organization company '
   + 'anyone someone everyone across within inside under over regarding related around more than whether if been could would should can '
-  + 'up off out going went got get gets having happened'.trim()).split(' '));
+  + 'up off out going went got get gets having happened assigned target targets targeting apply applies scoped'.trim()).split(' '));
 
 /** Each kind's own name ("Named location", "App consent policy") or its code, singular or
  *  plural. A name with a qualifier ("Security baseline (older format)") matches by code only. */
@@ -124,9 +124,9 @@ function readTopics(text) {
 }
 
 /** "for a group", "assigned to users": a user or group word that describes another kind. */
-const DESCRIBES = /\b(?:for|to|of|on|in|with|targeting|including|excluding|covering|that|which|by)\s+(?:a|an|the|all|any|some|our|my|these|those|every|guest|external)?\s*$/i;
+const DESCRIBES = /\b(?:for|to|of|on|in|with|assigned to|targets?|targeting|blocks?|blocking|includes?|including|excludes?|excluding|covering|that|which|by|appl(?:y|ies) to|scoped to)\s+(?:a|an|the|all|any|some|our|my|these|those|every|guest|external)?\s*$/i;
 /** A question that names a time is about changes, not the latest backup. */
-const TIME_WORDS = /\b(?:today|yesterday|tonight|this|last|past|previous|since|between|until|till|ago|during|recent(?:ly)?|week(?:end)?s?|months?|days?|hours?|mon(?:day)?|tue(?:sday)?|wed(?:nesday)?|thu(?:rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|\d{1,4}[/.-]\d{1,2}(?:[/.-]\d{1,4})?)\b/i;
+const TIME_WORDS = /\b(?:today|yesterday|tonight|this (?:week|month|year|morning)|last|past|previous|since|between|until|till|ago|during|recent(?:ly)?|week(?:end)?s?|months?|days?|hours?|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan(?:uary)?|feb(?:ruary)?|march|apr(?:il)?|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|december|\d{1,4}[/.-]\d{1,2}(?:[/.-]\d{1,4})?)\b/i;
 
 export class QueryRefusal extends Error {
   constructor(code, message) {
@@ -226,13 +226,14 @@ export function readQuestion(question, { now = new Date(), knownEntities = [] } 
 
   // A name after "named" or "called" is looked for like a quoted one.
   if (!params.name) {
-    const called = /\b(?:named|called|titled)\s+([\p{L}\p{N}][\p{L}\p{N} _&'’-]{1,119}?)(?=\s+(?:this|last|past|since|between|from|during|in|on|before|after|yesterday|today|was|were|is|has|have|got|been|changed|modified|updated|edited|added|created|removed|deleted|and|or)\b|[?!,;:]|\.(?:\s|$)|$)/iu.exec(mask);
+    const called = /\b(?:named|called|titled)\s+(?!locations?\b)([\p{L}\p{N}][\p{L}\p{N} _&'’-]{1,119}?)(?=\s+(?:this|last|past|since|between|from|during|in|on|before|after|yesterday|today|was|were|is|has|have|got|been|changed|modified|updated|edited|added|created|removed|deleted|backed|covered|protected|restorable|recoverable|failed|and|or)\b|[?!,;:]|\.(?:\s|$)|$)/iu.exec(mask);
     if (called) {
       params.name = called[1].trim();
       take(new RegExp(called[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
     }
   }
 
+  const unnamed = mask;
   const topics = readTopics(mask);
   for (const topic of topics) {
     used.push([topic.start, topic.end]);
@@ -243,7 +244,7 @@ export function readQuestion(question, { now = new Date(), knownEntities = [] } 
   const failWords = /\b(?:fail(?:ed|ures?|ing|s)?|errors?|errored|broken|unsuccessful|did(?: not|n[’']t) (?:complete|finish|run|succeed|work)|went wrong|problems?|issues?)\b/i;
   const jobWords = /\b(jobs?|runs?|tasks?|backups?|collections?|snapshots?|syncs?|restores?|exports?|comparisons?)\b/i;
   const coverageWords = /\b(?:coverage|covered|protected|protection|backed up|back(?:ing)? up|restorable|recoverable|in (?:the|our|a) (?:latest |last )?backups?|backup (?:status|coverage|state|contents)|not backed up|missing from (?:the )?backups?|backups? (?:holds?|held|contains?|has|have)|(?:does|did) (?:the |our |a )?(?:latest |last )?backups? (?:hold|contain|have|include))\b/i;
-  const changeWords = /\b(?:chang(?:e|ed|es|ing)|modif(?:ied|ications?)|added|created|removed|deleted|drift(?:ed|s)?|edited|updated|altered|touch(?:ed)?|tamper(?:ed)?|enabled|disabled|turned (?:on|off)|switched (?:on|off)|toggled|granted|revoked|assigned|unassigned|invited|activated|deactivated|new|differ(?:ent|ences?)|diffs?|history)\b/i;
+  const changeWords = /\b(?:chang(?:e|ed|es|ing)|modif(?:ied|ications?)|added|created|removed|deleted|drift(?:ed|s)?|edited|updated|altered|touch(?:ed)?|tamper(?:ed)?|enabled|disabled|turned (?:on|off)|switched (?:on|off)|toggled|granted|revoked|assigned(?! to\b)|unassigned|invited|activated|deactivated|new|differ(?:ent|ences?)|diffs?|history)\b/i;
   if (failWords.test(mask) && jobWords.test(mask)) { intent = 'failed-jobs'; take(failWords); take(jobWords); }
   else if (coverageWords.test(mask)) { intent = 'coverage'; take(coverageWords); }
   else if (changeWords.test(mask)) intent = 'changes';
@@ -261,7 +262,10 @@ export function readQuestion(question, { now = new Date(), knownEntities = [] } 
     .filter((entry, index, all) => all.findIndex((other) => other.label === entry.label) === index);
   const specific = topics.filter((topic) => topic.kinds && !topic.generic);
   // "Conditional Access policies for a group": the group describes the policy.
-  const generic = topics.filter((topic) => topic.generic && !(specific.length && DESCRIBES.test(text.slice(0, topic.start))));
+  // "policies assigned to all users": with a broad word, the users describe the policies.
+  const describing = topics.filter((topic) => topic.generic && DESCRIBES.test(text.slice(0, topic.start))
+    && (specific.length || CATEGORY_WORDS.some(([pattern]) => pattern.test(mask))));
+  const generic = topics.filter((topic) => topic.generic && !describing.includes(topic));
   const named = [...specific, ...generic];
   let kinds = [...new Set(named.flatMap((topic) => topic.kinds))];
 
@@ -274,7 +278,7 @@ export function readQuestion(question, { now = new Date(), knownEntities = [] } 
     const verbAt = intent ? mask.search(intent === 'coverage' ? coverageWords : changeWords) : Infinity;
     const categoryWords = CATEGORY_WORDS.filter(([pattern]) => {
       const at = mask.search(pattern);
-      return at !== -1 && (services.length > 0 || named.length > 0 || Boolean(params.name) || verbAt === -1 || at < verbAt);
+      return at !== -1 && (services.length > 0 || named.length > 0 || describing.length > 0 || Boolean(params.name) || verbAt === -1 || at < verbAt);
     });
     const categories = categoryWords.map(([, test]) => test);
     if (!kinds.length && !services.length && params.name) {
@@ -324,12 +328,14 @@ export function readQuestion(question, { now = new Date(), knownEntities = [] } 
   if (intent === 'changes' && ACTOR_WORDS.test(text)) assumed.push('KEEL compares backups, so it shows what changed and when, but not who made the change.');
 
   if (intent === 'changes') {
-    const added = /\b(?:added|created|new|granted|assigned|invited|activated)\b/i;
+    // Read from the text without the name looked for ("Disabled accounts", "New Hires"),
+    // and "assigned to" or "enabled for" describe a setting, not a change to it.
+    const added = /\b(?:added|created|new|granted|assigned(?! to\b)|invited|activated)\b/i;
     const removed = /\b(?:removed|deleted|revoked|unassigned|deactivated)\b/i;
-    const modified = /\b(?:modified|edited|updated|altered|enabled|disabled|turned (?:on|off)|switched (?:on|off)|toggled)\b/i;
-    if (added.test(text)) { params.changeType = 'added'; hit(added); }
-    else if (removed.test(text)) { params.changeType = 'removed'; hit(removed); }
-    else if (modified.test(text)) { params.changeType = 'modified'; hit(modified); }
+    const modified = /\b(?:modified|edited|updated|altered|enabled(?! for\b)|disabled(?! for\b)|turned (?:on|off)|switched (?:on|off)|toggled)\b/i;
+    if (added.test(unnamed)) { params.changeType = 'added'; hit(added); }
+    else if (removed.test(unnamed)) { params.changeType = 'removed'; hit(removed); }
+    else if (modified.test(unnamed)) { params.changeType = 'modified'; hit(modified); }
   }
 
   if (intent !== 'coverage') {

@@ -1733,12 +1733,13 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // Restore gaps, batch 17: Intune tenant-wide settings, approved by the user
   // on 2026-10-22. Each is updated in place only.
   // The Intune tenant settings: compliance settings (settings) and the device
-  // cleanup window. Graph sends a wide read to other backends (issue #447), so
-  // the read back names the same fields as the backup. The Company Portal
-  // brand on this object is the default branding profile, written there.
+  // cleanup window. Graph sends a read naming fields of more than one backend
+  // to a backend that cannot answer it (issue #447), so the read back reads
+  // each field on its own, as the backup does. The Company Portal brand on
+  // this object is the default branding profile, written there.
   deviceManagementSettings: defineRecord({
     resourceType: 'deviceManagementSettings', version: 'beta', collection: '/deviceManagement', singleton: true,
-    readQuery: '$select=id,settings,managedDeviceCleanupSettings', operations: ['update'],
+    readEach: ['settings', 'managedDeviceCleanupSettings'], operations: ['update'],
     writable: ['settings', 'managedDeviceCleanupSettings'], refusal: deviceManagementSettingsRefusal,
     permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),

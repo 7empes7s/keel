@@ -122,4 +122,20 @@ assert.equal(
   false,
 );
 
+// Issue #447: the Intune tenant settings are read one field per request, as
+// the collector reads them, and merged into the one live object.
+const intuneReader = fakeReader(new Map([
+  ['/deviceManagement?$select=settings', [{ settings: { secureByDefault: true } }]],
+  ['/deviceManagement?$select=managedDeviceCleanupSettings', [{ managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '180' } }]],
+]));
+const intuneIndex = await buildLiveIndex(intuneReader, {
+  resourceTypes: ['deviceManagementSettings'],
+  naturalKeyFor: (type) => type,
+});
+assert.deepEqual(intuneReader.calls.map(({ path }) => path), ['/deviceManagement?$select=settings', '/deviceManagement?$select=managedDeviceCleanupSettings']);
+assert.deepEqual(intuneIndex.get('deviceManagementSettings').payload, {
+  settings: { secureByDefault: true },
+  managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '180' },
+});
+
 console.log('liveState.test.mjs — all assertions passed');

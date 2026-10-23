@@ -1,6 +1,6 @@
 import { canonicalHash } from '../cir/canonicalHash.mjs';
 import { CATALOG, catalogReadPath } from '../../tools/tenant-probe/catalog.mjs';
-import { collectPerParent } from '../collect/entraAdapter.mjs';
+import { collectEntry, collectPerParent } from '../collect/entraAdapter.mjs';
 
 const byType = new Map(CATALOG.map((entry) => [entry.type, entry]));
 
@@ -95,7 +95,9 @@ export async function buildLiveIndex(reader, { resourceTypes, naturalKeyFor, del
     // read lists the parents and reads each one, exactly as the collector does.
     const live = entry.parent
       ? await listPerParent(reader, entry)
-      : await list(reader, entry.version, catalogReadPath(entry, entry.needsOrgId ? entry.path.replace('{org}', encodeURIComponent(await resolveOrganizationId())) : entry.path), entry);
+      : entry.selectEach
+        ? await listEachField(reader, entry)
+        : await list(reader, entry.version, catalogReadPath(entry, entry.needsOrgId ? entry.path.replace('{org}', encodeURIComponent(await resolveOrganizationId())) : entry.path), entry);
     for (const object of live) {
       index.set(naturalKeyFor(resourceType, object), {
         targetId: object.id,
@@ -146,6 +148,14 @@ async function listPerParent(reader, entry) {
   const { items, error, capped } = await collectPerParent(reader, entry);
   if (error) throw new Error(`listing ${entry.type} per parent failed: ${error.error ?? error.status ?? error}`);
   if (capped) throw new Error(`listing ${entry.type} per parent failed: pagination incomplete`);
+  return items;
+}
+
+// Issue #447: a singleton read one field per request, as the collector reads it.
+async function listEachField(reader, entry) {
+  const { items, error } = await collectEntry(reader, entry);
+  if (error && entry.absentWhenNotFound && error.status === 404) return [];
+  if (error) throw new Error(`listing ${entry.path} failed: ${error.error ?? error.status ?? error}`);
   return items;
 }
 

@@ -409,7 +409,7 @@ test('the CLI runs from saved metadata, writes the inventory and stores nothing 
       logger: { log: (line) => lines.push(line) },
     });
     assert.equal(code, 0, 'a PowerShell module that could not be listed does not fail the run');
-    assert.deepEqual(listed, [{ tenantConfigPath: join(dir, 'tenant.json') }]);
+    assert.deepEqual(listed, [{ tenantConfigPath: join(dir, 'tenant.json'), familyConfigPaths: {} }]);
     assert.ok(lines.includes('PowerShell MicrosoftTeams: listed 2 Get cmdlets.'));
     assert.ok(lines.includes('PowerShell ExchangeOnlineManagement: not listed (Exchange Online: could not connect: denied).'));
     const inventory = JSON.parse(readFileSync(join(dir, 'inventory.json'), 'utf8'));
@@ -425,6 +425,23 @@ test('the CLI runs from saved metadata, writes the inventory and stores nothing 
     assert.ok(lines.some((line) => line.includes('/print/printers: missing-grant (403), needs Printer.Read.All')));
     assert.ok(!tenant.calls.some((call) => call.url.includes('$metadata')));
     assert.equal(await discoverCli(['nonsense'], { logger: { log() {} } }), 2);
+
+    // Issue #542: the scope file's powershellConfigs reach the listing, as in the collect,
+    // so Exchange and Security & Compliance connect with a config that names the organization.
+    writeFileSync(join(dir, 'scope.json'), JSON.stringify({ powershellConfigs: { exchange: '/etc/keel/exchange-collector.json', purview: '/etc/keel/purview-collector.json' } }));
+    const familyFiles = { '/etc/keel/exchange-collector.json': { tenantId: 'fixture-tenant', organization: 'contoso.onmicrosoft.com' }, '/etc/keel/purview-collector.json': { organization: 'contoso.onmicrosoft.com' } };
+    const scoped = [];
+    assert.equal(await discoverCli(['run', '--config', join(dir, 'tenant.json'), '--scope', join(dir, 'scope.json'), '--versions', 'v1.0', '--metadata-dir', dir, '--no-store'], {
+      fetchImpl: fixtureTenant().fetchImpl, getTokenFn: async () => ({ accessToken: 'cli-token' }), now: fixed,
+      readFile: (path) => (familyFiles[path] ? JSON.stringify(familyFiles[path]) : readFileSync(path, 'utf8')),
+      listCommandsFn: async (options) => { scoped.push(options); return { commands: {}, errors: {} }; },
+      connectFn: async () => { throw new Error('the database must not be touched'); },
+      logger: { log() {} },
+    }), 0);
+    assert.deepEqual(scoped, [{
+      tenantConfigPath: join(dir, 'tenant.json'),
+      familyConfigPaths: { exchange: '/etc/keel/exchange-collector.json', purview: '/etc/keel/purview-collector.json' },
+    }]);
 
     // A token whose roles already hold the grant: the refusal is not blamed on a missing grant.
     const roles = Buffer.from(JSON.stringify({ roles: ['Printer.Read.All'] })).toString('base64url');

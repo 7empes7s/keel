@@ -77,3 +77,19 @@ test('the container lists cmdlets without running them, and connects only where 
   assert.doesNotMatch(script, /& \$name|Invoke-Expression|\biex\b|\b(Set|New|Remove|Add|Enable|Disable|Update)-[A-Z]/);
   assert.match(script, /Disconnect-ExchangeOnline/);
 });
+
+test('each session connects with its family config from the workload scope, the rest with the tenant config (#542)', async () => {
+  // Operator Q146: Exchange Online and Security & Compliance refused /etc/keel/tenant.json,
+  // which names no organization.
+  const jobs = [];
+  const runJobFn = async (job) => { jobs.push(job); return ok(job.session, ['Get-Thing']); };
+  const { errors } = await listPowerShellCommands({
+    runJobFn, tenantConfigPath: '/etc/keel/tenant.json',
+    familyConfigPaths: { exchange: '/etc/keel/exchange-collector.json', purview: '/etc/keel/purview-collector.json' },
+  });
+  assert.deepEqual(errors, {});
+  assert.deepEqual(Object.fromEntries(jobs.map((job) => [job.session, job.tenantConfigPath])), {
+    exo: '/etc/keel/exchange-collector.json', ipps: '/etc/keel/purview-collector.json',
+    teams: '/etc/keel/tenant.json', pnp: '/etc/keel/tenant.json',
+  });
+});

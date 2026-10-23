@@ -56,7 +56,12 @@
 // It is executed only by promoting that artifact with --artifact <id> --enforce after an
 // approver other than the requester approved it; the credential files are the
 // server's (engine/restore/credentialPaths.mjs), never argv. The dry run reads with the
-// server's collector file too unless --collector-config names another.
+// server's collector file too unless --collector-config names another. PowerShell
+// (Exchange, Purview, OneDrive, SharePoint, Teams) connects with the family's file from
+// the workload scope file (KEEL_WORKLOAD_SCOPE_PATH, default /etc/keel/workload-scope.json):
+// powershellConfigs for the dry run, and powershellRestorerConfigs or the collector file's
+// -restorer.json sibling for the promotion (issue #542). A family file wins over
+// --collector-config for PowerShell; Graph still reads with --collector-config.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
@@ -116,6 +121,9 @@ import {
 import { newestWorkloadRead } from '../engine/benchmarks/runChecks.mjs';
 import { planWorkloadComplianceFix } from '../engine/benchmarks/workloadFix.mjs';
 import { credentialPaths } from '../engine/restore/credentialPaths.mjs';
+import {
+  DEFAULT_SCOPE_PATH as DEFAULT_WORKLOAD_SCOPE_PATH, readWorkloadScope, workloadPowershellConfigPath,
+} from '../engine/collect/workloads/powershellConfigs.mjs';
 import { workloadWriteQualification } from '../engine/coverage/qualification.mjs';
 import { loadWorkloadLedger } from '../engine/collect/workloadLedgerStore.mjs';
 import { createPgContentIndex } from '../engine/content/index.mjs';
@@ -356,6 +364,7 @@ export async function runRestore({
     workloadQualifications: workloadQualificationsFn = defaultWorkloadQualifications,
     contentStore: contentStoreFn = defaultContentStore,
     credentialPaths: credentialPathsFn = credentialPaths,
+    workloadScope: workloadScopeFn = defaultWorkloadScope,
     sleep = (ms) => new Promise((done) => { setTimeout(done, ms); }),
     loadSnapshotBrandingAssets: loadSnapshotBrandingAssetsFn = loadSnapshotBrandingAssets,
     readLiveBrandingAssets: readLiveBrandingAssetsFn = readLiveBrandingAssets,
@@ -511,13 +520,13 @@ export async function runRestore({
       });
     }
     const workloadDeps = {
-      workloadRestores, workloadConnectionFn, workloadQualificationsFn, credentialPathsFn, getTokenFn, sleep,
+      workloadRestores, workloadConnectionFn, workloadQualificationsFn, credentialPathsFn, workloadScopeFn, getTokenFn, sleep,
       // Opened only by a restore whose backup is in the content store (site permissions).
       contentStore: () => contentStoreFn({ client, readFile }),
     };
     if (workloadRestore !== undefined) {
       return await planWorkloadRun({
-        client, request: workloadRestore, collectorConfig, collectorConfigPath, persistArtifactId, requestedBy, logger, deps: workloadDeps,
+        client, request: workloadRestore, collectorConfig, collectorConfigPath, persistArtifactId, requestedBy, readFile, logger, deps: workloadDeps,
       });
     }
     // Gap 6 on a service read (the Defender email checks): one setting of one policy,
@@ -1776,7 +1785,7 @@ async function executeEnforcementRun({ client, artifact, collectorConfig, target
  * (a certificate token for that host). The collector's can only read; the restorer's
  * can only send the allow-listed site permission writes (sitePermissionsWriteTransport).
  */
-async function defaultWorkloadConnection({ role, config, configPath, getTokenFn }) {
+export async function defaultWorkloadConnection({ role, config, configPath, powershellConfigPath = null, getTokenFn }) {
   const { accessToken } = await getTokenFn(config);
   const sharePoint = (tenantHost, { webUrl = null } = {}) => {
     const token = () => getTokenFn(config, { scope: `https://${tenantHost}/.default` });
@@ -1784,7 +1793,24 @@ async function defaultWorkloadConnection({ role, config, configPath, getTokenFn 
       ? sitePermissionsWriteTransport(token, globalThis.fetch, { tenantHost, webUrl })
       : sharePointReadTransport(token, globalThis.fetch, { tenantHost });
   };
-  return { transport: graphTransport(accessToken), powershell: { tenantConfigPath: configPath }, sharePoint };
+  return { transport: graphTransport(accessToken), powershell: { tenantConfigPath: powershellConfigPath ?? configPath }, sharePoint };
+}
+
+/** The workload scope file (KEEL_WORKLOAD_SCOPE_PATH), or {} when the host has none. */
+function defaultWorkloadScope({ readFile }) {
+  return readWorkloadScope({ path: process.env.KEEL_WORKLOAD_SCOPE_PATH || DEFAULT_WORKLOAD_SCOPE_PATH, readFile });
+}
+
+/**
+ * Issue #542: the PowerShell config a workload restore connects with, from the
+ * workload scope file, the same family file the collect uses (or its -restorer.json
+ * sibling for the promotion). Exchange and Purview refuse the Graph configs, which
+ * name no organization. Null leaves the role's own file.
+ */
+function workloadPowershellPath(workload, { role, tenantId, readFile, logger, deps, separateFrom = [] }) {
+  const path = workloadPowershellConfigPath(workload, { role, tenantId, readFile, separateFrom, scope: deps.workloadScopeFn({ readFile }) });
+  if (path) logger.log(`PowerShell connects as the ${role} with ${path}`);
+  return path;
 }
 
 /** The content store named in the content reader file (where the content backup lives). */
@@ -1825,12 +1851,15 @@ export async function defaultWorkloadQualifications(client, { tenantRef, operati
 
 const WORKLOAD_SUCCESS = new Set(['verified', 'no-change']);
 
-async function planWorkloadRun({ client, request, collectorConfig, collectorConfigPath, persistArtifactId, requestedBy, logger, deps }) {
+async function planWorkloadRun({ client, request, collectorConfig, collectorConfigPath, persistArtifactId, requestedBy, readFile, logger, deps }) {
   const entry = workloadRestoreFor(request.workload, deps.workloadRestores);
   const tenantRef = tenantRefFor(collectorConfig.tenantId);
   // The dry run reads with the collector only; it never holds the restorer.
+  const powershellConfigPath = workloadPowershellPath(request.workload, {
+    role: 'collector', tenantId: collectorConfig.tenantId, readFile, logger, deps,
+  });
   const connection = await deps.workloadConnectionFn({
-    role: 'collector', config: collectorConfig, configPath: collectorConfigPath, getTokenFn: deps.getTokenFn,
+    role: 'collector', config: collectorConfig, configPath: collectorConfigPath, powershellConfigPath, getTokenFn: deps.getTokenFn,
   });
   const plan = await entry.plan(client, {
     tenantRef, tenantId: collectorConfig.tenantId, request, connection, contentStore: deps.contentStore, sleep: deps.sleep,
@@ -1897,8 +1926,11 @@ async function executeWorkloadRun({ client, artifact, readFile, logger, deps }) 
   if (tenantRefFor(targetConfig.tenantId) !== artifact.tenantRef) {
     throw new Error('workload restore promotion refused: the restorer signs in to a different tenant than the one this plan was made for');
   }
+  const powershellConfigPath = workloadPowershellPath(plan.workload, {
+    role: 'restorer', tenantId: targetConfig.tenantId, readFile, logger, deps, separateFrom: [collectorConfig],
+  });
   const connection = await deps.workloadConnectionFn({
-    role: 'restorer', config: targetConfig, configPath: paths.targetConfig, getTokenFn: deps.getTokenFn,
+    role: 'restorer', config: targetConfig, configPath: paths.targetConfig, powershellConfigPath, getTokenFn: deps.getTokenFn,
   });
   const qualifications = await deps.workloadQualificationsFn(client, { tenantRef: artifact.tenantRef, operations: entry.operations });
   const enabled = Object.values(qualifications ?? {}).filter((qualification) => qualification?.enabled === true);

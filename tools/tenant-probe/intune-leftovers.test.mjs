@@ -5,7 +5,7 @@ import intuneLeftovers from './catalog.d/intune-leftovers.mjs';
 import { CATALOG, catalogEntryFor, catalogReadPath } from './catalog.mjs';
 import { GraphReader } from './graph.mjs';
 import { get } from '../../engine/collect/registry.mjs';
-import '../../engine/collect/entraAdapter.mjs';
+import { collectEntry } from '../../engine/collect/entraAdapter.mjs';
 
 // Independent expectations: the documented Graph route for each type, written
 // out here rather than derived from the catalogue under test.
@@ -62,7 +62,7 @@ test('enrollment tokens, QR codes, Wi-Fi passwords and certificate files are lef
   assert.ok(symantec.includes('expirationDateTime'), 'the expiry a renewal needs is kept');
   // The tenant Intune object carries runtime counters; only its settings are read.
   const dm = catalogEntryFor('deviceManagementSettings').selectEach;
-  assert.deepEqual(dm, ['settings', 'managedDeviceCleanupSettings']);
+  assert.deepEqual(dm, ['settings']);
   for (const counter of ['deviceProtectionOverview', 'windowsMalwareOverview', 'connectorStatus', 'subscriptionState']) assert.ok(!dm.includes(counter), counter);
   // Issue #447: a $select naming fields outside the core Intune object sent the
   // whole read to another backend, which answered HTTP 400. The brand is read
@@ -125,46 +125,55 @@ test('each Intune leftovers type reads a KEEL-RT- fixture with GET only, across 
   }
 });
 
-test('the Intune tenant settings are read one field per request and merged into one object (issue #447)', async () => {
+test('the Intune tenant settings read only the compliance settings, on their own request (issue #447)', async () => {
   const adapter = get('deviceManagementSettings').adapter;
-  const answers = {
-    '/deviceManagement?$select=settings': { '@odata.context': 'x(settings)', settings: { secureByDefault: true } },
-    '/deviceManagement?$select=managedDeviceCleanupSettings': { '@odata.context': 'x(cleanup)', managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '180' } },
-  };
   const calls = [];
   const reader = {
     async collect(version, path) {
       calls.push(`/${version}${path}`);
-      return { items: [answers[path]], pages: 1, status: 200, capped: false, error: null };
+      return { items: [{ '@odata.context': 'x(settings)', settings: { secureByDefault: true } }], pages: 1, status: 200, capped: false, error: null };
     },
   };
   const raw = await adapter.collectRaw(reader, {});
-  assert.deepEqual(calls, ['/beta/deviceManagement?$select=settings', '/beta/deviceManagement?$select=managedDeviceCleanupSettings']);
+  // The old cleanup setting failed live (2026-10-25); cleanup is the cleanup rules.
+  assert.deepEqual(calls, ['/beta/deviceManagement?$select=settings']);
   assert.equal(raw.error, null);
-  assert.equal(raw.pages, 2);
-  assert.equal(raw.items.length, 1);
-  assert.deepEqual(raw.items[0].settings, { secureByDefault: true });
-  assert.deepEqual(raw.items[0].managedDeviceCleanupSettings, { deviceInactivityBeforeRetirementInDays: '180' });
+  assert.deepEqual(raw.items.map((item) => item.settings), [{ secureByDefault: true }]);
+});
 
-  // One field Graph refuses fails the type; it is never saved half read.
-  const refusing = {
+test('a singleton read field by field merges the answers, and any failed field fails it (issue #447)', async () => {
+  const entry = { type: 'fixtureSingleton', path: '/fixture', version: 'beta', singleton: true, selectEach: ['a', 'b'] };
+  const answers = {
+    '/fixture?$select=a': { '@odata.context': 'x(a)', a: 1 },
+    '/fixture?$select=b': { '@odata.context': 'x(b)', b: 2 },
+  };
+  const readerFor = (failing) => ({
+    calls: [],
     async collect(version, path) {
-      if (path.endsWith('managedDeviceCleanupSettings')) return { items: [], pages: 0, status: 400, capped: false, error: { status: 400, error: 'No method match route template' } };
+      this.calls.push(path);
+      if (failing && path.endsWith(failing.field)) return { items: [], pages: 0, status: failing.status, capped: false, error: { status: failing.status, error: 'refused' } };
       return { items: [answers[path]], pages: 1, status: 200, capped: false, error: null };
     },
-  };
-  const failed = await adapter.collectRaw(refusing, {});
-  assert.equal(failed.error?.status, 400);
-  await assert.rejects(adapter.collect(refusing, {}), /collecting deviceManagementSettings failed/);
-
-  // A 404 after a field was read is a failed read, not an absent singleton.
-  const gone = {
-    async collect(version, path) {
-      if (path.endsWith('managedDeviceCleanupSettings')) return { items: [], pages: 0, status: 404, capped: false, error: { status: 404, error: 'gone' } };
-      return { items: [answers[path]], pages: 1, status: 200, capped: false, error: null };
-    },
-  };
-  assert.equal((await adapter.collectRaw(gone, {})).error?.status, 404);
+  });
+  const ok = readerFor(null);
+  const merged = await collectEntry(ok, entry);
+  assert.deepEqual(ok.calls, ['/fixture?$select=a', '/fixture?$select=b']);
+  assert.equal(merged.error, null);
+  assert.equal(merged.pages, 2);
+  assert.equal(merged.items.length, 1);
+  assert.equal(merged.items[0].a, 1);
+  assert.equal(merged.items[0].b, 2);
+  // A field Graph refuses fails the read; it is never saved half read.
+  const refused = await collectEntry(readerFor({ field: 'b', status: 400 }), entry);
+  assert.equal(refused.error?.status, 400);
+  assert.deepEqual(refused.items, []);
+  assert.equal(refused.path, '/fixture?$select=b', 'the evidence names the read that failed');
+  // A 404 after a field was read keeps the pages read, so it is a failure, not an absence.
+  const gone = await collectEntry(readerFor({ field: 'b', status: 404 }), entry);
+  assert.equal(gone.error?.status, 404);
+  assert.equal(gone.pages, 1);
+  // A 404 on the first field reads as an absent singleton.
+  assert.equal((await collectEntry(readerFor({ field: 'a', status: 404 }), entry)).pages, 0);
 });
 
 test('Windows app protection policies and iOS provisioning profiles are listed, then read on their own (restore gaps batch 12)', async () => {

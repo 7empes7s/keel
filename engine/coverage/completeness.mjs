@@ -259,8 +259,8 @@ export const COMPLETENESS = Object.freeze({
   defenderRoleAssignment: { whole: 'not-written' },
   defenderCustomAppScope: { whole: 'not-written' },
   // Remaining kinds, batch 6.
-  // Restore gaps batch 17: compliance settings and device cleanup updated in place.
-  deviceManagementSettings: { missing: [part('The Company Portal brand, written as the default branding profile', 'other-route'), part('Marking devices with no compliance policy as compliant, and a shorter device cleanup', 'not-written')] },
+  // Restore gaps batch 17: compliance settings updated in place; device cleanup is its own kind.
+  deviceManagementSettings: { missing: [part('The Company Portal brand, written as the default branding profile', 'other-route'), part('The device cleanup window, written as the device cleanup rules', 'other-route'), part('Marking devices with no compliance policy as compliant', 'not-written')] },
   androidDeviceOwnerEnrollmentProfile: { missing: [part('Enrollment token, QR code and Wi-Fi password', 'secret')] },
   androidForWorkEnrollmentProfile: { missing: [part('Enrollment token and QR code', 'secret')] },
   appleUserInitiatedEnrollmentProfile: { missing: [part('Its place in the priority order', 'not-written'), part('Who the profile is assigned to', 'not-written')] },

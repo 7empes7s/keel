@@ -2053,7 +2053,7 @@ const deviceManagement = Object.freeze({
   intuneBrand: { displayName: 'KEEL-RT IT' },
 });
 
-test('the Intune tenant settings are updated in place through beta: only settings and the cleanup window', async () => {
+test('the Intune tenant settings are updated in place through beta: only the compliance settings', async () => {
   const record = INTUNE_EXTENDED_RECORDS.deviceManagementSettings;
   assert.equal(record.singleton, true);
   assert.deepEqual(record.operations, ['update']);
@@ -2072,8 +2072,9 @@ test('the Intune tenant settings are updated in place through beta: only setting
   const reads = graph.calls.filter((call) => call.method === 'GET' || call.method === undefined);
   // Issue #447: each field is read back on its own request.
   assert.ok(reads.length > 0);
-  assert.ok(reads.every((call) => ['/deviceManagement?$select=settings', '/deviceManagement?$select=managedDeviceCleanupSettings'].includes(String(call.path))), 'the read back reads one field per request');
-  assert.ok(reads.some((call) => String(call.path).endsWith('managedDeviceCleanupSettings')));
+  assert.ok(reads.every((call) => String(call.path) === '/deviceManagement?$select=settings'), 'the read back reads one field per request');
+  // The old cleanup setting no longer reads; cleanup is the cleanup rules.
+  assert.equal(writes[0].body.managedDeviceCleanupSettings, undefined);
 
   for (const verb of ['create', 'delete']) {
     const refused = await applyIntuneExtendedWrite(idoFakeGraph(), resourceOf('deviceManagementSettings', deviceManagement), verb, FAST);
@@ -2081,11 +2082,9 @@ test('the Intune tenant settings are updated in place through beta: only setting
   }
 });
 
-test('a restore never marks devices with no compliance policy compliant, nor retires devices sooner', async () => {
+test('a restore never marks devices with no compliance policy compliant', async () => {
   const cases = [
     [{ ...deviceManagement, settings: { ...deviceManagement.settings, secureByDefault: false } }, deviceManagement, /no compliance policy as compliant/],
-    [{ ...deviceManagement, managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '90' } }, deviceManagement, /sooner than the 180 days/],
-    [deviceManagement, { ...deviceManagement, managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '0' } }, /device cleanup is off now/],
   ];
   for (const [backup, live, reason] of cases) {
     const graph = idoFakeGraph({ seed: { '/deviceManagement': live } });
@@ -2093,7 +2092,7 @@ test('a restore never marks devices with no compliance policy compliant, nor ret
     assert.match(result.skipped?.reason ?? '', reason);
     assert.equal(writesOf(graph).length, 0);
   }
-  // Longer cleanup and turning secure by default on are written.
+  // Turning secure by default on is written.
   const live = { ...deviceManagement, settings: { ...deviceManagement.settings, secureByDefault: false }, managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '90' } };
   const graph = idoFakeGraph({ seed: { '/deviceManagement': live } });
   const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementSettings', deviceManagement, { live: { state: 'present', payload: live } }), 'update', FAST);

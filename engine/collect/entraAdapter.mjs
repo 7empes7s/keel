@@ -95,7 +95,8 @@ function graphNativeAdapter(type) {
     }
     return {
       entry,
-      path,
+      // Issue #447: a read in several requests names the one that failed.
+      path: (result?.error && result?.path) || path,
       startedAt,
       completedAt,
       items: result?.items,
@@ -174,11 +175,12 @@ export async function collectEntry(reader, entry, basePath = entry.path, options
   let status = null;
   for (const path of paths) {
     const result = await reader.collect(entry.version, path, options);
-    // Pages already read keep a 404 on a later field from reading as absent.
-    if (result?.error || result?.capped || !Array.isArray(result?.items)) return { ...result, pages: pages + (Number.isSafeInteger(result?.pages) ? result.pages : 0) };
+    // Pages already read keep a 404 on a later field from reading as absent;
+    // `path` names the read that failed in the evidence.
+    if (result?.error || result?.capped || !Array.isArray(result?.items)) return { ...result, path, pages: pages + (Number.isSafeInteger(result?.pages) ? result.pages : 0) };
     // No object on the first read is an empty answer, as for a one-path read.
     if (result.items.length === 0 && path === paths[0]) return result;
-    if (result.items.length !== 1) return { ...result, items: [], error: { error: `reading ${entry.type}: ${path} returned ${result.items.length} objects, not one` } };
+    if (result.items.length !== 1) return { ...result, path, items: [], error: { error: `reading ${entry.type}: ${path} returned ${result.items.length} objects, not one` } };
     Object.assign(merged, result.items[0]);
     pages += Number.isSafeInteger(result.pages) ? result.pages : 0;
     status = result.status ?? status;

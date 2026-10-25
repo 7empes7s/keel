@@ -12,7 +12,7 @@ import {
   INTUNE_BEST_EFFORT, INTUNE_EXTENDED_RECORDS, INTUNE_RECORDS, applyIntuneExtendedWrite, attachIntuneAssignments, buildIntuneExtendedLedger,
   SCRIPT_WRITE_PERMISSION, intuneExtendedOperations, targetAppsBody, writesIntuneAssignments,
 } from './intuneOperations.mjs';
-import { changedRecordFields, defineRecord, recordPostStateRefusal } from './recordWriter.mjs';
+import { changedRecordFields, defineRecord, eachFieldReader, recordPostStateRefusal } from './recordWriter.mjs';
 import { EXPANSION_INVENTORY } from '../coverage/qualification.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
 import { classifyContentEffects } from '../safety/contentEffects.mjs';
@@ -2080,6 +2080,28 @@ test('the Intune tenant settings are updated in place through beta: only the com
     const refused = await applyIntuneExtendedWrite(idoFakeGraph(), resourceOf('deviceManagementSettings', deviceManagement), verb, FAST);
     assert.match(refused.failed.error, /unsupported operation/, verb);
   }
+});
+
+test('a record read field by field merges each answer, and stops at the first failed read (issue #447)', async () => {
+  const calls = [];
+  const writer = {
+    async read(version, path) {
+      calls.push(path);
+      if (path.endsWith('=c')) return { ok: false, status: 400, body: { error: { code: 'refused' } } };
+      return { ok: true, status: 200, body: { '@odata.context': path, [path.split('=').pop()]: path.split('=').pop() } };
+    },
+    async write() { return { ok: true, status: 204 }; },
+  };
+  const merged = await eachFieldReader(writer, ['a', 'b']).read('beta', '/fixture?$select=ignored');
+  assert.deepEqual(calls, ['/fixture?$select=a', '/fixture?$select=b']);
+  assert.equal(merged.ok, true);
+  assert.equal(merged.body.a, 'a');
+  assert.equal(merged.body.b, 'b');
+  const failed = await eachFieldReader(writer, ['a', 'c', 'b']).read('beta', '/fixture');
+  assert.equal(failed.ok, false);
+  assert.equal(failed.status, 400);
+  assert.equal(calls.at(-1), '/fixture?$select=c', 'nothing is read after the failed field');
+  assert.equal((await eachFieldReader(writer, ['a']).write()).ok, true, 'writes go to the writer');
 });
 
 test('a restore never marks devices with no compliance policy compliant', async () => {

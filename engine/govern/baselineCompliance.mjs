@@ -14,6 +14,7 @@ import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { recordException } from '../benchmarks/evaluate.mjs';
 import { fixFor, listFixCandidates } from '../benchmarks/fix.mjs';
+import { OWN_PREFIX, controlFromRow, ownCheckRows, shapeOwnCheck } from '../benchmarks/ownChecks.mjs';
 import { WORKLOAD_FACT_TYPES, controlFor } from '../benchmarks/registry.mjs';
 import { readObservation } from '../contracts/observation.mjs';
 import { retentionClaimFor } from '../storage/qualification.mjs';
@@ -272,13 +273,18 @@ function keyType(key) {
  */
 export async function complianceFindings(client, { tenantRef, now = new Date() }) {
   assertTenantRef(tenantRef);
-  const { rows: evaluations } = await client.query(
+  let { rows: evaluations } = await client.query(
     `SELECT DISTINCT ON (control_id) *
      FROM benchmark_evaluation
      WHERE tenant_ref = $1
      ORDER BY control_id, evaluated_at DESC, created_at DESC`,
     [tenantRef],
   );
+  // A tenant's own check is shown while it is in force; a removed one's results stay
+  // stored (and in the evidence chain) but no longer show as findings.
+  const ownRows = new Map((await ownCheckRows(client, { tenantRef })).map((row) => [`${OWN_PREFIX}${row.id}`, row]));
+  evaluations = evaluations.filter((evaluation) => !evaluation.control_id.startsWith(OWN_PREFIX)
+    || (ownRows.has(evaluation.control_id) && !ownRows.get(evaluation.control_id).removed_at));
   if (evaluations.length === 0) return { findings: [], summary: summarize([]) };
 
   const workloads = [...new Set(evaluations.flatMap((evaluation) => (Array.isArray(evaluation.observation_windows) ? evaluation.observation_windows : [])
@@ -361,14 +367,18 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
       }));
     const { state, exception } = exceptionState(latestException.get(String(evaluation.id)), now);
     const verdict = evaluation.verdict;
+    const own = ownRows.get(evaluation.control_id) ?? null;
+    const control = own ? controlFromRow(own) : controlFor(evaluation.control_id);
 
     return {
       id: String(evaluation.id),
       controlId: evaluation.control_id,
       // The control's own wording from the registry; null for a control it no longer holds.
-      title: controlFor(evaluation.control_id)?.title ?? null,
-      description: controlFor(evaluation.control_id)?.description ?? null,
-      severity: controlFor(evaluation.control_id)?.severity ?? null,
+      title: control?.title ?? null,
+      description: control?.description ?? null,
+      severity: control?.severity ?? null,
+      // A check the tenant wrote itself: what it reads and expects, so it can be shown and removed.
+      own: own ? shapeOwnCheck(own) : null,
       framework: evaluation.framework,
       edition: evaluation.edition,
       profile: evaluation.profile,

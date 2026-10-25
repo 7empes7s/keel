@@ -192,7 +192,6 @@ const perChild = CATALOG.filter((entry) => entry.itemReads?.path && entry.childR
 assert.ok(perChild > 0);
 // Issue #447: a singleton read one field per request makes one call per field.
 const perField = CATALOG.filter((entry) => entry.selectEach).reduce((sum, entry) => sum + entry.selectEach.length - 1, 0);
-assert.ok(perField > 0);
 assert.equal(seen.length, M1_TYPES.length + perParent + perItem + perChild + perField, 'one reader.collect call per type, plus the parent list for a type read per parent, plus one per object for a type with item reads, plus one per child those reads return, plus one per extra field of a singleton read field by field');
 
 // collectM1 is order-independent against the reader: entries are keyed by type.

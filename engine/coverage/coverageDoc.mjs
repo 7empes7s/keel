@@ -518,8 +518,8 @@ export const TYPE_GUIDE = Object.freeze({
     'KEEL backs these up but does not restore them yet.',
     'Recreate each scope with PowerShell from the backup, before the assignments that use it. There is no admin center page for it.'),
   deviceManagementSettings: auto('Intune tenant settings', {
-    keeps: 'Puts back the compliance settings, such as how devices with no compliance policy are marked and how long a device may go without checking in, and the device cleanup window.',
-    todo: 'A restore never marks devices with no compliance policy as compliant and never makes device cleanup retire devices sooner: change those by hand in the Intune admin center, under Endpoint security, Device compliance, Compliance settings, and under Devices, Device clean-up rules. The Company Portal contact details are put back with the default branding profile.',
+    keeps: 'Puts back the compliance settings, such as how devices with no compliance policy are marked and how long a device may go without checking in. The device cleanup window is put back with the device cleanup rules.',
+    todo: 'A restore never marks devices with no compliance policy as compliant: change that by hand in the Intune admin center, under Endpoint security, Device compliance, Compliance settings. The Company Portal contact details are put back with the default branding profile.',
   }),
   androidDeviceOwnerEnrollmentProfile: auto('Android Enterprise enrollment profiles', {
     keeps: 'Recreates profiles and puts back their name, description, device name template and Wi-Fi network; the enrollment mode is set when a profile is recreated. A profile on a secured Wi-Fi network is recreated by hand, because the Wi-Fi password is not backed up.',

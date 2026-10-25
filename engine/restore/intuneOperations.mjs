@@ -1732,15 +1732,16 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   }),
   // Restore gaps, batch 17: Intune tenant-wide settings, approved by the user
   // on 2026-10-22. Each is updated in place only.
-  // The Intune tenant settings: compliance settings (settings) and the device
-  // cleanup window. Graph sends a read naming fields of more than one backend
-  // to a backend that cannot answer it (issue #447), so the read back reads
-  // each field on its own, as the backup does. The Company Portal brand on
-  // this object is the default branding profile, written there.
+  // The Intune tenant settings: the compliance settings (settings). Graph
+  // sends a read naming fields of more than one backend to a backend that
+  // cannot answer it (issue #447), so the read back reads each field on its
+  // own, as the backup does. The device cleanup window is the cleanup rules
+  // (managedDeviceCleanupRule), and the Company Portal brand on this object is
+  // the default branding profile; each is written there.
   deviceManagementSettings: defineRecord({
     resourceType: 'deviceManagementSettings', version: 'beta', collection: '/deviceManagement', singleton: true,
-    readEach: ['settings', 'managedDeviceCleanupSettings'], operations: ['update'],
-    writable: ['settings', 'managedDeviceCleanupSettings'], refusal: deviceManagementSettingsRefusal,
+    readEach: ['settings'], operations: ['update'],
+    writable: ['settings'], refusal: deviceManagementSettingsRefusal,
     permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
   // The Microsoft Tunnel health limits: only the two limits are written; the
@@ -1764,10 +1765,9 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
 const INTUNE_PORTAL = 'Intune admin center';
 
 /**
- * The Intune tenant settings are never restored to a looser or harsher state
- * than live in two ways a person must choose: devices with no compliance
- * policy are never turned compliant (Conditional Access reads it), and the
- * device cleanup never starts or retires devices sooner.
+ * The Intune tenant settings are never restored to a looser state than live:
+ * devices with no compliance policy are never turned compliant (Conditional
+ * Access reads it). Device cleanup has its own guard (cleanupRuleRefusal).
  */
 export function deviceManagementSettingsRefusal(resource, verb) {
   if (verb !== 'update') return null;
@@ -1777,18 +1777,6 @@ export function deviceManagementSettingsRefusal(resource, verb) {
     return {
       outcome: 'skipped',
       reason: `manual: the backup marks devices with no compliance policy as compliant, which they are not now; Conditional Access reads that, so a restore never loosens it; change it by hand in the ${INTUNE_PORTAL}, under Endpoint security, Device compliance, Compliance settings`,
-    };
-  }
-  const days = (settings) => {
-    const value = Number(settings?.deviceInactivityBeforeRetirementInDays);
-    return Number.isFinite(value) && value > 0 ? value : null;
-  };
-  const wantDays = days(want.managedDeviceCleanupSettings);
-  const nowDays = days(now.managedDeviceCleanupSettings);
-  if (wantDays !== null && (nowDays === null || wantDays < nowDays)) {
-    return {
-      outcome: 'skipped',
-      reason: `manual: the backup retires devices after ${wantDays} days without check-in, ${nowDays === null ? 'and device cleanup is off now' : `sooner than the ${nowDays} days set now`}; that could retire devices at once, so a person changes it in the ${INTUNE_PORTAL}, under Devices, Device clean-up rules`,
     };
   }
   return null;

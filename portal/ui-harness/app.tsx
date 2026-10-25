@@ -1738,12 +1738,14 @@ const ASK_MANY_RECORDS = Array.from({ length: 36 }, (_, index) => {
   return {
     kind: "change" as const, id, resourceType, naturalKey: `${resourceType}:${name} ${index + 1}`, name: `${name} ${index + 1}`, changeType, impact,
     decision: index % 5 === 0 ? "accept" : null, seenAt: `2026-${month}-${day}T${hour}:00:00.000Z`,
+    fields: changeType === "modified" ? (index % 3 === 0 ? ["accountEnabled", "department"] : ["displayName"]) : null,
     window: { from: `2026-${month}-${day}T${hour === "00" ? "00" : String(Number(hour) - 1).padStart(2, "0")}:00:00.000Z`, to: `2026-${month}-${day}T${hour}:00:00.000Z` },
     source: { kind: "change" as const, id, href: "/drift", collectionId: null },
   };
 });
 const ASK_MANY: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: {
-  ...ASK_BASE, scope: { central: true, entities: [] }, status: "partial", intent: "changes", question: "What Teams policies, groups and printers changed this week?",
+  ...ASK_BASE, scope: { central: true, entities: [] }, status: "partial", intent: "changes", question: "What Teams policies, groups and printers changed?",
+  assumed: ["period"],
   plan: { intent: "changes", params: { entity: null, from: "2026-09-28T00:00:00.000Z", to: now, resourceType: null, resourceTypes: null, name: null, changeType: null, limit: 100 } },
   ignored: ["printers"], total: 276, shown: 36, truncated: true, sentence: "276 matching changes found.",
   summary: [

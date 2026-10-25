@@ -23,7 +23,9 @@ import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { createFixtureCmdbAdapter } from '../identity/adapters/cmdb.mjs';
 import { resolveOwnership } from '../identity/ownership.mjs';
 import { ANSWER_VERSION, TEMPLATE_INTENTS, answerQuestion, executePlan, readOnly } from '../query/execute.mjs';
-import { BUDGET, INTENTS, periodWindow, planQuestion, readQuestion, validateRequest } from '../query/intent.mjs';
+import { BUDGET, INTENTS, KNOWN_KINDS, periodWindow, planQuestion, readQuestion, validateRequest } from '../query/intent.mjs';
+import { CONCEPT_WORDS, TYPE_WORDS } from '../query/vocabulary.mjs';
+import { TAXONOMY } from '../insights/taxonomy.mjs';
 import { recordLineage } from '../store/resourceLineage.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
@@ -184,7 +186,10 @@ test('the plan comes from a fixed set: intents, types, entities and periods are 
   assert.deepEqual(quoted, { intent: 'changes', params: { name: 'Block legacy auth', period: 'this-week' }, ignored: [] });
   const unread = readQuestion('What changed with the printers and scanners this week?', { now, knownEntities: known });
   assert.deepEqual(unread.ignored, ['printers', 'scanners']);
-  assert.deepEqual(readQuestion('What Defender labels changed this week?', { now }), { unsupported: 'no-such-kind' });
+  // A service with a broad word it has no kind for is answered for the whole service, and says so.
+  const defender = readQuestion('What Defender labels changed this week?', { now });
+  assert.ok(defender.params.resourceTypes.every((type) => TAXONOMY[type].service === 'Defender'), JSON.stringify(defender));
+  assert.match(defender.assumed.join(' '), /no labels in Defender/);
 
   const plan = validateRequest({ intent: read.intent, params: read.params }, { now, knownEntities: known, scope: SALES_SCOPE });
   assert.equal(plan.ok, true);
@@ -211,10 +216,75 @@ test('the plan comes from a fixed set: intents, types, entities and periods are 
   assert.equal(validateRequest({ intent: 'changes', params: { period: 'this-week' } }, { now, scope: { central: false, entities: [] } }).refusal.code, 'no-access');
 });
 
-test('unbounded questions refuse: no period, a period over the budget, all time, or too many rows', async () => {
+test('Microsoft cloud words, old product names and security concepts map to kinds KEEL backs up', () => {
+  const now = new Date('2026-10-03T12:00:00Z');
+  for (const { kinds } of CONCEPT_WORDS) for (const type of kinds) assert.ok(KNOWN_KINDS.includes(type), type);
+  for (const [, type] of TYPE_WORDS) assert.ok(KNOWN_KINDS.includes(type), type);
+  const read = (question) => readQuestion(question, { now });
+  const kinds = (question) => { const { params } = read(question); return params.resourceTypes ?? (params.resourceType ? [params.resourceType] : []); };
+
+  // Abbreviations and old names.
+  assert.deepEqual(kinds('Which CA policies changed this week?'), ['conditionalAccessPolicy']);
+  assert.deepEqual(kinds('What changed in Azure AD this week?'), kinds('What changed in Entra ID this week?'));
+  assert.ok(kinds('Endpoint Manager changes this week').every((type) => TAXONOMY[type].service === 'Intune'));
+  assert.deepEqual(kinds('Which DLP policies changed this week?'), ['purview-retention-dlp']);
+  assert.deepEqual(kinds('Were MIP labels changed this week?'), ['purview-labels']);
+  // The longest phrase wins: Defender for Office is mail protection, not the Defender service.
+  assert.deepEqual(kinds('Were Defender for Office safe links changed this week?'), ['exchange-extended', 'exchange-mail-flow']);
+  // Concepts span kinds, and the answer says how they were read.
+  const mfa = read('Who changed MFA yesterday?');
+  assert.ok(mfa.params.resourceTypes.includes('authenticationMethodsPolicy') && mfa.params.resourceTypes.includes('conditionalAccessPolicy'));
+  assert.ok(mfa.assumed.some((line) => line.startsWith('Read “MFA” as')));
+  assert.ok(mfa.assumed.some((line) => /not who made the change/.test(line)), 'KEEL does not know who made a change, and says so');
+  assert.ok(kinds('PIM changes last week').includes('roleEligibilitySchedule'));
+  const admins = read('Any new global admins this week?');
+  assert.equal(admins.params.changeType, 'added');
+  assert.ok(admins.params.resourceTypes.includes('roleAssignment') && admins.params.resourceTypes.includes('exchangeRoleAssignment'));
+  // A service narrows a concept: Exchange admins are Exchange's own roles.
+  assert.ok(kinds('Did Exchange admins change this week?').every((type) => TAXONOMY[type].service === 'Exchange'));
+  assert.ok(kinds('Did guest access settings change this month?').includes('b2bManagementPolicy'));
+  assert.ok(kinds('Is external sharing backed up?').includes('sharepointSettings'));
+  assert.ok(kinds('Show our security baselines').includes('deviceManagementIntent'));
+  // A user or group word that describes another kind does not add one.
+  assert.deepEqual(kinds('Conditional access policy for a group changed this week'), ['conditionalAccessPolicy']);
+  assert.deepEqual(kinds('Users and groups added this week'), ['group', 'user']);
+  // A name after "named" is looked for, and words inside it are not read as topics.
+  const named = read('Changes to the policy named Require MFA for admins this week');
+  assert.equal(named.params.name, 'Require MFA for admins');
+  assert.deepEqual(named.ignored, []);
+  assert.equal(named.params.resourceTypes, undefined);
+
+  // A kind whose name holds "named", and a name that stops at the verb.
+  assert.deepEqual(read('What changed in named locations this week?').params, { resourceType: 'namedLocation', period: 'this-week' });
+  const called = read('Is the group called Sales backed up?');
+  assert.equal(called.intent, 'coverage');
+  assert.equal(called.params.name, 'Sales');
+  // Words in a name, and "assigned to", are not a kind of change.
+  assert.equal(read('What changed on "Disabled accounts" this week?').params.changeType, undefined);
+  assert.equal(read('What changed in the group named New Hires this week?').params.changeType, undefined);
+  const assigned = read('What changed in policies assigned to all users this week?');
+  assert.equal(assigned.params.changeType, undefined);
+  assert.ok(!assigned.params.resourceTypes.includes('user'), 'the users describe the policies');
+  assert.deepEqual(assigned.ignored, []);
+  assert.equal(read('Show me this CA policy').intent, 'coverage');
+
+  // No verb: a time means what changed, none means what the backup holds; both are said.
+  const noVerb = read('MDE settings this week');
+  assert.equal(noVerb.intent, 'changes');
+  assert.ok(noVerb.assumed.includes('Read as a question about what changed.'));
+  assert.equal(read('What about Autopilot profiles?').intent, 'coverage');
+  // What KEEL does not back up, or answers elsewhere, is said plainly.
+  assert.deepEqual(read('Show me risky sign-ins'), { unsupported: 'not-held', notHeld: ['Identity Protection risk data'] });
+  assert.equal(read('Which baseline controls failed?').unsupported, 'elsewhere');
+  const failed = read('Which backups failed in Intune this week?');
+  assert.equal(failed.intent, 'failed-jobs');
+  assert.ok(failed.assumed.some((line) => /every service/.test(line)));
+});
+
+test('unbounded questions refuse: a period over the budget, all time, or too many rows', async () => {
   const now = new Date('2026-10-03T12:00:00Z');
   const ask = (question, scope = CENTRAL) => planQuestion(question, { now, knownEntities: ['SALES'], scope });
-  for (const question of ['Show me every change ever', 'What changed?', 'What changed in the last 90 days?', 'What changed between 2026-01-01 and 2026-06-01?', 'Which jobs failed?']) {
+  for (const question of ['Show me every change ever', 'What changed in the last 90 days?', 'What changed between 2026-01-01 and 2026-06-01?', 'What changed since 2026-08-01?']) {
     const planned = await ask(question);
     assert.equal(planned.ok, false, question);
     assert.equal(planned.refusal.code, 'unbounded', question);
@@ -229,6 +299,86 @@ test('unbounded questions refuse: no period, a period over the budget, all time,
   assert.equal((await ask('Which jobs failed this week?', SALES_SCOPE)).refusal.code, 'central-only');
   // The budget allows exactly the maximum.
   assert.equal((await ask(`What changed in the last ${BUDGET.maxWindowDays} days?`)).ok, true);
+});
+
+test('a question with no period is read for this week, and days are read as people write them', async () => {
+  const now = new Date('2026-10-23T14:30:00Z');
+  const ask = (question) => planQuestion(question, { now, knownEntities: ['SALES'], scope: CENTRAL });
+  const window = (planned) => [planned.plan.params.from, planned.plan.params.to];
+  const week = ['2026-10-19T00:00:00.000Z', now.toISOString()];
+  const month = ['2026-10-01T00:00:00.000Z', now.toISOString()];
+
+  // No period named: this week, and the answer says it assumed one.
+  for (const question of ['Which users have changed?', 'What changed?', 'Which jobs failed?']) {
+    const planned = await ask(question);
+    assert.equal(planned.ok, true, question);
+    assert.deepEqual(window(planned), week, question);
+    assert.deepEqual(planned.assumed, ['period'], question);
+  }
+  assert.deepEqual((await ask('What changed this week?')).assumed, []);
+
+  // The start of the month or week is that period, not "since the beginning of time".
+  for (const question of ['Which users have changed since the beginning of the month?', 'What changed from the start of this month?']) {
+    const planned = await ask(question);
+    assert.equal(planned.ok, true, question);
+    assert.deepEqual(window(planned), month, question);
+    assert.deepEqual(planned.ignored, [], question);
+  }
+  assert.deepEqual(window(await ask('What changed since the start of the week?')), week);
+
+  // A day in either order when only one order is a date; "since" runs up to now.
+  const since17 = ['2026-10-17T00:00:00.000Z', now.toISOString()];
+  for (const question of ['Which users changed since 17/10', 'Which users changed since 10/17', 'Which users changed since 17/10/2026', 'Which users changed since 17 Oct', 'Which users changed since October 17th', 'Which users changed since 2026-10-17']) {
+    const planned = await ask(question);
+    assert.equal(planned.ok, true, question);
+    assert.deepEqual(window(planned), since17, question);
+    assert.deepEqual(planned.ignored, [], question);
+  }
+  const between = await ask('What changed between 1 Oct and Oct 5th?');
+  assert.deepEqual(window(between), ['2026-10-01T00:00:00.000Z', '2026-10-06T00:00:00.000Z'], 'the last day named is included');
+  // Other ways people name a period (23 Oct 2026 is a Friday).
+  const forms = {
+    'What changed last month?': ['2026-09-01T00:00:00.000Z', '2026-10-01T00:00:00.000Z'],
+    'What changed 3 days ago?': ['2026-10-20T00:00:00.000Z', '2026-10-21T00:00:00.000Z'],
+    'What changed since 3 days ago?': ['2026-10-20T14:30:00.000Z', now.toISOString()],
+    'What changed on 17 Oct?': ['2026-10-17T00:00:00.000Z', '2026-10-18T00:00:00.000Z'],
+    'What changed on Monday?': ['2026-10-19T00:00:00.000Z', '2026-10-20T00:00:00.000Z'],
+    'What changed in the last 48 hours?': ['2026-10-21T14:30:00.000Z', now.toISOString()],
+    'What changed in the past 2 weeks?': ['2026-10-09T14:30:00.000Z', now.toISOString()],
+    'What changed over the weekend?': ['2026-10-17T00:00:00.000Z', '2026-10-19T00:00:00.000Z'],
+    'What changed since Monday?': week,
+    'What changed since last Friday?': ['2026-10-16T00:00:00.000Z', now.toISOString()],
+    'What changed from Monday to Wednesday?': ['2026-10-19T00:00:00.000Z', '2026-10-22T00:00:00.000Z'],
+    'Which users changed since 1 October': month,
+  };
+  for (const [question, expected] of Object.entries(forms)) {
+    const planned = await ask(question);
+    assert.equal(planned.ok, true, question);
+    assert.deepEqual(window(planned), expected, question);
+    assert.deepEqual(planned.ignored, [], question);
+  }
+  // A range's end is read after its start: a day still to come is not last year's.
+  const wednesday = new Date('2026-10-21T12:00:00Z');
+  const ahead = (question, at = wednesday) => planQuestion(question, { now: at, scope: CENTRAL });
+  for (const question of ['What changed between Oct 20 and Oct 25?', 'What changed between 18/10 and 22/10?']) {
+    const planned = await ahead(question);
+    assert.equal(planned.ok, true, question);
+    assert.equal(planned.plan.params.to, wednesday.toISOString(), question);
+  }
+  assert.deepEqual(window(await ahead('What changed from Monday to Friday?')), ['2026-10-19T00:00:00.000Z', wednesday.toISOString()]);
+  assert.deepEqual(window(await ahead('What changed between Dec 28 and Jan 5?', new Date('2027-01-03T12:00:00Z'))), ['2026-12-28T00:00:00.000Z', '2027-01-03T12:00:00.000Z']);
+  // A version number is not a date.
+  assert.equal((await ask('What changed since 1.5?')).ok, true);
+  // The start of the year is a real reading, but longer than the budget.
+  assert.equal((await ask('What changed since the beginning of the year?')).refusal.code, 'unbounded');
+  // A day with no year that has not come yet this year is last year's, and over budget.
+  assert.equal((await ask('What changed since 12/24?')).refusal.code, 'unbounded');
+  // 05/06 is 5 June or 6 May: KEEL asks instead of guessing.
+  const ambiguous = await ask('What changed since 05/06?');
+  assert.equal(ambiguous.ok, false);
+  assert.equal(ambiguous.refusal.code, 'malformed');
+  assert.match(ambiguous.refusal.message, /“05\/06” could be read day first or month first/);
+  assert.equal((await ask('What changed since 31/02?')).refusal.code, 'malformed');
 });
 
 test('an optional helper cannot run SQL or tools, and cannot add a value the question does not contain', async () => {
@@ -608,4 +758,58 @@ test('a coverage question counts service settings and content backups for a read
   const only = await answerQuestion(client, { tenantRef: servicesOnly, scope: CENTRAL, question: 'What is covered?' });
   assert.equal(only.status, 'answered');
   assert.deepEqual(only.records.map((record) => record.id), ['workload/teams-org-policies']);
+});
+
+test('a change is listed once, in the window since the last backup that read its kind, with the fields that differ', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenantRefFor('task-99-user-windows');
+  const now = new Date();
+  const setBy = await person(client, 'collector', [['operator', null]]);
+  const baselineId = await baseline(client, tenantRef, setBy);
+  const all = Object.fromEntries(DESCRIPTORS.map(({ type }) => [type, { outcome: 'complete', itemCount: 0 }]));
+  const withoutUsers = { ...all, user: { outcome: 'not-requested' } };
+  // Users are read at midnight (tier 2); the hourly read of other kinds finishes a moment
+  // before the midnight one does.
+  const daily = new Date(now.getTime() - 3 * HOUR);
+  const before = await collection(client, tenantRef, new Date(daily.getTime() - DAY), [], all);
+  const hourly = await collection(client, tenantRef, new Date(daily.getTime() - 30_000), [], withoutUsers);
+  const midnight = await collection(client, tenantRef, daily, [], all);
+  const later = await collection(client, tenantRef, new Date(daily.getTime() + HOUR), [], all);
+  for (const snapshotId of [before, hourly, midnight, later]) {
+    await client.query(`INSERT INTO job (kind, params, status, requested_by) VALUES ('drift-detect', $1, 'succeeded', 'fixture')`, [{ snapshotId, tenantRef }]);
+  }
+  const user = (key, fields) => ({ userPrincipalName: key, displayName: 'Admin Read Only 01', ...fields });
+  const sighting = async (snapshotId, key, beforeFields, afterFields, hash, at) => {
+    await client.query(
+      `INSERT INTO drift (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type,
+                          before_hash, after_hash, before_payload, after_payload, blast_radius, detected_at)
+       VALUES ($1, $2, $3, $4, 'user', 'modified', 'b', $5, $6, $7, 'access-affecting', $8)`,
+      [tenantRef, baselineId, snapshotId, `user:${key}`, hash, user(key, beforeFields), user(key, afterFields), at],
+    );
+  };
+  // One user seen changed by the midnight read and, changed again, by the next one.
+  await sighting(midnight, 'ro01@contoso.example', { accountEnabled: true }, { accountEnabled: false }, 'a1', daily);
+  await sighting(later, 'ro01@contoso.example', { accountEnabled: true }, { accountEnabled: false, department: 'IT' }, 'a2', new Date(daily.getTime() + HOUR));
+  await sighting(midnight, 'ro02@contoso.example', { jobTitle: 'Reader' }, { jobTitle: 'Admin' }, 'a3', daily);
+  await client.query(
+    `INSERT INTO schedule (tenant_ref, job_kind, tier, cadence, next_due_at) VALUES ($1, 'collect', 'tier2', $2, $3)`,
+    [tenantRef, { every: 'day', n: 1, atTime: '00:00' }, new Date(daily.getTime() + DAY)],
+  );
+
+  const answer = await answerQuestion(client, { tenantRef, scope: CENTRAL, request: { intent: 'changes', params: { period: 'last-7-days', resourceType: 'user' } } });
+  assert.equal(answer.total, 2, 'two users changed, whatever the number of sightings');
+  assert.equal(answer.records.length, 2);
+  assert.equal(answer.summary.reduce((sum, row) => sum + row.count, 0), 2);
+  const ro01 = answer.records.find((record) => record.naturalKey === 'user:ro01@contoso.example');
+  const ro02 = answer.records.find((record) => record.naturalKey === 'user:ro02@contoso.example');
+  // The newest sighting stands for the change; its window opens at the previous read of users.
+  assert.equal(ro01.seenAt, new Date(daily.getTime() + HOUR).toISOString());
+  assert.equal(ro01.window.from, daily.toISOString());
+  assert.deepEqual(ro01.fields, ['accountEnabled', 'department']);
+  // The hourly read finished 30 seconds before midnight's but never read users: the
+  // window opens at the read of users a day before, not at a zero-width moment.
+  assert.equal(ro02.window.from, new Date(daily.getTime() - DAY).toISOString());
+  assert.deepEqual(ro02.fields, ['jobTitle']);
+  // Users are read once a day: the answer says when the next read is due.
+  assert.deepEqual(answer.nextRead, { every: 'day', n: 1, dueAt: new Date(daily.getTime() + DAY).toISOString() });
 });

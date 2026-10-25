@@ -122,4 +122,29 @@ assert.equal(
   false,
 );
 
+// Issue #447: the Intune tenant settings are read one field per request, as
+// the collector reads them, and merged into the one live object.
+const intuneReader = fakeReader(new Map([
+  ['/deviceManagement?$select=settings', [{ settings: { secureByDefault: true } }]],
+  ['/deviceManagement?$select=managedDeviceCleanupSettings', [{ managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '180' } }]],
+]));
+const intuneIndex = await buildLiveIndex(intuneReader, {
+  resourceTypes: ['deviceManagementSettings'],
+  naturalKeyFor: (type) => type,
+});
+assert.deepEqual(intuneReader.calls.map(({ path }) => path), ['/deviceManagement?$select=settings', '/deviceManagement?$select=managedDeviceCleanupSettings']);
+assert.deepEqual(intuneIndex.get('deviceManagementSettings').payload, {
+  settings: { secureByDefault: true },
+  managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '180' },
+});
+
+// A 404 after a field was read fails the live read; it is never absent.
+const halfReader = {
+  async collect(version, path) {
+    if (path.endsWith('managedDeviceCleanupSettings')) return { items: [], pages: 0, status: 404, error: { status: 404, error: 'gone' } };
+    return { items: [{ settings: {} }], pages: 1, status: 200, error: null };
+  },
+};
+await assert.rejects(buildLiveIndex(halfReader, { resourceTypes: ['deviceManagementSettings'], naturalKeyFor: (type) => type }), /listing \/deviceManagement failed/);
+
 console.log('liveState.test.mjs — all assertions passed');

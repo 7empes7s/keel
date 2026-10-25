@@ -9,12 +9,11 @@ import '../../engine/collect/entraAdapter.mjs';
 
 // Independent expectations: the documented Graph route for each type, written
 // out here rather than derived from the catalogue under test.
-const DM_SELECT = 'id,settings,intuneBrand,managedDeviceCleanupSettings';
 const OWNER_SELECT = 'id,accountId,configureWifi,createdDateTime,description,deviceNameTemplate,displayName,enrollmentMode,enrollmentTokenType,isTeamsDeviceProfile,lastModifiedDateTime,roleScopeTagIds,tokenCreationDateTime,tokenExpirationDateTime,wifiHidden,wifiSecurityType,wifiSsid';
 const WORK_SELECT = 'id,accountId,createdDateTime,description,displayName,lastModifiedDateTime,tokenExpirationDateTime';
 const SYMANTEC_SELECT = 'id,expirationDateTime,issuer,issuerName,status,subject,subjectName,uploadDateTime';
 const EXPECTED = [
-  ['deviceManagementSettings', `/beta/deviceManagement?$select=${DM_SELECT}`, 'tier1', 'singleton'],
+  ['deviceManagementSettings', '/beta/deviceManagement', 'tier1', 'singleton'],
   ['androidDeviceOwnerEnrollmentProfile', `/beta/deviceManagement/androidDeviceOwnerEnrollmentProfiles?$select=${OWNER_SELECT}`, 'tier2', 'list'],
   ['androidForWorkEnrollmentProfile', `/beta/deviceManagement/androidForWorkEnrollmentProfiles?$select=${WORK_SELECT}`, 'tier3', 'list'],
   ['appleUserInitiatedEnrollmentProfile', '/beta/deviceManagement/appleUserInitiatedEnrollmentProfiles', 'tier2', 'list'],
@@ -62,12 +61,14 @@ test('enrollment tokens, QR codes, Wi-Fi passwords and certificate files are lef
   for (const secret of ['content', 'password']) assert.ok(!symantec.includes(secret), `${secret} is never read`);
   assert.ok(symantec.includes('expirationDateTime'), 'the expiry a renewal needs is kept');
   // The tenant Intune object carries runtime counters; only its settings are read.
-  const dm = fields('deviceManagementSettings');
-  assert.ok(dm.includes('settings') && dm.includes('intuneBrand'));
+  const dm = catalogEntryFor('deviceManagementSettings').selectEach;
+  assert.deepEqual(dm, ['settings', 'managedDeviceCleanupSettings']);
   for (const counter of ['deviceProtectionOverview', 'windowsMalwareOverview', 'connectorStatus', 'subscriptionState']) assert.ok(!dm.includes(counter), counter);
   // Issue #447: a $select naming fields outside the core Intune object sent the
-  // whole read to another backend, which answered HTTP 400.
-  for (const foreign of ['adminConsent', 'dataProcessorServiceForWindowsFeaturesOnboarding', 'userExperienceAnalyticsSettings',
+  // whole read to another backend, which answered HTTP 400. The brand is read
+  // as the default branding profile instead.
+  assert.equal(catalogEntryFor('deviceManagementSettings').select, undefined, 'never one read of several fields');
+  for (const foreign of ['intuneBrand', 'adminConsent', 'dataProcessorServiceForWindowsFeaturesOnboarding', 'userExperienceAnalyticsSettings',
     'legacyPcManangementEnabled', 'unlicensedAdminstratorsEnabled']) assert.ok(!dm.includes(foreign), foreign);
   // Types read whole have no secret field.
   for (const entry of intuneLeftovers.filter((e) => !e.select)) assert.ok(!/password|token|secret/i.test(entry.path), entry.type);
@@ -94,7 +95,8 @@ test('no Intune leftovers type duplicates an existing catalogue path or type', (
 test('each Intune leftovers type reads a KEEL-RT- fixture with GET only, across pages or as one object', async () => {
   const originalFetch = globalThis.fetch;
   try {
-    for (const [type, endpoint, , shape] of EXPECTED.filter(([, , , kind]) => kind !== 'per-object')) {
+    // The Intune tenant settings are read one field per request (test below).
+    for (const [type, endpoint, , shape] of EXPECTED.filter(([type, , , kind]) => kind !== 'per-object' && type !== 'deviceManagementSettings')) {
       const entry = catalogEntryFor(type);
       const first = { id: `${type}-1`, displayName: `KEEL-RT-${type}-1` };
       const second = { id: `${type}-2`, displayName: `KEEL-RT-${type}-2` };
@@ -121,6 +123,48 @@ test('each Intune leftovers type reads a KEEL-RT- fixture with GET only, across 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('the Intune tenant settings are read one field per request and merged into one object (issue #447)', async () => {
+  const adapter = get('deviceManagementSettings').adapter;
+  const answers = {
+    '/deviceManagement?$select=settings': { '@odata.context': 'x(settings)', settings: { secureByDefault: true } },
+    '/deviceManagement?$select=managedDeviceCleanupSettings': { '@odata.context': 'x(cleanup)', managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '180' } },
+  };
+  const calls = [];
+  const reader = {
+    async collect(version, path) {
+      calls.push(`/${version}${path}`);
+      return { items: [answers[path]], pages: 1, status: 200, capped: false, error: null };
+    },
+  };
+  const raw = await adapter.collectRaw(reader, {});
+  assert.deepEqual(calls, ['/beta/deviceManagement?$select=settings', '/beta/deviceManagement?$select=managedDeviceCleanupSettings']);
+  assert.equal(raw.error, null);
+  assert.equal(raw.pages, 2);
+  assert.equal(raw.items.length, 1);
+  assert.deepEqual(raw.items[0].settings, { secureByDefault: true });
+  assert.deepEqual(raw.items[0].managedDeviceCleanupSettings, { deviceInactivityBeforeRetirementInDays: '180' });
+
+  // One field Graph refuses fails the type; it is never saved half read.
+  const refusing = {
+    async collect(version, path) {
+      if (path.endsWith('managedDeviceCleanupSettings')) return { items: [], pages: 0, status: 400, capped: false, error: { status: 400, error: 'No method match route template' } };
+      return { items: [answers[path]], pages: 1, status: 200, capped: false, error: null };
+    },
+  };
+  const failed = await adapter.collectRaw(refusing, {});
+  assert.equal(failed.error?.status, 400);
+  await assert.rejects(adapter.collect(refusing, {}), /collecting deviceManagementSettings failed/);
+
+  // A 404 after a field was read is a failed read, not an absent singleton.
+  const gone = {
+    async collect(version, path) {
+      if (path.endsWith('managedDeviceCleanupSettings')) return { items: [], pages: 0, status: 404, capped: false, error: { status: 404, error: 'gone' } };
+      return { items: [answers[path]], pages: 1, status: 200, capped: false, error: null };
+    },
+  };
+  assert.equal((await adapter.collectRaw(gone, {})).error?.status, 404);
 });
 
 test('Windows app protection policies and iOS provisioning profiles are listed, then read on their own (restore gaps batch 12)', async () => {

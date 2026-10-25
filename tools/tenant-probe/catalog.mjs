@@ -93,6 +93,17 @@ export function catalogReadPath(entry, basePath = entry.path) {
 }
 
 /**
+ * The read paths for an entry: one, or for a singleton with `selectEach` one
+ * per field (`$select=<field>`), whose answers the reader merges into the one
+ * object (issue #447: Graph routes a read of fields from more than one
+ * backend to a backend that cannot answer it).
+ */
+export function catalogReadPaths(entry, basePath = entry.path) {
+  if (!entry.selectEach) return [catalogReadPath(entry, basePath)];
+  return entry.selectEach.map((field) => catalogReadPath({ ...entry, select: field }, basePath));
+}
+
+/**
  * The catalogue entry for a resource type, or null when the type is not part
  * of the measured estate. engine/coverage/diagnosis.mjs registers feature
  * prerequisites through this lookup so a prerequisite is always source-linked

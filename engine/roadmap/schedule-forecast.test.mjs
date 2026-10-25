@@ -27,6 +27,7 @@ import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 
 const PATH = new Map(CATALOG.map((entry) => [entry.type, entry.path]));
+const FIELD_READS = new Set(CATALOG.filter((entry) => entry.selectEach).map((entry) => entry.path));
 
 const HOUR = 3_600_000;
 const NOW = new Date('2026-10-03T12:00:00Z');
@@ -35,9 +36,11 @@ const NOW = new Date('2026-10-03T12:00:00Z');
 function countingReader({ pages = 1, throttlesPerType = 0 } = {}) {
   const reader = {
     stats: { requests: 0, throttled: 0 },
-    async collect() {
+    async collect(version, path) {
       reader.stats.requests += pages + throttlesPerType;
       reader.stats.throttled += throttlesPerType;
+      // A singleton read one field per request answers one object (issue #447).
+      if (FIELD_READS.has(String(path).split('?')[0])) return { items: [{ id: 'singleton' }], pages, status: 200, error: null };
       return { items: Array.from({ length: 250 }, (_, i) => ({ id: `i-${i}`, displayName: `Item ${i}` })), pages, status: 200, error: null };
     },
   };
@@ -53,12 +56,17 @@ test('the collector records measured requests and throttles per type, separately
   // once for each of the 250 * 250 objects those reads return.
   const reads = (type) => {
     const entry = CATALOG.find((candidate) => candidate.type === type);
+    if (entry?.selectEach) return entry.selectEach.length;
     if (!entry?.parent) return 1;
     return 251 + (entry.itemReads ? 250 * 250 : 0);
   };
+  const items = (type) => {
+    const entry = CATALOG.find((candidate) => candidate.type === type);
+    if (entry?.selectEach) return 1;
+    return entry?.parent ? 250 * 250 : 250;
+  };
   for (const type of tier1) {
-    const perParent = reads(type) > 1;
-    assert.equal(coverageDigest[type].itemCount, perParent ? 250 * 250 : 250, type);
+    assert.equal(coverageDigest[type].itemCount, items(type), type);
     assert.equal(coverageDigest[type].requests, 4 * reads(type), `${type}: three pages plus one throttled retry, per read`);
     assert.equal(coverageDigest[type].throttles, reads(type));
   }

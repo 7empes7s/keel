@@ -10,6 +10,7 @@ test("each kind of raw error gets a plain cause and a next step, never the raw t
   const cases: Array<[string, RegExp]> = [
     ["Graph 429: throttled after 5 retries on /deviceManagement/deviceConfigurations", /was busy and asked Keel to slow down/],
     ["Graph 403: Authorization_RequestDenied on PATCH /groups/5d1c0000-0000-4000-8000-0000000000f2", /missing a permission/],
+    ["KEEL-RT-group (group): Microsoft 365 refused access to this mailbox only; other mailboxes read fine (403 ErrorAccessDenied Access is denied.)", /refused Keel access to one mailbox/],
     ["Graph 404 on /groups/5d1c0000-0000-4000-8000-0000000000f2", /no longer exists/],
     ["KEEL-RT-Planner group: HTTP 503 from Microsoft", /temporary fault/],
     ["Graph 400: Exchange Online would not accept 2 of the mailbox rules", /would not accept/],

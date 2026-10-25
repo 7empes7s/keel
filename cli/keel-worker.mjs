@@ -712,7 +712,6 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
     // Handlers that need job context beyond params (baseline-create records the
     // requester as set_by) receive the whole job as a second argument.
     args = handler.argsFor(job.params ?? {}, job);
-    if (handler.acceptsDbUrl !== false) args = [...args, '--db-url', dbUrl];
   } catch (err) {
     await failJob(`invalid params: ${err.message}`);
     console.error(`job ${job.id}: invalid params — ${err.message}`);
@@ -744,7 +743,9 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
     const execution = startJobChild(handler.script, args, { timeoutMs, executable: handler.executable,
       // The requester is passed on so a collection reads the audit logs as them, and the
       // job's id so a backup can report each type's progress onto its own job row.
-      env: { ...process.env, KEEL_EVENT_CORRELATION_ID: jobCorrelationId(job), KEEL_JOB_REQUESTED_BY: String(job.requested_by ?? ''), KEEL_JOB_ID: String(job.id) },
+      // The database URL goes in the environment, never argv: argv is readable by every user through ps.
+      env: { ...process.env, ...(handler.acceptsDbUrl !== false && { KEEL_DB_URL: dbUrl }),
+        KEEL_EVENT_CORRELATION_ID: jobCorrelationId(job), KEEL_JOB_REQUESTED_BY: String(job.requested_by ?? ''), KEEL_JOB_ID: String(job.id) },
     });
     onInFlightChange({ job, terminate: execution.terminate });
     const heartbeat = setInterval(() => {

@@ -129,7 +129,7 @@ test('real queue retry, worker authorization and durable evidence correlation', 
       const script = join(directory, 'child.mjs');
       writeFileSync(script, `import { connect } from ${JSON.stringify(new URL('../store/db.mjs', import.meta.url).href)};
         import { appendEvidence } from ${JSON.stringify(new URL('../govern/evidence.mjs', import.meta.url).href)};
-        const db = await connect(process.argv[process.argv.indexOf('--db-url') + 1]);
+        const db = await connect(process.env.KEEL_DB_URL);
         try { await appendEvidence(db, { tenantRef: 'fixture', kind: 'child', subject: {}, actor: 'fixture' }); }
         finally { await db.end(); }`);
       await runJob(client, authorized, { dbUrl: db.url, onInFlightChange() {}, eventSink: e => events.push(e), handlers: { collect: { script, argsFor: () => [] } } });

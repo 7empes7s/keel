@@ -56,8 +56,8 @@ being triggered by queue updates.
 ### K1: Setup check: report the live build and health (read-only)
 - Drafted by the "Mulinux Claude operator setup" thread (2026-10-25) to prove the queue wake-up end to end.
 - Needs: nothing.
-- Status: in-progress
-- Result:
+- Status: done
+- Result: live build `fa37b06` (`git -c safe.directory=/opt/keel-live -C /opt/keel-live rev-parse --short HEAD`, exit 0); `/api/health` body `{"status":"ok"}`; `[keelops-queue]` message received 2026-10-25 ~13:56 UTC (13:56:21 at pass start). Read-only; nothing changed in the tenant or on the host. No evidence branch. Nothing blocking.
 - Do: report `git -C /opt/keel-live rev-parse --short HEAD`, the body of `curl -s http://127.0.0.1:3600/api/health`, and the time you received the `[keelops-queue]` message. Change nothing.
 - **Expected:** a short sha and `"status":"ok"`.
 

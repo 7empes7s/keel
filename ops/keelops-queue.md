@@ -53,6 +53,14 @@ being triggered by queue updates.
 
 ## Items
 
+### K1: Setup check: report the live build and health (read-only)
+- Drafted by the "Mulinux Claude operator setup" thread (2026-10-25) to prove the queue wake-up end to end.
+- Needs: nothing.
+- Status: todo
+- Result:
+- Do: report `git -C /opt/keel-live rev-parse --short HEAD`, the body of `curl -s http://127.0.0.1:3600/api/health`, and the time you received the `[keelops-queue]` message. Change nothing.
+- **Expected:** a short sha and `"status":"ok"`.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

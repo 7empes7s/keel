@@ -164,6 +164,60 @@ test('holds are read per case and queries per hold, and every child keeps its pa
   assert.equal(result.outcome, 'partial', 'sample answers omit some declared fields');
 });
 
+// Q168: the session leaves EventType and MultiStageReviewProperty out of a label that
+// has no event or multi-stage review. That is "not set", not "not read", so a label
+// answered with every other field keeps the backup complete.
+test('a retention label with no event or multi-stage review is complete, with both settings not set', async () => {
+  const declared = FAMILIES.retentionLabel.fields;
+  const full = Object.fromEntries(declared.map((field) => [field, '']));
+  const label = (n, extra) => {
+    const body = { ...full, Name: `KEEL-RT-label-${n}`, Guid: guid(n), IsRecordLabel: false, RetentionDuration: 365, RetentionType: 'CreationAgeInDays', ...extra };
+    delete body.EventType;
+    delete body.MultiStageReviewProperty;
+    return body;
+  };
+  const read = async (labels) => readPurviewExtended({
+    powershell: container({ 'Get-ComplianceTag': labels }).powershell, families: ['retentionLabel'], now: () => NOW,
+  });
+
+  const plain = await read([label(50), label(51, { RetentionType: 'ModificationAgeInDays' })]);
+  assert.equal(plain.outcome, 'complete');
+  assert.deepEqual(plain.unknownFields, {});
+  assert.equal(plain.fieldCounts.unknown, undefined);
+  for (const resource of plain.resources) {
+    for (const field of ['EventType', 'MultiStageReviewProperty']) {
+      assert.equal(resource.fields[field], null, field);
+      assert.equal(resource.fieldCoverage[field].status, 'observed', field);
+      assert.equal(resource.fieldCoverage[field].notSet, true, field);
+      assert.match(resource.fieldCoverage[field].reason, /not set/);
+    }
+  }
+
+  // An event-based label always has an event type: a missing one is still not read.
+  const eventBased = await read([label(52, { RetentionType: 'EventAgeInDays' })]);
+  assert.equal(eventBased.outcome, 'partial');
+  assert.deepEqual(eventBased.unknownFields, { retentionLabel: { EventType: 1 } });
+  assert.equal(eventBased.resources[0].fieldCoverage.EventType.status, 'unknown');
+  assert.equal(eventBased.resources[0].fieldCoverage.MultiStageReviewProperty.notSet, true);
+
+  // No retention type to go by: a missing event type stays not read.
+  const untyped = label(55);
+  delete untyped.RetentionType;
+  assert.equal((await read([untyped])).resources[0].fieldCoverage.EventType.status, 'unknown');
+
+  // A label that does carry them keeps their values.
+  const set = await read([{ ...label(53, { RetentionType: 'EventAgeInDays' }), EventType: 'KEEL-RT-contract-end', MultiStageReviewProperty: '{"stages":1}' }]);
+  assert.equal(set.outcome, 'complete');
+  assert.equal(set.resources[0].fields.EventType, 'KEEL-RT-contract-end');
+  assert.equal(set.resources[0].fieldCoverage.EventType.notSet, undefined);
+
+  // Other families keep the strict rule: a missing field is not read.
+  const scope = await readPurviewExtended({
+    powershell: container({ 'Get-AdaptiveScope': [{ Name: 'KEEL-RT-scope', Guid: guid(54) }] }).powershell, families: ['adaptiveScope'], now: () => NOW,
+  });
+  assert.equal(scope.outcome, 'partial');
+});
+
 test('unlicensed, failed and orphaned reads are gaps; one failed case does not stop the others', async () => {
   const result = await readPurviewExtended({
     powershell: container({

@@ -41,6 +41,24 @@ test('a cmdlet-family digest lists each gap once, with a plain cause', () => {
   assert.ok(lines.every((line) => !/[0-9a-f]{8}-[0-9a-f]{4}-/.test(line)), 'no object id is listed');
 });
 
+test('settings Microsoft did not return are named, never counted as "unknown"', () => {
+  assert.deepEqual(workloadGapReasons({
+    fieldCounts: { observed: 30, unknown: 3 },
+    unknownFields: { retentionLabel: { EventType: 2 }, adaptiveScope: { RawQuery: 1 } },
+  }), [
+    'Retention label: event type was not returned (2 objects)',
+    'Adaptive scope: raw query was not returned (1 object)',
+  ]);
+  // Past five named settings, the rest are counted.
+  const many = Object.fromEntries(['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((field) => [`Setting${field}`, 1]));
+  assert.deepEqual(workloadGapReasons({ fieldCounts: { unknown: 7 }, unknownFields: { teamsMeetingPolicy: many } }).slice(-2), [
+    'Teams meeting policy: setting e was not returned (1 object)',
+    '2 more settings: not read (not returned)',
+  ]);
+  // A digest that does not name them still reads in words.
+  assert.deepEqual(workloadGapReasons({ fieldCounts: { observed: 30, unknown: 4 } }), ['4 settings: not read (not returned)']);
+});
+
 test('an Exchange or OneDrive digest names what was outside the scope', () => {
   const lines = workloadGapReasons({
     discovery: { mailboxes: 2, capped: true, maxMailboxes: 2 },

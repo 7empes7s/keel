@@ -67,6 +67,13 @@ export const FAMILIES = Object.freeze({
       'RetentionType', 'EventType', 'ReviewerEmail', 'FilePlanMetadata', 'MultiStageReviewProperty', 'ComplianceTagForNextStage',
       'AutoApprovalPeriod', 'Workload', 'WhenChangedUTC',
     ]),
+    // The Security & Compliance session leaves these out of a label that has none
+    // (Q168: both missing on every label of the test tenant). EventType is required on
+    // an event-based label, so there a missing one is still not read.
+    notSet: Object.freeze({
+      EventType: (body) => body.RetentionType !== undefined && body.RetentionType !== 'EventAgeInDays',
+      MultiStageReviewProperty: () => true,
+    }),
   }),
   adaptiveScope: Object.freeze({
     operation: 'purview.adaptive-scopes', cmdlet: 'Get-AdaptiveScope', prefix: 'adaptive-scope', identity: byGuid,

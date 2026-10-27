@@ -7,8 +7,12 @@
  *
  * Rules every caller inherits:
  *  - Declared fields only. Anything an answer carries beyond a family's fields is
- *    dropped unread. A field the answer lacks is `unknown`. A credential-shaped value is
- *    redacted by the shared telemetry redactor and marked `redacted`.
+ *    dropped unread. A field the answer lacks is `unknown`, unless the family lists it in
+ *    `notSet`: Microsoft leaves some settings out of an answer when they are not set (a
+ *    retention label with no event or multi-stage review), so such a field, when its
+ *    rule says the object cannot have it, is kept as `null` and observed as not set. A
+ *    credential-shaped value is redacted by the shared telemetry redactor and marked
+ *    `redacted`.
  *  - Identity is never guessed. An answer with no identity KEEL trusts is counted as
  *    unidentified and makes the run partial.
  *  - Duplicates are checked. An identity answered twice keeps the first copy; a second
@@ -44,12 +48,23 @@ export function notExposed(error) {
   return error instanceof CmdletError && NOT_FOUND.test(`${error.detail.errorId ?? ''} ${error.detail.message ?? ''}`);
 }
 
-/** The declared fields of one answer, with each field's coverage. */
-export function observeFields(fields, operation, body) {
+export const NOT_SET_REASON = 'not set: Microsoft leaves this setting out when it is not set';
+
+/**
+ * The declared fields of one answer, with each field's coverage. `notSet` maps a field
+ * to a rule `(body) => boolean`: true when an answer that lacks the field means the
+ * setting is not set on this object, rather than not read.
+ */
+export function observeFields(fields, operation, body, notSet = {}) {
   const entry = { fields: {}, fieldCoverage: {} };
   for (const field of fields) {
     const value = body[field];
     if (value === undefined) {
+      if (typeof notSet[field] === 'function' && notSet[field](body) === true) {
+        entry.fields[field] = null;
+        entry.fieldCoverage[field] = { status: 'observed', operation, notSet: true, reason: NOT_SET_REASON };
+        continue;
+      }
       entry.fieldCoverage[field] = { status: 'unknown', operation };
       continue;
     }
@@ -68,7 +83,7 @@ export function observeFields(fields, operation, body) {
 
 /**
  * Turns one family's answer into resources. `spec` is { operation, prefix, fields,
- * identity(body) }; `extra(body)` adds per-resource metadata (a parent, say).
+ * identity(body), notSet? }; `extra(body)` adds per-resource metadata (a parent, say).
  * `kept` may be shared between calls so one family read in several calls (holds per
  * case) still keeps each identity once.
  */
@@ -83,7 +98,7 @@ export function objectsFrom(family, spec, output, { maxObjects, extra = () => ({
     if (kept.has(identity)) {
       const first = kept.get(identity);
       if (first) {
-        const other = observeFields(spec.fields, spec.operation, body);
+        const other = observeFields(spec.fields, spec.operation, body, spec.notSet);
         const fields = Object.keys(first.fieldCoverage).filter((field) => canonical(first.fields[field]) !== canonical(other.fields[field]));
         if (fields.length) conflicts.push({ resourceKey: first.resourceKey, fields });
       }
@@ -91,7 +106,7 @@ export function objectsFrom(family, spec, output, { maxObjects, extra = () => ({
     }
     if (count.value >= maxObjects) { capped = true; kept.set(identity, null); continue; }
     count.value += 1;
-    const resource = { resourceKey: `${spec.prefix}:${identity}`, kind: family, identity, ...extra(body), ...observeFields(spec.fields, spec.operation, body) };
+    const resource = { resourceKey: `${spec.prefix}:${identity}`, kind: family, identity, ...extra(body), ...observeFields(spec.fields, spec.operation, body, spec.notSet) };
     kept.set(identity, resource);
     resources.push(resource);
   }

@@ -651,6 +651,48 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
 - **Report:** B; per capture the exit code, verify output and per-write ok/readBackVerified; the evidence commit and PR; the import
   lines; anything left in the tenant. Never print a secret.
 
+### K21: Live check that a later restore replaces stacked follow-up steps (#563, after K6)
+- Drafted by the "Prove follow-up steps fix live" thread (2026-10-27). K6 could not show #563: an in-place app update opens no
+  follow-up steps. A **soft-delete restore** of an application always opens one step (`service-validation` / `signIn`, "Confirm a
+  real sign-in or token request succeeds", `engine/restore/completion.mjs` `COMPLETION_RULES.application.validation`) with the
+  natural key `application:<appId>`, and the appId is kept by a soft-delete restore. So two delete-and-restore rounds of the same
+  app from the same snapshot open the same step twice: the first restore's step must read `replacedBy` = the second restore and
+  drop out of the counts. No credentials, permissions or consent are needed.
+- Needs: /opt/keel-live at the #563 merge or later (`grep -q countOpenCompletionSteps /opt/keel-live/engine/restore/completion.mjs`), and the K21 decision below filled in.
+- Status: todo
+- **Tenant:** standing authorization (2026-10-14) for test-tenant restores: self-approve and log each approval id. Restorer
+  (`/etc/keel/restorer.json`) writes only the fixture below; Collector reads. **No API permissions, no secret or certificate, never
+  admin consent**, no service principal. No CA, no break-glass, not Marouane's account. Never purge the fixture until step 6.
+- **Fixture:** app registration `KEEL-RT-app-steps` (AzureADMyOrg, no redirect URI, no credentials, empty `requiredResourceAccess`).
+- Do, at the deployed build B, from your own checkout at B (as in K6):
+  1. **Before** (read-only): `countOpenCompletionSteps(c,{tenantRef})`, the length of `listOpenCompletionWork(c,{tenantRef,limit:500})`,
+     and `SELECT count(*) FROM recovery_completion_item WHERE tenant_ref = $1 AND state = 'pending'`. (K6 read 93 / 28 / 93.)
+  2. Create the fixture. Wait for the next hourly Tier 1 snapshot S (do not run the collector by hand unless none ran in 2 hours)
+     and confirm S holds `application:<its appId>` named `KEEL-RT-app-steps`.
+  3. **Round 1:** delete the app (soft delete only; it must show under `/directory/deletedItems/microsoft.graph.application`).
+     Dry run `node cli/keel-restore.mjs --snapshot-id <S> --select application:<appId> --collector-config /etc/keel/tenant.json --target-config /etc/keel/restorer.json --persist-artifact <uuid R1>`.
+     Report status, guard refusals and the mechanism (expect `soft-delete-restore`, id retained, a deadline about 30 days out).
+     If a dependency such as a domain is pulled in, check it equals S as in K6 before approving. If the mechanism is anything other
+     than `soft-delete-restore` or `none` for that dependency, stop and report (do not approve a `recreate`).
+     Approve (Entra principal requests, Gmail principal approves), then `keel-restore --artifact <R1> --enforce`. Report the exit code,
+     the journal, and the log line `completion: N item(s) open`. Read back: app live, same object id and appId, name `KEEL-RT-app-steps`.
+  4. **Round 2:** repeat step 3 exactly with a new artifact R2 (delete again, dry run from the same S, approve, enforce, read back).
+  5. **Check #563** (read-only):
+     - `listCompletionItems(c,{tenantRef,restoreRef:R1})` and `(…R2)`: each has the `service-validation` / `signIn` step for
+       `application:<appId>`, both `pending`. **Expect R1's `replacedBy` = R2 and R2's `replacedBy` = null.**
+     - The three counts from step 1 again. **Expect:** raw pending = before + 2; `countOpenCompletionSteps` = before + 1;
+       open-work list = before + 1, and it contains R2 but not R1.
+     - If the portal is reachable from the host: the Overview "waiting" count equals `countOpenCompletionSteps`. Say if not checked.
+  6. **Cleanup:** delete the app and purge it from deleted items. Close both steps with `completeItem` as Marouane's Entra principal,
+     evidence `{ type: 'attestation', reference: 'keelops-queue K21: KEEL-RT-app-steps test fixture, deleted and purged', note: 'test fixture for #563; no service to check' }`
+     (R1's step can be closed even though it is replaced). Then the counts once more: expect back to the step 1 values.
+     Collect, and report no `KEEL-RT-app-steps` live, in deleted items, or as a service principal.
+- **Expected:** both restores exit 0 as `soft-delete-restore`; R1's step `replacedBy` R2; the open count rises by 1 for 2 restores;
+  after cleanup the counts are back to the step 1 values and nothing is left in the tenant.
+  If a write or approval refuses, quote it verbatim and stop (clean up the fixture, change nothing else).
+- **Report:** B, S, R1, R2, approval ids, every count, both `listCompletionItems` outputs (ids, kind, requirement, state, replacedBy),
+  the closed item ids, and what is left in the tenant. Never print a secret.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every item that needs it stays untouched.
@@ -659,3 +701,4 @@ K6: yes, keelops may create KEEL-RT-app-perms and file and approve its restores 
 K7: yes, use my portal principal.
 K14: yes, keelops may run the Make it pass restore on KEEL-RT-mailfix-spam and approve it and its content effect as my Entra principal.
 K15: yes, keelops may create, change and delete the disabled KEEL-RT-svc-change transport rule and approve its restores as my Entra principal.
+K21:

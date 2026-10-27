@@ -59,7 +59,9 @@ const IMMUTABLE_ID = /^[A-Za-z0-9+/]{22}==$/;
 // A SharePoint claims login (`i:0#.f|membership|user@domain`), raw or URL-escaped
 // (`%7Cmembership%7Cuser%40domain`). Its user part names a person and its domain is the
 // tenant's real mail domain, so both are replaced. Groups use other claim types with GUIDs.
-const CLAIMS_LOGIN = /((?:\||%7c)membership(?:\||%7c))([a-z0-9._'+-]+)(@|%40)([a-z0-9-]+(?:\.[a-z0-9-]+)+)/gi;
+// The user part takes any character a UPN can hold (a guest's is `alice_mail.com#ext#`), or a
+// %XX escape other than the `@` and `|` separators.
+const CLAIMS_LOGIN = /((?:\||%7c)membership(?:\||%7c))((?:[^@|%\s'"()\\,]|%(?!40|7c)[0-9a-f]{2})+)(@|%40)([a-z0-9-]+(?:\.[a-z0-9-]+)+)/gi;
 // What a pseudonymized claims login looks like: the `keel-rt-` test-user prefix is kept so the
 // gates can still see a test user, the rest is digest-derived, and the domain is host-shaped.
 const CLAIMS_USER_PSEUDONYM = /^(?:keel-rt-)?u[0-9a-f]{12}$/;
@@ -196,7 +198,9 @@ export function pseudonymizer(tenantRef) {
   // A claims login's user part keeps only the test-user prefix. An onmicrosoft domain has already
   // been mapped by the tenant host rule (it runs first); any other domain becomes host-shaped.
   const claimsUser = (user) => {
-    const lower = user.toLowerCase();
+    // Unescaped first, so the raw and the URL-escaped form of one login map the same way.
+    let lower = user.toLowerCase();
+    try { lower = decodeURIComponent(lower); } catch { /* a stray % stays as written */ }
     const prefix = lower.startsWith(FIXTURE_USER_PREFIX) ? FIXTURE_USER_PREFIX : '';
     return `${prefix}u${digest('claims-user', lower).slice(0, 12)}`;
   };

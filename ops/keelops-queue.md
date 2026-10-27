@@ -336,6 +336,29 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   did not run: mark `blocked` and say so.
 - **Report:** the outputs above and the build. Change nothing.
 
+### K11: Live re-check that "Legacy authentication is blocked" names each sign-in rule it looks at (after #578)
+- Drafted by the "Show why legacy auth check fails" thread (2026-10-27). K8 found `keel-custom.conditional-access.block-legacy` failing
+  with **0 detail lines**. #578: the control now stores 4 lines per CA policy whose `grantControls.builtInControls` has `block` and whose
+  `clientAppTypes` has `exchangeActiveSync` or `other`: `state` (expected `enabled`), `includeUsers` (value `All` / `Only some` / `None`,
+  expected `All`; groups, roles or guests count as `Only some`), `includeApplications` (same words, expected `All`), `clientAppTypes`
+  (the legacy types it blocks, expected `["exchangeActiveSync","other"]`). On a fail every such policy is listed, failing lines first; on a
+  pass only the enforcing policy. No user, group or app ids in any line. The verdict rule is unchanged (evaluatorVersion stays 2).
+- Needs: /opt/keel-live at the #578 merge or later (`grep -q "Unnamed sign-in rule" /opt/keel-live/engine/benchmarks/registry.mjs`),
+  and a scheduled check run after that deploy (the checks run after each backup). Do **not** run checks by hand.
+- Status: todo
+- Result:
+- **Tenant:** nothing (Collector reads not needed). Read-only against Keel's own database, engine read calls only, as in K8.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`, tenantRef as in K5:
+  1. Report the build and its deploy time.
+  2. `const { findings } = await complianceFindings(c, { tenantRef })`. For the `keel-custom.conditional-access.block-legacy` finding report
+     `verdict`, `reason`, `evaluatorVersion`, `evaluatedAt` (must be **after** the deploy; if not, set `blocked` with the time and retry on
+     a later pass), `detailCounts`, `details.length`, and every line verbatim (mask subjects that are not `KEEL-RT-`).
+- **Expected:** verdict `fail`, reason `null`, evaluatorVersion 2, `details.length` 8 (2 policies x 4 lines), `detailCounts`
+  `{"checked":8,"failing":2}`; failing lines first: the report-only policy's `state` = `enabledForReportingButNotEnforced` (ok false) and
+  `KEEL-RT-20260908 Block Legacy Authentication`'s `includeUsers` = `Only some` (ok false); all other lines ok true. No line holds an id
+  (GUID). If the policies changed since K8, report what the lines show instead; a mismatch is a result: quote it and change nothing.
+- **Report:** the outputs above and the build. The portal panel (390/1440 px, light/dark) can't be opened from the box; say so.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

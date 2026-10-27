@@ -598,7 +598,7 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
   those grants back. The other restore, `sharepoint-site-permissions` (groups, members, admins, levels, role assignments), reads from
   the nightly **content** backup (`sharepoint-sites`), item key `site/permissions`, which K17 did not look at. This item checks both.
 - Needs: nothing.
-- Status: todo
+- Status: in-progress
 - **Tenant:** nothing. Database reads only, the same kind of read-only SELECTs as K17, each in a `READ ONLY` transaction.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. App grants in the newest settings run: `SELECT c.id, c.outcome, c.observed_to FROM workload_collection c WHERE c.workload = 'sharepoint-site-settings' ORDER BY c.created_at DESC LIMIT 1;`

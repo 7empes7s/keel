@@ -591,6 +591,26 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
   `permissionGrantPolicy.update.json: fixture-tested -> live-qualified`.
 - **Report:** B, the evidence branch commit, and the two lines verbatim. If either says `not applied`, quote the reason.
 
+### K19: Confirm both SharePoint site permission reads run (follow-up to K17, read-only)
+- Drafted by the "Get SharePoint site grants read running" thread (2026-10-27). K17 read "no site grants operation" as "the site
+  grants read never runs". It does run: the site **app grants** read is the operation `sharepoint.site-permissions` inside
+  `sharepoint-site-settings` (K17 saw it observed on 20 sites). `sharepoint-site-grants` is only the name of the restore that writes
+  those grants back. The other restore, `sharepoint-site-permissions` (groups, members, admins, levels, role assignments), reads from
+  the nightly **content** backup (`sharepoint-sites`), item key `site/permissions`, which K17 did not look at. This item checks both.
+- Needs: nothing.
+- Status: todo
+- **Tenant:** nothing. Database reads only, the same kind of read-only SELECTs as K17, each in a `READ ONLY` transaction.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. App grants in the newest settings run: `SELECT c.id, c.outcome, c.observed_to FROM workload_collection c WHERE c.workload = 'sharepoint-site-settings' ORDER BY c.created_at DESC LIMIT 1;`
+     then report, from that run's `workload_observation.field_coverage`, how many entries have operation `sharepoint.site-permissions` and their statuses (as in K17).
+  2. Newest content runs for sites: `SELECT outcome, items, reasons, completed_at FROM content_run WHERE workload = 'sharepoint-sites' ORDER BY completed_at DESC LIMIT 3;`
+  3. Site groups and permissions stored by the content backup (stored only when they change):
+     `SELECT count(DISTINCT container) AS sites, count(*) AS versions, max(created_at) AS newest FROM content_item WHERE workload = 'sharepoint-sites' AND item_key = 'site/permissions';`
+- **Expected:** 1. 20 entries, all `observed`. 2. `succeeded` runs within the last day. 3. `sites` > 0 (about 20) with a `newest` date.
+  If 3 has 0 rows, the content backup has no SharePoint REST transport (the Collector certificate is not in the content config) and
+  says `site-groups-and-user-permissions` is missing; report that.
+- **Report:** the build and each step's rows. Name any reason or error verbatim. Never print a secret.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every item that needs it stays untouched.

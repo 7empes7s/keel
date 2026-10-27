@@ -9,6 +9,7 @@ import { schemaSql } from "../../engine/store/loadSchema.mjs";
 import { tenantRefFor } from "../../engine/store/tenantRef.mjs";
 import { askFixApproval, planFix, readFixProgress } from "@/lib/compliance-change";
 import { guardedComplianceFix } from "@/lib/compliance-fix";
+import { queueableRestoreCredentialPaths } from "@/lib/restore-config";
 import {
   canFixOn,
   complianceVerdict,
@@ -201,4 +202,34 @@ test("a Defender email fix names each row's own setting and shows mail values in
   assert.deepEqual([fixValue(true, "includeUnknownCountriesAndRegions"), fixValue(false, "includeUnknownCountriesAndRegions")], ["Yes", "No"], "a yes/no setting keeps its words in the fix");
   assert.deepEqual([fixValue(["fabrikam.example"], "AllowedSenderDomains"), fixValue(null, "AllowedSenderDomains")], ["fabrikam.example", "None"]);
   assert.equal(fixPlanProblem("compliance fix refused: the live read of antiSpamPolicy was denied, so anti-spam-policy:g could not be checked"), "Keel could not read this policy in the live tenant just now. Try again in a few minutes.");
+});
+
+test("the fix route refuses before queueing when the server's restore settings path is outside /etc/keel", async () => {
+  const misplaced = () => guardedComplianceFix({
+    connect: async () => database.connect(),
+    databaseUrl: () => database.url,
+    tenantRef: () => TENANT,
+    credentialPaths: () => queueableRestoreCredentialPaths({ ...process.env, KEEL_RESTORER_CONFIG_PATH: "/srv/keel/restorer.json" }),
+  });
+  // The newest result fails again, so only the settings path stands in the way.
+  const failingAgain = String((await evaluate("fail", "2026-10-22T12:00:00Z")).id);
+  const { rows: before } = await client.query("SELECT id FROM job WHERE kind = 'restore'");
+  const refused = await misplaced()(request({ evaluationId: failingAgain, naturalKey: KEY }));
+  assert.equal(refused.status, 503);
+  const body = await refused.json() as { error: string; message: string };
+  assert.equal(body.error, "restore_settings_path");
+  assert.match(body.message, /must be a \.json file in \/etc\/keel\. Ask whoever runs the Keel server to fix KEEL_RESTORER_CONFIG_PATH\.$/);
+  const { rows: after } = await client.query("SELECT id FROM job WHERE kind = 'restore'");
+  assert.equal(after.length, before.length, "nothing is queued");
+});
+
+test("the fix panel shows the server's plain reason when the settings path is refused", async () => {
+  const message = "Keel's restore settings file must be a .json file in /etc/keel. Ask whoever runs the Keel server to fix KEEL_RESTORER_CONFIG_PATH.";
+  const saved = globalThis.fetch;
+  globalThis.fetch = (async () => Response.json({ error: "restore_settings_path", message }, { status: 503 })) as typeof fetch;
+  try {
+    assert.deepEqual(await planFix(FAILING.id, KEY), { ok: false, reason: message });
+  } finally {
+    globalThis.fetch = saved;
+  }
 });

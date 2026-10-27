@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { fixFor, listFixCandidates } from "../../engine/benchmarks/fix.mjs";
 import { enqueue } from "../../engine/jobs/queue.mjs";
 import { guarded, IDEMPOTENCY_KEY_HEADER, normalizeJob, readActionParams, type GuardDeps } from "@/lib/action";
-import { restoreCredentialPaths } from "@/lib/restore-config";
+import { queueableRestoreCredentialPaths } from "@/lib/restore-config";
 
 const NO_STORE = { "cache-control": "no-store" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -43,7 +43,7 @@ export function guardedComplianceFix(deps: GuardDeps & { credentialPaths?: () =>
     const candidates = (await listFixCandidates(client, { tenantRef, controlId, limit: 1000 })) as { naturalKey: string }[];
     if (!candidates.some((candidate) => candidate.naturalKey === naturalKey)) return refuse("not_a_candidate", 409);
 
-    const { collectorConfig, targetConfig } = (deps.credentialPaths ?? restoreCredentialPaths)();
+    const { collectorConfig, targetConfig } = (deps.credentialPaths ?? queueableRestoreCredentialPaths)();
     const job = (await enqueue(client, {
       kind: "restore",
       params: { complianceFix: { controlId, naturalKey }, collectorConfig, targetConfig, artifactId: randomUUID() },

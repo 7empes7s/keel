@@ -15,10 +15,10 @@ import { drainDueDestinations } from '../engine/telemetry/outbox.mjs';
 import { createSentinelAdapter, SENTINEL_DESTINATION_KIND } from '../engine/telemetry/adapters/sentinel.mjs';
 import { createWebhookAdapter } from '../engine/telemetry/adapters/webhook.mjs';
 import { createCefAdapter } from '../engine/telemetry/adapters/cef.mjs';
-import { credentialPaths } from '../engine/restore/credentialPaths.mjs';
+import { credentialPaths, requireKeelConfigPath } from '../engine/restore/credentialPaths.mjs';
 import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
 import { ingestAudit, migrateAuditIngestion, readAuditEvidence, createFixtureAuditAdapter } from '../engine/identity/auditIngest.mjs';
@@ -222,19 +222,9 @@ function requireString(value, label) {
 
 // Issue #411: the config, scope and reader params are file paths the child reads as root.
 // Anything that can enqueue a job can set them, so they must name a JSON file under
-// /etc/keel, where only the operator writes. The path is resolved first, so `..` cannot
-// step out. /etc/keel also holds keys and env files (content.key, gh.env), so only a
-// `.json` name is accepted: a job can never be pointed at a secret that is not a config.
-const KEEL_CONFIG_DIR = '/etc/keel/';
-
-export function requireKeelConfigPath(value, label) {
-  const path = requireString(value, label);
-  const resolved = resolve('/', path);
-  if (path.includes('\0') || !resolved.startsWith(KEEL_CONFIG_DIR) || !resolved.endsWith('.json')) {
-    throw new Error(`${label} must be a .json file under ${KEEL_CONFIG_DIR}`);
-  }
-  return resolved;
-}
+// /etc/keel (requireKeelConfigPath, shared with the portal in
+// engine/restore/credentialPaths.mjs so the portal never queues a job this refuses).
+export { requireKeelConfigPath };
 
 // Issue #411: when a child fails to parse a file as JSON, Node quotes that file twice:
 // the message quotes its start ("Unexpected token 'a', \"abc...\" is not valid JSON"),

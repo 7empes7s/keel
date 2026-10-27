@@ -7912,7 +7912,7 @@ item that needs it stays untouched.
   request (the mixed `$select` was routed to the onboarding backend and answered 400). #570 then dropped the retired
   `managedDeviceCleanupSettings` field (its window is backed up as `managedDeviceCleanupRule`), so only `settings` is read.
 - Needs: /opt/keel-live at the #570 merge (4b4af63) or later (`grep -q selectEach /opt/keel-live/tools/tenant-probe/catalog.d/intune-leftovers.mjs`).
-- Status: todo
+- Status: moved (2026-10-27: to K2 on claude/keelops-queue; keel-operator, skip this item)
 - **Tenant:** Collector reads only (the normal hourly Tier 1 backup). Nothing is written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. Take the newest Tier 1 snapshot that started after the deploy (the hourly run; do not run the collector by hand unless none
@@ -7948,7 +7948,7 @@ item that needs it stays untouched.
   mailbox read fine. Q167's run `85aeb04b` (before #564) had onedrive partial (10× 423), sharepoint-sites partial (search site 404),
   exchange-mail partial (1 group mailbox 403).
 - Needs: /opt/keel-live at the #564 merge (9c59b96) or later (`grep -q skipped /opt/keel-live/engine/store/schema.d/73-content-run.sql`).
-- Status: todo
+- Status: moved (2026-10-27: to K3 on claude/keelops-queue; keel-operator, skip this item)
 - **Tenant:** content reader reads only (the normal nightly content backup). No grants, no writes. A 403 is reported, never fixed by granting.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. Use the newest scheduled `content-collect` that ran after the deploy (01:00 UTC). If none ran, queue the same read-only job
@@ -8000,7 +8000,7 @@ item that needs it stays untouched.
 - Drafted by the "Live checks for Oct 23–25 merges" thread (2026-10-27). #571: the worker passed `--db-url postgres://user:password@…`
   to every job, visible in `ps`. It now sets `KEEL_DB_URL` in the child's environment.
 - Needs: /opt/keel-live at the #571 merge (e17b36c) or later (`grep -q KEEL_DB_URL /opt/keel-live/cli/keel-worker.mjs`).
-- Status: todo
+- Status: moved (2026-10-27: to K4 on claude/keelops-queue; keel-operator, skip this item)
 - **Tenant:** nothing. Host reads only.
 - Do:
   1. While any worker job runs (the hourly Tier 1 collect is enough), run `ps -eo pid,args | grep -c -- '--db-url'` a few times and report the
@@ -8036,7 +8036,7 @@ item that needs it stays untouched.
   #568: Microsoft cloud words, old names and concepts (AAD, MEM, CA policy, MFA, PIM, guests…), "who changed" and not-held topics answered
   in words instead of refused. The portal is behind Access from the box, so this runs the same engine call the page makes.
 - Needs: /opt/keel-live at the #568 merge (6783d4d) or later (`test -f /opt/keel-live/engine/query/vocabulary.mjs`).
-- Status: todo
+- Status: moved (2026-10-27: to K5 on claude/keelops-queue; keel-operator, skip this item)
 - **Tenant:** nothing. Read-only against Keel's own database.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`, with tenantRef = `sha256:` + the first 16 hex of sha256(tenant.json `tenantId`)
   (as `portal/lib/runtime-config.ts` does), scope `{central:true, entities:[]}`:

@@ -3878,6 +3878,11 @@ test("integrations list destinations as grouped rows that open the side panel", 
   await sheet.getByRole("button", { name: "Show held-back entries" }).click();
   await expect(sheet.locator(".ui-alerts > *")).toHaveCount(1);
   await expect(sheet.getByRole("button", { name: "Pause" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Check again" })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 900 });
+  expect(await sheet.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
 

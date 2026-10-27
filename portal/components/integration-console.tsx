@@ -74,7 +74,7 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
 
   function close() { setOpenId(null); setAdding(false); setError(null); }
 
-  const errorRow = error ? <AlertRow as="div" item={{ key: "write-error", tone: "urgent", icon: "x-circle", title: "That did not work", todo: "Check the details below, then try again.", more: [error] }} /> : null;
+  const errorRow = error ? <AlertRow as="div" item={{ key: "write-error", tone: "urgent", icon: "x-circle", title: "That did not work", todo: "Open the details to see why, then try again.", more: [error] }} /> : null;
 
   return <>
     {error && !opened && !adding ? errorRow : null}
@@ -150,7 +150,7 @@ export function IntegrationConsole({ canConfiguration, destinations, statuses }:
       onClose={close}
       onLoadHeld={() => void loadQuarantined(opened.id)}
       onPause={() => write(`/api/integrations/${opened.id}/revoke`, "POST", undefined, "pause").then(() => undefined)}
-      onReplay={(fromSeq) => void write(`/api/integrations/${opened.id}/replay`, "POST", { fromSeq }, "replay")}
+      onReplay={(fromSeq) => void write(`/api/integrations/${opened.id}/replay`, "POST", { fromSeq }, "replay").then((ok) => { if (ok) setQuarantined(({ [opened.id]: _sent, ...rest }) => rest); })}
       onResume={() => void write(`/api/integrations/${opened.id}/resume`, "POST", undefined, "resume")}
       status={statusFor(statuses, opened.id)}
     /> : null}
@@ -195,8 +195,8 @@ function DestinationSheet({ busy, busyAction, canConfiguration, destination, err
       {errorRow}
       <section aria-labelledby="ig-held-heading" className="ig-sheet-part">
         <h3 id="ig-held-heading">Held-back entries</h3>
-        {events === undefined
-          ? <button className="btn btn-sm" disabled={busy} onClick={onLoadHeld} type="button">Show held-back entries</button>
+        <button className="btn btn-sm" disabled={busy} onClick={onLoadHeld} type="button">{events === undefined ? "Show held-back entries" : <><Icon name="refresh" />Check again</>}</button>
+        {events === undefined ? null
           : events.length === 0 ? <p className="pg-help"><Icon name="check-circle" />Nothing is held back.</p>
           : <div className="ui-alerts">{events.map((event) => <ErrorNotice
             error={event.quarantine_reason}

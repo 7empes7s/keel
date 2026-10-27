@@ -564,10 +564,10 @@ test('a promotion refuses when an incident now covers its snapshot, and incident
 });
 
 test('the worker carries only the incident id into a selection dry run', () => {
-  const base = { collectorConfig: '/c.json', targetConfig: '/r.json', snapshotId: 's', selection: ['group:board'], artifactId: 'a' };
+  const base = { collectorConfig: '/etc/keel/tenant.json', targetConfig: '/etc/keel/restorer.json', snapshotId: 's', selection: ['group:board'], artifactId: 'a' };
   const args = JOB_HANDLERS.restore.argsFor({ ...base, incidentId: 'inc-1' }, { requested_by: 'p' });
   assert.deepEqual(args.slice(args.indexOf('--incident'), args.indexOf('--incident') + 2), ['--incident', 'inc-1']);
-  assert.throws(() => JOB_HANDLERS.restore.argsFor({ collectorConfig: '/c', targetConfig: '/r', planId: 'p', incidentId: 'inc-1' }), /requires the snapshot\/selection scope/);
+  assert.throws(() => JOB_HANDLERS.restore.argsFor({ collectorConfig: '/etc/keel/tenant.json', targetConfig: '/etc/keel/restorer.json', planId: 'p', incidentId: 'inc-1' }), /requires the snapshot\/selection scope/);
   // A promotion never carries one: its incident comes from the artifact.
   assert.deepEqual(JOB_HANDLERS.restore.argsFor({ artifactId: 'a', mode: 'enforce' }), ['--artifact', 'a', '--enforce']);
 });

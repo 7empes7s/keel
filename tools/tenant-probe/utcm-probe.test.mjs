@@ -236,3 +236,11 @@ test('a quota or limit refusal is not split into more requests, and splitting st
   assert.equal(room.left, 0);
   assert.ok(split.refused.every((refusal) => refusal.status === 400 || /no room/.test(refusal.error)));
 });
+
+test('types not sent for lack of room are not counted as refused by TCM', () => {
+  const report = { workloads: [{ workload: 'teams', refused: [{ types: ['microsoft.teams.vdipolicy'], status: null }], jobs: [] }] };
+  const result = findings(report);
+  assert.deepEqual(result.typesRefused, []);
+  assert.deepEqual(result.typesNotSent, ['microsoft.teams.vdipolicy']);
+  assert.ok(!result.typesEmpty.includes('microsoft.teams.vdipolicy'));
+});

@@ -342,7 +342,9 @@ export function findings(report, types = UTCM_TYPES) {
     }
   }
   const requested = report.workloads.flatMap((workload) => (workload.skipped ? [] : typesFor(workload.workload, types)));
-  const refusedTypes = new Set(report.workloads.flatMap((workload) => workload.refused.flatMap((refusal) => refusal.types)));
+  const refusals = report.workloads.flatMap((workload) => workload.refused);
+  const refusedTypes = new Set(refusals.filter((refusal) => refusal.status !== null).flatMap((refusal) => refusal.types));
+  const notSentTypes = new Set(refusals.filter((refusal) => refusal.status === null).flatMap((refusal) => refusal.types));
   const missingWithData = requested.filter((type) => byType.get(type)?.keel === null && answered[type] > 0)
     .map((type) => ({ type, tier: byType.get(type).tier, count: answered[type] }))
     .sort((a, b) => a.tier - b.tier || b.count - a.count || a.type.localeCompare(b.type));
@@ -352,7 +354,8 @@ export function findings(report, types = UTCM_TYPES) {
     typesRequested: requested.length,
     typesRefused: [...refusedTypes].sort(),
     typesWithData: Object.keys(answered).filter((type) => byType.has(type)).length,
-    typesEmpty: requested.filter((type) => !refusedTypes.has(type) && !answered[type]).sort(),
+    typesNotSent: [...notSentTypes].sort(),
+    typesEmpty: requested.filter((type) => !refusedTypes.has(type) && !notSentTypes.has(type) && !answered[type]).sort(),
     unknownTypesInAnswer: Object.keys(answered).filter((type) => !byType.has(type)).sort(),
     keelLacksWithData: missingWithData,
   };
@@ -383,6 +386,7 @@ export function renderMarkdown(report, generatedAt = new Date().toISOString()) {
       `| Types requested | ${f.typesRequested} |`,
       `| Types with data | ${f.typesWithData} |`,
       `| Types refused at create | ${f.typesRefused.length} |`,
+      `| Types not sent (no room for another job) | ${f.typesNotSent.length} |`,
       `| Types empty | ${f.typesEmpty.length} |`,
       `| Jobs deleted / not deleted | ${report.deleted.length} / ${report.notDeleted.length} |`, '');
     lines.push('## Types KEEL does not read that returned data (best first)', '');

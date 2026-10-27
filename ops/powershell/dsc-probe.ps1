@@ -97,6 +97,7 @@ $auth = @{
 
 # The pinned module's folder, so every route below loads exactly $ModuleVersion.
 $moduleBase = (Get-Module -ListAvailable Microsoft365DSC | Where-Object { [string]$_.Version -eq $ModuleVersion } | Select-Object -First 1).ModuleBase
+if (-not $moduleBase) { throw "dsc-probe: Microsoft365DSC $ModuleVersion is not installed" }
 
 # Three ways to drive the resource, tried in order until one answers: Invoke-DscResource, the class
 # (Microsoft365DSC 2.x resources are class-based), then the script module (1.x layout). The first route

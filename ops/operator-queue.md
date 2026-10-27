@@ -1519,6 +1519,72 @@ being triggered by queue updates.
   403/404 if Viva Engage is not set up: report it, change nothing.
 - **Report:** steps 1 to 4 verbatim, and the build.
 
+### Q182: Microsoft365DSC writer check on one KEEL-RT- distribution list, and the TCM snapshot setup check (after PR #601)
+- Drafted by the "Probe Microsoft config snapshots for backup" thread (2026-10-27). Code: PR #601 (`tools/tenant-probe/utcm-probe.mjs`,
+  `ops/powershell/dsc-probe.ps1`). Part A needs no new grant. Part B (Q183) needs Marouane's consent and decision D-Q182.
+- Needs: /opt/keel-live at the #601 merge or later (`test -f /opt/keel-live/ops/powershell/dsc-probe.ps1`).
+- Status: todo
+- Result:
+- **Tenant:** step 1 adds one permission to the Collector's **manifest only** (D-Q55: never an appRoleAssignment, never consent).
+  Step 2 creates the service principals of two Microsoft first-party apps if they are missing; it grants them nothing. Step 3 reads
+  only. Step 4 creates, changes and removes **one** distribution list, `KEEL-RT-DSC-probe-DL`, with the Restorer's Exchange config
+  (Exchange Administrator, already held); nothing else is touched and the script removes the list even when a step fails.
+- Do, from your own checkout at the deployed build B, with `OUT=$HOME/utcm-probe` (outside any repo):
+  1. **Manifest:** as in Q180 (GET the KEEL Collector application, merge, PATCH once, as the Restorer), add Microsoft Graph application
+     permission `ConfigurationMonitoring.ReadWrite.All` (resolve its id from the Graph SP's `appRoles`). Keep everything else. If Q180 is
+     still `todo`, do both in the same PATCH, so Marouane's one consent covers both. Report "added" or "already held".
+  2. **Service principals:** for appIds `03b07b79-c5bc-4b5e-9bfa-13acf4a99998` (Tenant Configuration Management) and
+     `6b91db1b-f05b-405a-a0b2-e3f60b28d645` (M365 Admin Services): `GET /v1.0/servicePrincipals?$filter=appId eq '<appId>'`; if absent,
+     `POST /v1.0/servicePrincipals {"appId":"<appId>"}` as the Restorer. Grant nothing to them. Report existed / created / refused (status).
+  3. **Check:** `node tools/tenant-probe/utcm-probe.mjs check --config /etc/keel/tenant.json --out "$OUT"`. Exit 3 means "not ready yet"
+     (expected before consent). Report its table verbatim.
+  4. **DSC writer:** one throwaway container, nothing built, nothing kept (`--rm`). Pass the tenant's initial `*.onmicrosoft.com` domain:
+     ```bash
+     mkdir -p "$OUT/dsc" && chmod 700 "$OUT/dsc"
+     docker run --rm --memory 2g --cpus 1 -v /etc/keel:/etc/keel:ro -v "$PWD/ops/powershell":/app:ro -v "$OUT/dsc":/out \
+       mcr.microsoft.com/powershell:7.6-ubuntu-24.04 pwsh -NoLogo -NoProfile -NonInteractive -File /app/dsc-probe.ps1 \
+       -TenantConfigPath /etc/keel/exchange-restorer.json -OrgDomain <initial domain> > "$OUT/dsc/steps.jsonl" 2> "$OUT/dsc/stderr.log"; echo "exit $?"
+     ```
+     If that image tag does not exist, use the nearest `mcr.microsoft.com/powershell` 7.6 tag (the script prints the version it ran on).
+     Afterwards confirm with `Get-DistributionGroup -Identity KEEL-RT-DSC-probe-DL` (Collector, read) that the list is gone; if it is
+     still there, remove it with `Remove-DistributionGroup -Confirm:$false` (Restorer) and say so. Remove the pulled image afterwards
+     (`docker image rm`).
+  5. Check `$OUT` for secrets and tenant names (the scripts mask them; check anyway). Commit nothing in this item.
+- **Expected:** step 4 steps `1 get` absent, `2 set present` ok, `3 get` present, `4 set description` ok, `5 test` true, `6 set absent` ok,
+  `7 get` absent. A failure is a result: quote it.
+- **Report:** steps 1 to 3 outcomes; step 4 exit code, every line of `steps.jsonl` verbatim (they are masked), the last 20 lines of
+  `stderr.log` (masked), the image tag used; whether the list is gone.
+
+### Q183: Run the TCM snapshot probe (after Q182, Marouane's consent and D-Q182)
+- Drafted by the "Probe Microsoft config snapshots for backup" thread (2026-10-27).
+- Needs: Q182 done; the Collector's SP holds `ConfigurationMonitoring.ReadWrite.All` as an appRoleAssignment (Marouane's consent; if
+  missing, set `blocked: waiting on consent` and stop); D-Q182 below decided `yes`.
+- Status: todo
+- Result:
+- **Tenant:** step 1 gives Microsoft's TCM service principal **read-only** access (D-Q182). Step 3 creates snapshot jobs named
+  `KEEL-RT-utcm-probe-*` and deletes them after reading; it writes no tenant configuration. The TCM principal and its grants stay in
+  place (the follow-up integration needs them); list them in the Result.
+- Do, from your own checkout at B, with `OUT=$HOME/utcm-probe`:
+  1. On the TCM service principal (appId `03b07b79-c5bc-4b5e-9bfa-13acf4a99998`), as the Restorer, create appRoleAssignments:
+     - Microsoft Graph: `Policy.Read.All`, `Directory.Read.All`, `User.Read.All`, `Group.Read.All`, `Application.Read.All`,
+       `RoleManagement.Read.Directory`, `EntitlementManagement.Read.All`, `IdentityProvider.Read.All`, `Organization.Read.All`,
+       `DeviceManagementConfiguration.Read.All`, `DeviceManagementApps.Read.All`, `DeviceManagementServiceConfig.Read.All`,
+       `DeviceManagementRBAC.Read.All`, `AppCatalog.Read.All`;
+     - Office 365 Exchange Online (appId `00000002-0000-0ff1-ce00-000000000000`): `Exchange.ManageAsApp`;
+     - directory role **Global Reader** for the TCM principal (read-only).
+     Nothing with Write. Report each as added / already held / refused (status).
+  2. Wait 15 minutes, then `node tools/tenant-probe/utcm-probe.mjs check --config /etc/keel/tenant.json --out "$OUT"` (expect exit 0,
+     "Ready to run | yes").
+  3. `node tools/tenant-probe/utcm-probe.mjs run --config /etc/keel/tenant.json --out "$OUT"` (up to about 40 minutes a job). Report its
+     exit code.
+  4. Check `$OUT/utcm-probe-run.md` and `.json` for secrets and tenant names. Commit **only** `utcm-probe-run.md` to
+     `claude/live-evidence-utcm-probe` (from `origin/master`) as `docs/release/qualifications/utcm-probe.md`. No PR. Never commit `raw/`.
+  5. Keep `$OUT/raw/` (mode 600) on the host for the follow-up thread; report the file names and sizes only.
+- **Expected:** a job per workload ends `succeeded` or `partiallySuccessful`; "Resources extracted" well under 20000. Refused types,
+  empty types and job error details are results: report them.
+- **Report:** step 1 grants; step 2 table; the run's Summary, "Types KEEL does not read that returned data", Jobs and Snapshot format
+  sections verbatim; the evidence branch and commit; raw file names and sizes.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every
@@ -1630,6 +1696,10 @@ item that needs it stays untouched.
     Exchange app scoping, role "Application Mail.ReadWrite" limited to mailboxes whose address starts with keel-rt-;
     no tenant-wide Mail.ReadWrite grant and no consent click; keel-operator sets it up, writes one KEEL-RT- message to
     alice's inbox, checks a non-test mailbox is denied, then reruns the mail backup.
+- D-Q182 (Q183): may keel-operator add Microsoft's Tenant Configuration Management service principal to the test tenant and give
+  it read-only access (the Graph read permissions listed in Q183, Exchange.ManageAsApp, and the Global Reader role), so Microsoft's
+  config snapshots can be probed?
+  - Decision:
 
 ### Q22: AWS budget guard (operator-directed)
 - Asked by the operator at 16:43 UTC (relayed by the "Continue earlier Keel session" thread). Doesn't touch

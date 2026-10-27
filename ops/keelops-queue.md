@@ -295,7 +295,7 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   and a scheduled `workload-collect` (02:00 UTC) that started after that deploy. If the next one is more than 2 hours away, use the
   Schedules page "Run now" on the settings backup or the same engine `enqueue` call Q168 used (kind `workload-collect`, `{tenantRef}`,
   scheduler principal, key `keelops:k9:<date>`), and say which. Never run the CLI by hand.
-- Status: todo
+- Status: in-progress
 - **Tenant:** Collector reads only (the normal settings-by-service backup). No grants, no fixtures, no writes.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a` (read-only SELECTs):
   1. Report the build and the job: `SELECT id, status, started_at, finished_at, error, result->'partial' AS partial, result->'incompleteTypes' AS incomplete FROM job WHERE kind = 'workload-collect' ORDER BY created_at DESC LIMIT 1;`

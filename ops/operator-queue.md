@@ -1389,6 +1389,83 @@ being triggered by queue updates.
   created, with exit codes; the recounts. Never print a secret, an address or a user's name other than the `KEEL-RT-` and
   `keel-rt-` fixtures.
 
+### Q179: Read-only check of the Purview reads DLP depends on, then KEEL-RT- fixtures (custom sensitive info type, keyword dictionary, alert and audit retention policy)
+- Drafted by the "Back up Purview pieces DLP depends on" thread (2026-10-27). PR #599 adds two read-only workloads, off until
+  captured: `purview-classifiers` (Get-DlpSensitiveInformationType, Get-DlpSensitiveInformationTypeRulePackage,
+  Get-DlpKeywordDictionary) and `purview-audit-alerts` (Get-ProtectionAlert, Get-UnifiedAuditLogRetentionPolicy). Their fields and
+  identities come from Microsoft's docs. This item checks them on the test tenant first, so the code matches what Purview really
+  answers before the PR merges, and leaves fixtures so every list is non-empty for the capture that follows.
+- Needs: nothing (no deploy needed: you run the cmdlets by hand in `keel-powershell`, as for Q151 and Q178).
+- Status: todo
+- Result:
+- **Tenant:** step 1 is reads only, with the Collector's Purview config. Step 2 creates `KEEL-RT-` objects only, with the Restorer's
+  Purview config (Compliance Administrator, already held): one custom rule package with one test type that no DLP policy uses, one
+  keyword dictionary, one **disabled** alert policy, and (only if the cmdlet exists) one audit retention policy scoped to
+  `keel-rt-20260908-carla` only. No DLP policy or rule is created or changed. No app grant, role, CA or consent change. Nothing to
+  delete: the fixtures stay for the capture.
+- Do:
+  1. **Read-only check.** In `keel-powershell`, `Connect-IPPSSession` app-only with the Collector's Purview config
+     (`powershellConfigs.purview` in `/etc/keel/workload-scope.json`). For each read, report: exit (ok / error with the exact message
+     and `FullyQualifiedErrorId`), object count, seconds taken, and the size in bytes of
+     `ConvertTo-Json -InputObject @($out) -Depth 16 -Compress` (the container serializes the same way).
+     - `Get-DlpSensitiveInformationType`: counts per `Publisher` value; for the first object whose Publisher is **not**
+       `Microsoft Corporation` (or, if none, the first one), the **property names** that are not null or empty (names only), and
+       whether `Id` looks like a Guid (yes/no). Is there a property naming the rule package (e.g. `RulePackId`)? Name it.
+     - `Get-DlpSensitiveInformationTypeRulePackage`: for each package, `Name` and `Publisher`; the property names of one package that
+       is not `Microsoft Rule Package`; the .NET type of `SerializedClassificationRuleCollection` and its length; the first 30
+       characters of `(ConvertTo-Json -InputObject $pkg.SerializedClassificationRuleCollection -Compress)` (is it `[255,254,...` or a
+       base64 string?); and whether the decoded XML has `<RulePack id="<a Guid>">` (yes/no). Never print the XML.
+     - `Get-DlpKeywordDictionary`: property names; whether `Guid` and `Identity` are present and look like Guids (yes/no each); the
+       .NET type of `KeywordDictionary` (string or array).
+     - `Get-ProtectionAlert`: count, how many have `IsSystemRule = $true`; the property names of one; whether `Guid` and `Identity`
+       look like Guids (yes/no each).
+     - `Get-UnifiedAuditLogRetentionPolicy`: exit (if `CommandNotFoundException`, say so: no Audit Premium); if it runs, property names
+       and whether `Guid` / `Identity` look like Guids.
+  2. **Fixtures** (skip any whose `KEEL-RT-` name already exists), with the Restorer's Purview config:
+     - Rule package: save the XML below as UTF-16 (`Set-Content -Encoding Unicode`) after replacing the three `GUID-n` with fresh
+       `[guid]::NewGuid()` values, then `New-DlpSensitiveInformationTypeRulePackage -FileData ([System.IO.File]::ReadAllBytes('<file>'))`.
+       ```xml
+       <?xml version="1.0" encoding="utf-16"?>
+       <RulePackage xmlns="http://schemas.microsoft.com/office/2011/mce">
+         <RulePack id="GUID-1">
+           <Version build="0" major="1" minor="0" revision="0"/>
+           <Publisher id="GUID-2"/>
+           <Details defaultLangCode="en-us">
+             <LocalizedDetails langcode="en-us">
+               <PublisherName>KEEL-RT</PublisherName>
+               <Name>KEEL-RT-rule-package</Name>
+               <Description>Keel test fixture, used by no policy</Description>
+             </LocalizedDetails>
+           </Details>
+         </RulePack>
+         <Rules>
+           <Entity id="GUID-3" patternsProximity="300" recommendedConfidence="75">
+             <Pattern confidenceLevel="75"><IdMatch idRef="Regex_keel_rt_employee_id"/></Pattern>
+           </Entity>
+           <Regex id="Regex_keel_rt_employee_id">KEELRT\d{6}</Regex>
+           <LocalizedStrings>
+             <Resource idRef="GUID-3">
+               <Name default="true" langcode="en-us">KEEL-RT-employee-id</Name>
+               <Description default="true" langcode="en-us">Keel test fixture, used by no policy</Description>
+             </Resource>
+           </LocalizedStrings>
+         </Rules>
+       </RulePackage>
+       ```
+     - `New-DlpKeywordDictionary -Name 'KEEL-RT-dictionary' -Description 'Keel test fixture' -FileData ([System.Text.Encoding]::Unicode.GetBytes('keelrt-alpha,keelrt-beta'))`
+     - `New-ProtectionAlert -Name 'KEEL-RT-alert' -Category Others -ThreatType Activity -Operation FileDeleted -AggregationType None
+       -Severity Low -NotifyUser <keel-rt-20260908-carla's UPN> -Disabled $true`
+     - Only if step 1 showed the cmdlet exists: `New-UnifiedAuditLogRetentionPolicy -Name 'KEEL-RT-audit' -RecordTypes ExchangeAdmin
+       -RetentionDuration ThreeMonths -Priority 9999 -UserIds <keel-rt-20260908-carla's UPN>`
+     Then rerun step 1's counts (counts only), and for `Get-DlpSensitiveInformationType` confirm `KEEL-RT-employee-id` is listed and
+     give its `Publisher`.
+- **Expected:** every read answers app-only with the Collector (Compliance Administrator); the custom type's Publisher is not
+  `Microsoft Corporation`; the rule package bytes serialize as `[255,254,...` or base64 and hold a `RulePack id` Guid; every
+  dictionary, alert and audit policy has a Guid; after step 2 every list has a `KEEL-RT-` object (audit only with Audit Premium).
+- **Report:** step 1 per read (exit, count, seconds, JSON bytes, property names, Guid yes/no, the types asked for); step 2 what was
+  created, with exit codes; the recounts. Never print a secret, an address, XML or a user's name other than the `KEEL-RT-` and
+  `keel-rt-` fixtures.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

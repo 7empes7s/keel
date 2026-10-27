@@ -319,7 +319,7 @@ export function eachFieldReader(writer, fields) {
  * rewritten and referenceRefusal still guards). A rewrite to another id needs
  * a remapping proof for exactly this operation. Returns { resource } | { error }.
  */
-function remapRecordReferences(resource, verb, ctx) {
+function remapRecordReferences(record, resource, verb, ctx) {
   if (typeof ctx.rewriteReferences !== 'function' || !resource.payload || typeof resource.payload !== 'object') return { resource };
   let payload;
   try {
@@ -329,7 +329,10 @@ function remapRecordReferences(resource, verb, ctx) {
   }
   const read = (value, field) => String(field).split(/\.|\[|\]/).filter(Boolean)
     .reduce((held, segment) => held?.[/^\d+$/.test(segment) ? Number(segment) : segment], value);
+  // Only a field this write sends counts: an update never sends the ends of a link.
+  const sent = new Set(Object.keys(recordWriteBody(record, payload, verb)));
   const changed = withExplicitReferences(resource)
+    .filter((ref) => sent.has(String(ref.field ?? '').split(/[.[]/)[0]))
     .filter((ref) => String(read(resource.payload, ref.field) ?? '').toLowerCase() !== String(read(payload, ref.field) ?? '').toLowerCase());
   if (changed.length > 0 && !remappingFor(resource.resourceType, verb).qualified) {
     return { error: `unqualified-remapping: ${resource.resourceType} ${verb} would rewrite ${changed.map((ref) => ref.field).join(', ')} to a different id, and reference remapping is not proven for this operation` };
@@ -355,7 +358,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
     return { failed: { naturalKey, error: `unsupported operation: ${resource.resourceType} ${verb} has no operation record` } };
   }
   if (record.remapsReferences && verb !== 'delete') {
-    const remapped = remapRecordReferences(resource, verb, ctx);
+    const remapped = remapRecordReferences(record, resource, verb, ctx);
     if (remapped.error) return { failed: { naturalKey, error: remapped.error } };
     resource = remapped.resource;
   }

@@ -48,7 +48,7 @@ const refCalls = (graph) => graph.calls.filter((call) => call.method !== 'GET' &
 test('the backup reads each app\'s categories, by id and name only, sorted by name', () => {
   const entry = CATALOG.find((candidate) => candidate.type === 'mobileApp');
   assert.deepEqual(entry.itemReads, {
-    as: 'categories', path: '/deviceAppManagement/mobileApps/{item}/categories?$select=id,displayName', sortBy: 'displayName',
+    as: 'categories', path: '/deviceAppManagement/mobileApps/{item}/categories?$select=id,displayName', sortBy: 'displayName', omitEmpty: true,
   });
 });
 
@@ -127,6 +127,33 @@ test('two target categories with the backup\'s name are never guessed between', 
   assert.equal(result.failed, undefined, result.failed?.error);
   assert.deepEqual(refCalls(graph), []);
   assert.equal(result.applied.completion[0].requirement, 'categories');
+});
+
+test('on update, a category the app is in is kept when two target categories share the backup\'s name', async () => {
+  const live = { ...webApp(), id: 'live-web' };
+  const graph = idoFakeGraph({ seed: {
+    ...targetCategories({ id: 'a', displayName: 'Business' }, { id: 'b', displayName: 'Business' }, { id: 'old', displayName: 'KEEL-RT-old' }),
+    [`${APPS}/live-web`]: live,
+    [`${APPS}/live-web/categories/a`]: { id: 'a', displayName: 'Business' },
+    [`${APPS}/live-web/categories/old`]: { id: 'old', displayName: 'KEEL-RT-old' },
+  } });
+  const result = await applyIntuneExtendedWrite(graph, appOf(webApp([BUSINESS]), { live: { state: 'present', targetId: 'live-web', payload: live } }), 'update', {
+    ...FAST, referenceContext: context(),
+  });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(refCalls(graph).map(({ method, path }) => `${method} ${path}`), [`DELETE ${APPS}/live-web/categories/old/$ref`]);
+  assert.equal(result.applied.completion[0].requirement, 'categories');
+});
+
+test('a category list of more than one page is never guessed from', async () => {
+  const graph = idoFakeGraph({ seed: targetCategories(OWN) });
+  const paged = { ...graph, read: async (version, path) => {
+    const answer = await graph.read(version, path);
+    return path.startsWith(`${CATEGORIES}?`) ? { ...answer, body: { ...answer.body, '@odata.nextLink': 'https://graph.microsoft.com/next' } } : answer;
+  } };
+  const result = await applyIntuneExtendedWrite(paged, appOf(webApp([OWN])), 'create', { ...FAST, referenceContext: context() });
+  assert.match(result.failed.error, /the list has more than one page/);
+  assert.deepEqual(refCalls(graph), []);
 });
 
 test('a backup taken before categories were read changes no category', async () => {
@@ -228,5 +255,15 @@ test('a link to an app that is neither in the target nor recreated by this run i
   assert.equal(outcome.applied.length, 0);
   assert.equal(outcome.failed.length, 1);
   assert.match(outcome.failed[0].error, /targetId/);
+  assert.equal(graph.calls.some((call) => call.method !== 'GET'), false);
+});
+
+test('an update of a link whose apps now have other ids is left to a person, not refused as a remapping', async () => {
+  const graph = idoFakeGraph({ seed: { ...appsInTarget('new-main', 'new-dep'), '/deviceAppManagement/mobileAppRelationships/l1': { ...link, id: 'l1' } } });
+  const outcome = await wave(graph, [{
+    ...linkResource, verb: 'update', targetId: 'l1', live: { state: 'present', targetId: 'l1', payload: { ...link, id: 'l1', dependencyType: 'detect' } },
+  }], { appliedIds: new Map([['mobileApp:KEEL-RT-app-main', 'new-main'], ['mobileApp:KEEL-RT-app-dep', 'new-dep']]) });
+  assert.deepEqual(outcome.failed, []);
+  assert.match(outcome.skipped[0].reason, /a link is never changed into another one/);
   assert.equal(graph.calls.some((call) => call.method !== 'GET'), false);
 });

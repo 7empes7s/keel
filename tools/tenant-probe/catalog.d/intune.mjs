@@ -23,8 +23,9 @@ export default [
   // Restore gaps batch 19: the categories an app is in are a separate
   // collection, read per app (only each category's id and name), so a restore
   // can put the app back in them. Sorted by name: Graph promises no order.
+  // An app in no category keeps no list, so it reads as before this batch.
   { type: 'mobileApp', path: '/deviceAppManagement/mobileApps', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting', pageCap: 20,
-    itemReads: { as: 'categories', path: '/deviceAppManagement/mobileApps/{item}/categories?$select=id,displayName', sortBy: 'displayName' } },
+    itemReads: { as: 'categories', path: '/deviceAppManagement/mobileApps/{item}/categories?$select=id,displayName', sortBy: 'displayName', omitEmpty: true } },
   // Restore gaps batch 13: the apps an iOS or Android app protection policy (or
   // an app configuration policy) covers are a separate collection, read per
   // policy, so a restore can recreate a policy with its apps.

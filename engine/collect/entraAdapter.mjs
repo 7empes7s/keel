@@ -270,7 +270,7 @@ const byText = (left, right) => {
 };
 
 async function withItemReads(reader, entry, items, { dropWhenNotFound = false } = {}) {
-  const { as, path, byType, sortBy } = entry.itemReads;
+  const { as, path, byType, sortBy, omitEmpty } = entry.itemReads;
   let pages = 0;
   for (const item of [...items]) {
     const template = byType ? byType[item?.['@odata.type']] : path;
@@ -284,6 +284,9 @@ async function withItemReads(reader, entry, items, { dropWhenNotFound = false } 
     if (result?.error) return { error: result.error };
     if (result?.capped || !Array.isArray(result?.items)) return { error: { error: `reading ${entry.type}: ${as} of ${item.id} was incomplete` } };
     pages += Number.isSafeInteger(result.pages) ? result.pages : 0;
+    // Batch 19: `omitEmpty` leaves an empty list out, so a kind that starts
+    // keeping one more collection reads as no change where it holds none.
+    if (omitEmpty && result.items.length === 0) continue;
     item[as] = sortBy ? [...result.items].sort((left, right) => byText(left?.[sortBy], right?.[sortBy]) || byText(left?.id, right?.id)) : result.items;
   }
   return { pages, error: null };

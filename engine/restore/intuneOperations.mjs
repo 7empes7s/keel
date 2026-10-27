@@ -2000,21 +2000,27 @@ function targetCategory(category, known, runProvenance) {
 
 const readAppCategories = async (io, targetId) => {
   const read = await io.retryOperation(() => io.writer.read('beta', `${appPath(targetId)}/categories?$select=id,displayName`));
-  return read?.ok === true ? { categories: read.body?.value ?? [] } : { error: outcomeDetail(read) };
+  if (read?.ok !== true) return { error: outcomeDetail(read) };
+  if (read.body?.['@odata.nextLink']) return { error: 'the list has more than one page' };
+  return { categories: read.body?.value ?? [] };
 };
 
 /**
  * Restore gaps batch 19: puts an app back in the categories the backup lists
  * (each matched in the target by targetCategory), and takes it out of the
  * others, through the app's categories/$ref. A category that is not in the
- * target is a step for a person. A backup taken before categories were read
- * (no `categories`) changes nothing.
+ * target is a step for a person, and a current category with its name is
+ * kept. No `categories` (a backup taken before they were read, or an app in
+ * no category, whose empty list the backup leaves out) changes nothing.
+ * Lists of more than one page are not guessed from: the app is left as it is.
  */
 async function appCategoriesAfterWrite(io, { payload, targetId, ctx }) {
   const want = payload?.categories;
   if (!Array.isArray(want)) return null;
   const listed = await io.retryOperation(() => io.writer.read('beta', `${APP_CATEGORIES}?$select=id,displayName`));
-  if (listed?.ok !== true) return { error: `the app categories could not be read (${outcomeDetail(listed)}), so the app's categories were not changed` };
+  if (listed?.ok !== true || listed.body?.['@odata.nextLink']) {
+    return { error: `the app categories could not be read (${listed?.ok === true ? 'the list has more than one page' : outcomeDetail(listed)}), so the app's categories were not changed` };
+  }
   const known = listed.body?.value ?? [];
   const wanted = new Map();
   const missing = [];
@@ -2023,10 +2029,14 @@ async function appCategoriesAfterWrite(io, { payload, targetId, ctx }) {
     if (found) wanted.set(lower(found.id), found);
     else missing.push(category?.displayName ?? category?.id ?? 'a category with no name');
   }
+  // A category the backup names but that could not be told apart (two with
+  // its name) is never taken away from the app.
+  const unsure = (item) => missing.some((name) => sameName(name, item?.displayName));
   const current = await readAppCategories(io, targetId);
   if (current.error) return { error: `the app's categories could not be read (${current.error}), so they were not changed` };
   const have = new Set(current.categories.map((item) => lower(item?.id)));
-  const removed = current.categories.filter((item) => !wanted.has(lower(item?.id)));
+  const kept = current.categories.filter((item) => !wanted.has(lower(item?.id)) && unsure(item));
+  const removed = current.categories.filter((item) => !wanted.has(lower(item?.id)) && !unsure(item));
   const added = [...wanted.values()].filter((item) => !have.has(lower(item.id)));
   const base = appPath(targetId);
   for (const item of removed) {
@@ -2041,7 +2051,7 @@ async function appCategoriesAfterWrite(io, { payload, targetId, ctx }) {
   }
   if (removed.length > 0 || added.length > 0) {
     const check = await readAppCategories(io, targetId);
-    if (check.error || !sameValue(idSet(check.categories), idSet([...wanted.values()]))) {
+    if (check.error || !sameValue(idSet(check.categories), idSet([...wanted.values(), ...kept]))) {
       return { error: 'post-state: the app\'s categories did not read back as written' };
     }
   }

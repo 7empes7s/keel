@@ -263,6 +263,20 @@ test('a failed read is a gap, never an empty list', async () => {
   assert.equal(failed.outcome, 'failed');
   assert.ok(failed.failures.filter((failure) => !failure.error?.code?.startsWith?.('PARENT')).every((failure) => failure.status === 'denied' || failure.error?.code === 'PARENT_NOT_READ'));
 
+  // A switch serialized as an object still counts; a granted row naming no user is a gap, not an empty list.
+  const switches = tenant();
+  switches.live.rights[guid(1)] = [right('keel-rt-carla', ['FullAccess'], { Deny: { IsPresent: true } }), right(SELF, ['FullAccess'], { IsInherited: { IsPresent: false } })];
+  const read = await readExchangeRecipients({ powershell: switches.powershell, now: () => NOW });
+  assert.deepEqual(read.resources.find((resource) => resource.resourceKey === `mailbox-permission:${guid(1)}`).fields.Permissions,
+    [{ User: 'keel-rt-carla', AccessRights: ['FullAccess'], Deny: true }]);
+  const odd = tenant();
+  odd.live.rights[guid(1)] = [right({ Name: 'carla' }, ['FullAccess'])];
+  odd.live.booking[guid(2)] = [];
+  const gap = await readExchangeRecipients({ powershell: odd.powershell, now: () => NOW });
+  assert.equal(gap.outcome, 'partial');
+  assert.equal(gap.discovery.unidentified, 2);
+  assert.ok(!gap.resources.some((resource) => [`mailbox-permission:${guid(1)}`, `calendar-processing:${guid(2)}`].includes(resource.resourceKey)));
+
   // An empty tenant is complete-empty, not a failure: no family is required.
   const empty = tenant({ shared: [], room: [], contacts: [], sendAs: [] });
   assert.equal((await readExchangeRecipients({ powershell: empty.powershell, now: () => NOW })).outcome, 'complete-empty');

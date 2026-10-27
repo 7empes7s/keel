@@ -81,8 +81,13 @@ const mailbox = (type, operation, prefix) => Object.freeze({
 /** One sorted list of rows, so the same rights read twice compare equal. */
 const sortedRows = (rows) => rows.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 const rights = (value) => (Array.isArray(value) ? [...value].map(String).sort() : value == null ? [] : String(value).split(/,\s*/).sort());
-const granted = (row, who) => row && typeof row === 'object' && row.IsInherited !== true
-  && typeof row[who] === 'string' && row[who].trim().toLowerCase() !== SELF;
+// A switch can serialize as {"IsPresent": true} rather than true.
+const flag = (value) => value === true || value?.IsPresent === true;
+/** A row an admin granted: not inherited and not the mailbox's own SELF right. */
+const granted = (row, who) => row && typeof row === 'object' && !flag(row.IsInherited)
+  && !(typeof row[who] === 'string' && row[who].trim().toLowerCase() === SELF);
+/** Who a granted row names, or null when it names no one KEEL can store. */
+const principal = (value) => (typeof value === 'string' && NAME.test(value.trim()) ? value.trim() : null);
 
 /** Get-RecipientPermission rows, one body per recipient: who may send as it. */
 function sendAsByRecipient(output) {
@@ -90,8 +95,8 @@ function sendAsByRecipient(output) {
   for (const row of output) {
     if (!granted(row, 'Trustee')) continue;
     const key = byRecipientName(row);
-    // A row with no usable recipient stays a body of its own, so it is counted as unidentified.
-    if (!key) { byRecipient.set(Symbol('unidentified'), { Identity: null }); continue; }
+    // A row with no usable recipient or trustee stays a body of its own, so it is counted as unidentified.
+    if (!key || !principal(row.Trustee)) { byRecipient.set(Symbol('unidentified'), { Identity: null }); continue; }
     const body = byRecipient.get(key) ?? { Identity: row.Identity.trim(), Trustees: [] };
     body.Trustees.push({ Trustee: row.Trustee, AccessRights: rights(row.AccessRights), AccessControlType: row.AccessControlType ?? null });
     byRecipient.set(key, body);
@@ -100,14 +105,20 @@ function sendAsByRecipient(output) {
 }
 
 /** Get-MailboxPermission rows for one mailbox, as one body: the rights an admin granted. */
-const mailboxRights = (output, parent) => [{
-  Mailbox: parent.identity,
-  Permissions: sortedRows(output.filter((row) => granted(row, 'User'))
-    .map((row) => ({ User: row.User, AccessRights: rights(row.AccessRights), Deny: row.Deny === true }))),
-}];
+function mailboxRights(output, parent) {
+  const rows = output.filter((row) => granted(row, 'User'));
+  // A granted row that names no user cannot be stored: the mailbox's rights are then
+  // not known in full, so its entry is left out and counted as unidentified.
+  if (rows.some((row) => !principal(row.User))) return [{ Mailbox: null }];
+  return [{
+    Mailbox: parent.identity,
+    Permissions: sortedRows(rows.map((row) => ({ User: principal(row.User), AccessRights: rights(row.AccessRights), Deny: flag(row.Deny) }))),
+  }];
+}
 
 /** Get-CalendarProcessing for one room or equipment mailbox: one body, under the mailbox. */
-const bookingRules = (output, parent) => output.slice(0, 1).map((body) => ({ ...body, Mailbox: parent.identity }));
+// Exchange answers exactly one object per mailbox; none is a gap, counted as unidentified.
+const bookingRules = (output, parent) => (output.length ? [{ ...output[0], Mailbox: parent.identity }] : [{ Mailbox: null }]);
 
 /** Distribution lists, dynamic distribution lists and Microsoft 365 group mail settings. */
 export const DISTRIBUTION_GROUP_FAMILIES = Object.freeze({

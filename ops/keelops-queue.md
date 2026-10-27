@@ -540,8 +540,8 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
   left is Microsoft refusing to publish the two Purview fixtures. If both now read `Success`, a later item recaptures
   purview-retention-dlp.
 - Needs: nothing.
-- Status: in-progress
-- Result:
+- Status: blocked
+- Result: blocked on `/etc/keel/purview-collector.json` (2026-10-27 ~20:55 UTC): not readable by keelops (not among the 8 files granted in Q175). The Purview PowerShell read needs it. Build `74f18b8`. Nothing run, nothing changed. To unblock: root grants keelops read on purview-collector.json (and its certificate/key files) — listed in ~/agent-src/ROOT-STEPS.md.
 - **Tenant:** Collector reads only. Nothing is written, nothing is granted.
 - Do, with the Collector's Purview PowerShell config (`/etc/keel/purview-collector.json`, the one the purview-retention-dlp
   collect uses; never print its contents):

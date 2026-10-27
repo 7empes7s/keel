@@ -1290,6 +1290,20 @@ being triggered by queue updates.
      "Keel cannot undo this" with a reason, and whether mail flow changes show Accept and Undo.
 - **Report:** B; step 1 table; each step's row ids, change types and alert states; the restore's artifact and approval ids; what is left in the tenant.
 
+### Q176: Run keelops K16 and K18, which need files keelops can't read (read-only)
+- Drafted by the "Clear stale consent policy evidence" thread (2026-10-27). keelops marked both `blocked`: K16 needs
+  `/etc/keel/purview-collector.json` and K18 needs `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env`, which keelops
+  is deliberately not granted. Run them here instead; grant nothing to keelops.
+- Needs: nothing.
+- Status: todo
+- Result:
+- **Tenant:** Collector reads only (K16). Nothing is written, nothing is granted.
+- Do: K16 and K18 exactly as written in `ops/keelops-queue.md` on `claude/keelops-queue` (read them there). Write the results in this
+  item's `Result` (not in the keelops queue). Never print a secret.
+  - K18 is the #294 check: after `03f8c51b` on `claude/live-evidence-w2-entra`, `--live-evidence` should print
+    `permissionGrantPolicy.update.json: fixture-tested -> live-qualified` (and the same for create).
+- **Report:** the build, K16's two `DistributionStatus` outputs, K18's two `permissionGrantPolicy` lines verbatim.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

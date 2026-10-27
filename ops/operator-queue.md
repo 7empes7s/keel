@@ -8461,7 +8461,7 @@ item that needs it stays untouched.
 - **Expected:** `readable`, and every service (`keel-portal`, `keel-worker`, `keel-scheduler`, `keelops-deployer`) still `active`.
 - **Report:** the outputs above. Never print a secret.
 
-### Q176: Live proof of the Teams channel message restore through the import API (after PR #596)
+### Q188: Live proof of the Teams channel message restore through the import API (after PR #596)
 - Drafted by the "Restore Teams messages via import API" thread (2026-10-27). PR #596 adds `keel-content-restore.mjs teams`:
   it restores one channel's messages into a **new** channel `<name> (restored <date>)` created in import mode, each message with its
   original author and time, replies under their thread, an inline image, then ends import mode. Messages are not backed up yet

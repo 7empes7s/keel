@@ -701,4 +701,5 @@ K6: yes, keelops may create KEEL-RT-app-perms and file and approve its restores 
 K7: yes, use my portal principal.
 K14: yes, keelops may run the Make it pass restore on KEEL-RT-mailfix-spam and approve it and its content effect as my Entra principal.
 K15: yes, keelops may create, change and delete the disabled KEEL-RT-svc-change transport rule and approve its restores as my Entra principal.
-K21:
+K21: yes, keelops may create, delete, restore and purge KEEL-RT-app-steps, file and approve its restores as my Entra/Gmail principals, and close its follow-up steps as my Entra principal.
+

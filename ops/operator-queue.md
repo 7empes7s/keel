@@ -8355,3 +8355,26 @@ item that needs it stays untouched.
 - **If a call fails:** report the step, HTTP status and Graph error code/message verbatim (no tokens). A 400 on a message POST is a
   finding for the thread, not a reason to change anything by hand.
 - **Report:** build, permission names, plan JSON, approval ids, the run report JSON, the re-run report, the channel id and name.
+
+### Q177: Read-only probe: can the content reader read a KEEL-RT- team's channel messages today? (no grants, no changes)
+- Drafted by the "Probe Teams message backup without export API" thread (2026-10-27). Question: Microsoft documents the
+  team-scoped RSC permission `ChannelMessage.Read.Group` (Application) as least privileged for list channel messages, list
+  replies and hosted contents. The protected-API error text reportedly reads "...requires Protected API access in
+  application-only context when not using Resource Specific Consent". This item records today's baseline before any RSC work.
+- Needs: nothing.
+- Status: todo
+- **Read-only. Test tenant only. Grant nothing, install nothing, create nothing, change no setting.** Content reader identity
+  (`/etc/keel/content-reader.json`) for the Graph calls. No tokens or secrets in the Result.
+- Do:
+  1. List the content reader's application permission names (names only). Say whether `ChannelMessage.Read.All`,
+     `ChannelMessage.Read.Group`-style RSC grants or any `TeamsAppInstallation.*` permission is among them. Also give the
+     content reader's **client (app) id** (an app id, not a secret): the follow-up needs it for a Teams app manifest.
+  2. Pick a `KEEL-RT-` team `<TEAM>` and its General channel `<CH>`. With the content reader call:
+     a. `GET /v1.0/teams/<TEAM>/channels/<CH>/messages?$top=1`
+     b. `GET /v1.0/teams/<TEAM>/channels/getAllMessages?$top=1`
+     c. `GET /v1.0/teams/<TEAM>/installedApps?$expand=teamsAppDefinition($select=displayName)` (names only)
+     d. `GET /v1.0/teams/<TEAM>/permissionGrants` (RSC grants on the team; names and client app ids only)
+     For each: HTTP status, and on an error the Graph `code` and `message` **verbatim** (the exact wording is the finding).
+  3. If the Collector or Restorer can read it with an existing grant, `GET /beta/team/rscConfiguration` and
+     `GET /beta/chats/rscConfiguration` (or report the 403 and stop; don't add a grant). Report the `state` values.
+- **Report:** the permission names, the client id, each call's status and verbatim error, the RSC configuration states.

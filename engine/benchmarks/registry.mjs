@@ -559,18 +559,40 @@ function blocksLegacy(fact) {
     && clients.some((client) => LEGACY_CLIENTS.includes(client));
 }
 
-function coversEveryone(fact) {
-  const users = fact?.conditions?.users?.includeUsers;
-  const apps = fact?.conditions?.applications?.includeApplications;
-  return Array.isArray(users) && users.includes('All') && Array.isArray(apps) && apps.includes('All');
+// How far a policy reaches, in words for its detail line: 'All', 'Only some' or 'None'.
+// Never the user, group or app ids it names (the line is shown on the page). Microsoft
+// writes ['None'] for nothing, and a rule for groups or roles has no includeUsers.
+function reach(list, others = []) {
+  const named = Array.isArray(list) ? list.filter((entry) => entry !== 'None') : [];
+  if (named.includes('All')) return 'All';
+  if (named.length > 0 || others.some((other) => Array.isArray(other) ? other.length > 0 : Boolean(other))) return 'Only some';
+  return 'None';
+}
+
+// The four settings that decide whether one blocking policy blocks legacy sign-in.
+function legacyLines(fact) {
+  const subject = objectName(fact, 'Unnamed sign-in rule');
+  const clients = LEGACY_CLIENTS.filter((client) => fact.conditions.clientAppTypes.includes(client));
+  const scope = fact.conditions?.users ?? {};
+  const users = reach(scope.includeUsers, [scope.includeGroups, scope.includeRoles, scope.includeGuestsOrExternalUsers]);
+  const apps = reach(fact.conditions?.applications?.includeApplications);
+  return [
+    { subject, setting: 'state', value: fact.state ?? null, expected: 'enabled', ok: fact.state === 'enabled' },
+    { subject, setting: 'includeUsers', value: users, expected: 'All', ok: users === 'All' },
+    { subject, setting: 'includeApplications', value: apps, expected: 'All', ok: apps === 'All' },
+    { subject, setting: 'clientAppTypes', value: clients, expected: LEGACY_CLIENTS, ok: clients.length === LEGACY_CLIENTS.length },
+  ];
 }
 
 registerPredicate('conditional-access-block-legacy', (facts) => {
   const candidates = facts.filter(blocksLegacy);
   if (candidates.length === 0) return { verdict: 'fail', reason: NOT_CONFIGURED };
-  const enforced = candidates.some((fact) => fact.state === 'enabled' && coversEveryone(fact)
-    && LEGACY_CLIENTS.every((client) => fact.conditions.clientAppTypes.includes(client)));
-  return enforced ? 'pass' : 'fail';
+  // One policy that meets all four is enough: then only that policy's lines are shown.
+  // Otherwise every blocking policy is listed, so the page names each one and what it misses.
+  const perPolicy = candidates.map(legacyLines);
+  const enforcing = perPolicy.filter((lines) => lines.every((line) => line.ok));
+  if (enforcing.length > 0) return { verdict: 'pass', details: enforcing.flat() };
+  return { verdict: 'fail', details: perPolicy.flat() };
 });
 
 registerControl({

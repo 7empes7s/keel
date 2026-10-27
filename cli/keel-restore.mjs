@@ -48,7 +48,9 @@
 //   teams-settings             --team <team id>
 //   purview-labels             --target label:<id> | label-policy:<id> (repeatable)
 //   mail flow, Exchange settings, Teams org-wide and voice policies, Purview retention,
-//   DLP and labels: [--target <key> ...].
+//   DLP and labels: [--target <key> ...]. A key is `<kind>:<Guid>` for rules, connectors
+//   and policies; `<kind>:<Name>` is accepted too and resolves to the one object of that
+//   kind with that name (more than one refuses the plan and lists the Guid keys).
 // On the test tenant every workload restore writes only KEEL-RT- fixtures (a mailbox,
 // team, member, label, policy or site named KEEL-RT-*); --allow-tenant-wide-test-writes
 // also plans tenant-wide objects (a Global policy, the SharePoint tenant settings, the

@@ -33,7 +33,7 @@ import { FAMILIES as TEAMS_EXTENDED_FAMILIES, readTeamsExtended, recordTeamsExte
 import { FAMILIES as TEAMS_POLICY_FAMILIES, readTeamsPolicies, recordTeamsPolicyRun } from '../collect/workloads/teamsPolicies.mjs';
 import {
   BENIGN_FIELDS, WORKLOAD_EFFECT_RULES, WorkloadWriteScopeError, createWorkloadSettingsArtifact, executeWorkloadSettingsRestore,
-  loadWorkloadSource, planWorkloadSettingsRestore, restoreReadFamilies, unreviewedWrittenFields, weakensMailProtection, workloadWriteCmdlet, writeCmdletParameters, writeFamilies,
+  loadWorkloadSource, planWorkloadSettingsRestore, resolveNamedTargets, restoreReadFamilies, unreviewedWrittenFields, weakensMailProtection, workloadWriteCmdlet, writeCmdletParameters, writeFamilies,
 } from '../restore/workloads/cmdletSettings.mjs';
 import { WORKLOAD_RESTORES } from '../restore/workloads/dispatch.mjs';
 import { fixtureProblem, isFixtureName } from '../restore/workloads/fixtureGuard.mjs';
@@ -323,6 +323,67 @@ test('mail flow: a deleted rule is not re-created, a new one is never deleted, S
   const second = await planned(client, tenant2, 'exchange-mail-flow', { source: structuredSource, live: other });
   assert.deepEqual(second.plan.operations, []);
   assert.match(second.plan.manual.find((item) => item.field === 'SentTo').reason, /structured/);
+});
+
+// Q161: rules, connectors and policies are keyed by Guid, so `--target transport-rule:<name>`
+// matched nothing and planned 0 changes without saying why.
+test('mail flow: a target by name plans the same change as its Guid key; a shared name refuses and lists the Guid keys', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const live = fakeTenant('exchange-mail-flow');
+  const rule = live.state['Get-TransportRule'][0];
+  rule.Name = 'KEEL-RT-svc-change';
+  rule.Mode = 'Audit';
+  const source = await recordSource(client, tenantRef, 'exchange-mail-flow', live);
+  rule.Mode = 'Enforce';
+  const key = `transport-rule:${rule.Guid.toLowerCase()}`;
+
+  const byName = await planned(client, tenantRef, 'exchange-mail-flow', { source, live, targets: ['transport-rule:keel-rt-SVC-change'] });
+  const byGuid = await planned(client, tenantRef, 'exchange-mail-flow', { source, live, targets: [key] });
+  assert.deepEqual(byName.plan.targets, [key]);
+  assert.deepEqual(byName.plan.operations.map((op) => [op.cmdlet, op.parameters]), [['Set-TransportRule', { Identity: rule.Guid, Mode: 'Audit' }]]);
+  assert.deepEqual(byName.plan.operations, byGuid.plan.operations);
+  assert.equal(byName.plan.digest, byGuid.plan.digest);
+
+  // A name nothing has is still listed as found nowhere, never silently dropped.
+  const missing = await planned(client, tenantRef, 'exchange-mail-flow', { source, live, targets: ['transport-rule:KEEL-RT-absent'] });
+  assert.deepEqual(missing.plan.operations, []);
+  assert.deepEqual(missing.plan.manual.map((item) => [item.resourceKey, item.reason]), [['transport-rule:keel-rt-absent', 'neither the source nor the live read has this object']]);
+
+  // Two rules with that name (one renamed into it since the backup, say): refused, each Guid key named.
+  const twin = fixture('exchange-mail-flow', 'transportRule');
+  twin.Name = 'KEEL-RT-svc-change';
+  live.state['Get-TransportRule'].push(twin);
+  const read = await readFor('exchange-mail-flow')({ powershell: live.powershell });
+  assert.throws(
+    () => planWorkloadSettingsRestore({ workload: 'exchange-mail-flow', source, live: read, tenantId: TENANT, tenantRef, targets: ['transport-rule:KEEL-RT-svc-change'] }),
+    (error) => /names 2 objects; these are keyed by Guid/.test(error.message)
+      && error.message.includes(`--target ${key}`) && error.message.includes(`--target transport-rule:${twin.Guid.toLowerCase()}`),
+  );
+});
+
+test('every Guid-keyed workload resolves a target by name to the Guid key of that kind only', async (t) => {
+  const client = await schemaClient(t);
+  for (const workload of Object.keys(WORKLOADS).filter((name) => WORKLOADS[name].keyed === 'guid')) {
+    const tenantRef = nextTenant();
+    const live = fakeTenant(workload);
+    const source = await recordSource(client, tenantRef, workload, live);
+    const named = source.observations.filter((item) => typeof item.fields?.Name === 'string');
+    assert.ok(named.length > 0, `${workload} has named objects`);
+    for (const observation of named) {
+      const prefix = observation.resourceKey.slice(0, observation.resourceKey.indexOf(':'));
+      assert.deepEqual(resolveNamedTargets([`${prefix}:${observation.fields.Name}`], source.observations), [observation.resourceKey], `${workload} ${prefix}`);
+    }
+  }
+  // The kind is part of the match: a name under another kind's prefix resolves to nothing.
+  const observations = [{ resourceKey: 'transport-rule:00000000-0000-4000-8000-000000000001', fields: { Name: 'KEEL-RT-x' } }];
+  assert.deepEqual(resolveNamedTargets(['inbound-connector:KEEL-RT-x'], observations), ['inbound-connector:keel-rt-x']);
+  // An empty name never matches an object whose Name was not read.
+  assert.deepEqual(resolveNamedTargets(['transport-rule:'], [{ resourceKey: 'transport-rule:00000000-0000-4000-8000-000000000002', fields: {} }]), ['transport-rule:']);
+  // Non-Guid keys (domains, Teams policies) are matched as written, as before.
+  const domains = [{ resourceKey: 'accepted-domain:contoso.com', fields: { Name: 'Contoso' } }];
+  assert.deepEqual(resolveNamedTargets(['accepted-domain:Contoso'], domains), ['accepted-domain:contoso']);
+  assert.deepEqual(resolveNamedTargets(['accepted-domain:contoso.com'], domains), ['accepted-domain:contoso.com']);
 });
 
 test('mail flow: a rule that would delete or copy mail is a content effect held for a separate approval', async (t) => {

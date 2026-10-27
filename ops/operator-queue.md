@@ -8445,3 +8445,34 @@ item that needs it stays untouched.
 - **If a call fails:** report the step, HTTP status and Graph error code/message verbatim (no tokens). A 400 on a message POST is a
   finding for the thread, not a reason to change anything by hand.
 - **Report:** build, permission names, plan JSON, approval ids, the run report JSON, the re-run report, the channel id and name.
+
+### Q185: Live backup and restore of Intune apps (restore gaps batch 18, after #606)
+- Drafted by the "Back up and restore Intune apps" thread (2026-10-27). Code: PR #606. New record writer for `mobileApp`, fixture-tested only, v1.0:
+  - create: POST `/v1.0/deviceAppManagement/mobileApps` with `@odata.type` and the backed-up settings (server fields such as publishingState, size, committedContentVersion left out; a Win32 app sends `rules` and not the older detectionRules/requirementRules).
+  - update: PATCH `.../{id}` of changed fields; then assignments through POST `.../{id}/assign` with `{ mobileAppAssignments: [...] }` (intent and settings).
+  - A Win32 or line-of-business app is recreated **without its package and never assigned** until it is published; the run lists an "upload the package" step and an assignments step.
+  - **Backup change:** app assignments now keep their settings object (`attributes.settings`); edge diffs ignore it (settingsDigest stands for it). Report if the first backup after deploy shows any app assignment as modified.
+- Needs: /opt/keel-live at the #606 merge or later (`grep -q appAssignmentHold /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q67. Under the 2026-10-14 standing authorization, approve
+  these restores yourself and log every approval id. Restorer only; global admin not used. The Restorer needs DeviceManagementApps.ReadWrite.All;
+  if Graph answers 403, report blocked with what Graph names and grant nothing. Never touch CA policies, break-glass or Marouane's account.
+  **Never assign either fixture app to anyone, and never upload a package.**
+- **Fixtures** (the reviewed guidance in `live-gate-plan.mjs` at B says the same):
+  - Web link `KEEL-RT-148-app-web` (https://example.com/), assigned to nobody.
+  - Win32 app shell `KEEL-RT-148-app-win32` with no file uploaded: file name `keel-fixture.intunewin`, install `cmd /c echo install`,
+    uninstall `cmd /c echo uninstall`, one file-exists detection rule (`C:\KEEL\keel.txt`), assigned to nobody. If Intune will not create a
+    Win32 shell through Graph without a file, report the exact message and skip that part.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/live-gate-plan.mjs > ~/keel-rg18/plan-B.md`; use its `mobileApp` steps.
+  2. Create the fixtures, then take snapshot S. Report the `mobileApp` read outcome and that both fixtures are in S with their `@odata.type`.
+  3. **Create round:** delete both apps. Restore from S selecting `mobileApp` (only the two fixtures), approve, enforce, capture both `create`s.
+     Expect the web link back as it was, and the Win32 shell back with its commands and detection rule, with an "upload the package" follow-up step and no assignment.
+  4. **Update round:** change the web link's description and the shell's install command to `cmd /c echo changed`. Dry run first: expect the
+     install command change listed as a content effect ("runs on devices"). Approve it, enforce, capture both `update`s. Expect both back.
+  5. **Re-run check:** dry run from S after step 4. Expect 0 planned writes for the fixtures.
+  6. Cleanup: delete both apps. Report anything left.
+  7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on `claude/live-evidence-restore-gaps-18`,
+     branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR. Run
+     `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; step 2; per operation promoted / refused (exact Graph message) / skipped; steps 4 and 5; approval ids; evidence branch and commit; anything left in the tenant.

@@ -3844,13 +3844,58 @@ test("integrations put held-back entries first and keep raw errors behind a clic
   await expect(alerts.nth(1)).toContainText("3 audit entries could not be sent to Sentinel CEF");
   await expect(page.locator('.ui-tile[data-tile="held"] .ui-tile-value')).toHaveText("4");
   await expect(page.locator("#ig-servicenow .pg-chips .badge", { hasText: "gate passed" })).toHaveAttribute("data-tone", "fine");
-  const destination = page.locator("#ig-destinations li.pg-card");
+  const destination = page.locator("#ig-destinations li.sel-row", { hasText: "Sentinel CEF" });
   await expect(destination.locator(".badge").first()).toHaveText("3 held back");
+  await expect(destination).toHaveAttribute("data-tone", "urgent");
   await expect(page.locator("main .section-kicker")).toHaveCount(0);
 
   await open(page, "/integrations/servicenow-off", "dark");
   await expect(page.locator("#ig-attention")).toContainText("ServiceNow approvals are off: 2 settings are missing");
   await expect(page.locator("#ig-servicenow ul[aria-label='Missing settings'] li")).toHaveCount(2);
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  }
+});
+
+// Integrations (settings restyle): destinations are grouped rows by kind with a
+// stripe when one needs someone; counts, held-back entries and actions open in the
+// side panel, and so does adding one. One record for the whole section.
+test("integrations list destinations as grouped rows that open the side panel", async ({ page }) => {
+  await open(page, "/integrations", "dark");
+  const section = page.locator("#ig-destinations");
+  await expect(section.locator(".sel-group")).toHaveCount(2);
+  await expect(section.locator(".sel-group .sel-group-name b")).toHaveText(["Webhooks", "SIEM (CEF)"]);
+  await expect(section.locator("li.sel-row", { hasText: "Ops webhook" })).toHaveAttribute("data-tone", "soon");
+  await expect(section.locator("form")).toHaveCount(0);
+  await expect(section.locator(".pg-stats")).toHaveCount(0);
+  await expect(section.locator("details.technical-details")).toHaveCount(1);
+
+  await section.getByRole("button", { name: "Open Sentinel CEF" }).click();
+  const sheet = page.getByRole("dialog", { name: "Sentinel CEF" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.locator(".pg-stats div[data-tone='urgent'] dd")).toHaveText("3");
+  await sheet.getByRole("button", { name: "Show held-back entries" }).click();
+  await expect(sheet.locator(".ui-alerts > *")).toHaveCount(1);
+  await expect(sheet.getByRole("button", { name: "Pause" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Check again" })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 900 });
+  expect(await sheet.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+
+  await section.getByRole("button", { name: "Add destination" }).click();
+  const add = page.getByRole("dialog", { name: "Add a destination" });
+  await add.getByLabel("Name").fill("Splunk");
+  await add.getByLabel("Address").fill("https://splunk.contoso.com/keel");
+  await add.getByRole("button", { name: "Add destination" }).click();
+  await expect(add).toBeHidden();
+  const calls = await page.evaluate(() => (window as unknown as { __harnessCalls: { url: string; method: string; body: string | null }[] }).__harnessCalls);
+  const posted = calls.find((call) => call.url === "/api/integrations" && call.method === "POST");
+  expect(JSON.parse(posted?.body ?? "{}")).toEqual({ name: "Splunk", kind: "webhook", config: { url: "https://splunk.contoso.com/keel" } });
+
   for (const width of [390, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);

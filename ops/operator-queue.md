@@ -1395,10 +1395,10 @@ being triggered by queue updates.
   Get-DlpKeywordDictionary) and `purview-audit-alerts` (Get-ProtectionAlert, Get-UnifiedAuditLogRetentionPolicy). Their fields and
   identities come from Microsoft's docs. This item checks them on the test tenant first, so the code matches what Purview really
   answers before the PR merges, and leaves fixtures so every list is non-empty for the capture that follows.
-- Needs: nothing (no deploy needed: you run the cmdlets by hand in `keel-powershell`, as for Q151 and Q178).
+- Needs: nothing for steps 1–2 (by hand in `keel-powershell`, as for Q151 and Q178); step 3 needs #599 deployed.
 - Status: todo
 - Result:
-- **Tenant:** step 1 is reads only, with the Collector's Purview config. Step 2 creates `KEEL-RT-` objects only, with the Restorer's
+- **Tenant:** steps 1 and 3 are reads only, with the Collector's Purview config. Step 2 creates `KEEL-RT-` objects only, with the Restorer's
   Purview config (Compliance Administrator, already held): one custom rule package with one test type that no DLP policy uses, one
   keyword dictionary, one **disabled** alert policy, and (only if the cmdlet exists) one audit retention policy scoped to
   `keel-rt-20260908-carla` only. No DLP policy or rule is created or changed. No app grant, role, CA or consent change. Nothing to
@@ -1459,6 +1459,16 @@ being triggered by queue updates.
        -RetentionDuration ThreeMonths -Priority 9999 -UserIds <keel-rt-20260908-carla's UPN>`
      Then rerun step 1's counts (counts only), and for `Get-DlpSensitiveInformationType` confirm `KEEL-RT-employee-id` is listed and
      give its `Publisher`.
+  3. **Capture and switch on** (only once `/opt/keel-live` is at the #599 merge or later:
+     `test -f /opt/keel-live/engine/collect/workloads/purviewDlpSupport.mjs`; if not yet, do steps 1–2 now and step 3 later).
+     As Q157 steps 1–4, from your clone at the deployed build B, with the Purview collector config
+     (`powershellConfigs.purview` in `/etc/keel/workload-scope.json`), once per workload `purview-classifiers` and
+     `purview-audit-alerts`: `workloadReadsLive.mjs capture --workload <w> ... --out
+     docs/release/qualifications/workload-reads-<w>-live-acceptance.json`, `pseudonymize.mjs check`, commit both records to
+     `claude/live-evidence-purview-dlp-support` (from `origin/master`, those files only, secret-scanned), `keel-workload-collect.mjs
+     import --dir <dir>`, then `keel-workload-collect.mjs run` once. Report exit codes, `outcome`, `proven` / `notProven`, and for both
+     workloads the run's outcome, observations, `discovery.builtIn`, and `unknownFields` / reasons if not `complete`. A `not-licensed`
+     audit retention read (no Audit Premium) is expected to leave `purview-audit-alerts` partial: report it, nothing to fix.
 - **Expected:** every read answers app-only with the Collector (Compliance Administrator); the custom type's Publisher is not
   `Microsoft Corporation`; the rule package bytes serialize as `[255,254,...` or base64 and hold a `RulePack id` Guid; every
   dictionary, alert and audit policy has a Guid; after step 2 every list has a `KEEL-RT-` object (audit only with Audit Premium).

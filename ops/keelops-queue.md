@@ -401,5 +401,7 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
 
 ## Operator decisions (human operator only)
 
-Write `yes`, `no` or your instructions after each one. If a decision is blank, every
-item that needs it stays untouched.
+Write `yes`, `no` or your instructions after each one. If a decision is blank, every item that needs it stays untouched.
+
+K6: yes, keelops may create KEEL-RT-app-perms and file and approve its restores as my Entra/Gmail principals.
+K7: yes, use my portal principal.

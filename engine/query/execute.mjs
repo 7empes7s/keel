@@ -106,33 +106,46 @@ const TEMPLATES = Object.freeze({
     const limitParam = 8 + where.values.length;
     // One row per resource: a change seen again in a later backup is the same change, so
     // its newest sighting in the period stands for it, and the count is of resources.
+    // Only narrow columns go through this sort: a month can hold many thousands of rows,
+    // and the payloads are read for the listed page alone.
     const matched = `WITH matched AS (
        SELECT DISTINCT ON (d.resource_type, d.natural_key)
               d.id, d.tenant_ref, d.natural_key, d.resource_type, d.change_type, d.blast_radius,
-              d.detected_at, d.observed_snapshot, d.before_payload, d.after_payload, ${SEEN_AT} AS seen_at
+              d.detected_at, d.observed_snapshot, ${SEEN_AT} AS seen_at
          FROM drift d
          LEFT JOIN snapshot os ON os.id = d.observed_snapshot AND os.tenant_ref = d.tenant_ref
         WHERE ${condition}
         ORDER BY d.resource_type, d.natural_key, ${SEEN_AT} DESC, d.id DESC
      )`;
     const { rows } = await client.query(
-      `${matched}
+      `${matched},
+       page AS (
+         SELECT m.* FROM matched m ORDER BY m.seen_at DESC, m.id LIMIT $${limitParam}
+       ),
+       -- The change happened after the last backup that read this kind completely:
+       -- a backup of other kinds that finished a moment before says nothing about it.
+       -- Looked up once per kind and sighting, walking back from the sighting along
+       -- snapshot_complete_time_idx, so each lookup stops at the first backup that read it.
+       opened AS (
+         SELECT p.tenant_ref, p.resource_type, p.seen_at,
+                (SELECT ps.completed_at FROM snapshot ps
+                  WHERE ps.tenant_ref = p.tenant_ref AND ps.status = 'complete' AND ps.completed_at < p.seen_at
+                    AND ps.coverage_digest->p.resource_type->>'outcome' IN ('complete', 'complete-empty')
+                  ORDER BY ps.completed_at DESC LIMIT 1) AS window_from
+           FROM (SELECT DISTINCT tenant_ref, resource_type, seen_at FROM page) p
+       )
        SELECT m.id::text AS id, m.natural_key, m.resource_type, m.change_type, m.blast_radius, m.detected_at,
-              m.observed_snapshot::text AS collection_id, m.seen_at,
-              -- The change happened after the last backup that read this kind completely:
-              -- a backup of other kinds that finished a moment before says nothing about it.
-              (SELECT max(ps.completed_at) FROM snapshot ps
-                WHERE ps.tenant_ref = m.tenant_ref AND ps.status = 'complete' AND ps.completed_at < m.seen_at
-                  AND ps.coverage_digest->m.resource_type->>'outcome' IN ('complete', 'complete-empty')) AS window_from,
-              COALESCE(${objectNameSql('m.after_payload', 'm.resource_type')}, ${objectNameSql('m.before_payload', 'm.resource_type')}) AS display_name,
-              CASE WHEN m.change_type = 'modified' AND jsonb_typeof(m.before_payload) = 'object' AND jsonb_typeof(m.after_payload) = 'object'
-                   THEN ARRAY(SELECT k FROM (SELECT jsonb_object_keys(m.before_payload) UNION SELECT jsonb_object_keys(m.after_payload)) keys(k)
-                               WHERE m.before_payload->k IS DISTINCT FROM m.after_payload->k ORDER BY k LIMIT ${MAX_FIELDS + 1})
+              m.observed_snapshot::text AS collection_id, m.seen_at, o.window_from,
+              COALESCE(${objectNameSql('d.after_payload', 'd.resource_type')}, ${objectNameSql('d.before_payload', 'd.resource_type')}) AS display_name,
+              CASE WHEN m.change_type = 'modified' AND jsonb_typeof(d.before_payload) = 'object' AND jsonb_typeof(d.after_payload) = 'object'
+                   THEN ARRAY(SELECT k FROM (SELECT jsonb_object_keys(d.before_payload) UNION SELECT jsonb_object_keys(d.after_payload)) keys(k)
+                               WHERE d.before_payload->k IS DISTINCT FROM d.after_payload->k ORDER BY k LIMIT ${MAX_FIELDS + 1})
               END AS fields,
               (SELECT p.action FROM disposition p WHERE p.drift_id = m.id ORDER BY p.decided_at DESC, p.id DESC LIMIT 1) AS decision
-         FROM matched m
-        ORDER BY m.seen_at DESC, m.id
-        LIMIT $${limitParam}`,
+         FROM page m
+         JOIN drift d ON d.id = m.id
+         LEFT JOIN opened o ON o.tenant_ref = m.tenant_ref AND o.resource_type = m.resource_type AND o.seen_at = m.seen_at
+        ORDER BY m.seen_at DESC, m.id`,
       [...base, ...where.values, params.limit],
     );
     // Every matching change counted by kind, change and risk, so the answer can be

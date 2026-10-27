@@ -866,6 +866,19 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 
 **You do:** KEEL does not restore role groups. A deleted group, its roles and its members are put back by hand in the Exchange admin center using the backup. Microsoft's built-in groups cannot be deleted, only their members changed.
 
+### SharePoint site structure
+
+**Backed up:**
+
+- SharePoint hub sites
+- SharePoint site designs
+- SharePoint site scripts
+- SharePoint site structure: lists, libraries, columns, content types and navigation
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore site structure yet. A deleted list, library, column, content type or navigation link is put back by hand, or by applying the saved PnP template to the site with Invoke-PnPSiteTemplate. Files and list items come back from the content backup. Site templates are backed up only for the sites named in the backup scope. The term store is backed up separately.
+
 ### Teams calling, voice and live event policies
 
 **Backed up:**

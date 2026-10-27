@@ -236,6 +236,40 @@ $AllowedPnP = @{
     'Get-PnPTenantSite' = @('Identity')
 }
 
+# SharePoint structure (engine/collect/workloads/sharepointStructure.mjs). Hub sites, site
+# designs and site scripts are read on the admin site; a site template is read on the one
+# site the job names. Reads only. -Url never reaches the cmdlet: it names the site to
+# connect to, and must be the tenant root or a /sites/ or /teams/ site collection root on
+# the tenant's own host (Get-KeelSiteUrl). The template handlers are fixed here, never
+# taken from the job: structure only, no Files, Pages, PageContents, TermGroups,
+# PropertyBagEntries or Publishing.
+$AllowedPnPStructure = @{
+    'Get-PnPHubSite'      = @()
+    'Get-PnPSiteDesign'   = @()
+    'Get-PnPSiteScript'   = @('Identity')
+    'Get-PnPSiteTemplate' = @('Url')
+}
+$SiteTemplateHandlers = 'Fields, ContentTypes, Lists, Navigation, Features, RegionalSettings, SupportedUILanguages, WebSettings, SiteSecurity, SiteHeader, SiteFooter, CustomActions'
+
+# The site a template job connects to, normalized, or $null when it is not a site
+# collection root on the host of the configured admin site (contoso-admin.sharepoint.com
+# gives contoso.sharepoint.com).
+function Get-KeelSiteUrl {
+    param([string]$Value, [string]$AdminUrl)
+    $admin = $null
+    if (-not [uri]::TryCreate($AdminUrl, [UriKind]::Absolute, [ref]$admin)) { return $null }
+    $adminHost = $admin.Host.ToLowerInvariant()
+    if (-not $adminHost.EndsWith('-admin.sharepoint.com')) { return $null }
+    $tenantHost = $adminHost.Substring(0, $adminHost.Length - '-admin.sharepoint.com'.Length) + '.sharepoint.com'
+    if ($tenantHost -notmatch '^[a-z0-9-]+\.sharepoint\.com$') { return $null }
+    $uri = $null
+    if (-not [uri]::TryCreate($Value, [UriKind]::Absolute, [ref]$uri)) { return $null }
+    if ($uri.Scheme -ne 'https' -or $uri.Host -ne $tenantHost -or $uri.Query -or $uri.Fragment -or $uri.UserInfo -or -not $uri.IsDefaultPort) { return $null }
+    $path = $uri.AbsolutePath.TrimEnd('/')
+    if ($path -ne '' -and $path -notmatch '^/(sites|teams)/[A-Za-z0-9_.-]+$') { return $null }
+    return "https://$tenantHost$path"
+}
+
 function Out-Envelope {
     param([hashtable]$Envelope, [int]$Code)
     # Depth 16: below that, ConvertTo-Json flattens deeper nested settings (DLP
@@ -279,6 +313,7 @@ elseif ($AllowedExchangeRoleGroups.ContainsKey($name) -and $module -eq 'Exchange
 elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurview[$name] }
 elseif ($AllowedPurviewRetentionDlp.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewRetentionDlp[$name] }
 elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnP[$name] }
+elseif ($AllowedPnPStructure.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnPStructure[$name] }
 elseif ($AllowedTeamsPolicy.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsPolicy[$name] }
 elseif ($AllowedTeamsExtended.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsExtended[$name] }
 elseif ($AllowedPurviewExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewExtended[$name] }
@@ -300,11 +335,25 @@ $tenantConfigPath = if ($job['tenantConfigPath']) { [string]$job['tenantConfigPa
 try {
     $config = Get-Content -Raw -Path $tenantConfigPath | ConvertFrom-Json
     $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::CreateFromPemFile($config.certPath, $config.keyPath)
+} catch {
+    Out-Failure -Message "could not read the connection settings: $($_.Exception.Message)" -Category 'ConnectionError' -ErrorId 'ConnectFailed'
+}
+
+# A template is read on its own site; everything else in the PnP session on the admin site.
+$pnpUrl = $config.sharePointAdminUrl
+if ($name -eq 'Get-PnPSiteTemplate') {
+    $pnpUrl = Get-KeelSiteUrl -Value ([string]$params['Url']) -AdminUrl ([string]$config.sharePointAdminUrl)
+    if (-not $pnpUrl) { Out-Failure -Message "the site is not a site collection root on this tenant's SharePoint host" -ErrorId 'SiteNotAllowed' }
+    $params.Remove('Url')
+    $params['Handlers'] = $SiteTemplateHandlers
+}
+
+try {
     if ($session -eq 'pnp') {
         # PnP is never loaded beside ExchangeOnlineManagement (see probe-workloads.ps1).
         Import-Module PnP.PowerShell -ErrorAction Stop | Out-Null
         $pfx = [Convert]::ToBase64String($cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx))
-        Connect-PnPOnline -Url $config.sharePointAdminUrl -ClientId $config.clientId -Tenant $config.organization -CertificateBase64Encoded $pfx | Out-Null
+        Connect-PnPOnline -Url $pnpUrl -ClientId $config.clientId -Tenant $config.organization -CertificateBase64Encoded $pfx | Out-Null
     } elseif ($session -eq 'teams') {
         # Same app-only connection as the probe (probe-workloads.ps1, Teams block),
         # including its PKCS12 round trip of the certificate.

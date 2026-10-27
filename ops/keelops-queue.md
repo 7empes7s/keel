@@ -345,7 +345,7 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   pass only the enforcing policy. No user, group or app ids in any line. The verdict rule is unchanged (evaluatorVersion stays 2).
 - Needs: /opt/keel-live at the #578 merge or later (`grep -q "Unnamed sign-in rule" /opt/keel-live/engine/benchmarks/registry.mjs`),
   and a scheduled check run after that deploy (the checks run after each backup). Do **not** run checks by hand.
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** nothing (Collector reads not needed). Read-only against Keel's own database, engine read calls only, as in K8.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`, tenantRef as in K5:

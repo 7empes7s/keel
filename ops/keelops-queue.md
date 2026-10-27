@@ -578,8 +578,8 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
   removed `permissionGrantPolicy.update.demotion.json` (Q67); the passing Q79 record supersedes it. Only the signing key can show the
   record verifies, and builders don't have it.
 - Needs: nothing.
-- Status: in-progress
-- Result:
+- Status: blocked
+- Result: blocked on `/etc/keel/qualification.env` (2026-10-27 ~20:55 UTC): not readable by keelops (deliberately not granted per keelops CLAUDE.md). The verify needs `KEEL_QUALIFICATION_HMAC_KEY` from it. Build `74f18b8`. Nothing run, nothing changed. To unblock: the operator grants keelops read on qualification.env, or root's keel-operator runs this item.
 - **Tenant:** nothing. Host read only.
 - Do, from your own checkout at the deployed build B (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` from
   `/etc/keel/qualification.env` (never print it):

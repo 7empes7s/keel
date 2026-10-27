@@ -18,7 +18,9 @@ import {
   canFixOn,
   canGrantOn,
   checkSubjectWord,
+  CHECK_LINE_LIMIT,
   checkCounts,
+  checksCapped,
   controlChecks,
   controlName,
   controlService,
@@ -192,6 +194,9 @@ function ControlChecks({ checks, counts, subject }: { checks: ControlCheck[]; co
   const [every, setEvery] = useState(false);
   const shown = failing && !every ? checks.filter((check) => !check.ok) : checks;
   const cut = checked > counts.listed;
+  // A result stored before the counts existed may have been cut short at 50 lines with no
+  // total kept: its counts are "at least", never printed as if they were all.
+  const capped = !counts.exact && checksCapped(checks);
   // The switch only helps when some listed line meets the standard: when more than 50
   // fail, every kept line fails and the cut note says why the rest are not listed.
   const passingListed = checks.some((check) => check.ok);
@@ -200,15 +205,16 @@ function ControlChecks({ checks, counts, subject }: { checks: ControlCheck[]; co
       <h3 id="cp-checks-heading">
         {failing ? "What fails" : "Settings checked"}{" "}
         {failing ? <Badge tone="urgent">{failing === 1 ? "1 setting" : `${failing.toLocaleString("en-GB")} settings`}</Badge> : null}{" "}
-        {passing ? <Badge tone="fine">{failing ? `${passing.toLocaleString("en-GB")} meet the standard` : passing === 1 ? "Meets the standard" : `All ${passing.toLocaleString("en-GB")} meet the standard`}</Badge> : null}
+        {passing ? <Badge tone="fine">{failing ? `${passing.toLocaleString("en-GB")}${capped ? " or more" : ""} meet the standard` : passing === 1 ? "Meets the standard" : capped ? "All shown meet the standard" : `All ${passing.toLocaleString("en-GB")} meet the standard`}</Badge> : null}
       </h3>
       {failing && passingListed ? (
         <div className="cp-checks-tools">
           <ChangeComparisonStyles />
-          <EveryToggle on={every} onChange={setEvery} total={checked} />
+          <EveryToggle more={capped} on={every} onChange={setEvery} total={checked} />
           {every ? null : <small>Hidden: {passing === 1 ? "1 setting meets" : `${passing.toLocaleString("en-GB")} settings meet`} the standard.</small>}
         </div>
       ) : null}
+      {capped ? <p className="bl-help">Keel keeps the first {CHECK_LINE_LIMIT} settings it checked, failing ones first.</p> : null}
       {cut && (every || !failing || failing > shown.length) ? (
         <p className="cp-callout" data-cut="true">
           <Icon name="info" /><span>The list shows the first {counts.listed.toLocaleString("en-GB")} of the {checked.toLocaleString("en-GB")} settings checked{failing ? ", failing ones first" : ""}. The counts above cover them all.</span>

@@ -72,7 +72,8 @@ registerPredicate(OWN_PREDICATE, (facts, { field, operator, expected, appliesTo 
   // Every object read, passing or failing, so the panel can show what was checked.
   const lines = facts.map((fact) => ({ subject: subjectOf(fact), setting: field, value: valueAt(fact, field), expected: shouldBe, ok: meets(fact) }));
   if (appliesTo === 'any') {
-    if (facts.some(meets)) return { verdict: 'pass', details: lines };
+    // It passes on the objects that meet it; the others are not failures of the check.
+    if (facts.some(meets)) return { verdict: 'pass', details: lines.filter((line) => line.ok) };
     // Nothing of the type exists, so the setting cannot be met anywhere: "not set up yet".
     if (facts.length === 0) return { verdict: 'fail', reason: NOT_CONFIGURED };
     return { verdict: 'fail', details: lines };

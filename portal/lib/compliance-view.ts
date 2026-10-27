@@ -133,7 +133,7 @@ const CONTROL_WORDS: Record<string, ControlWords> = {
   "keel-custom.conditional-access.block-legacy": {
     title: "Old sign-in methods are blocked",
     short: "Old sign-in blocked",
-    what: "Looks for a sign-in rule that turns on blocking of old sign-in methods.",
+    what: "Looks for a sign-in rule that is on and blocks old sign-in methods for every user and every app.",
     why: "Old sign-in methods skip multi-factor sign-in, so a stolen password is enough.",
     types: ["conditionalAccessPolicy"],
   },
@@ -231,6 +231,14 @@ export function settingValueWords(value: unknown, setting?: string): string {
 
 export interface ControlCheck { subject: string; setting: string; now: string; shouldBe: string; ok: boolean }
 
+/** The engine keeps at most this many lines per result, failing ones first (MAX_DETAILS). */
+export const CHECK_LINE_LIMIT = 50;
+
+/** Whether the stored lines may be cut short, so counts are "at least", never exact. */
+export function checksCapped(checks: ControlCheck[]): boolean {
+  return checks.length >= CHECK_LINE_LIMIT;
+}
+
 /**
  * Every setting the control checked, current against expected, in plain words. Failing
  * lines come first; otherwise the engine's order (object by object) is kept.
@@ -246,7 +254,9 @@ export function controlChecks(finding: ComplianceFinding): ControlCheck[] {
   return [...lines.filter((line) => !line.ok), ...lines.filter((line) => line.ok)];
 }
 
-export interface CheckCounts { checked: number; failing: number; passing: number; listed: number }
+// `exact` is true when the result stored its counts; without them, a list of 50 lines may
+// have been cut short and its counts are only "at least".
+export interface CheckCounts { checked: number; failing: number; passing: number; listed: number; exact: boolean }
 
 /**
  * How many settings the control checked, failed and met, counted over everything it
@@ -259,7 +269,7 @@ export function checkCounts(finding: ComplianceFinding): CheckCounts {
   const stored = finding.detailCounts;
   const checked = Math.max(stored?.checked ?? 0, lines.length);
   const failing = Math.min(checked, Math.max(stored?.failing ?? 0, listedFailing));
-  return { checked, failing, passing: checked - failing, listed: lines.length };
+  return { checked, failing, passing: checked - failing, listed: lines.length, exact: Boolean(stored) };
 }
 
 /** What made a control fail, one line per object and setting, in plain words. */

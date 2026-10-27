@@ -5,13 +5,17 @@
 // sessions are listed and merged under ExchangeOnlineManagement; the module counts as
 // listed only when both answered, so a half list never hides compliance cmdlets.
 // Cmdlets are listed, never run.
+//
+// Issue #542: each session connects with its PowerShell family's config (the scope
+// file's powershellConfigs, the same files the workload collect uses), because Exchange
+// Online and Security & Compliance refuse a config with no `organization`.
 import { JobQueueError, parseJobStdout, runJob } from '../powershell/jobQueue.mjs';
 
 export const COMMAND_SESSIONS = Object.freeze([
-  { session: 'exo', module: 'ExchangeOnlineManagement' },
-  { session: 'ipps', module: 'ExchangeOnlineManagement' },
-  { session: 'teams', module: 'MicrosoftTeams' },
-  { session: 'pnp', module: 'PnP.PowerShell' },
+  { session: 'exo', module: 'ExchangeOnlineManagement', family: 'exchange' },
+  { session: 'ipps', module: 'ExchangeOnlineManagement', family: 'purview' },
+  { session: 'teams', module: 'MicrosoftTeams', family: 'teams' },
+  { session: 'pnp', module: 'PnP.PowerShell', family: 'sharepoint' },
 ]);
 
 // Connect-IPPSSession can take a minute on its own; one listing never needs five.
@@ -55,13 +59,16 @@ async function listSession(session, { runJobFn, tenantConfigPath, timeoutMs }) {
  * A module appears in exactly one of the two. Sessions run one after another: each is
  * a container with its own memory cap, and the host is small.
  */
-export async function listPowerShellCommands({ runJobFn = runJob, tenantConfigPath = null, timeoutMs = LIST_TIMEOUT_MS, sessions = COMMAND_SESSIONS } = {}) {
+export async function listPowerShellCommands({
+  runJobFn = runJob, tenantConfigPath = null, familyConfigPaths = {}, timeoutMs = LIST_TIMEOUT_MS, sessions = COMMAND_SESSIONS,
+} = {}) {
   const lists = new Map();
   const errors = {};
-  for (const { session, module } of sessions) {
+  for (const { session, module, family } of sessions) {
     if (errors[module]) continue;
     try {
-      const names = await listSession(session, { runJobFn, tenantConfigPath, timeoutMs });
+      const configPath = (family && familyConfigPaths?.[family]) || tenantConfigPath;
+      const names = await listSession(session, { runJobFn, tenantConfigPath: configPath, timeoutMs });
       lists.set(module, [...(lists.get(module) ?? []), ...names]);
     } catch (error) {
       errors[module] = `${session === 'ipps' ? 'Security & Compliance' : session === 'exo' ? 'Exchange Online' : module}: ${error.message}`;

@@ -93,7 +93,8 @@ test('a check written by the tenant runs with Keel\'s own and shows under its st
   ]);
   assert.equal(verdict(every).profile, 'Contoso hardening');
   assert.equal(verdict(any).verdict, 'pass', 'strings compare without case');
-  assert.deepEqual(verdict(any).details.map((line) => [line.subject, line.ok]), [['KEEL-RT-old', false], ['KEEL-RT-mfa', true]]);
+  // A passing "at least one" check lists only what meets it, never a failing row.
+  assert.deepEqual(verdict(any).details.map((line) => [line.subject, line.ok]), [['KEEL-RT-mfa', true]]);
   assert.equal(verdict(nested).verdict, 'fail', 'a list is not one plain value, so it never equals one');
 
   const { findings } = await complianceFindings(client, { tenantRef, now });

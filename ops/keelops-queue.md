@@ -285,6 +285,29 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
 - **Expected:** steps 2–5 as above, no call throws. A mismatch is a result: quote it and stop (change nothing).
 - **Report:** the outputs above and the build. The portal pages (390 and 1440 px, light and dark) can't be opened from the box; say so.
 
+### K9: Live check that the nightly settings backup is no longer partial from Purview retention labels (after #576)
+- Drafted by the "Stop Purview showing partial nightly" thread (2026-10-27). Q168 found every `workload-collect` job `partial`
+  only because of `purview-governance`: "4 settings: not read (unknown)", which were `EventType` and `MultiStageReviewProperty`
+  missing from the 2 retention labels. #576: a retention label missing those is stored as `null` with coverage
+  `{status: observed, notSet: true}` (EventType only when `RetentionType` is not `EventAgeInDays`), so the run is `complete`.
+  Any setting still not returned is now named ("Retention label: event type was not returned (2 objects)").
+- Needs: /opt/keel-live at the #576 merge or later (`grep -q NOT_SET_REASON /opt/keel-live/engine/collect/workloads/cmdletFamilies.mjs`),
+  and a scheduled `workload-collect` (02:00 UTC) that started after that deploy. If the next one is more than 2 hours away, use the
+  Schedules page "Run now" on the settings backup or the same engine `enqueue` call Q168 used (kind `workload-collect`, `{tenantRef}`,
+  scheduler principal, key `keelops:k9:<date>`), and say which. Never run the CLI by hand.
+- Status: todo
+- **Tenant:** Collector reads only (the normal settings-by-service backup). No grants, no fixtures, no writes.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a` (read-only SELECTs):
+  1. Report the build and the job: `SELECT id, status, started_at, finished_at, error, result->'partial' AS partial, result->'incompleteTypes' AS incomplete FROM job WHERE kind = 'workload-collect' ORDER BY created_at DESC LIMIT 1;`
+  2. Report the newest `purview-governance` run: `SELECT id, outcome, digest->'fieldCounts', digest->'unknownFields' FROM workload_collection WHERE workload = 'purview-governance' ORDER BY observed_to DESC LIMIT 1;`
+  3. For that run's retention labels (`resource_key LIKE 'retention-label:%'`), report per label (number them, no names unless `KEEL-RT-`):
+     `fields->>'RetentionType'`, and `field_coverage->'EventType'` and `field_coverage->'MultiStageReviewProperty'`.
+- **Expected:** job `succeeded` with `partial` false (or, if another workload is partial, `purview-governance` not in `incomplete`);
+  run `outcome = complete`, no `unknown` in `fieldCounts`; each label's two settings `{"status":"observed","notSet":true,...}`
+  unless its RetentionType is `EventAgeInDays`.
+- **Report:** the three outputs and the build. If a label is event-based and its EventType is still `unknown`, say so; that is a
+  real gap, not this fix failing.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

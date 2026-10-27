@@ -5,7 +5,7 @@ Work queue between the **coordinator** (the KEEL Developer cloud session) and
 branch `claude/operator-queue` and is never merged to master. This keeps deploys from
 being triggered by queue updates.
 
-**Overall project state and where to pick up: `ops/STATE.md` on this branch.**
+**Overall project state and where to pick up: `ops/STATE.md` on `master`.**
 
 ## Protocol
 
@@ -1303,6 +1303,40 @@ being triggered by queue updates.
   - K18 is the #294 check: after `03f8c51b` on `claude/live-evidence-w2-entra`, `--live-evidence` should print
     `permissionGrantPolicy.update.json: fixture-tested -> live-qualified` (and the same for create).
 - **Report:** the build, K16's two `DistributionStatus` outputs, K18's two `permissionGrantPolicy` lines verbatim.
+
+### Q177: Recapture the SharePoint site app grant and site permissions writer records (Q77 and Q80 again, before 2026-11-14)
+- Moved from keelops K20 on `claude/keelops-queue` by the "Keep SharePoint restore proof valid" thread (2026-10-27): keelops cannot read
+  `/etc/keel/qualification.env` (withheld on purpose), so root's keel-operator runs it. Text below is K20 verbatim.
+  Originally drafted by the "Merge SharePoint restore proof before it expires" thread (2026-10-27). The Q77 and Q80 records (2026-10-15) land on
+  master through PR #591, but they pass the 30-day limit on 2026-11-14, after which both restores (`sharepoint-site-grants`, 5 writes of
+  `sharepoint-site-permissions`) stop being live-qualified. This item takes fresh records so they stay qualified past that date.
+- Needs: PR #591 merged (`git cat-file -e origin/master:docs/release/qualifications/sharepoint-site-grants-live-acceptance.json`).
+- **Tenant:** captures only, no restore round trip, so no approval is filed. Same fixtures and limits as Q77 and Q80 on
+  `claude/operator-queue` (read those items for the full flags):
+  - Q77 fixture exception: the existing `KEEL-RT-site-grant-app` (no API permissions, no secret, kept for this recapture) gets a
+    Sites.Selected grant on the `KEEL-RT-20261004` site only, then you delete that grant. Never Keel's own apps, never another site.
+  - Q80: the capture creates `KEEL-RT-perm-1 level` and `KEEL-RT-perm-1 group` on `KEEL-RT-20261004`, with one `keel-rt-*` test user
+    that is not a site collection admin, and a `KEEL-RT-perm-list` with broken inheritance. Delete them all afterwards.
+  - Covered by Marouane's standing authorization for test-tenant captures and KEEL-RT- fixtures (2026-10-14, 2026-10-16). No new
+    permission for Keel's apps; if SharePoint or Graph refuses a write (401/403), report blocked with the status and path.
+- Do, at the deployed build B, from your own checkout at B (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. **Site grants:** make sure `KEEL-RT-site-grant-app` holds no grant on the site (recreate the app as in Q77 step 1 if it is gone).
+     `node tools/qualification/sharepointSiteGrantsLive.mjs plan ...`, then `capture --confirm-live-tenant-write` with the Q77 step 2
+     flags, `--build B`, `--out docs/release/qualifications/sharepoint-site-grants-live-acceptance.json`. Then delete the app's grant.
+  2. **Site permissions:** create `KEEL-RT-perm-list` and break its inheritance (copy role assignments). Mint the two SharePoint tokens
+     as Q80 step 1 (never printed). `node tools/qualification/sharepointSitePermissionsLive.mjs plan ...` (expect 7 writes), then
+     `capture --confirm-live-tenant-write` with the Q80 step 2 flags, `--build B`,
+     `--out docs/release/qualifications/sharepoint-site-permissions-live-acceptance.json`. Then do the Q80 step 8 cleanup.
+  3. **Evidence:** secret scan and `node tools/qualification/pseudonymize.mjs check` on all four files, commit the two records and
+     their `.capture.json` on `claude/live-evidence-sharepoint-recapture` from `origin/master`, open a PR with the `automerge` label.
+  4. **Import:** `node cli/keel-workload-collect.mjs import --dir <that checkout>/docs/release/qualifications` (DB env loaded).
+- Status: todo
+- Result:
+- **Expected:** both captures exit 0 with verify ok and failures []; every write ok with readBackVerified true; import lines
+  `sharepoint-site-grants-live-acceptance.json` imported (writes 2) and `sharepoint-site-permissions-live-acceptance.json` imported
+  (writes 5), refused []; nothing left on the site but the kept `KEEL-RT-site-grant-app` (with no grant).
+- **Report:** B; per capture the exit code, verify output and per-write ok/readBackVerified; the evidence commit and PR; the import
+  lines; anything left in the tenant. Never print a secret.
 
 ## Operator decisions (human operator only)
 

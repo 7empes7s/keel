@@ -289,6 +289,20 @@ export function checkCounts(finding: ComplianceFinding): CheckCounts {
 }
 
 /**
+ * Whether the failing count of a result is only "at least": stored before the counts
+ * existed, with a full list of 50 lines that all fail, so more may have failed.
+ */
+export function failingMore(counts: CheckCounts): boolean {
+  return !counts.exact && counts.listed >= CHECK_LINE_LIMIT && counts.failing === counts.listed;
+}
+
+/** The control sheet's red badge: how many settings fail, "or more" when only at least. */
+export function failingBadge(counts: CheckCounts): string {
+  if (counts.failing === 1) return "1 setting";
+  return `${counts.failing.toLocaleString("en-GB")}${failingMore(counts) ? " or more" : ""} settings`;
+}
+
+/**
  * The totals the "Technical details" record shows beside the kept lines: how many
  * settings were checked and failed, and how many lines are listed when the list is cut.
  * A result stored before the counts existed with a full list of 50 lines says "or more".
@@ -301,7 +315,7 @@ export function checkCountRecord(finding: ComplianceFinding): { checked: string;
   const words = (value: number, more: boolean) => `${value.toLocaleString("en-GB")}${more ? " or more" : ""}`;
   return {
     checked: words(counts.checked, capped),
-    failing: words(counts.failing, capped && counts.failing === counts.listed),
+    failing: words(counts.failing, failingMore(counts)),
     listed: counts.listed < counts.checked || capped
       ? `First ${counts.listed.toLocaleString("en-GB")}${counts.failing ? ", failing ones first" : ""}`
       : null,

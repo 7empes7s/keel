@@ -51,7 +51,7 @@ export function OwnCheckSheet({ choices, standards, onDone, onClose }: {
   const expected = readValue(typed, seen);
   const sentence = type && setting && typed.trim() !== "" ? ownCheckSentence({ resourceType: type.resourceType, field: setting.field, operator, expected, appliesTo }) : null;
   const typeOptions = useMemo(() => types.map((entry) => ({ value: entry.resourceType, label: typeName(entry.resourceType), hint: entry.count === 1 ? "1 in the newest backup" : `${entry.count} in the newest backup` })), [types]);
-  const fieldOptions = useMemo(() => (type?.fields ?? []).map((entry) => ({ value: entry.field, label: entry.field, hint: entry.values.length ? `Seen: ${entry.values.map(settingValueWords).join(", ")}` : undefined })), [type]);
+  const fieldOptions = useMemo(() => (type?.fields ?? []).map((entry) => ({ value: entry.field, label: entry.field, hint: entry.values.length ? `Seen: ${entry.values.map((value) => settingValueWords(value, entry.field)).join(", ")}` : undefined })), [type]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

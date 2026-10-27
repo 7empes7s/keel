@@ -7,6 +7,10 @@ import {
   complianceScore,
   complianceStatus,
   complianceVerdict,
+  CHECK_LINE_LIMIT,
+  checkSubjectWord,
+  checksCapped,
+  controlChecks,
   controlMisses,
   controlName,
   controlService,
@@ -166,10 +170,12 @@ test("Defender email controls: filed under Defender, and what fails is named by 
   assert.equal(controlName(spam), "Phishing mail goes to quarantine");
   assert.equal(controlService(spam).name, "Defender");
   assert.equal(findingTypes(spam), "mail protection policies");
+  // A result stored before passing lines existed has no `ok`: its lines are failing ones.
   assert.deepEqual(controlMisses(spam), [
-    { subject: "Default", setting: "High-confidence phishing goes to", now: "Junk folder", shouldBe: "Quarantine" },
-    { subject: "Sales", setting: "Pulls back delivered phishing", now: "Off", shouldBe: "On" },
+    { subject: "Default", setting: "High-confidence phishing goes to", now: "Junk folder", shouldBe: "Quarantine", ok: false },
+    { subject: "Sales", setting: "Pulls back delivered phishing", now: "Off", shouldBe: "On", ok: false },
   ]);
+  assert.equal(checkSubjectWord(spam), "Policy");
   assert.deepEqual(controlMisses(PASS), []);
   assert.deepEqual([settingValueWords(["partner.test", "x.test"]), settingValueWords([]), settingValueWords(null)], ["partner.test, x.test", "None", "Not set"]);
   for (const id of ["anti-phish-spoof-protection", "anti-spam-no-allowed-domains", "malware-file-filter", "safe-links-email"]) {
@@ -245,4 +251,32 @@ test("Compliance score per standard and per service", () => {
   assert.deepEqual(standards.map((group) => [group.label, group.score.percent]), [["Keel checks", 50], ["NIST SP 800-53", 100]]);
   const services = scoresByService([PASS, ENDED, ACCEPTED], serviceOrder);
   assert.deepEqual(services.map((group) => [group.label, group.score.passed, group.score.evaluated]), [["Entra ID", 1, 3]]);
+});
+
+test("Settings checked: expected against current for every setting, failing first, in plain words", () => {
+  const location = finding("n1", "keel-custom.named-location.no-untrusted-all-countries", "fail", {
+    details: [
+      { subject: "Office", setting: "includeUnknownCountriesAndRegions", value: false, expected: false, ok: true },
+      { subject: "Anywhere", setting: "includeUnknownCountriesAndRegions", value: true, expected: false, ok: false },
+    ],
+  });
+  assert.deepEqual(controlChecks(location), [
+    { subject: "Anywhere", setting: "Takes in unknown countries", now: "Yes", shouldBe: "No", ok: false },
+    { subject: "Office", setting: "Takes in unknown countries", now: "No", shouldBe: "No", ok: true },
+  ]);
+  assert.equal(controlMisses(location).length, 1);
+  assert.equal(checkSubjectWord(location), "Location");
+
+  const admins = finding("r1", "keel-custom.role-assignment.admin-count-at-most", "pass", {
+    details: [{ subject: "Global Administrator", setting: "assignmentCount", value: 3, expected: { atMost: 5 }, ok: true }],
+  });
+  assert.deepEqual(controlChecks(admins), [{ subject: "Global Administrator", setting: "People who hold it", now: "3", shouldBe: "5 or fewer", ok: true }]);
+  assert.equal(checkSubjectWord(admins), "Role");
+  assert.equal(checkSubjectWord(finding("g1", "keel-custom.group.role-assignable-not-synced", "pass")), "Group");
+  assert.equal(settingValueWords(true, "onPremisesSyncEnabled"), "Yes");
+  assert.equal(settingValueWords(true, "ZapEnabled"), "On");
+  // A full list may have been cut short by the engine, so its counts are "at least".
+  const line = { subject: "Default", setting: "On", now: "On", shouldBe: "On", ok: true };
+  assert.equal(checksCapped(Array.from({ length: CHECK_LINE_LIMIT - 1 }, () => line)), false);
+  assert.equal(checksCapped(Array.from({ length: CHECK_LINE_LIMIT }, () => line)), true);
 });

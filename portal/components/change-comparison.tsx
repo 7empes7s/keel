@@ -307,12 +307,12 @@ export function ChangeComparison({ before, after, names = {}, sides, against, be
 const MANAGED_NOTE = "Microsoft manages this itself";
 
 /** The switch between changed settings only (the default) and every setting the item holds. */
-export function EveryToggle({ on, onChange, total }: { on: boolean; onChange: (on: boolean) => void; total: number }) {
+export function EveryToggle({ on, onChange, total, more = false }: { on: boolean; onChange: (on: boolean) => void; total: number; more?: boolean }) {
   return (
     <button aria-checked={on} className="cc-every" onClick={() => onChange(!on)} role="switch" type="button">
       <span aria-hidden="true" className="cc-switch" />
       Show every setting
-      <small>{total.toLocaleString("en-GB")} in all</small>
+      <small>{total.toLocaleString("en-GB")}{more ? " or more" : ""} in all</small>
     </button>
   );
 }

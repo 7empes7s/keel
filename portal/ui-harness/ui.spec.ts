@@ -3371,15 +3371,32 @@ test("Compliance · Defender email controls sit under Defender; a failing one li
   const sheet = page.getByRole("dialog", { name: "Phishing mail goes to quarantine" });
   await expect(sheet).toBeVisible();
   await expect(sheet).toContainText("Control · Defender");
-  await expect(sheet.locator("#cp-misses-heading")).toContainText("3 settings");
+  await expect(sheet.locator("#cp-checks-heading")).toContainText("What fails");
+  await expect(sheet.locator("#cp-checks-heading")).toContainText("3 settings");
+  await expect(sheet.locator("#cp-checks-heading")).toContainText("2 meet the standard");
   const rows = sheet.locator(".cp-misses tbody tr");
+  // Only the failing settings by default, each highlighted.
   await expect(rows).toHaveCount(3);
+  await expect(sheet.locator('.cp-misses tbody tr[data-ok="false"]')).toHaveCount(3);
+  await expect(sheet.locator(".cp-misses thead th").first()).toHaveText("Policy");
   await expect(rows.nth(0)).toContainText("Default");
   await expect(rows.nth(0)).toContainText("High-confidence phishing goes to");
   await expect(rows.nth(0).locator(".cp-miss-now")).toHaveText("Junk folder");
   await expect(rows.nth(0).locator(".cp-miss-want")).toHaveText("Quarantine");
   await expect(rows.nth(1).locator(".cp-miss-now")).toHaveText("Off");
   await expect(rows.nth(1).locator(".cp-miss-want")).toHaveText("On");
+  // The switch shows the settings that meet the standard too, after the failing ones, unhighlighted.
+  const every = sheet.getByRole("switch", { name: /Show every setting/ });
+  await expect(every).toContainText("5 in all");
+  await expect(sheet).toContainText("Hidden: 2 settings meet the standard.");
+  await every.click();
+  await expect(every).toHaveAttribute("aria-checked", "true");
+  await expect(rows).toHaveCount(5);
+  await expect(rows.nth(3)).toHaveAttribute("data-ok", "true");
+  await expect(rows.nth(3).locator(".cp-check-now")).toHaveText("Quarantine");
+  await expect(rows.nth(3).locator(".cp-check-want")).toHaveText("Quarantine");
+  const fill = (index: number) => rows.nth(index).locator("th").evaluate((cell) => getComputedStyle(cell).backgroundColor);
+  expect(await fill(0)).not.toBe(await fill(3));
   // The read it rests on is named, not left as "no backup matches".
   await expect(sheet).toContainText("Checked against the backup collected");
   await expect(sheet).not.toContainText("No stored backup matches");
@@ -3418,6 +3435,49 @@ test("Compliance · Defender make it pass: one row per failing setting, in plain
   const visible = await textOutside(page, ".bl-sheet", ".technical-details");
   expectPlainText(visible);
   for (const word of ["PhishSpamAction", "AddXHeader", "MoveToJmf", "anti-spam-policy", "0c0f5000"]) expect(visible).not.toContain(word);
+});
+
+test("Compliance · a passing control shows expected against current for each setting it checked", async ({ page }) => {
+  for (const [width, theme] of [[1440, "dark"], [390, "light"]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f2", theme);
+    const sheet = page.getByRole("dialog", { name: "Risky attachment types are blocked" });
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("Settings checked");
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("All 2 meet the standard");
+    await expect(sheet.getByRole("switch", { name: /Show every setting/ })).toHaveCount(0);
+    const rows = sheet.locator('.cp-misses tbody tr[data-ok="true"]');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText("Blocks risky file types");
+    await expect(rows.nth(0).locator(".cp-check-now")).toHaveText("On");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    const axe = await new AxeBuilder({ page }).include(".bl-sheet").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    expect(axe.violations.map((violation) => violation.id)).toEqual([]);
+  }
+});
+
+test("Compliance · Entra ID controls show their values: the admin count against its limit, each trusted location", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1");
+  const admins = page.getByRole("dialog", { name: "No more than 5 people hold the top admin role" });
+  const row = admins.locator(".cp-misses tbody tr");
+  await expect(row).toHaveCount(1);
+  await expect(admins.locator(".cp-misses thead th").first()).toHaveText("Role");
+  await expect(row).toContainText("Global Administrator");
+  await expect(row).toContainText("People who hold it");
+  await expect(row.locator(".cp-miss-now")).toHaveText("7");
+  await expect(row.locator(".cp-miss-want")).toHaveText("5 or fewer");
+
+  await open(page, "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e2");
+  const location = page.getByRole("dialog", { name: "No trusted location trusts unknown countries" });
+  await expect(location.locator(".cp-misses thead th").first()).toHaveText("Location");
+  await expect(location.locator(".cp-misses tbody tr")).toHaveCount(1);
+  await location.getByRole("switch", { name: /Show every setting/ }).click();
+  const rows = location.locator(".cp-misses tbody tr");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText("KEEL-RT-Anywhere");
+  await expect(rows.nth(0).locator(".cp-miss-now")).toHaveText("Yes");
+  await expect(rows.nth(1)).toContainText("KEEL-RT-Head office");
+  await expect(rows.nth(1).locator(".cp-check-now")).toHaveText("No");
 });
 
 test("Compliance · phone: the failing settings stack, one card per setting, with no sideways scroll", async ({ page }) => {

@@ -80,24 +80,31 @@ function usableObservation(entry, { tenantRef, now, resourceType, maxAgeMs }) {
   return { usable: true };
 }
 
-// The most per-object detail lines one result keeps: enough to name every failing
-// policy in a real tenant, bounded so one result never grows without limit.
+// The most per-object detail lines one result keeps: enough to name every policy and
+// setting in a real tenant, bounded so one result never grows without limit. Failing
+// lines are kept first, so a cap never drops a failure in favour of a passing line.
 export const MAX_DETAILS = 50;
 
 /**
- * What failed, line by line: { subject, setting, value, expected }, each a plain JSON
- * value. Null when the predicate gave none (every result before details existed).
+ * Every setting the control checked, line by line: { subject, setting, value, expected,
+ * ok }, each a plain JSON value. `value` is what the backup holds, `expected` what the
+ * control wants and `ok` whether it meets it. Older results only listed failing lines
+ * and carry no `ok`; a line without one is a failing line. Null when the predicate gave
+ * none (every result before details existed).
  */
 function freezeDetails(details) {
   if (!Array.isArray(details) || details.length === 0) return null;
-  return Object.freeze(details.slice(0, MAX_DETAILS).map((line) => {
+  const lines = details.map((line) => {
     if (typeof line?.subject !== 'string' || typeof line?.setting !== 'string') {
       throw new TypeError('a result detail needs a subject and a setting');
     }
-    return Object.freeze(JSON.parse(JSON.stringify({
+    return JSON.parse(JSON.stringify({
       subject: line.subject, setting: line.setting, value: line.value ?? null, expected: line.expected ?? null,
-    })));
-  }));
+      ok: line.ok === true,
+    }));
+  });
+  const ordered = [...lines.filter((line) => !line.ok), ...lines.filter((line) => line.ok)];
+  return Object.freeze(ordered.slice(0, MAX_DETAILS).map((line) => Object.freeze(line)));
 }
 
 function freezeResult({ control, verdict, reason, evidenceRefs, observationWindows, now, details = null }) {
@@ -166,8 +173,9 @@ export function evaluateControl({ controlId, control: given = null, tenantRef, o
     ? factsByType[control.requiredObservations[0].resourceType]
     : factsByType;
 
-  // A predicate returns a verdict, or { verdict, details } to say which object and
-  // setting made it fail (the Compliance page lists them).
+  // A predicate returns a verdict, or { verdict, details } to say which settings of
+  // which objects it checked, with the value found and the value wanted (the
+  // Compliance page shows them as an expected-versus-current table).
   const predicate = predicateFor(control.predicate.name);
   const answer = predicate(factsArg, control.predicate.args);
   const verdict = typeof answer === 'string' ? answer : answer?.verdict;

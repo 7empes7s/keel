@@ -194,7 +194,14 @@ const SETTING_WORDS: Record<string, string> = {
   EnableSafeLinksForEmail: "Checks links in email",
   ScanUrls: "Checks links when clicked",
   AllowClickThrough: "Lets people click past the warning",
+  // Entra ID controls.
+  assignmentCount: "People who hold it",
+  includeUnknownCountriesAndRegions: "Takes in unknown countries",
+  onPremisesSyncEnabled: "Copied from on-premises",
 };
+
+// Settings that read better as a yes or no than as on or off.
+const YES_NO_SETTINGS = new Set(["includeUnknownCountriesAndRegions", "onPremisesSyncEnabled"]);
 
 // Exchange's action codes in plain words.
 const ACTION_WORDS: Record<string, string> = {
@@ -207,26 +214,64 @@ const ACTION_WORDS: Record<string, string> = {
   noaction: "Inbox",
 };
 
-/** A setting's value in plain words: On / Off, an action, a list, or "None". */
-export function settingValueWords(value: unknown): string {
+/** A setting's value in plain words: On / Off, an action, a list, a limit, or "None". */
+export function settingValueWords(value: unknown, setting?: string): string {
+  if (typeof value === "boolean" && setting && YES_NO_SETTINGS.has(setting)) return value ? "Yes" : "No";
   if (value === true) return "On";
   if (value === false) return "Off";
   if (value === null || value === undefined || value === "") return "Not set";
   if (Array.isArray(value)) return value.length ? value.map((item) => String(item)).join(", ") : "None";
   if (typeof value === "string") return ACTION_WORDS[value.toLowerCase()] ?? value;
+  if (typeof value === "number") return value.toLocaleString("en-GB");
+  if (typeof value === "object" && typeof (value as { atMost?: unknown }).atMost === "number") {
+    return `${(value as { atMost: number }).atMost.toLocaleString("en-GB")} or fewer`;
+  }
   return String(value);
 }
 
-export interface ControlMiss { subject: string; setting: string; now: string; shouldBe: string }
+export interface ControlCheck { subject: string; setting: string; now: string; shouldBe: string; ok: boolean }
 
-/** What made a control fail, one line per policy and setting, in plain words. */
-export function controlMisses(finding: ComplianceFinding): ControlMiss[] {
-  return (finding.details ?? []).map((line) => ({
+/** The engine keeps at most this many lines per result, failing ones first (MAX_DETAILS). */
+export const CHECK_LINE_LIMIT = 50;
+
+/** Whether the stored lines may be cut short, so counts are "at least", never exact. */
+export function checksCapped(checks: ControlCheck[]): boolean {
+  return checks.length >= CHECK_LINE_LIMIT;
+}
+
+/**
+ * Every setting the control checked, current against expected, in plain words. Failing
+ * lines come first; otherwise the engine's order (object by object) is kept.
+ */
+export function controlChecks(finding: ComplianceFinding): ControlCheck[] {
+  const lines = (finding.details ?? []).map((line) => ({
     subject: line.subject,
     setting: SETTING_WORDS[line.setting] ?? line.setting,
-    now: settingValueWords(line.value),
-    shouldBe: settingValueWords(line.expected),
+    now: settingValueWords(line.value, line.setting),
+    shouldBe: settingValueWords(line.expected, line.setting),
+    ok: line.ok === true,
   }));
+  return [...lines.filter((line) => !line.ok), ...lines.filter((line) => line.ok)];
+}
+
+/** What made a control fail, one line per object and setting, in plain words. */
+export function controlMisses(finding: ComplianceFinding): ControlCheck[] {
+  return controlChecks(finding).filter((line) => !line.ok);
+}
+
+// What the first column of the checked-settings table names, by the kind a control reads.
+const SUBJECT_WORDS: Record<string, string> = {
+  "exchange-mail-flow": "Policy",
+  roleAssignment: "Role",
+  namedLocation: "Location",
+  group: "Group",
+  conditionalAccessPolicy: "Sign-in rule",
+};
+
+/** The heading of the checked-settings table's first column: Policy, Group, Location... */
+export function checkSubjectWord(finding: ComplianceFinding): string {
+  const type = CONTROL_WORDS[finding.controlId]?.types[0] ?? finding.evidence[0]?.resourceType;
+  return (type && SUBJECT_WORDS[type]) ?? "Item";
 }
 
 const CHECK_WORDS: Record<string, string> = {
@@ -682,7 +727,7 @@ const LIST_SETTINGS = new Set(["AllowedSenderDomains"]);
 
 /** A setting's value in words: Yes, No, Not set, or the value itself. A mail protection setting reads as its check shows it. */
 export function fixValue(value: unknown, field?: string): string {
-  if (field && SETTING_WORDS[field]) return settingValueWords(value === null && LIST_SETTINGS.has(field) ? [] : value);
+  if (field && SETTING_WORDS[field]) return settingValueWords(value === null && LIST_SETTINGS.has(field) ? [] : value, field);
   if (value === true) return "Yes";
   if (value === false) return "No";
   if (value === null || value === undefined || value === "") return "Not set";

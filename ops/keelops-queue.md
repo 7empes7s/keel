@@ -696,6 +696,15 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
 - **Report:** B, S, R1, R2, approval ids, every count, both `listCompletionItems` outputs (ids, kind, requirement, state, replacedBy),
   the closed item ids, and what is left in the tenant. Never print a secret.
 
+### K22: Run K14 now that its decision names the requester
+- Drafted by the "Finish Exchange undo live checks" thread (2026-10-27). Marouane added the K14 line at 22:27 UTC: file the Make it pass dry run
+  and request as his Gmail principal, approve it and its content effect as his Entra principal.
+- Needs: nothing.
+- Status: todo
+- Result:
+- Do: run K14 as written (the newer K14 line under **Operator decisions** applies), through the portal's worker route you described in its Result.
+  Write K14's own `Status` and `Result`. Set this item to `done` when K14 has a final status. K15 stays with root's keel-operator.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every item that needs it stays untouched.

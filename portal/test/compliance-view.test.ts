@@ -282,6 +282,23 @@ test("Settings checked: expected against current for every setting, failing firs
   assert.equal(checkSubjectWord(finding("g1", "keel-custom.group.role-assignable-not-synced", "pass")), "Group");
   assert.equal(settingValueWords(true, "onPremisesSyncEnabled"), "Yes");
   assert.equal(settingValueWords(true, "ZapEnabled"), "On");
+  // Legacy sign-in: each blocking sign-in rule, named, with what it misses.
+  const legacy = finding("l1", "keel-custom.conditional-access.block-legacy", "fail", {
+    details: [
+      { subject: "KEEL-RT-report", setting: "state", value: "enabledForReportingButNotEnforced", expected: "enabled", ok: false },
+      { subject: "KEEL-RT-block", setting: "includeUsers", value: "Only some", expected: "All", ok: false },
+      { subject: "KEEL-RT-block", setting: "clientAppTypes", value: ["exchangeActiveSync", "other"], expected: ["exchangeActiveSync", "other"], ok: true },
+      { subject: "KEEL-RT-block", setting: "includeApplications", value: "None", expected: "All", ok: false },
+    ],
+  });
+  assert.deepEqual(controlChecks(legacy), [
+    { subject: "KEEL-RT-report", setting: "Status", now: "Report-only", shouldBe: "On", ok: false },
+    { subject: "KEEL-RT-block", setting: "Users it covers", now: "Only some users", shouldBe: "All users", ok: false },
+    { subject: "KEEL-RT-block", setting: "Apps it covers", now: "No apps", shouldBe: "All apps", ok: false },
+    { subject: "KEEL-RT-block", setting: "Old sign-in methods it blocks", now: "Exchange ActiveSync, Other old clients", shouldBe: "Exchange ActiveSync, Other old clients", ok: true },
+  ]);
+  assert.equal(checkSubjectWord(legacy), "Sign-in rule");
+  assert.equal(settingValueWords([], "clientAppTypes"), "None");
   // A full list may have been cut short by the engine, so its counts are "at least".
   const line = { subject: "Default", setting: "On", now: "On", shouldBe: "On", ok: true };
   assert.equal(checksCapped(Array.from({ length: CHECK_LINE_LIMIT - 1 }, () => line)), false);

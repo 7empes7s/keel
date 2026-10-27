@@ -198,6 +198,19 @@ const SETTING_WORDS: Record<string, string> = {
   assignmentCount: "People who hold it",
   includeUnknownCountriesAndRegions: "Takes in unknown countries",
   onPremisesSyncEnabled: "Copied from on-premises",
+  // The legacy sign-in control, one line per sign-in rule that blocks old clients.
+  state: "Status",
+  includeUsers: "Users it covers",
+  includeApplications: "Apps it covers",
+  clientAppTypes: "Old sign-in methods it blocks",
+};
+
+// Values that read better in words, by the setting they belong to.
+const VALUE_WORDS: Record<string, Record<string, string>> = {
+  state: { enabled: "On", disabled: "Off", enabledforreportingbutnotenforced: "Report-only" },
+  includeUsers: { all: "All users", "only some": "Only some users", none: "No users" },
+  includeApplications: { all: "All apps", "only some": "Only some apps", none: "No apps" },
+  clientAppTypes: { exchangeactivesync: "Exchange ActiveSync", other: "Other old clients" },
 };
 
 // Settings that read better as a yes or no than as on or off.
@@ -217,6 +230,9 @@ const ACTION_WORDS: Record<string, string> = {
 /** A setting's value in plain words: On / Off, an action, a list, a limit, or "None". */
 export function settingValueWords(value: unknown, setting?: string): string {
   if (typeof value === "boolean" && setting && YES_NO_SETTINGS.has(setting)) return value ? "Yes" : "No";
+  const words = setting ? VALUE_WORDS[setting] : undefined;
+  if (words && typeof value === "string") return words[value.toLowerCase()] ?? value;
+  if (words && Array.isArray(value) && value.length) return value.map((item) => words[String(item).toLowerCase()] ?? String(item)).join(", ");
   if (value === true) return "On";
   if (value === false) return "Off";
   if (value === null || value === undefined || value === "") return "Not set";

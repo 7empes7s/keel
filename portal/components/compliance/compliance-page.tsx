@@ -371,8 +371,11 @@ function useCheckNow(onDone: () => void): CheckNow {
         toast({ tone: "warning", title: "The check did not run", detail: response.status === 403 ? "You need the permission that runs backups." : "Try again in a moment." });
         return;
       }
-      const body = (await response.json()) as { checked: number; pass: number; fail: number; unknown: number };
-      const parts = [body.fail ? `${body.fail} failing` : null, body.unknown ? `${body.unknown} could not be checked` : null, body.pass ? `${body.pass} passing` : null].filter(Boolean);
+      const body = (await response.json()) as { checked: number; pass: number; fail: number; unknown: number; notConfigured?: number };
+      // The engine's fails include the controls whose setting does not exist yet; the page shows those apart.
+      const notSetUp = body.notConfigured ?? 0;
+      const failing = body.fail - notSetUp;
+      const parts = [failing ? `${failing} failing` : null, notSetUp ? `${notSetUp} not set up yet` : null, body.unknown ? `${body.unknown} could not be checked` : null, body.pass ? `${body.pass} passing` : null].filter(Boolean);
       toast({ tone: body.fail ? "warning" : undefined, title: `${controlsWord(body.checked)} checked`, detail: parts.join(", ") || undefined });
       onDone();
     } catch {
@@ -448,7 +451,8 @@ function controlsWord(count: number): string {
 
 function worstWords(list: ComplianceFinding[]): string {
   const failing = list.filter((item) => resultOf(item) === "failing").length;
-  return failing ? ` · ${failing} failing` : "";
+  const notSetUp = list.filter((item) => resultOf(item) === "not-set-up").length;
+  return `${failing ? ` · ${failing} failing` : ""}${notSetUp ? ` · ${notSetUp} not set up yet` : ""}`;
 }
 
 function groupBy<T>(items: T[], key: (item: T) => string, meta: (key: string, list: T[]) => Omit<ListGroup<T>, "items" | "key">, rank: (key: string) => number): ListGroup<T>[] {

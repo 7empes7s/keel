@@ -558,7 +558,7 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
   `sharepoint-site-grants` reads have no live record: they are absent from every evidence import since Q103. We need to know whether
   they run at all and, if so, what they return.
 - Needs: nothing.
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** nothing. Database reads only.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a` (read-only SELECTs, in a `READ ONLY` transaction):

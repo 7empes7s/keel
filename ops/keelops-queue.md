@@ -314,7 +314,7 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   5 s statement timeout. #577 adds index `snapshot_complete_time_idx` (`engine/store/schema.d/76-snapshot-complete-time.sql`, applied
   by the deploy's schema step) and reads each change's window start with an ordered walk on it. Locally: 6.8 s to 0.5 s, same answers.
 - Needs: /opt/keel-live at the #577 merge or later (`test -f /opt/keel-live/engine/store/schema.d/76-snapshot-complete-time.sql`).
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** nothing. Read-only against Keel's own database.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`, tenantRef and scope as in K5:

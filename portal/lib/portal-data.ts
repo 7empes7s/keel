@@ -4,6 +4,7 @@ import { protectionHeadline } from "../../engine/coverage/protectionHeadline.mjs
 import { DESCRIPTORS } from "../../engine/collect/descriptors.mjs";
 import { readFileSync } from "node:fs";
 
+import { sameContent } from "../../engine/cir/canonicalHash.mjs";
 import { listBaselines } from "../../engine/govern/baseline.mjs";
 import {
   baselineCompliance,
@@ -710,7 +711,9 @@ async function scopedBaselineCount(client: KeelClient, ref: string, baselineId: 
 // attribution and drops only the route.
 export const ATTRIBUTION_WINDOW_SQL = `SELECT d.id,
         COALESCE(prev.completed_at, bs.completed_at, bs.started_at, b.set_at) AS window_from,
-        COALESCE(fs.completed_at, f.detected_at, os.completed_at, d.detected_at) AS window_until
+        COALESCE(fs.completed_at, f.detected_at, os.completed_at, d.detected_at) AS window_until,
+        d.change_type, d.natural_key, d.resource_type, d.before_hash, d.before_payload,
+        COALESCE(fs.started_at, os.started_at) AS prev_ceiling
    FROM drift d
    JOIN baseline b ON b.id = d.baseline_id
    JOIN snapshot os ON os.id = d.observed_snapshot
@@ -734,13 +737,58 @@ export const ATTRIBUTION_WINDOW_SQL = `SELECT d.id,
    ) prev ON true
   WHERE d.tenant_ref = $1 AND d.baseline_id = $2 AND d.id = ANY($3::uuid[])`;
 
+// A baseline version hashed under older field rules (#288, #294) matches no later backup
+// by hash, so its window would start at the baseline (or the last backup before the rule
+// change) and come out too wide. A later backup in the window that holds the same content
+// (sameContent, recomputed from the payloads) starts the window instead. Only backups
+// whose hash differs from the baseline's are read, and at most CONTENT_WINDOW_BACKUPS
+// per change.
+// At most this many backups per change are read back; past it the window keeps its
+// wider start, as before.
+const CONTENT_WINDOW_BACKUPS = 60;
+
+async function windowStartsByContent(client: KeelClient, ref: string, rows: Record<string, unknown>[]): Promise<Map<string, string>> {
+  const starts = new Map<string, string>();
+  const open = rows.filter((row) => row.change_type !== "added" && row.before_payload != null && row.window_from && row.prev_ceiling);
+  if (!open.length) return starts;
+  const { rows: candidates } = await client.query(
+    `SELECT k.id, c.completed_at, c.payload_hash, c.payload
+       FROM unnest($2::uuid[], $3::text[], $4::text[], $5::timestamptz[], $6::timestamptz[]) AS k(id, natural_key, before_hash, after_at, until_at)
+       CROSS JOIN LATERAL (
+         SELECT s.completed_at, rv.payload_hash, rv.payload
+           FROM resource_version rv
+           JOIN snapshot s ON s.id = rv.snapshot_id
+          WHERE rv.natural_key = k.natural_key AND rv.payload_hash IS DISTINCT FROM k.before_hash
+            AND s.tenant_ref = $1 AND s.completed_at IS NOT NULL
+            AND s.completed_at > k.after_at AND s.completed_at <= k.until_at
+          ORDER BY s.completed_at DESC
+          LIMIT ${CONTENT_WINDOW_BACKUPS}
+       ) c
+      ORDER BY k.id, c.completed_at DESC`,
+    [ref, open.map((row) => String(row.id)), open.map((row) => String(row.natural_key)), open.map((row) => (row.before_hash ?? null) as string | null),
+      open.map((row) => row.window_from), open.map((row) => row.prev_ceiling)],
+  );
+  const byId = new Map(open.map((row) => [String(row.id), row]));
+  for (const candidate of candidates) {
+    const id = String(candidate.id);
+    const row = byId.get(id);
+    if (!row || starts.has(id)) continue;
+    if (sameContent({ payload_hash: row.before_hash ?? null, payload: row.before_payload }, candidate, String(row.resource_type))) {
+      const at = iso(candidate.completed_at);
+      if (at) starts.set(id, at);
+    }
+  }
+  return starts;
+}
+
 async function withAttribution(client: KeelClient, ref: string, baselineId: string, items: DriftRecord[], scope: EntityScope): Promise<DriftRecord[]> {
   const bounded = items.slice(0, MAX_ATTRIBUTED_CHANGES);
   if (!bounded.length) return items;
   let byId: Map<string, Omit<ChangeAttribution, "route"> & { changeId: string }>;
   try {
     const { rows } = await client.query(ATTRIBUTION_WINDOW_SQL, [ref, baselineId, bounded.map((item) => item.id)]);
-    const windows = new Map(rows.map((row) => [String(row.id), { from: iso(row.window_from), until: iso(row.window_until) }]));
+    const contentStarts = await windowStartsByContent(client, ref, rows);
+    const windows = new Map(rows.map((row) => [String(row.id), { from: contentStarts.get(String(row.id)) ?? iso(row.window_from), until: iso(row.window_until) }]));
     const changes = bounded.filter((item) => windows.get(item.id)?.until).map((item) => ({
       id: item.id, resourceType: item.resourceType, naturalKey: item.naturalKey, changeType: item.changeType,
       fields: changedFields(item.before, item.after), window: windows.get(item.id)!,

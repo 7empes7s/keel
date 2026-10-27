@@ -231,3 +231,33 @@ test("a window with skipped audit entries says so, and points to the audit log",
   assert.match(attributionNextStep(skipped) ?? "", /^To find out, search the .* for this item between/);
   assert.equal(attributionSummary(skipped), "Not known.");
 });
+
+test("a baseline hashed under older rules starts the window at the last backup with the same content", async () => {
+  const key = "group:KEEL-RT-Old rule";
+  const { rows: [baseline] } = await client.query("SELECT id FROM baseline WHERE tenant_ref = $1 AND active = true", [ref]);
+  const { rows: [baselineSnapshot] } = await client.query(
+    "SELECT rv.snapshot_id AS id FROM baseline_resource br JOIN resource_version rv ON rv.id = br.resource_version_id WHERE br.baseline_id = $1 LIMIT 1", [baseline.id],
+  );
+  const { rows: [observed] } = await client.query("SELECT observed_snapshot AS id FROM drift WHERE baseline_id = $1 LIMIT 1", [baseline.id]);
+  const version = async (snapshotId: unknown, hash: string) => (await client.query(
+    `INSERT INTO resource_version (snapshot_id, natural_key, resource_type, payload, payload_hash, criticality, blast_radius, fidelity, provenance)
+     VALUES ($1, $2, 'group', '{"description":"old"}'::jsonb, $3, 'normal', 'access-affecting', 'full', '{}'::jsonb) RETURNING id`,
+    [snapshotId, key, hash],
+  )).rows[0];
+  // The baseline's hash was stored under older rules; a later backup holds the same
+  // content under a new hash, two hours ago, before the change.
+  const held = await version(baselineSnapshot.id, "old-rule-hash");
+  await client.query("INSERT INTO baseline_resource (baseline_id, natural_key, resource_version_id) VALUES ($1, $2, $3)", [baseline.id, key, held.id]);
+  const { rows: [middle] } = await client.query(
+    "INSERT INTO snapshot (tenant_ref, status, started_at, completed_at) VALUES ($1, 'complete', now() - interval '2 hours', now() - interval '2 hours') RETURNING id, completed_at", [ref],
+  );
+  await version(middle.id, "new-rule-hash");
+  await client.query(
+    `INSERT INTO drift (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type, blast_radius, before_hash, after_hash, before_payload, after_payload)
+     VALUES ($1, $2, $3, $4, 'group', 'modified', 'access-affecting', 'old-rule-hash', 'changed-hash', '{"description":"old"}', '{"description":"new"}')`,
+    [ref, baseline.id, observed.id, key],
+  );
+  const data = await getDriftData();
+  const window = byKey(data.items, key).window;
+  assert.equal(window.from, (middle.completed_at as Date).toISOString());
+});

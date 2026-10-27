@@ -38,7 +38,7 @@ import { findPrincipalById } from '../authz/principals.mjs';
 import { changedFields } from '../identity/attribution.mjs';
 import { sameContent } from '../cir/canonicalHash.mjs';
 import { canonicalDigest } from '../restore/dryRunArtifact.mjs';
-import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE, OPEN_DRIFT_PREDICATE } from '../store/openDrift.mjs';
+import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE, OPEN_DRIFT_PREDICATE, sameRecordedDifference } from '../store/openDrift.mjs';
 import { evaluateDrift } from './evaluate.mjs';
 import { AUTOMATION_KILL_SWITCH_PATH, executeAutoRemediation } from './execute.mjs';
 
@@ -485,21 +485,25 @@ export async function currentResourceState(client, { tenantRef, naturalKey, reso
   // stands for the newest collection when it was recorded for it, or when it records
   // this same difference and nothing has acted on it or it is ignored right now
   // (detection would reuse it). An ignored row is reported as ignored, never acted on.
-  const { rows: [found] } = await client.query(
-    `WITH latest AS (
-       SELECT dl.id FROM drift dl
-        WHERE dl.tenant_ref = $1 AND dl.baseline_id = $2 AND dl.natural_key = $4
-        ORDER BY dl.detected_at DESC, dl.id DESC
-        LIMIT 1
-     )
-     SELECT d.*, ${DRIFT_IGNORED_PREDICATE} AS ignored
-       FROM drift d JOIN latest ON latest.id = d.id
-      WHERE (d.observed_snapshot = $3
-          OR (d.before_hash IS NOT DISTINCT FROM $5 AND d.after_hash IS NOT DISTINCT FROM $6
-              AND (NOT ${DRIFT_ACTED_ON_PREDICATE} OR ${DRIFT_IGNORED_PREDICATE})))
-        AND (${OPEN_DRIFT_PREDICATE} OR ${DRIFT_IGNORED_PREDICATE})`,
-    [tenantRef, baseline.id, snapshot.id, naturalKey, base?.payload_hash ?? null, current?.payload_hash ?? null],
+  // Same difference is judged by content (sameRecordedDifference), as reuseDrift does,
+  // so a row whose hashes were stored under older rules is still found.
+  const { rows: [latest] } = await client.query(
+    `SELECT d.*,
+            ${DRIFT_IGNORED_PREDICATE} AS ignored,
+            ${DRIFT_ACTED_ON_PREDICATE} AS acted_on,
+            (${OPEN_DRIFT_PREDICATE} OR ${DRIFT_IGNORED_PREDICATE}) AS live
+       FROM drift d
+      WHERE d.tenant_ref = $1 AND d.baseline_id = $2 AND d.natural_key = $3
+      ORDER BY d.detected_at DESC, d.id DESC
+      LIMIT 1`,
+    [tenantRef, baseline.id, naturalKey],
   );
+  const stands = latest?.live && (String(latest.observed_snapshot) === String(snapshot.id)
+    || ((!latest.acted_on || latest.ignored) && sameRecordedDifference(latest, {
+      resourceType, beforeHash: base?.payload_hash, beforePayload: base?.payload,
+      afterHash: current?.payload_hash, afterPayload: current?.payload,
+    })));
+  const found = stands ? (({ acted_on: _actedOn, live: _live, ...row }) => row)(latest) : null;
   if (!found) return { state: 'awaiting-detection', snapshotId: String(snapshot.id), observedAt };
   const { ignored, ...drift } = found;
   return { state: ignored ? 'ignored' : 'drifted', snapshotId: String(snapshot.id), observedAt, drift };

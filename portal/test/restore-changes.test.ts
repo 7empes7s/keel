@@ -26,17 +26,18 @@ const snaps: Record<string, string> = {};
 
 const GROUP_ID = "0f0e0000-0000-4000-8000-0000000000aa";
 
-async function snapshot(name: string, at: string, versions: [string, string, Record<string, unknown>][]) {
+// A fourth entry stores that hash instead of the payload's, as a backup hashed under older rules.
+async function snapshot(name: string, at: string, versions: [string, string, Record<string, unknown>, string?][]) {
   const { rows } = await client.query(
     `INSERT INTO snapshot (tenant_ref, status, started_at, completed_at) VALUES ($1, 'complete', $2, $2) RETURNING id`,
     [tenantRef(), at],
   );
   snaps[name] = String(rows[0].id);
-  for (const [naturalKey, resourceType, payload] of versions) {
+  for (const [naturalKey, resourceType, payload, hash] of versions) {
     await client.query(
       `INSERT INTO resource_version (snapshot_id, natural_key, resource_type, payload, payload_hash, criticality, blast_radius, fidelity, provenance)
        VALUES ($1, $2, $3, $4, $5, 'critical', 'access-affecting', 'full', '{}')`,
-      [snaps[name], naturalKey, resourceType, JSON.stringify(payload), JSON.stringify(payload)],
+      [snaps[name], naturalKey, resourceType, JSON.stringify(payload), hash ?? JSON.stringify(payload)],
     );
   }
 }
@@ -65,9 +66,12 @@ before(async () => {
   const policy = { displayName: "Block legacy auth", state: "enabled", conditions: { users: { excludeGroups: [] as string[] } } };
   const finance = { displayName: "Finance", visibility: "Private" };
   const office = { displayName: "Branch offices", isTrusted: true };
+  // Hashed under older rules in the first backup; the same content in the second; changed in the newest.
+  const sales = { displayName: "KEEL-RT-Sales", visibility: "Private" };
   await snapshot("first", "2026-09-30T06:00:00Z", [
     ["conditionalAccessPolicy:Block legacy auth", "conditionalAccessPolicy", policy],
     ["group:Finance", "group", finance],
+    ["group:KEEL-RT-Sales", "group", sales, "old-rule-hash"],
     ["namedLocation:Branch offices", "namedLocation", office],
     ["namedLocation:HQ", "namedLocation", { displayName: "HQ", isTrusted: true }],
   ]);
@@ -75,6 +79,7 @@ before(async () => {
   await snapshot("second", "2026-10-01T06:00:00Z", [
     ["conditionalAccessPolicy:Block legacy auth", "conditionalAccessPolicy", { ...policy, state: "enabledForReportingButNotEnforced", conditions: { users: { excludeGroups: [GROUP_ID] } } }],
     ["group:Finance", "group", finance],
+    ["group:KEEL-RT-Sales", "group", sales],
     ["namedLocation:HQ", "namedLocation", { displayName: "HQ", isTrusted: true }],
   ]);
   // The newest: the group changes; this backup did not read named locations at all
@@ -82,6 +87,7 @@ before(async () => {
   await snapshot("newest", "2026-10-02T06:00:00Z", [
     ["conditionalAccessPolicy:Block legacy auth", "conditionalAccessPolicy", { ...policy, state: "enabledForReportingButNotEnforced", conditions: { users: { excludeGroups: [GROUP_ID] } } }],
     ["group:Finance", "group", { ...finance, visibility: "Public" }],
+    ["group:KEEL-RT-Sales", "group", { ...sales, visibility: "Public" }],
     ["namedLocation:HQ", "namedLocation", { displayName: "HQ", isTrusted: true }],
   ]);
 });
@@ -97,10 +103,14 @@ test("changes since an older backup: what, when, newest first, and no ids in the
   assert.equal(data.earlier, null);
   assert.deepEqual(data.changes.map((change) => [change.naturalKey, change.kind]), [
     ["group:Finance", "changed"],
+    ["group:KEEL-RT-Sales", "changed"],
     ["conditionalAccessPolicy:Block legacy auth", "changed"],
     ["namedLocation:Branch offices", "deleted"],
   ]);
-  const [group, policy, office] = data.changes;
+  const [group, sales, policy, office] = data.changes;
+  // The second backup holds the same content under a newer hash: it still matches.
+  assert.equal(sales.seenAt, "2026-10-02T06:00:00.000Z");
+  assert.equal(sales.sameUntil, "2026-10-01T06:00:00.000Z");
   assert.equal(group.seenAt, "2026-10-02T06:00:00.000Z");
   assert.equal(group.sameUntil, "2026-10-01T06:00:00.000Z");
   assert.deepEqual(group.fields, [{ path: "visibility", before: "Private", after: "Public" }]);
@@ -116,7 +126,7 @@ test("changes since an older backup: what, when, newest first, and no ids in the
 test("the newest backup lists nothing, and counts what changed just before it", async () => {
   const data = await getRestoreChanges(snaps.newest);
   assert.deepEqual(data.changes, []);
-  assert.deepEqual(data.earlier, { id: snaps.second, takenAt: "2026-10-01T06:00:00.000Z", count: 1 });
+  assert.deepEqual(data.earlier, { id: snaps.second, takenAt: "2026-10-01T06:00:00.000Z", count: 2 });
 });
 
 test("a backup of another tenant or an unknown one compares with nothing", async () => {

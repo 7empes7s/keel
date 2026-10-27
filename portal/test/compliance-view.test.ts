@@ -16,6 +16,8 @@ import {
   checkSubjectWord,
   checkCounts,
   checkCountRecord,
+  failingBadge,
+  failingMore,
   checksCapped,
   controlChecks,
   controlMisses,
@@ -326,6 +328,16 @@ test("Technical details show the totals past the 50 lines a result keeps", () =>
   assert.deepEqual(checkCountRecord({ ...cut, detailCounts: null }), { checked: "50 or more", failing: "3", listed: "First 50, failing ones first" });
   assert.deepEqual(checkCountRecord({ ...cut, details: Array.from({ length: 50 }, () => line(false)), detailCounts: null }), { checked: "50 or more", failing: "50 or more", listed: "First 50, failing ones first" });
   assert.equal(checkCountRecord({ ...PASS, details: [] }), null);
+
+  // The control sheet's red badge says the same "or more" as the record, and only then.
+  const allFailing = { ...cut, details: Array.from({ length: 50 }, () => line(false)), detailCounts: null };
+  assert.equal(failingMore(checkCounts(allFailing)), true);
+  assert.equal(failingMore(checkCounts({ ...cut, detailCounts: null })), false);
+  assert.equal(failingMore(checkCounts({ ...allFailing, detailCounts: { checked: 50, failing: 50 } })), false);
+  assert.equal(failingBadge(checkCounts(allFailing)), "50 or more settings");
+  assert.equal(failingBadge(checkCounts({ ...cut, detailCounts: null })), "3 settings");
+  assert.equal(failingBadge(checkCounts({ ...cut, details: [line(false)], detailCounts: { checked: 1200, failing: 1 } })), "1 setting");
+  assert.equal(failingBadge(checkCounts({ ...allFailing, detailCounts: { checked: 1200, failing: 1100 } })), "1,100 settings");
 
   const html = renderToStaticMarkup(createElement(FindingRecordFields, { finding: { ...cut, detailCounts: { checked: 1200, failing: 55 } } }));
   assert.match(html, /Settings checked[\s\S]*1,200/);

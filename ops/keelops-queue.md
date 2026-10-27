@@ -705,4 +705,5 @@ K7: yes, use my portal principal.
 K14: yes, keelops may run the Make it pass restore on KEEL-RT-mailfix-spam and approve it and its content effect as my Entra principal.
 K15: yes, keelops may create, change and delete the disabled KEEL-RT-svc-change transport rule and approve its restores as my Entra principal.
 K21: yes, keelops may create, delete, restore and purge KEEL-RT-app-steps, file and approve its restores as my Entra/Gmail principals, and close its follow-up steps as my Entra principal.
+K14: yes, keelops may file the Make it pass dry run and request on KEEL-RT-mailfix-spam as my Gmail principal, and approve it and its content effect as my Entra principal.
 

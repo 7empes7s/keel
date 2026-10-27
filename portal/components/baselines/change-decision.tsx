@@ -19,11 +19,23 @@ interface UndoPreview {
   guardRefusals: { naturalKey: string; reason: string }[];
 }
 
+// A change whose setting holds the same values as the approved setup: the server says
+// so (409 no_change), and that sentence is shown instead of a generic failure.
+class NoChangeError extends Error {}
+
 async function post(path: string, body: Record<string, unknown>): Promise<unknown> {
   const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  if (!response.ok) throw new Error(`Action request failed (${response.status})`);
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
+    if (response.status === 409 && payload?.error === "no_change") {
+      throw new NoChangeError(payload.message || "Nothing changed: the setting holds the same values as the approved setup.");
+    }
+    throw new Error(`Action request failed (${response.status})`);
+  }
   return response.json();
 }
+
+const failure = (error: unknown, fallback: string) => (error instanceof NoChangeError ? error.message : fallback);
 
 const sameIds = (a: string[], b: string[]) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
 
@@ -99,8 +111,8 @@ export function ChangeDecision({
         return item.id;
       }));
       onDone(settled, `${action === "accept" ? "Accepted" : "Ignored"} ${settled.length} ${settled.length === 1 ? "change" : "changes"}.`);
-    } catch {
-      setError("Keel could not save the decision. No further changes were sent.");
+    } catch (error) {
+      setError(failure(error, "Keel could not save the decision. No further changes were sent."));
     } finally {
       setSubmitting(false);
     }
@@ -112,8 +124,8 @@ export function ChangeDecision({
     setError(null);
     try {
       setPreview(await post("/api/actions/remediate/selection", { driftIds: ids }) as UndoPreview);
-    } catch {
-      setError("Keel could not work out what undoing would do. Nothing was requested.");
+    } catch (error) {
+      setError(failure(error, "Keel could not work out what undoing would do. Nothing was requested."));
     } finally {
       setSubmitting(false);
     }
@@ -129,8 +141,8 @@ export function ChangeDecision({
       await post("/api/actions/remediate", remediationParams({ selectedDriftIds: ids, visibleDriftIds: ids, justification }));
       setPreview(null);
       onDone([], "Sent to approvers. Nothing changes until one of them approves.");
-    } catch {
-      setError("Keel could not send the undo for approval. Try again in a minute.");
+    } catch (error) {
+      setError(failure(error, "Keel could not send the undo for approval. Try again in a minute."));
     } finally {
       setSubmitting(false);
     }

@@ -5,6 +5,7 @@ import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from './evidence.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
+import { refuseSameContentDrift } from '../store/openDrift.mjs';
 
 function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -117,6 +118,9 @@ export async function acceptDrift(client, { driftId, actor, reason }) {
     );
     const drift = driftRows[0];
     if (!drift) throw new Error(`drift not found: ${driftId}`);
+    // A row that records no change (only a stored fingerprint differed) is never
+    // accepted: there is nothing to put into the approved setup.
+    refuseSameContentDrift([drift]);
     // Task-87: a superseded baseline version is preserved evidence. Accepting a change
     // into it would rewrite what that version recorded, so it is refused.
     const { rows: frozenRows } = await client.query(

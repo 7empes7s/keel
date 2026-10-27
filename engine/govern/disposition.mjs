@@ -1,5 +1,6 @@
 import { acceptDrift } from './baseline.mjs';
 import { recordDisposition } from '../store/governance.mjs';
+import { refuseSameContentDrift, refuseSameContentDriftIds } from '../store/openDrift.mjs';
 
 /** Spec M2.6.3. Ignore suppression keys on (naturalKey, afterHash) — never naturalKey alone. */
 export function isSuppressed(drift, dispositions, now) {
@@ -28,6 +29,7 @@ export async function applyDisposition(client, {
     if (expiresAt == null) {
       throw new Error('ignore disposition requires expiresAt');
     }
+    await refuseSameContentDriftIds(client, [driftId]);
     return recordDisposition(client, { driftId, action, actor, reason, expiresAt });
   }
 
@@ -38,6 +40,7 @@ export async function applyDisposition(client, {
       [driftId],
     );
     if (!driftRows[0]) throw new Error(`drift not found: ${driftId}`);
+    refuseSameContentDrift(driftRows);
 
     const { rows: baselineRows } = await client.query(
       `SELECT br.natural_key, rv.resource_type, rv.payload, rv.payload_hash, rv.hash_version,

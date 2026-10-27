@@ -12,6 +12,7 @@ import {
   requestApproval,
 } from "../../engine/govern/approvals.mjs";
 import { applyDisposition } from "../../engine/govern/disposition.mjs";
+import { SameContentDriftError } from "../../engine/store/openDrift.mjs";
 import { acceptServiceChange } from "../../engine/govern/workloadApproved.mjs";
 import { resolveAlert } from "../../engine/notify/alerts.mjs";
 import { appendEvidence } from "../../engine/govern/evidence.mjs";
@@ -47,6 +48,15 @@ export const ATTEMPT_EVIDENCE_KIND = "action-attempt";
 const NO_STORE = { "cache-control": "no-store" } as const;
 
 export class InvalidActionRequest extends Error {}
+
+/** 409 for a change that records no change (engine/store/openDrift.mjs). The message
+ * names no setting or id, so it says nothing about what exists. */
+export function noChange(error: Error): Response {
+  return Response.json(
+    { error: "no_change", message: error.message },
+    { status: 409, headers: NO_STORE },
+  );
+}
 
 interface KeelClient {
   query(
@@ -396,6 +406,9 @@ export function guarded(
       // Gap B11: the requester no longer resolves to an enabled principal, so no
       // request is created that could never be carried out.
       if (error instanceof ApprovalRequestRefusedError) return forbidden();
+      // A change whose setting holds the same values as the approved setup: nothing
+      // to accept, roll back, preview or approve. Said plainly, never a 503.
+      if (error instanceof SameContentDriftError) return noChange(error);
       console.error(`[keel-portal] guarded action ${spec.action} failed`, error);
       return Response.json(
         { error: "unavailable" },
@@ -525,7 +538,8 @@ export function guardedDispose(
           reason,
           expiresAt: typeof expiresAt === "string" ? expiresAt : undefined,
         });
-      } catch {
+      } catch (error) {
+        if (error instanceof SameContentDriftError) return noChange(error);
         // No detail about what exists.
         return Response.json(
           { error: "invalid_request" },

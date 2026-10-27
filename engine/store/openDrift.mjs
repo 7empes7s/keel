@@ -111,3 +111,53 @@ export async function markSameContentDrift(client, { tenantRef, batchSize = 200 
     marked += same.length;
   }
 }
+
+/**
+ * True when this drift row records no change: it is marked same_content, or it is a
+ * 'modified' row not checked yet whose two payloads hold the same content under the
+ * current field rules. Takes a full drift row (SELECT * FROM drift).
+ */
+export function recordsNoChange(row) {
+  if (row?.same_content === true) return true;
+  if (row?.same_content === false || row?.change_type !== 'modified') return false;
+  if (row.before_payload == null || row.after_payload == null) return false;
+  return sameContent(
+    { payload_hash: row.before_hash, payload: row.before_payload },
+    { payload_hash: row.after_hash, payload: row.after_payload },
+    row.resource_type,
+  );
+}
+
+/** A change was asked to be accepted, ignored or rolled back, but its row records no
+ * change: only a stored fingerprint differed (schema.d/77). */
+export class SameContentDriftError extends Error {
+  constructor(driftIds) {
+    const count = driftIds.length;
+    super(`${count === 1 ? 'This change' : `${count} of the selected changes`} did not change anything: `
+      + 'the setting holds the same values as the approved setup, so there is nothing to accept or roll back. '
+      + 'An older fingerprint of the approved setup made it look changed.');
+    this.name = 'SameContentDriftError';
+    this.driftIds = driftIds;
+  }
+}
+
+/** Throws SameContentDriftError when any of these drift rows records no change. Every
+ * path that acts on drift ids it was handed (accept, ignore, roll back, remediation and
+ * its preview, approval requests) calls this, so a hidden row is never acted on. */
+export function refuseSameContentDrift(rows) {
+  const ids = rows.filter(recordsNoChange).map((row) => String(row.id));
+  if (ids.length > 0) throw new SameContentDriftError(ids);
+}
+
+/** Reads the drift rows for these ids and refuses any that records no change. Ids
+ * that do not exist are left to the caller. */
+export async function refuseSameContentDriftIds(client, driftIds) {
+  if (!Array.isArray(driftIds) || driftIds.length === 0) return;
+  const { rows } = await client.query(
+    `SELECT id::text AS id, change_type, same_content, resource_type,
+            before_hash, after_hash, before_payload, after_payload
+       FROM drift WHERE id::text = ANY($1::text[])`,
+    [driftIds.map(String)],
+  );
+  refuseSameContentDrift(rows);
+}

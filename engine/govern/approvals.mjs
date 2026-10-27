@@ -12,6 +12,7 @@
 
 import { enqueue } from '../jobs/queue.mjs';
 import { appendEvidence } from './evidence.mjs';
+import { refuseSameContentDriftIds } from '../store/openDrift.mjs';
 import { canonicalDigest, getDryRunArtifact, validateArtifactForApproval } from '../restore/dryRunArtifact.mjs';
 import { resolveRowReferences } from './references.mjs';
 import { SCOPE_VERSION, approvalEligibility, approvalInboxPredicate, rereadApprovalOwnership } from '../authz/entityScope.mjs';
@@ -180,6 +181,9 @@ export async function requestApproval(client, {
   if (executor !== 'cli' && CLI_ONLY_ACTIONS.includes(action)) {
     throw new ApprovalRequestRefusedError(`a ${action} is carried out with the CLI only`);
   }
+  // A roll back of a change whose row records no change (only a stored fingerprint
+  // differed) would put back what is already there: refused before it waits.
+  if (action === 'remediate') await refuseSameContentDriftIds(client, params?.driftIds);
   const requester = await findPrincipalById(client, requestedBy);
   if (!requester || requester.disabled_at) {
     throw new ApprovalRequestRefusedError(`requester does not resolve to an enabled principal: ${requestedBy}`);
@@ -456,6 +460,10 @@ export async function approveRequest(client, {
         reconciliationResources: artifact.reconciliationResources,
       };
     }
+
+    // A request made before its change was found to hold the same content is refused
+    // at decision time too: approving it would roll back nothing.
+    if (request.action === 'remediate') await refuseSameContentDriftIds(client, request.params?.driftIds);
 
     // Wave 2 RBAC: the two-person rule. Below the approvers it needs, this approval is a
     // sign-off only: committed, evidenced, and the request stays pending.

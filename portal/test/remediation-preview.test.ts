@@ -7,7 +7,8 @@ import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { canonicalHash } from "../../engine/cir/canonicalHash.mjs";
 import { applyWave } from "../../engine/restore/applyEngine.mjs";
 import { runRemediate } from "../../cli/keel-remediate.mjs";
-import { guardedAction, guardedApprovalDecision } from "@/lib/action";
+import { guardedAction, guardedApprovalDecision, guardedDispose } from "@/lib/action";
+import { decisionError } from "@/lib/approval-view";
 import { collectorConfig, remediationSelection } from "@/lib/remediation-preview";
 import { DEFAULT_COLLECTOR_CONFIG_PATH } from "../../engine/restore/credentialPaths.mjs";
 import { DATA_SURFACES, guardedRead } from "@/lib/read";
@@ -234,4 +235,35 @@ test("preview reads the shared Collector default, or the configured override", (
   assert.deepEqual(collectorConfig({ ...process.env, KEEL_COLLECTOR_CONFIG_PATH: "/srv/keel/collector.json" }, readFile), config);
   assert.deepEqual(read, [DEFAULT_COLLECTOR_CONFIG_PATH, "/srv/keel/collector.json"]);
   assert.equal(DEFAULT_COLLECTOR_CONFIG_PATH, "/etc/keel/tenant.json");
+});
+
+test("a change that holds the same content is refused by the preview and the request, with a plain 409", async () => {
+  const base = (await client.query("SELECT baseline_id, observed_snapshot FROM drift WHERE id = $1", [ids.get("Ops")])).rows[0];
+  const payload = { displayName: "Same", mailNickname: "same" };
+  const same = String((await client.query(`INSERT INTO drift
+    (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type, blast_radius,
+     before_hash, after_hash, before_payload, after_payload, same_content)
+    VALUES ($1,$2,$3,'group:same','group','modified','access-affecting','old-rules-hash',$4,$5,$5,true) RETURNING id`,
+  [tenant, base.baseline_id, base.observed_snapshot, canonicalHash(payload, "group"), payload])).rows[0].id);
+  try {
+    const requestsBefore = (await client.query("SELECT count(*)::int AS n FROM approval_request")).rows[0].n;
+    for (const response of [
+      await previewRoute(request({ driftIds: [same] })),
+      await enforceRoute(request({ driftIds: [same], mode: "enforce", justification: "same content" })),
+    ]) {
+      assert.equal(response.status, 409);
+      const body = await response.json();
+      assert.equal(body.error, "no_change");
+      assert.match(body.message, /did not change anything/);
+    }
+    assert.equal((await client.query("SELECT count(*)::int AS n FROM approval_request")).rows[0].n, requestsBefore);
+    const accepted = await guardedDispose(deps)(request({ driftId: same, action: "accept", reason: "same content" }, ["dispose-accept"], "/api/actions/dispose"));
+    assert.equal(accepted.status, 409);
+    assert.equal((await accepted.json()).error, "no_change");
+    assert.equal((await client.query("SELECT count(*)::int AS n FROM disposition WHERE drift_id = $1", [same])).rows[0].n, 0);
+    assert.match(decisionError(409, { error: "no_change" }), /Nothing to roll back/);
+    assert.match(decisionError(409, { error: "conflict" }), /decided it first/);
+  } finally {
+    await client.query("DELETE FROM drift WHERE id = $1", [same]);
+  }
 });

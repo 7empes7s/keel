@@ -117,6 +117,21 @@ function adoptByUniqueName(liveIndex, resource, plannedKeys, adoptedKeys) {
   return matches[0][1];
 }
 
+/** The backup's hash under the current field rules. The live side is always hashed
+ * fresh (liveState.mjs), so a hash stored under older rules (a field classified
+ * server-owned since) would make identical content look different and plan an update
+ * that writes nothing (cir/canonicalHash.mjs sameContent). The stored hash is used only
+ * when the payload cannot be hashed. */
+function desiredHash(resource) {
+  if (resource.payload == null) return resource.payloadHash;
+  try {
+    return canonicalHash(resource.payload, resource.resourceType);
+  } catch (error) {
+    if (typeof resource.payloadHash === 'string') return resource.payloadHash;
+    throw error;
+  }
+}
+
 /** Builds the one executable reconciliation plan for both restore and remediation.
  * Current facts are collected with the reader, desired state comes from the supplied
  * resource set, and decideVerb remains the only write-verb table. */
@@ -141,9 +156,7 @@ export async function buildReconciliationPlan(reader, resources, {
 
   for (const resource of resources) {
     let current = liveIndex.get(resource.naturalKey) ?? null;
-    const desired = resource.payload === null
-      ? null
-      : { payloadHash: resource.payloadHash ?? canonicalHash(resource.payload, resource.resourceType) };
+    const desired = resource.payload === null ? null : { payloadHash: desiredHash(resource) };
     const live = current?.state === 'present' ? { payloadHash: current.payloadHash } : null;
     let decision = licenceDecision(resource, current, decideVerb({
       desired,

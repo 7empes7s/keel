@@ -146,7 +146,7 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   #568: Microsoft cloud words, old names and concepts (AAD, MEM, CA policy, MFA, PIM, guests…), "who changed" and not-held topics answered
   in words instead of refused. The portal is behind Access from the box, so this runs the same engine call the page makes.
 - Needs: /opt/keel-live at the #568 merge (6783d4d) or later (`test -f /opt/keel-live/engine/query/vocabulary.mjs`).
-- Status: todo
+- Status: in-progress
 - **Tenant:** nothing. Read-only against Keel's own database.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`, with tenantRef = `sha256:` + the first 16 hex of sha256(tenant.json `tenantId`)
   (as `portal/lib/runtime-config.ts` does), scope `{central:true, entities:[]}`:

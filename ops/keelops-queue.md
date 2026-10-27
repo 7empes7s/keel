@@ -63,6 +63,8 @@ being triggered by queue updates.
 
 Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/operator-queue`, which has had no pass since 2026-10-23. All four are read-only. If a step needs a file your user can't read, mark the item `blocked` and name the file.
 
+**Approval for K2–K7 (2026-10-27 14:37 UTC):** Marouane asked in the project thread that the agents run these checks without him. That covers the read-only `SELECT`s written in K2–K7 against the live DB and the engine read calls they name; never change a row except where an item says so (K3's `enqueue` fallback, K6 restore, K7 own check). The `/etc/keel` read access is queued for keel-operator as Q175 on `claude/operator-queue`; retry K2 and K3 once `/etc/keel/db.env` is readable.
+
 ### K2: Live check that Intune tenant settings back up again (fixes #447, after #566 and #570)
 - Drafted by the "Live checks for Oct 23–25 merges" thread (2026-10-27). #566 reads `deviceManagementSettings` one field per
   request (the mixed `$select` was routed to the onboarding backend and answered 400). #570 then dropped the retired

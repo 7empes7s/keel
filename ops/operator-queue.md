@@ -1521,7 +1521,7 @@ being triggered by queue updates.
 
 ### Q182: Microsoft365DSC writer check on one KEEL-RT- distribution list, and the TCM snapshot setup check (after PR #601)
 - Drafted by the "Probe Microsoft config snapshots for backup" thread (2026-10-27). Code: PR #601 (`tools/tenant-probe/utcm-probe.mjs`,
-  `ops/powershell/dsc-probe.ps1`). Part A needs no new grant. Part B (Q183) needs Marouane's consent and decision D-Q182.
+  `ops/powershell/dsc-probe.ps1`). Part A needs no new grant. Part B (Q183) needs Marouane's consent for the Collector only.
 - Needs: /opt/keel-live at the #601 merge or later (`test -f /opt/keel-live/ops/powershell/dsc-probe.ps1`).
 - Status: todo
 - Result:
@@ -1555,13 +1555,14 @@ being triggered by queue updates.
 - **Report:** steps 1 to 3 outcomes; step 4 exit code, every line of `steps.jsonl` verbatim (they are masked), the last 20 lines of
   `stderr.log` (masked), the image tag used; whether the list is gone.
 
-### Q183: Run the TCM snapshot probe (after Q182, Marouane's consent and D-Q182)
+### Q183: Run the TCM snapshot probe (after Q182 and Marouane's consent)
 - Drafted by the "Probe Microsoft config snapshots for backup" thread (2026-10-27).
 - Needs: Q182 done; the Collector's SP holds `ConfigurationMonitoring.ReadWrite.All` as an appRoleAssignment (Marouane's consent; if
-  missing, set `blocked: waiting on consent` and stop); D-Q182 below decided `yes`.
+  missing, set `blocked: waiting on consent` and stop).
 - Status: todo
 - Result:
-- **Tenant:** step 1 gives Microsoft's TCM service principal **read-only** access (D-Q182). Step 3 creates snapshot jobs named
+- **Tenant:** step 1 gives Microsoft's TCM service principal **read-only** access, test tenant only, under Marouane's standing rule
+  (2026-10-27: make test-tenant changes without asking, document each one). Log every grant in the Result. Step 3 creates snapshot jobs named
   `KEEL-RT-utcm-probe-*` and deletes them after reading; it writes no tenant configuration. The TCM principal and its grants stay in
   place (the follow-up integration needs them); list them in the Result.
 - Do, from your own checkout at B, with `OUT=$HOME/utcm-probe`:
@@ -1696,10 +1697,6 @@ item that needs it stays untouched.
     Exchange app scoping, role "Application Mail.ReadWrite" limited to mailboxes whose address starts with keel-rt-;
     no tenant-wide Mail.ReadWrite grant and no consent click; keel-operator sets it up, writes one KEEL-RT- message to
     alice's inbox, checks a non-test mailbox is denied, then reruns the mail backup.
-- D-Q182 (Q183): may keel-operator add Microsoft's Tenant Configuration Management service principal to the test tenant and give
-  it read-only access (the Graph read permissions listed in Q183, Exchange.ManageAsApp, and the Global Reader role), so Microsoft's
-  config snapshots can be probed?
-  - Decision:
 
 ### Q22: AWS budget guard (operator-directed)
 - Asked by the operator at 16:43 UTC (relayed by the "Continue earlier Keel session" thread). Doesn't touch

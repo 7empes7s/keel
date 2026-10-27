@@ -327,6 +327,8 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Condition": fact("Rule that fired", "Which control and condition raised it."),
   "Occurrence": count("Times raised", "How many times this alert has come up."),
   "Latest event": support("Latest event reference", ID),
+  "Object ID": support("Microsoft 365 object ID", "The object's id in Microsoft 365, for support and scripts."),
+  "In the newest backup": fact("In the newest backup", "Whether Keel's newest backup still holds this object."),
   "Deadline": fact("Answer by", "When someone must respond before it is passed on."),
   "Attempts": count("Tries", "How many times Keel tried to send it."),
   "Event kind": fact("Event", "What happened.", { enum: "eventKind" }),

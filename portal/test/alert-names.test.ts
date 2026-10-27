@@ -5,7 +5,8 @@ import { after, before, test } from "node:test";
 import { recordSharePointRun } from "../../engine/collect/workloads/sharepoint.mjs";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
-import { alertResourceNames } from "@/lib/alerts";
+import { alertObjects, alertResourceNames } from "@/lib/alerts";
+import { deletedSinceWords, splitObjectTitle } from "@/lib/object-label";
 import { alertTitle, causeSentence, type AlertItem } from "@/lib/alerts-view";
 import { renderAlertsAt } from "./render-alerts";
 
@@ -25,6 +26,8 @@ const SCRIPT_ID = "5b1c2d3e-0000-4000-8000-00000000c0de";
 const NAMELESS_ID = "9a8b7c6d-0000-4000-8000-0000000000ff";
 const SITE_KEY = `sharepoint-site-settings:site:${FINANCE}`;
 const NAMELESS_SITE_KEY = `sharepoint-site-settings:site:${NAMELESS_SITE}`;
+const OLD_TEAM_ID = "0f1a0000-0000-4000-8000-000000000002";
+const SALES_ID = "0f1a0000-0000-4000-8000-000000000003";
 const GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 let database: { url: string; connect(): Promise<TestClient>; cleanup(): Promise<void> };
@@ -70,6 +73,20 @@ before(async () => {
        VALUES ($1, $2, $3, $4, $5, 'critical', 'access-affecting', 'full', '{}')`,
       [snapshot.id, key, type, JSON.stringify(payload), JSON.stringify(payload)],
     );
+  }
+  // Old project team is in the first backup only; the next complete backup that read
+  // groups no longer holds it, so it is deleted since that backup.
+  for (const [at, groups] of [["2026-10-01T06:00:00Z", ["Old project team", "Sales"]], ["2026-10-03T06:00:00Z", ["Sales"]]] as const) {
+    const { rows: [backup] } = await client.query(
+      "INSERT INTO snapshot (tenant_ref, status, started_at, completed_at) VALUES ($1, 'complete', $2, $2) RETURNING id", [TENANT, at]);
+    for (const name of groups) {
+      const payload = { id: name === "Sales" ? SALES_ID : OLD_TEAM_ID, displayName: name };
+      await client.query(
+        `INSERT INTO resource_version (snapshot_id, natural_key, resource_type, payload, payload_hash, criticality, blast_radius, fidelity, provenance)
+         VALUES ($1, $2, 'group', $3, $4, 'critical', 'access-affecting', 'full', '{}')`,
+        [backup.id, `group:${name}`, JSON.stringify(payload), JSON.stringify(payload)],
+      );
+    }
   }
   // Finance is renamed in the newer read; another tenant names the same site otherwise.
   await recordSharePointRun(client, { tenantRef: TENANT, result: run("2026-10-13T02:00:00.000Z", [site(FINANCE, "Finance"), site(NAMELESS_SITE, null)]) });
@@ -137,7 +154,7 @@ test("the list shows names in its rows and keeps the keys in Technical details",
     canRespond: true,
     canMute: false,
   });
-  const names = [...html.matchAll(/class="al-row-link"[^>]*>([^<]*)<\/a>/g)].map((match) => match[1]);
+  const names = [...html.matchAll(/class="al-row-link"[^>]*>(.*?)<\/a>/g)].map((match) => match[1].replace(/<[^>]+>/g, ""));
   assert.ok(names.includes("Finance team (SharePoint site)"));
   assert.ok(names.some((name) => name.startsWith("Unnamed ")));
   for (const name of names) assert.doesNotMatch(name, GUID);
@@ -153,4 +170,51 @@ test("SharePoint alerts say what differs from the approved setup, never a baseli
   const backup = alert({ resourceKey: "group:Finance", name: null, cause: { changeType: "modified", resourceType: "group", snapshotId: null } });
   assert.equal(causeSentence(backup), "It differs from the approved setup.", "configuration drift is told against the approved setup");
   assert.equal(causeSentence({ ...backup, conditionActive: false }), "It matches the approved setup again.");
+});
+
+test("each backup key says whether the newest backup still holds it, and since when it is gone", async () => {
+  const objects = await alertObjects(client, TENANT, ["group:Old project team", "group:Sales", "group:Never seen", SCRIPT_ID, SITE_KEY]);
+  assert.deepEqual(objects.get("group:Old project team"), {
+    status: "deleted", deletedSince: "2026-10-03T06:00:00.000Z", lastSeenAt: "2026-10-01T06:00:00.000Z", objectId: OLD_TEAM_ID, name: "Old project team",
+  });
+  assert.equal(objects.get("group:Sales")?.status, "found");
+  assert.equal(objects.get("group:Never seen")?.status, "unknown");
+  assert.equal(objects.get(SCRIPT_ID)?.name, "Set time zone");
+  assert.equal(objects.has(SITE_KEY), false, "service settings are not in backups");
+  const broken = { query: async () => { throw new Error("database down"); } };
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    assert.equal((await alertObjects(broken, TENANT, ["group:Sales"])).size, 0);
+  } finally {
+    console.error = quiet;
+  }
+});
+
+test("a deleted object shows a dated badge beside its name, and its id only in Technical details", async () => {
+  const html = await renderAlertsAt("", {
+    alerts: [alert({
+      resourceKey: "group:Old project team", name: "Old project team",
+      object: { status: "deleted", deletedSince: "2026-10-03T06:00:00.000Z", lastSeenAt: "2026-10-01T06:00:00.000Z", objectId: OLD_TEAM_ID },
+      cause: { changeType: "removed", resourceType: "group", snapshotId: null },
+    })],
+    now: "2026-10-15T12:00:00Z",
+    canRespond: true,
+    canMute: false,
+  });
+  assert.match(html, /class="al-row-link"[^>]*><span class="object-label"><span class="object-label-name">Old project team<\/span><span class="object-label-type"> \(group\)<\/span>/);
+  assert.ok(html.includes("Deleted since 3 Oct 2026"));
+  const record = html.indexOf('data-layer="record"');
+  assert.ok(record > 0, "the alerts carry Technical details");
+  const text = html.slice(0, record).replace(/<[^>]+>/g, " ");
+  assert.equal(text.search(GUID), -1, "no id shows as text before Technical details");
+});
+
+test("object titles split into name and kind and read back the same", () => {
+  assert.deepEqual(splitObjectTitle("Finance (group)"), { name: "Finance", type: "group" });
+  assert.deepEqual(splitObjectTitle("Sales (EU) (group)"), { name: "Sales (EU)", type: "group" });
+  assert.deepEqual(splitObjectTitle("Unnamed SharePoint site"), { name: null, type: "SharePoint site" });
+  assert.deepEqual(splitObjectTitle("SharePoint sharing settings"), { name: "SharePoint sharing settings", type: null });
+  assert.equal(deletedSinceWords("2026-10-03T23:30:00Z"), "Deleted since 3 Oct 2026");
+  assert.equal(deletedSinceWords(null), "Deleted");
 });

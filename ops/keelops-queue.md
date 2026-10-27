@@ -596,3 +596,5 @@ Write `yes`, `no` or your instructions after each one. If a decision is blank, e
 
 K6: yes, keelops may create KEEL-RT-app-perms and file and approve its restores as my Entra/Gmail principals.
 K7: yes, use my portal principal.
+K14: yes, keelops may run the Make it pass restore on KEEL-RT-mailfix-spam and approve it and its content effect as my Entra principal.
+K15: yes, keelops may create, change and delete the disabled KEEL-RT-svc-change transport rule and approve its restores as my Entra principal.

@@ -1466,6 +1466,59 @@ being triggered by queue updates.
   created, with exit codes; the recounts. Never print a secret, an address, XML or a user's name other than the `KEEL-RT-` and
   `keel-rt-` fixtures.
 
+### Q180: Add the missing read permissions to the Collector's manifest, so Marouane can consent (manifest only)
+- Drafted by the "Back up settings missing a read grant" thread (2026-10-27). Code: the PR from branch
+  `claude/project-thread-y45qfp` (10 new backup kinds, read-only). The delegated probe (Q151) found each of these reads
+  refused with 403 only because the Collector lacks the read permission. Same rules and decision as Q55 / Q56 (D-Q55,
+  D-93a "add any the tool needs to move along"): consent stays with Marouane.
+- Needs: none.
+- Status: todo
+- Result:
+- **Test tenant only. Manifest only, read permissions only.** GET the KEEL Collector application, MERGE, PATCH once (as the
+  Restorer, as in Q55). Keep every existing resource and entry; remove nothing. Resolve each name to its id from the Microsoft
+  Graph service principal's `appRoles` (type Role); skip and report any name with no appRole. Never create an
+  appRoleAssignment or grant consent. Global admin not used. Never touch break-glass or `marouane.defili`.
+- **First, check the tenant:** list the Graph appRoleAssignments the Collector's SP holds now. Any name below that is already
+  held is reported as "already held" (and still added to the manifest if missing there).
+- **Add to the Collector's Graph `requiredResourceAccess` (9):** `OrgSettings-Forms.Read.All`, `OrgSettings-Todo.Read.All`,
+  `OrgSettings-Microsoft365Install.Read.All`, `OrgSettings-AppsAndServices.Read.All`, `ReportSettings.Read.All`,
+  `PeopleSettings.Read.All`, `CustomDetection.Read.All`, `AppCatalog.Read.All`, `Community.Read.All`.
+  Not added on purpose: `TermStore.Read.All` (the term store will be backed up with PnP, which needs no new permission) and
+  anything with Write or FullControl.
+- **Report:** names added, names already held, names skipped and why, and the list still waiting for consent (manifest minus
+  held). Short ids only.
+
+### Q181: Check the 10 new backup kinds read after consent (read-only, after the "missing read grant" PR and Marouane's consent)
+- Drafted by the "Back up settings missing a read grant" thread (2026-10-27). Catalogue family
+  `tools/tenant-probe/catalog.d/admin-center-settings.mjs`: GET-only reads, no writer.
+- Needs: Q180 done; Marouane's admin consent for the KEEL Collector (check that its SP holds the 9 Q180 permissions as
+  appRoleAssignments; if any is missing, set `blocked: waiting on consent`, name them, and stop); `/opt/keel-live` has the
+  family (`test -f /opt/keel-live/tools/tenant-probe/catalog.d/admin-center-settings.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** reads only, with the collector credential. No grants, no role or config changes, nothing written.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. `node cli/keel-collect.mjs` once by hand (no `--tier`, so every tier is read). Report its exit code and every log line
+     that names one of the types below with an error or a 400/403/404.
+  2. ```sql
+     WITH s AS (SELECT id FROM snapshot ORDER BY started_at DESC LIMIT 1)
+     SELECT t.type, count(rv.resource_type) AS objects
+       FROM unnest('{formsSettings,todoSettings,microsoft365AppsInstallationOptions,appsAndServicesSettings,adminReportSettings,profileCardProperty,pronounsSettings,defenderDetectionRule,teamsCatalogApp,engageCommunity}'::text[]) AS t(type)
+       LEFT JOIN resource_version rv ON rv.resource_type = t.type AND rv.snapshot_id = (SELECT id FROM s)
+      GROUP BY t.type ORDER BY t.type;
+     ```
+     If the table or column names differ, take the snapshot step 1 made and report what you ran.
+  3. For each type, its outcome in that snapshot's coverage (complete / complete-empty / unavailable / failed) and, for a
+     failure, the HTTP status and Graph message (masked).
+  4. Field check: the top-level keys of the stored `formsSettings`, `todoSettings` and `adminReportSettings` payloads; for
+     `defenderDetectionRule`, the count and whether each payload has `queryCondition` and `detectionAction` (no query text in
+     the Result); for `teamsCatalogApp`, the count and whether each has `appDefinitions`. Compare the detection rule count
+     with the Defender portal's Custom detection rules list (a Microsoft Q&A thread says the API can return only part).
+- **Expected:** step 1 shows no error for the 10 types. Singletons: 1 object each, unless Graph answers 404 for a setting
+  never set up (then 0 and `complete-empty`). Lists: whatever the tenant has (0 is fine). Engage communities may answer
+  403/404 if Viva Engage is not set up: report it, change nothing.
+- **Report:** steps 1 to 4 verbatim, and the build.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

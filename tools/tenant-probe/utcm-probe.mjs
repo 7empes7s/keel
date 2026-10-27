@@ -29,6 +29,7 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 import { decodeRoles, getToken } from './auth.mjs';
 import { mask } from './delegated-probe.mjs';
 import { UTCM_TYPES, UTCM_WORKLOADS } from './utcm-types.mjs';
@@ -430,7 +431,7 @@ async function main(argv) {
     console.error('usage: utcm-probe.mjs check|run --config <tenant.json> --out <dir> [--workloads a,b] [--version v1.0] [--max-wait-seconds 2400] [--keep-jobs]');
     return 2;
   }
-  const config = JSON.parse(readFileSync(argValue(argv, '--config') ?? '/etc/keel/tenant.json', 'utf8'));
+  const config = readConfigFile(argValue(argv, '--config') ?? '/etc/keel/tenant.json', { readFile: readFileSync, what: 'collector settings' });
   const version = argValue(argv, '--version') ?? 'v1.0';
   let held = null;
   const token = async () => {

@@ -359,6 +359,32 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   (GUID). If the policies changed since K8, report what the lines show instead; a mismatch is a result: quote it and change nothing.
 - **Report:** the outputs above and the build. The portal panel (390/1440 px, light/dark) can't be opened from the box; say so.
 
+### K12: Live re-check that changes with nothing changed are gone (after #579)
+- Drafted by the "Stop listing changes with nothing changed" thread (2026-10-27). K10 found Ask listing `roleAssignmentSchedule` (51) and
+  `permissionGrantPolicy` (12) rows as modified with no changed fields: hashes stored before the 2026-10-15 server-owned rules (#288, #294).
+  #579 compares content, not stored hashes. Old rows are kept and marked with the new column `drift.same_content`
+  (`engine/store/schema.d/77-drift-same-content.sql`, applied by the deploy's schema step; it marks equal payloads at once). The next
+  drift detection (hourly) or policy evaluation checks the rest. Every list of changes leaves marked rows out.
+- Needs: /opt/keel-live at the #579 merge `37e5cfb` or later (`test -f /opt/keel-live/engine/store/schema.d/77-drift-same-content.sql`), and one
+  scheduled `drift-detect` job that succeeded after that deploy (`SELECT id, status, finished_at FROM job WHERE kind = 'drift-detect' ORDER BY created_at DESC LIMIT 1;`).
+  Wait for the scheduled one; do not queue a job.
+- Status: todo
+- Result:
+- **Tenant:** nothing. Read-only against Keel's own database.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a` (read-only SELECTs), tenantRef and scope as in K5:
+  1. Report the build, its deploy time, and the newest `drift-detect` job (id, status, finished_at).
+  2. `SELECT resource_type, same_content, count(*) FROM drift WHERE change_type = 'modified' AND resource_type IN ('roleAssignmentSchedule', 'permissionGrantPolicy') GROUP BY 1, 2 ORDER BY 1, 2;`
+     and `SELECT same_content, count(*) FROM drift WHERE change_type = 'modified' GROUP BY 1 ORDER BY 1;`
+  3. `SELECT count(*) FROM drift WHERE change_type = 'modified' AND before_payload IS NOT NULL AND before_payload = after_payload AND same_content IS NOT TRUE;` (expect 0).
+  4. Run K10's script (same `answerQuestion` call and JSON line per question, with `ms` and `modifiedWithoutFields`) for the same six questions, once.
+  5. Report `getOpenDriftCounts` (`status/queries.mjs`) for the tenant, and the same with `before` numbers if you still have them from earlier.
+- **Expected:** step 2 shows the 2026-10-17 rows as `same_content = true` (12 permissionGrantPolicy; about 1023 roleAssignmentSchedule,
+  less any with a real change), and no `NULL` left for modified rows that have both payloads. Step 3 is 0. Step 4: `modifiedWithoutFields` 0 on
+  every question, no timeout, every call under 1500 ms; totals drop by about the hidden rows (K10: 1912 / 1212 / 1471 / 476; controls 396 and 104
+  should not change unless new changes arrived).
+- **Report:** the outputs and the build. If any `modifiedWithoutFields` is above 0, give 3 sample drift ids and their `resource_type` and
+  `same_content`. Change nothing.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

@@ -127,7 +127,7 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
 - Drafted by the "Live checks for Oct 23–25 merges" thread (2026-10-27). #571: the worker passed `--db-url postgres://user:password@…`
   to every job, visible in `ps`. It now sets `KEEL_DB_URL` in the child's environment.
 - Needs: /opt/keel-live at the #571 merge (e17b36c) or later (`grep -q KEEL_DB_URL /opt/keel-live/cli/keel-worker.mjs`).
-- Status: todo
+- Status: in-progress
 - **Tenant:** nothing. Host reads only.
 - Do:
   1. While any worker job runs (the hourly Tier 1 collect is enough), run `ps -eo pid,args | grep -c -- '--db-url'` a few times and report the

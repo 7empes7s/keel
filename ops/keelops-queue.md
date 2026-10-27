@@ -309,6 +309,27 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
 - **Report:** the three outputs and the build. If a label is event-based and its EventType is still `unknown`, say so; that is a
   real gap, not this fix failing.
 
+### K10: Live re-check that the month-long Ask questions answer within the 5 s budget (after #577)
+- Drafted by the "Fix Ask timeouts on month questions" thread (2026-10-27). K5 found 4 of 16 Ask questions always cancelled by the
+  5 s statement timeout. #577 adds index `snapshot_complete_time_idx` (`engine/store/schema.d/76-snapshot-complete-time.sql`, applied
+  by the deploy's schema step) and reads each change's window start with an ordered walk on it. Locally: 6.8 s to 0.5 s, same answers.
+- Needs: /opt/keel-live at the #577 merge or later (`test -f /opt/keel-live/engine/store/schema.d/76-snapshot-complete-time.sql`).
+- Status: todo
+- Result:
+- **Tenant:** nothing. Read-only against Keel's own database.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`, tenantRef and scope as in K5:
+  1. Report the build and its deploy time, and that the index exists:
+     `SELECT indexname, indexdef FROM pg_indexes WHERE indexname = 'snapshot_complete_time_idx';` (expect 1 row).
+  2. Run K5's script (same `answerQuestion` call, same JSON line per question, plus `ms` = elapsed time around the call) for:
+     `What changed since the beginning of the month?`, `What changed since 17/10?`, `What changed in Azure AD this month?`,
+     `Which admins changed this month?`, and as controls `What changed between Oct 20 and Oct 25?` and `Which users have changed this month?`.
+     Run the list twice and report both runs' `ms`.
+- **Expected:** no `statement timeout`; every question well under 5000 ms (target under 1500 ms); `duplicates` 0 and `zeroWidth` 0;
+  modified rows list fields; the admins question shows its `assumed` reading; the two controls match K5's totals
+  (396 for Oct 20–25, 104 for users this month) unless new changes arrived since. If the index row is missing, the schema step
+  did not run: mark `blocked` and say so.
+- **Report:** the outputs above and the build. Change nothing.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

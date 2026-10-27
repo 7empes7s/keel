@@ -183,7 +183,7 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   replaced when a later restore of the same object opens the same step; `countOpenCompletionSteps` and the open-work list leave it out.
 - Needs: /opt/keel-live at the #565 merge (576295e) or later (`grep -q app-id /opt/keel-live/engine/graph/resolver.mjs`).
 - Approval: Marouane approved on 2026-10-27 (14:36 UTC, in the project thread) that keelops may run this item under the operator queue's test-tenant restore rules: self-approve, log each approval id, KEEL-RT- fixtures only.
-- Status: todo
+- Status: in-progress
 - **Tenant:** standing authorization (2026-10-14): self-approve and log the approval id. Restorer writes only the fixture below;
   Collector reads. **Never grant admin consent** and never add a secret or certificate to the fixture. No CA, no break-glass, not Marouane's account.
 - **Fixture:** app registration `KEEL-RT-app-perms` (single tenant, no redirect URI, no credentials), requesting Microsoft Graph

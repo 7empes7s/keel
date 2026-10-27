@@ -79,7 +79,7 @@ export async function resolveDryRuns(client, { tenantRef, ids }) {
       `SELECT d.id::text AS id, d.status, d.compensation IS NOT NULL AS is_undo,
               jsonb_array_length(d.closure_keys) AS resources, s.completed_at AS snapshot_at,
               d.workload_restore->>'workload' AS workload,
-              d.workload_restore->'source'->>'observedTo' AS source_at,
+              COALESCE(d.workload_restore->'source'->>'observedTo', d.workload_restore->'source'->>'storedAt') AS source_at,
               d.compliance_fix IS NOT NULL AS compliance_fix,
               jsonb_array_length(COALESCE(d.content_effects, '[]'::jsonb)) AS content_effects,
               (SELECT j.id::text FROM job j

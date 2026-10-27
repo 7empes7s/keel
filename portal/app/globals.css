@@ -8905,6 +8905,7 @@ section.wizard-panel {
 }
 .person-avatar[data-initials]::before { content: attr(data-initials); }
 .person-avatar[data-system] { background: var(--neutral-bg); color: var(--neutral); }
+.person-avatar[data-pseudonym] { background: var(--readonly-bg); color: var(--readonly); }
 .person-avatar .icon { width: 0.75rem; height: 0.75rem; }
 
 /* The shared list surface: no browser bullets or numbers, a 12 px card with 1 px
@@ -11697,6 +11698,25 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 }
 .ak-sum-label .badge { white-space: normal; text-align: left; }
 .ak-sum-card li { grid-template-columns: minmax(0, 1.7fr) minmax(1.5rem, 0.8fr) auto; }
+
+/* "Hide people's names" (Track A3): the strip on pages that name people, and the
+   setting card on People. Existing tokens only. */
+.anon-note { display: flex; gap: var(--space-sm); align-items: flex-start; margin: 0 0 var(--space-md); padding: var(--space-sm) var(--space-md); border: 1px solid color-mix(in oklab, var(--readonly) 38%, var(--line)); border-radius: var(--radius-md); background: var(--readonly-bg); color: var(--text); }
+.anon-note p { margin: 0; line-height: 1.5; }
+.anon-note .badge { margin-right: var(--space-xs); vertical-align: 1px; }
+.anon-note-icon { display: inline-grid; flex: none; place-items: center; width: 1.5rem; height: 1.5rem; color: var(--readonly); }
+.anon-note-icon .icon { width: 1rem; height: 1rem; }
+.anon-card { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-sm) var(--space-md); align-items: center; margin: 0 0 var(--space-md); padding: var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.anon-card[data-on] { border-color: color-mix(in oklab, var(--readonly) 45%, var(--line)); background: var(--readonly-bg); }
+.anon-card h2 { display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-sm); align-items: center; margin: 0; font-size: 1rem; }
+.anon-card p { margin: var(--space-xs) 0 0; color: var(--text-soft); line-height: 1.5; }
+.anon-card .anon-card-icon { display: inline-grid; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: var(--radius-pill); background: var(--surface-muted); color: var(--readonly); }
+.anon-card .anon-card-icon .icon { width: 1.125rem; height: 1.125rem; }
+.anon-card-error { grid-column: 1 / -1; margin: 0; color: var(--urgent); }
+@media (max-width: 640px) {
+  .anon-card { grid-template-columns: auto 1fr; }
+  .anon-card > .btn { grid-column: 1 / -1; justify-self: start; }
+}
 
 /* Integrations (settings restyle): destinations as grouped rows like the list kit, with
    the counts and actions in the side panel. Tokens only; `.ig-` prefix. */

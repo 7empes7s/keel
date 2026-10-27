@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { type ListSort } from "@/components/list/list-paging";
@@ -11,7 +11,7 @@ import { byTime } from "@/lib/paging";
 import { Segmented } from "@/components/pickers/segmented";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, RecordGroup, ReferenceFields, TechnicalDetails, type RecordValue } from "@/components/technical-details";
-import { refUsage } from "@/lib/record-refs";
+import { displayAccount, refUsage } from "@/lib/record-refs";
 import { Badge } from "@/components/ui/badge";
 import { Person } from "@/components/ui/person";
 import { Verdict } from "@/components/verdict";
@@ -102,7 +102,7 @@ function RequestRecordFields({ request }: { request: ApprovalRequestRecord }) {
       <RecordField copy={false} label="Action code" value={request.action} />
       <RecordField copy={false} label="Status" value={request.status} />
       <RecordField copy={false} label="Carried out by" usage={request.executor === "cli" ? "an operator runs it with the command line" : "Keel queues the job once approved"} value={request.executor ?? "worker"} />
-      <RecordField label="Requested by (account ID)" usage={refUsage(people.requested_by)} value={request.requestedBy} />
+      <RecordField label="Requested by (account ID)" usage={refUsage(people.requested_by)} value={displayAccount(request.requestedBy, people.requested_by)} />
       {request.justification ? <RecordField copy={false} label="Why it was asked for" value={request.justification} /> : null}
       <RecordField copy={false} label="Approvals needed" value={request.requiredApprovals ?? 1} />
       {request.signoffs?.length ? request.signoffs.map((person, index) => (
@@ -241,7 +241,10 @@ export function ApprovalInbox({
   history,
   now = new Date().toISOString(),
   viewerId = null,
+  notice = null,
 }: {
+  // A page-wide note shown under the verdict, such as "Names hidden".
+  notice?: ReactNode;
   pending: ApprovalRequestRecord[];
   awaitingContentEffects?: ApprovalRequestRecord[];
   history: ApprovalRequestRecord[];
@@ -521,6 +524,7 @@ export function ApprovalInbox({
         text={verdict.text}
         tone={verdict.tone}
       />
+      {notice}
       <div data-layer="explanation">
         <section aria-label="Requests by state" className="ap-tiles">
           {tiles.map((tile) => (

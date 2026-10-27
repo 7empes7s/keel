@@ -13,6 +13,8 @@ export interface EngineRef {
   readable: boolean;
   email?: string | null;
   system?: boolean;
+  // "Hide people's names" is on: name is a stable code name (engine/insights/people.mjs).
+  pseudonym?: boolean;
 }
 
 export interface PlanRef extends EngineRef {
@@ -277,6 +279,9 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
     case "benchmark-evaluation": return typeof subject.verdict === "string"
       ? `A control check ${subject.verdict === "pass" ? "passed" : subject.verdict === "fail" ? "failed" : "could not decide"}`
       : "A control check ran";
+    case "people-anonymity": return subject.enabled === true
+      ? `${actorName} turned on "Hide people's names"`
+      : `${actorName} turned off "Hide people's names", so names show again`;
     case "benchmark-exception": return `${actorName} ${subject.action === "revoke" || subject.revokedAt ? "withdrew" : "granted"} an exception to a control`;
     default: return `${actorName}: ${displayEnum("eventKind", entry.kind).toLowerCase()}`;
   }

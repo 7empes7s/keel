@@ -1,4 +1,6 @@
 import { resolvePrincipals } from "../../engine/govern/references.mjs";
+import { readNamer } from "../../engine/insights/anonymity.mjs";
+import { displayPerson } from "../../engine/insights/people.mjs";
 import { connect } from "@/lib/db";
 
 import type { NamedKeys } from "@/lib/job-names";
@@ -39,7 +41,10 @@ export async function getActivityNames(actors: string[], keys: (string | null)[]
   try {
     try {
       const people = (await resolvePrincipals(client, actors)) as Map<string, EngineRef>;
-      result.people = Object.fromEntries([...people].map(([id, ref]) => [id, asPerson(ref)]));
+      // An actor recorded by email only becomes a person here, so it is code-named here
+      // too when "Hide people's names" is on.
+      const namer = await readNamer(client);
+      result.people = Object.fromEntries([...people].map(([id, ref]) => [id, displayPerson(asPerson(ref), namer) as EngineRef]));
     } catch (error) {
       console.error("[keel-portal] activity people unavailable", error);
     }

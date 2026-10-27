@@ -719,7 +719,7 @@ const LIST_SETTINGS = new Set(["AllowedSenderDomains"]);
 
 /** A setting's value in words: Yes, No, Not set, or the value itself. A mail protection setting reads as its check shows it. */
 export function fixValue(value: unknown, field?: string): string {
-  if (field && SETTING_WORDS[field]) return settingValueWords(value === null && LIST_SETTINGS.has(field) ? [] : value);
+  if (field && SETTING_WORDS[field]) return settingValueWords(value === null && LIST_SETTINGS.has(field) ? [] : value, field);
   if (value === true) return "Yes";
   if (value === false) return "No";
   if (value === null || value === undefined || value === "") return "Not set";

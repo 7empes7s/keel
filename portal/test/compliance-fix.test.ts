@@ -56,7 +56,8 @@ test("Make it pass words: only a failing control with a fix, values in words, re
   assert.equal(canFixOn(FAILING, false), false, "only someone who may restore");
   assert.equal(fixAction(FAILING), "Stop trusting unknown countries");
   assert.equal(fixSetting(FAILING), "Takes in unknown countries");
-  assert.equal(fixSetting(finding("fail", { controlId: "custom.other" })), "Include Unknown Countries And Regions");
+  // The plain words follow the setting, whichever control checks it.
+  assert.equal(fixSetting(finding("fail", { controlId: "custom.other" })), "Takes in unknown countries");
   assert.deepEqual([fixValue(true), fixValue(false), fixValue(null), fixValue("on")], ["Yes", "No", "Not set", "on"]);
   assert.equal(fixObjectName(CANDIDATE), "KEEL-RT-Anywhere");
   assert.equal(fixObjectName({ ...CANDIDATE, name: null }), "A trusted location with no name");
@@ -197,6 +198,7 @@ test("a Defender email fix names each row's own setting and shows mail values in
   assert.match(fixEffect(spam) ?? "", /quarantine/);
   assert.deepEqual([fixValue(row.from, row.field), fixValue(row.to, row.field)], ["Junk folder", "Quarantine"]);
   assert.deepEqual([fixValue(false, "PhishZapEnabled"), fixValue(true, "PhishZapEnabled")], ["Off", "On"]);
+  assert.deepEqual([fixValue(true, "includeUnknownCountriesAndRegions"), fixValue(false, "includeUnknownCountriesAndRegions")], ["Yes", "No"], "a yes/no setting keeps its words in the fix");
   assert.deepEqual([fixValue(["fabrikam.example"], "AllowedSenderDomains"), fixValue(null, "AllowedSenderDomains")], ["fabrikam.example", "None"]);
   assert.equal(fixPlanProblem("compliance fix refused: the live read of antiSpamPolicy was denied, so anti-spam-policy:g could not be checked"), "Keel could not read this policy in the live tenant just now. Try again in a few minutes.");
 });

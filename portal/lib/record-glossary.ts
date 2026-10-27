@@ -441,6 +441,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Message": fact("Error message", "What went wrong, as Keel recorded it."),
   "Not listed": fact("Could not be listed", "Why discovery could not list this PowerShell area this run."),
   "Failing setting": fact("Failing setting", "A setting that fails this check: its value now, and the value expected."),
+  "Checked setting": fact("Setting that passes", "A setting this check read that meets the standard: its value now, and the value expected."),
   "Observation evidence": fact("How complete the read was", "Whether Keel read everything, and the proof."),
 
   // Overview.

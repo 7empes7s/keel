@@ -27,6 +27,7 @@
 // The run is journaled (schema.d/72-content-restore.sql): running the same request again
 // resumes it and writes nothing already restored.
 import { existsSync, readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { pathToFileURL } from 'node:url';
 
 import { getToken } from '../tools/tenant-probe/auth.mjs';
@@ -137,8 +138,8 @@ async function mailCommand(argv, { config, tenantRef, client, store, readFile, e
   if (!exists(restorerPath)) {
     throw new ContentRestoreRefusedError(`mail restore is waiting on the content-restorer app (admin consent for content writes): ${restorerPath} does not exist yet; nothing was written`);
   }
-  const restorer = JSON.parse(readFile(restorerPath));
-  const reader = exists(arg(argv, 'reader', DEFAULT_READER_PATH)) ? JSON.parse(readFile(arg(argv, 'reader', DEFAULT_READER_PATH))) : null;
+  const restorer = readConfigFile(restorerPath, { readFile, what: 'content restorer settings' });
+  const reader = exists(arg(argv, 'reader', DEFAULT_READER_PATH)) ? readConfigFile(arg(argv, 'reader', DEFAULT_READER_PATH), { readFile, what: 'content backup reader settings' }) : null;
   const problems = restorerProblems(restorer, config, reader);
   if (problems.length) throw new Error(`content restorer file ${restorerPath}: ${problems.join('; ')}`);
 
@@ -182,11 +183,11 @@ export async function main(argv = process.argv.slice(2), {
     logger.log(USAGE);
     return argv.length === 0 || argv.includes('--help') ? 0 : 2;
   }
-  const config = JSON.parse(readFile(arg(argv, 'config', '/etc/keel/tenant.json')));
+  const config = readConfigFile(arg(argv, 'config', '/etc/keel/tenant.json'), { readFile, what: 'collector settings' });
   const tenantRef = tenantRefFor(config.tenantId);
   const readerPath = arg(argv, 'reader', DEFAULT_READER_PATH);
   if (!exists(readerPath)) throw new Error(`content restore reads the content store named in ${readerPath}, which does not exist yet`);
-  const reader = JSON.parse(readFile(readerPath));
+  const reader = readConfigFile(readerPath, { readFile, what: 'content backup reader settings' });
   const problems = readerProblems(reader, config);
   if (problems.length) throw new Error(`content reader file ${readerPath}: ${problems.join('; ')}`);
   const dbUrl = arg(argv, 'db-url', env.KEEL_DB_URL);

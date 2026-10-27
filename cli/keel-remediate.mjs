@@ -15,6 +15,7 @@
 // restore scope.
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { pathToFileURL } from 'node:url';
 import { connect } from '../engine/store/db.mjs';
 import { buildRollbackPlan } from '../engine/govern/rollbackPlan.mjs';
@@ -216,10 +217,10 @@ export async function main({
   if (driftIds.length === 0) throw new Error('--drift-id <uuid> required (repeatable)');
   const targetConfigPath = arg('target-config', undefined, argv);
   if (!targetConfigPath) throw new Error('--target-config <path> required');
-  const targetConfig = JSON.parse(readFile(targetConfigPath, 'utf8'));
+  const targetConfig = readConfigFile(targetConfigPath, { readFile, what: 'restorer settings' });
   const collectorConfigPath = arg('collector-config', undefined, argv);
   if (!collectorConfigPath) throw new Error('--collector-config <path> required for read-only sign-in-path evidence');
-  const collectorConfig = JSON.parse(readFile(collectorConfigPath, 'utf8'));
+  const collectorConfig = readConfigFile(collectorConfigPath, { readFile, what: 'collector settings' });
   assertSeparateRestorer(collectorConfig, targetConfig);
   const mode = flag('enforce', argv) ? 'enforce' : 'dry-run';
 

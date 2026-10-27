@@ -3,6 +3,7 @@
 //
 // node keel-collect.mjs [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL] [--tier tier1|tier2|tier3]
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { pathToFileURL } from 'node:url';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { GraphReader } from '../tools/tenant-probe/graph.mjs';
@@ -197,7 +198,7 @@ export async function main({
   if (tier && !['tier1', 'tier2', 'tier3'].includes(tier)) {
     throw new Error('--tier must be tier1, tier2, or tier3');
   }
-  const config = JSON.parse(readFile(arg('config', '/etc/keel/tenant.json', argv), 'utf8'));
+  const config = readConfigFile(arg('config', '/etc/keel/tenant.json', argv), { readFile, what: 'collector settings' });
   const dbUrl = arg('db-url', process.env.KEEL_DB_URL, argv);
   const { exitCode } = await runCollect({ config, dbUrl, tier, dependencies, logger, readAudit: true });
   return exitCode;

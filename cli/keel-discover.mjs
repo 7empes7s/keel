@@ -33,6 +33,7 @@
 //         than the config names is refused before any request.
 //   show  prints the latest stored run: totals, then every uncatalogued and unreadable type.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -126,7 +127,7 @@ export async function main(argv = process.argv.slice(2), {
     logger.log('usage: keel-discover.mjs run|show [--config FILE] [--db-url URL] [--versions v1.0,beta] [--metadata-dir DIR] [--powershell-commands FILE | --no-powershell] [--scope FILE] [--out FILE] [--no-store] [--tenant-ref REF]');
     return command === undefined || argv.includes('--help') ? 0 : 2;
   }
-  const config = JSON.parse(readFile(arg(argv, 'config', '/etc/keel/tenant.json')));
+  const config = readConfigFile(arg(argv, 'config', '/etc/keel/tenant.json'), { readFile, what: 'collector settings' });
   const tenantRef = tenantRefFor(config.tenantId);
   const requested = arg(argv, 'tenant-ref');
   if (requested !== undefined && requested !== tenantRef) {
@@ -162,7 +163,7 @@ export async function main(argv = process.argv.slice(2), {
   }
   if (!commandsPath && !argv.includes('--no-powershell')) {
     const scopePath = arg(argv, 'scope', DEFAULT_SCOPE_PATH);
-    const scope = arg(argv, 'scope') !== undefined || existsFn(scopePath) ? JSON.parse(readFile(scopePath)) : {};
+    const scope = arg(argv, 'scope') !== undefined || existsFn(scopePath) ? readConfigFile(scopePath, { readFile, what: 'workload scope' }) : {};
     ({ commands: powershellCommands, errors: powershellErrors } = await listCommandsFn({
       tenantConfigPath: arg(argv, 'config', '/etc/keel/tenant.json'),
       familyConfigPaths: powershellConfigPaths(scope, { config, readFile }),

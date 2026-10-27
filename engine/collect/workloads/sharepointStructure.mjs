@@ -61,7 +61,7 @@ export const FAMILIES = Object.freeze({
   siteTemplate: Object.freeze({
     operation: 'sharepoint-structure.site-templates', cmdlet: 'Get-PnPSiteTemplate', prefix: 'site-template',
     fields: Object.freeze([
-      'url', 'title', 'webSettings', 'regionalSettings', 'lists', 'contentTypes', 'siteColumns', 'navigation', 'features',
+      'url', 'title', 'webSettings', 'regionalSettings', 'lists', 'contentTypes', 'siteColumns', 'navigation', 'siteFeatures', 'webFeatures',
       'templateXml', 'templateSha256', 'templateBytes',
     ]),
   }),
@@ -181,13 +181,18 @@ const LIST_ATTRIBUTES = ['Title', 'Url', 'TemplateType', 'Description', 'OnQuick
 function listSummary(attributes, body) {
   const columns = startTags(section(body, 'pnp:Fields'), 'Field').map((field) => field.Name ?? field.StaticName ?? field.DisplayName).filter(Boolean);
   const views = startTags(section(body, 'pnp:Views'), 'View').map((view) => view.DisplayName ?? view.Url).filter(Boolean);
+  // Site columns added to the list are references, not list fields.
+  const siteColumns = startTags(body, 'pnp:FieldRef').map((ref) => ref.Name ?? ref.ID).filter(Boolean);
   return {
     ...pick(attributes, LIST_ATTRIBUTES),
     contentTypes: startTags(body, 'pnp:ContentTypeBinding').map((binding) => binding.ContentTypeID).filter(Boolean),
     columns: columns.sort(),
+    siteColumns: siteColumns.sort(),
     views: views.sort(),
   };
 }
+
+const features = (xml) => startTags(xml, 'pnp:Feature').map((feature) => pick(feature, ['ID', 'Deactivate'])).filter((feature) => feature.ID).sort(byText('ID'));
 
 /**
  * Reads a PnP site template's summaries: what a person compares, field by field. The
@@ -208,7 +213,8 @@ export function templateSummary(xml) {
     siteColumns: startTags(section(xml, 'pnp:SiteFields'), 'Field').map((field) => pick(field, ['ID', 'Name', 'StaticName', 'DisplayName', 'Type', 'Group', 'Required', 'Hidden']))
       .filter((field) => field.ID || field.Name).sort(byText('Name')),
     navigation: startTags(xml, 'pnp:NavigationNode').map((node) => pick(node, ['Title', 'Url', 'IsExternal'])),
-    features: startTags(xml, 'pnp:Feature').map((feature) => pick(feature, ['ID', 'Deactivate'])).filter((feature) => feature.ID).sort(byText('ID')),
+    siteFeatures: features(section(xml, 'pnp:SiteFeatures')),
+    webFeatures: features(section(xml, 'pnp:WebFeatures')),
   };
 }
 
@@ -249,13 +255,10 @@ async function readSiteTemplate(url, powershell) {
 async function readSiteTemplates({ powershell, sites, tenantHost, maxSites }) {
   const spec = FAMILIES.siteTemplate;
   if (!Array.isArray(sites)) throw new TypeError('sites must be a list of site URLs');
-  if (sites.length === 0) {
-    return emptyRead({
-      failure: {
-        family: 'siteTemplate', operation: spec.operation, status: 'not-configured',
-        error: { code: 'NO_SITES', message: 'no sites are named for the structure backup (sharepointStructureSites in the workload scope file)' },
-      },
-    });
+  const notConfigured = (code, message) => emptyRead({ failure: { family: 'siteTemplate', operation: spec.operation, status: 'not-configured', error: { code, message } } });
+  if (sites.length === 0) return notConfigured('NO_SITES', 'no sites are named for the structure backup (sharepointStructureSites in the workload scope file)');
+  if (typeof tenantHost !== 'string' || !/^[a-z0-9-]+\.sharepoint\.com$/i.test(tenantHost)) {
+    return notConfigured('NO_HOST', 'the workload scope file names no SharePoint host (sharepointHost), so the named sites cannot be checked');
   }
   const failures = [];
   const named = [];
@@ -308,6 +311,12 @@ async function readSiteScripts({ powershell, maxObjects }) {
   for (const id of ids.slice(0, maxObjects)) {
     try {
       const { output } = await sharePointStructureCmdlet({ cmdlet: spec.cmdlet, parameters: { Identity: id } }, powershell);
+      if (output.length !== 1) {
+        throw new CmdletError(`${spec.cmdlet}: ${output.length} scripts answered one id`, {
+          code: output.length ? 'AMBIGUOUS_IDENTITY' : 'NOT_FOUND', cmdlet: spec.cmdlet, message: `${output.length} scripts answered one id; KEEL reads exactly one`,
+          category: null, errorId: null, exitCode: 0, stderr: null, jobId: null,
+        });
+      }
       answers.push(...output);
     } catch (error) {
       failures.push({ family: 'siteScript', operation: spec.operation, ...structuredFailure(error) });

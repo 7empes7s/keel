@@ -242,14 +242,15 @@ $AllowedPnP = @{
 # connect to, and must be the tenant root or a /sites/ or /teams/ site collection root on
 # the tenant's own host (Get-KeelSiteUrl). The template handlers are fixed here, never
 # taken from the job: structure only, no Files, Pages, PageContents, TermGroups,
-# PropertyBagEntries or Publishing.
+# PropertyBagEntries, Publishing or SiteSecurity (people and permissions are backed up elsewhere,
+# and a restore must never send them).
 $AllowedPnPStructure = @{
     'Get-PnPHubSite'      = @()
     'Get-PnPSiteDesign'   = @()
     'Get-PnPSiteScript'   = @('Identity')
     'Get-PnPSiteTemplate' = @('Url')
 }
-$SiteTemplateHandlers = 'Fields, ContentTypes, Lists, Navigation, Features, RegionalSettings, SupportedUILanguages, WebSettings, SiteSecurity, SiteHeader, SiteFooter, CustomActions'
+$SiteTemplateHandlers = 'Fields, ContentTypes, Lists, Navigation, Features, RegionalSettings, SupportedUILanguages, WebSettings, SiteHeader, SiteFooter, CustomActions'
 
 # The site a template job connects to, normalized, or $null when it is not a site
 # collection root on the host of the configured admin site (contoso-admin.sharepoint.com

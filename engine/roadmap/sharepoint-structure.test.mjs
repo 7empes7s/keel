@@ -72,6 +72,7 @@ function template({ id = 'TEMPLATE-1', generator = 'PnP.Framework, 1.17.0', list
           <pnp:ContentTypeBindings><pnp:ContentTypeBinding ContentTypeID="0x0101" Default="true" /></pnp:ContentTypeBindings>
           <pnp:Views><View DisplayName="All Documents" Url="Forms/AllItems.aspx" /></pnp:Views>
           <pnp:Fields><Field ID="{11111111-0000-4000-8000-000000000001}" Name="KeelRtStatus" StaticName="KeelRtStatus" DisplayName="Status" Type="Choice" /></pnp:Fields>
+          <pnp:FieldRefs><pnp:FieldRef ID="22222222-0000-4000-8000-000000000002" Name="KeelRtProject" /></pnp:FieldRefs>
         </pnp:ListInstance>`).join('');
   const navXml = navigation.map((title) => `<pnp:NavigationNode Title="${title}" Url="/sites/KEEL-RT-structure" IsExternal="false" />`).join('');
   return `<?xml version="1.0"?>
@@ -89,7 +90,7 @@ function template({ id = 'TEMPLATE-1', generator = 'PnP.Framework, 1.17.0', list
       </pnp:ContentTypes>
       <pnp:Lists>${listXml}
       </pnp:Lists>
-      <pnp:Features><pnp:WebFeatures><pnp:Feature ID="87294c72-f260-42f3-a41b-981a2ffce37a" /></pnp:WebFeatures></pnp:Features>
+      <pnp:Features><pnp:SiteFeatures><pnp:Feature ID="b50e3104-6812-424f-a011-cc90e6327318" /></pnp:SiteFeatures><pnp:WebFeatures><pnp:Feature ID="87294c72-f260-42f3-a41b-981a2ffce37a" /></pnp:WebFeatures></pnp:Features>
       <pnp:Navigation><pnp:CurrentNavigation NavigationType="StructuralLocal"><pnp:StructuralNavigation RemoveExistingNodes="true">${navXml}</pnp:StructuralNavigation></pnp:CurrentNavigation></pnp:Navigation>
     </pnp:ProvisioningTemplate>
   </pnp:Templates>
@@ -161,7 +162,7 @@ test('the reads are declared, in scope, probed, Get-only and ship disabled', asy
 test('the container reads structure only, on a site collection root of the tenant host', () => {
   const handlers = /\$SiteTemplateHandlers = '([^']+)'/.exec(SCRIPT)[1].split(',').map((name) => name.trim());
   assert.ok(handlers.includes('Lists') && handlers.includes('Fields') && handlers.includes('ContentTypes') && handlers.includes('Navigation'));
-  for (const content of ['All', 'Files', 'Pages', 'PageContents', 'TermGroups', 'PropertyBagEntries', 'Publishing', 'Workflows']) {
+  for (const content of ['All', 'SiteSecurity', 'Files', 'Pages', 'PageContents', 'TermGroups', 'PropertyBagEntries', 'Publishing', 'Workflows']) {
     assert.ok(!handlers.includes(content), `${content} is never exported`);
   }
   // -Url is consumed by the connection and the handlers are set by the container, never the job.
@@ -206,12 +207,13 @@ test('each object is one observation with declared fields; scripts are read by i
   assert.equal(site.fields.title, 'KEEL-RT structure & columns');
   assert.deepEqual(site.fields.lists, [{
     Title: 'Documents', Url: 'Documents', TemplateType: '101', Description: '', OnQuickLaunch: 'true', EnableVersioning: 'true', MaxVersionLimit: '500',
-    contentTypes: ['0x0101'], columns: ['KeelRtStatus'], views: ['All Documents'],
+    contentTypes: ['0x0101'], columns: ['KeelRtStatus'], siteColumns: ['KeelRtProject'], views: ['All Documents'],
   }]);
   assert.deepEqual(site.fields.contentTypes, [{ ID: '0x0100AA', Name: 'KEEL-RT item', Group: 'KEEL-RT types', Description: '' }]);
   assert.deepEqual(site.fields.siteColumns.map((field) => field.Name), ['KeelRtProject'], 'list columns are not site columns');
   assert.deepEqual(site.fields.navigation, [{ Title: 'Home', Url: '/sites/KEEL-RT-structure', IsExternal: 'false' }]);
-  assert.deepEqual(site.fields.features, [{ ID: '87294c72-f260-42f3-a41b-981a2ffce37a' }]);
+  assert.deepEqual(site.fields.siteFeatures, [{ ID: 'b50e3104-6812-424f-a011-cc90e6327318' }]);
+  assert.deepEqual(site.fields.webFeatures, [{ ID: '87294c72-f260-42f3-a41b-981a2ffce37a' }]);
   assert.equal(site.fields.regionalSettings.LocaleId, '1033');
   assert.equal(gunzipSync(Buffer.from(site.fields.templateXml, 'base64')).toString('utf8'), template(), 'the whole template is kept for a restore');
   assert.equal(site.fields.templateBytes, Buffer.byteLength(template()));
@@ -249,6 +251,13 @@ test('templates: no site named, a site out of scope, a bad or huge answer and a 
     assert.equal(bad.failures[0].error.code, code);
   }
 
+  // A scope file naming sites but no host: the templates say why, the other reads still run.
+  const noHost = await read(fakeTenant(), { tenantHost: null });
+  assert.equal(noHost.outcome, 'partial');
+  assert.equal(noHost.discovery.families.siteTemplate.status, 'not-configured');
+  assert.equal(noHost.discovery.families.hubSite.status, 'read');
+  assert.equal(noHost.failures[0].error.code, 'NO_HOST');
+
   const capped = await read(fakeTenant(), { families: ['siteTemplate'], sites: [SITE, `https://${HOST}/sites/KEEL-RT-two`], maxSites: 1 });
   assert.equal(capped.outcome, 'partial');
   assert.equal(capped.discovery.capped, true);
@@ -261,6 +270,11 @@ test('hub sites, designs and scripts: an empty tenant is complete, a failure is 
   assert.equal(denied.outcome, 'failed');
   assert.equal(denied.failures[0].status, 'denied');
   // An answer KEEL cannot identify is never kept as an empty success.
+  // A script deleted between the list and its read is a failure, not a quiet gap.
+  const vanished = fakeCmdletContainer({ module: 'PnP.PowerShell', allowlist: ALLOWED, answer: (cmdlet, parameters) => (parameters.Identity ? [] : [SCRIPT_LISTED]) });
+  const gone = await readSharePointStructure({ powershell: vanished.powershell, families: ['siteScript'], now: () => NOW });
+  assert.equal(gone.outcome, 'failed');
+  assert.equal(gone.failures[0].error.code, 'NOT_FOUND');
   const unidentified = await read(fakeTenant({ designs: [{ ...DESIGN, Id: 'nope' }] }), { families: ['siteDesign'] });
   assert.equal(unidentified.outcome, 'failed');
   const someUnidentified = await read(fakeTenant({ designs: [DESIGN, { ...DESIGN, Id: 'nope' }] }), { families: ['siteDesign'] });

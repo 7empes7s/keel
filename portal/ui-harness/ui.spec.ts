@@ -58,6 +58,9 @@ const PAGES = [
   { name: "drift-names-hidden", hash: "/drift/anonymous" },
   { name: "principals-names-hidden", hash: "/principals/anonymity" },
   { name: "principals-names-shown", hash: "/principals/anonymity-off" },
+  { name: "alerts-names-hidden", hash: "/alerts/anonymous" },
+  { name: "policies-names-hidden", hash: "/policies/anonymous" },
+  { name: "benchmarks-names-hidden", hash: "/benchmarks/anonymous" },
   { name: "sites", hash: "/sites" },
   { name: "site", hash: "/sites/contoso.sharepoint.com%2C5e170000-0000-4000-8000-000000000001%2C5e170000-0000-4000-8000-000000000002" },
 ];
@@ -4633,11 +4636,21 @@ test("Compliance · measure against a known standard, write your own check, remo
 // of a person reach Changes, Activity or Approvals: not in the text, not in hover titles,
 // not in avatars and not inside Technical details. Code names show instead, and each
 // page says names are hidden.
-const REAL_PEOPLE = /Amara|Okafor|Sam Ortiz|Ortiz|Lee Chen|Marouane|Defili|marouanedefili|ops@contoso|@contoso\.example|@gmail\.com/i;
+// Every person the fixtures name, by name or address. Shared mailboxes a channel sends to
+// (secops@contoso.com on Notifications) are destinations, not people, and stay.
+const REAL_PEOPLE = /Amara|Okafor|Sam Ortiz|Ortiz|Lee Chen|Marouane|Defili|marouanedefili|Dana Reyes|On-call engineer|Ops Team|Policy service account|svc-policy|\bops@contoso|@contoso\.example|@gmail\.com/i;
 for (const { hash, label } of [
   { hash: "/drift/anonymous", label: "Changes" },
   { hash: "/activity/anonymous", label: "Activity" },
   { hash: "/approvals/anonymous", label: "Approvals" },
+  { hash: "/alerts/anonymous", label: "Alerts" },
+  { hash: "/emergency-changes/anonymous", label: "Emergency changes" },
+  { hash: "/policies/anonymous", label: "Automatic rules" },
+  { hash: "/policies/p2/anonymous", label: "One automatic rule and its turn-on check" },
+  { hash: "/schedules/anonymous", label: "Schedules" },
+  { hash: "/notifications/anonymous", label: "Notifications" },
+  { hash: "/benchmarks/anonymous", label: "Compliance" },
+  { hash: "/setup/anonymous", label: "Setup" },
 ]) {
   test(`names hidden · ${label} shows code names and no real name anywhere`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });

@@ -11,6 +11,8 @@ import { withWorkloadKinds } from "@/lib/protect-view";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import { serviceStatuses, type ServiceStatus } from "@/lib/setup-services";
 import { setupStatus, type SetupState } from "@/lib/setup-view";
+import { AnonymityNote } from "@/components/anonymity-note";
+import { getAnonymitySetting } from "@/lib/anonymity";
 
 const DESCRIPTION = "Connect Keel to your Microsoft tenant: what is in place, what waits on you, and when the first backup can run.";
 
@@ -38,6 +40,7 @@ export default async function SetupPage() {
   }
   return <>
     <PageHeader actions={<CheckAgain />} section="Settings" title="Setup" description={DESCRIPTION} generatedAt={data.generatedAt} status={setupStatus(data)} />
+    <AnonymityNote setting={await getAnonymitySetting()} />
     <SetupBody
       canBackup={access.capabilities.includes("collect")}
       canStart={access.capabilities.includes("approve")}

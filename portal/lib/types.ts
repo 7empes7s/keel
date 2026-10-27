@@ -658,4 +658,6 @@ export interface Ref {
   id: string;
   name: string;
   href: string | null;
+  // "Hide people's names" is on and name is a person's code name.
+  pseudonym?: boolean;
 }

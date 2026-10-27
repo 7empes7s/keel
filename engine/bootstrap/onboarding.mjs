@@ -8,6 +8,8 @@ import { planBootstrap } from './plan.mjs';
 import { registeredWorkloads } from './prerequisites.mjs';
 import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICES } from './permissionCatalog.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
+import { readNamer } from '../insights/anonymity.mjs';
+import { displayPerson } from '../insights/people.mjs';
 
 // Two separate setups, one per credential. Read-only setup never asks for a
 // write grant, so a pending restore prerequisite cannot hold up collection.
@@ -168,6 +170,8 @@ export async function loadSetupState(client, { tenantRef, viewerId, readers = nu
   assertTenantRef(tenantRef);
   const journal = await journalTablesExist(client);
   const scopes = [];
+  // "Hide people's names": read once, only when a run names who started it.
+  let namer;
   for (const scope of Object.keys(SETUP_SCOPES)) {
     const identity = SETUP_SCOPES[scope];
     const workloads = workloadsForScope(scope);
@@ -182,7 +186,9 @@ export async function loadSetupState(client, { tenantRef, viewerId, readers = nu
           state: runState(run.events),
           workloads: run.row.artifact.plan.workloads,
           approvedBy: run.row.approved_by,
-          approvedByName: run.row.display_name ?? run.row.email ?? null,
+          approvedByName: run.row.display_name || run.row.email
+            ? displayPerson({ kind: 'person', id: run.row.approved_by, name: run.row.display_name ?? run.row.email, email: run.row.email ?? null, readable: true, system: false }, namer ??= await readNamer(client)).name
+            : null,
           approvedAt: new Date(run.row.created_at).toISOString(),
           lastEventAt: run.events.length ? new Date(run.events.at(-1).created_at).toISOString() : null,
           resumableByViewer: run.row.approved_by === viewerId,

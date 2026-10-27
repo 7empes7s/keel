@@ -18,6 +18,7 @@ import {
   canFixOn,
   canGrantOn,
   checkSubjectWord,
+  checkCounts,
   controlChecks,
   controlName,
   controlService,
@@ -38,7 +39,7 @@ import {
   standardName,
 } from "@/lib/compliance-view";
 import { ago, formatTimestamp } from "@/lib/presentation";
-import type { ControlCheck } from "@/lib/compliance-view";
+import type { CheckCounts, ControlCheck } from "@/lib/compliance-view";
 import type { SheetStep } from "@/lib/sheet-step";
 import { toast } from "@/lib/toast";
 import type { ComplianceFinding } from "@/lib/types";
@@ -138,7 +139,7 @@ export function ControlSheet({ finding, now, canConfigure, canRestore = false, g
         {result === "unknown" ? <p className="cp-muted">{NOT_RUN_YET}</p> : null}
         {result === "not-set-up" ? <p className="cp-callout" data-tone="soon"><Icon name="plus" />{NOT_SET_UP_HELP}</p> : null}
 
-        {checks.length ? <ControlChecks checks={checks} key={finding.id} subject={checkSubjectWord(finding)} /> : null}
+        {checks.length ? <ControlChecks checks={checks} counts={checkCounts(finding)} key={finding.id} subject={checkSubjectWord(finding)} /> : null}
 
         {finding.exception ? (
           <section aria-labelledby="cp-exception-heading" className="cp-block">
@@ -184,25 +185,31 @@ export function ControlSheet({ finding, now, canConfigure, canRestore = false, g
 
 // Expected against current for each setting the control checked. Failing rows come first
 // and are highlighted; when some fail, the ones that meet the standard wait behind the
-// "Show every setting" switch, as on the Changes panel.
-function ControlChecks({ checks, subject }: { checks: ControlCheck[]; subject: string }) {
-  const failing = checks.filter((check) => !check.ok).length;
-  const passing = checks.length - failing;
+// "Show every setting" switch, as on the Changes panel. The counts cover every setting
+// checked, even past the 50 lines a result keeps; a note says when the list is cut.
+function ControlChecks({ checks, counts, subject }: { checks: ControlCheck[]; counts: CheckCounts; subject: string }) {
+  const { checked, failing, passing } = counts;
   const [every, setEvery] = useState(false);
   const shown = failing && !every ? checks.filter((check) => !check.ok) : checks;
+  const cut = checked > counts.listed;
   return (
     <section aria-labelledby="cp-checks-heading" className="cp-block">
       <h3 id="cp-checks-heading">
         {failing ? "What fails" : "Settings checked"}{" "}
-        {failing ? <Badge tone="urgent">{failing === 1 ? "1 setting" : `${failing} settings`}</Badge> : null}{" "}
-        {passing ? <Badge tone="fine">{failing ? `${passing} meet the standard` : passing === 1 ? "Meets the standard" : `All ${passing} meet the standard`}</Badge> : null}
+        {failing ? <Badge tone="urgent">{failing === 1 ? "1 setting" : `${failing.toLocaleString("en-GB")} settings`}</Badge> : null}{" "}
+        {passing ? <Badge tone="fine">{failing ? `${passing.toLocaleString("en-GB")} meet the standard` : passing === 1 ? "Meets the standard" : `All ${passing.toLocaleString("en-GB")} meet the standard`}</Badge> : null}
       </h3>
       {failing && passing ? (
         <div className="cp-checks-tools">
           <ChangeComparisonStyles />
-          <EveryToggle on={every} onChange={setEvery} total={checks.length} />
-          {every ? null : <small>Hidden: {passing === 1 ? "1 setting meets" : `${passing} settings meet`} the standard.</small>}
+          <EveryToggle on={every} onChange={setEvery} total={checked} />
+          {every ? null : <small>Hidden: {passing === 1 ? "1 setting meets" : `${passing.toLocaleString("en-GB")} settings meet`} the standard.</small>}
         </div>
+      ) : null}
+      {cut && (every || !failing || failing > shown.length) ? (
+        <p className="cp-callout" data-cut="true">
+          <Icon name="info" /><span>The list shows the first {counts.listed.toLocaleString("en-GB")} of the {checked.toLocaleString("en-GB")} settings checked{failing ? ", failing ones first" : ""}. The counts above cover them all.</span>
+        </p>
       ) : null}
       <table className="cp-misses">
         <thead><tr><th scope="col">{subject}</th><th scope="col">Setting</th><th scope="col">Now</th><th scope="col">Should be</th></tr></thead>

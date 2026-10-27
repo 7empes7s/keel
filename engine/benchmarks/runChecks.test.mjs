@@ -134,6 +134,41 @@ test('each identity control records expected and current values for what it chec
   assert.deepEqual(findings.find((finding) => finding.controlId === LOCATION).details.map((line) => line.ok), [false, true]);
 });
 
+test('a control that checks more than 50 settings keeps the full count of what meets the standard', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenant();
+  const now = new Date();
+  // 60 trusted locations; the last 3 take in unknown countries, so 57 meet the standard.
+  const locations = Array.from({ length: 60 }, (_, index) => [
+    `namedLocation:L${index}`,
+    { id: `l${index}`, displayName: `KEEL-RT-Location ${String(index).padStart(2, '0')}`, isTrusted: true, includeUnknownCountriesAndRegions: index >= 57 },
+  ]);
+  await snapshot(client, tenantRef, new Date(now.getTime() - HOUR), { namedLocation: 'complete' }, locations);
+  const result = await runComplianceChecks(client, { tenantRef, actor: 'scheduler', now });
+  const stored = result.evaluations.find((evaluation) => evaluation.control_id === LOCATION);
+  assert.equal(stored.verdict, 'fail');
+  // The lines stay capped at 50, failures first, but the counts cover all 60.
+  assert.equal(stored.details.length, 50);
+  assert.deepEqual(stored.details.slice(0, 3).map((line) => line.ok), [false, false, false]);
+  assert.deepEqual(stored.detail_counts, { checked: 60, failing: 3 });
+  const { findings } = await complianceFindings(client, { tenantRef, now });
+  const finding = findings.find((entry) => entry.controlId === LOCATION);
+  assert.equal(finding.details.length, 50);
+  assert.deepEqual(finding.detailCounts, { checked: 60, failing: 3 });
+});
+
+test('a result stored before the counts existed reads back with no counts', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenant();
+  await client.query(
+    `INSERT INTO benchmark_evaluation (tenant_ref, control_id, framework, edition, profile, evaluator_version, verdict, evidence_refs, observation_windows, evaluated_at, details)
+     VALUES ($1, $2, 'keel-custom', '1.0.0', 'default', 1, 'pass', '[]', '[]', now(), $3)`,
+    [tenantRef, LOCATION, JSON.stringify([{ subject: 'Office', setting: 'includeUnknownCountriesAndRegions', value: false, expected: false, ok: true }])],
+  );
+  const { findings } = await complianceFindings(client, { tenantRef, now: new Date() });
+  assert.equal(findings[0].detailCounts, null);
+});
+
 test('a result stored before passing lines existed reads back as failing lines', async (t) => {
   const client = await schemaClient(t);
   const tenantRef = tenant();

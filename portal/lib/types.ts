@@ -300,6 +300,9 @@ export interface ComplianceFinding {
   reason: string | null;
   // Each setting the control checked, current against expected (engine/benchmarks/evaluate.mjs details).
   details?: ComplianceDetail[];
+  // How many settings it checked and how many failed, before the lines were cut to 50.
+  // Null for results stored before the counts existed.
+  detailCounts?: { checked: number; failing: number } | null;
   evaluatedAt: string | null;
   evidenceSeq: string | null;
   exceptionState: "none" | "authorized" | "expired" | "incomplete";

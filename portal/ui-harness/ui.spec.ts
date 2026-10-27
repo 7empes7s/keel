@@ -3435,6 +3435,36 @@ test("Compliance · Defender make it pass: one row per failing setting, in plain
   for (const word of ["PhishSpamAction", "AddXHeader", "MoveToJmf", "anti-spam-policy", "0c0f5000"]) expect(visible).not.toContain(word);
 });
 
+test("Compliance · a control that checked more than 50 settings counts them all and says the list is cut", async ({ page }) => {
+  for (const [width, theme] of [[1440, "dark"], [390, "light"]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    // Failing: 60 trusted locations checked, 3 fail, 50 lines kept.
+    await open(page, "/benchmarks/many?open=e7a10000-0000-4000-8000-0000000000e2", theme);
+    let sheet = page.getByRole("dialog", { name: /unknown countries/i });
+    const heading = sheet.locator("#cp-checks-heading");
+    await expect(heading).toContainText("3 settings");
+    await expect(heading).toContainText("57 meet the standard");
+    const every = sheet.getByRole("switch", { name: /Show every setting/ });
+    await expect(every).toContainText("60 in all");
+    await expect(sheet).toContainText("Hidden: 57 settings meet the standard.");
+    await expect(sheet.locator(".cp-misses tbody tr")).toHaveCount(3);
+    await expect(sheet.locator('[data-cut="true"]')).toHaveCount(0);
+    await every.click();
+    await expect(sheet.locator(".cp-misses tbody tr")).toHaveCount(50);
+    await expect(sheet.locator('[data-cut="true"]')).toHaveText("The list shows the first 50 of the 60 settings checked, failing ones first. The counts above cover them all.");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+
+    // Passing: 70 policies checked, 50 lines kept.
+    await open(page, "/benchmarks/many?open=e7a10000-0000-4000-8000-0000000000f2", theme);
+    sheet = page.getByRole("dialog", { name: "Risky attachment types are blocked" });
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("All 70 meet the standard");
+    await expect(sheet.locator(".cp-misses tbody tr")).toHaveCount(50);
+    await expect(sheet.locator('[data-cut="true"]')).toHaveText("The list shows the first 50 of the 70 settings checked. The counts above cover them all.");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
+  }
+});
+
 test("Compliance · a passing control shows expected against current for each setting it checked", async ({ page }) => {
   for (const [width, theme] of [[1440, "dark"], [390, "light"]] as const) {
     await page.setViewportSize({ width, height: 900 });
@@ -3505,7 +3535,7 @@ test("Compliance · phone: pass and fail tiles per service open the same panel",
 
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
-    for (const hash of ["/benchmarks", "/benchmarks/empty", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e2", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks/defender", "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1", "/benchmarks/own", "/benchmarks/own?open=e7a10000-0000-4000-8000-0000000000a7", "/benchmarks/own?own=new"]) {
+    for (const hash of ["/benchmarks", "/benchmarks/empty", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e2", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks/defender", "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1", "/benchmarks/own", "/benchmarks/own?open=e7a10000-0000-4000-8000-0000000000a7", "/benchmarks/own?own=new", "/benchmarks/many?open=e7a10000-0000-4000-8000-0000000000e2"]) {
       test(`Compliance · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await open(page, hash, theme);

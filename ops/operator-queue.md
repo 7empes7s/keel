@@ -8071,7 +8071,7 @@ item that needs it stays untouched.
   The fix is section 1 of `~keelops/agent-src/ROOT-STEPS.md` (setfacl on `/etc/keel` and its files), which needs root.
 - Approval: Marouane asked on 2026-10-27 (14:37 UTC, project thread) that the agents do this rather than him.
 - Needs: nothing.
-- Status: todo
+- Status: not needed (2026-10-27 15:45 UTC: keelops can already read /etc/keel; it ran K2–K5 with db.env at 15:25. keel-operator, skip this item)
 - **Tenant:** nothing.
 - Do, as root:
   1. Read section 1 of `~keelops/agent-src/ROOT-STEPS.md`. Run **only** section 1, exactly as written, if it only grants keelops read

@@ -272,6 +272,26 @@ export function checkCounts(finding: ComplianceFinding): CheckCounts {
   return { checked, failing, passing: checked - failing, listed: lines.length, exact: Boolean(stored) };
 }
 
+/**
+ * The totals the "Technical details" record shows beside the kept lines: how many
+ * settings were checked and failed, and how many lines are listed when the list is cut.
+ * A result stored before the counts existed with a full list of 50 lines says "or more".
+ * null when the control listed no settings.
+ */
+export function checkCountRecord(finding: ComplianceFinding): { checked: string; failing: string; listed: string | null } | null {
+  const counts = checkCounts(finding);
+  if (!counts.checked) return null;
+  const capped = !counts.exact && counts.listed >= CHECK_LINE_LIMIT;
+  const words = (value: number, more: boolean) => `${value.toLocaleString("en-GB")}${more ? " or more" : ""}`;
+  return {
+    checked: words(counts.checked, capped),
+    failing: words(counts.failing, capped && counts.failing === counts.listed),
+    listed: counts.listed < counts.checked || capped
+      ? `First ${counts.listed.toLocaleString("en-GB")}${counts.failing ? ", failing ones first" : ""}`
+      : null,
+  };
+}
+
 /** What made a control fail, one line per object and setting, in plain words. */
 export function controlMisses(finding: ComplianceFinding): ControlCheck[] {
   return controlChecks(finding).filter((line) => !line.ok);

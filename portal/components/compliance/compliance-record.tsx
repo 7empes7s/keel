@@ -1,10 +1,12 @@
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { checkCountRecord } from "@/lib/compliance-view";
 import type { ComplianceFinding, StorageResidency } from "@/lib/types";
 
 // The record layer of one result: every id, code and window the words above rest on.
 // Results are evidence: an evaluation row is never edited, an exception only added.
 export function FindingRecordFields({ finding }: { finding: ComplianceFinding }) {
   const { links } = finding;
+  const totals = checkCountRecord(finding);
   return (
     <>
       <RecordField label="Evaluation ID" value={finding.id} />
@@ -23,6 +25,13 @@ export function FindingRecordFields({ finding }: { finding: ComplianceFinding })
           value={`${entry.window.startedAt ?? "unknown"} → ${entry.window.endedAt ?? "unknown"} · ${entry.collectionId ? `service read ${entry.collectionId}` : `snapshot ${entry.snapshotId ?? "no match"}`}`}
         />
       ))}
+      {totals ? (
+        <>
+          <RecordField copy={false} label="Settings checked" value={totals.checked} />
+          <RecordField copy={false} label="Settings failing" value={totals.failing} />
+          {totals.listed ? <RecordField copy={false} label="Settings listed" value={totals.listed} /> : null}
+        </>
+      ) : null}
       {(finding.details ?? []).map((line, index) => (
         <RecordField
           copy={false}

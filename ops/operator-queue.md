@@ -1658,7 +1658,7 @@ being triggered by queue updates.
 - **Expected:** every operation captured and promoted, check exit 0, no record holds the real mail domain.
 - **Report:** B, per operation captured / refused (verbatim), the check output, the evidence PR.
 
-### Q189: Recapture native recovery (gate 115) so its record holds no real object id (after PR #611)
+### Q192: Recapture native recovery (gate 115) so its record holds no real object id (after PR #611)
 - Drafted by the "Hide object ids in drill and native records" thread (2026-10-27). The committed
   `native-live-acceptance{,.artifact}.json` hold the real object id of `KEEL-RT-native-recovery-group`, because
   `nativeRecovery.mjs` never pseudonymized. PR #611 fixes the tool; the record is signed, so it must be recaptured.
@@ -1677,17 +1677,17 @@ being triggered by queue updates.
   3. `node tools/qualification/pseudonymize.mjs check <dir>/native-live-acceptance{,.artifact}.json`: expected exit 0. Also
      `grep -c <real object id>` on both files: expected 0.
   4. Confirm the group reads back active, not in deleted items, 0 members.
-  5. Commit both files on `claude/live-evidence-q189` from `origin/master`, run
+  5. Commit both files on `claude/live-evidence-q192` from `origin/master`, run
      `cd engine && node --test roadmap/native-live-acceptance.test.mjs` (it now checks the ids), open a PR with the `automerge` label.
 - Result:
 - **Expected:** capture exit 0, verify exit 0, check exit 0, the evidence test passes, the group is back as before.
 - **Report:** B, each exit code, the check output, the group's read-back, the evidence PR.
 
-### Q190: Recapture the bounded drill (gate 116) so its record holds no real object id (after PR #611)
+### Q193: Recapture the bounded drill (gate 116) so its record holds no real object id (after PR #611)
 - Drafted by the "Hide object ids in drill and native records" thread (2026-10-27). The committed
   `drill-live-acceptance{,.capture}.json` hold the real object id of the deleted `keel-rehearsal-*` drill group, because
   `capture-drill` never pseudonymized. PR #611 fixes it; the record is signed, so it must be recaptured.
-- Needs: /opt/keel-live at the PR #611 merge or later (same grep as Q189). Independent of Q189.
+- Needs: /opt/keel-live at the PR #611 merge or later (same grep as Q192). Independent of Q192.
 - Status: todo
 - **Test tenant only.** Exactly as the Q39 116 run (steps in `docs/roadmap/operator-gates.md` and Q36 notes #5 and #7): a fresh
   recovery set and reconstruction at B into a fresh disposable DB, the onboarding result at B, a fresh drill DB (schema.sql +
@@ -1699,7 +1699,7 @@ being triggered by queue updates.
      the exit code.
   3. `node tools/qualification/pseudonymize.mjs check` on the record and its `.capture.json`: expected exit 0. Also
      `grep -c <the drill group's real id>` on both: expected 0.
-  4. Commit both files on `claude/live-evidence-q190` from `origin/master`, run
+  4. Commit both files on `claude/live-evidence-q193` from `origin/master`, run
      `cd engine && node --test roadmap/drill-live-acceptance.test.mjs` on a throwaway test DB, open a PR with the `automerge` label.
   5. Drop the disposable DBs this run created and report their names.
 - Result:

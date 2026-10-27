@@ -52,7 +52,7 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for remediation CLI tests');
         `INSERT INTO drift
            (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type,
             before_hash, after_hash, before_payload, after_payload, blast_radius)
-         VALUES ($1,$2,$3,$4,'group','modified','before','after','{}','{}','access-affecting')
+         VALUES ($1,$2,$3,$4,'group','modified','before','after','{"displayName":"before"}','{"displayName":"after"}','access-affecting')
          RETURNING *`,
         [tenantRef, baselineId, observedSnapshotId, naturalKey],
       );
@@ -102,7 +102,7 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for remediation CLI tests');
       `INSERT INTO drift
          (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type,
           before_hash, after_hash, before_payload, after_payload, blast_radius)
-       VALUES ($1,$2,$3,'group:Ops','group','modified','before','after','{}','{}','access-affecting')
+       VALUES ($1,$2,$3,'group:Ops','group','modified','before','after','{"displayName":"before"}','{"displayName":"after"}','access-affecting')
        RETURNING *`,
       [tenantRef, otherBaselineId, observedSnapshotId],
     );
@@ -410,7 +410,7 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for remediation CLI tests');
         `INSERT INTO drift
            (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type,
             before_hash, after_hash, before_payload, after_payload, blast_radius)
-         VALUES ($1,$2,$3,$4,'group',$5,$6,$7,'{}','{}','access-affecting')
+         VALUES ($1,$2,$3,$4,'group',$5,$6,$7,'{"displayName":"before"}','{"displayName":"after"}','access-affecting')
          RETURNING id`,
         [tenantRef, baselineId, observedSnapshotId, naturalKey, changeType, beforeHash, afterHash],
       );

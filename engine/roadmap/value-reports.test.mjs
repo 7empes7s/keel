@@ -56,8 +56,9 @@ async function version(snapshotId, { naturalKey, resourceType = 'group', hash, h
   const { rows: [row] } = await client.query(
     `INSERT INTO resource_version (snapshot_id, natural_key, resource_type, payload, payload_hash, hash_version,
        criticality, blast_radius, fidelity, provenance)
-     VALUES ($1, $2, $3, '{}', $4, $5, 'normal', 'local', 'full', '{}') RETURNING id`,
-    [snapshotId, naturalKey, resourceType, hash, hashVersion],
+     VALUES ($1, $2, $3, $6, $4, $5, 'normal', 'local', 'full', '{}') RETURNING id`,
+    // Each hash stands for its own content, so a different hash is a different setting.
+    [snapshotId, naturalKey, resourceType, hash, hashVersion, { displayName: `content ${hash}` }],
   );
   return row.id;
 }

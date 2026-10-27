@@ -39,6 +39,8 @@ import {
   scoresByStandard,
   scoreTone,
   settingValueWords,
+  settingWords,
+  fixSetting,
   storageSentence,
 } from "@/lib/compliance-view";
 import { serviceOrder } from "@/lib/services";
@@ -298,7 +300,34 @@ test("Settings checked: expected against current for every setting, failing firs
     { subject: "KEEL-RT-block", setting: "Old sign-in methods it blocks", now: "Exchange ActiveSync, Other old clients", shouldBe: "Exchange ActiveSync, Other old clients", ok: true },
   ]);
   assert.equal(checkSubjectWord(legacy), "Sign-in rule");
-  assert.equal(settingValueWords([], "clientAppTypes"), "None");
+  assert.equal(settingValueWords([], "clientAppTypes", legacy.controlId), "None");
+  // Two rules with the same name arrive from the engine already numbered; each keeps its lines.
+  const twins = finding("l2", "keel-custom.conditional-access.block-legacy", "fail", {
+    details: [
+      { subject: "KEEL-RT-Block legacy (1 of 2)", setting: "includeUsers", value: "Only some", expected: "All", ok: false },
+      { subject: "KEEL-RT-Block legacy (2 of 2)", setting: "state", value: "disabled", expected: "enabled", ok: false },
+    ],
+  });
+  assert.deepEqual(controlChecks(twins).map((check) => [check.subject, check.setting, check.now]), [
+    ["KEEL-RT-Block legacy (1 of 2)", "Users it covers", "Only some users"],
+    ["KEEL-RT-Block legacy (2 of 2)", "Status", "Off"],
+  ]);
+  // The sign-in rule words belong to that control: another control's "state" or
+  // "includeUsers" lines keep their own names and values.
+  const other = finding("o1", "own.check-state", "fail", {
+    details: [
+      { subject: "Device policy", setting: "state", value: "enabled", expected: "disabled", ok: false },
+      { subject: "Device policy", setting: "includeUsers", value: ["All"], expected: [], ok: false },
+    ],
+  });
+  assert.deepEqual(controlChecks(other).map((check) => [check.setting, check.now, check.shouldBe]), [
+    ["state", "enabled", "disabled"],
+    ["includeUsers", "All", "None"],
+  ]);
+  assert.equal(settingValueWords("enabled", "state"), "enabled");
+  assert.equal(settingWords("state"), "state");
+  assert.equal(settingWords("state", legacy.controlId), "Status");
+  assert.equal(fixSetting(finding("f1", "own.check-state", "fail", { fix: { resourceType: "x", field: "state", to: "disabled" } })), "State");
   // A full list may have been cut short by the engine, so its counts are "at least".
   const line = { subject: "Default", setting: "On", now: "On", shouldBe: "On", ok: true };
   assert.equal(checksCapped(Array.from({ length: CHECK_LINE_LIMIT - 1 }, () => line)), false);

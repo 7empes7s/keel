@@ -23,7 +23,7 @@ import { SERVER_OWNED } from '../cir/serverOwned.mjs';
 import { classifyForOperation, exportProjection } from '../contracts/fieldProjection.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
-import { BENCHMARK_REGISTRY_CONTRACT_VERSION, NOT_CONFIGURED, registerPredicate } from './registry.mjs';
+import { BENCHMARK_REGISTRY_CONTRACT_VERSION, NOT_CONFIGURED, distinctNames, registerPredicate } from './registry.mjs';
 
 export const OWN_FRAMEWORK = 'own';
 export const OWN_PREFIX = 'own.';
@@ -70,7 +70,8 @@ registerPredicate(OWN_PREDICATE, (facts, { field, operator, expected, appliesTo 
   const meets = (fact) => (operator === 'not-equals') !== sameValue(valueAt(fact, field), expected);
   const shouldBe = operator === 'not-equals' ? `Anything but ${typeof expected === 'string' ? expected : JSON.stringify(expected)}` : expected;
   // Every object read, passing or failing, so the panel can show what was checked.
-  const lines = facts.map((fact) => ({ subject: subjectOf(fact), setting: field, value: valueAt(fact, field), expected: shouldBe, ok: meets(fact) }));
+  const names = distinctNames(facts, subjectOf);
+  const lines = facts.map((fact, index) => ({ subject: names[index], setting: field, value: valueAt(fact, field), expected: shouldBe, ok: meets(fact) }));
   if (appliesTo === 'any') {
     // It passes on the objects that meet it; the others are not failures of the check.
     if (facts.some(meets)) return { verdict: 'pass', details: lines.filter((line) => line.ok) };

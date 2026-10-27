@@ -4,8 +4,8 @@
  * timeout: each listed change looked up the last complete backup of its kind by reading
  * every earlier backup's coverage digest. This builds a month of hourly backups with a
  * digest for every kind, plus enough changes to fill a page, and asks those questions
- * under the real budget. Without the lookup index and the per-page window lookup, the
- * first question takes several seconds here and is cancelled.
+ * under the real budget. Without snapshot_complete_time_idx (schema.d/76), three of them
+ * are cancelled here and the fourth takes over half the budget.
  *
  * Every time is fixed (NOW below and backups placed relative to it), so the result does
  * not depend on the day the test runs.

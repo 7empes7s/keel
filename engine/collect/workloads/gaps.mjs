@@ -19,7 +19,7 @@ export function familyWords(family) {
 }
 
 // A setting's coverage status in words: "denied" reads as access denied.
-const STATUS_WORDS = { denied: 'access denied', refused: 'outside the backup scope' };
+const STATUS_WORDS = { denied: 'access denied', refused: 'outside the backup scope', unknown: 'not returned' };
 
 const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 
@@ -65,7 +65,21 @@ export function workloadGapReasons(digest) {
     const name = typeof entry === 'string' ? entry : entry?.identity ?? entry?.site ?? entry?.url;
     if (name) lines.push(`${name}: ${typeof entry?.reason === 'string' && entry.reason ? entry.reason : 'outside the backup scope'}`);
   }
+  // Settings Microsoft did not return, by name when the digest names them (a field name,
+  // never a value): "Retention label: event type was not returned (2 objects)".
+  const unknownFields = Object.entries(digest.unknownFields && typeof digest.unknownFields === 'object' ? digest.unknownFields : {})
+    .flatMap(([family, fields]) => Object.entries(fields && typeof fields === 'object' ? fields : {})
+      .filter(([, count]) => Number(count) > 0)
+      .map(([field, count]) => `${familyWords(family)}: ${familyWords(field).replace(/^./, (letter) => letter.toLowerCase())} was not returned (${plural(Number(count), 'object', 'objects')})`));
+  // Named up to a few; a family missing many fields reads as one counted line instead.
+  const NAMED = 5;
+  lines.push(...unknownFields.slice(0, NAMED));
+  const more = unknownFields.length > NAMED
+    ? Number(digest.fieldCounts?.unknown) - unknownFields.slice(0, NAMED).reduce((sum, line) => sum + Number(/\((\d+) objects?\)$/.exec(line)[1]), 0)
+    : 0;
+  if (more > 0) lines.push(`${plural(more, 'more setting', 'more settings')}: not read (not returned)`);
   for (const [status, count] of Object.entries(digest.fieldCounts ?? {})) {
+    if (status === 'unknown' && unknownFields.length) continue;
     if (status !== 'observed' && Number(count) > 0) lines.push(`${plural(Number(count), 'setting', 'settings')}: not read (${STATUS_WORDS[status] ?? status.replaceAll('-', ' ')})`);
   }
   for (const reason of Array.isArray(digest.reasons) ? digest.reasons : []) {

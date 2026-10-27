@@ -20,13 +20,13 @@ const NEVER_ID = 'dead0000-0000-4000-8000-000000000009';
 // Backups are dated relative to the run, so the test never rots.
 const daysAgo = (days) => new Date(Date.now() - days * 86_400_000);
 
-async function backup(tenantRef, startedAt, status, resources) {
+async function backup(tenantRef, startedAt, status, resources, coverage = null) {
   // Postgres keeps microseconds (production backups start at now()); JavaScript keeps
   // milliseconds. Every backup here has microseconds so a time that loses them on a
   // round trip through JavaScript fails these tests (lesson 2026-10-15).
   const { rows: [snapshot] } = await client.query(
-    "INSERT INTO snapshot (tenant_ref, started_at, status) VALUES ($1, $2::timestamptz + interval '123 microseconds', $3) RETURNING id, started_at",
-    [tenantRef, startedAt, status],
+    "INSERT INTO snapshot (tenant_ref, started_at, status, coverage_digest) VALUES ($1, $2::timestamptz + interval '123 microseconds', $3, $4) RETURNING id, started_at",
+    [tenantRef, startedAt, status, coverage],
   );
   for (const [key, type, payload] of resources) {
     await client.query(
@@ -135,6 +135,45 @@ test('renamed, then deleted: the newer key is gone too, so it is deleted under i
   assert.equal(object.status, 'deleted');
   assert.equal(object.name, 'N');
   assert.equal(object.deletedSince, gone.toISOString());
+});
+
+test('deleted: the last object of its kind went, and the backup read that kind and found none', async () => {
+  const id = '0f1a0000-0000-4000-8000-0000000000dd';
+  const read = (group) => ({ group: { outcome: group }, conditionalAccessPolicy: { outcome: 'complete' } });
+  await backup('last-of-kind', daysAgo(4), 'complete', [['group:Only group', 'group', { id, displayName: 'Only group' }], policy], read('complete'));
+  const gone = await backup('last-of-kind', daysAgo(2), 'complete', [policy], read('complete-empty'));
+  await backup('last-of-kind', daysAgo(1), 'complete', [policy], read('complete-empty'));
+  const names = await lookupNames(client, { tenantRef: 'last-of-kind', ids: ['group:Only group', id] });
+  for (const key of ['group:Only group', id]) {
+    const object = names.get(key);
+    assert.equal(object.status, 'deleted', key);
+    assert.equal(object.name, 'Only group');
+    assert.equal(object.deletedSince, gone.toISOString());
+  }
+});
+
+test('renamed, then the last of its kind: deleted under its newest name', async () => {
+  const id = '0f1a0000-0000-4000-8000-0000000000ee';
+  const read = (group) => ({ group: { outcome: group }, conditionalAccessPolicy: { outcome: 'complete' } });
+  await backup('renamed-last', daysAgo(5), 'complete', [['group:P', 'group', { id, displayName: 'P' }], policy], read('complete'));
+  await backup('renamed-last', daysAgo(4), 'complete', [['group:Q', 'group', { id, displayName: 'Q' }], policy], read('complete'));
+  const gone = await backup('renamed-last', daysAgo(3), 'complete', [policy], read('complete-empty'));
+  const object = (await lookupNames(client, { tenantRef: 'renamed-last', ids: ['group:P'] })).get('group:P');
+  assert.equal(object.status, 'deleted');
+  assert.equal(object.name, 'Q');
+  assert.equal(object.deletedSince, gone.toISOString());
+});
+
+test('found: a partial or not-requested read of its kind never marks it deleted, even with other rows of that kind', async () => {
+  const id = '0f1a0000-0000-4000-8000-0000000000ff';
+  const other = ['group:Someone else', 'group', { id: '0f1a0000-0000-4000-8000-000000000100', displayName: 'Someone else' }];
+  await backup('partial-read', daysAgo(4), 'complete', [['group:Kept', 'group', { id, displayName: 'Kept' }], other], { group: { outcome: 'complete' } });
+  await backup('partial-read', daysAgo(3), 'complete', [other], { group: { outcome: 'partial' } });
+  await backup('partial-read', daysAgo(2), 'complete', [policy], { group: { outcome: 'not-requested' }, conditionalAccessPolicy: { outcome: 'complete' } });
+  await backup('partial-read', daysAgo(1), 'complete', [], { group: { outcome: 'failed' } });
+  const object = (await lookupNames(client, { tenantRef: 'partial-read', ids: ['group:Kept'] })).get('group:Kept');
+  assert.equal(object.status, 'found');
+  assert.equal(object.deletedSince, null);
 });
 
 test('an empty batch reads nothing', async () => {

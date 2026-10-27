@@ -7,7 +7,7 @@
  *
  * - `found`: the newest complete backup that read its kind still holds it.
  * - `deleted`: an earlier backup held it, and a later complete backup that read its
- *   kind did not. `deletedSince` is when that later backup started, and the name is
+ *   kind did not (also when that backup read the kind and found none of it). `deletedSince` is when that later backup started, and the name is
  *   the one it last had.
  * - `unknown`: no backup holds it. The name is the readable part of the key, if any.
  *
@@ -86,12 +86,21 @@ const iso = (value) => {
   return Number.isNaN(date.valueOf()) ? null : date.toISOString();
 };
 
+// Whether backup s2 read a kind completely. Its coverage record says so per kind:
+// a complete read that found nothing ('complete-empty') counts, so the last object
+// of a kind can be seen to go. A partial, failed or not-requested read never counts,
+// even when it saved some rows. Older backups without a per-kind outcome fall back
+// to "it saved at least one row of that kind".
+const readKindSql = (type) => `(CASE WHEN s2.coverage_digest->${type}->>'outcome' IS NOT NULL
+       THEN s2.coverage_digest->${type}->>'outcome' IN ('complete', 'complete-empty')
+       ELSE EXISTS (SELECT 1 FROM resource_version r2 WHERE r2.snapshot_id = s2.id AND r2.resource_type = ${type}) END)`;
+
 // When a key went: the start of the first complete backup after its last sighting
 // that read its kind but no longer held the key. Times stay in SQL, so microseconds
 // are never lost on the way through JavaScript (lesson 2026-10-15).
 const goneSinceSql = (key, type, lastSeen) => `(SELECT min(s2.started_at) FROM snapshot s2
    WHERE s2.tenant_ref = $1 AND s2.status = 'complete' AND s2.started_at > ${lastSeen}
-     AND EXISTS (SELECT 1 FROM resource_version r2 WHERE r2.snapshot_id = s2.id AND r2.resource_type = ${type})
+     AND ${readKindSql(type)}
      AND NOT EXISTS (SELECT 1 FROM resource_version r3 WHERE r3.snapshot_id = s2.id AND r3.natural_key = ${key}))`;
 
 // For each wanted id, the newest saved version of the object it names (by backup key,

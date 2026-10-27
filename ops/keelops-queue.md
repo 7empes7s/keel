@@ -644,7 +644,7 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
   3. **Evidence:** secret scan and `node tools/qualification/pseudonymize.mjs check` on all four files, commit the two records and
      their `.capture.json` on `claude/live-evidence-sharepoint-recapture` from `origin/master`, open a PR with the `automerge` label.
   4. **Import:** `node cli/keel-workload-collect.mjs import --dir <that checkout>/docs/release/qualifications` (DB env loaded).
-- Status: todo
+- Status: in-progress
 - **Expected:** both captures exit 0 with verify ok and failures []; every write ok with readBackVerified true; import lines
   `sharepoint-site-grants-live-acceptance.json` imported (writes 2) and `sharepoint-site-permissions-live-acceptance.json` imported
   (writes 5), refused []; nothing left on the site but the kept `KEEL-RT-site-grant-app` (with no grant).

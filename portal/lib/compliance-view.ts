@@ -198,20 +198,34 @@ const SETTING_WORDS: Record<string, string> = {
   assignmentCount: "People who hold it",
   includeUnknownCountriesAndRegions: "Takes in unknown countries",
   onPremisesSyncEnabled: "Copied from on-premises",
-  // The legacy sign-in control, one line per sign-in rule that blocks old clients.
-  state: "Status",
-  includeUsers: "Users it covers",
-  includeApplications: "Apps it covers",
-  clientAppTypes: "Old sign-in methods it blocks",
 };
 
-// Values that read better in words, by the setting they belong to.
-const VALUE_WORDS: Record<string, Record<string, string>> = {
-  state: { enabled: "On", disabled: "Off", enabledforreportingbutnotenforced: "Report-only" },
-  includeUsers: { all: "All users", "only some": "Only some users", none: "No users" },
-  includeApplications: { all: "All apps", "only some": "Only some apps", none: "No apps" },
-  clientAppTypes: { exchangeactivesync: "Exchange ActiveSync", other: "Other old clients" },
+// Words that only fit one control's lines. Names such as "state" or "includeUsers" are
+// common, so their words here must not reach another control that uses the same name.
+const CONTROL_SETTING_WORDS: Record<string, Record<string, string>> = {
+  // The legacy sign-in control, one line per sign-in rule that blocks old clients.
+  "keel-custom.conditional-access.block-legacy": {
+    state: "Status",
+    includeUsers: "Users it covers",
+    includeApplications: "Apps it covers",
+    clientAppTypes: "Old sign-in methods it blocks",
+  },
 };
+
+// Values that read better in words, by control and then setting.
+const CONTROL_VALUE_WORDS: Record<string, Record<string, Record<string, string>>> = {
+  "keel-custom.conditional-access.block-legacy": {
+    state: { enabled: "On", disabled: "Off", enabledforreportingbutnotenforced: "Report-only" },
+    includeUsers: { all: "All users", "only some": "Only some users", none: "No users" },
+    includeApplications: { all: "All apps", "only some": "Only some apps", none: "No apps" },
+    clientAppTypes: { exchangeactivesync: "Exchange ActiveSync", other: "Other old clients" },
+  },
+};
+
+/** A setting's name in plain words, using the control's own words first. */
+export function settingWords(setting: string, controlId?: string): string {
+  return (controlId ? CONTROL_SETTING_WORDS[controlId]?.[setting] : undefined) ?? SETTING_WORDS[setting] ?? setting;
+}
 
 // Settings that read better as a yes or no than as on or off.
 const YES_NO_SETTINGS = new Set(["includeUnknownCountriesAndRegions", "onPremisesSyncEnabled"]);
@@ -228,9 +242,9 @@ const ACTION_WORDS: Record<string, string> = {
 };
 
 /** A setting's value in plain words: On / Off, an action, a list, a limit, or "None". */
-export function settingValueWords(value: unknown, setting?: string): string {
+export function settingValueWords(value: unknown, setting?: string, controlId?: string): string {
   if (typeof value === "boolean" && setting && YES_NO_SETTINGS.has(setting)) return value ? "Yes" : "No";
-  const words = setting ? VALUE_WORDS[setting] : undefined;
+  const words = setting && controlId ? CONTROL_VALUE_WORDS[controlId]?.[setting] : undefined;
   if (words && typeof value === "string") return words[value.toLowerCase()] ?? value;
   if (words && Array.isArray(value) && value.length) return value.map((item) => words[String(item).toLowerCase()] ?? String(item)).join(", ");
   if (value === true) return "On";
@@ -262,9 +276,9 @@ export function checksCapped(checks: ControlCheck[]): boolean {
 export function controlChecks(finding: ComplianceFinding): ControlCheck[] {
   const lines = (finding.details ?? []).map((line) => ({
     subject: line.subject,
-    setting: SETTING_WORDS[line.setting] ?? line.setting,
-    now: settingValueWords(line.value, line.setting),
-    shouldBe: settingValueWords(line.expected, line.setting),
+    setting: settingWords(line.setting, finding.controlId),
+    now: settingValueWords(line.value, line.setting, finding.controlId),
+    shouldBe: settingValueWords(line.expected, line.setting, finding.controlId),
     ok: line.ok === true,
   }));
   return [...lines.filter((line) => !line.ok), ...lines.filter((line) => line.ok)];

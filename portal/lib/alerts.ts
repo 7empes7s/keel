@@ -52,7 +52,7 @@ interface QueryClient {
   query(sql: string, values?: unknown[]): Promise<{ rows: Row[] }>;
 }
 
-const WORKLOAD_NAME_SQL = `COALESCE(${["displayName", "name", "title", "webUrl"].map((field) => `NULLIF(o.fields->>'${field}', '')`).join(", ")})`;
+const WORKLOAD_NAME_SQL = `COALESCE(${["displayName", "DisplayName", "name", "Name", "title", "Title", "webUrl"].map((field) => `NULLIF(o.fields->>'${field}', '')`).join(", ")})`;
 
 /**
  * Names, not ids: the name each alerted resource carries. A backup key reads the name

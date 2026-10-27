@@ -33,6 +33,7 @@
 // The scope file names what the collectors may read beyond tenant-wide settings:
 //   { "sharepointHost": "contoso.sharepoint.com", "mailboxes": ["user@contoso.com"],
 //     "onedriveHost": "contoso-my.sharepoint.com", "onedriveSites": ["https://contoso-my.sharepoint.com/personal/..."],
+//     "sharepointStructureSites": ["https://contoso.sharepoint.com/sites/..."],
 //     "powershellConfigs": { "exchange": "/etc/keel/exchange-collector.json", "onedrive": "/etc/keel/purview-collector.json",
 //                            "purview": "/etc/keel/purview-collector.json", "sharepoint": "/etc/keel/purview-collector.json",
 //                            "teams": "/etc/keel/teams-collector.json" } }

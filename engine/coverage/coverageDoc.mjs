@@ -671,6 +671,8 @@ export const WORKLOAD_GUIDE = Object.freeze({
     todo: 'A rule turned on or off, a deleted object, and settings KEEL does not restore are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a spam, anti-phish or Safe Attachments rule other than its comment needs a second approver. Safe Links and Safe Attachments rules and the Defender preset rules are backed up only when the tenant has Defender for Office 365.' }),
   'exchange-role-groups': Object.freeze({ name: 'Exchange admin role groups',
     todo: 'KEEL does not restore role groups. A deleted group, its roles and its members are put back by hand in the Exchange admin center using the backup. Microsoft\'s built-in groups cannot be deleted, only their members changed.' }),
+  'sharepoint-structure': Object.freeze({ name: 'SharePoint site structure',
+    todo: 'KEEL does not restore site structure yet. A deleted list, library, column, content type or navigation link is put back by hand, or by applying the saved PnP template to the site with Invoke-PnPSiteTemplate. Files and list items come back from the content backup. Site templates are backed up only for the sites named in the backup scope. The term store is backed up separately.' }),
   'teams-voice-policies': Object.freeze({ name: 'Teams calling, voice and live event policies',
     todo: 'The policies assigned to users and groups, and settings KEEL does not restore, are changed by hand in the Teams admin center using the backup. A deleted named policy is recreated assigned to nobody. A live event video provider\'s API token is never backed up: enter it again.' }),
   'purview-governance': Object.freeze({ name: 'Purview retention labels, auto-labeling and eDiscovery',

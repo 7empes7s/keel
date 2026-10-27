@@ -108,6 +108,25 @@ test("each alerted resource reads the newest name this tenant's backups and site
   assert.equal(names.has("sharepoint-site-settings:tenant"), false);
 });
 
+test("cmdlet workload resources are named by the Title, Name or DisplayName PowerShell gives them", async () => {
+  const at = "2026-10-20T02:00:00Z";
+  const { rows: [run] } = await client.query(
+    `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to, digest)
+     VALUES ($1, 'sharepoint-structure', 'complete', $2, $2, '{}') RETURNING id`,
+    [TENANT, at],
+  );
+  const hub = `hub-site:${SCRIPT_ID}`;
+  const group = `role-group:${NAMELESS_ID}`;
+  await client.query(
+    `INSERT INTO workload_observation (collection_id, resource_key, fields, field_coverage) VALUES ($1, $2, $3, '{}'), ($1, $4, $5, '{}')`,
+    [run.id, hub, { kind: "hubSite", Title: "KEEL-RT hub" }, group, { kind: "roleGroup", Name: "KEEL-RT role group" }],
+  );
+  const names = await alertResourceNames(client, TENANT, [`sharepoint-structure:${hub}`, `sharepoint-structure:${group}`]);
+  assert.equal(names.get(`sharepoint-structure:${hub}`), "KEEL-RT hub");
+  assert.equal(names.get(`sharepoint-structure:${group}`), "KEEL-RT role group");
+  assert.equal(alertTitle({ resourceKey: `sharepoint-structure:${hub}`, name: "KEEL-RT hub" }), "KEEL-RT hub (SharePoint site structure)");
+});
+
 test("a failed name lookup leaves the alerts unnamed instead of breaking the page", async () => {
   const broken = { query: async () => { throw new Error("database down"); } };
   const quiet = console.error;

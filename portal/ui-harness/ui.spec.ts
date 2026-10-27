@@ -3624,8 +3624,6 @@ test("ask cites its records, states unknown periods first, and fits a phone", as
   await expect(page.locator(".ask-answer")).not.toContainText("Nothing matched");
 });
 
-// A broad answer: understood filters as badges, words not understood said plainly, a
-// summary of every match, then one table with filter tiles, grouping, sorting and pages.
 // A month-long answer shaped like the live one (keelops K12): every changed row names
 // its settings in words, never Microsoft's field names, and none says "Not recorded".
 test("ask month answer names changed settings in words and lists no empty changed rows", async ({ page }) => {
@@ -3641,6 +3639,13 @@ test("ask month answer names changed settings in words and lists no empty change
     await expect(answer.locator(".pg-table")).not.toContainText("Not recorded");
     for (const raw of ["accountEnabled", "scheduleInfo", "membershipRule"]) await expect(answer.locator(".pg-table")).not.toContainText(raw);
     expect(await rows.first().locator(".ak-fields").evaluate((el) => getComputedStyle(el).fontFamily)).not.toMatch(/mono/i);
+    // Group and admin role rows sit on later pages: find them and read their settings too.
+    await answer.getByLabel("Find").fill("Finance approvers");
+    await expect(rows.first().locator(".ak-fields")).toHaveText("Membership rule");
+    await answer.getByLabel("Find").fill("Security Reader");
+    await expect(rows.first().locator(".ak-fields")).toHaveText("Schedule info › expiration › end date time");
+    await expect(answer.locator(".pg-table")).not.toContainText("scheduleInfo");
+    await answer.getByLabel("Find").fill("");
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
   }
 });
@@ -3671,9 +3676,18 @@ test("Compliance · legacy sign-in lists each rule it read, failing first, and n
     await expect(rows.nth(1)).toContainText("KEEL-RT-Block legacy sign-in (2 of 2)");
     const axe = await new AxeBuilder({ page }).include(".bl-sheet").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
     expect(axe.violations.map((violation) => violation.id)).toEqual([]);
+
+    // A result stored before the counts existed, with a full list of 50 lines: "or more".
+    await open(page, "/benchmarks/old-full?open=e7a10000-0000-4000-8000-0000000000b5", theme);
+    sheet = page.getByRole("dialog", { name: "Links in email are checked when clicked" });
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("8 settings");
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("42 or more meet the standard");
+    await expect(sheet.getByRole("switch", { name: /Show every setting/ })).toContainText("50 or more in all");
   }
 });
 
+// A broad answer: understood filters as badges, words not understood said plainly, a
+// summary of every match, then one table with filter tiles, grouping, sorting and pages.
 test("ask summarises every match, says what it did not understand, and pages a grouped table", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/ask/many", "dark");

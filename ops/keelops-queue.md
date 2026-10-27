@@ -376,7 +376,7 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
 - Needs: /opt/keel-live at the #579 merge `37e5cfb` or later (`test -f /opt/keel-live/engine/store/schema.d/77-drift-same-content.sql`), and one
   scheduled `drift-detect` job that succeeded after that deploy (`SELECT id, status, finished_at FROM job WHERE kind = 'drift-detect' ORDER BY created_at DESC LIMIT 1;`).
   Wait for the scheduled one; do not queue a job.
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** nothing. Read-only against Keel's own database.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a` (read-only SELECTs), tenantRef and scope as in K5:

@@ -7971,7 +7971,7 @@ item that needs it stays untouched.
   `not-found-in-target`, and the preview no longer lists each permission as missing. #563: a pending follow-up step counts as
   replaced when a later restore of the same object opens the same step; `countOpenCompletionSteps` and the open-work list leave it out.
 - Needs: /opt/keel-live at the #565 merge (576295e) or later (`grep -q app-id /opt/keel-live/engine/graph/resolver.mjs`).
-- Status: todo
+- Status: moved (2026-10-27: to K6 on claude/keelops-queue; keel-operator, skip this item)
 - **Tenant:** standing authorization (2026-10-14): self-approve and log the approval id. Restorer writes only the fixture below;
   Collector reads. **Never grant admin consent** and never add a secret or certificate to the fixture. No CA, no break-glass, not Marouane's account.
 - **Fixture:** app registration `KEEL-RT-app-perms` (single tenant, no redirect URI, no credentials), requesting Microsoft Graph
@@ -8013,7 +8013,7 @@ item that needs it stays untouched.
 - Drafted by the "Live checks for Oct 23–25 merges" thread (2026-10-27). #567 adds tenant-written compliance checks
   (`compliance_own_check`, run with Keel's checks after every backup) and the CISA SCuBA and NIST standards sections.
 - Needs: /opt/keel-live at the #567 merge (fa37b06) or later (`test -f /opt/keel-live/engine/store/schema.d/74-own-checks.sql`).
-- Status: todo
+- Status: moved (2026-10-27: to K7 on claude/keelops-queue; keel-operator, skip this item)
 - **Tenant:** nothing is written to the tenant. Keel's own database only: one test check, removed at the end.
 - Do, from your own checkout at B, against the live DB:
   1. Report `\d compliance_own_check` (the table exists) and `ownCheckChoices(c,{tenantRef})`: the number of types offered and a few sample fields.

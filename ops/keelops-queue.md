@@ -214,7 +214,8 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   (`compliance_own_check`, run with Keel's checks after every backup) and the CISA SCuBA and NIST standards sections.
 - Needs: /opt/keel-live at the #567 merge (fa37b06) or later (`test -f /opt/keel-live/engine/store/schema.d/74-own-checks.sql`).
 - Approval: Marouane approved on 2026-10-27 (14:36 UTC, in the project thread) that keelops may run this item under the operator queue's test-tenant restore rules: self-approve, log each approval id, KEEL-RT- fixtures only.
-- Status: in-progress
+- Status: blocked
+- Result: blocked on `/etc/keel/db.env` (and `tenant.json` for tenantRef). No own check created. `/etc/keel` is still `root:root 750` with no keelops ACL (checked 2026-10-27 ~15:15 UTC); root's access step is queued as Q175 on claude/operator-queue (~/agent-src/ROOT-STEPS.md §1). Live build `d040d6c`; Needs check passes. Nothing run, nothing changed in the tenant or on the host. Retry once the files are readable.
 - **Tenant:** nothing is written to the tenant. Keel's own database only: one test check, removed at the end.
 - Do, from your own checkout at B, against the live DB:
   1. Report `\d compliance_own_check` (the table exists) and `ownCheckChoices(c,{tenantRef})`: the number of types offered and a few sample fields.

@@ -259,11 +259,18 @@ async function withChildReads(reader, entry, items) {
 /**
  * Restore gaps batch 13: each object gets the collection at `itemReads.path`
  * (or at `itemReads.byType[its @odata.type]`; other kinds are left as they
- * are), with {item} filled with its id, as its `itemReads.as`. Any failed read
- * fails the kind, so a backup never holds a policy without the apps it covers.
+ * are), with {item} filled with its id, as its `itemReads.as`, sorted by
+ * `itemReads.sortBy` when set (batch 19: Graph promises no order). Any failed
+ * read fails the kind, so a backup never holds a policy without the apps it covers.
  */
+const byText = (left, right) => {
+  const a = String(left ?? '');
+  const b = String(right ?? '');
+  return a < b ? -1 : (a > b ? 1 : 0);
+};
+
 async function withItemReads(reader, entry, items, { dropWhenNotFound = false } = {}) {
-  const { as, path, byType } = entry.itemReads;
+  const { as, path, byType, sortBy } = entry.itemReads;
   let pages = 0;
   for (const item of [...items]) {
     const template = byType ? byType[item?.['@odata.type']] : path;
@@ -277,7 +284,7 @@ async function withItemReads(reader, entry, items, { dropWhenNotFound = false } 
     if (result?.error) return { error: result.error };
     if (result?.capped || !Array.isArray(result?.items)) return { error: { error: `reading ${entry.type}: ${as} of ${item.id} was incomplete` } };
     pages += Number.isSafeInteger(result.pages) ? result.pages : 0;
-    item[as] = result.items;
+    item[as] = sortBy ? [...result.items].sort((left, right) => byText(left?.[sortBy], right?.[sortBy]) || byText(left?.id, right?.id)) : result.items;
   }
   return { pages, error: null };
 }

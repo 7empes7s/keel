@@ -144,6 +144,8 @@ const REGISTERED = Object.freeze({
   iosLobAppProvisioningConfiguration: ['create', 'update'],
   // Restore gaps, batch 13.
   mobileAppRelationship: ['create', 'update'],
+  // Restore gaps, batch 18.
+  mobileApp: ['create', 'update'],
   // Wave 2 ENTRA: directory policies and delegated consents.
   tokenLifetimePolicy: ['create', 'update'],
   tokenIssuancePolicy: ['create', 'update'],

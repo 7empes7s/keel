@@ -164,6 +164,23 @@ const bodyChanges = (before, after) => after !== null && before !== after;
 // The text itself, for the people who review the restore (restore and approve holders).
 const scriptDetail = (field) => (before, after) => ({ before: scriptText(before?.[field]), after: scriptText(after?.[field]) });
 
+// Restore gaps batch 18: a Win32 app's command lines are plain text; its
+// detection and requirement scripts are base64 inside its rules (each of the
+// three lists Graph may return), compared by their full sha256.
+const commandLine = (field) => (payload) => (typeof payload?.[field] === 'string' && payload[field].length > 0 ? payload[field] : null);
+const commandDetail = (field) => (before, after) => ({ before: before?.[field] ?? null, after: after?.[field] ?? null });
+function appRuleScriptText(payload) {
+  const lists = ['rules', 'detectionRules', 'requirementRules'].map((field) => (Array.isArray(payload?.[field]) ? payload[field] : []));
+  const first = lists.find((list) => list.some((item) => typeof item?.scriptContent === 'string' && item.scriptContent.length > 0)) ?? [];
+  const scripts = first.map((item) => item?.scriptContent).filter((value) => typeof value === 'string' && value.length > 0);
+  return scripts.length > 0 ? scripts.map((value) => scriptText(value)).join('\n\n') : null;
+}
+const appRuleScripts = (payload) => {
+  const text = appRuleScriptText(payload);
+  return text === null ? null : `${text.length} characters, sha256 ${scriptFingerprint(text, { full: true })}`;
+};
+const appRuleScriptDetail = (before, after) => ({ before: appRuleScriptText(before), after: appRuleScriptText(after) });
+
 /**
  * Reviewed types and their dangerous transitions. Field names follow Microsoft
  * Graph's resource schemas. They were declared from those schemas, not measured
@@ -331,6 +348,20 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   // newer one is assigned to, with its local data, so it is judged on create too.
   mobileAppRelationship: { reviewed: true, judgesCreates: true, rules: [
     rule('supersedenceType', 'irreversible', becomes('replace')),
+  ] },
+  // Restore gaps batch 18: Intune apps. Reviewed (every field of the app kinds
+  // KEEL writes, engine/restore/intuneAppKinds.mjs): a Win32 app's install and
+  // uninstall commands and its detection and requirement scripts run on every
+  // device the app is assigned to, with administrator rights, so changing them
+  // on an existing app needs the separate approval, showing the text. Telling
+  // Microsoft 365 Apps to remove older Office versions uninstalls them from
+  // those devices. A recreated app is judged as a create: who it reaches is the
+  // backup's own assignments, and an uninstall assignment is never written.
+  mobileApp: { reviewed: true, rules: [
+    rule('installCommandLine', 'runs-on-devices', bodyChanges, commandLine('installCommandLine'), commandDetail('installCommandLine')),
+    rule('uninstallCommandLine', 'runs-on-devices', bodyChanges, commandLine('uninstallCommandLine'), commandDetail('uninstallCommandLine')),
+    rule('rules (detection and requirement scripts)', 'runs-on-devices', bodyChanges, appRuleScripts, appRuleScriptDetail),
+    rule('shouldUninstallOlderVersionsOfOffice', 'irreversible', disabledToEnabled),
   ] },
   // PR #435 follow-up: Intune scripts and remediations. An update that changes a
   // script's text pushes that text to every device the script is assigned to, so it

@@ -287,7 +287,7 @@ export function checkCountRecord(finding: ComplianceFinding): { checked: string;
     checked: words(counts.checked, capped),
     failing: words(counts.failing, capped && counts.failing === counts.listed),
     listed: counts.listed < counts.checked || capped
-      ? `the first ${counts.listed.toLocaleString("en-GB")}${counts.failing ? ", failing ones first" : ""}`
+      ? `First ${counts.listed.toLocaleString("en-GB")}${counts.failing ? ", failing ones first" : ""}`
       : null,
   };
 }

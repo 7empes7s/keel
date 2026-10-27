@@ -302,16 +302,16 @@ test("Technical details show the totals past the 50 lines a result keeps", () =>
   const line = (ok: boolean) => ({ subject: "KEEL-RT-Location", setting: "includeUnknownCountriesAndRegions", value: !ok, expected: false, ok });
   const lines = [line(false), line(false), line(false), ...Array.from({ length: 47 }, () => line(true))];
   const cut = { ...PASS, verdict: "fail" as const, details: lines, detailCounts: { checked: 60, failing: 3 } };
-  assert.deepEqual(checkCountRecord(cut), { checked: "60", failing: "3", listed: "the first 50, failing ones first" });
+  assert.deepEqual(checkCountRecord(cut), { checked: "60", failing: "3", listed: "First 50, failing ones first" });
   // Every setting listed: no "listed" line.
   assert.deepEqual(checkCountRecord({ ...cut, details: lines.slice(0, 10), detailCounts: { checked: 10, failing: 3 } }), { checked: "10", failing: "3", listed: null });
   // Stored before the counts existed with a full list: only "or more" can be said.
-  assert.deepEqual(checkCountRecord({ ...cut, detailCounts: null }), { checked: "50 or more", failing: "3", listed: "the first 50, failing ones first" });
-  assert.deepEqual(checkCountRecord({ ...cut, details: Array.from({ length: 50 }, () => line(false)), detailCounts: null }), { checked: "50 or more", failing: "50 or more", listed: "the first 50, failing ones first" });
+  assert.deepEqual(checkCountRecord({ ...cut, detailCounts: null }), { checked: "50 or more", failing: "3", listed: "First 50, failing ones first" });
+  assert.deepEqual(checkCountRecord({ ...cut, details: Array.from({ length: 50 }, () => line(false)), detailCounts: null }), { checked: "50 or more", failing: "50 or more", listed: "First 50, failing ones first" });
   assert.equal(checkCountRecord({ ...PASS, details: [] }), null);
 
   const html = renderToStaticMarkup(createElement(FindingRecordFields, { finding: { ...cut, detailCounts: { checked: 1200, failing: 55 } } }));
   assert.match(html, /Settings checked[\s\S]*1,200/);
   assert.match(html, /Settings failing[\s\S]*55/);
-  assert.match(html, /Settings listed[\s\S]*the first 50, failing ones first/);
+  assert.match(html, /Settings listed[\s\S]*First 50, failing ones first/);
 });

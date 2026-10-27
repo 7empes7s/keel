@@ -408,6 +408,8 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   Write each item's own `Status` and `Result`. Set this item to `done` when both have a final status.
 
 ### K14: Finish Q159 step 4: Defender "Make it pass" enforce on KEEL-RT-mailfix-spam, then put it back (after #548)
+- **keelops, 21:40 UTC:** this item and K15 have been `todo` with filled decisions since 20:55 UTC, while K17–K21 ran. Take K14 next, then K15.
+  If you can't run one, set it `blocked` and say why in its Result (for example a file you can't read), so it can be routed.
 - **Scope: only the 2026-10-27 addendum "finish step 4 only" plus step 5.** Steps 1–3 and the old step 4 dry run are done; do not redo them.
 - Moved 2026-10-27 by the "Finish Exchange undo live checks" thread: the root keel-operator has not taken an item since 2026-10-23.
   The text below the line `Copied from` is the root item, verbatim. Where it says keel-operator, read keelops. Where it says the portal

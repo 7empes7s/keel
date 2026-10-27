@@ -87,7 +87,7 @@ export function rawErrorText(error: unknown): string | null {
 // The engine's sentence for a settings file it can't read (engine/config/configFile.mjs):
 // "Keel can't read the <what> file (<path>): <problem>. <next step>." The path stays in
 // the details; the plain words keep which file, what is wrong and what to do.
-const CONFIG_FILE_PATTERN = /Keel can't read the ([^()\n]+?) file \([^)\n]*\): ([^.\n]+)\. (Fix the file[^\n]*?\.)(?=\s|"|$)/;
+const CONFIG_FILE_PATTERN = /Keel can't read the ([^()\n]+?) file \([^)\n]*\): ([^.\n]+)\. (Fix the file[^\n]*?\.)(?=\s|\\|"|$)/;
 
 /**
  * Plain words for a settings file on the Keel server that could not be read, or null
@@ -98,12 +98,10 @@ export function settingsFileWords(raw: string | null): Pick<PlainError, "cause" 
   if (!raw) return null;
   const file = CONFIG_FILE_PATTERN.exec(raw);
   if (file) return { cause: `Keel can't read the ${file[1]} file: ${file[2]}.`, todo: file[3] };
-  // Raw text from before the engine named the file.
-  if (/\bENOENT\b|no such file or directory/.test(raw)) {
+  // Raw text from before the engine named the file: only a missing file under /etc/keel,
+  // never any ENOENT (a missing program or content blob) or JSON error (an HTML answer).
+  if (/\bENOENT\b[^\n]*\/etc\/keel\/[^\s'"]+\.json/.test(raw)) {
     return { cause: "A settings file Keel needs on its server is missing.", todo: "Ask whoever runs Keel to put the file named in the details back, then try again." };
-  }
-  if (/SyntaxError\b.*\bJSON\b|is not valid JSON|Unexpected end of JSON/.test(raw)) {
-    return { cause: "A settings file on the Keel server is not valid.", todo: "Ask whoever runs Keel to fix the file named in the details, then try again." };
   }
   return null;
 }

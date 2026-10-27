@@ -68,13 +68,20 @@ test("a settings file Keel can't read reads as which file, what is wrong and wha
   assert.equal(json.todo, "Fix the file on the Keel server, then try again.");
 });
 
-test("an older raw missing-file or JSON error still reads in plain words", () => {
+test("an older raw missing settings file still reads in plain words; other missing-file and JSON errors keep their own words", () => {
   const missing = plainError("exit code 1\nstderr: Error: ENOENT: no such file or directory, open '/etc/keel/exchange-collector.json'");
   assert.equal(missing.cause, "A settings file Keel needs on its server is missing.");
-  const json = plainError("exit code 1\nstderr: SyntaxError: Unexpected token 'o', \"oops\" is not valid JSON\n    at JSON.parse (<anonymous>)");
-  assert.equal(json.cause, "A settings file on the Keel server is not valid.");
-  for (const words of [missing, json]) {
-    assert.ok(words.todo.split(" ").length <= 20);
-    assert.doesNotMatch(`${words.cause} ${words.todo}`, RAW_ERROR_PATTERN);
+  assert.ok(missing.todo.split(" ").length <= 20);
+  assert.doesNotMatch(`${missing.cause} ${missing.todo}`, RAW_ERROR_PATTERN);
+  // An HTML answer from Microsoft or a proxy, a missing program or content blob: not a settings file.
+  assert.equal(plainError("Graph GET /users failed 503: Unexpected token '<', \"<html>\" is not valid JSON").cause, "Microsoft 365 had a temporary fault.");
+  assert.equal(plainError("ServiceNow answered 500: Unexpected end of JSON input", { service: "ServiceNow" }).cause, "ServiceNow had a temporary fault.");
+  assert.equal(plainError("spawn pwsh ENOENT").cause, "It stopped with an error.");
+});
+
+test("the settings-file sentence is found inside an error stored as an object too", () => {
+  const sentence = "Keel can't read the restorer settings file (/etc/keel/restorer.json): the file is missing. Fix the file on the Keel server, then try again.";
+  for (const error of [{ message: `exit code 1\nstderr: ConfigFileError: ${sentence}\n    at x` }, { error: `${sentence}\n    at x` }]) {
+    assert.equal(plainError(error).cause, "Keel can't read the restorer settings file: the file is missing.");
   }
 });

@@ -23,6 +23,7 @@
 // must have approved it (engine/content/restore/gate.mjs). On the test tenant a restore
 // writes only to KEEL-RT- sites and drives. Every Graph call goes through the content
 // write transport with a guard that keeps writes inside the target drive or site.
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { requestApproval } from '../engine/govern/approvals.mjs';
 import { CONTENT_RESTORE_ACTION, ContentRestoreRefusedError, authorizeContentRestore, targetProblems } from '../engine/content/restore/gate.mjs';
 import { createPgRestoreJournal } from '../engine/content/restore/journal.mjs';
@@ -111,9 +112,9 @@ async function restorerTransport(argv, request, { config, readFile, exists, getT
   if (!exists(restorerPath)) {
     throw new ContentRestoreRefusedError(`file restore is waiting on the content-restorer app (admin consent for content writes): ${restorerPath} does not exist yet; nothing was written`);
   }
-  const restorer = JSON.parse(readFile(restorerPath));
+  const restorer = readConfigFile(restorerPath, { readFile, what: 'content restorer settings' });
   const readerPath = arg(argv, 'reader', '/etc/keel/content-reader.json');
-  const reader = exists(readerPath) ? JSON.parse(readFile(readerPath)) : null;
+  const reader = exists(readerPath) ? readConfigFile(readerPath, { readFile, what: 'content backup reader settings' }) : null;
   const problems = restorerProblems(restorer, config, reader);
   if (problems.length) throw new Error(`content restorer file ${restorerPath}: ${problems.join('; ')}`);
   return writeTransportFor(() => getTokenFn(restorer), { guard: requestGuard(request), fetchImpl });

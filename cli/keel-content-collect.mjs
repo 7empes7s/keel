@@ -24,6 +24,7 @@
 // Until the reader file exists (admin consent, ask 1) a run reads nothing, says what it
 // waits on, and exits 0, so the nightly schedule does not fail every night.
 import { existsSync, readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -150,7 +151,7 @@ export async function main(argv = process.argv.slice(2), {
     logger.log('usage: keel-content-collect.mjs run [--config /etc/keel/tenant.json] [--reader FILE] [--scope FILE] [--tenant-ref REF] [--db-url URL]');
     return argv[0] === undefined || argv.includes('--help') ? 0 : 2;
   }
-  const config = JSON.parse(readFile(arg(argv, 'config', '/etc/keel/tenant.json')));
+  const config = readConfigFile(arg(argv, 'config', '/etc/keel/tenant.json'), { readFile, what: 'collector settings' });
   const tenantRef = tenantRefFor(config.tenantId);
   const requested = arg(argv, 'tenant-ref');
   if (requested !== undefined && requested !== tenantRef) throw new Error('the job names another tenant than the tenant config: refusing to collect');
@@ -159,11 +160,11 @@ export async function main(argv = process.argv.slice(2), {
     logger.log(`content backup is waiting on the content-reader app (admin consent for content reads): ${readerPath} does not exist yet; nothing was read`);
     return 0;
   }
-  const reader = JSON.parse(readFile(readerPath));
+  const reader = readConfigFile(readerPath, { readFile, what: 'content backup reader settings' });
   const problems = readerProblems(reader, config);
   if (problems.length) throw new Error(`content reader file ${readerPath}: ${problems.join('; ')}`);
   const scopePath = arg(argv, 'scope', DEFAULT_SCOPE_PATH);
-  const scope = arg(argv, 'scope') !== undefined || exists(scopePath) ? JSON.parse(readFile(scopePath)) : {};
+  const scope = arg(argv, 'scope') !== undefined || exists(scopePath) ? readConfigFile(scopePath, { readFile, what: 'content scope' }) : {};
   const dbUrl = arg(argv, 'db-url', env.KEEL_DB_URL);
   if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
   const client = await connectFn(dbUrl);

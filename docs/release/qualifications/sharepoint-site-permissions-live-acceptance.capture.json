@@ -1,0 +1,251 @@
+{
+  "requests": [
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web?$select=Id,Url,HasUniqueRoleAssignments",
+      "status": 200,
+      "at": "2026-10-15T15:26:10.061Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/roledefinitions?$select=Id,Name,Description,Hidden,RoleTypeKind,Order,BasePermissions",
+      "status": 200,
+      "at": "2026-10-15T15:26:10.141Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/sitegroups?$select=Id,Title,Description,LoginName,OwnerTitle,AllowMembersEditMembership,AllowRequestToJoinLeave,AutoAcceptRequestToJoinLeave,OnlyAllowMembersViewMembership,RequestToJoinLeaveEmailSetting",
+      "status": 200,
+      "at": "2026-10-15T15:26:10.221Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/sitegroups/GetById(5)/users?$select=Id,Title,LoginName,Email,PrincipalType,IsSiteAdmin,UserPrincipalName",
+      "status": 200,
+      "at": "2026-10-15T15:26:10.305Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/sitegroups/GetById(3)/users?$select=Id,Title,LoginName,Email,PrincipalType,IsSiteAdmin,UserPrincipalName",
+      "status": 200,
+      "at": "2026-10-15T15:26:10.379Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/sitegroups/GetById(4)/users?$select=Id,Title,LoginName,Email,PrincipalType,IsSiteAdmin,UserPrincipalName",
+      "status": 200,
+      "at": "2026-10-15T15:26:10.455Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/siteusers?$filter=IsSiteAdmin%20eq%20true&$select=Id,Title,LoginName,Email,PrincipalType,IsSiteAdmin,UserPrincipalName",
+      "status": 200,
+      "at": "2026-10-15T15:26:10.533Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Id,Member/Title,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name",
+      "status": 200,
+      "at": "2026-10-15T15:26:10.630Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/lists?$select=Id,Title,Hidden,HasUniqueRoleAssignments",
+      "status": 200,
+      "at": "2026-10-15T15:26:10.721Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/lists(guid'3edb890a-7214-80c4-bba1-9fbe8ada2964')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Id,Member/Title,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name",
+      "status": 200,
+      "at": "2026-10-15T15:26:10.816Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/lists(guid'b5804888-15fd-892d-8cc5-b3331785eb21')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Id,Member/Title,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name",
+      "status": 200,
+      "at": "2026-10-15T15:26:10.898Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/lists(guid'78d1b973-3254-8ec0-8333-b16111b68f23')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Id,Member/Title,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name",
+      "status": 200,
+      "at": "2026-10-15T15:26:10.984Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/lists(guid'fcfbb087-d4a1-805d-b77f-d0900fed3947')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Id,Member/Title,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name",
+      "status": 200,
+      "at": "2026-10-15T15:26:11.068Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "POST",
+      "path": "/sites/KEEL-RT-20261004/_api/web/roledefinitions",
+      "status": 201,
+      "at": "2026-10-15T15:26:11.265Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "POST",
+      "path": "/sites/KEEL-RT-20261004/_api/web/sitegroups",
+      "status": 201,
+      "at": "2026-10-15T15:26:11.475Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "POST",
+      "path": "/sites/KEEL-RT-20261004/_api/web/sitegroups/getbyid(10)/users",
+      "status": 201,
+      "at": "2026-10-15T15:26:11.725Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "POST",
+      "path": "/sites/KEEL-RT-20261004/_api/web/ensureuser",
+      "status": 200,
+      "at": "2026-10-15T15:26:11.808Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "POST",
+      "path": "/sites/KEEL-RT-20261004/_api/web/siteusers/getbyid(11)",
+      "status": 204,
+      "at": "2026-10-15T15:26:12.006Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "POST",
+      "path": "/sites/KEEL-RT-20261004/_api/web/roleassignments/addroleassignment(principalid=10,roledefid=1073741924)",
+      "status": 200,
+      "at": "2026-10-15T15:26:12.092Z"
+    },
+    {
+      "credential": "restorer",
+      "method": "POST",
+      "path": "/sites/KEEL-RT-20261004/_api/web/lists(guid'b5804888-15fd-892d-8cc5-b3331785eb21')/roleassignments/addroleassignment(principalid=10,roledefid=1073741924)",
+      "status": 200,
+      "at": "2026-10-15T15:26:12.182Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web?$select=Id,Url,HasUniqueRoleAssignments",
+      "status": 200,
+      "at": "2026-10-15T15:26:12.244Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/roledefinitions?$select=Id,Name,Description,Hidden,RoleTypeKind,Order,BasePermissions",
+      "status": 200,
+      "at": "2026-10-15T15:26:12.311Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/sitegroups?$select=Id,Title,Description,LoginName,OwnerTitle,AllowMembersEditMembership,AllowRequestToJoinLeave,AutoAcceptRequestToJoinLeave,OnlyAllowMembersViewMembership,RequestToJoinLeaveEmailSetting",
+      "status": 200,
+      "at": "2026-10-15T15:26:12.375Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/sitegroups/GetById(5)/users?$select=Id,Title,LoginName,Email,PrincipalType,IsSiteAdmin,UserPrincipalName",
+      "status": 200,
+      "at": "2026-10-15T15:26:12.441Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/sitegroups/GetById(3)/users?$select=Id,Title,LoginName,Email,PrincipalType,IsSiteAdmin,UserPrincipalName",
+      "status": 200,
+      "at": "2026-10-15T15:26:12.506Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/sitegroups/GetById(4)/users?$select=Id,Title,LoginName,Email,PrincipalType,IsSiteAdmin,UserPrincipalName",
+      "status": 200,
+      "at": "2026-10-15T15:26:12.574Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/sitegroups/GetById(10)/users?$select=Id,Title,LoginName,Email,PrincipalType,IsSiteAdmin,UserPrincipalName",
+      "status": 200,
+      "at": "2026-10-15T15:26:12.639Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/siteusers?$filter=IsSiteAdmin%20eq%20true&$select=Id,Title,LoginName,Email,PrincipalType,IsSiteAdmin,UserPrincipalName",
+      "status": 200,
+      "at": "2026-10-15T15:26:12.706Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Id,Member/Title,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name",
+      "status": 200,
+      "at": "2026-10-15T15:26:12.780Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/lists?$select=Id,Title,Hidden,HasUniqueRoleAssignments",
+      "status": 200,
+      "at": "2026-10-15T15:26:12.845Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/lists(guid'3edb890a-7214-80c4-bba1-9fbe8ada2964')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Id,Member/Title,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name",
+      "status": 200,
+      "at": "2026-10-15T15:26:12.925Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/lists(guid'b5804888-15fd-892d-8cc5-b3331785eb21')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Id,Member/Title,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name",
+      "status": 200,
+      "at": "2026-10-15T15:26:13.004Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/lists(guid'78d1b973-3254-8ec0-8333-b16111b68f23')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Id,Member/Title,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name",
+      "status": 200,
+      "at": "2026-10-15T15:26:13.075Z"
+    },
+    {
+      "credential": "collector",
+      "method": "GET",
+      "path": "/sites/KEEL-RT-20261004/_api/web/lists(guid'fcfbb087-d4a1-805d-b77f-d0900fed3947')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Id,Member/Title,Member/LoginName,Member/PrincipalType,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name",
+      "status": 200,
+      "at": "2026-10-15T15:26:13.146Z"
+    }
+  ],
+  "values": {
+    "written": [
+      "sharepoint.site-role-definitions.add",
+      "sharepoint.site-groups.add",
+      "sharepoint.site-group-members.add",
+      "sharepoint.site-admins.add",
+      "sharepoint.site-role-assignments.add"
+    ]
+  }
+}

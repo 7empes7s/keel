@@ -8182,3 +8182,37 @@ item that needs it stays untouched.
   3. Check as keelops: `sudo -u keelops test -r /etc/keel/db.env && echo readable` (exit code only).
 - **Expected:** `readable`, and every service (`keel-portal`, `keel-worker`, `keel-scheduler`, `keelops-deployer`) still `active`.
 - **Report:** the outputs above. Never print a secret.
+
+### Q176: Live proof of the Teams channel message restore through the import API (after PR #596)
+- Drafted by the "Restore Teams messages via import API" thread (2026-10-27). PR #596 adds `keel-content-restore.mjs teams`:
+  it restores one channel's messages into a **new** channel `<name> (restored <date>)` created in import mode, each message with its
+  original author and time, replies under their thread, an inline image, then ends import mode. Messages are not backed up yet
+  (Microsoft's export API is not approved), so on the test tenant the source is a **fixture file** the command prints.
+- Needs: /opt/keel-live at the PR #596 merge or later (`test -f /opt/keel-live/engine/content/restore/teamsMessages.mjs`).
+  The Restorer (`/etc/keel/content-restorer.json`) holding **`Teamwork.Migrate.All` (Application) with admin consent**, plus
+  `Channel.ReadBasic.All`, `Team.ReadBasic.All`, `User.Read.All` (or broader ReadWrite forms of them).
+- Status: todo
+- **Test tenant only.** Write only into a `KEEL-RT-` team. Restorer identity only, global admin not used. Requester/approver split
+  and self-approval as Q68/Q72 under the 2026-10-14 standing authorization; log every approval id here. **Grant no permission.**
+- Do, as the deployed build B (`node /opt/keel-live/cli/keel-content-restore.mjs ...`, KEEL_DB_URL from /etc/keel/db.env):
+  1. Record B. List the Restorer's application permissions (names only). If `Teamwork.Migrate.All` is not among them: create
+     nothing, set `Status: blocked`, Result "waiting on Teamwork.Migrate.All for the Restorer" with the list. Grant nothing.
+  2. Pick a `KEEL-RT-` team `<TEAM>` (any existing one, e.g. the one the content backup reads) and its General channel id
+     `<CH>`. Pick three `keel-rt-*` users: authors `<U1>`, `<U2>` and the fallback author `<UF>` (e.g. alice, carla, bob).
+  3. Fixture: `teams fixture --author <U1> --author <U2> > /tmp/keel-rt-teams-fixture.json` (KEEL-RT- text only, dates 7–10 days ago).
+  4. Plan: `teams plan --team <TEAM> --channel <CH> --fallback-author <UF> --fixture /tmp/keel-rt-teams-fixture.json`.
+     Expect `threads: 3`, `messages: 5`, 2 skipped (a deleted reply, a system message). Keep its `request.at` as `<T>` and pass
+     `--at <T>` to request so the plan and request match.
+  5. Request with `--actor <R>` (same options + `--at <T>`), approve as `<P>`, then
+     `teams run --approval-id <ID> --actor <R> --fixture /tmp/keel-rt-teams-fixture.json`.
+     Expect exit 0, `status: completed`, `restored: 5`, `authorsReplaced: 1`, `notes.inlineImages: 1`, `notes.mentionsAsText: 1`,
+     `notes.reactionsDropped: 1`, `notes.attachmentsDropped: 1`.
+  6. Read back with an identity that can read the channel list (Restorer `GET /teams/<TEAM>/channels?$filter=displayName eq '...'`):
+     the channel `KEEL-RT-import-proof (restored <today>)` exists, standard, and is **not** in import mode any more
+     (`GET /teams/<TEAM>/channels/<new>` answers without a migration error). Messages themselves can't be read back without the
+     export API: say so. If anyone can open the team in the Teams client, a screenshot of the channel is welcome but optional.
+  7. Re-run the same `teams run`: expect exit 0, `restored: 0`, `alreadyDone: 5`, no new channel.
+  8. Leave the restored channel (it is a KEEL-RT- fixture) unless an existing grant can delete it; report which.
+- **If a call fails:** report the step, HTTP status and Graph error code/message verbatim (no tokens). A 400 on a message POST is a
+  finding for the thread, not a reason to change anything by hand.
+- **Report:** build, permission names, plan JSON, approval ids, the run report JSON, the re-run report, the channel id and name.

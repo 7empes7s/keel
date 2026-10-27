@@ -8603,7 +8603,7 @@ item that needs it stays untouched.
 - **Report:** B; step 2 artifact id and targets; step 3 approval ids and outcome; step 4 result; what is left in the tenant (expect nothing).
   If step 2 still plans 0 changes, file an issue `keel-operator: restore target by name plans nothing` with the exact output.
 
-### Q190: Live proof of app categories and dependencies for recreated Intune apps (restore gaps batch 19, after PR #610)
+### Q191: Live proof of app categories and dependencies for recreated Intune apps (restore gaps batch 19, after PR #610)
 - Drafted by the "Restore Intune app dependencies and categories" thread (2026-10-27). Code: PR #610. Fixture-tested only.
   - **Backup change:** each app's categories are read per app (`GET /v1.0/deviceAppManagement/mobileApps/{id}/categories?$select=id,displayName`)
     and kept on the app as `categories` (sorted by name). Categories compare by name, not id. One read per app.

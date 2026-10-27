@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // /opt/keel/cli/keel-content-restore.mjs
 //
-// Wave 2 content restore. One subcommand per workload; mail is here, files come with FILER.
+// Wave 2 content restore. One subcommand per workload: mail is here, files and teams
+// (channel messages) are in keel-content-restore-files.mjs and keel-content-restore-teams.mjs.
 //
 //   node keel-content-restore.mjs mail plan    --source-mailbox USER_ID --at ISO [restore options]
 //   node keel-content-restore.mjs mail request --source-mailbox USER_ID --at ISO [restore options] --actor PRINCIPAL_ID [--justification TEXT]
@@ -45,6 +46,7 @@ import { contentWriteTransport } from '../engine/content/restore/transport.mjs';
 import { GRAPH_ROOT, MAIL_RESTORE_KINDS, mailRestoreRunId, normalizeMailRestoreRequest, planMailRestore, restoreMail } from '../engine/content/restore/mail.mjs';
 import { DEFAULT_READER_PATH, readerProblems } from './keel-content-collect.mjs';
 import { filesCommand } from './keel-content-restore-files.mjs';
+import { teamsCommand } from './keel-content-restore-teams.mjs';
 
 export const DEFAULT_RESTORER_PATH = '/etc/keel/content-restorer.json';
 
@@ -57,6 +59,7 @@ const USAGE = [
   'usage: keel-content-restore.mjs mail plan    --source-mailbox USER_ID --at ISO [--target-mailbox USER_ID] [--into restored-folder|original] [--kinds LIST] [--kind KIND --folder ID [--item ID]]',
   '       keel-content-restore.mjs mail request (the plan options) --actor PRINCIPAL_ID [--justification TEXT]',
   '       keel-content-restore.mjs mail run     --approval-id ID --actor PRINCIPAL_ID',
+  '       keel-content-restore.mjs files help | teams help   (file and Teams message restores)',
   '       common: [--config /etc/keel/tenant.json] [--reader FILE] [--restorer FILE] [--db-url URL]',
 ].join('\n');
 
@@ -166,8 +169,8 @@ async function mailCommand(argv, { config, tenantRef, client, store, readFile, e
   return report.status === 'completed' ? 0 : 1;
 }
 
-// One line per workload. FILER adds `files` here from its own module.
-export const SUBCOMMANDS = Object.freeze({ mail: mailCommand, files: filesCommand });
+// One line per workload. `files` and `teams` live in their own modules.
+export const SUBCOMMANDS = Object.freeze({ mail: mailCommand, files: filesCommand, teams: teamsCommand });
 
 export async function main(argv = process.argv.slice(2), {
   readFile = (path) => readFileSync(path, 'utf8'), exists = existsSync, connectFn = connect, getTokenFn = getToken,

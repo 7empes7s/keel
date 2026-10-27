@@ -2000,7 +2000,7 @@ const RECORD_IDS: Record<string, string[]> = {
   setup: ["5e7a" + "0b".repeat(30), "step-1a2b3c4d5e6f7a82", "plan-9f8e7d6c5b4a3921"],
   "setup-checked": ["5e7a" + "0c".repeat(30), "step-4a2b3c4d5e6f7a81", "plan-8e7d6c5b4a392110"],
   "emergency-changes": ["c1a70000-0000-4000-8000-000000000093", "c1a70000-0000-4000-8000-000000000094", "c1a70000-0000-4000-8000-000000000095", "9d".repeat(32), "conditionalAccessPolicy:Block legacy auth", "8c1e0000-0000-4000-8000-0000000000a2", "d9300000-0000-4000-8000-000000000001", "d9300000-0000-4000-8000-000000000002", "CHG0031337", "state: \"enabled\" -> \"enabledForReportingButNotEnforced\""],
-  alerts: ["a1e70000-0000-4000-8000-000000000001", "conditionalAccessPolicy:Block legacy auth", "group:Finance", "user:bg1@contoso.onmicrosoft.com", "5e170000-0000-4000-8000-000000000001", "escalation-failed-no-recipient", "namedLocation:Head office"],
+  alerts: ["0f1a0000-0000-4000-8000-0000000000f1", "a1e70000-0000-4000-8000-000000000001", "conditionalAccessPolicy:Block legacy auth", "group:Finance", "user:bg1@contoso.onmicrosoft.com", "5e170000-0000-4000-8000-000000000001", "escalation-failed-no-recipient", "namedLocation:Head office"],
   activity: ["a4", "y1", "18205", "18200", "marouanedefili@gmail.com", "sam.ortiz@contoso.example", "Graph 429: throttled after 5 retries", "GET /api/evidence/verify"],
   "job-restore-completion": ["7f3c0000-0000-4000-8000-000000000011"],
   "job-restore-undo": ["7f3c0000-0000-4000-8000-000000000010"],
@@ -4006,6 +4006,62 @@ test("Alerts · tiles, groups, panel, bulk acknowledge, resolve with a reason, m
   const resolved = (await calls()).filter((call) => call.url === "/api/actions/alerts").map((call) => JSON.parse(call.body ?? "{}")).at(-1);
   expect(resolved).toEqual({ alertId: "a1e70000-0000-4000-8000-000000000005", action: "resolve", note: "Planned test, checked with the service desk" });
 });
+
+// Redesign A2 (IN-NAMES): every object on Alerts reads as a name and a kind, a deleted
+// one says since when, and no id shows anywhere outside Technical details: not in the
+// text, not in a tooltip, not in an accessible name. Phone and desktop, both themes.
+const ANY_GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+async function idsOutsideRecord(page: Page): Promise<string[]> {
+  return page.locator("body").evaluate((body, source) => {
+    const guid = new RegExp(source, "i");
+    const found: string[] = [];
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const parent = node.parentElement;
+      if (!parent || parent.closest('[data-layer="record"], script, style') || !parent.checkVisibility()) continue;
+      if (guid.test(node.textContent ?? "")) found.push(`text: ${node.textContent}`);
+    }
+    for (const element of body.querySelectorAll<HTMLElement>("[title], [aria-label], [alt]")) {
+      if (element.closest('[data-layer="record"]')) continue;
+      for (const name of ["title", "aria-label", "alt"]) {
+        const value = element.getAttribute(name);
+        if (value && guid.test(value)) found.push(`${name}: ${value}`);
+      }
+    }
+    return found;
+  }, ANY_GUID.source);
+}
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [390, 1440]) {
+    test(`Alerts · names, not ids · ${width} · ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+      await open(page, "/alerts", theme);
+      const finance = page.locator(".sel-row", { hasText: "Finance (group)" });
+      await expect(finance.locator(".object-label-name")).toHaveText("Finance");
+      await expect(finance.locator(".object-label-type")).toHaveText(" (group)");
+      await expect(finance.locator(".object-label-gone")).toHaveText("Deleted since 2 Oct 2026");
+      await expect(page.locator(".sel-row .object-label-gone")).toHaveCount(1);
+      expect(await idsOutsideRecord(page)).toEqual([]);
+
+      await open(page, "/alerts?open=a1e70000-0000-4000-8000-000000000002", theme);
+      const sheet = page.getByRole("dialog", { name: "Finance (group)" });
+      const about = sheet.locator(".al-facts > div", { hasText: "About" });
+      await expect(about).toContainText("Finance (group)");
+      await expect(about.locator(".object-label-gone")).toHaveText("Deleted since 2 Oct 2026");
+      await expect(about).toContainText("Last in a backup");
+      expect(await idsOutsideRecord(page)).toEqual([]);
+      // The object's id is kept, under Technical details only.
+      const record = sheet.locator('[data-layer="record"]');
+      await record.locator("summary").click();
+      await expect(record).toContainText("No. Deleted since 2 Oct 2026");
+      const objectId = record.getByText("0f1a0000-0000-4000-8000-0000000000f1", { exact: true });
+      await expect(objectId).toBeHidden();
+      await record.getByText(/^Show support details/).click();
+      await expect(objectId).toBeVisible();
+    });
+  }
+}
 
 test("Alerts · a viewer sees the alerts, no amber action and no controls", async ({ page }) => {
   await open(page, "/alerts/viewer");

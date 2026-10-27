@@ -1390,6 +1390,7 @@ const alertEntry = (id: string, occurrence: number, fromState: AlertItem["state"
 const INBOX_ALERTS: AlertItem[] = [
   {
     id: "a1e70000-0000-4000-8000-000000000001", resourceKey: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", control: "baseline", condition: "drift",
+    object: { status: "found", deletedSince: null, lastSeenAt: "2026-10-02T03:00:00Z", objectId: "ca000000-0000-4000-8000-0000000000f2" },
     state: "reopened", conditionActive: true, severity: "critical", occurrence: 2, firstOpenedAt: "2026-09-30T08:00:00Z",
     occurrenceStartedAt: "2026-10-02T08:10:00Z", lastFiringAt: "2026-10-02T09:10:00Z", ackDeadlineAt: "2026-10-02T09:10:00Z",
     acknowledgedAt: null, acknowledgedByName: null, owner: { id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane" },
@@ -1405,6 +1406,7 @@ const INBOX_ALERTS: AlertItem[] = [
   },
   {
     id: "a1e70000-0000-4000-8000-000000000002", resourceKey: "group:Finance", name: "Finance", control: "baseline", condition: "drift",
+    object: { status: "deleted", deletedSince: "2026-10-02T03:00:00Z", lastSeenAt: "2026-10-01T03:00:00Z", objectId: "0f1a0000-0000-4000-8000-0000000000f1" },
     state: "open", conditionActive: true, severity: "warning", occurrence: 1, firstOpenedAt: "2026-10-02T09:30:00Z",
     occurrenceStartedAt: "2026-10-02T09:30:00Z", lastFiringAt: "2026-10-02T09:30:00Z", ackDeadlineAt: null,
     acknowledgedAt: null, acknowledgedByName: null, owner: null, escalated: false, escalationError: "escalation-failed-no-recipient",

@@ -1,5 +1,15 @@
 "use client";
 
+import { plainRefusal } from "@/lib/action-refusal";
+
+// A refused action. `plain` holds the server's own plain-language reason when it sent
+// one meant for people (a restore settings path the worker would refuse), else null.
+export class ActionRequestError extends Error {
+  constructor(readonly status: number, readonly plain: string | null) {
+    super(`Action request failed (${status})`);
+  }
+}
+
 // Client-side POST against the guarded action API (plan task 16). Every call carries
 // an idempotency key generated per logical operation by the caller, so a double-submit
 // or retry dedupes server-side while a genuinely new action does not. The parsed body
@@ -19,7 +29,8 @@ export async function postAction(
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    throw new Error(`Action request failed (${response.status})`);
+    const refused = await response.json().catch(() => null);
+    throw new ActionRequestError(response.status, plainRefusal(refused));
   }
   const payload = (await response.json()) as Record<string, unknown>;
   return { status: response.status, payload };

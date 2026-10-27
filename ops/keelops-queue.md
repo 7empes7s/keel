@@ -402,7 +402,8 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
 ### K13: Run K6 and K7 now that their decisions are filled in
 - Drafted by the "Live checks for Oct 23–25 merges" thread (2026-10-27). Marouane filled in the K6 and K7 lines under **Operator decisions**.
 - Needs: nothing.
-- Status: in-progress
+- Status: done
+- Result: Done 2026-10-27 21:05 UTC: K6 `done` (#565 passes; #563 not demonstrable with this fixture: no follow-up steps opened) and K7 `done` (own check passes, removed, 2 evidence entries). Details in each item.
 - Do: run K6 from step 2 (step 1 is done) and then K7 steps 2, 3 and 5, exactly as written in those items and within the decisions' wording.
   Write each item's own `Status` and `Result`. Set this item to `done` when both have a final status.
 

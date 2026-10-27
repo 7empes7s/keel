@@ -646,7 +646,7 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
   3. **Evidence:** secret scan and `node tools/qualification/pseudonymize.mjs check` on all four files, commit the two records and
      their `.capture.json` on `claude/live-evidence-sharepoint-recapture` from `origin/master`, open a PR with the `automerge` label.
   4. **Import:** `node cli/keel-workload-collect.mjs import --dir <that checkout>/docs/release/qualifications` (DB env loaded).
-- Status: blocked
+- Status: moved (2026-10-27 22:45 UTC: to Q177 on claude/operator-queue for root's keel-operator, which holds the HMAC key; keelops, skip this item)
 - Result: blocked on `/etc/keel/qualification.env` (2026-10-27 ~21:36 UTC): both captures need `KEEL_QUALIFICATION_HMAC_KEY`, and keelops cannot read that file (withheld on purpose; only on the operator's explicit say-so). Needs check passes (PR #591 on master). Build `d40bc9c`. Nothing run; no fixture touched; nothing written. To unblock: the operator grants keelops read on qualification.env, or root's keel-operator runs this item. Deadline in the item: before 2026-11-14.
 - **Expected:** both captures exit 0 with verify ok and failures []; every write ok with readBackVerified true; import lines
   `sharepoint-site-grants-live-acceptance.json` imported (writes 2) and `sharepoint-site-permissions-live-acceptance.json` imported

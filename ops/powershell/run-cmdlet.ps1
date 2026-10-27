@@ -343,6 +343,9 @@ try {
     # Warnings from the module's own functions ignore this script's $WarningPreference and
     # would land on stdout ahead of the envelope (Get-LabelPolicy: "Force Validate not set").
     $output = & $name @params -ErrorAction Stop 3>$null
+    # Microsoft's built-in rule package is megabytes of XML that Keel never stores
+    # (engine/collect/workloads/purviewDlpSupport.mjs): drop it here so it is not sent.
+    if ($name -eq 'Get-DlpSensitiveInformationTypeRulePackage') { $output = @($output | Where-Object { $_.Name -ne 'Microsoft Rule Package' }) }
     Out-Envelope -Envelope @{ ok = $true; output = @($output) } -Code 0
 } catch {
     $record = $_

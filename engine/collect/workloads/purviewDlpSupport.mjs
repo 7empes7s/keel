@@ -28,7 +28,8 @@
  *    its definition (patterns, keywords, confidence), never content it matched.
  *  - Microsoft's built-in types and the built-in "Microsoft Rule Package" are left out
  *    and counted (`builtIn`): they come back with the service, and the package is
- *    megabytes. Built-in alert policies are kept.
+ *    megabytes (the container drops it before it is sent, see run-cmdlet.ps1). Every
+ *    other package is kept, whatever its size. Built-in alert policies are kept.
  *  - Identity is never guessed. A rule package without a readable RulePack id, or any
  *    other answer without a Guid, is unidentified and makes the run partial.
  *  - Unlicensed is an observation, and a gap: audit retention runs only once its own
@@ -52,9 +53,6 @@ export const DEFAULT_MAX_OBJECTS = 1000;
 const AUDIT_PREMIUM_LICENCE = 'Microsoft Purview Audit (Premium)';
 const MICROSOFT_PUBLISHER = 'Microsoft Corporation';
 const MICROSOFT_RULE_PACKAGE = 'Microsoft Rule Package';
-// Microsoft caps a custom rule package file at 150 KB, so no custom package's XML is
-// longer than this many characters.
-export const RULE_PACKAGE_MAX_BYTES = 150 * 1024;
 
 /** The first of `keys` that holds a Guid, lower-cased, or null. */
 const guidIn = (keys) => (body) => {
@@ -121,8 +119,6 @@ export const CLASSIFIER_FAMILIES = Object.freeze({
         if (body.Name === MICROSOFT_RULE_PACKAGE) { builtIn += 1; continue; }
         const { SerializedClassificationRuleCollection: bytes, ...rest } = body;
         const xml = decodeRulePackage(bytes);
-        // Larger than any custom package can be: one of Microsoft's own.
-        if (xml !== null && xml.length > RULE_PACKAGE_MAX_BYTES) { builtIn += 1; continue; }
         custom.push(xml === null ? rest : { ...rest, RulePackageXml: xml });
       }
       return { output: custom, builtIn };

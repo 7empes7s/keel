@@ -208,8 +208,8 @@ export const CONCEPT_WORDS = Object.freeze([
   },
   {
     pattern: /\b(?:dlp|data loss prevention|data leak(?:age)? prevention)\b/i,
-    label: 'data loss prevention and retention policies, and the sensitive information types they use',
-    kinds: ['purview-retention-dlp', 'purview-classifiers'],
+    label: 'data loss prevention and retention policies',
+    kinds: ['purview-retention-dlp'],
   },
   {
     pattern: /\b(?:sensitive info(?:rmation)? types?|keyword dictionar(?:y|ies)|classifiers?)\b/i,

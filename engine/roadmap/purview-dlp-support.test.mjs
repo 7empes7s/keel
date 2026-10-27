@@ -236,6 +236,13 @@ test('custom types, packages and dictionaries are kept; Microsoft built-ins are 
   assert.equal(pack.fields.SerializedClassificationRuleCollection, undefined);
   assert.equal(result.resources.at(-1).fields.KeywordDictionary, 'alpha,beta');
 
+  // A large custom package (the portal's own custom pack can grow past the upload cap) is kept, never taken for Microsoft's.
+  const big = packXml().replace('</Rules>', `<!-- ${'x'.repeat(200 * 1024)} --></Rules>`);
+  compliance.state.answers['Get-DlpSensitiveInformationTypeRulePackage'] = [rulePackage({ Name: 'Microsoft.SCCManaged.CustomRulePack', SerializedClassificationRuleCollection: utf16Bytes(big) })];
+  const large = await readPurviewClassifiers({ powershell: compliance.powershell, families: ['sitRulePackage'], now: () => NOW });
+  assert.deepEqual(large.resources.map((resource) => resource.resourceKey), [`sit-rule-package:${PACK_ID}`]);
+  assert.equal(large.discovery.builtIn.sitRulePackage, 0);
+
   // A package whose XML cannot be read has no identity KEEL trusts: partial, never silent.
   compliance.state.answers['Get-DlpSensitiveInformationTypeRulePackage'] = [rulePackage({ SerializedClassificationRuleCollection: null })];
   const unreadable = await readPurviewClassifiers({ powershell: compliance.powershell, now: () => NOW });

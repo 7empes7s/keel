@@ -12,7 +12,7 @@ export default Object.freeze({
   categories: Object.freeze([
     { key: 'roles', name: 'Admin roles', types: [], match: /role/ },
     { key: 'labels', name: 'Sensitivity labels', types: ['purview-labels'], match: /sensitivity|^purviewlabels?$|^purviewlabelpolic/ },
-    { key: 'protection', name: 'Retention and data loss prevention', types: ['purview-retention-dlp', 'purview-classifiers'], match: /dlp|datalossprevention|retentionpolic|retentionrule|retentiondlp/ },
+    { key: 'protection', name: 'Retention and data loss prevention', types: ['purview-retention-dlp', 'purview-classifiers'], match: /dlp|datalossprevention|retentionpolic|retentionrule|retentiondlp|classifier|sensitiveinfo|keyworddictionar/ },
     { key: 'governance', name: 'Retention labels and eDiscovery', types: ['purview-governance'], match: /governance|retention|label|ediscovery|hold|case|record|fileplan/ },
     { key: 'risk', name: 'Insider risk and communication rules', types: [], match: /insider|communication|supervision|barrier/ },
     { key: 'audit', name: 'Audit and alerts', types: ['purview-audit-alerts'], match: /audit|alert/ },

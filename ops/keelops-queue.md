@@ -183,7 +183,8 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   replaced when a later restore of the same object opens the same step; `countOpenCompletionSteps` and the open-work list leave it out.
 - Needs: /opt/keel-live at the #565 merge (576295e) or later (`grep -q app-id /opt/keel-live/engine/graph/resolver.mjs`).
 - Approval: Marouane approved on 2026-10-27 (14:36 UTC, in the project thread) that keelops may run this item under the operator queue's test-tenant restore rules: self-approve, log each approval id, KEEL-RT- fixtures only.
-- Status: in-progress
+- Status: blocked
+- Result: blocked on `/etc/keel/db.env`, `/etc/keel/tenant.json` and `/etc/keel/restorer.json` (+ `keel-restorer.*`). No fixture created. `/etc/keel` is still `root:root 750` with no keelops ACL (checked 2026-10-27 ~15:15 UTC); root's access step is queued as Q175 on claude/operator-queue (~/agent-src/ROOT-STEPS.md §1). Live build `d040d6c`; Needs check passes. Nothing run, nothing changed in the tenant or on the host. Retry once the files are readable.
 - **Tenant:** standing authorization (2026-10-14): self-approve and log the approval id. Restorer writes only the fixture below;
   Collector reads. **Never grant admin consent** and never add a secret or certificate to the fixture. No CA, no break-glass, not Marouane's account.
 - **Fixture:** app registration `KEEL-RT-app-perms` (single tenant, no redirect URI, no credentials), requesting Microsoft Graph

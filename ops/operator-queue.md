@@ -8064,3 +8064,20 @@ item that needs it stays untouched.
   `duplicates` 0 and `zeroWidth` 0 on every answer; `modifiedWithoutFields` 0 or explained; `assumed` names the concept reading for MFA / admins / CA.
   For "Which users have changed?" report total and whether the 10 Oct mass change shows (with its settings).
 - **Report:** the JSON lines verbatim (names masked) and the build. Portal visuals (sorting, Columns picker, folding) can't be checked from the box; say so.
+
+### Q175: Let keelops read the KEEL config it needs (run section 1 of ~keelops/agent-src/ROOT-STEPS.md)
+- Drafted by the "Live checks for Oct 23–25 merges" thread (2026-10-27). keelops (the `keelops` user's queue, `claude/keelops-queue`)
+  holds the live checks K2–K7 for #563–#571. K2 and K3 are `blocked`: `/etc/keel` is `root:root 750` and keelops cannot read `db.env`.
+  The fix is section 1 of `~keelops/agent-src/ROOT-STEPS.md` (setfacl on `/etc/keel` and its files), which needs root.
+- Approval: Marouane asked on 2026-10-27 (14:37 UTC, project thread) that the agents do this rather than him.
+- Needs: nothing.
+- Status: todo
+- **Tenant:** nothing.
+- Do, as root:
+  1. Read section 1 of `~keelops/agent-src/ROOT-STEPS.md`. Run **only** section 1, exactly as written, if it only grants keelops read
+     access (ACLs / group read) to `/etc/keel` and the files it names. If it does anything else (changes owners or modes for other users,
+     grants write, sudo, or touches files outside `/etc/keel`), stop and report `blocked` with what it would do.
+  2. Report the commands you ran and `getfacl -p /etc/keel /etc/keel/*` (names and ACL lines only, **never file contents**).
+  3. Check as keelops: `sudo -u keelops test -r /etc/keel/db.env && echo readable` (exit code only).
+- **Expected:** `readable`, and every service (`keel-portal`, `keel-worker`, `keel-scheduler`, `keelops-deployer`) still `active`.
+- **Report:** the outputs above. Never print a secret.

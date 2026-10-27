@@ -8525,3 +8525,50 @@ item that needs it stays untouched.
      branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR. Run
      `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; step 2; per operation promoted / refused (exact Graph message) / skipped; steps 4 and 5; approval ids; evidence branch and commit; anything left in the tenant.
+
+### Q189: Capture, import and turn on the SharePoint structure backup (hub sites, site designs and scripts, KEEL-RT- site templates; read-only, after #603)
+- Drafted by the "Back up SharePoint structure with PnP" thread (2026-10-27). Code: PR #603. New read-only workload
+  `sharepoint-structure` in the PnP session (`powershellConfigs.sharepoint`, the config Q158 set up): `Get-PnPHubSite`,
+  `Get-PnPSiteDesign`, `Get-PnPSiteScript` (list, then `-Identity` per script) and `Get-PnPSiteTemplate` per site named in the new
+  scope key `sharepointStructureSites`. The container fixes the template handlers (structure only: lists, columns, content types,
+  navigation, features, web/regional settings; no files, pages, term store, property bag or site security). Each read stays off
+  until its own live record is imported.
+- Needs: /opt/keel-live at the #603 merge or later (`grep -q AllowedPnPStructure /opt/keel-live/ops/powershell/run-cmdlet.ps1`).
+- Status: todo
+- **Tenant:** reads only with the Collector (Sites.FullControl.All + SharePoint Administrator, already held). Grant nothing.
+  Optional fixtures (step 1) are KEEL-RT- only, made with your usual admin path, and left in place.
+- Do, from your clone at the deployed commit B, with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print
+  it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Fixtures, only if missing** (so each read has something to read). Report what existed and what you created:
+     - one KEEL-RT- site script (e.g. `KEEL-RT-structure-script`, one `createSPList` action for a list named `KEEL-RT list`) and one
+       KEEL-RT- site design using it (WebTemplate 64, `IsDefault` false, scoped to nobody);
+     - the existing communication site `KEEL-RT-20261004` registered as a hub site (`Register-PnPHubSite`), only if the tenant has
+       no hub site at all. Nothing else joins it.
+  2. **Scope file:** add `"sharepointStructureSites": ["<URL of KEEL-RT-20261004>"]` (plus any other KEEL-RT- site collection root
+     you want covered, max 25) to `/etc/keel/workload-scope.json`. Keep mode and owner; back up as `.bak-q189`. Report keys before/after.
+  3. **Capture** with the `powershellConfigs.sharepoint` config:
+     ```bash
+     node tools/qualification/workloadReadsLive.mjs capture --workload sharepoint-structure --tenant-ref <tenant ref> \
+       --collector-ref app:<that config's clientId> --collector-config <that config> \
+       --build "$(git -C /opt/keel-live rev-parse HEAD)" --site <URL of KEEL-RT-20261004> \
+       --out docs/release/qualifications/workload-reads-sharepoint-structure-live-acceptance.json
+     node tools/qualification/pseudonymize.mjs check docs/release/qualifications/workload-reads-sharepoint-structure-live-acceptance.json
+     ```
+     Report exit codes, `outcome`, `proven` and `notProven` verbatim (with messages). If the check is not exit 0, stop and file an issue.
+     If a read fails, report the error and still import what was proven (each read switches on alone).
+  4. **Evidence:** commit the record to `claude/live-evidence-sharepoint-structure` (from `origin/master`, that file only, checked for
+     secrets and the real tenant domain) and push. No PR.
+  5. **Import** (`node cli/keel-workload-collect.mjs import --dir <dir>`, as Q158 step 4), then `node cli/keel-workload-collect.mjs run`
+     once. Report sharepoint-structure's outcome and reasons, then (DB only, no field values beyond these):
+     ```sql
+     WITH c AS (SELECT id FROM workload_collection WHERE workload='sharepoint-structure' AND outcome IN ('complete','partial')
+                 ORDER BY created_at DESC LIMIT 1)
+     SELECT fields->>'kind' AS kind, count(*),
+            max(jsonb_array_length(COALESCE(fields->'lists','[]'))) AS max_lists,
+            max((fields->>'templateBytes')::int) AS max_template_bytes
+       FROM workload_observation WHERE collection_id IN (SELECT id FROM c) GROUP BY 1 ORDER BY 1;
+     ```
+  6. **Drift check:** run `workload-collect run` a second time with no tenant change and report `sharepoint-structure` new changes
+     (expected 0: a re-export alone must not be a change).
+- **Expected:** all four reads proven; one siteTemplate row for KEEL-RT-20261004 with its lists; 0 changes on the second run.
+- **Report:** per step; evidence branch and commit; counts per kind; anything not proven with its error.

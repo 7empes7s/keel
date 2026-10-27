@@ -593,7 +593,8 @@ export async function rejectRequest(client, {
 
 /**
  * Gap B11: who carries out the restore that promotes this dry-run artifact. An
- * artifact a worker job planned (the portal's dry run or undo plan) is carried out by
+ * artifact a worker job planned (the portal's dry run, workload dry run, undo plan or
+ * compliance fix) is carried out by
  * the worker, as before; an artifact planned with the CLI is carried out with the CLI,
  * so approving it mints no worker job. A promotion job (mode 'enforce', minted by an
  * earlier approval) is not a dry run and never counts.
@@ -604,7 +605,7 @@ export async function restoreExecutorForArtifact(client, { artifactId }) {
       WHERE kind = 'restore'
         AND params->>'artifactId' = $1
         AND NOT (params ? 'mode')
-        AND (params ? 'snapshotId' OR params ? 'compensates' OR params ? 'complianceFix')
+        AND (params ? 'snapshotId' OR params ? 'compensates' OR params ? 'complianceFix' OR params ? 'workloadRestore')
       LIMIT 1`,
     [artifactId],
   );

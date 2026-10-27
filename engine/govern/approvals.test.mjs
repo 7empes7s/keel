@@ -500,6 +500,22 @@ try {
   const undoPlanId = randomUUID();
   await enqueue(client, { kind: 'restore', params: { compensates: completedArtifact.id, artifactId: undoPlanId }, requestedBy: restorer });
   assert.equal(await restoreExecutorForArtifact(client, { artifactId: undoPlanId }), 'worker');
+  // A workload dry run from the Restore page (Exchange, Teams, Purview, SharePoint)
+  // is planned by the worker too, so approving it must mint the worker's restore job.
+  const workloadPlanId = randomUUID();
+  await enqueue(client, {
+    kind: 'restore',
+    params: { workloadRestore: { workload: 'exchange', collectionId: randomUUID(), mailbox: 'KEEL-RT-mailbox' }, artifactId: workloadPlanId },
+    requestedBy: restorer,
+  });
+  assert.equal(await restoreExecutorForArtifact(client, { artifactId: workloadPlanId }), 'worker');
+  const fixPlanId = randomUUID();
+  await enqueue(client, {
+    kind: 'restore',
+    params: { complianceFix: { controlId: 'KEEL-RT-control', naturalKey: 'policy:KEEL-RT-x' }, collectorConfig: '/c.json', targetConfig: '/t.json', artifactId: fixPlanId },
+    requestedBy: restorer,
+  });
+  assert.equal(await restoreExecutorForArtifact(client, { artifactId: fixPlanId }), 'worker');
   // The worker job an approval mints (mode enforce) is not a dry run: it never makes
   // a CLI-planned artifact look worker-planned.
   assert.equal(await restoreExecutorForArtifact(client, { artifactId: completedArtifact.id }), 'cli');

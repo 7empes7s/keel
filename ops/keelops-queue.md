@@ -172,6 +172,59 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   For "Which users have changed?" report total and whether the 10 Oct mass change shows (with its settings).
 - **Report:** the JSON lines verbatim (names masked) and the build. Portal visuals (sorting, Columns picker, folding) can't be checked from the box; say so.
 
+### K6: Live check that an app requesting API permissions restores, and that replaced follow-up steps drop off (after #563 and #565)
+- Drafted by the "Live checks for Oct 23–25 merges" thread (2026-10-27). #565: `permission:<appId>/role:X` and `object:<appId>`
+  references (an app's `requiredResourceAccess`) now resolve, so restoring an app that asks for API permissions no longer throws
+  `not-found-in-target`, and the preview no longer lists each permission as missing. #563: a pending follow-up step counts as
+  replaced when a later restore of the same object opens the same step; `countOpenCompletionSteps` and the open-work list leave it out.
+- Needs: /opt/keel-live at the #565 merge (576295e) or later (`grep -q app-id /opt/keel-live/engine/graph/resolver.mjs`).
+- Approval: Marouane approved on 2026-10-27 (14:36 UTC, in the project thread) that keelops may run this item under the operator queue's test-tenant restore rules: self-approve, log each approval id, KEEL-RT- fixtures only.
+- Status: todo
+- **Tenant:** standing authorization (2026-10-14): self-approve and log the approval id. Restorer writes only the fixture below;
+  Collector reads. **Never grant admin consent** and never add a secret or certificate to the fixture. No CA, no break-glass, not Marouane's account.
+- **Fixture:** app registration `KEEL-RT-app-perms` (single tenant, no redirect URI, no credentials), requesting Microsoft Graph
+  delegated `User.Read` and application `User.Read.All` in `requiredResourceAccess`, **not consented**.
+- Do, at the deployed build B, from your own checkout:
+  1. **Before** (read-only): with the engine against the live DB, report `countOpenCompletionSteps(c,{tenantRef})`, the length of
+     `listOpenCompletionWork(c,{tenantRef,limit:500})`, and the raw count
+     `SELECT count(*) FROM <completion item table> WHERE state = 'pending'` (find the table in `engine/restore/completion.mjs`).
+     Expect the first two to be clearly lower than the raw count when the same objects were restored more than once.
+  2. Create the fixture. Take a snapshot S (one Tier 1 run or the type's tier) and confirm S holds `application:KEEL-RT-app-perms`
+     with 2 `resourceAccess` entries.
+  3. Rename it to `KEEL-RT-app-perms-drift` in the tenant. Dry run
+     `node cli/keel-restore.mjs --snapshot-id <S> --select <its natural key> --collector-config /etc/keel/tenant.json --target-config /etc/keel/restorer.json --persist-artifact <uuid>`.
+     Report the planned operations, any refusal, and the preview's missing-reference lines (expect none for Graph).
+  4. Approve, enforce. Read back: name `KEEL-RT-app-perms`, `requiredResourceAccess` unchanged (same 2 entries), still no consent grant
+     (`/oauth2PermissionGrants` and app role assignments for its service principal, if any: 0).
+  5. Repeat steps 3–4 once (a second restore of the same app). Then report `listCompletionItems` for both restores: the first restore's
+     pending steps should carry `replacedBy` = the second restore; `countOpenCompletionSteps` should count only the second's.
+  6. Cleanup: delete the app (and its service principal if one was made). Collect; report no `KEEL-RT-app-perms*` left. Close or leave the
+     follow-up steps as they are; report which.
+- **Expected:** no `not-found-in-target`, write succeeds, permissions unchanged, nothing consented, replaced steps left out of the counts.
+  If the write refuses, quote the refusal and stop (change nothing else).
+- **Report:** the outputs above, approval ids, and the build.
+
+### K7: Live check of "write your own check" and the known standards on Compliance (after #567)
+- Drafted by the "Live checks for Oct 23–25 merges" thread (2026-10-27). #567 adds tenant-written compliance checks
+  (`compliance_own_check`, run with Keel's checks after every backup) and the CISA SCuBA and NIST standards sections.
+- Needs: /opt/keel-live at the #567 merge (fa37b06) or later (`test -f /opt/keel-live/engine/store/schema.d/74-own-checks.sql`).
+- Approval: Marouane approved on 2026-10-27 (14:36 UTC, in the project thread) that keelops may run this item under the operator queue's test-tenant restore rules: self-approve, log each approval id, KEEL-RT- fixtures only.
+- Status: todo
+- **Tenant:** nothing is written to the tenant. Keel's own database only: one test check, removed at the end.
+- Do, from your own checkout at B, against the live DB:
+  1. Report `\d compliance_own_check` (the table exists) and `ownCheckChoices(c,{tenantRef})`: the number of types offered and a few sample fields.
+  2. Create one check with `createOwnCheck(c,{principalId,tenantRef,input})`, using a principal that already holds `configuration`
+     (the one approvals use; if none does, mark `blocked` and grant nothing). Input:
+     `{standard:'KEEL-RT standard', name:'KEEL-RT security defaults off', resourceType:'identitySecurityDefaultsEnforcementPolicy', field:'isEnabled', operator:'equals', expected:false, appliesTo:'every', severity:'low'}`
+     (if that type is not offered in step 1, pick any offered type and a field whose value you can see, and say which).
+  3. Run `runComplianceChecks(c,{tenantRef,actor:'keel-operator'})`. Report the new check's result (pass / fail / could not check)
+     and the value it compared, and that Keel's own checks still produced their results (count by result before and after).
+  4. Report the standards view the page uses: for SCuBA and NIST, how many policies Keel checks, how many pass/fail, how many not checked yet
+     (from `engine/benchmarks/standards.mjs` + the newest results; report what you ran).
+  5. Remove the check with `removeOwnCheck`. Report the row has `removed_at` set and two `compliance-own-check` evidence entries (created, removed).
+- **Expected:** all five steps work with no error; the check's result matches the tenant's value. If any call throws, quote the error and stop.
+- **Report:** the outputs above and the build.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

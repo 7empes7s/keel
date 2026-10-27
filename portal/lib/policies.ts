@@ -255,7 +255,7 @@ export function guardedPolicyCreate(surface: DataSurface, deps: GuardDeps = {}) 
         maxActionsPerWindow: body.maxActionsPerWindow, windowSeconds: body.windowSeconds,
         runAsPrincipalId: body.runAsPrincipalId,
       });
-      return Response.json({ policy }, { status: 201, headers: NO_STORE });
+      return Response.json({ policy: (await hidePolicyPeople(client as QueryClient, [policy as Policy]))[0] }, { status: 201, headers: NO_STORE });
     } catch {
       return Response.json({ error: "invalid_request" }, { status: 400, headers: NO_STORE });
     }
@@ -278,7 +278,7 @@ export function guardedPolicyUpdate(operation: "enabled" | "clear-pause", surfac
       const policy = operation === "enabled"
         ? await setPolicyEnabled(client, { policyId: id, enabled: body.enabled })
         : await clearPolicyPause(client, { policyId: id });
-      return Response.json({ policy }, { headers: NO_STORE });
+      return Response.json({ policy: (await hidePolicyPeople(client as QueryClient, [policy as Policy]))[0] }, { headers: NO_STORE });
     } catch {
       return Response.json({ error: "conflict" }, { status: 409, headers: NO_STORE });
     }
@@ -311,7 +311,7 @@ export function guardedPolicyActivate(surface: DataSurface, deps: GuardDeps = {}
     if (typeof body.previewId !== "string" || !UUID.test(body.previewId)) throw new InvalidActionRequest();
     try {
       const { policy, activation } = await activatePolicy(client, { tenantRef, policyId: id, previewId: body.previewId, activatedBy: principalId });
-      return Response.json({ policy, activation }, { headers: NO_STORE });
+      return Response.json({ policy: (await hidePolicyPeople(client as QueryClient, [policy as Policy]))[0], activation }, { headers: NO_STORE });
     } catch (error) {
       if (error instanceof ActivationRefusedError) {
         return Response.json({ error: error.code, changed: error.changed }, { status: 409, headers: NO_STORE });

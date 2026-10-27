@@ -30,12 +30,14 @@ type Namer = (key: string) => string;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CODE_NAME = /^Person [A-HJ-NP-Z2-9]{4}$/;
 const ADDRESS = /[^\s@]+@[^\s@]+/;
+// A real address only: a key prefix such as "user:" or a trailing full stop is not part of it.
+const ADDRESSES = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
 
 /** A subject with every email address, and every typed owner, replaced by a code name. */
 export function hideSubject(value: unknown, namer: Namer, field = ""): unknown {
   if (typeof value === "string") {
     if (field === "owner" && value.trim() && !UUID.test(value.trim())) return namer(value.trim().toLowerCase());
-    return ADDRESS.test(value) ? value.replace(/[^\s@"'<>(),;]+@[^\s@"'<>(),;]+/g, (address) => namer(address.toLowerCase())) : value;
+    return ADDRESS.test(value) ? value.replace(ADDRESSES, (address) => namer(address.toLowerCase())) : value;
   }
   if (Array.isArray(value)) return value.map((item) => hideSubject(item, namer));
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, hideSubject(item, namer, key)]));
@@ -102,6 +104,8 @@ export async function getActivityNames(actors: string[], keys: (string | null)[]
       // An actor recorded by email only becomes a person here, so it is code-named here
       // too when "Hide people's names" is on.
       result.people = Object.fromEntries([...people].map(([id, ref]) => [id, displayPerson(asPerson(ref), namer) as EngineRef]));
+      // A "Who" filter by code name is a person, not one of Keel's own accounts.
+      if (namer) for (const actor of actors) if (CODE_NAME.test(actor)) result.people[actor] = { kind: "person", id: actor, name: actor, readable: true, system: false, pseudonym: true };
     } catch (error) {
       console.error("[keel-portal] activity people unavailable", error);
     }
@@ -122,4 +126,13 @@ export async function getActivityNames(actors: string[], keys: (string | null)[]
     await client.end();
   }
   return result;
+}
+
+/**
+ * When the names lookup failed and names may be hidden (the setting is on, or could not
+ * be read), addresses are blanked rather than sent: fail closed, never open.
+ */
+export function hideAddresses(entries: EvidenceEntry[]): EvidenceEntry[] {
+  const blank = () => "a person";
+  return entries.map((entry) => ({ ...entry, actor: EMAIL.test(entry.actor.trim()) ? "a person" : entry.actor, subject: hideSubject(entry.subject, blank) }));
 }

@@ -13,7 +13,7 @@ import { anonymityNamer, pseudonym, setAnonymity } from "../../engine/insights/a
 import { GET as alertsRoute } from "@/app/api/alerts/route";
 import { GET as escalationRoute } from "@/app/api/escalation-rules/route";
 import { GET as policiesRoute } from "@/app/api/policies/route";
-import { actorsForFilter, getActivityNames, hideEntries, hideSubject } from "@/lib/activity-names";
+import { actorsForFilter, getActivityNames, hideAddresses, hideEntries, hideSubject } from "@/lib/activity-names";
 import { activityCsv, activityRows } from "@/lib/activity-view";
 import type { AlertInboxData } from "@/lib/alerts-view";
 import { principalPerson, shownAccount, shownTypedPerson } from "@/lib/people-names";
@@ -106,6 +106,10 @@ test("Activity: actors recorded by email, addresses and owners in a subject beco
   assert.deepEqual(hideSubject({ owner: "Amara Okafor", reason: "asked by lee@contoso.example", count: 2, owners: [AMARA], ownerPrincipalId: AMARA, nested: { mail: "amara@contoso.example" } }, namer), {
     owner: pseudonym("salt-a", "amara okafor"), reason: `asked by ${pseudonym("salt-a", "lee@contoso.example")}`, count: 2, owners: [AMARA], ownerPrincipalId: AMARA, nested: { mail: amara },
   });
+  // A key prefix stays, and the address inside it gets the person's own code name.
+  assert.equal(hideSubject("user:amara@contoso.example", namer), `user:${amara}`);
+  assert.equal(hideSubject("Asked by amara@contoso.example.", namer), `Asked by ${amara}.`);
+  assert.equal(hideSubject("roleAssignment:global:GlobalAdministrator@user:amara@contoso.example@/", namer), `roleAssignment:global:GlobalAdministrator@user:${amara}@/`);
   const person = { kind: "person", id: amara, name: amara, email: null, readable: true, system: false, pseudonym: true };
   const { entries, people } = hideEntries([
     { seq: "2", occurred_at: "2026-10-01T08:00:00Z", kind: "access-denied", actor: "amara@contoso.example", subject: { action: "restore" } },
@@ -141,7 +145,17 @@ test("Activity: the page data and the Who filter carry code names, and the filte
     // A "Who" filter by code name reads back to the stored address for the audit query.
     assert.deepEqual(await actorsForFilter([code]), ["amara@contoso.example"]);
     assert.deepEqual(await actorsForFilter([code, AMARA]), [AMARA, "amara@contoso.example"]);
+    // A code name in the filter alone is still a person, never "Keel".
+    const filtered = await getActivityNames(["Person ZZZZ"], [], []);
+    assert.equal(filtered.people["Person ZZZZ"]?.system, false);
+    assert.equal(filtered.people["Person ZZZZ"]?.pseudonym, true);
   });
+});
+
+test("Activity: when the names lookup fails, addresses are blanked rather than sent", () => {
+  const [entry] = hideAddresses([{ seq: "1", occurred_at: "2026-10-01T07:00:00Z", kind: "access-denied", actor: "amara@contoso.example", subject: { note: "by lee@contoso.example", key: "user:lee@contoso.example" } }]);
+  assert.equal(entry.actor, "a person");
+  assert.doesNotMatch(JSON.stringify(entry), REAL);
 });
 
 test("Alerts: owner, who acknowledged and who acted show by code names", async () => {

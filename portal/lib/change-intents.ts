@@ -33,6 +33,12 @@ function iso(value: unknown): string | null {
 
 type Client = { query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> };
 
+// "Hide people's names" on what approving or revoking answers with, as on the list.
+async function shownIntent(client: Client, intent: ChangeIntent): Promise<ChangeIntent> {
+  const namer = await peopleNamer(client);
+  return namer ? { ...intent, owner: shownPerson(intent.owner, namer), approver: shownPerson(intent.approver, namer), revokedBy: intent.revokedBy ? shownPerson(intent.revokedBy, namer) : null } : intent;
+}
+
 export async function loadChangeIntents(client: Client, tenantRef: string, now = new Date()): Promise<ChangeIntentsData> {
   // "Hide people's names": owners, approvers and who withdrew an approval by code name.
   const namer = await peopleNamer(client);
@@ -120,7 +126,7 @@ export function guardedChangeIntentCreate(deps: GuardDeps = {}) {
         reason: body.reason, externalChangeId: body.externalChangeId ? String(body.externalChangeId).trim() : null,
         windowStart: now, windowEnd: new Date(now.getTime() + Number(body.windowHours) * 3_600_000), now,
       });
-      return Response.json({ intent }, { status: 201, headers: NO_STORE });
+      return Response.json({ intent: await shownIntent(client as Client, intent as ChangeIntent) }, { status: 201, headers: NO_STORE });
     } catch (error) {
       const refused = refusal(error);
       if (refused) return refused;
@@ -137,7 +143,7 @@ export function guardedChangeIntentRevoke(deps: GuardDeps = {}) {
     if (typeof body.reason !== "string") throw new InvalidActionRequest();
     try {
       const { intent, settlement } = await revokeChangeIntent(client, { tenantRef, intentId: id, revokedBy: principalId, reason: body.reason });
-      return Response.json({ intent, settlement: settlement ? { currentState: settlement.currentState, driftId: settlement.driftId } : null }, { headers: NO_STORE });
+      return Response.json({ intent: await shownIntent(client as Client, intent as ChangeIntent), settlement: settlement ? { currentState: settlement.currentState, driftId: settlement.driftId } : null }, { headers: NO_STORE });
     } catch (error) {
       const refused = refusal(error);
       if (refused) return refused;

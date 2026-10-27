@@ -9,7 +9,7 @@ import { AnonymityNote } from "@/components/anonymity-note";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { JobRefresher } from "@/components/job-refresher";
 import { PageHeader } from "@/components/page-header";
-import { type ActivityNames, actorsForFilter, entrySubjectKey, getActivityNames } from "@/lib/activity-names";
+import { type ActivityNames, actorsForFilter, entrySubjectKey, getActivityNames, hideAddresses } from "@/lib/activity-names";
 import { getAnonymitySetting } from "@/lib/anonymity";
 import { ACTIVITY_KINDS, OUTCOMES, activityCounts, activityStatus, parseFilters, rangeBounds } from "@/lib/activity-view";
 import type { ChainIntegrity, EvidenceData } from "@/lib/evidence";
@@ -84,7 +84,7 @@ export default async function ActivityPage({ searchParams }: {
     <PageHeader description={DESCRIPTION} generatedAt={generatedAt} section="Audit log" status={status} title={TITLE} />
     <ActivityBody
       canBackup={access.capabilities.includes("backup")}
-      entries={names.entries ?? evidence?.entries ?? []}
+      entries={names.entries ?? (anonymity?.enabled || !anonymity ? hideAddresses(evidence?.entries ?? []) : evidence?.entries ?? [])}
       integrity={integrity}
       jobs={allJobs}
       names={names.names}

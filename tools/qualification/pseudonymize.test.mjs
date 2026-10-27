@@ -4,7 +4,7 @@ import { test } from 'node:test';
 
 import { LiveGateRefusal, assertSafeText } from './entraLive.mjs';
 import {
-  cloudSidToGuid, guidToCloudSid, main, pseudonymizeCapture, pseudonymizer, rawIdentifiers, roleAssignmentIdGuids, unpseudonymizedIds,
+  claimsLogins, cloudSidToGuid, guidToCloudSid, main, pseudonymizeCapture, pseudonymizer, rawIdentifiers, roleAssignmentIdGuids, unpseudonymizedClaimsLogins, unpseudonymizedIds,
 } from './pseudonymize.mjs';
 
 const TENANT = '73b6beef-0000-4000-8000-000000000001';
@@ -203,4 +203,51 @@ test('a deleted role assignment id with a longer suffix, a scoped id and a dashl
   const sha = createHash('sha256').update('x').digest('hex');
   assert.deepEqual(rawIdentifiers(sha), []);
   assert.equal(a.text(sha), sha);
+});
+
+// A SharePoint claims login as the site permissions gate captures it (Q80): a KEEL-RT- test
+// user on the tenant's real mail domain. Made-up domain here.
+const CLAIMS = 'i:0#.f|membership|keel-rt-20260908-diego@fabrikam-mail.com';
+
+test('a SharePoint claims login loses its user part and mail domain, and stays a test user', () => {
+  const a = pseudonymizer('sha256:aaaa');
+  const out = a.text(CLAIMS);
+  assert.match(out, /^i:0#\.f\|membership\|keel-rt-u[0-9a-f]{12}@t[0-9a-f]{11}\.example$/);
+  assert.ok(!/diego|fabrikam/i.test(out), out);
+  // Stable within a run and across case, different per tenant.
+  assert.equal(a.text(CLAIMS.toUpperCase().replace('I:0#.F|MEMBERSHIP|', 'i:0#.f|membership|')), out);
+  assert.notEqual(pseudonymizer('sha256:bbbb').text(CLAIMS), out);
+  // Every field and log line that carries it maps the same way, so equality checks still hold.
+  const walked = a.walk({ fixture: { member: CLAIMS }, operations: [{ subject: CLAIMS, principal: { loginName: CLAIMS } }] });
+  assert.equal(walked.operations[0].subject, walked.fixture.member);
+  assert.equal(walked.operations[0].principal.loginName, out);
+  // The URL-escaped form in a REST path maps to the escaped form of the same pseudonym.
+  const path = `/_api/web/siteusers/getbyloginname('${encodeURIComponent(CLAIMS)}')`;
+  assert.equal(decodeURIComponent(a.text(path)), `/_api/web/siteusers/getbyloginname('${out}')`);
+  // A user outside the test prefix gets no prefix; an onmicrosoft domain keeps its tenant host mapping.
+  assert.match(a.text('i:0#.f|membership|alice@fabrikam-mail.com'), /\|membership\|u[0-9a-f]{12}@t[0-9a-f]{11}\.example$/);
+  assert.equal(a.text('i:0#.f|membership|keel-rt-x@contoso.onmicrosoft.com').split('@')[1], `${a.host('contoso')}.onmicrosoft.com`);
+  // A group claim holds a GUID and is mapped by the GUID rule only.
+  assert.equal(a.text(`c:0o.c|federateddirectoryclaimprovider|${GROUP}`), `c:0o.c|federateddirectoryclaimprovider|${a.guid(GROUP)}`);
+});
+
+test('the check fails on an unmasked claims login and passes the pseudonymized one', () => {
+  const raw = JSON.stringify({ fixture: { member: CLAIMS }, path: encodeURIComponent(CLAIMS) });
+  assert.deepEqual(claimsLogins(raw), ['|membership|keel-rt-20260908-diego@fabrikam-mail.com', '%7cmembership%7ckeel-rt-20260908-diego%40fabrikam-mail.com']);
+  assert.equal(unpseudonymizedIds(raw).length, 2);
+  // Only the domain or only the user part masked is still a leak.
+  assert.equal(unpseudonymizedClaimsLogins('i:0#.f|membership|keel-rt-u0123456789ab@fabrikam-mail.com').length, 1);
+  assert.equal(unpseudonymizedClaimsLogins('i:0#.f|membership|keel-rt-diego@t0123456789a.example').length, 1);
+
+  const published = JSON.stringify(pseudonymizer('sha256:aaaa').walk(JSON.parse(raw)));
+  assert.deepEqual(unpseudonymizedIds(published), []);
+  const files = { 'raw.json': raw, 'published.json': published };
+  const lines = [];
+  const options = { read: (file) => files[file], log: (line) => lines.push(line) };
+  assert.equal(main(['check', 'published.json'], options), 0);
+  assert.equal(main(['check', 'raw.json'], options), 1);
+  assert.match(lines.at(-1), /raw\.json: 2 id\(s\) that are not pseudonyms: \|membership\|keel-rt-20260908-diego@fabrikam-mail\.com/);
+  // The capture guard refuses a log that still holds the raw login.
+  assert.throws(() => assertSafeText(raw, { rawIds: rawIdentifiers(raw), label: 'the capture log' }), /raw object id/);
+  assert.doesNotThrow(() => assertSafeText(published, { rawIds: rawIdentifiers(raw), label: 'the capture log' }));
 });

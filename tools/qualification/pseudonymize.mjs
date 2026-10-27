@@ -6,8 +6,9 @@
  * Every GUID becomes a GUID-shaped pseudonym, every security identifier (`S-1-12-1-…`, which
  * encodes the object GUID, and on-premises `S-1-5-21-…`, plus any value of a `securityIdentifier`
  * or `onPremisesSecurityIdentifier` field whatever its shape) a SID-shaped one, every immutable id a
- * base64-shaped one, and every tenant host prefix (`<prefix>[-my|-admin].sharepoint.com`,
- * `<prefix>.onmicrosoft.com`) a host-shaped one. All are derived from the record's tenantRef,
+ * base64-shaped one, every tenant host prefix (`<prefix>[-my|-admin].sharepoint.com`,
+ * `<prefix>.onmicrosoft.com`) a host-shaped one, and the user part and mail domain of every
+ * SharePoint claims login (`i:0#.f|membership|user@domain`) pseudonyms of their own. All are derived from the record's tenantRef,
  * so the same id maps to the same pseudonym in every gate captured for that tenant: equality
  * checks inside a record, across its capture log and along the gate chain still hold, and
  * validators keep their shape checks.
@@ -55,6 +56,29 @@ const ANY_SID = /^S(?:-\d+){2,}$/i;
 const IMMUTABLE_ID_KEYS = new Set(['onPremisesImmutableId', 'immutableId']);
 const IMMUTABLE_ID = /^[A-Za-z0-9+/]{22}==$/;
 
+// A SharePoint claims login (`i:0#.f|membership|user@domain`), raw or URL-escaped
+// (`%7Cmembership%7Cuser%40domain`). Its user part names a person and its domain is the
+// tenant's real mail domain, so both are replaced. Groups use other claim types with GUIDs.
+const CLAIMS_LOGIN = /((?:\||%7c)membership(?:\||%7c))([a-z0-9._'+-]+)(@|%40)([a-z0-9-]+(?:\.[a-z0-9-]+)+)/gi;
+// What a pseudonymized claims login looks like: the `keel-rt-` test-user prefix is kept so the
+// gates can still see a test user, the rest is digest-derived, and the domain is host-shaped.
+const CLAIMS_USER_PSEUDONYM = /^(?:keel-rt-)?u[0-9a-f]{12}$/;
+const CLAIMS_DOMAIN_PSEUDONYM = /^t[0-9a-f]{11}\.(?:onmicrosoft\.com|example)$/;
+const FIXTURE_USER_PREFIX = 'keel-rt-';
+
+/** Every SharePoint claims login in `text` (from its `|membership|` separator on), lower-cased and deduplicated. */
+export function claimsLogins(text) {
+  return [...new Set([...text.matchAll(CLAIMS_LOGIN)].map((m) => m[0].toLowerCase()))];
+}
+
+/** The claims logins in `text` whose user part or domain is not a pseudonym. */
+export function unpseudonymizedClaimsLogins(text) {
+  return [...text.matchAll(CLAIMS_LOGIN)]
+    .filter((m) => !CLAIMS_USER_PSEUDONYM.test(m[2].toLowerCase()) || !CLAIMS_DOMAIN_PSEUDONYM.test(m[4].toLowerCase()))
+    .map((m) => m[0].toLowerCase())
+    .filter((login, index, all) => all.indexOf(login) === index);
+}
+
 const sha256Hex = (text) => createHash('sha256').update(text).digest('hex');
 const MAX_WORD = 0xffffffff;
 
@@ -95,13 +119,13 @@ export function roleAssignmentIdGuids(token) {
 }
 
 /**
- * Every GUID (dashed or not), SID and role assignment id in `text`, lower-cased and
- * deduplicated: the ids a capture must lose.
+ * Every GUID (dashed or not), SID, role assignment id and SharePoint claims login in `text`,
+ * lower-cased and deduplicated: the ids a capture must lose.
  */
 export function rawIdentifiers(text) {
   const roleAssignmentIds = [...text.matchAll(ROLE_ASSIGNMENT_TOKEN)].filter((m) => roleAssignmentIdGuids(m[0]));
-  return [...new Set([...text.matchAll(GUID), ...text.matchAll(HEX_GUID), ...text.matchAll(CLOUD_SID), ...text.matchAll(ONPREM_SID), ...roleAssignmentIds]
-    .map((m) => m[0].toLowerCase()))];
+  return [...new Set([...[...text.matchAll(GUID), ...text.matchAll(HEX_GUID), ...text.matchAll(CLOUD_SID), ...text.matchAll(ONPREM_SID), ...roleAssignmentIds]
+    .map((m) => m[0].toLowerCase()), ...claimsLogins(text)])];
 }
 
 /**
@@ -109,11 +133,15 @@ export function rawIdentifiers(text) {
  * version 8, and a cloud SID or role assignment id it writes encodes version 8 GUIDs, whereas
  * Entra assigns version 4. So a published capture can be checked without the tenant's raw ids:
  * a SID-shaped value is not a leak when it encodes a pseudonym. An on-premises SID cannot be
- * told apart this way and is always listed.
+ * told apart this way and is always listed. A SharePoint claims login is listed unless both its
+ * user part and its domain have the pseudonym shape.
  */
 export function unpseudonymizedIds(text) {
   const isPseudonym = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-8/i.test(value);
+  const rawClaims = new Set(unpseudonymizedClaimsLogins(text));
   return rawIdentifiers(text).filter((id) => {
+    // A claims login is checked by shape: a pseudonymized one has a digest user part and domain.
+    if (/^(?:\||%7c)membership/.test(id)) return rawClaims.has(id);
     if (GUID_ONLY.test(id)) return !isPseudonym(id);
     if (HEX_GUID_ONLY.test(id)) return !isPseudonym(dashed(id));
     if (/^s-1-12-1-/i.test(id)) return !isPseudonym(cloudSidToGuid(id) ?? '');
@@ -165,6 +193,15 @@ export function pseudonymizer(tenantRef) {
     if (ANY_SID.test(trimmed)) return `S-1-12-1-${words('sid', trimmed, 4).join('-')}`;
     return text(value);
   };
+  // A claims login's user part keeps only the test-user prefix. An onmicrosoft domain has already
+  // been mapped by the tenant host rule (it runs first); any other domain becomes host-shaped.
+  const claimsUser = (user) => {
+    const lower = user.toLowerCase();
+    const prefix = lower.startsWith(FIXTURE_USER_PREFIX) ? FIXTURE_USER_PREFIX : '';
+    return `${prefix}u${digest('claims-user', lower).slice(0, 12)}`;
+  };
+  const claimsDomain = (domain) => (/\.onmicrosoft\.com$/i.test(domain) ? domain : `${host(`mail:${domain}`)}.example`);
+  const claims = (value) => value.replace(CLAIMS_LOGIN, (_, sep, user, at, domain) => `${sep}${claimsUser(user)}${at}${claimsDomain(domain)}`);
   const hexGuid = (value) => guid(dashed(value)).replace(/-/g, '');
   const plain = (value) => value.replace(GUID, guid).replace(HEX_GUID, hexGuid).replace(CLOUD_SID, cloudSid).replace(ONPREM_SID, onPremSid).replace(TENANT_HOST, host);
   // A role assignment id maps through the two GUIDs it encodes, like a cloud SID.
@@ -186,7 +223,7 @@ export function pseudonymizer(tenantRef) {
     if (reencode(decoded) !== token || !/^[\x20-\x7e]+$/.test(inner) || !inner.match(GUID)) return token;
     return reencode(Buffer.from(plain(inner), 'latin1'));
   };
-  const text = (value) => plain(value.replace(ROLE_ASSIGNMENT_TOKEN, roleAssignmentId).replace(BASE64_TOKEN, encoded));
+  const text = (value) => claims(plain(value.replace(ROLE_ASSIGNMENT_TOKEN, roleAssignmentId).replace(BASE64_TOKEN, encoded)));
   const walk = (value) => {
     if (typeof value === 'string') return text(value);
     if (Array.isArray(value)) return value.map(walk);
@@ -199,7 +236,7 @@ export function pseudonymizer(tenantRef) {
     }
     return value;
   };
-  return { guid, host, cloudSid, onPremSid, immutableId, roleAssignmentId, securityIdentifier, text, walk };
+  return { guid, host, cloudSid, onPremSid, immutableId, roleAssignmentId, securityIdentifier, claims, text, walk };
 }
 
 /**

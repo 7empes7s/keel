@@ -8602,3 +8602,42 @@ item that needs it stays untouched.
   5. Cleanup: delete the rule(s); collect; accept the `removed` row(s); collect again: 0 changes.
 - **Report:** B; step 2 artifact id and targets; step 3 approval ids and outcome; step 4 result; what is left in the tenant (expect nothing).
   If step 2 still plans 0 changes, file an issue `keel-operator: restore target by name plans nothing` with the exact output.
+
+### Q190: Live proof of app categories and dependencies for recreated Intune apps (restore gaps batch 19, after PR #610)
+- Drafted by the "Restore Intune app dependencies and categories" thread (2026-10-27). Code: PR #610. Fixture-tested only.
+  - **Backup change:** each app's categories are read per app (`GET /v1.0/deviceAppManagement/mobileApps/{id}/categories?$select=id,displayName`)
+    and kept on the app as `categories` (sorted by name). Categories compare by name, not id. One read per app.
+  - Restore of an app (create or update) then puts it in the backed-up categories and takes it out of others:
+    `GET /beta/deviceAppManagement/mobileAppCategories`, `GET /beta/.../mobileApps/{id}/categories`,
+    `POST /beta/.../mobileApps/{id}/categories/$ref` with `{"@odata.id":"https://graph.microsoft.com/beta/deviceAppManagement/mobileAppCategories/{catId}"}`,
+    `DELETE /beta/.../mobileApps/{id}/categories/{catId}/$ref`. A category is found by: this run's recreate, same id, or the only one with the same name.
+    A missing category is a step for a person (`requirement: categories`).
+  - A dependency or supersedence (`mobileAppRelationship`) between apps recreated in the same run is created between the **new** app ids.
+- Needs: /opt/keel-live at the PR #610 merge or later (`grep -q appCategoriesAfterWrite /opt/keel-live/engine/restore/intuneOperations.mjs`).
+  **If Q185 is still todo when this build is live, run both in one pass** with the shared fixtures below (Q185 steps first, then the extra steps here).
+- Status: todo
+- **Test tenant only.** Same hard rules as Q185: Restorer only, approve the restores yourself under the 2026-10-14 standing authorization and log
+  every approval id; if Graph answers 403, report blocked with what Graph names and grant nothing. **Never assign any fixture app; never upload a package;
+  use a dependency set to detect, never a supersedence.**
+- **Fixtures** (KEEL-RT- prefix, `live-gate-plan.mjs` at B says the same):
+  - App category `KEEL-RT-148-cat`.
+  - Web link `KEEL-RT-148-app-web` (https://example.com/) in `KEEL-RT-148-cat` and the built-in category `Business`, assigned to nobody.
+  - Two web links `KEEL-RT-148-app-main` and `KEEL-RT-148-app-dep`, neither assigned, with `app-main` depending on `app-dep` (dependencyType `detect`).
+    If Intune refuses a dependency on a web link, say so and skip the dependency rounds.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Create the fixtures, take snapshot S. Report the `mobileApp` read outcome, and that `KEEL-RT-148-app-web` in S has
+     `categories` = [Business, KEEL-RT-148-cat] (names only), and the `mobileAppRelationship` between app-main and app-dep is in S.
+  2. **No false change:** take a second snapshot S2 with no tenant change; the changes between S and S2 list no `mobileApp`.
+  3. **Category round (update):** take `KEEL-RT-148-app-web` out of `Business`. Restore from S selecting `mobileApp` (the web link only), enforce.
+     Expect the result's `changes.categories` = `{ added: 1, removed: 0 }` and the app back in both categories (read `GET .../mobileApps/{id}/categories`).
+  4. **Recreate round:** delete `KEEL-RT-148-app-web`, `KEEL-RT-148-cat`, `app-main`, `app-dep` (deleting an app removes its dependency).
+     Restore from S selecting `mobileAppCategory` `KEEL-RT-148-cat`, the three apps and the `mobileAppRelationship`, one run, enforce.
+     Expect: the category recreated; the web link recreated in the **new** `KEEL-RT-148-cat` and in `Business`; both apps recreated; the dependency
+     created with `sourceId`/`targetId` = the **new** ids of app-main and app-dep (report both ids, old and new). Capture each operation.
+  5. **Re-run check:** dry run from S. Expect 0 planned writes for these fixtures (the dependency now has another id: report what the dry run says about it).
+  6. Cleanup: delete the fixture apps and the category. Report anything left.
+  7. Commit records and `.capture.json` files under `docs/release/qualifications/entra-live/` on `claude/live-evidence-restore-gaps-19`, branched from
+     `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR. Report the `live evidence` lines.
+- **If a call fails:** the step, HTTP status and Graph error code/message verbatim (no tokens). A 400/404 on `categories/$ref` is a finding for the
+  thread (the route may differ on v1.0 vs beta); do not work around it by hand.
+- **Report:** B; per step; approval ids; old and new ids from step 4; evidence branch and commit; anything left in the tenant.

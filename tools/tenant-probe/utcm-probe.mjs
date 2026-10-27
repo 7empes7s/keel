@@ -67,7 +67,7 @@ const CREATE_PATH = /^\/(v1\.0|beta)\/admin\/configurationManagement\/configurat
  */
 export function assertProbeRequest(url, method = 'GET', body = undefined, created = new Set()) {
   const parsed = new URL(url);
-  if (parsed.protocol !== 'https:') throw new ProbeScopeError(`refused a plain http request: ${url}`);
+  if (parsed.protocol !== 'https:') throw new ProbeScopeError(`refused a plain http request to ${parsed.hostname}`);
   const host = parsed.hostname;
   const verb = String(method).toUpperCase();
   if (host !== GRAPH) {
@@ -115,7 +115,7 @@ export function probeTransport(token, fetchImpl = globalThis.fetch, { timeoutMs 
     const text = await response.text();
     let json = null;
     try { json = text ? JSON.parse(text) : null; } catch { json = null; }
-    if (method === 'POST' && response.status >= 200 && response.status < 300 && typeof json?.id === 'string') {
+    if (String(method).toUpperCase() === 'POST' && response.status >= 200 && response.status < 300 && typeof json?.id === 'string') {
       created.add(json.id.toLowerCase());
     }
     return { status: response.status, json, text, location: response.headers.get('location') };
@@ -185,16 +185,22 @@ export async function runCheck({ send, roles, version = 'v1.0' }) {
  * Creates one snapshot job for `types`. A 400 usually names a type TCM does not take: the
  * list is split in two and each half retried, so one bad name does not hide the rest.
  */
-export async function createJobs({ send, version, workload, types, depth = 0, stamp }) {
+const BAD_TYPE = /resource|type|name|invalid|not (?:valid|supported)/i;
+const LIMIT_TEXT = /quota|limit|maximum|exceed|too many/i;
+
+export async function createJobs({ send, version, workload, types, depth = 0, stamp, room = { left: VISIBLE_JOB_LIMIT } }) {
+  if (room.left <= 0) return { jobs: [], refused: [{ types, status: null, error: `not sent: no room for another snapshot job (TCM shows at most ${VISIBLE_JOB_LIMIT})` }] };
   const body = { displayName: `${JOB_PREFIX}-${workload}-${stamp}${depth ? `-${depth}-${types.length}` : ''}`, description: 'KEEL probe: read-only snapshot, deleted after reading', resources: types };
   const answer = await send(G(version, `${ADMIN}/configurationSnapshots/createSnapshot`), 'POST', body);
   if (answer.status >= 200 && answer.status < 300 && answer.json?.id) {
+    room.left -= 1;
     return { jobs: [{ id: answer.json.id, types, status: answer.json.status ?? null }], refused: [] };
   }
-  if (answer.status === 400 && types.length > 1 && depth < 6) {
+  const text = errorText(answer);
+  if (answer.status === 400 && types.length > 1 && depth < 6 && BAD_TYPE.test(text) && !LIMIT_TEXT.test(text)) {
     const half = Math.ceil(types.length / 2);
-    const left = await createJobs({ send, version, workload, types: types.slice(0, half), depth: depth + 1, stamp });
-    const right = await createJobs({ send, version, workload, types: types.slice(half), depth: depth + 1, stamp });
+    const left = await createJobs({ send, version, workload, types: types.slice(0, half), depth: depth + 1, stamp, room });
+    const right = await createJobs({ send, version, workload, types: types.slice(half), depth: depth + 1, stamp, room });
     return { jobs: [...left.jobs, ...right.jobs], refused: [...left.refused, ...right.refused] };
   }
   return { jobs: [], refused: [{ types, ...outcome(answer) }] };
@@ -202,6 +208,7 @@ export async function createJobs({ send, version, workload, types, depth = 0, st
 
 /** Polls a job until it ends or `maxWaitMs` passes. */
 export async function waitForJob({ send, version, id, maxWaitMs, sleep, now }) {
+  if (!Number.isFinite(maxWaitMs)) throw new RangeError('maxWaitMs must be a number');
   const started = now();
   const url = G(version, `${ADMIN}/configurationSnapshotJobs/${id}?$select=id,status,errorDetails,resourceLocation,resources,createdDateTime,completedDateTime`);
   let last = null;
@@ -270,39 +277,55 @@ export async function runSnapshots({
     report.stopped = `could not list snapshot jobs: ${outcome(visible).error ?? visible.status}`;
     return report;
   }
-  for (const workload of workloads) {
+  const room = { left: VISIBLE_JOB_LIMIT - report.visibleJobsBefore };
+  try {
+    for (const workload of workloads) await snapshotWorkload({ send, version, workload, room, maxWaitMs, sleep, now, saveRaw, stamp, report });
+  } catch (error) {
+    report.stopped = `stopped early: ${mask(String(error?.message ?? error))}`;
+  } finally {
+    if (!keepJobs) {
+      for (const id of send.created) {
+        let answer;
+        try { answer = await send(G(version, `${ADMIN}/configurationSnapshotJobs/${id}`), 'DELETE'); } catch (error) { answer = { status: `error: ${mask(String(error?.message ?? error))}` }; }
+        (answer.status === 204 || answer.status === 200 ? report.deleted : report.notDeleted).push(answer.status);
+      }
+    }
+  }
+  report.findings = findings(report);
+  return report;
+}
+
+async function snapshotWorkload({ send, version, workload, room, maxWaitMs, sleep, now, saveRaw, stamp, report }) {
+  {
     const types = typesFor(workload);
     const entry = { workload, requested: types.length, jobs: [], refused: [] };
     report.workloads.push(entry);
-    const room = VISIBLE_JOB_LIMIT - report.visibleJobsBefore - send.created.size;
-    if (room <= 0) {
+    if (room.left <= 0) {
       entry.skipped = `no room: TCM shows at most ${VISIBLE_JOB_LIMIT} snapshot jobs, and jobs the probe did not create are never deleted`;
-      continue;
+      return;
     }
-    const created = await createJobs({ send, version, workload, types, stamp });
+    const created = await createJobs({ send, version, workload, types, stamp, room });
     entry.refused = created.refused.map((refusal) => ({ types: refusal.types, status: refusal.status, error: refusal.error }));
     for (const job of created.jobs) {
       const result = await waitForJob({ send, version, id: job.id, maxWaitMs, sleep, now });
       const record = { types: job.types.length, status: result.status, seconds: result.seconds, errorCount: result.errorCount, errorDetails: result.errorDetails, error: result.error };
       if (result.resourceLocation) {
-        const file = await send(result.resourceLocation);
-        record.download = { status: file.status, host: new URL(result.resourceLocation).hostname === GRAPH ? 'graph' : 'storage', error: file.status === 200 ? null : outcome(file).error, bytes: file.text?.length ?? 0 };
-        if (file.status === 200) {
-          saveRaw(`${workload}-${created.jobs.indexOf(job)}.json`, file.text);
-          record.summary = summariseSnapshot(file.json);
+        try {
+          const location = new URL(result.resourceLocation, `https://${GRAPH}/`).href;
+          const file = await send(location);
+          record.download = { status: file.status, host: new URL(location).hostname === GRAPH ? 'graph' : 'storage', error: file.status === 200 ? null : outcome(file).error, bytes: file.text?.length ?? 0 };
+          if (file.status === 200) {
+            saveRaw(`${workload}-${created.jobs.indexOf(job)}.json`, file.text);
+            record.summary = summariseSnapshot(file.json);
+          }
+        } catch (error) {
+          // The signed link itself never goes in the report: only that it could not be fetched, and why.
+          record.download = { status: null, host: 'refused', error: mask(String(error?.name ?? 'Error')) };
         }
       }
       entry.jobs.push(record);
     }
   }
-  if (!keepJobs) {
-    for (const id of send.created) {
-      const answer = await send(G(version, `${ADMIN}/configurationSnapshotJobs/${id}`), 'DELETE');
-      (answer.status === 204 || answer.status === 200 ? report.deleted : report.notDeleted).push(answer.status);
-    }
-  }
-  report.findings = findings(report);
-  return report;
 }
 
 /** What the run says, against what KEEL reads. */
@@ -423,6 +446,12 @@ async function main(argv) {
       console.error(`utcm-probe: unknown workloads ${unknown.join(', ')}`);
       return 2;
     }
+    const maxWaitSeconds = Number(argValue(argv, '--max-wait-seconds') ?? 2400);
+    if (!Number.isFinite(maxWaitSeconds) || maxWaitSeconds <= 0) {
+      console.error('utcm-probe: --max-wait-seconds must be a positive number');
+      return 2;
+    }
+    const maxWaitMs = maxWaitSeconds * 1000;
     const raw = join(out, 'raw');
     mkdirSync(raw, { recursive: true, mode: 0o700 });
     const saveRaw = (name, text) => {
@@ -432,7 +461,7 @@ async function main(argv) {
     };
     report = await runSnapshots({
       send, version, workloads, saveRaw, keepJobs: argv.includes('--keep-jobs'),
-      maxWaitMs: Number(argValue(argv, '--max-wait-seconds') ?? 2400) * 1000,
+      maxWaitMs,
     });
   }
   writeFileSync(join(out, `utcm-probe-${command}.json`), `${JSON.stringify(report, null, 2)}\n`);

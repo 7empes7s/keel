@@ -38,7 +38,8 @@ function Write-Step([string] $Name, [string] $Outcome, $Detail, [double] $Second
     if ($text -and $text.Length -gt 600) { $text = $text.Substring(0, 600) }
     $row = [ordered]@{ step = $Name; outcome = $Outcome; detail = $text; seconds = [math]::Round($Seconds, 1) }
     $steps.Add($row)
-    $row | ConvertTo-Json -Compress | Write-Output
+    # Straight to stdout, so a step line never becomes part of a function's return value.
+    [Console]::WriteLine(($row | ConvertTo-Json -Compress))
 }
 function Invoke-Step([string] $Name, [scriptblock] $Block) {
     $watch = [Diagnostics.Stopwatch]::StartNew()
@@ -74,15 +75,19 @@ Invoke-Step 'install PSDesiredStateConfiguration' {
 
 # 2. Credential: the PEM pair, turned into a temporary PFX inside the container only.
 $config = Get-Content -Raw -Path $TenantConfigPath | ConvertFrom-Json
-$raw = [System.Security.Cryptography.X509Certificates.X509Certificate2]::CreateFromPemFile($config.certPath, $config.keyPath)
-$pfxPassword = [Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(24))
-$pfxPath = Join-Path ([IO.Path]::GetTempPath()) "keel-dsc-$([guid]::NewGuid()).pfx"
-[IO.File]::WriteAllBytes($pfxPath, $raw.Export('Pkcs12', $pfxPassword))
-if (-not $IsWindows) { chmod 600 $pfxPath }
-$secure = ConvertTo-SecureString -String $pfxPassword -AsPlainText -Force
-$pfxPassword = $null
 if (-not $OrgDomain) { $OrgDomain = $config.orgDomain }
 if (-not $OrgDomain) { throw 'dsc-probe: pass -OrgDomain (the tenant''s initial onmicrosoft.com domain)' }
+$raw = [System.Security.Cryptography.X509Certificates.X509Certificate2]::CreateFromPemFile($config.certPath, $config.keyPath)
+$pfxPassword = [Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(24))
+$pfxDir = Join-Path ([IO.Path]::GetTempPath()) "keel-dsc-$([guid]::NewGuid())"
+New-Item -ItemType Directory -Path $pfxDir | Out-Null
+if (-not $IsWindows) { chmod 700 $pfxDir }
+$pfxPath = Join-Path $pfxDir 'c.pfx'
+[IO.File]::WriteAllBytes($pfxPath, $raw.Export('Pkcs12', $pfxPassword))
+if (-not $IsWindows) { chmod 600 $pfxPath }
+try {
+$secure = ConvertTo-SecureString -String $pfxPassword -AsPlainText -Force
+$pfxPassword = $null
 $auth = @{
     ApplicationId       = $config.clientId
     TenantId            = $OrgDomain
@@ -90,25 +95,46 @@ $auth = @{
     CertificatePassword = [pscredential]::new('pfx', $secure)
 }
 
-# Invoke-DscResource first; if it cannot drive the class-based resource on Linux, call the class directly.
+# The pinned module's folder, so every route below loads exactly $ModuleVersion.
+$moduleBase = (Get-Module -ListAvailable Microsoft365DSC | Where-Object { [string]$_.Version -eq $ModuleVersion } | Select-Object -First 1).ModuleBase
+
+# Three ways to drive the resource, tried in order until one answers: Invoke-DscResource, the class
+# (Microsoft365DSC 2.x resources are class-based), then the script module (1.x layout). The first route
+# that answers is kept; a failure of every route is reported and the next call tries again.
 $script:Mode = $null
-function Invoke-Resource([string] $Method, [hashtable] $Property) {
-    $all = $auth + $Property
-    if ($script:Mode -ne 'class') {
-        try {
-            $answer = Invoke-DscResource -Name EXODistributionGroup -ModuleName @{ ModuleName = 'Microsoft365DSC'; ModuleVersion = $ModuleVersion } -Method $Method -Property $all
-            $script:Mode = 'Invoke-DscResource'
-            return $answer
-        } catch {
-            if ($script:Mode -eq 'Invoke-DscResource') { throw }
-            Write-Step 'Invoke-DscResource' 'failed' $_.Exception.Message 0
-            $script:Mode = 'class'
+function Invoke-Route([string] $Route, [string] $Method, [hashtable] $All) {
+    switch ($Route) {
+        'Invoke-DscResource' {
+            Invoke-DscResource -Name EXODistributionGroup -ModuleName @{ ModuleName = 'Microsoft365DSC'; ModuleVersion = $ModuleVersion } -Method $Method -Property $All
+        }
+        'class' {
+            $make = [scriptblock]::Create("using module '$(Join-Path $moduleBase 'Microsoft365DSC.psd1')'; [EXODistributionGroup]::new()")
+            $resource = & $make
+            foreach ($key in $All.Keys) { $resource.$key = $All[$key] }
+            switch ($Method) { 'Get' { $resource.Get() } 'Set' { $resource.Set(); 'set' } 'Test' { $resource.Test() } }
+        }
+        'script' {
+            $psm = Get-ChildItem -Recurse -File -Path $moduleBase -Filter 'MSFT_EXODistributionGroup.psm1' | Select-Object -First 1
+            if (-not $psm) { throw 'no MSFT_EXODistributionGroup.psm1 in the module' }
+            Import-Module $psm.FullName -Force -Prefix Keel
+            switch ($Method) { 'Get' { [pscustomobject](Get-KeelTargetResource @All) } 'Set' { Set-KeelTargetResource @All; 'set' } 'Test' { Test-KeelTargetResource @All } }
         }
     }
-    $make = [scriptblock]::Create('using module Microsoft365DSC; [EXODistributionGroup]::new()')
-    $resource = & $make
-    foreach ($key in $all.Keys) { $resource.$key = $all[$key] }
-    switch ($Method) { 'Get' { $resource.Get() } 'Set' { $resource.Set(); 'set' } 'Test' { $resource.Test() } }
+}
+function Invoke-Resource([string] $Method, [hashtable] $Property) {
+    $all = $auth + $Property
+    if ($script:Mode) { return Invoke-Route $script:Mode $Method $all }
+    $errors = @()
+    foreach ($route in 'Invoke-DscResource', 'class', 'script') {
+        try {
+            $answer = Invoke-Route $route $Method $all
+            $script:Mode = $route
+            return $answer
+        } catch {
+            $errors += "${route}: $($_.Exception.Message)"
+        }
+    }
+    throw ($errors -join ' | ')
 }
 function Summarise($answer) {
     if ($null -eq $answer) { return 'no answer' }
@@ -127,10 +153,12 @@ try {
 } finally {
     Invoke-Step '6 set absent (clean up)' { Invoke-Resource 'Set' ($key + @{ Ensure = 'Absent' }) | Out-Null; "mode=$script:Mode" } | Out-Null
     Invoke-Step '7 get (expect absent)' { Summarise (Invoke-Resource 'Get' ($key + @{ Ensure = 'Present' })) } | Out-Null
-    Remove-Item -Force $pfxPath -ErrorAction SilentlyContinue
     $memory = [math]::Round([Diagnostics.Process]::GetCurrentProcess().PeakWorkingSet64 / 1MB)
     Write-Step 'peak memory' 'info' "$memory MB" 0
     if (Test-Path $Out) {
         [ordered]@{ fixture = $Fixture; module = "Microsoft365DSC $ModuleVersion"; steps = $steps } | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $Out 'dsc-probe.json')
     }
+}
+} finally {
+    Remove-Item -Recurse -Force $pfxDir -ErrorAction SilentlyContinue
 }

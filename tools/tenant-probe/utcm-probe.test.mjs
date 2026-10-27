@@ -198,3 +198,41 @@ test('check reports the role, both principals, the TCM grants and the visible jo
   assert.equal(report.ready, false);
   assert.ok(renderMarkdown(report).includes('| Ready to run | no |'));
 });
+
+test('a snapshot link on a host the probe does not use is refused, and the jobs are still deleted', async () => {
+  const tcm = fakeTcm({ snapshot: SNAPSHOT, polls: 0 });
+  const inner = tcm.fetchImpl;
+  const fetchImpl = async (url, init) => {
+    const answer = await inner(url, init);
+    if (/configurationSnapshotJobs\/[0-9a-f-]{36}$/.test(new URL(url).pathname) && init.method === 'GET') {
+      return { ...answer, text: async () => JSON.stringify({ id: ID1, status: 'succeeded', resourceLocation: 'https://evil.example.com/f?sig=SECRETSIG' }) };
+    }
+    return answer;
+  };
+  const send = probeTransport(async () => 'token', fetchImpl);
+  const report = await runSnapshots({ send, workloads: ['teams'], sleep: async () => {}, saveRaw: () => {} });
+  assert.equal(report.workloads[0].jobs[0].download.host, 'refused');
+  assert.deepEqual(report.deleted, [204]);
+  assert.ok(!JSON.stringify(report).includes('SECRETSIG'));
+  assert.ok(!JSON.stringify(report).includes('evil.example.com'));
+});
+
+test('a quota or limit refusal is not split into more requests, and splitting stops at the job limit', async () => {
+  const quota = fakeTcm({ createStatus: () => 400 });
+  const quotaFetch = async (url, init) => {
+    const answer = await quota.fetchImpl(url, init);
+    if (init.method === 'POST') return { ...answer, text: async () => JSON.stringify({ error: { code: 'BadRequest', message: 'Monthly quota exceeded.' } }) };
+    return answer;
+  };
+  const types = typesFor('exchange');
+  const one = await createJobs({ send: probeTransport(async () => 'token', quotaFetch), version: 'v1.0', workload: 'exchange', types, stamp: 'T' });
+  assert.equal(quota.calls.filter((call) => call.method === 'POST').length, 1);
+  assert.equal(one.refused.length, 1);
+
+  const bad = fakeTcm({ createStatus: (resources) => (resources.length > 1 ? 400 : 200) });
+  const room = { left: 2 };
+  const split = await createJobs({ send: probeTransport(async () => 'token', bad.fetchImpl), version: 'v1.0', workload: 'exchange', types: types.slice(0, 8), stamp: 'T', room });
+  assert.equal(split.jobs.length, 2);
+  assert.equal(room.left, 0);
+  assert.ok(split.refused.every((refusal) => refusal.status === 400 || /no room/.test(refusal.error)));
+});

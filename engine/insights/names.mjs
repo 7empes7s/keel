@@ -86,6 +86,14 @@ const iso = (value) => {
   return Number.isNaN(date.valueOf()) ? null : date.toISOString();
 };
 
+// When a key went: the start of the first complete backup after its last sighting
+// that read its kind but no longer held the key. Times stay in SQL, so microseconds
+// are never lost on the way through JavaScript (lesson 2026-10-15).
+const goneSinceSql = (key, type, lastSeen) => `(SELECT min(s2.started_at) FROM snapshot s2
+   WHERE s2.tenant_ref = $1 AND s2.status = 'complete' AND s2.started_at > ${lastSeen}
+     AND EXISTS (SELECT 1 FROM resource_version r2 WHERE r2.snapshot_id = s2.id AND r2.resource_type = ${type})
+     AND NOT EXISTS (SELECT 1 FROM resource_version r3 WHERE r3.snapshot_id = s2.id AND r3.natural_key = ${key}))`;
+
 // For each wanted id, the newest saved version of the object it names (by backup key,
 // or by the object's id or app id), its newest non-empty name, and the first complete
 // backup after it that read its kind but no longer held it.
@@ -93,12 +101,12 @@ const LOOKUP_SQL = `
   WITH wanted AS (SELECT unnest($2::text[]) AS id),
   hits AS (
     SELECT w.id AS wanted, rv.natural_key, rv.resource_type, ${NAME_SQL} AS name,
-           rv.payload->>'id' AS object_id, s.started_at
+           rv.payload->>'id' AS object_id, s.started_at, s.id AS snapshot_id
       FROM wanted w
       JOIN resource_version rv ON rv.natural_key = w.id
       JOIN snapshot s ON s.id = rv.snapshot_id AND s.tenant_ref = $1
     UNION ALL
-    SELECT w.id, rv.natural_key, rv.resource_type, ${NAME_SQL}, rv.payload->>'id', s.started_at
+    SELECT w.id, rv.natural_key, rv.resource_type, ${NAME_SQL}, rv.payload->>'id', s.started_at, s.id
       FROM wanted w
       JOIN snapshot s ON s.tenant_ref = $1
       JOIN resource_version rv ON rv.snapshot_id = s.id
@@ -106,7 +114,7 @@ const LOOKUP_SQL = `
        AND (lower(rv.payload->>'id') = lower(w.id) OR lower(rv.payload->>'appId') = lower(w.id))
   ),
   newest AS (
-    SELECT DISTINCT ON (wanted) wanted, natural_key, resource_type, object_id, started_at AS last_seen
+    SELECT DISTINCT ON (wanted) wanted, natural_key, resource_type, object_id, started_at AS last_seen, snapshot_id AS last_snapshot
       FROM hits ORDER BY wanted, started_at DESC, natural_key
   ),
   named AS (
@@ -115,36 +123,43 @@ const LOOKUP_SQL = `
      ORDER BY wanted, started_at DESC
   )
   SELECT n.wanted, n.natural_key, n.resource_type, n.object_id, n.last_seen, m.name,
-         (SELECT min(s2.started_at) FROM snapshot s2
-           WHERE s2.tenant_ref = $1 AND s2.status = 'complete' AND s2.started_at > n.last_seen
-             AND EXISTS (SELECT 1 FROM resource_version r2 WHERE r2.snapshot_id = s2.id AND r2.resource_type = n.resource_type)
-             AND NOT EXISTS (SELECT 1 FROM resource_version r3 WHERE r3.snapshot_id = s2.id AND r3.natural_key = n.natural_key)
-         ) AS gone_since
+         ${goneSinceSql('n.natural_key', 'n.resource_type', 'n.last_seen')} AS gone_since, n.last_snapshot
     FROM newest n LEFT JOIN named m USING (wanted)`;
 
 // Most backup keys are built from the object's name, so a renamed object is saved under
 // a new key and its old key looks gone. An object whose Microsoft id is still in a later
 // backup was renamed, not deleted: it is found, under its newest name.
+// The newest version holding the same object id after the old key's last sighting
+// (compared by snapshot, never by a time sent back from JavaScript), and whether that
+// newer key was dropped later too: renamed, then deleted.
 const RENAMED_SQL = `
-  SELECT DISTINCT ON (w.object_id, w.resource_type) w.object_id, w.resource_type, ${NAME_SQL} AS name, s.started_at
-    FROM unnest($2::text[], $3::text[], $4::timestamptz[]) AS w(object_id, resource_type, after)
-    JOIN snapshot s ON s.tenant_ref = $1 AND s.started_at > w.after
-    JOIN resource_version rv ON rv.snapshot_id = s.id AND rv.resource_type = w.resource_type AND rv.payload->>'id' = w.object_id
-   ORDER BY w.object_id, w.resource_type, s.started_at DESC`;
+  WITH latest AS (
+    SELECT DISTINCT ON (w.object_id, w.resource_type) w.object_id, w.resource_type, rv.natural_key,
+           ${NAME_SQL} AS name, s.started_at
+      FROM unnest($2::text[], $3::text[], $4::uuid[]) AS w(object_id, resource_type, after_snapshot)
+      JOIN snapshot s0 ON s0.id = w.after_snapshot
+      JOIN snapshot s ON s.tenant_ref = $1 AND s.started_at > s0.started_at
+      JOIN resource_version rv ON rv.snapshot_id = s.id AND rv.resource_type = w.resource_type AND rv.payload->>'id' = w.object_id
+     ORDER BY w.object_id, w.resource_type, s.started_at DESC
+  )
+  SELECT l.object_id, l.resource_type, l.name, l.started_at,
+         ${goneSinceSql('l.natural_key', 'l.resource_type', 'l.started_at')} AS gone_since
+    FROM latest l`;
 
-async function followRenames(client, tenantRef, result) {
-  const gone = [...result.values()].filter((object) => object.status === 'deleted' && object.objectId && object.lastSeenAt);
+async function followRenames(client, tenantRef, result, lastSnapshots) {
+  const gone = [...result.values()].filter((object) => object.status === 'deleted' && object.objectId && lastSnapshots.has(object.id));
   if (!gone.length) return;
   const { rows } = await client.query(RENAMED_SQL, [
-    tenantRef, gone.map((object) => object.objectId), gone.map((object) => object.type), gone.map((object) => object.lastSeenAt),
+    tenantRef, gone.map((object) => object.objectId), gone.map((object) => object.type), gone.map((object) => lastSnapshots.get(object.id)),
   ]);
   const renamed = new Map(rows.map((row) => [`${row.resource_type}|${row.object_id}`, row]));
   for (const object of gone) {
     const row = renamed.get(`${object.type}|${object.objectId}`);
     if (!row) continue;
+    const goneSince = iso(row.gone_since);
     result.set(object.id, describeObject(object.id, {
       resourceType: object.type, name: usableName(row.name) ?? object.name, objectId: object.objectId,
-      status: 'found', lastSeenAt: iso(row.started_at),
+      status: goneSince ? 'deleted' : 'found', lastSeenAt: iso(row.started_at), deletedSince: goneSince,
     }));
   }
 }
@@ -159,12 +174,14 @@ async function followRenames(client, tenantRef, result) {
 export async function lookupNames(client, { tenantRef, ids }) {
   const unique = [...new Set(ids.filter((id) => typeof id === 'string' && id.trim()))];
   const result = new Map();
+  const lastSnapshots = new Map();
   const asked = unique.slice(0, MAX_NAME_IDS);
   if (asked.length) {
     // Only bare object ids are matched against saved object ids: a backup key never is.
     const objectIds = asked.filter((id) => BARE_GUID.test(id));
     const { rows } = await client.query(LOOKUP_SQL, [tenantRef, asked, objectIds]);
     for (const row of rows) {
+      if (row.last_snapshot) lastSnapshots.set(String(row.wanted), String(row.last_snapshot));
       const goneSince = iso(row.gone_since);
       result.set(String(row.wanted), describeObject(String(row.wanted), {
         resourceType: String(row.resource_type),
@@ -176,7 +193,7 @@ export async function lookupNames(client, { tenantRef, ids }) {
       }));
     }
   }
-  await followRenames(client, tenantRef, result);
+  await followRenames(client, tenantRef, result, lastSnapshots);
   for (const id of unique) if (!result.has(id)) result.set(id, describeObject(id, { status: 'unknown' }));
   return result;
 }

@@ -21,8 +21,11 @@ const NEVER_ID = 'dead0000-0000-4000-8000-000000000009';
 const daysAgo = (days) => new Date(Date.now() - days * 86_400_000);
 
 async function backup(tenantRef, startedAt, status, resources) {
+  // Postgres keeps microseconds (production backups start at now()); JavaScript keeps
+  // milliseconds. Every backup here has microseconds so a time that loses them on a
+  // round trip through JavaScript fails these tests (lesson 2026-10-15).
   const { rows: [snapshot] } = await client.query(
-    'INSERT INTO snapshot (tenant_ref, started_at, status) VALUES ($1, $2, $3) RETURNING id',
+    "INSERT INTO snapshot (tenant_ref, started_at, status) VALUES ($1, $2::timestamptz + interval '123 microseconds', $3) RETURNING id, started_at",
     [tenantRef, startedAt, status],
   );
   for (const [key, type, payload] of resources) {
@@ -32,7 +35,7 @@ async function backup(tenantRef, startedAt, status, resources) {
       [snapshot.id, key, type, payload],
     );
   }
-  return startedAt;
+  return snapshot.started_at;
 }
 
 const finance = (name = 'Finance') => ['group:Finance', 'group', { id: FINANCE_ID, displayName: name }];
@@ -121,6 +124,17 @@ test('renamed, not deleted: a key built from the old name follows the object to 
   assert.equal(object.status, 'found');
   assert.equal(object.name, 'Brand team');
   assert.equal(object.deletedSince, null);
+});
+
+test('renamed, then deleted: the newer key is gone too, so it is deleted under its newest name', async () => {
+  const id = '0f1a0000-0000-4000-8000-0000000000cc';
+  await backup('renamed-gone', daysAgo(5), 'complete', [['group:M', 'group', { id, displayName: 'M' }], oldTeam]);
+  await backup('renamed-gone', daysAgo(4), 'complete', [['group:N', 'group', { id, displayName: 'N' }], oldTeam]);
+  const gone = await backup('renamed-gone', daysAgo(3), 'complete', [oldTeam]);
+  const object = (await lookupNames(client, { tenantRef: 'renamed-gone', ids: ['group:M'] })).get('group:M');
+  assert.equal(object.status, 'deleted');
+  assert.equal(object.name, 'N');
+  assert.equal(object.deletedSince, gone.toISOString());
 });
 
 test('an empty batch reads nothing', async () => {

@@ -34,7 +34,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Built-in admin roles | Yes (Tier 1, critical, every hour) | Microsoft-managed | Nothing to restore | None |
 | Custom admin roles | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Admin role templates | Yes (Tier 3, low impact, weekly) | Microsoft-managed | Nothing to restore | None |
-| Admin role assignments | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
+| Admin role assignments | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant; live test of putting settings back not possible on our test tenant (checked 2026-10-09) |
 | Eligible admin roles | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Time-limited active admin roles | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
 | Admin role activation settings | Yes (Tier 1, critical, every hour) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
@@ -210,13 +210,13 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Named locations | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Authentication contexts | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Authentication methods | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
-| Security defaults | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Security defaults | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back not possible on our test tenant (checked 2026-10-14) |
 | User and guest permissions | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Cross-tenant access | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Cross-tenant access defaults | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Cross-tenant access per organization | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Device join and registration settings | Yes (Tier 1, critical, every hour) | Incomplete | By hand (KEEL choice) | None |
-| External user self sign-up | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| External user self sign-up | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back not possible on our test tenant (checked 2026-10-13) |
 | App consent policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Admin consent requests | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Idle sign-out policy | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |

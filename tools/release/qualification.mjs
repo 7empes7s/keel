@@ -39,6 +39,7 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 const SCUBAGEAR_PIN_PATH = new URL('../../docs/roadmap/benchmark-content/scubagear-pin.json', import.meta.url).pathname;
 const SCUBAGEAR_REQUIRED_WORKLOADS = Object.freeze(['aad', 'exo']);
@@ -900,7 +901,7 @@ function arg(name, fallback) {
 export function configuredTenantRef(path = process.env.KEEL_TENANT_CONFIG_PATH) {
   if (!path) return null;
   try {
-    return tenantRefFor(JSON.parse(readFileSync(path, 'utf8')).tenantId);
+    return tenantRefFor(readConfigFile(path, { readFile: readFileSync, what: 'collector settings' }).tenantId);
   } catch {
     return null;
   }

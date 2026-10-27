@@ -21,6 +21,7 @@ import {
   CHECK_LINE_LIMIT,
   checkCounts,
   checksCapped,
+  failingBadge,
   controlChecks,
   controlName,
   controlService,
@@ -204,7 +205,7 @@ function ControlChecks({ checks, counts, subject }: { checks: ControlCheck[]; co
     <section aria-labelledby="cp-checks-heading" className="cp-block">
       <h3 id="cp-checks-heading">
         {failing ? "What fails" : "Settings checked"}{" "}
-        {failing ? <Badge tone="urgent">{failing === 1 ? "1 setting" : `${failing.toLocaleString("en-GB")} settings`}</Badge> : null}{" "}
+        {failing ? <Badge tone="urgent">{failingBadge(counts)}</Badge> : null}{" "}
         {passing ? <Badge tone="fine">{failing ? `${passing.toLocaleString("en-GB")}${capped ? " or more" : ""} meet the standard` : passing === 1 ? "Meets the standard" : capped ? "All shown meet the standard" : `All ${passing.toLocaleString("en-GB")} meet the standard`}</Badge> : null}
       </h3>
       {failing && passingListed ? (

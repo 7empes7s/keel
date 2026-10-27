@@ -1,0 +1,151 @@
+import { strict as assert } from 'node:assert';
+import { after, before, test } from 'node:test';
+
+import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { schemaSql } from '../store/loadSchema.mjs';
+import { describeObject, holdsGuid, lookupNames, objectLabelText } from './names.mjs';
+
+const database = await createIsolatedTestDatabase(import.meta.url);
+let client;
+after(async () => {
+  await client?.end();
+  await database.cleanup();
+});
+
+const TENANT = 'contoso';
+const FINANCE_ID = '0f1a0000-0000-4000-8000-000000000001';
+const OLD_TEAM_ID = '0f1a0000-0000-4000-8000-000000000002';
+const POLICY_ID = 'ca000000-0000-4000-8000-000000000003';
+const NEVER_ID = 'dead0000-0000-4000-8000-000000000009';
+// Backups are dated relative to the run, so the test never rots.
+const daysAgo = (days) => new Date(Date.now() - days * 86_400_000);
+
+async function backup(tenantRef, startedAt, status, resources) {
+  // Postgres keeps microseconds (production backups start at now()); JavaScript keeps
+  // milliseconds. Every backup here has microseconds so a time that loses them on a
+  // round trip through JavaScript fails these tests (lesson 2026-10-15).
+  const { rows: [snapshot] } = await client.query(
+    "INSERT INTO snapshot (tenant_ref, started_at, status) VALUES ($1, $2::timestamptz + interval '123 microseconds', $3) RETURNING id, started_at",
+    [tenantRef, startedAt, status],
+  );
+  for (const [key, type, payload] of resources) {
+    await client.query(
+      `INSERT INTO resource_version (snapshot_id, natural_key, resource_type, payload, payload_hash, criticality, blast_radius, fidelity, provenance)
+       VALUES ($1, $2, $3, $4, 'h', 'tier2', 'scoped', 'full', '{}')`,
+      [snapshot.id, key, type, payload],
+    );
+  }
+  return snapshot.started_at;
+}
+
+const finance = (name = 'Finance') => ['group:Finance', 'group', { id: FINANCE_ID, displayName: name }];
+const oldTeam = ['group:Old project team', 'group', { id: OLD_TEAM_ID, displayName: 'Old project team' }];
+const policy = [`conditionalAccessPolicy:${POLICY_ID}`, 'conditionalAccessPolicy', { id: POLICY_ID, displayName: 'Block legacy auth' }];
+
+let goneAt;
+before(async () => {
+  client = await database.connect();
+  await client.query(schemaSql());
+  await backup(TENANT, daysAgo(5), 'complete', [finance('Finance (old name)'), oldTeam, policy]);
+  goneAt = await backup(TENANT, daysAgo(3), 'complete', [finance(), policy]);
+  // A failed backup that read no groups proves nothing about them.
+  await backup(TENANT, daysAgo(2), 'failed', [policy]);
+  await backup(TENANT, daysAgo(1), 'complete', [finance(), policy]);
+  // Another tenant's backup never names this tenant's objects.
+  await backup('fabrikam', daysAgo(1), 'complete', [['group:Secret', 'group', { id: NEVER_ID, displayName: 'Secret' }]]);
+});
+
+test('found: a key in the newest backup reads as its kind and newest name', async () => {
+  const names = await lookupNames(client, { tenantRef: TENANT, ids: ['group:Finance'] });
+  const object = names.get('group:Finance');
+  assert.equal(object.status, 'found');
+  assert.equal(object.typeName, 'Group');
+  assert.equal(object.service, 'Entra');
+  assert.equal(object.name, 'Finance');
+  assert.equal(object.objectId, FINANCE_ID);
+  assert.equal(object.deletedSince, null);
+  assert.equal(objectLabelText(object), 'Group · Finance');
+});
+
+test('found: a bare object id and an id-keyed object read by name, never the id', async () => {
+  const names = await lookupNames(client, { tenantRef: TENANT, ids: [FINANCE_ID.toUpperCase(), `conditionalAccessPolicy:${POLICY_ID}`] });
+  const byId = names.get(FINANCE_ID.toUpperCase());
+  assert.equal(byId.status, 'found');
+  assert.equal(byId.name, 'Finance');
+  assert.equal(byId.type, 'group');
+  const keyed = names.get(`conditionalAccessPolicy:${POLICY_ID}`);
+  assert.equal(keyed.name, 'Block legacy auth');
+  assert.equal(keyed.typeName, 'Conditional Access policy');
+  assert.equal(objectLabelText(keyed), 'Conditional Access policy · Block legacy auth');
+});
+
+test('deleted: gone from a later complete backup, with the date it went and its last name', async () => {
+  const names = await lookupNames(client, { tenantRef: TENANT, ids: ['group:Old project team', OLD_TEAM_ID] });
+  for (const id of ['group:Old project team', OLD_TEAM_ID]) {
+    const object = names.get(id);
+    assert.equal(object.status, 'deleted', id);
+    assert.equal(object.name, 'Old project team');
+    assert.equal(object.deletedSince, goneAt.toISOString());
+    assert.equal(objectLabelText(object), `Group · Old project team (deleted since ${goneAt.toISOString().slice(0, 10)})`);
+  }
+});
+
+test('unknown: no backup holds it; a readable key keeps its name, a bare id has none', async () => {
+  const names = await lookupNames(client, { tenantRef: TENANT, ids: ['group:Never backed up', NEVER_ID, `group:${NEVER_ID}`, 'group:Secret'] });
+  const readable = names.get('group:Never backed up');
+  assert.equal(readable.status, 'unknown');
+  assert.equal(readable.name, 'Never backed up');
+  assert.equal(readable.typeName, 'Group');
+  const bare = names.get(NEVER_ID);
+  assert.equal(bare.status, 'unknown');
+  assert.equal(bare.name, null);
+  assert.equal(bare.typeName, 'Object');
+  assert.equal(objectLabelText(bare), 'Object · unnamed');
+  assert.equal(names.get(`group:${NEVER_ID}`).name, null, 'a key that holds an id never becomes a name');
+  assert.equal(names.get('group:Secret').status, 'unknown', 'another tenant\'s backup is not read');
+  for (const object of names.values()) assert.ok(!holdsGuid(objectLabelText(object)), objectLabelText(object));
+});
+
+test('a stored name that holds an id is skipped for an older readable one', async () => {
+  const key = 'group:Renamed';
+  const id = '0f1a0000-0000-4000-8000-0000000000aa';
+  await backup('naming', daysAgo(4), 'complete', [[key, 'group', { id, displayName: 'Sales' }]]);
+  await backup('naming', daysAgo(1), 'complete', [[key, 'group', { id, displayName: id }]]);
+  const object = (await lookupNames(client, { tenantRef: 'naming', ids: [key] })).get(key);
+  assert.equal(object.status, 'found');
+  assert.equal(object.name, 'Sales');
+});
+
+test('renamed, not deleted: a key built from the old name follows the object to its new name', async () => {
+  const id = '0f1a0000-0000-4000-8000-0000000000bb';
+  await backup('renames', daysAgo(4), 'complete', [['group:Marketing', 'group', { id, displayName: 'Marketing' }]]);
+  await backup('renames', daysAgo(1), 'complete', [['group:Brand team', 'group', { id, displayName: 'Brand team' }]]);
+  const object = (await lookupNames(client, { tenantRef: 'renames', ids: ['group:Marketing'] })).get('group:Marketing');
+  assert.equal(object.status, 'found');
+  assert.equal(object.name, 'Brand team');
+  assert.equal(object.deletedSince, null);
+});
+
+test('renamed, then deleted: the newer key is gone too, so it is deleted under its newest name', async () => {
+  const id = '0f1a0000-0000-4000-8000-0000000000cc';
+  await backup('renamed-gone', daysAgo(5), 'complete', [['group:M', 'group', { id, displayName: 'M' }], oldTeam]);
+  await backup('renamed-gone', daysAgo(4), 'complete', [['group:N', 'group', { id, displayName: 'N' }], oldTeam]);
+  const gone = await backup('renamed-gone', daysAgo(3), 'complete', [oldTeam]);
+  const object = (await lookupNames(client, { tenantRef: 'renamed-gone', ids: ['group:M'] })).get('group:M');
+  assert.equal(object.status, 'deleted');
+  assert.equal(object.name, 'N');
+  assert.equal(object.deletedSince, gone.toISOString());
+});
+
+test('an empty batch reads nothing', async () => {
+  const calls = [];
+  const names = await lookupNames({ query: async (...args) => { calls.push(args); return { rows: [] }; } }, { tenantRef: TENANT, ids: [null, '', undefined] });
+  assert.equal(names.size, 0);
+  assert.equal(calls.length, 0);
+});
+
+test('describeObject never shows an id as a name', () => {
+  assert.equal(describeObject('user:5e170000-0000-4000-8000-000000000001', { status: 'unknown' }).name, null);
+  assert.equal(describeObject('x', { status: 'found', name: 'Group 5e170000-0000-4000-8000-000000000001' }).name, null);
+  assert.equal(describeObject('someNewType:Thing', { status: 'unknown' }).typeName, 'Some new type');
+});

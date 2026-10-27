@@ -28,6 +28,20 @@ export const OPEN_DRIFT_PREDICATE = `
 `;
 
 /**
+ * Whether a recorded drift row (snake_case columns) records the same difference as
+ * one seen now: both sides hold the same content under the current field rules
+ * (sameContent), so a row whose hashes were stored under older rules still matches.
+ * Drift detection (store/governance.mjs reuseDrift) and change-intent settlement
+ * (policy/changeIntent.mjs currentResourceState) both use it, so they agree on which
+ * row stands for the newest collection.
+ */
+export function sameRecordedDifference(row, { resourceType, beforeHash, beforePayload, afterHash, afterPayload }) {
+  const side = (hash, payload) => ({ payload_hash: hash ?? null, payload: payload ?? null });
+  return sameContent(side(row.before_hash, row.before_payload), side(beforeHash, beforePayload), resourceType)
+    && sameContent(side(row.after_hash, row.after_payload), side(afterHash, afterPayload), resourceType);
+}
+
+/**
  * SQL predicate: something has already acted on this drift row (alias `d`): a decision
  * (any disposition, even an expired ignore) or an auto remediation that has finished,
  * including one whose job ended without recording its outcome (a cancelled job).

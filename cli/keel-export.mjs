@@ -17,6 +17,7 @@
 // --content bytes also carries content item bytes, read through the content store the
 // content-reader file names; the default, refs, names each item by natural key and sha256.
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { exportSnapshot } from '../engine/export/configExport.mjs';
@@ -37,7 +38,7 @@ function arg(name, fallback, argv = process.argv) {
 function resolveTenantRef({ argv, readFile }) {
   const explicit = arg('tenant-ref', undefined, argv);
   if (explicit) return explicit;
-  const config = JSON.parse(readFile(arg('config', '/etc/keel/tenant.json', argv), 'utf8'));
+  const config = readConfigFile(arg('config', '/etc/keel/tenant.json', argv), { readFile, what: 'collector settings' });
   return `sha256:${createHash('sha256').update(config.tenantId).digest('hex').slice(0, 16)}`;
 }
 

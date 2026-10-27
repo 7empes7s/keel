@@ -42,6 +42,7 @@ import {
 } from '../../engine/restore/nativeRecoveryEvidence.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence } from '../release/qualification.mjs';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 export const OFFLINE_FIXTURE = Object.freeze({
   tenantId: 'native-recovery-offline-fixture',
@@ -246,7 +247,7 @@ export async function main({ argv = process.argv.slice(2), env = process.env, ou
       out.error('refused: --live needs --target-config, --docs-retrieved-at and at least one --permission'); return 2;
     }
     const readFile = deps.readFile ?? readFileSync;
-    const target = JSON.parse(readFile(targetConfigPath, 'utf8'));
+    const target = readConfigFile(targetConfigPath, { readFile, what: 'restorer settings' });
     tenantRef = tenantRefFor(target.tenantId);
     clientRef = targetConfigPath; // a reference only; no key material enters the record
     if (deps.graph) graph = deps.graph;

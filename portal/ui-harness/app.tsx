@@ -186,6 +186,9 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (/\/api\/principals\/[^/]+\/(grant|revoke|disable|enable)$/.test(url)) return json({ result: {} }, 200);
   if (url.endsWith("/api/principals")) return json({ principals: HARNESS_PEOPLE, generatedAt: "2026-10-04T09:00:00Z" });
   if (url.includes("/api/deliveries")) return json({ deliveries: HARNESS_DELIVERIES, generatedAt: "2026-10-04T09:00:00Z" });
+  // Integrations: a destination's held-back entries, and adding one succeeds.
+  if (/\/api\/integrations\/[^/]+\/quarantined$/.test(url)) return json({ quarantined: QUARANTINED });
+  if (url.endsWith("/api/integrations") && init?.method === "POST") return json({ destination: { id: "de570000-0000-4000-8000-0000000000e3" } }, 201);
   if (url.endsWith("/api/coverage")) return json({ types: [{ type: "authenticationMethodsPolicy" }, { type: "conditionalAccessPolicy" }] });
   // Activity: what a row changed, setting by setting.
   if (url.includes("/api/activity/changes?")) return json({ changes: ACTIVITY_CHANGES[new URL(url, "http://harness").searchParams.get("job") ?? ""] ?? null });
@@ -512,6 +515,17 @@ function servicePartialProgress() {
     updatedAt: at(9), source: "live" as const,
   };
 }
+// What the worker stores when keel-restore stops on a missing settings file (exit code and stderr).
+const SETTINGS_FILE_ERROR = [
+  "exit code 1",
+  "stderr: ConfigFileError: Keel can't read the Exchange collector settings file (/etc/keel/exchange-collector.json): the file is missing. Fix the file on the Keel server, or remove it from workload-scope.json.",
+  "    at readConfigFile (file:///opt/keel-live/engine/config/configFile.mjs:57:11)",
+  "    at familyConfigPath (file:///opt/keel-live/engine/collect/workloads/powershellConfigs.mjs:403:18) {",
+  "  path: '/etc/keel/exchange-collector.json',",
+  "  problem: 'the file is missing',",
+  "  code: 'ENOENT'",
+  "}",
+].join("\n");
 const initialJobs = [
   job("a1", "backup", "running"),
   job("a2", "collect", "queued"),
@@ -659,7 +673,13 @@ const PEOPLE_CHOICES = [
   { id: "8c1e0000-0000-4000-8000-0000000000a2", name: "Amara Okafor", email: "amara.okafor@contoso.example" },
   { id: "8c1e0000-0000-4000-8000-0000000000b3", name: "Sam Ortiz", email: "sam.ortiz@contoso.example" },
 ];
-const DESTINATIONS = [{ id: "de570000-0000-4000-8000-0000000000e1", tenant_ref: "t", name: "Sentinel CEF", kind: "cef", config: { transport: "https", url: "https://siem.contoso.com/cef", acknowledgement: "http-response" }, enabled: true, revoked_at: null, created_by: "marouanedefili@gmail.com", created_at: now }];
+const DESTINATIONS = [
+  { id: "de570000-0000-4000-8000-0000000000e1", tenant_ref: "t", name: "Sentinel CEF", kind: "cef", config: { transport: "https", url: "https://siem.contoso.com/cef", acknowledgement: "http-response" }, enabled: true, revoked_at: null, created_by: "marouanedefili@gmail.com", created_at: now },
+  // A paused webhook, so the list shows two kinds in their order and an amber row.
+  { id: "de570000-0000-4000-8000-0000000000e2", tenant_ref: "t", name: "Ops webhook", kind: "webhook", config: { url: "https://hooks.contoso.com/keel" }, enabled: false, revoked_at: now, created_by: "marouanedefili@gmail.com", created_at: now },
+];
+// A held-back entry for the destination panel's "Show held-back entries".
+const QUARANTINED = [{ id: "q1", event_id: "9e000000-0000-4000-8000-0000000000e1", quarantine_reason: "HTTP 503 Service Unavailable", quarantined_at: now, attempts: 5 }];
 const DESTINATION_STATUSES = [{ destinationId: DESTINATIONS[0].id, tenantRef: "t", kind: "cef", paused: false, pending: 14, delivering: 2, acknowledged: 18190, quarantined: 3, oldestPendingObservedAt: now, lagMs: 41000 }] as never[];
 // Roadmap task-97: ServiceNow on with one decision update held back, and a second
 // tenant whose mapping is missing two settings.
@@ -1392,6 +1412,7 @@ const alertEntry = (id: string, occurrence: number, fromState: AlertItem["state"
 const INBOX_ALERTS: AlertItem[] = [
   {
     id: "a1e70000-0000-4000-8000-000000000001", resourceKey: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", control: "baseline", condition: "drift",
+    object: { status: "found", deletedSince: null, lastSeenAt: "2026-10-02T03:00:00Z", objectId: "ca000000-0000-4000-8000-0000000000f2" },
     state: "reopened", conditionActive: true, severity: "critical", occurrence: 2, firstOpenedAt: "2026-09-30T08:00:00Z",
     occurrenceStartedAt: "2026-10-02T08:10:00Z", lastFiringAt: "2026-10-02T09:10:00Z", ackDeadlineAt: "2026-10-02T09:10:00Z",
     acknowledgedAt: null, acknowledgedByName: null, owner: { id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane" },
@@ -1407,6 +1428,7 @@ const INBOX_ALERTS: AlertItem[] = [
   },
   {
     id: "a1e70000-0000-4000-8000-000000000002", resourceKey: "group:Finance", name: "Finance", control: "baseline", condition: "drift",
+    object: { status: "deleted", deletedSince: "2026-10-02T03:00:00Z", lastSeenAt: "2026-10-01T03:00:00Z", objectId: "0f1a0000-0000-4000-8000-0000000000f1" },
     state: "open", conditionActive: true, severity: "warning", occurrence: 1, firstOpenedAt: "2026-10-02T09:30:00Z",
     occurrenceStartedAt: "2026-10-02T09:30:00Z", lastFiringAt: "2026-10-02T09:30:00Z", ackDeadlineAt: null,
     acknowledgedAt: null, acknowledgedByName: null, owner: null, escalated: false, escalationError: "escalation-failed-no-recipient",
@@ -2304,6 +2326,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/jobs/a4": { const detail = { ...jobs.find((item) => item.id === "a4")!, progress: tierProgress("failed") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/r10": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010" } }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
+    // Item 5 (#548 review): a workload restore dry run that stopped on a settings file the server lacks.
+    case "/jobs/r13": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r13", kind: "restore", params: { workloadRestore: { workload: "exchange-mail-flow", collectionId: "c0110000-0000-4000-8000-000000000013", targets: ["organization"] }, artifactId: "7f3c0000-0000-4000-8000-000000000013" }, error: SETTINGS_FILE_ERROR }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/approvals": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
       <ApprovalInbox awaitingContentEffects={[APPROVAL_AWAITING_EFFECTS]} history={APPROVAL_HISTORY} now={now} pending={APPROVALS_PENDING} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;

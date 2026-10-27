@@ -722,7 +722,11 @@ function proofText(rows) {
   if (proven.length === rows.length) parts.push('Proven on a live tenant');
   else if (proven.length > 0) parts.push(`Proven on a live tenant: ${list(proven.map((row) => OPERATION_NOUNS[row.operation]))}`);
   if (proven.length < rows.length) parts.push('Tested against a simulated tenant');
-  for (const row of failed) parts.push(`live test of ${OPERATION_NOUNS[row.operation]} failed on ${row.live.failedAt}, fix in progress`);
+  for (const row of failed) {
+    // No fix means the test tenant cannot run it (a tenant limit), not a bug.
+    if (row.live.fix) parts.push(`live test of ${OPERATION_NOUNS[row.operation]} failed on ${row.live.failedAt}, fix in progress`);
+    else parts.push(`live test of ${OPERATION_NOUNS[row.operation]} not possible on our test tenant (checked ${row.live.failedAt})`);
+  }
   return parts.join('; ');
 }
 
@@ -806,7 +810,7 @@ function workloadSection(guide) {
     '- Teams: teams, channels (standard, private and shared), channel members, tabs and apps. Channel files are covered through the team site in SharePoint.',
     '- Planner and group conversations: plans, buckets and tasks with their details; conversations, threads, posts and attachments.',
     '',
-    'Teams chat and channel messages are not backed up: Microsoft must first approve the Teams export API for your tenant.',
+    'Teams chat and channel messages are not backed up: Microsoft must first approve the Teams export API for your tenant. Once they are, KEEL can restore a channel\'s messages into a new channel, "<name> (restored <date>)", with their original authors and times, through Microsoft\'s message import API. Reactions, cards and live @mentions are not brought back (a mention stays as bold text).',
     '',
     'A content scope can narrow the content backup to mailboxes, OneDrives, sites and groups whose names start with a set prefix. Teams has no name filter and is always read in full. The KEEL test tenant uses this to back up only its test content.',
     '',

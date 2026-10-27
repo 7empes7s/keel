@@ -9,7 +9,7 @@ import {
   normalizeJob,
   readActionParams,
 } from "@/lib/action";
-import { restoreCredentialPaths } from "@/lib/restore-config";
+import { queueableRestoreCredentialPaths } from "@/lib/restore-config";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -64,7 +64,7 @@ export const POST = guarded(
       throw new InvalidActionRequest("incidentId must be an incident id");
     }
 
-    const { collectorConfig, targetConfig } = restoreCredentialPaths();
+    const { collectorConfig, targetConfig } = queueableRestoreCredentialPaths();
     const artifactId = randomUUID();
     const job = (await enqueue(client, {
       kind: "restore",

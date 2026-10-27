@@ -11,6 +11,7 @@
 // superseded version is never activated again, so reinstateBaseline copies it into a
 // new latest version of the same baseline and activates that one.
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { createHash } from 'node:crypto';
 import { activateBaseline, reinstateBaseline } from '../engine/govern/baseline.mjs';
 import { connect } from '../engine/store/db.mjs';
@@ -33,7 +34,7 @@ function requireArg(name) {
 function resolveTenantRef() {
   const explicit = arg('tenant-ref');
   if (explicit) return explicit;
-  const config = JSON.parse(readFileSync(arg('config', '/etc/keel/tenant.json'), 'utf8'));
+  const config = readConfigFile(arg('config', '/etc/keel/tenant.json'), { readFile: readFileSync, what: 'collector settings' });
   return `sha256:${createHash('sha256').update(config.tenantId).digest('hex').slice(0, 16)}`;
 }
 

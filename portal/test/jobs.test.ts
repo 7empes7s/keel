@@ -123,6 +123,27 @@ test("a failed job leads with a plain cause and one next step, never the raw err
   assert.ok(html.indexOf('data-alert="error"') < html.indexOf('id="job-heading"'), "the error comes before the summary");
 });
 
+test("a restore that stops on a settings file names the file and the fix, even with HTTP-like line numbers in the stack", () => {
+  const error = [
+    "exit code 1",
+    "stderr: ConfigFileError: Keel can't read the Exchange restorer settings file (/etc/keel/exchange-restorer.json): it is not valid JSON. Fix the file on the Keel server, or remove it from workload-scope.json.",
+    "    at readConfigFile (file:///opt/keel-live/engine/config/configFile.mjs:403:11) {",
+    "  code: undefined",
+    "}",
+  ].join("\n");
+  const cause = jobErrorCause({ kind: "restore", error, params: { artifactId: "a1" } });
+  assert.equal(cause.title, "Keel can't read the Exchange restorer settings file: it is not valid JSON.");
+  assert.equal(cause.todo, "Fix the file on the Keel server, or remove it from workload-scope.json. Run the restore again after that.");
+  assert.equal(cause.tone, "urgent");
+  assert.equal(cause.action, null);
+  const graph = jobErrorCause({ kind: "restore", error: "Keel can't read the restorer settings file (/etc/keel/restorer.json): the file is missing. Fix the file on the Keel server, then try again.", params: {} });
+  assert.equal(graph.todo, "Fix the file on the Keel server. Run the restore again after that.");
+  // Older raw text, from before the engine named the file.
+  assert.equal(jobErrorCause({ kind: "workload-collect", error: "Error: ENOENT: no such file or directory, open '/etc/keel/purview-collector.json'", params: {} }).title,
+    "A settings file Keel needs on its server is missing.");
+  for (const plain of [cause, graph]) assert.doesNotMatch(`${plain.title} ${plain.todo}`, /\/etc|ENOENT|ConfigFileError|\b4\d\d\b/);
+});
+
 test("a backup job lists every kind it reads by service, with state, count, time and a plain problem", () => {
   const progress = {
     source: "live" as const, updatedAt: "2026-10-22T10:05:00Z",

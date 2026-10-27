@@ -65,7 +65,7 @@ const configs = new Map([
 const reads = [];
 const readFile = (path) => {
   reads.push(path);
-  if (!configs.has(path)) throw new Error(`unexpected file read: ${path}`);
+  if (!configs.has(path)) throw Object.assign(new Error(`unexpected file read: ${path}`), { code: 'ENOENT' });
   return configs.get(path);
 };
 const SERVER_PATHS = { collectorConfig: '/fixtures/collector.json', targetConfig: '/fixtures/restorer.json' };
@@ -445,6 +445,14 @@ test('a family restorer file for another tenant, or the collector registration, 
   const otherTenant = enforce({ exchange: '/etc/keel/other-tenant-restorer.json' });
   await assert.rejects(otherTenant.run, /names another tenant/);
   assert.deepEqual(otherTenant.deps.connections, []);
+  // A restorer file the scope names but the host lacks fails closed in plain words.
+  const missing = enforce({ exchange: '/etc/keel/exchange-restorer-gone.json' });
+  await assert.rejects(missing.run, {
+    name: 'ConfigFileError',
+    message: "Keel can't read the Exchange restorer settings file (/etc/keel/exchange-restorer-gone.json): the file is missing."
+      + ' Fix the file on the Keel server, or remove it from workload-scope.json.',
+  });
+  assert.deepEqual(missing.deps.connections, []);
   const sameApp = enforce({ exchange: '/etc/keel/exchange-collector.json' });
   await assert.rejects(sameApp.run, /separate Restorer/);
   assert.deepEqual(sameApp.deps.connections, []);

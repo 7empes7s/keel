@@ -46,6 +46,7 @@ import {
 } from './workloadReadsAcceptance.mjs';
 import { SHAREPOINT_WORKLOAD, readSiteSharing } from '../../engine/collect/workloads/sharepoint.mjs';
 import { WORKLOAD_READERS as WRITTEN_READERS, pinnedModuleVersions } from './workloadWritesLive.mjs';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 /**
  * The SharePoint per-site sharing read, in the shape the written workloads' readers
@@ -189,7 +190,7 @@ export async function main(argv = process.argv.slice(2), {
   }
   const build = options.build ?? env.KEEL_QUALIFICATION_BUILD;
   if (!build) throw new Error('capture needs --build (or KEEL_QUALIFICATION_BUILD): the build this capture qualifies');
-  const { tenantId } = JSON.parse(readFile(options.collectorConfig));
+  const { tenantId } = readConfigFile(options.collectorConfig, { readFile, what: 'collector settings' });
   if (typeof tenantId !== 'string' || options.tenantRef !== tenantRefFor(tenantId)) {
     throw new Error('--tenant-ref is not the tenant the collector config names; nothing was sent');
   }

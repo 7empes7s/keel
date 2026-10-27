@@ -19,6 +19,7 @@
 //              the job was not queued.
 // It prints JSON only: counts, ids, kinds and times, never job params or results.
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { fileURLToPath } from 'node:url';
 import { connect } from '../engine/store/db.mjs';
 import { enqueue, cancelQueued } from '../engine/jobs/queue.mjs';
@@ -132,7 +133,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
   const options = command === 'cancel'
     ? { jobId: arg(argv, 'job'), reason: arg(argv, 'reason') }
-    : { tenantRef: tenantRefFor(JSON.parse(readFileSync(arg(argv, 'tenant-config', '/etc/keel/tenant.json'), 'utf8')).tenantId) };
+    : { tenantRef: tenantRefFor(readConfigFile(arg(argv, 'tenant-config', '/etc/keel/tenant.json'), { readFile: readFileSync, what: 'collector settings' }).tenantId) };
   const dbUrl = arg(argv, 'db-url', process.env.KEEL_DB_URL);
   if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
   const client = await connect(dbUrl);

@@ -34,7 +34,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Built-in admin roles | Yes (Tier 1, critical, every hour) | Microsoft-managed | Nothing to restore | None |
 | Custom admin roles | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Admin role templates | Yes (Tier 3, low impact, weekly) | Microsoft-managed | Nothing to restore | None |
-| Admin role assignments | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
+| Admin role assignments | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant; live test of putting settings back not possible on our test tenant (checked 2026-10-09) |
 | Eligible admin roles | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted | Tested against a simulated tenant |
 | Time-limited active admin roles | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
 | Admin role activation settings | Yes (Tier 1, critical, every hour) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
@@ -210,13 +210,13 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Named locations | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Authentication contexts | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Authentication methods | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
-| Security defaults | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Security defaults | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back not possible on our test tenant (checked 2026-10-14) |
 | User and guest permissions | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Cross-tenant access | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Cross-tenant access defaults | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Cross-tenant access per organization | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Device join and registration settings | Yes (Tier 1, critical, every hour) | Incomplete | By hand (KEEL choice) | None |
-| External user self sign-up | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| External user self sign-up | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back not possible on our test tenant (checked 2026-10-13) |
 | App consent policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Admin consent requests | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Idle sign-out policy | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
@@ -641,7 +641,7 @@ KEEL backs up the configuration of these workloads, listed below. It also backs 
 - Teams: teams, channels (standard, private and shared), channel members, tabs and apps. Channel files are covered through the team site in SharePoint.
 - Planner and group conversations: plans, buckets and tasks with their details; conversations, threads, posts and attachments.
 
-Teams chat and channel messages are not backed up: Microsoft must first approve the Teams export API for your tenant.
+Teams chat and channel messages are not backed up: Microsoft must first approve the Teams export API for your tenant. Once they are, KEEL can restore a channel's messages into a new channel, "<name> (restored <date>)", with their original authors and times, through Microsoft's message import API. Reactions, cards and live @mentions are not brought back (a mention stays as bold text).
 
 A content scope can narrow the content backup to mailboxes, OneDrives, sites and groups whose names start with a set prefix. Teams has no name filter and is always read in full. The KEEL test tenant uses this to back up only its test content.
 

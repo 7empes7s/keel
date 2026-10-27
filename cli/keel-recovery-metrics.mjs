@@ -19,6 +19,7 @@
 // Read-side plus one evidence append: no Graph token, no tenant write.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { pathToFileURL } from 'node:url';
 
 import { DESCRIPTORS } from '../engine/collect/descriptors.mjs';
@@ -34,7 +35,7 @@ function arg(argv, name) {
 function resolveTenantRef(argv, readFile) {
   const explicit = arg(argv, 'tenant-ref');
   if (explicit) return explicit;
-  const config = JSON.parse(readFile(arg(argv, 'config') ?? '/etc/keel/tenant.json', 'utf8'));
+  const config = readConfigFile(arg(argv, 'config') ?? '/etc/keel/tenant.json', { readFile, what: 'collector settings' });
   return `sha256:${createHash('sha256').update(config.tenantId).digest('hex').slice(0, 16)}`;
 }
 

@@ -45,6 +45,7 @@ import { pathToFileURL } from 'node:url';
 import { FIELD_PROJECTION_CONTRACT_VERSION } from '../../engine/contracts/fieldProjection.mjs';
 import { BRANDING_FILE_CAPABILITY, capabilityFor, isSupportedClaim, liveEvidenceFailures, qualifyLiveEvidence } from '../../engine/coverage/capabilities.mjs';
 import { TYPE_DECISIONS } from '../../engine/coverage/qualification.mjs';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 import { ENFORCEMENT_STEP } from '../../engine/restore/conditionalAccessEnforcement.mjs';
 import { getDryRunArtifactById } from '../../engine/restore/dryRunArtifact.mjs';
 import { isPolicyGoverned, policyLiveEvidenceFailures, policyProofFor, qualifyPolicyLiveEvidence } from '../../engine/restore/policyOperations.mjs';
@@ -591,6 +592,8 @@ export function demotionRecord({ resourceType, operation, restoreRef = null, rea
  *  - the write stays registered (the cause is a KEEL bug with a fix under way)
  *    and TYPE_DECISIONS.<type>.liveFailures.<operation> records the demotion's
  *    date and quotes its reason, so the ledger row shows the failed live run.
+ * (liveFailures also holds tenant limits, which have no demotion record and no
+ * fix; see tenantLimit in engine/coverage/qualification.mjs.)
  */
 export function unappliedDemotions({ dir = ENTRA_LIVE_EVIDENCE_DIR, decisions = TYPE_DECISIONS, claimOf = (type, op) => capabilityFor(type, op).claim } = {}) {
   if (!existsSync(dir)) return [];
@@ -685,6 +688,15 @@ function readJson(readFile, path, label) {
   }
 }
 
+/** The restorer settings file under /etc/keel, refused with the plain settings-file sentence. */
+function readTargetConfig(readFile, path) {
+  try {
+    return readConfigFile(path, { readFile, what: 'restorer settings' });
+  } catch (error) {
+    throw new LiveGateRefusal(error.message);
+  }
+}
+
 function writeOutputs(out, stem, { record, captureLog }) {
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, `${stem}.capture.json`), captureLog);
@@ -716,7 +728,7 @@ export async function main({ argv = process.argv.slice(2), out = console, env = 
       try {
         const result = await captureLive({
           client, restoreRef: arg(argv, 'restore-ref'), resourceType, operation, fixture: arg(argv, 'fixture'),
-          targetConfig: readJson(readFile, configPath, 'the target config'), build: arg(argv, 'build'), hmacKey,
+          targetConfig: readTargetConfig(readFile, configPath), build: arg(argv, 'build'), hmacKey,
           allowTenantSetting: argv.includes('--allow-tenant-setting'), allowByReference: argv.includes('--allow-by-reference'),
         });
         if (result.status === 'not-exercised' || result.status === 'pending') {

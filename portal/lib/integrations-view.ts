@@ -212,3 +212,50 @@ export function integrationsStatus(alerts: AlertItem[]): { tone: "urgent" | "soo
   if (alerts.some((alert) => alert.tone === "soon")) return { tone: "soon", label: "Check soon" };
   return { tone: "fine", label: "Working" };
 }
+
+// Destinations as grouped rows (settings restyle): one group per kind in a fixed
+// order, the worst row first inside each group, then by name.
+
+export interface DestinationGroup {
+  key: "webhook" | "cef" | "sentinel" | "other";
+  label: string;
+  about: string;
+  icon: "link" | "audit" | "monitor" | "info";
+  items: Destination[];
+}
+
+const GROUPS: Omit<DestinationGroup, "items">[] = [
+  { key: "webhook", label: "Webhooks", about: "Each audit entry is posted to a web address.", icon: "link" },
+  { key: "cef", label: "SIEM (CEF)", about: "Each audit entry is sent to a SIEM in CEF format.", icon: "audit" },
+  { key: "sentinel", label: "Microsoft Sentinel", about: "Each audit entry is sent to a Sentinel workspace.", icon: "monitor" },
+  { key: "other", label: "Other destinations", about: "Destinations of a kind this page does not name.", icon: "info" },
+];
+
+const TONE_RANK: Record<IntegrationTone, number> = { urgent: 0, soon: 1, low: 2, neutral: 3, fine: 4 };
+
+function groupKey(destination: Pick<Destination, "kind">): DestinationGroup["key"] {
+  if (destination.kind === "webhook") return "webhook";
+  if (destination.kind === "cef") return "cef";
+  if (destination.kind === "azure-monitor" || destination.kind === "sentinel") return "sentinel";
+  return "other";
+}
+
+export function destinationGroups(destinations: Destination[], statuses: DestinationStatus[]): DestinationGroup[] {
+  const statusOf = (id: string) => statuses.find((status) => status.destinationId === id) ?? null;
+  const rank = (destination: Destination) => TONE_RANK[destinationBadge(destination, statusOf(destination.id)).tone];
+  return GROUPS.map((group) => ({
+    ...group,
+    items: destinations
+      .filter((destination) => groupKey(destination) === group.key)
+      .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, "en-GB")),
+  })).filter((group) => group.items.length > 0);
+}
+
+/** The row's short line: "14 waiting, behind by 41 seconds" or "Nothing waiting". */
+export function destinationLine(destination: Pick<Destination, "enabled" | "revoked_at">, status: DestinationStatus | null): string {
+  if (!status) return isPaused(destination) ? "Paused: new entries wait" : "No delivery report yet";
+  const waiting = status.pending + status.delivering;
+  const parts = [waiting ? `${waiting.toLocaleString("en-GB")} waiting` : "Nothing waiting"];
+  if ((status.lagMs ?? 0) > 0) parts.push(`behind by ${lagWords(status.lagMs).toLowerCase()}`);
+  return parts.join(", ");
+}

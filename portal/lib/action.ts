@@ -13,6 +13,7 @@ import {
 } from "../../engine/govern/approvals.mjs";
 import { applyDisposition } from "../../engine/govern/disposition.mjs";
 import { SameContentDriftError } from "../../engine/store/openDrift.mjs";
+import { RestoreSettingsPathError } from "../../engine/restore/credentialPaths.mjs";
 import { acceptServiceChange } from "../../engine/govern/workloadApproved.mjs";
 import { resolveAlert } from "../../engine/notify/alerts.mjs";
 import { appendEvidence } from "../../engine/govern/evidence.mjs";
@@ -409,6 +410,14 @@ export function guarded(
       // A change whose setting holds the same values as the approved setup: nothing
       // to accept, roll back, preview or approve. Said plainly, never a 503.
       if (error instanceof SameContentDriftError) return noChange(error);
+      // The server's restore settings path is one the worker would refuse: nothing is
+      // queued, and the operator is told in plain words which setting to fix.
+      if (error instanceof RestoreSettingsPathError) {
+        return Response.json(
+          { error: "restore_settings_path", message: error.message },
+          { status: 503, headers: NO_STORE },
+        );
+      }
       console.error(`[keel-portal] guarded action ${spec.action} failed`, error);
       return Response.json(
         { error: "unavailable" },
@@ -431,6 +440,9 @@ export interface ActionSpec {
   // false: the route takes no parameters and always enqueues `{}`, so the job runs on the
   // server-side defaults. A body that sets any field is refused (issue #411).
   acceptsParams?: boolean;
+  // The only body fields the route passes on as job params. Any other field is refused,
+  // so a caller cannot steer the job at a server file through `config` (issue #411).
+  allowedParams?: readonly string[];
 }
 
 // The standard mutating route: parse the JSON body as job params and enqueue exactly one
@@ -466,6 +478,13 @@ export function guardedAction(
       const params = await readActionParams(request);
       if (spec.acceptsParams === false && Object.keys(params).length > 0) {
         throw new InvalidActionRequest("this action takes no parameters");
+      }
+      const allowed = spec.allowedParams;
+      if (allowed) {
+        const extra = Object.keys(params).filter((key) => !allowed.includes(key));
+        if (extra.length > 0) {
+          throw new InvalidActionRequest(`this action takes only: ${allowed.join(", ")}`);
+        }
       }
       const job = (await enqueue(client, {
         kind: spec.jobKind,

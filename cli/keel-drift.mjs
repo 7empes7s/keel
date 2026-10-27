@@ -7,6 +7,7 @@
 import { snapshotReadyForDrift } from '../engine/schedules/completions.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { isDeepStrictEqual } from 'node:util';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { GraphReader } from '../tools/tenant-probe/graph.mjs';
@@ -39,7 +40,7 @@ function tenantRefFor(config) {
 }
 
 function readConfig() {
-  return JSON.parse(readFileSync(arg('config', '/etc/keel/tenant.json'), 'utf8'));
+  return readConfigFile(arg('config', '/etc/keel/tenant.json'), { readFile: readFileSync, what: 'collector settings' });
 }
 
 function dbUrl() {

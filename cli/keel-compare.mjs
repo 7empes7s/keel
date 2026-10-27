@@ -13,6 +13,7 @@
 // Options: --only settings,workloads,content   --json   --db-url $KEEL_DB_URL
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { can } from '../engine/authz/can.mjs';
 import { findPrincipalById } from '../engine/authz/principals.mjs';
 import {
@@ -153,7 +154,7 @@ async function main() {
     } else {
       // /etc/keel/tenant.json is the Collector registration. GraphReader has no write
       // method, so this path cannot issue a tenant mutation.
-      const config = JSON.parse(readFileSync(arg('config', '/etc/keel/tenant.json'), 'utf8'));
+      const config = readConfigFile(arg('config', '/etc/keel/tenant.json'), { readFile: readFileSync, what: 'collector settings' });
       const tenantRef = tenantRefFor(config);
       const snapshotId = arg('snapshot') ?? await latestCompletedSnapshot(client, { tenantRef });
       if (!snapshotId) throw new CompareError('no-snapshot', `no completed snapshot for ${tenantRef}`);

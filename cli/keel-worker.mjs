@@ -15,10 +15,10 @@ import { drainDueDestinations } from '../engine/telemetry/outbox.mjs';
 import { createSentinelAdapter, SENTINEL_DESTINATION_KIND } from '../engine/telemetry/adapters/sentinel.mjs';
 import { createWebhookAdapter } from '../engine/telemetry/adapters/webhook.mjs';
 import { createCefAdapter } from '../engine/telemetry/adapters/cef.mjs';
-import { credentialPaths } from '../engine/restore/credentialPaths.mjs';
+import { credentialPaths, requireKeelConfigPath } from '../engine/restore/credentialPaths.mjs';
 import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
 import { ingestAudit, migrateAuditIngestion, readAuditEvidence, createFixtureAuditAdapter } from '../engine/identity/auditIngest.mjs';
@@ -210,7 +210,7 @@ export function partialResult(handler, err, durationMs) {
   }
   if (!Array.isArray(incompleteTypes) || incompleteTypes.length === 0
       || !incompleteTypes.every((entry) => typeof entry?.type === 'string' && entry.type && typeof entry.outcome === 'string')) return null;
-  return { stdout: err.stdout, stderr: err.stderr ?? '', durationMs, partial: true, incompleteTypes };
+  return { stdout: err.stdout, stderr: withholdParsedText(err.stderr ?? ''), durationMs, partial: true, incompleteTypes };
 }
 
 function requireString(value, label) {
@@ -221,17 +221,22 @@ function requireString(value, label) {
 }
 
 // Issue #411: the config, scope and reader params are file paths the child reads as root.
-// Anything that can enqueue a job can set them, so they must name a file under /etc/keel,
-// where only the operator writes. The path is resolved first, so `..` cannot step out.
-const KEEL_CONFIG_DIR = '/etc/keel/';
+// Anything that can enqueue a job can set them, so they must name a JSON file under
+// /etc/keel (requireKeelConfigPath, shared with the portal in
+// engine/restore/credentialPaths.mjs so the portal never queues a job this refuses).
+export { requireKeelConfigPath };
 
-export function requireKeelConfigPath(value, label) {
-  const path = requireString(value, label);
-  const resolved = resolve('/', path);
-  if (path.includes('\0') || !resolved.startsWith(KEEL_CONFIG_DIR)) {
-    throw new Error(`${label} must be a file under ${KEEL_CONFIG_DIR}`);
-  }
-  return resolved;
+// Issue #411: when a child fails to parse a file as JSON, Node quotes that file twice:
+// the message quotes its start ("Unexpected token 'a', \"abc...\" is not valid JSON"),
+// and an uncaught error prints the offending source line under "<anonymous_script>:1".
+// The child's output becomes the job's error, which the portal shows, so both are withheld.
+const QUOTED_JSON_ERROR = /Unexpected token [\s\S]{0,200}? is not valid JSON/g;
+const PARSED_SOURCE_LINE = /(<anonymous_script>|undefined):\d+\n[^\n]*\n[ \t]*\^[^\n]*$/gm;
+
+export function withholdParsedText(text) {
+  return String(text)
+    .replace(PARSED_SOURCE_LINE, '$1: (file contents withheld)')
+    .replace(QUOTED_JSON_ERROR, 'Unexpected token (file contents withheld), the file is not valid JSON');
 }
 
 // Whitelisted params -> CLI flags, one entry per job kind. Deliberately explicit rather
@@ -529,8 +534,8 @@ export const JOB_HANDLERS = {
         return [
           '--compliance-fix', requireString(request.controlId, 'params.complianceFix.controlId'),
           '--object', requireString(request.naturalKey, 'params.complianceFix.naturalKey'),
-          '--collector-config', requireString(params.collectorConfig, 'params.collectorConfig'),
-          '--target-config', requireString(params.targetConfig, 'params.targetConfig'),
+          '--collector-config', requireKeelConfigPath(params.collectorConfig, 'params.collectorConfig'),
+          '--target-config', requireKeelConfigPath(params.targetConfig, 'params.targetConfig'),
           '--persist-artifact', requireString(params.artifactId, 'params.artifactId'),
           '--requested-by', requireString(job.requested_by, 'job.requested_by'),
         ];
@@ -586,8 +591,8 @@ export const JOB_HANDLERS = {
       }
 
       const args = [
-        '--collector-config', requireString(params.collectorConfig, 'params.collectorConfig'),
-        '--target-config', requireString(params.targetConfig, 'params.targetConfig'),
+        '--collector-config', requireKeelConfigPath(params.collectorConfig, 'params.collectorConfig'),
+        '--target-config', requireKeelConfigPath(params.targetConfig, 'params.targetConfig'),
       ];
       if (hasPlan) {
         args.push('--plan', requireString(params.planId, 'params.planId'));
@@ -637,13 +642,15 @@ export const JOB_HANDLERS = {
       const args = [];
       const defaults = credentialPaths();
       for (const id of params.driftIds) args.push('--drift-id', requireString(id, 'params.driftIds entry'));
+      // Issue #411: a path from params is held to /etc/keel like every other job's; the
+      // server's own default (operator-set environment) is used as it is.
       args.push(
-        '--collector-config', requireString(
-          params.collectorConfig ?? defaults.collectorConfig, 'params.collectorConfig',
-        ),
-        '--target-config', requireString(
-          params.targetConfig ?? defaults.targetConfig, 'params.targetConfig',
-        ),
+        '--collector-config', params.collectorConfig !== undefined
+          ? requireKeelConfigPath(params.collectorConfig, 'params.collectorConfig')
+          : requireString(defaults.collectorConfig, 'params.collectorConfig'),
+        '--target-config', params.targetConfig !== undefined
+          ? requireKeelConfigPath(params.targetConfig, 'params.targetConfig')
+          : requireString(defaults.targetConfig, 'params.targetConfig'),
       );
       if (params.mode !== undefined) {
         if (params.mode !== 'enforce') throw new Error(`invalid params.mode: ${params.mode}`);
@@ -775,11 +782,11 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
         console.log(`job ${job.id}: partly done (${partial.durationMs}ms), not read in full: ${partial.incompleteTypes.map((entry) => entry.type).join(', ')}`);
         return;
       }
-      const message = [
+      const message = withholdParsedText([
         err.code !== undefined ? `exit code ${err.code}` : err.message,
         err.stderr ? `stderr: ${err.stderr}` : null,
         err.stdout ? `stdout: ${err.stdout}` : null,
-      ].filter(Boolean).join('\n');
+      ].filter(Boolean).join('\n'));
       await failJob(message);
       console.error(`job ${job.id}: failed (${Date.now() - startedAt}ms) — ${redactPayload(message)}`);
     } finally {

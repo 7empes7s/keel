@@ -1,3 +1,4 @@
+import { sameContent } from '../cir/canonicalHash.mjs';
 import { acceptDrift } from './baseline.mjs';
 import { recordDisposition } from '../store/governance.mjs';
 import { refuseSameContentDrift, refuseSameContentDriftIds } from '../store/openDrift.mjs';
@@ -8,14 +9,22 @@ export function isSuppressed(drift, dispositions, now) {
     const dispositionDrift = disposition.drift ?? disposition;
     const expiresAt = disposition.expiresAt ?? disposition.expires_at;
     const naturalKey = dispositionDrift.naturalKey ?? dispositionDrift.natural_key;
-    const afterHash = dispositionDrift.afterHash ?? dispositionDrift.after_hash;
 
     return disposition.action === 'ignore'
       && expiresAt != null
       && new Date(expiresAt) > now
       && naturalKey === (drift.naturalKey ?? drift.natural_key)
-      && afterHash === (drift.afterHash ?? drift.after_hash);
+      && sameAfter(dispositionDrift, drift);
   });
+}
+
+// The ignored change and this one end in the same content. A hash stored under older
+// field rules is checked again from the payloads (cir/canonicalHash.mjs sameContent),
+// so an ignore recorded before a rule change still covers the same content.
+function sameAfter(ignored, drift) {
+  const side = (row) => ({ payload_hash: row.afterHash ?? row.after_hash ?? null, payload: row.afterPayload ?? row.after_payload ?? null });
+  const resourceType = drift.resourceType ?? drift.resource_type ?? ignored.resourceType ?? ignored.resource_type;
+  return sameContent(side(ignored), side(drift), resourceType);
 }
 
 export async function applyDisposition(client, {

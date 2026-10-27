@@ -20,6 +20,7 @@ import { GraphReader } from './graph.mjs';
 import { CATALOG, catalogReadPath } from './catalog.mjs';
 import { analyseReferences, naturalKey } from './references.mjs';
 import { renderReport } from './report.mjs';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
@@ -30,7 +31,7 @@ const CONFIG_PATH = arg('config', '/etc/keel/tenant.json');
 const OUT_DIR = arg('out', '/opt/keel/out');
 
 async function main() {
-  const config = JSON.parse(readFileSync(CONFIG_PATH, 'utf8'));
+  const config = readConfigFile(CONFIG_PATH, { readFile: readFileSync, what: 'collector settings' });
   const { tenantId, clientId, certPath, keyPath } = config;
 
   console.log(`KEEL tenant probe — read-only enumeration`);

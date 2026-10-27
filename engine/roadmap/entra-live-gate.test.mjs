@@ -662,7 +662,7 @@ test('a target config that is not valid JSON is refused without echoing it', asy
     connectFn: async () => ({ end: async () => {} }), readFile: () => '{"clientSecret": "fixture-secret-value", broken',
   });
   assert.equal(code, 1);
-  assert.equal(errors.join('\n'), 'the target config is not valid JSON');
+  assert.equal(errors.join('\n'), "Keel can't read the restorer settings file (/fixture.json): it is not valid JSON. Fix the file on the Keel server, then try again.");
 });
 
 test('a failed live write is never promoted, and its demotion must be applied in code', async () => {

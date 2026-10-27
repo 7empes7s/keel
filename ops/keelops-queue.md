@@ -105,7 +105,8 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   mailbox read fine. Q167's run `85aeb04b` (before #564) had onedrive partial (10× 423), sharepoint-sites partial (search site 404),
   exchange-mail partial (1 group mailbox 403).
 - Needs: /opt/keel-live at the #564 merge (9c59b96) or later (`grep -q skipped /opt/keel-live/engine/store/schema.d/73-content-run.sql`).
-- Status: in-progress
+- Status: blocked
+- Result: blocked on `/etc/keel/db.env` (2026-10-27 ~14:40 UTC). Needs check passes: live `e17b36c` has `skipped` in 73-content-run.sql. `/etc/keel` is `root:root 750`, so db.env is unreadable until root runs ~/agent-src/ROOT-STEPS.md §1; content_run, the job row and the worker line all sit behind it. Nothing run, nothing enqueued, nothing changed in the tenant or on the host. For the operator: steps 2 SQL is hand-written (keelops CLAUDE.md allows live-DB reads only through KEEL's CLI), and the step 1 fallback `enqueue` is a DB write; both need your explicit OK.
 - **Tenant:** content reader reads only (the normal nightly content backup). No grants, no writes. A 403 is reported, never fixed by granting.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. Use the newest scheduled `content-collect` that ran after the deploy (01:00 UTC). If none ran, queue the same read-only job

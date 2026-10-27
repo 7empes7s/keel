@@ -15,7 +15,7 @@
 // the candidate set are cross-snapshot/external; they are reported so the operator
 // sees them, never silently dropped.
 import { refuseIfSynced } from '../safety/syncedObjectGuard.mjs';
-import { isVerbatimSymbol } from '../graph/resolver.mjs';
+import { dependencySymbol, isAppIdSymbol, isVerbatimSymbol } from '../graph/resolver.mjs';
 import { verbCapability } from '../reconcile/verb.mjs';
 import { CATALOG } from '../../tools/tenant-probe/catalog.mjs';
 
@@ -60,20 +60,24 @@ export function dependencyClosure(resources, selectedKeys) {
     const resource = nodes.get(key);
     for (const ref of resource.references ?? []) {
       if (!ref.symbol || isVerbatimSymbol(ref.symbol)) continue;
-      if (!nodes.has(ref.symbol)) {
-        unresolved.push({ from: key, field: ref.field, symbol: ref.symbol });
+      const target = dependencySymbol(ref.symbol, nodes);
+      if (!target) {
+        // An appId outside the backup (Microsoft Graph, say) is checked against
+        // the tenant when the restore writes it, not listed as missing here.
+        if (!isAppIdSymbol(ref.symbol)) unresolved.push({ from: key, field: ref.field, symbol: ref.symbol });
         continue;
       }
-      if (!selected.includes(ref.symbol)) {
-        if (!reasons.has(ref.symbol)) reasons.set(ref.symbol, []);
-        const entries = reasons.get(ref.symbol);
+      if (target === key) continue;
+      if (!selected.includes(target)) {
+        if (!reasons.has(target)) reasons.set(target, []);
+        const entries = reasons.get(target);
         if (!entries.some((e) => e.requiredBy === key && e.field === ref.field)) {
           entries.push({ requiredBy: key, field: ref.field });
         }
       }
-      if (!included.has(ref.symbol)) {
-        included.add(ref.symbol);
-        queue.push(ref.symbol);
+      if (!included.has(target)) {
+        included.add(target);
+        queue.push(target);
       }
     }
   }

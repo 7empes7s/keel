@@ -10,7 +10,7 @@ import { SelectableList, type Grouping, type ListGroup } from "@/components/list
 import { RecoveryMechanismTable, type RecoveryMechanism } from "@/components/recovery-mechanism";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
 import { IncidentQualificationSummary, type IncidentRecoveryView } from "@/components/incident-recovery";
-import { PendingSteps, type PendingStep } from "@/components/pending-steps";
+import { ObjectSteps, PendingSteps, type ObjectStep, type PendingStep } from "@/components/pending-steps";
 import { RestorePoint } from "@/components/restore/restore-point";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
@@ -88,6 +88,8 @@ interface DryRunResourceResult {
   naturalKey: string;
   reason?: string;
   error?: string;
+  // Issue #546: steps a person must do on this object (one step or a list).
+  completion?: ObjectStep | ObjectStep[] | null;
 }
 
 interface DryRunResults {
@@ -691,12 +693,16 @@ export function RestoreSelection({
                 <div className="data-error" role="alert">
                   <p className="severity-label">Missing from this backup</p>
                   <ul>
-                    {preview.unresolvedReferences.map((reference) => (
-                      <li key={`${reference.from}:${reference.field}`}>
-                        {plainLabel(reference.from, names)} refers to something this backup does not hold; the restore
-                        fails unless it already exists in the tenant.
-                      </li>
-                    ))}
+                    {/* One line per item, however many of its settings point outside the backup. */}
+                    {[...new Set(preview.unresolvedReferences.map((reference) => reference.from))].map((from) => {
+                      const count = preview.unresolvedReferences.filter((reference) => reference.from === from).length;
+                      return (
+                        <li key={from}>
+                          {plainLabel(from, names)} refers to {count === 1 ? "something" : `${count} things`} this backup does not hold; the restore
+                          fails unless {count === 1 ? "it already exists" : "they already exist"} in the tenant.
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ) : null}
@@ -773,6 +779,8 @@ export function RestoreSelection({
             <div className={artifact.results.failed.length ? "stat-bad" : undefined}><dt>Would fail</dt><dd>{artifact.results.failed.length}</dd></div>
             <div className={artifact.results.notRemediable.length ? "stat-warn" : undefined}><dt>Needs doing by hand</dt><dd>{artifact.results.notRemediable.length}</dd></div>
           </dl>
+
+          <ObjectSteps entries={objectResults(artifact.results.applied)} label={(key) => plainLabel(key, names)} />
 
           <BeforeAfter changes={changeByKey} names={names} keys={objectResults(artifact.results.applied).map((entry) => entry.naturalKey)} />
 

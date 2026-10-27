@@ -180,7 +180,10 @@ export function jobStatusSentence(job: JobLike, now: string): string {
       const took = duration(job.startedAt, job.finishedAt);
       const gaps = jobIncompleteTypes(job).length;
       const done = `${ago(job.finishedAt ?? null, now)}${took ? ` after ${took}` : ""}`;
-      return gaps ? `Partly done ${done}: ${plural(gaps, "type")} not backed up` : `Finished ${done}`;
+      if (!gaps) return `Finished ${done}`;
+      if (job.kind === "content-collect") return `Partly done ${done}: ${plural(gaps, "kind")} of content not backed up in full`;
+      if (job.kind === "workload-collect") return `Partly done ${done}: ${plural(gaps, "kind")} incomplete`;
+      return `Partly done ${done}: ${plural(gaps, "type")} not backed up`;
     }
     case "failed": return `Failed ${ago(job.finishedAt ?? job.startedAt ?? null, now)}`;
     case "cancelled": return `Cancelled ${ago(job.finishedAt ?? job.createdAt ?? null, now)}`;

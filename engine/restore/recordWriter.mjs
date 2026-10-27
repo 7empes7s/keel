@@ -62,6 +62,10 @@ export function defineRecord(spec) {
   if ((spec.checkedAfterWrite ?? []).length > 0 && typeof spec.afterWrite !== 'function') {
     throw new TypeError(`${spec.resourceType}: a field checked after the write needs an afterWrite that checks it`);
   }
+  // A record read field by field reads nothing else: every read is rewritten.
+  if (spec.readEach && (spec.readQuery || spec.preflight || spec.afterWrite || spec.updateGuard || spec.deleteGuard)) {
+    throw new TypeError(`${spec.resourceType}: a record read field by field takes no readQuery and no read hook`);
+  }
   if (spec.singleton && (spec.operations ?? []).some((verb) => verb !== 'update')) {
     throw new TypeError(`${spec.resourceType}: a singleton is only ever updated`);
   }
@@ -71,6 +75,7 @@ export function defineRecord(spec) {
     excluded: [],
     createOnly: [],
     readQuery: null,
+    readEach: null,
     singleton: false,
     collection: null,
     collectionFor: null,
@@ -283,12 +288,35 @@ export function liveTargetId(resource, ctx) {
 }
 
 /**
+ * A writer whose reads of a record with `readEach` read each field on its own
+ * request (`$select=<field>`) and merge the answers (issue #447: Graph routes
+ * a read of fields from more than one backend to one that cannot answer it).
+ * The first failed read is the answer. Writes go to the writer unchanged.
+ */
+export function eachFieldReader(writer, fields) {
+  const reader = Object.create(writer);
+  reader.read = async (version, path, ...rest) => {
+    const base = String(path).split('?')[0];
+    const body = {};
+    let last = null;
+    for (const field of fields) {
+      last = await writer.read(version, `${base}?$select=${field}`, ...rest);
+      if (last?.ok !== true) return last;
+      Object.assign(body, last.body);
+    }
+    return { ...last, body };
+  };
+  return reader;
+}
+
+/**
  * One write through a record. `ctx`: { mode, retryOperation, referenceContext,
  * rollbackClient, runId, restoreRef, existingTargetIds, deletionGuardOptions,
  * observedCoverage, readAfterWriteOptions }. Returns { applied } | { skipped }
  * | { failed }.
  */
 export async function applyRecordWrite(writer, record, resource, verb, ctx = {}) {
+  if (record.readEach && writer) writer = eachFieldReader(writer, record.readEach);
   const { naturalKey } = resource;
   const io = {
     writer,

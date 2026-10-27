@@ -29,6 +29,8 @@ const PAGES = [
   { name: "job-failed", hash: "/jobs/a4" },
   { name: "job-backup-running", hash: "/jobs/a1" },
   { name: "job-backup-partial", hash: "/jobs/b2" },
+  { name: "job-content-partial", hash: "/jobs/c3" },
+  { name: "job-service-partial", hash: "/jobs/w4" },
   { name: "job-restore-completion", hash: "/jobs/r9" },
   { name: "job-restore-undo", hash: "/jobs/r10" },
   { name: "policies", hash: "/policies" },
@@ -92,7 +94,7 @@ for (const theme of ["dark", "light"] as const) {
 }
 
 // Visual baselines for the pages most likely to regress, both themes, plus phone width.
-const VISUAL = ["dashboard", "drift", "restore", "approvals", "protect", "job-failed", "policy-activation", "job-backup-running", "job-backup-partial"];
+const VISUAL = ["dashboard", "drift", "restore", "approvals", "protect", "job-failed", "policy-activation", "job-backup-running", "job-backup-partial", "job-content-partial"];
 for (const theme of ["dark", "light"] as const) {
   for (const name of VISUAL) {
     test(`visual · ${name} · ${theme}`, async ({ page }) => {
@@ -735,6 +737,11 @@ test("restore leads with what changed, by service, and undoes a change or a grou
   // Undo the whole group: every change goes to the check at once, with before and after.
   await groups.nth(0).getByRole("button", { name: "Undo all 5: Changed recently" }).click();
   await expect(page.getByText("Ready to send for approval")).toBeVisible({ timeout: 15_000 });
+  // Issue #546: a step left for a person on one object is shown before the changes.
+  const steps = page.locator(".object-steps");
+  await expect(steps).toContainText("1 step is left for a person");
+  await expect(steps).toContainText("Windows baseline");
+  await expect(steps).toContainText("Assignments not restored");
   const beforeAfter = page.locator(".restore-before-after");
   await expect(beforeAfter).toContainText("Branch offices (trusted location)Now: gone");
   const visibility = beforeAfter.locator(".cc-row", { hasText: "Visibility" });
@@ -2424,6 +2431,63 @@ test("Setup · the step waiting on you is open, links to Microsoft, and continue
   expect(await page.evaluate(() => (window as unknown as { __stay?: boolean }).__stay)).toBe(true);
 });
 
+// Connections (delegated-access step 3): every Keel app grouped Required / Optional /
+// Service accounts, problems first with a sentence saying what stops, and each app's
+// wanted permissions next to what the tenant grants, the difference highlighted. Read only.
+test("Setup · Connections lists each Keel app by group, problems first, with wanted next to granted", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await open(page, "/setup", "light");
+  const panel = page.locator("section#setup-connections");
+  await expect(panel.getByRole("heading", { level: 2 })).toHaveText("Connections");
+  await expect(panel.locator(".su-cn-group-title")).toHaveText([/^Required apps/, /^Optional apps/, /^Service accounts/]);
+  await expect(panel.locator(".su-pp-alert")).toHaveText([
+    /Keel Settings Reader is missing 1 role: settings backups may be incomplete\./,
+    /Keel Settings Restorer is waiting for an administrator to approve it: restores cannot run yet\./,
+  ]);
+  await expect(panel.locator(".su-pp-alert").first()).toHaveAttribute("data-tone", "urgent");
+  // Optional apps: the one waiting for approval sorts above the one not set up.
+  const optional = panel.locator(".su-cn-group", { has: page.getByRole("heading", { name: /^Optional apps/ }) });
+  await expect(optional.locator(".su-cn-name")).toHaveText(["Keel Settings Restorer", "Keel Content Reader"]);
+  await expect(optional.locator(".su-cn-row").first().locator(".su-cn-main .badge")).toHaveText("Waiting for approval");
+  await expect(optional.locator(".su-cn-row").nth(1).locator(".su-cn-main .badge")).toHaveText("Not set up");
+  await expect(panel.locator(".su-cn-group").nth(2)).toContainText("None yet.");
+
+  // A row with something missing is open; the difference is highlighted and comes first.
+  const reader = panel.locator(".su-cn-row", { hasText: "Keel Settings Reader" });
+  await expect(reader.locator(".su-cn-main .badge")).toHaveText("Missing permission");
+  const grants = reader.getByRole("table", { name: "Keel Settings Reader: wanted and granted" });
+  await expect(grants.locator("tbody tr").first()).toHaveAttribute("data-status", "missing");
+  await expect(grants.locator("tbody tr").first()).toContainText("Role: Read Only Operator");
+  await expect(grants.locator('tbody tr[data-status="extra"]')).toContainText("Not used by Keel");
+  await expect(grants.locator("tbody tr").last()).toHaveAttribute("data-status", "extra");
+  await reader.getByRole("button", { name: "Hide permissions" }).click();
+  await expect(grants).toHaveCount(0);
+
+  // The restorer's wanted permissions are missing; Keel cannot see its role, so that is not checked.
+  const restorer = panel.locator(".su-cn-row", { hasText: "Keel Settings Restorer" });
+  await expect(restorer.locator(".su-cn-facts")).toContainText("3 missing · 0 of 4 granted");
+  await expect(restorer.locator('tbody tr[data-status="not-checked"]')).toContainText("Role: Privileged Role Administrator");
+
+  // Read only: no action buttons beyond showing permissions.
+  for (const label of await panel.getByRole("button").allInnerTexts()) expect(label).toMatch(/^(Show|Hide) permissions$/);
+});
+
+test("Setup · Connections on a working host: a certificate ending soon is amber, a restorer switched off is grey", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/setup/checked", "dark");
+  const panel = page.locator("section#setup-connections");
+  await expect(panel.locator(".su-pp-alert")).toHaveCount(0);
+  await expect(panel.locator(".su-cn-row", { hasText: "Keel Settings Reader" }).locator(".su-cn-main .badge")).toHaveText("Expires in 12 days");
+  await expect(panel.locator(".su-cn-row", { hasText: "Keel Settings Reader" })).toHaveAttribute("data-tone", "soon");
+  const restorer = panel.locator(".su-cn-row", { hasText: "Keel Settings Restorer" });
+  await expect(restorer.locator(".su-cn-main .badge")).toHaveText("Switched off");
+  await expect(restorer).toHaveAttribute("data-tone", "neutral");
+  await expect(panel.getByRole("table")).toHaveCount(0);
+  await restorer.getByRole("button", { name: "Show permissions" }).click();
+  await expect(restorer.locator('tbody tr[data-status="extra"]')).toContainText("Channel.Create");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
 // Production host: a grant Keel never uses is reported as found in the tenant, grey and
 // last in the permission table, never as a warning or something Keel will remove. With
 // read access confirmed, the first backup is the page's one amber action.
@@ -3320,6 +3384,40 @@ test("Compliance · Defender email controls sit under Defender; a failing one li
   expectPlainText(await textOutside(page, ".bl-sheet", '[data-layer="record"]'));
 });
 
+test("Compliance · Defender make it pass: one row per failing setting, in plain words, planned and sent to the approvers", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${HARNESS}#/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1`);
+  const panel = page.getByRole("dialog", { name: "Phishing mail goes to quarantine" });
+  const fix = panel.locator(".cp-fix");
+  await expect(fix.locator("h3")).toContainText("Quarantine phishing");
+  await expect(fix).toContainText("An approver also reviews that");
+  const rows = fix.locator(".cp-fix-row");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0)).toContainText("High-confidence phishing goes to");
+  await expect(rows.nth(0).locator(".cp-fix-values")).toHaveAttribute("aria-label", "High-confidence phishing goes to: now Junk folder, after Quarantine");
+  await expect(rows.nth(1).locator(".cp-fix-values")).toHaveAttribute("aria-label", "Pulls back delivered phishing: now Off, after On");
+  // Several rows: the first row's fix is the panel's one main action, the others are secondary.
+  await expect(panel.locator(".btn-primary")).toHaveCount(1);
+  await expect(rows.nth(0).getByRole("button", { name: "Make it pass" })).toHaveClass(/btn-primary/);
+  await expect(rows.nth(1).getByRole("button", { name: "Make it pass" })).not.toHaveClass(/btn-primary/);
+
+  const item = rows.nth(2);
+  await item.getByRole("button", { name: "Make it pass" }).click();
+  await expect(item.locator(".badge", { hasText: "Ready for approval" })).toBeVisible();
+  await expect(item).toContainText("Keel will change only “Phishing goes to” on KEEL-RT-Finance inbound filtering for the accounts payable team, from Inbox, with a header added to Quarantine");
+  await item.getByLabel("Why make this change?").fill("Quarantine phishing for accounts payable");
+  await item.getByRole("button", { name: "Ask for approval" }).click();
+  await expect(item.locator(".badge", { hasText: "Waiting for approval" })).toBeVisible();
+
+  type Call = { url: string; method: string; body: string | null };
+  const calls = await page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+  const planned = calls.filter((call) => call.method === "POST" && call.url === "/api/actions/compliance/fix");
+  expect(planned.map((call) => JSON.parse(call.body ?? "{}"))).toEqual([{ evaluationId: "e7a10000-0000-4000-8000-0000000000f1", naturalKey: "anti-spam-policy:0c0f5000-0000-4000-8000-000000000002#PhishSpamAction" }]);
+  const visible = await textOutside(page, ".bl-sheet", ".technical-details");
+  expectPlainText(visible);
+  for (const word of ["PhishSpamAction", "AddXHeader", "MoveToJmf", "anti-spam-policy", "0c0f5000"]) expect(visible).not.toContain(word);
+});
+
 test("Compliance · phone: the failing settings stack, one card per setting, with no sideways scroll", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page, "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1", "light");
@@ -3347,7 +3445,7 @@ test("Compliance · phone: pass and fail tiles per service open the same panel",
 
 for (const theme of ["dark", "light"] as const) {
   for (const width of [390, 1440]) {
-    for (const hash of ["/benchmarks", "/benchmarks/empty", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e2", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks/defender", "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1"]) {
+    for (const hash of ["/benchmarks", "/benchmarks/empty", "/benchmarks?group=result", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e2", "/benchmarks?open=e7a10000-0000-4000-8000-0000000000e1&grant=e7a10000-0000-4000-8000-0000000000e1", "/benchmarks/defender", "/benchmarks/defender?open=e7a10000-0000-4000-8000-0000000000f1", "/benchmarks/own", "/benchmarks/own?open=e7a10000-0000-4000-8000-0000000000a7", "/benchmarks/own?own=new"]) {
       test(`Compliance · ${width} · ${theme} · ${hash}: no sideways scroll or clipped text, equal tiles`, async ({ page }) => {
         await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
         await open(page, hash, theme);
@@ -3377,7 +3475,7 @@ for (const theme of ["dark", "light"] as const) {
           await expect(sheet).toBeVisible();
           // One main action per panel: the fix when Keel can make it pass, else the exception.
           await expect(sheet.locator(".btn-primary")).toHaveCount(1);
-          if (hash.includes("0000000000e2")) {
+          if (hash.includes("0000000000e2") || hash.includes("0000000000f1")) {
             await expect(sheet.locator(".cp-fix .btn-primary")).toBeInViewport();
           } else {
             await expect(sheet.locator(".bl-sheet-foot .btn-primary")).toBeInViewport();
@@ -4033,7 +4131,7 @@ test("Job · a failed job leads with a plain cause, keeps the raw error behind S
 
 test("Job page and rule preview fit a phone without sideways scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
-  for (const hash of ["/jobs/a1", "/jobs/b2", "/jobs/a4", "/jobs/r9", "/jobs/r10", "/policies/p2"]) {
+  for (const hash of ["/jobs/a1", "/jobs/b2", "/jobs/c3", "/jobs/w4", "/jobs/a4", "/jobs/r9", "/jobs/r10", "/policies/p2"]) {
     await open(page, hash, "light");
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), hash).toBeLessThanOrEqual(0);
   }
@@ -4060,6 +4158,56 @@ test("Job · a partly done backup leads with the kinds it missed and why", async
   await failed.getByText("Show details").click();
   await expect(failed.locator(".ui-alert-more li")).toContainText("Graph 429");
   await expect(page.locator('[data-layer="verdict"]')).toHaveAttribute("data-tone", "soon");
+});
+
+test("Job · a partly done content backup lists each mailbox, OneDrive and site it could not read", async ({ page }) => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await open(page, "/jobs/c3", viewport.width < 400 ? "light" : "dark");
+    await expect(page.locator(".job-summary .badge")).toHaveText("Partly done");
+    const alert = page.locator('.ui-alert[data-alert="types"]');
+    await expect(alert.locator(".ui-alert-title")).toContainText("3 kinds were not backed up in full");
+    await expect(alert.getByRole("link", { name: "See what was not read" })).toHaveAttribute("href", /#job-gaps$/);
+    const onedrive = page.locator('.job-gap-group[data-gap-type="content:onedrive"]');
+    await expect(onedrive.locator("h3 .badge")).toHaveText("10 OneDrives not read");
+    await expect(onedrive.locator("tbody tr")).toHaveCount(10);
+    await expect(onedrive.locator("tbody tr").first()).toContainText("KEEL-RT-user-01");
+    await expect(onedrive.locator("tbody tr").first()).toContainText("Locked by Microsoft");
+    await expect(page.locator('.job-gap-group[data-gap-type="content:exchange-mail"] tbody tr')).toContainText("Access refused");
+    await expect(page.locator('.job-gap-group[data-gap-type="content:sharepoint-sites"] tbody tr')).toContainText("Not found");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  }
+  // The engine's text waits behind a click.
+  const onedrive = page.locator('.job-gap-group[data-gap-type="content:onedrive"]');
+  await page.reload();
+  await expect(onedrive.locator(".ui-alert-more li").first()).toBeHidden();
+  await onedrive.getByText("Show the error text").click();
+  await expect(onedrive.locator(".ui-alert-more li").first()).toContainText("HTTP 423");
+});
+
+test("Job · a partly done service backup lists each part it could not read", async ({ page }) => {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport);
+    await open(page, "/jobs/w4", viewport.width < 400 ? "light" : "dark");
+    await expect(page.locator(".job-summary .badge")).toHaveText("Partly done");
+    const alert = page.locator('.ui-alert[data-alert="types"]');
+    await expect(alert.locator(".ui-alert-title")).toContainText("2 kinds were not backed up in full");
+    await expect(alert.getByRole("link", { name: "See what was not read" })).toHaveAttribute("href", /#job-gaps$/);
+    const flow = page.locator('.job-gap-group[data-gap-type="exchange-mail-flow"]');
+    await expect(flow.locator("h3 .badge")).toHaveText("2 parts not read");
+    await expect(flow.locator("tbody tr").first()).toContainText("Transport rule");
+    await expect(flow.locator("tbody tr").first()).toContainText("Access refused");
+    await expect(flow.locator("tbody tr").nth(1)).toContainText("Not licensed in this tenant");
+    await expect(page.locator('.job-gap-group[data-gap-type="exchange-mailbox-settings"] tbody tr').first()).toContainText("Too many to read in one run");
+    // Workloads read in full or not switched on list nothing.
+    await expect(page.locator(".job-gap-group")).toHaveCount(2);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  }
+  const flow = page.locator('.job-gap-group[data-gap-type="exchange-mail-flow"]');
+  await page.reload();
+  await expect(flow.locator(".ui-alert-more li").first()).toBeHidden();
+  await flow.getByText("Show the error text").click();
+  await expect(flow.locator(".ui-alert-more li").first()).toContainText("HTTP 403");
 });
 
 // Raw error text (status codes, exception names, API paths) never shows in plain view:
@@ -4185,4 +4333,69 @@ test("shared list · the pager fits a phone without sideways scrolling", async (
   expect(overflow).toBeLessThanOrEqual(0);
   await pager.getByRole("button", { name: "Next" }).click();
   await expect(pager.getByRole("status")).toHaveText("Showing 26–50 of 64 settings");
+});
+
+test("Compliance · measure against a known standard, write your own check, remove it", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, "/benchmarks/own");
+  type Call = { url: string; method: string; body: string | null };
+  const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
+
+  // Known standards: SCuBA first, with the policies Keel checks and the gaps listed apart.
+  const known = page.locator(".cp-known");
+  await expect(known.locator("h2")).toHaveText("Measure against a known standard");
+  await expect(known).toContainText("Keel checks 3 of 43 CISA SCuBA policies");
+  await expect(known.locator(".cp-known-table tbody tr")).toHaveCount(3);
+  await expect(known.locator(".cp-known-table tbody tr", { hasText: "MS.AAD.7.1v1" })).toContainText("Checks part of this");
+  await expect(known.locator(".cp-known-gaps summary")).toHaveText("40 policies Keel does not check yet");
+  await known.getByRole("button", { name: "NIST SP 800-53" }).click();
+  await expect(known).toContainText("Keel maps 3 NIST SP 800-53 controls");
+  await expect(known.locator(".cp-known-gaps")).toHaveCount(0);
+  // A policy's check opens that control's panel.
+  await known.getByRole("button", { name: "CISA SCuBA" }).click();
+  await known.locator(".cp-known-table").getByRole("link", { name: "No more than 5 people hold the top admin role" }).click();
+  await expect(page.locator(".bl-sheet h2")).toContainText("No more than 5 people hold the top admin role");
+  await page.keyboard.press("Escape");
+
+  // The tenant's own check sits beside Keel's, filed under its own standard.
+  await expect(page.locator(".cp-score-list", { hasText: "By standard" })).toContainText("Contoso hardening");
+  await page.locator(".sel-row .cp-row-link", { hasText: "Every sign-in rule is on" }).click();
+  const sheet = page.locator(".bl-sheet");
+  await expect(sheet).toContainText("Every one of the sign-in rules has state set to enabled.");
+  await expect(sheet.locator(".cp-misses")).toContainText("Legacy pilot");
+  page.once("dialog", (dialog) => void dialog.accept());
+  await sheet.getByRole("button", { name: "Remove this check" }).click();
+  await expect(page.locator(".toast").first()).toContainText("Check removed");
+  const removes = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/actions/compliance/own-check/remove");
+  expect(removes.map((call) => JSON.parse(call.body ?? "{}"))).toEqual([{ checkId: "0c0c0000-0000-4000-8000-0000000000a7" }]);
+
+  // Write one: pick a kind and a setting from the newest backup, the value, then save.
+  await page.getByRole("link", { name: "Write your own check" }).click();
+  const form = page.locator(".bl-sheet");
+  await expect(form.locator("h2")).toContainText("Write your own check");
+  await expect(form.getByLabel("Belongs to")).toHaveValue("Contoso hardening");
+  await form.getByRole("button", { name: "Save and check" }).click();
+  await expect(form.locator(".cp-error")).toHaveText("Pick what to check and which setting.");
+  await form.getByRole("button", { name: /^Kind/ }).click();
+  await page.locator(".option-panel [role='option']", { hasText: "Named location" }).click();
+  await form.getByRole("button", { name: /^Setting/ }).click();
+  await page.locator(".option-panel [role='option']", { hasText: "isTrusted" }).click();
+  await form.getByLabel("Value").selectOption("true");
+  await form.getByLabel("Applies to").selectOption("any");
+  await expect(form.locator(".cp-callout")).toHaveText("At least one of the trusted locations has isTrusted set to On.");
+  const results = await new AxeBuilder({ page }).include(".bl-sheet").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  expect(results.violations.map((violation) => violation.id)).toEqual([]);
+  await form.getByRole("button", { name: "Save and check" }).click();
+  await expect(page.locator(".toast", { hasText: "Check saved" })).toContainText("Checked against the newest backup: it does not pass.");
+  const saves = (await calls()).filter((call) => call.method === "POST" && call.url === "/api/actions/compliance/own-check");
+  expect(saves.map((call) => JSON.parse(call.body ?? "{}"))).toEqual([{
+    standard: "Contoso hardening", name: "At least one of the trusted locations has isTrusted set to On.", resourceType: "namedLocation",
+    field: "isTrusted", operator: "equals", expected: true, appliesTo: "any", severity: "medium",
+  }]);
+  await expect(form).toBeHidden();
+
+  // At phone width the page still fits.
+  await page.setViewportSize({ width: 375, height: 800 });
+  await expect(page.locator(".cp-known")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });

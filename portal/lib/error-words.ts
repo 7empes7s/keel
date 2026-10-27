@@ -30,6 +30,12 @@ const RULES: Rule[] = [
     todo: () => "Nothing to do now: the next run tries again. If it keeps happening, space out the schedules.",
   },
   {
+    // Exchange refused one mailbox while the others read fine (engine/content/collectors.mjs).
+    test: /refused access to this mailbox only/i,
+    cause: (service) => `${service} refused Keel access to one mailbox, while the others read fine.`,
+    todo: () => "Check whether an application access policy or mailbox restriction leaves it out. Until then it is not backed up.",
+  },
+  {
     test: /\b(401|403)\b|authorization_requestdenied|forbidden|unauthori[sz]ed|insufficient privileges|not enough rights|access (is )?denied|missing (a )?(permission|grant|role)/i,
     cause: (service) => `Keel's app is missing a permission ${service} asked for.`,
     todo: () => "Check the app's permissions on the Setup page, then try again.",

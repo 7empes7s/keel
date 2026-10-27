@@ -122,4 +122,22 @@ assert.equal(
   false,
 );
 
+// Issue #447: the Intune tenant settings are read as the collector reads
+// them: the compliance settings on their own request.
+const intuneReader = fakeReader(new Map([
+  ['/deviceManagement?$select=settings', [{ settings: { secureByDefault: true } }]],
+]));
+const intuneIndex = await buildLiveIndex(intuneReader, {
+  resourceTypes: ['deviceManagementSettings'],
+  naturalKeyFor: (type) => type,
+});
+assert.deepEqual(intuneReader.calls.map(({ path }) => path), ['/deviceManagement?$select=settings']);
+assert.deepEqual(intuneIndex.get('deviceManagementSettings').payload, { settings: { secureByDefault: true } });
+
+// A refused read fails the live read; only a 404 before anything was read is absent.
+const refusingReader = {
+  async collect() { return { items: [], pages: 0, status: 400, error: { status: 400, error: 'refused' } }; },
+};
+await assert.rejects(buildLiveIndex(refusingReader, { resourceTypes: ['deviceManagementSettings'], naturalKeyFor: (type) => type }), /listing \/deviceManagement failed/);
+
 console.log('liveState.test.mjs — all assertions passed');

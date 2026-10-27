@@ -14,12 +14,15 @@
  * Exchange mail protection policies) reads the newest run of that service read whose
  * kinds the control needs were read in full (newestWorkloadRead).
  *
+ * A tenant's own checks (ownChecks.mjs) run with Keel's, read the same way.
+ *
  * Read-only toward the tenant: it reads Keel's own database and writes only
  * benchmark_evaluation rows and their evidence entries.
  */
 import { readObservation } from '../contracts/observation.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { evaluateControl, recordEvaluation } from './evaluate.mjs';
+import { listOwnControls } from './ownChecks.mjs';
 import { WORKLOAD_FACT_TYPES, listControls } from './registry.mjs';
 
 // How many recent snapshots are searched for a complete read of a type. A type
@@ -86,7 +89,7 @@ function workloadObservation(run, { tenantRef, resourceType, completeness }) {
  * read did not finish. Runs refused for lack of qualification read nothing and count
  * as no read at all.
  */
-async function newestWorkloadRead(client, { tenantRef, resourceType, parts, now }) {
+export async function newestWorkloadRead(client, { tenantRef, resourceType, parts, now }) {
   const { rows: runs } = await client.query(
     `SELECT id, outcome, observed_from, observed_to, digest
        FROM workload_collection
@@ -108,15 +111,19 @@ async function newestWorkloadRead(client, { tenantRef, resourceType, parts, now 
   const resources = rows
     .filter((row) => !parts || parts.includes(row.fields?.kind))
     .map((row) => ({ ...row.fields, id: row.resource_key }));
-  return { observation: workloadObservation(run, { tenantRef, resourceType, completeness: 'complete' }), resources };
+  return { observation: workloadObservation(run, { tenantRef, resourceType, completeness: 'complete' }), resources, collectionId: String(run.id) };
 }
 
 /**
+ * @param {any} client
+ * @param {{ tenantRef: string, actor: string, now?: Date, controls?: readonly any[] | null }} options
  * @returns {Promise<{ checked: number, pass: number, fail: number, unknown: number, notApplicable: number, notConfigured: number, evaluations: object[] }>}
  */
-export async function runComplianceChecks(client, { tenantRef, actor, now = new Date(), controls = listControls() }) {
+export async function runComplianceChecks(client, { tenantRef, actor, now = new Date(), controls = null }) {
   assertTenantRef(tenantRef);
   if (typeof actor !== 'string' || actor.length === 0) throw new TypeError('runComplianceChecks requires an actor');
+  // Keel's own controls, then the checks this tenant wrote itself.
+  controls ??= [...listControls(), ...await listOwnControls(client, { tenantRef })];
   const { rows: snapshots } = await client.query(
     `SELECT id, tenant_ref, started_at, completed_at, coverage_digest
        FROM snapshot
@@ -140,7 +147,7 @@ export async function runComplianceChecks(client, { tenantRef, actor, now = new 
       const read = reads.get(key);
       if (read) observations[resourceType] = { observation: read.observation, resources: read.resources };
     }
-    const result = evaluateControl({ controlId: control.controlId, tenantRef, observations, now });
+    const result = evaluateControl({ controlId: control.controlId, control, tenantRef, observations, now });
     evaluations.push(await recordEvaluation(client, { tenantRef, result, actor }));
   }
 

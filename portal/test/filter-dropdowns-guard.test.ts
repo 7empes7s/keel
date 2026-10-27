@@ -35,7 +35,7 @@ const pickers = files(ROOT).flatMap((path) => {
 
 test("the scan finds the filter dropdowns", () => {
   const multi = pickers.filter((picker) => picker.multi).map((picker) => `${picker.path}:${picker.label}`).sort();
-  assert.deepEqual(multi, ["activity/activity-page.tsx:Outcome", "activity/activity-page.tsx:What", "activity/activity-page.tsx:Who", "value-report/value-report-page.tsx:Owned by"]);
+  assert.deepEqual(multi, ["activity/activity-page.tsx:Outcome", "activity/activity-page.tsx:What", "activity/activity-page.tsx:Who", "ask-records.tsx:Columns", "value-report/value-report-page.tsx:Owned by"]);
   assert.ok(pickers.some((picker) => picker.path === "incidents/incidents-page.tsx" && picker.writesAddress), "the scan sees a single picker that writes the address");
 });
 

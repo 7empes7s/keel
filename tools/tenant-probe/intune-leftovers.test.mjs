@@ -5,16 +5,15 @@ import intuneLeftovers from './catalog.d/intune-leftovers.mjs';
 import { CATALOG, catalogEntryFor, catalogReadPath } from './catalog.mjs';
 import { GraphReader } from './graph.mjs';
 import { get } from '../../engine/collect/registry.mjs';
-import '../../engine/collect/entraAdapter.mjs';
+import { collectEntry } from '../../engine/collect/entraAdapter.mjs';
 
 // Independent expectations: the documented Graph route for each type, written
 // out here rather than derived from the catalogue under test.
-const DM_SELECT = 'id,settings,intuneBrand,managedDeviceCleanupSettings';
 const OWNER_SELECT = 'id,accountId,configureWifi,createdDateTime,description,deviceNameTemplate,displayName,enrollmentMode,enrollmentTokenType,isTeamsDeviceProfile,lastModifiedDateTime,roleScopeTagIds,tokenCreationDateTime,tokenExpirationDateTime,wifiHidden,wifiSecurityType,wifiSsid';
 const WORK_SELECT = 'id,accountId,createdDateTime,description,displayName,lastModifiedDateTime,tokenExpirationDateTime';
 const SYMANTEC_SELECT = 'id,expirationDateTime,issuer,issuerName,status,subject,subjectName,uploadDateTime';
 const EXPECTED = [
-  ['deviceManagementSettings', `/beta/deviceManagement?$select=${DM_SELECT}`, 'tier1', 'singleton'],
+  ['deviceManagementSettings', '/beta/deviceManagement', 'tier1', 'singleton'],
   ['androidDeviceOwnerEnrollmentProfile', `/beta/deviceManagement/androidDeviceOwnerEnrollmentProfiles?$select=${OWNER_SELECT}`, 'tier2', 'list'],
   ['androidForWorkEnrollmentProfile', `/beta/deviceManagement/androidForWorkEnrollmentProfiles?$select=${WORK_SELECT}`, 'tier3', 'list'],
   ['appleUserInitiatedEnrollmentProfile', '/beta/deviceManagement/appleUserInitiatedEnrollmentProfiles', 'tier2', 'list'],
@@ -62,12 +61,14 @@ test('enrollment tokens, QR codes, Wi-Fi passwords and certificate files are lef
   for (const secret of ['content', 'password']) assert.ok(!symantec.includes(secret), `${secret} is never read`);
   assert.ok(symantec.includes('expirationDateTime'), 'the expiry a renewal needs is kept');
   // The tenant Intune object carries runtime counters; only its settings are read.
-  const dm = fields('deviceManagementSettings');
-  assert.ok(dm.includes('settings') && dm.includes('intuneBrand'));
+  const dm = catalogEntryFor('deviceManagementSettings').selectEach;
+  assert.deepEqual(dm, ['settings']);
   for (const counter of ['deviceProtectionOverview', 'windowsMalwareOverview', 'connectorStatus', 'subscriptionState']) assert.ok(!dm.includes(counter), counter);
   // Issue #447: a $select naming fields outside the core Intune object sent the
-  // whole read to another backend, which answered HTTP 400.
-  for (const foreign of ['adminConsent', 'dataProcessorServiceForWindowsFeaturesOnboarding', 'userExperienceAnalyticsSettings',
+  // whole read to another backend, which answered HTTP 400. The brand is read
+  // as the default branding profile instead.
+  assert.equal(catalogEntryFor('deviceManagementSettings').select, undefined, 'never one read of several fields');
+  for (const foreign of ['intuneBrand', 'adminConsent', 'dataProcessorServiceForWindowsFeaturesOnboarding', 'userExperienceAnalyticsSettings',
     'legacyPcManangementEnabled', 'unlicensedAdminstratorsEnabled']) assert.ok(!dm.includes(foreign), foreign);
   // Types read whole have no secret field.
   for (const entry of intuneLeftovers.filter((e) => !e.select)) assert.ok(!/password|token|secret/i.test(entry.path), entry.type);
@@ -94,7 +95,8 @@ test('no Intune leftovers type duplicates an existing catalogue path or type', (
 test('each Intune leftovers type reads a KEEL-RT- fixture with GET only, across pages or as one object', async () => {
   const originalFetch = globalThis.fetch;
   try {
-    for (const [type, endpoint, , shape] of EXPECTED.filter(([, , , kind]) => kind !== 'per-object')) {
+    // The Intune tenant settings are read one field per request (test below).
+    for (const [type, endpoint, , shape] of EXPECTED.filter(([type, , , kind]) => kind !== 'per-object' && type !== 'deviceManagementSettings')) {
       const entry = catalogEntryFor(type);
       const first = { id: `${type}-1`, displayName: `KEEL-RT-${type}-1` };
       const second = { id: `${type}-2`, displayName: `KEEL-RT-${type}-2` };
@@ -121,6 +123,57 @@ test('each Intune leftovers type reads a KEEL-RT- fixture with GET only, across 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('the Intune tenant settings read only the compliance settings, on their own request (issue #447)', async () => {
+  const adapter = get('deviceManagementSettings').adapter;
+  const calls = [];
+  const reader = {
+    async collect(version, path) {
+      calls.push(`/${version}${path}`);
+      return { items: [{ '@odata.context': 'x(settings)', settings: { secureByDefault: true } }], pages: 1, status: 200, capped: false, error: null };
+    },
+  };
+  const raw = await adapter.collectRaw(reader, {});
+  // The old cleanup setting failed live (2026-10-25); cleanup is the cleanup rules.
+  assert.deepEqual(calls, ['/beta/deviceManagement?$select=settings']);
+  assert.equal(raw.error, null);
+  assert.deepEqual(raw.items.map((item) => item.settings), [{ secureByDefault: true }]);
+});
+
+test('a singleton read field by field merges the answers, and any failed field fails it (issue #447)', async () => {
+  const entry = { type: 'fixtureSingleton', path: '/fixture', version: 'beta', singleton: true, selectEach: ['a', 'b'] };
+  const answers = {
+    '/fixture?$select=a': { '@odata.context': 'x(a)', a: 1 },
+    '/fixture?$select=b': { '@odata.context': 'x(b)', b: 2 },
+  };
+  const readerFor = (failing) => ({
+    calls: [],
+    async collect(version, path) {
+      this.calls.push(path);
+      if (failing && path.endsWith(failing.field)) return { items: [], pages: 0, status: failing.status, capped: false, error: { status: failing.status, error: 'refused' } };
+      return { items: [answers[path]], pages: 1, status: 200, capped: false, error: null };
+    },
+  });
+  const ok = readerFor(null);
+  const merged = await collectEntry(ok, entry);
+  assert.deepEqual(ok.calls, ['/fixture?$select=a', '/fixture?$select=b']);
+  assert.equal(merged.error, null);
+  assert.equal(merged.pages, 2);
+  assert.equal(merged.items.length, 1);
+  assert.equal(merged.items[0].a, 1);
+  assert.equal(merged.items[0].b, 2);
+  // A field Graph refuses fails the read; it is never saved half read.
+  const refused = await collectEntry(readerFor({ field: 'b', status: 400 }), entry);
+  assert.equal(refused.error?.status, 400);
+  assert.deepEqual(refused.items, []);
+  assert.equal(refused.path, '/fixture?$select=b', 'the evidence names the read that failed');
+  // A 404 after a field was read keeps the pages read, so it is a failure, not an absence.
+  const gone = await collectEntry(readerFor({ field: 'b', status: 404 }), entry);
+  assert.equal(gone.error?.status, 404);
+  assert.equal(gone.pages, 1);
+  // A 404 on the first field reads as an absent singleton.
+  assert.equal((await collectEntry(readerFor({ field: 'a', status: 404 }), entry)).pages, 0);
 });
 
 test('Windows app protection policies and iOS provisioning profiles are listed, then read on their own (restore gaps batch 12)', async () => {

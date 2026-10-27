@@ -329,6 +329,9 @@ export const JOB_HANDLERS = {
   // scheduler always sends and is checked against the config by the script.
   'workload-collect': {
     script: join(__dirname, 'keel-workload-collect.mjs'),
+    // A run where no workload failed but some were read only in part (one family
+    // refused, more objects than one run reads) is partly done, not failed (#447).
+    partialExitCode: PARTIAL_EXIT_CODE,
     argsFor(params = {}) {
       if (params === null || typeof params !== 'object' || Array.isArray(params)
           || Object.keys(params).some((key) => !['config', 'scope', 'tenantRef'].includes(key))) {
@@ -347,6 +350,9 @@ export const JOB_HANDLERS = {
   // tenantRef is what the scheduler sends and is checked against the config.
   'content-collect': {
     script: join(__dirname, 'keel-content-collect.mjs'),
+    // A run where no workload failed but some were read only in part (locked OneDrives,
+    // one refused mailbox) is partly done, not failed, like a settings backup (#447).
+    partialExitCode: PARTIAL_EXIT_CODE,
     argsFor(params = {}) {
       if (params === null || typeof params !== 'object' || Array.isArray(params)
           || Object.keys(params).some((key) => !['config', 'reader', 'scope', 'tenantRef'].includes(key))) {
@@ -706,7 +712,6 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
     // Handlers that need job context beyond params (baseline-create records the
     // requester as set_by) receive the whole job as a second argument.
     args = handler.argsFor(job.params ?? {}, job);
-    if (handler.acceptsDbUrl !== false) args = [...args, '--db-url', dbUrl];
   } catch (err) {
     await failJob(`invalid params: ${err.message}`);
     console.error(`job ${job.id}: invalid params — ${err.message}`);
@@ -738,7 +743,9 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
     const execution = startJobChild(handler.script, args, { timeoutMs, executable: handler.executable,
       // The requester is passed on so a collection reads the audit logs as them, and the
       // job's id so a backup can report each type's progress onto its own job row.
-      env: { ...process.env, KEEL_EVENT_CORRELATION_ID: jobCorrelationId(job), KEEL_JOB_REQUESTED_BY: String(job.requested_by ?? ''), KEEL_JOB_ID: String(job.id) },
+      // The database URL goes in the environment, never argv: argv is readable by every user through ps.
+      env: { ...process.env, ...(handler.acceptsDbUrl !== false && { KEEL_DB_URL: dbUrl }),
+        KEEL_EVENT_CORRELATION_ID: jobCorrelationId(job), KEEL_JOB_REQUESTED_BY: String(job.requested_by ?? ''), KEEL_JOB_ID: String(job.id) },
     });
     onInFlightChange({ job, terminate: execution.terminate });
     const heartbeat = setInterval(() => {
@@ -757,8 +764,9 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
       await recordAutoRemediationTerminalOutcome(client, { job, status: 'succeeded' });
       console.log(`job ${job.id}: succeeded (${Date.now() - startedAt}ms)`);
     } catch (err) {
-      // Issue #447: a collect that saved its snapshot but could not read some types
-      // in full ends as a finished job that names those types, not as a failure.
+      // Issue #447: a collect that saved its snapshot (or a service or content backup
+      // that saved every workload) but could not read some types in full ends as a finished job
+      // that names those types, not as a failure.
       const partial = partialResult(handler, err, Date.now() - startedAt);
       if (partial) {
         const completed = await complete(client, { id: job.id, result: partial });

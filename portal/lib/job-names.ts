@@ -2,6 +2,7 @@
 // (lib/saved-names.ts); these helpers turn a key into words with that name and never
 // return text that holds an object id. Keys and ids stay in Technical details.
 import { edgeKeyType } from "@/lib/app-names";
+import { workloadLabel } from "@/lib/compare-view";
 import { plainError } from "@/lib/error-words";
 import { holdsObjectId } from "@/lib/object-ids";
 import { resourceTypeLabel } from "@/lib/presentation";
@@ -60,10 +61,30 @@ export function jobDisplayStatus(job: { status: string; result?: unknown }): str
   return jobIncompleteTypes(job).length ? "partial" : job.status;
 }
 
+// Content backups by workload, as Microsoft names them: the full name, a short name for
+// one-line lists, the service each sits under, and what one of its items is called.
+export const CONTENT_WORKLOADS: Record<string, { name: string; short: string; service: string; item: [string, string] }> = {
+  "exchange-mail": { name: "Mail, calendars and contacts", short: "mail", service: "Exchange", item: ["mailbox", "mailboxes"] },
+  "group-conversations": { name: "Group conversations", short: "group conversations", service: "Exchange", item: ["group", "groups"] },
+  onedrive: { name: "OneDrive files", short: "OneDrive files", service: "SharePoint", item: ["OneDrive", "OneDrives"] },
+  sharepoint: { name: "SharePoint document libraries", short: "SharePoint libraries", service: "SharePoint", item: ["library", "libraries"] },
+  "sharepoint-sites": { name: "SharePoint sites, lists and files", short: "SharePoint sites", service: "SharePoint", item: ["site", "sites"] },
+  teams: { name: "Teams, channels and tabs", short: "Teams", service: "Teams", item: ["team", "teams"] },
+  planner: { name: "Planner plans and tasks", short: "Planner", service: "Teams", item: ["plan", "plans"] },
+};
+
+/** A kind a backup did not read in full, in words: a setting type, a service workload or a content workload. */
+export function incompleteTypeLabel(type: string): string {
+  if (type.startsWith("workload:")) return workloadLabel(type.slice("workload:".length));
+  if (!type.startsWith("content:")) return resourceTypeLabel(type);
+  const workload = type.slice("content:".length);
+  return CONTENT_WORKLOADS[workload]?.short ?? `${resourceTypeLabel(workload)} content`;
+}
+
 /** "Not backed up: Intune tenant settings" — the gaps of a partial backup as one line. */
 export function incompleteTypesLine(types: string[]): string {
   if (!types.length) return "";
-  const named = types.slice(0, 3).map((type) => resourceTypeLabel(type));
+  const named = types.slice(0, 3).map((type) => incompleteTypeLabel(type));
   const more = types.length - named.length;
   return `Not backed up: ${named.join(", ")}${more > 0 ? ` and ${more} more` : ""}`;
 }

@@ -222,6 +222,86 @@ test('OneDrive backup reports users without a drive as skipped and fails only wh
   assert.match(failed.errors[0].error, /HTTP 403/);
 });
 
+test('a locked OneDrive (HTTP 423) is skipped and listed, not a failed read', async () => {
+  const tenant = fixtureTenant();
+  const fetchImpl = async (href, init) => (decodeURIComponent(new URL(href).pathname) === '/v1.0/users/u-bob/drive'
+    ? json({ error: { code: 'notAllowed', message: 'The site is locked' } }, 423)
+    : tenant.fetchImpl(href, init));
+  const onedrive = CONTENT_COLLECTORS.find((entry) => entry.workload === 'onedrive');
+  const result = await onedrive.collect(null, {
+    tenantRef: 'sha256:KEEL-RT', store: createMemoryContentStore(), transport: contentReadTransport(async () => 'KEEL-RT-token', fetchImpl),
+    scope: { namePrefix: 'KEEL-RT-' }, sleep: async () => {}, now: () => new Date(), syncState: createMemorySyncState(),
+  });
+  assert.equal(result.outcome, 'succeeded', JSON.stringify(result.reasons));
+  assert.deepEqual(result.reasons, []);
+  assert.deepEqual(result.skipped, ['KEEL-RT-bob@keelrt.example: OneDrive locked in Microsoft 365']);
+
+  // Every OneDrive locked: nothing was read, so the run is not a success.
+  const allLocked = async (href, init) => (/\/v1\.0\/users\/u-[a-z]+\/drive$/.test(decodeURIComponent(new URL(href).pathname))
+    ? json({ error: { code: 'notAllowed' } }, 423)
+    : tenant.fetchImpl(href, init));
+  const none = await onedrive.collect(null, {
+    tenantRef: 'sha256:KEEL-RT', store: createMemoryContentStore(), transport: contentReadTransport(async () => 'KEEL-RT-token', allLocked),
+    scope: { namePrefix: 'KEEL-RT-' }, sleep: async () => {}, now: () => new Date(), syncState: createMemorySyncState(),
+  });
+  assert.equal(none.outcome, 'failed');
+  assert.match(none.reasons.join('\n'), /all 2 OneDrive\(s\) found are locked in Microsoft 365/);
+});
+
+test('a user without a OneDrive is not listed as skipped on the run', async () => {
+  const tenant = fixtureTenant();
+  const onedrive = CONTENT_COLLECTORS.find((entry) => entry.workload === 'onedrive');
+  const result = await onedrive.collect(null, {
+    tenantRef: 'sha256:KEEL-RT', store: createMemoryContentStore(), transport: tenant.transport,
+    scope: { namePrefix: 'KEEL-RT-' }, sleep: async () => {}, now: () => new Date(), syncState: createMemorySyncState(),
+  });
+  assert.equal(result.outcome, 'succeeded');
+  assert.deepEqual(result.skipped, []);
+});
+
+test('a mailbox Exchange refuses while others read fine says so, and the run stays partial', async () => {
+  const tenant = fixtureTenant();
+  const fetchImpl = async (href, init) => {
+    const path = decodeURIComponent(new URL(href).pathname);
+    if (path === '/v1.0/groups') return json({ value: [{ id: 'g-locked', displayName: 'KEEL-RT-group', mail: 'KEEL-RT-group@keelrt.example' }] });
+    if (path === '/v1.0/groups/g-locked/events') return json({ error: { code: 'ErrorAccessDenied', message: 'Access is denied. Check credentials and try again.' } }, 403);
+    return tenant.fetchImpl(href, init);
+  };
+  const mail = CONTENT_COLLECTORS.find((entry) => entry.workload === 'exchange-mail');
+  const context = {
+    tenantRef: 'sha256:KEEL-RT', store: createMemoryContentStore(), transport: contentReadTransport(async () => 'KEEL-RT-token', fetchImpl),
+    scope: { namePrefix: 'KEEL-RT-' }, sleep: async () => {}, now: () => new Date(), syncState: createMemorySyncState(),
+  };
+  const result = await mail.collect(null, context);
+  assert.equal(result.outcome, 'partial');
+  assert.equal(result.reasons.length, 1);
+  assert.equal(result.reasons.length, 1);
+});
+
+test('a refused group mailbox says "this mailbox only" only when another group mailbox read fine', async () => {
+  // Group mailboxes are read under other permissions than user mailboxes: a user mailbox
+  // that read fine proves nothing about group access, and the other way round.
+  const tenant = fixtureTenant();
+  const run = async (groups) => {
+    const fetchImpl = async (href, init) => {
+      const path = decodeURIComponent(new URL(href).pathname);
+      if (path === '/v1.0/groups') return json({ value: groups.map((id) => ({ id, displayName: `KEEL-RT-${id}`, mail: `KEEL-RT-${id}@keelrt.example` })) });
+      if (path === '/v1.0/groups/g-locked/events') return json({ error: { code: 'ErrorAccessDenied', message: 'Access is denied.' } }, 403);
+      if (path === '/v1.0/groups/g-fine/events') return json({ value: [] });
+      return tenant.fetchImpl(href, init);
+    };
+    const mail = CONTENT_COLLECTORS.find((entry) => entry.workload === 'exchange-mail');
+    return mail.collect(null, {
+      tenantRef: 'sha256:KEEL-RT', store: createMemoryContentStore(), transport: contentReadTransport(async () => 'KEEL-RT-token', fetchImpl),
+      scope: { namePrefix: 'KEEL-RT-' }, sleep: async () => {}, now: () => new Date(), syncState: createMemorySyncState(),
+    });
+  };
+  const alone = await run(['g-locked']);
+  assert.deepEqual(alone.reasons, ['KEEL-RT-g-locked (group): 1 read(s) failed (403 ErrorAccessDenied Access is denied.)']);
+  const beside = await run(['g-fine', 'g-locked']);
+  assert.match(beside.reasons[0], /^KEEL-RT-g-locked \(group\): Microsoft 365 refused access to this mailbox only; other group mailboxes read fine \(403 ErrorAccessDenied/);
+});
+
 test('the adapters keep every request a Graph GET and only pass read headers', async () => {
   const seen = [];
   let throttled = 1;
@@ -298,4 +378,29 @@ test('the SharePoint transport refuses writes, bodies, other hosts and paths out
   assert.deepEqual(sent, []);
   assert.equal((await transport(`https://${HOST}/sites/x/_api/web`)).status, 200);
   assert.throws(() => sharePointReadTransport(async () => 't', undefined, { tenantHost: 'evil.example' }), /tenantHost/);
+});
+
+// A refused users listing hides whole sets of mailboxes and OneDrives: the collectors
+// say so, and the run fails rather than ending as partly done.
+test('a refused users listing marks mail and OneDrive as a failed discovery, and the run fails', async () => {
+  const tenant = fixtureTenant();
+  const transport = contentReadTransport(async () => 'KEEL-RT-token', async (href, init) => {
+    if (new URL(href).pathname === '/v1.0/users') return json({ error: { code: 'Authorization_RequestDenied' } }, 403);
+    return tenant.fetchImpl(href, init);
+  });
+  const result = await runContentCollection(null, {
+    tenantRef: 'sha256:KEEL-RT', tenantId: TENANT_ID, store: createMemoryContentStore(), transport,
+    scope: { namePrefix: 'KEEL-RT-' }, collectors: withState(createMemorySyncState()).filter((entry) => ['exchange-mail', 'onedrive'].includes(entry.workload)), logger: quiet,
+  });
+  for (const run of result.runs) assert.equal(run.discoveryFailed, true, run.workload);
+  // Shown and recorded as failed, never as read in part.
+  assert.ok(result.runs.every((run) => run.outcome === 'failed'), JSON.stringify(result.runs.map((run) => run.outcome)));
+  assert.equal(result.exitCode, 1);
+
+  // A run that lists everything has no failed discovery.
+  const fine = await runContentCollection(null, {
+    tenantRef: 'sha256:KEEL-RT', tenantId: TENANT_ID, store: createMemoryContentStore(), transport: tenant.transport,
+    scope: { namePrefix: 'KEEL-RT-' }, collectors: withState(createMemorySyncState()), logger: quiet,
+  });
+  assert.ok(fine.runs.every((run) => run.discoveryFailed === false), JSON.stringify(fine.runs.map((run) => [run.workload, run.discoveryFailed])));
 });

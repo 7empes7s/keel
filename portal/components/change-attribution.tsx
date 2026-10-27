@@ -42,6 +42,7 @@ const UNKNOWN_SENTENCES: Record<string, string> = {
   "audit-read-scope-revoked": "Keel lost permission to read the audit log, so it cannot say who made this change.",
   "audit-read-failed": "Keel could not read the audit log for that time, so it cannot say who made this change.",
   "audit-window-not-read": "Keel has not read the audit log for that time yet.",
+  "audit-events-skipped": "Keel skipped some audit entries for that time because it could not store them safely, so it cannot be sure who made this change.",
   "audit-in-organization-archive": "This tenant's audit log is kept in your organization's archive, which Keel does not read.",
   "several-nearby-sign-ins": "No audit entry names this change, and several people signed in while it happened.",
   "no-audit-record-names-resource": "No audit entry names this change, so Keel cannot say who made it.",

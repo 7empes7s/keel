@@ -16,8 +16,8 @@
  *  - Read only. Only the Get cmdlets in TEAMS_EXTENDED_CMDLET_PARAMETERS run, and only
  *    Get-CsOnlineUser takes a parameter (-ResultSize). No write capability exists.
  *  - Declared fields only (cmdletFamilies.mjs). The live event configuration's
- *    `SdnApiToken` is a secret and is never declared: the backup is incomplete for it
- *    (TEAMS_EXTENDED_MISSING).
+ *    `SdnApiToken` is a secret and its other Sdn* provider fields are not returned, so
+ *    none is declared: the backup is incomplete for them (TEAMS_EXTENDED_MISSING).
  *  - Policies are keyed by Identity (`Global` or `Tag:<name>`), users by object id and
  *    group assignments by group id and policy type. Nothing is keyed by a name a user
  *    can change.
@@ -50,8 +50,11 @@ const groupAssignment = (body) => {
 };
 
 /**
- * The families. Fields were declared from Microsoft's cmdlet documentation, not
- * measured live. `required` families always answer in a working tenant (every policy
+ * The families. Fields were declared from Microsoft's cmdlet documentation, then
+ * checked against the live module (Q155, 2026-10-22, MicrosoftTeams 7.9.0): the live
+ * event configuration carries none of its Sdn* provider fields (TEAMS_EXTENDED_MISSING),
+ * and Get-CsOnlineUser spells the phone number `LineUri`. A declared field an answer
+ * does not carry is `unknown` and makes the run partial. `required` families always answer in a working tenant (every policy
  * list has its Global policy, and a tenant has users), so an empty answer is a gap.
  */
 export const FAMILIES = Object.freeze({
@@ -116,13 +119,14 @@ export const FAMILIES = Object.freeze({
   }),
   liveEventsConfiguration: Object.freeze({
     operation: 'teams.live-events-configuration', cmdlet: 'Get-CsTeamsMeetingBroadcastConfiguration', prefix: 'live-events-configuration', identity: singleton, required: true,
-    // SdnApiToken is a secret: never declared, so never read into a backup.
-    fields: Object.freeze(['Identity', 'SupportURL', 'AllowSdnProviderForBroadcastMeeting', 'SdnName', 'SdnProviderName', 'SdnLicenseId', 'SdnApiTemplateUrl']),
+    // The live answer carries no Sdn* provider fields (Q155), and SdnApiToken is a secret:
+    // none is declared (TEAMS_EXTENDED_MISSING).
+    fields: Object.freeze(['Identity', 'SupportURL', 'AllowSdnProviderForBroadcastMeeting']),
   }),
   userPolicyAssignment: Object.freeze({
     operation: 'teams.user-policy-assignments', cmdlet: 'Get-CsOnlineUser', prefix: 'user-policy-assignment', identity: user, required: true,
     fields: Object.freeze([
-      'Identity', 'UserPrincipalName', 'EnterpriseVoiceEnabled', 'LineURI',
+      'Identity', 'UserPrincipalName', 'EnterpriseVoiceEnabled', 'LineUri',
       'TeamsCallingPolicy', 'OnlineVoiceRoutingPolicy', 'TenantDialPlan', 'TeamsEmergencyCallingPolicy', 'TeamsEmergencyCallRoutingPolicy',
       'TeamsCallParkPolicy', 'CallingLineIdentity', 'OnlineVoicemailPolicy', 'TeamsMeetingBroadcastPolicy', 'TeamsEventsPolicy',
       'TeamsMeetingPolicy', 'TeamsMessagingPolicy', 'TeamsAppSetupPolicy', 'TeamsAppPermissionPolicy', 'TeamsChannelsPolicy',
@@ -143,6 +147,7 @@ export const TEAMS_EXTENDED_OPERATIONS = Object.freeze(FAMILY_NAMES.map((name) =
  */
 export const TEAMS_EXTENDED_MISSING = Object.freeze([
   Object.freeze({ family: 'liveEventsConfiguration', field: 'SdnApiToken', reason: 'secret', note: 'The API token of a third-party video distribution (eCDN) provider. Set it again in the Teams admin center after a restore.' }),
+  Object.freeze({ family: 'liveEventsConfiguration', field: 'SdnName, SdnProviderName, SdnLicenseId, SdnApiTemplateUrl', reason: 'not-read', note: 'Teams does not return the eCDN provider details to a read. Set the provider again in the Teams admin center after a restore.' }),
 ]);
 
 /** The registry descriptor. `enabledByDefault: false` until live qualification. */

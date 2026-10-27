@@ -8,6 +8,7 @@ import { useBackup } from "@/components/backup-controls";
 import { CredentialAlerts, ServiceStatusSection } from "@/components/setup/service-status";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, RecordGroup, TechnicalDetails } from "@/components/technical-details";
+import { ConnectionsPanel } from "@/components/setup/connections-panel";
 import { PermissionsPanel } from "@/components/setup/permissions-panel";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmButton } from "@/components/ui/confirm-button";
@@ -100,6 +101,7 @@ export function SetupPage({ state, canStart, canBackup, services = null }: {
             />
           ))}
         </div>
+        <ConnectionsPanel state={state} />
         <PermissionsPanel state={state} />
         {state.collect.allowed ? null : <ServiceStatusSection now={state.generatedAt} services={services} />}
       </div>

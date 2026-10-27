@@ -10,8 +10,10 @@ import {
   complianceFindings,
   storageResidency,
 } from "../../engine/govern/baselineCompliance.mjs";
+import { ownCheckChoices } from "../../engine/benchmarks/ownChecks.mjs";
+import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { listIncidentRecoveryPoints, listIncidents } from "../../engine/govern/incidents.mjs";
-import { listOpenCompletionWork } from "../../engine/restore/completion.mjs";
+import { countOpenCompletionSteps, listOpenCompletionWork } from "../../engine/restore/completion.mjs";
 import {
   getActiveBaseline,
   listLatestOpenDrift,
@@ -56,6 +58,8 @@ import type {
   BaselinesData,
   ComplianceData,
   ComplianceFinding,
+  KnownStandard,
+  OwnCheckChoices,
   ComplianceSummary,
   StorageResidency,
   CapabilityClaim,
@@ -527,8 +531,15 @@ export async function getComplianceData(): Promise<ComplianceData> {
       summary,
       storage,
       activeBaseline: baselines.find((baseline) => baseline.active) ?? null,
+      standards: STANDARDS as unknown as KnownStandard[],
     };
   });
+}
+
+/** What an own compliance check can be written on: the types and settings in the newest backup. */
+export async function getOwnCheckChoices(): Promise<OwnCheckChoices> {
+  const ref = tenantRef();
+  return withClient(async (client) => (await ownCheckChoices(client, { tenantRef: ref })) as OwnCheckChoices);
 }
 
 /** An exception's owner by name when it is someone in Keel (the owner is stored as
@@ -1316,14 +1327,14 @@ export function buildAlerts({
 export async function waitingFor(client: KeelClient, ref: string): Promise<DashboardWaiting> {
   const { rows: [row] } = await client.query(
     `SELECT (SELECT count(*)::int FROM alert WHERE tenant_ref = $1 AND state IN ('open','reopened')) AS open_alerts,
-            (SELECT count(*)::int FROM incident WHERE tenant_ref = $1 AND status = 'open') AS open_incidents,
-            (SELECT count(*)::int FROM recovery_completion_item WHERE tenant_ref = $1 AND state = 'pending') AS follow_ups`,
+            (SELECT count(*)::int FROM incident WHERE tenant_ref = $1 AND status = 'open') AS open_incidents`,
     [ref],
   );
   return {
     openAlerts: Number(row?.open_alerts ?? 0),
     openIncidents: Number(row?.open_incidents ?? 0),
-    restoreFollowUps: Number(row?.follow_ups ?? 0),
+    // A step a later restore replaced is not waiting on anyone.
+    restoreFollowUps: await countOpenCompletionSteps(client, { tenantRef: ref }),
   };
 }
 

@@ -1,4 +1,4 @@
-import { CATALOG, catalogReadPath } from '../../tools/tenant-probe/catalog.mjs';
+import { CATALOG, catalogReadPath, catalogReadPaths } from '../../tools/tenant-probe/catalog.mjs';
 import { redactSecrets } from '../../tools/tenant-probe/graph.mjs';
 import { DESCRIPTORS } from './descriptors.mjs';
 import { register, get } from './registry.mjs';
@@ -43,7 +43,7 @@ function graphNativeAdapter(type) {
     // follows Graph's nextLink verbatim and handles singleton responses too.
     const path = catalogReadPath(entry, basePath);
     const startedAt = new Date();
-    const result = await reader.collect(entry.version, path, {
+    const result = await collectEntry(reader, entry, basePath, {
       pageCap: entry.pageCap ?? Infinity,
       ...(entry.acceptLanguage ? { acceptLanguage: entry.acceptLanguage } : {}),
     });
@@ -95,7 +95,8 @@ function graphNativeAdapter(type) {
     }
     return {
       entry,
-      path,
+      // Issue #447: a read in several requests names the one that failed.
+      path: (result?.error && result?.path) || path,
       startedAt,
       completedAt,
       items: result?.items,
@@ -161,6 +162,32 @@ export function dropRepeatedIds(list) {
 // and each object is tagged with its parent's key. Any failed read fails the
 // type, so a denied read is never reported as an empty one; only `pages` of
 // child reads count, so a denial before any child was read is `failed`.
+/**
+ * One read of a fixed-path entry, shaped like reader.collect(). A singleton
+ * with `selectEach` is read once per field and the answers merged into the
+ * one object (issue #447); the first failed read is the result.
+ */
+export async function collectEntry(reader, entry, basePath = entry.path, options = {}) {
+  const paths = catalogReadPaths(entry, basePath);
+  if (!entry.selectEach) return reader.collect(entry.version, paths[0], options);
+  const merged = {};
+  let pages = 0;
+  let status = null;
+  for (const path of paths) {
+    const result = await reader.collect(entry.version, path, options);
+    // Pages already read keep a 404 on a later field from reading as absent;
+    // `path` names the read that failed in the evidence.
+    if (result?.error || result?.capped || !Array.isArray(result?.items)) return { ...result, path, pages: pages + (Number.isSafeInteger(result?.pages) ? result.pages : 0) };
+    // No object on the first read is an empty answer, as for a one-path read.
+    if (result.items.length === 0 && path === paths[0]) return result;
+    if (result.items.length !== 1) return { ...result, path, items: [], error: { error: `reading ${entry.type}: ${path} returned ${result.items.length} objects, not one` } };
+    Object.assign(merged, result.items[0]);
+    pages += Number.isSafeInteger(result.pages) ? result.pages : 0;
+    status = result.status ?? status;
+  }
+  return { items: [merged], pages, status, capped: false, error: null };
+}
+
 export async function collectPerParent(reader, entry) {
   const { parent } = entry;
   const options = { pageCap: entry.pageCap ?? Infinity };

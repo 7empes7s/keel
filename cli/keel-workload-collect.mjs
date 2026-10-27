@@ -52,7 +52,9 @@ import { loadLedgerInputs, loadWorkloadLedger, proofExpiry, saveLedgerInputs } f
 import { WORKLOAD_COLLECTORS } from '../engine/collect/workloads/registry.mjs';
 import { DEFAULT_SCOPE_PATH, POWERSHELL_FAMILY, powershellConfigPaths } from '../engine/collect/workloads/powershellConfigs.mjs';
 import { detectWorkloadDrift } from '../engine/govern/workloadDrift.mjs';
-import { progressTracker, progressWriter, reasonsLine } from '../engine/jobs/progress.mjs';
+import { listedReasons, progressTracker, progressWriter, reasonsLine } from '../engine/jobs/progress.mjs';
+import { workloadGapReasons } from '../engine/collect/workloads/gaps.mjs';
+import { INCOMPLETE_TYPES_PREFIX, PARTIAL_EXIT_CODE } from '../engine/collect/incomplete.mjs';
 import { runComplianceChecks } from '../engine/benchmarks/runChecks.mjs';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -125,6 +127,26 @@ async function settingsCount(client, collectionId) {
 }
 
 /**
+ * Exit codes (#447 for settings, the same rule as content backups). 0: every workload
+ * read in full, or not switched on. 3: no workload failed and drift detection ran for
+ * each, but some workloads were read only in part; they are named on stdout and the
+ * run is partial, not failed. 1: any workload failed, or a drift detection failed.
+ */
+export function workloadExitCode(runs) {
+  if (runs.some((run) => run.outcome === 'failed' || run.drift?.status === 'failed')) return 1;
+  return runs.some((run) => run.outcome === 'partial') ? PARTIAL_EXIT_CODE : 0;
+}
+
+/** The workloads a run read only in part, in the shape the worker's partial result takes. */
+export function incompleteWorkloadsOf(runs) {
+  return runs.filter((run) => run.outcome === 'partial').map((run) => ({
+    type: `workload:${run.workload}`, outcome: run.outcome, httpStatus: null,
+    items: Number.isSafeInteger(run.settings) ? run.settings : null,
+    reasonCount: run.gaps?.length ?? 0, reasons: listedReasons(run.gaps),
+  }));
+}
+
+/**
  * One scheduled run. A collector that throws (a missing scope entry, a container that
  * would not start) is recorded as a `failed` run with the reason, and the next
  * workload still runs.
@@ -163,12 +185,16 @@ export async function runWorkloadCollection(client, { tenantRef, config, scope =
     } catch (error) {
       drift = { status: 'failed', error: String(error?.message ?? error) };
     }
-    runs.push({ workload: step.workload, outcome: run.outcome, collectionId: run.id, reasons, drift });
+    // A partial run names what it could not read, so the Job page can list it.
+    const gaps = run.outcome === 'partial' ? workloadGapReasons(run.digest) : [];
+    const settings = progress.enabled || run.outcome === 'partial' ? await settingsCount(client, run.id) : null;
+    runs.push({ workload: step.workload, outcome: run.outcome, collectionId: run.id, reasons, drift, ...(run.outcome === 'partial' ? { gaps, settings } : {}) });
     await progress.done(`workload:${step.workload}`, {
-      outcome: run.outcome, itemCount: progress.enabled ? await settingsCount(client, run.id) : null,
-      startedAt, completedAt: now(), error: reasonsLine(reasons.length ? reasons : run.digest?.reasons),
+      outcome: run.outcome, itemCount: progress.enabled ? settings : null,
+      startedAt, completedAt: now(), error: reasonsLine(reasons.length ? reasons : gaps.length ? gaps : run.digest?.reasons), reasons: gaps,
     });
     logger.log(`${step.workload}: ${run.outcome}${run.outcome === 'disabled' ? ' (not qualified; nothing was read)' : ''}`);
+    if (gaps.length) logger.log(`${step.workload}: not read in full: ${gaps.join('; ')}`);
     if (drift.status === 'detected') logger.log(`${step.workload}: ${drift.changes} new change(s) against the approved setup`);
     if (drift.status === 'failed') logger.log(`${step.workload}: drift detection failed: ${drift.error}`);
   }
@@ -185,7 +211,10 @@ export async function runWorkloadCollection(client, { tenantRef, config, scope =
   }
   const proof = proofExpiry([...inputs.reads, ...inputs.writes], { now: now() });
   for (const entry of proof.filter((item) => item.status !== 'current')) logger.log(entry.message);
-  const exitCode = runs.some((item) => ['failed', 'partial'].includes(item.outcome) || item.drift.status === 'failed') ? 1 : 0;
+  const exitCode = workloadExitCode(runs);
+  // One machine-readable line the worker turns into the job's result, so the Job page
+  // shows the backup as partly done and names what was not read.
+  if (exitCode === PARTIAL_EXIT_CODE) logger.log(`${INCOMPLETE_TYPES_PREFIX}${JSON.stringify(incompleteWorkloadsOf(runs))}`);
   return { tenantRef, runs, proof, exitCode };
 }
 

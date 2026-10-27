@@ -327,7 +327,6 @@ export const FIXTURE_PAYLOADS = Object.freeze({
   // Restore gaps, batch 17: tenant-wide settings, updated in place.
   deviceManagementSettings: {
     settings: { deviceComplianceCheckinThresholdDays: 30, isScheduledActionEnabled: true, secureByDefault: true, enhancedJailBreak: false },
-    managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '180' },
   },
   microsoftTunnelHealthThreshold: { healthyThreshold: 70, unhealthyThreshold: 90 },
   onPremisesConditionalAccessSettings: { enabled: false, includedGroups: [], excludedGroups: [], overrideDefaultRule: false },

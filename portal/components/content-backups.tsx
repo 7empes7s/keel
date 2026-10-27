@@ -12,8 +12,10 @@ import {
   runLine,
   runReasons,
   runScope,
+  runSkipped,
   scopeSentence,
   scopeWords,
+  skippedLine,
   storageNote,
   type ContentBackupsData,
   type ContentRow,
@@ -40,6 +42,7 @@ function Row({ row, now, prefix }: { row: ContentRow; now: string; prefix: strin
   const problem = row.state === "failed" || row.state === "partial";
   const at = row.latest?.at ?? row.newestAt;
   const disk = storageNote(row);
+  const skipped = skippedLine(row);
   return (
     <li className="activity-item list-row content-row" data-tone={problem ? badge.tone : undefined}>
       <span aria-hidden="true" className="row-kind"><Icon name={ICONS[row.workload.code] ?? "backup"} /></span>
@@ -49,6 +52,8 @@ function Row({ row, now, prefix }: { row: ContentRow; now: string; prefix: strin
         <small>{scopeWords(row.workload, prefix)}</small>
         {line ? <small className={problem ? "job-error-line" : undefined}>{line}</small> : null}
         {problem ? <ShowDetails lines={runReasons(row).map((reason) => <code className="ui-raw-error" key={reason}>{reason}</code>)} /> : null}
+        {skipped ? <small>{skipped}</small> : null}
+        {skipped ? <ShowDetails lines={runSkipped(row).map((line) => <code className="ui-raw-error" key={line}>{line}</code>)} /> : null}
       </span>
       <span className="row-mid">
         <span className="row-status"><Badge tone={badge.tone}>{badge.label}</Badge></span>

@@ -13,6 +13,7 @@
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { objectNameSql } from '../cir/objectName.mjs';
 import { controlFor, fixMatcherFor, semanticFacts } from './registry.mjs';
+import { newestWorkloadRead } from './runChecks.mjs';
 
 export class ComplianceFixRefusal extends Error {}
 
@@ -21,9 +22,38 @@ export function fixFor(controlId) {
   return controlFor(controlId)?.fix ?? null;
 }
 
+/**
+ * A fix on a service read (the mail protection policies) rather than on a backed-up
+ * object: it changes one setting of one policy through the workload restore
+ * (workloadFix.mjs). Its target names the policy and the setting.
+ */
+export function isWorkloadFix(fix) {
+  return Boolean(fix?.workload);
+}
+
+/** One setting of one policy, as the Compliance page and the restore name it. */
+export function workloadFixTarget(resourceKey, setting) {
+  return `${resourceKey}#${setting}`;
+}
+
+/** The policy and setting a target names, or null when it is not one. */
+export function parseWorkloadFixTarget(target) {
+  const at = typeof target === 'string' ? target.lastIndexOf('#') : -1;
+  if (at <= 0 || at === target.length - 1) return null;
+  return { resourceKey: target.slice(0, at), setting: target.slice(at + 1) };
+}
+
+/** Whether this setting of this policy (its stored fields) fails the control and the fix would change it. */
+export function workloadSettingNeedsFix(controlId, fact, setting) {
+  const fix = fixFor(controlId);
+  if (!isWorkloadFix(fix) || !Object.prototype.hasOwnProperty.call(fix.settings, setting)) return false;
+  return fixMatcherFor(fix.matcher)(fact, setting) === true;
+}
+
 /** Whether this object is one the control's fix would change. */
 export function needsFix(controlId, { resourceType, payload }) {
   const fix = fixFor(controlId);
+  if (isWorkloadFix(fix)) return false;
   if (!fix || resourceType !== fix.resourceType || !payload || typeof payload !== 'object') return false;
   return fixMatcherFor(fix.matcher)(semanticFacts(resourceType, payload)) === true;
 }
@@ -70,10 +100,11 @@ export function fixedPayload(payload, plan) {
  * their names and the value now and after. What the Compliance page offers to fix;
  * the dry run checks the live tenant again before anything is planned.
  */
-export async function listFixCandidates(client, { tenantRef, controlId, limit = 50 }) {
+export async function listFixCandidates(client, { tenantRef, controlId, limit = 50, now = new Date() }) {
   assertTenantRef(tenantRef);
   const fix = fixFor(controlId);
   if (!fix) return [];
+  if (isWorkloadFix(fix)) return listWorkloadFixCandidates(client, { tenantRef, controlId, fix, limit, now });
   const { rows } = await client.query(
     `WITH newest AS (
        SELECT s.id, s.completed_at FROM snapshot s
@@ -114,4 +145,33 @@ export async function newestSnapshotWith(client, { tenantRef, naturalKey }) {
     [tenantRef, naturalKey],
   );
   return rows[0] ? String(rows[0].id) : null;
+}
+
+/**
+ * For a fix on a service read: each failing setting of each policy in the newest run
+ * that read the policies in full (the run the check itself uses), one row per setting.
+ * `snapshotId` holds that run's id; the dry run reads the tenant again.
+ */
+async function listWorkloadFixCandidates(client, { tenantRef, controlId, fix, limit, now }) {
+  const read = await newestWorkloadRead(client, { tenantRef, resourceType: fix.workload, parts: [fix.family], now });
+  if (!read || read.observation.completeness !== 'complete') return [];
+  const candidates = [];
+  for (const fact of read.resources) {
+    for (const setting of Object.keys(fix.settings)) {
+      if (!workloadSettingNeedsFix(controlId, fact, setting)) continue;
+      candidates.push({
+        naturalKey: workloadFixTarget(fact.id, setting),
+        resourceType: fix.resourceType,
+        name: typeof fact.Name === 'string' && fact.Name ? fact.Name : null,
+        field: setting,
+        from: fact[setting] ?? null,
+        to: fix.settings[setting],
+        snapshotId: read.collectionId,
+        seenAt: read.observation.window.endedAt,
+      });
+    }
+  }
+  return candidates
+    .sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? '')) || a.naturalKey.localeCompare(b.naturalKey))
+    .slice(0, limit);
 }

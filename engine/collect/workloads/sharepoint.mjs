@@ -81,14 +81,24 @@ export const SITE_FIELDS = Object.freeze({
 export const SITE_SHARING_OPERATION = 'sharepoint.site-sharing';
 export const SITE_SHARING_MODULE = 'PnP.PowerShell';
 export const SITE_SHARING_CMDLET = 'Get-PnPTenantSite';
+// run-cmdlet.ps1 serialises with ConvertTo-Json, which writes an enum as its number, so
+// PnP's SharingCapabilities enum arrives as 0-3. A name passes through; anything else is unknown.
+const SHARING_CAPABILITIES = Object.freeze(['Disabled', 'ExternalUserSharingOnly', 'ExternalUserAndGuestSharing', 'ExistingExternalUserSharingOnly']);
+export function sharingCapabilityName(value) {
+  if (Number.isInteger(value)) return SHARING_CAPABILITIES[value] ?? null;
+  if (typeof value === 'string' && /^\d+$/.test(value)) return SHARING_CAPABILITIES[Number(value)] ?? null;
+  if (typeof value === 'string' && value.length > 0) return value;
+  return null;
+}
 export const SITE_SHARING_FIELDS = Object.freeze({
-  sharingCapability: (body) => body.SharingCapability,
+  sharingCapability: (body) => (body.SharingCapability === undefined ? undefined : sharingCapabilityName(body.SharingCapability)),
 });
 // The one family the live read capture proves (tools/qualification/workloadReadsAcceptance.mjs).
 export const SITE_SHARING_FAMILIES = Object.freeze({
   'site-sharing': Object.freeze({ operation: SITE_SHARING_OPERATION, cmdlet: SITE_SHARING_CMDLET }),
 });
 const SITE_SHARING_OFF = 'not read yet: the per-site sharing read is not live-qualified';
+const SITE_SHARING_UNCONFIGURED = 'not read: the scope file names no PnP config for SharePoint (powershellConfigs.sharepoint)';
 
 // Site settings KEEL does not read: they need the SharePoint admin interface
 // (Get-PnPTenantSite), which is not qualified for these fields. Always unknown.
@@ -122,10 +132,12 @@ function failureStatus(error) {
 
 // A cmdlet refusal for lack of rights is `denied`; anything else is `failed`.
 const CMDLET_DENIED = /access (is )?denied|forbidden|unauthori[sz]ed|insufficient|not authorized|does not have permission|PermissionDenied/i;
+// A refused sign-in (wrong certificate, unknown app) is a connection failure, not a missing right.
+const CMDLET_CONNECT = /ConnectFailed|OpenError|AADSTS/i;
 function sharingFailure(error) {
   const detail = error instanceof CmdletError ? error.detail : null;
   const text = detail ? `${detail.category ?? ''} ${detail.errorId ?? ''} ${detail.message ?? ''}` : String(error?.message ?? error);
-  return { status: CMDLET_DENIED.test(text) || error?.status === 401 || error?.status === 403 ? 'denied' : 'failed', message: String(detail?.message ?? error?.message ?? error) };
+  return { status: !CMDLET_CONNECT.test(text) && CMDLET_DENIED.test(text) || error?.status === 401 || error?.status === 403 ? 'denied' : 'failed', message: String(detail?.message ?? error?.message ?? error) };
 }
 
 function failure(error) {
@@ -152,7 +164,7 @@ export function siteInScope(site, tenantHost) {
  * collectSharePointSites, which applies the qualification gate first.
  */
 export async function readSharePointSites({
-  transport, tenantHost, maxSites = DEFAULT_MAX_SITES, sleep, now = () => new Date(), siteSharing = null,
+  transport, tenantHost, maxSites = DEFAULT_MAX_SITES, sleep, now = () => new Date(), siteSharing = null, siteSharingOff = SITE_SHARING_OFF,
 }) {
   if (typeof tenantHost !== 'string' || !/^[a-z0-9-]+\.sharepoint\.com$/i.test(tenantHost)) {
     throw new TypeError('tenantHost must be the tenant\'s SharePoint host, such as contoso.sharepoint.com');
@@ -236,7 +248,7 @@ export async function readSharePointSites({
     }
     for (const [field, pick] of Object.entries(SITE_SHARING_FIELDS)) {
       if (!siteSharing) {
-        entry.fieldCoverage[field] = { status: 'unknown', operation: SITE_SHARING_OPERATION, reason: SITE_SHARING_OFF };
+        entry.fieldCoverage[field] = { status: 'unknown', operation: SITE_SHARING_OPERATION, reason: siteSharingOff };
         continue;
       }
       if (sharingError) {
@@ -249,7 +261,8 @@ export async function readSharePointSites({
       if (value === undefined || value === null) {
         entry.fieldCoverage[field] = {
           status: 'unknown', operation: SITE_SHARING_OPERATION,
-          reason: body ? 'the site answered without this setting' : 'the sharing read did not list this site',
+          reason: body ? 'the site answered without this setting'
+            : entry.fields.webUrl ? 'the sharing read did not list this site' : 'the site\'s address was not read, so its sharing setting could not be matched',
         };
         continue;
       }
@@ -345,7 +358,7 @@ export async function recordSharePointRun(client, { tenantRef, result }) {
  * The gated entry point. Without qualification it records a `disabled` run that
  * names what is missing, and sends no request.
  */
-export async function collectSharePointSites(client, { tenantRef, ledger, transport, tenantHost, maxSites, sleep, now, powershell = {} }) {
+export async function collectSharePointSites(client, { tenantRef, ledger, transport, tenantHost, maxSites, sleep, now, powershell = null }) {
   const activation = sharePointActivation(ledger);
   if (!activation.enabled) {
     const at = (now?.() ?? new Date()).toISOString();
@@ -355,8 +368,11 @@ export async function collectSharePointSites(client, { tenantRef, ledger, transp
     });
     return { run, result: null, activation };
   }
-  const siteSharing = siteSharingActivation(ledger).enabled ? () => readSiteSharing(powershell) : null;
-  const result = await readSharePointSites({ transport, tenantHost, maxSites, sleep, now, siteSharing });
+  // Without its own PnP config the read could only fail to connect, so it is not sent.
+  const qualified = siteSharingActivation(ledger).enabled;
+  const siteSharing = qualified && powershell ? () => readSiteSharing(powershell) : null;
+  const siteSharingOff = qualified ? SITE_SHARING_UNCONFIGURED : SITE_SHARING_OFF;
+  const result = await readSharePointSites({ transport, tenantHost, maxSites, sleep, now, siteSharing, siteSharingOff });
   const run = await recordSharePointRun(client, { tenantRef, result });
   return { run, result, activation };
 }

@@ -478,6 +478,35 @@ export function assignmentPlan(resource, resolve, { extras = [] } = {}) {
   return { state: 'ready', assignments, identities, filters: [...filters].sort() };
 }
 
+const UNREAD_ASSIGNMENTS = Object.freeze({
+  absent: 'the backup did not read who it is assigned to',
+  failed: 'the backup could not read who it is assigned to',
+  partial: 'the backup read only some of its assignments',
+  unsupported: 'the backup cannot read the assignments of this kind',
+});
+
+/**
+ * Issue #546: a policy whose backup holds no complete read of its assignments
+ * keeps whatever assignments it has live, so a restore can leave it on the
+ * wrong groups. That is a step for a person on that object, in the dry run and
+ * in the restore result, never a silent "applied". Null when the assignments
+ * were read in full, when the restore did not look at them (not a selection
+ * restore), and for a kind with no assignments.
+ */
+export function unreadAssignmentsStep(resource) {
+  if (!writesIntuneAssignments(resource?.resourceType) || resource.verb === 'delete') return null;
+  const desired = resource.assignments;
+  if (!desired || isComplete(desired.outcome)) return null;
+  // The default Company Portal branding applies to every user and has none.
+  if (resource.resourceType === 'intuneBrandingProfile' && isDefaultBranding(resource.payload)) return null;
+  const why = UNREAD_ASSIGNMENTS[desired.outcome] ?? `the backup's read of its assignments was ${desired.outcome ?? 'not recorded'}`;
+  return Object.freeze({
+    kind: 'integration',
+    requirement: 'assignments',
+    description: `Assignments not restored: ${why}, so ${resource.verb === 'create' ? 'it is not assigned to anyone yet' : 'the groups it applies to were left as they are'}. Check its assignments in the Intune admin center and set them by hand`,
+  });
+}
+
 /** The comparable identities of live assignments (Graph's /assignments items or observed edges). */
 export function liveAssignmentIdentities(items, { observed = false, extras = [] } = {}) {
   const identities = new Set();
@@ -785,6 +814,18 @@ async function targetAppsAfterWrite(io, { payload, verb, targetId, live, resourc
   return out;
 }
 
+/**
+ * Where a policy's live assignments are read, and the items of that read
+ * (null when the read holds no list). Custom attribute scripts have no
+ * /assignments route (issue #546), so the script is read with them expanded.
+ */
+const assignmentsListPath = (record, base) => (record.assignmentsRead === 'expand' ? `${base}?$expand=assignments` : `${base}/assignments`);
+function liveAssignmentItems(record, read) {
+  if (record.assignmentsRead === 'expand' && read?.body?.['assignments@odata.nextLink']) return null; // a paged list is not all of it
+  const items = record.assignmentsRead === 'expand' ? read?.body?.assignments : (read?.body?.value ?? []);
+  return Array.isArray(items) ? items : null;
+}
+
 const sameApps = (left, right) => left.size === right.size && [...left].every((app) => right.has(app));
 
 /**
@@ -810,9 +851,10 @@ async function assignmentsAfterWrite(io, { payload, verb, targetId, resource }) 
   if (record.assignmentWrite === 'per-item') return perItemAssignments(io, { record, base, verb, plan, extras });
   let current = new Set();
   if (verb !== 'create') {
-    const listed = await io.retryOperation(() => io.writer.read(record.version, `${base}/assignments`));
-    if (listed?.ok !== true) return { error: 'the policy\'s live assignments could not be read, so they were not changed' };
-    current = liveAssignmentIdentities(listed.body?.value ?? [], { extras });
+    const listed = await io.retryOperation(() => io.writer.read(record.version, assignmentsListPath(record, base)));
+    const items = liveAssignmentItems(record, listed);
+    if (listed?.ok !== true || !items) return { error: 'the policy\'s live assignments could not be read, so they were not changed' };
+    current = liveAssignmentIdentities(items, { extras });
   }
   if (sameIdentities(plan.identities, current)) return { changes: { assignments: 'already as in the backup' } };
   // Most kinds take /assign; a policy set takes its assignments through its
@@ -823,9 +865,10 @@ async function assignmentsAfterWrite(io, { payload, verb, targetId, resource }) 
   };
   const result = await io.retryOperation(() => io.writer.write(record.version, `${base}/${record.assignmentAction ?? 'assign'}`, { method: 'POST', body }));
   if (!result.ok) return { error: `assigning the policy failed: ${outcomeDetail(result)}` };
-  const check = await readUntil(io, record.version, `${base}/assignments`, (r) => recordNotFound(r)
-    || (r?.ok === true && !sameIdentities(plan.identities, liveAssignmentIdentities(r.body?.value ?? [], { extras }))), io.readOptions);
-  if (check?.ok !== true || !sameIdentities(plan.identities, liveAssignmentIdentities(check.body?.value ?? [], { extras }))) {
+  const readBack = (r) => liveAssignmentIdentities(liveAssignmentItems(record, r) ?? [], { extras });
+  const check = await readUntil(io, record.version, assignmentsListPath(record, base), (r) => recordNotFound(r)
+    || (r?.ok === true && !sameIdentities(plan.identities, readBack(r))), io.readOptions);
+  if (check?.ok !== true || !liveAssignmentItems(record, check) || !sameIdentities(plan.identities, readBack(check))) {
     return { error: 'post-state: the assignments did not read back as written' };
   }
   return { changes: { assignments: 'written' } };
@@ -1122,7 +1165,11 @@ const SCRIPT_ASSIGNMENTS = Object.freeze({
   },
   deviceComplianceScript: { assignmentType: '#microsoft.graph.deviceHealthScriptAssignment', assignmentBodyKey: 'deviceHealthScriptAssignments' },
   // Batch 15: custom attribute scripts take the same list as other scripts.
-  deviceCustomAttributeShellScript: { assignmentType: '#microsoft.graph.deviceManagementScriptAssignment', assignmentBodyKey: 'deviceManagementScriptAssignments' },
+  // Issue #546: they have no /assignments route, so they are read expanded.
+  deviceCustomAttributeShellScript: {
+    assignmentType: '#microsoft.graph.deviceManagementScriptAssignment', assignmentBodyKey: 'deviceManagementScriptAssignments',
+    assignmentsRead: 'expand',
+  },
 });
 
 /**
@@ -1685,14 +1732,16 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   }),
   // Restore gaps, batch 17: Intune tenant-wide settings, approved by the user
   // on 2026-10-22. Each is updated in place only.
-  // The Intune tenant settings: compliance settings (settings) and the device
-  // cleanup window. Graph sends a wide read to other backends (issue #447), so
-  // the read back names the same fields as the backup. The Company Portal
-  // brand on this object is the default branding profile, written there.
+  // The Intune tenant settings: the compliance settings (settings). Graph
+  // sends a read naming fields of more than one backend to a backend that
+  // cannot answer it (issue #447), so the read back reads each field on its
+  // own, as the backup does. The device cleanup window is the cleanup rules
+  // (managedDeviceCleanupRule), and the Company Portal brand on this object is
+  // the default branding profile; each is written there.
   deviceManagementSettings: defineRecord({
     resourceType: 'deviceManagementSettings', version: 'beta', collection: '/deviceManagement', singleton: true,
-    readQuery: '$select=id,settings,managedDeviceCleanupSettings', operations: ['update'],
-    writable: ['settings', 'managedDeviceCleanupSettings'], refusal: deviceManagementSettingsRefusal,
+    readEach: ['settings'], operations: ['update'],
+    writable: ['settings'], refusal: deviceManagementSettingsRefusal,
     permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
   // The Microsoft Tunnel health limits: only the two limits are written; the
@@ -1716,10 +1765,9 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
 const INTUNE_PORTAL = 'Intune admin center';
 
 /**
- * The Intune tenant settings are never restored to a looser or harsher state
- * than live in two ways a person must choose: devices with no compliance
- * policy are never turned compliant (Conditional Access reads it), and the
- * device cleanup never starts or retires devices sooner.
+ * The Intune tenant settings are never restored to a looser state than live:
+ * devices with no compliance policy are never turned compliant (Conditional
+ * Access reads it). Device cleanup has its own guard (cleanupRuleRefusal).
  */
 export function deviceManagementSettingsRefusal(resource, verb) {
   if (verb !== 'update') return null;
@@ -1729,18 +1777,6 @@ export function deviceManagementSettingsRefusal(resource, verb) {
     return {
       outcome: 'skipped',
       reason: `manual: the backup marks devices with no compliance policy as compliant, which they are not now; Conditional Access reads that, so a restore never loosens it; change it by hand in the ${INTUNE_PORTAL}, under Endpoint security, Device compliance, Compliance settings`,
-    };
-  }
-  const days = (settings) => {
-    const value = Number(settings?.deviceInactivityBeforeRetirementInDays);
-    return Number.isFinite(value) && value > 0 ? value : null;
-  };
-  const wantDays = days(want.managedDeviceCleanupSettings);
-  const nowDays = days(now.managedDeviceCleanupSettings);
-  if (wantDays !== null && (nowDays === null || wantDays < nowDays)) {
-    return {
-      outcome: 'skipped',
-      reason: `manual: the backup retires devices after ${wantDays} days without check-in, ${nowDays === null ? 'and device cleanup is off now' : `sooner than the ${nowDays} days set now`}; that could retire devices at once, so a person changes it in the ${INTUNE_PORTAL}, under Devices, Device clean-up rules`,
     };
   }
   return null;

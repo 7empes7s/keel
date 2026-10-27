@@ -3,12 +3,12 @@ import type { AlertItem } from "@/components/ui/alert-list";
 import type { StatTile } from "@/components/ui/stat-tiles";
 import { typeService } from "@/lib/baselines-view";
 import { workloadLabel } from "@/lib/compare-view";
-import { jobIncompleteTypes } from "@/lib/job-names";
+import { CONTENT_WORKLOADS, holdsObjectId, incompleteTypeLabel, jobIncompleteTypes } from "@/lib/job-names";
 import { typeName } from "@/lib/protect-view";
 import { serviceFor, serviceOrder } from "@/lib/services";
 import { kindParts, type KindPart } from "@/lib/type-groups";
 import type { JobRecord } from "@/lib/portal-jobs";
-import { ago, resourceTypeLabel } from "@/lib/presentation";
+import { ago } from "@/lib/presentation";
 
 // The Job page as alerts and tiles. A failed job leads with a plain cause and one next
 // step; the engine's own error text waits behind "Show details".
@@ -79,7 +79,7 @@ export function jobAlerts(job: JobRecord): AlertItem[] {
       key: "gaps", tone: "soon", icon: "backup",
       title: `${gaps.length === 1 ? "1 kind" : `${gaps.length} kinds`} could not be backed up in full`,
       todo: "The rest was saved. The next backup tries these again.",
-      more: gaps.map((type) => resourceTypeLabel(type).replace(/^./, (letter) => letter.toUpperCase())),
+      more: gaps.map((type) => incompleteTypeLabel(type).replace(/^./, (letter) => letter.toUpperCase())),
       action: { label: "Open backups", href: "/protect" },
     });
   }
@@ -156,6 +156,66 @@ export interface TypeRow {
   problem: string | null;
   // The engine's own error text, shown only when asked for.
   raw: string | null;
+  // Content backups: each mailbox, OneDrive or site that could not be read in full.
+  items: GapItem[];
+  // How many there were in all ("10 OneDrives"); the list holds at most 50.
+  itemTotal: number;
+  itemsLabel: string | null;
+}
+
+/** One thing a content backup could not read: its name, a plain cause, and the raw text. */
+export interface GapItem { name: string; why: string; tone: ReadTone; raw: string }
+
+// The plain cause of one item a content or service backup could not read, from its reason text.
+const ITEM_CAUSES: Array<[RegExp, string, ReadTone]> = [
+  [/\b423\b|locked|notAllowed/i, "Locked by Microsoft", "soon"],
+  [/\b429\b|throttl/i, "Microsoft 365 slowed Keel down", "soon"],
+  // Service backups (#447): a family not licensed or not switched on is a known gap, not an error.
+  [/not licensed in this tenant/i, "Not licensed in this tenant", "neutral"],
+  [/not switched on/i, "Not switched on yet", "neutral"],
+  [/\b40[13]\b|Access ?Denied|forbidden|unauthori[sz]ed|Insufficient privileges/i, "Access refused", "urgent"],
+  [/\b404\b|not ?found/i, "Not found: deleted or moved during the backup", "soon"],
+  [/timed? ?out|ETIMEDOUT|ECONNRESET|fetch failed|socket hang up|\b50[0234]\b/i, "Microsoft 365 did not answer", "soon"],
+  [/file warning/i, "Some files could not be read", "soon"],
+  [/than one run reads|more than \d+ \w+ were named/i, "Too many to read in one run", "soon"],
+  [/outside the backup scope/i, "Outside the backup scope", "soon"],
+];
+
+/** A site's address as a name: its last path part ("hr" from …/sites/hr), else its host. */
+function nameFromUrl(text: string): string {
+  try {
+    const url = new URL(text);
+    const last = url.pathname.split("/").filter(Boolean).at(-1);
+    return last ? decodeURIComponent(last) : url.hostname;
+  } catch {
+    return text;
+  }
+}
+
+/** "Ann Lee: HTTP 423 …" as an item: the name before the first ": ", and a plain cause
+ *  read from the text after it, so a name holding "403" never sets the cause. */
+export function contentGapItem(reason: string): GapItem {
+  const index = reason.indexOf(": ");
+  const head = index > 0 ? reason.slice(0, index).trim() : "";
+  const rest = index > 0 ? reason.slice(index + 2) : reason;
+  const [, why, tone] = ITEM_CAUSES.find(([pattern]) => pattern.test(rest)) ?? [null, "Could not be read in full", "soon" as ReadTone];
+  // A name, never an object id or an API path.
+  const plain = /^https?:\/\//i.test(head) ? nameFromUrl(head) : head;
+  const name = !plain || plain.startsWith("/") ? "Part of this backup" : holdsObjectId(plain) ? "Unnamed item" : plain.replace(/^./, (letter) => letter.toUpperCase());
+  return { name, why, tone, raw: reason };
+}
+
+/** "10 OneDrives": how many items of a content workload (or parts of a service backup) could not be read. */
+function itemsLabel(key: string, total: number): string {
+  const [one, many] = key.startsWith("workload:") ? ["part", "parts"] : CONTENT_WORKLOADS[key.slice("content:".length)]?.item ?? ["item", "items"];
+  return `${total.toLocaleString("en-GB")} ${total === 1 ? one : many}`;
+}
+
+/** A content row's problem in words: "10 OneDrives could not be read in full: locked by Microsoft". */
+function itemsProblem(label: string, items: GapItem[]): string {
+  const causes = [...new Set(items.map((item) => item.why))];
+  const cause = causes.length === 1 ? `: ${causes[0].replace(/^./, (letter) => letter.toLowerCase())}` : "";
+  return `${label} could not be read in full${cause}`;
 }
 
 export interface TypeGroup { key: string; name: string; icon: IconName; parts: KindPart<TypeRow>[]; rows: TypeRow[]; problems: number; done: number }
@@ -167,17 +227,6 @@ function readProblem(state: string, raw: string | null): string {
   if (cause && cause.title !== "The job stopped with an error") return cause.title;
   return state === "partial" ? "Only part of it could be read" : "Keel could not read it";
 }
-
-// Content backups by workload, as Microsoft names them, with the service each sits under.
-const CONTENT_WORKLOADS: Record<string, { name: string; service: string }> = {
-  "exchange-mail": { name: "Mail, calendars and contacts", service: "Exchange" },
-  "group-conversations": { name: "Group conversations", service: "Exchange" },
-  onedrive: { name: "OneDrive files", service: "SharePoint" },
-  sharepoint: { name: "SharePoint document libraries", service: "SharePoint" },
-  "sharepoint-sites": { name: "SharePoint sites, lists and files", service: "SharePoint" },
-  teams: { name: "Teams, channels and tabs", service: "Teams" },
-  planner: { name: "Planner plans and tasks", service: "Teams" },
-};
 
 /** A row's key as a kind and its name: a setting type, a service workload or content. */
 function readName(key: string): { type: string; name: string } {
@@ -204,6 +253,17 @@ export function jobTypeRows(job: Pick<JobRecord, "status" | "progress">, now: st
     const state = entry.outcome === "reading" && !active ? "stopped" : READ_STATES[entry.outcome] ? entry.outcome : "failed";
     const look = READ_STATES[state];
     const raw = entry.error ?? (entry.httpStatus && entry.httpStatus >= 400 ? `HTTP ${entry.httpStatus}` : null);
+    // A content or service workload read in part names each item (or part: a refused
+    // family, a limit) it could not read: from the list the job wrote, else from its
+    // error text, one item per line. That text is cut at 500 characters, so a last line
+    // cut short is left out. A workload that failed outright keeps its one plain cause.
+    const errorLines = (entry.error ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+    if ((entry.error ?? "").length >= 500 && errorLines.length > 1) errorLines.pop();
+    const reasons = state !== "partial" || !(key.startsWith("content:") || key.startsWith("workload:")) ? []
+      : entry.reasons?.length ? entry.reasons : errorLines;
+    const items = reasons.map(contentGapItem);
+    const total = Math.max(items.length, entry.reasonCount ?? 0);
+    const label = items.length ? itemsLabel(key, total) : null;
     return {
       type,
       name,
@@ -212,8 +272,11 @@ export function jobTypeRows(job: Pick<JobRecord, "status" | "progress">, now: st
       tone: look.tone,
       count: entry.itemCount ?? null,
       took: state === "reading" ? jobGap(entry.startedAt, now) : jobGap(entry.startedAt, entry.completedAt),
-      problem: look.problem ? readProblem(state, raw) : null,
-      raw: look.problem ? raw : null,
+      problem: look.problem ? (label ? itemsProblem(label, items) : readProblem(state, raw)) : null,
+      raw: look.problem && !items.length ? raw : null,
+      items,
+      itemTotal: total,
+      itemsLabel: label,
     };
   });
 }
@@ -281,6 +344,6 @@ export function typeProblemsAlert(rows: TypeRow[]): AlertItem | null {
     title: `${problems.length === 1 ? "1 kind was" : `${problems.length} kinds were`} not backed up in full`,
     todo: "The rest was saved. The next backup tries these again. The list below shows why.",
     more: problems.map((row) => `${row.name}: ${row.problem}`),
-    action: { label: "See the list", href: "#job-types" },
+    action: problems.some((row) => row.items.length) ? { label: "See what was not read", href: "#job-gaps" } : { label: "See the list", href: "#job-types" },
   };
 }

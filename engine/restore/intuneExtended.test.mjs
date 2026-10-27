@@ -12,7 +12,7 @@ import {
   INTUNE_BEST_EFFORT, INTUNE_EXTENDED_RECORDS, INTUNE_RECORDS, applyIntuneExtendedWrite, attachIntuneAssignments, buildIntuneExtendedLedger,
   SCRIPT_WRITE_PERMISSION, intuneExtendedOperations, targetAppsBody, writesIntuneAssignments,
 } from './intuneOperations.mjs';
-import { changedRecordFields, defineRecord, recordPostStateRefusal } from './recordWriter.mjs';
+import { changedRecordFields, defineRecord, eachFieldReader, recordPostStateRefusal } from './recordWriter.mjs';
 import { EXPANSION_INVENTORY } from '../coverage/qualification.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
 import { classifyContentEffects } from '../safety/contentEffects.mjs';
@@ -1708,6 +1708,47 @@ test('scripts are assigned through their own /assign list', async () => {
   }
 });
 
+// Issue #546: Graph has no /assignments route for custom attribute scripts
+// (400), so their live assignments are read expanded on the script.
+test('a custom attribute script\'s live assignments are read expanded, never at /assignments', async () => {
+  const fields = Object.fromEntries(SCRIPT_CASES).deviceCustomAttributeShellScript;
+  const path = '/deviceManagement/deviceCustomAttributeShellScripts/s-1';
+  const live = { id: 's-1', displayName: 'KEEL-RT-attr', ...fields };
+  const resource = resourceOf('deviceCustomAttributeShellScript', live, {
+    live: { state: 'present', targetId: 's-1', payload: live },
+    assignments: { outcome: 'complete', targets: [groupTarget()] },
+    newAssignments: [],
+  });
+  const noRoute = (graph) => {
+    const read = graph.read.bind(graph);
+    graph.read = async (version, target, options) => {
+      if (/\/assignments(\?|$)/.test(target)) {
+        graph.calls.push({ version, method: 'GET', path: target });
+        return { ok: false, status: 400, body: { error: { code: 'No method match route template' } } };
+      }
+      return read(version, target, options);
+    };
+    return graph;
+  };
+  const moved = noRoute(idoFakeGraph({ seed: {
+    [path]: { ...live, assignments: [{ id: 'a-1', target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: 'other-group' } }] },
+  } }));
+  let result = await applyIntuneExtendedWrite(moved, resource, 'update', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal(result.applied.changes.assignments, 'written');
+  assert.equal(moved.calls.some((call) => /\/assignments(\?|$)/.test(call.path)), false);
+  assert.ok(moved.calls.some((call) => call.method === 'GET' && call.path === `${path}?$expand=assignments`));
+  assert.deepEqual(moved.calls.find((call) => call.path.endsWith('/assign')).body.deviceManagementScriptAssignments
+    .map((entry) => entry.target.groupId), ['target-group']);
+
+  const same = noRoute(idoFakeGraph({ seed: {
+    [path]: { ...live, assignments: [{ id: 'a-1', target: { '@odata.type': '#microsoft.graph.groupAssignmentTarget', groupId: 'target-group' } }] },
+  } }));
+  result = await applyIntuneExtendedWrite(same, resource, 'update', { ...FAST, referenceContext: GROUP_CONTEXT });
+  assert.equal(result.applied.changes.assignments, 'already as in the backup');
+  assert.equal(same.calls.some((call) => call.method !== 'GET'), false);
+});
+
 test('an administrative template is assigned after its settings are written', async () => {
   const graph = idoFakeGraph({ seed: definitionsSeed('d-1', 'd-2') });
   const result = await applyIntuneExtendedWrite(graph, resourceOf('groupPolicyConfiguration', template, {
@@ -2012,7 +2053,7 @@ const deviceManagement = Object.freeze({
   intuneBrand: { displayName: 'KEEL-RT IT' },
 });
 
-test('the Intune tenant settings are updated in place through beta: only settings and the cleanup window', async () => {
+test('the Intune tenant settings are updated in place through beta: only the compliance settings', async () => {
   const record = INTUNE_EXTENDED_RECORDS.deviceManagementSettings;
   assert.equal(record.singleton, true);
   assert.deepEqual(record.operations, ['update']);
@@ -2029,7 +2070,11 @@ test('the Intune tenant settings are updated in place through beta: only setting
   assert.equal(writes[0].path, '/deviceManagement');
   assert.deepEqual(writes[0].body, { settings: deviceManagement.settings }, 'never the brand, id or counters');
   const reads = graph.calls.filter((call) => call.method === 'GET' || call.method === undefined);
-  assert.ok(reads.every((call) => String(call.path).includes('$select=id,settings,managedDeviceCleanupSettings')), 'the read back names its fields (issue #447)');
+  // Issue #447: each field is read back on its own request.
+  assert.ok(reads.length > 0);
+  assert.ok(reads.every((call) => String(call.path) === '/deviceManagement?$select=settings'), 'the read back reads one field per request');
+  // The old cleanup setting no longer reads; cleanup is the cleanup rules.
+  assert.equal(writes[0].body.managedDeviceCleanupSettings, undefined);
 
   for (const verb of ['create', 'delete']) {
     const refused = await applyIntuneExtendedWrite(idoFakeGraph(), resourceOf('deviceManagementSettings', deviceManagement), verb, FAST);
@@ -2037,11 +2082,31 @@ test('the Intune tenant settings are updated in place through beta: only setting
   }
 });
 
-test('a restore never marks devices with no compliance policy compliant, nor retires devices sooner', async () => {
+test('a record read field by field merges each answer, and stops at the first failed read (issue #447)', async () => {
+  const calls = [];
+  const writer = {
+    async read(version, path) {
+      calls.push(path);
+      if (path.endsWith('=c')) return { ok: false, status: 400, body: { error: { code: 'refused' } } };
+      return { ok: true, status: 200, body: { '@odata.context': path, [path.split('=').pop()]: path.split('=').pop() } };
+    },
+    async write() { return { ok: true, status: 204 }; },
+  };
+  const merged = await eachFieldReader(writer, ['a', 'b']).read('beta', '/fixture?$select=ignored');
+  assert.deepEqual(calls, ['/fixture?$select=a', '/fixture?$select=b']);
+  assert.equal(merged.ok, true);
+  assert.equal(merged.body.a, 'a');
+  assert.equal(merged.body.b, 'b');
+  const failed = await eachFieldReader(writer, ['a', 'c', 'b']).read('beta', '/fixture');
+  assert.equal(failed.ok, false);
+  assert.equal(failed.status, 400);
+  assert.equal(calls.at(-1), '/fixture?$select=c', 'nothing is read after the failed field');
+  assert.equal((await eachFieldReader(writer, ['a']).write()).ok, true, 'writes go to the writer');
+});
+
+test('a restore never marks devices with no compliance policy compliant', async () => {
   const cases = [
     [{ ...deviceManagement, settings: { ...deviceManagement.settings, secureByDefault: false } }, deviceManagement, /no compliance policy as compliant/],
-    [{ ...deviceManagement, managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '90' } }, deviceManagement, /sooner than the 180 days/],
-    [deviceManagement, { ...deviceManagement, managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '0' } }, /device cleanup is off now/],
   ];
   for (const [backup, live, reason] of cases) {
     const graph = idoFakeGraph({ seed: { '/deviceManagement': live } });
@@ -2049,7 +2114,7 @@ test('a restore never marks devices with no compliance policy compliant, nor ret
     assert.match(result.skipped?.reason ?? '', reason);
     assert.equal(writesOf(graph).length, 0);
   }
-  // Longer cleanup and turning secure by default on are written.
+  // Turning secure by default on is written.
   const live = { ...deviceManagement, settings: { ...deviceManagement.settings, secureByDefault: false }, managedDeviceCleanupSettings: { deviceInactivityBeforeRetirementInDays: '90' } };
   const graph = idoFakeGraph({ seed: { '/deviceManagement': live } });
   const result = await applyIntuneExtendedWrite(graph, resourceOf('deviceManagementSettings', deviceManagement, { live: { state: 'present', payload: live } }), 'update', FAST);

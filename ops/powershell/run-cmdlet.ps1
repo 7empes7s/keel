@@ -20,6 +20,7 @@
   Fixture-tested only through engine/roadmap/exchange-config.test.mjs,
   engine/roadmap/onedrive-purview.test.mjs, engine/roadmap/exchange-mail-flow.test.mjs,
   engine/roadmap/teams-org-policies.test.mjs, engine/roadmap/exchange-extended.test.mjs,
+  engine/roadmap/exchange-role-groups.test.mjs,
   engine/roadmap/purview-retention-dlp.test.mjs and engine/roadmap/workload-writers.test.mjs
   (which play this contract); it has not
   been run against a tenant.
@@ -117,6 +118,12 @@ $AllowedExchangeExtended = @{
     'Get-AtpPolicyForO365'               = @()
 }
 
+# Exchange admin role groups (engine/collect/workloads/exchangeRoleGroups.mjs), in the
+# Exchange Online session. One read, no parameters.
+$AllowedExchangeRoleGroups = @{
+    'Get-RoleGroup' = @()
+}
+
 # Wave 1 READ-TEAMS-PV: Teams calling, voice and live event policies and policy
 # assignments, read in the MicrosoftTeams session. Only Get-CsOnlineUser takes a
 # parameter (-ResultSize, a bound). Reads only.
@@ -159,15 +166,18 @@ $AllowedExchangeWrites = @{
     'Set-ActiveSyncOrganizationSettings' = @('Identity', 'AdminMailRecipients', 'AllowAccessForUnSupportedPlatform', 'DefaultAccessLevel', 'OtaNotificationMailInsert', 'UserMailInsert')
     'Set-AddressBookPolicy'              = @('Identity', 'AddressLists', 'GlobalAddressList', 'OfflineAddressBook', 'RoomList')
     'Set-AddressList'                    = @('Identity', 'ConditionalCompany', 'ConditionalCustomAttribute1', 'ConditionalCustomAttribute2', 'ConditionalDepartment', 'ConditionalStateOrProvince', 'DisplayName', 'IncludedRecipients', 'RecipientFilter')
+    'Set-AntiPhishPolicy'                = @('Identity', 'EnableSpoofIntelligence', 'EnableUnauthenticatedSender', 'HonorDmarcPolicy')
     'Set-AntiPhishRule'                  = @('Identity', 'Comments', 'ExceptIfRecipientDomainIs', 'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'Priority', 'RecipientDomainIs', 'SentTo', 'SentToMemberOf')
     'Set-AtpPolicyForO365'               = @('Identity', 'AllowSafeDocsOpen', 'EnableATPForSPOTeamsODB', 'EnableSafeDocs')
     'Set-GlobalAddressList'              = @('Identity', 'ConditionalCompany', 'ConditionalCustomAttribute1', 'ConditionalCustomAttribute2', 'ConditionalDepartment', 'ConditionalStateOrProvince', 'IncludedRecipients', 'RecipientFilter')
     'Set-HostedConnectionFilterPolicy'   = @('Identity', 'AdminDisplayName', 'EnableSafeList', 'IPAllowList', 'IPBlockList')
+    'Set-HostedContentFilterPolicy'      = @('Identity', 'AllowedSenderDomains', 'HighConfidencePhishAction', 'InlineSafetyTipsEnabled', 'PhishSpamAction', 'PhishZapEnabled')
     'Set-HostedContentFilterRule'        = @('Identity', 'Comments', 'ExceptIfRecipientDomainIs', 'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'Priority', 'RecipientDomainIs', 'SentTo', 'SentToMemberOf')
     'Set-HostedOutboundSpamFilterPolicy' = @('Identity', 'ActionWhenThresholdReached', 'AdminDisplayName', 'AutoForwardingMode', 'BccSuspiciousOutboundAdditionalRecipients', 'BccSuspiciousOutboundMail', 'NotifyOutboundSpam', 'NotifyOutboundSpamRecipients', 'RecipientLimitExternalPerHour', 'RecipientLimitInternalPerHour', 'RecipientLimitPerDay')
     'Set-HostedOutboundSpamFilterRule'   = @('Identity', 'Comments', 'ExceptIfFrom', 'ExceptIfFromMemberOf', 'ExceptIfSenderDomainIs', 'From', 'FromMemberOf', 'Priority', 'SenderDomainIs')
     'Set-InboundConnector'               = @('Identity', 'AssociatedAcceptedDomains', 'CloudServicesMailEnabled', 'Comment', 'ConnectorSource', 'ConnectorType', 'EFSkipIPs', 'EFSkipLastIP', 'EFSkipMailGateway', 'EFUsers', 'Enabled', 'RequireTls', 'RestrictDomainsToCertificate', 'RestrictDomainsToIPAddresses', 'ScanAndDropRecipients', 'SenderDomains', 'SenderIPAddresses', 'TlsSenderCertificateName', 'TreatMessagesAsInternal', 'TrustedOrganizations')
     'Set-JournalRule'                    = @('Identity', 'JournalEmailAddress', 'Recipient', 'Scope')
+    'Set-MalwareFilterPolicy'            = @('Identity', 'AdminDisplayName', 'CustomNotifications', 'EnableFileFilter', 'ZapEnabled')
     'Set-MalwareFilterRule'              = @('Identity', 'Comments', 'ExceptIfRecipientDomainIs', 'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'Priority', 'RecipientDomainIs', 'SentTo', 'SentToMemberOf')
     'Set-MobileDeviceMailboxPolicy'      = @('Identity', 'AllowBluetooth', 'AllowBrowser', 'AllowCamera', 'AllowHTMLEmail', 'AllowNonProvisionableDevices', 'AllowPOPIMAPEmail', 'AllowSimplePassword', 'AllowStorageCard', 'AllowTextMessaging', 'AllowWiFi', 'AlphanumericPasswordRequired', 'AttachmentsEnabled', 'DeviceEncryptionEnabled', 'MaxPasswordFailedAttempts', 'MinPasswordComplexCharacters', 'MinPasswordLength', 'PasswordEnabled', 'PasswordHistory', 'PasswordRecoveryEnabled', 'RequireDeviceEncryption', 'RequireStorageCardEncryption')
     'Set-OfflineAddressBook'             = @('Identity', 'AddressLists')
@@ -176,6 +186,7 @@ $AllowedExchangeWrites = @{
     'Set-RetentionPolicy'                = @('Identity', 'RetentionPolicyTagLinks')
     'Set-RetentionPolicyTag'             = @('Identity', 'AgeLimitForRetention', 'Comment', 'RetentionAction', 'RetentionEnabled')
     'Set-SafeAttachmentRule'             = @('Identity', 'Comments', 'ExceptIfRecipientDomainIs', 'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'Priority', 'RecipientDomainIs', 'SentTo', 'SentToMemberOf')
+    'Set-SafeLinksPolicy'                = @('Identity', 'AllowClickThrough', 'EnableSafeLinksForEmail', 'ScanUrls')
     'Set-SafeLinksRule'                  = @('Identity', 'Comments', 'ExceptIfRecipientDomainIs', 'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'Priority', 'RecipientDomainIs', 'SentTo', 'SentToMemberOf')
     'Set-TransportRule'                  = @('Identity', 'ActivationDate', 'AddToRecipients', 'ApplyHtmlDisclaimerFallbackAction', 'ApplyHtmlDisclaimerLocation', 'ApplyHtmlDisclaimerText', 'ApplyRightsProtectionTemplate', 'AttachmentExtensionMatchesWords', 'AttachmentHasExecutableContent', 'BlindCopyTo', 'Comments', 'DeleteMessage', 'ExceptIfFrom', 'ExceptIfRecipientDomainIs', 'ExceptIfSenderDomainIs', 'ExceptIfSenderIpRanges', 'ExceptIfSentTo', 'ExpiryDate', 'From', 'FromAddressContainsWords', 'FromScope', 'GenerateIncidentReport', 'HeaderContainsMessageHeader', 'HeaderContainsWords', 'Mode', 'ModerateMessageByUser', 'PrependSubject', 'Priority', 'Quarantine', 'RecipientDomainIs', 'RedirectMessageTo', 'RejectMessageEnhancedStatusCode', 'RejectMessageReasonText', 'RouteMessageOutboundConnector', 'RouteMessageOutboundRequireTls', 'RuleErrorAction', 'SenderAddressLocation', 'SenderDomainIs', 'SenderIpRanges', 'SentTo', 'SentToScope', 'SetHeaderName', 'SetHeaderValue', 'SetSCL', 'StopRuleProcessing', 'SubjectContainsWords', 'SubjectOrBodyContainsWords')
 }
@@ -212,11 +223,11 @@ $AllowedTeamsWrites = @{
     'Set-CsTeamsGuestCallingConfiguration'     = @('Identity', 'AllowPrivateCalling')
     'Set-CsTeamsGuestMeetingConfiguration'     = @('Identity', 'AllowIPVideo', 'AllowMeetNow', 'AllowTranscription', 'LiveCaptionsEnabledType')
     'Set-CsTeamsGuestMessagingConfiguration'   = @('Identity', 'AllowGiphy', 'AllowImmersiveReader', 'AllowMemes', 'AllowStickers', 'AllowUserChat', 'AllowUserDeleteChat', 'AllowUserDeleteMessage', 'AllowUserEditMessage', 'GiphyRatingType')
-    'Set-CsTeamsMeetingBroadcastConfiguration' = @('Identity', 'AllowSdnProviderForBroadcastMeeting', 'SdnApiTemplateUrl', 'SdnLicenseId', 'SdnName', 'SupportURL')
+    'Set-CsTeamsMeetingBroadcastConfiguration' = @('Identity', 'AllowSdnProviderForBroadcastMeeting', 'SupportURL')
     'Set-CsTeamsMeetingBroadcastPolicy'        = @('Identity', 'AllowBroadcastScheduling', 'AllowBroadcastTranscription', 'BroadcastAttendeeVisibilityMode', 'BroadcastRecordingMode', 'Description')
     'Set-CsTeamsMessagingPolicy'               = @('Identity', 'AllowCommunicationComplianceEndUserReporting', 'AllowFullChatPermissionUserToDeleteAnyMessage', 'AllowGiphy', 'AllowGiphyDisplay', 'AllowGroupChatJoinLinks', 'AllowImmersiveReader', 'AllowMemes', 'AllowOwnerDeleteMessage', 'AllowPasteInternetImage', 'AllowPriorityMessages', 'AllowRemoveUser', 'AllowSecurityEndUserReporting', 'AllowSmartCompose', 'AllowSmartReply', 'AllowStickers', 'AllowUrlPreviews', 'AllowUserChat', 'AllowUserDeleteChat', 'AllowUserDeleteMessage', 'AllowUserEditMessage', 'AllowUserTranslation', 'AllowVideoMessages', 'AudioMessageEnabledType', 'ChannelsInChatListEnabledType', 'ChatPermissionRole', 'Description', 'GiphyRatingType', 'ReadReceiptsEnabledType')
     'Set-CsTenantDialPlan'                     = @('Identity', 'Description', 'ExternalAccessPrefix', 'OptimizeDeviceDialing', 'SimpleName')
-    'Set-CsTenantFederationConfiguration'      = @('Identity', 'AllowFederatedUsers', 'AllowPublicUsers', 'AllowTeamsConsumer', 'AllowTeamsConsumerInbound', 'BlockAllSubdomains', 'ExternalAccessWithTrialTenants', 'RestrictTeamsConsumerToExternalUserProfiles', 'SharedSipAddressSpace', 'TreatDiscoveredPartnersAsUnverified')
+    'Set-CsTenantFederationConfiguration'      = @('Identity', 'AllowFederatedUsers', 'AllowTeamsConsumer', 'AllowTeamsConsumerInbound', 'BlockAllSubdomains', 'ExternalAccessWithTrialTenants', 'RestrictTeamsConsumerToExternalUserProfiles', 'SharedSipAddressSpace', 'TreatDiscoveredPartnersAsUnverified')
 }
 
 # Task-106: OneDrive site-level settings through PnP, one named site at a time.
@@ -264,6 +275,7 @@ $module = [string]$job['module']
 if ($Allowed.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $Allowed[$name] }
 elseif ($AllowedMailFlow.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedMailFlow[$name] }
 elseif ($AllowedExchangeExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeExtended[$name] }
+elseif ($AllowedExchangeRoleGroups.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRoleGroups[$name] }
 elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurview[$name] }
 elseif ($AllowedPurviewRetentionDlp.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewRetentionDlp[$name] }
 elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnP[$name] }

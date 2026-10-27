@@ -28,6 +28,7 @@ import { main as pseudonymizeCheck } from '../../tools/qualification/pseudonymiz
 import { readModule } from '../../tools/qualification/workloadReadsAcceptance.mjs';
 import { WORKLOAD_DESCRIPTORS, buildWorkloadLedger } from '../collect/workloadContract.mjs';
 import { exchangeExtendedActivation } from '../collect/workloads/exchangeExtended.mjs';
+import { exchangeRoleGroupsActivation } from '../collect/workloads/exchangeRoleGroups.mjs';
 import { mailFlowActivation } from '../collect/workloads/mailFlow.mjs';
 import { siteSharingActivation } from '../collect/workloads/sharepoint.mjs';
 import { purviewExtendedActivation } from '../collect/workloads/purviewExtended.mjs';
@@ -47,6 +48,7 @@ const now = () => NOW;
 const ACTIVATION = {
   'exchange-mail-flow': mailFlowActivation,
   'exchange-extended': exchangeExtendedActivation,
+  'exchange-role-groups': exchangeRoleGroupsActivation,
   'teams-org-policies': teamsPolicyActivation,
   'teams-voice-policies': teamsExtendedActivation,
   'purview-retention-dlp': retentionDlpActivation,
@@ -55,7 +57,7 @@ const ACTIVATION = {
   'sharepoint-site-settings': siteSharingActivation,
 };
 const TABLES = {
-  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
+  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
   MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended'],
   'PnP.PowerShell': ['AllowedPnP'],
 };

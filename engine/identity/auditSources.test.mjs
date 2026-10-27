@@ -213,3 +213,79 @@ test('a long Entra record id (B2C) is stored by a stable hash, not rejected as a
   });
   assert.deepEqual([member.verdict, member.actors], ['exact', [{ kind: 'user', id: ALICE, name: null }]]);
 });
+
+test('a long Intune activity name is kept readable, not rejected as a secret (#552)', async (t) => {
+  // The activity the test tenant returned: one 49-letter CamelCase word, 77 characters in all.
+  const LONG = 'UpdateWindowsFeatureUpdateProfileAssignmentsAsync WindowsFeatureUpdateProfile';
+  const SPLIT = 'Update Windows Feature Update Profile Assignments Async WindowsFeatureUpdateProfile';
+  const [event] = await intuneAuditEvents(intuneAudit('ia-long', 1, { activity: LONG }), async () => SYNC_SP);
+  assert.equal(event.change.activity, SPLIT);
+  const [entra] = directoryAuditEvents(directoryAudit('Directory_long', 1, { activityDisplayName: LONG }));
+  assert.equal(entra.change.activity, SPLIT, 'Entra activity names get the same treatment');
+  // A token-shaped word is not a name: the activity is dropped, the event and its actor are kept.
+  const TOKEN = 'aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3zA5bC7dE9fG1hJ3kL5';
+  const [tokenish] = await intuneAuditEvents(intuneAudit('ia-token', 1, { activity: `Patch ${TOKEN}` }), async () => SYNC_SP);
+  assert.equal(tokenish.change.activity, null);
+  assert.equal(tokenish.change.actorId, SYNC_SP);
+  assert.ok(!JSON.stringify(tokenish).includes(TOKEN));
+  const [allCaps] = await intuneAuditEvents(intuneAudit('ia-caps', 1, { activity: 'Patch ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGHIJKLMNOPQRSTUVWXYZ' }), async () => SYNC_SP);
+  assert.equal(allCaps.change.activity, null, 'only capitalised words are split');
+
+  const { client, collector } = await setup(t);
+  const reader = fakeReader({ audit: { items: [] }, 'intune-audit': { items: [intuneAudit('ia-long', 5, { activity: LONG }), intuneAudit('ia-token', 4, { activity: `Patch ${TOKEN}` })] } });
+  const result = await ingestCollectorAudit(client, { tenantRef: TENANT, reader, requestedBy: collector, now: NOW });
+  assert.equal(result.sources['intune-audit'].status, 'complete', 'the page is stored, not stuck at invalid-page');
+  assert.equal(result.sources['intune-audit'].insertedEvents, 2);
+  const { rows } = await client.query('SELECT source_event_id, activity FROM audit_change_fact ORDER BY source_event_id');
+  assert.deepEqual(rows.map((row) => [row.source_event_id, row.activity]), [['intune:ia-long:0', SPLIT], ['intune:ia-token:0', null]]);
+  const [policy] = await attributeChanges(client, {
+    tenantRef: TENANT, changes: [change('policy', 'deviceConfiguration', 'deviceConfiguration:Windows baseline', [POLICY], 10, 2)],
+  });
+  assert.deepEqual([policy.verdict, policy.actors[0].id], ['exact', SYNC_SP]);
+});
+
+test('long activity names with numbers or acronyms are split too, and tokens still are not', async () => {
+  const activity = async (name) => (await intuneAuditEvents(intuneAudit('ia-name', 1, { activity: name }), async () => SYNC_SP))[0].change.activity;
+  const cases = [
+    ['CreateWindows10GeneralConfigurationAssignmentsAsync', 'Create Windows 10 General Configuration Assignments Async'],
+    ['PatchIOSUpdateConfigurationAssignmentsAsyncNowPlease', 'Patch IOS Update Configuration Assignments Async Now Please'],
+    ['iosGeneralDeviceConfigurationAssignmentsUpdateAsync', 'ios General Device Configuration Assignments Update Async'],
+    ['AssignWin32LobAppToGroupsAndDevicesForEveryoneNow', 'Assign Win 32 Lob App To Groups And Devices For Everyone Now'],
+    ['UpdateMacOSCustomConfigurationAssignmentsAsyncAgain', 'Update Mac OS Custom Configuration Assignments Async Again'],
+    ['PatchWindows10VpnConfigurationAssignmentsAsyncNow', 'Patch Windows 10 Vpn Configuration Assignments Async Now'],
+    ['UpdateIpRangeNamedLocationForAdUsersAndGroupsAsync', 'Update Ip Range Named Location For Ad Users And Groups Async'],
+    // Names the old CamelCase-only rule already split keep splitting.
+    ['CreateAndroidDeviceOwnerEnterpriseWiFiConfigurationAsync', 'Create Android Device Owner Enterprise Wi Fi Configuration Async'],
+    ['UpdateTelecommunicationsExpenseManagementPartnerAsync', 'Update Telecommunications Expense Management Partner Async'],
+  ];
+  for (const [name, split] of cases) assert.equal(await activity(`${name} DeviceConfiguration`), `${split} DeviceConfiguration`, name);
+  const [entra] = directoryAuditEvents(directoryAudit('Directory_digits', 1, { activityDisplayName: cases[0][0] }));
+  assert.equal(entra.change.activity, cases[0][1], 'Entra activity names get the same treatment');
+
+  // Token shapes that mix capitals, digits and acronyms are still dropped, never split.
+  const tokens = [
+    'aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3zA5bC7dE9fG1hJ3kL5', // mixed case and digits
+    'A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3F4A5B6', // upper-case hex
+    'ABCDE12345FGHIJ67890KLMNO12345PQRST67890UVWXY12345', // acronyms and numbers only
+    'AbCdEfGhIjKlMnOpQrStUvWxYzAbCdEfGhIjKlMnOpQrStUvWx', // two-letter words only
+    'Xk9QwErTyUiOpAsDfGhJkLzXcVbNmQwErTyUiOpAsDfGhJkLzX', // single capitals between letters
+    // Shapes found in review that an earlier draft let through:
+    'AMPrvelaxZZXrDWPsEvbSPZgbQuiRmugFw1WT0QZRYGjtBlkHQ',
+    '2YLDC468USGERr3NwtGltRfmoVpw24EpsvhjsIu4GVSUlgeddlqqKQ',
+    'Abcdefghijklmnopqrstuvwxyzabcdef1234567890123456AB',
+    'aaaaaaaaaaaaaaaaaaaaaaaaaaQW1ER2TY3UI4OP5AS6DF7GH8',
+  ];
+  for (const token of tokens) assert.equal(await activity(`Patch ${token}`), null, token);
+  // A token late in a long name is caught before the name is cut to 96 characters.
+  assert.equal(await activity(`Patch ${'Device configuration '.repeat(4)}${tokens[0]}`), null);
+  // A seeded sweep of random tokens (Park-Miller, exact in doubles): none reads as a name.
+  let seed = 552;
+  const random = () => { seed = (seed * 48271) % 2147483647; return seed / 2147483647; };
+  const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+  for (const alphabet of [LETTERS, `${LETTERS}0123456789`, '0123456789ABCDEF', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789']) {
+    for (let i = 0; i < 500; i += 1) {
+      const token = Array.from({ length: 48 + Math.floor(random() * 40) }, () => alphabet[Math.floor(random() * alphabet.length)]).join('');
+      assert.equal(await activity(`Patch ${token}`), null, token);
+    }
+  }
+});

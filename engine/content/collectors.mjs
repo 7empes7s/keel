@@ -6,7 +6,8 @@
  * - workload is one of CONTENT_WORKLOADS in ./store.mjs.
  * - collect(client, { tenantRef, tenantId, store, transport, scope, sleep, now, logger, syncState? })
  *   backs up one workload and returns { outcome: 'succeeded' | 'partial' | 'failed', items,
- *   bytes, reasons }. `store` is the content store (putItem, getItem, listItems), `transport`
+ *   bytes, reasons, skipped? }. `skipped` lists what Microsoft 365 holds but Keel cannot
+ *   read and is not a failure (a OneDrive that is locked); it never changes the outcome. `store` is the content store (putItem, getItem, listItems), `transport`
  *   the read-only content transport (./transport.mjs), `scope` the content scope file.
  *   Delta state lives in content_sync_state (./syncState.mjs); `syncState` replaces it in tests.
  *   `sharePointTransportFor(tenantHost)`, when given, returns the SharePoint REST transport
@@ -34,6 +35,8 @@ import { createPgSyncState } from './syncState.mjs';
 
 const OUTCOMES = { complete: 'succeeded', 'complete-empty': 'succeeded', partial: 'partial', failed: 'failed' };
 const errorText = (error) => String(error?.message ?? error);
+// A mailbox read Exchange refused (describe(): "403 ErrorAccessDenied ...").
+const ACCESS_DENIED = /^403\b|ErrorAccessDenied/;
 
 /** The content store, counting what each collector put. */
 function counted(store) {
@@ -62,6 +65,11 @@ async function collectMail(client, context) {
   const found = await discoverMailboxes(reader, { match: prefixOf(scope) });
   const reasons = found.errors.map((error) => `${error.route}${error.id ? ` ${error.id}` : ''}: ${error.error}`);
   let ok = 0;
+  // Read fine, by family: group mailboxes are read under other permissions than user,
+  // shared and archive mailboxes, so only a mailbox of the same family proves access.
+  const okFamily = { group: 0, mailbox: 0 };
+  const familyOf = (mailbox) => (mailbox.kind === 'group' ? 'group' : 'mailbox');
+  const denied = [];
   for (const mailbox of found.mailboxes) {
     const ref = { tenantRef, workload: 'exchange-mail', key: mailbox.key };
     try {
@@ -72,18 +80,28 @@ async function collectMail(client, context) {
       });
       await syncState.save({ ...ref, state: result.state[mailbox.key] ?? null });
       const report = result.mailboxes[0];
-      if (report?.ok) ok += 1;
+      if (report?.ok) { ok += 1; okFamily[familyOf(mailbox)] += 1; }
       else {
         const errors = [...(report?.mail?.errors ?? []), ...(report?.items?.errors ?? [])];
-        reasons.push(`${mailbox.name} (${mailbox.kind}): ${errors.length} read(s) failed${errors[0]?.error ? ` (${errors[0].error})` : ''}`);
+        if (errors.length && errors.every((error) => ACCESS_DENIED.test(String(error.error ?? '')))) denied.push({ mailbox, errors });
+        else reasons.push(`${mailbox.name} (${mailbox.kind}): ${errors.length} read(s) failed${errors[0]?.error ? ` (${errors[0].error})` : ''}`);
       }
     } catch (error) {
       reasons.push(`${mailbox.name} (${mailbox.kind}): ${errorText(error)}`);
     }
   }
+  // Refused on its own while other mailboxes of its family read fine: Keel's app has the permission, and
+  // something in the tenant (an application access policy, a mailbox restriction) leaves
+  // this mailbox out. Still not backed up, but the reason says so.
+  for (const { mailbox, errors } of denied) {
+    reasons.push(okFamily[familyOf(mailbox)] > 0
+      ? `${mailbox.name} (${mailbox.kind}): Microsoft 365 refused access to this mailbox only; other ${mailbox.kind === 'group' ? 'group ' : ''}mailboxes read fine (${errors[0].error})`
+      : `${mailbox.name} (${mailbox.kind}): ${errors.length} read(s) failed (${errors[0].error})`);
+  }
   const failedAll = found.mailboxes.length > 0 ? ok === 0 : found.errors.length > 0;
   const outcome = reasons.length === 0 ? 'succeeded' : failedAll ? 'failed' : 'partial';
-  return { outcome, ...tally, reasons };
+  // A failed users or groups listing hides whole sets of mailboxes: never "partly done".
+  return { outcome, ...tally, reasons, discoveryFailed: found.errors.some((error) => error.route === 'users' || error.route === 'groups') };
 }
 
 async function collectOneDrives(client, context) {
@@ -94,7 +112,10 @@ async function collectOneDrives(client, context) {
     ...result.errors.map((error) => `${error.name ?? error.step}: ${error.error}`),
     ...result.drives.filter((drive) => drive.outcome === 'partial').map((drive) => `${drive.name}: ${drive.stats.warnings.length} file warning(s), first: ${drive.stats.warnings[0].warning}`),
   ];
-  return { outcome: result.outcome, ...tally, reasons };
+  // A OneDrive Microsoft 365 has locked is not a failure, but it is listed. Users with no
+  // OneDrive at all hold nothing to back up and are left out.
+  const skipped = result.skipped.filter((drive) => drive.locked).map((drive) => `${drive.name}: ${drive.reason}`);
+  return { outcome: result.outcome, ...tally, reasons, skipped, discoveryFailed: result.errors.some((error) => error.step === 'users') };
 }
 
 async function tenantHostOf(send, scope) {
@@ -156,7 +177,7 @@ async function collectSites(client, context) {
       }
     }
   }
-  return { outcome: OUTCOMES[result.outcome] ?? 'failed', ...tally, reasons };
+  return { outcome: OUTCOMES[result.outcome] ?? 'failed', ...tally, reasons, discoveryFailed: result.discovery?.status !== 'observed' };
 }
 
 // The marker the sites collector saves for a library it read in full.
@@ -200,7 +221,7 @@ async function collectTeams(client, context) {
       reasons.push(`${team.fields?.displayName ?? team.teamId}: ${parts.length} part(s) not read, first ${name}: ${read.status}${read.error ? ` (${read.error})` : ''}`);
     }
   }
-  return { outcome: OUTCOMES[result.outcome] ?? 'failed', ...tally, reasons };
+  return { outcome: OUTCOMES[result.outcome] ?? 'failed', ...tally, reasons, discoveryFailed: result.discovery?.status !== 'observed' };
 }
 
 async function collectPlanner(client, context) {
@@ -218,7 +239,7 @@ async function collectPlanner(client, context) {
       if (section?.status && section.status !== 'observed') reasons.push(`${group.displayName ?? group.groupId} ${part}: ${section.status}${section.errors?.[0]?.error ? ` (${section.errors[0].error})` : ''}`);
     }
   }
-  return { outcome: OUTCOMES[result.outcome] ?? 'failed', ...tally, reasons };
+  return { outcome: OUTCOMES[result.outcome] ?? 'failed', ...tally, reasons, discoveryFailed: Boolean(result.discovery?.status && result.discovery.status !== 'observed') };
 }
 
 export const CONTENT_COLLECTORS = Object.freeze([

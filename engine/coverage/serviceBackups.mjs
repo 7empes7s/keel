@@ -55,17 +55,18 @@ async function tablesPresent(client) {
  * Record one content workload's run. Best effort for the caller: a database without
  * the table (or no database, in a dry run) records nothing and says so.
  */
-export async function recordContentRun(client, { tenantRef, workload, outcome, items = 0, bytes = 0, reasons = [], namePrefix = null, startedAt, completedAt }) {
+export async function recordContentRun(client, { tenantRef, workload, outcome, items = 0, bytes = 0, reasons = [], skipped = [], namePrefix = null, startedAt, completedAt }) {
   if (!client) return { recorded: false, reason: 'no-database' };
   assertTenantRef(tenantRef);
   const { rows: [table] } = await client.query("SELECT to_regclass('content_run') IS NOT NULL AS present");
   if (!table?.present) return { recorded: false, reason: 'no-table' };
   await client.query(
-    `INSERT INTO content_run (tenant_ref, workload, outcome, items, bytes, reasons, name_prefix, started_at, completed_at)
-     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)`,
+    `INSERT INTO content_run (tenant_ref, workload, outcome, items, bytes, reasons, name_prefix, started_at, completed_at, skipped)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10::jsonb)`,
     [tenantRef, workload, String(outcome ?? 'failed'), Math.max(0, Number(items) || 0), Math.max(0, Number(bytes) || 0),
       JSON.stringify(Array.isArray(reasons) ? reasons.map(String) : []),
-      typeof namePrefix === 'string' && namePrefix ? namePrefix : null, startedAt, completedAt],
+      typeof namePrefix === 'string' && namePrefix ? namePrefix : null, startedAt, completedAt,
+      JSON.stringify(Array.isArray(skipped) ? skipped.map(String) : [])],
   );
   return { recorded: true };
 }
@@ -180,7 +181,7 @@ export async function loadServiceBackups(client, { tenantRef }) {
   if (present.contentRun) {
     const { rows } = await client.query(
       `WITH latest AS (
-         SELECT DISTINCT ON (workload) workload, id::text AS id, outcome, items, bytes, reasons, name_prefix, started_at, completed_at
+         SELECT DISTINCT ON (workload) workload, id::text AS id, outcome, items, bytes, reasons, skipped, name_prefix, started_at, completed_at
            FROM content_run WHERE tenant_ref = $1
           ORDER BY workload, completed_at DESC, id DESC
        ), good AS (
@@ -188,7 +189,7 @@ export async function loadServiceBackups(client, { tenantRef }) {
            FROM content_run WHERE tenant_ref = $1 AND outcome = 'succeeded'
           ORDER BY workload, completed_at DESC, id DESC
        )
-       SELECT l.workload, l.id AS latest_id, l.outcome AS latest_outcome, l.completed_at AS latest_at, l.reasons AS latest_reasons, l.name_prefix AS latest_prefix,
+       SELECT l.workload, l.id AS latest_id, l.outcome AS latest_outcome, l.completed_at AS latest_at, l.reasons AS latest_reasons, l.skipped AS latest_skipped, l.name_prefix AS latest_prefix,
               g.id AS good_id, g.started_at AS good_from, g.completed_at AS good_to, g.items AS good_items, g.bytes AS good_bytes
          FROM latest l LEFT JOIN good g ON g.workload = l.workload
         ORDER BY l.workload`,
@@ -200,7 +201,7 @@ export async function loadServiceBackups(client, { tenantRef }) {
         workload: row.workload,
         ...contentWorkloadInfo(row.workload),
         switchedOn: true,
-        latest: { id: row.latest_id, outcome: row.latest_outcome, at: iso(row.latest_at), reasons: Array.isArray(row.latest_reasons) ? row.latest_reasons : [], namePrefix: row.latest_prefix ?? null },
+        latest: { id: row.latest_id, outcome: row.latest_outcome, at: iso(row.latest_at), reasons: Array.isArray(row.latest_reasons) ? row.latest_reasons : [], skipped: Array.isArray(row.latest_skipped) ? row.latest_skipped : [], namePrefix: row.latest_prefix ?? null },
         lastGood: row.good_id
           ? { id: row.good_id, from: iso(row.good_from), at: iso(row.good_to), items: Number(row.good_items ?? 0), bytes: Number(row.good_bytes ?? 0) }
           : null,

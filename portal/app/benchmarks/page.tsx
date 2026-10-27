@@ -4,9 +4,9 @@ import { CompliancePage, ExportEvidence } from "@/components/compliance/complian
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
 import { complianceCounts, complianceStatus } from "@/lib/compliance-view";
-import { getComplianceData } from "@/lib/portal-data";
+import { getComplianceData, getOwnCheckChoices } from "@/lib/portal-data";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
-import type { ComplianceData } from "@/lib/types";
+import type { ComplianceData, OwnCheckChoices } from "@/lib/types";
 
 const DESCRIPTION = "Which security controls pass on this tenant, what each result rests on, and where backups are kept.";
 
@@ -29,6 +29,11 @@ export default async function BenchmarksPage() {
     );
   }
 
+  // What an own check can be written on: only for someone who may write one, and the
+  // page still works without it.
+  const canConfigure = access.capabilities.includes("configuration");
+  const ownChoices: OwnCheckChoices | null = canConfigure ? await getOwnCheckChoices().catch(() => null) : null;
+
   return (
     <>
       <PageHeader
@@ -39,7 +44,7 @@ export default async function BenchmarksPage() {
         status={complianceStatus(complianceCounts(data.findings))}
         title="Compliance"
       />
-      <CompliancePage canCheck={access.capabilities.includes("collect")} canConfigure={access.capabilities.includes("configuration")} canRestore={access.capabilities.includes("restore")} data={data} now={data.generatedAt} />
+      <CompliancePage canCheck={access.capabilities.includes("collect")} canConfigure={canConfigure} canRestore={access.capabilities.includes("restore")} data={data} now={data.generatedAt} ownChoices={ownChoices} />
     </>
   );
 }

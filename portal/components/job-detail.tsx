@@ -59,10 +59,47 @@ export function JobDetail({ job, now = new Date().toISOString() }: { job: JobRec
         <JobTypes job={job} rows={rows} />
       </> : <StatTiles label="Timing and result" tiles={summaryTiles(job, now)} />}
 
+      {rows.some((row) => row.items.length) ? <JobGapItems finished={job.status === "succeeded"} rows={rows} /> : null}
+
       <TechnicalDetails>
         <JobRecordFields job={job} />
       </TechnicalDetails>
     </div>
+  );
+}
+
+// A content backup that was partly done: each mailbox, OneDrive or site it could not
+// read, by workload, with a plain cause. The engine's own text waits behind a click.
+function JobGapItems({ rows, finished }: { rows: TypeRow[]; finished: boolean }) {
+  const withItems = rows.filter((row) => row.items.length);
+  return (
+    <section aria-labelledby="job-gaps-heading" className="job-gaps" id="job-gaps">
+      <h2 className="job-section-head" id="job-gaps-heading"><Icon name="alert" />What was not backed up</h2>
+      <p className="job-gaps-lead">{finished ? "Everything else in this backup was saved. The next backup tries these again." : "These could not be read in full. The next backup tries them again."}</p>
+      {withItems.map((row) => (
+        <div className="job-gap-group" data-gap-type={row.type} key={row.type}>
+          <h3><span>{row.name}</span><Badge tone={row.tone}>{`${row.itemsLabel} not read`}</Badge></h3>
+          <div className="rs-table-wrap">
+            <table className="rs-table job-gaps-table">
+              <caption className="visually-hidden">{`What ${row.name.toLowerCase()} could not read, and why`}</caption>
+              <thead><tr><th scope="col">Not read</th><th scope="col">Why</th></tr></thead>
+              <tbody>
+                {row.items.map((item, index) => (
+                  <tr data-tone={item.tone} key={`${index}-${item.name}`}>
+                    <th scope="row"><span className="rs-row-name">{item.name}</span></th>
+                    <td data-label="Why"><Badge tone={item.tone}>{item.why}</Badge></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {row.items.length < row.itemTotal ? (
+            <p className="job-gaps-more">Only the first {row.items.length} are listed here. The run&apos;s log has the rest.</p>
+          ) : null}
+          <ShowDetails lines={row.items.map((item) => item.raw)} summary="Show the error text" />
+        </div>
+      ))}
+    </section>
   );
 }
 

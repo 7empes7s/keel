@@ -12,16 +12,23 @@
 // policy object files, eSIM activation code pools and Windows 10X resource
 // access profiles are skipped with a reason (engine/discovery/notGaps.mjs).
 export default [
-  // Tenant-wide Intune settings: the compliance check-in window, how devices
-  // with no compliance policy are marked, Company Portal contact details and
-  // the device cleanup window. Runtime counters on the same object are left out.
+  // Tenant-wide Intune settings: the compliance check-in window and how devices
+  // with no compliance policy are marked. Runtime counters on the same object
+  // are left out.
   { type: 'deviceManagementSettings', path: '/deviceManagement', version: 'beta', singleton: true, absentWhenNotFound: true,
     criticality: 'tier1', blastRadius: 'access-affecting',
-    // Issue #447: Graph sends a $select naming fields owned by other Intune
-    // services (Windows data onboarding, admin consent, Endpoint analytics) to
-    // the wrong backend, which answers HTTP 400. Only the core Intune fields
-    // are read here.
-    select: 'id,settings,intuneBrand,managedDeviceCleanupSettings',
+    // Issue #447: Graph serves this object from several Intune backends and
+    // sends a read that names fields of more than one of them to the
+    // onboarding backend (StatelessOnboardingService), which has no GET for
+    // it and answers HTTP 400, even for id,settings,intuneBrand,
+    // managedDeviceCleanupSettings. So each field is read on its own request
+    // and the answers are merged. intuneBrand is not read: the Company Portal
+    // brand is backed up as the default intuneBrandingProfile.
+    // Live run of 2026-10-25: the settings read answered, the read of the old
+    // single device cleanup setting (managedDeviceCleanupSettings) failed.
+    // Intune replaced that setting with device cleanup rules, backed up as
+    // managedDeviceCleanupRule, so only the compliance settings are read here.
+    selectEach: ['settings'],
     note: 'settings.secureByDefault marks devices with no compliance policy as not compliant, which Conditional Access reads.' },
   // Android Enterprise fully managed and dedicated device enrollment profiles.
   { type: 'androidDeviceOwnerEnrollmentProfile', path: '/deviceManagement/androidDeviceOwnerEnrollmentProfiles', version: 'beta',

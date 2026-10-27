@@ -285,7 +285,7 @@ test('tenant isolation survives shared actor and object ids', async (t) => {
   assert.equal(leaked.verdict, 'unknown');
 });
 
-test('facts are minimized; an invalid fact refuses the page without advancing the cursor', async (t) => {
+test('facts are minimized; an invalid fact is skipped, never stored, and leaves its window incomplete', async (t) => {
   const { client, p, ingest, change, attribute } = await setup(t);
   await migrateAuditIngestion(client);
   await ingest(A, 'audit', [{
@@ -304,11 +304,27 @@ test('facts are minimized; an invalid fact refuses the page without advancing th
     events: [{ id: 'evt-bad', occurredAt: iso(-2 * HOUR), change: { targetType: 'group', targetId: 'Grid Operations Admins', operation: 'Update', actorKind: 'user', actorId: ID.alice } }],
     nextCursor: null,
   }]);
-  assert.equal(bad.status, 'invalid-page');
+  assert.deepEqual([bad.status, bad.insertedEvents, bad.skippedEvents, bad.skippedReasons], ['complete', 0, 1, { fact: 1 }]);
   const { rows: [state] } = await client.query("SELECT cursor, complete FROM audit_ingest_state WHERE tenant_ref = 'tenant-d'");
-  assert.deepEqual(state, { cursor: null, complete: false });
-  const tokenActivity = await ingest('tenant-e', 'audit', [{ events: [auditEvent('evt-tok', iso(-HOUR), { })].map((event) => ({ ...event, change: { ...event.change, activity: 'Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc' } })), nextCursor: null }]);
-  assert.equal(tokenActivity.status, 'invalid-page');
+  assert.deepEqual(state, { cursor: null, complete: true });
+  const TOKEN = 'Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc';
+  const tokenActivity = await ingest('tenant-e', 'audit', [{ events: [auditEvent('evt-tok', iso(-HOUR), { })].map((event) => ({ ...event, change: { ...event.change, activity: TOKEN } })), nextCursor: null }]);
+  assert.deepEqual([tokenActivity.status, tokenActivity.skippedReasons], ['complete', { fact: 1 }]);
+  const facts = JSON.stringify((await client.query("SELECT * FROM audit_change_fact WHERE tenant_ref IN ('tenant-d', 'tenant-e')")).rows);
+  assert.equal(facts, '[]');
+  assert.ok(!JSON.stringify(tokenActivity).includes('eyJ'));
+  // The skipped entry might have named the change, so Keel does not say nobody did it.
+  await recordLineage(client, { tenantRef: 'tenant-e', resourceType: 'group', sourceId: ID.creos2, naturalKey: KEY.creos2, observedAt: new Date(NOW - 5 * HOUR) });
+  const [skippedChange] = await attribute('tenant-e', [change('creos2')]);
+  assert.deepEqual([skippedChange.verdict, skippedChange.reason], ['unknown', 'audit-events-skipped']);
+  const window = { from: iso(-4 * HOUR), until: iso(0) };
+  const skippedRun = { evidence: { status: 'budget-exhausted', window, skippedEvents: 1 } };
+  const finished = { evidence: { status: 'complete', window, skippedEvents: 0 } };
+  assert.equal(coverageFromRuns({ runs: [finished, skippedRun], state: null }, WINDOW).status, 'events-skipped',
+    'a skip in an unfinished run still counts once a later run finishes the window');
+  assert.equal(coverageFromRuns({ runs: [finished], state: null }, WINDOW).status, 'covered');
+  assert.equal(coverageFromRuns({ runs: [finished, { evidence: { ...skippedRun.evidence, window: { from: iso(-30 * HOUR), until: iso(-20 * HOUR) } } }], state: null }, WINDOW).status,
+    'covered', 'a skip in another window does not matter');
 
   // A scoped reader does not learn who an account outside their entities is.
   const creos = await capabilityScope(client, p.creosViewer, 'read');

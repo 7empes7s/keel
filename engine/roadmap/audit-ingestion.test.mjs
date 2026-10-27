@@ -153,14 +153,46 @@ test('event budget, untrusted IDs and cursors cannot persist token data or skip 
   assert.equal(result.requests, 1);
   assert.equal(result.insertedEvents, 1);
   const bad = adapter([]);
-  bad.readPage = async () => ({ events: [event('Bearer secret-canary')], nextCursor: null });
-  assert.equal((await ingestAudit(client, { ...options, adapter: bad })).status, 'invalid-page');
+  // A bad cursor is a bad page: nothing on it is stored and the cursor stays.
   bad.readPage = async () => ({ events: [event('two')], nextCursor: 'https://example.invalid/?token=secret-canary' });
   assert.equal((await ingestAudit(client, { ...options, adapter: bad })).status, 'invalid-page');
-  const evidence = await readAuditEvidence(client, options);
+  let evidence = await readAuditEvidence(client, options);
   assert.equal(Number(evidence.state.cursor), 1);
   assert.equal(evidence.eventCount, 1);
+  // A token-shaped event id is one bad event: it is skipped and counted, the page is kept.
+  bad.readPage = async () => ({ events: [event('Bearer secret-canary'), event('two')], nextCursor: null });
+  const skipped = await ingestAudit(client, { ...options, adapter: bad });
+  assert.deepEqual([skipped.status, skipped.insertedEvents, skipped.skippedEvents, skipped.skippedReasons], ['complete', 1, 1, { id: 1 }]);
+  evidence = await readAuditEvidence(client, options);
+  assert.deepEqual([evidence.state.cursor, evidence.state.complete, evidence.eventCount], [null, true, 2]);
   assert.ok(!JSON.stringify(evidence).includes('secret-canary'));
+});
+
+test('one bad event is skipped and counted by reason; the rest of its page is stored (#552)', async (t) => {
+  const { client, options } = await setup(t);
+  const SECRET = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJjYW5hcnkifQ.c2VjcmV0LWNhbmFyeS1zaWduYXR1cmU';
+  const page = { events: [
+    event('good-1'),
+    event(`Bearer ${SECRET}`),
+    { id: 'bad-time', occurredAt: 'not a time' },
+    { id: 'too-early', occurredAt: '2026-08-01T00:00:00.000Z' },
+    event('bad-fact', { change: { targetType: 'group', targetId: 'Grid Admins', operation: 'Update', actorKind: 'user', actorId: SECRET } }),
+    null,
+  ], nextCursor: 1 };
+  const a = adapter([page, { events: [event('good-2'), event(SECRET)], nextCursor: null }]);
+  const result = await ingestAudit(client, { ...options, adapter: a, pageSize: 6, maxEvents: 20 });
+  assert.equal(result.status, 'complete', 'the window finishes instead of stopping at invalid-page');
+  assert.equal(result.observedEvents, 8);
+  assert.equal(result.insertedEvents, 2);
+  assert.equal(result.skippedEvents, 6);
+  assert.deepEqual(result.skippedReasons, { id: 2, time: 2, 'outside-window': 1, fact: 1 });
+  assert.equal(result.envelope.payload.skippedEvents, 6);
+  const evidence = await readAuditEvidence(client, options);
+  assert.deepEqual([evidence.state.cursor, evidence.state.complete, evidence.eventCount], [null, true, 2]);
+  const { rows } = await client.query('SELECT source_event_id FROM audit_ingest_event ORDER BY 1');
+  assert.deepEqual(rows.map((row) => row.source_event_id), ['good-1', 'good-2']);
+  const stored = JSON.stringify([evidence, (await client.query('SELECT * FROM audit_change_fact')).rows]);
+  for (const leaked of [SECRET, 'Grid Admins', 'bad-time', 'too-early', 'bad-fact']) assert.ok(!stored.includes(leaked), leaked);
 });
 
 test('restart resumes the saved subsequent window and refuses changing a partially ingested window', async (t) => {

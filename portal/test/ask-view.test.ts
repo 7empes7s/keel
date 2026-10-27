@@ -30,6 +30,15 @@ test("each understood filter but the topic and period can be removed, keeping th
   });
 });
 
+test("how an ambiguous word was read is shown before the answer", () => {
+  const assumed = ["Read “MFA” as sign-in method settings.", "KEEL compares backups, so it shows what changed and when, but not who made the change."];
+  const alerts = askAlerts({ ...BASE, assumed: ["period", ...assumed] });
+  const reading = alerts.find((alert) => alert.key === "assumed-reading")!;
+  assert.equal(reading.tone, "low");
+  assert.equal(reading.todo, assumed.join(" "));
+  assert.equal(askAlerts({ ...BASE, assumed: ["period"] }).some((alert) => alert.key === "assumed-reading"), false);
+});
+
 test("words the reading left out are said plainly, and the summary counts every match", () => {
   const alerts = askAlerts({ ...BASE, ignored: ["printers"] });
   assert.equal(alerts[0].key, "ignored");

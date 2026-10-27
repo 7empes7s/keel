@@ -17,7 +17,7 @@ import { listWorkloads, registerWorkload } from '../collect/registry.mjs';
 import { buildWorkloadLedger, scopeProblems } from '../collect/workloadContract.mjs';
 import {
   SHAREPOINT_DESCRIPTOR, SHAREPOINT_OPERATIONS, SITE_FIELDS, SITE_SHARING_OPERATION, UNSUPPORTED_SITE_FIELDS,
-  collectSharePointSites, readSharePointSites, readSiteSharing, recordSharePointRun, sharePointActivation, siteSharingActivation,
+  collectSharePointSites, readSharePointSites, readSiteSharing, sharingCapabilityName, recordSharePointRun, sharePointActivation, siteSharingActivation,
 } from '../collect/workloads/sharepoint.mjs';
 import { CmdletError } from '../powershell/jobQueue.mjs';
 import { MODULE_VERSIONS, fakeCmdletContainer } from '../test/fakeCmdletContainer.mjs';
@@ -334,8 +334,31 @@ test('per-site sharing is gated on its own ledger row, apart from the Graph read
   const second = await collectSharePointSites(client, { tenantRef, ledger: both, transport: fakeGraph({ pages: [[site(1)]] }).transport, tenantHost: HOST, now, powershell: live.powershell });
   assert.equal(live.calls.length, 1);
   assert.equal(second.result.sites[0].fields.sharingCapability, 'ExternalUserAndGuestSharing');
+  // Qualified but no PnP config of its own: nothing is sent, and the reason says why.
+  const unconfigured = await collectSharePointSites(client, { tenantRef, ledger: both, transport: fakeGraph({ pages: [[site(1)]] }).transport, tenantHost: HOST, now, powershell: null });
+  assert.equal(live.calls.length, 1);
+  assert.equal(unconfigured.result.outcome, 'complete');
+  assert.match(unconfigured.result.sites[0].fieldCoverage.sharingCapability.reason, /powershellConfigs\.sharepoint/);
   const { rows: [row] } = await client.query(
     `SELECT fields, field_coverage FROM workload_observation WHERE collection_id = $1 AND resource_key = $2`, [second.run.id, `site:${siteId(1)}`],
   );
   assert.equal(row.fields.sharingCapability, 'ExternalUserAndGuestSharing', 'stored with the run, so the backup holds it');
+});
+
+test('per-site sharing: the enum number ConvertTo-Json writes is stored by name; a refused sign-in is failed, not denied', async () => {
+  assert.deepEqual([0, 1, 2, 3, '2', 'Disabled', 9, null, ''].map(sharingCapabilityName),
+    ['Disabled', 'ExternalUserSharingOnly', 'ExternalUserAndGuestSharing', 'ExistingExternalUserSharingOnly', 'ExternalUserAndGuestSharing', 'Disabled', null, null, null]);
+  const live = fakeCmdletContainer({ module: 'PnP.PowerShell', allowlist: { 'Get-PnPTenantSite': ['Identity'] }, answer: () => [
+    { Url: `https://${HOST}/sites/site1`, SharingCapability: 2 }, { Url: `https://${HOST}/sites/site2`, SharingCapability: 7 },
+  ] });
+  const result = await readSharePointSites({ transport: fakeGraph({ pages: [[site(1), site(2)]] }).transport, tenantHost: HOST, now, siteSharing: () => readSiteSharing(live.powershell) });
+  const byN = (n) => result.sites.find((entry) => entry.siteId === siteId(n));
+  assert.equal(byN(1).fields.sharingCapability, 'ExternalUserAndGuestSharing');
+  assert.equal(byN(2).fieldCoverage.sharingCapability.status, 'unknown', 'an unknown number is never stored');
+
+  const refused = await readSharePointSites({
+    transport: fakeGraph({ pages: [[site(1)]] }).transport, tenantHost: HOST, now,
+    siteSharing: async () => { throw new CmdletError('connect', { code: 'CMDLET_ERROR', cmdlet: 'Get-PnPTenantSite', message: 'AADSTS700027: unauthorized_client', category: 'OpenError', errorId: 'ConnectFailed' }); },
+  });
+  assert.equal(refused.sites[0].fieldCoverage.sharingCapability.status, 'failed');
 });

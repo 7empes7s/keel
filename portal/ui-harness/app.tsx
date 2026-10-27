@@ -46,7 +46,8 @@ import { IncidentsPage } from "@/components/incidents/incidents-page";
 import { DESCRIPTION as INCIDENTS_DESCRIPTION, incidentStatus } from "@/lib/incidents-view";
 import type { IncidentDetail } from "@/lib/portal-data";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
-import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, CoverageData, CoverageType, DashboardData, DriftRecord } from "@/lib/types";
+import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, ComplianceFinding, CoverageData, CoverageType, DashboardData, DriftRecord, KnownStandard, OwnCheckChoices } from "@/lib/types";
+import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { CompliancePage, ExportEvidence } from "@/components/compliance/compliance-page";
 import { complianceCounts, complianceStatus } from "@/lib/compliance-view";
 import { accessSummary } from "@/lib/presentation";
@@ -61,6 +62,7 @@ import { RULE_KINDS, RULE_STATES, ruleCounts, ruleKind, ruleState, rulesStatus }
 import { peopleCounts, peopleStatus } from "@/lib/people-view";
 import type { PrincipalView } from "@/lib/principals";
 import { CheckAgain } from "@/components/setup/check-again";
+import type { Connection } from "@/lib/connections-view";
 import { SetupPage as SetupBody } from "@/components/setup/setup-page";
 import { KEEL_PERMISSIONS, PERMISSION_APIS, PERMISSION_KINDS, PERMISSION_SERVICES } from "../../engine/bootstrap/permissionCatalog.mjs";
 import { setupStatus as setupPageStatus, type PermissionEntry, type PermissionGrant, type SetupApp, type SetupPermissions, type SetupState } from "@/lib/setup-view";
@@ -95,6 +97,8 @@ const DEPENDS: Record<string, string[]> = {
   "deviceConfiguration:Windows baseline": ["group:All managed devices"],
 };
 let jobPolls = 0;
+// The setting the last "Make it pass" asked for: a mail policy setting is named after a #.
+let fixTarget = "";
 let contentEffectsApproved = false;
 let lastClosure: string[] = [];
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -170,6 +174,8 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   }
   if (/\/api\/snapshots\/[^/]+\/items$/.test(url)) return json({ generatedAt: now, snapshotId: "", resources: BACKUP_ITEMS });
   if (url.endsWith("/api/actions/compliance/exception")) return json({ exception: { id: "e7c10000-0000-4000-8000-0000000000c9" } }, 201);
+  if (url.endsWith("/api/actions/compliance/own-check")) return json({ check: { id: "0c0c0000-0000-4000-8000-0000000000b1" }, evaluationId: "e7a10000-0000-4000-8000-0000000000b1", verdict: "fail" }, 201);
+  if (url.endsWith("/api/actions/compliance/own-check/remove")) return json({ removed: "0c0c0000-0000-4000-8000-0000000000a7" });
   if (url.endsWith("/api/actions/compliance/check")) return json({ checked: 3, pass: 1, fail: 1, unknown: 1, notApplicable: 0 }, 201);
   if (url.includes("/api/evidence?kind=benchmark-evaluation")) return json({ entries: [{ seq: "4182", kind: "benchmark-evaluation" }, { seq: "4183", kind: "benchmark-exception" }], nextBefore: null, generatedAt: "2026-10-04T09:00:00Z" });
   if (url.endsWith("/api/principals") && init?.method === "POST") return json({ principal: NEW_PERSON(JSON.parse(String(init.body))) }, 201);
@@ -227,7 +233,11 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     return json({ runs: [{ target: null, job: { id: "job-wd-1" }, artifactId: "wd000000-0000-4000-8000-000000000001" }] }, 202);
   }
   // Compliance, "Make it pass": the fix is planned, and its dry run is ready.
-  if (url.endsWith("/api/actions/compliance/fix")) return json({ job: { id: "f1c0b000-0000-4000-8000-000000000001" }, artifactId: "f1c00000-0000-4000-8000-000000000001" }, 202);
+  if (url.endsWith("/api/actions/compliance/fix")) {
+    fixTarget = String((JSON.parse(String(init?.body ?? "{}")) as { naturalKey?: string }).naturalKey ?? "");
+    return json({ job: { id: "f1c0b000-0000-4000-8000-000000000001" }, artifactId: "f1c00000-0000-4000-8000-000000000001" }, 202);
+  }
+  if (url.includes("/api/actions/restore/dry-run/f1c00000") && fixTarget.includes("#")) return json({ artifact: { id: "f1c00000-0000-4000-8000-000000000001", status: "completed", guardRefusals: [], complianceFix: { naturalKey: fixTarget, field: fixTarget.slice(fixTarget.indexOf("#") + 1), from: "AddXHeader", to: "Quarantine" } } });
   if (url.includes("/api/actions/restore/dry-run/f1c00000")) return json({ artifact: { id: "f1c00000-0000-4000-8000-000000000001", status: "completed", guardRefusals: [], complianceFix: { naturalKey: "namedLocation:Branch offices", field: "includeUnknownCountriesAndRegions", from: true, to: false } } });
   if (url.includes("/api/actions/restore/dry-run/wd000000")) return json({ artifact: WORKLOAD_ARTIFACT });
   if (url.includes("/api/actions/restore/dry-run/mb000000")) return json({ artifact: mailboxArtifact(url.slice(-1)) });
@@ -238,7 +248,10 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.includes("/api/jobs/")) { jobPolls += 1; return json({ job: { status: jobPolls >= 2 ? "succeeded" : "running" } }); }
   if (url.includes("/api/actions/restore/dry-run/")) {
     return json({ artifact: { id: "dr-7f3c", status: "completed", closureKeys: lastClosure, guardRefusals: [], results: {
-      applied: lastClosure.map((naturalKey) => ({ naturalKey, reason: naturalKey.startsWith("group") ? "exists in target, unchanged" : "would update 3 properties" })),
+      applied: lastClosure.map((naturalKey) => ({ naturalKey, reason: naturalKey.startsWith("group") ? "exists in target, unchanged" : "would update 3 properties",
+        // Issue #546: the backup could not read this profile's assignments.
+        ...(naturalKey === "deviceConfiguration:Windows baseline" ? { completion: [{ kind: "integration", requirement: "assignments",
+          description: "Assignments not restored: the backup could not read who it is assigned to, so the groups it applies to were left as they are. Check its assignments in the Intune admin center and set them by hand" }] } : {}) })),
       skipped: [], failed: [], notRemediable: [] },
       effectsDigest: "digest-1",
       contentEffectApprovals: contentEffectsApproved ? [{ approvedBy: "approver@contoso.example", approvedAt: "2026-10-03T08:00:00Z" }] : [],
@@ -453,6 +466,47 @@ function tierProgress(mode: "running" | "failed" | "done") {
     else types[type] = { outcome: count === 0 ? "complete-empty" : "complete", itemCount: count, startedAt, completedAt, httpStatus: 200, error: null };
   });
   return { types, updatedAt: "2026-10-02T09:39:40Z", source: "live" as const };
+}
+// A whole-tenant content backup that saved every workload but could not read some items.
+function contentPartialProgress() {
+  const at = (minute: number) => new Date(Date.parse("2026-10-02T01:02:00Z") + minute * 60_000).toISOString();
+  const locked = Array.from({ length: 10 }, (_, i) => `KEEL-RT-user-${String(i + 1).padStart(2, "0")}: HTTP 423 notAllowed for /v1.0/users/0000/drive`);
+  const mail = ["KEEL-RT-team mailbox (group): 1 read(s) failed (403 ErrorAccessDenied Access is denied)"];
+  const sites = ["KEEL-RT-search: 1 part(s) not fully read, first pages: failed (HTTP 404 /pages/microsoft.graph.sitePage)"];
+  const row = (outcome: string, itemCount: number, from: number, to: number, reasons: string[] = []): TypeProgress => ({
+    outcome, itemCount, startedAt: at(from), completedAt: at(to), httpStatus: null,
+    error: reasons.length ? reasons.join("\n").slice(0, 500) : null, ...(reasons.length ? { reasons, reasonCount: reasons.length } : {}),
+  });
+  return {
+    types: {
+      "content:exchange-mail": row("partial", 43, 0, 2, mail),
+      "content:onedrive": row("partial", 2996, 2, 43, locked),
+      "content:sharepoint-sites": row("partial", 5328, 43, 46, sites),
+      "content:teams": row("complete", 11, 46, 47),
+      "content:planner": row("complete", 80, 47, 47),
+    },
+    updatedAt: at(47), source: "live" as const,
+  };
+}
+// A settings-by-service backup that saved every workload but read some only in part.
+function servicePartialProgress() {
+  const at = (minute: number) => new Date(Date.parse("2026-10-02T02:00:00Z") + minute * 60_000).toISOString();
+  const flow = ["Transport rule: access denied: HTTP 403: Access is denied", "ATP policy: not licensed in this tenant (Defender for Office 365)"];
+  const mailboxes = ["More objects than one run reads (the limit is 50)", "KEEL-RT-mailbox-51@example.com: more than 50 mailboxes were named"];
+  const row = (outcome: string, itemCount: number, from: number, to: number, reasons: string[] = []): TypeProgress => ({
+    outcome, itemCount, startedAt: at(from), completedAt: at(to), httpStatus: null,
+    error: reasons.length ? reasons.join("\n").slice(0, 500) : null, ...(reasons.length ? { reasons, reasonCount: reasons.length } : {}),
+  });
+  return {
+    types: {
+      "workload:exchange-mailbox-settings": row("partial", 50, 0, 4, mailboxes),
+      "workload:exchange-mail-flow": row("partial", 40, 4, 6, flow),
+      "workload:sharepoint-site-settings": row("complete", 12, 6, 8),
+      "workload:teams-settings": row("complete", 31, 8, 9),
+      "workload:purview-labels": row("disabled", 0, 9, 9),
+    },
+    updatedAt: at(9), source: "live" as const,
+  };
 }
 const initialJobs = [
   job("a1", "backup", "running"),
@@ -715,6 +769,7 @@ const ROLE_EVIDENCE = evidenceWindow("roleAssignment", "2026-10-02T09:00:00Z", "
 const COMPLIANCE: ComplianceData = {
   generatedAt: now,
   activeBaseline: BASELINES[0],
+  standards: STANDARDS as unknown as KnownStandard[],
   summary: { controls: 5, exposed: 2, notConfigured: 1, excepted: 1, expiredExceptions: 1, incompleteExceptions: 0, passing: 1, unknown: 1, notApplicable: 0 },
   storage: { configured: true, provider: "local-disk", region: "westeurope", boundary: "keel-vps-backup-volume", immutability: "unsupported", generatedAt: "2026-10-02T05:00:00Z", certifies: null, source: "/opt/backups/keel-recovery-manifest.json" },
   findings: [
@@ -767,12 +822,48 @@ const COMPLIANCE: ComplianceData = {
 // Defender email controls, read from the Exchange mail protection policies: one failing
 // on two policies, one passing, and Safe Links not relevant (no Defender for Office 365).
 const MAIL_EVIDENCE = { resourceType: "exchange-mail-flow", window: { startedAt: "2026-10-02T02:00:00Z", endedAt: "2026-10-02T02:03:00Z" }, snapshotId: null, collectionId: "0c0f0000-0000-4000-8000-0000000000f1", completedAt: "2026-10-02T02:03:00Z" };
-const mailFinding = (id: string, controlId: string, verdict: ComplianceData["findings"][number]["verdict"], details: ComplianceData["findings"][number]["details"] = []): ComplianceData["findings"][number] => ({
+const mailFinding = (id: string, controlId: string, verdict: ComplianceData["findings"][number]["verdict"], details: ComplianceData["findings"][number]["details"] = [], fix: Partial<ComplianceData["findings"][number]> = {}): ComplianceData["findings"][number] => ({
   id: `e7a10000-0000-4000-8000-0000000000${id}`, controlId, title: null, severity: "high", framework: "keel-custom", edition: "1.0.0", profile: "default", evaluatorVersion: 1,
   verdict, reason: null, details, evaluatedAt: "2026-10-02T09:20:00Z", evidenceSeq: "4190", exceptionState: "none", exposed: verdict === "fail", exception: null,
   evidence: [MAIL_EVIDENCE],
   links: { backup: { state: "linked", linked: [MAIL_EVIDENCE], mismatched: [] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } },
+  ...fix,
 });
+// "Make it pass" on a mail protection policy: one row per failing setting, like the miss lines.
+const mailFix = (guid: string, name: string, field: string, from: unknown, to: unknown) => ({
+  naturalKey: `anti-spam-policy:${guid}#${field}`, resourceType: "exchangeAntiSpamPolicy", name, field, from, to,
+  snapshotId: MAIL_EVIDENCE.collectionId, seenAt: MAIL_EVIDENCE.completedAt,
+});
+const SPAM_FIX = {
+  fix: { resourceType: "exchangeAntiSpamPolicy", field: null, to: null, settings: { PhishSpamAction: "Quarantine", HighConfidencePhishAction: "Quarantine", PhishZapEnabled: true } },
+  fixCandidates: [
+    mailFix("0c0f5000-0000-4000-8000-000000000001", "Default", "HighConfidencePhishAction", "MoveToJmf", "Quarantine"),
+    mailFix("0c0f5000-0000-4000-8000-000000000001", "Default", "PhishZapEnabled", false, true),
+    mailFix("0c0f5000-0000-4000-8000-000000000002", "KEEL-RT-Finance inbound filtering for the accounts payable team", "PhishSpamAction", "AddXHeader", "Quarantine"),
+  ],
+};
+// Your own checks: one written for the tenant's own standard, and what one can be written on.
+const OWN_CHECK_FINDING: ComplianceFinding = {
+  ...COMPLIANCE.findings[0],
+  id: "e7a10000-0000-4000-8000-0000000000a7", controlId: "own.0c0c0000-0000-4000-8000-0000000000a7", title: "Every sign-in rule is on",
+  description: "Every conditionalAccessPolicy has state = \"enabled\". A check written by this tenant.", severity: "medium",
+  framework: "own", edition: "1", profile: "Contoso hardening", verdict: "fail", reason: null, exceptionState: "none", exception: null, exposed: true,
+  details: [{ subject: "Legacy pilot", setting: "state", value: "disabled", expected: "enabled" }],
+  fix: null, fixCandidates: [],
+  own: {
+    id: "0c0c0000-0000-4000-8000-0000000000a7", controlId: "own.0c0c0000-0000-4000-8000-0000000000a7", standard: "Contoso hardening", name: "Every sign-in rule is on",
+    resourceType: "conditionalAccessPolicy", field: "state", operator: "equals", expected: "enabled", appliesTo: "every", severity: "medium", createdBy: "p", createdAt: "2026-10-02T09:00:00Z",
+  },
+};
+const OWN_COMPLIANCE: ComplianceData = { ...COMPLIANCE, findings: [...COMPLIANCE.findings, OWN_CHECK_FINDING] };
+const OWN_CHOICES: OwnCheckChoices = {
+  snapshotId: "s1",
+  types: [
+    { resourceType: "conditionalAccessPolicy", count: 4, fields: [{ field: "displayName", values: ["Require MFA", "Legacy pilot"] }, { field: "state", values: ["enabled", "disabled"] }] },
+    { resourceType: "namedLocation", count: 2, fields: [{ field: "isTrusted", values: [true, false] }] },
+  ],
+};
+
 const DEFENDER_COMPLIANCE: ComplianceData = {
   ...COMPLIANCE,
   findings: [
@@ -781,7 +872,7 @@ const DEFENDER_COMPLIANCE: ComplianceData = {
       { subject: "Default", setting: "HighConfidencePhishAction", value: "MoveToJmf", expected: "Quarantine" },
       { subject: "Default", setting: "PhishZapEnabled", value: false, expected: true },
       { subject: "KEEL-RT-Finance inbound filtering for the accounts payable team", setting: "PhishSpamAction", value: "AddXHeader", expected: "Quarantine" },
-    ]),
+    ], SPAM_FIX),
     mailFinding("f2", "keel-custom.defender-email.malware-file-filter", "pass"),
     mailFinding("f3", "keel-custom.defender-email.safe-links-email", "not-applicable"),
   ],
@@ -1105,6 +1196,25 @@ const setupPermissions = (observed: SetupPermissions["observed"]): SetupPermissi
 });
 const catalogFor = (identity: "collector" | "restorer" | "content-reader", keep: (entry: PermissionEntry) => boolean = () => true): PermissionGrant[] =>
   (KEEL_PERMISSIONS as unknown as PermissionEntry[]).filter((entry) => entry.identity === identity && keep(entry)).map((entry) => ({ api: entry.api, name: entry.name }));
+// Connections (/api/setup `connections`): one row per Keel app, as the engine records it.
+const CONTENT_SCOPES = ["Files.Read.All", "Mail.Read", "Sites.Read.All", "Team.ReadBasic.All", "Tasks.Read.All"];
+const connection = (role: string, name: string, purpose: string, required: boolean, state: string, fields: {
+  appId?: string | null; expires?: string | null; wanted?: string[]; roles?: string[]; granted?: string[]; missing?: string[]; extra?: string[]; missingRoles?: string[] | null; enabled?: boolean | null; observed?: boolean;
+} = {}): Connection => ({
+  id: `connection-${role}`,
+  kind: "app", role, name, purpose, required, state, appId: fields.appId ?? null,
+  credentialExpiresAt: fields.expires ?? null,
+  credentialExpiresInDays: fields.expires ? Math.floor((Date.parse(fields.expires) - Date.parse(now)) / 86_400_000) : null,
+  wanted: fields.observed === false ? null : { permissions: fields.wanted ?? [], roles: fields.roles ?? [] },
+  observed: fields.observed === false ? null : {
+    at: "2026-10-02T09:38:00Z", displayName: name, enabled: fields.enabled ?? true,
+    grantedPermissions: fields.granted ?? [], missingPermissions: fields.missing ?? [], extraPermissions: fields.extra ?? [], missingRoles: fields.missingRoles === undefined ? [] : fields.missingRoles,
+  },
+  lastUsedAt: null, lastSignInAt: null, updatedAt: "2026-10-02T09:38:00Z",
+});
+const READER_PURPOSE = "Backs up your Microsoft 365 settings. Read only.";
+const CONTENT_PURPOSE = "Backs up mail, files, Teams and Planner. Read only.";
+const RESTORER_PURPOSE = "Puts settings back when you approve a restore.";
 // Backup reader: everything it needs, the optional audit search not yet, and one grant
 // Keel never uses. Restore writer: waiting on consent for the three setup permissions
 // (already on its list), and Exchange Online's permission not on its list at all.
@@ -1137,6 +1247,16 @@ const SETUP: SetupState = {
   checkFailed: false,
   collect: { allowed: false, basis: "read-access-unconfirmed", missing: ["Read Only Operator", "keel.collect"] },
   firstCollection: null,
+  // The reader still waits on its Intune role; the restorer waits on consent; content backup is not set up.
+  connections: [
+    connection("settings-reader", "Keel Settings Reader", READER_PURPOSE, true, "missing-permission", {
+      appId: READER_APP.appId, expires: "2027-03-01T00:00:00Z", wanted: READ_SCOPES, granted: READ_SCOPES, roles: ["Read Only Operator"], missingRoles: ["Read Only Operator"], extra: ["Policy.Read.PermissionGrant"],
+    }),
+    connection("content-reader", "Keel Content Reader", CONTENT_PURPOSE, false, "not-created", { observed: false }),
+    connection("settings-restorer", "Keel Settings Restorer", RESTORER_PURPOSE, false, "waiting-for-consent", {
+      appId: WRITER_APP.appId, expires: "2027-03-01T00:00:00Z", wanted: RESTORE_SCOPES, missing: RESTORE_SCOPES, roles: ["Privileged Role Administrator"], missingRoles: null,
+    }),
+  ],
   scopes: [
     {
       scope: "read", workloads: ["entra-collect", "intune-collect"], observed: true,
@@ -1180,9 +1300,17 @@ const SETUP_CHECKED: SetupState = {
   collect: { allowed: true, basis: "read-access-confirmed", missing: [] },
   firstCollection: null,
   // The settings reader's certificate runs out in 12 days; the restorer's is fine.
+  // Content reader working; restorer switched off between restores, holding one grant Keel never uses.
   connections: [
-    { role: "settings-reader", name: "Keel Settings Reader", appId: READER_APP.appId, credentialExpiresAt: "2026-10-14T09:00:00Z" },
-    { role: "settings-restorer", name: "Keel Settings Restorer", appId: null, credentialExpiresAt: "2027-04-01T00:00:00Z" },
+    connection("settings-reader", "Keel Settings Reader", READER_PURPOSE, true, "working", {
+      appId: READER_APP.appId, expires: "2026-10-14T09:00:00Z", wanted: READ_SCOPES.slice(1), granted: READ_SCOPES.slice(1),
+    }),
+    connection("content-reader", "Keel Content Reader", CONTENT_PURPOSE, false, "working", {
+      appId: "c0a7e470-0000-4000-8000-0000000000c3", expires: "2027-02-01T00:00:00Z", wanted: CONTENT_SCOPES, granted: CONTENT_SCOPES,
+    }),
+    connection("settings-restorer", "Keel Settings Restorer", RESTORER_PURPOSE, false, "switched-off", {
+      appId: null, expires: "2027-04-01T00:00:00Z", wanted: RESTORE_SCOPES, granted: RESTORE_SCOPES, extra: ["Channel.Create"], enabled: false,
+    }),
   ],
   scopes: [
     {
@@ -1610,12 +1738,14 @@ const ASK_MANY_RECORDS = Array.from({ length: 36 }, (_, index) => {
   return {
     kind: "change" as const, id, resourceType, naturalKey: `${resourceType}:${name} ${index + 1}`, name: `${name} ${index + 1}`, changeType, impact,
     decision: index % 5 === 0 ? "accept" : null, seenAt: `2026-${month}-${day}T${hour}:00:00.000Z`,
+    fields: changeType === "modified" ? (index % 3 === 0 ? ["accountEnabled", "department"] : ["displayName"]) : null,
     window: { from: `2026-${month}-${day}T${hour === "00" ? "00" : String(Number(hour) - 1).padStart(2, "0")}:00:00.000Z`, to: `2026-${month}-${day}T${hour}:00:00.000Z` },
     source: { kind: "change" as const, id, href: "/drift", collectionId: null },
   };
 });
 const ASK_MANY: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: {
-  ...ASK_BASE, scope: { central: true, entities: [] }, status: "partial", intent: "changes", question: "What Teams policies, groups and printers changed this week?",
+  ...ASK_BASE, scope: { central: true, entities: [] }, status: "partial", intent: "changes", question: "What Teams policies, groups and printers changed?",
+  assumed: ["period"],
   plan: { intent: "changes", params: { entity: null, from: "2026-09-28T00:00:00.000Z", to: now, resourceType: null, resourceTypes: null, name: null, changeType: null, limit: 100 } },
   ignored: ["printers"], total: 276, shown: 36, truncated: true, sentence: "276 matching changes found.",
   summary: [
@@ -2102,6 +2232,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     }
     case "/jobs/a1": { const detail = { ...jobs.find((item) => item.id === "a1")!, status: "running", finishedAt: null, progress: tierProgress("running") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/b2": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "b2", status: "succeeded", error: null, result: { partial: true, incompleteTypes: [{ type: "deviceCompliancePolicy", outcome: "failed" }, { type: "oauth2PermissionGrant", outcome: "partial" }] }, progress: tierProgress("done") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
+    case "/jobs/c3": { const progress = contentPartialProgress(); const detail = { ...jobs.find((item) => item.id === "a4")!, id: "c3", kind: "content-collect", params: {}, status: "succeeded", error: null, result: { partial: true, incompleteTypes: ["content:exchange-mail", "content:onedrive", "content:sharepoint-sites"].map((type) => ({ type, outcome: "partial", httpStatus: null, reasons: progress.types[type as keyof typeof progress.types].reasons })) }, progress }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
+    case "/jobs/w4": { const progress = servicePartialProgress(); const detail = { ...jobs.find((item) => item.id === "a4")!, id: "w4", kind: "workload-collect", params: {}, status: "succeeded", error: null, result: { partial: true, incompleteTypes: ["workload:exchange-mailbox-settings", "workload:exchange-mail-flow"].map((type) => ({ type, outcome: "partial", httpStatus: null, reasons: progress.types[type as keyof typeof progress.types].reasons })) }, progress }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/a4": { const detail = { ...jobs.find((item) => item.id === "a4")!, progress: tierProgress("failed") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/r10": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010" } }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
@@ -2152,10 +2284,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(COMPLIANCE.findings))} title="Compliance" />
       <CompliancePage canCheck={path === "/benchmarks"} canConfigure={path === "/benchmarks"} canRestore={path === "/benchmarks"} data={COMPLIANCE} now={now} /></>;
     }
+    case "/benchmarks/own": {
+      // A check the tenant wrote itself, beside Keel's, and the form that writes one.
+      return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(OWN_COMPLIANCE.findings))} title="Compliance" />
+      <CompliancePage canCheck canConfigure canRestore data={OWN_COMPLIANCE} now={now} ownChoices={OWN_CHOICES} /></>;
+    }
     case "/benchmarks/defender": {
       // Defender email controls beside the others: filed under Defender, failing settings in a table.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(DEFENDER_COMPLIANCE.findings))} title="Compliance" />
-      <CompliancePage canCheck canConfigure data={DEFENDER_COMPLIANCE} now={now} /></>;
+      <CompliancePage canCheck canConfigure canRestore data={DEFENDER_COMPLIANCE} now={now} /></>;
     }
     case "/benchmarks/empty": case "/benchmarks/empty-viewer": {
       // Nothing checked yet and the storage location not known: each empty state has its button.

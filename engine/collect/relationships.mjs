@@ -180,7 +180,9 @@ const ASSIGNMENT_ROUTES = Object.freeze({
   intuneBrandingProfile: { version: 'beta', base: '/deviceManagement/intuneBrandingProfiles', requires: SERVICE_CONFIG },
   // Restore gaps batch 15: custom attribute scripts, settings catalog
   // compliance policies and Windows app protection (beta-only routes).
-  deviceCustomAttributeShellScript: { version: 'beta', base: '/deviceManagement/deviceCustomAttributeShellScripts', requires: DEVICE_CONFIG },
+  // Graph has no /assignments route for custom attribute scripts (400, issue
+  // #546), so the script is read with its assignments expanded instead.
+  deviceCustomAttributeShellScript: { version: 'beta', base: '/deviceManagement/deviceCustomAttributeShellScripts', requires: DEVICE_CONFIG, read: 'expand' },
   deviceManagementCompliancePolicy: { version: 'beta', base: '/deviceManagement/compliancePolicies', requires: DEVICE_CONFIG },
   windowsManagedAppProtection: { version: 'beta', base: '/deviceAppManagement/windowsManagedAppProtections', requires: APPS },
   // Restore gaps batch 16: policy sets and iOS app provisioning profiles.
@@ -223,6 +225,10 @@ function resolveSpec(familyName, parentType, subtype = null) {
     const route = ASSIGNMENT_ROUTES[parentType];
     const base = assignmentBase(route, subtype);
     if (!base) return 'unsupported';
+    if (route.read === 'expand') {
+      return { ...ASSIGNMENT_FAMILY, parentType, version: route.version, requires: route.requires, expanded: 'assignments',
+        pathFor: (id) => `${base}/${encodeURIComponent(id)}?$expand=assignments` };
+    }
     return { ...ASSIGNMENT_FAMILY, parentType, version: route.version, requires: route.requires,
       pathFor: (id) => `${base}/${encodeURIComponent(id)}/assignments` };
   }
@@ -250,6 +256,22 @@ export class CrossTenantRelationshipError extends Error {
     super(message);
     this.name = 'CrossTenantRelationshipError';
   }
+}
+
+/**
+ * A parent read with a collection expanded comes back as one object; its
+ * items are that collection. An object without the collection is not a
+ * complete read, so it never counts as an empty set; nor does a list Graph
+ * paged.
+ */
+function expandedItems(result, key) {
+  if (result?.error || !Array.isArray(result?.items)) return result;
+  const lists = result.items.map((parent) => parent?.[key]);
+  // A paged expanded list would be cut short, so it is never called complete.
+  if (lists.length !== 1 || !Array.isArray(lists[0]) || result.items[0]?.[`${key}@odata.nextLink`]) {
+    return { ...result, items: undefined, pages: 0, error: { status: null, error: `the read did not include ${key}` } };
+  }
+  return { ...result, items: lists[0] };
 }
 
 function classify(result, project) {
@@ -334,6 +356,7 @@ export async function collectRelationships(reader, { tenantRef, parents, familie
       } catch (error) {
         result = { items: undefined, error: { error: error?.message ?? String(error) } };
       }
+      if (spec.expanded) result = expandedItems(result, spec.expanded);
       const completedAt = new Date();
       observations.push({
         ...base,

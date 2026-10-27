@@ -92,6 +92,32 @@ family(EXO, EXO_DOCS, {
   ],
 });
 
+// The mail protection policies. Only the settings Compliance's Defender email checks
+// can put right ("Make it pass"), plus on anti-spam and malware policies one harmless
+// switch a live write capture can flip on a KEEL-RT- policy; every other difference is
+// listed for an administrator. Default and built-in policies cover everyone, so the
+// fixture guard treats them as tenant-wide (cmdletSettings.mjs workloadTarget).
+family(EXO, EXO_DOCS, {
+  workload: MAIL_FLOW, prefix: 'mailflow.anti-phish-policy', family: 'antiPhishPolicy', resourceType: 'exchangeAntiPhishPolicy',
+  readBack: 'mailflow.anti-phish-policies', set: 'Set-AntiPhishPolicy',
+  fields: ['EnableSpoofIntelligence', 'HonorDmarcPolicy', 'EnableUnauthenticatedSender'],
+});
+family(EXO, EXO_DOCS, {
+  workload: MAIL_FLOW, prefix: 'mailflow.anti-spam-policy', family: 'antiSpamPolicy', resourceType: 'exchangeAntiSpamPolicy',
+  readBack: 'mailflow.anti-spam-policies', set: 'Set-HostedContentFilterPolicy',
+  fields: ['PhishSpamAction', 'HighConfidencePhishAction', 'PhishZapEnabled', 'AllowedSenderDomains', 'InlineSafetyTipsEnabled'],
+});
+family(EXO, EXO_DOCS, {
+  workload: MAIL_FLOW, prefix: 'mailflow.anti-malware-policy', family: 'antiMalwarePolicy', resourceType: 'exchangeAntiMalwarePolicy',
+  readBack: 'mailflow.anti-malware-policies', set: 'Set-MalwareFilterPolicy',
+  fields: ['AdminDisplayName', 'EnableFileFilter', 'ZapEnabled', 'CustomNotifications'],
+});
+family(EXO, EXO_DOCS, {
+  workload: MAIL_FLOW, prefix: 'mailflow.safe-links-policy', family: 'safeLinksPolicy', resourceType: 'exchangeSafeLinksPolicy',
+  readBack: 'mailflow.safe-links-policies', set: 'Set-SafeLinksPolicy',
+  fields: ['EnableSafeLinksForEmail', 'ScanUrls', 'AllowClickThrough'],
+});
+
 // ------------------------------------------- Exchange settings (READ-EXO)
 const EXTENDED = 'exchange-extended';
 const RECIPIENT_SCOPE = ['Priority', 'Comments', 'SentTo', 'SentToMemberOf', 'RecipientDomainIs', 'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'ExceptIfRecipientDomainIs'];
@@ -164,7 +190,7 @@ family(TEAMS, TEAMS_DOCS, {
   readBack: 'teams.federation-configuration', set: 'Set-CsTenantFederationConfiguration', identity: 'policy',
   fields: [
     'AllowFederatedUsers', 'BlockAllSubdomains', 'AllowTeamsConsumer', 'AllowTeamsConsumerInbound', 'RestrictTeamsConsumerToExternalUserProfiles',
-    'AllowPublicUsers', 'TreatDiscoveredPartnersAsUnverified', 'SharedSipAddressSpace', 'ExternalAccessWithTrialTenants',
+    'TreatDiscoveredPartnersAsUnverified', 'SharedSipAddressSpace', 'ExternalAccessWithTrialTenants',
   ],
 });
 family(TEAMS, TEAMS_DOCS, {
@@ -234,7 +260,8 @@ voice('eventsPolicy', 'events-policy', 'events-policies', 'Set-CsTeamsEventsPoli
   'TownhallChatExperience', 'RecordingForTownhall', 'RecordingForWebinar', 'TranscriptionForTownhall', 'TranscriptionForWebinar',
 ]);
 voice('liveEventsConfiguration', 'live-events-configuration', 'live-events-configuration', 'Set-CsTeamsMeetingBroadcastConfiguration', null, 'teamsLiveEventsConfiguration', [
-  'SupportURL', 'AllowSdnProviderForBroadcastMeeting', 'SdnName', 'SdnLicenseId', 'SdnApiTemplateUrl',
+  // The Sdn* provider fields are never read back (Q155), so KEEL never has a value to write.
+  'SupportURL', 'AllowSdnProviderForBroadcastMeeting',
 ]);
 
 // ---------------------------------------------- Purview retention and DLP

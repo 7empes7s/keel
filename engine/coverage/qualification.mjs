@@ -219,7 +219,7 @@ export const TYPE_DECISIONS = Object.freeze({
   defenderRoleAssignment: manual('Defender admin access needs a privilege review before it is granted again'),
   defenderCustomAppScope: manual('no writer yet; beta only'),
   // Remaining kinds, batch 6: Intune leftovers, backed up read-only; no writer is built yet.
-  deviceManagementSettings: automated('intune-shared-devicemanagement', 'restore gaps batch 17: update in place through Graph beta of the compliance settings and the device cleanup window; devices with no compliance policy are never turned compliant, and cleanup never retires devices sooner', { view: 'graph-rest-beta' }),
+  deviceManagementSettings: automated('intune-shared-devicemanagement', 'restore gaps batch 17: update in place through Graph beta of the compliance settings; devices with no compliance policy are never turned compliant; the device cleanup window is the device cleanup rules', { view: 'graph-rest-beta' }),
   androidDeviceOwnerEnrollmentProfile: automated('intune-androidforwork-androiddeviceownerenrollmentprofile', 'restore gaps batch 10: create and update of the profile through Graph beta; the enrollment token, QR code and Wi-Fi password are not backed up, so a profile on a secured Wi-Fi network is recreated by hand', { view: 'graph-rest-beta' }),
   androidForWorkEnrollmentProfile: automated('intune-androidforwork-androidforworkenrollmentprofile', 'restore gaps batch 10: create and update of the name and description through Graph beta; a recreated profile gets a new enrollment token by hand', { view: 'graph-rest-beta' }),
   appleUserInitiatedEnrollmentProfile: automated('intune-enrollment-appleuserinitiatedenrollmentprofile', 'restore gaps batch 8: create and update of the profile through Graph beta; its place in the priority order and who it is assigned to are set again by hand', { view: 'graph-rest-beta' }),
@@ -1095,7 +1095,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'backed up; no writer yet'),
   // Remaining kinds, batch 6: Intune leftovers, backed up read-only; manual until a writer is built.
   deviceManagementSettings: subset('device-management', 'PATCH /deviceManagement (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
-    'update in place of settings and managedDeviceCleanupSettings is fixture-tested; never loosens compliance or retires devices sooner'),
+    'update in place of settings is fixture-tested; never loosens compliance'),
   androidDeviceOwnerEnrollmentProfile: subset('device-management', 'POST /deviceManagement/androidDeviceOwnerEnrollmentProfiles (beta); PATCH .../{id} (beta)', 'DeviceManagementServiceConfig.ReadWrite.All',
     'create and update are fixture-tested; the enrollment token, QR code and Wi-Fi password are not written'),
   androidForWorkEnrollmentProfile: subset('device-management', 'POST /deviceManagement/androidForWorkEnrollmentProfiles (beta); PATCH .../{id} (beta)', 'DeviceManagementServiceConfig.ReadWrite.All',

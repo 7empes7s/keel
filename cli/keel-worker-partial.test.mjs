@@ -64,6 +64,40 @@ async function run(kind, scriptPath, { partialExitCode = PARTIAL_EXIT_CODE } = {
 // Both entry points to the collector treat exit 3 as partial.
 assert.equal(JOB_HANDLERS.collect.partialExitCode, PARTIAL_EXIT_CODE);
 assert.equal(JOB_HANDLERS.backup.partialExitCode, PARTIAL_EXIT_CODE);
+// So does the content backup: locked OneDrives or one refused mailbox are partly done.
+assert.equal(JOB_HANDLERS['content-collect'].partialExitCode, PARTIAL_EXIT_CODE);
+// And the settings-by-service backup: one refused family or a read limit is partly done.
+assert.equal(JOB_HANDLERS['workload-collect'].partialExitCode, PARTIAL_EXIT_CODE);
+
+// A partial service backup finishes and keeps each workload's unread parts.
+{
+  const workloads = [{ type: 'workload:exchange-mail-flow', outcome: 'partial', httpStatus: null, items: 40, reasonCount: 1, reasons: ['Transport rule: access denied: HTTP 403'] }];
+  const serviceLine = `${INCOMPLETE_TYPES_PREFIX}${JSON.stringify(workloads)}`;
+  const servicePartial = script('service-partial.mjs', `console.log('exchange-mail-flow: partial');\nconsole.log(${JSON.stringify(serviceLine)});\nprocess.exitCode = 3;\n`);
+  const serviceFailed = script('service-failed.mjs', `console.log(${JSON.stringify(serviceLine)});\nprocess.exitCode = 1;\n`);
+  const fake = await run('workload-collect', servicePartial);
+  assert.equal(fake.failed.length, 0, `workload-collect: a partial run must not fail: ${fake.failed[0]?.[1]}`);
+  assert.equal(fake.completed[0][1].partial, true);
+  assert.deepEqual(fake.completed[0][1].incompleteTypes, workloads);
+  const failedRun = await run('workload-collect', serviceFailed);
+  assert.equal(failedRun.completed.length, 0, 'workload-collect exit 1 stays a failure');
+  assert.match(failedRun.failed[0][1], /^exit code 1/);
+}
+
+// A partial content backup finishes and keeps each workload's unread items.
+{
+  const workloads = [{ type: 'content:onedrive', outcome: 'partial', httpStatus: null, items: 2996, reasonCount: 1, reasons: ['KEEL-RT-user: HTTP 423 notAllowed'] }];
+  const contentLine = `${INCOMPLETE_TYPES_PREFIX}${JSON.stringify(workloads)}`;
+  const contentPartial = script('content-partial.mjs', `console.log('onedrive: partial');\nconsole.log(${JSON.stringify(contentLine)});\nprocess.exitCode = 3;\n`);
+  const contentFailed = script('content-failed.mjs', `console.log(${JSON.stringify(contentLine)});\nprocess.exitCode = 1;\n`);
+  const fake = await run('content-collect', contentPartial);
+  assert.equal(fake.failed.length, 0, `content-collect: a partial run must not fail: ${fake.failed[0]?.[1]}`);
+  assert.equal(fake.completed[0][1].partial, true);
+  assert.deepEqual(fake.completed[0][1].incompleteTypes, workloads);
+  const failedRun = await run('content-collect', contentFailed);
+  assert.equal(failedRun.completed.length, 0, 'content-collect exit 1 stays a failure');
+  assert.match(failedRun.failed[0][1], /^exit code 1/);
+}
 
 // A partial collect finishes, keeps its stdout (completions.mjs reads the snapshot id
 // from it) and names each type it did not read in full.

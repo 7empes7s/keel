@@ -582,9 +582,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Recreate each policy in the Intune admin center from the backup, with the same approver groups.
 - **macOS custom attribute scripts.** Recreates scripts and puts the script, its settings and who it runs on back.
   - *You do:* Who a script runs on is put back only when the script is picked for a restore, from backups taken after assignments were read. A backup taken before scripts were read in full holds only the settings; take a new backup.
-- **Intune tenant settings.** Puts back the compliance settings, such as how devices with no compliance policy are marked and how long a device may go without checking in, and the device cleanup window.
-  - *Not brought back:* the Company Portal brand, written as the default branding profile (stored separately and not in the backup yet); marking devices with no compliance policy as compliant, and a shorter device cleanup (in the backup, but KEEL does not write it yet).
-  - *You do:* A restore never marks devices with no compliance policy as compliant and never makes device cleanup retire devices sooner: change those by hand in the Intune admin center, under Endpoint security, Device compliance, Compliance settings, and under Devices, Device clean-up rules. The Company Portal contact details are put back with the default branding profile.
+- **Intune tenant settings.** Puts back the compliance settings, such as how devices with no compliance policy are marked and how long a device may go without checking in. The device cleanup window is put back with the device cleanup rules.
+  - *Not brought back:* the Company Portal brand, written as the default branding profile (stored separately and not in the backup yet); marking devices with no compliance policy as compliant (in the backup, but KEEL does not write it yet).
+  - *You do:* A restore never marks devices with no compliance policy as compliant: change that by hand in the Intune admin center, under Endpoint security, Device compliance, Compliance settings. The Company Portal contact details are put back with the default branding profile.
 - **Android Enterprise enrollment profiles.** Recreates profiles and puts back their name, description, device name template and Wi-Fi network; the enrollment mode is set when a profile is recreated. A profile on a secured Wi-Fi network is recreated by hand, because the Wi-Fi password is not backed up.
   - *Not brought back:* enrollment token, QR code and Wi-Fi password (Microsoft never returns it).
   - *You do:* A recreated profile has a new enrollment token and QR code: make a token in the Intune admin center, under Devices, Enrollment, Android, and hand it out again. Recreate a profile on a secured Wi-Fi network by hand and type the password again.
@@ -751,6 +751,10 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: Mail flow (transport) rules (switched on only after the restore of mailbox client access settings is proven)
 - Put back: Inbound connectors (switched on only after the restore of mailbox client access settings is proven)
 - Put back: Outbound connectors (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Anti-phishing policies (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Anti-spam (hosted content filter) policies (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Anti-malware policies (switched on only after the restore of mailbox client access settings is proven)
+- Put back: Safe Links policies (switched on only after the restore of mailbox client access settings is proven)
 
 **You do:** Domains, anti-spam, anti-phish, malware, DKIM, Safe Links and Safe Attachments policies, a rule turned on or off, and a deleted rule or connector are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a mail flow rule other than its comment needs a second approver. Safe Links and Safe Attachments are backed up only when the tenant has Defender for Office 365.
 
@@ -851,6 +855,16 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: Safe Attachments for SharePoint, OneDrive and Teams (switched on only after the restore of mailbox client access settings is proven)
 
 **You do:** A rule turned on or off, a deleted object, and settings KEEL does not restore are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a spam, anti-phish or Safe Attachments rule other than its comment needs a second approver. Safe Links and Safe Attachments rules and the Defender preset rules are backed up only when the tenant has Defender for Office 365.
+
+### Exchange admin role groups
+
+**Backed up:**
+
+- Exchange admin role groups
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore role groups. A deleted group, its roles and its members are put back by hand in the Exchange admin center using the backup. Microsoft's built-in groups cannot be deleted, only their members changed.
 
 ### Teams calling, voice and live event policies
 

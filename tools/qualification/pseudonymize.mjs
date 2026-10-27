@@ -8,7 +8,9 @@
  * or `onPremisesSecurityIdentifier` field whatever its shape) a SID-shaped one, every immutable id a
  * base64-shaped one, every tenant host prefix (`<prefix>[-my|-admin].sharepoint.com`,
  * `<prefix>.onmicrosoft.com`) a host-shaped one, and the user part and mail domain of every
- * SharePoint claims login (`i:0#.f|membership|user@domain`) pseudonyms of their own. All are derived from the record's tenantRef,
+ * SharePoint claims login (`i:0#.f|membership|user@domain`) and of every other sign-in name or mail
+ * address (`user@domain`, `user%40domain`, a OneDrive `/personal/user_domain_com` path, a
+ * `publisherDomain`) pseudonyms of their own. All are derived from the record's tenantRef,
  * so the same id maps to the same pseudonym in every gate captured for that tenant: equality
  * checks inside a record, across its capture log and along the gate chain still hold, and
  * validators keep their shape checks.
@@ -65,6 +67,40 @@ const CLAIMS_LOGIN = /((?:\||%7c)membership(?:\||%7c))([a-z0-9._'+-]+)(@|%40)([a
 const CLAIMS_USER_PSEUDONYM = /^(?:keel-rt-)?u[0-9a-f]{12}$/;
 const CLAIMS_DOMAIN_PSEUDONYM = /^t[0-9a-f]{11}\.(?:onmicrosoft\.com|example)$/;
 const FIXTURE_USER_PREFIX = 'keel-rt-';
+
+// A sign-in name or mail address (`user@domain`, or `user%40domain` in a URL path) outside a claims
+// login. It starts after a non-name character or right after a %XX escape (`%2Fuser%40…`).
+// Graph annotations (`value@odata.context`, `@microsoft.graph.conflictBehavior`) are not addresses.
+const MAIL = /(?:(?<=%[0-9a-f]{2})|(?<![a-z0-9._+%-]|%[0-9a-f]))([a-z0-9][a-z0-9._'+-]*)(@|%40)((?:[a-z0-9-]+\.)+[a-z]{2,})(?![a-z0-9-]|\.[a-z0-9])/gi;
+const ANNOTATION_DOMAIN = /^(?:odata|microsoft\.graph)\./i;
+// Reserved names (RFC 2606 / 6761) never name a real tenant: test fixtures use them as they are.
+const RESERVED_DOMAIN = /(?:^|\.)(?:example|test|invalid|localhost|example\.(?:com|net|org))$/i;
+// A soft-deleted user's sign-in name is its object id (32 hex digits, no dashes) glued to the old one.
+const DELETED_PREFIX = /^([0-9a-f]{32})(?![0-9a-f])/i;
+const MAIL_USER_PSEUDONYM = /^(?:[0-9a-f]{32})?(?:keel-rt-)?u[0-9a-f]{12}$/;
+// A OneDrive personal site is named after its owner's sign-in name, with `.` and `@` written `_`
+// (`/personal/alice_contoso_com`). A site name without a domain tail (`keel-rt-absent-1234`) is left alone.
+const PERSONAL_SITE = /((?:\/|%2f)personal(?:\/|%2f))([a-z0-9][a-z0-9.-]*(?:_[a-z0-9-]+)*_[a-z0-9-]+_[a-z]{2,})(?![a-z0-9_.-])/gi;
+const PERSONAL_SITE_PSEUDONYM = /^(?:keel-rt-)?u[0-9a-f]{12}_t[0-9a-f]{11}_example$/;
+// Fields that hold a bare mail domain of the tenant.
+const DOMAIN_KEYS = new Set(['publisherDomain']);
+const DOMAIN_FIELD = /"publisherDomain"\s*:\s*"([^"]*)"/gi;
+
+const isMailToRewrite = (user, domain) => !ANNOTATION_DOMAIN.test(domain) && !RESERVED_DOMAIN.test(domain)
+  && !(MAIL_USER_PSEUDONYM.test(user.toLowerCase()) && CLAIMS_DOMAIN_PSEUDONYM.test(domain.toLowerCase()));
+const isDomainPseudonym = (domain) => domain === '' || RESERVED_DOMAIN.test(domain) || CLAIMS_DOMAIN_PSEUDONYM.test(domain.toLowerCase());
+
+/** Every sign-in name, mail address, OneDrive personal site name and domain field in `text` that is not a pseudonym, lower-cased and deduplicated. */
+export function unpseudonymizedMailNames(text) {
+  // A claims login is listed by its own rule, not again as an address.
+  const outsideClaims = text.replace(CLAIMS_LOGIN, ' ');
+  const found = [
+    ...[...outsideClaims.matchAll(MAIL)].filter((m) => isMailToRewrite(m[1], m[3])).map((m) => m[0]),
+    ...[...text.matchAll(PERSONAL_SITE)].filter((m) => !PERSONAL_SITE_PSEUDONYM.test(m[2].toLowerCase())).map((m) => m[0]),
+    ...[...text.matchAll(DOMAIN_FIELD)].filter((m) => !isDomainPseudonym(m[1])).map((m) => m[0]),
+  ];
+  return [...new Set(found.map((value) => value.toLowerCase()))];
+}
 
 /** Every SharePoint claims login in `text` (from its `|membership|` separator on), lower-cased and deduplicated. */
 export function claimsLogins(text) {
@@ -125,7 +161,7 @@ export function roleAssignmentIdGuids(token) {
 export function rawIdentifiers(text) {
   const roleAssignmentIds = [...text.matchAll(ROLE_ASSIGNMENT_TOKEN)].filter((m) => roleAssignmentIdGuids(m[0]));
   return [...new Set([...[...text.matchAll(GUID), ...text.matchAll(HEX_GUID), ...text.matchAll(CLOUD_SID), ...text.matchAll(ONPREM_SID), ...roleAssignmentIds]
-    .map((m) => m[0].toLowerCase()), ...claimsLogins(text)])];
+    .map((m) => m[0].toLowerCase()), ...claimsLogins(text), ...unpseudonymizedMailNames(text)])];
 }
 
 /**
@@ -137,9 +173,13 @@ export function rawIdentifiers(text) {
  * user part and its domain have the pseudonym shape.
  */
 export function unpseudonymizedIds(text) {
-  const isPseudonym = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-8/i.test(value);
+  // A GUID that is all zeros but for its version and variant digits is a placeholder (a probe
+  // path such as `/restore/dry-run/00000000-0000-4000-8000-000000000000`), never a tenant's id.
+  const isPseudonym = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-8/i.test(value) || /^0{8}-0{4}-[0-9a-f]0{3}-[0-9a-f]0{3}-0{12}$/i.test(value);
   const rawClaims = new Set(unpseudonymizedClaimsLogins(text));
+  const rawMail = new Set(unpseudonymizedMailNames(text));
   return rawIdentifiers(text).filter((id) => {
+    if (rawMail.has(id)) return true;
     // A claims login is checked by shape: a pseudonymized one has a digest user part and domain.
     if (/^(?:\||%7c)membership/.test(id)) return rawClaims.has(id);
     if (GUID_ONLY.test(id)) return !isPseudonym(id);
@@ -202,6 +242,21 @@ export function pseudonymizer(tenantRef) {
   };
   const claimsDomain = (domain) => (/\.onmicrosoft\.com$/i.test(domain) ? domain : `${host(`mail:${domain}`)}.example`);
   const claims = (value) => value.replace(CLAIMS_LOGIN, (_, sep, user, at, domain) => `${sep}${claimsUser(user)}${at}${claimsDomain(domain)}`);
+  // Any other sign-in name or mail address maps like a claims login, so the same person reads the
+  // same in both forms. A soft-deleted user's object id prefix has already been pseudonymized.
+  const mailUser = (user) => {
+    const deleted = DELETED_PREFIX.exec(user);
+    return deleted ? `${deleted[1]}${claimsUser(user.slice(32))}` : claimsUser(user);
+  };
+  const mail = (value) => value.replace(MAIL, (whole, user, at, domain) => (isMailToRewrite(user, domain) ? `${mailUser(user)}${at}${claimsDomain(domain)}` : whole));
+  // A personal site name cannot be split back into user and domain, so it maps whole.
+  const personalSite = (value) => value.replace(PERSONAL_SITE, (whole, path, name) => {
+    if (PERSONAL_SITE_PSEUDONYM.test(name.toLowerCase())) return whole;
+    const lower = name.toLowerCase();
+    const prefix = lower.startsWith(FIXTURE_USER_PREFIX) ? FIXTURE_USER_PREFIX : '';
+    return `${path}${prefix}u${digest('personal-site', lower).slice(0, 12)}_${host(`personal-site:${lower}`)}_example`;
+  });
+  const mailDomain = (value) => (typeof value === 'string' && !isDomainPseudonym(value) ? claimsDomain(text(value)) : value);
   const hexGuid = (value) => guid(dashed(value)).replace(/-/g, '');
   const plain = (value) => value.replace(GUID, guid).replace(HEX_GUID, hexGuid).replace(CLOUD_SID, cloudSid).replace(ONPREM_SID, onPremSid).replace(TENANT_HOST, host);
   // A role assignment id maps through the two GUIDs it encodes, like a cloud SID.
@@ -223,7 +278,7 @@ export function pseudonymizer(tenantRef) {
     if (reencode(decoded) !== token || !/^[\x20-\x7e]+$/.test(inner) || !inner.match(GUID)) return token;
     return reencode(Buffer.from(plain(inner), 'latin1'));
   };
-  const text = (value) => claims(plain(value.replace(ROLE_ASSIGNMENT_TOKEN, roleAssignmentId).replace(BASE64_TOKEN, encoded)));
+  const text = (value) => personalSite(mail(claims(plain(value.replace(ROLE_ASSIGNMENT_TOKEN, roleAssignmentId).replace(BASE64_TOKEN, encoded)))));
   const walk = (value) => {
     if (typeof value === 'string') return text(value);
     if (Array.isArray(value)) return value.map(walk);
@@ -231,12 +286,13 @@ export function pseudonymizer(tenantRef) {
       return Object.fromEntries(Object.entries(value).map(([key, item]) => {
         if (IMMUTABLE_ID_KEYS.has(key)) return [text(key), walk(immutableId(item))];
         if (SID_KEYS.has(key) && typeof item === 'string') return [text(key), securityIdentifier(item)];
+        if (DOMAIN_KEYS.has(key)) return [text(key), mailDomain(item)];
         return [text(key), walk(item)];
       }));
     }
     return value;
   };
-  return { guid, host, cloudSid, onPremSid, immutableId, roleAssignmentId, securityIdentifier, claims, text, walk };
+  return { guid, host, cloudSid, onPremSid, immutableId, roleAssignmentId, securityIdentifier, claims, mail, personalSite, text, walk };
 }
 
 /**

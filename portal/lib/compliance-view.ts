@@ -231,6 +231,14 @@ export function settingValueWords(value: unknown, setting?: string): string {
 
 export interface ControlCheck { subject: string; setting: string; now: string; shouldBe: string; ok: boolean }
 
+/** The engine keeps at most this many lines per result, failing ones first (MAX_DETAILS). */
+export const CHECK_LINE_LIMIT = 50;
+
+/** Whether the stored lines may be cut short, so counts are "at least", never exact. */
+export function checksCapped(checks: ControlCheck[]): boolean {
+  return checks.length >= CHECK_LINE_LIMIT;
+}
+
 /**
  * Every setting the control checked, current against expected, in plain words. Failing
  * lines come first; otherwise the engine's order (object by object) is kept.

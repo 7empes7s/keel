@@ -18,6 +18,8 @@ import {
   canFixOn,
   canGrantOn,
   checkSubjectWord,
+  CHECK_LINE_LIMIT,
+  checksCapped,
   controlChecks,
   controlName,
   controlService,
@@ -190,20 +192,23 @@ function ControlChecks({ checks, subject }: { checks: ControlCheck[]; subject: s
   const passing = checks.length - failing;
   const [every, setEvery] = useState(false);
   const shown = failing && !every ? checks.filter((check) => !check.ok) : checks;
+  // Only the first lines are kept on a large tenant: never print a count as if it were all.
+  const capped = checksCapped(checks);
   return (
     <section aria-labelledby="cp-checks-heading" className="cp-block">
       <h3 id="cp-checks-heading">
         {failing ? "What fails" : "Settings checked"}{" "}
         {failing ? <Badge tone="urgent">{failing === 1 ? "1 setting" : `${failing} settings`}</Badge> : null}{" "}
-        {passing ? <Badge tone="fine">{failing ? `${passing} meet the standard` : passing === 1 ? "Meets the standard" : `All ${passing} meet the standard`}</Badge> : null}
+        {passing ? <Badge tone="fine">{failing ? `${passing}${capped ? " or more" : ""} meet the standard` : passing === 1 ? "Meets the standard" : capped ? "All shown meet the standard" : `All ${passing} meet the standard`}</Badge> : null}
       </h3>
       {failing && passing ? (
         <div className="cp-checks-tools">
           <ChangeComparisonStyles />
-          <EveryToggle on={every} onChange={setEvery} total={checks.length} />
+          <EveryToggle more={capped} on={every} onChange={setEvery} total={checks.length} />
           {every ? null : <small>Hidden: {passing === 1 ? "1 setting meets" : `${passing} settings meet`} the standard.</small>}
         </div>
       ) : null}
+      {capped ? <p className="bl-help">Keel keeps the first {CHECK_LINE_LIMIT} settings it checked, failing ones first.</p> : null}
       <table className="cp-misses">
         <thead><tr><th scope="col">{subject}</th><th scope="col">Setting</th><th scope="col">Now</th><th scope="col">Should be</th></tr></thead>
         <tbody>

@@ -7,7 +7,9 @@ import {
   complianceScore,
   complianceStatus,
   complianceVerdict,
+  CHECK_LINE_LIMIT,
   checkSubjectWord,
+  checksCapped,
   controlChecks,
   controlMisses,
   controlName,
@@ -273,4 +275,8 @@ test("Settings checked: expected against current for every setting, failing firs
   assert.equal(checkSubjectWord(finding("g1", "keel-custom.group.role-assignable-not-synced", "pass")), "Group");
   assert.equal(settingValueWords(true, "onPremisesSyncEnabled"), "Yes");
   assert.equal(settingValueWords(true, "ZapEnabled"), "On");
+  // A full list may have been cut short by the engine, so its counts are "at least".
+  const line = { subject: "Default", setting: "On", now: "On", shouldBe: "On", ok: true };
+  assert.equal(checksCapped(Array.from({ length: CHECK_LINE_LIMIT - 1 }, () => line)), false);
+  assert.equal(checksCapped(Array.from({ length: CHECK_LINE_LIMIT }, () => line)), true);
 });

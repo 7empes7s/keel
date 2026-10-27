@@ -423,7 +423,7 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   approval id and the approval request's `executor`. It will be re-queued once #592 is live.
 - Needs: `grep -q workloadPowershellConfigPath /opt/keel-live/cli/keel-restore.mjs`.
 - Decision: needs the **K14** line under **Operator decisions** (human only). If it is blank, leave this item `todo`.
-- Status: todo
+- Status: in-progress
 - Result:
 
 Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q159):

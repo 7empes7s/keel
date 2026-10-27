@@ -560,17 +560,21 @@ function blocksLegacy(fact) {
 }
 
 // How far a policy reaches, in words for its detail line: 'All', 'Only some' or 'None'.
-// Never the user, group or app ids it names (the line is shown on the page).
-function reach(list) {
-  if (!Array.isArray(list) || list.length === 0) return 'None';
-  return list.includes('All') ? 'All' : 'Only some';
+// Never the user, group or app ids it names (the line is shown on the page). Microsoft
+// writes ['None'] for nothing, and a rule for groups or roles has no includeUsers.
+function reach(list, others = []) {
+  const named = Array.isArray(list) ? list.filter((entry) => entry !== 'None') : [];
+  if (named.includes('All')) return 'All';
+  if (named.length > 0 || others.some((other) => Array.isArray(other) ? other.length > 0 : Boolean(other))) return 'Only some';
+  return 'None';
 }
 
 // The four settings that decide whether one blocking policy blocks legacy sign-in.
 function legacyLines(fact) {
   const subject = objectName(fact, 'Unnamed sign-in rule');
   const clients = LEGACY_CLIENTS.filter((client) => fact.conditions.clientAppTypes.includes(client));
-  const users = reach(fact.conditions?.users?.includeUsers);
+  const scope = fact.conditions?.users ?? {};
+  const users = reach(scope.includeUsers, [scope.includeGroups, scope.includeRoles, scope.includeGuestsOrExternalUsers]);
   const apps = reach(fact.conditions?.applications?.includeApplications);
   return [
     { subject, setting: 'state', value: fact.state ?? null, expected: 'enabled', ok: fact.state === 'enabled' },

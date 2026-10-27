@@ -152,3 +152,16 @@ test('not set up yet has no lines: there is no policy to name', () => {
   const result = check([policy('mfa', 'enabled', ['all'], ['mfa'])]);
   assert.equal(result.details, null);
 });
+
+test('a rule for groups, roles or nobody says so without naming them', () => {
+  const lineFor = (users, apps = ['All']) => {
+    const legacy = policy('scoped', 'enabled', ['exchangeActiveSync', 'other'], ['block'], [], apps);
+    Object.assign(legacy.conditions.users, users);
+    const details = check([legacy]).details;
+    return [details.find((line) => line.setting === 'includeUsers').value, details.find((line) => line.setting === 'includeApplications').value];
+  };
+  assert.deepEqual(lineFor({ includeGroups: ['group-1'] }), ['Only some', 'All']);
+  assert.deepEqual(lineFor({ includeRoles: ['role-1'] }), ['Only some', 'All']);
+  assert.deepEqual(lineFor({ includeGuestsOrExternalUsers: { guestOrExternalUserTypes: 'b2bCollaborationGuest' } }), ['Only some', 'All']);
+  assert.deepEqual(lineFor({ includeUsers: ['None'] }, ['None']), ['None', 'None']);
+});

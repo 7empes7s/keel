@@ -569,7 +569,7 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
   2. Every workload run name the database knows that mentions site permissions or grants:
      `SELECT workload, outcome, max(created_at) FROM workload_collection WHERE workload ILIKE '%site-perm%' OR workload ILIKE '%site-grant%' GROUP BY 1, 2;`
   3. Their evidence rows: `SELECT operation_id, kind, ok, read_back_verified, captured_at, error FROM workload_ledger_evidence WHERE operation_id ILIKE '%site-perm%' OR operation_id ILIKE '%site-grant%' ORDER BY captured_at DESC;`
-  4. The newest jobs that name them: `SELECT id, kind, status, created_at, error FROM job WHERE payload::text ILIKE '%sharepoint-site-permissions%' OR payload::text ILIKE '%sharepoint-site-grants%' ORDER BY created_at DESC LIMIT 5;`
+  4. The newest jobs that name them: `SELECT id, kind, status, created_at, error FROM job WHERE params::text ILIKE '%sharepoint-site-permissions%' OR params::text ILIKE '%sharepoint-site-grants%' ORDER BY created_at DESC LIMIT 5;`
 - **Expected:** either a run with an outcome and reasons, or no rows (the reads never ran).
 - **Report:** the build and each step's rows (or "no rows"). Name any reason or error verbatim. Never print a secret.
 

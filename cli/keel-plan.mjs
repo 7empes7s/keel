@@ -5,6 +5,7 @@
 //                     --target-config /etc/keel/tenant-target.json \
 //                     --db-url $KEEL_DB_URL
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { pathToFileURL } from 'node:url';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { GraphReader } from '../tools/tenant-probe/graph.mjs';
@@ -20,6 +21,13 @@ import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 function arg(name, fallback, argv = process.argv) {
   const i = argv.indexOf(`--${name}`);
   return i > -1 ? argv[i + 1] : fallback;
+}
+
+// The target tenant has no default file: name the missing flag, not an "undefined" path.
+function requiredTargetConfig(argv) {
+  const path = arg('target-config', undefined, argv);
+  if (!path) throw new Error('--target-config is required (the target tenant settings file)');
+  return path;
 }
 
 function isUsableSnapshot(snapshot) {
@@ -106,8 +114,8 @@ export async function main({
   dependencies,
   logger = console,
 } = {}) {
-  const sourceConfig = JSON.parse(readFile(arg('source-config', '/etc/keel/tenant.json', argv), 'utf8'));
-  const targetConfig = JSON.parse(readFile(arg('target-config', undefined, argv), 'utf8'));
+  const sourceConfig = readConfigFile(arg('source-config', '/etc/keel/tenant.json', argv), { readFile, what: 'source tenant settings' });
+  const targetConfig = readConfigFile(requiredTargetConfig(argv), { readFile, what: 'target tenant settings' });
   return runPlan({
     sourceConfig,
     targetConfig,

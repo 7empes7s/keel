@@ -13,6 +13,7 @@
 // --public-key prints the verify key to give another Keel. Writes the local database
 // and, for a bundle that carries content bytes, the content store; never a tenant.
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { pathToFileURL } from 'node:url';
 import { connect } from '../engine/store/db.mjs';
 import { can } from '../engine/authz/can.mjs';
@@ -29,7 +30,7 @@ export function arg(argv, name, fallback) {
 
 /** The content store the content-reader file names (see keel-content-collect.mjs). */
 export function contentStoreFromReader(client, readerPath, readFile = readFileSync) {
-  const reader = JSON.parse(readFile(readerPath, 'utf8'));
+  const reader = readConfigFile(readerPath, { readFile, what: 'content backup reader settings' });
   if (reader?.storage?.kind !== 'local' || typeof reader.storage.root !== 'string') {
     throw new Error(`${readerPath}: storage must be { "kind": "local", "root": "<absolute path>" }`);
   }

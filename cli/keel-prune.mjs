@@ -7,6 +7,7 @@
 // stays and why) and deletes nothing. --dry-run is accepted and means the same. With
 // --apply it saves the same report, then deletes exactly what the report lists.
 import { readFileSync, writeFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { createHash } from 'node:crypto';
 import { connect } from '../engine/store/db.mjs';
 import { runPrune } from '../engine/store/retention.mjs';
@@ -28,7 +29,7 @@ async function main() {
 
   const apply = process.argv.includes('--apply');
   if (apply && process.argv.includes('--dry-run')) throw new Error('--apply and --dry-run cannot be used together');
-  const config = JSON.parse(readFileSync(arg('config', '/etc/keel/tenant.json'), 'utf8'));
+  const config = readConfigFile(arg('config', '/etc/keel/tenant.json'), { readFile: readFileSync, what: 'collector settings' });
   const dbUrl = arg('db-url', process.env.KEEL_DB_URL);
   if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
 

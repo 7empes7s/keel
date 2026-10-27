@@ -31,7 +31,7 @@ Keep it current: update it in the same PR as any change to the facts below, and 
    the schema changed, applies `schema.sql`, restarts `keel-portal`.
 5. Health check (local `/api/health` and the public `/status/`, about 60 s). On failure it rolls back to
    `.prev` and posts `keel/live-deploy` = failure. Log: `/var/log/keel-deploy.log`.
-6. A deploy event goes to both deploy reviewers (see below).
+6. A deploy event goes to vps-deployer and, through the host copy of `notify-agent.sh`, to keelops too.
 
 The deploy scripts are copied in `infra/deploy/` on branch `claude/deploy-rollback`; the host copies are the
 ones that run. `keel-worker` is long-running: after a deploy use `systemctl try-reload-or-restart keel-worker`,
@@ -44,7 +44,7 @@ never `restart` (it would end a running backup, #448). Details in `ops/README.md
 | Cloud threads (project "Keel") | Cloud sessions | Code, PRs, independent review, queue items | Project chat |
 | **keel-operator** | Mulinux, root, `/opt/rc-keel-operator` | Tenant and host work from the root queue | Root queue only |
 | **vps-deployer** | Mulinux, root | Reviews each deploy; owns `deploy.sh` changes and rollbacks | Deploy events |
-| **keelops** | Mulinux, user `keelops`, `keelops-deployer.service` | Second operator and deploy reporter on the other subscription. Now does most live checks | keelops queue only |
+| **keelops** | Mulinux, user `keelops`, `keelops-deployer.service` | Second operator and deploy reporter, on the second subscription (keel-operator and vps-deployer use the first). Now does most live checks | keelops queue only |
 | Marouane | Phone | Decisions, approvals the agents can't give, logins | Project chat |
 
 - Cloud threads cannot message the box sessions. Add queue items instead; don't ask Marouane to paste
@@ -93,31 +93,21 @@ so queue edits never deploy.
 
 | Gate | Queue items | State | Needs |
 |---|---|---|---|
-| Exchange undo and Defender "Make it pass" (#548, closes #542) | Q159 step 4, Q161 | `todo` on the root queue since 2026-10-27; keel-operator has not taken an item since 2026-10-23 | Move to keelops as K14/K15, plus Marouane's decision line |
+| Exchange undo and Defender "Make it pass" (#548, closes #542) | K14 then K15 (moved from root Q159 step 4 and Q161) | `todo` on the keelops queue | Marouane's K14 and K15 lines under Operator decisions |
 | App with API permissions restores; replaced follow-up steps drop off (#563, #565) | K6 via K13 | In progress; decision filled in | keelops result |
 | Portal visuals for #572–#575, #577–#579 | none | Not seen live (keelops can't open pages) | Playwright screenshots at 390 and 1440, light and dark |
 
-Done on keelops on 2026-10-27: K1–K4 and K7–K12 (K7, own compliance checks for #567, green at 20:11 UTC). K5 (Ask month questions) failed on the 5 s
+Done on keelops: K1 (2026-10-25), K2–K4 and K7–K12 (2026-10-27) (K7, own compliance checks for #567, green at 20:11 UTC). K5 (Ask month questions) failed on the 5 s
 budget and passed on re-check K10 after #577.
 
-## Open issues by area
+## Open issues
 
-Operator reports (`operator-report` label or `keel-operator:` title). Most predate fixes on master and need a
-check: close with evidence, list a read-only queue item, or brief a fix thread.
+Four open (2026-10-27). The other operator reports were triaged and closed that day.
 
-- **Restore and writers:** #542 (Exchange/Purview undo, fix #548 live, gate above), #294 (consent policy
-  create 404 before replication), #289 (restore reads a type the tenant isn't licensed for), #339 (workload
-  writer capture id and PowerShell image allowlist).
-- **Collect and backup:** #438 (hourly collect, Exchange role assignment key collision), #309 (tier-2 collect,
-  11 Entra/Intune types).
-- **Content backup:** #272 (nightly content schedule row added live), #269 (Teams snapshot not deterministic),
-  #268 (mail resume cursor), #264 (site permissions 403), #263 (mail folders on v1.0).
-- **Live capture and privacy:** #427 (collector app id not pseudonymized), #295 (STS policy types refused),
-  #235 (role assignment delete capture leaks an id), #138 (pseudonymize tenant ids, task).
-- **Security:** #411 (Run now routes accept arbitrary config paths).
-- **Portal:** #364 (pages fail to render after the redesign, logs).
-- **Meta:** #231 (operator inbox), #148 (prove Entra restore, task). Possibly stale; close only if clearly
-  superseded.
+- #542 Exchange/Purview undo uses the wrong PowerShell config (fix #548 is live; closes on the K14/K15 gate above).
+- #411 Run now routes accept arbitrary config and scope file paths (security).
+- #294 Consent policy create fails live: the include condition set is posted before the new policy replicates.
+- #148 Prove Entra restore on the test tenant (task).
 
 ## Parked work
 

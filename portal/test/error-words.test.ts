@@ -42,3 +42,39 @@ test("the raw-error pattern catches engine errors and leaves plain sentences alo
     assert.doesNotMatch(plain, RAW_ERROR_PATTERN, plain);
   }
 });
+
+// Item 5 (#548 review): a settings file the restorer can't read shows which file, what is
+// wrong and what to do; the path, the stack and the error code stay behind "Show details".
+test("a settings file Keel can't read reads as which file, what is wrong and what to do", () => {
+  const stderr = [
+    "exit code 1",
+    "stderr: ConfigFileError: Keel can't read the Exchange restorer settings file (/etc/keel/exchange-restorer.json): the file is missing. Fix the file on the Keel server, or remove it from workload-scope.json.",
+    "    at readConfigFile (file:///opt/keel-live/engine/config/configFile.mjs:57:11)",
+    "    at familyConfigPath (file:///opt/keel-live/engine/collect/workloads/powershellConfigs.mjs:116:18) {",
+    "  path: '/etc/keel/exchange-restorer.json',",
+    "  problem: 'the file is missing',",
+    "  code: 'ENOENT'",
+    "}",
+  ].join("\n");
+  const words = plainError(stderr, { service: "Keel" });
+  assert.equal(words.cause, "Keel can't read the Exchange restorer settings file: the file is missing.");
+  assert.equal(words.todo, "Fix the file on the Keel server, or remove it from workload-scope.json.");
+  assert.equal(words.raw, stderr.trim());
+  assert.doesNotMatch(`${words.cause} ${words.todo}`, RAW_ERROR_PATTERN);
+  assert.doesNotMatch(`${words.cause} ${words.todo}`, /\/etc\/keel|ENOENT/);
+
+  const json = plainError(JSON.stringify("Keel can't read the restorer settings file (/etc/keel/restorer.json): it is not valid JSON. Fix the file on the Keel server, then try again."));
+  assert.equal(json.cause, "Keel can't read the restorer settings file: it is not valid JSON.");
+  assert.equal(json.todo, "Fix the file on the Keel server, then try again.");
+});
+
+test("an older raw missing-file or JSON error still reads in plain words", () => {
+  const missing = plainError("exit code 1\nstderr: Error: ENOENT: no such file or directory, open '/etc/keel/exchange-collector.json'");
+  assert.equal(missing.cause, "A settings file Keel needs on its server is missing.");
+  const json = plainError("exit code 1\nstderr: SyntaxError: Unexpected token 'o', \"oops\" is not valid JSON\n    at JSON.parse (<anonymous>)");
+  assert.equal(json.cause, "A settings file on the Keel server is not valid.");
+  for (const words of [missing, json]) {
+    assert.ok(words.todo.split(" ").length <= 20);
+    assert.doesNotMatch(`${words.cause} ${words.todo}`, RAW_ERROR_PATTERN);
+  }
+});

@@ -4230,6 +4230,28 @@ test("Job · a failed job leads with a plain cause, keeps the raw error behind S
   await expect(page.locator(".job-requester .person")).toBeVisible();
 });
 
+// Item 5 (#548 review): a restore that stops on a settings file the Keel server lacks names
+// the file and the fix in plain words; the path, stack and error code wait behind Show details.
+for (const [theme, width] of [["light", 390], ["dark", 1440], ["dark", 390], ["light", 1440]] as const) {
+  test(`Job · a settings file Keel can't read reads in plain words · ${theme} ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: width < 600 ? 844 : 900 });
+    await open(page, "/jobs/r13", theme);
+    const alert = page.locator('.ui-alert[data-alert="error"]');
+    await expect(alert).toHaveAttribute("data-tone", "urgent");
+    await expect(alert.locator(".ui-alert-title")).toContainText("Keel can't read the Exchange collector settings file: the file is missing.");
+    await expect(alert.locator(".ui-alert-todo")).toContainText("Fix the file on the Keel server, or remove it from workload-scope.json. Run the restore again after that.");
+    await expect(alert.locator(".ui-alert-more li").first()).toBeHidden();
+    const explanation = await textOutside(page, "main#main-content", '[data-layer="record"], details');
+    for (const raw of ["/etc/keel", "ENOENT", "ConfigFileError", "stderr", "exit code"]) expect(explanation, raw).not.toContain(raw);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: `test-results/settings-file-error-${width}-${theme}.png` });
+    await alert.getByText("Show details").click();
+    await expect(alert.locator(".ui-alert-more")).toContainText("(/etc/keel/exchange-collector.json): the file is missing.");
+    await expect(alert.locator(".ui-alert-more")).toContainText("code: 'ENOENT'");
+    if (width === 1440) await page.screenshot({ path: `test-results/settings-file-error-details-${width}-${theme}.png` });
+  });
+}
+
 test("Job page and rule preview fit a phone without sideways scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   for (const hash of ["/jobs/a1", "/jobs/b2", "/jobs/c3", "/jobs/w4", "/jobs/a4", "/jobs/r9", "/jobs/r10", "/policies/p2"]) {

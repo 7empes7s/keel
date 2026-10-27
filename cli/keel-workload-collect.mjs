@@ -42,6 +42,7 @@
 // cannot connect with it). A family it leaves out uses --config. Each file must be under
 // /etc/keel (the container mounts only that) and name the same tenant as --config.
 import { existsSync, readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -389,7 +390,7 @@ export async function main(argv = process.argv.slice(2), {
     return command === undefined || argv.includes('--help') ? 0 : 2;
   }
   const configPath = arg(argv, 'config', '/etc/keel/tenant.json');
-  const config = JSON.parse(readFile(configPath));
+  const config = readConfigFile(configPath, { readFile, what: 'collector settings' });
   const tenantRef = tenantRefFor(config.tenantId);
   const requested = arg(argv, 'tenant-ref');
   if (requested !== undefined && requested !== tenantRef) {
@@ -419,7 +420,7 @@ export async function main(argv = process.argv.slice(2), {
       return proof.length && proof.every((entry) => entry.status === 'current') ? 0 : 1;
     }
     const scopePath = arg(argv, 'scope', DEFAULT_SCOPE_PATH);
-    const scope = arg(argv, 'scope') !== undefined || existsSync(scopePath) ? JSON.parse(readFile(scopePath)) : {};
+    const scope = arg(argv, 'scope') !== undefined || existsSync(scopePath) ? readConfigFile(scopePath, { readFile, what: 'workload scope' }) : {};
     scope.powershellConfigs = powershellConfigPaths(scope, { config, readFile });
     const transport = readOnlyGraphTransport(async () => (await getTokenFn(config)).accessToken, fetchImpl);
     const result = await runWorkloadCollection(client, {

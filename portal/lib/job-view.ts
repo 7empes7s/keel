@@ -3,6 +3,7 @@ import type { AlertItem } from "@/components/ui/alert-list";
 import type { StatTile } from "@/components/ui/stat-tiles";
 import { typeService } from "@/lib/baselines-view";
 import { workloadLabel } from "@/lib/compare-view";
+import { settingsFileWords } from "@/lib/error-words";
 import { CONTENT_WORKLOADS, holdsObjectId, incompleteTypeLabel, jobIncompleteTypes } from "@/lib/job-names";
 import { typeName } from "@/lib/protect-view";
 import { serviceFor, serviceOrder } from "@/lib/services";
@@ -23,6 +24,9 @@ export function jobErrorCause(job: Pick<JobRecord, "kind" | "error" | "params">)
   const params = (job.params ?? {}) as Record<string, unknown>;
   const artifact = typeof params.artifactId === "string" ? params.artifactId : null;
   const again = RESTORE_KINDS.has(job.kind) ? "Run the restore again" : "Run it again";
+  // A settings file on the Keel server is missing or broken: nothing in Microsoft 365 to fix.
+  const file = settingsFileWords(error);
+  if (file) return { tone: "urgent", icon: "settings", title: file.cause, todo: `${file.todo.replace(/,? then try again\.$/, ".")} ${again} after that.`, action: null };
   if (/blocked-content-effect/.test(error)) {
     return {
       tone: "soon", icon: "clock", title: "Waiting for approval of what it does to content",

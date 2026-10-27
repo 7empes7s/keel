@@ -508,6 +508,17 @@ function servicePartialProgress() {
     updatedAt: at(9), source: "live" as const,
   };
 }
+// What the worker stores when keel-restore stops on a missing settings file (exit code and stderr).
+const SETTINGS_FILE_ERROR = [
+  "exit code 1",
+  "stderr: ConfigFileError: Keel can't read the Exchange collector settings file (/etc/keel/exchange-collector.json): the file is missing. Fix the file on the Keel server, or remove it from workload-scope.json.",
+  "    at readConfigFile (file:///opt/keel-live/engine/config/configFile.mjs:57:11)",
+  "    at familyConfigPath (file:///opt/keel-live/engine/collect/workloads/powershellConfigs.mjs:403:18) {",
+  "  path: '/etc/keel/exchange-collector.json',",
+  "  problem: 'the file is missing',",
+  "  code: 'ENOENT'",
+  "}",
+].join("\n");
 const initialJobs = [
   job("a1", "backup", "running"),
   job("a2", "collect", "queued"),
@@ -2265,6 +2276,8 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/jobs/a4": { const detail = { ...jobs.find((item) => item.id === "a4")!, progress: tierProgress("failed") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/r10": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010" } }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
+    // Item 5 (#548 review): a workload restore dry run that stopped on a settings file the server lacks.
+    case "/jobs/r13": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r13", kind: "restore", params: { workloadRestore: { workload: "exchange-mail-flow", collectionId: "c0110000-0000-4000-8000-000000000013", targets: ["organization"] }, artifactId: "7f3c0000-0000-4000-8000-000000000013" }, error: SETTINGS_FILE_ERROR }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/approvals": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
       <ApprovalInbox awaitingContentEffects={[APPROVAL_AWAITING_EFFECTS]} history={APPROVAL_HISTORY} now={now} pending={APPROVALS_PENDING} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;

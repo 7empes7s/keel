@@ -64,6 +64,7 @@
 // --collector-config for PowerShell; Graph still reads with --collector-config.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { GraphReader } from '../tools/tenant-probe/graph.mjs';
 import { collectM1 } from '../engine/collect/entraAdapter.mjs';
@@ -172,6 +173,11 @@ export function recordAppliedIds(appliedIds, applied) {
     }
   }
 }
+// The Graph collector (tenant.json) and restorer (restorer.json) files. A missing or
+// broken file stops the run with a plain sentence, never a raw ENOENT or JSON error.
+const readCollectorConfig = (path, readFile) => readConfigFile(path, { readFile, what: 'collector settings' });
+const readRestorerConfig = (path, readFile) => readConfigFile(path, { readFile, what: 'restorer settings' });
+
 export function assertSeparateRestorer(collector, restorer) {
   if (collector.tenantId !== restorer.tenantId) {
     throw new Error('Collector tenantId must match the Restorer tenantId');
@@ -572,8 +578,8 @@ export async function runRestore({
       }
       collectorConfigPath = artifact.collectorConfigPath;
       targetConfigPath = artifact.targetConfigPath;
-      collectorConfig = JSON.parse(readFile(collectorConfigPath, 'utf8'));
-      targetConfig = JSON.parse(readFile(targetConfigPath, 'utf8'));
+      collectorConfig = readCollectorConfig(collectorConfigPath, readFile);
+      targetConfig = readRestorerConfig(targetConfigPath, readFile);
       assertSeparateRestorer(collectorConfig, targetConfig);
       // Task-70: a compensation artifact is promoted here, through this same
       // artifact gate — never by a separate undo path.
@@ -1492,8 +1498,8 @@ function logCompensation(logger, plan) {
 async function planCompensationRun({ client, compensateArtifactId, persistArtifactId, requestedBy, readFile, logger, deps }) {
   const forward = await deps.getDryRunArtifactByIdFn(client, { id: compensateArtifactId });
   if (!forward) throw new Error(`compensation refused: restore artifact not found: ${compensateArtifactId}`);
-  const collectorConfig = JSON.parse(readFile(forward.collectorConfigPath, 'utf8'));
-  const targetConfig = JSON.parse(readFile(forward.targetConfigPath, 'utf8'));
+  const collectorConfig = readCollectorConfig(forward.collectorConfigPath, readFile);
+  const targetConfig = readRestorerConfig(forward.targetConfigPath, readFile);
   assertSeparateRestorer(collectorConfig, targetConfig);
 
   const ctx = await buildCompensation({
@@ -1663,8 +1669,8 @@ async function buildEnforcement({ client, forward, naturalKey, collectorConfig, 
 async function planEnforcementRun({ client, request, persistArtifactId, requestedBy, readFile, logger, deps }) {
   const forward = await deps.getDryRunArtifactByIdFn(client, { id: request.restoreArtifactId });
   if (!forward) throw new Error(`enforcement refused: restore artifact not found: ${request.restoreArtifactId}`);
-  const collectorConfig = JSON.parse(readFile(forward.collectorConfigPath, 'utf8'));
-  const targetConfig = JSON.parse(readFile(forward.targetConfigPath, 'utf8'));
+  const collectorConfig = readCollectorConfig(forward.collectorConfigPath, readFile);
+  const targetConfig = readRestorerConfig(forward.targetConfigPath, readFile);
   assertSeparateRestorer(collectorConfig, targetConfig);
   const ctx = await buildEnforcement({
     client, forward, naturalKey: request.naturalKey, collectorConfig, targetConfig,
@@ -1815,10 +1821,7 @@ function workloadPowershellPath(workload, { role, tenantId, readFile, logger, de
 
 /** The content store named in the content reader file (where the content backup lives). */
 async function defaultContentStore({ client, readFile, readerPath = process.env.KEEL_CONTENT_READER_PATH || '/etc/keel/content-reader.json' }) {
-  let reader;
-  try { reader = JSON.parse(readFile(readerPath, 'utf8')); } catch (error) {
-    throw new Error(`this restore reads the content backup named in ${readerPath}, which could not be read: ${error.message}`);
-  }
+  const reader = readConfigFile(readerPath, { readFile, what: 'content backup reader settings' });
   if (!reader?.storage?.root || !reader?.contentKeyFile) throw new Error(`${readerPath} names no content store (storage.root and contentKeyFile)`);
   return createContentStore({
     index: createPgContentIndex(client), storage: createLocalStorageAdapter({ root: reader.storage.root }),
@@ -1924,8 +1927,8 @@ async function executeWorkloadRun({ client, artifact, readFile, logger, deps }) 
   }
   // The credential files are the server's, never the artifact's marker paths.
   const paths = deps.credentialPathsFn();
-  const collectorConfig = JSON.parse(readFile(paths.collectorConfig, 'utf8'));
-  const targetConfig = JSON.parse(readFile(paths.targetConfig, 'utf8'));
+  const collectorConfig = readCollectorConfig(paths.collectorConfig, readFile);
+  const targetConfig = readRestorerConfig(paths.targetConfig, readFile);
   assertSeparateRestorer(collectorConfig, targetConfig);
   if (tenantRefFor(targetConfig.tenantId) !== artifact.tenantRef) {
     throw new Error('workload restore promotion refused: the restorer signs in to a different tenant than the one this plan was made for');
@@ -2020,8 +2023,8 @@ export async function main({
     const fixCollectorPath = arg('collector-config', undefined, argv);
     const fixTargetPath = arg('target-config', undefined, argv);
     if (!fixCollectorPath || !fixTargetPath) throw new Error('--compliance-fix requires --collector-config and --target-config');
-    const fixCollector = JSON.parse(readFile(fixCollectorPath, 'utf8'));
-    const fixTarget = JSON.parse(readFile(fixTargetPath, 'utf8'));
+    const fixCollector = readCollectorConfig(fixCollectorPath, readFile);
+    const fixTarget = readRestorerConfig(fixTargetPath, readFile);
     assertSeparateRestorer(fixCollector, fixTarget);
     return runRestore({
       complianceFix: { controlId: fixControlId, naturalKey: object },
@@ -2058,7 +2061,7 @@ export async function main({
         targets: argAll('target', argv),
         allowTenantWide: flag('allow-tenant-wide-test-writes', argv),
       },
-      collectorConfig: JSON.parse(readFile(collectorConfigPath, 'utf8')),
+      collectorConfig: readCollectorConfig(collectorConfigPath, readFile),
       collectorConfigPath,
       persistArtifactId, requestedBy, mode, readFile, dbUrl, dependencies, logger,
     });
@@ -2113,10 +2116,10 @@ export async function main({
   if (artifactId === undefined) {
     targetConfigPath = arg('target-config', undefined, argv);
     if (!targetConfigPath) throw new Error('--target-config <path> required');
-    targetConfig = JSON.parse(readFile(targetConfigPath, 'utf8'));
+    targetConfig = readRestorerConfig(targetConfigPath, readFile);
     collectorConfigPath = arg('collector-config', undefined, argv);
     if (!collectorConfigPath) throw new Error('--collector-config <path> required for read-only sign-in-path evidence');
-    collectorConfig = JSON.parse(readFile(collectorConfigPath, 'utf8'));
+    collectorConfig = readCollectorConfig(collectorConfigPath, readFile);
     assertSeparateRestorer(collectorConfig, targetConfig);
   }
 

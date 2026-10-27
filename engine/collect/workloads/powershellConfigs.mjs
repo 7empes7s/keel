@@ -19,6 +19,7 @@
 import { existsSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 
+import { readConfigFile, SCOPE_LISTED_FIX } from '../../config/configFile.mjs';
 import { WORKLOAD_COLLECTORS } from './registry.mjs';
 
 export const DEFAULT_SCOPE_PATH = '/etc/keel/workload-scope.json';
@@ -28,6 +29,19 @@ const CONFIG_DIR = '/etc/keel/';
 export const POWERSHELL_FAMILY = Object.freeze(Object.fromEntries(WORKLOAD_COLLECTORS
   .filter((entry) => entry.powershellFamily).map((entry) => [entry.workload, entry.powershellFamily])));
 export const POWERSHELL_FAMILIES = Object.freeze([...new Set(Object.values(POWERSHELL_FAMILY))]);
+
+const FAMILY_NAMES = { exchange: 'Exchange', onedrive: 'OneDrive', purview: 'Purview' };
+
+/**
+ * One family's settings file, read for a role. A missing or broken file fails closed
+ * with a plain sentence (engine/config/configFile.mjs), never a raw ENOENT or JSON error.
+ */
+function readFamilyConfig(path, { family, role, readFile, fix = SCOPE_LISTED_FIX }) {
+  return readConfigFile(path, { readFile, what: `${FAMILY_NAMES[family] ?? family} ${role} settings`, fix });
+}
+
+// A restorer file found beside the collector file is not listed in the scope file.
+const SIBLING_FIX = 'Fix the file on the Keel server, or name the right one in workload-scope.json.';
 
 function checkPathMap(paths, key) {
   if (paths === null || typeof paths !== 'object' || Array.isArray(paths)) throw new Error(`${key} must be an object`);
@@ -48,7 +62,7 @@ export function powershellConfigPaths(scope, { config, readFile }) {
   const paths = scope?.powershellConfigs ?? {};
   checkPathMap(paths, 'powershellConfigs');
   for (const [family, path] of Object.entries(paths)) {
-    const tenantId = JSON.parse(readFile(path)).tenantId;
+    const { tenantId } = readFamilyConfig(path, { family, role: 'collector', readFile });
     if (tenantId !== undefined && tenantId !== config.tenantId) {
       throw new Error(`powershellConfigs.${family} names another tenant than the tenant config: refusing to collect`);
     }
@@ -58,7 +72,7 @@ export function powershellConfigPaths(scope, { config, readFile }) {
 
 /** The workload scope file, or {} when the host has none. */
 export function readWorkloadScope({ path = DEFAULT_SCOPE_PATH, readFile, exists = existsSync }) {
-  return exists(path) ? JSON.parse(readFile(path, 'utf8')) : {};
+  return exists(path) ? readConfigFile(path, { readFile, what: 'workload scope' }) : {};
 }
 
 /** exchange-collector.json -> exchange-restorer.json, beside it; null for any other name. */
@@ -87,9 +101,11 @@ export function familyConfigPath(family, { role, scope = {}, tenantId, readFile,
   checkPathMap(restorers, 'powershellRestorerConfigs');
   const collectorPath = collectors[family] ?? null;
   let path = collectorPath;
+  let fix = SCOPE_LISTED_FIX;
   if (role === 'restorer') {
     const sibling = collectorPath ? restorerSibling(collectorPath) : null;
     path = restorers[family] ?? (sibling && exists(sibling) ? sibling : null);
+    if (!restorers[family]) fix = SIBLING_FIX;
   }
   if (!path) return null;
   // Every family's collector file, not only this family's: a restorer is never a collector registration.
@@ -97,7 +113,7 @@ export function familyConfigPath(family, { role, scope = {}, tenantId, readFile,
   if (role === 'restorer' && collectorFiles.includes(path)) {
     throw new Error(`the ${family} PowerShell restorer config is the collector registration: restore requires a separate Restorer`);
   }
-  const config = JSON.parse(readFile(path, 'utf8'));
+  const config = readFamilyConfig(path, { family, role, readFile, fix });
   if (role === 'restorer' && config.tenantId === undefined) {
     throw new Error(`the ${family} PowerShell restorer config (${path}) names no tenantId: add the tenant's id to it`);
   }
@@ -105,7 +121,11 @@ export function familyConfigPath(family, { role, scope = {}, tenantId, readFile,
     throw new Error(`the ${family} PowerShell ${role} config names another tenant than this restore: refusing to connect`);
   }
   if (role === 'restorer') {
-    const others = [...collectorFiles.map((file) => JSON.parse(readFile(file, 'utf8'))), ...separateFrom];
+    const collectorFamily = (file) => Object.keys(collectors).find((name) => collectors[name] === file);
+    const others = [
+      ...collectorFiles.map((file) => readFamilyConfig(file, { family: collectorFamily(file), role: 'collector', readFile })),
+      ...separateFrom,
+    ];
     const shares = (other) => ['clientId', 'certPath', 'keyPath'].some((key) => config[key] && config[key] === other?.[key]);
     if (others.some(shares)) {
       throw new Error(`the ${family} PowerShell restorer config is the collector registration: restore requires a separate Restorer`);

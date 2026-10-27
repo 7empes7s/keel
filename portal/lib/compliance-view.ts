@@ -254,6 +254,24 @@ export function controlChecks(finding: ComplianceFinding): ControlCheck[] {
   return [...lines.filter((line) => !line.ok), ...lines.filter((line) => line.ok)];
 }
 
+// `exact` is true when the result stored its counts; without them, a list of 50 lines may
+// have been cut short and its counts are only "at least".
+export interface CheckCounts { checked: number; failing: number; passing: number; listed: number; exact: boolean }
+
+/**
+ * How many settings the control checked, failed and met, counted over everything it
+ * checked rather than the lines kept (at most 50). Results stored before the counts
+ * existed fall back to their lines. `listed` is how many lines the panel can show.
+ */
+export function checkCounts(finding: ComplianceFinding): CheckCounts {
+  const lines = finding.details ?? [];
+  const listedFailing = lines.filter((line) => line.ok !== true).length;
+  const stored = finding.detailCounts;
+  const checked = Math.max(stored?.checked ?? 0, lines.length);
+  const failing = Math.min(checked, Math.max(stored?.failing ?? 0, listedFailing));
+  return { checked, failing, passing: checked - failing, listed: lines.length, exact: Boolean(stored) };
+}
+
 /** What made a control fail, one line per object and setting, in plain words. */
 export function controlMisses(finding: ComplianceFinding): ControlCheck[] {
   return controlChecks(finding).filter((line) => !line.ok);

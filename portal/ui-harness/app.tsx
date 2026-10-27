@@ -887,6 +887,24 @@ const DEFENDER_COMPLIANCE: ComplianceData = {
     mailFinding("f3", "keel-custom.defender-email.safe-links-email", "not-applicable"),
   ],
 };
+// More than 50 settings checked: a result keeps 50 lines (failing first) and counts the
+// rest. A failing location check over 60 trusted locations, and a passing one over 70.
+const manyLocation = (index: number, ok: boolean) => ({ subject: `KEEL-RT-Location ${String(index).padStart(2, "0")}`, setting: "includeUnknownCountriesAndRegions", value: !ok, expected: false, ok });
+const MANY_COMPLIANCE: ComplianceData = {
+  ...COMPLIANCE,
+  findings: [
+    ...COMPLIANCE.findings.map((finding) => finding.id === "e7a10000-0000-4000-8000-0000000000e2"
+      ? { ...finding, details: Array.from({ length: 50 }, (_, index) => manyLocation(index, index >= 3)), detailCounts: { checked: 60, failing: 3 } }
+      : finding),
+    // More than 50 fail: every kept line fails, so there is nothing more to show.
+    mailFinding("f1", "keel-custom.defender-email.anti-spam-phish-quarantined", "fail",
+      Array.from({ length: 50 }, (_, index) => ({ subject: `KEEL-RT-Policy ${String(index).padStart(2, "0")}`, setting: "PhishZapEnabled", value: false, expected: true, ok: false })),
+      { detailCounts: { checked: 80, failing: 55 } }),
+    mailFinding("f2", "keel-custom.defender-email.malware-file-filter", "pass",
+      Array.from({ length: 50 }, (_, index) => ({ subject: `KEEL-RT-Policy ${String(index).padStart(2, "0")}`, setting: "EnableFileFilter", value: true, expected: true, ok: true })),
+      { detailCounts: { checked: 70, failing: 0 } }),
+  ],
+};
 const PLAN_REF = { kind: "dry-run", id: "7f3c0000-0000-4000-8000-000000000011", name: null, readable: true, status: "completed", undo: false, resources: 12, snapshotAt: "2026-10-02T09:12:00Z", dryRunJobId: "a3" };
 const TWO_PERSON_REQUEST = "a9e10000-0000-4000-8000-000000000101";
 
@@ -2303,6 +2321,11 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       // Defender email controls beside the others: filed under Defender, failing settings in a table.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(DEFENDER_COMPLIANCE.findings))} title="Compliance" />
       <CompliancePage canCheck canConfigure canRestore data={DEFENDER_COMPLIANCE} now={now} /></>;
+    }
+    case "/benchmarks/many": {
+      // Controls that checked more than the 50 settings a result lists.
+      return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(MANY_COMPLIANCE.findings))} title="Compliance" />
+      <CompliancePage canCheck canConfigure canRestore data={MANY_COMPLIANCE} now={now} /></>;
     }
     case "/benchmarks/empty": case "/benchmarks/empty-viewer": {
       // Nothing checked yet and the storage location not known: each empty state has its button.

@@ -107,6 +107,17 @@ function freezeDetails(details) {
   return Object.freeze(ordered.slice(0, MAX_DETAILS).map((line) => Object.freeze(line)));
 }
 
+/**
+ * How many settings the control checked and how many failed, counted before the lines
+ * are cut to MAX_DETAILS, so a result with more lines than that still says how many
+ * meet the standard. Null when there are no lines.
+ */
+function countDetails(details) {
+  if (!Array.isArray(details) || details.length === 0) return null;
+  const failing = details.filter((line) => line?.ok !== true).length;
+  return Object.freeze({ checked: details.length, failing });
+}
+
 function freezeResult({ control, verdict, reason, evidenceRefs, observationWindows, now, details = null }) {
   return Object.freeze({
     contractVersion: EVALUATION_CONTRACT_VERSION,
@@ -120,6 +131,7 @@ function freezeResult({ control, verdict, reason, evidenceRefs, observationWindo
     evidenceRefs: Object.freeze(evidenceRefs),
     observationWindows: Object.freeze(observationWindows),
     details: freezeDetails(details),
+    detailCounts: countDetails(details),
     evaluatedAt: now.toISOString(),
   });
 }
@@ -214,14 +226,15 @@ export async function recordEvaluation(client, { tenantRef, result, actor }) {
   const { rows } = await client.query(
     `INSERT INTO benchmark_evaluation
        (tenant_ref, control_id, framework, edition, profile, evaluator_version,
-        verdict, reason, evidence_refs, observation_windows, evaluated_at, details)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        verdict, reason, evidence_refs, observation_windows, evaluated_at, details, detail_counts)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      RETURNING *`,
     [
       tenantRef, result.controlId, result.framework, result.edition, result.profile,
       result.evaluatorVersion, result.verdict, result.reason,
       JSON.stringify(result.evidenceRefs), JSON.stringify(result.observationWindows), result.evaluatedAt,
       result.details ? JSON.stringify(result.details) : null,
+      result.detailCounts ? JSON.stringify(result.detailCounts) : null,
     ],
   );
   const evaluation = rows[0];

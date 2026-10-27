@@ -9,6 +9,7 @@ import {
   complianceVerdict,
   CHECK_LINE_LIMIT,
   checkSubjectWord,
+  checkCounts,
   checksCapped,
   controlChecks,
   controlMisses,
@@ -279,4 +280,14 @@ test("Settings checked: expected against current for every setting, failing firs
   const line = { subject: "Default", setting: "On", now: "On", shouldBe: "On", ok: true };
   assert.equal(checksCapped(Array.from({ length: CHECK_LINE_LIMIT - 1 }, () => line)), false);
   assert.equal(checksCapped(Array.from({ length: CHECK_LINE_LIMIT }, () => line)), true);
+});
+
+test("check counts cover every setting checked, past the 50 lines a result keeps", () => {
+  const line = (ok: boolean) => ({ subject: "KEEL-RT-Location", setting: "includeUnknownCountriesAndRegions", value: !ok, expected: false, ok });
+  const lines = [line(false), line(false), line(false), ...Array.from({ length: 47 }, () => line(true))];
+  const cut = { ...PASS, verdict: "fail" as const, details: lines, detailCounts: { checked: 60, failing: 3 } };
+  assert.deepEqual(checkCounts(cut), { checked: 60, failing: 3, passing: 57, listed: 50, exact: true });
+  // A result stored before the counts existed counts its lines.
+  assert.deepEqual(checkCounts({ ...cut, detailCounts: null }), { checked: 50, failing: 3, passing: 47, listed: 50, exact: false });
+  assert.deepEqual(checkCounts({ ...PASS, details: [] }), { checked: 0, failing: 0, passing: 0, listed: 0, exact: false });
 });

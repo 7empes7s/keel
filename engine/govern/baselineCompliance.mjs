@@ -253,6 +253,14 @@ function exceptionState(exception, now) {
  * collection the finding's evidence came from; `mismatched` holds records of the same
  * configuration types resting on a different collection, which are shown as such.
  */
+// A stored { checked, failing } pair, or null when it is missing or malformed.
+function detailCounts(value) {
+  const checked = Number(value?.checked);
+  const failing = Number(value?.failing);
+  if (!Number.isInteger(checked) || !Number.isInteger(failing) || checked < 0 || failing < 0 || failing > checked) return null;
+  return { checked, failing };
+}
+
 function partition(records, evidenceSnapshotIds) {
   const linked = records.filter((record) => evidenceSnapshotIds.has(record.snapshotId));
   const mismatched = records.filter((record) => !evidenceSnapshotIds.has(record.snapshotId));
@@ -390,6 +398,9 @@ export async function complianceFindings(client, { tenantRef, now = new Date() }
       details: Array.isArray(evaluation.details)
         ? evaluation.details.map((line) => ({ ...line, ok: line?.ok === true }))
         : [],
+      // How many settings it checked and how many failed, before the lines were cut to
+      // 50. Null for results stored before the counts existed.
+      detailCounts: detailCounts(evaluation.detail_counts),
       evaluatedAt: iso(evaluation.evaluated_at),
       evidenceSeq: evaluation.evidence_seq === null || evaluation.evidence_seq === undefined ? null : String(evaluation.evidence_seq),
       exceptionState: state,

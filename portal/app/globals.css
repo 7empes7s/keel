@@ -11680,7 +11680,7 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 .ak-sort:hover .icon, .ak-sort[data-active] .icon { opacity: 1; }
 .ak-sort[data-active] { color: var(--text); }
 .ak-sort:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
-.ak-fields { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.ak-fields { font-size: 0.8125rem; overflow-wrap: anywhere; }
 .ak-none { color: var(--text-soft); font-size: 0.8125rem; }
 .ak-service { display: inline-flex; align-items: center; gap: var(--space-2xs); }
 .ak-service .icon { width: 1rem; height: 1rem; }

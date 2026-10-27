@@ -3626,6 +3626,54 @@ test("ask cites its records, states unknown periods first, and fits a phone", as
 
 // A broad answer: understood filters as badges, words not understood said plainly, a
 // summary of every match, then one table with filter tiles, grouping, sorting and pages.
+// A month-long answer shaped like the live one (keelops K12): every changed row names
+// its settings in words, never Microsoft's field names, and none says "Not recorded".
+test("ask month answer names changed settings in words and lists no empty changed rows", async ({ page }) => {
+  for (const [width, theme] of [[1440, "dark"], [390, "light"]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/ask/month", theme);
+    const answer = page.locator(".ask-answer");
+    await expect(answer.locator('.ui-tile[data-tile="found"] .ui-tile-value')).toHaveText("1,887");
+    await expect(answer.locator(".ui-alert").first()).toContainText("Not known from 2 Sept 2026");
+    const rows = answer.locator("tr.ask-record");
+    await expect(rows).toHaveCount(25);
+    await expect(rows.first().locator(".ak-fields")).toHaveText("Account enabled, Department");
+    await expect(answer.locator(".pg-table")).not.toContainText("Not recorded");
+    for (const raw of ["accountEnabled", "scheduleInfo", "membershipRule"]) await expect(answer.locator(".pg-table")).not.toContainText(raw);
+    expect(await rows.first().locator(".ak-fields").evaluate((el) => getComputedStyle(el).fontFamily)).not.toMatch(/mono/i);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  }
+});
+
+// The legacy sign-in control as it reads live (keelops K11): failing lines first, then
+// "Only some users"; two rules with the same name each keep their own numbered lines (#588).
+test("Compliance · legacy sign-in lists each rule it read, failing first, and numbers same-name rules", async ({ page }) => {
+  for (const [width, theme] of [[1440, "dark"], [390, "light"]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/benchmarks/live?open=e7a10000-0000-4000-8000-0000000000b1", theme);
+    let sheet = page.getByRole("dialog", { name: "Old sign-in methods are blocked" });
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("2 settings");
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("6 meet the standard");
+    await expect(sheet.getByRole("switch", { name: /Show every setting/ })).toContainText("8 in all");
+    const failing = sheet.locator('.cp-misses tbody tr[data-ok="false"]');
+    await expect(failing).toHaveCount(2);
+    await expect(failing.nth(0)).toContainText("Report-only");
+    await expect(failing.nth(1)).toContainText("Only some users");
+    await sheet.getByRole("switch", { name: /Show every setting/ }).click();
+    await expect(sheet.locator(".cp-misses tbody tr")).toHaveCount(8);
+    await expect(sheet.locator('.cp-misses tbody tr[data-ok="true"]').first()).toContainText("All users");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+
+    await open(page, "/benchmarks/same-name?open=e7a10000-0000-4000-8000-0000000000b1", theme);
+    sheet = page.getByRole("dialog", { name: "Old sign-in methods are blocked" });
+    const rows = sheet.locator('.cp-misses tbody tr[data-ok="false"]');
+    await expect(rows.nth(0)).toContainText("KEEL-RT-Block legacy sign-in (1 of 2)");
+    await expect(rows.nth(1)).toContainText("KEEL-RT-Block legacy sign-in (2 of 2)");
+    const axe = await new AxeBuilder({ page }).include(".bl-sheet").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    expect(axe.violations.map((violation) => violation.id)).toEqual([]);
+  }
+});
+
 test("ask summarises every match, says what it did not understand, and pages a grouped table", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await open(page, "/ask/many", "dark");

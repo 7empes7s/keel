@@ -345,8 +345,16 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   pass only the enforcing policy. No user, group or app ids in any line. The verdict rule is unchanged (evaluatorVersion stays 2).
 - Needs: /opt/keel-live at the #578 merge or later (`grep -q "Unnamed sign-in rule" /opt/keel-live/engine/benchmarks/registry.mjs`),
   and a scheduled check run after that deploy (the checks run after each backup). Do **not** run checks by hand.
-- Status: in-progress
-- Result:
+- Status: done
+- Result: GREEN (2026-10-27 ~18:07 UTC). **1.** Build `6744ab3` (#578), deployed 2026-10-27 17:44:05 UTC; the `Unnamed sign-in rule` grep passes. **2.** `complianceFindings` (engine read call, READ ONLY transaction); no checks run by hand. `keel-custom.conditional-access.block-legacy`: verdict `fail`, reason `null`, evaluatorVersion 2, evaluatedAt 2026-10-27T18:05:02.598Z (scheduled run after the 18:00 backup, after the deploy), detailCounts `{"checked":8,"failing":2}`, details.length 8, lines containing a GUID 0. Both failing lines come first and match expectations: the report-only policy's state `enabledForReportingButNotEnforced`, and `KEEL-RT-20260908 Block Legacy Authentication` includeUsers `Only some`. All other 6 lines are ok true. Matches the expected result exactly. Portal panel (390/1440 px, light/dark) not opened from the box. Nothing written. Lines verbatim (non-KEEL-RT subject masked):
+  `{"ok":false,"value":"enabledForReportingButNotEnforced","setting":"state","subject":"<masked>","expected":"enabled"}`
+  `{"ok":false,"value":"Only some","setting":"includeUsers","subject":"KEEL-RT-20260908 Block Legacy Authentication","expected":"All"}`
+  `{"ok":true,"value":"All","setting":"includeUsers","subject":"<masked>","expected":"All"}`
+  `{"ok":true,"value":"All","setting":"includeApplications","subject":"<masked>","expected":"All"}`
+  `{"ok":true,"value":["exchangeActiveSync","other"],"setting":"clientAppTypes","subject":"<masked>","expected":["exchangeActiveSync","other"]}`
+  `{"ok":true,"value":"enabled","setting":"state","subject":"KEEL-RT-20260908 Block Legacy Authentication","expected":"enabled"}`
+  `{"ok":true,"value":"All","setting":"includeApplications","subject":"KEEL-RT-20260908 Block Legacy Authentication","expected":"All"}`
+  `{"ok":true,"value":["exchangeActiveSync","other"],"setting":"clientAppTypes","subject":"KEEL-RT-20260908 Block Legacy Authentication","expected":["exchangeActiveSync","other"]}`
 - **Tenant:** nothing (Collector reads not needed). Read-only against Keel's own database, engine read calls only, as in K8.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`, tenantRef as in K5:
   1. Report the build and its deploy time.

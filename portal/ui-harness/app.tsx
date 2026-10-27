@@ -182,6 +182,9 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (/\/api\/principals\/[^/]+\/(grant|revoke|disable|enable)$/.test(url)) return json({ result: {} }, 200);
   if (url.endsWith("/api/principals")) return json({ principals: HARNESS_PEOPLE, generatedAt: "2026-10-04T09:00:00Z" });
   if (url.includes("/api/deliveries")) return json({ deliveries: HARNESS_DELIVERIES, generatedAt: "2026-10-04T09:00:00Z" });
+  // Integrations: a destination's held-back entries, and adding one succeeds.
+  if (/\/api\/integrations\/[^/]+\/quarantined$/.test(url)) return json({ quarantined: QUARANTINED });
+  if (url.endsWith("/api/integrations") && init?.method === "POST") return json({ destination: { id: "de570000-0000-4000-8000-0000000000e3" } }, 201);
   if (url.endsWith("/api/coverage")) return json({ types: [{ type: "authenticationMethodsPolicy" }, { type: "conditionalAccessPolicy" }] });
   // Activity: what a row changed, setting by setting.
   if (url.includes("/api/activity/changes?")) return json({ changes: ACTIVITY_CHANGES[new URL(url, "http://harness").searchParams.get("job") ?? ""] ?? null });
@@ -655,7 +658,13 @@ const PEOPLE_CHOICES = [
   { id: "8c1e0000-0000-4000-8000-0000000000a2", name: "Amara Okafor", email: "amara.okafor@contoso.example" },
   { id: "8c1e0000-0000-4000-8000-0000000000b3", name: "Sam Ortiz", email: "sam.ortiz@contoso.example" },
 ];
-const DESTINATIONS = [{ id: "de570000-0000-4000-8000-0000000000e1", tenant_ref: "t", name: "Sentinel CEF", kind: "cef", config: { transport: "https", url: "https://siem.contoso.com/cef", acknowledgement: "http-response" }, enabled: true, revoked_at: null, created_by: "marouanedefili@gmail.com", created_at: now }];
+const DESTINATIONS = [
+  { id: "de570000-0000-4000-8000-0000000000e1", tenant_ref: "t", name: "Sentinel CEF", kind: "cef", config: { transport: "https", url: "https://siem.contoso.com/cef", acknowledgement: "http-response" }, enabled: true, revoked_at: null, created_by: "marouanedefili@gmail.com", created_at: now },
+  // A paused webhook, so the list shows two kinds in their order and an amber row.
+  { id: "de570000-0000-4000-8000-0000000000e2", tenant_ref: "t", name: "Ops webhook", kind: "webhook", config: { url: "https://hooks.contoso.com/keel" }, enabled: false, revoked_at: now, created_by: "marouanedefili@gmail.com", created_at: now },
+];
+// A held-back entry for the destination panel's "Show held-back entries".
+const QUARANTINED = [{ id: "q1", event_id: "9e000000-0000-4000-8000-0000000000e1", quarantine_reason: "HTTP 503 Service Unavailable", quarantined_at: now, attempts: 5 }];
 const DESTINATION_STATUSES = [{ destinationId: DESTINATIONS[0].id, tenantRef: "t", kind: "cef", paused: false, pending: 14, delivering: 2, acknowledged: 18190, quarantined: 3, oldestPendingObservedAt: now, lagMs: 41000 }] as never[];
 // Roadmap task-97: ServiceNow on with one decision update held back, and a second
 // tenant whose mapping is missing two settings.

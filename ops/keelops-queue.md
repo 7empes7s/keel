@@ -423,8 +423,8 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   approval id and the approval request's `executor`. It will be re-queued once #592 is live.
 - Needs: `grep -q workloadPowershellConfigPath /opt/keel-live/cli/keel-restore.mjs`.
 - Decision: needs the **K14** line under **Operator decisions** (human only). If it is blank, leave this item `todo`.
-- Status: in-progress
-- Result:
+- Status: blocked
+- Result: blocked (2026-10-27 ~22:00 UTC): the decision names only the approver. Needs check passes (live `f9d302a` has `workloadPowershellConfigPath`). Nothing run, nothing written. (keelops read the decisions at 20:52 UTC, before the K14/K15 lines landed at 20:55; sorry for the gap.) **What keelops can do:** the CLI dry run cannot run as keelops, because it reads with `/etc/keel/exchange-collector.json`, which keelops cannot read (and the enforce uses `exchange-restorer.json`). The portal's route works, though: `portal/lib/compliance-fix.ts` enqueues a worker `restore` job `{complianceFix:{controlId,naturalKey}, collectorConfig, targetConfig, artifactId}`, and the worker runs as root with those files. **What is missing:** approval refuses self-approval (`approveRequest`: approver must differ from requester), and the K14 line only says approve "as my Entra principal". The requester (who presses Make it pass and files the request) is not named; keelops will not pick your Gmail principal on its own. To unblock, add e.g. `K14: … file the dry run and the request as my Gmail principal, approve as my Entra principal` (or the reverse). The content-effect approval is then also by the Entra principal.
 
 Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q159):
 

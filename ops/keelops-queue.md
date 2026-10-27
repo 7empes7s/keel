@@ -578,7 +578,7 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
   removed `permissionGrantPolicy.update.demotion.json` (Q67); the passing Q79 record supersedes it. Only the signing key can show the
   record verifies, and builders don't have it.
 - Needs: nothing.
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** nothing. Host read only.
 - Do, from your own checkout at the deployed build B (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` from

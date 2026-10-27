@@ -3269,6 +3269,8 @@ test("Compliance · score overall, per standard and per service; not set up yet 
   await expect(score.locator(".cp-score-list").first().locator("li > span:last-child b")).toHaveText(["Keel checks", "NIST SP 800-53"]);
   await expect(score.locator(".cp-score-list").first().locator("li").nth(1)).toContainText("100%");
   await expect(score.locator('.cp-score-list[data-kind="service"] li')).toHaveText([/Entra ID.*1 of 4 checked controls passes/]);
+  // The service group line counts failing and not set up yet apart.
+  await expect(page.locator(".sel-group-name small").first()).toContainText("· 1 failing · 1 not set up yet");
   // The control that is not set up yet says what that means, and can still be accepted.
   await page.locator(".cp-row-link", { hasText: "Old sign-in methods are blocked" }).click();
   const panel = page.getByRole("dialog", { name: "Old sign-in methods are blocked" });

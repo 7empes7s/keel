@@ -591,6 +591,8 @@ export function demotionRecord({ resourceType, operation, restoreRef = null, rea
  *  - the write stays registered (the cause is a KEEL bug with a fix under way)
  *    and TYPE_DECISIONS.<type>.liveFailures.<operation> records the demotion's
  *    date and quotes its reason, so the ledger row shows the failed live run.
+ * (liveFailures also holds tenant limits, which have no demotion record and no
+ * fix; see tenantLimit in engine/coverage/qualification.mjs.)
  */
 export function unappliedDemotions({ dir = ENTRA_LIVE_EVIDENCE_DIR, decisions = TYPE_DECISIONS, claimOf = (type, op) => capabilityFor(type, op).claim } = {}) {
   if (!existsSync(dir)) return [];

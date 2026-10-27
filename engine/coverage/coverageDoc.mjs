@@ -724,8 +724,8 @@ function proofText(rows) {
   if (proven.length < rows.length) parts.push('Tested against a simulated tenant');
   for (const row of failed) {
     // No fix means the test tenant cannot run it (a tenant limit), not a bug.
-    const after = row.live.fix ? ', fix in progress' : ' because our test tenant does not allow it';
-    parts.push(`live test of ${OPERATION_NOUNS[row.operation]} failed on ${row.live.failedAt}${after}`);
+    if (row.live.fix) parts.push(`live test of ${OPERATION_NOUNS[row.operation]} failed on ${row.live.failedAt}, fix in progress`);
+    else parts.push(`live test of ${OPERATION_NOUNS[row.operation]} not possible on our test tenant (checked ${row.live.failedAt})`);
   }
   return parts.join('; ');
 }

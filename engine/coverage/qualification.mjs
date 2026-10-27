@@ -58,7 +58,8 @@ const incomplete = (reason) => manual(`incomplete configuration, backed up in fu
 // changed. The write stays fixture-tested; the ledger row shows the failure.
 const failedLive = (failedAt, reason, fix) => Object.freeze({ failedAt, reason, fix });
 // Issue #148: a registered write that cannot be proven live on the test tenant
-// because of the tenant or the service, not a KEEL bug. Same shape, with no fix:
+// because of the tenant or the service, not a KEEL bug (the drift cannot be made,
+// or no write is ever planned). Same shape, with no fix and no demotion record:
 // the write stays fixture-tested and the ledger row says why it is unproven.
 const tenantLimit = (failedAt, reason) => Object.freeze({ failedAt, reason, fix: null });
 // Wave 2 ENTRA: the four token and sign-in routing policies share one writer.

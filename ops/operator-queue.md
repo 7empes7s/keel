@@ -1609,6 +1609,55 @@ being triggered by queue updates.
      `GET /beta/chats/rscConfiguration` (or report the 403 and stop; don't add a grant). Report the `state` values.
 - **Report:** the permission names, the client id, each call's status and verbatim error, the RSC configuration states.
 
+### Q186: Recapture SharePoint → Teams → Exchange → OneDrive/Purview (120–123) so no record holds the real mail domain (after PR #607)
+- Drafted by the "Hide real mail domain in test user names" thread (2026-10-27). PR #607 makes the pseudonymizer map plain
+  sign-in names (`keel-rt-…@<mail domain>`, also `%40`), OneDrive `/personal/<user>_<domain>_com` names and `publisherDomain`.
+  On master, `pseudonymize.mjs check` flags `exchange-live-acceptance{,.capture}.json` and
+  `onedrive-purview-live-acceptance{,.capture}.json` for alice's real sign-in name and OneDrive URL. The records are signed,
+  so they must be recaptured. All four workload records must share one build (Q50), and their proof expires 2026-11-13
+  anyway, so this is the Q50 chain again.
+- Needs: /opt/keel-live at the PR #607 merge or later
+  (`grep -q unpseudonymizedMailNames /opt/keel-live/tools/qualification/pseudonymize.mjs`).
+- Status: todo
+- **Test tenant only.** Same fixtures, flags and limits as Q50 (alice's mailbox and OneDrive, a fresh unpublished
+  `KEEL-RT-<date>-label<n>`, `--fixture-policy KEEL-RT-20261005-policy`). Standing authorization 2026-10-14 / 2026-10-16;
+  no new grant. Pass the real names on the command line as before: the tool pseudonymizes before signing.
+- Do, at the deployed build B, from your own checkout at B:
+  1. Recapture 120 → 121 → 122 → 123 in one sitting exactly as Q50 part A; after each, `qualification.mjs verify
+     --require-live --gate <gate> --build B --tenant <ref>` and record the exit code. A refusal stops the chain: report it.
+  2. `node tools/qualification/pseudonymize.mjs check` on all eight files: expected exit 0. Also
+     `grep -ril "<real mail domain>" <the eight files>`: expected no hit (report any, without the domain).
+  3. Commit the eight files on `claude/live-evidence-q186` from `origin/master`, open a PR with the `automerge` label.
+  4. Import and proof as Q50 part C. Clean up the label as Q50.
+- Result:
+- **Expected:** four captures exit 0, verify exit 0 each, check exit 0, import refused [], proofs about 4 weeks out.
+- **Report:** B, per-gate exit codes, check output, the evidence PR, the new expiry dates, cleanup.
+
+### Q187: Recapture the 25 Entra live records that hold a real sign-in name, from their existing restores (after PR #607)
+- Drafted by the "Hide real mail domain in test user names" thread (2026-10-27). Same reason as Q186, for
+  `docs/release/qualifications/entra-live/`: `check` flags these pairs (record + `.capture.json`):
+  `user.update`, `user.restore-soft-deleted`, `group.member.edge-add`, `group.member.edge-remove`, `group.owner.edge-add`,
+  `group.owner.edge-remove`, `roleAssignment.create`, `roleAssignment.delete`, and the capture logs of
+  `application.create`, `application.update`, `application.restore-soft-deleted` (`publisherDomain`) and
+  `groupLifecyclePolicy.update` (alternate notification email).
+- Needs: /opt/keel-live at the PR #607 merge or later (same grep as Q186).
+- Status: todo
+- **Test tenant only. No new restore and no tenant writes** (as Q54): `entraLive.mjs capture` only reads the journal,
+  artifact and snapshot of the restore that already ran. The restore refs in the published records are pseudonyms; take the
+  real ref of each from the DB journal (look up by resource type, operation and natural key, as you did in Q54).
+- Do, at the deployed build B, from your own checkout at B, with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. For each operation above, `node tools/qualification/entraLive.mjs capture --restore-ref <real ref> --resource-type <t>
+     --operation <op> --fixture <the same --fixture as the original capture> --target-config /etc/keel/restorer.json
+     --build B --out <dir>` with the same `--allow-*` flags the original used (Q45, Q48, Q51, Q53, Q54 Results). Then
+     `promote` as before. A refusal (journal or snapshot gone, anything else) is a result for that operation: report it
+     verbatim and go on with the next. Do not redo a restore to get around it; list those for a follow-up instead.
+  2. `node tools/qualification/pseudonymize.mjs check` on every new file: expected exit 0. The soft-deleted user's
+     `priorState.userPrincipalName` keeps its 32-hex pseudonym prefix and now ends in `keel-rt-u<12 hex>@t<11 hex>.example`.
+  3. Commit the replaced files on `claude/live-evidence-q187` from `origin/master`, open a PR with the `automerge` label.
+- Result:
+- **Expected:** every operation captured and promoted, check exit 0, no record holds the real mail domain.
+- **Report:** B, per operation captured / refused (verbatim), the check output, the evidence PR.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

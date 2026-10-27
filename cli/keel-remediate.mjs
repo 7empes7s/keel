@@ -18,6 +18,7 @@ import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { connect } from '../engine/store/db.mjs';
 import { buildRollbackPlan } from '../engine/govern/rollbackPlan.mjs';
+import { refuseSameContentDrift } from '../engine/store/openDrift.mjs';
 import { resolveQueuedAutomationPolicies } from '../engine/policy/execute.mjs';
 import { assertNoApprovedTransition } from '../engine/policy/changeIntent.mjs';
 import { assertSeparateRestorer, runRestore } from './keel-restore.mjs';
@@ -57,6 +58,9 @@ export async function resolveRestoreScope(client, { driftIds }) {
   const found = new Set(driftRows.map((row) => row.id));
   const missing = driftIds.filter((id) => !found.has(id));
   if (missing.length > 0) throw new Error(`drift not found: ${missing.join(', ')}`);
+  // A row that records no change (only a stored fingerprint differed) has nothing
+  // to roll back. Refused here, so the CLI, the worker and the preview all say so.
+  refuseSameContentDrift(driftRows);
 
   const baselineIds = new Set(driftRows.map((row) => row.baseline_id));
   if (baselineIds.size > 1) {

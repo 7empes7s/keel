@@ -53,6 +53,7 @@ import { CONTENT_COLLECTORS } from '../content/collectors.mjs';
 import { readCoverageOutcome } from '../coverage/snapshots.mjs';
 import { loadRecoveryMetrics } from '../coverage/recoveryMetrics.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
+import { sameContent } from '../cir/canonicalHash.mjs';
 import { canonicalJson, jobCorrelationId } from '../telemetry/events.mjs';
 
 export const VALUE_REPORT_VERSION = 1;
@@ -200,16 +201,28 @@ export function classifyRestoreOutcome({ planId, jobs, journal = [], items = [],
 /**
  * What one complete collection shows about a remediated change: `matches` (back at
  * the baseline value, or absent for an added resource), `differs`, `not-comparable`
- * (hashed under another hash version) or `unknown` (the type was not read completely).
+ * (hashed under another hash version, payloads not read) or `unknown` (the type was
+ * not read completely). When the hashes differ and both payloads are given
+ * (`beforePayload`, `version.payload`), the content decides under the current field
+ * rules (cir/canonicalHash.mjs sameContent): a baseline hash stored before a field was
+ * classified server-owned never keeps a rolled-back setting from verifying.
  */
-export function observationVerdict({ changeType, beforeHash, baselineHashVersion, version, covered }) {
+export function observationVerdict({ changeType, beforeHash, baselineHashVersion, version, covered, beforePayload = null, resourceType = null }) {
   if (changeType === 'added') {
     if (version) return 'differs';
     return covered ? 'matches' : 'unknown';
   }
   if (!version) return covered ? 'differs' : 'unknown';
-  if (Number(version.hash_version ?? 1) !== Number(baselineHashVersion ?? 1)) return 'not-comparable';
-  return version.payload_hash === beforeHash ? 'matches' : 'differs';
+  const sameVersion = Number(version.hash_version ?? 1) === Number(baselineHashVersion ?? 1);
+  if (sameVersion && version.payload_hash === beforeHash) return 'matches';
+  if (beforePayload != null && version.payload != null && resourceType) {
+    return sameContent(
+      { payload_hash: beforeHash, payload: beforePayload },
+      { payload_hash: version.payload_hash, payload: version.payload },
+      resourceType,
+    ) ? 'matches' : 'differs';
+  }
+  return sameVersion ? 'differs' : 'not-comparable';
 }
 
 /**
@@ -508,6 +521,37 @@ async function loadRestoreOutcomes(client, { tenantRef, to }) {
   return { outcomes, plans, undoPlans: undo.size, bounded, jobsRead: jobs.length };
 }
 
+/**
+ * Reads the stored payloads only where a later version's hash differs from the
+ * baseline's (rare: a real change, or a hash stored under older field rules), so
+ * observationVerdict can decide by content. Sets `payload` on those versions and
+ * returns the baseline payloads by version id. The rest of the estate is not read.
+ */
+async function withPayloadsWhereHashesDiffer(client, drifts, versions) {
+  const driftsByKey = new Map();
+  for (const drift of drifts) {
+    if (drift.change_type === 'added' || !drift.baseline_version_id) continue;
+    if (!driftsByKey.has(drift.natural_key)) driftsByKey.set(drift.natural_key, []);
+    driftsByKey.get(drift.natural_key).push(drift);
+  }
+  const ids = new Set();
+  for (const version of versions) {
+    const differing = (driftsByKey.get(version.natural_key) ?? []).filter((drift) => drift.before_hash !== version.payload_hash);
+    if (differing.length === 0) continue;
+    ids.add(version.id);
+    for (const drift of differing) if (drift.before_payload == null) ids.add(drift.baseline_version_id);
+  }
+  const payloads = new Map();
+  if (ids.size === 0) return payloads;
+  const { rows } = await client.query(
+    'SELECT id::text AS id, payload FROM resource_version WHERE id = ANY($1::uuid[])',
+    [[...ids]],
+  );
+  for (const row of rows) payloads.set(row.id, row.payload);
+  for (const version of versions) if (payloads.has(version.id)) version.payload = payloads.get(version.id);
+  return payloads;
+}
+
 async function loadChangeRemediations(client, { tenantRef, to }) {
   const { rows: jobs } = await client.query(
     `SELECT j.id, j.kind, j.status, j.created_at, j.started_at, j.finished_at, d.id::text AS drift_id
@@ -526,7 +570,8 @@ async function loadChangeRemediations(client, { tenantRef, to }) {
   if (driftIds.length === 0) return { outcomes: [], drifts: new Map(), bounded, jobsRead: jobs.length, snapshotsChecked: 0 };
   const { rows: drifts } = await client.query(
     `SELECT d.id::text AS id, d.natural_key, d.resource_type, d.change_type, d.before_hash, d.detected_at,
-            d.baseline_id::text AS baseline_id, COALESCE(brv.hash_version, 1) AS baseline_hash_version
+            d.baseline_id::text AS baseline_id, COALESCE(brv.hash_version, 1) AS baseline_hash_version,
+            brv.id::text AS baseline_version_id, d.before_payload
        FROM drift d
        LEFT JOIN baseline_resource br ON br.baseline_id = d.baseline_id AND br.natural_key = d.natural_key
        LEFT JOIN resource_version brv ON brv.id = br.resource_version_id
@@ -549,7 +594,7 @@ async function loadChangeRemediations(client, { tenantRef, to }) {
     ));
     if (snapshots.length) {
       ({ rows: versions } = await client.query(
-        `SELECT snapshot_id::text AS snapshot_id, natural_key, payload_hash, hash_version
+        `SELECT id::text AS id, snapshot_id::text AS snapshot_id, natural_key, payload_hash, hash_version
            FROM resource_version
           WHERE snapshot_id = ANY($1::uuid[]) AND natural_key = ANY($2::text[])`,
         [snapshots.map((row) => row.id), [...new Set(drifts.map((row) => row.natural_key))]],
@@ -557,6 +602,7 @@ async function loadChangeRemediations(client, { tenantRef, to }) {
     }
   }
   const versionOf = new Map(versions.map((row) => [`${row.snapshot_id}|${row.natural_key}`, row]));
+  const basePayloads = await withPayloadsWhereHashesDiffer(client, drifts, versions);
   const outcomes = [];
   for (const driftId of driftIds) {
     const drift = byId.get(driftId);
@@ -574,6 +620,10 @@ async function loadChangeRemediations(client, { tenantRef, to }) {
             baselineHashVersion: drift.baseline_hash_version,
             version: versionOf.get(`${snapshot.id}|${drift.natural_key}`) ?? null,
             covered: readCoverageOutcome(digest[drift.resource_type]).covered,
+            // The drift row's own baseline payload matches its before_hash; the
+            // baseline's current version is the fallback for rows without one.
+            beforePayload: drift.before_payload ?? basePayloads.get(drift.baseline_version_id) ?? null,
+            resourceType: drift.resource_type,
           }),
         };
       });

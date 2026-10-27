@@ -36,7 +36,7 @@ import { capabilityFor, isSupportedClaim } from '../coverage/capabilities.mjs';
 import { FIELD_PROJECTION_CONTRACT_VERSION } from '../contracts/fieldProjection.mjs';
 import { HASH_VERSION } from '../cir/canonicalHash.mjs';
 import { getReferences, getResourceVersions } from '../store/db.mjs';
-import { OPEN_DRIFT_PREDICATE } from '../store/openDrift.mjs';
+import { OPEN_DRIFT_PREDICATE, markSameContentDrift } from '../store/openDrift.mjs';
 import { gateBlastRadius } from '../safety/blastRadius.mjs';
 import { dependencyClosure } from '../restore/selection.mjs';
 import { canonicalDigest, restoreCandidates } from '../restore/dryRunArtifact.mjs';
@@ -226,6 +226,9 @@ export async function buildActivationPreview(client, {
     throw new ActivationNotFoundError(`policy ${policyId} does not roll back automatically; it needs no activation preview`);
   }
 
+  // Rows not checked yet are checked first, so a row that records no change is never
+  // read as open drift (remediation would refuse it and block the whole preview).
+  await markSameContentDrift(client, { tenantRef });
   const { rows: openDrifts } = await client.query(
     // One row per change: each detect run re-records what it still sees (store/governance.mjs listLatestOpenDrift).
     `WITH latest AS (

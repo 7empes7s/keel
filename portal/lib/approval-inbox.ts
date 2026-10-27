@@ -10,6 +10,7 @@ import { connect } from "@/lib/db";
 import { plainKind, typeService } from "@/lib/baselines-view";
 import { fieldWords, valueWords } from "@/lib/changes-view";
 import { diffPayloads } from "@/lib/drift-diff";
+import { recordsNoChange } from "../../engine/store/openDrift.mjs";
 import { holdsObjectId, type NamedKeys, namedResource, namedSubject } from "@/lib/job-names";
 import { PRINCIPAL_ID_HEADER, entityScopeFrom, type EntityScope } from "@/lib/principal";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
@@ -186,7 +187,8 @@ function servicesOf(keys: string[]): ApprovalPreview["services"] {
 async function rollBackPreview(client: KeelClient, driftIds: string[]): Promise<ApprovalPreview | null> {
   if (driftIds.length === 0) return null;
   const { rows } = await client.query(
-    `SELECT id::text AS id, natural_key, resource_type, change_type, before_payload, after_payload
+    `SELECT id::text AS id, natural_key, resource_type, change_type, before_payload, after_payload,
+            before_hash, after_hash, same_content
        FROM drift WHERE tenant_ref = $1 AND id::text = ANY($2::text[])`,
     [tenantRef(), driftIds],
   );
@@ -198,6 +200,8 @@ async function rollBackPreview(client: KeelClient, driftIds: string[]): Promise<
     const base = { name: namedResource(key, names, type), kind: plainKind(type) };
     if (row.change_type === "added") return { ...base, line: "Removed: it is not in the approved setup", fields: [], moreFields: 0 };
     if (row.change_type === "removed") return { ...base, line: "Put back as the approved setup holds it", fields: [], moreFields: 0 };
+    // Only a stored fingerprint differed: approving would put back what is there.
+    if (recordsNoChange(row)) return { ...base, line: "Nothing to roll back: it already holds the approved values", fields: [], moreFields: 0 };
     const diff = diffPayloads(row.before_payload, row.after_payload);
     const fields = diff.slice(0, PREVIEW_FIELDS).map((change) => ({
       field: fieldWords(change.path),

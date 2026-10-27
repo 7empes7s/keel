@@ -8031,7 +8031,7 @@ item that needs it stays untouched.
   for (const question of QUESTIONS) {
     const a = await answerQuestion(c, { tenantRef, scope: { central: true, entities: [] }, question });
     const keys = a.records.map((r) => r.naturalKey ?? r.id);
-    const zero = a.records.filter((r) => r.windowFrom && r.windowFrom === r.windowTo).length;
+    const zero = a.records.filter((r) => r.window?.from && r.window.from === r.window.to).length;
     console.log(JSON.stringify({ question, status: a.status, understood: a.understood, assumed: a.assumed, ignored: a.ignored,
       total: a.total, shown: a.shown, duplicates: keys.length - new Set(keys).size, zeroWidth: zero,
       modifiedWithoutFields: a.records.filter((r) => r.changeType === 'modified' && !(r.fields?.length)).length,

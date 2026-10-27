@@ -7922,6 +7922,13 @@ item that needs it stays untouched.
      If the column names differ, report what you ran.
   3. Count the Tier 1 jobs since the deploy that still name `deviceManagementSettings` as failed or partial (expect 0), and
      report the newest snapshot's overall status: is it still "Partly done" for any other type? Name those types.
+  4. **What the portal shows** (the page is behind Access, so read what it reads): run `buildCoverageReport` as in Q-items
+     before (`engine/coverage/report.mjs`, with `CATALOG` and `DESCRIPTORS`) and report the `deviceManagementSettings` row:
+     status, outcome, itemCount, lastCollectedAt, and any detail httpStatus/message. "Backed up" on the page = a complete outcome here.
+  5. **Error rows for two other types** (the handover asks for them): for the newest Tier 2 job and the newest job that read Purview,
+     report every `incompleteTypes` / failed-type entry with its reason, HTTP status and the request it names, for
+     **Settings catalog policy** (`deviceManagementConfigurationPolicy` or the type the job names) and for every **Purview** type or
+     workload (e.g. `purview-governance`, `purview-labels`, `purview-retention-dlp`, or Graph Purview kinds). Names masked; no fix, no grant.
 - **Expected:** one `deviceManagementSettings` object with `settings`, no cleanup or brand field, no 400 and no "read only part
   of this type". If it still fails, quote the failing request and HTTP status from the job evidence (#570 now names it). Change nothing.
 - **Report:** the outputs above and the build. If green, say so: the coordinator will close #447.

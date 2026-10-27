@@ -660,7 +660,7 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
   app from the same snapshot open the same step twice: the first restore's step must read `replacedBy` = the second restore and
   drop out of the counts. No credentials, permissions or consent are needed.
 - Needs: /opt/keel-live at the #563 merge or later (`grep -q countOpenCompletionSteps /opt/keel-live/engine/restore/completion.mjs`), and the K21 decision below filled in.
-- Status: todo
+- Status: in-progress
 - **Tenant:** standing authorization (2026-10-14) for test-tenant restores: self-approve and log each approval id. Restorer
   (`/etc/keel/restorer.json`) writes only the fixture below; Collector reads. **No API permissions, no secret or certificate, never
   admin consent**, no service principal. No CA, no break-glass, not Marouane's account. Never purge the fixture until step 6.

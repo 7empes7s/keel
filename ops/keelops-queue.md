@@ -598,7 +598,8 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
   those grants back. The other restore, `sharepoint-site-permissions` (groups, members, admins, levels, role assignments), reads from
   the nightly **content** backup (`sharepoint-sites`), item key `site/permissions`, which K17 did not look at. This item checks both.
 - Needs: nothing.
-- Status: in-progress
+- Status: done
+- Result: GREEN (2026-10-27 ~21:15 UTC). Build `1e7d51a`. Read-only SELECTs in `READ ONLY` transactions, /etc/keel/db.env. Both reads run. (Correction to K17: its "the site-grants read does not run" was wrong. The app grants read is `sharepoint.site-permissions`, as this item says.) **1.** Newest settings run `d8c8ac99-b346-4cc9-9a24-c7855e122502` `complete`, observed_to 2026-10-27T16:29:11.776Z; `field_coverage` entries with operation `sharepoint.site-permissions`: **20, all `observed`**. **2.** `sharepoint-sites` content runs: `succeeded`, items 0, reasons [], 2026-10-27T01:06:09.014Z · `succeeded`, 43, [], 2026-10-26T01:06:26.691Z · `succeeded`, 0, [], 2026-10-25T01:06:27.522Z. The newest is within the last day. **3.** `content_item` `site/permissions`: sites **20**, versions 25, newest 2026-10-23T01:48:05.072Z (stored only on change; no change since 10-23). The REST transport is present; nothing reports `site-groups-and-user-permissions` missing. Nothing written; no errors.
 - **Tenant:** nothing. Database reads only, the same kind of read-only SELECTs as K17, each in a `READ ONLY` transaction.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. App grants in the newest settings run: `SELECT c.id, c.outcome, c.observed_to FROM workload_collection c WHERE c.workload = 'sharepoint-site-settings' ORDER BY c.created_at DESC LIMIT 1;`

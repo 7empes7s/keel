@@ -6,6 +6,9 @@
 import { FAMILIES as EXCHANGE_EXTENDED } from '../../engine/collect/workloads/exchangeExtended.mjs';
 import { EXCHANGE_ROLE_GROUPS_MODULE, FAMILIES as EXCHANGE_ROLE_GROUPS } from '../../engine/collect/workloads/exchangeRoleGroups.mjs';
 import { FAMILIES as MAIL_FLOW } from '../../engine/collect/workloads/mailFlow.mjs';
+import {
+  AUDIT_ALERT_FAMILIES, CLASSIFIER_FAMILIES, DLP_SUPPORT_MODULE, PURVIEW_AUDIT_ALERTS_WORKLOAD, PURVIEW_CLASSIFIERS_WORKLOAD,
+} from '../../engine/collect/workloads/purviewDlpSupport.mjs';
 import { FAMILIES as PURVIEW_EXTENDED } from '../../engine/collect/workloads/purviewExtended.mjs';
 import { FAMILIES as RETENTION_DLP } from '../../engine/collect/workloads/purviewRetentionDlp.mjs';
 import { FAMILIES as TEAMS_EXTENDED } from '../../engine/collect/workloads/teamsExtended.mjs';
@@ -31,12 +34,19 @@ export const READ_FAMILIES = Object.freeze({
   'teams-voice-policies': TEAMS_EXTENDED,
   'purview-retention-dlp': RETENTION_DLP,
   'purview-governance': PURVIEW_EXTENDED,
+  [PURVIEW_CLASSIFIERS_WORKLOAD]: CLASSIFIER_FAMILIES,
+  [PURVIEW_AUDIT_ALERTS_WORKLOAD]: AUDIT_ALERT_FAMILIES,
   // Not a written workload: only its per-site sharing read runs through PowerShell.
   [SHAREPOINT_WORKLOAD]: SITE_SHARING_FAMILIES,
 });
 
 // Read-only workloads name their module here; a written workload's comes from its writes.
-const READ_ONLY_MODULES = Object.freeze({ [SHAREPOINT_WORKLOAD]: SITE_SHARING_MODULE, 'exchange-role-groups': EXCHANGE_ROLE_GROUPS_MODULE });
+const READ_ONLY_MODULES = Object.freeze({
+  [SHAREPOINT_WORKLOAD]: SITE_SHARING_MODULE,
+  'exchange-role-groups': EXCHANGE_ROLE_GROUPS_MODULE,
+  [PURVIEW_CLASSIFIERS_WORKLOAD]: DLP_SUPPORT_MODULE,
+  [PURVIEW_AUDIT_ALERTS_WORKLOAD]: DLP_SUPPORT_MODULE,
+});
 
 /** The PowerShell module a workload's read capture runs in. */
 export function readModule(workload) {

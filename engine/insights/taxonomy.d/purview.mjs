@@ -12,10 +12,10 @@ export default Object.freeze({
   categories: Object.freeze([
     { key: 'roles', name: 'Admin roles', types: [], match: /role/ },
     { key: 'labels', name: 'Sensitivity labels', types: ['purview-labels'], match: /sensitivity|^purviewlabels?$|^purviewlabelpolic/ },
-    { key: 'protection', name: 'Retention and data loss prevention', types: ['purview-retention-dlp'], match: /dlp|datalossprevention|retentionpolic|retentionrule|retentiondlp/ },
+    { key: 'protection', name: 'Retention and data loss prevention', types: ['purview-retention-dlp', 'purview-classifiers'], match: /dlp|datalossprevention|retentionpolic|retentionrule|retentiondlp/ },
     { key: 'governance', name: 'Retention labels and eDiscovery', types: ['purview-governance'], match: /governance|retention|label|ediscovery|hold|case|record|fileplan/ },
     { key: 'risk', name: 'Insider risk and communication rules', types: [], match: /insider|communication|supervision|barrier/ },
-    { key: 'audit', name: 'Audit and alerts', types: [], match: /audit|alert/ },
+    { key: 'audit', name: 'Audit and alerts', types: ['purview-audit-alerts'], match: /audit|alert/ },
     { key: 'tenant', name: 'Tenant settings', types: [], match: /setting|config/ },
   ]),
   entries: Object.freeze({
@@ -28,6 +28,18 @@ export default Object.freeze({
       name: 'Retention or data loss prevention policy',
       priority: 'critical',
       reason: 'Shortening retention or loosening data loss prevention can delete data or let it leave the tenant.',
+    },
+    // Read with Get-DlpSensitiveInformationType, its rule packages and Get-DlpKeywordDictionary.
+    'purview-classifiers': {
+      name: 'Sensitive information type or keyword dictionary',
+      priority: 'high',
+      reason: 'Data loss prevention rules use these to find sensitive data; without them a rule stops matching or cannot be restored.',
+    },
+    // Read with Get-ProtectionAlert and Get-UnifiedAuditLogRetentionPolicy.
+    'purview-audit-alerts': {
+      name: 'Alert or audit retention policy',
+      priority: 'high',
+      reason: 'Turning an alert off or shortening audit retention hides activity from admins and investigators.',
     },
     'purview-governance': {
       name: 'Retention label, auto-labeling or eDiscovery setting',

@@ -20,7 +20,7 @@
   Fixture-tested only through engine/roadmap/exchange-config.test.mjs,
   engine/roadmap/onedrive-purview.test.mjs, engine/roadmap/exchange-mail-flow.test.mjs,
   engine/roadmap/teams-org-policies.test.mjs, engine/roadmap/exchange-extended.test.mjs,
-  engine/roadmap/exchange-role-groups.test.mjs,
+  engine/roadmap/exchange-role-groups.test.mjs, engine/roadmap/purview-dlp-support.test.mjs,
   engine/roadmap/purview-retention-dlp.test.mjs and engine/roadmap/workload-writers.test.mjs
   (which play this contract); it has not
   been run against a tenant.
@@ -157,6 +157,20 @@ $AllowedPurviewExtended = @{
     'Get-CaseHoldRule'               = @('Policy')
 }
 
+# The Purview pieces DLP depends on, and alert and audit retention policies
+# (engine/collect/workloads/purviewDlpSupport.mjs), in the Security & Compliance
+# session with no parameters. Reads only: nothing that reads matches, raised alerts or
+# audit records.
+$AllowedPurviewClassifiers = @{
+    'Get-DlpSensitiveInformationType'            = @()
+    'Get-DlpSensitiveInformationTypeRulePackage' = @()
+    'Get-DlpKeywordDictionary'                   = @()
+}
+$AllowedPurviewAuditAlerts = @{
+    'Get-ProtectionAlert'                = @()
+    'Get-UnifiedAuditLogRetentionPolicy' = @()
+}
+
 # Wave 2 WKLD: workload configuration writes, one Set- (or New- for a named Teams
 # policy) per object, each with the identity and the declared fields only
 # (engine/restore/workloads/writeDeclarations.mjs; the restore test checks these lists
@@ -282,6 +296,8 @@ elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $ses
 elseif ($AllowedTeamsPolicy.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsPolicy[$name] }
 elseif ($AllowedTeamsExtended.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsExtended[$name] }
 elseif ($AllowedPurviewExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewExtended[$name] }
+elseif ($AllowedPurviewClassifiers.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewClassifiers[$name] }
+elseif ($AllowedPurviewAuditAlerts.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewAuditAlerts[$name] }
 elseif ($AllowedExchangeWrites.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeWrites[$name] }
 elseif ($AllowedPurviewWrites.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewWrites[$name] }
 elseif ($AllowedTeamsWrites.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsWrites[$name] }

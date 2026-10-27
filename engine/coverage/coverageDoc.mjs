@@ -674,6 +674,10 @@ export const WORKLOAD_GUIDE = Object.freeze({
     todo: 'The policies assigned to users and groups, and settings KEEL does not restore, are changed by hand in the Teams admin center using the backup. A deleted named policy is recreated assigned to nobody. A live event video provider\'s API token is never backed up: enter it again.' }),
   'purview-governance': Object.freeze({ name: 'Purview retention labels, auto-labeling and eDiscovery',
     todo: 'KEEL restores only a retention label\'s text and duration; a shorter duration needs a second approver. Deleted labels, auto-labeling and eDiscovery cases are recreated by hand in the Purview portal using the backup. eDiscovery cases are backed up as their settings and holds, never their searches or evidence. Auto-labeling and eDiscovery (Premium) are backed up only when the tenant\'s licence includes them.' }),
+  'purview-classifiers': Object.freeze({ name: 'Purview sensitive information types and keyword dictionaries',
+    todo: 'KEEL does not restore these yet. Re-upload a deleted custom type from its saved rule package, and recreate a keyword dictionary from its saved terms, in the Purview portal or with Security & Compliance PowerShell, before restoring a data loss prevention rule that uses them. Microsoft\'s built-in types are not backed up: they come back with the service.' }),
+  'purview-audit-alerts': Object.freeze({ name: 'Purview alert and audit retention policies',
+    todo: 'KEEL does not restore these yet. Turn a built-in alert policy back on, and recreate a deleted alert or audit retention policy, by hand in the Purview portal using the backup. Audit retention policies are backed up only when the tenant has Microsoft Purview Audit (Premium).' }),
   'power-platform-settings': Object.freeze({ name: 'Power Platform and Power BI settings',
     todo: 'KEEL does not restore these yet. Change them by hand in the Power Platform admin center or the Fabric admin portal using the backup.' }),
 });

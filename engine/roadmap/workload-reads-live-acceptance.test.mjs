@@ -31,6 +31,7 @@ import { exchangeExtendedActivation } from '../collect/workloads/exchangeExtende
 import { exchangeRoleGroupsActivation } from '../collect/workloads/exchangeRoleGroups.mjs';
 import { mailFlowActivation } from '../collect/workloads/mailFlow.mjs';
 import { siteSharingActivation } from '../collect/workloads/sharepoint.mjs';
+import { purviewAuditAlertsActivation, purviewClassifiersActivation } from '../collect/workloads/purviewDlpSupport.mjs';
 import { purviewExtendedActivation } from '../collect/workloads/purviewExtended.mjs';
 import { retentionDlpActivation } from '../collect/workloads/purviewRetentionDlp.mjs';
 import { teamsExtendedActivation } from '../collect/workloads/teamsExtended.mjs';
@@ -53,11 +54,13 @@ const ACTIVATION = {
   'teams-voice-policies': teamsExtendedActivation,
   'purview-retention-dlp': retentionDlpActivation,
   'purview-governance': purviewExtendedActivation,
+  'purview-classifiers': purviewClassifiersActivation,
+  'purview-audit-alerts': purviewAuditAlertsActivation,
   // SharePoint's per-site sharing read: the rest of the SharePoint read never waits for it.
   'sharepoint-site-settings': siteSharingActivation,
 };
 const TABLES = {
-  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
+  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended', 'AllowedPurviewClassifiers', 'AllowedPurviewAuditAlerts'],
   MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended'],
   'PnP.PowerShell': ['AllowedPnP'],
 };

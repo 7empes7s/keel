@@ -331,6 +331,11 @@ export const FIXTURE_PAYLOADS = Object.freeze({
   microsoftTunnelHealthThreshold: { healthyThreshold: 70, unhealthyThreshold: 90 },
   onPremisesConditionalAccessSettings: { enabled: false, includedGroups: [], excludedGroups: [], overrideDefaultRule: false },
   sharepointSettings: { isLoopEnabled: true, idleSessionSignOut: { isEnabled: false, warnAfterInSeconds: 0, signOutAfterInSeconds: 0 }, siteCreationDefaultStorageLimitInMB: 26214400 },
+  // Restore gaps, batch 18: a web link app, the kind recreated in full.
+  mobileApp: {
+    '@odata.type': '#microsoft.graph.webApp', displayName: 'Fixture web link', description: 'Fixture', publisher: 'Fixture',
+    appUrl: 'https://example.com/', useManagedBrowser: false, isFeatured: false, roleScopeTagIds: ['0'],
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons.
   externalIdentitiesPolicy: { allowExternalIdentitiesToLeave: true, allowDeletedIdentitiesDataRemoval: false },
   accessReviewPolicy: { isGroupOwnerManagementEnabled: true },
@@ -626,7 +631,8 @@ export function fakeGraph() {
           .map(([, object]) => object);
         return { ok: true, status: 200, body: { value } };
       }
-      if (/^\/deviceAppManagement\/mobileApps\/[^/]+$/.test(path)) return { ok: true, status: 200, body: { id: decodeURIComponent(path.split('/').pop()) } };
+      // Batch 18: an app KEEL wrote reads back as written.
+      if (/^\/deviceAppManagement\/mobileApps\/[^/]+$/.test(path) && !objects.has(path)) return { ok: true, status: 200, body: { id: decodeURIComponent(path.split('/').pop()) } };
       // Restore gaps batch 12: the imported ADMX files are listed before an upload.
       if (path === '/deviceManagement/groupPolicyUploadedDefinitionFiles') {
         const value = [...objects.entries()].filter(([key]) => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes('/')).map(([, object]) => object);

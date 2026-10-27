@@ -53,6 +53,7 @@ import { SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
 import { classifyContentEffects } from '../safety/contentEffects.mjs';
 import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
+import { appGroupOf, appHasPackage, appKindName, appKindWords } from './intuneAppKinds.mjs';
 import {
   applyRecordWrite, defineRecord, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue,
 } from './recordWriter.mjs';
@@ -495,6 +496,9 @@ const UNREAD_ASSIGNMENTS = Object.freeze({
  */
 export function unreadAssignmentsStep(resource) {
   if (!writesIntuneAssignments(resource?.resourceType) || resource.verb === 'delete') return null;
+  // Batch 18: app assignments a restore holds back, shown in the dry run too.
+  const held = resource.resourceType === 'mobileApp' && (resource.verb === 'create' || resource.verb === 'update') ? appAssignmentHold(resource, resource.verb, resource.live?.payload) : null;
+  if (held) return held.step;
   const desired = resource.assignments;
   if (!desired || isComplete(desired.outcome)) return null;
   // The default Company Portal branding applies to every user and has none.
@@ -575,7 +579,9 @@ export function attachIntuneAssignments(resources, { desired, live = new Map(), 
     const observed = live.get(key);
     const liveCount = observed && isComplete(observed.outcome) ? liveAssignmentIdentities(observed.targets, { observed: true, extras }).size : null;
     const attached = { ...resource, assignments: { outcome: want.outcome, targets: want.targets } };
-    const reach = newAssignmentReach(attached, observed, resolve, extras);
+    // Batch 18: app assignments the restore holds back are never written, so they reach no one.
+    const held = resource.resourceType === 'mobileApp' && appAssignmentHold(attached, resource.verb === 'noop' ? 'update' : resource.verb, resource.live?.payload);
+    const reach = held ? [] : newAssignmentReach(attached, observed, resolve, extras);
     const withAssignments = {
       ...attached,
       ...(liveCount === null ? {} : { liveAssignmentCount: liveCount }),
@@ -624,8 +630,9 @@ function targetLabel(targetType, key, attributes, extras) {
  * contentEffects.mjs) judges an object that reaches new devices as if it were new.
  */
 export function newAssignmentReach(resource, observed, resolve, assignmentExtras = []) {
-  // When a script runs is not who it reaches: a schedule alone never counts.
-  const extras = assignmentExtras.filter((field) => field !== 'runSchedule');
+  // When a script runs is not who it reaches: a schedule alone never counts,
+  // nor do an app assignment's notification and delivery settings (batch 18).
+  const extras = assignmentExtras.filter((field) => field !== 'runSchedule' && field !== 'settings');
   const plan = assignmentPlan(resource, resolve, { extras });
   if (plan.state !== 'ready') return null;
   const liveEdges = resource.live?.state === 'present' && observed && isComplete(observed.outcome) ? (observed.targets ?? []) : null;
@@ -1470,6 +1477,14 @@ export function withoutRegeneratedKeys(value) {
 const sameReusableField = (field, left, right) => (field === 'settingInstance'
   ? sameValue(withoutRegeneratedKeys(left), withoutRegeneratedKeys(right)) : null);
 
+// Restore gaps, batch 18: Intune apps. What Intune keeps about an app's
+// package, its links to other apps and how many devices use it: never sent.
+const MOBILE_APP_SERVER_FIELDS = Object.freeze([
+  'assignments', 'categories', 'relationships', 'contentVersions', 'uploadState', 'publishingState', 'isAssigned',
+  'dependentAppCount', 'supersedingAppCount', 'supersededAppCount', 'committedContentVersion', 'size', 'manifestHash',
+  'usedLicenseCount', 'totalLicenseCount',
+]);
+
 export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // Delete only: create and update stay on the built-in path above.
   ...Object.fromEntries(Object.values(INTUNE_RECORDS).map((entry) => [entry.resourceType, defineRecord({
@@ -1730,6 +1745,18 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     writable: ['dependencyType', 'supersedenceType'], createOnly: ['sourceId', 'targetId', 'targetType'],
     refusal: appRelationshipRefusal, preflight: appRelationshipPreflight, permission: 'DeviceManagementApps.ReadWrite.All',
   }),
+  // Restore gaps, batch 18. An app is written from its settings (store and
+  // web links, Microsoft 365 Apps, Edge, WinGet), or as a shell waiting for its
+  // package (Win32 and line-of-business apps: engine/restore/intuneAppKinds.mjs).
+  // Who it is assigned to is written through /assign, with each assignment's
+  // intent and settings; a shell is assigned only once its package is uploaded.
+  mobileApp: defineRecord({
+    resourceType: 'mobileApp', version: 'v1.0', collection: '/deviceAppManagement/mobileApps', odataType: 'required',
+    operations: ['create', 'update'], excluded: MOBILE_APP_SERVER_FIELDS, createOnly: ['packageIdentifier', 'fileName'],
+    transform: mobileAppBody, refusal: mobileAppRefusal, afterWrite: appAssignmentsAfterWrite,
+    assignmentType: '#microsoft.graph.mobileAppAssignment', assignmentBodyKey: 'mobileAppAssignments', assignmentExtras: Object.freeze(['intent', 'settings']),
+    permission: 'DeviceManagementApps.ReadWrite.All',
+  }),
   // Restore gaps, batch 17: Intune tenant-wide settings, approved by the user
   // on 2026-10-22. Each is updated in place only.
   // The Intune tenant settings: the compliance settings (settings). Graph
@@ -1839,6 +1866,114 @@ async function appRelationshipPreflight(io, { payload, verb }) {
   return {
     skipped: `already set: ${payload.sourceDisplayName ?? payload.sourceId} already has a ${stripGraph(same['@odata.type']) === 'mobileAppSupersedence' ? 'supersedence' : 'dependency'} link to ${payload.targetDisplayName ?? payload.targetId}, so it is not added again; check it in the Intune admin center if the backup holds another kind of link`,
   };
+}
+
+// ---------------------------------------------- restore gaps, batch 18: apps
+
+const APP_PORTAL = 'the Intune admin center, under Apps, All apps';
+const SYNCED_SOURCES = Object.freeze([
+  [/vpp/i, 'Apple Business Manager, through your volume purchase token'],
+  [/^androidManagedStore/i, 'managed Google Play'],
+  [/^managed(IOS|Android)/i, 'Microsoft (a built-in app for app protection)'],
+  [/storeforbusiness|^windowsStoreApp$/i, 'the retired Microsoft Store for Business; add it again as a Microsoft Store app (new)'],
+]);
+const syncedSource = (payload) => SYNCED_SOURCES.find(([pattern]) => pattern.test(appKindName(payload) ?? ''))?.[1] ?? 'the store it came from';
+
+/**
+ * What a write sends for an app. A synced app's settings belong to the store
+ * it came from, so only who it is assigned to is written. A Win32 app's older
+ * rule lists (detectionRules, requirementRules) hold the same rules as
+ * `rules`, so only `rules` is sent when the backup has it.
+ */
+function mobileAppBody(body, { payload }) {
+  if (appGroupOf(payload) === 'synced') return typeof body['@odata.type'] === 'string' ? { '@odata.type': body['@odata.type'] } : {};
+  if (Array.isArray(body.rules) && body.rules.length > 0) {
+    const { detectionRules: _detection, requirementRules: _requirement, ...rest } = body;
+    return rest;
+  }
+  return body;
+}
+
+/** Kinds KEEL never writes, synced apps on create, and an app whose kind changed. */
+function mobileAppRefusal(resource, verb) {
+  const payload = resource.payload ?? {};
+  const group = appGroupOf(payload);
+  if (!group) {
+    return { outcome: 'skipped', reason: `manual: KEEL does not write this kind of app (${appKindWords(payload)}); add it again by hand in ${APP_PORTAL}, using the backed-up settings` };
+  }
+  if (group === 'synced' && verb === 'create') {
+    return {
+      outcome: 'skipped',
+      reason: `manual: this ${appKindWords(payload)} is added by ${syncedSource(payload)}, not by KEEL; sync it again there, then restore again to put back who it is assigned to`,
+    };
+  }
+  if (verb === 'update') {
+    const live = resource.live?.payload;
+    if (live && lower(appKindName(live)) !== lower(appKindName(payload))) {
+      return {
+        outcome: 'skipped',
+        reason: `manual: the app with this name in Intune is now a ${appKindWords(live)}, not a ${appKindWords(payload)} as in the backup; an app never changes kind, so fix it by hand in ${APP_PORTAL}`,
+      };
+    }
+  }
+  return null;
+}
+
+/** Who an app was assigned to, in plain words: "group:Sales (required)". */
+function appTargetWords(targets) {
+  return (targets ?? []).map((target) => {
+    const attributes = target.attributes ?? {};
+    const who = targetLabel(attributes.targetType ?? null, target.targetNaturalKey ?? null, attributes, []);
+    return attributes.intent ? `${who} (${attributes.intent})` : who;
+  }).join('; ');
+}
+
+const appAssignmentStep = (description) => Object.freeze({ kind: 'integration', requirement: 'assignments', description });
+
+/**
+ * An app's assignments, written through /assign with each one's intent and
+ * settings, except when that would do harm or lose data. Each such case is a
+ * step for a person, with the backed-up assignments:
+ *  - an app without its package (a recreated Win32 or line-of-business app):
+ *    assigned, it would fail to install on every device it reaches;
+ *  - an uninstall assignment: it removes the app and its data from devices;
+ *  - a backup that holds only a fingerprint of the assignment settings (taken
+ *    before batch 18): writing them would drop notifications, delivery and
+ *    restart options.
+ */
+export function appAssignmentHold(resource, verb, livePayload) {
+  const desired = resource?.assignments;
+  if (!desired || !isComplete(desired.outcome)) return null;
+  const payload = resource.payload ?? {};
+  const targets = desired.targets ?? [];
+  const included = targets.filter((target) => target?.attributes?.targetType !== EXCLUSION);
+  if (included.length === 0) return null;
+  const listed = appTargetWords(targets);
+  const hold = (changes, description) => ({ changes: { assignments: changes }, step: appAssignmentStep(description) });
+  const hasPackage = verb === 'create' ? appGroupOf(payload) !== 'packaged' : appHasPackage(livePayload ?? {});
+  if (!hasPackage) {
+    return hold('not written: the app has no package yet', `Not assigned yet: Intune has no package for this app, and an assigned app without one fails to install on every device it reaches. Upload the package in ${APP_PORTAL}, then assign it as in the backup: ${listed}`);
+  }
+  const uninstall = included.filter((target) => lower(target.attributes?.intent) === 'uninstall');
+  if (uninstall.length > 0) {
+    return hold('not written: the backup uninstalls it from some devices', `Assignments not restored: the backup uninstalls this app for ${appTargetWords(uninstall)}, which removes it and its data from those devices, so KEEL never writes it. Check them and assign it by hand in ${APP_PORTAL}, as in the backup: ${listed}`);
+  }
+  if (targets.some((target) => target?.attributes?.settingsDigest && target.attributes.settings === undefined)) {
+    return hold('not written: the backup holds only a fingerprint of the assignment settings', `Assignments not restored: this backup was taken before KEEL read the assignment settings (notifications, delivery and restart options) in full. Take a new backup and restore again, or assign it by hand in ${APP_PORTAL}, as in the backup: ${listed}`);
+  }
+  return null;
+}
+
+async function appAssignmentsAfterWrite(io, step) {
+  const { verb, live, resource } = step;
+  // Judged again on the object as it reads back now (its package may have
+  // changed since the plan); the plan's own step is already on the result.
+  const held = appAssignmentHold(resource, verb, live ?? resource.live?.payload);
+  if (held) {
+    const planned = appAssignmentHold(resource, verb, resource.live?.payload);
+    return { changes: held.changes, ...(planned ? {} : { completion: [held.step] }) };
+  }
+  return assignmentsAfterWrite(io, step);
 }
 
 /**

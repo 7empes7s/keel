@@ -321,9 +321,10 @@ export const TYPE_GUIDE = Object.freeze({
   managedDevice: manual('Enrolled devices', MS,
     'A device record is created by the device when it enrolls. It is state, not configuration.',
     'Nothing to restore. Devices enroll again on their own once enrollment settings are back.'),
-  mobileApp: manual('Apps', KEEL,
-    'App packages are content, not configuration, and KEEL does not back them up.',
-    'Add the apps again in the Intune admin center from their store or package, using the backup as the list.'),
+  mobileApp: auto('Apps', {
+    keeps: 'Adds store apps, web links, Microsoft 365 Apps, Edge and WinGet apps again with their settings and who they are assigned to, and puts changed settings back. Win32 and line-of-business apps come back with their install commands, detection rules and other settings, unassigned.',
+    todo: 'Microsoft never returns an app\'s package (the installer file): upload it again for each recreated Win32 or line-of-business app, then assign it as the restore lists. Apps from Apple Business Manager or managed Google Play are synced again there; KEEL then puts back who they are assigned to. An uninstall assignment is never written: it removes the app and its data from devices. App categories and dependencies are set again by hand.',
+  }),
   managedAppPolicy: auto('App protection policies', {
     keeps: 'Puts the settings of iOS and Android app protection policies back, recreates them with the apps they protect, and removes an unassigned policy added since the backup.',
     todo: 'A backup taken before the protected apps were read cannot recreate a policy; take a new backup. Windows Information Protection policies are restored by hand. Windows app protection policies are restored on their own.',

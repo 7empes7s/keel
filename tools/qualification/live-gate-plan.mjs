@@ -343,6 +343,14 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-app-main`, drift: 'remove the dependency: the restore adds it back; then set it to install automatically: the restore sets it back to detect',
     note: 'Use a dependency, never a supersedence set to replace (that uninstalls apps on devices). Never assign either app. If Intune refuses a dependency on a web link app, use two unassigned line-of-business test apps instead, or record that and skip this kind.',
   },
+  // Restore gaps, batch 18: two unassigned fixture apps, one recreated in full
+  // (a web link) and one as a shell waiting for its package (a Win32 app with
+  // no file). Neither is ever assigned, so no device installs anything.
+  mobileApp: {
+    kind: 'named-object', fixture: `a web link app ${FIXTURE_PREFIX}-app-web (https://example.com/) and a Win32 app shell ${FIXTURE_PREFIX}-app-win32 with no file uploaded, a file-exists detection rule and an install command that only echoes, both assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-app-web`, drift: 'delete both: the restore adds the web link back with its settings and the Win32 app back as a shell with its commands and detection rule, plus an "upload the package" step; then change the web link\'s description: the restore puts it back',
+    note: 'Never assign either app. Never upload a real package to the shell. Delete both fixtures after the run if the queue item says so.',
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons. None touches sign-in,
   // Conditional Access or any account; each is set back to its value after the run.
   externalIdentitiesPolicy: {

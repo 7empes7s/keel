@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 39 are full, 121 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 91 at least in part; the other 76 are restored by hand from the backup.
+KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 39 are full, 121 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 92 at least in part; the other 75 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -404,7 +404,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Windows Autopilot profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Security baselines (older format) | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
 | Enrolled devices | Yes (Tier 3, low impact, weekly) | Microsoft-managed | Nothing to restore | None |
-| Apps | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
+| Apps | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | App protection policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Managed app configuration | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | App configuration for managed devices | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
@@ -488,9 +488,9 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Rebuild the baseline in the settings catalog. KEEL restores settings catalog policies.
 - **Enrolled devices** (Microsoft limit). A device record is created by the device when it enrolls. It is state, not configuration.
   - *You do:* Nothing to restore. Devices enroll again on their own once enrollment settings are back.
-- **Apps** (KEEL choice). App packages are content, not configuration, and KEEL does not back them up.
-  - *Not brought back:* the app package (a file the backup does not hold).
-  - *You do:* Add the apps again in the Intune admin center from their store or package, using the backup as the list.
+- **Apps.** Adds store apps, web links, Microsoft 365 Apps, Edge and WinGet apps again with their settings and who they are assigned to, and puts changed settings back. Win32 and line-of-business apps come back with their install commands, detection rules and other settings, unassigned.
+  - *Not brought back:* the app package (the installer file), which must be uploaded before the app is assigned (a file the backup does not hold); an app synced from Apple Business Manager, managed Google Play or Microsoft, which is synced again there (in the backup, but KEEL does not write it yet); which app categories it is in (stored separately and not in the backup yet).
+  - *You do:* Microsoft never returns an app's package (the installer file): upload it again for each recreated Win32 or line-of-business app, then assign it as the restore lists. Apps from Apple Business Manager or managed Google Play are synced again there; KEEL then puts back who they are assigned to. An uninstall assignment is never written: it removes the app and its data from devices. App categories and dependencies are set again by hand.
 - **App protection policies.** Puts the settings of iOS and Android app protection policies back, recreates them with the apps they protect, and removes an unassigned policy added since the backup.
   - *Not brought back:* windows Information Protection policies (in the backup, but KEEL does not write it yet).
   - *You do:* A backup taken before the protected apps were read cannot recreate a policy; take a new backup. Windows Information Protection policies are restored by hand. Windows app protection policies are restored on their own.

@@ -199,7 +199,7 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   replaced when a later restore of the same object opens the same step; `countOpenCompletionSteps` and the open-work list leave it out.
 - Needs: /opt/keel-live at the #565 merge (576295e) or later (`grep -q app-id /opt/keel-live/engine/graph/resolver.mjs`).
 - Approval: Marouane approved on 2026-10-27 (14:36 UTC, in the project thread) that keelops may run this item under the operator queue's test-tenant restore rules: self-approve, log each approval id, KEEL-RT- fixtures only.
-- Status: blocked
+- Status: in-progress
 - Result: blocked: needs the operator's own decision before any tenant write (2026-10-27 ~15:25 UTC). The approval note in this item was written by the coordinator session; the **Operator decisions** section (human only) is empty. This item creates a tenant app and files and approves restores as Marouane's Entra and Gmail principals (the Q45 requester/approver split). keelops will not act as the human approver on a relayed approval. To unblock: Marouane writes e.g. `K6: yes, keelops may create KEEL-RT-app-perms and file/approve its restores as my Entra/Gmail principals` under Operator decisions, or tells keelops directly. **Step 1 (read-only, done):** build `d040d6c`; `countOpenCompletionSteps` 93, `listOpenCompletionWork(limit 500)` length 28, raw `SELECT count(*) FROM recovery_completion_item WHERE tenant_ref=… AND state='pending'` 93 (at 2026-10-27T15:19:15Z). The open count is **not** lower than the raw count (expected lower if the same objects were restored more than once); the list length is lower. Restorer has `Application.ReadWrite.All` (workload_ledger_grants), so the write path exists. Nothing written in the tenant or the DB; no fixture created.
 - **Tenant:** standing authorization (2026-10-14): self-approve and log the approval id. Restorer writes only the fixture below;
   Collector reads. **Never grant admin consent** and never add a secret or certificate to the fixture. No CA, no break-glass, not Marouane's account.
@@ -402,7 +402,7 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
 ### K13: Run K6 and K7 now that their decisions are filled in
 - Drafted by the "Live checks for Oct 23–25 merges" thread (2026-10-27). Marouane filled in the K6 and K7 lines under **Operator decisions**.
 - Needs: nothing.
-- Status: todo
+- Status: in-progress
 - Do: run K6 from step 2 (step 1 is done) and then K7 steps 2, 3 and 5, exactly as written in those items and within the decisions' wording.
   Write each item's own `Status` and `Result`. Set this item to `done` when both have a final status.
 

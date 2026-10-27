@@ -12,7 +12,7 @@
  *     and author (`from.user`, a user of the tenant) import each message.
  *  3. POST .../completeMigration ends import mode; the channel opens to its members.
  *     A run that resumes after that puts the channel back into import mode with
- *     POST .../startMigration first.
+ *     POST .../startMigration first (v1.0, then beta).
  *
  * Where the messages come from:
  *  - The content store, container `team:<teamId>/channel:<channelId>/messages`, one item
@@ -46,6 +46,7 @@ export const THREAD_SCHEMA = 'keel.teams.channelThread/v1';
 export const FIXTURE_SCHEMA = 'keel.teams.channelFixture/v1';
 export const TEAMS_MESSAGES_WORKLOAD = 'teams-messages';
 export const GRAPH_ROOT = 'https://graph.microsoft.com/v1.0';
+export const GRAPH_BETA = 'https://graph.microsoft.com/beta';
 export const CHANNEL_NAME_MAX = 50;
 // Microsoft allows about five import requests a second per channel.
 export const WRITE_GAP_MS = 250;
@@ -236,7 +237,7 @@ export function importPayload(message, { author, root }) {
   const attachments = [];
   for (const attachment of message.attachments ?? []) {
     if (attachment?.contentType === 'reference' && typeof attachment.contentUrl === 'string' && /^https:\/\//.test(attachment.contentUrl)) {
-      attachments.push({ id: String(attachment.id), contentType: 'reference', contentUrl: attachment.contentUrl, name: attachment.name ?? null });
+      attachments.push({ id: String(attachment.id), contentType: 'reference', contentUrl: attachment.contentUrl, ...(attachment.name ? { name: attachment.name } : {}) });
     } else {
       notes.attachmentsDropped += 1;
       if (html && attachment?.id) content = content.replace(new RegExp(`<attachment\\s+id="${String(attachment.id).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"\\s*>\\s*</attachment>`, 'g'), '');
@@ -297,7 +298,9 @@ export async function restoreTeamsMessages({
   };
 
   let lastWrite = null;
-  const send = async (method, path, body) => {
+  // A write retried after a server error may have been applied the first time.
+  let retriedAfterServerError = false;
+  const send = async (method, path, body, root = GRAPH_ROOT) => {
     if (path !== team && !path.startsWith(`${team}/`) && !(method === 'GET' && path.startsWith('/users/'))) {
       throw new Error(`refused a request outside the target team: ${method} ${path}`);
     }
@@ -308,8 +311,9 @@ export async function restoreTeamsMessages({
         lastWrite = Date.now();
         report.writes++;
       }
-      const res = await transport(`${GRAPH_ROOT}${path}`, { method, ...(body !== undefined ? { body } : {}) });
+      const res = await transport(`${root}${path}`, { method, ...(body !== undefined ? { body } : {}) });
       if (!RETRY_STATUSES.has(res?.status) || attempt >= MAX_RETRIES) return res;
+      if (method !== 'GET' && res.status !== 429) retriedAfterServerError = true;
       await sleep(Math.min(Number(res.headers?.['retry-after']) || 2 ** attempt, 60) * 1000);
     }
   };
@@ -340,39 +344,52 @@ export async function restoreTeamsMessages({
   };
 
   // The channel: created once in import mode, reused by every resume.
-  const earliest = plan.threads[0]?.message.createdDateTime ?? now().toISOString();
-  const findChannel = async () => {
-    const filter = encodeURIComponent(`displayName eq '${channelName.replace(/'/g, "''")}'`);
+  // The channel starts a minute before its first message, as the import API expects.
+  const earliest = new Date(new Date(plan.threads[0]?.message.createdDateTime ?? now()).valueOf() - 60 * 1000).toISOString();
+  const findChannel = async (name) => {
+    const filter = encodeURIComponent(`displayName eq '${name.replace(/'/g, "''")}'`);
     const res = await send('GET', `${team}/channels?$filter=${filter}&$select=id,displayName`);
-    return ok(res) ? res.body?.value?.find((item) => item.displayName === channelName)?.id ?? null : null;
+    return ok(res) ? res.body?.value?.find((item) => item.displayName === name)?.id ?? null : null;
   };
+  // Another run of the same channel on the same day already holds the plain name: number this one.
+  const nameFor = (n) => {
+    if (n === 1) return channelName;
+    const [, base = channelName, tag = 'restored'] = channelName.match(/^(.*) \((restored[^)]*)\)$/) ?? [];
+    const suffix = ` (${tag} #${n})`;
+    return `${base.slice(0, Math.max(1, CHANNEL_NAME_MAX - suffix.length)).trimEnd()}${suffix}`;
+  };
+  const taken = (res) => res?.status === 409 || /already exists|NameAlreadyExists|Duplicate/i.test(`${res?.body?.error?.code ?? ''} ${res?.body?.error?.message ?? ''}`);
   const ensureChannel = async () => {
     const held = await journal.entry(plan.runId, 'channel');
-    if (held?.status === 'restored') return held.targetId;
-    let id = held ? await findChannel() : null;
-    if (!id) {
-      await journal.mark(plan.runId, 'channel', { kind: 'teams-channel', status: 'pending' });
+    if (held?.status === 'restored') return { id: held.targetId, name: held.reason ?? channelName };
+    let name = held?.reason ?? channelName;
+    let id = held ? await findChannel(name) : null;
+    for (let n = 1; !id; n++) {
+      name = nameFor(n);
+      await journal.mark(plan.runId, 'channel', { kind: 'teams-channel', status: 'pending', reason: name });
       const res = await send('POST', `${team}/channels`, {
         '@microsoft.graph.channelCreationMode': 'migration',
-        displayName: channelName,
+        displayName: name,
         ...(plan.channel.description ? { description: String(plan.channel.description).slice(0, 1024) } : {}),
         membershipType: 'standard',
-        createdDateTime: new Date(earliest).toISOString(),
+        createdDateTime: earliest,
       });
-      if (!ok(res) || typeof res.body?.id !== 'string') throw new Error(why(res, `creating channel ${channelName}`));
-      id = res.body.id;
+      if (ok(res) && typeof res.body?.id === 'string') { id = res.body.id; break; }
+      if (!taken(res) || n >= 9) throw new Error(why(res, `creating channel ${name}`));
     }
-    await journal.mark(plan.runId, 'channel', { kind: 'teams-channel', status: 'restored', targetId: id });
+    await journal.mark(plan.runId, 'channel', { kind: 'teams-channel', status: 'restored', targetId: id, reason: name });
     await journal.mark(plan.runId, 'import-mode', { kind: 'teams-import-mode', status: 'pending', reason: 'open' });
-    return id;
+    return { id, name };
   };
 
   let channelId;
   try {
-    channelId = await ensureChannel();
+    const channel = await ensureChannel();
+    channelId = channel.id;
+    report.channel.name = channel.name;
   } catch (error) {
     report.failed = plan.messages;
-    report.errors.push({ channel: channelName, error: String(error?.message ?? error) });
+    report.errors.push({ channel: report.channel.name, error: String(error?.message ?? error) });
     report.status = 'failed';
     await journal.finishRun(plan.runId, { status: report.status, report });
     return report;
@@ -388,9 +405,12 @@ export async function restoreTeamsMessages({
   }
   const doneKeys = new Set((await journal.entries(plan.runId)).filter((entry) => entry.status === 'restored').map((entry) => entry.sourceKey));
   if (mode?.status === 'restored' && pendingWork.some((key) => !doneKeys.has(key))) {
-    const res = await send('POST', `${base}/startMigration`, { conversationCreationDateTime: new Date(earliest).toISOString() });
+    const reopen = { conversationCreationDateTime: earliest };
+    let res = await send('POST', `${base}/startMigration`, reopen);
+    // Reopening an existing channel may still be beta only on some clouds.
+    if (res?.status === 400 || res?.status === 404) res = await send('POST', `${base}/startMigration`, reopen, GRAPH_BETA);
     if (!ok(res)) {
-      report.errors.push({ channel: channelName, error: why(res, 'reopening import mode') });
+      report.errors.push({ channel: report.channel.name, error: why(res, 'reopening import mode') });
       report.failed = pendingWork.filter((key) => !doneKeys.has(key)).length;
       report.alreadyDone = pendingWork.length - report.failed;
       report.status = report.alreadyDone ? 'partial' : 'failed';
@@ -408,7 +428,15 @@ export async function restoreTeamsMessages({
     const author = await resolveAuthor(message);
     const { payload, notes } = importPayload(message, { author, root });
     await journal.mark(plan.runId, key, { kind: root ? 'teams-message' : 'teams-reply', status: 'pending' });
-    const res = await send('POST', path, payload);
+    retriedAfterServerError = false;
+    let res;
+    try {
+      res = await send('POST', path, payload);
+    } catch (error) {
+      // No answer: the import may have happened. Leave the entry pending so a resume flags it.
+      throw Object.assign(error instanceof Error ? error : new Error(String(error)), { unanswered: true });
+    }
+    if (retriedAfterServerError) report.possibleDuplicates.push(message.id);
     if (!ok(res) || typeof res.body?.id !== 'string') throw new Error(why(res, `importing message ${message.id}`));
     await journal.mark(plan.runId, key, { kind: root ? 'teams-message' : 'teams-reply', status: 'restored', targetId: res.body.id });
     report.restored++;
@@ -419,6 +447,7 @@ export async function restoreTeamsMessages({
   const fail = async (key, message, error, root) => {
     report.failed++;
     report.errors.push({ messageId: message.id, error: String(error?.message ?? error) });
+    if (error?.unanswered) return;
     await journal.mark(plan.runId, key, { kind: root ? 'teams-message' : 'teams-reply', status: 'failed', reason: String(error?.message ?? error).slice(0, 500) }).catch(() => {});
   };
 
@@ -441,14 +470,22 @@ export async function restoreTeamsMessages({
     }
   }
 
-  // Always end import mode, so the channel never stays hidden from its members.
-  const completed = await send('POST', `${base}/completeMigration`, {});
-  if (ok(completed)) {
-    await journal.mark(plan.runId, 'import-mode', { kind: 'teams-import-mode', status: 'restored', reason: 'completed' });
-  } else {
-    report.errors.push({ channel: channelName, error: why(completed, 'completing the import') });
+  // End import mode whenever this run left it open, so the channel never stays hidden from its members.
+  let closed = (await journal.entry(plan.runId, 'import-mode'))?.status === 'restored';
+  if (!closed) {
+    try {
+      const completed = await send('POST', `${base}/completeMigration`, {});
+      if (ok(completed)) {
+        await journal.mark(plan.runId, 'import-mode', { kind: 'teams-import-mode', status: 'restored', reason: 'completed' });
+        closed = true;
+      } else {
+        report.errors.push({ channel: report.channel.name, error: why(completed, 'completing the import') });
+      }
+    } catch (error) {
+      report.errors.push({ channel: report.channel.name, error: `completing the import failed: ${String(error?.message ?? error)}` });
+    }
   }
-  const clean = report.failed === 0 && ok(completed);
+  const clean = report.failed === 0 && closed;
   report.status = clean ? 'completed' : report.restored + report.alreadyDone > 0 ? 'partial' : 'failed';
   await journal.finishRun(plan.runId, { status: report.status, report });
   logger?.log?.(`teams message restore ${plan.runId}: ${report.status}, ${report.restored} imported, ${report.alreadyDone} already done, ${report.skipped} skipped, ${report.failed} failed`);

@@ -125,7 +125,7 @@ test('the restore creates a new channel in import mode, imports each message as 
   assert.equal(create.body['@microsoft.graph.channelCreationMode'], 'migration');
   assert.equal(create.body.membershipType, 'standard');
   assert.match(create.body.displayName, /^KEEL-RT-general \(restored \d{4}-\d{2}-\d{2}\)$/);
-  assert.equal(create.body.createdDateTime, daysAgo(6), 'the channel starts at the first message');
+  assert.equal(create.body.createdDateTime, daysAgo(6, -1), 'the channel starts a minute before the first message');
 
   const base = `/teams/${TEAM}/channels/19:restored@thread.tacv2`;
   assert.deepEqual(writes.slice(1).map((w) => w.path), [
@@ -143,11 +143,13 @@ test('the restore creates a new channel in import mode, imports each message as 
   assert.ok(writes.every((w) => w.path.startsWith(`/teams/${TEAM}/`)), 'every write stays in the target team');
   assert.equal(graph.requests.filter((r) => r.method === 'GET' && r.path === `/users/${ALEX}`).length, 1, 'each author is checked once');
 
-  // Running the same plan again writes no message: only the import is completed again.
-  const again = await run(plan, fakeGraph(), journal);
+  // Running the same plan again writes nothing: the import is already complete.
+  const quiet = fakeGraph();
+  const again = await run(plan, quiet, journal);
   assert.equal(again.alreadyDone, 4);
   assert.equal(again.restored, 0);
   assert.equal(again.status, 'completed');
+  assert.equal(quiet.writes().length, 0);
 });
 
 test('without a fallback author, a message from someone who left fails with the reason; a resume finishes it', async () => {
@@ -175,7 +177,7 @@ test('a resume after a completed import puts the channel back into import mode f
   const second = await run(plan, graph, journal);
   const writes = graph.writes().map((w) => w.path.split('/').pop());
   assert.equal(writes[0], 'startMigration');
-  assert.equal(graph.writes()[0].body.conversationCreationDateTime, daysAgo(6));
+  assert.equal(graph.writes()[0].body.conversationCreationDateTime, daysAgo(6, -1));
   assert.ok(!writes.includes('channels'), 'the channel is not created twice');
   assert.equal(writes.at(-1), 'completeMigration');
   // Bea's reply comes back; Gus still fails (no fallback author).
@@ -272,4 +274,53 @@ test('the live-proof fixture plans from its own file only, with dates before the
   assert.equal(done.notes.inlineImages, 1);
   assert.equal(done.notes.attachmentsDropped, 1);
   assert.equal(done.authorsReplaced, 1);
+});
+
+test('reopening import mode falls back to beta when v1.0 does not offer it', async () => {
+  const plan = await planTeamsMessageRestore(await seededStore(), request());
+  const journal = createMemoryRestoreJournal();
+  await run(plan, fakeGraph(), journal); // Gus fails: no fallback author
+  const seen = [];
+  const graph = fakeGraph({ fail: ({ method, path }) => (method === 'POST' && path.endsWith('/startMigration') && !seen.length ? (seen.push(path), { status: 400, headers: {}, body: { error: { code: 'BadRequest' } } }) : null) });
+  const urls = [];
+  const transport = async (url, options) => { urls.push(url); return graph.transport(url, options); };
+  await restoreTeamsMessages({ transport, journal, plan, target: { id: TEAM }, now: () => RUN, sleep: async () => {}, gapMs: 0 });
+  const reopen = urls.filter((url) => url.endsWith('/startMigration'));
+  assert.deepEqual(reopen.map((url) => new URL(url).pathname.split('/')[1]), ['v1.0', 'beta']);
+});
+
+test('a channel name another run holds today gets a number', async () => {
+  const plan = await planTeamsMessageRestore(await seededStore(), request({ fallbackAuthorId: FALLBACK }));
+  const graph = fakeGraph({ fail: ({ method, path, body }) => (method === 'POST' && path.endsWith('/channels') && !/#2\)$/.test(body.displayName) ? { status: 409, headers: {}, body: { error: { code: 'NameAlreadyExists' } } } : null) });
+  const journal = createMemoryRestoreJournal();
+  const report = await run(plan, graph, journal);
+  assert.equal(report.status, 'completed');
+  assert.match(report.channel.name, /^KEEL-RT-general \(restored \d{4}-\d{2}-\d{2} #2\)$/);
+  assert.equal((await journal.entry(plan.runId, 'channel')).reason, report.channel.name);
+});
+
+test('a write that got no answer stays pending, and the resume flags it as a possible duplicate', async () => {
+  const plan = await planTeamsMessageRestore(await seededStore(), request({ fallbackAuthorId: FALLBACK }));
+  const journal = createMemoryRestoreJournal();
+  const graph = fakeGraph();
+  let dropped = false;
+  const transport = async (url, options) => {
+    if (!dropped && options.method === 'POST' && options.body?.createdDateTime === daysAgo(5)) { dropped = true; throw new Error('socket hang up'); }
+    return graph.transport(url, options);
+  };
+  const first = await restoreTeamsMessages({ transport, journal, plan, target: { id: TEAM }, now: () => RUN, sleep: async () => {}, gapMs: 0 });
+  assert.equal(first.status, 'partial');
+  assert.equal((await journal.entry(plan.runId, 'message:2001')).status, 'pending');
+  const again = await run(plan, fakeGraph(), journal);
+  assert.deepEqual(again.possibleDuplicates, ['2001']);
+  assert.equal(again.status, 'completed');
+});
+
+test('a write retried after a server error is flagged as a possible duplicate', async () => {
+  const plan = await planTeamsMessageRestore(await seededStore(), request({ fallbackAuthorId: FALLBACK }));
+  let once = false;
+  const graph = fakeGraph({ fail: ({ method, body }) => (method === 'POST' && body?.createdDateTime === daysAgo(5) && !once ? (once = true, { status: 503, headers: {}, body: null }) : null) });
+  const report = await run(plan, graph, createMemoryRestoreJournal());
+  assert.equal(report.status, 'completed');
+  assert.deepEqual(report.possibleDuplicates, ['2001']);
 });

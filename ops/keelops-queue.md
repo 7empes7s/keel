@@ -68,7 +68,7 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   request (the mixed `$select` was routed to the onboarding backend and answered 400). #570 then dropped the retired
   `managedDeviceCleanupSettings` field (its window is backed up as `managedDeviceCleanupRule`), so only `settings` is read.
 - Needs: /opt/keel-live at the #570 merge (4b4af63) or later (`grep -q selectEach /opt/keel-live/tools/tenant-probe/catalog.d/intune-leftovers.mjs`).
-- Status: in-progress
+- Status: blocked
 - **Tenant:** Collector reads only (the normal hourly Tier 1 backup). Nothing is written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. Take the newest Tier 1 snapshot that started after the deploy (the hourly run; do not run the collector by hand unless none

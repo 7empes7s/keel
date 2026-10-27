@@ -423,7 +423,7 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   approval id and the approval request's `executor`. It will be re-queued once #592 is live.
 - Needs: `grep -q workloadPowershellConfigPath /opt/keel-live/cli/keel-restore.mjs`.
 - Decision: needs the **K14** line under **Operator decisions** (human only). If it is blank, leave this item `todo`.
-- Status: blocked
+- Status: moved (2026-10-27 22:30 UTC: back to Q159 on claude/operator-queue for root keel-operator; keelops, skip this item)
 - Result: blocked (2026-10-27 ~22:00 UTC): the decision names only the approver. Needs check passes (live `f9d302a` has `workloadPowershellConfigPath`). Nothing run, nothing written. (keelops read the decisions at 20:52 UTC, before the K14/K15 lines landed at 20:55; sorry for the gap.) **What keelops can do:** the CLI dry run cannot run as keelops, because it reads with `/etc/keel/exchange-collector.json`, which keelops cannot read (and the enforce uses `exchange-restorer.json`). The portal's route works, though: `portal/lib/compliance-fix.ts` enqueues a worker `restore` job `{complianceFix:{controlId,naturalKey}, collectorConfig, targetConfig, artifactId}`, and the worker runs as root with those files. **What is missing:** approval refuses self-approval (`approveRequest`: approver must differ from requester), and the K14 line only says approve "as my Entra principal". The requester (who presses Make it pass and files the request) is not named; keelops will not pick your Gmail principal on its own. To unblock, add e.g. `K14: … file the dry run and the request as my Gmail principal, approve as my Entra principal` (or the reverse). The content-effect approval is then also by the Entra principal.
 
 Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q159):
@@ -507,7 +507,7 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q159):
   approval id and the approval request's `executor`. It will be re-queued once #592 is live.
 - Needs: `grep -q workloadPowershellConfigPath /opt/keel-live/cli/keel-restore.mjs`. Run after K14 (both use exchange-restorer.json).
 - Decision: needs the **K15** line under **Operator decisions** (human only). If it is blank, leave this item `todo`.
-- Status: blocked
+- Status: moved (2026-10-27 22:30 UTC: back to Q161 on claude/operator-queue for root keel-operator; keelops, skip this item)
 - Result: blocked on files keelops cannot read (2026-10-27 ~22:00 UTC). Needs check passes (live `f9d302a`). Nothing run, nothing written. **Step 1** (host check of `/etc/keel/exchange-restorer.json`, `/etc/keel/purview-restorer.json` against every `-collector.json` and tenant.json, and possibly adding `tenantId` to a restorer file) needs read on `exchange-restorer.json`, `purview-restorer.json`, `exchange-collector.json`, `purview-collector.json` and `workload-scope.json` (the last is readable). Editing a root-owned `/etc/keel` file is a root step either way. **Step 2** (`node cli/keel-discover.mjs run --no-store`) connects PowerShell with `exchange-collector.json`, which is unreadable. Step 3 could go through worker jobs, but it depends on step 1. To unblock: root runs step 1 (yes/no answers only) and grants keelops read on the four files plus their cert/key paths, or root's keel-operator runs K15.
 
 Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
@@ -700,7 +700,7 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
 - Drafted by the "Finish Exchange undo live checks" thread (2026-10-27). Marouane added the K14 line at 22:27 UTC: file the Make it pass dry run
   and request as his Gmail principal, approve it and its content effect as his Entra principal.
 - Needs: nothing.
-- Status: todo
+- Status: moved (2026-10-27 22:30 UTC: K14 went back to Q159 on claude/operator-queue; keelops, skip this item)
 - Result:
 - Do: run K14 as written (the newer K14 line under **Operator decisions** applies), through the portal's worker route you described in its Result.
   Write K14's own `Status` and `Result`. Set this item to `done` when K14 has a final status. K15 stays with root's keel-operator.

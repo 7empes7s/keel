@@ -7898,3 +7898,154 @@ item that needs it stays untouched.
   3. Open the job on the portal (`/jobs/<id>`) and report: the status badge text, the verdict sentence, the alert title, and for each workload under "What was not backed up" the badge text and each row's "Not read" name and "Why" value (mask any mailbox or user name).
 - **Expected:** `status = succeeded`, `partial = true`, `error` null; `incomplete` lists only workloads whose outcome is `partial`, each with at least one reason line and no object id in it; every `failed` workload absent (if one failed, the job must be `failed` instead). Portal: badge "Partly done", rows named in words (e.g. "Transport rule", not `transportRule`). If a partial workload shows no rows, or a row reads "Could not be read in full" for a cause that should be named, quote its raw reason line. If the job is `failed`, report its error and which workload or drift detection failed; change nothing.
 - **Report:** the outputs above (names masked) and the build.
+
+### Q169: Live check that Intune tenant settings back up again (fixes #447, after #566 and #570)
+- Drafted by the "Live checks for Oct 23–25 merges" thread (2026-10-27). #566 reads `deviceManagementSettings` one field per
+  request (the mixed `$select` was routed to the onboarding backend and answered 400). #570 then dropped the retired
+  `managedDeviceCleanupSettings` field (its window is backed up as `managedDeviceCleanupRule`), so only `settings` is read.
+- Needs: /opt/keel-live at the #570 merge (4b4af63) or later (`grep -q selectEach /opt/keel-live/tools/tenant-probe/catalog.d/intune-leftovers.mjs`).
+- Status: todo
+- **Tenant:** Collector reads only (the normal hourly Tier 1 backup). Nothing is written.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. Take the newest Tier 1 snapshot that started after the deploy (the hourly run; do not run the collector by hand unless none
+     ran in the last 2 hours, and say which you used). Report its id, start time, outcome, and any `incomplete types` entry for
+     `deviceManagementSettings` (from the job result or the collect log).
+  2. ```sql
+     WITH s AS (SELECT id FROM snapshot ORDER BY started_at DESC LIMIT 1)
+     SELECT rv.resource_type, count(*) AS objects,
+            bool_and(rv.payload ? 'settings') AS has_settings,
+            bool_or(rv.payload ? 'managedDeviceCleanupSettings') AS has_cleanup,
+            bool_or(rv.payload ? 'intuneBrand') AS has_brand
+       FROM resource_version rv WHERE rv.snapshot_id = (SELECT id FROM s) AND rv.resource_type = 'deviceManagementSettings'
+      GROUP BY 1;
+     ```
+     If the column names differ, report what you ran.
+  3. Count the Tier 1 jobs since the deploy that still name `deviceManagementSettings` as failed or partial (expect 0), and
+     report the newest snapshot's overall status: is it still "Partly done" for any other type? Name those types.
+- **Expected:** one `deviceManagementSettings` object with `settings`, no cleanup or brand field, no 400 and no "read only part
+  of this type". If it still fails, quote the failing request and HTTP status from the job evidence (#570 now names it). Change nothing.
+- **Report:** the outputs above and the build. If green, say so: the coordinator will close #447.
+
+### Q170: Live check that the content backup tells tenant conditions apart from read errors (after #564)
+- Drafted by the "Live checks for Oct 23–25 merges" thread (2026-10-27). #564: a SharePoint site with no pages library (the search
+  centre) is no longer a failed read on a 404; OneDrives Microsoft 365 has locked (HTTP 423) are skipped and listed in the new
+  `content_run.skipped` column, not counted as errors; a refused group mailbox says "this mailbox only" only when another group
+  mailbox read fine. Q167's run `85aeb04b` (before #564) had onedrive partial (10× 423), sharepoint-sites partial (search site 404),
+  exchange-mail partial (1 group mailbox 403).
+- Needs: /opt/keel-live at the #564 merge (9c59b96) or later (`grep -q skipped /opt/keel-live/engine/store/schema.d/73-content-run.sql`).
+- Status: todo
+- **Tenant:** content reader reads only (the normal nightly content backup). No grants, no writes. A 403 is reported, never fixed by granting.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. Use the newest scheduled `content-collect` that ran after the deploy (01:00 UTC). If none ran, queue the same read-only job
+     through `enqueue` as in Q167 and say which you used.
+  2. Report:
+     ```sql
+     SELECT workload, outcome, items, jsonb_array_length(reasons) AS reasons, jsonb_array_length(skipped) AS skipped, completed_at
+       FROM content_run WHERE completed_at > now() - interval '30 hours' ORDER BY completed_at DESC, workload;
+     ```
+     and, for the newest run, the reasons of every non-complete workload and the skipped entries (names masked, keep the HTTP code and the words).
+  3. The job row and worker line as in Q167 step 2.
+- **Expected:** onedrive `complete` (or partial only for a non-423 cause) with about 10 `skipped` entries saying locked; sharepoint-sites
+  with no reason for the search site; exchange-mail still `partial` for the one group mailbox (that one is a tenant condition), with a
+  reason that does not blame a missing app permission. If any expected point fails, quote the raw reason. Change nothing.
+- **Report:** the outputs above (names masked) and the build.
+
+### Q171: Live check that an app requesting API permissions restores, and that replaced follow-up steps drop off (after #563 and #565)
+- Drafted by the "Live checks for Oct 23–25 merges" thread (2026-10-27). #565: `permission:<appId>/role:X` and `object:<appId>`
+  references (an app's `requiredResourceAccess`) now resolve, so restoring an app that asks for API permissions no longer throws
+  `not-found-in-target`, and the preview no longer lists each permission as missing. #563: a pending follow-up step counts as
+  replaced when a later restore of the same object opens the same step; `countOpenCompletionSteps` and the open-work list leave it out.
+- Needs: /opt/keel-live at the #565 merge (576295e) or later (`grep -q app-id /opt/keel-live/engine/graph/resolver.mjs`).
+- Status: todo
+- **Tenant:** standing authorization (2026-10-14): self-approve and log the approval id. Restorer writes only the fixture below;
+  Collector reads. **Never grant admin consent** and never add a secret or certificate to the fixture. No CA, no break-glass, not Marouane's account.
+- **Fixture:** app registration `KEEL-RT-app-perms` (single tenant, no redirect URI, no credentials), requesting Microsoft Graph
+  delegated `User.Read` and application `User.Read.All` in `requiredResourceAccess`, **not consented**.
+- Do, at the deployed build B, from your own checkout:
+  1. **Before** (read-only): with the engine against the live DB, report `countOpenCompletionSteps(c,{tenantRef})`, the length of
+     `listOpenCompletionWork(c,{tenantRef,limit:500})`, and the raw count
+     `SELECT count(*) FROM <completion item table> WHERE state = 'pending'` (find the table in `engine/restore/completion.mjs`).
+     Expect the first two to be clearly lower than the raw count when the same objects were restored more than once.
+  2. Create the fixture. Take a snapshot S (one Tier 1 run or the type's tier) and confirm S holds `application:KEEL-RT-app-perms`
+     with 2 `resourceAccess` entries.
+  3. Rename it to `KEEL-RT-app-perms-drift` in the tenant. Dry run
+     `node cli/keel-restore.mjs --snapshot-id <S> --select <its natural key> --collector-config /etc/keel/tenant.json --target-config /etc/keel/restorer.json --persist-artifact <uuid>`.
+     Report the planned operations, any refusal, and the preview's missing-reference lines (expect none for Graph).
+  4. Approve, enforce. Read back: name `KEEL-RT-app-perms`, `requiredResourceAccess` unchanged (same 2 entries), still no consent grant
+     (`/oauth2PermissionGrants` and app role assignments for its service principal, if any: 0).
+  5. Repeat steps 3–4 once (a second restore of the same app). Then report `listCompletionItems` for both restores: the first restore's
+     pending steps should carry `replacedBy` = the second restore; `countOpenCompletionSteps` should count only the second's.
+  6. Cleanup: delete the app (and its service principal if one was made). Collect; report no `KEEL-RT-app-perms*` left. Close or leave the
+     follow-up steps as they are; report which.
+- **Expected:** no `not-found-in-target`, write succeeds, permissions unchanged, nothing consented, replaced steps left out of the counts.
+  If the write refuses, quote the refusal and stop (change nothing else).
+- **Report:** the outputs above, approval ids, and the build.
+
+### Q172: Live check that keel-worker no longer puts the database password on the command line (after #571)
+- Drafted by the "Live checks for Oct 23–25 merges" thread (2026-10-27). #571: the worker passed `--db-url postgres://user:password@…`
+  to every job, visible in `ps`. It now sets `KEEL_DB_URL` in the child's environment.
+- Needs: /opt/keel-live at the #571 merge (e17b36c) or later (`grep -q KEEL_DB_URL /opt/keel-live/cli/keel-worker.mjs`).
+- Status: todo
+- **Tenant:** nothing. Host reads only.
+- Do:
+  1. While any worker job runs (the hourly Tier 1 collect is enough), run `ps -eo pid,args | grep -c -- '--db-url'` a few times and report the
+     counts (expect 0; ignore the grep line itself). **Never print the args or the URL.**
+  2. Report the job kinds and outcomes the worker finished since the deploy: `SELECT kind, status, count(*) FROM job WHERE finished_at > '<deploy time>' GROUP BY 1,2`.
+     Expect no new failure kind that did not fail before the deploy; if one did, quote its error (redact any URL).
+- **Report:** the counts, the table and the build.
+
+### Q173: Live check of "write your own check" and the known standards on Compliance (after #567)
+- Drafted by the "Live checks for Oct 23–25 merges" thread (2026-10-27). #567 adds tenant-written compliance checks
+  (`compliance_own_check`, run with Keel's checks after every backup) and the CISA SCuBA and NIST standards sections.
+- Needs: /opt/keel-live at the #567 merge (fa37b06) or later (`test -f /opt/keel-live/engine/store/schema.d/74-own-checks.sql`).
+- Status: todo
+- **Tenant:** nothing is written to the tenant. Keel's own database only: one test check, removed at the end.
+- Do, from your own checkout at B, against the live DB:
+  1. Report `\d compliance_own_check` (the table exists) and `ownCheckChoices(c,{tenantRef})`: the number of types offered and a few sample fields.
+  2. Create one check with `createOwnCheck(c,{principalId,tenantRef,input})`, using a principal that already holds `configuration`
+     (the one you use for approvals; if none does, mark `blocked` and grant nothing). Input:
+     `{standard:'KEEL-RT standard', name:'KEEL-RT security defaults off', resourceType:'identitySecurityDefaultsEnforcementPolicy', field:'isEnabled', operator:'equals', expected:false, appliesTo:'every', severity:'low'}`
+     (if that type is not offered in step 1, pick any offered type and a field whose value you can see, and say which).
+  3. Run `runComplianceChecks(c,{tenantRef,actor:'keel-operator'})`. Report the new check's result (pass / fail / could not check)
+     and the value it compared, and that Keel's own checks still produced their results (count by result before and after).
+  4. Report the standards view the page uses: for SCuBA and NIST, how many policies Keel checks, how many pass/fail, how many not checked yet
+     (from `engine/benchmarks/standards.mjs` + the newest results; report what you ran).
+  5. Remove the check with `removeOwnCheck`. Report the row has `removed_at` set and two `compliance-own-check` evidence entries (created, removed).
+- **Expected:** all five steps work with no error; the check's result matches the tenant's value. If any call throws, quote the error and stop.
+- **Report:** the outputs above and the build.
+
+### Q174: Live check of the Ask page answers on the real data (after #568 and #569)
+- Drafted by the "Live checks for Oct 23–25 merges" thread (2026-10-27). #569: more periods read (no period = this week with a note,
+  "since the beginning of the month", 17/10, "3 days ago", "between X and Y" including Y), each change listed once per resource,
+  windows open at the last backup that read that kind (users were zero-width), modified rows list the changed settings, up to 1,000 rows.
+  #568: Microsoft cloud words, old names and concepts (AAD, MEM, CA policy, MFA, PIM, guests…), "who changed" and not-held topics answered
+  in words instead of refused. The portal is behind Access from the box, so this runs the same engine call the page makes.
+- Needs: /opt/keel-live at the #568 merge (6783d4d) or later (`test -f /opt/keel-live/engine/query/vocabulary.mjs`).
+- Status: todo
+- **Tenant:** nothing. Read-only against Keel's own database.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`, with tenantRef = `sha256:` + the first 16 hex of sha256(tenant.json `tenantId`)
+  (as `portal/lib/runtime-config.ts` does), scope `{central:true, entities:[]}`:
+  ```js
+  import pg from 'pg'; import { answerQuestion } from './engine/query/execute.mjs';
+  const c = new pg.Client(process.env.KEEL_DB_URL); await c.connect();
+  for (const question of QUESTIONS) {
+    const a = await answerQuestion(c, { tenantRef, scope: { central: true, entities: [] }, question });
+    const keys = a.records.map((r) => r.naturalKey ?? r.id);
+    const zero = a.records.filter((r) => r.windowFrom && r.windowFrom === r.windowTo).length;
+    console.log(JSON.stringify({ question, status: a.status, understood: a.understood, assumed: a.assumed, ignored: a.ignored,
+      total: a.total, shown: a.shown, duplicates: keys.length - new Set(keys).size, zeroWidth: zero,
+      modifiedWithoutFields: a.records.filter((r) => r.changeType === 'modified' && !(r.fields?.length)).length,
+      gaps: a.gaps, sentence: a.sentence, refusal: a.refusal?.code ?? null }));
+  }
+  await c.end();
+  ```
+  (If the record field names for the window or changed settings differ, read them from `engine/query/execute.mjs` and say what you used.)
+  QUESTIONS:
+  `Which users have changed?` · `What changed since the beginning of the month?` · `What changed since 17/10?` · `What changed between Oct 20 and Oct 25?` ·
+  `What changed 3 days ago?` · `What changed in the last 48 hours?` · `What changed in Azure AD this month?` · `What changed in Endpoint Manager last week?` ·
+  `Which CA policies changed this month?` · `What MFA settings changed this month?` · `Which admins changed this month?` · `Who changed the Exchange transport rules?` ·
+  `Show me the sign-in logs` · `What does the backup hold for Teams?` · `Which jobs failed this week?` · `How many groups are covered?`
+- **Expected:** none refused except where the answer names why in words (sign-in logs: not backed up; "who": says what and when but not who).
+  `duplicates` 0 and `zeroWidth` 0 on every answer; `modifiedWithoutFields` 0 or explained; `assumed` names the concept reading for MFA / admins / CA.
+  For "Which users have changed?" report total and whether the 10 Oct mass change shows (with its settings).
+- **Report:** the JSON lines verbatim (names masked) and the build. Portal visuals (sorting, Columns picker, folding) can't be checked from the box; say so.

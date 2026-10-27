@@ -300,6 +300,17 @@ export const COMPLETENESS = Object.freeze({
   securityZone: { whole: 'not-written', missing: [part('The environments in the zone', 'other-route')] },
   sharedEmailDomain: { whole: 'not-written' },
   schemaExtension: { whole: 'not-written', missing: [part('Extensions owned by apps in other tenants', 'microsoft-managed')] },
+  // Remaining kinds, batch 9: read once the Collector holds the read permission.
+  formsSettings: { whole: 'not-written' },
+  todoSettings: { whole: 'not-written' },
+  microsoft365AppsInstallationOptions: { whole: 'not-written' },
+  appsAndServicesSettings: { whole: 'not-written' },
+  adminReportSettings: { whole: 'not-written' },
+  profileCardProperty: { whole: 'not-written' },
+  pronounsSettings: { whole: 'not-written' },
+  defenderDetectionRule: { whole: 'not-written', missing: [part('Past runs and the alerts a rule raised', 'other-route')] },
+  teamsCatalogApp: { whole: 'not-written', missing: [part('The app package', 'other-route')] },
+  engageCommunity: { whole: 'not-written', missing: [part('Posts, files and members of the community', 'other-route')] },
 });
 
 const RECORD_FIELDS = new Set(['managed', 'unreadable', 'whole', 'missing']);

@@ -23,6 +23,8 @@ export const OWN_NAME_FIELDS = Object.freeze({
   vppToken: Object.freeze(['displayName', 'organizationName', 'appleId']),
   depOnboardingSetting: Object.freeze(['tokenName', 'appleIdentifier']),
   enterpriseCodeSigningCertificate: Object.freeze(['subjectName', 'subject', 'issuerName']),
+  // A profile card field is named by the directory field it shows.
+  profileCardProperty: Object.freeze(['directoryPropertyName']),
 });
 
 /** Kinds named after the two apps they link. */

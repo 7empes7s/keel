@@ -196,3 +196,13 @@ test('a name used once is left as it is', () => {
   const result = check([policy('legacy', 'enabled', ['exchangeActiveSync', 'other'])]);
   assert.ok(result.details.every((line) => line.subject === 'KEEL-RT-legacy'));
 });
+
+test('a pass with a same-name rule that does not enforce shows the enforcing one unnumbered', () => {
+  const reportOnly = policy('a-report', 'enabledForReportingButNotEnforced', ['exchangeActiveSync', 'other']);
+  const enforced = policy('b-legacy', 'enabled', ['exchangeActiveSync', 'other']);
+  reportOnly.displayName = 'KEEL-RT-Block legacy';
+  enforced.displayName = 'KEEL-RT-Block legacy';
+  const result = check([reportOnly, enforced]);
+  assert.equal(result.verdict, 'pass');
+  assert.ok(result.details.every((line) => line.subject === 'KEEL-RT-Block legacy' && line.ok));
+});

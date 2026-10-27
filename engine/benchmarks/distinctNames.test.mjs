@@ -6,8 +6,8 @@ import { test } from 'node:test';
 
 import { defineObservation } from '../contracts/observation.mjs';
 import { evaluateControl } from './evaluate.mjs';
-import { distinctNames } from './registry.mjs';
-import './ownChecks.mjs';
+import { distinctNames, predicateFor } from './registry.mjs';
+import { OWN_PREDICATE } from './ownChecks.mjs';
 
 const TENANT = 'sha256:distinct-names-test';
 const NOW = new Date('2026-10-22T12:00:00.000Z');
@@ -57,4 +57,27 @@ test('admin groups with the same name keep their own lines', () => {
     { id: 'g-2', displayName: 'KEEL-RT-Admins', isAssignableToRole: true, onPremisesSyncEnabled: null },
   ]);
   assert.deepEqual(result.details.map((line) => line.subject), ['KEEL-RT-Admins (1 of 2)', 'KEEL-RT-Admins (2 of 2)']);
+});
+
+test('mail protection policies with the same name keep their own lines', () => {
+  const answer = predicateFor('exchange-mail-flow.malware-file-filter')([
+    { kind: 'antiMalwarePolicy', identity: 'p-2', Name: 'KEEL-RT-Malware', EnableFileFilter: false, ZapEnabled: true },
+    { kind: 'antiMalwarePolicy', identity: 'p-1', Name: 'KEEL-RT-Malware', EnableFileFilter: true, ZapEnabled: true },
+  ], {});
+  assert.equal(answer.verdict, 'fail');
+  assert.deepEqual([...new Set(answer.details.map((line) => line.subject))], ['KEEL-RT-Malware (2 of 2)', 'KEEL-RT-Malware (1 of 2)']);
+});
+
+test('own checks number repeated names, and a pass numbers only what it shows', () => {
+  const own = predicateFor(OWN_PREDICATE);
+  const facts = [
+    { id: 'b', displayName: 'KEEL-RT-Twin', enabled: true },
+    { id: 'a', displayName: 'KEEL-RT-Twin', enabled: false },
+  ];
+  const all = own(facts, { field: 'enabled', operator: 'equals', expected: true });
+  assert.equal(all.verdict, 'fail');
+  assert.deepEqual(all.details.map((line) => line.subject), ['KEEL-RT-Twin (2 of 2)', 'KEEL-RT-Twin (1 of 2)']);
+  const any = own(facts, { field: 'enabled', operator: 'equals', expected: true, appliesTo: 'any' });
+  assert.equal(any.verdict, 'pass');
+  assert.deepEqual(any.details.map((line) => [line.subject, line.ok]), [['KEEL-RT-Twin', true]]);
 });

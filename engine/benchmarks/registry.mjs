@@ -351,7 +351,7 @@ export function distinctNames(facts, nameOf) {
   const out = [...names];
   for (const [name, indexes] of byName) {
     if (indexes.length < 2) continue;
-    const ordered = [...indexes].sort((a, b) => keyOf(facts[a]).localeCompare(keyOf(facts[b])) || a - b);
+    const ordered = [...indexes].sort((a, b) => (keyOf(facts[a]) < keyOf(facts[b]) ? -1 : keyOf(facts[a]) > keyOf(facts[b]) ? 1 : a - b));
     ordered.forEach((index, position) => { out[index] = `${name} (${position + 1} of ${ordered.length})`; });
   }
   return out;
@@ -615,8 +615,12 @@ registerPredicate('conditional-access-block-legacy', (facts) => {
   // Two rules can share a name; each keeps its own subject so their lines stay apart.
   const names = distinctNames(candidates, (fact) => objectName(fact, 'Unnamed sign-in rule'));
   const perPolicy = candidates.map((fact, index) => legacyLines(fact, names[index]));
-  const enforcing = perPolicy.filter((lines) => lines.every((line) => line.ok));
-  if (enforcing.length > 0) return { verdict: 'pass', details: enforcing.flat() };
+  const enforcing = candidates.filter((fact, index) => perPolicy[index].every((line) => line.ok));
+  if (enforcing.length > 0) {
+    // Numbered among the rules shown, so a lone "(2 of 2)" never appears.
+    const shown = distinctNames(enforcing, (fact) => objectName(fact, 'Unnamed sign-in rule'));
+    return { verdict: 'pass', details: enforcing.flatMap((fact, index) => legacyLines(fact, shown[index])) };
+  }
   return { verdict: 'fail', details: perPolicy.flat() };
 });
 

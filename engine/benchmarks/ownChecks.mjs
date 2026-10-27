@@ -74,7 +74,12 @@ registerPredicate(OWN_PREDICATE, (facts, { field, operator, expected, appliesTo 
   const lines = facts.map((fact, index) => ({ subject: names[index], setting: field, value: valueAt(fact, field), expected: shouldBe, ok: meets(fact) }));
   if (appliesTo === 'any') {
     // It passes on the objects that meet it; the others are not failures of the check.
-    if (facts.some(meets)) return { verdict: 'pass', details: lines.filter((line) => line.ok) };
+    // Numbered among the objects shown, so a lone "(2 of 2)" never appears.
+    if (facts.some(meets)) {
+      const passing = facts.filter(meets);
+      const shown = distinctNames(passing, subjectOf);
+      return { verdict: 'pass', details: passing.map((fact, index) => ({ ...lines[facts.indexOf(fact)], subject: shown[index] })) };
+    }
     // Nothing of the type exists, so the setting cannot be met anywhere: "not set up yet".
     if (facts.length === 0) return { verdict: 'fail', reason: NOT_CONFIGURED };
     return { verdict: 'fail', details: lines };

@@ -7,7 +7,7 @@
  *
  * - `found`: the newest complete backup that read its kind still holds it.
  * - `deleted`: an earlier backup held it, and a later complete backup that read its
- *   kind did not (also when that backup read the kind and found none of it). `deletedSince` is when that later backup started, and the name is
+ *   kind did not, even when that backup found no object of that kind at all. `deletedSince` is when that later backup started, and the name is
  *   the one it last had.
  * - `unknown`: no backup holds it. The name is the readable part of the key, if any.
  *
@@ -88,9 +88,9 @@ const iso = (value) => {
 
 // Whether backup s2 read a kind completely. Its coverage record says so per kind:
 // a complete read that found nothing ('complete-empty') counts, so the last object
-// of a kind can be seen to go. A partial, failed or not-requested read never counts,
-// even when it saved some rows. Older backups without a per-kind outcome fall back
-// to "it saved at least one row of that kind".
+// of a kind can be seen to go. Any other outcome (partial, failed, not-requested,
+// unavailable) never counts, even when it saved some rows. Older backups without a
+// per-kind outcome fall back to "it saved at least one row of that kind".
 const readKindSql = (type) => `(CASE WHEN s2.coverage_digest->${type}->>'outcome' IS NOT NULL
        THEN s2.coverage_digest->${type}->>'outcome' IN ('complete', 'complete-empty')
        ELSE EXISTS (SELECT 1 FROM resource_version r2 WHERE r2.snapshot_id = s2.id AND r2.resource_type = ${type}) END)`;

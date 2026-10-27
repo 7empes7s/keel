@@ -170,10 +170,21 @@ test('found: a partial or not-requested read of its kind never marks it deleted,
   await backup('partial-read', daysAgo(4), 'complete', [['group:Kept', 'group', { id, displayName: 'Kept' }], other], { group: { outcome: 'complete' } });
   await backup('partial-read', daysAgo(3), 'complete', [other], { group: { outcome: 'partial' } });
   await backup('partial-read', daysAgo(2), 'complete', [policy], { group: { outcome: 'not-requested' }, conditionalAccessPolicy: { outcome: 'complete' } });
-  await backup('partial-read', daysAgo(1), 'complete', [], { group: { outcome: 'failed' } });
+  await backup('partial-read', daysAgo(1), 'complete', [other], { group: { outcome: 'failed' } });
+  await backup('partial-read', daysAgo(0.5), 'complete', [other], { group: { outcome: 'unavailable' } });
   const object = (await lookupNames(client, { tenantRef: 'partial-read', ids: ['group:Kept'] })).get('group:Kept');
   assert.equal(object.status, 'found');
   assert.equal(object.deletedSince, null);
+});
+
+test('older backups that count rows per kind fall back to "it saved a row of that kind"', async () => {
+  const id = '0f1a0000-0000-4000-8000-000000000101';
+  const other = ['group:Stays', 'group', { id: '0f1a0000-0000-4000-8000-000000000102', displayName: 'Stays' }];
+  await backup('legacy-counts', daysAgo(4), 'complete', [['group:Went', 'group', { id, displayName: 'Went' }], other], { group: 2 });
+  const gone = await backup('legacy-counts', daysAgo(2), 'complete', [other], { group: 1 });
+  const object = (await lookupNames(client, { tenantRef: 'legacy-counts', ids: ['group:Went'] })).get('group:Went');
+  assert.equal(object.status, 'deleted');
+  assert.equal(object.deletedSince, gone.toISOString());
 });
 
 test('an empty batch reads nothing', async () => {

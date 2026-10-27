@@ -21,7 +21,7 @@ import { currentResourceState } from '../policy/changeIntent.mjs';
 import { evaluateOpenDrifts } from '../policy/evaluate.mjs';
 import { answerQuestion } from '../query/execute.mjs';
 import { insertResourceVersion } from '../store/db.mjs';
-import { listLatestOpenDrift, listOpenDrift, markSameContentDrift } from '../store/governance.mjs';
+import { listLatestOpenDrift, listOpenDrift, markSameContentDrift, recordDrift } from '../store/governance.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { getOpenDriftCounts } from '../../status/queries.mjs';
@@ -208,5 +208,31 @@ describe('stored rows', () => {
     assert.deepEqual(rows.map((row) => [row.natural_key, row.same_content]), [
       ['schedule:changed', false], ['schedule:evaluated', true], ['schedule:older', true], ['schedule:read-time', true], ['schedule:same', true],
     ]);
+  });
+
+  test('a change recorded under older hashes is the same change in a newer backup: kept, and settlement finds it', async () => {
+    const changed = { ...SCHEDULE, principalId: 'p-2' };
+    // The open row was recorded before the rule, so its after hash is the old kind too.
+    await client.query('UPDATE drift SET after_hash = $2 WHERE id = $1', [ids.changed, 'after-hash-before-2026-10-15-rule']);
+    const { rows: [{ id: newer }] } = await client.query(
+      `INSERT INTO snapshot (tenant_ref, status, started_at, completed_at, coverage_digest)
+       SELECT tenant_ref, 'complete', $2, $2, coverage_digest FROM snapshot WHERE id = $1 RETURNING id`,
+      [observed, new Date(NOW.getTime() - 1_800_000)]);
+    const resource = (naturalKey, payload) => ({
+      naturalKey, resourceType: 'roleAssignmentSchedule', payload, payloadHash: canonicalHash(payload, 'roleAssignmentSchedule'),
+      criticality: 'high', blastRadius: 'low', fidelity: 'read-only', provenance: {},
+    });
+    await insertResourceVersion(client, { snapshotId: newer, resource: resource('schedule:same', SCHEDULE) });
+    await insertResourceVersion(client, { snapshotId: newer, resource: resource('schedule:changed', changed) });
+
+    const state = await currentResourceState(client, { tenantRef: TENANT, naturalKey: 'schedule:changed', resourceType: 'roleAssignmentSchedule' });
+    assert.equal(state.state, 'drifted');
+    assert.equal(state.drift.id, ids.changed);
+    const reused = await recordDrift(client, {
+      tenantRef: TENANT, baselineId, observedSnapshot: newer, naturalKey: 'schedule:changed', resourceType: 'roleAssignmentSchedule',
+      changeType: 'modified', beforeHash: canonicalHash(SCHEDULE, 'roleAssignmentSchedule'), afterHash: canonicalHash(changed, 'roleAssignmentSchedule'),
+      beforePayload: SCHEDULE, afterPayload: changed, blastRadius: 'low',
+    });
+    assert.equal(reused, ids.changed, 'detection keeps the row instead of recording the change again');
   });
 });

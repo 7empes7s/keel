@@ -741,20 +741,30 @@ export const ATTRIBUTION_WINDOW_SQL = `SELECT d.id,
 // by hash, so its window would start at the baseline (or the last backup before the rule
 // change) and come out too wide. A later backup in the window that holds the same content
 // (sameContent, recomputed from the payloads) starts the window instead. Only backups
-// whose hash differs from the baseline's are read, so a change with nothing to recheck
-// reads no payloads.
+// whose hash differs from the baseline's are read, and at most CONTENT_WINDOW_BACKUPS
+// per change.
+// At most this many backups per change are read back; past it the window keeps its
+// wider start, as before.
+const CONTENT_WINDOW_BACKUPS = 60;
+
 async function windowStartsByContent(client: KeelClient, ref: string, rows: Record<string, unknown>[]): Promise<Map<string, string>> {
   const starts = new Map<string, string>();
   const open = rows.filter((row) => row.change_type !== "added" && row.before_payload != null && row.window_from && row.prev_ceiling);
   if (!open.length) return starts;
   const { rows: candidates } = await client.query(
-    `SELECT k.id, s.completed_at, rv.payload_hash, rv.payload
+    `SELECT k.id, c.completed_at, c.payload_hash, c.payload
        FROM unnest($2::uuid[], $3::text[], $4::text[], $5::timestamptz[], $6::timestamptz[]) AS k(id, natural_key, before_hash, after_at, until_at)
-       JOIN resource_version rv ON rv.natural_key = k.natural_key AND rv.payload_hash IS DISTINCT FROM k.before_hash
-       JOIN snapshot s ON s.id = rv.snapshot_id
-      WHERE s.tenant_ref = $1 AND s.completed_at IS NOT NULL
-        AND s.completed_at > k.after_at AND s.completed_at <= k.until_at
-      ORDER BY k.id, s.completed_at DESC`,
+       CROSS JOIN LATERAL (
+         SELECT s.completed_at, rv.payload_hash, rv.payload
+           FROM resource_version rv
+           JOIN snapshot s ON s.id = rv.snapshot_id
+          WHERE rv.natural_key = k.natural_key AND rv.payload_hash IS DISTINCT FROM k.before_hash
+            AND s.tenant_ref = $1 AND s.completed_at IS NOT NULL
+            AND s.completed_at > k.after_at AND s.completed_at <= k.until_at
+          ORDER BY s.completed_at DESC
+          LIMIT ${CONTENT_WINDOW_BACKUPS}
+       ) c
+      ORDER BY k.id, c.completed_at DESC`,
     [ref, open.map((row) => String(row.id)), open.map((row) => String(row.natural_key)), open.map((row) => (row.before_hash ?? null) as string | null),
       open.map((row) => row.window_from), open.map((row) => row.prev_ceiling)],
   );

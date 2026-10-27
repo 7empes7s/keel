@@ -1,5 +1,4 @@
-import { sameContent } from '../cir/canonicalHash.mjs';
-import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE, OPEN_DRIFT_PREDICATE } from './openDrift.mjs';
+import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE, OPEN_DRIFT_PREDICATE, sameRecordedDifference } from './openDrift.mjs';
 
 export { markSameContentDrift } from './openDrift.mjs';
 import { evaluateDrift } from '../policy/evaluate.mjs';
@@ -107,14 +106,8 @@ async function reuseDrift(client, {
     [tenantRef, baselineId, naturalKey],
   );
   if (!latest || (latest.acted_on && !latest.ignored)) return null;
-  const same = (storedHash, storedPayload, hash, payload) => sameContent(
-    { payload_hash: storedHash ?? null, payload: storedPayload ?? null },
-    { payload_hash: hash ?? null, payload: payload ?? null },
-    resourceType,
-  );
   if (latest.change_type !== changeType
-    || !same(latest.before_hash, latest.before_payload, beforeHash, beforePayload)
-    || !same(latest.after_hash, latest.after_payload, afterHash, afterPayload)) return null;
+    || !sameRecordedDifference(latest, { resourceType, beforeHash, beforePayload, afterHash, afterPayload })) return null;
   const { acted_on: _actedOn, ignored, ...row } = latest;
   return { row, ignored };
 }

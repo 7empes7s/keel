@@ -65,3 +65,10 @@ test('a restorer file must name the tenant and share no app or certificate with 
   assert.throws(() => resolveFor('teams', 'restorer', { ...named('/etc/keel/exchange-restorer.json'), separateFrom: [{ clientId: 'restorer' }] }), /separate Restorer/);
   assert.equal(resolveFor('teams', 'restorer', { ...named('/etc/keel/exchange-restorer.json'), separateFrom: [graphCollector] }), '/etc/keel/exchange-restorer.json');
 });
+
+test('a restorer file is refused when it is or shares an app with another family\'s collector file', () => {
+  files.set('/etc/keel/purview-app-restorer.json', JSON.stringify({ tenantId: TENANT_ID, clientId: 'purview-collector' }));
+  const named = (path) => ({ scope: { ...scope, powershellRestorerConfigs: { exchange: path } } });
+  assert.throws(() => resolveFor('exchange', 'restorer', named('/etc/keel/purview-app-restorer.json')), /separate Restorer/);
+  assert.throws(() => resolveFor('exchange', 'restorer', named('/etc/keel/purview-collector.json')), /separate Restorer/);
+});

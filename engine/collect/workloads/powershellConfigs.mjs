@@ -75,7 +75,7 @@ export function restorerSibling(collectorPath) {
  *                     -restorer.json sibling when it exists.
  * Every file it returns is under /etc/keel and names `tenantId` (a collector file may
  * leave it out, as the collect allows; a restorer file must name it). A restorer file
- * must not share the app or certificate of the family's collector file or of any
+ * must not share the app or certificate of any family's collector file or of any
  * `separateFrom` config (the Graph collector).
  */
 export function familyConfigPath(family, { role, scope = {}, tenantId, readFile, exists = existsSync, separateFrom = [] }) {
@@ -92,6 +92,11 @@ export function familyConfigPath(family, { role, scope = {}, tenantId, readFile,
     path = restorers[family] ?? (sibling && exists(sibling) ? sibling : null);
   }
   if (!path) return null;
+  // Every family's collector file, not only this family's: a restorer is never a collector registration.
+  const collectorFiles = [...new Set(Object.values(collectors))];
+  if (role === 'restorer' && collectorFiles.includes(path)) {
+    throw new Error(`the ${family} PowerShell restorer config is the collector registration: restore requires a separate Restorer`);
+  }
   const config = JSON.parse(readFile(path, 'utf8'));
   if (role === 'restorer' && config.tenantId === undefined) {
     throw new Error(`the ${family} PowerShell restorer config (${path}) names no tenantId: add the tenant's id to it`);
@@ -100,9 +105,9 @@ export function familyConfigPath(family, { role, scope = {}, tenantId, readFile,
     throw new Error(`the ${family} PowerShell ${role} config names another tenant than this restore: refusing to connect`);
   }
   if (role === 'restorer') {
-    const others = [...(collectorPath ? [JSON.parse(readFile(collectorPath, 'utf8'))] : []), ...separateFrom];
+    const others = [...collectorFiles.map((file) => JSON.parse(readFile(file, 'utf8'))), ...separateFrom];
     const shares = (other) => ['clientId', 'certPath', 'keyPath'].some((key) => config[key] && config[key] === other?.[key]);
-    if (path === collectorPath || others.some(shares)) {
+    if (others.some(shares)) {
       throw new Error(`the ${family} PowerShell restorer config is the collector registration: restore requires a separate Restorer`);
     }
   }

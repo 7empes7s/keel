@@ -533,7 +533,7 @@ export async function runRestore({
     // planned as a workload restore from the live policy.
     if (complianceFix !== undefined && isWorkloadFix(fixFor(complianceFix.controlId))) {
       return await planWorkloadFixRun({
-        client, request: complianceFix, collectorConfig, collectorConfigPath, persistArtifactId, requestedBy, logger,
+        client, request: complianceFix, collectorConfig, collectorConfigPath, persistArtifactId, requestedBy, readFile, logger,
         deps: { ...workloadDeps, newestWorkloadReadFn },
       });
     }
@@ -1877,7 +1877,7 @@ async function planWorkloadRun({ client, request, collectorConfig, collectorConf
  * the one setting as a workload restore (benchmarks/workloadFix.mjs) and persists it.
  * Promotion is the ordinary workload promotion (executeWorkloadRun).
  */
-async function planWorkloadFixRun({ client, request, collectorConfig, collectorConfigPath, persistArtifactId, requestedBy, logger, deps }) {
+async function planWorkloadFixRun({ client, request, collectorConfig, collectorConfigPath, persistArtifactId, requestedBy, readFile, logger, deps }) {
   const fix = fixFor(request.controlId);
   const entry = workloadRestoreFor(fix.workload, deps.workloadRestores);
   if (typeof entry.read !== 'function') throw new Error(`compliance fix refused: ${entry.label} has no live read for a fix`);
@@ -1886,8 +1886,12 @@ async function planWorkloadFixRun({ client, request, collectorConfig, collectorC
   const checked = await deps.newestWorkloadReadFn(client, { tenantRef, resourceType: fix.workload, parts: [fix.family], now: new Date() });
   const sourceCollectionId = checked?.observation?.completeness === 'complete'
     && checked.resources.some((item) => item.id === named?.resourceKey) ? checked.collectionId : null;
+  // The live read connects with the family's collector file, like any workload dry run (#542).
+  const powershellConfigPath = workloadPowershellPath(fix.workload, {
+    role: 'collector', tenantId: collectorConfig.tenantId, readFile, logger, deps,
+  });
   const connection = await deps.workloadConnectionFn({
-    role: 'collector', config: collectorConfig, configPath: collectorConfigPath, getTokenFn: deps.getTokenFn,
+    role: 'collector', config: collectorConfig, configPath: collectorConfigPath, powershellConfigPath, getTokenFn: deps.getTokenFn,
   });
   const live = await entry.read({ powershell: connection.powershell });
   let plan;

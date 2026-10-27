@@ -415,6 +415,10 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   read or run (for example writing an `/etc/keel` file), mark the item `blocked` and name it; change nothing else.
   Items it refers to (Q149, Q45) are in `ops/operator-queue.md` on `claude/operator-queue`; read them there.
 - If any step fails with "Organization cannot be null", "names another tenant" or "separate Restorer", stop and report the exact message.
+- Known bug (#592, not yet live, 2026-10-27 21:17 UTC): a **workload** restore dry run started as a worker job from the Restore page files its
+  approval with `executor: 'cli'`, so approving it queues no restore job. Compliance-fix dry runs are not affected. If, after you approve,
+  no worker restore job appears within a few minutes, do not enforce by hand: set the item `blocked`, and report the artifact id, the
+  approval id and the approval request's `executor`. It will be re-queued once #592 is live.
 - Needs: `grep -q workloadPowershellConfigPath /opt/keel-live/cli/keel-restore.mjs`.
 - Decision: needs the **K14** line under **Operator decisions** (human only). If it is blank, leave this item `todo`.
 - Status: todo
@@ -495,6 +499,10 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q159):
   read or run (for example writing an `/etc/keel` file), mark the item `blocked` and name it; change nothing else.
   Items it refers to (Q149, Q45) are in `ops/operator-queue.md` on `claude/operator-queue`; read them there.
 - If any step fails with "Organization cannot be null", "names another tenant" or "separate Restorer", stop and report the exact message.
+- Known bug (#592, not yet live, 2026-10-27 21:17 UTC): a **workload** restore dry run started as a worker job from the Restore page files its
+  approval with `executor: 'cli'`, so approving it queues no restore job. Compliance-fix dry runs are not affected. If, after you approve,
+  no worker restore job appears within a few minutes, do not enforce by hand: set the item `blocked`, and report the artifact id, the
+  approval id and the approval request's `executor`. It will be re-queued once #592 is live.
 - Needs: `grep -q workloadPowershellConfigPath /opt/keel-live/cli/keel-restore.mjs`. Run after K14 (both use exchange-restorer.json).
 - Decision: needs the **K15** line under **Operator decisions** (human only). If it is blank, leave this item `todo`.
 - Status: todo

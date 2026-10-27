@@ -8,6 +8,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 
+import { unpseudonymizedIds } from '../../tools/qualification/pseudonymize.mjs';
+
 const SECRET_PATTERNS = [
   /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/, // a JWT (Access token, Graph token)
   /CF_Authorization/,
@@ -15,6 +17,20 @@ const SECRET_PATTERNS = [
   /\bBearer\s+[A-Za-z0-9._~+/-]{20,}/,
   /postgres(?:ql)?:\/\/[^\s"']*:[^\s"'@]+@/, // a database URL with a password
 ];
+
+/**
+ * The repository is public, so a record captured from this instant on must name every object
+ * by its pseudonym. Older records are signed and cannot be edited; the ones that still hold a
+ * raw id are recaptured through the operator queue, and the recapture is checked here.
+ */
+export const PSEUDONYM_CHECK_FROM = '2026-10-28T00:00:00.000Z';
+
+/** Asserts `text` holds no object id that is not a pseudonym, unless it predates the check. */
+export function assertPseudonymized(text, { observedAt, label }) {
+  if (Date.parse(observedAt) < Date.parse(PSEUDONYM_CHECK_FROM)) return;
+  const raw = unpseudonymizedIds(text);
+  assert.equal(raw.length, 0, `${label} holds ${raw.length} id(s) that are not pseudonyms`);
+}
 
 export function isPendingPlaceholder(path) {
   return JSON.parse(readFileSync(path, 'utf8')).status === 'pending';
@@ -45,6 +61,10 @@ export function assertCommittedLiveRecord(path, { gate, root, verify, verifyOpti
     assert.doesNotMatch(text, pattern, `${gate}: record carries no credential material`);
     assert.doesNotMatch(rawText, pattern, `${gate}: raw capture carries no credential material`);
   }
+
+  // Captured from PSEUDONYM_CHECK_FROM on, neither file names an object by its real id.
+  assertPseudonymized(text, { observedAt: record.observedAt, label: `${gate}: the record` });
+  assertPseudonymized(rawText, { observedAt: record.observedAt, label: `${gate}: the raw capture` });
 
   // Without the HMAC key it never verifies, through the API or the CLI.
   const unkeyed = verify(path, { ...verifyOptions, hmacKey: null });

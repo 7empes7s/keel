@@ -535,6 +535,61 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
 - **Report:** B; step 1 yes/no; step 2 lines; step 3 artifact, approval and job ids, the job outcome and the two log lines; what is left in the tenant.
   If any step fails with "Organization cannot be null", "names another tenant" or "separate Restorer", file an issue with the exact message.
 
+### K16: Read the publishing status of the KEEL-RT- retention and DLP fixtures (#339 leftovers, read-only)
+- Drafted by the "Clear stale consent policy evidence" thread (2026-10-27). #339's code fixes are live-proven (Q93, #348); what is
+  left is Microsoft refusing to publish the two Purview fixtures. If both now read `Success`, a later item recaptures
+  purview-retention-dlp.
+- Needs: nothing.
+- Status: todo
+- Result:
+- **Tenant:** Collector reads only. Nothing is written, nothing is granted.
+- Do, with the Collector's Purview PowerShell config (`/etc/keel/purview-collector.json`, the one the purview-retention-dlp
+  collect uses; never print its contents):
+  1. `Get-RetentionCompliancePolicy -Identity KEEL-RT-retention -DistributionDetail | Format-List Name,Enabled,Mode,DistributionStatus,DistributionResults,WhenChanged`
+  2. `Get-DlpCompliancePolicy -Identity KEEL-RT-dlp -DistributionDetail | Format-List Name,Enabled,Mode,DistributionStatus,DistributionResults,WhenChanged`
+  If a policy is not found, try a prefix match (`Get-RetentionCompliancePolicy | Where-Object Name -like 'KEEL-RT-*'`, same for DLP)
+  and report what exists.
+- **Expected:** `DistributionStatus` for each (`Success`, `Pending` or `Error`).
+- **Report:** the build, both outputs (names only for `KEEL-RT-` objects), and any error verbatim. If either is `Error`, quote its
+  `DistributionResults` text.
+
+### K17: Report the latest SharePoint site permission and site grant read results (#264 follow-on, read-only)
+- Drafted by the "Clear stale consent policy evidence" thread (2026-10-27). The `sharepoint-site-permissions` and
+  `sharepoint-site-grants` reads have no live record: they are absent from every evidence import since Q103. We need to know whether
+  they run at all and, if so, what they return.
+- Needs: nothing.
+- Status: todo
+- Result:
+- **Tenant:** nothing. Database reads only.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a` (read-only SELECTs, in a `READ ONLY` transaction):
+  1. Newest `sharepoint-site-settings` run and what its site permission read returned:
+     `SELECT id, outcome, observed_to, digest FROM workload_collection WHERE workload = 'sharepoint-site-settings' ORDER BY created_at DESC LIMIT 1;`
+     Report the outcome and the digest entries for `sharepoint.site-permissions` (and any site grants operation): status, HTTP status,
+     item count and reason. Do not paste the whole digest if it is large.
+  2. Every workload run name the database knows that mentions site permissions or grants:
+     `SELECT workload, outcome, max(created_at) FROM workload_collection WHERE workload ILIKE '%site-perm%' OR workload ILIKE '%site-grant%' GROUP BY 1, 2;`
+  3. Their evidence rows: `SELECT operation_id, kind, ok, read_back_verified, captured_at, error FROM workload_ledger_evidence WHERE operation_id ILIKE '%site-perm%' OR operation_id ILIKE '%site-grant%' ORDER BY captured_at DESC;`
+  4. The newest jobs that name them: `SELECT id, kind, status, created_at, error FROM job WHERE payload::text ILIKE '%sharepoint-site-permissions%' OR payload::text ILIKE '%sharepoint-site-grants%' ORDER BY created_at DESC LIMIT 5;`
+- **Expected:** either a run with an outcome and reasons, or no rows (the reads never ran).
+- **Report:** the build and each step's rows (or "no rows"). Name any reason or error verbatim. Never print a secret.
+
+### K18: Confirm the consent policy update reads live-qualified after the stale demotion was removed (#294, read-only)
+- Drafted by the "Clear stale consent policy evidence" thread (2026-10-27). Commit `03f8c51b` on `claude/live-evidence-w2-entra`
+  removed `permissionGrantPolicy.update.demotion.json` (Q67); the passing Q79 record supersedes it. Only the signing key can show the
+  record verifies, and builders don't have it.
+- Needs: nothing.
+- Status: todo
+- Result:
+- **Tenant:** nothing. Host read only.
+- Do, from your own checkout at the deployed build B (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never print it):
+  1. `git fetch origin claude/live-evidence-w2-entra` and export its `docs/release/qualifications/entra-live` into a scratch dir
+     (for example `git archive origin/claude/live-evidence-w2-entra docs/release/qualifications/entra-live | tar -x -C <tmp>`).
+  2. `node tools/qualification/operations.mjs --live-evidence <tmp>/docs/release/qualifications/entra-live 2>&1 | grep permissionGrantPolicy`
+- **Expected:** `permissionGrantPolicy.create.json: fixture-tested -> live-qualified` and
+  `permissionGrantPolicy.update.json: fixture-tested -> live-qualified`.
+- **Report:** B, the evidence branch commit, and the two lines verbatim. If either says `not applied`, quote the reason.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every item that needs it stays untouched.

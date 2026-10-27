@@ -25,7 +25,9 @@ export function personKey(ref) {
  * email address is replaced by the code name.
  */
 export function displayPerson(ref, namer) {
-  if (!ref || typeof namer !== 'function' || ref.system || ref.readable === false) return ref;
+  // Already code-named (resolvePrincipals does it): naming again would key on the id,
+  // since the email is gone, and give the same person a second code name.
+  if (!ref || typeof namer !== 'function' || ref.system || ref.readable === false || ref.pseudonym) return ref;
   const key = personKey(ref);
   if (!key) return ref;
   const name = namer(key);

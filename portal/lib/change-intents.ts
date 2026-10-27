@@ -7,6 +7,7 @@ import {
 import { OPEN_DRIFT_PREDICATE } from "../../engine/store/openDrift.mjs";
 import { guarded, readActionParams, InvalidActionRequest, type GuardDeps } from "@/lib/action";
 import { payloadName } from "@/lib/changes-view";
+import { peopleNamer, principalPerson, shownPerson } from "@/lib/people-names";
 import { savedNames } from "@/lib/saved-names";
 import { personLabel } from "@/lib/sentences";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
@@ -33,7 +34,14 @@ function iso(value: unknown): string | null {
 type Client = { query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> };
 
 export async function loadChangeIntents(client: Client, tenantRef: string, now = new Date()): Promise<ChangeIntentsData> {
-  const intents = (await listChangeIntents(client, { tenantRef, now })) as ChangeIntent[];
+  // "Hide people's names": owners, approvers and who withdrew an approval by code name.
+  const namer = await peopleNamer(client);
+  const intents = ((await listChangeIntents(client, { tenantRef, now })) as ChangeIntent[]).map((intent) => (namer ? {
+    ...intent,
+    owner: shownPerson(intent.owner, namer),
+    approver: shownPerson(intent.approver, namer),
+    revokedBy: intent.revokedBy ? shownPerson(intent.revokedBy, namer) : null,
+  } : intent));
   // Open changes to existing settings, newest first: what an approver can approve. One
   // row per resource against the active baseline, the newest, as on the Changes page;
   // older drift-detect runs left a row per run for a long-lived change.
@@ -69,10 +77,14 @@ export async function loadChangeIntents(client: Client, tenantRef: string, now =
       name: payloadName(drift.after_payload, String(drift.resource_type)) ?? payloadName(drift.before_payload, String(drift.resource_type)) ?? saved[String(drift.natural_key)]?.name ?? null,
       detectedAt: iso(drift.detected_at), transitions: (driftTransitions(drift) ?? []) as IntentTransition[],
     })).filter((change) => change.transitions.length > 0),
+    // The people an approver chooses from: by code name too while names are hidden, in
+    // that order, so the list matches what Activity and this page call them.
     people: people.map((person) => ({
       id: String(person.id),
-      name: personLabel({ kind: "person", id: String(person.id), name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true }, "A person without a name"),
-    })),
+      name: namer
+        ? personLabel(principalPerson({ ...person, system_kind: null }, namer), "A person without a name")
+        : personLabel({ kind: "person", id: String(person.id), name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true }, "A person without a name"),
+    })).sort((left, right) => (namer ? left.name.localeCompare(right.name) : 0)),
     generatedAt: now.toISOString(),
   };
 }

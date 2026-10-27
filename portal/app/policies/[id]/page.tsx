@@ -9,6 +9,8 @@ import { PolicyPage as PolicyBody } from "@/components/policies/policy-page";
 import { RULE_KINDS, RULE_STATES, ruleKind, ruleState } from "@/lib/policy-view";
 import type { Policy, PolicyAction } from "@/lib/policies";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
+import { AnonymityNote } from "@/components/anonymity-note";
+import { getAnonymitySetting } from "@/lib/anonymity";
 
 const PARENTS = [{ href: "/policies", label: "Policies" }];
 
@@ -36,6 +38,7 @@ export default async function PolicyPage({ params }: { params: Promise<{ id: str
       status={{ tone: state.tone === "neutral" ? "low" : state.tone, label: state.label }}
       title={policy.name}
     />
+    <AnonymityNote setting={await getAnonymitySetting()} />
     <PolicyBody actions={actions} canEdit={access.capabilities.includes("policies")} halted={automationDisabled} now={generatedAt} policy={policy} />
   </>;
 }

@@ -47,7 +47,8 @@ export interface AlertItem {
   ackDeadlineAt: string | null;
   acknowledgedAt: string | null;
   acknowledgedByName: string | null;
-  owner: { id: string; name: string } | null;
+  // pseudonym: "Hide people's names" is on and name is a code name.
+  owner: { id: string; name: string; pseudonym?: boolean } | null;
   escalated: boolean;
   escalationError: string | null;
   cause: { changeType: string | null; resourceType: string | null; snapshotId: string | null };

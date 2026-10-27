@@ -4,6 +4,7 @@ import { AUTOMATION_KILL_SWITCH_PATH } from "../../engine/policy/execute.mjs";
 import {
   ActivationNotFoundError, ActivationRefusedError, activatePolicy, createActivationPreview, summarizeAutomationOutcomes,
 } from "../../engine/policy/activation.mjs";
+import { peopleNamer, shownAccount, shownPerson } from "@/lib/people-names";
 import { guarded, readActionParams, InvalidActionRequest, type GuardDeps } from "@/lib/action";
 import { payloadName } from "@/lib/changes-view";
 import type { NamedKeys } from "@/lib/job-names";
@@ -172,11 +173,32 @@ export function automationHaltedAt(path = AUTOMATION_KILL_SWITCH_PATH): string |
 
 export const AUTOMATION_HALT_FILE = AUTOMATION_KILL_SWITCH_PATH;
 
+// "Hide people's names": the account a rule acts as by code name and without its email,
+// and who made the rule by code name when that was recorded as an address.
+async function hidePolicyPeople<T extends Policy | null>(client: QueryClient, policies: T[]): Promise<T[]> {
+  if (!policies.some(Boolean)) return policies;
+  const namer = await peopleNamer(client);
+  if (!namer) return policies;
+  return policies.map((policy) => (policy ? {
+    ...policy,
+    created_by: String(shownAccount(policy.created_by, namer)),
+    ...(policy.run_as_principal ? { run_as_principal: shownPerson(policy.run_as_principal, namer) } : {}),
+  } : policy));
+}
+
+async function hidePreviewRunAs(client: QueryClient, runAs: ActivationPreview["runAs"]): Promise<ActivationPreview["runAs"]> {
+  if (!runAs?.readable || !runAs.principalId) return runAs;
+  const namer = await peopleNamer(client);
+  if (!namer) return runAs;
+  const shown = shownPerson({ id: runAs.principalId, email: runAs.email ?? null, name: runAs.name ?? null, readable: true }, namer);
+  return { ...runAs, name: shown.name, email: null };
+}
+
 export function guardedPolicyList(deps: GuardDeps = {}) {
   return guarded({ action: "policies:list", capability: "policies" }, async ({ client, tenantRef, request }) => {
     const filter = new URL(request.url).searchParams.get("enabled");
     if (filter !== null && filter !== "true" && filter !== "false") throw new InvalidActionRequest();
-    const listed = await listPolicies(client, { tenantRef, enabled: filter === null ? undefined : filter === "true" }) as Policy[];
+    const listed = await hidePolicyPeople(client as QueryClient, await listPolicies(client, { tenantRef, enabled: filter === null ? undefined : filter === "true" }) as Policy[]);
     const policies = await withLastActionNames(client as QueryClient, tenantRef, listed);
     return Response.json({
       policies, automationDisabled: automationDisabled(), automationHaltedAt: automationHaltedAt(),
@@ -189,7 +211,7 @@ export function guardedPolicyShow(deps: GuardDeps = {}) {
   return guarded({ action: "policies:show", capability: "policies" }, async ({ client, tenantRef, request }) => {
     const id = new URL(request.url).pathname.split("/").at(-1) ?? "";
     if (!UUID.test(id)) return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
-    const found = await getPolicy(client, { tenantRef, id }) as Policy | null;
+    const found = (await hidePolicyPeople(client as QueryClient, [await getPolicy(client, { tenantRef, id }) as Policy | null]))[0];
     const policy = found ? (await withLastActionNames(client as QueryClient, tenantRef, [found]))[0] : null;
     // The rule's newest 20 actions, for the detail page's "Recent actions"; a failed read leaves the list empty.
     let actions: PolicyAction[] = [];
@@ -272,7 +294,7 @@ export function guardedPolicyActivationPreview(surface: DataSurface, deps: Guard
       const preview = await createActivationPreview(client, { tenantRef, policyId: id, requestedBy: principalId });
       const outcomes = await summarizeAutomationOutcomes(client, { tenantRef, policyId: id });
       const names = await previewNames(client as QueryClient, tenantRef, preview as ActivationPreview);
-      return Response.json({ preview: { ...preview, outcomes: { queued: outcomes.queued, rolledBack: outcomes.rolledBack, failed: outcomes.failed }, names } }, { status: 201, headers: NO_STORE });
+      return Response.json({ preview: { ...preview, runAs: await hidePreviewRunAs(client as QueryClient, (preview as ActivationPreview).runAs), outcomes: { queued: outcomes.queued, rolledBack: outcomes.rolledBack, failed: outcomes.failed }, names } }, { status: 201, headers: NO_STORE });
     } catch (error) {
       if (error instanceof ActivationNotFoundError) return Response.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
       throw error;

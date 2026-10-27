@@ -67,7 +67,9 @@ export async function resolveBaselines(client, { tenantRef, ids }) {
 /**
  * Restore dry runs (plans) by artifact id, scoped to the tenant: when the snapshot
  * was taken, how many resources the plan covers, whether it is an undo, its status,
- * and the job that computed it (the page a reviewer opens).
+ * and the job that computed it (the page a reviewer opens). A plan of another
+ * Microsoft 365 service (Exchange, Teams, Purview...) has no Entra snapshot: it names
+ * its workload, and its time is when that service's backup was read.
  */
 export async function resolveDryRuns(client, { tenantRef, ids }) {
   const wanted = unique(ids).filter((id) => UUID.test(id));
@@ -76,19 +78,23 @@ export async function resolveDryRuns(client, { tenantRef, ids }) {
     const { rows } = await client.query(
       `SELECT d.id::text AS id, d.status, d.compensation IS NOT NULL AS is_undo,
               jsonb_array_length(d.closure_keys) AS resources, s.completed_at AS snapshot_at,
+              d.workload_restore->>'workload' AS workload,
+              d.workload_restore->'source'->>'observedTo' AS source_at,
+              d.compliance_fix IS NOT NULL AS compliance_fix,
               jsonb_array_length(COALESCE(d.content_effects, '[]'::jsonb)) AS content_effects,
               (SELECT j.id::text FROM job j
                 WHERE j.kind = 'restore' AND j.params->>'artifactId' = d.id::text
                   AND (j.params->>'mode') IS NULL
                 ORDER BY j.created_at DESC LIMIT 1) AS dry_run_job_id
-         FROM restore_dry_run d JOIN snapshot s ON s.id = d.snapshot_id
+         FROM restore_dry_run d LEFT JOIN snapshot s ON s.id = d.snapshot_id
         WHERE d.tenant_ref = $1 AND d.id::text = ANY($2::text[])`,
       [tenantRef, wanted],
     );
     for (const row of rows) {
       result.set(row.id, {
         kind: 'dry-run', id: row.id, name: null, readable: true, status: row.status, undo: row.is_undo,
-        resources: Number(row.resources), snapshotAt: row.snapshot_at, dryRunJobId: row.dry_run_job_id,
+        resources: Number(row.resources), snapshotAt: row.snapshot_at ?? row.source_at ?? null, dryRunJobId: row.dry_run_job_id,
+        workload: row.workload ?? null, complianceFix: row.compliance_fix === true,
         // Q45: how many content effects need their own approval, whichever surface planned it.
         contentEffects: Number(row.content_effects),
       });

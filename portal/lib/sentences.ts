@@ -4,6 +4,7 @@
 // references the engine resolved. One module, so every page says the same thing the
 // same way. Raw codes and ids never appear in these strings; they live in the record.
 import { ago, displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel, words } from "@/lib/presentation";
+import { workloadLabel } from "@/lib/compare-view";
 import { holdsObjectId, jobIncompleteTypes, type NamedKeys, namedResource } from "@/lib/job-names";
 
 export interface EngineRef {
@@ -23,6 +24,10 @@ export interface PlanRef extends EngineRef {
   dryRunJobId?: string | null;
   // Q45: content effects that need their own approval, whichever surface planned it.
   contentEffects?: number;
+  // A restore of another Microsoft 365 service: its workload ("exchange-mail-flow").
+  workload?: string | null;
+  // A "Make it pass" fix for a failing compliance check.
+  complianceFix?: boolean;
 }
 
 export interface ChangeRef extends EngineRef {
@@ -102,9 +107,46 @@ function when(value: string | null | undefined): string {
   return value ? formatTimestamp(value) : "an unknown time";
 }
 
+// The Microsoft service each workload sits under, by the start of its code.
+const WORKLOAD_SERVICES: [string, string][] = [
+  ["exchange", "Exchange"], ["teams", "Teams"], ["purview", "Purview"], ["sharepoint", "SharePoint"],
+  ["onedrive", "OneDrive"], ["power-platform", "Power Platform"],
+];
+
+// Restores the Restore page does not list as a backup of their own.
+const RESTORE_ONLY_LABELS: Record<string, string> = {
+  "sharepoint-site-permissions": "SharePoint site permissions",
+  "sharepoint-site-grants": "SharePoint site app access",
+};
+
+/** "Exchange mail flow", "Purview sensitivity labels": a workload as its service and what it covers. */
+export function workloadSubject(workload: string): string {
+  const label = RESTORE_ONLY_LABELS[workload] ?? workloadLabel(workload);
+  const service = WORKLOAD_SERVICES.find(([prefix]) => workload === prefix || workload.startsWith(`${prefix}-`))?.[1];
+  if (!service || label.toLowerCase().startsWith(service.toLowerCase())) return label;
+  return `${service} ${label[0].toLowerCase()}${label.slice(1)}`;
+}
+
 function planPhrase(plan: PlanRef | null | undefined): string {
   if (!plan || !plan.readable) return "a dry run that is no longer readable";
+  if (plan.complianceFix) return `a fix for a failing compliance check (${plural(plan.resources ?? 0, "setting")})`;
+  if (plan.workload) return `${workloadSubject(plan.workload)} (${plural(plan.resources ?? 0, "setting")}) from the backup of ${when(plan.snapshotAt)}`;
   return `${plural(plan.resources ?? 0, "resource")} from the snapshot of ${when(plan.snapshotAt)}`;
+}
+
+/** A dry run of another Microsoft 365 service's restore, named by its service and what was chosen. */
+function workloadDryRunName(request: Record<string, unknown>): string {
+  const workload = typeof request.workload === "string" && request.workload ? request.workload : null;
+  if (!workload) return "Dry run of a restore of another Microsoft 365 service";
+  const subject = workloadSubject(workload);
+  if (typeof request.mailbox === "string") {
+    const organization = request.includeOrganization === true ? " and the organization-wide settings" : "";
+    return `Dry run of a restore of ${subject} for one mailbox${organization}`;
+  }
+  if (typeof request.teamId === "string") return `Dry run of a restore of ${subject} for one team`;
+  if (typeof request.site === "string" || typeof request.siteId === "string") return `Dry run of a restore of ${subject} for one site`;
+  const targets = Array.isArray(request.targets) ? request.targets.length : 0;
+  return targets > 0 ? `Dry run of a restore of ${subject} (${plural(targets, "chosen setting")})` : `Dry run of a restore of ${subject}`;
 }
 
 /** "2 Oct 2026, 09:12": the backup's moment without the zone word of a full timestamp. */
@@ -149,7 +191,16 @@ export function jobName(job: JobLike): string {
     case "backup": return `Backup of ${tierPhrase(params.tier)}`;
     case "restore": {
       if (typeof params.compensates === "string") return `Dry run of an undo of the restore of ${planPhrase(refs.undoes)}`;
-      if (params.mode === "enforce") return refs.plan?.undo ? "Undo of a restore" : `Restore of ${planPhrase(refs.plan)}`;
+      if (params.mode === "enforce") {
+        if (refs.plan?.undo) return "Undo of a restore";
+        if (refs.plan?.readable && refs.plan.complianceFix) return `Fix for a failing compliance check (${plural(refs.plan.resources ?? 0, "setting")})`;
+        return `Restore of ${planPhrase(refs.plan)}`;
+      }
+      if (params.workloadRestore && typeof params.workloadRestore === "object") return workloadDryRunName(params.workloadRestore as Record<string, unknown>);
+      if (params.complianceFix && typeof params.complianceFix === "object") {
+        const key = (params.complianceFix as { naturalKey?: unknown }).naturalKey;
+        return typeof key === "string" && key ? `Dry run of a fix for a failing compliance check on ${namedResource(key)}` : "Dry run of a fix for a failing compliance check";
+      }
       const selected = Array.isArray(params.selection) ? params.selection.length : 0;
       return `Dry run of a restore of ${plural(selected, "selected resource")} from the snapshot of ${when(refs.snapshot?.readable ? refs.snapshot.takenAt : null)}`;
     }
@@ -204,6 +255,10 @@ export function approvalSentence(request: RequestLike): string {
   switch (request.action) {
     case "restore":
       if (refs.plan?.readable && refs.plan.undo) return `Undo a restore of ${plural(refs.plan.resources ?? 0, "setting")}`;
+      if (refs.plan?.readable && refs.plan.complianceFix) return `Fix a failing compliance check (${plural(refs.plan.resources ?? 0, "setting")})`;
+      if (refs.plan?.readable && refs.plan.workload) {
+        return `Restore ${workloadSubject(refs.plan.workload)} (${plural(refs.plan.resources ?? 0, "setting")}) from the backup of ${backupMoment(refs.plan.snapshotAt)}`;
+      }
       return refs.plan?.readable
         ? `Restore ${plural(refs.plan.resources ?? 0, "setting")} from the backup of ${backupMoment(refs.plan.snapshotAt)}`
         : "Restore from a preview that is no longer readable";

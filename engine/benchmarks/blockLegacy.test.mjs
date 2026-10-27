@@ -100,3 +100,68 @@ test('only a fail may carry the not-configured reason', () => {
   });
   assert.throws(() => check([], 'test.not-configured-pass', 'group'), /predicate must return|only a fail may give a reason/);
 });
+
+// The live shape (2026-10-27): one blocking policy is report-only, the enabled one
+// covers only some users. Each must be named on the page, with what it misses.
+test('a fail lists every blocking policy, line by line, with what it misses', () => {
+  const reportOnly = policy('20260908-report', 'enabledForReportingButNotEnforced', ['exchangeActiveSync', 'other']);
+  const someUsers = policy('20260908', 'enabled', ['exchangeActiveSync', 'other', 'browser'], ['block'], ['3f2c9d1e-user']);
+  const unrelated = policy('mfa', 'enabled', ['all'], ['mfa']);
+  const result = check([reportOnly, someUsers, unrelated]);
+  assert.equal(result.verdict, 'fail');
+  assert.equal(result.reason, null);
+  assert.equal(result.details.length, 8);
+  assert.deepEqual(result.detailCounts, { checked: 8, failing: 2 });
+  // Failing lines first.
+  assert.deepEqual(result.details.slice(0, 2).map((line) => [line.subject, line.setting, line.value, line.expected, line.ok]), [
+    ['KEEL-RT-20260908-report', 'state', 'enabledForReportingButNotEnforced', 'enabled', false],
+    ['KEEL-RT-20260908', 'includeUsers', 'Only some', 'All', false],
+  ]);
+  const subjects = new Set(result.details.map((line) => line.subject));
+  assert.deepEqual([...subjects].sort(), ['KEEL-RT-20260908', 'KEEL-RT-20260908-report']);
+  for (const name of subjects) {
+    assert.deepEqual(result.details.filter((line) => line.subject === name).map((line) => line.setting).sort(),
+      ['clientAppTypes', 'includeApplications', 'includeUsers', 'state']);
+  }
+  // Only the legacy client types are listed, and no user, group or app id reaches a line.
+  const clients = result.details.find((line) => line.subject === 'KEEL-RT-20260908' && line.setting === 'clientAppTypes');
+  assert.deepEqual(clients.value, ['exchangeActiveSync', 'other']);
+  assert.equal(clients.ok, true);
+  assert.ok(!JSON.stringify(result.details).includes('3f2c9d1e-user'));
+});
+
+test('a block on one legacy client type for some apps says which', () => {
+  const half = policy('half', 'enabled', ['other'], ['block'], ['All'], ['00000002-0000-0ff1-ce00-000000000000']);
+  const result = check([half]);
+  assert.equal(result.verdict, 'fail');
+  const misses = result.details.filter((line) => !line.ok).map((line) => [line.setting, line.value]);
+  assert.deepEqual(misses, [['includeApplications', 'Only some'], ['clientAppTypes', ['other']]]);
+  assert.ok(!JSON.stringify(result.details).includes('00000002'));
+});
+
+test('a pass lists only the policy that blocks legacy sign-in', () => {
+  const reportOnly = policy('report', 'enabledForReportingButNotEnforced', ['exchangeActiveSync', 'other']);
+  const enforced = policy('legacy', 'enabled', ['exchangeActiveSync', 'other']);
+  const result = check([reportOnly, enforced]);
+  assert.equal(result.verdict, 'pass');
+  assert.equal(result.details.length, 4);
+  assert.ok(result.details.every((line) => line.subject === 'KEEL-RT-legacy' && line.ok));
+});
+
+test('not set up yet has no lines: there is no policy to name', () => {
+  const result = check([policy('mfa', 'enabled', ['all'], ['mfa'])]);
+  assert.equal(result.details, null);
+});
+
+test('a rule for groups, roles or nobody says so without naming them', () => {
+  const lineFor = (users, apps = ['All']) => {
+    const legacy = policy('scoped', 'enabled', ['exchangeActiveSync', 'other'], ['block'], [], apps);
+    Object.assign(legacy.conditions.users, users);
+    const details = check([legacy]).details;
+    return [details.find((line) => line.setting === 'includeUsers').value, details.find((line) => line.setting === 'includeApplications').value];
+  };
+  assert.deepEqual(lineFor({ includeGroups: ['group-1'] }), ['Only some', 'All']);
+  assert.deepEqual(lineFor({ includeRoles: ['role-1'] }), ['Only some', 'All']);
+  assert.deepEqual(lineFor({ includeGuestsOrExternalUsers: { guestOrExternalUserTypes: 'b2bCollaborationGuest' } }), ['Only some', 'All']);
+  assert.deepEqual(lineFor({ includeUsers: ['None'] }, ['None']), ['None', 'None']);
+});

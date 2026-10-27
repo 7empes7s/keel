@@ -7570,7 +7570,7 @@ item that needs it stays untouched.
   (Set-SafeLinksPolicy). They stay off until a live writer capture is imported. Compliance's Defender email checks then offer
   "Make it pass" per failing setting; the fix is a one-setting workload restore (dry run, approval, content-effect approval, write, read-back).
 - Needs: /opt/keel-live at a499c2d or later (`grep -q mailflow.anti-spam-policy /opt/keel-live/engine/restore/workloads/writeDeclarations.mjs`).
-- Status: blocked
+- Status: todo
 - Result: blocked (2026-10-22 21:35 UTC) for the enforce in step 4: it waits for **#548** (fixes #542) to deploy (live is 3010d22, `workloadPowershellConfigPath` absent). Steps 1–3 and the step 4 dry run are done. B = **3010d22**. Restorer (Exchange) for writes; Collector for reads; global admin not used.
   1. Fixtures (no rules, apply to nobody; no rule found for any of them): `KEEL-RT-mailfix-spam` guid 839e8b32-… created (PhishSpamAction MoveToJmf, PhishZapEnabled false); `KEEL-RT-mailfix-phish` f56f609e-… created;
      `KEEL-RT-mailfix-malware` 6dd556b7-… created; `KEEL-RT-mailfix-links` f309e049-… created (Safe Links is licensed).
@@ -7621,6 +7621,13 @@ item that needs it stays untouched.
   re-run step 2 (writer capture for `exchange-mail-flow`; it now writes the description of KEEL-RT-mailfix-malware and puts it back) and
   step 3 (evidence PR plus import), and report `mailflow.anti-malware-policy.update` `ok`, `readBackVerified`, `restoredToOriginal`.
   Then finish step 4 once #548 is live, as already noted.
+- **Addendum (2026-10-27, finish step 4 only):** #548 is merged. Needs: `grep -q workloadPowershellConfigPath /opt/keel-live/cli/keel-restore.mjs`
+  (if it fails, wait for the deploy; do not set this item blocked). Steps 1–3 and the step 4 dry run are done; do not redo them.
+  The Make it pass dry run now also reads with the family collector file. Make a **new** dry run (the old 5776fc9b predates #548),
+  then approve the restore and its content effect yourself, let the worker enforce, and do step 5 (put PhishSpamAction back to MoveToJmf).
+  Report the dry-run artifact id, the log line `PowerShell connects as the collector with /etc/keel/exchange-collector.json`,
+  approval ids, job id, outcome (`verified` expected), the enforce log line naming `/etc/keel/exchange-restorer.json`, and that only
+  PhishSpamAction changed. If it fails with "Organization cannot be null", "names another tenant" or "separate Restorer", report the exact message.
 
 ### Q160: Re-run discovery and check the PIM role settings lists read as covered (read-only, after #547)
 - Drafted by the "Role policy discovery false alarm" thread (2026-10-22). Code: PR #547. Q145 found `unifiedRoleManagementPolicy` and
@@ -7666,7 +7673,8 @@ item that needs it stays untouched.
 - Do, at the deployed build B, from your own checkout (never `/opt/keel`):
   1. **Host check:** report yes/no only (never values): `/etc/keel/exchange-restorer.json` and `/etc/keel/purview-restorer.json`
      exist, are readable by the user the worker runs as, name `organization`, name `tenantId`, and have a different `clientId`,
-     `certPath` and `keyPath` from the matching `-collector.json` and from `/etc/keel/tenant.json`. #548 refuses a restorer file
+     `certPath` and `keyPath` from **every** `-collector.json` listed in `powershellConfigs` (#548 now refuses a restorer that shares an app or
+     certificate with any family's collector) and from `/etc/keel/tenant.json`. #548 refuses a restorer file
      with no `tenantId`: if one has none, copy it to `<file>.bak-q161` (same owner and mode), add `tenantId` with the value
      `/etc/keel/tenant.json` holds, keep owner and mode, and report it (undo: restore the `.bak-q161`). If
      `exchange-restorer.json` is missing, stop and report.

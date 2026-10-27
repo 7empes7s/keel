@@ -34,13 +34,16 @@
  * Every write is journalled first and read back; every field it sent must read
  * back as sent (nulls and absent fields read the same). A reference held in a
  * written field must resolve to the same id in the target: remapping a
- * reference to another tenant's id is not qualified for any of these types, so
- * it fails instead of being written.
+ * reference to another id fails instead of being written, except for a record
+ * with `remapsReferences` whose operation has a remapping proof
+ * (qualification.mjs recordRemappingProof). Its references are rewritten to
+ * the target's ids (an object this run recreated, or one found by its natural
+ * key) through the `rewriteReferences` the wave passes in ctx.
  */
 import { isDeepStrictEqual } from 'node:util';
 
 import { SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
-import { withExplicitReferences } from '../coverage/qualification.mjs';
+import { remappingFor, withExplicitReferences } from '../coverage/qualification.mjs';
 import { VERBATIM_RESOLUTIONS, isServerOwnedReference, resolveSymbol } from '../graph/resolver.mjs';
 import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
 import { followUpSteps } from './bestEffortRecreate.mjs';
@@ -87,6 +90,7 @@ export function defineRecord(spec) {
     updateGuard: null,
     transform: null,
     sameField: null,
+    remapsReferences: false,
     checkedAfterWrite: [],
     ...spec,
     operations: Object.freeze([...(spec.operations ?? [])]),
@@ -310,6 +314,33 @@ export function eachFieldReader(writer, fields) {
 }
 
 /**
+ * A record with `remapsReferences`: the backup's references rewritten to the
+ * target's ids by the wave's `ctx.rewriteReferences` (without one, nothing is
+ * rewritten and referenceRefusal still guards). A rewrite to another id needs
+ * a remapping proof for exactly this operation. Returns { resource } | { error }.
+ */
+function remapRecordReferences(record, resource, verb, ctx) {
+  if (typeof ctx.rewriteReferences !== 'function' || !resource.payload || typeof resource.payload !== 'object') return { resource };
+  let payload;
+  try {
+    payload = ctx.rewriteReferences(resource.payload);
+  } catch (error) {
+    return { error: error?.message ?? String(error) };
+  }
+  const read = (value, field) => String(field).split(/\.|\[|\]/).filter(Boolean)
+    .reduce((held, segment) => held?.[/^\d+$/.test(segment) ? Number(segment) : segment], value);
+  // Only a field this write sends counts: an update never sends the ends of a link.
+  const sent = new Set(Object.keys(recordWriteBody(record, payload, verb)));
+  const changed = withExplicitReferences(resource)
+    .filter((ref) => sent.has(String(ref.field ?? '').split(/[.[]/)[0]))
+    .filter((ref) => String(read(resource.payload, ref.field) ?? '').toLowerCase() !== String(read(payload, ref.field) ?? '').toLowerCase());
+  if (changed.length > 0 && !remappingFor(resource.resourceType, verb).qualified) {
+    return { error: `unqualified-remapping: ${resource.resourceType} ${verb} would rewrite ${changed.map((ref) => ref.field).join(', ')} to a different id, and reference remapping is not proven for this operation` };
+  }
+  return { resource: { ...resource, payload } };
+}
+
+/**
  * One write through a record. `ctx`: { mode, retryOperation, referenceContext,
  * rollbackClient, runId, restoreRef, existingTargetIds, deletionGuardOptions,
  * observedCoverage, readAfterWriteOptions }. Returns { applied } | { skipped }
@@ -325,6 +356,11 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   };
   if (!record.operations.includes(verb)) {
     return { failed: { naturalKey, error: `unsupported operation: ${resource.resourceType} ${verb} has no operation record` } };
+  }
+  if (record.remapsReferences && verb !== 'delete') {
+    const remapped = remapRecordReferences(record, resource, verb, ctx);
+    if (remapped.error) return { failed: { naturalKey, error: remapped.error } };
+    resource = remapped.resource;
   }
   const payload = verb === 'delete' ? (resource.live?.payload ?? resource.payload) : resource.payload;
   if (!payload || typeof payload !== 'object') return { failed: { naturalKey, error: 'the backup holds no object to write' } };

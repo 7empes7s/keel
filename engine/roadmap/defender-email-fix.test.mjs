@@ -133,14 +133,17 @@ const enabled = () => Object.fromEntries(Object.entries(WKLD_WRITE_OPERATIONS)
   .map(([id]) => [id, { operationId: id, state: 'live-qualified', enabled: true, reasons: [] }]));
 
 /** The CLI with the fake tenant behind both credentials, and the server's credential files. */
-function cli(tenant, tenantId, { qualifications = enabled } = {}) {
+function cli(tenant, tenantId, { qualifications = enabled, scope = {}, files = {} } = {}) {
+  const connections = [];
   const configs = new Map([
+    ...Object.entries(files),
     ['/fixtures/collector.json', JSON.stringify({ tenantId, clientId: 'collector', certPath: 'c.pem', keyPath: 'c.key' })],
     ['/fixtures/restorer.json', JSON.stringify({ tenantId, clientId: 'restorer', certPath: 'r.pem', keyPath: 'r.key' })],
   ]);
   const readFile = (path) => configs.get(path) ?? (() => { throw new Error(`unexpected file read: ${path}`); })();
   const dependencies = {
-    workloadConnection: async () => ({ powershell: tenant.powershell }),
+    workloadConnection: async (options) => { connections.push(options); return { powershell: tenant.powershell }; },
+    workloadScope: () => scope,
     workloadQualifications: async () => qualifications(),
     credentialPaths: () => ({ collectorConfig: '/fixtures/collector.json', targetConfig: '/fixtures/restorer.json' }),
     sleep: async () => {},
@@ -150,7 +153,7 @@ function cli(tenant, tenantId, { qualifications = enabled } = {}) {
     complianceFix: { controlId, naturalKey }, mode: 'dry-run', persistArtifactId: artifactId, requestedBy: 'requester',
     collectorConfig: JSON.parse(configs.get('/fixtures/collector.json')), collectorConfigPath: '/fixtures/collector.json',
   }).then((result) => ({ ...result, artifactId }));
-  return { run, plan };
+  return { run, plan, connections };
 }
 
 async function approve(client, tenantRef, artifactId) {
@@ -159,6 +162,39 @@ async function approve(client, tenantRef, artifactId) {
   await assert.rejects(approveRequest(client, { tenantRef, id: request.id, decidedBy: requester }), SelfApprovalError);
   await approveRequest(client, { tenantRef, id: request.id, decidedBy: await principal(client, 'approver', 'approver') });
 }
+
+test('make it pass: the dry run reads Exchange with the family collector file, the promotion writes with its restorer file (#542)', async (t) => {
+  const client = await schemaClient(t);
+  const { tenantId, tenantRef } = nextTenant();
+  const weak = policy('antiSpamPolicy', { PhishSpamAction: 'MoveToJmf' });
+  const tenant = fakeTenant({ antiSpamPolicy: [weak] });
+  await recordRead(client, tenantRef, tenant);
+  const [candidate] = await listFixCandidates(client, { tenantRef, controlId: SPAM });
+  const organization = 'contoso.onmicrosoft.com';
+  const { run, plan, connections } = cli(tenant, tenantId, {
+    // Named explicitly: the -restorer.json sibling rule checks the real disk.
+    scope: {
+      powershellConfigs: { exchange: '/etc/keel/exchange-collector.json' },
+      powershellRestorerConfigs: { exchange: '/etc/keel/exchange-restorer.json' },
+    },
+    files: {
+      '/etc/keel/exchange-collector.json': JSON.stringify({ tenantId, organization, clientId: 'exo-collector' }),
+      '/etc/keel/exchange-restorer.json': JSON.stringify({ tenantId, organization, clientId: 'exo-restorer' }),
+    },
+  });
+  const dry = await plan(SPAM, candidate.naturalKey);
+  assert.deepEqual(connections.map((c) => [c.role, c.powershellConfigPath]), [['collector', '/etc/keel/exchange-collector.json']]);
+  await approve(client, tenantRef, dry.artifactId);
+  const artifact = await getDryRunArtifactById(client, { id: dry.artifactId });
+  await approveContentEffects(client, {
+    tenantRef, artifactId: dry.artifactId, approverId: await principal(client, 'effects', 'approver'),
+    effectsDigest: contentEffectsDigest(artifact.workloadRestore.contentEffects), justification: 'KEEL-RT- policy',
+  });
+  connections.length = 0;
+  assert.equal((await run({ artifactId: dry.artifactId, mode: 'enforce' })).outcome, 'verified');
+  assert.ok(connections.length > 0);
+  assert.ok(connections.every((c) => c.role === 'restorer' && c.powershellConfigPath === '/etc/keel/exchange-restorer.json'));
+});
 
 // ------------------------------------------------------------------ registry
 

@@ -26,7 +26,7 @@ import { SHAREPOINT_WRITE_OPERATION } from '../restore/workloads/sharepoint.mjs'
 import { approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
-import { defaultWorkloadQualifications, main, runRestore } from '../../cli/keel-restore.mjs';
+import { defaultWorkloadConnection, defaultWorkloadQualifications, main, runRestore } from '../../cli/keel-restore.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
@@ -100,17 +100,18 @@ const qualified = () => ({
 });
 
 /** CLI dependencies: a fake Graph per role, a qualification answer and the server's paths. */
-function cliDependencies(graph, { qualifications = qualified, paths = SERVER_PATHS } = {}) {
+function cliDependencies(graph, { qualifications = qualified, paths = SERVER_PATHS, scope = {} } = {}) {
   const connections = [];
   return {
     connections,
     dependencies: {
-      workloadConnection: async ({ role, config, configPath }) => {
-        connections.push({ role, clientId: config.clientId, configPath });
+      workloadConnection: async ({ role, config, configPath, powershellConfigPath = null }) => {
+        connections.push({ role, clientId: config.clientId, configPath, powershellConfigPath });
         return { transport: graph.transport, powershell: {} };
       },
       workloadQualifications: async () => qualifications(),
       credentialPaths: () => paths,
+      workloadScope: () => scope,
       sleep: async () => {},
     },
   };
@@ -346,6 +347,115 @@ test('promotion dispatches each workload artifact to its own execute function', 
     assert.deepEqual(calls.at(-1), { workload, artifactId: id, tenantId: TENANT_ID, planWorkload: workload });
   }
   assert.deepEqual(calls.map((call) => call.workload), Object.keys(WORKLOAD_RESTORES));
+});
+
+// Issue #542 (operator Q149): Exchange and Purview refuse the Graph configs, which name
+// no organization, so a workload restore's PowerShell connects with its family's file
+// from the workload scope: the collector file for the dry run, the restorer file for
+// the promotion. The Graph identity stays the server's collector and restorer.
+const FAMILY_FILES = {
+  '/etc/keel/exchange-collector.json': { tenantId: TENANT_ID, clientId: 'collector', organization: 'contoso.onmicrosoft.com' },
+  '/etc/keel/exchange-restorer.json': { tenantId: TENANT_ID, clientId: 'restorer', organization: 'contoso.onmicrosoft.com' },
+  '/etc/keel/purview-collector.json': { tenantId: TENANT_ID, clientId: 'purview-collector', organization: 'contoso.onmicrosoft.com' },
+  '/etc/keel/purview-restorer.json': { tenantId: TENANT_ID, clientId: 'purview-restorer', organization: 'contoso.onmicrosoft.com' },
+  '/etc/keel/other-tenant-restorer.json': { tenantId: OTHER_TENANT_ID, clientId: 'restorer', organization: 'fabrikam.onmicrosoft.com' },
+};
+for (const [path, value] of Object.entries(FAMILY_FILES)) configs.set(path, JSON.stringify(value));
+const FAMILY_SCOPE = {
+  powershellConfigs: { exchange: '/etc/keel/exchange-collector.json', purview: '/etc/keel/purview-collector.json' },
+  powershellRestorerConfigs: { exchange: '/etc/keel/exchange-restorer.json', purview: '/etc/keel/purview-restorer.json' },
+};
+
+test('a workload restore connects PowerShell with the family file from the workload scope (#542)', async (t) => {
+  const client = await schemaClient(t);
+  const { requester, approver } = await people(client);
+  const planned = [];
+  const executed = [];
+  const fakeRestores = Object.fromEntries(Object.entries(WORKLOAD_RESTORES).map(([name, entry]) => [name, {
+    ...entry,
+    plan: async (_client, { connection }) => { planned.push(connection); return { workload: name, operations: [], manual: [], refusals: [] }; },
+    create: async () => ({ id: crypto.randomUUID(), status: 'completed' }),
+    execute: async (_client, { connection }) => { executed.push(connection); return { outcome: 'verified', operations: [], reasons: [] }; },
+  }]));
+  const expected = {
+    'exchange-mail-flow': ['/etc/keel/exchange-collector.json', '/etc/keel/exchange-restorer.json'],
+    'exchange-mailbox-settings': ['/etc/keel/exchange-collector.json', '/etc/keel/exchange-restorer.json'],
+    'exchange-extended': ['/etc/keel/exchange-collector.json', '/etc/keel/exchange-restorer.json'],
+    'purview-labels': ['/etc/keel/purview-collector.json', '/etc/keel/purview-restorer.json'],
+    'purview-retention-dlp': ['/etc/keel/purview-collector.json', '/etc/keel/purview-restorer.json'],
+    'purview-governance': ['/etc/keel/purview-collector.json', '/etc/keel/purview-restorer.json'],
+    // A family the scope leaves out keeps the role's own file.
+    'teams-org-policies': [null, null],
+  };
+  for (const [workload, [collectorPath, restorerPath]] of Object.entries(expected)) {
+    const deps = cliDependencies(fakeSharePoint({}), { scope: FAMILY_SCOPE });
+    await main({
+      argv: ['node', 'keel-restore.mjs', '--workload', workload, '--collection', '1', '--requested-by', requester],
+      readFile, dbUrl: database.url, dependencies: { ...deps.dependencies, credentialPaths: () => SERVER_PATHS, workloadRestores: fakeRestores }, logger: quiet,
+    });
+    assert.deepEqual(deps.connections.map((c) => [c.role, c.configPath, c.powershellConfigPath]),
+      [['collector', SERVER_PATHS.collectorConfig, collectorPath]], workload);
+
+    const id = crypto.randomUUID();
+    await createDryRunArtifact(client, {
+      id, tenantRef: TENANT, snapshotId: null, selection: [workload], closureKeys: [workload], targetTenantId: TENANT_ID,
+      collectorConfigPath: `workload:${workload}`, targetConfigPath: `workload:${workload}`, reconciliationResources: null,
+      waves: [], patches: [], guardRefusals: [], results: {}, currentStateFingerprint: 'f', digest: 'd', status: 'completed',
+      requestedBy: requester, workloadRestore: { workload, operations: [] },
+    });
+    await approve(client, id, { requestedBy: requester, decidedBy: approver });
+    const promoted = cliDependencies(fakeSharePoint({}), { scope: FAMILY_SCOPE });
+    const result = await runRestore({
+      artifactId: id, mode: 'enforce', readFile, dbUrl: database.url, logger: quiet,
+      dependencies: { ...promoted.dependencies, workloadRestores: fakeRestores },
+    });
+    assert.equal(result.outcome, 'verified');
+    assert.deepEqual(promoted.connections.map((c) => [c.role, c.clientId, c.configPath, c.powershellConfigPath]),
+      [['restorer', 'restorer', SERVER_PATHS.targetConfig, restorerPath]], workload);
+  }
+  assert.equal(planned.length, Object.keys(expected).length);
+  assert.equal(executed.length, Object.keys(expected).length);
+});
+
+test('the default connection gives PowerShell the family file, else the role file (#542)', async () => {
+  const getTokenFn = async () => ({ accessToken: 't' });
+  const config = { tenantId: TENANT_ID, clientId: 'restorer' };
+  const family = await defaultWorkloadConnection({ role: 'restorer', config, configPath: '/fixtures/restorer.json', powershellConfigPath: '/etc/keel/exchange-restorer.json', getTokenFn });
+  assert.equal(family.powershell.tenantConfigPath, '/etc/keel/exchange-restorer.json');
+  const plain = await defaultWorkloadConnection({ role: 'restorer', config, configPath: '/fixtures/restorer.json', getTokenFn });
+  assert.equal(plain.powershell.tenantConfigPath, '/fixtures/restorer.json');
+});
+
+test('a family restorer file for another tenant, or the collector registration, is refused before connecting (#542)', async (t) => {
+  const client = await schemaClient(t);
+  const { requester, approver } = await people(client);
+  const workload = 'exchange-mail-flow';
+  const id = crypto.randomUUID();
+  await createDryRunArtifact(client, {
+    id, tenantRef: TENANT, snapshotId: null, selection: [workload], closureKeys: [workload], targetTenantId: TENANT_ID,
+    collectorConfigPath: `workload:${workload}`, targetConfigPath: `workload:${workload}`, reconciliationResources: null,
+    waves: [], patches: [], guardRefusals: [], results: {}, currentStateFingerprint: 'f', digest: 'd', status: 'completed',
+    requestedBy: requester, workloadRestore: { workload, operations: [] },
+  });
+  await approve(client, id, { requestedBy: requester, decidedBy: approver });
+  const enforce = (powershellRestorerConfigs) => {
+    const deps = cliDependencies(fakeSharePoint({}), { scope: { powershellConfigs: FAMILY_SCOPE.powershellConfigs, powershellRestorerConfigs } });
+    return { deps, run: runRestore({ artifactId: id, mode: 'enforce', readFile, dbUrl: database.url, logger: quiet, dependencies: deps.dependencies }) };
+  };
+  const otherTenant = enforce({ exchange: '/etc/keel/other-tenant-restorer.json' });
+  await assert.rejects(otherTenant.run, /names another tenant/);
+  assert.deepEqual(otherTenant.deps.connections, []);
+  const sameApp = enforce({ exchange: '/etc/keel/exchange-collector.json' });
+  await assert.rejects(sameApp.run, /separate Restorer/);
+  assert.deepEqual(sameApp.deps.connections, []);
+  // A family with no collector file is still checked against the server's Graph collector.
+  configs.set('/etc/keel/graph-cert-restorer.json', JSON.stringify({ tenantId: TENANT_ID, clientId: 'restorer', certPath: 'c.pem' }));
+  const graphCert = (() => {
+    const deps = cliDependencies(fakeSharePoint({}), { scope: { powershellRestorerConfigs: { exchange: '/etc/keel/graph-cert-restorer.json' } } });
+    return { deps, run: runRestore({ artifactId: id, mode: 'enforce', readFile, dbUrl: database.url, logger: quiet, dependencies: deps.dependencies }) };
+  })();
+  await assert.rejects(graphCert.run, /separate Restorer/);
+  assert.deepEqual(graphCert.deps.connections, []);
 });
 
 // ------------------------------------------------------- stored qualification

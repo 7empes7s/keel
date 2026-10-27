@@ -192,6 +192,9 @@ function ControlChecks({ checks, counts, subject }: { checks: ControlCheck[]; co
   const [every, setEvery] = useState(false);
   const shown = failing && !every ? checks.filter((check) => !check.ok) : checks;
   const cut = checked > counts.listed;
+  // The switch only helps when some listed line meets the standard: when more than 50
+  // fail, every kept line fails and the cut note says why the rest are not listed.
+  const passingListed = checks.some((check) => check.ok);
   return (
     <section aria-labelledby="cp-checks-heading" className="cp-block">
       <h3 id="cp-checks-heading">
@@ -199,7 +202,7 @@ function ControlChecks({ checks, counts, subject }: { checks: ControlCheck[]; co
         {failing ? <Badge tone="urgent">{failing === 1 ? "1 setting" : `${failing.toLocaleString("en-GB")} settings`}</Badge> : null}{" "}
         {passing ? <Badge tone="fine">{failing ? `${passing.toLocaleString("en-GB")} meet the standard` : passing === 1 ? "Meets the standard" : `All ${passing.toLocaleString("en-GB")} meet the standard`}</Badge> : null}
       </h3>
-      {failing && passing ? (
+      {failing && passingListed ? (
         <div className="cp-checks-tools">
           <ChangeComparisonStyles />
           <EveryToggle on={every} onChange={setEvery} total={checked} />

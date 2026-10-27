@@ -896,6 +896,10 @@ const MANY_COMPLIANCE: ComplianceData = {
     ...COMPLIANCE.findings.map((finding) => finding.id === "e7a10000-0000-4000-8000-0000000000e2"
       ? { ...finding, details: Array.from({ length: 50 }, (_, index) => manyLocation(index, index >= 3)), detailCounts: { checked: 60, failing: 3 } }
       : finding),
+    // More than 50 fail: every kept line fails, so there is nothing more to show.
+    mailFinding("f1", "keel-custom.defender-email.anti-spam-phish-quarantined", "fail",
+      Array.from({ length: 50 }, (_, index) => ({ subject: `KEEL-RT-Policy ${String(index).padStart(2, "0")}`, setting: "PhishZapEnabled", value: false, expected: true, ok: false })),
+      { detailCounts: { checked: 80, failing: 55 } }),
     mailFinding("f2", "keel-custom.defender-email.malware-file-filter", "pass",
       Array.from({ length: 50 }, (_, index) => ({ subject: `KEEL-RT-Policy ${String(index).padStart(2, "0")}`, setting: "EnableFileFilter", value: true, expected: true, ok: true })),
       { detailCounts: { checked: 70, failing: 0 } }),

@@ -167,6 +167,10 @@ test('a result stored before the counts existed reads back with no counts', asyn
   );
   const { findings } = await complianceFindings(client, { tenantRef, now: new Date() });
   assert.equal(findings[0].detailCounts, null);
+  // A malformed pair (more failing than checked) is not trusted either.
+  await client.query(`UPDATE benchmark_evaluation SET detail_counts = '{"checked": 2, "failing": 5}' WHERE tenant_ref = $1`, [tenantRef]);
+  const { findings: again } = await complianceFindings(client, { tenantRef, now: new Date() });
+  assert.equal(again[0].detailCounts, null);
 });
 
 test('a result stored before passing lines existed reads back as failing lines', async (t) => {

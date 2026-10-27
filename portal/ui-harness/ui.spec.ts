@@ -3454,6 +3454,15 @@ test("Compliance · a control that checked more than 50 settings counts them all
     await expect(sheet.locator('[data-cut="true"]')).toHaveText("The list shows the first 50 of the 60 settings checked, failing ones first. The counts above cover them all.");
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 
+    // More than 50 fail: all 50 kept lines fail, so no switch; the note says the list is cut.
+    await open(page, "/benchmarks/many?open=e7a10000-0000-4000-8000-0000000000f1", theme);
+    sheet = page.getByRole("dialog", { name: "Phishing mail goes to quarantine" });
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("55 settings");
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("25 meet the standard");
+    await expect(sheet.getByRole("switch", { name: /Show every setting/ })).toHaveCount(0);
+    await expect(sheet.locator('.cp-misses tbody tr[data-ok="false"]')).toHaveCount(50);
+    await expect(sheet.locator('[data-cut="true"]')).toHaveText("The list shows the first 50 of the 80 settings checked, failing ones first. The counts above cover them all.");
+
     // Passing: 70 policies checked, 50 lines kept.
     await open(page, "/benchmarks/many?open=e7a10000-0000-4000-8000-0000000000f2", theme);
     sheet = page.getByRole("dialog", { name: "Risky attachment types are blocked" });

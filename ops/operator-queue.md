@@ -8572,3 +8572,33 @@ item that needs it stays untouched.
      (expected 0: a re-export alone must not be a change).
 - **Expected:** all four reads proven; one siteTemplate row for KEEL-RT-20261004 with its lists; 0 changes on the second run.
 - **Report:** per step; evidence branch and commit; counts per kind; anything not proven with its error.
+
+### Q190: Live check that a mail flow restore target by name plans the change (follow-up to Q161, after #609)
+- Drafted by the "Fix transport rule restore by name" thread (2026-10-27). Code: PR #609. Fixture-tested only.
+  - **Change:** rules, connectors and policies are keyed by Guid, so Q161's `--target transport-rule:KEEL-RT-svc-change` planned
+    `0 change(s), 1 manual` ("neither the source nor the live read has this object"). A target that is not a key now resolves on
+    `Name` (any case) within its kind to the one Guid key; `plan.targets` holds that key. Two objects of that kind with that name
+    refuse the plan with `... names 2 objects; these are keyed by Guid, so name one of them: --target <kind>:<guid>, ...`.
+    Applies to mail flow, Exchange settings, Purview retention/DLP and Purview retention labels.
+- Needs: /opt/keel-live at the #609 merge or later (`grep -q resolveNamedTargets /opt/keel-live/engine/restore/workloads/cmdletSettings.mjs`).
+- Status: todo
+- **Test tenant only.** Same hard rules and standing approval as Q161. Collector for reads, Restorer for the write. Grant nothing.
+  Never touch CA policies, break-glass or Marouane's account.
+- **Fixture:** transport rule `KEEL-RT-svc-change`, created **disabled**, as in Q161 (RecipientAddressContainsWords `keel-rt-nobody`,
+  PrependSubject `[KEEL-RT] `, Mode Audit).
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`):
+  1. Create the fixture, collect, accept the `added` row. Set Mode `Enforce`, collect, note the `modified` row's `previous_collection_id`.
+  2. Dry run **by name**, without `--collector-config`:
+     `node cli/keel-restore.mjs --workload exchange-mail-flow --collection <previous_collection_id> --target transport-rule:KEEL-RT-svc-change --persist-artifact <uuid>`.
+     Expect `1 change(s), 0 manual, 0 refused`: `Set-TransportRule` Mode Enforce to Audit. Report the artifact id and its
+     `workloadRestore.targets` (expect `transport-rule:<the rule's Guid>`, not the name).
+  3. Approve it yourself (log the id), approve the content effect if asked (log the id), and enforce with
+     `keel-restore --artifact <id> --enforce`. Expect `Mail flow restore: verified` and the live rule at Mode Audit. Collect: no new row
+     for the rule; its alert `resolved`.
+  4. **Ambiguous name:** create a second disabled rule named `KEEL-RT-svc-change-2`, then rename it to `KEEL-RT-svc-change` only if
+     Exchange allows two rules with one name; if it refuses (names are unique), report the refusal and skip this step. If it allows it,
+     collect and rerun the step 2 dry run: expect exit non-zero with the message listing both `--target transport-rule:<guid>` keys,
+     and no artifact.
+  5. Cleanup: delete the rule(s); collect; accept the `removed` row(s); collect again: 0 changes.
+- **Report:** B; step 2 artifact id and targets; step 3 approval ids and outcome; step 4 result; what is left in the tenant (expect nothing).
+  If step 2 still plans 0 changes, file an issue `keel-operator: restore target by name plans nothing` with the exact output.

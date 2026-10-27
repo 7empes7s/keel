@@ -1658,6 +1658,54 @@ being triggered by queue updates.
 - **Expected:** every operation captured and promoted, check exit 0, no record holds the real mail domain.
 - **Report:** B, per operation captured / refused (verbatim), the check output, the evidence PR.
 
+### Q189: Recapture native recovery (gate 115) so its record holds no real object id (after PR #611)
+- Drafted by the "Hide object ids in drill and native records" thread (2026-10-27). The committed
+  `native-live-acceptance{,.artifact}.json` hold the real object id of `KEEL-RT-native-recovery-group`, because
+  `nativeRecovery.mjs` never pseudonymized. PR #611 fixes the tool; the record is signed, so it must be recaptured.
+- Needs: /opt/keel-live at the PR #611 merge or later
+  (`grep -q PSEUDONYM_CHECK_FROM /opt/keel-live/engine/test/committedEvidence.mjs`).
+- Status: todo
+- **Test tenant only.** Same fixture and flags as the Q39 115 run: one delete and restore of `KEEL-RT-native-recovery-group`
+  with the Restorer (`--resource-type group --object-id <real id> --confirm-disposable-fixture <real id>
+  --target-config /etc/keel/restorer.json --permission Group.ReadWrite.All`, fresh `--docs-retrieved-at`). Standing
+  authorization 2026-10-14; no new grant. Pass the real id on the command line: the tool pseudonymizes before signing.
+- Do, at the deployed build B, from your own checkout at B, with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/nativeRecovery.mjs capture --live ... --build B --out <dir>`. If it prints "refused: the capture
+     still holds ... not pseudonyms", report the line (it names the ids; give their field, not the ids) and stop.
+  2. `qualification.mjs verify --require-live --gate native-live-acceptance --build B --tenant <ref> --evidence <dir>/native-live-acceptance.json`:
+     record the exit code.
+  3. `node tools/qualification/pseudonymize.mjs check <dir>/native-live-acceptance{,.artifact}.json`: expected exit 0. Also
+     `grep -c <real object id>` on both files: expected 0.
+  4. Confirm the group reads back active, not in deleted items, 0 members.
+  5. Commit both files on `claude/live-evidence-q189` from `origin/master`, run
+     `cd engine && node --test roadmap/native-live-acceptance.test.mjs` (it now checks the ids), open a PR with the `automerge` label.
+- Result:
+- **Expected:** capture exit 0, verify exit 0, check exit 0, the evidence test passes, the group is back as before.
+- **Report:** B, each exit code, the check output, the group's read-back, the evidence PR.
+
+### Q190: Recapture the bounded drill (gate 116) so its record holds no real object id (after PR #611)
+- Drafted by the "Hide object ids in drill and native records" thread (2026-10-27). The committed
+  `drill-live-acceptance{,.capture}.json` hold the real object id of the deleted `keel-rehearsal-*` drill group, because
+  `capture-drill` never pseudonymized. PR #611 fixes it; the record is signed, so it must be recaptured.
+- Needs: /opt/keel-live at the PR #611 merge or later (same grep as Q189). Independent of Q189.
+- Status: todo
+- **Test tenant only.** Exactly as the Q39 116 run (steps in `docs/roadmap/operator-gates.md` and Q36 notes #5 and #7): a fresh
+  recovery set and reconstruction at B into a fresh disposable DB, the onboarding result at B, a fresh drill DB (schema.sql +
+  RUNTIME_MIGRATIONS, never `KEEL_DB_URL` or `keel_test`), build-manifest, the offline plan, the live bounded drill (one new
+  `keel-rehearsal-*` group only, cleaned up by the drill), then `capture-drill --db-url "$DRILL_URL" --tenant <ref> --build B`.
+- Do, at the deployed build B, from your own checkout at B:
+  1. The chain above. If `capture-drill` prints "refused: the drill capture still holds ... not pseudonyms", report it and stop.
+  2. `qualification.mjs verify --require-live --gate drill-live-acceptance --build B --tenant <ref> --evidence <out>`: record
+     the exit code.
+  3. `node tools/qualification/pseudonymize.mjs check` on the record and its `.capture.json`: expected exit 0. Also
+     `grep -c <the drill group's real id>` on both: expected 0.
+  4. Commit both files on `claude/live-evidence-q190` from `origin/master`, run
+     `cd engine && node --test roadmap/drill-live-acceptance.test.mjs` on a throwaway test DB, open a PR with the `automerge` label.
+  5. Drop the disposable DBs this run created and report their names.
+- Result:
+- **Expected:** drill passed with cleanup complete, verify exit 0, check exit 0, the evidence test passes.
+- **Report:** B, the drill outcome and write count, each exit code, the check output, the evidence PR, DBs dropped.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

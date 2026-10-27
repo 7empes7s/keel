@@ -31,6 +31,7 @@ import {
   DISPOSABLE_PREFIX, INTENDED_SEQUENCE, assertDisposable, assertRehearsalDatabase,
   assertSeparateRestorer, rehearsalGroup, runRoundTrip, tenantRefFor,
 } from './roundTrip.mjs';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 export const DRILL_MANIFEST_VERSION = 1;
 export const DRILL_MANIFEST_KIND = 'bounded-same-tenant-drill';
@@ -159,6 +160,11 @@ function readJson(path) {
   return path ? JSON.parse(readFileSync(path, 'utf8')) : undefined;
 }
 
+/** A Keel settings file under /etc/keel; a broken or missing one stops with a plain sentence. */
+function readSettings(path, what) {
+  return path ? readConfigFile(path, { readFile: readFileSync, what }) : undefined;
+}
+
 /**
  * Offline plan validation. Reads the two configuration files; makes no write,
  * no connection and no Graph call, and never counts as a recovery drill.
@@ -167,8 +173,8 @@ export function validateDrillPlan({
   manifest, collectorConfigPath = '/etc/keel/tenant.json', restorerConfigPath,
   dbUrl = process.env.KEEL_DB_TEST_URL, productionUrl = process.env.KEEL_DB_URL,
 }) {
-  const collectorConfig = readJson(collectorConfigPath);
-  const restorerConfig = readJson(restorerConfigPath);
+  const collectorConfig = readSettings(collectorConfigPath, 'collector settings');
+  const restorerConfig = readSettings(restorerConfigPath, 'restorer settings');
   const findings = validateDrillManifest(manifest, { collectorConfig, restorerConfig, dbUrl, productionUrl });
   return {
     mode: 'offline',
@@ -280,8 +286,8 @@ export async function runBoundedDrill({
   if (confirm !== true) {
     throw new Error('a live drill writes to the tenant: opt in explicitly with --confirm-bounded-drill');
   }
-  const collectorConfig = readJson(collectorConfigPath);
-  const restorerConfig = readJson(restorerConfigPath);
+  const collectorConfig = readSettings(collectorConfigPath, 'collector settings');
+  const restorerConfig = readSettings(restorerConfigPath, 'restorer settings');
   const findings = validateDrillManifest(manifest, { collectorConfig, restorerConfig, dbUrl, productionUrl });
   if (findings.length) {
     throw new Error(`drill refused before any write: ${findings.map((item) => item.code).join(', ')}`);
@@ -364,7 +370,7 @@ export async function runCli({ argv = process.argv.slice(2), log = (line) => pro
   const restorerConfigPath = argValue(argv, 'restorer-config');
   const dbUrl = argValue(argv, 'db-url') ?? process.env.KEEL_DB_TEST_URL;
   if (argv.includes('--build-manifest')) {
-    const manifest = buildDrillManifest({ collectorConfig: readJson(collectorConfigPath), now: dependencies.now?.() ?? new Date() });
+    const manifest = buildDrillManifest({ collectorConfig: readSettings(collectorConfigPath, 'collector settings'), now: dependencies.now?.() ?? new Date() });
     const out = argValue(argv, 'out');
     if (out) writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);
     log(JSON.stringify(manifest));
@@ -404,8 +410,8 @@ async function credentialClients({ collectorConfigPath, restorerConfigPath }) {
     import('../tenant-probe/graph.mjs'),
     import('../../engine/restore/graphWriter.mjs'),
   ]);
-  const collector = await getToken(readJson(collectorConfigPath));
-  const restorer = await getToken(readJson(restorerConfigPath));
+  const collector = await getToken(readSettings(collectorConfigPath, 'collector settings'));
+  const restorer = await getToken(readSettings(restorerConfigPath, 'restorer settings'));
   return {
     reader: new GraphReader(async () => collector.accessToken),
     writer: new GraphWriter(async () => restorer.accessToken),

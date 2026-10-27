@@ -6,6 +6,7 @@ import { typeService } from "@/lib/baselines-view";
 import { workloadLabel, WORKLOAD_LABELS } from "@/lib/compare-view";
 import { holdsObjectId, namedResource } from "@/lib/job-names";
 import type { RiskTone } from "@/lib/menu-status";
+import type { ObjectFacts } from "@/lib/object-label";
 import { resourceTypeLabel } from "@/lib/presentation";
 import type { CloudService } from "@/lib/services";
 
@@ -31,6 +32,9 @@ export interface AlertItem {
   // The name the newest backup or workload read holds for the resource, or null.
   // Looked up by the server (lib/alerts.ts); the key itself stays in Technical details.
   name: string | null;
+  // Whether the newest backup still holds it, and when it went (engine/insights/names.mjs).
+  // Null for service settings read outside backups, and when the lookup failed.
+  object?: ObjectFacts | null;
   control: string;
   condition: string;
   state: AlertState;

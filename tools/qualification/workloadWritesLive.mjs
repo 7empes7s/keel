@@ -75,6 +75,7 @@ import {
   WORKLOAD_WRITES_TRANSPORT, WRITTEN_WORKLOADS, TENANT_WIDE_WRITES, chooseCaptureChange, fixtureNameOf, identityNamesFixture, isFixtureName, provenWrites, sameValue,
   workloadWritesRecordFile,
 } from './workloadWritesAcceptance.mjs';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 /** Each written workload's own read-only collector. */
 export const WORKLOAD_READERS = Object.freeze({
@@ -561,11 +562,14 @@ export async function main(argv = process.argv.slice(2), {
   }
   const build = options.build ?? env.KEEL_QUALIFICATION_BUILD;
   if (!build) throw new Error('capture needs --build (or KEEL_QUALIFICATION_BUILD): the build this capture qualifies');
-  const configOf = (path) => {
-    const { tenantId, organization } = JSON.parse(readFile(path));
+  const configOf = (path, what) => {
+    const { tenantId, organization } = readConfigFile(path, { readFile, what });
     return { tenantId, organization };
   };
-  const configs = { collector: configOf(options.collectorConfig), restorer: configOf(options.restorerConfig) };
+  const configs = {
+    collector: configOf(options.collectorConfig, 'collector settings'),
+    restorer: configOf(options.restorerConfig, 'restorer settings'),
+  };
   if (typeof configs.collector.tenantId !== 'string' || options.tenantRef !== tenantRefFor(configs.collector.tenantId)) {
     throw new Error('--tenant-ref is not the tenant the collector config names; nothing was sent');
   }

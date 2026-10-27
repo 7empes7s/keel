@@ -2,8 +2,10 @@ import {
   ALERT_SUPPRESS_CAPABILITY, AlertAuthorizationError, AlertStateError, acknowledgeAlert, listAlerts, listAlertTransitionsFor,
   resolveAlert, suppressAlert, unsuppressAlert,
 } from "../../engine/notify/alerts.mjs";
+import { lookupNames } from "../../engine/insights/names.mjs";
 import { guarded, InvalidActionRequest, readActionParams, type GuardDeps } from "@/lib/action";
 import { alertWorkload, type AlertInboxData, type AlertItem } from "@/lib/alerts-view";
+import type { ObjectFacts } from "@/lib/object-label";
 import { savedNames } from "@/lib/saved-names";
 import { personLabel } from "@/lib/sentences";
 
@@ -32,6 +34,12 @@ function personName(row: Row | undefined): string | null {
   if (!row) return null;
   const label = personLabel({ kind: "principal", id: String(row.id), name: (row.display_name as string | null) ?? null, email: (row.email as string | null) ?? null, readable: true }, "");
   return label || null;
+}
+
+function objectFacts(entry: (ObjectFacts & { name: string | null }) | undefined): ObjectFacts | null {
+  if (!entry) return null;
+  const { status, deletedSince, lastSeenAt, objectId } = entry;
+  return { status, deletedSince, lastSeenAt, objectId };
 }
 
 function noteOf(entry: Row): string | null {
@@ -88,6 +96,27 @@ export async function alertResourceNames(client: QueryClient, tenantRef: string,
   return names;
 }
 
+/**
+ * Whether each backup key is still in the newest backup, or since when it is gone, and
+ * the name it last had (engine/insights/names.mjs). Service settings keys are left out:
+ * they are not in backups. A failed read leaves every alert without these facts, never
+ * the page down.
+ */
+export async function alertObjects(client: QueryClient, tenantRef: string, keys: string[]): Promise<Map<string, ObjectFacts & { name: string | null }>> {
+  const facts = new Map<string, ObjectFacts & { name: string | null }>();
+  const backupKeys = [...new Set(keys)].filter((key) => alertWorkload(key) === null);
+  if (!backupKeys.length) return facts;
+  try {
+    const names = await lookupNames(client, { tenantRef, ids: backupKeys });
+    for (const [key, object] of names) {
+      facts.set(key, { status: object.status, deletedSince: object.deletedSince, lastSeenAt: object.lastSeenAt, objectId: object.objectId, name: object.name });
+    }
+  } catch (error) {
+    console.error("[keel-portal] alert object names unavailable", error);
+  }
+  return facts;
+}
+
 export function guardedAlertInbox(deps: GuardDeps = {}) {
   return guarded({ action: "alerts:list", capability: "read" }, async ({ client, principalId, tenantRef }) => {
     const rows = await listAlerts(client, { tenantRef, actor: principalId, limit: 200 }) as Row[];
@@ -108,14 +137,17 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
       const { rows: found } = await client.query("SELECT id::text AS id, email, display_name FROM principal WHERE id::text = ANY($1)", [[...ids]]);
       for (const person of found) people.set(String(person.id), person);
     }
-    const resourceNames = await alertResourceNames(client as QueryClient, tenantRef, rows.map((row) => String(row.resource_key)));
+    const keys = rows.map((row) => String(row.resource_key));
+    const resourceNames = await alertResourceNames(client as QueryClient, tenantRef, keys);
+    const objects = await alertObjects(client as QueryClient, tenantRef, keys);
     const alerts: AlertItem[] = rows.map((row) => {
       const detail = (row.detail ?? {}) as Row;
       const ownerId = typeof row.owner_principal_id === "string" ? row.owner_principal_id : null;
       return {
         id: String(row.id),
         resourceKey: String(row.resource_key),
-        name: resourceNames.get(String(row.resource_key)) ?? null,
+        name: resourceNames.get(String(row.resource_key)) ?? objects.get(String(row.resource_key))?.name ?? null,
+        object: objectFacts(objects.get(String(row.resource_key))),
         control: String(row.control),
         condition: String(row.condition),
         state: row.state as AlertItem["state"],

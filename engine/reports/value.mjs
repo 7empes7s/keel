@@ -539,7 +539,7 @@ async function withPayloadsWhereHashesDiffer(client, drifts, versions) {
     const differing = (driftsByKey.get(version.natural_key) ?? []).filter((drift) => drift.before_hash !== version.payload_hash);
     if (differing.length === 0) continue;
     ids.add(version.id);
-    for (const drift of differing) ids.add(drift.baseline_version_id);
+    for (const drift of differing) if (drift.before_payload == null) ids.add(drift.baseline_version_id);
   }
   const payloads = new Map();
   if (ids.size === 0) return payloads;
@@ -571,7 +571,7 @@ async function loadChangeRemediations(client, { tenantRef, to }) {
   const { rows: drifts } = await client.query(
     `SELECT d.id::text AS id, d.natural_key, d.resource_type, d.change_type, d.before_hash, d.detected_at,
             d.baseline_id::text AS baseline_id, COALESCE(brv.hash_version, 1) AS baseline_hash_version,
-            brv.id::text AS baseline_version_id
+            brv.id::text AS baseline_version_id, d.before_payload
        FROM drift d
        LEFT JOIN baseline_resource br ON br.baseline_id = d.baseline_id AND br.natural_key = d.natural_key
        LEFT JOIN resource_version brv ON brv.id = br.resource_version_id
@@ -620,7 +620,9 @@ async function loadChangeRemediations(client, { tenantRef, to }) {
             baselineHashVersion: drift.baseline_hash_version,
             version: versionOf.get(`${snapshot.id}|${drift.natural_key}`) ?? null,
             covered: readCoverageOutcome(digest[drift.resource_type]).covered,
-            beforePayload: basePayloads.get(drift.baseline_version_id) ?? null,
+            // The drift row's own baseline payload matches its before_hash; the
+            // baseline's current version is the fallback for rows without one.
+            beforePayload: drift.before_payload ?? basePayloads.get(drift.baseline_version_id) ?? null,
             resourceType: drift.resource_type,
           }),
         };

@@ -378,6 +378,8 @@ test('every Guid-keyed workload resolves a target by name to the Guid key of tha
   // The kind is part of the match: a name under another kind's prefix resolves to nothing.
   const observations = [{ resourceKey: 'transport-rule:00000000-0000-4000-8000-000000000001', fields: { Name: 'KEEL-RT-x' } }];
   assert.deepEqual(resolveNamedTargets(['inbound-connector:KEEL-RT-x'], observations), ['inbound-connector:keel-rt-x']);
+  // An empty name never matches an object whose Name was not read.
+  assert.deepEqual(resolveNamedTargets(['transport-rule:'], [{ resourceKey: 'transport-rule:00000000-0000-4000-8000-000000000002', fields: {} }]), ['transport-rule:']);
   // Non-Guid keys (domains, Teams policies) are matched as written, as before.
   const domains = [{ resourceKey: 'accepted-domain:contoso.com', fields: { Name: 'Contoso' } }];
   assert.deepEqual(resolveNamedTargets(['accepted-domain:Contoso'], domains), ['accepted-domain:contoso']);

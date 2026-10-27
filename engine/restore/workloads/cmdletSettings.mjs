@@ -649,9 +649,9 @@ export function resolveNamedTargets(targets, observations = [], liveResources = 
   for (const raw of targets ?? []) {
     const target = String(raw).toLowerCase();
     const colon = target.indexOf(':');
-    if (known.has(target) || colon <= 0) { resolved.push(target); continue; }
-    const prefix = target.slice(0, colon + 1);
     const name = target.slice(colon + 1);
+    if (known.has(target) || colon <= 0 || !name) { resolved.push(target); continue; }
+    const prefix = target.slice(0, colon + 1);
     const matches = [...new Set(items
       .filter((item) => String(item.resourceKey).startsWith(prefix)
         && GUID_RE.test(String(item.resourceKey).slice(prefix.length))

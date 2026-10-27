@@ -49,7 +49,7 @@ export function AnonymitySettingCard({ setting, canChange, now }: {
         </h2>
         <p>
           {on
-            ? "Changes, Activity, Approvals and job pages show each person by a code name, like Person K7Q2. A person keeps the same code name everywhere."
+            ? "Changes, Activity, Approvals and job pages show each person by a code name, like Person K7Q2. A Keel user keeps the same code name on every page; people named by the Microsoft audit log on Changes get code names of their own."
             : "Turn on to show people by code names instead of their names on Changes, Activity, Approvals and job pages. This list of people still shows names, for admins."}
         </p>
         {setting?.changedAt ? (

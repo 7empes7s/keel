@@ -11,7 +11,7 @@ export function AnonymityNote({ setting }: { setting: AnonymitySetting | null })
       <span aria-hidden="true" className="anon-note-icon"><Icon name="eye-off" /></span>
       <p>
         <Badge icon={null} tone="low">Names hidden</Badge>{" "}
-        People show by code names, like Person K7Q2. Each person keeps the same code name on every page. Only an admin can show names again, on the People page.
+        People show by code names, like Person K7Q2. A Keel user keeps the same code name on every page; people named by the Microsoft audit log on Changes get code names of their own. Only an admin can show names again, on the People page.
       </p>
     </aside>
   );

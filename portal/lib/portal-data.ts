@@ -637,7 +637,7 @@ export async function withApproverNames(client: KeelClient, baselines: BaselineR
   const ids = [...new Set(baselines.map((baseline) => baseline.setBy).filter((id) => PRINCIPAL_ID.test(id)))];
   const people = new Map<string, UnknownRecord>();
   if (ids.length) {
-    const { rows } = await client.query("SELECT id::text AS id, email, display_name FROM principal WHERE id::text = ANY($1::text[])", [ids]);
+    const { rows } = await client.query("SELECT id::text AS id, email, display_name, system_kind FROM principal WHERE id::text = ANY($1::text[])", [ids]);
     for (const row of rows) people.set(String(row.id), row);
   }
   const namer = ids.length ? await readNamer(client) : null;
@@ -647,7 +647,7 @@ export async function withApproverNames(client: KeelClient, baselines: BaselineR
     const name = !PRINCIPAL_ID.test(id)
       ? personLabel({ kind: "person", id, name: id, readable: true, system: true }, "Keel")
       : person
-        ? personLabel(displayPerson({ kind: "person", id, name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true }, namer), "an account without a name")
+        ? personLabel(displayPerson({ kind: "person", id, name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true, system: person.system_kind != null }, namer), "an account without a name")
         : "an account that no longer exists";
     const setByRef: Ref = { kind: "person", id, name, href: person ? "/principals" : null };
     return { ...baseline, setByRef };
@@ -1094,13 +1094,13 @@ export async function principalRefs(client: KeelClient, ids: (string | null | un
   const refs = new Map<string, Ref>();
   if (wanted.length === 0) return refs;
   const { rows } = await client.query(
-    "SELECT id::text AS id, email, display_name FROM principal WHERE id::text = ANY($1::text[])",
+    "SELECT id::text AS id, email, display_name, system_kind FROM principal WHERE id::text = ANY($1::text[])",
     [wanted],
   );
   const namer = await readNamer(client);
   for (const row of rows) {
     const id = String(row.id);
-    const name = namer ? displayPerson({ kind: "person", id, email: row.email ?? null, readable: true }, namer).name : row.display_name ?? row.email;
+    const name = namer ? displayPerson({ kind: "person", id, name: row.display_name ?? row.email, email: row.email ?? null, readable: true, system: row.system_kind != null }, namer).name : row.display_name ?? row.email;
     refs.set(id, { kind: "person", id, name: String(name), href: "/principals" });
   }
   for (const id of wanted) {

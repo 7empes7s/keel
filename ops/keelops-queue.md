@@ -221,11 +221,48 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
      (if that type is not offered in step 1, pick any offered type and a field whose value you can see, and say which).
   3. Run `runComplianceChecks(c,{tenantRef,actor:'keel-operator'})`. Report the new check's result (pass / fail / could not check)
      and the value it compared, and that Keel's own checks still produced their results (count by result before and after).
+     Also report the new check's `details` lines with `ok` (after #573: one line per object read, failing first; K8 step 4).
   4. Report the standards view the page uses: for SCuBA and NIST, how many policies Keel checks, how many pass/fail, how many not checked yet
      (from `engine/benchmarks/standards.mjs` + the newest results; report what you ran).
   5. Remove the check with `removeOwnCheck`. Report the row has `removed_at` set and two `compliance-own-check` evidence entries (created, removed).
 - **Expected:** all five steps work with no error; the check's result matches the tenant's value. If any call throws, quote the error and stop.
 - **Report:** the outputs above and the build.
+
+### K8: Live check of the Compliance score fixes and the expected-vs-current values (after #572 and #573)
+- Drafted by the "Live check compliance page changes" thread (2026-10-27). #572: "Legacy authentication is blocked"
+  (`keel-custom.conditional-access.block-legacy`, evaluatorVersion 2) now passes only for an **enabled** CA policy that blocks
+  both `exchangeActiveSync` and `other` for **All users and All apps** (exclusions allowed); no blocking policy at all is
+  "not set up yet" (`reason: not-configured`). #573: every result now stores every setting it checked as a detail line
+  `{subject, setting, value, expected, ok}`, failing lines first, at most 50 lines per result; a passing "any" own check keeps
+  only the lines that meet it. Results stored before the deploy only hold failing lines (no `ok`) until the next check run.
+- Needs: Q175 (`/etc/keel/db.env` and `tenant.json` readable), and /opt/keel-live at the #573 merge (a043642) or later:
+  `grep -q 'ok: line?.ok === true' /opt/keel-live/engine/govern/baselineCompliance.mjs` and
+  `grep -A15 "title: 'Legacy authentication is blocked'" /opt/keel-live/engine/benchmarks/registry.mjs | grep -q 'evaluatorVersion: 2'`.
+- Status: todo
+- **Tenant:** Collector **reads** only (one Graph GET in step 3). Nothing is written to the tenant or to Keel's database.
+  No hand-written SQL: engine read calls only, as in K5. Do **not** run checks by hand (no `runComplianceChecks`, no "Check now").
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`, tenantRef as in K5:
+  1. Report the build (`git -c safe.directory=/opt/keel-live -C /opt/keel-live rev-parse --short HEAD`) and when it was deployed.
+  2. `const { findings, summary } = await complianceFindings(c, { tenantRef })` (`engine/govern/baselineCompliance.mjs`).
+     Report `summary`, and the newest `evaluatedAt`. It must be **after** the deploy (the scheduled checks run after each backup).
+     If it is not, set `blocked` with that time and retry on a later pass; do not run checks yourself.
+  3. **Legacy sign-in (#572):** for the `keel-custom.conditional-access.block-legacy` finding report `verdict`, `reason`,
+     `evaluatorVersion` (expect 2) and `evaluatedAt`. Cross-check with a Collector read of
+     `GET /identity/conditionalAccess/policies` (the Graph client and `/etc/keel/tenant.json`, as `keel-collect` uses them):
+     for every policy whose `grantControls.builtInControls` has `block` and whose `conditions.clientAppTypes` has
+     `exchangeActiveSync` or `other`, report name (mask any that is not `KEEL-RT-`), `state`, `clientAppTypes`, whether
+     `includeUsers` has `All`, whether `includeApplications` has `All`. Say which verdict those facts give under the rule above
+     and whether it matches Keel's.
+  4. **Values (#573):** pick (a) one failing Keel control with the most detail lines, (b) one passing Keel control with at least one
+     detail line, (c) every own check in force (`finding.own` not null; none is fine, say so). For each report `controlId`, `verdict`,
+     `details.length`, the count of `ok:true` and `ok:false`, whether every `ok:false` line comes before every `ok:true` line,
+     and the first 3 lines verbatim (subjects masked unless `KEEL-RT-`). Expect: (a) has its failing lines first and, where the
+     control checks several objects, passing lines after them; (b) only `ok:true` lines; no result over 50 lines (name any that is
+     exactly 50: the page shows "or more" / "first 50 kept" there).
+  5. Count findings whose `details` are non-empty and all `ok:false` while `verdict` is `pass` (expect 0), and findings evaluated
+     after the deploy with `evaluatorVersion` 1 for the legacy control (expect 0).
+- **Expected:** steps 2–5 as above, no call throws. A mismatch is a result: quote it and stop (change nothing).
+- **Report:** the outputs above and the build. The portal pages (390 and 1440 px, light and dark) can't be opened from the box; say so.
 
 ## Operator decisions (human operator only)
 

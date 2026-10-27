@@ -61,7 +61,7 @@ const IMMUTABLE_ID = /^[A-Za-z0-9+/]{22}==$/;
 // A SharePoint claims login (`i:0#.f|membership|user@domain`), raw or URL-escaped
 // (`%7Cmembership%7Cuser%40domain`). Its user part names a person and its domain is the
 // tenant's real mail domain, so both are replaced. Groups use other claim types with GUIDs.
-const CLAIMS_LOGIN = /((?:\||%7c)membership(?:\||%7c))([a-z0-9._'+-]+)(@|%40)([a-z0-9-]+(?:\.[a-z0-9-]+)+)/gi;
+const CLAIMS_LOGIN = /((?:\||%7c)membership(?:\||%7c))([a-z0-9._'+-]+(?:#ext#|%23ext%23)?)(@|%40)([a-z0-9-]+(?:\.[a-z0-9-]+)+)/gi;
 // What a pseudonymized claims login looks like: the `keel-rt-` test-user prefix is kept so the
 // gates can still see a test user, the rest is digest-derived, and the domain is host-shaped.
 const CLAIMS_USER_PSEUDONYM = /^(?:keel-rt-)?u[0-9a-f]{12}$/;
@@ -71,7 +71,9 @@ const FIXTURE_USER_PREFIX = 'keel-rt-';
 // A sign-in name or mail address (`user@domain`, or `user%40domain` in a URL path) outside a claims
 // login. It starts after a non-name character or right after a %XX escape (`%2Fuser%40…`).
 // Graph annotations (`value@odata.context`, `@microsoft.graph.conflictBehavior`) are not addresses.
-const MAIL = /(?:(?<=%[0-9a-f]{2})|(?<![a-z0-9._+%-]|%[0-9a-f]))([a-z0-9][a-z0-9._'+-]*)(@|%40)((?:[a-z0-9-]+\.)+[a-z]{2,})(?![a-z0-9-]|\.[a-z0-9])/gi;
+// A guest's name carries its home address before `#EXT#` (`alice_fabrikam.com#EXT#@contoso…`); the
+// marker is part of the user part. A `'` inside a name (o'brien) never starts another one.
+const MAIL = /(?:(?<=%[0-9a-f]{2})|(?<![a-z0-9._+%-]|[a-z0-9]'|%[0-9a-f]))([a-z0-9][a-z0-9._'+-]*(?:#ext#|%23ext%23)?)(@|%40)((?:[a-z0-9-]+\.)+[a-z]{2,})(?![a-z0-9-]|\.[a-z0-9])/gi;
 const ANNOTATION_DOMAIN = /^(?:odata|microsoft\.graph)\./i;
 // Reserved names (RFC 2606 / 6761) never name a real tenant: test fixtures use them as they are.
 const RESERVED_DOMAIN = /(?:^|\.)(?:example|test|invalid|localhost|example\.(?:com|net|org))$/i;
@@ -80,11 +82,13 @@ const DELETED_PREFIX = /^([0-9a-f]{32})(?![0-9a-f])/i;
 const MAIL_USER_PSEUDONYM = /^(?:[0-9a-f]{32})?(?:keel-rt-)?u[0-9a-f]{12}$/;
 // A OneDrive personal site is named after its owner's sign-in name, with `.` and `@` written `_`
 // (`/personal/alice_contoso_com`). A site name without a domain tail (`keel-rt-absent-1234`) is left alone.
-const PERSONAL_SITE = /((?:\/|%2f)personal(?:\/|%2f))([a-z0-9][a-z0-9.-]*(?:_[a-z0-9-]+)*_[a-z0-9-]+_[a-z]{2,})(?![a-z0-9_.-])/gi;
+// A guest's site holds `%23ext%23` (or `#ext#`), and a colliding name gets digits appended (`alice_contoso_com1`).
+const PERSONAL_SITE = /((?:\/|%2f)personal(?:\/|%2f))([a-z0-9][a-z0-9.#%-]*(?:_[a-z0-9#%-]+)*_[a-z0-9#%-]+_[a-z]{2,}[0-9]*)(?![a-z0-9_.-])/gi;
 const PERSONAL_SITE_PSEUDONYM = /^(?:keel-rt-)?u[0-9a-f]{12}_t[0-9a-f]{11}_example$/;
 // Fields that hold a bare mail domain of the tenant.
 const DOMAIN_KEYS = new Set(['publisherDomain']);
-const DOMAIN_FIELD = /"publisherDomain"\s*:\s*"([^"]*)"/gi;
+// Also inside a JSON string that holds JSON (`\"publisherDomain\":\"…\"`).
+const DOMAIN_FIELD = /\\?"publisherDomain\\?"\s*:\s*\\?"([^"\\]*)\\?"/gi;
 
 const isMailToRewrite = (user, domain) => !ANNOTATION_DOMAIN.test(domain) && !RESERVED_DOMAIN.test(domain)
   && !(MAIL_USER_PSEUDONYM.test(user.toLowerCase()) && CLAIMS_DOMAIN_PSEUDONYM.test(domain.toLowerCase()));
@@ -236,7 +240,8 @@ export function pseudonymizer(tenantRef) {
   // A claims login's user part keeps only the test-user prefix. An onmicrosoft domain has already
   // been mapped by the tenant host rule (it runs first); any other domain becomes host-shaped.
   const claimsUser = (user) => {
-    const lower = user.toLowerCase();
+    // A guest's marker reads the same raw and URL-escaped.
+    const lower = user.toLowerCase().replace(/%23ext%23$/, '#ext#');
     const prefix = lower.startsWith(FIXTURE_USER_PREFIX) ? FIXTURE_USER_PREFIX : '';
     return `${prefix}u${digest('claims-user', lower).slice(0, 12)}`;
   };

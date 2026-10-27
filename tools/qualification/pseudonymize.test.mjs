@@ -290,6 +290,21 @@ test('a sign-in name or mail address loses its user part and mail domain, and st
   const app = a.walk({ publisherDomain: 'fabrikam-mail.com', other: 'fabrikam-mail.com' });
   assert.equal(app.publisherDomain, out.split('@')[1]);
   assert.equal(a.walk({ publisherDomain: 'contoso.onmicrosoft.com' }).publisherDomain, `${a.host('contoso')}.onmicrosoft.com`);
+  // A guest's name maps whole, its home address included, in every form.
+  const guest = 'alice_fabrikam-mail.com#EXT#@contoso.onmicrosoft.com';
+  const guestOut = a.text(guest);
+  assert.match(guestOut, new RegExp(`^u[0-9a-f]{12}@${a.host('contoso')}\\.onmicrosoft\\.com$`));
+  assert.equal(a.text(encodeURIComponent(guest)), encodeURIComponent(guestOut));
+  assert.equal(a.text(`i:0#.f|membership|${guest.toLowerCase()}`), `i:0#.f|membership|${guestOut}`);
+  assert.match(a.text('/personal/alice_fabrikam-mail_com%23ext%23_contoso_onmicrosoft_com'), /^\/personal\/u[0-9a-f]{12}_t[0-9a-f]{11}_example$/);
+  // A colliding OneDrive name gets digits appended.
+  assert.match(a.text('/personal/keel-rt-carla_fabrikam-mail_com1/Documents'), /^\/personal\/keel-rt-u[0-9a-f]{12}_t[0-9a-f]{11}_example\/Documents$/);
+  // A ' inside a name belongs to it; a quote before a name does not.
+  assert.match(a.text("o'brien@fabrikam-mail.com"), /^u[0-9a-f]{12}@t[0-9a-f]{11}\.example$/);
+  // A long run of quotes stays fast.
+  const started = Date.now();
+  a.text("a'".repeat(20000));
+  assert.ok(Date.now() - started < 500, 'linear in the input');
   // Pseudonymizing twice changes nothing.
   assert.equal(a.text(out), out);
   const name = site.split('/personal/')[1];
@@ -310,6 +325,11 @@ test('the check fails on an unmasked sign-in name, OneDrive site or publisher do
   const published = JSON.stringify(pseudonymizer('sha256:aaaa').walk(JSON.parse(raw)));
   assert.deepEqual(unpseudonymizedIds(published), []);
   assert.ok(!/carla|fabrikam/i.test(published), published);
+  // Guests, colliding OneDrive names and a publisher domain inside a JSON string are listed too.
+  assert.equal(unpseudonymizedIds('alice_fabrikam-mail.com#EXT#@t0123456789a.onmicrosoft.com').length, 1);
+  assert.equal(unpseudonymizedIds('/users/alice_fabrikam-mail.com%23EXT%23%40t0123456789a.onmicrosoft.com').length, 1);
+  assert.equal(unpseudonymizedIds('/personal/alice_fabrikam-mail_com1').length, 1);
+  assert.equal(unpseudonymizedIds(JSON.stringify({ outcomeDetail: JSON.stringify({ publisherDomain: 'fabrikam-mail.com' }) })).length, 1);
   // Only the domain or only the user part masked is still a leak.
   assert.equal(unpseudonymizedIds('keel-rt-u0123456789ab@fabrikam-mail.com').length, 1);
   assert.equal(unpseudonymizedIds('keel-rt-carla@t0123456789a.onmicrosoft.com').length, 1);

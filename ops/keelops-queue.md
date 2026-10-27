@@ -540,7 +540,7 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
   left is Microsoft refusing to publish the two Purview fixtures. If both now read `Success`, a later item recaptures
   purview-retention-dlp.
 - Needs: nothing.
-- Status: todo
+- Status: in-progress
 - Result:
 - **Tenant:** Collector reads only. Nothing is written, nothing is granted.
 - Do, with the Collector's Purview PowerShell config (`/etc/keel/purview-collector.json`, the one the purview-retention-dlp

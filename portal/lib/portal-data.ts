@@ -1,3 +1,5 @@
+import { readNamer } from "../../engine/insights/anonymity.mjs";
+import { displayActor, displayPerson } from "../../engine/insights/people.mjs";
 import { buildCoverageReport } from "../../engine/coverage/report.mjs";
 import { loadRecoveryMetrics } from "../../engine/coverage/recoveryMetrics.mjs";
 import { protectionHeadline } from "../../engine/coverage/protectionHeadline.mjs";
@@ -638,13 +640,14 @@ export async function withApproverNames(client: KeelClient, baselines: BaselineR
     const { rows } = await client.query("SELECT id::text AS id, email, display_name FROM principal WHERE id::text = ANY($1::text[])", [ids]);
     for (const row of rows) people.set(String(row.id), row);
   }
+  const namer = ids.length ? await readNamer(client) : null;
   return baselines.map((baseline) => {
     const id = baseline.setBy;
     const person = people.get(id);
     const name = !PRINCIPAL_ID.test(id)
       ? personLabel({ kind: "person", id, name: id, readable: true, system: true }, "Keel")
       : person
-        ? personLabel({ kind: "person", id, name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true }, "an account without a name")
+        ? personLabel(displayPerson({ kind: "person", id, name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true }, namer), "an account without a name")
         : "an account that no longer exists";
     const setByRef: Ref = { kind: "person", id, name, href: person ? "/principals" : null };
     return { ...baseline, setByRef };
@@ -757,6 +760,9 @@ async function withAttribution(client: KeelClient, ref: string, baselineId: stri
         }
       }
     }
+    // "Hide people's names": the users the audit log names get their code names.
+    const namer = await readNamer(client);
+    if (namer) for (const entry of attributed) entry.actors = entry.actors.map((actor) => displayActor(actor, namer));
     byId = new Map(attributed.map((entry) => [entry.changeId, entry]));
   } catch (error) {
     console.error("[keel-portal] change attribution unavailable", error);
@@ -1091,9 +1097,11 @@ export async function principalRefs(client: KeelClient, ids: (string | null | un
     "SELECT id::text AS id, email, display_name FROM principal WHERE id::text = ANY($1::text[])",
     [wanted],
   );
+  const namer = await readNamer(client);
   for (const row of rows) {
     const id = String(row.id);
-    refs.set(id, { kind: "person", id, name: String(row.display_name ?? row.email), href: "/principals" });
+    const name = namer ? displayPerson({ kind: "person", id, email: row.email ?? null, readable: true }, namer).name : row.display_name ?? row.email;
+    refs.set(id, { kind: "person", id, name: String(name), href: "/principals" });
   }
   for (const id of wanted) {
     if (!refs.has(id)) refs.set(id, { kind: "person", id, name: `Account ${id.slice(0, 8)} (no longer readable)`, href: null });

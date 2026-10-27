@@ -5,10 +5,12 @@ import { GET as loadEvidence } from "@/app/api/evidence/route";
 import { GET as loadIntegrity } from "@/app/api/evidence/verify/route";
 import { GET as loadJobs } from "@/app/api/jobs/route";
 import { ActivityPage as ActivityBody } from "@/components/activity/activity-page";
+import { AnonymityNote } from "@/components/anonymity-note";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { JobRefresher } from "@/components/job-refresher";
 import { PageHeader } from "@/components/page-header";
 import { type ActivityNames, entrySubjectKey, getActivityNames } from "@/lib/activity-names";
+import { getAnonymitySetting } from "@/lib/anonymity";
 import { ACTIVITY_KINDS, OUTCOMES, activityCounts, activityStatus, parseFilters, rangeBounds } from "@/lib/activity-view";
 import type { ChainIntegrity, EvidenceData } from "@/lib/evidence";
 import type { JobsData } from "@/lib/portal-jobs";
@@ -73,6 +75,7 @@ export default async function ActivityPage({ searchParams }: {
     for (const who of filters.who) actors.add(who);
     names = await getActivityNames([...actors], entries.map((entry) => entrySubjectKey(entry.subject)));
   } catch { /* Actors and objects are then named in general words. */ }
+  const anonymity = await getAnonymitySetting();
   const allJobs = jobs?.jobs ?? [];
   const status = wantJobs ? activityStatus(activityCounts(allJobs, generatedAt)) : undefined;
 
@@ -85,6 +88,7 @@ export default async function ActivityPage({ searchParams }: {
       jobs={allJobs}
       names={names.names}
       nextBefore={evidence?.nextBefore ?? null}
+      notice={<AnonymityNote setting={anonymity} />}
       now={generatedAt}
       people={names.people}
     />

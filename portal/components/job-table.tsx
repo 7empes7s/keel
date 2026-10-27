@@ -4,7 +4,7 @@ import { PagedRows } from "@/components/list/paged-rows";
 import { JobStatusBadge } from "@/components/job-status-badge";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordField, RecordGroup, ReferenceFields, TechnicalDetails, type RecordValue } from "@/components/technical-details";
-import { refUsage } from "@/lib/record-refs";
+import { displayAccount, refUsage } from "@/lib/record-refs";
 import { Person } from "@/components/ui/person";
 import { incompleteTypesLine, jobDisplayStatus, jobErrorLine, jobIncompleteTypes } from "@/lib/job-names";
 import type { JobRecord } from "@/lib/portal-jobs";
@@ -21,7 +21,7 @@ export function JobRecordFields({ job }: { job: JobRecord }) {
       <RecordField label="Job ID" usage={<>use with <code>GET /api/jobs/&lt;id&gt;</code></>} value={job.id} />
       <RecordField copy={false} label="Kind" value={job.kind} />
       <RecordField copy={false} label="Status" value={job.status} />
-      <RecordField label="Requested by (account ID)" usage={refUsage(job.references?.people.requested_by)} value={job.requestedBy} />
+      <RecordField label="Requested by (account ID)" usage={refUsage(job.references?.people.requested_by)} value={displayAccount(job.requestedBy, job.references?.people.requested_by)} />
       <RecordField copy={false} label="Created" value={job.createdAt} />
       <RecordField copy={false} label="Started" value={job.startedAt} />
       <RecordField copy={false} label="Finished" value={job.finishedAt} />

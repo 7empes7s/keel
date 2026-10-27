@@ -5,8 +5,10 @@ import { connection } from "next/server";
 import { GET as loadPrincipals } from "@/app/api/principals/route";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
+import { AnonymitySettingCard } from "@/components/people/anonymity-setting";
 import { PeoplePage as PeopleBody } from "@/components/people/people-page";
 import { Icon } from "@/components/shell/icons";
+import { getAnonymitySetting } from "@/lib/anonymity";
 import { peopleCounts, peopleStatus } from "@/lib/people-view";
 import type { PrincipalView } from "@/lib/principals";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
@@ -28,6 +30,7 @@ export default async function PrincipalsPage() {
   }
   const canUsers = access.capabilities.includes("users");
   const canRoles = access.capabilities.includes("roles");
+  const anonymity = await getAnonymitySetting();
   return <>
     <PageHeader
       actions={canUsers && canRoles ? <Link className="btn" href="/principals?new=1"><Icon name="plus" />Add person</Link> : undefined}
@@ -37,6 +40,7 @@ export default async function PrincipalsPage() {
       status={peopleStatus(peopleCounts(data.principals, data.generatedAt))}
       title="People"
     />
+    <AnonymitySettingCard canChange={canUsers} now={data.generatedAt} setting={anonymity} />
     <PeopleBody canRoles={canRoles} canUsers={canUsers} now={data.generatedAt} people={data.principals} />
   </>;
 }

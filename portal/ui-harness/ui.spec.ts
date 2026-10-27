@@ -53,6 +53,11 @@ const PAGES = [
   { name: "emergency-changes", hash: "/emergency-changes" },
   { name: "compare", hash: "/compare" },
   { name: "compare-tenants", hash: "/compare/tenants" },
+  { name: "activity-names-hidden", hash: "/activity/anonymous" },
+  { name: "approvals-names-hidden", hash: "/approvals/anonymous" },
+  { name: "drift-names-hidden", hash: "/drift/anonymous" },
+  { name: "principals-names-hidden", hash: "/principals/anonymity" },
+  { name: "principals-names-shown", hash: "/principals/anonymity-off" },
   { name: "sites", hash: "/sites" },
   { name: "site", hash: "/sites/contoso.sharepoint.com%2C5e170000-0000-4000-8000-000000000001%2C5e170000-0000-4000-8000-000000000002" },
 ];
@@ -4499,4 +4504,62 @@ test("Compliance · measure against a known standard, write your own check, remo
   await page.setViewportSize({ width: 375, height: 800 });
   await expect(page.locator(".cp-known")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
+// "Hide people's names" (Track A3): with the setting on, no real name, email or initials
+// of a person reach Changes, Activity or Approvals: not in the text, not in hover titles,
+// not in avatars and not inside Technical details. Code names show instead, and each
+// page says names are hidden.
+const REAL_PEOPLE = /Amara|Okafor|Sam Ortiz|Ortiz|Lee Chen|Marouane|Defili|marouanedefili|ops@contoso|@contoso\.example|@gmail\.com/i;
+for (const { hash, label } of [
+  { hash: "/drift/anonymous", label: "Changes" },
+  { hash: "/activity/anonymous", label: "Activity" },
+  { hash: "/approvals/anonymous", label: "Approvals" },
+]) {
+  test(`names hidden · ${label} shows code names and no real name anywhere`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await open(page, hash, "light");
+    // Open every collapsed part (Technical details, row panels) so hidden text is scanned too.
+    await page.evaluate(() => { for (const details of document.querySelectorAll("details")) details.open = true; });
+    await expect(page.locator('[data-anonymity="on"]')).toBeVisible();
+    await expect(page.locator('[data-anonymity="on"]')).toContainText("Names hidden");
+    const seen = await page.evaluate(() => {
+      const main = document.querySelector("main#main-content")!;
+      const attributes = [...main.querySelectorAll("*")].flatMap((element) => ["title", "aria-label", "data-initials", "href"].map((name) => element.getAttribute(name) ?? ""));
+      return { text: main.textContent ?? "", attributes: attributes.filter(Boolean).join("\n") };
+    });
+    expect(seen.text).toMatch(/Person [A-HJ-NP-Z2-9]{4}/);
+    expect(seen.text.match(REAL_PEOPLE)?.[0] ?? null).toBeNull();
+    expect(seen.attributes.match(REAL_PEOPLE)?.[0] ?? null).toBeNull();
+  });
+}
+
+test("names hidden · a code-named person has a hidden-name avatar and no email on hover", async ({ page }) => {
+  await open(page, "/approvals/anonymous", "dark");
+  const person = page.locator("main .person").filter({ hasText: /Person [A-HJ-NP-Z2-9]{4}/ }).first();
+  await expect(person.locator(".person-avatar[data-pseudonym]")).toHaveCount(1);
+  await expect(person).toHaveAttribute("title", /code name/);
+});
+
+test("names hidden · People shows the setting, its state and who changed it", async ({ page }) => {
+  for (const theme of ["light", "dark"] as const) {
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await open(page, "/principals/anonymity", theme);
+      const card = page.getByRole("region", { name: "Hide people's names" });
+      await expect(card).toContainText("On");
+      await expect(card).toContainText(/Last changed by Person [A-HJ-NP-Z2-9]{4}/);
+      await expect(card.getByRole("button", { name: "Show names" })).toBeVisible();
+      // Fits a phone without sideways scrolling.
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    }
+  }
+  await open(page, "/principals/anonymity-off", "light");
+  const off = page.getByRole("region", { name: "Hide people's names" });
+  await expect(off).toContainText("Off");
+  await expect(off.getByRole("button", { name: "Hide names" })).toBeVisible();
+  // Showing names again asks first, and says the change is recorded.
+  await open(page, "/principals/anonymity", "light");
+  await page.getByRole("region", { name: "Hide people's names" }).getByRole("button", { name: "Show names" }).click();
+  await expect(page.getByRole("dialog", { name: "Show people's names again?" })).toContainText("audit record");
 });

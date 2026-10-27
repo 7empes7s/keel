@@ -27,7 +27,7 @@ export const ACTIVITY_KINDS: Record<ActivityKind, { label: string; one: string; 
   policy: { label: "Policy checks", one: "Policy check", icon: "automation", jobs: ["drift-detect", "policy-evaluate", "api-drift"], records: ["policy-evaluation", "benchmark-evaluation", "benchmark-exception"] },
   drill: { label: "Drills", one: "Drill", icon: "play", jobs: [], records: ["fidelity-drill", "recovery-drill"] },
   copy: { label: "Off-site copies", one: "Off-site copy", icon: "cloud", jobs: ["offsite"], records: ["offsite-copy"] },
-  other: { label: "Other", one: "Other", icon: "page", jobs: ["notify"], records: [] },
+  other: { label: "Other", one: "Other", icon: "page", jobs: ["notify"], records: ["people-anonymity"] },
 };
 export const ACTIVITY_KIND_ORDER: ActivityKind[] = ["backup", "restore", "rollback", "setup", "approval", "policy", "drill", "copy", "other"];
 

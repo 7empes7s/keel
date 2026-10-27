@@ -36,6 +36,7 @@ import { appendEvidence } from '../govern/evidence.mjs';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { changedFields } from '../identity/attribution.mjs';
+import { sameContent } from '../cir/canonicalHash.mjs';
 import { canonicalDigest } from '../restore/dryRunArtifact.mjs';
 import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE, OPEN_DRIFT_PREDICATE } from '../store/openDrift.mjs';
 import { evaluateDrift } from './evaluate.mjs';
@@ -465,17 +466,19 @@ export async function currentResourceState(client, { tenantRef, naturalKey, reso
   );
   if (!snapshot) return { state: 'unknown', reason: 'no collection of this type' };
   const { rows: [current] } = await client.query(
-    'SELECT payload_hash FROM resource_version WHERE snapshot_id = $1 AND natural_key = $2',
+    'SELECT payload_hash, payload FROM resource_version WHERE snapshot_id = $1 AND natural_key = $2',
     [snapshot.id, naturalKey],
   );
   const { rows: [base] } = await client.query(
-    `SELECT rv.payload_hash FROM baseline_resource br
+    `SELECT rv.payload_hash, rv.payload FROM baseline_resource br
        JOIN resource_version rv ON rv.id = br.resource_version_id
       WHERE br.baseline_id = $1 AND br.natural_key = $2`,
     [baseline.id, naturalKey],
   );
   const observedAt = iso(snapshot.completed_at);
-  if ((current?.payload_hash ?? null) === (base?.payload_hash ?? null)) {
+  // A hash stored under older rules is not a change (cir/canonicalHash.mjs sameContent).
+  if ((current?.payload_hash ?? null) === (base?.payload_hash ?? null)
+    || (current && base && sameContent(base, current, resourceType))) {
     return { state: 'matches-baseline', snapshotId: String(snapshot.id), observedAt };
   }
   // The newest drift row for the resource, as drift detection itself reuses it: it

@@ -1,3 +1,4 @@
+import { sameContent } from '../cir/canonicalHash.mjs';
 import { changeBlastRadius } from '../safety/blastRadius.mjs';
 
 /** A change's rating: per rule where the type is rated per rule (Conditional
@@ -120,7 +121,9 @@ export function diffSnapshots(baselineRows, observedRows, { lineageOf } = {}) {
         afterHash: after.payload_hash,
         blastRadius: rated(null, after),
       });
-    } else if (before.payload_hash !== after.payload_hash) {
+    } else if (!sameContent(before, after, after.resource_type)) {
+      // Only a difference in content is a change: a hash stored under older rules
+      // is not (sameContent).
       drift.push({
         naturalKey,
         resourceType: after.resource_type,

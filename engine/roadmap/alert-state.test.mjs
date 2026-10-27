@@ -351,13 +351,14 @@ test('drift detection opens, updates and resolves alerts through the real CLI', 
   const tenantRef = freshTenant();
   const baseline = (await client.query("INSERT INTO baseline (tenant_ref, set_by, active) VALUES ($1, 'fixture', true) RETURNING *", [tenantRef])).rows[0];
   const digest = { group: { outcome: 'complete', itemCount: 1 } };
+  // Each hash stands for different content: detection compares content, not hashes alone.
   async function snapshotWith(hash, completedAt) {
     const snapshot = (await client.query(`INSERT INTO snapshot (tenant_ref, status, coverage_digest, completed_at)
       VALUES ($1, 'complete', $2, $3) RETURNING *`, [tenantRef, digest, completedAt])).rows[0];
     const version = (await client.query(`INSERT INTO resource_version
       (snapshot_id, natural_key, resource_type, payload, payload_hash, criticality, blast_radius, fidelity, provenance)
-      VALUES ($1, 'group:board', 'group', '{}', $2, 'tier1', 'access-affecting', 'full', '{}') RETURNING id`,
-    [snapshot.id, hash])).rows[0];
+      VALUES ($1, 'group:board', 'group', $3, $2, 'tier1', 'access-affecting', 'full', '{}') RETURNING id`,
+    [snapshot.id, hash, { description: hash }])).rows[0];
     return { snapshot, version };
   }
   const seed = await snapshotWith('baseline-hash', at(0));

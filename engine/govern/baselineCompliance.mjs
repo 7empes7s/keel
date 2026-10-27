@@ -96,6 +96,31 @@ function changesSince(baselineRows, latest) {
   }
 }
 
+/**
+ * Attaches the stored payload to each baseline row and newest-collection row whose
+ * hashes differ for the same resource, so diffSnapshots can tell a change in content
+ * from a hash stored under older rules (cir/canonicalHash.mjs sameContent). Only
+ * those rows are read: the whole estate's payloads are not.
+ */
+async function withPayloadsWhereHashesDiffer(client, baselineRows, latest) {
+  if (!latest) return;
+  const latestByKey = new Map(latest.rows.map((row) => [row.natural_key, row]));
+  const differing = [];
+  for (const row of baselineRows) {
+    const other = latestByKey.get(row.natural_key);
+    if (other && other.payload_hash !== row.payload_hash && other.hash_version === row.hash_version) {
+      differing.push(row, other);
+    }
+  }
+  if (differing.length === 0) return;
+  const { rows } = await client.query(
+    'SELECT id::text AS id, payload FROM resource_version WHERE id = ANY($1::uuid[])',
+    [[...new Set(differing.map((row) => String(row.id)))]],
+  );
+  const payloads = new Map(rows.map((row) => [row.id, row.payload]));
+  for (const row of differing) row.payload = payloads.get(String(row.id)) ?? null;
+}
+
 async function latestEligibleSnapshot(client, tenantRef) {
   const { rows } = await client.query(
     `SELECT id, tenant_ref, status, started_at, completed_at, coverage_digest
@@ -108,7 +133,7 @@ async function latestEligibleSnapshot(client, tenantRef) {
   const snapshot = rows.find((candidate) => isEligibleBaselineSource(candidate, { tenantRef }));
   if (!snapshot) return null;
   const { rows: versions } = await client.query(
-    `SELECT natural_key, resource_type, payload_hash, hash_version, blast_radius
+    `SELECT id, natural_key, resource_type, payload_hash, hash_version, blast_radius
      FROM resource_version WHERE snapshot_id = $1`,
     [snapshot.id],
   );
@@ -131,7 +156,7 @@ export async function baselineCompliance(client, { tenantRef, now = new Date() }
   const ids = baselines.map((baseline) => baseline.id);
 
   const { rows: resources } = await client.query(
-    `SELECT br.baseline_id, rv.natural_key, rv.resource_type, rv.payload_hash, rv.hash_version,
+    `SELECT br.baseline_id, rv.id, rv.natural_key, rv.resource_type, rv.payload_hash, rv.hash_version,
             rv.blast_radius, s.started_at, s.completed_at
      FROM baseline_resource br
      JOIN resource_version rv ON rv.id = br.resource_version_id
@@ -143,6 +168,7 @@ export async function baselineCompliance(client, { tenantRef, now = new Date() }
   for (const row of resources) byBaseline.get(String(row.baseline_id))?.push(row);
 
   const latest = await latestEligibleSnapshot(client, tenantRef);
+  await withPayloadsWhereHashesDiffer(client, resources, latest);
   const successor = new Map(baselines
     .filter((baseline) => baseline.supersedes_id)
     .map((baseline) => [String(baseline.supersedes_id), String(baseline.id)]));

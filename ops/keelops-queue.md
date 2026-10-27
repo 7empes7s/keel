@@ -507,7 +507,7 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q159):
   approval id and the approval request's `executor`. It will be re-queued once #592 is live.
 - Needs: `grep -q workloadPowershellConfigPath /opt/keel-live/cli/keel-restore.mjs`. Run after K14 (both use exchange-restorer.json).
 - Decision: needs the **K15** line under **Operator decisions** (human only). If it is blank, leave this item `todo`.
-- Status: todo
+- Status: in-progress
 - Result:
 
 Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):

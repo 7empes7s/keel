@@ -258,7 +258,7 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
 - Needs: Q175 (`/etc/keel/db.env` and `tenant.json` readable), and /opt/keel-live at the #573 merge (a043642) or later:
   `grep -q 'ok: line?.ok === true' /opt/keel-live/engine/govern/baselineCompliance.mjs` and
   `grep -A15 "title: 'Legacy authentication is blocked'" /opt/keel-live/engine/benchmarks/registry.mjs | grep -q 'evaluatorVersion: 2'`.
-- Status: todo
+- Status: in-progress
 - **Tenant:** Collector **reads** only (one Graph GET in step 3). Nothing is written to the tenant or to Keel's database.
   No hand-written SQL: engine read calls only, as in K5. Do **not** run checks by hand (no `runComplianceChecks`, no "Check now").
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`, tenantRef as in K5:

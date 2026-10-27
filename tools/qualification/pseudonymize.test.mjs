@@ -230,6 +230,12 @@ test('a SharePoint claims login loses its user part and mail domain, and stays a
   // A user outside the test prefix gets no prefix; an onmicrosoft domain keeps its tenant host mapping.
   assert.match(a.text('i:0#.f|membership|alice@fabrikam-mail.com'), /\|membership\|u[0-9a-f]{12}@t[0-9a-f]{11}\.example$/);
   assert.equal(a.text('i:0#.f|membership|keel-rt-x@contoso.onmicrosoft.com').split('@')[1], `${a.host('contoso')}.onmicrosoft.com`);
+  // A guest's user part holds its home mail address; it is replaced too, raw and escaped alike.
+  const guest = 'i:0#.f|membership|alice_gmail.com#ext#@contoso.onmicrosoft.com';
+  const guestOut = a.text(guest);
+  assert.match(guestOut, /\|membership\|u[0-9a-f]{12}@t[0-9a-f]{11}\.onmicrosoft\.com$/);
+  assert.equal(decodeURIComponent(a.text(encodeURIComponent(guest))), guestOut);
+  assert.deepEqual(unpseudonymizedClaimsLogins(guest), [guest.slice(6).toLowerCase()]);
   // A group claim holds a GUID and is mapped by the GUID rule only.
   assert.equal(a.text(`c:0o.c|federateddirectoryclaimprovider|${GROUP}`), `c:0o.c|federateddirectoryclaimprovider|${a.guid(GROUP)}`);
 });

@@ -399,6 +399,13 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
 - **Report:** the outputs and the build. If any `modifiedWithoutFields` is above 0, give 3 sample drift ids and their `resource_type` and
   `same_content`. Change nothing.
 
+### K13: Run K6 and K7 now that their decisions are filled in
+- Drafted by the "Live checks for Oct 23–25 merges" thread (2026-10-27). Marouane filled in the K6 and K7 lines under **Operator decisions**.
+- Needs: nothing.
+- Status: todo
+- Do: run K6 from step 2 (step 1 is done) and then K7 steps 2, 3 and 5, exactly as written in those items and within the decisions' wording.
+  Write each item's own `Status` and `Result`. Set this item to `done` when both have a final status.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every item that needs it stays untouched.

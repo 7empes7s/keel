@@ -722,7 +722,11 @@ function proofText(rows) {
   if (proven.length === rows.length) parts.push('Proven on a live tenant');
   else if (proven.length > 0) parts.push(`Proven on a live tenant: ${list(proven.map((row) => OPERATION_NOUNS[row.operation]))}`);
   if (proven.length < rows.length) parts.push('Tested against a simulated tenant');
-  for (const row of failed) parts.push(`live test of ${OPERATION_NOUNS[row.operation]} failed on ${row.live.failedAt}, fix in progress`);
+  for (const row of failed) {
+    // No fix means the test tenant cannot run it (a tenant limit), not a bug.
+    const after = row.live.fix ? ', fix in progress' : ' because our test tenant does not allow it';
+    parts.push(`live test of ${OPERATION_NOUNS[row.operation]} failed on ${row.live.failedAt}${after}`);
+  }
   return parts.join('; ');
 }
 

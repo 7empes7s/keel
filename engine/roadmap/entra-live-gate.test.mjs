@@ -861,3 +861,17 @@ test('issue #294: --live-evidence never promotes a record that has a sibling dem
   assert.equal(promoted.promoted, true);
   assert.equal(promoted.after, 'live-qualified');
 });
+
+test('the three Entra writes the test tenant cannot run are recorded as tenant limits (#148)', () => {
+  const ledger = buildOperationLedger();
+  for (const type of ['identitySecurityDefaultsEnforcementPolicy', 'authenticationFlowsPolicy', 'roleAssignment']) {
+    const failure = TYPE_DECISIONS[type].liveFailures?.update;
+    assert.ok(failure, `${type} update has a live note`);
+    assert.match(failure.reason, /^tenant limit: /, `${type}: says it is a tenant limit`);
+    assert.equal(failure.fix, null, `${type}: a tenant limit names no fix`);
+    const row = ledger.types.find((entry) => entry.resourceType === type).operations.find((op) => op.operation === 'update');
+    assert.equal(row.decision, 'supported', `${type} update stays registered`);
+    assert.equal(row.claim, 'fixture-tested', `${type} update claim is not lowered or raised`);
+    assert.equal(row.live.result, 'failed');
+  }
+});

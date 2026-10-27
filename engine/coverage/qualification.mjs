@@ -57,6 +57,10 @@ const incomplete = (reason) => manual(`incomplete configuration, backed up in fu
 // that), `failedAt` is the day it was decided and `fix` names what is being
 // changed. The write stays fixture-tested; the ledger row shows the failure.
 const failedLive = (failedAt, reason, fix) => Object.freeze({ failedAt, reason, fix });
+// Issue #148: a registered write that cannot be proven live on the test tenant
+// because of the tenant or the service, not a KEEL bug. Same shape, with no fix:
+// the write stays fixture-tested and the ledger row says why it is unproven.
+const tenantLimit = (failedAt, reason) => Object.freeze({ failedAt, reason, fix: null });
 // Wave 2 ENTRA: the four token and sign-in routing policies share one writer.
 const STS_SUBSET = 'Wave 2 ENTRA subset: create and update of the name and definition (every definition entry must parse as JSON); a policy that was the organization default is recreated as an ordinary one and making it the default again is a follow-up step; which apps it is assigned to is set by hand; delete is not registered';
 
@@ -92,7 +96,11 @@ export const TYPE_DECISIONS = Object.freeze({
   directoryRole: manual('built-in roles are activated from templates, never authored'),
   roleDefinition: automated('unifiedroledefinition', 'task-151 subset: create and update of custom roles; built-in roles are immutable and refused, delete is not registered'),
   directoryRoleTemplate: manual('Microsoft-published template catalogue'),
-  roleAssignment: automated('unifiedroleassignment', 'create/update/delete are registered'),
+  roleAssignment: automated('unifiedroleassignment', 'create/update/delete are registered', {
+    liveFailures: {
+      update: tenantLimit('2026-10-09', 'tenant limit: the runbook drift planned no write (Q43 step 36); every real field of a role assignment (principalId, roleDefinitionId, directoryScopeId) is immutable, so an update sends an empty body and reports not-remediable, and there is nothing it can change live'),
+    },
+  }),
   roleEligibilitySchedule: automated('unifiedroleeligibilityschedule', 'task-151 subset: create through an adminAssign schedule request that keeps the snapshot end date; update and removal are not registered'),
   // Roadmap task-151: PIM role settings, their role bindings and active schedules.
   unifiedRoleManagementPolicy: automated('unifiedrolemanagementpolicy', 'task-151 subset: update of the reviewed expiration, enablement and approval rules; a change that weakens protection is reported, never written'),
@@ -103,7 +111,11 @@ export const TYPE_DECISIONS = Object.freeze({
   namedLocation: automated('namedlocation', 'create/update/delete are registered'),
   authenticationContextClassReference: incomplete('ids c1..c99 are fixed per tenant and referenced by Conditional Access policies and SharePoint labels'),
   authenticationMethodsPolicy: automated('authenticationmethodspolicy', 'task-149: update of the policy and its method configurations, only behind the break-glass lockout gate'),
-  identitySecurityDefaultsEnforcementPolicy: automated('identitysecuritydefaultsenforcementpolicy', 'task-149: update of isEnabled, only behind the break-glass lockout gate'),
+  identitySecurityDefaultsEnforcementPolicy: automated('identitysecuritydefaultsenforcementpolicy', 'task-149: update of isEnabled, only behind the break-glass lockout gate', {
+    liveFailures: {
+      update: tenantLimit('2026-10-14', 'tenant limit: Entra refuses to change security defaults while any Conditional Access policy is on (8 are on in the test tenant), so the drift cannot be made and the update cannot run live; turning every Conditional Access policy off is outside the test tenant rules (Q48 step 47)'),
+    },
+  }),
   authorizationPolicy: automated('authorizationpolicy', 'task-149: update of guest, consent and default user permission settings, only behind the break-glass lockout gate'),
   crossTenantAccessPolicy: automated('crosstenantaccesspolicy', 'task-149: update of allowedCloudEndpoints'),
   crossTenantAccessPolicyConfigurationDefault: automated('crosstenantaccesspolicyconfigurationdefault', 'task-149: update of the default B2B, direct connect and inbound trust settings'),
@@ -111,7 +123,11 @@ export const TYPE_DECISIONS = Object.freeze({
   permissionGrantPolicy: automated('permissiongrantpolicy', 'Wave 2 ENTRA subset: create and update of custom app consent policies, with their include and exclude rules when the backup holds them (missing ones added, extra ones removed); built-in microsoft-* policies are skipped; delete is not registered'),
   adminConsentRequestPolicy: automated('adminconsentrequestpolicy', 'task-149: update (PUT) of the whole policy'),
   // Issue #156.
-  authenticationFlowsPolicy: automated('authenticationflowspolicy', 'issue-156: update of whether external users may sign themselves up through user flows'),
+  authenticationFlowsPolicy: automated('authenticationflowspolicy', 'issue-156: update of whether external users may sign themselves up through user flows', {
+    liveFailures: {
+      update: tenantLimit('2026-10-13', 'tenant limit: the test tenant refuses the self-service sign-up drift (500 AADB2C90063, Q43 and Q45 step 32), so there is no drift for the update to restore'),
+    },
+  }),
   deviceRegistrationPolicy: manual('backed up, never written: these settings decide who may register and join devices and whether joining needs MFA, so a wrong write could block admins from joining devices or silently drop the MFA requirement, so it is changed by hand', {
     docs: `${DOCS}/resources/deviceregistrationpolicy?view=graph-rest-1.0`,
   }),

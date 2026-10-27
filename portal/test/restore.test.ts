@@ -338,6 +338,37 @@ test("a raw selection starts a dry run, then only its completed artifact can req
   assert.equal(approvalRequest.executor, "worker");
 });
 
+// Issue #411 follow-up: the worker refuses a settings path that is not a .json file
+// under /etc/keel. A server whose environment moves either file elsewhere gets a plain
+// answer before anything is queued, never a restore job that fails later.
+test("a dry run is refused before queueing when a server settings path is outside /etc/keel", async () => {
+  const selection = ["conditionalAccessPolicy:Protect-Admins"];
+  for (const [variable, value] of [
+    ["KEEL_RESTORER_CONFIG_PATH", "/srv/hidden-place/restorer.json"],
+    ["KEEL_COLLECTOR_CONFIG_PATH", "/etc/keel/../hidden-place/tenant.json"],
+    ["KEEL_COLLECTOR_CONFIG_PATH", "/etc/keel/gh.env"],
+  ] as const) {
+    const saved = process.env[variable];
+    process.env[variable] = value;
+    try {
+      const { rows: before } = await client.query(`SELECT id FROM job WHERE kind = 'restore'`);
+      const refused = await dryRunRoute(post("/api/actions/restore/dry-run", { ...restorer, body: { snapshotId, selection } }));
+      assert.equal(refused.status, 503);
+      const body = await refused.json();
+      assert.deepEqual(body, {
+        error: "restore_settings_path",
+        message: `Keel's restore settings file must be a .json file in /etc/keel. Ask whoever runs the Keel server to fix ${variable}.`,
+      });
+      assert.ok(!JSON.stringify(body).includes("hidden-place"), "the path itself is never shown");
+      const { rows: after } = await client.query(`SELECT id FROM job WHERE kind = 'restore'`);
+      assert.equal(after.length, before.length, "nothing is queued");
+    } finally {
+      if (saved === undefined) delete process.env[variable];
+      else process.env[variable] = saved;
+    }
+  }
+});
+
 // Plan task 8, step 2: confirmation renders the dry run's ACTUAL planned changes and
 // refusals from the persisted artifact — never a client-side guess. This is the route
 // portal/components/restore-selection.tsx polls to show the operator what promotion

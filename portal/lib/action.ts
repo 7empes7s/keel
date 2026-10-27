@@ -13,6 +13,7 @@ import {
 } from "../../engine/govern/approvals.mjs";
 import { applyDisposition } from "../../engine/govern/disposition.mjs";
 import { SameContentDriftError } from "../../engine/store/openDrift.mjs";
+import { RestoreSettingsPathError } from "../../engine/restore/credentialPaths.mjs";
 import { acceptServiceChange } from "../../engine/govern/workloadApproved.mjs";
 import { resolveAlert } from "../../engine/notify/alerts.mjs";
 import { appendEvidence } from "../../engine/govern/evidence.mjs";
@@ -409,6 +410,14 @@ export function guarded(
       // A change whose setting holds the same values as the approved setup: nothing
       // to accept, roll back, preview or approve. Said plainly, never a 503.
       if (error instanceof SameContentDriftError) return noChange(error);
+      // The server's restore settings path is one the worker would refuse: nothing is
+      // queued, and the operator is told in plain words which setting to fix.
+      if (error instanceof RestoreSettingsPathError) {
+        return Response.json(
+          { error: "restore_settings_path", message: error.message },
+          { status: 503, headers: NO_STORE },
+        );
+      }
       console.error(`[keel-portal] guarded action ${spec.action} failed`, error);
       return Response.json(
         { error: "unavailable" },

@@ -276,7 +276,8 @@ export async function main({ argv = process.argv.slice(2), env = process.env, ou
   });
   const leaked = unpseudonymizedIds(`${artifactText}\n${JSON.stringify(evidence)}`);
   if (leaked.length > 0) {
-    out.error(`refused: the capture still holds ${leaked.length} id(s) that are not pseudonyms; nothing was written`);
+    // Printed to the operator only, so the leak can be traced after the round trip already ran.
+    out.error(`refused: the capture still holds ${leaked.length} id(s) that are not pseudonyms; nothing was written: ${leaked.join(', ')}`);
     if (capture.failed) out.error(capture.failed);
     return 1;
   }

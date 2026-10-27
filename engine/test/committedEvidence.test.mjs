@@ -17,6 +17,11 @@ test('a committed record captured from the check date on must hold pseudonyms on
   assert.doesNotThrow(() => assertPseudonymized(safe, { observedAt: after, label: 'gate: the record' }));
 });
 
+test('the deployed check\'s all-zero probe id is not a tenant id', () => {
+  const text = JSON.stringify({ path: '/api/actions/restore/dry-run/00000000-0000-4000-8000-000000000000' });
+  assert.doesNotThrow(() => assertPseudonymized(text, { observedAt: after, label: 'gate: the record' }));
+});
+
 test('an older signed record is left to its queued recapture', () => {
   assert.doesNotThrow(() => assertPseudonymized(JSON.stringify({ objectId: RAW_ID }), { observedAt: before, label: 'gate: the record' }));
 });

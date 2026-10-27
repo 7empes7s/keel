@@ -25,10 +25,13 @@ const SECRET_PATTERNS = [
  */
 export const PSEUDONYM_CHECK_FROM = '2026-10-28T00:00:00.000Z';
 
+const PLACEHOLDER_ID = /^0{8}-0{4}-[0-9a-f]0{3}-[0-9a-f]0{3}-0{12}$/i;
+
 /** Asserts `text` holds no object id that is not a pseudonym, unless it predates the check. */
 export function assertPseudonymized(text, { observedAt, label }) {
   if (Date.parse(observedAt) < Date.parse(PSEUDONYM_CHECK_FROM)) return;
-  const raw = unpseudonymizedIds(text);
+  // The deployed check's probe path carries a fixed all-zero placeholder, never a tenant's id.
+  const raw = unpseudonymizedIds(text).filter((id) => !PLACEHOLDER_ID.test(id));
   assert.equal(raw.length, 0, `${label} holds ${raw.length} id(s) that are not pseudonyms`);
 }
 

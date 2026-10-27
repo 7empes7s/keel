@@ -17,6 +17,9 @@
  */
 import { collectExchange, recordExchangeRun } from './exchange.mjs';
 import { collectExchangeExtended, recordExchangeExtendedRun } from './exchangeExtended.mjs';
+import {
+  collectExchangeDistributionGroups, collectExchangeRecipients, recordExchangeDistributionGroupsRun, recordExchangeRecipientsRun,
+} from './exchangeRecipients.mjs';
 import { collectExchangeRoleGroups, recordExchangeRoleGroupsRun } from './exchangeRoleGroups.mjs';
 import { collectMailFlow, recordMailFlowRun } from './mailFlow.mjs';
 import { collectOneDrive, recordOneDriveRun } from './onedrive.mjs';
@@ -37,6 +40,11 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   // exchangeExtended.mjs
   { workload: 'exchange-extended', powershellFamily: 'exchange', record: recordExchangeExtendedRun,
     collect: (client, { base, powershell }) => collectExchangeExtended(client, { ...base, powershell }) },
+  // exchangeRecipients.mjs: distribution lists, then mailboxes and the rights on them.
+  { workload: 'exchange-distribution-groups', powershellFamily: 'exchange', record: recordExchangeDistributionGroupsRun,
+    collect: (client, { base, powershell }) => collectExchangeDistributionGroups(client, { ...base, powershell }) },
+  { workload: 'exchange-recipients', powershellFamily: 'exchange', record: recordExchangeRecipientsRun,
+    collect: (client, { base, powershell }) => collectExchangeRecipients(client, { ...base, powershell }) },
   // exchangeRoleGroups.mjs
   { workload: 'exchange-role-groups', powershellFamily: 'exchange', record: recordExchangeRoleGroupsRun,
     collect: (client, { base, powershell }) => collectExchangeRoleGroups(client, { ...base, powershell }) },

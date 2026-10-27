@@ -866,6 +866,34 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 
 **You do:** KEEL does not restore role groups. A deleted group, its roles and its members are put back by hand in the Exchange admin center using the backup. Microsoft's built-in groups cannot be deleted, only their members changed.
 
+### Exchange distribution lists and Microsoft 365 group mail settings
+
+**Backed up:**
+
+- Distribution lists and mail-enabled security groups
+- Dynamic distribution lists
+- Microsoft 365 group mail settings
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore distribution lists yet. A deleted list and its settings are put back by hand in the Exchange admin center using the backup. Members are kept with the Entra group backup.
+
+### Shared, room and equipment mailboxes, contacts and mailbox access
+
+**Backed up:**
+
+- Shared mailboxes
+- Room mailboxes
+- Equipment mailboxes
+- Mail contacts
+- Full Access and other rights on shared, room and equipment mailboxes
+- Send As rights
+- Room and equipment booking rules
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. A deleted shared, room or equipment mailbox, a contact, Full Access, Send As and Send on behalf rights, and room booking rules are put back by hand in the Exchange admin center using the backup. Mail in the mailboxes comes back from the content backup.
+
 ### Teams calling, voice and live event policies
 
 **Backed up:**

@@ -9,8 +9,8 @@ export default Object.freeze({
   // the service has is listed, even with no type yet: `match` places a kind Keel has
   // not mapped yet (see placeUnmapped in ../taxonomy.mjs).
   categories: Object.freeze([
-    { key: 'mailboxes', name: 'Mailboxes', types: ['exchange-mailbox-settings'], match: /mailbox(settings|permission|folder|plan)?$|mailboxsettings|mailboxretention|mailuser|mailcontact|recipient|inboxrule|forwarding|autoreply|calendar/ },
-    { key: 'groups', name: 'Groups and address lists', types: [], match: /distribution|dynamicgroup|unifiedgroup|roomlist|addresslist|addressbook/ },
+    { key: 'mailboxes', name: 'Mailboxes', types: ['exchange-recipients', 'exchange-mailbox-settings'], match: /mailbox(settings|permission|folder|plan)?$|mailboxsettings|mailboxretention|mailuser|mailcontact|recipient|inboxrule|forwarding|autoreply|calendar/ },
+    { key: 'groups', name: 'Groups and address lists', types: ['exchange-distribution-groups'], match: /distribution|dynamicgroup|unifiedgroup|roomlist|addresslist|addressbook/ },
     { key: 'roles', name: 'Admin roles', types: ['exchange-role-groups', 'exchangeRoleDefinition', 'exchangeRoleAssignment', 'exchangeCustomAppScope'], match: /role|scope/ },
     { key: 'mail-flow', name: 'Mail flow and protection', types: ['exchange-mail-flow'], match: /mailflow|transport|connector|connectionfilter|defenderforoffice|journal|accepteddomain|remotedomain|dkim|dmarc|spam|phish|malware|safelink|safeattachment|quarantine|protection|threat/ },
     { key: 'access', name: 'Sharing and client access', types: [], match: /sharing|organizationrelationship|federation|owa|outlook|clientaccess|authpolicy|authenticationpolicy|addin/ },
@@ -27,6 +27,17 @@ export default Object.freeze({
       name: 'Exchange admin role group',
       priority: 'high',
       reason: 'Its members get Exchange admin rights over the whole organization.',
+    },
+    // Read with Get-Mailbox, Get-MailContact and the permission cmdlets (workloads).
+    'exchange-recipients': {
+      name: 'Shared mailbox, room, contact or mailbox access',
+      priority: 'high',
+      reason: 'Decides who can open a shared mailbox, send as it or book a room.',
+    },
+    'exchange-distribution-groups': {
+      name: 'Distribution list or Microsoft 365 group mail setting',
+      priority: 'normal',
+      reason: 'Decides who gets a list\'s mail and who may send to it.',
     },
     'exchange-mailbox-settings': {
       name: 'Exchange mailbox setting',

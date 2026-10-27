@@ -20,7 +20,7 @@
   Fixture-tested only through engine/roadmap/exchange-config.test.mjs,
   engine/roadmap/onedrive-purview.test.mjs, engine/roadmap/exchange-mail-flow.test.mjs,
   engine/roadmap/teams-org-policies.test.mjs, engine/roadmap/exchange-extended.test.mjs,
-  engine/roadmap/exchange-role-groups.test.mjs,
+  engine/roadmap/exchange-role-groups.test.mjs, engine/roadmap/exchange-recipients.test.mjs,
   engine/roadmap/purview-retention-dlp.test.mjs and engine/roadmap/workload-writers.test.mjs
   (which play this contract); it has not
   been run against a tenant.
@@ -122,6 +122,21 @@ $AllowedExchangeExtended = @{
 # Exchange Online session. One read, no parameters.
 $AllowedExchangeRoleGroups = @{
     'Get-RoleGroup' = @()
+}
+
+# Exchange recipients and mailbox permissions (engine/collect/workloads/exchangeRecipients.mjs),
+# in the Exchange Online session. Reads only. The Node side fixes each value: ResultSize
+# is Unlimited, RecipientTypeDetails one of SharedMailbox, RoomMailbox, EquipmentMailbox,
+# and Identity a mailbox Guid read in the same run.
+$AllowedExchangeRecipients = @{
+    'Get-DistributionGroup'        = @('ResultSize')
+    'Get-DynamicDistributionGroup' = @('ResultSize')
+    'Get-UnifiedGroup'             = @('ResultSize')
+    'Get-Mailbox'                  = @('RecipientTypeDetails', 'ResultSize')
+    'Get-MailContact'              = @('ResultSize')
+    'Get-MailboxPermission'        = @('Identity')
+    'Get-RecipientPermission'      = @('ResultSize')
+    'Get-CalendarProcessing'       = @('Identity')
 }
 
 # Wave 1 READ-TEAMS-PV: Teams calling, voice and live event policies and policy
@@ -272,10 +287,14 @@ try {
 $name = [string]$job['cmdlet']
 $module = [string]$job['module']
 # Each cmdlet belongs to exactly one session, and the job's module must match it.
-if ($Allowed.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $Allowed[$name] }
+# Get-Mailbox is read by two workloads: by -Identity (mailbox settings) and by type
+# (recipients). It may take either table's parameters; each workload's Node side allows only its own.
+if ($name -eq 'Get-Mailbox' -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = @($Allowed[$name]) + @($AllowedExchangeRecipients[$name]) }
+elseif ($Allowed.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $Allowed[$name] }
 elseif ($AllowedMailFlow.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedMailFlow[$name] }
 elseif ($AllowedExchangeExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeExtended[$name] }
 elseif ($AllowedExchangeRoleGroups.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRoleGroups[$name] }
+elseif ($AllowedExchangeRecipients.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRecipients[$name] }
 elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurview[$name] }
 elseif ($AllowedPurviewRetentionDlp.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewRetentionDlp[$name] }
 elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnP[$name] }

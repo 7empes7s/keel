@@ -46,6 +46,7 @@ export const WORKLOADS = Object.freeze([
   'exchange-mail-flow', 'teams-org-policies', 'purview-retention-dlp',
   'exchange-extended',
   'exchange-role-groups',
+  'exchange-distribution-groups', 'exchange-recipients',
   'teams-voice-policies', 'purview-governance',
   'power-platform-settings',
 ]);
@@ -350,6 +351,35 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
     source: doc('/en-us/powershell/module/exchange/get-rolegroup'),
   },
+  // Exchange recipients and mailbox permissions, in the Exchange Online session.
+  // engine/collect/workloads/exchangeRecipients.mjs holds the fields and identities.
+  ...[
+    ['exchange-distribution-groups.distribution-groups', 'exchange-distribution-groups', 'Distribution lists and mail-enabled security groups',
+      'Get-DistributionGroup', { parameters: ['-ResultSize Unlimited'] }],
+    ['exchange-distribution-groups.dynamic-distribution-groups', 'exchange-distribution-groups', 'Dynamic distribution lists',
+      'Get-DynamicDistributionGroup', { parameters: ['-ResultSize Unlimited'] }],
+    ['exchange-distribution-groups.microsoft-365-groups', 'exchange-distribution-groups', 'Microsoft 365 group mail settings',
+      'Get-UnifiedGroup', { parameters: ['-ResultSize Unlimited'] }],
+    ['exchange-recipients.shared-mailboxes', 'exchange-recipients', 'Shared mailboxes', 'Get-Mailbox',
+      { parameters: ['-RecipientTypeDetails SharedMailbox', '-ResultSize Unlimited'], probeName: 'Get-Mailbox -RecipientTypeDetails SharedMailbox' }],
+    ['exchange-recipients.room-mailboxes', 'exchange-recipients', 'Room mailboxes', 'Get-Mailbox',
+      { parameters: ['-RecipientTypeDetails RoomMailbox', '-ResultSize Unlimited'], probeName: 'Get-Mailbox -RecipientTypeDetails RoomMailbox' }],
+    ['exchange-recipients.equipment-mailboxes', 'exchange-recipients', 'Equipment mailboxes', 'Get-Mailbox',
+      { parameters: ['-RecipientTypeDetails EquipmentMailbox', '-ResultSize Unlimited'], probeName: 'Get-Mailbox -RecipientTypeDetails EquipmentMailbox' }],
+    ['exchange-recipients.mail-contacts', 'exchange-recipients', 'Mail contacts', 'Get-MailContact', { parameters: ['-ResultSize Unlimited'] }],
+    ['exchange-recipients.mailbox-permissions', 'exchange-recipients', 'Full Access and other rights on shared, room and equipment mailboxes',
+      'Get-MailboxPermission', { parameters: ['-Identity'], probeName: 'Get-MailboxPermission -Identity' }],
+    ['exchange-recipients.send-as', 'exchange-recipients', 'Send As rights', 'Get-RecipientPermission', { parameters: ['-ResultSize Unlimited'] }],
+    ['exchange-recipients.calendar-processing', 'exchange-recipients', 'Room and equipment booking rules',
+      'Get-CalendarProcessing', { parameters: ['-Identity'], probeName: 'Get-CalendarProcessing -Identity' }],
+  ].map(([id, workload, resource, name, options]) => ({
+    id, workload, resource,
+    operation: cmdlet(name, 'ExchangeOnlineManagement', options),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
+  })),
   // Wave 1 READ-TEAMS-PV: Teams calling, voice and live event policies, and the
   // policies assigned to users and groups, in the MicrosoftTeams session.
   // engine/collect/workloads/teamsExtended.mjs holds the fields and identities.

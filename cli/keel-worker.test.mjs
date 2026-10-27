@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JOB_KIND_CAPABILITIES } from '../engine/authz/jobCapabilities.mjs';
 import {
-  isProcessGroupAlive, JOB_HANDLERS, JOB_TIMEOUT_MS, runJob, signalProcessGroup, startJobChild,
+  isProcessGroupAlive, JOB_HANDLERS, JOB_TIMEOUT_MS, runJob, signalProcessGroup, startJobChild, withholdParsedText,
 } from './keel-worker.mjs';
 import { schemaSql as loadSchemaSql } from '../engine/store/loadSchema.mjs';
 
@@ -834,13 +834,58 @@ console.log('keel-worker break-glass canary — all assertions passed');
 // Issue #411: file-path params must name a file under /etc/keel, whoever enqueued the job.
 for (const kind of ['discover', 'workload-collect', 'content-collect', 'collect', 'prune', 'drift-detect', 'api-drift']) {
   for (const config of ['/etc/passwd', '/etc/keel/../shadow', '/etc/keelx/tenant.json', 'tenant.json', '/etc/keel', '/etc/keel/a\0b']) {
-    assert.throws(() => JOB_HANDLERS[kind].argsFor({ config }), /must be a file under \/etc\/keel\//, `${kind} config ${config}`);
+    assert.throws(() => JOB_HANDLERS[kind].argsFor({ config }), /must be a \.json file under \/etc\/keel\//, `${kind} config ${config}`);
   }
 }
-assert.throws(() => JOB_HANDLERS['workload-collect'].argsFor({ scope: '/root/.ssh/id_rsa' }), /params.scope must be a file under/);
-assert.throws(() => JOB_HANDLERS['content-collect'].argsFor({ reader: '/var/lib/keel/../../etc/shadow' }), /params.reader must be a file under/);
+assert.throws(() => JOB_HANDLERS['workload-collect'].argsFor({ scope: '/root/.ssh/id_rsa' }), /params.scope must be a \.json file under/);
+assert.throws(() => JOB_HANDLERS['content-collect'].argsFor({ reader: '/var/lib/keel/../../etc/shadow' }), /params.reader must be a \.json file under/);
 assert.deepEqual(
   JOB_HANDLERS['content-collect'].argsFor({ config: '/etc/keel/./tenant.json', reader: '/etc/keel/content-reader.json' }),
   ['run', '--config', '/etc/keel/tenant.json', '--reader', '/etc/keel/content-reader.json'],
 );
+// /etc/keel also holds keys and env files; a job may only be pointed at a .json config.
+for (const kind of ['discover', 'workload-collect', 'content-collect', 'collect', 'prune', 'drift-detect', 'api-drift']) {
+  for (const config of ['/etc/keel/content.key', '/etc/keel/gh.env', '/etc/keel/db.env', '/etc/keel/collector.pem', '/etc/keel/tenant.json.bak']) {
+    assert.throws(() => JOB_HANDLERS[kind].argsFor({ config }), /must be a \.json file under \/etc\/keel\//, `${kind} config ${config}`);
+  }
+}
+// remediate holds explicit credential paths to the same rule; its server defaults are kept.
+for (const key of ['collectorConfig', 'targetConfig']) {
+  for (const path of ['/etc/keel/content.key', '/etc/shadow', '/etc/keel/../passwd.json', '/tmp/x.json']) {
+    assert.throws(
+      () => JOB_HANDLERS.remediate.argsFor({ driftIds: ['drift-1'], [key]: path }),
+      new RegExp(`params.${key} must be a \\.json file under /etc/keel/`),
+      `remediate ${key} ${path}`,
+    );
+  }
+}
+// A parse error quotes the start of the file; that quote never reaches the job's error.
+assert.equal(
+  withholdParsedText('stderr: SyntaxError: Unexpected token \'s\', "secret\nKEY"... is not valid JSON\n    at JSON.parse'),
+  'stderr: SyntaxError: Unexpected token (file contents withheld), the file is not valid JSON\n    at JSON.parse',
+);
+assert.equal(
+  withholdParsedText('stderr: <anonymous_script>:1\nKEY=hunter2\n^\n\nSyntaxError: x'),
+  'stderr: <anonymous_script>: (file contents withheld)\n\nSyntaxError: x',
+);
+assert.equal(withholdParsedText('exit code 1'), 'exit code 1');
+{
+  const secretFile = join(fixtureDir, 'not-json.json');
+  writeFileSync(secretFile, 'sEcReTkEyMaTeRiAl0123456789');
+  const parseScript = join(fixtureDir, 'parses-config.mjs');
+  writeFileSync(parseScript, "import { readFileSync } from 'node:fs';\nJSON.parse(readFileSync(process.argv[2], 'utf8'));\n");
+  const fake = makeAuthzFakeClient({
+    principal: operatorPrincipal,
+    grants: [{ role: 'operator', active_from: hoursAgo(1), active_until: null }],
+  });
+  await runJob(fake.client, authzJobFor('collect'), {
+    dbUrl: 'postgres://unused',
+    onInFlightChange: () => {},
+    handlers: { collect: { script: parseScript, argsFor: () => [secretFile] } },
+  });
+  assert.equal(fake.failedCalls.length, 1, 'a child that cannot parse its config fails the job');
+  const error = String(fake.failedCalls[0][1]);
+  assert.match(error, /file contents withheld/);
+  assert.doesNotMatch(error, /sEcReT/, 'the failed job must not quote the file');
+}
 console.log('keel-worker config paths — all assertions passed');

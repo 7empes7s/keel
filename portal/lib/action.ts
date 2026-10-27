@@ -431,6 +431,9 @@ export interface ActionSpec {
   // false: the route takes no parameters and always enqueues `{}`, so the job runs on the
   // server-side defaults. A body that sets any field is refused (issue #411).
   acceptsParams?: boolean;
+  // The only body fields the route passes on as job params. Any other field is refused,
+  // so a caller cannot steer the job at a server file through `config` (issue #411).
+  allowedParams?: readonly string[];
 }
 
 // The standard mutating route: parse the JSON body as job params and enqueue exactly one
@@ -466,6 +469,13 @@ export function guardedAction(
       const params = await readActionParams(request);
       if (spec.acceptsParams === false && Object.keys(params).length > 0) {
         throw new InvalidActionRequest("this action takes no parameters");
+      }
+      const allowed = spec.allowedParams;
+      if (allowed) {
+        const extra = Object.keys(params).filter((key) => !allowed.includes(key));
+        if (extra.length > 0) {
+          throw new InvalidActionRequest(`this action takes only: ${allowed.join(", ")}`);
+        }
       }
       const job = (await enqueue(client, {
         kind: spec.jobKind,

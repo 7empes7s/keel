@@ -507,8 +507,8 @@ Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q159):
   approval id and the approval request's `executor`. It will be re-queued once #592 is live.
 - Needs: `grep -q workloadPowershellConfigPath /opt/keel-live/cli/keel-restore.mjs`. Run after K14 (both use exchange-restorer.json).
 - Decision: needs the **K15** line under **Operator decisions** (human only). If it is blank, leave this item `todo`.
-- Status: in-progress
-- Result:
+- Status: blocked
+- Result: blocked on files keelops cannot read (2026-10-27 ~22:00 UTC). Needs check passes (live `f9d302a`). Nothing run, nothing written. **Step 1** (host check of `/etc/keel/exchange-restorer.json`, `/etc/keel/purview-restorer.json` against every `-collector.json` and tenant.json, and possibly adding `tenantId` to a restorer file) needs read on `exchange-restorer.json`, `purview-restorer.json`, `exchange-collector.json`, `purview-collector.json` and `workload-scope.json` (the last is readable). Editing a root-owned `/etc/keel` file is a root step either way. **Step 2** (`node cli/keel-discover.mjs run --no-store`) connects PowerShell with `exchange-collector.json`, which is unreadable. Step 3 could go through worker jobs, but it depends on step 1. To unblock: root runs step 1 (yes/no answers only) and grants keelops read on the four files plus their cert/key paths, or root's keel-operator runs K15.
 
 Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
 

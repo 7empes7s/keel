@@ -23,6 +23,7 @@ import { assertCommittedLiveRecord, isPendingPlaceholder } from '../test/committ
 import { OFFLINE_FIXTURE, main as capture } from '../../tools/qualification/nativeRecovery.mjs';
 import { NATIVE_LIVE_GATE, NATIVE_LIVE_MAX_ELAPSED_MS } from '../restore/nativeRecoveryEvidence.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
+import { pseudonymizer, unpseudonymizedIds } from '../../tools/qualification/pseudonymize.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const KEY = 'test-only-native-key';
@@ -122,7 +123,13 @@ test('a valid independently captured runner record verifies under --require-live
   const result = verifyEvidenceFile(run.file, verifyOpts);
   assert.deepEqual(result.failures, []);
   const op = run.evidence.subject.operations.find((o) => o.outcome === 'automated');
-  assert.equal(op.restoredObjectId, OBJECT_ID, 'object id result preserved');
+  // The repository is public: the record names the fixture by its pseudonym, and so does the artifact.
+  assert.equal(op.restoredObjectId, pseudonymizer(tenantRef).guid(OBJECT_ID), 'object id result preserved, pseudonymized');
+  const artifactText = readFileSync(join(run.dir, `${NATIVE_LIVE_GATE}.artifact.json`), 'utf8');
+  for (const text of [readFileSync(run.file, 'utf8'), artifactText]) {
+    assert.ok(!text.includes(OBJECT_ID), 'the raw object id never reaches the record or the artifact');
+    assert.deepEqual(unpseudonymizedIds(text), []);
+  }
   assert.equal(Date.parse(op.retentionDeadline) - Date.parse(op.deletedDateTime), 30 * 24 * 60 * 60 * 1000, 'retention deadline preserved');
   // Unavailable routes are manual handoffs, never automated support. Roadmap
   // task-152: Conditional Access policies are restored by KEEL (fixture-tested
@@ -279,6 +286,15 @@ test('the capture tool refuses before any write unless the object is a confirmed
   const r2 = await runnerCapture({ argv: ca });
   assert.equal(r2.code, 2);
   assert.deepEqual(r2.graph.writes, []);
+});
+
+test('the capture tool writes nothing when an id it cannot pseudonymize would be published', async () => {
+  // An on-premises SID cannot be told apart from a pseudonym, so it is always refused.
+  const run = await runnerCapture({ graphOptions: { name: 'KEEL-RT-S-1-5-21-1111-2222-3333-500' } });
+  assert.equal(run.code, 1);
+  assert.match(run.errors.join(' '), /not pseudonyms; nothing was written/);
+  assert.equal(run.evidence, null);
+  assert.throws(() => readFileSync(join(run.dir, `${NATIVE_LIVE_GATE}.artifact.json`)), /ENOENT/);
 });
 
 test('a failed restore is recorded as failed and never verifies', async () => {

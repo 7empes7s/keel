@@ -1633,7 +1633,7 @@ being triggered by queue updates.
 - **Expected:** four captures exit 0, verify exit 0 each, check exit 0, import refused [], proofs about 4 weeks out.
 - **Report:** B, per-gate exit codes, check output, the evidence PR, the new expiry dates, cleanup.
 
-### Q187: Recapture the 25 Entra live records that hold a real sign-in name, from their existing restores (after PR #607)
+### Q187: Recapture the 21 Entra live files that hold a real sign-in name, from their existing restores (after PR #607)
 - Drafted by the "Hide real mail domain in test user names" thread (2026-10-27). Same reason as Q186, for
   `docs/release/qualifications/entra-live/`: `check` flags these pairs (record + `.capture.json`):
   `user.update`, `user.restore-soft-deleted`, `group.member.edge-add`, `group.member.edge-remove`, `group.owner.edge-add`,

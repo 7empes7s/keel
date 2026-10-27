@@ -3,7 +3,8 @@
 // files the deployment host carries (issue #92: the old Restorer default named a file the
 // host never had). The Collector is the same registration every collect command reads by
 // default (/etc/keel/tenant.json); the host never had the old tenant-target.json.
-// A deployment may move either file with the environment variable.
+// A deployment may move either file with the environment variable, but the worker only
+// accepts a .json file under /etc/keel for restore and remediate jobs (issue #411).
 export const DEFAULT_COLLECTOR_CONFIG_PATH = '/etc/keel/tenant.json';
 export const DEFAULT_RESTORER_CONFIG_PATH = '/etc/keel/restorer.json';
 

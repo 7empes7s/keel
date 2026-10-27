@@ -493,7 +493,7 @@ try {
   const workerPlannedId = randomUUID();
   await enqueue(client, {
     kind: 'restore',
-    params: { snapshotId: restoreSnapshotId, selection: ['group:Admins'], collectorConfig: '/c.json', targetConfig: '/t.json', artifactId: workerPlannedId },
+    params: { snapshotId: restoreSnapshotId, selection: ['group:Admins'], collectorConfig: '/etc/keel/tenant.json', targetConfig: '/etc/keel/restorer.json', artifactId: workerPlannedId },
     requestedBy: restorer,
   });
   assert.equal(await restoreExecutorForArtifact(client, { artifactId: workerPlannedId }), 'worker');

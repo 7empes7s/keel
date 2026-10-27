@@ -544,8 +544,8 @@ export const JOB_HANDLERS = {
         return [
           '--compliance-fix', requireString(request.controlId, 'params.complianceFix.controlId'),
           '--object', requireString(request.naturalKey, 'params.complianceFix.naturalKey'),
-          '--collector-config', requireString(params.collectorConfig, 'params.collectorConfig'),
-          '--target-config', requireString(params.targetConfig, 'params.targetConfig'),
+          '--collector-config', requireKeelConfigPath(params.collectorConfig, 'params.collectorConfig'),
+          '--target-config', requireKeelConfigPath(params.targetConfig, 'params.targetConfig'),
           '--persist-artifact', requireString(params.artifactId, 'params.artifactId'),
           '--requested-by', requireString(job.requested_by, 'job.requested_by'),
         ];
@@ -601,8 +601,8 @@ export const JOB_HANDLERS = {
       }
 
       const args = [
-        '--collector-config', requireString(params.collectorConfig, 'params.collectorConfig'),
-        '--target-config', requireString(params.targetConfig, 'params.targetConfig'),
+        '--collector-config', requireKeelConfigPath(params.collectorConfig, 'params.collectorConfig'),
+        '--target-config', requireKeelConfigPath(params.targetConfig, 'params.targetConfig'),
       ];
       if (hasPlan) {
         args.push('--plan', requireString(params.planId, 'params.planId'));

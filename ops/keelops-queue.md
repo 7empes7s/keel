@@ -406,6 +406,135 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
 - Do: run K6 from step 2 (step 1 is done) and then K7 steps 2, 3 and 5, exactly as written in those items and within the decisions' wording.
   Write each item's own `Status` and `Result`. Set this item to `done` when both have a final status.
 
+### K14: Finish Q159 step 4: Defender "Make it pass" enforce on KEEL-RT-mailfix-spam, then put it back (after #548)
+- **Scope: only the 2026-10-27 addendum "finish step 4 only" plus step 5.** Steps 1–3 and the old step 4 dry run are done; do not redo them.
+- Moved 2026-10-27 by the "Finish Exchange undo live checks" thread: the root keel-operator has not taken an item since 2026-10-23.
+  The text below the line `Copied from` is the root item, verbatim. Where it says keel-operator, read keelops. Where it says the portal
+  (behind Access), use the CLI or the engine/API calls the item names, as in K7. If a step needs a file or command your user can't
+  read or run (for example writing an `/etc/keel` file), mark the item `blocked` and name it; change nothing else.
+  Items it refers to (Q149, Q45) are in `ops/operator-queue.md` on `claude/operator-queue`; read them there.
+- If any step fails with "Organization cannot be null", "names another tenant" or "separate Restorer", stop and report the exact message.
+- Needs: `grep -q workloadPowershellConfigPath /opt/keel-live/cli/keel-restore.mjs`.
+- Decision: needs the **K14** line under **Operator decisions** (human only). If it is blank, leave this item `todo`.
+- Status: todo
+- Result:
+
+Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q159):
+
+- Drafted by the "Fixes for Defender email checks" thread (2026-10-22). Code: PR #543 (merged as a499c2d). New declared writes on the
+  `exchange-mail-flow` workload: `mailflow.anti-phish-policy.update` (Set-AntiPhishPolicy), `mailflow.anti-spam-policy.update`
+  (Set-HostedContentFilterPolicy), `mailflow.anti-malware-policy.update` (Set-MalwareFilterPolicy), `mailflow.safe-links-policy.update`
+  (Set-SafeLinksPolicy). They stay off until a live writer capture is imported. Compliance's Defender email checks then offer
+  "Make it pass" per failing setting; the fix is a one-setting workload restore (dry run, approval, content-effect approval, write, read-back).
+- Needs: /opt/keel-live at a499c2d or later (`grep -q mailflow.anti-spam-policy /opt/keel-live/engine/restore/workloads/writeDeclarations.mjs`).
+- Status (on Q159/Q161, before the move): todo
+- Earlier result (keel-operator, on the root queue): blocked (2026-10-22 21:35 UTC) for the enforce in step 4: it waits for **#548** (fixes #542) to deploy (live is 3010d22, `workloadPowershellConfigPath` absent). Steps 1–3 and the step 4 dry run are done. B = **3010d22**. Restorer (Exchange) for writes; Collector for reads; global admin not used.
+  1. Fixtures (no rules, apply to nobody; no rule found for any of them): `KEEL-RT-mailfix-spam` guid 839e8b32-… created (PhishSpamAction MoveToJmf, PhishZapEnabled false); `KEEL-RT-mailfix-phish` f56f609e-… created;
+     `KEEL-RT-mailfix-malware` 6dd556b7-… created; `KEEL-RT-mailfix-links` f309e049-… created (Safe Links is licensed).
+  2. Writer capture: capture exit **0**, `verify --require-live --gate workload-writers-live-acceptance` exit **0**.
+     - **Proven** (written, read back, put back): `mailflow.anti-phish-policy.update`, `mailflow.anti-spam-policy.update`, `mailflow.safe-links-policy.update` (plus transport-rule and inbound-connector).
+     - **Not proven:** `mailflow.anti-malware-policy.update`, error `Set-MalwareFilterPolicy failed: … CustomFromAddress: The CustomFromAddress value is not set. Custom notifications cannot be enabled without a valid CustomFromAddress.`
+       The switch the capture picks needs a sender address.
+     - Skipped: outbound connector (no KEEL-RT- object). `needsManualRevert` `[]`, so nothing is left changed.
+  3. Evidence: `claude/live-evidence-workload-writers-mailfix` @ 7488c53c, **PR #555** with `automerge`. pseudonymize check exit 0; my scan is clean.
+     Import from that checkout: exit 0, `workload-writers-exchange-mail-flow-live-acceptance.json` imported (5 writes, build 3010d22); refused `[]`.
+  4. `workload-collect run` (21:33): exchange-mail-flow `complete`, 4 new changes (the four fixtures); `compliance checks: 9 run (5 pass, 4 fail, 0 could not check)`.
+     - "Anti-spam policies quarantine phishing" (`keel-custom.defender-email.anti-spam-phish-quarantined`) **fails**, with KEEL-RT-mailfix-spam rows `PhishSpamAction MoveToJmf → expected Quarantine` and `PhishZapEnabled false → expected true` (and the Default policy, which I did not touch).
+     - Make it pass, by CLI: `keel-restore --compliance-fix keel-custom.defender-email.anti-spam-phish-quarantined --object 'anti-spam-policy:<guid>#PhishSpamAction'`. Dry run **5776fc9b**: 1 change, `Set-HostedContentFilterPolicy` PhishSpamAction MoveToJmf → Quarantine, and 1 content effect (`irreversible`).
+     - **Not approved or enforced:** the worker enforce reconnects with restorer.json (#542) and would fail as in Q149. Run it once #548 is live. (Note: the object key needs the `#<setting>` suffix; the bare key is refused with "does not name a setting this control's fix changes".)
+  5. Not needed yet: PhishSpamAction is still MoveToJmf. The four KEEL-RT-mailfix-* policies are left in place, as the item asks.
+- **Test tenant only. KEEL-RT- policies only, each with NO rule, so it applies to nobody.** Never change a Default or built-in policy, a
+  rule, a CA policy, break-glass or Marouane's account. Restorer for writes, Collector for reads; global admin not used. Under the
+  2026-10-14 standing authorization approve the restore and its content effects yourself and log both approval ids. No tenant-wide
+  setting is changed.
+- Do, from your clone at the deployed commit B, with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print it)
+  and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Fixtures** (Exchange Online PowerShell as the Restorer; create only the policy, never a `New-*Rule`). Report each `Name`, `Guid` and
+     whether it was created:
+     - `New-HostedContentFilterPolicy -Name KEEL-RT-mailfix-spam -PhishSpamAction MoveToJmf -PhishZapEnabled $false`
+     - `New-AntiPhishPolicy -Name KEEL-RT-mailfix-phish`
+     - `New-MalwareFilterPolicy -Name KEEL-RT-mailfix-malware`
+     - `New-SafeLinksPolicy -Name KEEL-RT-mailfix-links -AllowClickThrough $true` (skip and say so if Safe Links is not licensed)
+  2. **Writer capture** for `exchange-mail-flow`, as the tool's header documents: `plan --workload exchange-mail-flow` first, then
+     `capture --confirm-live-tenant-write --workload exchange-mail-flow ... --out docs/release/qualifications/workload-writers-exchange-mail-flow-live-acceptance.json`
+     (all the usual flags, default image, deployed scripts). It flips one harmless switch on each KEEL-RT- policy and puts it back.
+     Then `node tools/release/qualification.mjs verify --require-live --gate workload-writers-live-acceptance --evidence <the record>`.
+     Report the exit codes, and per new operation `ok`, `readBackVerified`, `restoredToOriginal` and `error` or skip reason.
+     Exit 3 means a value may not be back: report object, field and original value.
+  3. Commit the record and `.capture.json` to `claude/live-evidence-workload-writers-mailfix` (from origin/master, secret scan and
+     `pseudonymize.mjs check` first), open a PR with `automerge`, and run `node cli/keel-workload-collect.mjs import` from that checkout.
+     Report the import line for exchange-mail-flow.
+  4. **Make it pass, end to end:** `node cli/keel-workload-collect.mjs run` once, then Check now on Compliance (or
+     `node cli/keel-compliance-check.mjs` if that is how you run it). Confirm "Anti-spam policies quarantine phishing" fails with
+     KEEL-RT-mailfix-spam rows for "Phishing goes to" and "Pulls back delivered phishing". In the portal (or the API), press
+     **Make it pass** on the KEEL-RT-mailfix-spam "Phishing goes to" row, give a reason, ask for approval, approve the restore and its
+     content effect (quarantine) yourself, and let the worker run it. Report the dry-run artifact id, job ids, approval ids, the
+     outcome (`verified` expected) and that only `PhishSpamAction` changed (Get-HostedContentFilterPolicy KEEL-RT-mailfix-spam).
+  5. **Put back:** `Set-HostedContentFilterPolicy -Identity <KEEL-RT-mailfix-spam Guid> -PhishSpamAction MoveToJmf` so the fixture keeps
+     failing for the next proof. Leave the four KEEL-RT-mailfix-* policies in place (no rule, they apply to nobody).
+- **Report:** B; steps 1-5 as above; anything left changed in the tenant.
+- **Addendum (2026-10-22 22:05, PR #559):** the anti-malware capture failed only because it flipped `CustomNotifications` (needs a
+  CustomFromAddress). After #559 is live (`grep -q "'AdminDisplayName', 'EnableFileFilter'" /opt/keel-live/engine/restore/workloads/writeDeclarations.mjs`),
+  re-run step 2 (writer capture for `exchange-mail-flow`; it now writes the description of KEEL-RT-mailfix-malware and puts it back) and
+  step 3 (evidence PR plus import), and report `mailflow.anti-malware-policy.update` `ok`, `readBackVerified`, `restoredToOriginal`.
+  Then finish step 4 once #548 is live, as already noted.
+- **Addendum (2026-10-27, finish step 4 only):** #548 is merged. Needs: `grep -q workloadPowershellConfigPath /opt/keel-live/cli/keel-restore.mjs`
+  (if it fails, wait for the deploy; do not set this item blocked). Steps 1–3 and the step 4 dry run are done; do not redo them.
+  The Make it pass dry run now also reads with the family collector file. Make a **new** dry run (the old 5776fc9b predates #548),
+  then approve the restore and its content effect yourself, let the worker enforce, and do step 5 (put PhishSpamAction back to MoveToJmf).
+  Report the dry-run artifact id, the log line `PowerShell connects as the collector with /etc/keel/exchange-collector.json`,
+  approval ids, job id, outcome (`verified` expected), the enforce log line naming `/etc/keel/exchange-restorer.json`, and that only
+  PhishSpamAction changed. If it fails with "Organization cannot be null", "names another tenant" or "separate Restorer", report the exact message.
+
+### K15: Live re-check of the Exchange undo and the Exchange / Purview Discovery listing (fixes #542, after #548)
+- **Scope:** all of Q161 (steps 1–4).
+- Moved 2026-10-27 by the "Finish Exchange undo live checks" thread: the root keel-operator has not taken an item since 2026-10-23.
+  The text below the line `Copied from` is the root item, verbatim. Where it says keel-operator, read keelops. Where it says the portal
+  (behind Access), use the CLI or the engine/API calls the item names, as in K7. If a step needs a file or command your user can't
+  read or run (for example writing an `/etc/keel` file), mark the item `blocked` and name it; change nothing else.
+  Items it refers to (Q149, Q45) are in `ops/operator-queue.md` on `claude/operator-queue`; read them there.
+- If any step fails with "Organization cannot be null", "names another tenant" or "separate Restorer", stop and report the exact message.
+- Needs: `grep -q workloadPowershellConfigPath /opt/keel-live/cli/keel-restore.mjs`. Run after K14 (both use exchange-restorer.json).
+- Decision: needs the **K15** line under **Operator decisions** (human only). If it is blank, leave this item `todo`.
+- Status: todo
+- Result:
+
+Copied from `ops/operator-queue.md` on `claude/operator-queue` (Q161):
+
+- Drafted by the "Exchange and Purview organization missing" thread (2026-10-22). Code: PR #548. Fixture-tested only.
+  - **Change:** the workload restore (dry run and enforce) and the Discovery cmdlet listing now connect PowerShell with the family's
+    own config, like the collect: `powershellConfigs[family]` for the dry run and Discovery; for the enforce,
+    `powershellRestorerConfigs[family]` in `/etc/keel/workload-scope.json` if set, else the collector file's `-restorer.json`
+    sibling (`exchange-collector.json` gives `exchange-restorer.json`, `purview-collector.json` gives `purview-restorer.json`).
+    Graph still uses `tenant.json` / `restorer.json`. The enforce logs `PowerShell connects as the restorer with <path>`.
+- Needs: /opt/keel-live at the #548 merge or later (`grep -q workloadPowershellConfigPath /opt/keel-live/cli/keel-restore.mjs`).
+- Status (on Q159/Q161, before the move): todo
+- Earlier result (keel-operator, on the root queue): (none)
+- **Test tenant only.** Same hard rules and standing approval as Q149: approve the restore yourself and log the approval id.
+  Collector for reads, Restorer for the write. Grant nothing. Never touch CA policies, break-glass or Marouane's account.
+- **Fixture:** one Exchange transport rule `KEEL-RT-svc-change`, created **disabled**, as in Q149 (condition
+  RecipientAddressContainsWords `keel-rt-nobody`, PrependSubject `[KEEL-RT] `, Mode Audit).
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`):
+  1. **Host check:** report yes/no only (never values): `/etc/keel/exchange-restorer.json` and `/etc/keel/purview-restorer.json`
+     exist, are readable by the user the worker runs as, name `organization`, name `tenantId`, and have a different `clientId`,
+     `certPath` and `keyPath` from **every** `-collector.json` listed in `powershellConfigs` (#548 now refuses a restorer that shares an app or
+     certificate with any family's collector) and from `/etc/keel/tenant.json`. #548 refuses a restorer file
+     with no `tenantId`: if one has none, copy it to `<file>.bak-q161` (same owner and mode), add `tenantId` with the value
+     `/etc/keel/tenant.json` holds, keep owner and mode, and report it (undo: restore the `.bak-q161`). If
+     `exchange-restorer.json` is missing, stop and report.
+  2. **Discovery:** `node cli/keel-discover.mjs run --no-store --versions v1.0` (and the default stored run if cheap). Expect
+     `PowerShell ExchangeOnlineManagement: listed N Get cmdlets.` (no "Organization cannot be null"). Report the PowerShell lines verbatim.
+  3. **Undo (the Q149 step that failed):** create the fixture (Mode Audit), collect, accept the `added` row as in Q149 step 2.
+     Set Mode `Enforce`, collect, note the `modified` row's `previous_collection_id`.
+     Dry run **without** `--collector-config`:
+     `node cli/keel-restore.mjs --workload exchange-mail-flow --collection <previous_collection_id> --target transport-rule:KEEL-RT-svc-change --persist-artifact <uuid>`.
+     Expect `1 change(s)`: `Set-TransportRule` Mode Enforce to Audit, and the log line `PowerShell connects as the collector with /etc/keel/exchange-collector.json`.
+     Approve (log the id) and let the worker enforce. Expect outcome `verified`, the log line naming `/etc/keel/exchange-restorer.json`,
+     and the live rule at Mode Audit. Collect: no new row for the rule; its alert `resolved`.
+  4. Cleanup: delete the rule; collect; accept the `removed` row; collect again: 0 changes.
+- **Report:** B; step 1 yes/no; step 2 lines; step 3 artifact, approval and job ids, the job outcome and the two log lines; what is left in the tenant.
+  If any step fails with "Organization cannot be null", "names another tenant" or "separate Restorer", file an issue with the exact message.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every item that needs it stays untouched.

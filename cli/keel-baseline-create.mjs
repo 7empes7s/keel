@@ -15,6 +15,7 @@
 // process-group teardown as every other job kind. All governance logic stays in the
 // engine module — this file only parses argv and connects.
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { replaceBaseline, seedFromSnapshot } from '../engine/govern/baseline.mjs';
@@ -38,7 +39,7 @@ function requireArg(name, argv = process.argv) {
 function resolveTenantRef({ argv, readFile }) {
   const explicit = arg('tenant-ref', undefined, argv);
   if (explicit) return explicit;
-  const config = JSON.parse(readFile(arg('config', '/etc/keel/tenant.json', argv), 'utf8'));
+  const config = readConfigFile(arg('config', '/etc/keel/tenant.json', argv), { readFile, what: 'collector settings' });
   return `sha256:${createHash('sha256').update(config.tenantId).digest('hex').slice(0, 16)}`;
 }
 

@@ -9,6 +9,7 @@
 // node keel-govern.mjs evidence verify
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { GraphReader } from '../tools/tenant-probe/graph.mjs';
 import { collectM1, neededTypes } from '../engine/collect/entraAdapter.mjs';
@@ -67,7 +68,7 @@ function dbUrl() {
 }
 
 function readConfig(path = arg('config', '/etc/keel/tenant.json')) {
-  return JSON.parse(readFileSync(path, 'utf8'));
+  return readConfigFile(path, { readFile: readFileSync, what: 'collector settings' });
 }
 
 function tenantRefFor(config) {
@@ -206,7 +207,7 @@ function liveStateFor(resource, liveResources, softDeleted) {
 async function executeRollback(plan, { driftId, client }) {
   const collector = readConfig();
   const restorerConfigPath = requiredArg('restorer-config');
-  const restorer = JSON.parse(readFileSync(restorerConfigPath, 'utf8'));
+  const restorer = readConfigFile(restorerConfigPath, { readFile: readFileSync, what: 'restorer settings' });
   assertSeparateRestorer(collector, restorer);
 
   // Collection stays on the read-only Collector registration. The Restorer

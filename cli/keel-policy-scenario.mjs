@@ -20,6 +20,7 @@
 // 1 for lockout or unknown, 2 for usage. Read-only: no Graph token, no tenant write.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { pathToFileURL } from 'node:url';
 
 import { attachLiveReads, evaluateProposalForTenant, readLiveWhatIf } from '../engine/safety/policyScenario.mjs';
@@ -44,7 +45,7 @@ function integer(argv, name) {
 function resolveTenantRef(argv, readFile) {
   const explicit = arg(argv, 'tenant-ref');
   if (explicit) return explicit;
-  const config = JSON.parse(readFile(arg(argv, 'config') ?? '/etc/keel/tenant.json', 'utf8'));
+  const config = readConfigFile(arg(argv, 'config') ?? '/etc/keel/tenant.json', { readFile, what: 'collector settings' });
   return `sha256:${createHash('sha256').update(config.tenantId).digest('hex').slice(0, 16)}`;
 }
 

@@ -7570,7 +7570,7 @@ item that needs it stays untouched.
   (Set-SafeLinksPolicy). They stay off until a live writer capture is imported. Compliance's Defender email checks then offer
   "Make it pass" per failing setting; the fix is a one-setting workload restore (dry run, approval, content-effect approval, write, read-back).
 - Needs: /opt/keel-live at a499c2d or later (`grep -q mailflow.anti-spam-policy /opt/keel-live/engine/restore/workloads/writeDeclarations.mjs`).
-- Status: todo
+- Status: moved (2026-10-27: to K14 on claude/keelops-queue; keel-operator, skip this item)
 - Result: blocked (2026-10-22 21:35 UTC) for the enforce in step 4: it waits for **#548** (fixes #542) to deploy (live is 3010d22, `workloadPowershellConfigPath` absent). Steps 1–3 and the step 4 dry run are done. B = **3010d22**. Restorer (Exchange) for writes; Collector for reads; global admin not used.
   1. Fixtures (no rules, apply to nobody; no rule found for any of them): `KEEL-RT-mailfix-spam` guid 839e8b32-… created (PhishSpamAction MoveToJmf, PhishZapEnabled false); `KEEL-RT-mailfix-phish` f56f609e-… created;
      `KEEL-RT-mailfix-malware` 6dd556b7-… created; `KEEL-RT-mailfix-links` f309e049-… created (Safe Links is licensed).
@@ -7664,7 +7664,7 @@ item that needs it stays untouched.
     sibling (`exchange-collector.json` gives `exchange-restorer.json`, `purview-collector.json` gives `purview-restorer.json`).
     Graph still uses `tenant.json` / `restorer.json`. The enforce logs `PowerShell connects as the restorer with <path>`.
 - Needs: /opt/keel-live at the #548 merge or later (`grep -q workloadPowershellConfigPath /opt/keel-live/cli/keel-restore.mjs`).
-- Status: todo
+- Status: moved (2026-10-27: to K15 on claude/keelops-queue; keel-operator, skip this item)
 - Result:
 - **Test tenant only.** Same hard rules and standing approval as Q149: approve the restore yourself and log the approval id.
   Collector for reads, Restorer for the write. Grant nothing. Never touch CA policies, break-glass or Marouane's account.

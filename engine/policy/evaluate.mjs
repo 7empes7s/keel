@@ -15,7 +15,7 @@ import { appendEvidence } from '../govern/evidence.mjs';
 import { can } from '../authz/can.mjs';
 import { gateBlastRadius } from '../safety/blastRadius.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
-import { OPEN_DRIFT_PREDICATE } from '../store/openDrift.mjs';
+import { OPEN_DRIFT_PREDICATE, markSameContentDrift } from '../store/openDrift.mjs';
 import { executeAutoRemediation } from './execute.mjs';
 
 export const POLICY_EVALUATION_EVIDENCE_KIND = 'policy-evaluation';
@@ -332,6 +332,8 @@ export async function evaluateOpenDrifts(client, {
   actor = 'policy-evaluator',
   automationActor = 'policy-automation',
 }) {
+  // A row recorded only because a stored hash predates a field rule is never acted on.
+  await markSameContentDrift(client, { tenantRef });
   const { rows: drifts } = await client.query(
     `WITH latest AS (
        SELECT DISTINCT ON (baseline_id, natural_key) id

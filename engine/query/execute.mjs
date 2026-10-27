@@ -21,6 +21,7 @@ import { scopePredicate } from '../authz/entityScope.mjs';
 import { contentWorkloadInfo, loadServiceBackups } from '../coverage/serviceBackups.mjs';
 import { typeInfo } from '../insights/taxonomy.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
+import { RECORDED_CHANGE_PREDICATE } from '../store/openDrift.mjs';
 import { BUDGET, PLAN_VERSION, QueryRefusal, RESOURCE_TYPES, describePlan, isValidatedPlan, planQuestion, validateRequest } from './intent.mjs';
 
 export const ANSWER_VERSION = 1;
@@ -97,7 +98,7 @@ const TEMPLATES = Object.freeze({
     // A name is looked for anywhere in the saved name or key, as typed (no wildcards).
     const name = params.name ? `%${String(params.name).replace(/[\\%_]/g, (char) => `\\${char}`)}%` : null;
     const base = [tenantRef, params.from, params.to, params.resourceType, params.changeType, params.resourceTypes ? [...params.resourceTypes] : null, name];
-    const condition = `d.tenant_ref = $1 AND ${SEEN_AT} >= $2 AND ${SEEN_AT} < $3
+    const condition = `d.tenant_ref = $1 AND ${SEEN_AT} >= $2 AND ${SEEN_AT} < $3 AND ${RECORDED_CHANGE_PREDICATE}
          AND ($4::text IS NULL OR d.resource_type = $4) AND ($5::text IS NULL OR d.change_type = $5)
          AND ($6::text[] IS NULL OR d.resource_type = ANY($6::text[]))
          AND ($7::text IS NULL OR COALESCE(${objectNameSql('d.after_payload', 'd.resource_type')}, ${objectNameSql('d.before_payload', 'd.resource_type')}, d.natural_key) ILIKE $7

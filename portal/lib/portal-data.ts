@@ -19,7 +19,7 @@ import {
   listLatestOpenDrift,
 } from "../../engine/store/governance.mjs";
 import { connect } from "@/lib/db";
-import { OPEN_DRIFT_PREDICATE } from "../../engine/store/openDrift.mjs";
+import { OPEN_DRIFT_PREDICATE, RECORDED_CHANGE_PREDICATE } from "../../engine/store/openDrift.mjs";
 import { captureApprovalScope, scopePredicate } from "../../engine/authz/entityScope.mjs";
 import { routeApproval } from "../../engine/govern/approvals.mjs";
 import { MAX_ATTRIBUTED_CHANGES, attributeChanges, changedFields } from "../../engine/identity/attribution.mjs";
@@ -606,10 +606,11 @@ async function driftTrendFor(
   const { rows } = await client.query(
     `SELECT to_char(date_trunc('day', detected_at AT TIME ZONE 'UTC'), 'YYYY-MM-DD') AS day,
             count(DISTINCT natural_key)::int AS count
-       FROM drift
+       FROM drift d
       WHERE tenant_ref = $1
         AND baseline_id = $2
         AND detected_at >= $3
+        AND ${RECORDED_CHANGE_PREDICATE}
       GROUP BY 1`,
     [ref, activeBaselineId, new Date(end.getTime() - DRIFT_TREND_DAYS * 86_400_000)],
   );

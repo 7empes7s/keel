@@ -16,7 +16,7 @@ import {
   completeSnapshot, connect, createSnapshot, getResourceVersions, insertReferences,
   insertResourceVersion,
 } from '../engine/store/db.mjs';
-import { getActiveBaseline, listOpenDrift, recordDrift } from '../engine/store/governance.mjs';
+import { getActiveBaseline, listOpenDrift, markSameContentDrift, recordDrift } from '../engine/store/governance.mjs';
 import { diffSnapshots } from '../engine/govern/diffSnapshots.mjs';
 import { isSuppressed } from '../engine/govern/disposition.mjs';
 import { syncDriftAlerts } from '../engine/notify/alerts.mjs';
@@ -209,6 +209,10 @@ async function detect() {
         blastRadius: item.blastRadius,
       });
     }
+
+    // Rows recorded before detection compared content (a hash stored under older
+    // field rules) are marked, so no list shows them as changes.
+    await markSameContentDrift(client, { tenantRef });
 
     // Task 82: drift rows become alert observations at the snapshot's completion
     // instant, so an older snapshot re-detected later cannot close a newer alert.

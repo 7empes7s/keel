@@ -1,4 +1,6 @@
 import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE, OPEN_DRIFT_PREDICATE } from './openDrift.mjs';
+
+export { markSameContentDrift } from './openDrift.mjs';
 import { evaluateDrift } from '../policy/evaluate.mjs';
 import { executeAutoRemediation } from '../policy/execute.mjs';
 import { changeBlastRadius } from '../safety/blastRadius.mjs';

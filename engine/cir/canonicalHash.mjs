@@ -35,6 +35,26 @@ export function canonicalHash(payload, resourceType) {
 }
 
 /**
+ * Whether two stored versions of one resource hold the same content under the
+ * current rules. Each side is { payload_hash, payload }. Equal hashes are the same
+ * content. Unequal hashes are checked again from the stored payloads: a hash stored
+ * before a field was classified server-owned still counts that field, so the same
+ * object read before and after the rule change would otherwise look changed
+ * (issue #288 roleAssignmentSchedule.scheduleInfo.startDateTime, #294
+ * permissionGrantPolicy rule ids). Without both payloads, or for a type the rules
+ * do not know, unequal hashes stay a difference.
+ */
+export function sameContent(before, after, resourceType) {
+  if ((before?.payload_hash ?? null) === (after?.payload_hash ?? null)) return true;
+  if (before?.payload == null || after?.payload == null) return false;
+  try {
+    return canonicalHash(before.payload, resourceType) === canonicalHash(after.payload, resourceType);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Compares two recorded resource-version rows that may have been hashed under
  * different HASH_VERSIONs (spec M2.3 / roadmap task-51). Equal versions
  * compare hashes directly — exactly what every caller in this codebase

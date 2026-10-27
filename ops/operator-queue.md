@@ -1338,6 +1338,57 @@ being triggered by queue updates.
 - **Report:** B; per capture the exit code, verify output and per-write ok/readBackVerified; the evidence commit and PR; the import
   lines; anything left in the tenant. Never print a secret.
 
+### Q178: Read-only check of Exchange recipients and mailbox permissions, then KEEL-RT- recipient fixtures
+- Drafted by the "Back up Exchange recipients and permissions" thread (2026-10-27). Keel does not back up distribution lists,
+  shared/room/equipment mailboxes, Full Access, Send As, Send on behalf, room booking rules or mail contacts yet. A new read-only
+  workload `exchange-recipients` is being built (PR to follow). This item checks the cmdlets on the test tenant first, so the
+  fields and identities the code declares match what Exchange really answers, and leaves fixtures so every list is non-empty.
+- Needs: nothing (no deploy needed: you run the cmdlets by hand in `keel-powershell`, as for Q151).
+- Status: todo
+- **Tenant:** step 1 is reads only, with the Collector's Exchange config. Step 2 creates `KEEL-RT-` recipients only (Restorer's
+  Exchange config, Exchange Administrator, already held) and grants mailbox rights on them only to `keel-rt-20260908-carla` and
+  `keel-rt-20260908-diego`. Never touch any other mailbox or user. No app grant, role, CA or consent change. Nothing to delete:
+  the fixtures stay for the capture that follows the PR.
+- Do:
+  1. **Read-only check.** In `keel-powershell`, `Connect-ExchangeOnline` app-only with the Collector's Exchange config
+     (`powershellConfigs.exchange` in `/etc/keel/workload-scope.json`, else `/etc/keel/tenant.json`). For each read below report:
+     exit (ok / error with the exact message and `FullyQualifiedErrorId`), the object count, the seconds it took, and for the first
+     object only the **property names** whose value is not null or empty (names, never values), plus whether `Guid` and
+     `ExternalDirectoryObjectId` are present and look like Guids (yes/no).
+     - `Get-DistributionGroup -ResultSize Unlimited`
+     - `Get-DynamicDistributionGroup -ResultSize Unlimited`
+     - `Get-UnifiedGroup -ResultSize Unlimited`
+     - `Get-Mailbox -RecipientTypeDetails SharedMailbox -ResultSize Unlimited`, then the same with `RoomMailbox` and `EquipmentMailbox`
+     - `Get-MailContact -ResultSize Unlimited` and `Get-MailUser -ResultSize Unlimited`
+     - `Get-RecipientPermission -ResultSize Unlimited`: also report how many rows have `IsInherited = $false` and `Trustee` other
+       than `NT AUTHORITY\SELF`, and the **shape** of `Identity` on those rows (is it a name, an alias, a Guid or a distinguished
+       name? Answer with the shape, e.g. "Name, same as Get-Mailbox .Name", never the value).
+     - For the first shared mailbox only (by its `Guid`): `Get-MailboxPermission -Identity <Guid>` (count of rows with
+       `IsInherited = $false` and `User` not `NT AUTHORITY\SELF`; property names of one row; seconds taken).
+     - For the first room mailbox only (by its `Guid`): `Get-CalendarProcessing -Identity <Guid>` (property names; whether it has a
+       `Guid` or an `Identity`, and the shape of each; seconds taken).
+     - Whether `Get-Mailbox -RecipientTypeDetails SharedMailbox,RoomMailbox -ResultSize Unlimited` (one call, two types) works.
+  2. **Fixtures** (only the ones step 1 shows are missing; skip any whose `KEEL-RT-` name already exists), with the Restorer's
+     Exchange config:
+     - `New-DistributionGroup -Name 'KEEL-RT-recipients-dl' -Type Distribution -Members keel-rt-20260908-carla` and
+       `Set-DistributionGroup -Identity 'KEEL-RT-recipients-dl' -HiddenFromAddressListsEnabled $true -RequireSenderAuthenticationEnabled $true`
+     - `New-DynamicDistributionGroup -Name 'KEEL-RT-recipients-ddl' -RecipientFilter "(Department -eq 'KEEL-RT')"`
+     - `New-Mailbox -Shared -Name 'KEEL-RT-recipients-shared'`, then `Add-MailboxPermission -Identity 'KEEL-RT-recipients-shared'
+       -User keel-rt-20260908-carla -AccessRights FullAccess -AutoMapping $false`,
+       `Add-RecipientPermission -Identity 'KEEL-RT-recipients-shared' -Trustee keel-rt-20260908-diego -AccessRights SendAs -Confirm:$false`,
+       `Set-Mailbox -Identity 'KEEL-RT-recipients-shared' -GrantSendOnBehalfTo keel-rt-20260908-carla -HiddenFromAddressListsEnabled $true`
+     - `New-Mailbox -Room -Name 'KEEL-RT-recipients-room'`, then `Set-Mailbox -Identity 'KEEL-RT-recipients-room' -ResourceCapacity 4`
+       and `Set-CalendarProcessing -Identity 'KEEL-RT-recipients-room' -AutomateProcessing AutoAccept -BookingWindowInDays 90
+       -MaximumDurationInMinutes 120 -AllowConflicts $false`
+     - `New-Mailbox -Equipment -Name 'KEEL-RT-recipients-equipment'`
+     - `New-MailContact -Name 'KEEL-RT-recipients-contact' -ExternalEmailAddress 'keel-rt-contact@example.com'`
+     Then rerun the step 1 counts (counts only).
+- **Expected:** every read in step 1 answers app-only with the Collector (Exchange Administrator); every object has a `Guid`;
+  after step 2 every list has at least one `KEEL-RT-` object, the shared mailbox has 1 Full Access row and 1 Send As row.
+- **Report:** step 1 per read (exit, count, seconds, property names, Guid yes/no, the Identity shapes asked for); step 2 what was
+  created, with exit codes; the recounts. Never print a secret, an address or a user's name other than the `KEEL-RT-` and
+  `keel-rt-` fixtures.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

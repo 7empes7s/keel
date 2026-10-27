@@ -496,6 +496,9 @@ const UNREAD_ASSIGNMENTS = Object.freeze({
  */
 export function unreadAssignmentsStep(resource) {
   if (!writesIntuneAssignments(resource?.resourceType) || resource.verb === 'delete') return null;
+  // Batch 18: app assignments a restore holds back, shown in the dry run too.
+  const held = resource.resourceType === 'mobileApp' && (resource.verb === 'create' || resource.verb === 'update') ? appAssignmentHold(resource, resource.verb, resource.live?.payload) : null;
+  if (held) return held.step;
   const desired = resource.assignments;
   if (!desired || isComplete(desired.outcome)) return null;
   // The default Company Portal branding applies to every user and has none.
@@ -576,7 +579,9 @@ export function attachIntuneAssignments(resources, { desired, live = new Map(), 
     const observed = live.get(key);
     const liveCount = observed && isComplete(observed.outcome) ? liveAssignmentIdentities(observed.targets, { observed: true, extras }).size : null;
     const attached = { ...resource, assignments: { outcome: want.outcome, targets: want.targets } };
-    const reach = newAssignmentReach(attached, observed, resolve, extras);
+    // Batch 18: app assignments the restore holds back are never written, so they reach no one.
+    const held = resource.resourceType === 'mobileApp' && appAssignmentHold(attached, resource.verb === 'noop' ? 'update' : resource.verb, resource.live?.payload);
+    const reach = held ? [] : newAssignmentReach(attached, observed, resolve, extras);
     const withAssignments = {
       ...attached,
       ...(liveCount === null ? {} : { liveAssignmentCount: liveCount }),
@@ -625,8 +630,9 @@ function targetLabel(targetType, key, attributes, extras) {
  * contentEffects.mjs) judges an object that reaches new devices as if it were new.
  */
 export function newAssignmentReach(resource, observed, resolve, assignmentExtras = []) {
-  // When a script runs is not who it reaches: a schedule alone never counts.
-  const extras = assignmentExtras.filter((field) => field !== 'runSchedule');
+  // When a script runs is not who it reaches: a schedule alone never counts,
+  // nor do an app assignment's notification and delivery settings (batch 18).
+  const extras = assignmentExtras.filter((field) => field !== 'runSchedule' && field !== 'settings');
   const plan = assignmentPlan(resource, resolve, { extras });
   if (plan.state !== 'ready') return null;
   const liveEdges = resource.live?.state === 'present' && observed && isComplete(observed.outcome) ? (observed.targets ?? []) : null;
@@ -1935,33 +1941,37 @@ const appAssignmentStep = (description) => Object.freeze({ kind: 'integration', 
  *    before batch 18): writing them would drop notifications, delivery and
  *    restart options.
  */
-async function appAssignmentsAfterWrite(io, step) {
-  const { payload, verb, live, resource } = step;
-  const desired = resource.assignments;
-  if (!desired || !isComplete(desired.outcome)) return assignmentsAfterWrite(io, step);
+export function appAssignmentHold(resource, verb, livePayload) {
+  const desired = resource?.assignments;
+  if (!desired || !isComplete(desired.outcome)) return null;
+  const payload = resource.payload ?? {};
   const targets = desired.targets ?? [];
   const included = targets.filter((target) => target?.attributes?.targetType !== EXCLUSION);
-  if (included.length === 0) return assignmentsAfterWrite(io, step);
+  if (included.length === 0) return null;
   const listed = appTargetWords(targets);
-  const hasPackage = verb === 'create' ? appGroupOf(payload) !== 'packaged' : appHasPackage(live ?? resource.live?.payload ?? {});
+  const hold = (changes, description) => ({ changes: { assignments: changes }, step: appAssignmentStep(description) });
+  const hasPackage = verb === 'create' ? appGroupOf(payload) !== 'packaged' : appHasPackage(livePayload ?? {});
   if (!hasPackage) {
-    return {
-      changes: { assignments: 'not written: the app has no package yet' },
-      completion: [appAssignmentStep(`Not assigned yet: Intune has no package for this app, and an assigned app without one fails to install on every device it reaches. Upload the package in ${APP_PORTAL}, then assign it as in the backup: ${listed}`)],
-    };
+    return hold('not written: the app has no package yet', `Not assigned yet: Intune has no package for this app, and an assigned app without one fails to install on every device it reaches. Upload the package in ${APP_PORTAL}, then assign it as in the backup: ${listed}`);
   }
   const uninstall = included.filter((target) => lower(target.attributes?.intent) === 'uninstall');
   if (uninstall.length > 0) {
-    return {
-      changes: { assignments: 'not written: the backup uninstalls it from some devices' },
-      completion: [appAssignmentStep(`Assignments not restored: the backup uninstalls this app for ${appTargetWords(uninstall)}, which removes it and its data from those devices, so KEEL never writes it. Check them and assign it by hand in ${APP_PORTAL}, as in the backup: ${listed}`)],
-    };
+    return hold('not written: the backup uninstalls it from some devices', `Assignments not restored: the backup uninstalls this app for ${appTargetWords(uninstall)}, which removes it and its data from those devices, so KEEL never writes it. Check them and assign it by hand in ${APP_PORTAL}, as in the backup: ${listed}`);
   }
   if (targets.some((target) => target?.attributes?.settingsDigest && target.attributes.settings === undefined)) {
-    return {
-      changes: { assignments: 'not written: the backup holds only a fingerprint of the assignment settings' },
-      completion: [appAssignmentStep(`Assignments not restored: this backup was taken before KEEL read the assignment settings (notifications, delivery and restart options) in full. Take a new backup and restore again, or assign it by hand in ${APP_PORTAL}, as in the backup: ${listed}`)],
-    };
+    return hold('not written: the backup holds only a fingerprint of the assignment settings', `Assignments not restored: this backup was taken before KEEL read the assignment settings (notifications, delivery and restart options) in full. Take a new backup and restore again, or assign it by hand in ${APP_PORTAL}, as in the backup: ${listed}`);
+  }
+  return null;
+}
+
+async function appAssignmentsAfterWrite(io, step) {
+  const { verb, live, resource } = step;
+  // Judged again on the object as it reads back now (its package may have
+  // changed since the plan); the plan's own step is already on the result.
+  const held = appAssignmentHold(resource, verb, live ?? resource.live?.payload);
+  if (held) {
+    const planned = appAssignmentHold(resource, verb, resource.live?.payload);
+    return { changes: held.changes, ...(planned ? {} : { completion: [held.step] }) };
   }
   return assignmentsAfterWrite(io, step);
 }

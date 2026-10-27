@@ -355,9 +355,10 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   // device the app is assigned to, with administrator rights, so changing them
   // on an existing app needs the separate approval, showing the text. Telling
   // Microsoft 365 Apps to remove older Office versions uninstalls them from
-  // those devices. A recreated app is judged as a create: who it reaches is the
-  // backup's own assignments, and an uninstall assignment is never written.
-  mobileApp: { reviewed: true, rules: [
+  // those devices. A recreated app, or one a restore assigns to more devices, is
+  // judged for those devices as if new (issue #461); assignments the restore
+  // holds back (no package, uninstall) reach no one, so they are not judged.
+  mobileApp: { reviewed: true, judgesCreates: 'when-assigned', rules: [
     rule('installCommandLine', 'runs-on-devices', bodyChanges, commandLine('installCommandLine'), commandDetail('installCommandLine')),
     rule('uninstallCommandLine', 'runs-on-devices', bodyChanges, commandLine('uninstallCommandLine'), commandDetail('uninstallCommandLine')),
     rule('rules (detection and requirement scripts)', 'runs-on-devices', bodyChanges, appRuleScripts, appRuleScriptDetail),

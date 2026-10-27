@@ -6,7 +6,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { applyIntuneExtendedWrite, writesIntuneAssignments } from './intuneOperations.mjs';
+import { applyIntuneExtendedWrite, attachIntuneAssignments, unreadAssignmentsStep, writesIntuneAssignments } from './intuneOperations.mjs';
 import { APP_KINDS, appGroupOf, appHasPackage } from './intuneAppKinds.mjs';
 import { projectAssignment } from '../collect/relationships.mjs';
 import { diffRelationships } from '../govern/diffSnapshots.mjs';
@@ -100,7 +100,8 @@ test('a Win32 app comes back as an unassigned shell with an upload step and the 
   assert.equal(upload.reason, 'binary-route');
   assert.match(upload.description, /Upload it again/);
   assert.deepEqual(upload.values, [{ name: 'keel-fixture.intunewin', expires: null }]);
-  const [assignLater] = result.applied.completion;
+  assert.equal(result.applied.completion, undefined, 'the plan holds the step (applyEngine adds it to the result)');
+  const assignLater = unreadAssignmentsStep({ ...resource, verb: 'create' });
   assert.equal(assignLater.requirement, 'assignments');
   assert.match(assignLater.description, /Upload the package/);
   assert.match(assignLater.description, /group:KEEL-RT-Sales \(required\)/);
@@ -119,7 +120,7 @@ test('an existing Win32 app is assigned once its package is in Intune, and not b
     const patch = graph.calls.find((call) => call.method === 'PATCH');
     assert.deepEqual(Object.keys(patch.body).sort(), ['@odata.type', 'description']);
     assert.equal(graph.calls.some((call) => call.path.endsWith('/assign')), writes, state);
-    assert.equal(Boolean(result.applied.completion), !writes, state);
+    assert.equal(result.applied.completion, undefined, 'the plan already holds the step');
   }
 });
 
@@ -140,17 +141,20 @@ test('an app synced from Apple is never created; on update only who it is assign
 
 test('an uninstall assignment is never written, and the step names it', async () => {
   const graph = idoFakeGraph();
-  const result = await applyIntuneExtendedWrite(graph, resourceOf(webApp, { assignments: assigned('uninstall') }), 'create', { ...FAST, referenceContext: context() });
+  const resource = resourceOf(webApp, { assignments: assigned('uninstall') });
+  const result = await applyIntuneExtendedWrite(graph, resource, 'create', { ...FAST, referenceContext: context() });
   assert.equal(result.failed, undefined, result.failed?.error);
   assert.equal(graph.calls.some((call) => call.path.endsWith('/assign')), false);
-  assert.match(result.applied.completion[0].description, /uninstalls this app for group:KEEL-RT-Sales \(uninstall\)/);
+  assert.match(unreadAssignmentsStep({ ...resource, verb: 'create' }).description, /uninstalls this app for group:KEEL-RT-Sales \(uninstall\)/);
 });
 
 test('a backup that holds only a fingerprint of the assignment settings is not assigned', async () => {
   const graph = idoFakeGraph();
-  const result = await applyIntuneExtendedWrite(graph, resourceOf(webApp, { assignments: assigned('required', { settingsDigest: 'abc' }) }), 'create', { ...FAST, referenceContext: context() });
+  const resource = resourceOf(webApp, { assignments: assigned('required', { settingsDigest: 'abc' }) });
+  const result = await applyIntuneExtendedWrite(graph, resource, 'create', { ...FAST, referenceContext: context() });
+  assert.match(result.applied.changes.assignments, /fingerprint/);
   assert.equal(graph.calls.some((call) => call.path.endsWith('/assign')), false);
-  assert.match(result.applied.completion[0].description, /Take a new backup/);
+  assert.match(unreadAssignmentsStep({ ...resource, verb: 'create' }).description, /Take a new backup/);
 });
 
 test('a kind KEEL does not know, and an app whose kind changed, are left to a person', async () => {
@@ -198,4 +202,39 @@ test('an app assignment keeps its settings, and a backup that starts keeping the
   assert.deepEqual(diffRelationships(state(before), state(edge.attributes)).drift, []);
   const other = { ...edge.attributes, settingsDigest: 'f'.repeat(64) };
   assert.equal(diffRelationships(state(edge.attributes), state(other)).drift[0].changeType, 'modified');
+});
+
+test('a recreated Microsoft 365 Apps that removes older Office is judged for the devices it reaches', () => {
+  const office = { '@odata.type': '#microsoft.graph.officeSuiteApp', displayName: 'KEEL-RT-office', shouldUninstallOlderVersionsOfOffice: true };
+  const [planned] = attachIntuneAssignments([resourceOf(office, { verb: 'create' })], {
+    desired: new Map([['mobileApp:KEEL-RT-office|assignment', assigned('required', { settings, settingsDigest: 'd' })]]),
+    resolve: (key) => (key === GROUP ? 'target-group' : null),
+  });
+  assert.deepEqual(planned.newAssignments, ['group:KEEL-RT-Sales, intent: "required"']);
+  const { effects } = classifyContentEffects([planned]);
+  assert.deepEqual(effects.map((effect) => [effect.field, effect.effect]), [['shouldUninstallOlderVersionsOfOffice', 'irreversible']]);
+});
+
+test('a recreated Win32 shell reaches no one, and the dry run already says it waits for its package', () => {
+  const [planned] = attachIntuneAssignments([resourceOf(win32, { verb: 'create' })], {
+    desired: new Map([['mobileApp:KEEL-RT-app-win32|assignment', assigned('required', { settings, settingsDigest: 'd' })]]),
+    resolve: (key) => (key === GROUP ? 'target-group' : null),
+  });
+  assert.deepEqual(planned.newAssignments, []);
+  assert.deepEqual(classifyContentEffects([planned]).effects, []);
+  const step = unreadAssignmentsStep(planned);
+  assert.equal(step.requirement, 'assignments');
+  assert.match(step.description, /Upload the package/);
+});
+
+test('a package that disappears between the plan and the write still holds the assignments back, with the step', async () => {
+  const path = `${APPS}/live-win32`;
+  const graph = idoFakeGraph({ seed: { [path]: { ...win32, id: 'live-win32', publishingState: 'notPublished' } } });
+  const resource = resourceOf(win32, {
+    targetId: 'live-win32', live: { state: 'present', payload: { ...win32, id: 'live-win32', description: 'Changed' } },
+    assignments: assigned('required', { settings, settingsDigest: 'd' }),
+  });
+  const result = await applyIntuneExtendedWrite(graph, resource, 'update', { ...FAST, referenceContext: context() });
+  assert.equal(graph.calls.some((call) => call.path.endsWith('/assign')), false);
+  assert.match(result.applied.completion[0].description, /Upload the package/);
 });

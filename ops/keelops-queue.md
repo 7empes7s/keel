@@ -70,7 +70,7 @@ Note on K2–K5 (2026-10-27): moved from Q169, Q170, Q172 and Q174 on `claude/op
   request (the mixed `$select` was routed to the onboarding backend and answered 400). #570 then dropped the retired
   `managedDeviceCleanupSettings` field (its window is backed up as `managedDeviceCleanupRule`), so only `settings` is read.
 - Needs: /opt/keel-live at the #570 merge (4b4af63) or later (`grep -q selectEach /opt/keel-live/tools/tenant-probe/catalog.d/intune-leftovers.mjs`).
-- Status: blocked
+- Status: in-progress
 - Result: blocked on `/etc/keel/db.env` (2026-10-27 ~14:35 UTC). Needs check passes: live `e17b36c` has `selectEach`. But `/etc/keel` is `root:root 750` with no ACL for keelops, so db.env cannot be read (and the job rows and collect log behind it with it); ~/agent-src/ROOT-STEPS.md §1 (setfacl on /etc/keel + 8 files) has not been run by root yet. Nothing run, nothing changed in the tenant or on the host. Also for the operator: keelops CLAUDE.md says "read the live DB only through KEEL's own CLI ... never write hand-written SQL against live data"; steps 2-3 are hand-written SELECTs, so they need the operator's explicit OK (or a CLI equivalent) even after the grant.
 - **Tenant:** Collector reads only (the normal hourly Tier 1 backup). Nothing is written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:

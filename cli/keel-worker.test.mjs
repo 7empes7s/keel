@@ -599,36 +599,36 @@ assert.deepEqual(
 );
 // Both credential configs are required — the read/write separation needs each.
 assert.throws(
-  () => JOB_HANDLERS.restore.argsFor({ planId: 'plan-1', targetConfig: '/t.json' }),
+  () => JOB_HANDLERS.restore.argsFor({ planId: 'plan-1', targetConfig: '/etc/keel/restorer.json' }),
   /params.collectorConfig must be a non-empty string/,
 );
 assert.throws(
-  () => JOB_HANDLERS.restore.argsFor({ planId: 'plan-1', collectorConfig: '/c.json' }),
+  () => JOB_HANDLERS.restore.argsFor({ planId: 'plan-1', collectorConfig: '/etc/keel/tenant.json' }),
   /params.targetConfig must be a non-empty string/,
 );
 // The two restore scopes never mix, and a selection scope is always complete.
 assert.throws(
   () => JOB_HANDLERS.restore.argsFor({
-    planId: 'plan-1', snapshotId: 'snapshot-1', collectorConfig: '/c.json', targetConfig: '/t.json',
+    planId: 'plan-1', snapshotId: 'snapshot-1', collectorConfig: '/etc/keel/tenant.json', targetConfig: '/etc/keel/restorer.json',
   }),
   /mutually exclusive/,
 );
 assert.throws(
   () => JOB_HANDLERS.restore.argsFor({
-    snapshotId: 'snapshot-1', selection: [], collectorConfig: '/c.json', targetConfig: '/t.json',
+    snapshotId: 'snapshot-1', selection: [], collectorConfig: '/etc/keel/tenant.json', targetConfig: '/etc/keel/restorer.json',
   }),
   /params.selection must be a non-empty array/,
 );
 assert.throws(
   () => JOB_HANDLERS.restore.argsFor({
-    snapshotId: 'snapshot-1', selection: ['group:Admins', 42], collectorConfig: '/c.json', targetConfig: '/t.json',
+    snapshotId: 'snapshot-1', selection: ['group:Admins', 42], collectorConfig: '/etc/keel/tenant.json', targetConfig: '/etc/keel/restorer.json',
   }),
   /params.selection entry must be a non-empty string/,
 );
 assert.throws(
   () => JOB_HANDLERS.restore.argsFor({
     snapshotId: 'snapshot-1', selection: ['group:Admins'],
-    collectorConfig: '/c.json', targetConfig: '/t.json', mode: 'yolo',
+    collectorConfig: '/etc/keel/tenant.json', targetConfig: '/etc/keel/restorer.json', mode: 'yolo',
   }),
   /invalid params.mode: yolo/,
 );
@@ -859,6 +859,32 @@ for (const key of ['collectorConfig', 'targetConfig']) {
     );
   }
 }
+// restore holds both credential paths to the same rule, for a plan or selection dry run
+// and for a compliance fix; the accepted path is passed on resolved.
+const restoreScopes = [
+  { planId: 'plan-1' },
+  { snapshotId: 'snapshot-1', selection: ['group:Admins'] },
+  { complianceFix: { controlId: 'control-1', naturalKey: 'group:Admins' }, artifactId: 'a-1' },
+];
+for (const scope of restoreScopes) {
+  for (const key of ['collectorConfig', 'targetConfig']) {
+    for (const path of ['/etc/keel/content.key', '/etc/shadow', '/etc/keel/../passwd.json', '/tmp/x.json', 'tenant.json']) {
+      const params = { ...scope, collectorConfig: '/etc/keel/tenant.json', targetConfig: '/etc/keel/restorer.json', [key]: path };
+      assert.throws(
+        () => JOB_HANDLERS.restore.argsFor(params, { requested_by: 'p' }),
+        new RegExp(`params.${key} must be a \\.json file under /etc/keel/`),
+        `restore ${Object.keys(scope)[0]} ${key} ${path}`,
+      );
+    }
+  }
+}
+assert.deepEqual(
+  JOB_HANDLERS.restore.argsFor({
+    complianceFix: { controlId: 'control-1', naturalKey: 'group:Admins' }, artifactId: 'a-1',
+    collectorConfig: '/etc/keel/./tenant.json', targetConfig: '/etc/keel/restorer.json',
+  }, { requested_by: 'p' }).slice(4, 8),
+  ['--collector-config', '/etc/keel/tenant.json', '--target-config', '/etc/keel/restorer.json'],
+);
 // A parse error quotes the start of the file; that quote never reaches the job's error.
 assert.equal(
   withholdParsedText('stderr: SyntaxError: Unexpected token \'s\', "secret\nKEY"... is not valid JSON\n    at JSON.parse'),

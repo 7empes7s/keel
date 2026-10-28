@@ -46,7 +46,7 @@ import { CmdletError, runCmdlet } from '../../powershell/jobQueue.mjs';
 import { assertContentEffectApproval, disclosureFor, isPreservationLockFailure } from '../../safety/contentEffects.mjs';
 import { createDryRunArtifact, getDryRunArtifact, validateArtifactForApproval } from '../dryRunArtifact.mjs';
 import { TEST_TENANT_REFS, fixtureProblem } from './fixtureGuard.mjs';
-import { MANUAL_FAMILIES, WKLD_WRITE_OPERATIONS } from './writeDeclarations.mjs';
+import { MANUAL_FAMILIES, WKLD_WRITE_OPERATIONS, isTrustField } from './writeDeclarations.mjs';
 
 export const WORKLOAD_SETTINGS_EVIDENCE_KIND = 'workload-restore';
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -158,8 +158,7 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
     rule('UseMXRecord', SHARING, enabledToDisabled),
     rule('RouteAllMessagesViaOnPremises', SHARING, changes),
     rule('AllAcceptedDomains', SHARING, changes),
-    rule('TlsSettings', SHARING, changes),
-    rule('TlsDomain', SHARING, changes),
+    // TlsSettings and TlsDomain are never written (TRUST_FIELDS), so they need no rule.
   ],
   // Mail protection that flags more mail sends it to junk or quarantine, or rejects it;
   // quarantine is purged when its retention ends. Each switch turned on, each action
@@ -580,6 +579,8 @@ export function weakensMailProtection(resourceType, field, before, after) {
   return typeof test === 'function' && test(before ?? null, after ?? null) === true;
 }
 
+const TRUST_REASON = 'this decides which senders, certificates or partners the connector trusts; a restore never changes it, so a changed backup '
+  + 'cannot make it trust someone else. An administrator confirms the value and sets it in the Exchange admin center > Mail flow > Connectors';
 const WEAKENING_REASON = 'this would weaken mail protection; KEEL only writes the stricter direction, so an administrator decides and applies it';
 
 /** The changes for one present object, and the manual entries it adds. */
@@ -598,6 +599,10 @@ function planFields(write, { observation, current, manual }) {
       continue;
     }
     if (same(before, after)) continue;
+    if (isTrustField(write.resourceType, field)) {
+      manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: TRUST_REASON, trust: true });
+      continue;
+    }
     if (!writable.has(field)) {
       manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: field === 'State' || field === 'Enabled'
         ? 'turning this on or off is a separate Enable-/Disable- step an administrator takes'

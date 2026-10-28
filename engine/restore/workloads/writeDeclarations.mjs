@@ -41,8 +41,32 @@ const TEAMS = Object.freeze({
 const EXO_DOCS = 'https://learn.microsoft.com/en-us/powershell/module/exchange';
 const TEAMS_DOCS = 'https://learn.microsoft.com/en-us/powershell/module/teams';
 
+/**
+ * Fields no restore ever writes (CLAUDE.md restore-writer rule): they decide which
+ * senders, certificates or partners a connector trusts. A tampered or stale backup
+ * could make a connector trust another certificate or IP range, treat outside mail
+ * as internal, or accept a different partner certificate, so a difference is listed
+ * for an administrator to check and apply by hand. declare() refuses them, and any
+ * other field whose name says it carries trust, a certificate or a sign-in endpoint.
+ */
+export const TRUST_FIELDS = Object.freeze({
+  exchangeInboundConnector: Object.freeze([
+    'SenderIPAddresses', 'RestrictDomainsToIPAddresses', 'RestrictDomainsToCertificate', 'RequireTls', 'TlsSenderCertificateName',
+    'TreatMessagesAsInternal', 'TrustedOrganizations', 'EFSkipIPs',
+  ]),
+  exchangeOutboundConnector: Object.freeze(['TlsSettings', 'TlsDomain']),
+});
+export const TRUST_FIELD_PATTERN = /certificate|trust|tlssender|tlsdomain|tlssettings|signin|issuer|metadataexchange/i;
+
+/** Whether a restore must never write this field of this resource type. */
+export function isTrustField(resourceType, field) {
+  return (TRUST_FIELDS[resourceType] ?? []).includes(field) || TRUST_FIELD_PATTERN.test(field);
+}
+
 const entries = {};
 function declare(plane, docs, { id, workload, family, resourceType, readBack, method, identity = 'guid', fixedIdentity, fields }) {
+  const trust = fields.filter((field) => isTrustField(resourceType, field));
+  if (trust.length) throw new Error(`${id} declares trust, certificate or sign-in fields a restore never writes: ${trust.join(', ')}`);
   entries[id] = Object.freeze({
     workload, family, resourceType, kind: 'cmdlet', method, module: plane.module, session: plane.session, identity,
     ...(identity === 'fixed' ? { fixedIdentity } : {}), readBack,
@@ -78,17 +102,18 @@ family(EXO, EXO_DOCS, {
   workload: MAIL_FLOW, prefix: 'mailflow.inbound-connector', family: 'inboundConnector', resourceType: 'exchangeInboundConnector',
   readBack: 'mailflow.inbound-connectors', set: 'Set-InboundConnector',
   fields: [
-    'Enabled', 'ConnectorType', 'ConnectorSource', 'Comment', 'SenderDomains', 'SenderIPAddresses', 'RestrictDomainsToIPAddresses',
-    'RestrictDomainsToCertificate', 'RequireTls', 'TlsSenderCertificateName', 'CloudServicesMailEnabled', 'TreatMessagesAsInternal',
-    'TrustedOrganizations', 'AssociatedAcceptedDomains', 'EFSkipLastIP', 'EFSkipIPs', 'EFSkipMailGateway', 'EFUsers', 'ScanAndDropRecipients',
+    'Enabled', 'ConnectorType', 'ConnectorSource', 'Comment', 'SenderDomains', 'CloudServicesMailEnabled',
+    'AssociatedAcceptedDomains', 'EFSkipLastIP', 'EFSkipMailGateway', 'EFUsers', 'ScanAndDropRecipients',
+    // Never written: TRUST_FIELDS.exchangeInboundConnector.
   ],
 });
 family(EXO, EXO_DOCS, {
   workload: MAIL_FLOW, prefix: 'mailflow.outbound-connector', family: 'outboundConnector', resourceType: 'exchangeOutboundConnector',
   readBack: 'mailflow.outbound-connectors', set: 'Set-OutboundConnector',
   fields: [
-    'Enabled', 'ConnectorType', 'ConnectorSource', 'Comment', 'RecipientDomains', 'SmartHosts', 'UseMXRecord', 'TlsSettings', 'TlsDomain',
+    'Enabled', 'ConnectorType', 'ConnectorSource', 'Comment', 'RecipientDomains', 'SmartHosts', 'UseMXRecord',
     'IsTransportRuleScoped', 'RouteAllMessagesViaOnPremises', 'CloudServicesMailEnabled', 'AllAcceptedDomains', 'SenderRewritingEnabled', 'TestMode',
+    // Never written: TRUST_FIELDS.exchangeOutboundConnector.
   ],
 });
 

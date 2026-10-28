@@ -9773,7 +9773,18 @@ item that needs it stays untouched.
   `UnknownError` with an empty message, so the full collect exited 3. This item tells a passing Microsoft fault from a
   lasting one. A PR from this thread will retry 5xx reads with backoff and report a lasting one as a Microsoft service error.
 - Needs: nothing (reads only, with the Collector credential the deployed build already uses).
-- Status: todo
+- Status: done (persistent: 6/6 answered 500)
+- Result: done (2026-10-28 22:44 UTC, root keel-operator): **persistent so far.** All six To Do reads answered 500; the Forms control read answered 200. B = `da3f9d7f`. Collector reads only; nothing written.
+  1. Lines verbatim (token not printed):
+     `2026-10-28T22:37:54.020Z /admin/forms 200 request-id=930e0ab9-2ede-4c48-ae2e-dd3679507168 client-request-id=93b4c66b-b48e-40ce-896b-9092a222c80a keys=@odata.context,settings`
+     `2026-10-28T22:37:55.182Z /admin/todo 500 request-id=e13330ea-4949-43fd-a2fb-506146b97798 client-request-id=b285453e-d899-423f-bf1f-2abec1ee8369 {"code":"UnknownError","message":""}`
+     `2026-10-28T22:38:25.657Z /admin/todo 500 request-id=a4a58a2f-caf5-4615-8ba1-20176c642fb5 client-request-id=ed58fdda-5c2f-47b8-9764-90259b6720cb {"code":"UnknownError","message":""}`
+     `2026-10-28T22:38:55.840Z /admin/todo 500 request-id=3b758471-3568-4c9e-b980-2814ded6ddb9 client-request-id=f34ed4c9-e904-47b7-becb-b2a3626a85ff {"code":"UnknownError","message":""}`
+     `2026-10-28T22:39:26.624Z /admin/todo 500 request-id=b4f6f744-63e3-462f-acc7-d9d8590234e7 client-request-id=fb74dea5-9b7c-4ebf-9356-eee4178d6d0e {"code":"UnknownError","message":""}`
+     `2026-10-28T22:39:57.542Z /admin/todo 500 request-id=d6668a27-8b0d-43e4-b7f8-fa153c180bc9 client-request-id=b24f77e9-68b2-460c-941d-d115cea67da5 {"code":"UnknownError","message":""}`
+     `2026-10-28T22:40:28.254Z /admin/todo 500 request-id=77669854-f896-4984-9116-b8a86ac4578b client-request-id=70c288d4-3441-48cb-be63-450837e1fb58 {"code":"UnknownError","message":""}`
+     (innerError holds only date, request-id and client-request-id.)
+  2. The only scheduled collect after 21:47 is `013d5ba0` (22:00): todoSettings `not-requested` (that tier doesn't read it), so it doesn't confirm either way. Earlier today: `d1ac6783` (21:40) and `133a9668` (21:42), both failed 500. Inference: persistent for at least an hour (21:40–22:40); worth a Microsoft support case with the request ids above.
 - **Tenant:** reads only, with the Collector credential (`/etc/keel/tenant.json`). No grants, no changes, nothing written.
   Never print the token.
 - Do, from `/opt/keel-live`:
@@ -9820,7 +9831,12 @@ item that needs it stays untouched.
   Inference: the Collector has none of the PIM for Groups scopes, and the 200 in the hourly collect is PIM answering an empty list
   without checking. This item checks that and adds the permission.
 - Needs: nothing (steps 1 to 3 are read-only; step 4 changes only the KEEL Collector app registration).
-- Status: todo
+- Status: done (permission added; consent pending)
+- Result: done (2026-10-28 22:46 UTC, root keel-operator); **permission added, consent pending.** B = `da3f9d7f`. Reads with the Collector, plus one app registration PATCH (as the Restorer). Global admin not used; no consent or appRoleAssignment made.
+  1. Collector token (55 roles): PrivilegedAccess.Read.AzureADGroup no · PrivilegedAccess.ReadWrite.AzureADGroup no · PrivilegedEligibilitySchedule.Read.AzureADGroup no · PrivilegedEligibilitySchedule.ReadWrite.AzureADGroup no · PrivilegedAssignmentSchedule.Read.AzureADGroup no.
+  2. `GraphReader.get('beta', '/identityGovernance/privilegedAccess/group/resources')` ×3, 30 s apart (22:40:56, 22:41:26, 22:41:57): **403** each time, 0 items, `UnauthorizedAccessException` / `PermissionScopeNotGranted` ("Authorization failed due to missing permission scope PrivilegedEligibilitySchedule.Read.AzureADGroup,PrivilegedEligibilitySchedule.ReadWrite.AzureADGroup,PrivilegedAccess.Read.AzureADGroup,PrivilegedAccess.ReadWrite.AzureADGroup.").
+  3. Last 24 h: 37 snapshots carry the entry: 27 `not-requested`, **9 `complete-empty` (200, beta, 1 page, 1 request)** and **1 `failed` (403)** in `36cdcf6d` (18:59). The 200s are at 07:41–08:11, 11:41, 11:54, 21:40 and 21:42. So the same call without the scope sometimes answers 200 empty and sometimes 403 (it answered 200 at 21:42 and 403 at 21:44 in the Q206 drill and at 22:40). This supports the item's inference that PIM's 200 is unchecked; now intermittent.
+  4. Added the Graph application permission **`PrivilegedAccess.Read.AzureADGroup`** (01e37dc9…) to the **KEEL Collector** app registration (app ce48109a…; one PATCH; Graph entries 56 → 57; nothing else changed). **Waiting on Marouane: Grant admin consent for KEEL Collector.**
 - **Tenant:** reads only, plus one app registration change (step 4). Never print a token: report role names only.
 - Do:
   1. Get a Collector token from `/etc/keel/tenant.json` with `tools/tenant-probe/auth.mjs` and report whether its `roles` claim holds
@@ -9843,7 +9859,11 @@ item that needs it stays untouched.
   communities). Under the 2026-10-28 rule, keel-operator adds the permission to the app registration; Marouane only clicks
   "Grant admin consent".
 - Needs: none.
-- Status: todo
+- Status: done (manifest; consent pending)
+- Result: done (2026-10-28 22:46 UTC, root keel-operator); manifest only, **consent pending.** One PATCH on the **Keel Restorer** application (31f2eb26…), as the Restorer. Global admin not used; no appRoleAssignment, no consent.
+  - Already held (assignment) or already in the manifest: none of the 6.
+  - **Added (6)**: OrgSettings-Forms.ReadWrite.All (2cb92fee), OrgSettings-Microsoft365Install.ReadWrite.All (83f7232f), OrgSettings-AppsAndServices.ReadWrite.All (4a8e4191), ReportSettings.ReadWrite.All (2a60023f), PeopleSettings.ReadWrite.All (b6890674), Community.ReadWrite.All (35d59e32). Graph entries 59 → 65; SharePoint (2) and Exchange (1) entries unchanged. Skipped: none (each resolved to a Graph appRole). OrgSettings-Todo.ReadWrite.All not added, on purpose.
+  - **Waiting for consent on Keel Restorer (7):** the 6 above, plus `AppRoleAssignment.ReadWrite.All` (added 20:47 for Q183).
 - **Test tenant only. Manifest only.** GET the **KEEL Restorer** application, MERGE, PATCH once (as the Restorer, as in Q180).
   Keep every existing resource and entry; remove nothing. Resolve each name to its id from the Microsoft Graph service
   principal's `appRoles` (type Role); skip and report any name with no appRole. Never create an appRoleAssignment or grant

@@ -691,10 +691,10 @@ const TRUST_CASES = [
     name: 'Teams federation: federated organizations, allowed and blocked domains, SIP space and discovered partners',
     workload: 'teams-org-policies', getter: 'Get-CsTenantFederationConfiguration', cmdlet: 'Set-CsTenantFederationConfiguration', resourceType: 'teamsFederationConfiguration',
     planted: {
-      AllowFederatedUsers: true, AllowedDomains: ['attacker.example'], BlockedDomains: [], SharedSipAddressSpace: true, TreatDiscoveredPartnersAsUnverified: false,
+      AllowFederatedUsers: true, AllowedDomains: { AllowedDomain: [{ Domain: 'attacker.example' }] }, BlockedDomains: [], SharedSipAddressSpace: true, TreatDiscoveredPartnersAsUnverified: false,
     },
     current: {
-      AllowFederatedUsers: false, AllowedDomains: ['partner.example'], BlockedDomains: ['blocked.example'], SharedSipAddressSpace: false, TreatDiscoveredPartnersAsUnverified: true,
+      AllowFederatedUsers: false, AllowedDomains: { AllowedDomain: [{ Domain: 'partner.example' }] }, BlockedDomains: [{ Domain: 'blocked.example' }], SharedSipAddressSpace: false, TreatDiscoveredPartnersAsUnverified: true,
     },
     harmless: ['BlockAllSubdomains', true],
     where: /Teams admin center > Users > External access/,

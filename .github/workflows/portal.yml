@@ -39,6 +39,15 @@ jobs:
           cache-dependency-path: |
             portal/package-lock.json
             engine/package-lock.json
+      - name: Pinned base images exist
+        # A FROM pinned to a digest the registry does not have only failed on the server's
+        # build (#662). Resolve every pinned FROM here, without pulling the image.
+        run: |
+          for file in ops/powershell/Dockerfile*; do
+            ref="$(awk '/^FROM /{ print $2; exit }' "$file")"
+            echo "$file: $ref"
+            docker buildx imagetools inspect "$ref" > /dev/null
+          done
       - name: Install engine dependencies
         run: npm ci
         working-directory: engine

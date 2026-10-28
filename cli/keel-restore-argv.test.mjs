@@ -78,3 +78,15 @@ test('main stops before reading any file when a target is a flag', async () => {
   }), /argument is ambiguous/);
   assert.deepEqual(reads, []);
 });
+
+test('free text a person types may start with "-" unless it is one flag-like word', () => {
+  const create = (fields) => JOB_HANDLERS['baseline-create'].argsFor({ snapshotId: 's-1', label: 'Weekly', ...fields }, job);
+  assert.deepEqual(create({ description: '- copied from prod' }).slice(-2), ['--description', '- copied from prod']);
+  assert.ok(create({ label: '-- draft --' }).includes('-- draft --'));
+  for (const injected of ['--help', '--tenant-ref', '-x']) {
+    assert.throws(() => create({ description: injected }), /description must not be a single word that starts with "-"/);
+    assert.throws(() => create({ label: injected }), /label must not be a single word that starts with "-"/);
+    assert.throws(() => JOB_HANDLERS['baseline-activate'].argsFor({ baselineId: 'b-1', reinstate: true, reason: injected }, job),
+      /reason must not be a single word that starts with "-"/);
+  }
+});

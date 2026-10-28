@@ -226,6 +226,19 @@ function requireString(value, label) {
   return value;
 }
 
+// Free text a person types (a baseline label, description or reason) may start with
+// "-", as in "- copied from prod". A flag never holds whitespace, so a dash-leading
+// value is refused only when it is a single word that a child could read as a flag.
+function requireText(value, label) {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+  if (value.startsWith('-') && !/\s/.test(value)) {
+    throw new Error(`${label} must not be a single word that starts with "-"`);
+  }
+  return value;
+}
+
 // Issue #411: the config, scope and reader params are file paths the child reads as root.
 // Anything that can enqueue a job can set them, so they must name a JSON file under
 // /etc/keel (requireKeelConfigPath, shared with the portal in
@@ -420,13 +433,13 @@ export const JOB_HANDLERS = {
       // derived "(vN)" label; a new baseline always needs a label.
       if (params.supersedesBaselineId !== undefined) {
         args.push('--supersedes', requireString(params.supersedesBaselineId, 'params.supersedesBaselineId'));
-        if (params.label !== undefined) args.push('--label', requireString(params.label, 'params.label'));
+        if (params.label !== undefined) args.push('--label', requireText(params.label, 'params.label'));
       } else {
-        args.push('--label', requireString(params.label, 'params.label'));
+        args.push('--label', requireText(params.label, 'params.label'));
       }
       args.push('--set-by', requireString(job.requested_by, 'job.requested_by'));
       if (params.description !== undefined) {
-        args.push('--description', requireString(params.description, 'params.description'));
+        args.push('--description', requireText(params.description, 'params.description'));
       }
       if (params.tenantRef !== undefined) {
         args.push('--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'));
@@ -450,7 +463,7 @@ export const JOB_HANDLERS = {
         }
         args.push('--actor', requireString(job.requested_by, 'job.requested_by'));
         if (params.reason !== undefined) {
-          args.push('--reason', requireString(params.reason, 'params.reason'));
+          args.push('--reason', requireText(params.reason, 'params.reason'));
         }
       }
       if (params.tenantRef !== undefined) {

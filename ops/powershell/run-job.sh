@@ -23,6 +23,8 @@
 # to stdout. Mode "cmdlet" (task-105) runs run-cmdlet.ps1: one allowlisted
 # cmdlet whose parameters arrive as JSON data and are splatted, never parsed. Mode
 # "commands" runs list-commands.ps1: the Get cmdlets one module offers, for discovery.
+# Mode "dsc" runs run-dsc.ps1: allowlisted Microsoft365DSC resource calls, only in the
+# separate keel-dsc image (Dockerfile.dsc), which is the only image with that module.
 # Diagnostics go to stderr so
 # stdout stays pure JSON.
 
@@ -66,8 +68,13 @@ exec pwsh -NoLogo -NoProfile -NonInteractive -Command '
     & /app/list-commands.ps1
     exit $LASTEXITCODE
   }
+  # The DSC profile: Microsoft365DSC resource calls (keel-dsc image only).
+  if ($mode -eq "dsc") {
+    & /app/run-dsc.ps1
+    exit $LASTEXITCODE
+  }
   if ($mode -ne "probe") {
-    [Console]::Error.WriteLine("run-job.sh: unsupported mode `"$mode`" (only `"probe`", `"cmdlet`" and `"commands`" are implemented)")
+    [Console]::Error.WriteLine("run-job.sh: unsupported mode `"$mode`" (only `"probe`", `"cmdlet`", `"commands`" and `"dsc`" are implemented)")
     exit 2
   }
 

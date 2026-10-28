@@ -22,6 +22,7 @@ import { SHAREPOINT_LIVE_GATE, validateSharePointLiveSubject } from '../qualific
 import { SITE_GRANTS_LIVE_GATE, validateSiteGrantsLiveSubject } from '../qualification/sharepointSiteGrantsAcceptance.mjs';
 import { SITE_PERMISSIONS_LIVE_GATE, validateSitePermissionsLiveSubject } from '../qualification/sharepointSitePermissionsAcceptance.mjs';
 import { STRUCTURE_WRITES_LIVE_GATE, validateStructureWritesLiveSubject } from '../qualification/sharepointStructureWritesAcceptance.mjs';
+import { DSC_WRITES_LIVE_GATE, validateDscWritesLiveSubject } from '../qualification/dscDistributionGroupsAcceptance.mjs';
 import { TEAMS_LIVE_GATE, validateTeamsLiveSubject } from '../qualification/teamsAcceptance.mjs';
 import { EXCHANGE_LIVE_GATE, validateExchangeLiveSubject } from '../qualification/exchangeAcceptance.mjs';
 import { ONEDRIVE_PURVIEW_LIVE_GATE, validateOneDrivePurviewLiveSubject } from '../qualification/onedrivePurviewAcceptance.mjs';
@@ -744,6 +745,9 @@ const GATE_VALIDATORS = {
   },
   // SharePoint structure restore writes (site template, hubs, scripts, designs); needs both proofs.
   [STRUCTURE_WRITES_LIVE_GATE]: (evidence, context) => validateStructureWritesLiveSubject(evidence, {
+    ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
+  // Distribution list writes through Microsoft365DSC (the keel-dsc profile); needs both proofs.
+  [DSC_WRITES_LIVE_GATE]: (evidence, context) => validateDscWritesLiveSubject(evidence, {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
   // Task-121: Teams live acceptance; needs both proofs and a verified task-120 record.
   [TEAMS_LIVE_GATE]: (evidence, context) => validateTeamsLiveSubject(evidence, {

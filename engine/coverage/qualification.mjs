@@ -38,6 +38,7 @@ import {
 } from './capabilities.mjs';
 import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 import { SHAREPOINT_STRUCTURE_WRITE_OPERATIONS } from '../restore/workloads/sharepointStructureWrites.mjs';
+import { DSC_WRITE_OPERATIONS } from '../restore/workloads/dscDistributionGroups.mjs';
 
 export const LEDGER_CONTRACT_VERSION = 1;
 // Coverage plan v3: no type is left 'unknown'. A type with no writer is
@@ -703,6 +704,9 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
   // SharePoint structure: hub sites, site designs and scripts, and named sites' lists,
   // columns, content types and navigation (restore/workloads/sharepointStructureWrites.mjs).
   ...SHAREPOINT_STRUCTURE_WRITE_OPERATIONS,
+  // Distribution lists through Microsoft365DSC (the keel-dsc profile): settings of a list
+  // that exists, and a list that no longer does (restore/workloads/dscDistributionGroups.mjs).
+  ...DSC_WRITE_OPERATIONS,
 });
 
 /** The version a write runs under now: its Graph version, or its module's version. */

@@ -779,7 +779,7 @@ function ChannelSheet({ busy, error, onClose, onSave }: {
 }) {
   const [kind, setKind] = useState<ChannelKind>("email");
   const [test, setTest] = useState(true);
-  const settingHelp = "The name of a setting on the Keel server that holds the secret address or key, written as env:NAME. Ask whoever runs the server to add it. Keel keeps the name only.";
+  const settingHelp = "The name of a setting on the Keel server that holds the secret address or key, written as env:KEEL_INTEGRATION_NAME (only names that start with KEEL_INTEGRATION_ are read). Ask whoever runs the server to add it. Keel keeps the name only.";
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -800,15 +800,15 @@ function ChannelSheet({ busy, error, onClose, onSave }: {
           <p className="nf-plain nf-muted">{CHANNEL_KINDS[kind].help}</p>
           <div className="nf-fields">
             {kind === "teams" || kind === "slack" ? <>
-              <label className="filter-field"><span>Server setting that holds the {kind === "teams" ? "workflow" : "Slack"} address</span><input autoComplete="off" name="endpointRef" pattern="env:[A-Za-z_][A-Za-z0-9_]*" placeholder={kind === "teams" ? "env:KEEL_TEAMS_WEBHOOK" : "env:KEEL_SLACK_WEBHOOK"} required /></label>
+              <label className="filter-field"><span>Server setting that holds the {kind === "teams" ? "workflow" : "Slack"} address</span><input autoComplete="off" name="endpointRef" pattern="env:KEEL_INTEGRATION_[A-Z0-9_]+" placeholder={kind === "teams" ? "env:KEEL_INTEGRATION_TEAMS_WEBHOOK" : "env:KEEL_INTEGRATION_SLACK_WEBHOOK"} required /></label>
               <p className="field-help">{settingHelp}{kind === "teams" ? " Use a Teams Workflows address; old Office 365 connector addresses are not supported." : ""}</p>
             </> : kind === "pagerduty" ? <>
-              <label className="filter-field"><span>Server setting that holds the integration key</span><input autoComplete="off" name="routingKeyRef" pattern="env:[A-Za-z_][A-Za-z0-9_]*" placeholder="env:KEEL_PAGERDUTY_KEY" required /></label>
+              <label className="filter-field"><span>Server setting that holds the integration key</span><input autoComplete="off" name="routingKeyRef" pattern="env:KEEL_INTEGRATION_[A-Z0-9_]+" placeholder="env:KEEL_INTEGRATION_PAGERDUTY_KEY" required /></label>
               <p className="field-help">{settingHelp}</p>
               <label className="filter-field"><span>PagerDuty region</span><select defaultValue="us" name="region"><option value="us">United States</option><option value="eu">Europe</option></select></label>
             </> : kind === "sms" ? <>
               <label className="filter-field"><span>Twilio account SID</span><input autoComplete="off" name="accountSid" pattern="AC[0-9a-fA-F]{32}" required /></label>
-              <label className="filter-field"><span>Server setting that holds the Twilio auth token</span><input autoComplete="off" name="authTokenRef" pattern="env:[A-Za-z_][A-Za-z0-9_]*" placeholder="env:KEEL_TWILIO_TOKEN" required /></label>
+              <label className="filter-field"><span>Server setting that holds the Twilio auth token</span><input autoComplete="off" name="authTokenRef" pattern="env:KEEL_INTEGRATION_[A-Z0-9_]+" placeholder="env:KEEL_INTEGRATION_TWILIO_TOKEN" required /></label>
               <p className="field-help">{settingHelp}</p>
               <label className="filter-field"><span>Send from</span><input autoComplete="off" name="from" placeholder="+15551230000" required type="tel" /></label>
               <label className="filter-field"><span>Send to</span><input autoComplete="off" name="to" placeholder="+15551239999" required type="tel" /></label>

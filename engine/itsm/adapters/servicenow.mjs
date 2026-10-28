@@ -17,7 +17,7 @@
 //               key); 404 when no record has that sys_id.
 //   Write:      PATCH {instance}/api/now/table/{table}/{sys_id}, a partial update of the
 //               fields in the JSON body.
-//   Auth:       OAuth bearer token, referenced by credential.tokenRef (env:NAME). The
+//   Auth:       OAuth bearer token, referenced by credential.tokenRef (env:KEEL_INTEGRATION_*). The
 //               token never enters config, the outbox, errors or evidence.
 //   Callback:   ServiceNow does not sign outbound REST messages. The instance side (a
 //               business rule or flow, built in task-118) signs the body with
@@ -59,7 +59,7 @@ import { can } from '../../authz/can.mjs';
 import { findPrincipalById } from '../../authz/principals.mjs';
 import { appendEvidence } from '../../govern/evidence.mjs';
 import { ITSM_CALLBACK_EVIDENCE_KIND, receiveCallback, reconcileRecord, runMirrorCycle } from '../bridge.mjs';
-import { BlockedDestinationError, assertDestinationAllowed, guardedRequest } from '../../safety/outboundDestination.mjs';
+import { BlockedDestinationError, assertDestinationAllowed, guardedRequest, isIntegrationReference } from '../../safety/outboundDestination.mjs';
 
 export const SERVICENOW_ADAPTER_NAME = 'servicenow';
 export const SERVICENOW_CONFIG_EVIDENCE_KIND = 'itsm-adapter-config';
@@ -90,7 +90,11 @@ const WRITE_ROLES = ['planVersion', 'planDigest', 'keelRequest', 'keelDecision']
 const TABLE_NAME = /^[a-z][a-z0-9_]{0,79}$/;
 const FIELD_PATH = /^[a-z][a-z0-9_]{0,79}(\.[a-z][a-z0-9_]{0,79}){0,3}$/;
 const SYS_ID = /^[0-9a-f]{32}$/;
+// The shape of a reference, used to tell whether the mapping names one at all. What
+// may be saved and resolved is narrower: env:KEEL_INTEGRATION_* only (isIntegrationReference),
+// so a ServiceNow setting can never pick up the database URL or another worker secret.
 const CREDENTIAL_REF = /^env:[A-Z_][A-Z0-9_]{0,127}$/;
+const isStorableReference = (value) => CREDENTIAL_REF.test(value) && isIntegrationReference(value);
 const STATE_VALUE = /^[^\s,][^,]{0,79}$/;
 const SECRET_VALUE_PATTERNS = [
   /Bearer\s+\S{8,}/i,
@@ -208,8 +212,8 @@ function assertStorableConfig(config) {
   }
   if (secretShaped(config)) throw new ServiceNowAdapterError('invalid', 'the ServiceNow config must hold credential references, not secret values');
   for (const [path, value] of [['credential.tokenRef', config.credential?.tokenRef], ['callback.secretRef', config.callback?.secretRef]]) {
-    if (value !== undefined && value !== null && (typeof value !== 'string' || !CREDENTIAL_REF.test(value))) {
-      throw new ServiceNowAdapterError('invalid', `${path} must be a credential reference such as env:KEEL_SERVICENOW_TOKEN`);
+    if (value !== undefined && value !== null && (typeof value !== 'string' || !isStorableReference(value))) {
+      throw new ServiceNowAdapterError('invalid', `${path} must be a credential reference such as env:KEEL_INTEGRATION_SERVICENOW_TOKEN`);
     }
   }
   if (isObject(config.credential) && Object.keys(config.credential).some((key) => key !== 'tokenRef')) {
@@ -220,9 +224,12 @@ function assertStorableConfig(config) {
   }
 }
 
-/** The env:NAME resolver. An unresolvable reference is a visible error, never a fallback. */
+/**
+ * The env:KEEL_INTEGRATION_* resolver. Any other name, and an unresolvable reference,
+ * is a visible error, never a fallback.
+ */
 export function defaultResolveSecret(reference) {
-  if (typeof reference === 'string' && CREDENTIAL_REF.test(reference)) {
+  if (typeof reference === 'string' && isStorableReference(reference)) {
     const value = process.env[reference.slice('env:'.length)];
     if (typeof value === 'string' && value.length > 0) return value;
   }

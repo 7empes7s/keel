@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "76e1c71268db6eb687765869f0637c589edeecd1",
+  "build": "39129d8a16fe13c6b9460a24334fb88bb8556f54",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-10-28T07:43:48.999Z",
+  "observedAt": "2026-10-28T21:39:43.636Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -25,40 +25,40 @@
         "family": "hubSite",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-10-28T07:43:48.999Z",
-        "ok": false,
-        "status": "failed",
-        "objects": 0,
-        "error": "CMDLET_ERROR:Microsoft.SharePoint.Client.CollectionNotInitializedException,Microsoft.PowerShell.Commands.ConvertToJsonCommand"
+        "capturedAt": "2026-10-28T21:39:43.636Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
       },
       {
         "operationId": "sharepoint-structure.site-designs",
         "family": "siteDesign",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-10-28T07:43:48.999Z",
-        "ok": false,
-        "status": "failed",
-        "objects": 0,
-        "error": "CMDLET_ERROR:Microsoft.SharePoint.Client.CollectionNotInitializedException,Microsoft.PowerShell.Commands.ConvertToJsonCommand"
+        "capturedAt": "2026-10-28T21:39:43.636Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
       },
       {
         "operationId": "sharepoint-structure.site-scripts",
         "family": "siteScript",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-10-28T07:43:48.999Z",
-        "ok": false,
-        "status": "failed",
-        "objects": 0,
-        "error": "CMDLET_ERROR:Microsoft.SharePoint.Client.CollectionNotInitializedException,Microsoft.PowerShell.Commands.ConvertToJsonCommand"
+        "capturedAt": "2026-10-28T21:39:43.636Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
       },
       {
         "operationId": "sharepoint-structure.site-templates",
         "family": "siteTemplate",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-10-28T07:43:48.999Z",
+        "capturedAt": "2026-10-28T21:39:43.636Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -69,7 +69,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "3a0b3cd05d151f0466a3687619c1a590a61d2d282bd06623e356f2ac49f5836b"
+      "signature": "495b99ed65c194238427a6f8337fd9e247c174af04ee73f8d2bbddee9be371b1"
     }
   }
 }

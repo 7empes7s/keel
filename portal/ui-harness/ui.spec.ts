@@ -2380,6 +2380,69 @@ test("the undo plan fits a phone without sideways scrolling", async ({ page }) =
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
 
+// Undo of a restore that created an Intune policy which is assigned now: the person
+// chooses, for each such policy, to delete it with its assignments or to skip it.
+// The choice re-plans the undo, and only then can it go for approval.
+test("an undo of a created policy that is assigned now asks to delete or skip it before approval", async ({ page }) => {
+  await open(page, "/jobs/r11");
+  await page.getByRole("button", { name: "Plan undo" }).click();
+  await expect(page.locator(".compensation-status")).toHaveText("Waiting for your choice", { timeout: 15_000 });
+  const choices = page.locator(".undo-choices");
+  await expect(choices.getByRole("heading")).toHaveText("2Assigned now: choose delete or skip");
+  const baseline = choices.locator(".undo-choice").filter({ hasText: "KEEL-RT-Windows baseline" });
+  await expect(baseline.locator(".badge")).toHaveText("Assigned · 2");
+  await expect(baseline.locator(".undo-choice-reach")).toHaveText("All devices, 1 group");
+  await expect(baseline.getByText("Removes its 2 assignments, then deletes the policy. Devices and people it applies to lose its settings.")).toBeVisible();
+  // Nothing can be sent for approval while a choice is open.
+  await expect(page.getByRole("button", { name: "Request approval to undo" })).toHaveCount(0);
+  const update = page.getByRole("button", { name: "Update the undo plan" });
+  await expect(update).toBeDisabled();
+  await expect(page.locator(".undo-choices-apply")).toContainText("Choose delete or skip for 2 more policies.");
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+
+  await baseline.getByRole("radio", { name: /^Delete it/ }).check();
+  const profile = choices.locator(".undo-choice").filter({ hasText: "KEEL-RT-Feature updates" });
+  await profile.getByRole("radio", { name: /^Skip it/ }).check();
+  await expect(update).toBeEnabled();
+  await update.click();
+
+  await expect(page.locator(".compensation-status")).toHaveText("Ready for approval", { timeout: 15_000 });
+  await expect(choices.getByRole("heading")).toHaveText("2Assigned now: your choice");
+  await expect(baseline.getByRole("radio", { name: /^Delete it/ })).toBeChecked();
+  await expect(profile.getByRole("radio", { name: /^Skip it/ })).toBeChecked();
+  const undone = page.locator(".compensation-section").filter({ hasText: "Will be undone" });
+  await expect(undone.locator(".compensation-item").filter({ hasText: "KEEL-RT-Windows baseline" })).toContainText("Remove its 2 assignments, then delete the policy this restore created");
+  await expect(undone).not.toContainText("KEEL-RT-Feature updates");
+  // The record keeps the exact assignments the approval binds.
+  const records = (await page.locator('.compensation-panel [data-layer="record"]').allTextContents()).join("\n");
+  expect(records).toContain("delete · assignments c0a1_all, c0a1_g1");
+  expect(records).toContain("skip · assignments c0a2_g2");
+
+  await page.getByLabel("Why undo this restore?").fill("Wrong snapshot restored");
+  await page.getByRole("button", { name: "Request approval to undo" }).click();
+  await expect(page.locator(".compensation-requested")).toBeVisible();
+});
+
+for (const theme of ["dark", "light"] as const) {
+  test(`a11y · undo with an assigned policy · ${theme}`, async ({ page }) => {
+    await open(page, "/jobs/r11", theme);
+    await page.getByRole("button", { name: "Plan undo" }).click();
+    await expect(page.locator(".undo-choices")).toBeVisible({ timeout: 15_000 });
+    await page.locator(".undo-choice").first().getByRole("radio", { name: /^Delete it/ }).check();
+    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    const summary = results.violations.map((violation) => ({ rule: violation.id, targets: violation.nodes.slice(0, 5).map((node) => node.target.join(" ")) }));
+    expect(summary, JSON.stringify(summary, null, 2)).toEqual([]);
+  });
+}
+
+test("the delete-or-skip choice fits a phone without sideways scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/jobs/r11", "light");
+  await page.getByRole("button", { name: "Plan undo" }).click();
+  await expect(page.locator(".undo-choices")).toBeVisible({ timeout: 15_000 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
 // Setup (portal audit, pick A): a step is done only when Keel has seen it in the tenant,
 // so the page offers no way to tick one off; continuing re-checks the tenant through
 // the guarded route. The step waiting on you is open first, with its Microsoft page.

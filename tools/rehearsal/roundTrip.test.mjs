@@ -9,6 +9,7 @@ import {
 } from './roundTrip.mjs';
 import { createIsolatedTestDatabase } from '../../engine/test/dbTestHelper.mjs';
 import { schemaSql } from '../../engine/store/loadSchema.mjs';
+import { seedFromSnapshot } from '../../engine/govern/baseline.mjs';
 
 // Separate Collector and Restorer configs for one fixture tenant, written to a temp dir.
 const fixtureConfigDir = mkdtempSync(join(tmpdir(), 'keel-roundtrip-'));
@@ -367,6 +368,8 @@ assert.throws(
       if (path.startsWith('/identityGovernance/lifecycleWorkflows/')) {
         return { status: 403, error: { status: 403, error: 'Insufficient license to complete this operation.' } };
       }
+      // Issue #663: and /admin/todo answers 500 with an empty error.
+      if (path.startsWith('/admin/todo')) return { status: 500, error: { status: 500, error: '' } };
       return { items: path.startsWith('/groups') && group && !softDeleted ? [group] : [] };
     },
     get: async (version, path) => {
@@ -505,17 +508,53 @@ assert.throws(
     await isolated.cleanup();
   }
 
-  // Any other failed read is still fatal: the snapshot must stay complete.
+  // Issue #663: any other failed read of a type the drill does not round-trip
+  // is skipped too (/admin/todo answered 500 live), and recorded as failed.
   const brokenReader = {
     ...reader,
     collect: async (version, path) => {
-      if (path.startsWith('/identityGovernance/lifecycleWorkflows/')) return { error: { status: 500, error: 'boom' }, status: 500 };
+      if (path.startsWith('/admin/todo')) return { error: { status: 500, error: '' }, status: 500 };
+      return reader.collect(version, path);
+    },
+  };
+  const partial = await collectRehearsalSnapshot(brokenReader, 'g646', { delayMs: 1, tenantId: 'tenant-fixture' });
+  assert.equal(partial.collectedTypes.has('todoSettings'), false);
+  assert.deepEqual(partial.unread.map(({ type }) => type), ['todoSettings']);
+  const isolated2 = await createIsolatedTestDatabase(import.meta.url);
+  const client2 = await isolated2.connect();
+  try {
+    await client2.query(schemaSql());
+    const snapshotId = await persistSnapshot(client2, { tenantRef: 'tenant-663', resources: partial });
+    const { rows } = await client2.query('SELECT coverage_digest FROM snapshot WHERE id = $1', [snapshotId]);
+    assert.equal(rows[0].coverage_digest.todoSettings.outcome, 'failed');
+    assert.equal(rows[0].coverage_digest.todoSettings.itemCount, null);
+    assert.equal(rows[0].coverage_digest.lifecycleWorkflow.outcome, 'unavailable');
+    // The whole-estate rule still refuses it; only the drill's scoped seed takes it.
+    await assert.rejects(
+      seedFromSnapshot(client2, { tenantRef: 'tenant-663', snapshotId, setBy: 'fixture' }),
+      /not an eligible whole-estate baseline source/,
+    );
+    const baselineId = await seedFromSnapshot(client2, { tenantRef: 'tenant-663', snapshotId, setBy: 'fixture', scoped: true });
+    const { rows: [baseline] } = await client2.query('SELECT observation_scope FROM baseline WHERE id = $1', [baselineId]);
+    assert.equal(baseline.observation_scope.types.includes('group'), true);
+    assert.equal(baseline.observation_scope.types.includes('todoSettings'), false, 'an unread type is not in the captured scope');
+    assert.equal(baseline.observation_scope.types.includes('lifecycleWorkflow'), false);
+  } finally {
+    await client2.end();
+    await isolated2.cleanup();
+  }
+
+  // A type every caller needs stays strict.
+  const noUsers = {
+    ...reader,
+    collect: async (version, path) => {
+      if (path.startsWith('/users')) return { error: { status: 500, error: 'boom' }, status: 500 };
       return reader.collect(version, path);
     },
   };
   await assert.rejects(
-    collectRehearsalSnapshot(brokenReader, 'g646', { delayMs: 1, tenantId: 'tenant-fixture' }),
-    /collecting lifecycleWorkflow failed: boom/,
+    collectRehearsalSnapshot(noUsers, 'g646', { delayMs: 1, tenantId: 'tenant-fixture' }),
+    /collecting user failed/,
   );
 }
 

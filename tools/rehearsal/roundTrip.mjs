@@ -217,12 +217,12 @@ export async function writeWithRetry(writer, version, path, body, { attempts = 6
 export async function collectRehearsalSnapshot(reader, groupId, { isExpected, delayMs, tenantId } = {}) {
   // Issue #646: a type the tenant has no licence or feature for (lifecycle
   // workflows without Entra ID Governance) is skipped, as the hourly collect
-  // does. Naming only 'group' as needed lets collectM1 skip those types; any
-  // other failed read is still fatal here, so the snapshot stays complete.
+  // does. Issue #663: so is any other type that cannot be read (a 500 from
+  // /admin/todo, a missing permission scope), because the drill only round-trips
+  // its own group. Naming only 'group' as needed lets collectM1 skip them; the
+  // types every caller needs (organization, user, group, roles, ...) stay
+  // strict. persistSnapshot records each unread type as failed, never complete.
   const collected = await collectM1(reader, { tenantId, needed: new Set(['group']) });
-  if (collected.unread.length > 0) {
-    throw new Error(collected.unread.map(({ type, error }) => `collecting ${type} failed: ${error}`).join('; '));
-  }
   const rehearsalGroup = await readGroupWithRetry(reader, groupId, { isExpected, delayMs });
   const groupEntry = collected.find(([resourceType]) => resourceType === 'group');
   const groups = groupEntry?.[1];
@@ -231,12 +231,13 @@ export async function collectRehearsalSnapshot(reader, groupId, { isExpected, de
   if (existingIndex === -1) groups.push(rehearsalGroup);
   else groups[existingIndex] = rehearsalGroup;
   const resources = canonicalizeAll(collected);
-  // The types read, kept off the array's entries like collectM1's unread list,
-  // so persistSnapshot records the skipped ones as unavailable, not complete.
+  // The types read and the reads that failed, kept off the array's entries like
+  // collectM1's unread list, so persistSnapshot records what was not read.
   Object.defineProperty(resources, 'collectedTypes', {
     value: new Set(collected.map(([resourceType]) => resourceType)),
     enumerable: false,
   });
+  Object.defineProperty(resources, 'unread', { value: collected.unread, enumerable: false });
   return resources;
 }
 
@@ -259,16 +260,17 @@ export async function persistSnapshot(client, { tenantRef, resources }) {
     });
     await insertReferences(client, { fromVersion: versionId, references: resource.references });
   }
-  // collectRehearsalSnapshot fails on any read error except a type the tenant
-  // has no licence or feature for, so every type it read is complete; an
-  // absent resource type among those is a successful empty collection. A
-  // skipped type is unavailable, never complete or zero (issue #646).
+  // Every type collectRehearsalSnapshot read is complete; an absent resource
+  // type among those is a successful empty collection. A type it could not
+  // read is failed (#663), and one the tenant has no licence or feature for is
+  // unavailable (#646): never complete or zero.
   const collectedTypes = resources.collectedTypes;
-  const coverageDigest = Object.fromEntries(DESCRIPTORS.map(({ type }) => [type,
-    !collectedTypes || collectedTypes.has(type)
-      ? { outcome: 'complete', itemCount: itemCounts.get(type) ?? 0 }
-      : { outcome: 'unavailable', itemCount: null, reason: MISSING_PREREQUISITE },
-  ]));
+  const unread = new Map((resources.unread ?? []).map(({ type, error }) => [type, error]));
+  const coverageDigest = Object.fromEntries(DESCRIPTORS.map(({ type }) => {
+    if (!collectedTypes || collectedTypes.has(type)) return [type, { outcome: 'complete', itemCount: itemCounts.get(type) ?? 0 }];
+    if (unread.has(type)) return [type, { outcome: 'failed', itemCount: null, error: unread.get(type) }];
+    return [type, { outcome: 'unavailable', itemCount: null, reason: MISSING_PREREQUISITE }];
+  }));
   await completeSnapshot(client, { id: snapshotId, status: 'complete', coverageDigest });
   return snapshotId;
 }
@@ -283,7 +285,11 @@ async function detect(client, { tenantRef, reader, groupId, isExpected, collecto
     baselineRows(client, baseline.id),
     getResourceVersions(client, { snapshotId }),
   ]);
-  const drift = diffSnapshots(before, after);
+  // Compare only types both collections read, so a read that failed in one of
+  // them is not reported as an added or removed object.
+  const readInBoth = (row) => resources.collectedTypes.has(row.resource_type)
+    && (!baseline.observation_scope?.types || baseline.observation_scope.types.includes(row.resource_type));
+  const drift = diffSnapshots(before.filter(readInBoth), after.filter(readInBoth));
   const beforeByNaturalKey = new Map(before.map((row) => [row.natural_key, row]));
   const afterByNaturalKey = new Map(after.map((row) => [row.natural_key, row]));
 
@@ -485,13 +491,19 @@ export async function runRoundTrip({
       tenantRef,
       snapshotId: baselineSnapshotId,
       setBy: 'keel-rehearsal',
+      // Issue #663: a type that could not be read must not stop the drill; the
+      // baseline's captured scope names only the types read in full.
+      scoped: true,
     });
     const baselineResource = baselineResources.find((resource) => (
       resource.resourceType === 'group' && resource.sourceId === groupId
     ));
     if (!baselineResource) throw new Error(`created rehearsal group ${groupId} missing from baseline snapshot`);
     const baselineHash = canonicalHash(baselineResource.payload, 'group');
-    logEvidence(log, 2, { baselineSnapshotId, baselineId, naturalKey, baselineHash });
+    logEvidence(log, 2, {
+      baselineSnapshotId, baselineId, naturalKey, baselineHash,
+      unreadTypes: baselineResources.unread.map(({ type }) => type),
+    });
 
     // 3. Mutate both fields named by the rehearsal contract.
     // Step 3 waits for the drifted content to replicate, and step 4's

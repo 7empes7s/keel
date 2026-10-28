@@ -240,7 +240,21 @@ export async function resolveCefUdpTarget(host, { allowLoopback = false, resolve
     const problem = addressProblem(address, { allowLoopback });
     if (problem) throw new BlockedDestinationError(`${bare} resolves to ${problem}`);
   }
-  return { address: list[0].address, family: list[0].family === 6 || isIP(list[0].address) === 6 ? 6 : 4 };
+  // Prefer IPv4, as the udp4 socket that sent to the name did; every address was checked.
+  const chosen = list.find(({ address }) => isIP(address) === 4) ?? list[0];
+  return { address: chosen.address, family: isIP(chosen.address) === 6 ? 6 : 4 };
+}
+
+// Spellings such as 2130706433, 0x7f.0.0.1 or "127.0.0.1." are an IPv4 address in URL
+// and resolver terms; normalise them so registration refuses them too.
+function numericHost(host) {
+  if (isIP(host)) return host;
+  try {
+    const normalised = new URL(`https://${host}/`).hostname;
+    return isIP(normalised) ? normalised : host;
+  } catch {
+    return host;
+  }
 }
 
 /** Problems with a CEF destination config, checked when it is registered. */
@@ -258,7 +272,7 @@ export function cefDestinationProblems(config) {
       problems.push('cef destination config.host must be a non-empty string');
     } else {
       // A name is checked again, after DNS, on every send.
-      const bare = host.replace(/^\[|\]$/g, '').toLowerCase();
+      const bare = numericHost(host.replace(/^\[|\]$/g, '').toLowerCase());
       const problem = isIP(bare) ? addressProblem(bare)
         : (isLocalName(bare) ? `${bare} is a local address; Keel only sends to public addresses` : null);
       if (problem) problems.push(problem);

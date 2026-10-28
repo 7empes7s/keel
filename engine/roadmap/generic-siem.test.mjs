@@ -447,6 +447,9 @@ test('CEF https and udp destinations must point at public addresses', () => {
   for (const host of BLOCKED_CEF_HOSTS) {
     assert.match(cefDestinationProblems({ transport: 'udp', host, port: 514 }).join(';'), /public addresses/, host);
   }
+  for (const host of ['2130706433', '0x7f.0.0.1', '127.0.0.1.', '0177.0.0.1']) {
+    assert.match(cefDestinationProblems({ transport: 'udp', host, port: 514 }).join(';'), /public addresses/, host);
+  }
   assert.deepEqual(cefDestinationProblems({ transport: 'udp', host: 'syslog.example.test', port: 514 }), []);
   assert.deepEqual(cefDestinationProblems({ transport: 'udp', host: '8.8.8.8', port: 514 }), []);
   assert.deepEqual(cefDestinationProblems({ transport: 'https', url: 'https://sink.example.test/cef' }), []);
@@ -480,6 +483,7 @@ test('CEF udp checks every address a name resolves to and sends to the checked a
     'metadata.example.test': ['169.254.169.254'],
     'mixed.example.test': ['8.8.8.8', '127.0.0.1'],
     'syslog.example.test': ['8.8.4.4'],
+    'dual.example.test': ['2001:4860:4860::8888', '8.8.8.8'],
   });
   const deliver = (adapter, host) => adapter.deliver({
     destination: { kind: 'cef', config: { transport: 'udp', host, port: 514, acknowledgement: 'none' } },
@@ -499,6 +503,8 @@ test('CEF udp checks every address a name resolves to and sends to the checked a
   assert.equal(outcome.outcome, 'uncertain');
   assert.equal(calls.length, 1);
   assert.equal(calls[0].host, '8.8.4.4', 'the datagram goes to the address that was checked, so DNS cannot change it');
+  await deliver(createCefAdapter({ sendUdp, resolve }), 'dual.example.test');
+  assert.equal(calls[1].host, '8.8.8.8', 'IPv4 is preferred, as the udp4 socket did before');
 
   const unknown = await deliver(createCefAdapter({ sendUdp, resolve }), 'missing.example.test');
   assert.equal(unknown.outcome, 'retry');
@@ -691,6 +697,8 @@ test('cli/keel-worker.mjs registers webhook and cef adapters that the outbox dra
     'SELECT status, last_error FROM siem_outbox_event WHERE destination_id = $1', [cefDestination.id]);
   assert.equal(cefRow.status, 'pending');
   assert.match(cefRow.last_error, /public addresses/);
+  await new Promise((resolve) => { setTimeout(resolve, 100); });
+  assert.equal(received.length, 0, 'the production adapter must not reach the loopback socket');
 
   // The CEF udp path is exercised against a real bounded loopback socket (no external
   // egress, no live tenant object touched) with the default udp transport, opened for

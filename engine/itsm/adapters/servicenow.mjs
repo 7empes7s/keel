@@ -300,7 +300,7 @@ export function createServiceNowAdapter({
       // and the reason is shown.
       if (cause instanceof BlockedDestinationError) throw transient(`ServiceNow address refused: ${cause.message}`);
       // A network error or timeout: the outcome is unknown, so the event stays pending.
-      throw transient(`ServiceNow ${method} did not complete: ${cause?.name === 'TimeoutError' ? 'timed out' : 'network error'}`);
+      throw transient(`ServiceNow ${method} did not complete: ${(cause?.name === 'TimeoutError' || cause?.name === 'AbortError') ? 'timed out' : 'network error'}`);
     }
     return response;
   }

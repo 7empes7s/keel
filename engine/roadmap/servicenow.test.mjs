@@ -17,6 +17,7 @@
  */
 import { strict as assert } from 'node:assert';
 import { createHmac } from 'node:crypto';
+import net from 'node:net';
 import { after, test } from 'node:test';
 
 import {
@@ -63,7 +64,7 @@ await client.query(
 
 const TOKEN = 'fixture-oauth-token-never-logged';
 const CALLBACK_SECRET = 'fixture-callback-secret';
-const SECRETS = { 'env:KEEL_SERVICENOW_TOKEN': TOKEN, 'env:KEEL_SERVICENOW_CALLBACK_SECRET': CALLBACK_SECRET };
+const SECRETS = { 'env:KEEL_INTEGRATION_SERVICENOW_TOKEN': TOKEN, 'env:KEEL_INTEGRATION_SERVICENOW_CALLBACK_SECRET': CALLBACK_SECRET };
 const resolveSecret = (reference) => {
   if (!(reference in SECRETS)) throw new Error(`unresolved credential reference: ${reference}`);
   return SECRETS[reference];
@@ -73,13 +74,13 @@ const resolveSecret = (reference) => {
 const DEFAULT_CONFIG = {
   instanceUrl: 'https://keel-fixture.service-now.com',
   table: 'change_request',
-  credential: { tokenRef: 'env:KEEL_SERVICENOW_TOKEN' },
+  credential: { tokenRef: 'env:KEEL_INTEGRATION_SERVICENOW_TOKEN' },
   fields: {
     state: 'approval', approver: 'u_keel_approver.user_name', planVersion: 'u_keel_plan_version',
     planDigest: 'u_keel_plan_digest', keelRequest: 'u_keel_request', keelDecision: 'u_keel_decision',
   },
   states: { approved: ['approved'], rejected: ['rejected'] },
-  callback: { secretRef: 'env:KEEL_SERVICENOW_CALLBACK_SECRET', maxSkewSeconds: 300 },
+  callback: { secretRef: 'env:KEEL_INTEGRATION_SERVICENOW_CALLBACK_SECRET', maxSkewSeconds: 300 },
 };
 
 // A non-default workflow: its own table and gate field. Its value "approved" is an
@@ -87,13 +88,13 @@ const DEFAULT_CONFIG = {
 const CUSTOM_CONFIG = {
   instanceUrl: 'https://keel-fixture-custom.service-now.com',
   table: 'u_keel_gated_change',
-  credential: { tokenRef: 'env:KEEL_SERVICENOW_TOKEN' },
+  credential: { tokenRef: 'env:KEEL_INTEGRATION_SERVICENOW_TOKEN' },
   fields: {
     state: 'u_gate', approver: 'u_gate_owner.email', planVersion: 'u_plan_rev', planDigest: 'u_plan_hash',
     keelRequest: 'u_keel_ref', keelDecision: 'u_keel_outcome',
   },
   states: { approved: ['gate_passed'], rejected: ['gate_blocked', 'gate_withdrawn'] },
-  callback: { secretRef: 'env:KEEL_SERVICENOW_CALLBACK_SECRET', maxSkewSeconds: 120 },
+  callback: { secretRef: 'env:KEEL_INTEGRATION_SERVICENOW_CALLBACK_SECRET', maxSkewSeconds: 120 },
 };
 
 /**
@@ -249,7 +250,7 @@ test('a missing mapping disables the adapter visibly and nothing is sent', async
   // Credentials are references only; a viewer cannot change the config.
   for (const leaked of [
     { ...DEFAULT_CONFIG, credential: { tokenRef: `Bearer ${TOKEN}` } },
-    { ...DEFAULT_CONFIG, credential: { tokenRef: 'env:KEEL_SERVICENOW_TOKEN', token: TOKEN } },
+    { ...DEFAULT_CONFIG, credential: { tokenRef: 'env:KEEL_INTEGRATION_SERVICENOW_TOKEN', token: TOKEN } },
     { ...DEFAULT_CONFIG, instanceUrl: 'https://admin:hunter22@keel-fixture.service-now.com' },
     { ...DEFAULT_CONFIG, password: 'x' },
   ]) {
@@ -258,6 +259,57 @@ test('a missing mapping disables the adapter visibly and nothing is sent', async
   await assert.rejects(saveServiceNowConfig(client, { tenantRef, config: DEFAULT_CONFIG, requestedBy: VIEWER }), (error) => error.code === 'not-authorized');
   const { rows: [stored] } = await client.query('SELECT config FROM itsm_adapter_config WHERE tenant_ref = $1', [tenantRef]);
   assert.ok(!JSON.stringify(stored.config).includes(TOKEN));
+});
+
+test('a private, local or metadata instance address disables the adapter (audit finding 6)', async () => {
+  for (const instanceUrl of [
+    'https://127.0.0.1', 'https://localhost', 'https://instance.localhost', 'https://169.254.169.254',
+    'https://10.0.0.5', 'https://192.168.1.10', 'https://172.16.0.1', 'https://100.64.0.1', 'https://[::1]',
+    'https://[::ffff:127.0.0.1]', 'https://[fd00::1]', 'https://2130706433', 'https://0x7f.0.0.1',
+  ]) {
+    const config = { ...DEFAULT_CONFIG, instanceUrl };
+    const problems = serviceNowConfigProblems(config);
+    assert.deepEqual(problems.map((item) => item.code), ['instance-url'], instanceUrl);
+    assert.match(problems[0].message, /private or local address/, instanceUrl);
+    assert.throws(() => createServiceNowAdapter({ config, fetchImpl: () => assert.fail('no call'), resolveSecret }),
+      (error) => error instanceof ServiceNowAdapterError && error.code === 'disabled', instanceUrl);
+  }
+  // Stored behind the check's back as a disabled config, a cycle still sends nothing.
+  const tenantRef = 'sha256:servicenow-private-address';
+  await saveServiceNowConfig(client, { tenantRef, config: { ...DEFAULT_CONFIG, instanceUrl: 'https://169.254.169.254' }, requestedBy: ADMIN });
+  const status = await serviceNowStatus(client, { tenantRef, principalId: VIEWER });
+  assert.equal(status.enabled, false);
+  assert.deepEqual(status.problems.map((item) => item.code), ['instance-url']);
+  let called = 0;
+  const cycle = await runServiceNowCycle(client, { tenantRef, fetchImpl: () => { called += 1; }, resolveSecret });
+  assert.equal(cycle.enabled, false);
+  assert.equal(called, 0);
+});
+
+test('the default ServiceNow transport refuses an instance name that resolves to a private address', async (t) => {
+  let connections = 0;
+  const server = net.createServer((socket) => { connections += 1; socket.destroy(); });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const port = server.address().port;
+  const table = { 'rebind.service-now.example': ['127.0.0.1'], 'metadata.service-now.example': ['169.254.169.254'] };
+  const resolve = (hostname, options, callback) => {
+    const addresses = table[hostname];
+    if (!addresses) return callback(Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), { code: 'ENOTFOUND' }));
+    return callback(null, addresses.map((address) => ({ address, family: 4 })));
+  };
+  for (const host of ['rebind.service-now.example', 'metadata.service-now.example']) {
+    const config = { ...DEFAULT_CONFIG, instanceUrl: `https://${host}:${port}` };
+    assert.deepEqual(serviceNowConfigProblems(config), [], 'a name passes the config check and is checked again after DNS');
+    const adapter = createServiceNowAdapter({ config, resolveSecret, resolve });
+    await assert.rejects(adapter.fetchRecord('0123456789abcdef0123456789abcdef'), (error) => {
+      assert.match(error.message, new RegExp(`ServiceNow address refused: ${host.replaceAll('.', '\\.')} resolves to`));
+      assert.equal(error.permanent, false, 'a refused address keeps the update pending, it is not the event\'s fault');
+      assert.ok(!error.message.includes(TOKEN));
+      return true;
+    }, host);
+  }
+  assert.equal(connections, 0, 'no connection may reach the local listener');
 });
 
 test('a non-default workflow maps to the same canonical approval', async () => {
@@ -451,7 +503,7 @@ test('a failed external update does not roll back the canonical decision silentl
   assert.equal(shown.heldBack[0].externalRef, refused.ref);
   assert.match(shown.heldBack[0].lastError, /HTTP 403/);
   assert.equal(shown.heldBack[0].reason, 'rejected by adapter');
-  assert.equal(shown.mapping.tokenRef, 'env:KEEL_SERVICENOW_TOKEN');
+  assert.equal(shown.mapping.tokenRef, 'env:KEEL_INTEGRATION_SERVICENOW_TOKEN');
   assert.ok(!JSON.stringify(shown).includes(TOKEN) && !JSON.stringify(shown).includes(CALLBACK_SECRET));
   const mirror = await listMirror(client, { tenantRef: DEFAULT_TENANT, principalId: VIEWER });
   assert.equal(mirror.find((row) => row.externalRef === refused.ref).outbox.quarantined, 1);

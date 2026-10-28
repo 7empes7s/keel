@@ -39,6 +39,7 @@ import { pathToFileURL } from 'node:url';
 
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { connect } from '../engine/store/db.mjs';
+import { parseCliArgs } from './args.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { GRAPH_VERSIONS, discover } from '../engine/discovery/discover.mjs';
 import { listPowerShellCommands } from '../engine/discovery/powershellCommands.mjs';
@@ -47,9 +48,15 @@ import { tokenRoles } from '../engine/discovery/grants.mjs';
 import { loadLatestDiscovery, saveDiscoveryRun } from '../engine/discovery/store.mjs';
 import { readOnlyGraph } from '../engine/discovery/transport.mjs';
 
-function arg(argv, name, fallback) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : fallback;
+const ARGS = {
+  name: 'keel-discover',
+  strings: ['config', 'tenant-ref', 'db-url', 'versions', 'powershell-commands', 'scope', 'metadata-dir', 'page-cap', 'concurrency', 'out'],
+  booleans: ['help', 'no-store', 'no-powershell'],
+  positionals: 1,
+};
+
+function arg(opts, name, fallback) {
+  return opts[name] ?? fallback;
 }
 
 function positive(value, name) {
@@ -122,19 +129,19 @@ export async function main(argv = process.argv.slice(2), {
   readFile = (path) => readFileSync(path, 'utf8'), writeFile = writeFileSync, connectFn = connect, getTokenFn = getToken,
   fetchImpl = globalThis.fetch, env = process.env, logger = console, now, listCommandsFn = listPowerShellCommands, existsFn = existsSync,
 } = {}) {
-  const command = argv[0];
-  if (!['run', 'show'].includes(command) || argv.includes('--help')) {
+  const { values: opts, positionals: [command] } = parseCliArgs(argv, ARGS);
+  if (!['run', 'show'].includes(command) || opts.help) {
     logger.log('usage: keel-discover.mjs run|show [--config FILE] [--db-url URL] [--versions v1.0,beta] [--metadata-dir DIR] [--powershell-commands FILE | --no-powershell] [--scope FILE] [--out FILE] [--no-store] [--tenant-ref REF]');
-    return command === undefined || argv.includes('--help') ? 0 : 2;
+    return command === undefined || opts.help ? 0 : 2;
   }
-  const config = readConfigFile(arg(argv, 'config', '/etc/keel/tenant.json'), { readFile, what: 'collector settings' });
+  const config = readConfigFile(arg(opts, 'config', '/etc/keel/tenant.json'), { readFile, what: 'collector settings' });
   const tenantRef = tenantRefFor(config.tenantId);
-  const requested = arg(argv, 'tenant-ref');
+  const requested = arg(opts, 'tenant-ref');
   if (requested !== undefined && requested !== tenantRef) {
     throw new Error('the job names another tenant than the tenant config: refusing to discover');
   }
-  const store = command === 'show' || !argv.includes('--no-store');
-  const dbUrl = arg(argv, 'db-url', env.KEEL_DB_URL);
+  const store = command === 'show' || !opts['no-store'];
+  const dbUrl = arg(opts, 'db-url', env.KEEL_DB_URL);
   if (store && !dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env, pass --db-url, or use --no-store)');
 
   if (command === 'show') {
@@ -152,20 +159,20 @@ export async function main(argv = process.argv.slice(2), {
     }
   }
 
-  const versions = (arg(argv, 'versions', GRAPH_VERSIONS.join(','))).split(',').map((value) => value.trim()).filter(Boolean);
+  const versions = (arg(opts, 'versions', GRAPH_VERSIONS.join(','))).split(',').map((value) => value.trim()).filter(Boolean);
   for (const version of versions) if (!GRAPH_VERSIONS.includes(version)) throw new Error(`--versions takes ${GRAPH_VERSIONS.join(', ')}`);
-  const commandsPath = arg(argv, 'powershell-commands');
-  if (commandsPath && argv.includes('--no-powershell')) throw new Error('--powershell-commands and --no-powershell cannot be used together');
+  const commandsPath = arg(opts, 'powershell-commands');
+  if (commandsPath && opts['no-powershell']) throw new Error('--powershell-commands and --no-powershell cannot be used together');
   let powershellCommands = commandsPath ? JSON.parse(readFile(commandsPath)) : null;
   let powershellErrors = {};
   if (powershellCommands !== null && (typeof powershellCommands !== 'object' || Array.isArray(powershellCommands))) {
     throw new Error('--powershell-commands must hold an object of module -> cmdlet names');
   }
-  if (!commandsPath && !argv.includes('--no-powershell')) {
-    const scopePath = arg(argv, 'scope', DEFAULT_SCOPE_PATH);
-    const scope = arg(argv, 'scope') !== undefined || existsFn(scopePath) ? readConfigFile(scopePath, { readFile, what: 'workload scope' }) : {};
+  if (!commandsPath && !opts['no-powershell']) {
+    const scopePath = arg(opts, 'scope', DEFAULT_SCOPE_PATH);
+    const scope = arg(opts, 'scope') !== undefined || existsFn(scopePath) ? readConfigFile(scopePath, { readFile, what: 'workload scope' }) : {};
     ({ commands: powershellCommands, errors: powershellErrors } = await listCommandsFn({
-      tenantConfigPath: arg(argv, 'config', '/etc/keel/tenant.json'),
+      tenantConfigPath: arg(opts, 'config', '/etc/keel/tenant.json'),
       familyConfigPaths: powershellConfigPaths(scope, { config, readFile }),
     }));
     for (const [module, names] of Object.entries(powershellCommands)) logger.log(`PowerShell ${module}: listed ${plural(names.length, 'Get cmdlet')}.`);
@@ -175,14 +182,14 @@ export async function main(argv = process.argv.slice(2), {
   // not reported as a missing grant. The token itself is never printed or stored.
   const token = (await getTokenFn(config)).accessToken;
   const graph = readOnlyGraph(async () => token, { fetchImpl });
-  const metadata = await loadMetadata(graph, versions, { dir: arg(argv, 'metadata-dir', null), readFile });
+  const metadata = await loadMetadata(graph, versions, { dir: arg(opts, 'metadata-dir', null), readFile });
   const run = await discover({
     graph, metadata, powershellCommands, powershellErrors, heldGrants: tokenRoles(token), ...(now ? { now } : {}),
-    pageCap: positive(arg(argv, 'page-cap'), 'page-cap'), concurrency: positive(arg(argv, 'concurrency'), 'concurrency'),
+    pageCap: positive(arg(opts, 'page-cap'), 'page-cap'), concurrency: positive(arg(opts, 'concurrency'), 'concurrency'),
   });
   for (const line of describeInventory(run)) logger.log(line);
   logger.log(`${graph.stats.requests} Graph GET requests, ${graph.stats.throttled} throttled.`);
-  const out = arg(argv, 'out');
+  const out = arg(opts, 'out');
   if (out) writeFile(out, `${JSON.stringify({ tenantRef, ...run }, null, 2)}\n`);
   if (store) {
     const client = await connectFn(dbUrl);

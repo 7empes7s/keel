@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { enqueue } from "../../../../../../engine/jobs/queue.mjs";
+import { enqueue, PORTAL_QUEUED_JOBS_PER_PRINCIPAL } from "../../../../../../engine/jobs/queue.mjs";
 import { getDryRunArtifact } from "../../../../../../engine/restore/dryRunArtifact.mjs";
 
 import {
@@ -44,6 +44,7 @@ export const POST = guarded(
       requestedBy: principalId,
       idempotencyKey: request.headers.get(IDEMPOTENCY_KEY_HEADER) ?? undefined,
       notBefore: undefined,
+      maxQueuedForRequester: PORTAL_QUEUED_JOBS_PER_PRINCIPAL,
     })) as Record<string, unknown>;
 
     const persistedArtifactId = (job.params as Record<string, unknown>)?.artifactId;

@@ -6,8 +6,13 @@
 // with the container's real stderr attached. It never spawns a container per
 // resource — pwsh module load is slow enough that would destroy throughput.
 //
-// The container mounts /etc/keel read-only (credentials never enter the
-// image) and is invoked with `--rm` so no state survives between jobs.
+// Credentials never enter the image. The container no longer sees /etc/keel:
+// runJob reads the job's own connection settings on the host (they must sit
+// under /etc/keel), copies that one settings file, certificate and key into a
+// private per-job directory, mounts only that directory read-only, and removes
+// it when the job ends. The container runs with `--rm` as a non-root user, on
+// a read-only root filesystem with every capability dropped, on the default
+// bridge network rather than the host's (security audit run 2, finding 8).
 //
 // It also mounts this checkout's ops/powershell read-only over /app, so the
 // entrypoint and the cmdlet allowlist are always the deployed ones, never the
@@ -17,13 +22,22 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { chown, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_IMAGE = 'keel-powershell:latest';
 export const DEFAULT_MEMORY = '1g';
 export const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
-export const DEFAULT_CREDENTIAL_MOUNT = '/etc/keel';
+/** Every job's connection settings, certificate and key must resolve inside this directory. */
+export const DEFAULT_CREDENTIAL_ROOT = '/etc/keel';
+export const DEFAULT_TENANT_CONFIG = '/etc/keel/tenant.json';
+/** Where the job's own settings, certificate and key appear inside the container. */
+export const CONTAINER_CREDENTIAL_DIR = '/run/keel-job';
+/** The unprivileged user the container runs as when the worker itself is root. */
+export const CONTAINER_USER = '10001:10001';
+export const DEFAULT_PIDS_LIMIT = 512;
 /**
  * The deployed container scripts (run-job.sh, run-cmdlet.ps1, list-commands.ps1, probe-workloads.ps1).
  * A function, as catalogue.mjs does: a `new URL(literal, import.meta.url)` makes the
@@ -49,18 +63,112 @@ const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
 /**
  * The container answers with one JSON document on stdout. pwsh can print warning-stream
  * lines ahead of it (2026-10-05: Get-LabelPolicy's "WARNING: Force Validate not set"),
- * so when the whole of stdout is not JSON, the last non-empty line is taken as the answer
- * and the lines before it are returned as `noise`. Anything else still fails to parse.
+ * so when the whole of stdout is not JSON, `WARNING:` lines are set aside as `noise` and the
+ * rest parsed; failing that, the last non-empty line is taken as the answer and the lines
+ * before it are returned as `noise`. Anything else still fails to parse.
  */
 export function parseJobStdout(stdout) {
   try {
     return { value: JSON.parse(stdout), noise: [] };
   } catch (error) {
     const lines = String(stdout).replace(ANSI, '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    // pwsh warning-stream lines can also sit around a multi-line answer (2026-10-28, the probe's
+    // Get-Mailbox -ResultSize 1: "WARNING: There are more results available ..."). Without them,
+    // the rest must still be one JSON document.
+    const warnings = lines.filter((line) => /^WARNING:/.test(line));
+    if (warnings.length) {
+      try {
+        return { value: JSON.parse(lines.filter((line) => !/^WARNING:/.test(line)).join('\n')), noise: warnings };
+      } catch { /* fall through to the last-line answer */ }
+    }
     const last = lines.at(-1);
     if (lines.length < 2 || !last.startsWith('{')) throw error;
     return { value: JSON.parse(last), noise: lines.slice(0, -1) };
   }
+}
+
+const inside = (root, path) => path === root || path.startsWith(root.endsWith(sep) ? root : `${root}${sep}`);
+
+async function resolvedUnder(root, path, what) {
+  if (typeof path !== 'string' || !path.startsWith('/')) {
+    throw new JobQueueError(`the ${what} path must be absolute; nothing was run`, { code: 'CREDENTIALS_INVALID', stderr: '', stdout: '' });
+  }
+  const real = await realpath(path);
+  if (!inside(await realpath(root), real)) {
+    throw new JobQueueError(`the ${what} must be under ${root}; nothing was run`, { code: 'CREDENTIALS_INVALID', stderr: '', stdout: '' });
+  }
+  return real;
+}
+
+/**
+ * Copies the job's connection settings, certificate and key (and nothing else) into a
+ * new private directory, with the settings rewritten to point at the in-container
+ * copies. Returns null when the settings file does not exist on this host: then
+ * nothing is mounted, and the container answers that it cannot read the connection
+ * settings. Any other problem (a path outside the credential root, unreadable JSON, a
+ * missing certificate or key) refuses the job before a container starts.
+ */
+export async function stageJobCredentials(configPath, { credentialRoot = DEFAULT_CREDENTIAL_ROOT, stagingRoot, owner = null } = {}) {
+  let realConfig;
+  try {
+    realConfig = await resolvedUnder(credentialRoot, configPath, 'connection settings file');
+  } catch (error) {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  }
+  let config;
+  try {
+    config = JSON.parse(await readFile(realConfig, 'utf8'));
+  } catch (error) {
+    throw new JobQueueError(`the connection settings could not be read: ${error.message}; nothing was run`, { code: 'CREDENTIALS_INVALID', stderr: '', stdout: '' });
+  }
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    throw new JobQueueError('the connection settings are not a JSON object; nothing was run', { code: 'CREDENTIALS_INVALID', stderr: '', stdout: '' });
+  }
+  const files = {};
+  for (const [field, name] of [['certPath', 'cert.pem'], ['keyPath', 'key.pem']]) {
+    if (config[field] === undefined || config[field] === null) continue;
+    let real;
+    try {
+      real = await resolvedUnder(credentialRoot, config[field], field);
+    } catch (error) {
+      if (error instanceof JobQueueError) throw error;
+      throw new JobQueueError(`${field} could not be read: ${error.message}; nothing was run`, { code: 'CREDENTIALS_INVALID', stderr: '', stdout: '' });
+    }
+    files[name] = await readFile(real);
+    config[field] = `${CONTAINER_CREDENTIAL_DIR}/${name}`;
+  }
+  const dir = await mkdtemp(join(stagingRoot ?? defaultStagingRoot(), 'keel-ps-'));
+  try {
+    files['tenant.json'] = Buffer.from(JSON.stringify(config));
+    for (const [name, bytes] of Object.entries(files)) {
+      const path = join(dir, name);
+      await writeFile(path, bytes, { mode: 0o400, flag: 'wx' });
+      if (owner) await chown(path, owner.uid, owner.gid);
+    }
+    if (owner) await chown(dir, owner.uid, owner.gid);
+  } catch (error) {
+    await rm(dir, { recursive: true, force: true });
+    throw error;
+  }
+  return { dir, configPath: `${CONTAINER_CREDENTIAL_DIR}/tenant.json` };
+}
+
+// /run is a tmpfs on the deploy host, so the copies never reach a disk.
+const defaultStagingRoot = () => (process.getuid?.() === 0 && existsSync('/run') ? '/run' : tmpdir());
+
+/**
+ * The user the container runs as: the worker's own user when it is not root (so the
+ * staged files stay readable), otherwise the fixed unprivileged CONTAINER_USER, to
+ * which the staged files are handed.
+ */
+function containerUser() {
+  const uid = process.getuid?.();
+  if (uid === undefined || uid === 0) {
+    const [u, g] = CONTAINER_USER.split(':').map(Number);
+    return { user: CONTAINER_USER, owner: uid === 0 ? { uid: u, gid: g } : null };
+  }
+  return { user: `${uid}:${process.getgid()}`, owner: null };
 }
 
 /**
@@ -76,8 +184,10 @@ export function parseJobStdout(stdout) {
  *   swap-constrained.
  * @param {number} [options.timeoutMs] - Wall-clock budget before the child is
  *   SIGKILLed and the call rejects.
- * @param {string} [options.credentialMount] - Host path bind-mounted read-only
- *   into the container at the same path.
+ * @param {string} [options.credentialRoot] - Host directory the job's connection
+ *   settings, certificate and key must resolve inside. Only those three files are
+ *   copied into the container, never the directory.
+ * @param {string} [options.stagingRoot] - Host directory for the private per-job copy.
  * @param {string|null} [options.scriptMount] - Host directory holding the container
  *   scripts, bind-mounted read-only over /app. null keeps the image's own copy.
  * @param {string} [options.dockerBin] - Override for the docker binary.
@@ -95,7 +205,8 @@ export async function runJob(job, options = {}) {
     image = DEFAULT_IMAGE,
     memory = DEFAULT_MEMORY,
     timeoutMs = DEFAULT_TIMEOUT_MS,
-    credentialMount = DEFAULT_CREDENTIAL_MOUNT,
+    credentialRoot = DEFAULT_CREDENTIAL_ROOT,
+    stagingRoot,
     scriptMount = defaultScriptMount(),
     dockerBin = 'docker',
     spawnFn = spawn,
@@ -105,7 +216,9 @@ export async function runJob(job, options = {}) {
     throw new JobQueueError(`the container scripts are not at ${scriptMount}; nothing was run`, { code: 'SCRIPTS_MISSING', stderr: '', stdout: '' });
   }
   const jobId = job.jobId ?? randomUUID();
-  const payload = JSON.stringify({ ...job, jobId });
+  const { user, owner } = containerUser();
+  const staged = await stageJobCredentials(job.tenantConfigPath ?? DEFAULT_TENANT_CONFIG, { credentialRoot, stagingRoot, owner });
+  const payload = JSON.stringify({ ...job, jobId, ...(staged ? { tenantConfigPath: staged.configPath } : {}) });
 
   const args = [
     'run',
@@ -113,12 +226,28 @@ export async function runJob(job, options = {}) {
     '-i',
     '--memory', memory,
     '--memory-swap', memory,
-    '--network', 'host',
-    '-v', `${credentialMount}:${credentialMount}:ro`,
+    '--pids-limit', String(DEFAULT_PIDS_LIMIT),
+    '--network', 'bridge',
+    '--user', user,
+    '--read-only',
+    '--cap-drop', 'ALL',
+    '--security-opt', 'no-new-privileges',
+    // pwsh, the Exchange module (its temporary tmpEXO module) and the restore template need a writable temp and home.
+    '--tmpfs', '/tmp:rw,nosuid,nodev,size=256m',
+    '-e', 'HOME=/tmp',
+    ...(staged ? ['-v', `${staged.dir}:${CONTAINER_CREDENTIAL_DIR}:ro`] : []),
     ...(scriptMount === null ? [] : ['-v', `${scriptMount}:${CONTAINER_SCRIPT_DIR}:ro`]),
     image,
   ];
 
+  try {
+    return await spawnContainer({ dockerBin, args, spawnFn, timeoutMs, payload, jobId });
+  } finally {
+    if (staged) await rm(staged.dir, { recursive: true, force: true });
+  }
+}
+
+function spawnContainer({ dockerBin, args, spawnFn, timeoutMs, payload, jobId }) {
   return new Promise((resolve, reject) => {
     let child;
     try {

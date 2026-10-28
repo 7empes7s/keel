@@ -19,6 +19,7 @@ import {
   firstCollectReadiness, loadSetupState, selectWorkloads, stepProgress, workloadsForScope,
 } from '../bootstrap/onboarding.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
+import { setAnonymity } from '../insights/anonymity.mjs';
 
 const tenantRef = 'sha256:bootstrap-ui-fixture';
 const credentials = {
@@ -160,6 +161,11 @@ test('setup state reads the journal for each scope and reports steps not checked
   assert.equal(readScope.run.artifactId, read.artifactId);
   assert.equal(readScope.run.state, 'waiting-for-you');
   assert.equal(readScope.run.approvedByName, 'Setup Owner');
+  // "Hide people's names": who started setup shows by a code name.
+  await setAnonymity(client, { tenantRef, enabled: true, actor: owner.id });
+  const hidden = (await loadSetupState(client, { tenantRef, viewerId: owner.id })).scopes.find((scope) => scope.scope === 'read');
+  assert.match(hidden.run.approvedByName, /^Person [A-HJ-NP-Z2-9]{4}$/);
+  await setAnonymity(client, { tenantRef, enabled: false, actor: owner.id });
   assert.equal(readScope.run.resumableByViewer, true);
   assert.equal(readScope.steps.find((step) => step.kind === 'workload-rbac').progress, 'waiting-for-you');
   assert.equal(paused.scopes.find((scope) => scope.scope === 'restore').run, null);

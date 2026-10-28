@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 39 are full, 131 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 91 at least in part; the other 86 are restored by hand from the backup.
+KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 39 are full, 131 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 92 at least in part; the other 85 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -316,7 +316,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **Multitenant organization access template.** Puts back the cross-tenant access settings a tenant gets when it joins your multitenant organization.
   - *You do:* Tenants that already joined keep their own settings; change those per organization.
 - **Guest SAML or WS-Fed sign-in.** Puts back each partner's name and sign-in protocol.
-  - *Not brought back:* its domains (stored separately and not in the backup yet).
+  - *Not brought back:* its domains (in the backup, but KEEL does not write it yet).
   - *You do:* KEEL never puts back a partner's sign-in addresses or signing certificate, so a changed backup cannot send guests to another sign-in page. Check those with the partner and set them in the Entra admin center, under External Identities, All identity providers. A deleted partner is set up again there too, with its domains.
 - **Attack simulation automations** (not built yet). KEEL backs up each automation's name and status but does not restore it yet.
   - *Not brought back:* each run of the automation (stored separately and not in the backup yet).
@@ -437,7 +437,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Windows Autopilot profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Security baselines (older format) | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
 | Enrolled devices | Yes (Tier 3, low impact, weekly) | Microsoft-managed | Nothing to restore | None |
-| Apps | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
+| Apps | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | App protection policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Managed app configuration | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | App configuration for managed devices | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
@@ -483,7 +483,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Microsoft Tunnel server configurations | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Microsoft Tunnel health thresholds | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Apple app provisioning profiles | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| App dependencies and supersedence | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| App dependencies and supersedence | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back; take out a link a restore added, when that restore is undone | Tested against a simulated tenant |
 | Managed e-books | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | E-book categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Classroom device cart assignments | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -521,9 +521,9 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Rebuild the baseline in the settings catalog. KEEL restores settings catalog policies.
 - **Enrolled devices** (Microsoft limit). A device record is created by the device when it enrolls. It is state, not configuration.
   - *You do:* Nothing to restore. Devices enroll again on their own once enrollment settings are back.
-- **Apps** (KEEL choice). App packages are content, not configuration, and KEEL does not back them up.
-  - *Not brought back:* the app package (a file the backup does not hold).
-  - *You do:* Add the apps again in the Intune admin center from their store or package, using the backup as the list.
+- **Apps.** Adds store apps, web links, Microsoft 365 Apps, Edge and WinGet apps again with their settings and who they are assigned to, and puts changed settings back. Win32 and line-of-business apps come back with their install commands, detection rules and other settings, unassigned. Each app is put back in its app categories.
+  - *Not brought back:* the app package (the installer file), which must be uploaded before the app is assigned (a file the backup does not hold); an app synced from Apple Business Manager, managed Google Play or Microsoft, which is synced again there (in the backup, but KEEL does not write it yet).
+  - *You do:* Microsoft never returns an app's package (the installer file): upload it again for each recreated Win32 or line-of-business app, then assign it as the restore lists. Intune does not let such an app be changed until its package is uploaded, so a restore lists a step for it instead. Apps from Apple Business Manager or managed Google Play are synced again there; KEEL then puts back who they are assigned to. An uninstall assignment is never written: it removes the app and its data from devices. A category that is no longer in Intune is listed as a step: restore it first. Dependencies and supersedence are restored on their own.
 - **App protection policies.** Puts the settings of iOS and Android app protection policies back, recreates them with the apps they protect, and removes an unassigned policy added since the backup.
   - *Not brought back:* windows Information Protection policies (in the backup, but KEEL does not write it yet).
   - *You do:* A backup taken before the protected apps were read cannot recreate a policy; take a new backup. Windows Information Protection policies are restored by hand. Windows app protection policies are restored on their own.
@@ -638,9 +638,9 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* the default limits (set by Microsoft).
 - **Apple app provisioning profiles.** Recreates profiles and puts back their name, description, scope tags, the profile file from Apple and who they are assigned to.
   - *You do:* Who a profile is assigned to is put back only when it is picked for a restore, from backups taken after assignments were read. An expired file, or one that expires before the profile in Intune now, is never uploaded: renew it with Apple and upload it in the Intune admin center, under Apps, iOS/iPadOS, App provisioning profiles. A backup taken before the profile file was read is refused; take a new backup.
-- **App dependencies and supersedence.** Puts back which app depends on or replaces which, and how (install automatically or detect; update or replace), when both apps are in Intune.
+- **App dependencies and supersedence.** Puts back which app depends on or replaces which, and how (install automatically or detect; update or replace), when both apps are in Intune, including apps the same restore added again. Undoing a restore takes out a link it added.
   - *Not brought back:* the app packages on both ends, added again by hand before the link (a file the backup does not hold).
-  - *You do:* Apps are not backed up, so add a deleted app again by hand first: a link to a missing app is not written. Setting an app to replace another uninstalls the older app on devices, so that needs the separate content approval.
+  - *You do:* An app KEEL cannot add again (a synced app) is added by hand first: a link to a missing app is not written. Intune links only Win32 apps, so a link to any other kind of app is a step for a person. Setting an app to replace another uninstalls the older app on devices, so that needs the separate content approval.
 - **Managed e-books** (not built yet). KEEL backs up each book's details but not yet who it is assigned to, and does not restore it yet.
   - *Not brought back:* who the book is assigned to (stored separately and not in the backup yet).
   - *You do:* Sync the books again from Apple Business Manager in the Intune admin center, under Apps, eBooks, and assign them again from the backup.
@@ -674,7 +674,7 @@ KEEL backs up the configuration of these workloads, listed below. It also backs 
 - Teams: teams, channels (standard, private and shared), channel members, tabs and apps. Channel files are covered through the team site in SharePoint.
 - Planner and group conversations: plans, buckets and tasks with their details; conversations, threads, posts and attachments.
 
-Teams chat and channel messages are not backed up: Microsoft must first approve the Teams export API for your tenant.
+Teams chat and channel messages are not backed up: Microsoft must first approve the Teams export API for your tenant. Once they are, KEEL can restore a channel's messages into a new channel, "<name> (restored <date>)", with their original authors and times, through Microsoft's message import API. Reactions, cards and live @mentions are not brought back (a mention stays as bold text).
 
 A content scope can narrow the content backup to mailboxes, OneDrives, sites and groups whose names start with a set prefix. Teams has no name filter and is always read in full. The KEEL test tenant uses this to back up only its test content.
 
@@ -898,6 +898,27 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 **KEEL can restore:** nothing yet.
 
 **You do:** KEEL does not restore role groups. A deleted group, its roles and its members are put back by hand in the Exchange admin center using the backup. Microsoft's built-in groups cannot be deleted, only their members changed.
+
+### SharePoint site structure
+
+**Backed up:**
+
+- SharePoint hub sites
+- SharePoint site designs
+- SharePoint site scripts
+- SharePoint site structure: lists, libraries, columns, content types and navigation
+
+**KEEL can restore:**
+
+- Put back: Lists, libraries, columns and content types missing from a named site, and its navigation
+- Add back: SharePoint hub site registrations
+- Put back: SharePoint hub site settings
+- Add back: SharePoint site scripts
+- Put back: SharePoint site scripts
+- Add back: SharePoint site designs
+- Put back: SharePoint site designs
+
+**You do:** KEEL adds back what a named site is missing (lists, libraries, site columns and content types) and puts its navigation back, but never changes or deletes an existing list, column or content type: those differences are listed for you to apply by hand. A re-added list comes back empty; its files and items come back from the content backup. Permissions, webhooks, custom actions, features and site settings are put back by hand. A site script or design comes back with a new id; who may use a design, and who may join a hub, are granted again by hand. Site templates are backed up only for the sites named in the backup scope. The term store is backed up separately.
 
 ### Teams calling, voice and live event policies
 

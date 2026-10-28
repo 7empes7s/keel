@@ -48,6 +48,7 @@ import { createHash } from 'node:crypto';
 import { CENTRAL, ownershipOfResources, ownershipVisibleTo } from '../authz/entityScope.mjs';
 import { OWN_PREFIX, controlFromRow, ownCheckRows } from '../benchmarks/ownChecks.mjs';
 import { controlFor } from '../benchmarks/registry.mjs';
+import { csvCell, csvLine } from './csv.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { CONTENT_COLLECTORS } from '../content/collectors.mjs';
 import { readCoverageOutcome } from '../coverage/snapshots.mjs';
@@ -937,12 +938,6 @@ export async function loadValueReport(client, {
   return report;
 }
 
-function csvCell(value) {
-  if (value === null || value === undefined) return '';
-  const text = Array.isArray(value) ? value.join(' ') : String(value);
-  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-}
-
 /**
  * The report as CSV: a provenance header block, then one row per outcome and per
  * finding shown. Hours appear only when the report carries a configured estimate.
@@ -992,11 +987,11 @@ export function valueReportCsv(report) {
   for (const [key, value] of meta) lines.push(`# ${key},${csvCell(value)}`);
   lines.push('record,id,family,state,reason,attempts,retries,first_requested,last_event,verified_or_resolved,attempt_event_ids');
   for (const row of report.outcomes.rows) {
-    lines.push(['outcome', row.id, row.family, row.state, row.reason, row.attempts, row.retries, row.firstRequestedAt, row.lastEventAt, row.verifiedAt, row.attemptEventIds].map(csvCell).join(','));
+    lines.push(csvLine(['outcome', row.id, row.family, row.state, row.reason, row.attempts, row.retries, row.firstRequestedAt, row.lastEventAt, row.verifiedAt, row.attemptEventIds]));
   }
   if (!report.findings.withheld) {
     for (const row of report.findings.rows) {
-      lines.push(['finding', row.id, row.framework, row.state, row.reopened ? 'reopened' : '', '', '', row.failedAt, row.lastEvaluatedAt, row.resolvedAt, row.resolvedBy ? `evaluation:${row.resolvedBy.evaluationId}` : ''].map(csvCell).join(','));
+      lines.push(csvLine(['finding', row.id, row.framework, row.state, row.reopened ? 'reopened' : '', '', '', row.failedAt, row.lastEvaluatedAt, row.resolvedAt, row.resolvedBy ? `evaluation:${row.resolvedBy.evaluationId}` : '']));
     }
   }
   return `${lines.join('\n')}\n`;

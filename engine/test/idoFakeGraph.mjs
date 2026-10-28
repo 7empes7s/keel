@@ -4,7 +4,7 @@
  * under it (or, before any child write, the parent's inline array of the same
  * name); `$expand=x` adds the `x` collection to the object read. The actions
  * the writers use are modelled: /assign, /targetApps, a policy set's /update, a compliance
- * policy's /setScheduledActions, owners/$ref, an inline child's DELETE,
+ * policy's /setScheduledActions, an app's /updateRelationships, owners/$ref (and a reference's DELETE .../{id}/$ref), an inline child's DELETE,
  * appRoleAssignments, createNewVersion and assignLicense. Every call is kept in
  * `calls` (method, version, path, body) for the tests to inspect.
  */
@@ -112,11 +112,32 @@ export function idoFakeGraph({ seed = {}, failWrites = () => null } = {}) {
         });
         return ok(200, objects.get(owner));
       }
+      if (method === 'POST' && action === 'updateRelationships') {
+        // An app's links, replaced whole (issue #642). Intune links only Win32 apps.
+        if (!objects.has(owner)) return notFound();
+        const notWin32 = [owner, ...(body.relationships ?? []).map((link) => `${parentOf(owner)}/${link.targetId}`)]
+          .find((app) => objects.get(app)?.['@odata.type'] && !/win32/i.test(objects.get(app)['@odata.type']));
+        if (notWin32) return { ok: false, status: 400, body: { error: { code: 'BadRequest', message: `The app with id '${nameOf(notWin32)}' is not a Win32LobApp.` } } };
+        const appId = nameOf(owner);
+        const held = collectionOf(`${owner}/relationships`).filter((link) => link.targetType === 'parent');
+        setCollection(`${owner}/relationships`, [...held, ...(body.relationships ?? []).map((link) => ({
+          ...link, id: `${link.targetId}_${appId}`, sourceId: appId, targetType: 'child',
+        }))]);
+        return ok(204, null);
+      }
       if (method === 'POST' && action === '$ref') {
         const id = String(body['@odata.id']).split('/').pop();
         const list = collectionOf(owner);
         if (list.some((item) => item.id === id)) return { ok: false, status: 400, body: { error: { code: 'Request_BadRequest', message: 'One or more added object references already exist' } } };
         setCollection(owner, [...list, { id }]);
+        return ok(204, null);
+      }
+      if (method === 'DELETE' && action === '$ref') {
+        // One reference taken out of a collection: {collection}/{id}/$ref (an app's categories, batch 19).
+        const list = collectionOf(parentOf(owner));
+        const id = decodeURIComponent(nameOf(owner));
+        if (!list.some((item) => String(item.id) === id)) return notFound();
+        setCollection(parentOf(owner), list.filter((item) => String(item.id) !== id));
         return ok(204, null);
       }
       if (method === 'POST') {

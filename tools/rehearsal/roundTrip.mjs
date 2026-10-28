@@ -26,6 +26,7 @@ import {
   insertResourceVersion,
 } from '../../engine/store/db.mjs';
 import { getActiveBaseline, recordDrift } from '../../engine/store/governance.mjs';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 export const DISPOSABLE_PREFIX = 'group:keel-rehearsal-';
 
@@ -90,8 +91,8 @@ function flag(name) {
   return process.argv.includes(`--${name}`);
 }
 
-function readConfig(path) {
-  return JSON.parse(readFileSync(path, 'utf8'));
+function readConfig(path, what) {
+  return readConfigFile(path, { readFile: readFileSync, what });
 }
 
 export function tenantRefFor(config) {
@@ -429,8 +430,8 @@ export async function runRoundTrip({
   let createdNaturalKey = null;
   let hardDeleted = false;
   try {
-    const collector = readConfig(collectorConfigPath);
-    const restorer = readConfig(restorerConfigPath);
+    const collector = readConfig(collectorConfigPath, 'collector settings');
+    const restorer = readConfig(restorerConfigPath, 'restorer settings');
     assertSeparateRestorer(collector, restorer);
     if (!reader) {
       const { accessToken } = await getToken(collector);

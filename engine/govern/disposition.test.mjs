@@ -93,12 +93,14 @@ const driftId = await recordDrift(client, {
   blastRadius: 'access-affecting',
 });
 
+const ignoreUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
 const dispositionId = await applyDisposition(client, {
   driftId,
   action: 'ignore',
   actor: 'test-operator',
   reason: 'time-boxed investigation',
-  expiresAt: new Date('2026-09-05T12:00:00.000Z'),
+  // An ignore is compared with now (at most 90 days ahead), so its end is set from the run.
+  expiresAt: ignoreUntil,
 });
 assert.ok(dispositionId);
 const { rows: dispositions } = await client.query(
@@ -106,7 +108,7 @@ const { rows: dispositions } = await client.query(
   [dispositionId],
 );
 assert.equal(dispositions[0].action, 'ignore');
-assert.equal(dispositions[0].expires_at.toISOString(), '2026-09-05T12:00:00.000Z');
+assert.equal(dispositions[0].expires_at.toISOString(), ignoreUntil.toISOString());
 await assert.rejects(
   () => applyDisposition(client, {
     driftId,

@@ -88,7 +88,7 @@ test("the job list reads refUsage from a plain module, not the client panel", ()
   assert.equal(isClientModule(jobTable), false, "the job list is a server component");
   assert.equal(isClientModule(join(PORTAL, "components", "technical-details.tsx")), true);
   assert.equal(isClientModule(join(PORTAL, "lib", "record-refs.ts")), false);
-  assert.match(readFileSync(jobTable, "utf8"), /import \{ refUsage \} from "@\/lib\/record-refs"/);
+  assert.match(readFileSync(jobTable, "utf8"), /import \{[^}]*\brefUsage\b[^}]*\} from "@\/lib\/record-refs"/);
 });
 
 test("the page header reads SECTION_ICONS from a plain module, not the client menu", () => {

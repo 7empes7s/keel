@@ -1,4 +1,5 @@
 import { exceptionRefusal, fixRefusal } from "@/lib/compliance-view";
+import { plainRefusal } from "@/lib/action-refusal";
 
 // The one call the Compliance page makes, in its own module so a test can check the
 // control reaches its route without a React harness.
@@ -46,9 +47,9 @@ export async function planFix(evaluationId: string, naturalKey: string): Promise
       headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
       body: JSON.stringify({ evaluationId, naturalKey }),
     });
-    const answer = (await response.json().catch(() => ({}))) as { error?: string; artifactId?: string; job?: { id?: string } };
+    const answer = (await response.json().catch(() => ({}))) as { error?: string; message?: string; artifactId?: string; job?: { id?: string } };
     if (response.ok && answer.artifactId && answer.job?.id) return { ok: true, artifactId: answer.artifactId, jobId: answer.job.id };
-    return { ok: false, reason: fixRefusal(response.status, answer.error) };
+    return { ok: false, reason: plainRefusal(answer) ?? fixRefusal(response.status, answer.error) };
   } catch {
     return { ok: false, reason: fixRefusal(0, undefined) };
   }

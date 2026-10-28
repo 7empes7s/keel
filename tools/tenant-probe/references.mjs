@@ -61,6 +61,13 @@ const GLOBAL_CONSTANT_FIELDS = [
   // the same id means the same permission in every tenant. (Ids published by
   // THIS tenant's apps resolve through the index before this rule is reached.)
   /^requiredResourceAccess\.resourceAccess\.id$/,
+  // Issue #641: the same holds for the permission ids a consent policy lists.
+  // A pre-approval policy names them under conditions.permissions.permissionIds
+  // (resource-specific ones such as ChatMessage.Read.Chat are not in the API's
+  // appRoles, so the index never names them), and a permission grant policy's
+  // condition sets under includes/excludes.permissions.
+  /^conditions\.permissions\.permissionIds$/,
+  /^(includes|excludes)\.permissions$/,
   /(^|\.)builtInStandardId$/,
   // Roadmap task-149: the authorization policy's guest role is one of three
   // Microsoft-defined role template ids (User, Guest User, Restricted Guest

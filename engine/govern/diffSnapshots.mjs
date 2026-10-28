@@ -146,6 +146,14 @@ const EDGE_RESOURCE_TYPE = {
 
 // Order-insensitive comparison of an edge's attributes (assignment filter,
 // intent, settings digest). Null and absent attributes are the same.
+// An app assignment's settings object is compared through its settingsDigest
+// (restore gaps batch 18), so a backup that starts keeping it changes nothing.
+function edgeAttributesKey(attributes) {
+  if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes) || !('settings' in attributes)) return attributesKey(attributes);
+  const { settings: _settings, ...rest } = attributes;
+  return attributesKey(rest);
+}
+
 function attributesKey(value) {
   if (value === null || value === undefined) return 'null';
   if (Array.isArray(value)) return `[${value.map(attributesKey).join(',')}]`;
@@ -204,8 +212,8 @@ export function diffRelationships(baseline, observed) {
       naturalKey: `edge:${after.edgeType}:${after.parentSourceId}:${identity(target)}`,
       resourceType: EDGE_RESOURCE_TYPE[after.family] ?? `edge:${after.family}`,
       changeType,
-      beforeHash: changeType === 'added' ? null : identity(target) + (previous ? `#${attributesKey(previous.attributes)}` : ''),
-      afterHash: changeType === 'removed' ? null : identity(target) + (previous ? `#${attributesKey(target.attributes)}` : ''),
+      beforeHash: changeType === 'added' ? null : identity(target) + (previous ? `#${edgeAttributesKey(previous.attributes)}` : ''),
+      afterHash: changeType === 'removed' ? null : identity(target) + (previous ? `#${edgeAttributesKey(target.attributes)}` : ''),
       ...(changeType === 'modified' ? { beforeAttributes: previous.attributes ?? null, afterAttributes: target.attributes ?? null } : {}),
       blastRadius: 'access-affecting',
       parentSourceId: after.parentSourceId,
@@ -218,7 +226,7 @@ export function diffRelationships(baseline, observed) {
     for (const [id, target] of afterIds) {
       const previous = beforeIds.get(id);
       if (!previous) emit('added', target);
-      else if (attributesKey(previous.attributes) !== attributesKey(target.attributes)) emit('modified', target, previous);
+      else if (edgeAttributesKey(previous.attributes) !== edgeAttributesKey(target.attributes)) emit('modified', target, previous);
     }
     for (const [id, target] of beforeIds) if (!afterIds.has(id)) emit('removed', target);
   }

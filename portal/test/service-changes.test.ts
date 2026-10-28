@@ -122,6 +122,41 @@ test("the loader lists the newest open change per resource in every service, wit
   }
 });
 
+test("a site template's stored XML never reaches the Changes page", async () => {
+  const database = await createIsolatedTestDatabase(import.meta.url);
+  const client = await database.connect();
+  try {
+    await client.query(schemaSql());
+    const read = async (at: string, withTemplate: boolean) => {
+      const { rows: [collection] } = await client.query(
+        `INSERT INTO workload_collection (tenant_ref, workload, outcome, observed_from, observed_to, created_at)
+         VALUES ($1, 'sharepoint-structure', 'complete', $2, $2, $2) RETURNING id`,
+        [TENANT, at],
+      );
+      await client.query(
+        `INSERT INTO workload_observation (collection_id, resource_key, fields) VALUES ($1, 'hub-site:a', $2)`,
+        [collection.id, { kind: "hubSite", Title: "KEEL-RT hub" }],
+      );
+      if (withTemplate) {
+        await client.query(
+          `INSERT INTO workload_observation (collection_id, resource_key, fields) VALUES ($1, 'site-template:https://contoso.sharepoint.com/sites/keel-rt', $2)`,
+          [collection.id, { kind: "siteTemplate", title: "KEEL-RT site", lists: [], templateXml: "H4sI".repeat(1000), templateSha256: "ab", templateBytes: 4000 }],
+        );
+      }
+      await detectWorkloadDrift(client, { collectionId: collection.id, hysteresis: undefined });
+    };
+    await read("2026-10-13T02:00:00.000Z", false);
+    await read("2026-10-14T02:00:00.000Z", true);
+    const [added] = await loadServiceChanges(client, { tenantRef: TENANT, now: new Date("2026-10-15T12:00:00.000Z") });
+    assert.equal(added.changeType, "added");
+    assert.equal(added.name, "KEEL-RT site");
+    assert.deepEqual(Object.keys(added.after ?? {}).sort(), ["kind", "lists", "title"]);
+  } finally {
+    await client.end();
+    await database.cleanup();
+  }
+});
+
 const NOW = "2026-10-15T12:00:00.000Z";
 const serviceRow = (over: Record<string, unknown> = {}) => serviceChangeFrom({
   id: "d1a00000-0000-4000-8000-0000000000d1", workload: "teams-org-policies", resource_key: "external-access:Global",

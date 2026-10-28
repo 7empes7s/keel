@@ -27,7 +27,7 @@ const FIELD_LABELS: Record<string, string> = {
 };
 
 // The fields a read names a resource by, best first.
-const NAME_FIELDS = ["displayName", "DisplayName", "name", "Name", "title", "webUrl", "url", "identity"];
+const NAME_FIELDS = ["displayName", "DisplayName", "name", "Name", "title", "Title", "webUrl", "url", "identity"];
 // Keys that hold one tenant-wide group of settings rather than a named resource.
 const TENANT_KEYS: Record<string, string> = { tenant: "Sharing settings", organization: "Organization settings" };
 

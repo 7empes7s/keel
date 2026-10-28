@@ -15,10 +15,10 @@ import { drainDueDestinations } from '../engine/telemetry/outbox.mjs';
 import { createSentinelAdapter, SENTINEL_DESTINATION_KIND } from '../engine/telemetry/adapters/sentinel.mjs';
 import { createWebhookAdapter } from '../engine/telemetry/adapters/webhook.mjs';
 import { createCefAdapter } from '../engine/telemetry/adapters/cef.mjs';
-import { credentialPaths } from '../engine/restore/credentialPaths.mjs';
+import { credentialPaths, requireKeelConfigPath } from '../engine/restore/credentialPaths.mjs';
 import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
 import { ingestAudit, migrateAuditIngestion, readAuditEvidence, createFixtureAuditAdapter } from '../engine/identity/auditIngest.mjs';
@@ -32,6 +32,7 @@ import { findPrincipalById } from '../engine/authz/principals.mjs';
 import { recordAutoRemediationTerminalOutcome } from '../engine/policy/execute.mjs';
 import { sweepEscalations } from '../engine/notify/escalation.mjs';
 import { sweepBreakGlassCanaries } from '../engine/safety/breakGlassReadiness.mjs';
+import { parseCliArgs } from './args.mjs';
 import {
   emitJobEvent, claimNext, complete, fail, JOB_HEARTBEAT_INTERVAL_MS, resetOrphaned, touchHeartbeat,
 } from '../engine/jobs/queue.mjs';
@@ -71,9 +72,15 @@ export const SIEM_ADAPTERS = Object.freeze({
   cef: createCefAdapter(),
 });
 
+const ARGS = {
+  name: 'keel-worker',
+  strings: ['worker-id', 'db-url', 'poll-interval-ms', 'audit-config', 'ownership-config'],
+  booleans: ['help', 'audit-migrate', 'audit-report', 'ownership-report'],
+};
+let parsed;
 function arg(name, fallback) {
-  const i = process.argv.indexOf(`--${name}`);
-  return i > -1 ? process.argv[i + 1] : fallback;
+  parsed ??= parseCliArgs(process.argv.slice(2), ARGS).values;
+  return parsed[name] ?? fallback;
 }
 
 function sleep(ms) {
@@ -213,28 +220,37 @@ export function partialResult(handler, err, durationMs) {
   return { stdout: err.stdout, stderr: withholdParsedText(err.stderr ?? ''), durationMs, partial: true, incompleteTypes };
 }
 
+// Every requireString value becomes a child's argv entry. Security audit finding 4: a
+// value that starts with "-" (a restore target "--allow-tenant-wide-test-writes") would
+// be read by the child as a flag, so it is refused here.
 function requireString(value, label) {
   if (typeof value !== 'string' || value.length === 0) {
     throw new Error(`${label} must be a non-empty string`);
+  }
+  if (value.startsWith('-')) {
+    throw new Error(`${label} must not start with "-"`);
+  }
+  return value;
+}
+
+// Free text a person types (a baseline label, description or reason) may start with
+// "-", as in "- copied from prod". A flag never holds whitespace, so a dash-leading
+// value is refused only when it is a single word that a child could read as a flag.
+function requireText(value, label) {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+  if (value.startsWith('-') && !/\s/.test(value)) {
+    throw new Error(`${label} must not be a single word that starts with "-"`);
   }
   return value;
 }
 
 // Issue #411: the config, scope and reader params are file paths the child reads as root.
 // Anything that can enqueue a job can set them, so they must name a JSON file under
-// /etc/keel, where only the operator writes. The path is resolved first, so `..` cannot
-// step out. /etc/keel also holds keys and env files (content.key, gh.env), so only a
-// `.json` name is accepted: a job can never be pointed at a secret that is not a config.
-const KEEL_CONFIG_DIR = '/etc/keel/';
-
-export function requireKeelConfigPath(value, label) {
-  const path = requireString(value, label);
-  const resolved = resolve('/', path);
-  if (path.includes('\0') || !resolved.startsWith(KEEL_CONFIG_DIR) || !resolved.endsWith('.json')) {
-    throw new Error(`${label} must be a .json file under ${KEEL_CONFIG_DIR}`);
-  }
-  return resolved;
-}
+// /etc/keel (requireKeelConfigPath, shared with the portal in
+// engine/restore/credentialPaths.mjs so the portal never queues a job this refuses).
+export { requireKeelConfigPath };
 
 // Issue #411: when a child fails to parse a file as JSON, Node quotes that file twice:
 // the message quotes its start ("Unexpected token 'a', \"abc...\" is not valid JSON"),
@@ -424,13 +440,13 @@ export const JOB_HANDLERS = {
       // derived "(vN)" label; a new baseline always needs a label.
       if (params.supersedesBaselineId !== undefined) {
         args.push('--supersedes', requireString(params.supersedesBaselineId, 'params.supersedesBaselineId'));
-        if (params.label !== undefined) args.push('--label', requireString(params.label, 'params.label'));
+        if (params.label !== undefined) args.push('--label', requireText(params.label, 'params.label'));
       } else {
-        args.push('--label', requireString(params.label, 'params.label'));
+        args.push('--label', requireText(params.label, 'params.label'));
       }
       args.push('--set-by', requireString(job.requested_by, 'job.requested_by'));
       if (params.description !== undefined) {
-        args.push('--description', requireString(params.description, 'params.description'));
+        args.push('--description', requireText(params.description, 'params.description'));
       }
       if (params.tenantRef !== undefined) {
         args.push('--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'));
@@ -454,7 +470,7 @@ export const JOB_HANDLERS = {
         }
         args.push('--actor', requireString(job.requested_by, 'job.requested_by'));
         if (params.reason !== undefined) {
-          args.push('--reason', requireString(params.reason, 'params.reason'));
+          args.push('--reason', requireText(params.reason, 'params.reason'));
         }
       }
       if (params.tenantRef !== undefined) {
@@ -513,7 +529,7 @@ export const JOB_HANDLERS = {
         if (!hasArtifactId) {
           throw new Error('params.artifactId is required to enforce a restore (a completed dry-run artifact must be promoted; a direct enforce is refused)');
         }
-        return ['--artifact', params.artifactId, '--enforce'];
+        return ['--artifact', requireString(params.artifactId, 'params.artifactId'), '--enforce'];
       }
 
       // Roadmap task-70: a compensation dry run carries only the promoted restore it
@@ -679,6 +695,17 @@ export const JOB_HANDLERS = {
   // delivery id; channel config and the event are read from the durable delivery log,
   // never accepted as arbitrary worker arguments. keel-notify records failed attempts
   // and enqueues their backoff retries before exiting non-zero.
+  // Audit run 2, finding 3: an approved accept or ignore. The decision itself is read
+  // from the approval row by the wrapper; the job names only the approval and the
+  // person who asked, who is the recorded actor.
+  dispose: {
+    script: join(__dirname, 'keel-dispose.mjs'),
+    argsFor(_params = {}, job = {}) {
+      const match = /^approval:(.+)$/.exec(String(job.idempotency_key ?? ''));
+      if (!match) throw new Error('a dispose job is minted only by an approval');
+      return ['--approval-id', match[1], '--actor', requireString(job.requested_by, 'job.requested_by')];
+    },
+  },
   notify: {
     script: join(__dirname, 'keel-notify.mjs'),
     argsFor(params = {}) {
@@ -810,7 +837,7 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
   }
 }
 
-// Roadmap task-79: drain due SIEM outbox events between job polls. The outbox is
+// Roadmap task-79: drain due SIEM outbox events on the safety-sweep timer. The outbox is
 // durable, so a drain failure must not kill the worker: it is logged redacted and the
 // next poll retries. Exported so the task-79 boundary tests drive this exact isolation
 // seam with injected adapters and a failing client.
@@ -823,7 +850,7 @@ export async function drainSiemOutbox(client, { workerId, adapters = SIEM_ADAPTE
   }
 }
 
-// Task 83: between job polls, escalate alerts whose acknowledgement deadline passed.
+// Task 83: on the safety-sweep timer, escalate alerts whose acknowledgement deadline passed.
 // Deadlines live on the alert rows, so a restarted worker finds every overdue alert;
 // the claim is atomic per occurrence, so several workers never escalate it twice.
 export async function sweepAlertEscalations(client, { workerId, now, log = console.error } = {}) {
@@ -835,7 +862,7 @@ export async function sweepAlertEscalations(client, { workerId, now, log = conso
   }
 }
 
-// Task 94: between job polls, at most once per interval, raise emergency-account
+// Task 94: on the safety-sweep timer, at most once per interval, raise emergency-account
 // usage alerts from the ingested audit facts and the validation / credential
 // reminders. It reads KEEL's own tables only; it never calls Microsoft, rotates a
 // credential or changes a policy. Idempotent per audit event, so a restart re-sweeps
@@ -916,8 +943,48 @@ export function installShutdownSignals(shutdown, proc = process) {
   proc.on('SIGINT', () => shutdown.stop('SIGINT'));
 }
 
+// Security audit run 2, finding 11: the safety sweeps (SIEM outbox, alert escalation,
+// break-glass canary) used to run only when the queue was empty, so a long restore or a
+// full queue paused them. They now run on their own timer, beside the job loop, on their
+// own database connection. One sweep runs at a time; a slow sweep delays the next one
+// instead of stacking up. A failing sweep is logged and retried on the next tick.
+export function startSafetySweeps({
+  sweep, intervalMs, setTimer = setTimeout, clearTimer = clearTimeout, logError = console.error,
+}) {
+  let stopped = false;
+  let timer = null;
+  let current = null;
+  const schedule = () => {
+    if (!stopped) timer = setTimer(() => { timer = null; current = tick(); }, intervalMs);
+  };
+  const tick = async () => {
+    try { await sweep(); } catch (err) {
+      logError(`safety sweep failed — ${redactPayload(err instanceof Error ? err.message : String(err))}`);
+    } finally {
+      current = null;
+      schedule();
+    }
+  };
+  current = tick();
+  return {
+    async stop() {
+      stopped = true;
+      if (timer) clearTimer(timer);
+      timer = null;
+      await current;
+    },
+  };
+}
+
+export async function runSafetySweeps(client, { workerId }) {
+  // Each sweep catches and logs its own failure, so one cannot block the others.
+  await drainSiemOutbox(client, { workerId });
+  await sweepAlertEscalations(client, { workerId });
+  await sweepBreakGlassCanary(client, { workerId });
+}
+
 export async function runWorkerLoop({
-  shutdown, pollIntervalMs, claim, idle, run, requeue, failUnrun, wait = sleep,
+  shutdown, pollIntervalMs, claim, idle = async () => {}, run, requeue, failUnrun, wait = sleep,
 }) {
   while (!shutdown.done) {
     const job = await claim();
@@ -936,7 +1003,7 @@ export async function runWorkerLoop({
 }
 
 async function main() {
-  if (process.argv.includes('--help')) {
+  if (arg('help')) {
     console.log('usage: keel-worker.mjs [--worker-id ID] [--db-url $KEEL_DB_URL] [--poll-interval-ms 2000] [--audit-config FILE [--audit-report] | --audit-migrate | --ownership-config FILE [--ownership-report]]');
     return;
   }
@@ -952,22 +1019,22 @@ async function main() {
 
   // Explicit local migration, archive reference or synthetic fixture execution.
   // No Graph route or restorer credential is loaded by this command.
-  if (process.argv.includes('--audit-migrate') || process.argv.includes('--audit-config')) {
+  if (arg('audit-migrate') || arg('audit-config')) {
     try {
-      if (process.argv.includes('--audit-migrate')) await migrateAuditIngestion(client);
+      if (arg('audit-migrate')) await migrateAuditIngestion(client);
       else {
         const config = JSON.parse(await readFile(arg('audit-config'), 'utf8'));
-        const result = await runAuditCommand(client, config, { report: process.argv.includes('--audit-report') });
+        const result = await runAuditCommand(client, config, { report: arg('audit-report') });
         console.log(JSON.stringify(result));
       }
     } finally { await client.end(); }
     return;
   }
 
-  if (process.argv.includes('--ownership-config')) {
+  if (arg('ownership-config')) {
     try {
       const config = JSON.parse(await readFile(arg('ownership-config'), 'utf8'));
-      console.log(JSON.stringify(await runOwnershipCommand(client, config, { report: process.argv.includes('--ownership-report') })));
+      console.log(JSON.stringify(await runOwnershipCommand(client, config, { report: arg('ownership-report') })));
     } finally { await client.end(); }
     return;
   }
@@ -983,31 +1050,37 @@ async function main() {
   const shutdown = createShutdownControl({ workerId });
   installShutdownSignals(shutdown);
 
-  console.log(`worker ${workerId}: polling for jobs every ${pollIntervalMs}ms`);
-  await runWorkerLoop({
-    shutdown,
-    pollIntervalMs,
-    claim: () => claimNext(client, { workerId }),
-    idle: async () => {
-      // Between job polls, drain any due SIEM outbox events (task-79). The outbox is
-      // durable, so a drain failure must not kill the worker: the next poll retries.
-      await drainSiemOutbox(client, { workerId });
-      await sweepAlertEscalations(client, { workerId });
-      await sweepBreakGlassCanary(client, { workerId });
-    },
-    run: (job) => runJob(client, job, {
-      dbUrl,
-      onInFlightChange: (execution) => shutdown.setInFlight(execution),
-    }),
-    // A job claimed while a drain began goes back to the queue for the next worker; a job
-    // claimed while stopping fails, as before.
-    requeue: (job) => client.query(
-      `UPDATE job SET status = 'queued', started_at = NULL, heartbeat_at = NULL, worker_id = NULL
-       WHERE id = $1 AND status = 'running'`, [job.id],
-    ),
-    failUnrun: (job) => fail(client, { id: job.id, error: 'worker stopped before job execution' }),
+  // The sweeps get their own connection: a job's queries and a sweep's transaction must
+  // never interleave on one client.
+  const sweepClient = await connect(dbUrl);
+  const sweeps = startSafetySweeps({
+    intervalMs: pollIntervalMs,
+    sweep: () => runSafetySweeps(sweepClient, { workerId }),
   });
 
+  console.log(`worker ${workerId}: polling for jobs every ${pollIntervalMs}ms`);
+  try {
+    await runWorkerLoop({
+      shutdown,
+      pollIntervalMs,
+      claim: () => claimNext(client, { workerId }),
+      run: (job) => runJob(client, job, {
+        dbUrl,
+        onInFlightChange: (execution) => shutdown.setInFlight(execution),
+      }),
+      // A job claimed while a drain began goes back to the queue for the next worker; a job
+      // claimed while stopping fails, as before.
+      requeue: (job) => client.query(
+        `UPDATE job SET status = 'queued', started_at = NULL, heartbeat_at = NULL, worker_id = NULL
+         WHERE id = $1 AND status = 'running'`, [job.id],
+      ),
+      failUnrun: (job) => fail(client, { id: job.id, error: 'worker stopped before job execution' }),
+    });
+  } finally {
+    // Also on a loop error, so a stuck sweep timer cannot keep a broken worker alive.
+    await sweeps.stop();
+    await sweepClient.end();
+  }
   await client.end();
   console.log(`worker ${workerId}: exited cleanly`);
   process.exit(0);

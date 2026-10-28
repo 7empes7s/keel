@@ -64,8 +64,8 @@ function fixtureRestore(step, {
   const restoreRef = '0f0e0d0c-0b0a-4908-8706-050403020100';
   const edge = step.resourceType.includes('#');
   const family = edge ? step.resourceType.split('#')[1] : null;
-  const key = naturalKey ?? (/\s|</.test(step.select) ? `fixture-key-${step.resourceType}` : step.select);
-  const name = displayName ?? (step.fixtureKind === 'named-object' ? `${key}` : null);
+  const key = naturalKey ?? (step.key.startsWith('<') ? `${step.resourceType.split('#')[0]}:fixture-key` : step.key);
+  const name = displayName ?? (step.fixtureKind !== 'named-object' ? null : step.key.startsWith('<') && !naturalKey ? step.select : key.slice(key.indexOf(':') + 1));
   // The object's own name, in every field its kind is named by (issue #478).
   const named = (value) => (value ? { displayName: value, ...Object.fromEntries(nameFieldsFor(step.resourceType).map((field) => [field, value])) } : {});
   const targetId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
@@ -662,7 +662,7 @@ test('a target config that is not valid JSON is refused without echoing it', asy
     connectFn: async () => ({ end: async () => {} }), readFile: () => '{"clientSecret": "fixture-secret-value", broken',
   });
   assert.equal(code, 1);
-  assert.equal(errors.join('\n'), 'the target config is not valid JSON');
+  assert.equal(errors.join('\n'), "Keel can't read the restorer settings file (/fixture.json): it is not valid JSON. Fix the file on the Keel server, then try again.");
 });
 
 test('a failed live write is never promoted, and its demotion must be applied in code', async () => {
@@ -874,4 +874,18 @@ test('the three Entra writes the test tenant cannot run are recorded as tenant l
     assert.equal(row.claim, 'fixture-tested', `${type} update claim is not lowered or raised`);
     assert.equal(row.live.result, 'failed');
   }
+});
+
+test('issue #642: a bare fixture name captures the object of the kind named, and no other', async () => {
+  const { steps } = buildLiveGatePlan();
+  const app = steps.find((step) => step.id === 'mobileApp:update');
+  const restore = fixtureRestore(app, { naturalKey: 'mobileApp:KEEL-RT-148-app-web', displayName: 'KEEL-RT-148-app-web' });
+  const run = (fixture, resourceType = app.resourceType) => captureLive({
+    client: {}, restoreRef: restore.restoreRef, resourceType, operation: 'update', fixture,
+    targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, testTenantRefs: TEST_REFS,
+    getArtifact: restore.getArtifact, getJournal: restore.getJournal, getSnapshot: restore.getSnapshot,
+  });
+  assert.equal((await run('mobileApp:KEEL-RT-148-app-web')).status, 'captured');
+  assert.equal((await run('KEEL-RT-148-app-web')).status, 'captured');
+  assert.equal((await run('KEEL-RT-148-app-win32')).status, 'not-exercised');
 });

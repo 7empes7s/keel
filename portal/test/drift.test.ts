@@ -222,6 +222,53 @@ test("an operator can accept a selected deviation", async () => {
   }]);
 });
 
+// Security audit run 2, finding 3: a change to sign-in (here a Conditional Access policy)
+// is never accepted or ignored by one person, and an ignore always ends within 90 days.
+test("accepting or ignoring a sign-in change goes to a second person", async () => {
+  const drift = await createModifiedDrift("sign-in");
+  await client.query(
+    `UPDATE drift SET resource_type = 'conditionalAccessPolicy', blast_radius = 'tenant-lockout' WHERE id = $1`,
+    [drift.id],
+  );
+  const operator = { principalId: RESTORER, capabilities: ["dispose-accept"] };
+  const jobsBefore = await jobCount();
+
+  const forever = await disposeRoute(post("/api/actions/dispose", {
+    ...operator, body: { driftId: drift.id, action: "ignore", reason: "noise", expiresAt: "infinity" },
+  }));
+  assert.equal(forever.status, 400);
+  assert.match((await forever.json()).message, /real date/);
+  const tooLong = await disposeRoute(post("/api/actions/dispose", {
+    ...operator, body: { driftId: drift.id, action: "ignore", reason: "noise", expiresAt: new Date(Date.now() + 91 * 86_400_000).toISOString() },
+  }));
+  assert.equal(tooLong.status, 400);
+  assert.match((await tooLong.json()).message, /at most 90 days/);
+
+  const response = await disposeRoute(post("/api/actions/dispose", {
+    ...operator, body: { driftId: drift.id, action: "accept", reason: "turned off on purpose" },
+  }));
+  assert.equal(response.status, 202);
+  const { approvalRequest } = await response.json();
+  assert.equal(approvalRequest.action, "dispose");
+  assert.equal(approvalRequest.status, "pending");
+  assert.deepEqual(approvalRequest.params, { driftIds: [drift.id], action: "accept", reason: "turned off on purpose" });
+  const decided = async () => (await client.query(`SELECT count(*)::int AS count FROM disposition WHERE drift_id = $1`, [drift.id])).rows[0].count;
+  assert.equal(await decided(), 0, "nothing is decided before a second person approves");
+  assert.equal(await jobCount(), jobsBefore);
+
+  const self = await approveRoute(post(`/api/approvals/${approvalRequest.id}/approve`, {
+    principalId: RESTORER, capabilities: ["approve", "dispose-accept"], body: {},
+  }));
+  assert.notEqual(self.status, 202, "the person who asked cannot approve it");
+  const approved = await approveRoute(post(`/api/approvals/${approvalRequest.id}/approve`, {
+    principalId: "principal-approver", capabilities: ["approve"], body: {},
+  }));
+  assert.equal(approved.status, 202);
+  const { job } = await approved.json();
+  const { rows: [row] } = await client.query(`SELECT kind, requested_by, params FROM job WHERE id = $1`, [job.id]);
+  assert.deepEqual(row, { kind: "dispose", requested_by: RESTORER, params: approvalRequest.params });
+});
+
 test("remediate creates an approval request and never a job", async () => {
   const drift = await createModifiedDrift("approval");
   const jobsBefore = await jobCount();

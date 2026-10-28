@@ -37,6 +37,7 @@ import {
   EDGE_OPERATIONS, OPERATIONS, capabilityFor, edgeCapabilityKey, isSupportedClaim,
 } from './capabilities.mjs';
 import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
+import { SHAREPOINT_STRUCTURE_WRITE_OPERATIONS } from '../restore/workloads/sharepointStructureWrites.mjs';
 
 export const LEDGER_CONTRACT_VERSION = 1;
 // Coverage plan v3: no type is left 'unknown'. A type with no writer is
@@ -173,7 +174,7 @@ export const TYPE_DECISIONS = Object.freeze({
   windowsAutopilotDeploymentProfile: automated('intune-enrollment-windowsautopilotdeploymentprofile', 'restore gaps batch 6: create and update of the profile through Graph beta, keeping its kind; the registered devices it applies to are not backed up, and who it is assigned to is written one assignment at a time (batch 15)', { view: 'graph-rest-beta' }),
   deviceManagementIntent: manual('security baseline intents are beta-only and replaced by the settings catalog, and their settings are a separate collection that is not backed up'),
   managedDevice: manual('device state, enrolled by the device, not configuration'),
-  mobileApp: manual('app packages are content, not configuration, and are not backed up'),
+  mobileApp: automated('intune-apps-mobileapp', 'restore gaps batch 18: create and update of store, web, Microsoft 365 Apps, Edge and WinGet apps with their assignments; Win32 and line-of-business apps are recreated without their package and unassigned until it is uploaded; apps synced from Apple, Google or Microsoft are never created'),
   managedAppPolicy: automated('intune-mam-managedapppolicy', 'Wave 2: iOS and Android app protection create, update and delete; a create needs the protected apps in the backup (read per policy from restore gaps batch 13); other kinds stay manual'),
   targetedManagedAppConfiguration: automated('intune-mam-targetedmanagedappconfiguration', 'Wave 2: create, update and delete; a create needs the targeted apps in the backup (read per configuration from restore gaps batch 13)'),
   mobileAppConfiguration: automated('intune-apps-manageddevicemobileappconfiguration', 'Wave 2: create, update and delete when the apps it targets exist in the target; values Graph never returns stay manual'),
@@ -227,7 +228,7 @@ export const TYPE_DECISIONS = Object.freeze({
   multiTenantOrganizationPartnerConfigurationTemplate: automated('multitenantorganizationpartnerconfigurationtemplate', 'restore gaps batch 2: update in place; the template only affects tenants that join later'),
   identityUserFlowAttribute: manual('no writer yet; built-in attributes are Microsoft-managed'),
   authenticationEventListener: manual('no writer yet; it points to a custom authentication extension, which is not restored yet'),
-  externalDomainFederation: automated('samlorwsfedexternaldomainfederation', 'restore gaps batch 3: update in place of the federation settings and public signing certificate; its domains are not backed up yet, so a deleted federation is set up again by hand'),
+  externalDomainFederation: automated('samlorwsfedexternaldomainfederation', 'restore gaps batch 3: update in place of the federation name and protocol; its sign-in addresses and signing certificate are a manual step, and its domains are backed up but not written, so a deleted federation is set up again by hand'),
   // Remaining kinds, batch 5: Exchange and Defender admin roles, backed up read-only; no writer is built yet.
   exchangeRoleDefinition: manual('no writer yet; beta only, and built-in roles are Microsoft-managed'),
   exchangeRoleAssignment: manual('Exchange admin access needs a privilege review before it is granted again'),
@@ -245,7 +246,7 @@ export const TYPE_DECISIONS = Object.freeze({
   microsoftTunnelConfiguration: automated('intune-mstunnel-microsofttunnelconfiguration', 'restore gaps batch 8: create and update of the network, DNS, routes and port through Graph beta; the sites and servers that use it are not written', { view: 'graph-rest-beta' }),
   microsoftTunnelHealthThreshold: automated('intune-mstunnel-microsofttunnelhealththreshold', 'restore gaps batch 17: update in place through Graph beta of the healthy and unhealthy limits; the defaults are Microsoft\'s', { view: 'graph-rest-beta' }),
   iosLobAppProvisioningConfiguration: automated('intune-apps-ioslobappprovisioningconfiguration', 'restore gaps batch 12: create and update of the name, description, scope tags and profile file through Graph beta; a backup without the file, an expired file, or one older than the live profile is never written; batch 16: who it is assigned to is assigned again through /assign', { view: 'graph-rest-beta' }),
-  mobileAppRelationship: automated('intune-apps-mobileapprelationship', 'restore gaps batch 13: create and update of a dependency or supersedence between two apps through Graph beta; both apps must already be in Intune', { view: 'graph-rest-beta' }),
+  mobileAppRelationship: automated('intune-apps-mobileapprelationship', 'restore gaps batch 13: create and update of a dependency or supersedence between two apps through Graph beta; both apps must be in Intune (batch 19: apps recreated in the same run are linked by their new ids; issue #642: written through the app\'s updateRelationships)', { view: 'graph-rest-beta' }),
   managedEBook: manual('no writer yet; beta only, and books come from the store'),
   managedEBookCategory: automated('intune-books-managedebookcategory', 'restore gaps batch 8: create and update of the name through Graph beta; which books are in a category is not written', { view: 'graph-rest-beta' }),
   cartToClassAssociation: automated('intune-education-carttoclassassociation', 'restore gaps batch 10: create and update of the name, description, devices and classes through Graph beta; the devices and classes must still exist', { view: 'graph-rest-beta' }),
@@ -344,6 +345,9 @@ recordRemappingProof('servicePrincipal', 'create', 'engine/roadmap/fidelity-expa
 // Roadmap task-151: an eligibility whose group or custom role was recreated in
 // the same run is requested for the NEW principal and role ids.
 recordRemappingProof('roleEligibilitySchedule', 'create', 'engine/roadmap/admin-role-fidelity.test.mjs');
+// Restore gaps batch 19: a dependency or supersedence between apps recreated
+// in the same run is created between the NEW app ids.
+recordRemappingProof('mobileAppRelationship', 'create', 'engine/restore/intuneAppLinks.test.mjs');
 
 function sourceFor(type, decision) {
   const entry = CATALOG.find((candidate) => candidate.type === type);
@@ -707,6 +711,9 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
   // Wave 2 WKLD: mail flow, Exchange settings, Teams org-wide and voice policies,
   // Purview retention, DLP and retention labels (restore/workloads/writeDeclarations.mjs).
   ...WKLD_WRITE_OPERATIONS,
+  // SharePoint structure: hub sites, site designs and scripts, and named sites' lists,
+  // columns, content types and navigation (restore/workloads/sharepointStructureWrites.mjs).
+  ...SHAREPOINT_STRUCTURE_WRITE_OPERATIONS,
 });
 
 /** The version a write runs under now: its Graph version, or its module's version. */
@@ -1007,7 +1014,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
   deviceManagementIntent: byHand('device-management', 'POST /deviceManagement/intents (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
     'beta-only, replaced by the settings catalog; intent settings are not backed up'),
   managedDevice: byHand('device-management', null, 'none', 'device state, enrolled by the device, not configuration'),
-  mobileApp: byHand('device-management', 'POST /deviceAppManagement/mobileApps', 'DeviceManagementApps.ReadWrite.All', 'app packages are content, not configuration'),
+  mobileApp: subset('device-management', 'POST /deviceAppManagement/mobileApps; PATCH .../{id}; POST .../{id}/assign', 'DeviceManagementApps.ReadWrite.All',
+    'create and update are fixture-tested; a Win32 or line-of-business app comes back without its package and is assigned only once it is uploaded; synced apps are never created; categories are written through categories/$ref (beta)'),
   managedAppPolicy: subset('device-management', 'POST /deviceAppManagement/{ios|android}ManagedAppProtections; PATCH .../{id}; POST .../{id}/targetApps; POST .../{id}/assign; DELETE .../{id}', 'DeviceManagementApps.ReadWrite.All',
     'create, update and delete of iOS and Android protection are fixture-tested; the protected apps are read per policy (restore gaps batch 13)'),
   targetedManagedAppConfiguration: subset('device-management', 'POST /deviceAppManagement/targetedManagedAppConfigurations; PATCH .../{id}; POST .../{id}/targetApps; DELETE .../{id}', 'DeviceManagementApps.ReadWrite.All',
@@ -1107,7 +1115,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
   authenticationEventListener: byHand('identity-application', 'POST /identity/authenticationEventListeners', 'EventListener.ReadWrite.All',
     'backed up; its custom authentication extension is recreated first'),
   externalDomainFederation: subset('policy', 'PATCH /directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation/{id}', 'Domain.ReadWrite.All',
-    'update in place is fixture-tested; its domains are not backed up, so a deleted federation is not recreated'),
+    'update in place is fixture-tested; its domains are backed up but not written, so a deleted federation is not recreated'),
   // Remaining kinds, batch 5: Exchange and Defender admin roles, backed up read-only; manual until a writer is built.
   exchangeRoleDefinition: byHand('identity-application', 'New-ManagementRole (Exchange Online PowerShell)', 'Exchange Organization Management role',
     'backed up; built-in roles are listed beside custom ones'),
@@ -1140,8 +1148,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'update in place of the two limits is fixture-tested'),
   iosLobAppProvisioningConfiguration: subset('device-management', 'POST /deviceAppManagement/iosLobAppProvisioningConfigurations (beta); PATCH .../{id} (beta); POST .../{id}/assign (beta)', 'DeviceManagementApps.ReadWrite.All',
     'create and update with the profile file are fixture-tested; expired or older files are never written; assignments are written through /assign'),
-  mobileAppRelationship: subset('device-management', 'POST /deviceAppManagement/mobileAppRelationships (beta); PATCH .../{id} (beta)', 'DeviceManagementApps.ReadWrite.All',
-    'create and update are fixture-tested; both apps must already exist; a link already set between the same apps is skipped'),
+  mobileAppRelationship: subset('device-management', 'POST /deviceAppManagement/mobileApps/{appId}/updateRelationships (beta), with the links the app already holds', 'DeviceManagementApps.ReadWrite.All',
+    'create and update are fixture-tested; both apps must exist, and a link between apps recreated in the same run is remapped to their new ids; a link already set between the same apps is skipped; Intune links only Win32 apps'),
   managedEBook: byHand('device-management', 'POST /deviceAppManagement/managedEBooks (beta)', 'DeviceManagementApps.ReadWrite.All',
     'backed up; no writer yet'),
   managedEBookCategory: subset('device-management', 'POST /deviceAppManagement/managedEBookCategories (beta); PATCH .../{id} (beta)', 'DeviceManagementApps.ReadWrite.All',

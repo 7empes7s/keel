@@ -11,7 +11,7 @@
  *   node tools/qualification/sentinelLive.mjs capture --confirm-live-workspace-ingest \
  *        --tenant-ref sha256:... --destination-id <KEEL siem_destination id> \
  *        --workspace-id <guid> --endpoint https://<dce>.ingest.monitor.azure.com --dcr-immutable-id dcr-... \
- *        --sender-ref env:<VAR> --reader-ref app:<reader app id> \
+ *        --sender-ref env:KEEL_INTEGRATION_<NAME> --reader-ref app:<reader app id> \
  *        --roles roles.json --docs docs.json \
  *        --out docs/release/qualifications/sentinel-live-acceptance.json [--build <sha>] [--cloud public]
  *

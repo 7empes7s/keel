@@ -1,3 +1,4 @@
+import { PORTAL_QUEUED_JOBS_PER_PRINCIPAL } from "../../engine/jobs/queue.mjs";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -197,6 +198,19 @@ test("several mailboxes start one dry run each; the organization goes with the f
     ["--workload", "exchange-mailbox-settings", "--collection", mailboxes, "--mailbox", "keel-rt-b@x.test",
       "--persist-artifact", runs[1].artifactId, "--requested-by", RESTORER],
   ]);
+
+  // Security audit run 2, finding 11: a request that would pass the queue cap part way
+  // through queues none of its runs.
+  const { rows: [{ n: waiting }] } = await client.query(
+    "SELECT count(*)::int AS n FROM job WHERE requested_by = $1 AND status = 'queued'", [RESTORER]);
+  for (let index = Number(waiting); index < PORTAL_QUEUED_JOBS_PER_PRINCIPAL - 1; index++) {
+    await client.query("INSERT INTO job (kind, params, requested_by) VALUES ('collect', '{}', $1)", [RESTORER]);
+  }
+  const before = (await client.query("SELECT count(*)::int AS n FROM job", [])).rows[0].n;
+  const full = await post(["mailbox:keel-rt-a@x.test", "mailbox:keel-rt-b@x.test"]);
+  assert.equal(full.status, 429);
+  assert.equal((await client.query("SELECT count(*)::int AS n FROM job", [])).rows[0].n, before, "nothing was queued");
+  await client.query("DELETE FROM job WHERE requested_by = $1 AND kind = 'collect'", [RESTORER]);
 });
 
 test("a team plan reads as its settings and one members table, in names", async () => {

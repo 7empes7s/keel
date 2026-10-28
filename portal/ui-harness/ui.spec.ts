@@ -53,6 +53,14 @@ const PAGES = [
   { name: "emergency-changes", hash: "/emergency-changes" },
   { name: "compare", hash: "/compare" },
   { name: "compare-tenants", hash: "/compare/tenants" },
+  { name: "activity-names-hidden", hash: "/activity/anonymous" },
+  { name: "approvals-names-hidden", hash: "/approvals/anonymous" },
+  { name: "drift-names-hidden", hash: "/drift/anonymous" },
+  { name: "principals-names-hidden", hash: "/principals/anonymity" },
+  { name: "principals-names-shown", hash: "/principals/anonymity-off" },
+  { name: "alerts-names-hidden", hash: "/alerts/anonymous" },
+  { name: "policies-names-hidden", hash: "/policies/anonymous" },
+  { name: "benchmarks-names-hidden", hash: "/benchmarks/anonymous" },
   { name: "sites", hash: "/sites" },
   { name: "site", hash: "/sites/contoso.sharepoint.com%2C5e170000-0000-4000-8000-000000000001%2C5e170000-0000-4000-8000-000000000002" },
 ];
@@ -1993,14 +2001,14 @@ const RECORD_IDS: Record<string, string[]> = {
   "incidents-closed": ["1c1d0000-0000-4000-8000-000000000070", "d2110000-0000-4000-8000-000000000070"],
   benchmarks: ["e7a10000-0000-4000-8000-0000000000e1", "e7c10000-0000-4000-8000-0000000000c1", "d7100000-0000-4000-8000-0000000000d1", "d7100000-0000-4000-8000-0000000000d2", "7f3c0000-0000-4000-8000-000000000011", "0b5e0000-0000-4000-8000-0000000000d6", "/opt/backups/keel-recovery-manifest.json"],
   notifications: ["c4e10000-0000-4000-8000-0000000000c1", "c4e10000-0000-4000-8000-0000000000c2", "c4e10000-0000-4000-8000-0000000000c3", "d0e10000-0000-4000-8000-0000000000d1", "d0e10000-0000-4000-8000-0000000000d3"],
-  integrations: ["de570000-0000-4000-8000-0000000000e1", "keel:decision:5e9c0000-0000-4000-8000-000000000097", "9d3f0000000040008000000000000097", "u_keel_gated_change", "u_gate_owner.email", "env:KEEL_SERVICENOW_TOKEN", "gate_passed", "gate_withdrawn", "HTTP 403"],
+  integrations: ["de570000-0000-4000-8000-0000000000e1", "keel:decision:5e9c0000-0000-4000-8000-000000000097", "9d3f0000000040008000000000000097", "u_keel_gated_change", "u_gate_owner.email", "env:KEEL_INTEGRATION_SERVICENOW_TOKEN", "gate_passed", "gate_withdrawn", "HTTP 403"],
   "integrations-servicenow-off": ["states-rejected", "field-approver", "u_keel_gated_change"],
   protect: ["engine/restore/updatePath.test.mjs", "docs/release/qualification/ca-update.json", "0b5e0000-0000-4000-8000-0000000000d5", "authenticationMethodsPolicy", "Authorization_RequestDenied"],
   schedules: ["5c4e0000-0000-4000-8000-000000000001", "5c4e0000-0000-4000-8000-000000000005", "5c4e0000-0000-4000-8000-000000000009", "0 0 * * 1", "a11c0000-0000-4000-8000-0000000000a1", "throttle-heavy", "overlap (acknowledged)", "d71f0000-0000-4000-8000-0000000000d7"],
   setup: ["5e7a" + "0b".repeat(30), "step-1a2b3c4d5e6f7a82", "plan-9f8e7d6c5b4a3921"],
   "setup-checked": ["5e7a" + "0c".repeat(30), "step-4a2b3c4d5e6f7a81", "plan-8e7d6c5b4a392110"],
   "emergency-changes": ["c1a70000-0000-4000-8000-000000000093", "c1a70000-0000-4000-8000-000000000094", "c1a70000-0000-4000-8000-000000000095", "9d".repeat(32), "conditionalAccessPolicy:Block legacy auth", "8c1e0000-0000-4000-8000-0000000000a2", "d9300000-0000-4000-8000-000000000001", "d9300000-0000-4000-8000-000000000002", "CHG0031337", "state: \"enabled\" -> \"enabledForReportingButNotEnforced\""],
-  alerts: ["a1e70000-0000-4000-8000-000000000001", "conditionalAccessPolicy:Block legacy auth", "group:Finance", "user:bg1@contoso.onmicrosoft.com", "5e170000-0000-4000-8000-000000000001", "escalation-failed-no-recipient", "namedLocation:Head office"],
+  alerts: ["0f1a0000-0000-4000-8000-0000000000f1", "a1e70000-0000-4000-8000-000000000001", "conditionalAccessPolicy:Block legacy auth", "group:Finance", "user:bg1@contoso.onmicrosoft.com", "5e170000-0000-4000-8000-000000000001", "escalation-failed-no-recipient", "namedLocation:Head office"],
   activity: ["a4", "y1", "18205", "18200", "marouanedefili@gmail.com", "sam.ortiz@contoso.example", "Graph 429: throttled after 5 retries", "GET /api/evidence/verify"],
   "job-restore-completion": ["7f3c0000-0000-4000-8000-000000000011"],
   "job-restore-undo": ["7f3c0000-0000-4000-8000-000000000010"],
@@ -4007,6 +4015,62 @@ test("Alerts · tiles, groups, panel, bulk acknowledge, resolve with a reason, m
   expect(resolved).toEqual({ alertId: "a1e70000-0000-4000-8000-000000000005", action: "resolve", note: "Planned test, checked with the service desk" });
 });
 
+// Redesign A2 (IN-NAMES): every object on Alerts reads as a name and a kind, a deleted
+// one says since when, and no id shows anywhere outside Technical details: not in the
+// text, not in a tooltip, not in an accessible name. Phone and desktop, both themes.
+const ANY_GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+async function idsOutsideRecord(page: Page): Promise<string[]> {
+  return page.locator("body").evaluate((body, source) => {
+    const guid = new RegExp(source, "i");
+    const found: string[] = [];
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const parent = node.parentElement;
+      if (!parent || parent.closest('[data-layer="record"], script, style') || !parent.checkVisibility()) continue;
+      if (guid.test(node.textContent ?? "")) found.push(`text: ${node.textContent}`);
+    }
+    for (const element of body.querySelectorAll<HTMLElement>("[title], [aria-label], [alt]")) {
+      if (element.closest('[data-layer="record"]')) continue;
+      for (const name of ["title", "aria-label", "alt"]) {
+        const value = element.getAttribute(name);
+        if (value && guid.test(value)) found.push(`${name}: ${value}`);
+      }
+    }
+    return found;
+  }, ANY_GUID.source);
+}
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [390, 1440]) {
+    test(`Alerts · names, not ids · ${width} · ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+      await open(page, "/alerts", theme);
+      const finance = page.locator(".sel-row", { hasText: "Finance (group)" });
+      await expect(finance.locator(".object-label-name")).toHaveText("Finance");
+      await expect(finance.locator(".object-label-type")).toHaveText(" (group)");
+      await expect(finance.locator(".object-label-gone")).toHaveText("Deleted since 2 Oct 2026");
+      await expect(page.locator(".sel-row .object-label-gone")).toHaveCount(1);
+      expect(await idsOutsideRecord(page)).toEqual([]);
+
+      await open(page, "/alerts?open=a1e70000-0000-4000-8000-000000000002", theme);
+      const sheet = page.getByRole("dialog", { name: "Finance (group)" });
+      const about = sheet.locator(".al-facts > div", { hasText: "About" });
+      await expect(about).toContainText("Finance (group)");
+      await expect(about.locator(".object-label-gone")).toHaveText("Deleted since 2 Oct 2026");
+      await expect(about).toContainText("Last in a backup");
+      expect(await idsOutsideRecord(page)).toEqual([]);
+      // The object's id is kept, under Technical details only.
+      const record = sheet.locator('[data-layer="record"]');
+      await record.locator("summary").click();
+      await expect(record).toContainText("No. Deleted since 2 Oct 2026");
+      const objectId = record.getByText("0f1a0000-0000-4000-8000-0000000000f1", { exact: true });
+      await expect(objectId).toBeHidden();
+      await record.getByText(/^Show support details/).click();
+      await expect(objectId).toBeVisible();
+    });
+  }
+}
+
 test("Alerts · a viewer sees the alerts, no amber action and no controls", async ({ page }) => {
   await open(page, "/alerts/viewer");
   await expect(page.locator(".al-tile")).toHaveCount(4);
@@ -4566,4 +4630,72 @@ test("Compliance · measure against a known standard, write your own check, remo
   await page.setViewportSize({ width: 375, height: 800 });
   await expect(page.locator(".cp-known")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
+// "Hide people's names" (Track A3): with the setting on, no real name, email or initials
+// of a person reach Changes, Activity or Approvals: not in the text, not in hover titles,
+// not in avatars and not inside Technical details. Code names show instead, and each
+// page says names are hidden.
+// Every person the fixtures name, by name or address. Shared mailboxes a channel sends to
+// (secops@contoso.com on Notifications) are destinations, not people, and stay.
+const REAL_PEOPLE = /Amara|Okafor|Sam Ortiz|Ortiz|Lee Chen|Marouane|Defili|marouanedefili|Dana Reyes|On-call engineer|Ops Team|Policy service account|svc-policy|\bops@contoso|@contoso\.example|@gmail\.com/i;
+for (const { hash, label } of [
+  { hash: "/drift/anonymous", label: "Changes" },
+  { hash: "/activity/anonymous", label: "Activity" },
+  { hash: "/approvals/anonymous", label: "Approvals" },
+  { hash: "/alerts/anonymous", label: "Alerts" },
+  { hash: "/emergency-changes/anonymous", label: "Emergency changes" },
+  { hash: "/policies/anonymous", label: "Automatic rules" },
+  { hash: "/policies/p2/anonymous", label: "One automatic rule and its turn-on check" },
+  { hash: "/schedules/anonymous", label: "Schedules" },
+  { hash: "/notifications/anonymous", label: "Notifications" },
+  { hash: "/benchmarks/anonymous", label: "Compliance" },
+  { hash: "/setup/anonymous", label: "Setup" },
+]) {
+  test(`names hidden · ${label} shows code names and no real name anywhere`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await open(page, hash, "light");
+    // Open every collapsed part (Technical details, row panels) so hidden text is scanned too.
+    await page.evaluate(() => { for (const details of document.querySelectorAll("details")) details.open = true; });
+    await expect(page.locator('[data-anonymity="on"]')).toBeVisible();
+    await expect(page.locator('[data-anonymity="on"]')).toContainText("Names hidden");
+    const seen = await page.evaluate(() => {
+      const main = document.querySelector("main#main-content")!;
+      const attributes = [...main.querySelectorAll("*")].flatMap((element) => ["title", "aria-label", "data-initials", "href"].map((name) => element.getAttribute(name) ?? ""));
+      return { text: main.textContent ?? "", attributes: attributes.filter(Boolean).join("\n") };
+    });
+    expect(seen.text).toMatch(/Person [A-HJ-NP-Z2-9]{4}/);
+    expect(seen.text.match(REAL_PEOPLE)?.[0] ?? null).toBeNull();
+    expect(seen.attributes.match(REAL_PEOPLE)?.[0] ?? null).toBeNull();
+  });
+}
+
+test("names hidden · a code-named person has a hidden-name avatar and no email on hover", async ({ page }) => {
+  await open(page, "/approvals/anonymous", "dark");
+  const person = page.locator("main .person").filter({ hasText: /Person [A-HJ-NP-Z2-9]{4}/ }).first();
+  await expect(person.locator(".person-avatar[data-pseudonym]")).toHaveCount(1);
+  await expect(person).toHaveAttribute("title", /code name/);
+});
+
+test("names hidden · People shows the setting, its state and who changed it", async ({ page }) => {
+  for (const theme of ["light", "dark"] as const) {
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await open(page, "/principals/anonymity", theme);
+      const card = page.getByRole("region", { name: "Hide people's names" });
+      await expect(card).toContainText("On");
+      await expect(card).toContainText(/Last changed by Person [A-HJ-NP-Z2-9]{4}/);
+      await expect(card.getByRole("button", { name: "Show names" })).toBeVisible();
+      // Fits a phone without sideways scrolling.
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    }
+  }
+  await open(page, "/principals/anonymity-off", "light");
+  const off = page.getByRole("region", { name: "Hide people's names" });
+  await expect(off).toContainText("Off");
+  await expect(off.getByRole("button", { name: "Hide names" })).toBeVisible();
+  // Showing names again asks first, and says the change is recorded.
+  await open(page, "/principals/anonymity", "light");
+  await page.getByRole("region", { name: "Hide people's names" }).getByRole("button", { name: "Show names" }).click();
+  await expect(page.getByRole("dialog", { name: "Show people's names again?" })).toContainText("audit record");
 });

@@ -39,6 +39,7 @@ import {
   buildComparisonModel, diffCatalog, listCandidates, loadSourceState,
   persistCandidates, recordSourceState,
 } from '../../engine/coverage/catalogDrift.mjs';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 // The configured official sources. `catalogVersion` binds a source to the
 // catalog entries it is compared against; a source config file (--sources)
@@ -446,7 +447,7 @@ export async function main({
   const maxBytes = Number(arg('max-bytes', DEFAULT_MAX_BYTES, argv));
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) throw new Error('--timeout-ms must be a positive integer');
   if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error('--max-bytes must be a positive integer');
-  const config = JSON.parse(readFile(arg('config', '/etc/keel/tenant.json', argv), 'utf8'));
+  const config = readConfigFile(arg('config', '/etc/keel/tenant.json', argv), { readFile, what: 'collector settings' });
   const dbUrl = arg('db-url', process.env.KEEL_DB_URL, argv);
   const sourcesPath = arg('sources', undefined, argv);
   const { exitCode } = await runApiDriftCli({

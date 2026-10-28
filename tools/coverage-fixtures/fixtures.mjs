@@ -41,6 +41,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { getToken } from '../tenant-probe/auth.mjs';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MANIFEST = process.env.KEEL_FIXTURE_MANIFEST ?? join(__dirname, 'manifest.json');
@@ -59,7 +60,7 @@ const GRAPH = 'https://graph.microsoft.com';
 let token = null;
 async function headers() {
   if (!token) {
-    const cfg = JSON.parse(readFileSync('/etc/keel/restorer.json', 'utf8'));
+    const cfg = readConfigFile('/etc/keel/restorer.json', { readFile: readFileSync, what: 'restorer settings' });
     token = (await getToken(cfg)).accessToken;
   }
   return {
@@ -126,7 +127,7 @@ function assertInert(name, payload) {
  * is checking for.
  */
 async function signInPathSnapshot() {
-  const cfg = JSON.parse(readFileSync('/etc/keel/tenant.json', 'utf8'));
+  const cfg = readConfigFile('/etc/keel/tenant.json', { readFile: readFileSync, what: 'collector settings' });
   const readToken = (await getToken(cfg)).accessToken;
   const read = async (path) => {
     const res = await fetch(GRAPH + path, {

@@ -40,6 +40,10 @@ You also need:
 
 1. **Fetch the artifacts** with the `artifact-storage-read` credential:
    the recovery manifest, the dump it names, the configuration export tree.
+   An offsite dump copy is age-encrypted (`keel-db-<date>.sql.gz.age`).
+   Decrypt it with the offsite identity kept off the KEEL host:
+   `age -d -i IDENTITY keel-db-<date>.sql.gz.age > keel-db.sql.gz`, and
+   check the result against the dump sha256 in the recovery manifest.
 2. **Authenticate** your recovery identity through the independent channel:
    on the offline machine holding your enrolled Ed25519 key, sign a
    single-use assertion bound to the tenant

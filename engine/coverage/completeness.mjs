@@ -26,6 +26,8 @@
  * docs/coverage.md. Pure: no clock, no tenant, no network.
  */
 
+import { appGroupOf } from '../restore/intuneAppKinds.mjs';
+
 export const COMPLETENESS_CONTRACT_VERSION = 1;
 export const COVERAGE_STATES = Object.freeze(['full', 'incomplete', 'microsoft-managed', 'not-readable']);
 export const MISSING_REASONS = Object.freeze(['secret', 'read-only', 'binary-route', 'other-route', 'microsoft-managed', 'not-written']);
@@ -87,6 +89,11 @@ const STS_POLICY_MISSING = Object.freeze([
   part('Which apps the policy is assigned to', 'other-route'),
   part('Being the organization default (KEEL recreates it as an ordinary policy)', 'not-written', organizationDefault),
 ]);
+
+// Restore gaps batch 18: Intune apps by kind.
+const packagedApp = (payload) => (appGroupOf(payload) === 'packaged'
+  ? [Object.freeze({ name: payload?.fileName ?? nameOf(payload), expires: null })] : []);
+const syncedApp = (payload) => (appGroupOf(payload) === 'synced' ? always(payload) : []);
 
 const synced = (payload) => (payload?.onPremisesSyncEnabled === true ? always(payload) : []);
 
@@ -191,7 +198,11 @@ export const COMPLETENESS = Object.freeze({
   windowsAutopilotDeploymentProfile: { missing: [part('The registered device hardware it applies to', 'other-route')] },
   deviceManagementIntent: { whole: 'not-written', missing: [part('The baseline\'s settings', 'other-route')] },
   managedDevice: { managed: true },
-  mobileApp: { whole: 'not-written', missing: [part('The app package', 'binary-route')] },
+  // Restore gaps batch 18: the parts depend on the kind of app (intuneAppKinds.mjs).
+  mobileApp: { missing: [
+    part('The app package (the installer file), which must be uploaded before the app is assigned', 'binary-route', packagedApp),
+    part('An app synced from Apple Business Manager, managed Google Play or Microsoft, which is synced again there', 'not-written', syncedApp),
+  ] },
   managedAppPolicy: { missing: [part('Windows Information Protection policies', 'not-written')] },
   targetedManagedAppConfiguration: {},
   mobileAppConfiguration: {},
@@ -250,7 +261,7 @@ export const COMPLETENESS = Object.freeze({
   multiTenantOrganizationPartnerConfigurationTemplate: {},
   identityUserFlowAttribute: { whole: 'not-written', missing: [part('Built-in attributes', 'microsoft-managed')] },
   authenticationEventListener: { whole: 'not-written' },
-  externalDomainFederation: { missing: [part('Its domains', 'other-route')] },
+  externalDomainFederation: { missing: [part('Its domains', 'not-written')] },
   // Remaining kinds, batch 5.
   exchangeRoleDefinition: { whole: 'not-written', missing: [part('Built-in roles', 'microsoft-managed')] },
   exchangeRoleAssignment: { whole: 'not-written' },

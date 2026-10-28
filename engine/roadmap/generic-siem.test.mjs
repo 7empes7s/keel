@@ -29,6 +29,8 @@ import {
   cefSeverity,
   formatCefEvent,
   createCefAdapter,
+  cefDestinationProblems,
+  cefHttpsUrl,
 } from '../telemetry/adapters/cef.mjs';
 import {
   registerDestination,
@@ -141,7 +143,7 @@ test('formatCefEvent stays a single line and cannot be split into a forged secon
 });
 
 test('an oversized CEF record is poisoned with the size reason, never silently truncated', async () => {
-  const adapter = createCefAdapter({ sendUdp: async () => { throw new Error('must not send an oversized record'); } });
+  const adapter = createCefAdapter({ sendUdp: async () => { throw new Error('must not send an oversized record'); }, allowLoopback: true });
   const destination = { kind: 'cef', config: { transport: 'udp', host: '127.0.0.1', port: 5514, maxMessageBytes: 256 } };
   const envelope = fixtureEnvelope('fixture', 1, { severity: 'critical' });
   assert.throws(() => formatCefEvent(envelope, { maxBytes: 256 }), CefMessageTooLargeError);
@@ -180,7 +182,7 @@ test('webhook delivery routes using only the registered destination config URL, 
 
 test('CEF delivery routes using only the registered destination host/port/url, never the event payload', async () => {
   const { sendUdp, calls } = fakeSendUdp();
-  const adapter = createCefAdapter({ sendUdp });
+  const adapter = createCefAdapter({ sendUdp, allowLoopback: true });
   const destination = { kind: 'cef', config: { transport: 'udp', host: '127.0.0.1', port: 5514, acknowledgement: 'none' } };
   const envelope = fixtureEnvelope('fixture', 1, { host: 'attacker.evil', port: 9999, url: 'https://attacker.evil/collect' });
   await adapter.deliver({ destination, envelope, eventId: envelope.eventId, dedupKey: 'dk-2' });
@@ -259,7 +261,7 @@ test('the default webhook transport delivers to a local listener only when a tes
 
 test('CEF udp syslog delivery never reports accepted; a "none" acknowledgement stays honestly uncertain', async () => {
   const { sendUdp, calls } = fakeSendUdp();
-  const adapter = createCefAdapter({ sendUdp });
+  const adapter = createCefAdapter({ sendUdp, allowLoopback: true });
   const destination = { kind: 'cef', config: { transport: 'udp', host: '127.0.0.1', port: 5514, acknowledgement: 'none' } };
   const envelope = fixtureEnvelope('fixture', 1, { severity: 'critical' });
   const outcome = await adapter.deliver({ destination, envelope, eventId: envelope.eventId, dedupKey: 'dk-3' });
@@ -272,7 +274,7 @@ test('CEF udp syslog delivery never reports accepted; a "none" acknowledgement s
 
 test('a udp destination cannot silently upgrade to an http-response acknowledgement contract', async () => {
   const { sendUdp, calls } = fakeSendUdp();
-  const adapter = createCefAdapter({ sendUdp });
+  const adapter = createCefAdapter({ sendUdp, allowLoopback: true });
   const destination = { kind: 'cef', config: { transport: 'udp', host: '127.0.0.1', port: 5514, acknowledgement: 'http-response' } };
   const envelope = fixtureEnvelope('fixture', 1);
   const outcome = await adapter.deliver({ destination, envelope, eventId: envelope.eventId, dedupKey: 'dk-4' });
@@ -301,7 +303,7 @@ test('CEF https delivery reports accepted only when the destination declares htt
 });
 
 test('an unsupported CEF acknowledgement declaration fails visibly rather than guessing', async () => {
-  const adapter = createCefAdapter({ sendUdp: async () => { throw new Error('must not send'); } });
+  const adapter = createCefAdapter({ sendUdp: async () => { throw new Error('must not send'); }, allowLoopback: true });
   const envelope = fixtureEnvelope('fixture', 1);
   const outcome = await adapter.deliver({
     destination: { kind: 'cef', config: { transport: 'udp', host: '127.0.0.1', port: 1, acknowledgement: 'maybe' } },
@@ -416,6 +418,131 @@ test('the default webhook transport checks names after DNS and every redirect ho
   assert.equal(redirected.outcome, 'retry');
   assert.match(redirected.error, /unusable: internal\.example\.test resolves to/);
   assert.equal(hits, 1, 'only the first hop is reached');
+});
+
+// ---------------------------------------------------------------------------
+// CEF: the same address rule over https and udp (audit finding 6 follow-up).
+// ---------------------------------------------------------------------------
+
+const BLOCKED_CEF_URLS = [
+  'http://127.0.0.1:2019/stop', 'http://localhost:2019/load', 'https://127.0.0.1:2019/stop', 'https://localhost/x',
+  'https://169.254.169.254/latest', 'https://10.0.0.5/x', 'https://[::1]/x', 'https://[::ffff:127.0.0.1]/x',
+  'https://2130706433/x', 'https://0x7f.0.0.1/x', 'https://user:pw@sink.example.test/x', 'http://sink.example.test/x',
+];
+const BLOCKED_CEF_HOSTS = [
+  '127.0.0.1', 'localhost', 'syslog.localhost', '169.254.169.254', '10.0.0.5', '192.168.1.10', '172.16.0.1',
+  '100.64.0.1', '0.0.0.0', '::1', '[::1]', '::ffff:127.0.0.1', 'fe80::1', 'fd00::1', '224.0.0.1', '255.255.255.255',
+];
+
+test('CEF https and udp destinations must point at public addresses', () => {
+  assert.equal(cefHttpsUrl({ url: 'https://sink.example.test/cef' }).hostname, 'sink.example.test');
+  for (const url of BLOCKED_CEF_URLS) {
+    assert.throws(() => cefHttpsUrl({ url }), /https|public|local|user name/, url);
+    assert.notDeepEqual(cefDestinationProblems({ transport: 'https', url }), [], url);
+  }
+  // Tests may opt in to a loopback listener; nothing else changes.
+  assert.equal(cefHttpsUrl({ url: 'http://127.0.0.1:8080/x' }, { allowLoopback: true }).protocol, 'http:');
+  assert.throws(() => cefHttpsUrl({ url: 'https://10.0.0.5/x' }, { allowLoopback: true }), /public/);
+
+  for (const host of BLOCKED_CEF_HOSTS) {
+    assert.match(cefDestinationProblems({ transport: 'udp', host, port: 514 }).join(';'), /public addresses/, host);
+  }
+  assert.deepEqual(cefDestinationProblems({ transport: 'udp', host: 'syslog.example.test', port: 514 }), []);
+  assert.deepEqual(cefDestinationProblems({ transport: 'udp', host: '8.8.8.8', port: 514 }), []);
+  assert.deepEqual(cefDestinationProblems({ transport: 'https', url: 'https://sink.example.test/cef' }), []);
+  assert.match(cefDestinationProblems({ transport: 'udp', host: 'syslog.example.test', port: 0 }).join(';'), /port/);
+  assert.match(cefDestinationProblems({ transport: 'tcp', host: 'syslog.example.test', port: 514 }).join(';'), /unsupported/);
+});
+
+test('registering a CEF destination refuses internal https and udp addresses', async (t) => {
+  const { client, admin } = await setup(t);
+  for (const config of [
+    { transport: 'udp', host: '127.0.0.1', port: 5514 },
+    { transport: 'udp', host: '169.254.169.254', port: 514 },
+    { transport: 'udp', host: 'localhost', port: 514 },
+    { transport: 'https', url: 'https://10.0.0.5/cef' },
+    { transport: 'https', url: 'http://127.0.0.1:2019/load' },
+  ]) {
+    await assert.rejects(
+      registerDestination(client, { tenantRef: 'fixture', name: 'refused', kind: 'cef', config, requestedBy: admin.id }),
+      /cef destination config/,
+      JSON.stringify(config),
+    );
+  }
+  const { rows } = await client.query('SELECT count(*)::int AS n FROM siem_destination');
+  assert.equal(rows[0].n, 0);
+});
+
+test('CEF udp checks every address a name resolves to and sends to the checked address, never the name', async () => {
+  const envelope = fixtureEnvelope('fixture', 1);
+  const resolve = fakeResolve({
+    'internal.example.test': ['10.0.0.5'],
+    'metadata.example.test': ['169.254.169.254'],
+    'mixed.example.test': ['8.8.8.8', '127.0.0.1'],
+    'syslog.example.test': ['8.8.4.4'],
+  });
+  const deliver = (adapter, host) => adapter.deliver({
+    destination: { kind: 'cef', config: { transport: 'udp', host, port: 514, acknowledgement: 'none' } },
+    envelope, eventId: envelope.eventId, dedupKey: 'dk',
+  });
+
+  for (const host of [...BLOCKED_CEF_HOSTS, 'internal.example.test', 'metadata.example.test', 'mixed.example.test']) {
+    const { sendUdp, calls } = fakeSendUdp();
+    const outcome = await deliver(createCefAdapter({ sendUdp, resolve }), host);
+    assert.equal(outcome.outcome, 'retry', host);
+    assert.match(outcome.error, /cef destination unusable: .*public addresses/, host);
+    assert.equal(calls.length, 0, `nothing may be sent to ${host}`);
+  }
+
+  const { sendUdp, calls } = fakeSendUdp();
+  const outcome = await deliver(createCefAdapter({ sendUdp, resolve }), 'syslog.example.test');
+  assert.equal(outcome.outcome, 'uncertain');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].host, '8.8.4.4', 'the datagram goes to the address that was checked, so DNS cannot change it');
+
+  const unknown = await deliver(createCefAdapter({ sendUdp, resolve }), 'missing.example.test');
+  assert.equal(unknown.outcome, 'retry');
+  assert.match(unknown.error, /ENOTFOUND/);
+});
+
+test('the default CEF https transport refuses internal addresses after DNS and on every redirect hop', async (t) => {
+  const received = [];
+  const server = http.createServer((req, res) => {
+    received.push(req.url);
+    if (req.url === '/go') {
+      res.statusCode = 307;
+      res.setHeader('location', `https://internal.example.test:${server.address().port}/x`);
+    } else {
+      res.statusCode = 202;
+    }
+    res.end();
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const port = server.address().port;
+  const resolve = fakeResolve({ 'rebind.example.test': ['127.0.0.1'], 'internal.example.test': ['10.0.0.5'] });
+  const envelope = fixtureEnvelope('fixture', 1);
+  const deliver = (adapter, url) => adapter.deliver({
+    destination: { kind: 'cef', config: { transport: 'https', url, acknowledgement: 'http-response' } },
+    envelope, eventId: envelope.eventId, dedupKey: 'dk',
+  });
+
+  const production = await deliver(createCefAdapter(), `http://127.0.0.1:${port}/ingest`);
+  assert.equal(production.outcome, 'retry');
+  assert.match(production.error, /unusable/);
+
+  const rebound = await deliver(createCefAdapter({ resolve }), `https://rebind.example.test:${port}/stop`);
+  assert.equal(rebound.outcome, 'retry');
+  assert.match(rebound.error, /unusable: rebind\.example\.test resolves to/);
+  assert.equal(received.length, 0, 'production settings must not reach a loopback listener');
+
+  const redirected = await deliver(createCefAdapter({ allowLoopback: true, resolve }), `http://127.0.0.1:${port}/go`);
+  assert.equal(redirected.outcome, 'retry');
+  assert.match(redirected.error, /unusable: internal\.example\.test resolves to/);
+  assert.deepEqual(received, ['/go'], 'only the first hop is reached');
+
+  assert.equal(await deliver(createCefAdapter({ allowLoopback: true }), `http://127.0.0.1:${port}/ingest`), 'accepted');
+  assert.deepEqual(received, ['/go', '/ingest']);
 });
 
 test('defaultResolveSecret only understands env:KEEL_INTEGRATION_* references and never invents a credential', () => {
@@ -537,16 +664,47 @@ test('cli/keel-worker.mjs registers webhook and cef adapters that the outbox dra
     probe.bind(0, '127.0.0.1', () => { const { port } = probe.address(); probe.close(() => resolve(port)); });
     probe.on('error', reject);
   });
+  // A udp loopback host is refused at registration; a row written behind registration's
+  // back is never sent to by the production adapter (audit finding 6).
+  await assert.rejects(registerDestination(client, {
+    tenantRef: 'fixture', name: 'loopback-cef', kind: 'cef',
+    config: { transport: 'udp', host: '127.0.0.1', port: freeUdpPort, acknowledgement: 'none' }, requestedBy: admin.id,
+  }), /cef destination config: 127\.0\.0\.1 is a private, local or reserved address/);
   const cefDestination = await registerDestination(client, {
     tenantRef: 'fixture', name: 'wired-cef', kind: 'cef',
-    config: { transport: 'udp', host: '127.0.0.1', port: freeUdpPort, acknowledgement: 'none' }, requestedBy: admin.id,
+    config: { transport: 'udp', host: 'syslog.example.test', port: freeUdpPort, acknowledgement: 'none' }, requestedBy: admin.id,
   });
+  await client.query('UPDATE siem_destination SET config = $2 WHERE id = $1', [
+    cefDestination.id, { transport: 'udp', host: '127.0.0.1', port: freeUdpPort, acknowledgement: 'none' },
+  ]);
+  const received = [];
+  const socket = dgram.createSocket('udp4');
+  socket.on('message', (message) => received.push(message.toString('utf8')));
+  await new Promise((resolve) => socket.bind(freeUdpPort, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => socket.close(resolve)));
   await enqueueEvent(client, { tenantRef: 'fixture', destinationId: cefDestination.id, envelope: fixtureEnvelope('fixture', 2) });
   const cefResults = await drainDueDestinations(client, { adapters: SIEM_ADAPTERS, now: NOW });
   const cefSummary = cefResults.find((r) => r.destinationId === cefDestination.id);
-  // A "none" acknowledgement is never delivered; the event stays pending for replay.
   assert.equal(cefSummary?.delivered, 0);
-  assert.equal(cefSummary?.uncertain, 1);
+  assert.equal(cefSummary?.retried, 1);
+  const { rows: [cefRow] } = await client.query(
+    'SELECT status, last_error FROM siem_outbox_event WHERE destination_id = $1', [cefDestination.id]);
+  assert.equal(cefRow.status, 'pending');
+  assert.match(cefRow.last_error, /public addresses/);
+
+  // The CEF udp path is exercised against a real bounded loopback socket (no external
+  // egress, no live tenant object touched) with the default udp transport, opened for
+  // loopback the way only a test can.
+  const later = new Date(NOW.getTime() + 60 * 60 * 1000);
+  const local = await drainDestination(client, {
+    destinationId: cefDestination.id, adapter: createCefAdapter({ allowLoopback: true }), now: later,
+  });
+  // A "none" acknowledgement is never delivered; the event stays pending for replay.
+  assert.equal(local.delivered, 0);
+  assert.equal(local.uncertain, 1);
+  for (let i = 0; i < 50 && received.length === 0; i += 1) await new Promise((resolve) => { setTimeout(resolve, 10); });
+  assert.equal(received.length, 1, 'the datagram reaches the local socket only when loopback is allowed');
+  assert.match(received[0], /^CEF:0\|KEEL\|keel\|/);
 });
 
 test('the outbox receiver dedup key stays stable across a webhook redelivery', () => {

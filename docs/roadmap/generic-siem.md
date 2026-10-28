@@ -58,9 +58,16 @@ One envelope becomes one single-line CEF record:
   'http-response'` over the `https` transport turns a 2xx into `accepted`. A `udp`
   destination declaring `http-response` fails visibly at delivery time instead of
   silently upgrading the guarantee.
+- **Public addresses only.** Both transports follow the webhook rule (security audit
+  finding 6). An https URL must be `https` to a public address, checked at
+  registration, after DNS and on every redirect hop. A udp host that is an IP address
+  or `localhost` is checked at registration; on every send the host is resolved,
+  every resolved address must be public, and the datagram goes to the checked
+  address, so DNS cannot move it afterwards. Only tests may open loopback, with
+  `createCefAdapter({ allowLoopback: true })`.
 
-`cli/keel-worker.mjs` registers both adapters with production defaults (global
-`fetch`, `node:dgram`, `env:` credential references) under the `webhook` and `cef`
+`cli/keel-worker.mjs` registers both adapters with production defaults (the
+guarded https transport, `node:dgram`, `env:KEEL_INTEGRATION_*` credential references) under the `webhook` and `cef`
 keys of the existing `SIEM_ADAPTERS` map that `drainDueDestinations` already
 dispatches on (task-79); no drain-path code changed.
 

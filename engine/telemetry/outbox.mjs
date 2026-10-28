@@ -29,6 +29,7 @@
 //    registration; secrets never enter the outbox, logs or evidence.
 import { can } from '../authz/can.mjs';
 import { webhookDestinationProblems } from './adapters/webhook.mjs';
+import { cefDestinationProblems } from './adapters/cef.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 
 export const OUTBOX_RETRY_BASE_MS = 5 * 1000;
@@ -137,6 +138,11 @@ export async function registerDestination(client, {
   if (kind === 'webhook') {
     const problems = webhookDestinationProblems(config);
     if (problems.length) throw new Error(`webhook destination config: ${problems.join('; ')}`);
+  }
+  // The same rule for CEF: https to a public address, or udp to a public host.
+  if (kind === 'cef') {
+    const problems = cefDestinationProblems(config);
+    if (problems.length) throw new Error(`cef destination config: ${problems.join('; ')}`);
   }
   await requireCapability(client, requestedBy, 'configuration');
 

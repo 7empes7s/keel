@@ -23,8 +23,21 @@
 //    acknowledgement: 'http-response' over the https transport turns a 2xx into
 //    'accepted'. A udp destination declaring http-response acknowledgement is a
 //    contradiction and fails visibly instead of silently upgrading the guarantee.
+// 4. PUBLIC ADDRESSES ONLY (security audit finding 6). The worker that sends these
+//    records runs as root on the deploy host, so neither transport may reach loopback,
+//    private, link-local (cloud metadata) or reserved addresses. https goes through the
+//    shared guarded transport, which checks the address the socket connects to and every
+//    redirect hop. For udp, the host is resolved once, every resolved address is
+//    checked, and the datagram is sent to the checked address itself, so a name cannot
+//    pass the check and then resolve somewhere else.
 import { createHash } from 'node:crypto';
 import dgram from 'node:dgram';
+import { lookup as dnsLookup } from 'node:dns';
+import { isIP } from 'node:net';
+
+import {
+  BlockedDestinationError, addressProblem, assertDestinationAllowed, guardedRequest,
+} from '../../safety/outboundDestination.mjs';
 
 import { canonicalJson } from '../events.mjs';
 
@@ -139,8 +152,8 @@ export function formatCefEvent(envelope, { maxBytes = CEF_MAX_MESSAGE_BYTES } = 
   return message;
 }
 
-async function defaultSendUdp({ host, port, message }) {
-  const socket = dgram.createSocket('udp4');
+async function defaultSendUdp({ host, port, message, family }) {
+  const socket = dgram.createSocket(family === 6 || isIP(host) === 6 ? 'udp6' : 'udp4');
   try {
     await new Promise((resolve, reject) => {
       socket.send(Buffer.from(message, 'utf8'), port, host, (error) => {
@@ -172,23 +185,114 @@ function retryAfterMs(response) {
   return undefined;
 }
 
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
-
-function httpsUrl(config) {
+// The configured URL is the only routing input for https. It must be https to a public
+// address. `allowLoopback` is for tests only: it also allows plain http, and both
+// schemes may then reach 127.0.0.1 or ::1 so a local fixture can listen.
+export function cefHttpsUrl(config, { allowLoopback = false } = {}) {
   const raw = config?.url;
   requireNonEmptyString(raw, 'cef destination config.url');
-  const url = new URL(raw);
-  if (url.protocol === 'https:') return url;
-  if (url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname)) return url;
-  throw new Error('cef destination config.url must use https (http is loopback-only)');
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error('cef destination config.url is not a valid address');
+  }
+  if (allowLoopback && url.protocol === 'http:') return assertDestinationAllowed(url, { allowLoopback, protocols: ['http:'] });
+  if (url.protocol !== 'https:') throw new Error('cef destination config.url must use https');
+  return assertDestinationAllowed(url, { allowLoopback, protocols: ['https:'] });
+}
+
+function udpPort(config) {
+  const port = Number(config?.port);
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
+    throw new TypeError('cef destination config.port must be an integer between 1 and 65535');
+  }
+  return port;
+}
+
+function isLocalName(host) {
+  return host === 'localhost' || host === 'localhost.' || host.endsWith('.localhost');
+}
+
+/**
+ * The address a udp record is sent to: an IP literal is checked as written; a name is
+ * resolved and refused when ANY of its addresses is not public. Throws
+ * BlockedDestinationError for a refused address.
+ */
+export async function resolveCefUdpTarget(host, { allowLoopback = false, resolve = dnsLookup } = {}) {
+  requireNonEmptyString(host, 'cef destination config.host');
+  const bare = host.replace(/^\[|\]$/g, '').toLowerCase();
+  const literal = isIP(bare);
+  if (literal) {
+    const problem = addressProblem(bare, { allowLoopback });
+    if (problem) throw new BlockedDestinationError(problem);
+    return { address: bare, family: literal };
+  }
+  if (isLocalName(bare) && !allowLoopback) {
+    throw new BlockedDestinationError(`${bare} is a local address; Keel only sends to public addresses`);
+  }
+  const addresses = await new Promise((done, fail) => {
+    resolve(bare, { all: true }, (error, list) => (error ? fail(error) : done(list)));
+  });
+  const list = Array.isArray(addresses) ? addresses : [];
+  if (list.length === 0) throw new Error(`${bare} did not resolve to any address`);
+  for (const { address } of list) {
+    const problem = addressProblem(address, { allowLoopback });
+    if (problem) throw new BlockedDestinationError(`${bare} resolves to ${problem}`);
+  }
+  return { address: list[0].address, family: list[0].family === 6 || isIP(list[0].address) === 6 ? 6 : 4 };
+}
+
+/** Problems with a CEF destination config, checked when it is registered. */
+export function cefDestinationProblems(config) {
+  const problems = [];
+  if (config?.transport === 'https') {
+    try {
+      cefHttpsUrl(config);
+    } catch (cause) {
+      problems.push(cause instanceof Error ? cause.message : String(cause));
+    }
+  } else if (config?.transport === 'udp') {
+    const host = config?.host;
+    if (typeof host !== 'string' || host.length === 0) {
+      problems.push('cef destination config.host must be a non-empty string');
+    } else {
+      // A name is checked again, after DNS, on every send.
+      const bare = host.replace(/^\[|\]$/g, '').toLowerCase();
+      const problem = isIP(bare) ? addressProblem(bare)
+        : (isLocalName(bare) ? `${bare} is a local address; Keel only sends to public addresses` : null);
+      if (problem) problems.push(problem);
+    }
+    try {
+      udpPort(config);
+    } catch (cause) {
+      problems.push(cause.message);
+    }
+  } else {
+    problems.push(`unsupported cef transport: ${String(config?.transport)}`);
+  }
+  return problems;
+}
+
+/** The default https transport: a POST that only reaches public addresses, on every redirect. */
+function guardedFetch(allowLoopback, resolve) {
+  return (url, init) => guardedRequest(url, {
+    ...init,
+    allowLoopback,
+    resolve,
+    protocols: allowLoopback ? ['http:', 'https:'] : ['https:'],
+  });
 }
 
 /**
  * Build the CEF sink adapter. `sendUdp` and `fetchImpl` are injectable transports so the
  * boundary tests drive the production adapter without a network; production wiring uses
- * the defaults (node:dgram, global fetch).
+ * the defaults (node:dgram, and the guarded https transport). `allowLoopback` and
+ * `resolve` are for tests only.
  */
-export function createCefAdapter({ sendUdp = defaultSendUdp, fetchImpl, timeoutMs = CEF_TIMEOUT_MS } = {}) {
+export function createCefAdapter({
+  sendUdp = defaultSendUdp, fetchImpl, timeoutMs = CEF_TIMEOUT_MS, allowLoopback = false, resolve,
+} = {}) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
     throw new TypeError('timeoutMs must be a positive integer');
   }
@@ -234,14 +338,20 @@ export function createCefAdapter({ sendUdp = defaultSendUdp, fetchImpl, timeoutM
             error: 'cef udp transport cannot honour an http-response acknowledgement declaration',
           };
         }
-        const host = config.host;
-        const port = Number(config.port);
+        let target;
+        let port;
         try {
-          requireNonEmptyString(host, 'cef destination config.host');
-          if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
-            throw new TypeError('cef destination config.port must be an integer between 1 and 65535');
-          }
-          await sendUdp({ host, port, message });
+          port = udpPort(config);
+          target = await resolveCefUdpTarget(config.host, { allowLoopback, resolve });
+        } catch (cause) {
+          return {
+            outcome: 'retry',
+            error: `cef destination unusable: ${cause instanceof Error ? cause.message : String(cause)}`,
+          };
+        }
+        try {
+          // The checked address, never the name: DNS is not asked a second time.
+          await sendUdp({ host: target.address, family: target.family, port, message });
         } catch (cause) {
           return {
             outcome: 'retry',
@@ -260,17 +370,14 @@ export function createCefAdapter({ sendUdp = defaultSendUdp, fetchImpl, timeoutM
       if (config.transport === 'https') {
         let url;
         try {
-          url = httpsUrl(config);
+          url = cefHttpsUrl(config, { allowLoopback });
         } catch (cause) {
           return {
             outcome: 'retry',
             error: `cef destination unusable: ${cause instanceof Error ? cause.message : String(cause)}`,
           };
         }
-        const fetchCall = fetchImpl ?? globalThis.fetch?.bind(globalThis);
-        if (typeof fetchCall !== 'function') {
-          return { outcome: 'retry', error: 'cef https delivery has no fetch implementation' };
-        }
+        const fetchCall = fetchImpl ?? guardedFetch(allowLoopback, resolve);
         let response;
         try {
           response = await fetchCall(url, {
@@ -284,6 +391,9 @@ export function createCefAdapter({ sendUdp = defaultSendUdp, fetchImpl, timeoutM
             signal: AbortSignal.timeout(timeoutMs),
           });
         } catch (cause) {
+          if (cause instanceof BlockedDestinationError) {
+            return { outcome: 'retry', error: `cef destination unusable: ${cause.message}` };
+          }
           if (isTimeout(cause)) {
             return {
               outcome: 'uncertain',

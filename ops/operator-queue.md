@@ -9158,7 +9158,7 @@ item that needs it stays untouched.
      build exit code, image id and size, and the "module install complete" table. If the build fails, report the last 40 lines and stop.
   2. **Smoke (read only):** one Get through the real job transport as the Collector, so it runs with the hardened container flags
      (non-root, read-only root, only the job's own settings mounted):
-     `node -e "const d=await import('./engine/powershell/dscJob.mjs'); const {DSC_RESOURCES}=await import('./engine/restore/workloads/dscDeclarations.mjs'); console.log(JSON.stringify(await d.runDsc({resource:'EXODistributionGroup',calls:[{method:'Get',properties:{Identity:'<seed Guid>',Name:'<seed Guid>',Ensure:'Present'}}],tenantConfigPath:'/etc/keel/exchange-collector.json'},{resources:DSC_RESOURCES})))" --input-type=module`
+     `node --input-type=module -e "const d=await import('./engine/powershell/dscJob.mjs'); const {DSC_RESOURCES}=await import('./engine/restore/workloads/dscDeclarations.mjs'); console.log(JSON.stringify(await d.runDsc({resource:'EXODistributionGroup',calls:[{method:'Get',properties:{Identity:'<seed Guid>',Name:'<seed Guid>',Ensure:'Present'}}],tenantConfigPath:'/etc/keel/exchange-collector.json'},{resources:DSC_RESOURCES})))"`
      Expect `"Ensure":"Present"` and `"Name":"KEEL-RT-capture-seed"` (the read by Guid the writer relies on), and string values for
      Ensure and MemberJoinRestriction (not numbers). Report the output (no secrets in it) and the `missing` list. If the container fails
      on the read-only root or as non-root, report the last lines verbatim and stop.

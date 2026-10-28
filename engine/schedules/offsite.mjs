@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { readdir, readFile, rename, writeFile, rm } from 'node:fs/promises';
+import { open, readdir, readFile, rename, writeFile, rm } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -77,24 +77,50 @@ export async function encryptForOffsite(bytes, { recipientsPath = DEFAULT_AGE_RE
       if (error) reject(new Error(`age could not encrypt the dump: ${String(stderr || error.message).trim()}`));
       else resolve(stdout);
     });
+    // age exiting early (bad recipient) breaks the pipe; the callback above reports why.
+    child.stdin.on('error', () => {});
     child.stdin.end(bytes);
   });
-  if (!ciphertext.length || !ciphertext.subarray(0, 21).toString('latin1').startsWith('age-encryption.org/v1')) {
+  if (!ciphertext.length || !ageHeaderOk(ciphertext.subarray(0, 21))) {
     throw new Error('age produced no encrypted output; shipping nothing');
   }
   return ciphertext;
 }
 
+const ageHeaderOk = (head) => head.toString('latin1').startsWith('age-encryption.org/v1');
+
+async function sha256OfFile(path) {
+  const hash = createHash('sha256');
+  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  return hash.digest('hex');
+}
+
 /**
- * Encrypts a dump file into `outPath` (created new, root-only); returns the ciphertext
- * sha256. With `expectedSha256`, a dump whose bytes no longer hash to it is refused.
+ * Encrypts a dump file into `outPath` (created new, root-only), streaming through age so
+ * a large dump is never held in memory; returns the ciphertext sha256. With
+ * `expectedSha256`, the dump is hashed before and after encryption, and a dump that no
+ * longer matches is refused and the output removed.
  */
-export async function encryptDumpFile(dumpPath, outPath, { expectedSha256 = null, ...options } = {}) {
-  const plain = await readFile(dumpPath);
-  if (expectedSha256 && sha256Hex(plain) !== expectedSha256) throw new Error('dump changed after manifest verification');
-  const ciphertext = await encryptForOffsite(plain, options);
-  await writeFile(outPath, ciphertext, { mode: 0o600, flag: 'wx' });
-  return sha256Hex(ciphertext);
+export async function encryptDumpFile(dumpPath, outPath, { expectedSha256 = null, recipientsPath = DEFAULT_AGE_RECIPIENTS, ageBin = 'age' } = {}) {
+  const recipients = await readAgeRecipients(recipientsPath);
+  if (expectedSha256 && await sha256OfFile(dumpPath) !== expectedSha256) throw new Error('dump changed after manifest verification');
+  await writeFile(outPath, '', { mode: 0o600, flag: 'wx' });
+  try {
+    try {
+      await promisify(execFile)(ageBin, [...recipients.flatMap((recipient) => ['-r', recipient]), '-o', outPath, dumpPath]);
+    } catch (error) {
+      throw new Error(`age could not encrypt the dump: ${String(error.stderr || error.message).trim()}`);
+    }
+    if (expectedSha256 && await sha256OfFile(dumpPath) !== expectedSha256) throw new Error('dump changed after manifest verification');
+    const handle = await open(outPath, 'r');
+    const head = Buffer.alloc(21);
+    try { await handle.read(head, 0, 21, 0); } finally { await handle.close(); }
+    if (!ageHeaderOk(head)) throw new Error('age produced no encrypted output; shipping nothing');
+    return await sha256OfFile(outPath);
+  } catch (error) {
+    await rm(outPath, { force: true });
+    throw error;
+  }
 }
 
 /**
@@ -105,15 +131,17 @@ export async function encryptDumpFile(dumpPath, outPath, { expectedSha256 = null
  */
 async function encryptedCopy(manifest, plain, { recipientsPath, ageBin }) {
   const path = `${manifest.path}${ENCRYPTED_SUFFIX}`;
+  // A recipient change re-encrypts: the kept copy is tied to the recipients it was made for.
+  const recipientsSha256 = sha256Hex(Buffer.from((await readAgeRecipients(recipientsPath)).join('\n')));
   try {
     const record = JSON.parse(await readFile(`${path}.json`, 'utf8'));
     const kept = await readFile(path);
-    if (record.plainSha256 === manifest.checksum && record.sha256 === sha256Hex(kept)) return kept;
+    if (record.plainSha256 === manifest.checksum && record.recipientsSha256 === recipientsSha256 && record.sha256 === sha256Hex(kept)) return kept;
   } catch (error) {
     if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) throw error;
   }
   const bytes = await encryptForOffsite(plain, { recipientsPath, ageBin });
-  for (const [target, body] of [[path, bytes], [`${path}.json`, JSON.stringify({ plainSha256: manifest.checksum, sha256: sha256Hex(bytes) })]]) {
+  for (const [target, body] of [[path, bytes], [`${path}.json`, JSON.stringify({ plainSha256: manifest.checksum, recipientsSha256, sha256: sha256Hex(bytes) })]]) {
     const temporary = `${target}.${randomUUID()}.tmp`;
     try {
       await writeFile(temporary, body, { mode: 0o600, flag: 'wx' });

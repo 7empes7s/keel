@@ -27,7 +27,7 @@ import {
   separateFilesystemCheck,
   shipArtifact,
 } from './targets.mjs';
-import { pruneLocalDumps, shipDumpToTargets } from '../schedules/offsite.mjs';
+import { encryptDumpFile, pruneLocalDumps, shipDumpToTargets } from '../schedules/offsite.mjs';
 
 const tmp = mkdtempSync(join(tmpdir(), 'keel-storage-targets-'));
 after(() => rmSync(tmp, { recursive: true, force: true }));
@@ -221,6 +221,21 @@ test('offsite ships the dump to every target, records it only when complete, and
 
   await assert.rejects(() => shipDumpToTargets(next, shipped, { env: {} }), /KEEL_STORAGE_TARGETS is not set/);
   assert.deepEqual(await pruneLocalDumps(dir('empty'), 30), []);
+});
+
+test('encryptDumpFile streams the dump through age and refuses a dump that no longer matches', async () => {
+  const work = dir('encrypt');
+  mkdirSync(work);
+  const dump = join(work, 'keel-db.sql.gz');
+  writeFileSync(dump, 'dump-bytes');
+  const out = join(work, 'out.age');
+  const sha = await encryptDumpFile(dump, out, { expectedSha256: sha256Hex(Buffer.from('dump-bytes')), recipientsPath: ageRecipients });
+  assert.equal(sha, sha256Hex(readFileSync(out)));
+  assert.equal(decrypt(out).toString('utf8'), 'dump-bytes');
+  await assert.rejects(() => encryptDumpFile(dump, join(work, 'other.age'), { expectedSha256: '0'.repeat(64), recipientsPath: ageRecipients }),
+    /dump changed after manifest verification/);
+  await assert.rejects(() => encryptDumpFile(dump, join(work, 'bad.age'), { recipientsPath: ageRecipients, ageBin: 'false' }), /age could not encrypt/);
+  assert.deepEqual(readdirSync(work).sort(), ['keel-db.sql.gz', 'out.age'], 'a refused or failed run leaves no output');
 });
 
 test('keel-offsite.sh ships through the registry when KEEL_STORAGE_TARGETS is set', async () => {

@@ -1,5 +1,5 @@
 import { createPublicKey, verify } from 'node:crypto';
-import { verifyChain } from './evidence.mjs';
+import { verifyChain, verifyChainCached } from './evidence.mjs';
 import { assertIndependentAnchorStorage, assertNoEmbeddedCredential } from '../storage/adapter.mjs';
 
 // Domain-separated fixed tuples avoid JSON property-order ambiguity.
@@ -57,6 +57,29 @@ async function inspect(client, tenantRef) {
   } catch (error) { await client.query('ROLLBACK'); throw error; }
 }
 
+// Security audit run 2, finding 10: verification compares the checkpoint with counts and
+// one row instead of loading every record, and `options.chainCache` (a Map kept by a
+// long-lived caller such as the portal) lets the hash walk cover only new records
+// between periodic full walks.
+async function inspectAgainst(client, options, checkpointSeq) {
+  const { tenantRef } = options;
+  await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+  try {
+    const integrity = options.chainCache
+      ? await verifyChainCached(client, { tenantRef, cache: options.chainCache })
+      : await verifyChain(client, { tenantRef });
+    const { rows } = await client.query(
+      `SELECT (SELECT max(seq)::text FROM evidence WHERE tenant_ref = $1) AS head_seq,
+              (SELECT count(*)::text FROM evidence WHERE tenant_ref = $1) AS total,
+              (SELECT count(*)::text FROM evidence WHERE tenant_ref = $1 AND seq <= $2) AS through_count,
+              (SELECT record_hash FROM evidence WHERE tenant_ref = $1 AND seq = $2) AS checkpoint_hash`,
+      [tenantRef, checkpointSeq],
+    );
+    await client.query('COMMIT');
+    return { integrity, stats: rows[0] };
+  } catch (error) { await client.query('ROLLBACK'); throw error; }
+}
+
 /** Private signing material stays in the injected signer, never in stored metadata. */
 export async function publishCheckpoint(client, options) {
   await authorized(options, 'publish');
@@ -102,17 +125,16 @@ export async function verifyAnchoredChain(client, options) {
     if (!options.checkpointRef) return { ...unanchored, reason: 'missing-external-anchor' };
     checkpoint = authenticate(JSON.parse(await options.storage.read(options.checkpointRef)), options);
   } catch { return unanchored; }
-  const { integrity, rows } = await inspect(client, options.tenantRef);
-  const actualSeq = rows.at(-1)?.seq ?? '0';
-  if (BigInt(actualSeq) < BigInt(checkpoint.sequence) || BigInt(rows.length) < BigInt(checkpoint.recordCount)) {
+  const { integrity, stats } = await inspectAgainst(client, options, checkpoint.sequence);
+  const actualSeq = stats.head_seq ?? '0';
+  if (BigInt(actualSeq) < BigInt(checkpoint.sequence) || BigInt(stats.total) < BigInt(checkpoint.recordCount)) {
     return { ok: false, status: 'truncated', expectedSeq: checkpoint.sequence, actualSeq };
   }
-  const index = rows.findIndex(row => String(row.seq) === checkpoint.sequence);
-  if (index < 0 || rows[index].record_hash !== checkpoint.headHash || BigInt(index + 1) !== BigInt(checkpoint.recordCount)) {
+  if (stats.checkpoint_hash !== checkpoint.headHash || BigInt(stats.through_count) !== BigInt(checkpoint.recordCount)) {
     return { ok: false, status: 'broken-at-sequence', brokenAtSeq: checkpoint.sequence };
   }
   if (!integrity.ok) return { ...integrity, status: integrity.reason === 'truncated' ? 'truncated' : 'broken-at-sequence' };
   return { ok: true, status: 'verified', qualification: options.mode === 'fixture' ? 'fixture-tested' : 'live-qualified',
     anchoredThroughSeq: checkpoint.sequence, build: checkpoint.build, keyId: checkpoint.keyId,
-    unanchoredRecords: rows.length - index - 1 };
+    unanchoredRecords: Number(BigInt(stats.total) - BigInt(stats.through_count)) };
 }

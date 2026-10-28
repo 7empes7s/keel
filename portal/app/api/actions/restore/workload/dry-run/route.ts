@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { enqueue } from "../../../../../../../engine/jobs/queue.mjs";
+import { enqueue, PORTAL_QUEUED_JOBS_PER_PRINCIPAL } from "../../../../../../../engine/jobs/queue.mjs";
 
 import {
   guarded,
@@ -66,6 +66,7 @@ export const POST = guarded(
         // One key per run, so a retried request finds the same jobs again.
         idempotencyKey: idempotencyKey === undefined ? undefined : index === 0 ? idempotencyKey : `${idempotencyKey}:${index}`,
         notBefore: undefined,
+        maxQueuedForRequester: PORTAL_QUEUED_JOBS_PER_PRINCIPAL,
       })) as Record<string, unknown>;
       const persisted = (job.params as Record<string, unknown> | undefined)?.artifactId;
       runs.push({ target, job: normalizeJob(job), artifactId: typeof persisted === "string" ? persisted : artifactId });

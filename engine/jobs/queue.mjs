@@ -21,8 +21,29 @@ import { resolveRowReferences } from '../govern/references.mjs';
 export const JOB_HEARTBEAT_INTERVAL_MS = 15 * 1000;
 export const ORPHANED_HEARTBEAT_STALE_MS = JOB_HEARTBEAT_INTERVAL_MS * 8;
 
+// Security audit run 2, finding 11: one person cannot fill the queue. Portal routes pass
+// this as maxQueuedForRequester; scheduled and approval-minted jobs carry no cap.
+export const PORTAL_QUEUED_JOBS_PER_PRINCIPAL = 20;
+
+export class QueueFullError extends Error {
+  constructor(limit) {
+    super(`you already have ${limit} jobs waiting to run; try again when some have finished`);
+    this.name = 'QueueFullError';
+    this.limit = limit;
+  }
+}
+
+// Priority 1 jobs are claimed before priority 0 ones. Approvals mint priority 1: a second
+// person already signed off and is waiting on the result.
+export const APPROVED_JOB_PRIORITY = 1;
+
+/**
+ * @param {any} client
+ * @param {{ kind: string, params?: any, requestedBy: string, idempotencyKey?: string | null,
+ *   notBefore?: any, priority?: number, maxQueuedForRequester?: number | null }} job
+ */
 export async function enqueue(client, {
-  kind, params, requestedBy, idempotencyKey, notBefore,
+  kind, params, requestedBy, idempotencyKey, notBefore, priority = 0, maxQueuedForRequester = null,
 }) {
   // Offsite has no portal route: enforce admission here as well as at execution.
   if (kind === 'offsite') {
@@ -33,12 +54,15 @@ export async function enqueue(client, {
     }
   }
   const { rows } = await client.query(
-    `INSERT INTO job (kind, params, requested_by, idempotency_key, not_before)
-     VALUES ($1, $2, $3, $4, COALESCE($5, now()))
+    `INSERT INTO job (kind, params, requested_by, idempotency_key, not_before, priority)
+     SELECT $1, $2, $3, $4, COALESCE($5, now()), $6
+     WHERE $7::int IS NULL
+        OR (SELECT count(*) FROM job WHERE requested_by = $3 AND status = 'queued') < $7
      ON CONFLICT (kind, idempotency_key) WHERE idempotency_key IS NOT NULL
      DO NOTHING
      RETURNING *, started_at::text AS event_started_at`,
-    [kind, params ?? {}, requestedBy, idempotencyKey ?? null, notBefore ?? null],
+    [kind, params ?? {}, requestedBy, idempotencyKey ?? null, notBefore ?? null, priority,
+      maxQueuedForRequester],
   );
   if (rows[0]) return rows[0];
   // A job with this kind and key already exists (or won a concurrent insert) — return it
@@ -47,6 +71,7 @@ export async function enqueue(client, {
     `SELECT *, started_at::text AS event_started_at FROM job WHERE kind = $1 AND idempotency_key = $2`,
     [kind, idempotencyKey],
   );
+  if (!existing[0] && maxQueuedForRequester !== null) throw new QueueFullError(maxQueuedForRequester);
   return existing[0];
 }
 
@@ -57,7 +82,7 @@ export async function claimNext(client, { workerId, eventSink = createEventSink(
      WHERE id = (
        SELECT id FROM job
        WHERE status = 'queued' AND not_before <= now()
-       ORDER BY created_at
+       ORDER BY priority DESC, created_at
        FOR UPDATE SKIP LOCKED
        LIMIT 1
      )

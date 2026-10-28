@@ -22,7 +22,8 @@ import { BootstrapJournal, migrateBootstrapJournal } from "../../engine/bootstra
 import { firstCollectReadiness, selectWorkloads, SETUP_SCOPES } from "../../engine/bootstrap/onboarding.mjs";
 import { planBootstrap } from "../../engine/bootstrap/plan.mjs";
 import { capabilityForJobKind } from "../../engine/authz/jobCapabilities.mjs";
-import { enqueue, listJobs, summarizeJobs } from "../../engine/jobs/queue.mjs";
+import { enqueue, listJobs, PORTAL_QUEUED_JOBS_PER_PRINCIPAL, QueueFullError, summarizeJobs } from "../../engine/jobs/queue.mjs";
+import { denialThrottle as sharedDenialThrottle, type DenialThrottle } from "@/lib/denial-throttle";
 import { connect } from "@/lib/db";
 import { updateSchedule, validateSchedule } from "../../engine/schedules/cadence.mjs";
 import { acknowledgeForecastWarning } from "../../engine/schedules/forecast.mjs";
@@ -100,6 +101,7 @@ export interface GuardDeps {
   connect?: (url: string) => Promise<unknown>;
   databaseUrl?: () => string;
   tenantRef?: () => string;
+  denialThrottle?: DenialThrottle;
 }
 
 function forbidden(): Response {
@@ -317,6 +319,7 @@ export function guarded(
   const connectDb = deps.connect ?? (connect as (url: string) => Promise<unknown>);
   const resolveDatabaseUrl = deps.databaseUrl ?? databaseUrl;
   const resolveTenantRef = deps.tenantRef ?? tenantRef;
+  const throttle = deps.denialThrottle ?? sharedDenialThrottle;
 
   return async function guardedRoute(request: Request): Promise<Response> {
     // Identity is read from the headers downstreamed by proxy.ts — the one module that
@@ -333,10 +336,16 @@ export function guarded(
     try {
       const deny = async (reason: string): Promise<Response> => {
         try {
+          const tenant = resolveTenantRef();
+          const repeatedDenials = throttle.admit(JSON.stringify([tenant, actor, spec.action, reason]));
+          if (repeatedDenials === null) return forbidden();
           await appendEvidence(client, {
-            tenantRef: resolveTenantRef(),
+            tenantRef: tenant,
             kind: ATTEMPT_EVIDENCE_KIND,
-            subject: { action: spec.action, decision: "denied", reason },
+            subject: {
+              action: spec.action, decision: "denied", reason,
+              ...(repeatedDenials > 0 ? { repeatedDenials } : {}),
+            },
             actor,
           });
         } catch (error) {
@@ -407,6 +416,13 @@ export function guarded(
       // Gap B11: the requester no longer resolves to an enabled principal, so no
       // request is created that could never be carried out.
       if (error instanceof ApprovalRequestRefusedError) return forbidden();
+      // Security audit run 2, finding 11: too many of this person's jobs are waiting.
+      if (error instanceof QueueFullError) {
+        return Response.json(
+          { error: "queue_full", message: error.message },
+          { status: 429, headers: NO_STORE },
+        );
+      }
       // A change whose setting holds the same values as the approved setup: nothing
       // to accept, roll back, preview or approve. Said plainly, never a 503.
       if (error instanceof SameContentDriftError) return noChange(error);
@@ -492,6 +508,7 @@ export function guardedAction(
         requestedBy: principalId,
         idempotencyKey: request.headers.get(IDEMPOTENCY_KEY_HEADER) ?? undefined,
         notBefore: undefined,
+        maxQueuedForRequester: PORTAL_QUEUED_JOBS_PER_PRINCIPAL,
       })) as Record<string, unknown>;
       return Response.json(
         { job: normalizeJob(job) },

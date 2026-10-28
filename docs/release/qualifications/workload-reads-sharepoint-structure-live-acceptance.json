@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "39129d8a16fe13c6b9460a24334fb88bb8556f54",
+  "build": "57f36441ab701dd1d86ca5ffa1c8d9ba3f1351cf",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-10-28T21:39:43.636Z",
+  "observedAt": "2026-10-28T23:38:52.736Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -18,17 +18,17 @@
     "credentials": {
       "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c"
     },
-    "outcome": "partial",
+    "outcome": "complete",
     "reads": [
       {
         "operationId": "sharepoint-structure.hub-sites",
         "family": "hubSite",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-10-28T21:39:43.636Z",
+        "capturedAt": "2026-10-28T23:38:52.736Z",
         "ok": true,
         "status": "read",
-        "objects": 1,
+        "objects": 2,
         "error": null
       },
       {
@@ -36,7 +36,7 @@
         "family": "siteDesign",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-10-28T21:39:43.636Z",
+        "capturedAt": "2026-10-28T23:38:52.736Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -47,7 +47,7 @@
         "family": "siteScript",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-10-28T21:39:43.636Z",
+        "capturedAt": "2026-10-28T23:38:52.736Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -58,7 +58,7 @@
         "family": "siteTemplate",
         "version": "3.4.1",
         "synthetic": false,
-        "capturedAt": "2026-10-28T21:39:43.636Z",
+        "capturedAt": "2026-10-28T23:38:52.736Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -69,7 +69,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "495b99ed65c194238427a6f8337fd9e247c174af04ee73f8d2bbddee9be371b1"
+      "signature": "722418d41afa6350d1cb715b0cca65f292430ab76fcf5f697b88d6e38be4e333"
     }
   }
 }

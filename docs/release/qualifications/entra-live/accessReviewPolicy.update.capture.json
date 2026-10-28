@@ -1,0 +1,27 @@
+{
+  "restoreRef": "5a74a140-88d6-8bc9-9a65-a83fd6466381",
+  "entry": {
+    "naturalKey": "accessReviewPolicy:accessReviewPolicy",
+    "resourceType": "accessReviewPolicy",
+    "operation": "update",
+    "targetId": null,
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-28T07:47:51.404Z",
+    "priorState": {
+      "description": "Policy contains directory-level access review settings.",
+      "displayName": "Access Review Policy",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#policies/accessReviewPolicy/$entity",
+      "isGroupOwnerManagementEnabled": true
+    },
+    "intendedState": {
+      "isGroupOwnerManagementEnabled": false
+    },
+    "postState": {
+      "description": "Policy contains directory-level access review settings.",
+      "displayName": "Access Review Policy",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#policies/accessReviewPolicy/$entity",
+      "isGroupOwnerManagementEnabled": false
+    }
+  }
+}

@@ -324,6 +324,38 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: 'sharepointSettings', drift: 'switch isLoopEnabled to the other value; write the original down first; never change legacy authentication, unmanaged sync or any sharing field',
     note: 'Set the original value back right after the run.',
   },
+  // Restore gaps, batch 20: Microsoft 365 admin center org settings, each
+  // drifted by one harmless value and set back right after the run.
+  formsSettings: {
+    kind: 'tenant-setting', fixture: 'the Microsoft Forms org settings',
+    select: 'formsSettings', drift: 'switch settings.isBingImageSearchEnabled to the other value; write the original down first; never change an external sharing field or the phishing scan',
+    note: 'Set the original value back right after the run.',
+  },
+  microsoft365AppsInstallationOptions: {
+    kind: 'tenant-setting', fixture: 'the Microsoft 365 Apps installation options',
+    select: 'microsoft365AppsInstallationOptions', drift: 'switch appsForWindows.isVisioEnabled to the other value; write the original down first',
+    note: 'Only what people may install themselves from the portal changes, for a few minutes; installed apps are not touched. Set the original value back right after the run.',
+  },
+  appsAndServicesSettings: {
+    kind: 'tenant-setting', fixture: 'the user owned apps and services settings',
+    select: 'appsAndServicesSettings', drift: 'switch settings.isAppAndServicesTrialEnabled to the other value; write the original down first; never turn the Office Store on',
+    note: 'Set the original value back right after the run.',
+  },
+  adminReportSettings: {
+    kind: 'tenant-setting', fixture: 'the usage report privacy setting',
+    select: 'adminReportSettings', drift: 'if displayConcealedNames is false, set it to true (the restore puts back false only if it is not withheld, so expect a manual step instead); if it is true, set it to false and let the restore hide names again',
+    note: 'Set the original value back right after the run.',
+  },
+  pronounsSettings: {
+    kind: 'tenant-setting', fixture: 'the pronouns org setting',
+    select: 'pronounsSettings', drift: 'switch isEnabledInOrganization to the other value; write the original down first',
+    note: 'Set the original value back right after the run.',
+  },
+  engageCommunity: {
+    kind: 'named-object', fixture: `private Viva Engage community ${FIXTURE_PREFIX}-community (description Fixture), owned by a test user`,
+    select: `${FIXTURE_PREFIX}-community`, drift: 'change its description: the restore puts it back; never make it public',
+    note: 'Update only: a deleted community is not recreated. Delete the community (and its group) after the run.',
+  },
   // Restore gaps, batch 12: a Windows app protection policy and an iOS
   // provisioning profile, both assigned to nobody. No device or user is affected.
   windowsManagedAppProtection: {

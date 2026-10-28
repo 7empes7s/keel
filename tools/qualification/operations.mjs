@@ -331,6 +331,23 @@ export const FIXTURE_PAYLOADS = Object.freeze({
   microsoftTunnelHealthThreshold: { healthyThreshold: 70, unhealthyThreshold: 90 },
   onPremisesConditionalAccessSettings: { enabled: false, includedGroups: [], excludedGroups: [], overrideDefaultRule: false },
   sharepointSettings: { isLoopEnabled: true, idleSessionSignOut: { isEnabled: false, warnAfterInSeconds: 0, signOutAfterInSeconds: 0 }, siteCreationDefaultStorageLimitInMB: 26214400 },
+  // Restore gaps, batch 20: admin center org settings and a Viva Engage community.
+  formsSettings: {
+    settings: {
+      isBingImageSearchEnabled: true, isExternalSendFormEnabled: false, isExternalShareCollaborationEnabled: false,
+      isExternalShareResultEnabled: false, isExternalShareTemplateEnabled: false, isInOrgFormsPhishingScanEnabled: true,
+      isRecordIdentityByDefaultEnabled: true,
+    },
+  },
+  microsoft365AppsInstallationOptions: {
+    updateChannel: 'current',
+    appsForWindows: { isMicrosoft365AppsEnabled: true, isProjectEnabled: true, isSkypeForBusinessEnabled: false, isVisioEnabled: true },
+    appsForMac: { isMicrosoft365AppsEnabled: true, isSkypeForBusinessEnabled: false },
+  },
+  appsAndServicesSettings: { settings: { isOfficeStoreEnabled: false, isAppAndServicesTrialEnabled: true } },
+  adminReportSettings: { displayConcealedNames: true },
+  pronounsSettings: { isEnabledInOrganization: true },
+  engageCommunity: { id: 'fixture-community', displayName: 'Fixture community', description: 'Fixture', privacy: 'private', groupId: 'fixture-group' },
   // Restore gaps, batch 18: a web link app, the kind recreated in full.
   mobileApp: {
     '@odata.type': '#microsoft.graph.webApp', displayName: 'Fixture web link', description: 'Fixture', publisher: 'Fixture',
@@ -403,6 +420,13 @@ const FIXTURE_DRIFT = Object.freeze({
   microsoftTunnelHealthThreshold: () => ({ healthyThreshold: 60 }),
   onPremisesConditionalAccessSettings: () => ({ overrideDefaultRule: true }),
   sharepointSettings: () => ({ isLoopEnabled: false }),
+  // Restore gaps, batch 20: each drifts one setting its restore puts back (never a loosening one).
+  formsSettings: (payload) => ({ settings: { ...payload.settings, isBingImageSearchEnabled: false } }),
+  microsoft365AppsInstallationOptions: () => ({ updateChannel: 'monthlyEnterprise' }),
+  appsAndServicesSettings: (payload) => ({ settings: { ...payload.settings, isAppAndServicesTrialEnabled: false } }),
+  adminReportSettings: () => ({ displayConcealedNames: false }),
+  pronounsSettings: () => ({ isEnabledInOrganization: false }),
+  engageCommunity: () => ({ description: 'Drifted' }),
   // Restore gaps, batch 2: each singleton drifts one writable setting.
   externalIdentitiesPolicy: () => ({ allowExternalIdentitiesToLeave: false }),
   accessReviewPolicy: () => ({ isGroupOwnerManagementEnabled: false }),

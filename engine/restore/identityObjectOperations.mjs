@@ -304,6 +304,76 @@ function sharepointAccessRefusal(resource, verb) {
   };
 }
 
+// ------------------------------------- Microsoft 365 admin center settings
+
+/**
+ * Restore of the admin center settings backed up since PR #604. Each rule is
+ * [field path, the value that loosens it, what that value does]. A backup that
+ * moves a field to its loosening value while live holds another one is
+ * withheld whole for a person, as for the SharePoint settings: a restore never
+ * widens who outside the organisation can reach forms and answers, never adds
+ * the Office Store, never shows real names in usage reports again and never
+ * makes a private community public.
+ */
+const ADMIN_CENTER_LOOSENING = Object.freeze({
+  formsSettings: Object.freeze({
+    portalPath: 'Microsoft 365 admin center > Settings > Org settings > Microsoft Forms',
+    rules: Object.freeze([
+      ['settings.isExternalSendFormEnabled', true, 'lets people send forms to people outside the organisation'],
+      ['settings.isExternalShareCollaborationEnabled', true, 'lets people outside the organisation edit forms'],
+      ['settings.isExternalShareResultEnabled', true, 'lets people share form answers outside the organisation'],
+      ['settings.isExternalShareTemplateEnabled', true, 'lets people share forms as templates outside the organisation'],
+      ['settings.isInOrgFormsPhishingScanEnabled', false, 'turns the phishing scan of forms off'],
+    ]),
+  }),
+  appsAndServicesSettings: Object.freeze({
+    portalPath: 'Microsoft 365 admin center > Settings > Org settings > User owned apps and services',
+    rules: Object.freeze([
+      ['settings.isOfficeStoreEnabled', true, 'lets people add Office Store add-ins'],
+    ]),
+  }),
+  adminReportSettings: Object.freeze({
+    portalPath: 'Microsoft 365 admin center > Settings > Org settings > Reports',
+    rules: Object.freeze([
+      ['displayConcealedNames', false, 'shows real user, group and site names in usage reports'],
+    ]),
+  }),
+  engageCommunity: Object.freeze({
+    portalPath: 'Viva Engage > the community > Settings',
+    rules: Object.freeze([
+      ['privacy', 'public', 'makes the community public, so everyone in the organisation can read it'],
+    ]),
+  }),
+});
+
+const fieldAt = (payload, path) => path.split('.').reduce((value, key) => (value && typeof value === 'object' ? value[key] : undefined), payload);
+const sameLoose = (value, loose) => (typeof loose === 'string' ? String(value ?? '').toLowerCase() === loose : value === loose);
+
+/** The loosening refusal of one admin center settings record, or null. */
+export function adminCenterLooseningRefusal(resource, verb) {
+  const spec = ADMIN_CENTER_LOOSENING[resource?.resourceType];
+  if (!spec || verb !== 'update') return null;
+  const want = resource.payload ?? {};
+  const now = resource.live?.payload ?? {};
+  const loosened = spec.rules.filter(([path, loose]) => {
+    const live = fieldAt(now, path);
+    return sameLoose(fieldAt(want, path), loose) && live !== undefined && live !== null && !sameLoose(live, loose);
+  });
+  if (loosened.length === 0) return null;
+  const fields = loosened.map(([path]) => path);
+  return {
+    outcome: 'skipped',
+    reason: `manual: the backup ${loosened.map(([, , text]) => text).join(', and ')}; a restore never loosens this, so set it by hand if that is wanted`,
+    completion: Object.freeze({
+      kind: 'manual-setting',
+      requirement: `${resource.resourceType}Loosening`,
+      fields: Object.freeze(fields),
+      portalPath: spec.portalPath,
+      description: `Decide whether ${fields.join(', ')} should be as in the backup, then set it in ${spec.portalPath}. The other values in this backup were not written either: restore again after that.`,
+    }),
+  };
+}
+
 // ------------------------------------------------------------- governance
 
 /** Lifecycle workflow fields Entra computes, or that are read separately. */
@@ -540,6 +610,44 @@ export const IDENTITY_RECORDS = Object.freeze({
     resourceType: 'sharepointSettings', version: 'v1.0', collection: '/admin/sharepoint/settings',
     singleton: true, operations: ['update'], writable: SHAREPOINT_SETTINGS_WRITABLE_FIELDS, refusal: sharepointAccessRefusal,
     permission: 'SharePointTenantSettings.ReadWrite.All', docs: v1('sharepointsettings-update'),
+  }),
+  // Restore gaps, batch 20: Microsoft 365 admin center org settings backed up
+  // since PR #604, each one object per tenant and updated in place. A backup
+  // that loosens access is withheld (adminCenterLooseningRefusal). To Do
+  // settings wait for their read to work (GET /beta/admin/todo answers 500).
+  formsSettings: defineRecord({
+    resourceType: 'formsSettings', version: 'beta', collection: '/admin/forms',
+    singleton: true, operations: ['update'], writable: ['settings'], refusal: adminCenterLooseningRefusal,
+    permission: 'OrgSettings-Forms.ReadWrite.All', docs: beta('adminforms-update'),
+  }),
+  microsoft365AppsInstallationOptions: defineRecord({
+    resourceType: 'microsoft365AppsInstallationOptions', version: 'v1.0', collection: '/admin/microsoft365Apps/installationOptions',
+    singleton: true, operations: ['update'], writable: ['updateChannel', 'appsForWindows', 'appsForMac'],
+    permission: 'OrgSettings-Microsoft365Install.ReadWrite.All', docs: v1('m365appsinstallationoptions-update'),
+  }),
+  appsAndServicesSettings: defineRecord({
+    resourceType: 'appsAndServicesSettings', version: 'beta', collection: '/admin/appsAndServices',
+    singleton: true, operations: ['update'], writable: ['settings'], refusal: adminCenterLooseningRefusal,
+    permission: 'OrgSettings-AppsAndServices.ReadWrite.All', docs: beta('adminappsandservices-update'),
+  }),
+  adminReportSettings: defineRecord({
+    resourceType: 'adminReportSettings', version: 'v1.0', collection: '/admin/reportSettings',
+    singleton: true, operations: ['update'], writable: ['displayConcealedNames'], refusal: adminCenterLooseningRefusal,
+    permission: 'ReportSettings.ReadWrite.All', docs: v1('adminreportsettings-update'),
+  }),
+  pronounsSettings: defineRecord({
+    resourceType: 'pronounsSettings', version: 'v1.0', collection: '/admin/people/pronouns',
+    singleton: true, operations: ['update'], writable: ['isEnabledInOrganization'],
+    permission: 'PeopleSettings.ReadWrite.All', docs: v1('pronounssettings-update'),
+  }),
+  // A Viva Engage community is only updated in place: its name, description
+  // and privacy. A create makes a Microsoft 365 group behind it and needs
+  // owners, so a deleted community is still set up by hand. A private
+  // community is never made public.
+  engageCommunity: defineRecord({
+    resourceType: 'engageCommunity', version: 'v1.0', collection: '/employeeExperience/communities',
+    operations: ['update'], writable: ['displayName', 'description', 'privacy'], refusal: adminCenterLooseningRefusal,
+    permission: 'Community.ReadWrite.All', docs: v1('community-update'),
   }),
 });
 

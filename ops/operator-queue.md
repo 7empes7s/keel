@@ -9693,6 +9693,12 @@ item that needs it stays untouched.
   `assigned (N): … waiting for your choice`, and `keel-restore --compensate A --delete-assigned <key>` or `--skip-assigned <key>`
   re-plans with the choice (the portal sends the same through "Update the undo plan").
 - Needs: PR #655 merged and /opt/keel-live at that merge or later (`grep -q removeChosenAssignments /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Note (2026-10-28 22:35 UTC, "Handle To Do settings read errors" thread): PR #672 merged as `0ec75cbf`. An unread To Do
+  settings (or any other on/off org setting flagged `holdsNoReferences`) no longer blocks a planned delete; any other unread
+  kind still does. A refused undo now prints `refused <key>: <reason>` lines. Once `/opt/keel-live` has it
+  (`grep -q holdsNoReferences /opt/keel-live/tools/tenant-probe/catalog.d/admin-center-settings.mjs`), rerun this item
+  from step 1 with fresh KEEL-RT-213 fixtures. Expected: the undo artifact is `completed` (delete d1 with its assignment,
+  skip s1) even while To Do settings still answer 500. Report any `refused` line verbatim.
 - Status: blocked (#666: todoSettings 500 trips the full-read guard on the undo delete)
 - Result: blocked (2026-10-28 21:59 UTC, root keel-operator) at step 5. **The undo with choices plans correctly but is refused before any write: `blocked-incomplete-read: deleting deviceConfiguration:KEEL-RT-213-delete needs a full read of the target, but todoSettings could not be read`** (`GET /beta/admin/todo` → 500 UnknownError, empty message, on every try 21:48–21:59). Filed **#666** (decision for the thread: exempt journal-authorised undo deletes from the full-read guard, and/or treat this 500 as unavailable; the CLI also hides the reason). Steps 1–4 as expected. B = **39129d8a**. Restorer for fixture writes and the two assigns, Collector for reads/backup; global admin not used. Assigned only to the empty group KEEL-RT-213-group.
   - Fixtures: group KEEL-RT-213-group `fb54b6eb` (0 members, checked before each assign); profiles KEEL-RT-213-delete `3208f964` and KEEL-RT-213-skip `19b5f859` (windows10GeneralConfiguration, cameraBlocked false).

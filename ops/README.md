@@ -73,6 +73,17 @@ Every failure path is `set -euo pipefail` and exits non-zero — nothing is swal
 usable, and report what would ship without copying anything. A dry run fails when the target
 is unusable, because a real run would too.
 
+Every copy that leaves the host is **encrypted with [age](https://age-encryption.org)** first and
+ships as `keel-db-<date>.sql.gz.age`; the ciphertext's sha256 is what the target copy is checked
+against, and it is recorded in `keel-db-shipped-manifest.json` (`shipped.sha256`) beside the
+dump's own hash. The public recipients (`age1...`, one per line) are read from
+`/etc/keel/offsite-age-recipients.txt` (or `KEEL_OFFSITE_AGE_RECIPIENTS`). The matching private
+identity is kept **off this host** (the operator's password manager): if the VPS is lost, the
+identity must not be lost with it. Nothing ships when `age` is missing, the recipients file is
+missing or empty, or it holds a private key (`AGE-SECRET-KEY-...`). To restore from a copy:
+`age -d -i IDENTITY keel-db-<date>.sql.gz.age > keel-db.sql.gz`. Copies shipped before
+encryption (plain `.sql.gz`) age out with the 30-day prune.
+
 Settings, all optional, go in `/etc/keel/offsite.env`, which the unit reads when it exists:
 `KEEL_OFFSITE_DIR` (destination, default `/mnt/keel-copy/keel-offsite`), and `KEEL_OFFSITE_REMOTE=user@host`
 with `KEEL_OFFSITE_SSH_KEY` to ship over SSH to another host instead.

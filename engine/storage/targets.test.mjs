@@ -4,7 +4,7 @@
  * fake fetch. No network, no real storage account.
  */
 import { strict as assert } from 'node:assert';
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -43,6 +43,14 @@ function localTarget(id, root = dir(id), extra = {}) {
 }
 
 const down = { check: async () => { throw new Error('volume not mounted'); } };
+
+// An age key pair for the offsite tests: the recipient goes in the recipients file the
+// shipment reads, the identity stays in the test to decrypt what was shipped.
+const ageKeys = join(tmp, 'age-identity.txt');
+execFileSync('age-keygen', ['-o', ageKeys], { stdio: 'ignore' });
+const ageRecipients = join(tmp, 'age-recipients.txt');
+writeFileSync(ageRecipients, `# offsite recipient\n${execFileSync('age-keygen', ['-y', ageKeys], { encoding: 'utf8' })}`);
+const decrypt = (path) => execFileSync('age', ['-d', '-i', ageKeys, path]);
 
 test('two targets both hold a verified copy of one artifact, as plain files', async () => {
   const a = localTarget('mulinux');
@@ -156,6 +164,7 @@ test('offsite ships the dump to every target, records it only when complete, and
     KEEL_STORAGE_TARGET_MULINUX_DIR: mulinux,
     KEEL_STORAGE_TARGET_MULINUX_KEEP_DAYS: '30',
     KEEL_STORAGE_TARGET_SPARE_DIR: spare,
+    KEEL_OFFSITE_AGE_RECIPIENTS: ageRecipients,
   };
   mkdirSync(join(mulinux, 'keel-db'), { recursive: true });
   writeFileSync(join(mulinux, 'keel-db', 'keel-db-2026-09-01.sql.gz'), 'old');
@@ -165,17 +174,22 @@ test('offsite ships the dump to every target, records it only when complete, and
   const manifestPath = writeDump(backupRoot, '2026-10-15', 'dump-15');
   const dry = await shipDumpToTargets(manifestPath, shipped, { env, dryRun: true, now });
   assert.deepEqual(dry.probes.map((probe) => probe.usable), [true, true]);
-  assert.equal(dry.name, 'keel-db/keel-db-2026-10-15.sql.gz');
+  assert.equal(dry.name, 'keel-db/keel-db-2026-10-15.sql.gz.age');
   assert.deepEqual(readdirSync(join(mulinux, 'keel-db')).sort(), ['keel-db-2026-09-01.sql.gz', 'unrelated.txt'], 'a dry run writes nothing');
 
   const recorded = [];
   const { report, pruned } = await shipDumpToTargets(manifestPath, shipped, { env, now, recordDb: async (r) => recorded.push(r) });
   assert.equal(report.status, 'complete');
   assert.equal(recorded.length, 1);
-  assert.equal(readFileSync(join(spare, 'keel-db', 'keel-db-2026-10-15.sql.gz'), 'utf8'), 'dump-15');
+  const shippedCopy = join(spare, 'keel-db', 'keel-db-2026-10-15.sql.gz.age');
+  assert.ok(!readFileSync(shippedCopy).includes('dump-15'), 'the shipped copy is not plaintext');
+  assert.equal(decrypt(shippedCopy).toString('utf8'), 'dump-15', 'the identity kept off the host decrypts it');
+  assert.equal(report.sha256, sha256Hex(readFileSync(shippedCopy)), 'the report hashes the ciphertext that shipped');
   assert.deepEqual(pruned, { mulinux: ['keel-db-2026-09-01.sql.gz'], spare: [] });
-  assert.deepEqual(readdirSync(join(mulinux, 'keel-db')).sort(), ['keel-db-2026-10-15.sql.gz', 'unrelated.txt']);
+  assert.deepEqual(readdirSync(join(mulinux, 'keel-db')).sort(), ['keel-db-2026-10-15.sql.gz.age', 'unrelated.txt']);
   assert.equal(JSON.parse(readFileSync(shipped, 'utf8')).timestamp, '2026-10-15T05:00:00Z');
+  assert.deepEqual(JSON.parse(readFileSync(shipped, 'utf8')).shipped, { name: 'keel-db/keel-db-2026-10-15.sql.gz.age', sha256: report.sha256 },
+    'the ciphertext hash is recorded with the shipped manifest');
   await assert.rejects(() => shipDumpToTargets(manifestPath, shipped, { env, now }), /not newer/);
 
   // The next dump with one target down: partial, not recorded, so the next run retries it.
@@ -187,6 +201,23 @@ test('offsite ships the dump to every target, records it only when complete, and
   const retried = await shipDumpToTargets(next, shipped, { env, now });
   assert.equal(retried.report.status, 'complete');
   assert.deepEqual(retried.report.copies.map((copy) => copy.published), ['already-present', 'published']);
+  assert.equal(retried.report.sha256, partial.report.sha256, 'a retry ships the same ciphertext as the partial run');
+  assert.equal(decrypt(join(spare, 'keel-db', 'keel-db-2026-10-16.sql.gz.age')).toString('utf8'), 'dump-16');
+
+  // No recipient, or a private key where the recipients belong: nothing ships, nothing is recorded.
+  const third = writeDump(backupRoot, '2026-10-17', 'dump-17');
+  const before = readFileSync(shipped, 'utf8');
+  await assert.rejects(() => shipDumpToTargets(third, shipped, { env: { ...env, KEEL_OFFSITE_AGE_RECIPIENTS: join(tmp, 'absent.txt') }, now }), /no encryption recipient/);
+  await assert.rejects(() => shipDumpToTargets(third, shipped, { env: { ...env, KEEL_OFFSITE_AGE_RECIPIENTS: join(tmp, 'absent.txt') }, dryRun: true, now }), /no encryption recipient/);
+  await assert.rejects(() => shipDumpToTargets(third, shipped, { env: { ...env, KEEL_OFFSITE_AGE_RECIPIENTS: ageKeys }, now }), /holds a private age key/);
+  const empty = join(tmp, 'empty-recipients.txt');
+  writeFileSync(empty, '# nobody\n');
+  await assert.rejects(() => shipDumpToTargets(third, shipped, { env: { ...env, KEEL_OFFSITE_AGE_RECIPIENTS: empty }, now }), /lists none/);
+  const notAge = join(tmp, 'bad-recipients.txt');
+  writeFileSync(notAge, 'ssh-rsa AAAA\n');
+  await assert.rejects(() => shipDumpToTargets(third, shipped, { env: { ...env, KEEL_OFFSITE_AGE_RECIPIENTS: notAge }, now }), /is not an age recipient/);
+  assert.ok(!readdirSync(join(spare, 'keel-db')).some((name) => name.includes('2026-10-17')), 'nothing shipped without encryption');
+  assert.equal(readFileSync(shipped, 'utf8'), before);
 
   await assert.rejects(() => shipDumpToTargets(next, shipped, { env: {} }), /KEEL_STORAGE_TARGETS is not set/);
   assert.deepEqual(await pruneLocalDumps(dir('empty'), 30), []);
@@ -205,13 +236,16 @@ test('keel-offsite.sh ships through the registry when KEEL_STORAGE_TARGETS is se
     KEEL_OFFSITE_BACKUP_ROOT: backupRoot,
     KEEL_STORAGE_TARGETS: 'mulinux',
     KEEL_STORAGE_TARGET_MULINUX_DIR: mulinux,
+    KEEL_OFFSITE_AGE_RECIPIENTS: ageRecipients,
   };
+  await assert.rejects(() => exec('bash', ['ops/keel-offsite.sh', '--dry-run'], { cwd: repoRoot, env: { ...env, KEEL_OFFSITE_AGE_RECIPIENTS: join(tmp, 'absent.txt') } }),
+    (error) => /no encryption recipient/.test(error.stderr));
   const dry = await exec('bash', ['ops/keel-offsite.sh', '--dry-run'], { cwd: repoRoot, env });
   assert.match(dry.stdout, /DRY RUN: mulinux usable/);
   assert.throws(() => readdirSync(mulinux), { code: 'ENOENT' });
   const run = await exec('bash', ['ops/keel-offsite.sh'], { cwd: repoRoot, env });
   assert.match(run.stdout, /complete/);
-  assert.deepEqual(readFileSync(join(mulinux, 'keel-db', 'keel-db-2026-10-15.sql.gz')), dump);
+  assert.deepEqual(decrypt(join(mulinux, 'keel-db', 'keel-db-2026-10-15.sql.gz.age')), dump);
 
   const next = writeDump(backupRoot, '2026-10-16', dump);
   assert.ok(next);

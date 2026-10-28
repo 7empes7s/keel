@@ -8859,3 +8859,23 @@ item that needs it stays untouched.
 - Result:
 - **Expected:** SameSite `lax` or `strict`, HTTP-only on; frame headers `frame-ancestors 'none'` and `DENY`; step 4 code 403.
 - **Report:** the step 1 fields (or "no token on host"), step 2 hostnames, step 3 lines, step 4 lines and code.
+
+### Q197: Read-only list of credential reference names for ServiceNow and notify channels (security audit finding 6 follow-up)
+- Drafted by the "Guard CEF and ServiceNow outbound addresses" thread (2026-10-28). A later engine change will require
+  ServiceNow and Teams/Slack/PagerDuty/SMS credential references to be `env:KEEL_INTEGRATION_*`, as PR #616 did for SIEM
+  webhooks, so a reference can never pick up the database URL. Before that, we need the names the live settings use, so
+  the change can carry them over without breaking a live integration.
+- Needs: nothing. Independent of any PR.
+- Status: todo
+- **Read-only. No config, env file, database or service change. No restart.** Print reference *names* only, never values.
+- Do:
+  1. `psql "$KEEL_DB_URL" -Atc "SELECT tenant_ref, adapter, config->'credential'->>'tokenRef', config->'callback'->>'secretRef', substring(config->>'instanceUrl' from '^https://([^/]+)') FROM itsm_adapter_config"`
+  2. `psql "$KEEL_DB_URL" -Atc "SELECT kind, count(*), array_agg(DISTINCT coalesce(config->>'endpointRef', config->>'routingKeyRef', config->>'authTokenRef', '-')) FROM channel WHERE kind IN ('teams','slack','pagerduty','sms') GROUP BY kind"`
+     (if the column or key names differ, adapt and say how; report names only).
+  3. For every distinct `env:NAME` from steps 1 and 2, report whether `NAME` is defined in `/etc/keel/*.env` or the
+     `keel-worker` / `keel-portal` unit environment (yes / no; never the value):
+     `grep -l "^NAME=" /etc/keel/*.env` and `systemctl show keel-worker -p Environment | grep -c NAME`.
+- Result:
+- **Expected:** a short table: integration (servicenow token, servicenow callback, teams, slack, pagerduty, sms), reference
+  name, rows using it, defined in env (where). "none" when a table has no rows.
+- **Report:** the table, and any reference that is not defined anywhere.

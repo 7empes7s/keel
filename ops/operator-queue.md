@@ -9142,28 +9142,40 @@ item that needs it stays untouched.
 - **Test tenant only.** Same hard rules and standing authorization as Q80. Writes run with the **Exchange Restorer** only
   (`/etc/keel/exchange-restorer.json`, Exchange Administrator, already held; Q182 used it for the same resource). Reads with the
   Exchange Collector. Grant nothing: if Exchange refuses, report blocked with the message verbatim.
-- **Fixture:** one distribution list `KEEL-RT-capture-<random>`, hidden from the address book, no members. It stays (KEEL never deletes);
-  remove it by hand afterwards only if you want to, with `Remove-DistributionGroup` as the Restorer, and say so.
+- **Fixtures:**
+  - one distribution list `KEEL-RT-capture-<random>`, made by the capture, hidden from the address book, no members. It stays (KEEL
+    never deletes); remove it by hand afterwards only if you want to, with `Remove-DistributionGroup` as the Restorer, and say so.
+  - one **seeded** list `KEEL-RT-capture-seed`, made once by you (step 0). The update is captured on it, to show a Set leaves members,
+    owners and moderators alone on a list that has them. Each capture changes its display name and two settings. It stays.
 - Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` from
   `/etc/keel/qualification.env` (never printed):
+  0. **Seed (once):** with your usual admin path (Restorer, Exchange), on the test tenant:
+     `New-DistributionGroup -Name KEEL-RT-capture-seed -Type Distribution -Members <a KEEL-RT test user> -ManagedBy <another KEEL-RT test user>`,
+     then `Set-DistributionGroup KEEL-RT-capture-seed -HiddenFromAddressListsEnabled $true -ModerationEnabled $true -ModeratedBy <a KEEL-RT test user>`.
+     Note its `Guid` (`Get-DistributionGroup KEEL-RT-capture-seed | Select Guid`). Skip if it already exists with a member, owner and moderator.
   1. **Image:** as for keel-powershell (Q-rebuild pattern): from a clean `git archive` of `ops/powershell` at B,
      `docker build -t keel-dsc:candidate -f Dockerfile.dsc .`; on success `docker tag keel-dsc:candidate keel-dsc:latest`. Report the
      build exit code, image id and size, and the "module install complete" table. If the build fails, report the last 40 lines and stop.
-  2. **Smoke (read only):** run one Get through the job transport as the Collector:
-     `printf '%s' '{"mode":"dsc","resource":"EXODistributionGroup","moduleVersion":"2.26.1021.1","tenantConfigPath":"/etc/keel/exchange-collector.json","calls":[{"method":"Get","properties":{"Identity":"KEEL-RT-dsc-smoke","Name":"KEEL-RT-dsc-smoke","Ensure":"Present"}}]}' | docker run --rm -i --memory 1536m --memory-swap 1536m --network host -v /etc/keel:/etc/keel:ro -v "$PWD/ops/powershell":/app:ro keel-dsc:latest`
-     Expect exit 0 and one result with `"Ensure":"Absent"`. Report the last line verbatim (it holds no secrets) and the `missing` list.
-  3. **Plan (offline):** `node tools/qualification/dscDistributionGroupsLive.mjs plan`. Expect 2 refusals, then Get, Set, Get, Set, Get.
+  2. **Smoke (read only):** one Get through the real job transport as the Collector, so it runs with the hardened container flags
+     (non-root, read-only root, only the job's own settings mounted):
+     `node -e "const d=await import('./engine/powershell/dscJob.mjs'); const {DSC_RESOURCES}=await import('./engine/restore/workloads/dscDeclarations.mjs'); console.log(JSON.stringify(await d.runDsc({resource:'EXODistributionGroup',calls:[{method:'Get',properties:{Identity:'<seed Guid>',Name:'<seed Guid>',Ensure:'Present'}}],tenantConfigPath:'/etc/keel/exchange-collector.json'},{resources:DSC_RESOURCES})))" --input-type=module`
+     Expect `"Ensure":"Present"` and `"Name":"KEEL-RT-capture-seed"` (the read by Guid the writer relies on), and string values for
+     Ensure and MemberJoinRestriction (not numbers). Report the output (no secrets in it) and the `missing` list. If the container fails
+     on the read-only root or as non-root, report the last lines verbatim and stop.
+  3. **Plan (offline):** `node tools/qualification/dscDistributionGroupsLive.mjs plan`. Expect 2 refusals, then Get, Get, Get, Set, Get, Set, Get.
   4. **Capture:**
      ```bash
      node tools/qualification/dscDistributionGroupsLive.mjs capture --confirm-live-tenant-write \
        --tenant-ref <tenant ref> --collector-ref app:<exchange collector clientId> --restorer-ref app:<exchange restorer clientId> \
        --collector-config /etc/keel/exchange-collector.json --restorer-config /etc/keel/exchange-restorer.json \
+       --seed-list KEEL-RT-capture-seed --seed-guid <seed Guid> \
        --grants <grants.json: {"restorer":{"permissions":["Exchange.ManageAsApp"],"roles":["Exchange Administrator"]}}> --build B \
        --out docs/release/qualifications/dsc-distribution-groups-writes-live-acceptance.json
      node tools/qualification/pseudonymize.mjs check docs/release/qualifications/dsc-distribution-groups-writes-live-acceptance.json
      ```
      (Use the real Exchange config paths from `/etc/keel/workload-scope.json` if they differ; confirm the restorer's grants are observed.)
-     Report the exit code and `proven`, `notProven`, `skipped`, `created`, `missingProperties` verbatim. `missingProperties` lists any
+     Report the exit code and `proven`, `notProven`, `skipped`, `created`, `missingProperties` verbatim, and the record's
+     `subject.identityRead`. `missingProperties` lists any
      property name the module does not have: report it even when empty, it decides whether the field lists need a change.
   5. **Evidence:** commit the record and its `.capture.json` on `claude/live-evidence-dsc-distribution-groups` (from `origin/master`,
      secret scan and the check above first). No PR.

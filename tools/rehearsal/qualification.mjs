@@ -234,23 +234,37 @@ export function boundedWriter(writer, { manifest, clock, startedAt }) {
   };
 }
 
-/** Reads every created object back; anything still readable is a residual. */
-export async function verifyCleanup(reader, created) {
+/**
+ * Reads every created object back; anything still readable is a residual.
+ * Issue #646: right after a purge, /directory/deletedItems can still answer 200
+ * from a stale replica. Each surface is read again, up to `attempts` times,
+ * until it answers 404, as hardDelete does on the happy path. Only a surface
+ * that never reads as absent is reported, with the last answer it gave.
+ */
+export async function verifyCleanup(reader, created, { attempts = 6, delayMs = 3000 } = {}) {
   const verifiedAbsent = [];
   const residuals = [];
   for (const [id, naturalKey] of created) {
     for (const [surface, path] of [['live', `/groups/${id}`], ['deleted-items', `/directory/deletedItems/${id}`]]) {
-      let result;
-      try {
-        result = await reader.get('v1.0', path);
-      } catch (error) {
-        residuals.push({ objectId: id, naturalKey, surface, state: 'unknown', error: error.message });
-        continue;
+      let residual = null;
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+        let result;
+        try {
+          result = await reader.get('v1.0', path);
+        } catch (error) {
+          residual = { objectId: id, naturalKey, surface, state: 'unknown', error: error.message };
+          continue;
+        }
+        if (result?.ok === false && result.status === 404) {
+          residual = null;
+          break;
+        }
+        residual = {
+          objectId: id, naturalKey, surface, state: result?.ok ? 'present' : 'unknown', status: result?.status ?? null,
+        };
       }
-      if (result?.ok === false && result.status === 404) continue;
-      residuals.push({
-        objectId: id, naturalKey, surface, state: result?.ok ? 'present' : 'unknown', status: result?.status ?? null,
-      });
+      if (residual) residuals.push(residual);
     }
     if (!residuals.some((residual) => residual.objectId === id)) verifiedAbsent.push({ objectId: id, naturalKey });
   }
@@ -278,6 +292,7 @@ export async function runBoundedDrill({
   log = (line) => process.stdout.write(`${line}\n`),
   actor = 'keel-drill',
   roundTrip = runRoundTrip,
+  cleanupRetry,
 } = {}) {
   if (mode === 'offline') {
     return validateDrillPlan({ manifest, collectorConfigPath, restorerConfigPath, dbUrl, productionUrl });
@@ -320,7 +335,7 @@ export async function runBoundedDrill({
     } catch (caught) {
       error = caught.message;
     }
-    const cleanup = await verifyCleanup(reader, guarded.created);
+    const cleanup = await verifyCleanup(reader, guarded.created, cleanupRetry);
     const finishedAt = clock();
     const elapsedMs = finishedAt - startedAt;
     let outcome = 'passed';

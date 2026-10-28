@@ -5,7 +5,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import {
   assertDisposable, assertRehearsalDatabase, assertSingleModifiedDrift, collectRehearsalSnapshot,
-  getWithRetry, hardDelete, readGroupWithRetry, runRoundTrip, writeWithRetry,
+  getWithRetry, hardDelete, persistSnapshot, readGroupWithRetry, runRoundTrip, writeWithRetry,
 } from './roundTrip.mjs';
 import { createIsolatedTestDatabase } from '../../engine/test/dbTestHelper.mjs';
 import { schemaSql } from '../../engine/store/loadSchema.mjs';
@@ -461,6 +461,56 @@ assert.throws(
   assert.ok(
     deletedItemReads >= 4,
     `expected the post-purge deletedItems read to be retried until 404, got ${deletedItemReads} reads`,
+  );
+}
+
+// Issue #646: a tenant without Entra ID Governance answers the lifecycle
+// workflow reads with 403 "Insufficient license". The rehearsal collect must
+// skip those types, and the snapshot it persists must record them as
+// unavailable, not complete.
+{
+  const body = { id: 'g646', displayName: 'keel-rehearsal-z', description: 'baseline', mailNickname: 'keel-rehearsal-z' };
+  const licence = { status: 403, error: 'Insufficient license to complete this operation. User workflows require an Entra ID Governance license.' };
+  const reader = {
+    collect: async (version, path) => {
+      if (path.startsWith('/identityGovernance/lifecycleWorkflows/')) return { error: licence, status: 403 };
+      return { items: path.startsWith('/groups') ? [body] : [] };
+    },
+    get: async () => ({ ok: true, status: 200, body }),
+  };
+  const resources = await collectRehearsalSnapshot(reader, 'g646', { delayMs: 1, tenantId: 'tenant-fixture' });
+  assert.ok(resources.some((resource) => resource.resourceType === 'group' && resource.sourceId === 'g646'));
+  assert.equal(resources.collectedTypes.has('group'), true);
+  assert.equal(resources.collectedTypes.has('lifecycleWorkflow'), false);
+
+  const isolated = await createIsolatedTestDatabase(import.meta.url);
+  const client = await isolated.connect();
+  try {
+    await client.query(schemaSql());
+    const snapshotId = await persistSnapshot(client, { tenantRef: 'tenant-646', resources });
+    const { rows } = await client.query('SELECT status, coverage_digest FROM snapshot WHERE id = $1', [snapshotId]);
+    assert.equal(rows[0].status, 'complete');
+    const digest = rows[0].coverage_digest;
+    assert.equal(digest.lifecycleWorkflow.outcome, 'unavailable');
+    assert.equal(digest.lifecycleWorkflow.itemCount, null);
+    assert.equal(digest.group.outcome, 'complete');
+    assert.equal(digest.group.itemCount, 1);
+  } finally {
+    await client.end();
+    await isolated.cleanup();
+  }
+
+  // Any other failed read is still fatal: the snapshot must stay complete.
+  const brokenReader = {
+    ...reader,
+    collect: async (version, path) => {
+      if (path.startsWith('/identityGovernance/lifecycleWorkflows/')) return { error: { status: 500, error: 'boom' }, status: 500 };
+      return reader.collect(version, path);
+    },
+  };
+  await assert.rejects(
+    collectRehearsalSnapshot(brokenReader, 'g646', { delayMs: 1, tenantId: 'tenant-fixture' }),
+    /collecting lifecycleWorkflow failed: boom/,
   );
 }
 

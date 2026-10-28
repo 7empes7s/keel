@@ -13,7 +13,7 @@ import { GraphReader } from '../tenant-probe/graph.mjs';
 import { canonicalHash } from '../../engine/cir/canonicalHash.mjs';
 import { canonicalizeAll } from '../../engine/cir/canonicalize.mjs';
 import { DESCRIPTORS } from '../../engine/collect/descriptors.mjs';
-import { collectM1 } from '../../engine/collect/entraAdapter.mjs';
+import { MISSING_PREREQUISITE, collectM1 } from '../../engine/collect/entraAdapter.mjs';
 import { seedFromSnapshot } from '../../engine/govern/baseline.mjs';
 import { diffSnapshots } from '../../engine/govern/diffSnapshots.mjs';
 import { applyDisposition } from '../../engine/govern/disposition.mjs';
@@ -215,7 +215,14 @@ export async function writeWithRetry(writer, version, path, body, { attempts = 6
  * for catalogue entries whose path embeds the organization id.
  */
 export async function collectRehearsalSnapshot(reader, groupId, { isExpected, delayMs, tenantId } = {}) {
-  const collected = await collectM1(reader, { tenantId });
+  // Issue #646: a type the tenant has no licence or feature for (lifecycle
+  // workflows without Entra ID Governance) is skipped, as the hourly collect
+  // does. Naming only 'group' as needed lets collectM1 skip those types; any
+  // other failed read is still fatal here, so the snapshot stays complete.
+  const collected = await collectM1(reader, { tenantId, needed: new Set(['group']) });
+  if (collected.unread.length > 0) {
+    throw new Error(collected.unread.map(({ type, error }) => `collecting ${type} failed: ${error}`).join('; '));
+  }
   const rehearsalGroup = await readGroupWithRetry(reader, groupId, { isExpected, delayMs });
   const groupEntry = collected.find(([resourceType]) => resourceType === 'group');
   const groups = groupEntry?.[1];
@@ -223,7 +230,14 @@ export async function collectRehearsalSnapshot(reader, groupId, { isExpected, de
   const existingIndex = groups.findIndex((group) => group.id === groupId);
   if (existingIndex === -1) groups.push(rehearsalGroup);
   else groups[existingIndex] = rehearsalGroup;
-  return canonicalizeAll(collected);
+  const resources = canonicalizeAll(collected);
+  // The types read, kept off the array's entries like collectM1's unread list,
+  // so persistSnapshot records the skipped ones as unavailable, not complete.
+  Object.defineProperty(resources, 'collectedTypes', {
+    value: new Set(collected.map(([resourceType]) => resourceType)),
+    enumerable: false,
+  });
+  return resources;
 }
 
 export async function collectBaselineSnapshot(reader, groupId, collector) {
@@ -234,7 +248,7 @@ export async function collectDetectionSnapshot(reader, groupId, collector, { isE
   return collectRehearsalSnapshot(reader, groupId, { isExpected, tenantId: collector.tenantId });
 }
 
-async function persistSnapshot(client, { tenantRef, resources }) {
+export async function persistSnapshot(client, { tenantRef, resources }) {
   const snapshotId = await createSnapshot(client, { tenantRef });
   const itemCounts = new Map();
   for (const resource of resources) {
@@ -245,13 +259,16 @@ async function persistSnapshot(client, { tenantRef, resources }) {
     });
     await insertReferences(client, { fromVersion: versionId, references: resource.references });
   }
-  // collectM1 is fail-fast across every descriptor, so reaching this point
-  // proves a full successful collection. Preserve that evidence explicitly;
-  // an absent resource type is a successful empty collection, not no coverage.
-  const coverageDigest = Object.fromEntries(DESCRIPTORS.map(({ type }) => [type, {
-    outcome: 'complete',
-    itemCount: itemCounts.get(type) ?? 0,
-  }]));
+  // collectRehearsalSnapshot fails on any read error except a type the tenant
+  // has no licence or feature for, so every type it read is complete; an
+  // absent resource type among those is a successful empty collection. A
+  // skipped type is unavailable, never complete or zero (issue #646).
+  const collectedTypes = resources.collectedTypes;
+  const coverageDigest = Object.fromEntries(DESCRIPTORS.map(({ type }) => [type,
+    !collectedTypes || collectedTypes.has(type)
+      ? { outcome: 'complete', itemCount: itemCounts.get(type) ?? 0 }
+      : { outcome: 'unavailable', itemCount: null, reason: MISSING_PREREQUISITE },
+  ]));
   await completeSnapshot(client, { id: snapshotId, status: 'complete', coverageDigest });
   return snapshotId;
 }

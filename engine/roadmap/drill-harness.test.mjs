@@ -139,6 +139,7 @@ function live(tenant, overrides = {}) {
     client,
     clock: tenant.clock,
     log: () => {},
+    cleanupRetry: { delayMs: 1 },
     ...overrides,
   });
 }
@@ -327,9 +328,40 @@ test('a failed cleanup is visible in the drill record and readiness', async () =
   assert.ok(readiness.notCounted.some((item) => item.reason === 'cleanup-failed'));
 
   // verifyCleanup reports a read it could not complete as unknown, not absent.
-  const unknown = await verifyCleanup({ get: async () => { throw new Error('read refused'); } }, new Map([['g', 'group:keel-rehearsal-x']]));
+  const unknown = await verifyCleanup(
+    { get: async () => { throw new Error('read refused'); } }, new Map([['g', 'group:keel-rehearsal-x']]), { delayMs: 1 },
+  );
   assert.equal(unknown.status, 'failed');
   assert.equal(unknown.residuals[0].state, 'unknown');
+});
+
+test('a purge that reads stale for a moment is not reported as a residual (#646)', async () => {
+  // Observed live 2026-10-28: right after the purge, /directory/deletedItems
+  // still answered 200 once; a recheck 35 s later read 404 on both surfaces.
+  let deletedReads = 0;
+  const reader = {
+    get: async (version, path) => {
+      if (path.startsWith('/groups/')) return { ok: false, status: 404, body: null };
+      deletedReads += 1;
+      return deletedReads <= 2 ? { ok: true, status: 200, body: { id: 'g' } } : { ok: false, status: 404, body: null };
+    },
+  };
+  const cleanup = await verifyCleanup(reader, new Map([['g', 'group:keel-rehearsal-x']]), { delayMs: 1 });
+  assert.equal(cleanup.status, 'complete');
+  assert.deepEqual(cleanup.residuals, []);
+  assert.deepEqual(cleanup.verifiedAbsent, [{ objectId: 'g', naturalKey: 'group:keel-rehearsal-x' }]);
+  assert.equal(deletedReads, 3);
+
+  // An object that never reads as absent is still a residual, with its last answer.
+  let reads = 0;
+  const stuck = await verifyCleanup(
+    { get: async (version, path) => { reads += 1; return path.startsWith('/groups/') ? { ok: false, status: 404 } : { ok: true, status: 200 }; } },
+    new Map([['g', 'group:keel-rehearsal-x']]),
+    { attempts: 3, delayMs: 1 },
+  );
+  assert.equal(stuck.status, 'failed');
+  assert.deepEqual(stuck.residuals.map((item) => [item.surface, item.state, item.status]), [['deleted-items', 'present', 200]]);
+  assert.equal(reads, 4, 'one live read that is already absent, three deleted-items reads');
 });
 
 test('an offline pass recorded as evidence never counts as a live recovery', async () => {

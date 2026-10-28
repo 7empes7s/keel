@@ -9174,7 +9174,7 @@ item that needs it stays untouched.
 ### Q204: Round trip of a distribution list restore through Microsoft365DSC (after Q203, PR #602 and its read capture)
 - Drafted by the "Restore distribution lists with Microsoft365DSC" thread (2026-10-28).
 - Needs: Q203 done; PR #602 merged and deployed; the `exchange-distribution-groups` reads captured, imported and switched on (the Q157-style
-  item for #602). Check: `node /opt/keel-live/cli/keel-workload-collect.mjs status` shows `exchange-distribution-groups.distribution-groups` enabled.
+  item for #602). Check: `node /opt/keel-live/cli/keel-workload-collect.mjs proof` lists the `exchange-distribution-groups` reads as current.
 - Status: todo
 - Result:
 - **Test tenant only.** Same hard rules and standing authorization as Q80; log every approval id.

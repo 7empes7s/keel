@@ -335,10 +335,13 @@ export function guarded(
     const client = (await connectDb(resolveDatabaseUrl())) as KeelClient;
     try {
       const deny = async (reason: string): Promise<Response> => {
+        let admitted: { key: string; repeats: number } | null = null;
         try {
           const tenant = resolveTenantRef();
-          const repeatedDenials = throttle.admit(JSON.stringify([tenant, actor, spec.action, reason]));
+          const key = JSON.stringify([tenant, actor, spec.action, reason]);
+          const repeatedDenials = throttle.admit(key);
           if (repeatedDenials === null) return forbidden();
+          admitted = { key, repeats: repeatedDenials };
           await appendEvidence(client, {
             tenantRef: tenant,
             kind: ATTEMPT_EVIDENCE_KIND,
@@ -349,6 +352,7 @@ export function guarded(
             actor,
           });
         } catch (error) {
+          if (admitted) throttle.forget(admitted.key, admitted.repeats);
           console.error(
             "[keel-portal] failed to record a denied action attempt",
             error,

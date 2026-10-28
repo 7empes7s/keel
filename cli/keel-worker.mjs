@@ -1022,25 +1022,28 @@ async function main() {
   });
 
   console.log(`worker ${workerId}: polling for jobs every ${pollIntervalMs}ms`);
-  await runWorkerLoop({
-    shutdown,
-    pollIntervalMs,
-    claim: () => claimNext(client, { workerId }),
-    run: (job) => runJob(client, job, {
-      dbUrl,
-      onInFlightChange: (execution) => shutdown.setInFlight(execution),
-    }),
-    // A job claimed while a drain began goes back to the queue for the next worker; a job
-    // claimed while stopping fails, as before.
-    requeue: (job) => client.query(
-      `UPDATE job SET status = 'queued', started_at = NULL, heartbeat_at = NULL, worker_id = NULL
-       WHERE id = $1 AND status = 'running'`, [job.id],
-    ),
-    failUnrun: (job) => fail(client, { id: job.id, error: 'worker stopped before job execution' }),
-  });
-
-  await sweeps.stop();
-  await sweepClient.end();
+  try {
+    await runWorkerLoop({
+      shutdown,
+      pollIntervalMs,
+      claim: () => claimNext(client, { workerId }),
+      run: (job) => runJob(client, job, {
+        dbUrl,
+        onInFlightChange: (execution) => shutdown.setInFlight(execution),
+      }),
+      // A job claimed while a drain began goes back to the queue for the next worker; a job
+      // claimed while stopping fails, as before.
+      requeue: (job) => client.query(
+        `UPDATE job SET status = 'queued', started_at = NULL, heartbeat_at = NULL, worker_id = NULL
+         WHERE id = $1 AND status = 'running'`, [job.id],
+      ),
+      failUnrun: (job) => fail(client, { id: job.id, error: 'worker stopped before job execution' }),
+    });
+  } finally {
+    // Also on a loop error, so a stuck sweep timer cannot keep a broken worker alive.
+    await sweeps.stop();
+    await sweepClient.end();
+  }
   await client.end();
   console.log(`worker ${workerId}: exited cleanly`);
   process.exit(0);

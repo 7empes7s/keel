@@ -70,6 +70,14 @@ test("the throttle records the first of a kind, counts repeats, and folds the co
   assert.equal(throttle.admit("a"), null);
 });
 
+test("a denial whose record failed is let through again, with its repeats kept", () => {
+  const throttle = createDenialThrottle({ windowMs: 1000, now: () => 0 });
+  assert.equal(throttle.admit("a"), 0);
+  assert.equal(throttle.admit("a"), null);
+  throttle.forget("a", 0);
+  assert.equal(throttle.admit("a"), 1, "the next denial is recorded and carries the one repeat");
+});
+
 test("the throttle stays bounded and never skips the first denial of a new kind", () => {
   const clock = 0;
   const throttle = createDenialThrottle({ windowMs: 1000, maxTracked: 3, now: () => clock });

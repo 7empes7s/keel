@@ -53,26 +53,51 @@ export async function enqueue(client, {
       throw new Error('not authorized to enqueue offsite');
     }
   }
+  const insert = async () => {
+    const { rows } = await client.query(
+      `INSERT INTO job (kind, params, requested_by, idempotency_key, not_before, priority)
+       SELECT $1, $2, $3, $4, COALESCE($5, now()), $6
+       WHERE $7::int IS NULL
+          OR (SELECT count(*) FROM job WHERE requested_by = $3 AND status = 'queued') < $7
+       ON CONFLICT (kind, idempotency_key) WHERE idempotency_key IS NOT NULL
+       DO NOTHING
+       RETURNING *, started_at::text AS event_started_at`,
+      [kind, params ?? {}, requestedBy, idempotencyKey ?? null, notBefore ?? null, priority,
+        maxQueuedForRequester],
+    );
+    if (rows[0]) return rows[0];
+    // A job with this kind and key already exists (or won a concurrent insert) — return it
+    // rather than starting a second one.
+    const { rows: existing } = await client.query(
+      `SELECT *, started_at::text AS event_started_at FROM job WHERE kind = $1 AND idempotency_key = $2`,
+      [kind, idempotencyKey],
+    );
+    if (!existing[0] && maxQueuedForRequester !== null) throw new QueueFullError(maxQueuedForRequester);
+    return existing[0];
+  };
+  if (maxQueuedForRequester === null) return insert();
+  // A capped enqueue runs in its own transaction holding a per-person lock, so parallel
+  // requests from one person count each other and cannot pass the cap together. Callers
+  // must not already be inside a transaction (the portal routes never are).
+  await client.query('BEGIN');
+  try {
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended('job-queue-cap:' || $1, 0))", [requestedBy]);
+    const job = await insert();
+    await client.query('COMMIT');
+    return job;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
+}
+
+/** How many of this person's jobs are waiting to run. */
+export async function queuedJobCount(client, { requestedBy }) {
   const { rows } = await client.query(
-    `INSERT INTO job (kind, params, requested_by, idempotency_key, not_before, priority)
-     SELECT $1, $2, $3, $4, COALESCE($5, now()), $6
-     WHERE $7::int IS NULL
-        OR (SELECT count(*) FROM job WHERE requested_by = $3 AND status = 'queued') < $7
-     ON CONFLICT (kind, idempotency_key) WHERE idempotency_key IS NOT NULL
-     DO NOTHING
-     RETURNING *, started_at::text AS event_started_at`,
-    [kind, params ?? {}, requestedBy, idempotencyKey ?? null, notBefore ?? null, priority,
-      maxQueuedForRequester],
+    `SELECT count(*)::int AS n FROM job WHERE requested_by = $1 AND status = 'queued'`,
+    [requestedBy],
   );
-  if (rows[0]) return rows[0];
-  // A job with this kind and key already exists (or won a concurrent insert) — return it
-  // rather than starting a second one.
-  const { rows: existing } = await client.query(
-    `SELECT *, started_at::text AS event_started_at FROM job WHERE kind = $1 AND idempotency_key = $2`,
-    [kind, idempotencyKey],
-  );
-  if (!existing[0] && maxQueuedForRequester !== null) throw new QueueFullError(maxQueuedForRequester);
-  return existing[0];
+  return rows[0].n;
 }
 
 export async function claimNext(client, { workerId, eventSink = createEventSink() }) {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { enqueue, PORTAL_QUEUED_JOBS_PER_PRINCIPAL } from "../../../../../../../engine/jobs/queue.mjs";
+import { enqueue, PORTAL_QUEUED_JOBS_PER_PRINCIPAL, QueueFullError, queuedJobCount } from "../../../../../../../engine/jobs/queue.mjs";
 
 import {
   guarded,
@@ -77,6 +77,15 @@ export const POST = guarded(
       if (!items) throw new InvalidActionRequest("choose mailboxes or teams from this backup");
       if (items.length === 0) throw new InvalidActionRequest("the organization-wide settings are put back together with a mailbox; choose a mailbox too");
       if (items.length > MAX_PER_ITEM) throw new InvalidActionRequest(`choose at most ${MAX_PER_ITEM} at a time`);
+      // Security audit run 2, finding 11: a request that would pass the person's queue cap
+      // part way through queues nothing, rather than some of the runs. A retry whose first
+      // run already exists is a replay and gets its runs back.
+      const replay = idempotencyKey !== undefined && (await client.query(
+        "SELECT 1 FROM job WHERE kind = 'restore' AND idempotency_key = $1", [idempotencyKey],
+      )).rows.length > 0;
+      if (!replay && (await queuedJobCount(client, { requestedBy: principalId })) + items.length > PORTAL_QUEUED_JOBS_PER_PRINCIPAL) {
+        throw new QueueFullError(PORTAL_QUEUED_JOBS_PER_PRINCIPAL);
+      }
       const organization = unique.includes("organization");
       for (const [index, item] of items.entries()) {
         const withOrganization = organization && index === 0;

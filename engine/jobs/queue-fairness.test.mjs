@@ -56,3 +56,20 @@ test('a capped enqueue refuses the next job once the person has the cap waiting'
   const { rows } = await client.query(`SELECT count(*)::int AS n FROM job WHERE requested_by = 'busy' AND status = 'queued'`);
   assert.equal(rows[0].n, cap + 1);
 });
+
+test('parallel capped requests from one person cannot pass the cap together', async () => {
+  await client.query('DELETE FROM job');
+  const cap = 4;
+  const clients = await Promise.all(Array.from({ length: 10 }, () => database.connect()));
+  try {
+    const results = await Promise.allSettled(clients.map((each) => enqueue(each, {
+      kind: 'collect', params: {}, requestedBy: 'racer', maxQueuedForRequester: cap,
+    })));
+    assert.equal(results.filter((r) => r.status === 'fulfilled').length, cap);
+    assert.ok(results.filter((r) => r.status === 'rejected').every((r) => r.reason instanceof QueueFullError));
+  } finally {
+    await Promise.all(clients.map((each) => each.end()));
+  }
+  const { rows } = await client.query(`SELECT count(*)::int AS n FROM job WHERE requested_by = 'racer'`);
+  assert.equal(rows[0].n, cap);
+});

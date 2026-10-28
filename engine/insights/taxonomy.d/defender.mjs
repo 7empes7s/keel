@@ -11,7 +11,7 @@ export default Object.freeze({
   // not mapped yet (see placeUnmapped in ../taxonomy.mjs).
   categories: Object.freeze([
     { key: 'roles', name: 'Admin roles', types: ['defenderRoleDefinition', 'defenderRoleAssignment', 'defenderCustomAppScope'], match: /role|scope/ },
-    { key: 'threat', name: 'Threat policies and rules', types: [], match: /foroffice|polic|rule|detection|indicator|alert|antivirus|firewall/ },
+    { key: 'threat', name: 'Threat policies and rules', types: ['defenderDetectionRule'], match: /foroffice|polic|rule|detection|indicator|alert|antivirus|firewall/ },
     { key: 'simulation', name: 'Attack simulation', types: ['attackSimulation', 'simulationAutomation'], match: /simulation|training|payload/ },
     { key: 'exposure', name: 'Exposure management', types: ['securityZone'], match: /exposure|zone|vulnerab/ },
     { key: 'tenant', name: 'Tenant settings', types: [], match: /setting|config|tenant/ },
@@ -25,5 +25,7 @@ export default Object.freeze({
     attackSimulation: { name: 'Attack simulation' },
     // Remaining kinds, batch 8.
     securityZone: { name: 'Exposure management zone' },
+    // Remaining kinds, batch 9.
+    defenderDetectionRule: { name: 'Custom detection rule' },
   }),
 });

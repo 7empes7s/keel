@@ -57,7 +57,7 @@
       "signInAudience": "AzureADMyOrg",
       "createdDateTime": "2026-10-13T09:48:56Z",
       "deletedDateTime": null,
-      "publisherDomain": "techinsiderbytes.com",
+      "publisherDomain": "t42987720ee3.example",
       "samlMetadataUrl": null,
       "verifiedPublisher": {
         "displayName": null,
@@ -138,7 +138,7 @@
       "signInAudience": "AzureADMyOrg",
       "createdDateTime": "2026-10-13T09:48:56Z",
       "deletedDateTime": null,
-      "publisherDomain": "techinsiderbytes.com",
+      "publisherDomain": "t42987720ee3.example",
       "samlMetadataUrl": null,
       "verifiedPublisher": {
         "displayName": null,
@@ -213,7 +213,7 @@
       "keyCredentials": [],
       "signInAudience": "AzureADMyOrg",
       "createdDateTime": "2026-10-13T09:48:56Z",
-      "publisherDomain": "techinsiderbytes.com",
+      "publisherDomain": "t42987720ee3.example",
       "verifiedPublisher": {
         "displayName": null,
         "addedDateTime": null,

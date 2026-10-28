@@ -453,7 +453,12 @@ try {
             @{ name = "Get-PnPTenant"; block = { Get-PnPTenant } },
             @{ name = "Get-PnPSite"; block = { Get-PnPSite } },
             @{ name = "Get-PnPTenantSite"; block = { Get-PnPTenantSite } },
-            @{ name = "Get-PnPTenantSite -IncludeOneDriveSites"; block = { Get-PnPTenantSite -IncludeOneDriveSites } }
+            @{ name = "Get-PnPTenantSite -IncludeOneDriveSites"; block = { Get-PnPTenantSite -IncludeOneDriveSites } },
+            # SharePoint structure (engine/collect/workloads/sharepointStructure.mjs): reads only.
+            @{ name = "Get-PnPHubSite"; block = { Get-PnPHubSite } },
+            @{ name = "Get-PnPSiteDesign"; block = { Get-PnPSiteDesign } },
+            @{ name = "Get-PnPSiteScript"; block = { Get-PnPSiteScript } },
+            @{ name = "Get-PnPSiteTemplate -Handlers Fields"; block = { Get-PnPSiteTemplate -Handlers Fields } }
         )) {
         try {
             $out = & $c.block

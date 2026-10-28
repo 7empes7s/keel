@@ -7,7 +7,7 @@
   "resourceType": "group#member",
   "operation": "edge-add",
   "fieldProjectionContractVersion": 1,
-  "build": "be3d29984d2ee61b585e69b6cc477cd63323d310",
+  "build": "e86afa9865da72964ce74567394eb41c3caf263a",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
@@ -16,14 +16,14 @@
   "readBackVerified": true,
   "observedAt": "2026-10-14T19:11:41.144Z",
   "restoreRef": "8b94baf5-58a7-8aa5-8600-34d0cb4a324e",
-  "naturalKey": "edge:group:KEEL-RT-Q51-g5|member|add|user:keel-rt-20260908-carla@techinsiderbytes.com",
+  "naturalKey": "edge:group:KEEL-RT-Q51-g5|member|add|user:keel-rt-u3f32611d4ab3@t42987720ee3.example",
   "fixtureKind": "named-object",
-  "captureSha256": "ddaf3084ec03e24b06f073bf6704a603035b23234fe012fcd838080729741a6e",
+  "captureSha256": "5d596ed1b476907f6da6171f3d9ec75fc6684812056e385a0b49a1dcb5b12717",
   "proofRef": "docs/release/qualifications/entra-live/group.member.edge-add.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "5f4855922d552220a5b6c1b44014cb1658167c1c3172f7fe21304f073039a43e"
+      "signature": "2b66c613f501347b93700d4e06d3d406ec28a80c7325c5ede8e7dbec469f32a9"
     }
   }
 }

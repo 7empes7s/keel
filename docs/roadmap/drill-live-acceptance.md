@@ -20,8 +20,10 @@ unchanged; this gate adds to it.
   - `testObject`: the named disposable `group:keel-rehearsal-*` object. Any
     other type or name fails, so active users and tenant-wide policies are
     out of scope.
-  - `drillRecord`: the task-72 live drill record exactly as the rehearsal
-    evidence row holds it. It must count under task-72's
+  - `drillRecord`: the task-72 live drill record as the rehearsal evidence
+    row holds it, with object ids pseudonymized (the repository is public;
+    `capture-drill` writes nothing while an id that is not a pseudonym
+    remains, and the captured row is pseudonymized the same way). It must count under task-72's
     `classifyDrillRecord`: live, bounded same-tenant, `passed`, cleanup
     `complete`, elapsed time equal to the recorded finish minus start and
     inside its bound. In addition:

@@ -19,7 +19,9 @@ const EXPECTED = [
   ['multiTenantOrganizationPartnerConfigurationTemplate', `${MTO}/multiTenantOrganizationPartnerConfiguration`, 'tier3', 'singleton'],
   ['identityUserFlowAttribute', '/v1.0/identity/userFlowAttributes', 'tier3', 'list'],
   ['authenticationEventListener', '/v1.0/identity/authenticationEventListeners', 'tier2', 'list'],
-  ['externalDomainFederation', '/v1.0/directory/federationConfigurations', 'tier2', 'list'],
+  // Issue #640: the base federationConfigurations collection answers only id and
+  // displayName; the derived-type collection answers every sign-in field.
+  ['externalDomainFederation', '/v1.0/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation?$expand=domains', 'tier2', 'list'],
 ];
 
 test('the Entra ID tenant settings family holds exactly the planned types, all in CATALOG', () => {
@@ -57,7 +59,7 @@ test('each Entra ID tenant settings type reads a KEEL-RT- fixture with GET only,
       const entry = catalogEntryFor(type);
       const first = { id: `${type}-1`, displayName: `KEEL-RT-${type}-1` };
       const second = { id: `${type}-2`, displayName: `KEEL-RT-${type}-2` };
-      const nextLink = `https://graph.microsoft.com${endpoint}?$skiptoken=page2`;
+      const nextLink = `https://graph.microsoft.com${endpoint}${endpoint.includes('?') ? '&' : '?'}$skiptoken=page2`;
       const urls = [];
       globalThis.fetch = async (url, opts) => {
         assert.equal(opts.method, 'GET', `${type}: read-only`);
@@ -76,6 +78,45 @@ test('each Entra ID tenant settings type reads a KEEL-RT- fixture with GET only,
         assert.deepEqual(urls, [`https://graph.microsoft.com${endpoint}`, nextLink], `${type}: documented route, nextLink followed verbatim`);
         assert.deepEqual(result.items, [first, second], `${type}: every page kept`);
       }
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('a guest federation is backed up with its sign-in fields and domains, not just its name (issue #640)', async () => {
+  const entry = catalogEntryFor('externalDomainFederation');
+  const full = {
+    '@odata.type': '#microsoft.graph.samlOrWsFedExternalDomainFederation',
+    id: 'fed-1', displayName: 'KEEL-RT-148-fed',
+    issuerUri: 'https://keel-rt-fed.example/issuer',
+    metadataExchangeUri: 'https://keel-rt-fed.example/mex',
+    passiveSignInUri: 'https://keel-rt-fed.example/sso',
+    preferredAuthenticationProtocol: 'saml',
+    signingCertificate: 'MIIFixture',
+    domains: [{ id: 'keel-rt-fed.example', displayName: 'keel-rt-fed.example' }],
+  };
+  const originalFetch = globalThis.fetch;
+  const urls = [];
+  try {
+    globalThis.fetch = async (url) => {
+      urls.push(url);
+      // The base collection only answers the identityProviderBase fields.
+      const body = new URL(url).pathname.endsWith('/directory/federationConfigurations')
+        ? { value: [{ id: full.id, displayName: full.displayName }] }
+        : { value: [full] };
+      return { ok: true, status: 200, headers: { get: () => null }, json: async () => body };
+    };
+    const reader = new GraphReader(async () => 'fixture-token');
+    const result = await reader.collect(entry.version, catalogReadPath(entry), { pageCap: Infinity });
+    assert.equal(result.error, null);
+    assert.equal(urls.length, 1);
+    const url = new URL(urls[0]);
+    assert.equal(url.pathname, '/v1.0/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation');
+    assert.equal(url.searchParams.get('$expand'), 'domains');
+    const [item] = result.items;
+    for (const field of ['issuerUri', 'metadataExchangeUri', 'passiveSignInUri', 'signingCertificate', 'preferredAuthenticationProtocol', 'domains']) {
+      assert.deepEqual(item[field], full[field], `${field} is backed up`);
     }
   } finally {
     globalThis.fetch = originalFetch;

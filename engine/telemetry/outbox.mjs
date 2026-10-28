@@ -28,6 +28,9 @@
 //    secrets (bearer tokens, JWTs, private keys, credentialed DSNs) are refused at
 //    registration; secrets never enter the outbox, logs or evidence.
 import { can } from '../authz/can.mjs';
+import { webhookDestinationProblems } from './adapters/webhook.mjs';
+import { cefDestinationProblems } from './adapters/cef.mjs';
+import { SENTINEL_DESTINATION_KIND, sentinelDestinationProblems } from './adapters/sentinel.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 
 export const OUTBOX_RETRY_BASE_MS = 5 * 1000;
@@ -131,6 +134,22 @@ export async function registerDestination(client, {
     throw new TypeError('config must be an object');
   }
   assertConfigHasNoSecrets(config);
+  // Security audit finding 6: a webhook must be https to a public address, and its
+  // credential reference must be in the integration namespace.
+  if (kind === 'webhook') {
+    const problems = webhookDestinationProblems(config);
+    if (problems.length) throw new Error(`webhook destination config: ${problems.join('; ')}`);
+  }
+  // The same rule for CEF: https to a public address, or udp to a public host.
+  if (kind === 'cef') {
+    const problems = cefDestinationProblems(config);
+    if (problems.length) throw new Error(`cef destination config: ${problems.join('; ')}`);
+  }
+  // Sentinel: the sender credential reference must be in the integration namespace too.
+  if (kind === SENTINEL_DESTINATION_KIND) {
+    const problems = sentinelDestinationProblems(config);
+    if (problems.length) throw new Error(`sentinel destination config: ${problems.join('; ')}`);
+  }
   await requireCapability(client, requestedBy, 'configuration');
 
   await client.query('BEGIN');

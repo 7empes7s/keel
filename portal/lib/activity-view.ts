@@ -12,6 +12,7 @@ import type { RiskTone } from "@/lib/menu-status";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { displayEnum } from "@/lib/presentation";
 import { type EngineRef, evidenceSentence, jobName, jobStatusSentence, personLabel } from "@/lib/sentences";
+import { csvLine } from "@/lib/csv";
 
 const DAY = 86_400_000;
 
@@ -22,12 +23,12 @@ export const ACTIVITY_KINDS: Record<ActivityKind, { label: string; one: string; 
   backup: { label: "Backups", one: "Backup", icon: "backup", jobs: ["backup", "collect", "workload-collect", "content-collect", "prune", "discover"], records: ["collection.completed", "job.started"] },
   restore: { label: "Restores", one: "Restore", icon: "restore", jobs: ["restore", "restore-dry-run"], records: ["recovery-completion", "content-effect-approval", "incident-recovery", "incident-recovery-check"] },
   rollback: { label: "Roll backs", one: "Roll back", icon: "swap", jobs: ["remediate"], records: ["automation-execution"] },
-  setup: { label: "Approved setups", one: "Approved setup", icon: "baselines", jobs: ["baseline-create", "baseline-activate"], records: ["baseline-resnapshot"] },
+  setup: { label: "Approved setups", one: "Approved setup", icon: "baselines", jobs: ["baseline-create", "baseline-activate", "dispose"], records: ["baseline-resnapshot"] },
   approval: { label: "Approvals", one: "Approval", icon: "check-circle", jobs: [], records: ["approval-request", "approval-decision", "approval-signoff", "approval.decided", "action-attempt"] },
   policy: { label: "Policy checks", one: "Policy check", icon: "automation", jobs: ["drift-detect", "policy-evaluate", "api-drift"], records: ["policy-evaluation", "benchmark-evaluation", "benchmark-exception"] },
   drill: { label: "Drills", one: "Drill", icon: "play", jobs: [], records: ["fidelity-drill", "recovery-drill"] },
   copy: { label: "Off-site copies", one: "Off-site copy", icon: "cloud", jobs: ["offsite"], records: ["offsite-copy"] },
-  other: { label: "Other", one: "Other", icon: "page", jobs: ["notify"], records: [] },
+  other: { label: "Other", one: "Other", icon: "page", jobs: ["notify"], records: ["people-anonymity"] },
 };
 export const ACTIVITY_KIND_ORDER: ActivityKind[] = ["backup", "restore", "rollback", "setup", "approval", "policy", "drill", "copy", "other"];
 
@@ -452,14 +453,13 @@ function shortDate(day: Day): string {
 
 /** A CSV of the chosen rows: the sentence, who, when and the outcome; ids in extra columns. */
 export function activityCsv(rows: ActivityRow[]): string {
-  const cell = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
   const lines = [["When", "What", "Kind", "Outcome", "Who", "Source", "Job ID", "Audit sequence", "Account"].join(",")];
   for (const row of rows) {
-    lines.push([
+    lines.push(csvLine([
       row.at ?? "", row.title, ACTIVITY_KINDS[row.kind].one, OUTCOMES[row.outcome].label,
       row.person ? capital(personLabel(row.person)) : "", row.type === "job" ? "Job" : "Audit record",
       row.job?.id ?? "", row.entry?.seq ?? "", row.who ?? "",
-    ].map(cell).join(","));
+    ], { always: true }));
   }
   return lines.join("\n");
 }

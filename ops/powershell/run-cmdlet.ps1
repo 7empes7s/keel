@@ -26,6 +26,7 @@
   been run against a tenant.
 #>
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'keel-json.ps1')
 $ProgressPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 
@@ -184,18 +185,18 @@ $AllowedExchangeWrites = @{
     'Set-AntiPhishRule'                  = @('Identity', 'Comments', 'ExceptIfRecipientDomainIs', 'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'Priority', 'RecipientDomainIs', 'SentTo', 'SentToMemberOf')
     'Set-AtpPolicyForO365'               = @('Identity', 'AllowSafeDocsOpen', 'EnableATPForSPOTeamsODB', 'EnableSafeDocs')
     'Set-GlobalAddressList'              = @('Identity', 'ConditionalCompany', 'ConditionalCustomAttribute1', 'ConditionalCustomAttribute2', 'ConditionalDepartment', 'ConditionalStateOrProvince', 'IncludedRecipients', 'RecipientFilter')
-    'Set-HostedConnectionFilterPolicy'   = @('Identity', 'AdminDisplayName', 'EnableSafeList', 'IPAllowList', 'IPBlockList')
+    'Set-HostedConnectionFilterPolicy'   = @('Identity', 'AdminDisplayName', 'IPBlockList')
     'Set-HostedContentFilterPolicy'      = @('Identity', 'AllowedSenderDomains', 'HighConfidencePhishAction', 'InlineSafetyTipsEnabled', 'PhishSpamAction', 'PhishZapEnabled')
     'Set-HostedContentFilterRule'        = @('Identity', 'Comments', 'ExceptIfRecipientDomainIs', 'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'Priority', 'RecipientDomainIs', 'SentTo', 'SentToMemberOf')
     'Set-HostedOutboundSpamFilterPolicy' = @('Identity', 'ActionWhenThresholdReached', 'AdminDisplayName', 'AutoForwardingMode', 'BccSuspiciousOutboundAdditionalRecipients', 'BccSuspiciousOutboundMail', 'NotifyOutboundSpam', 'NotifyOutboundSpamRecipients', 'RecipientLimitExternalPerHour', 'RecipientLimitInternalPerHour', 'RecipientLimitPerDay')
     'Set-HostedOutboundSpamFilterRule'   = @('Identity', 'Comments', 'ExceptIfFrom', 'ExceptIfFromMemberOf', 'ExceptIfSenderDomainIs', 'From', 'FromMemberOf', 'Priority', 'SenderDomainIs')
-    'Set-InboundConnector'               = @('Identity', 'AssociatedAcceptedDomains', 'CloudServicesMailEnabled', 'Comment', 'ConnectorSource', 'ConnectorType', 'EFSkipIPs', 'EFSkipLastIP', 'EFSkipMailGateway', 'EFUsers', 'Enabled', 'RequireTls', 'RestrictDomainsToCertificate', 'RestrictDomainsToIPAddresses', 'ScanAndDropRecipients', 'SenderDomains', 'SenderIPAddresses', 'TlsSenderCertificateName', 'TreatMessagesAsInternal', 'TrustedOrganizations')
+    'Set-InboundConnector'               = @('Identity', 'AssociatedAcceptedDomains', 'CloudServicesMailEnabled', 'Comment', 'ConnectorSource', 'Enabled', 'ScanAndDropRecipients')
     'Set-JournalRule'                    = @('Identity', 'JournalEmailAddress', 'Recipient', 'Scope')
     'Set-MalwareFilterPolicy'            = @('Identity', 'AdminDisplayName', 'CustomNotifications', 'EnableFileFilter', 'ZapEnabled')
     'Set-MalwareFilterRule'              = @('Identity', 'Comments', 'ExceptIfRecipientDomainIs', 'ExceptIfSentTo', 'ExceptIfSentToMemberOf', 'Priority', 'RecipientDomainIs', 'SentTo', 'SentToMemberOf')
     'Set-MobileDeviceMailboxPolicy'      = @('Identity', 'AllowBluetooth', 'AllowBrowser', 'AllowCamera', 'AllowHTMLEmail', 'AllowNonProvisionableDevices', 'AllowPOPIMAPEmail', 'AllowSimplePassword', 'AllowStorageCard', 'AllowTextMessaging', 'AllowWiFi', 'AlphanumericPasswordRequired', 'AttachmentsEnabled', 'DeviceEncryptionEnabled', 'MaxPasswordFailedAttempts', 'MinPasswordComplexCharacters', 'MinPasswordLength', 'PasswordEnabled', 'PasswordHistory', 'PasswordRecoveryEnabled', 'RequireDeviceEncryption', 'RequireStorageCardEncryption')
     'Set-OfflineAddressBook'             = @('Identity', 'AddressLists')
-    'Set-OutboundConnector'              = @('Identity', 'AllAcceptedDomains', 'CloudServicesMailEnabled', 'Comment', 'ConnectorSource', 'ConnectorType', 'Enabled', 'IsTransportRuleScoped', 'RecipientDomains', 'RouteAllMessagesViaOnPremises', 'SenderRewritingEnabled', 'SmartHosts', 'TestMode', 'TlsDomain', 'TlsSettings', 'UseMXRecord')
+    'Set-OutboundConnector'              = @('Identity', 'AllAcceptedDomains', 'CloudServicesMailEnabled', 'Comment', 'ConnectorSource', 'Enabled', 'IsTransportRuleScoped', 'RecipientDomains', 'RouteAllMessagesViaOnPremises', 'SenderRewritingEnabled', 'TestMode', 'UseMXRecord')
     'Set-QuarantinePolicy'               = @('Identity', 'ESNEnabled', 'EndUserSpamNotificationCustomFromAddress', 'EndUserSpamNotificationFrequencyInDays', 'IncludeMessagesFromBlockedSenderAddress', 'MultiLanguageCustomDisclaimer', 'MultiLanguageSenderName', 'MultiLanguageSetting', 'OrganizationBrandingEnabled')
     'Set-RetentionPolicy'                = @('Identity', 'RetentionPolicyTagLinks')
     'Set-RetentionPolicyTag'             = @('Identity', 'AgeLimitForRetention', 'Comment', 'RetentionAction', 'RetentionEnabled')
@@ -241,7 +242,7 @@ $AllowedTeamsWrites = @{
     'Set-CsTeamsMeetingBroadcastPolicy'        = @('Identity', 'AllowBroadcastScheduling', 'AllowBroadcastTranscription', 'BroadcastAttendeeVisibilityMode', 'BroadcastRecordingMode', 'Description')
     'Set-CsTeamsMessagingPolicy'               = @('Identity', 'AllowCommunicationComplianceEndUserReporting', 'AllowFullChatPermissionUserToDeleteAnyMessage', 'AllowGiphy', 'AllowGiphyDisplay', 'AllowGroupChatJoinLinks', 'AllowImmersiveReader', 'AllowMemes', 'AllowOwnerDeleteMessage', 'AllowPasteInternetImage', 'AllowPriorityMessages', 'AllowRemoveUser', 'AllowSecurityEndUserReporting', 'AllowSmartCompose', 'AllowSmartReply', 'AllowStickers', 'AllowUrlPreviews', 'AllowUserChat', 'AllowUserDeleteChat', 'AllowUserDeleteMessage', 'AllowUserEditMessage', 'AllowUserTranslation', 'AllowVideoMessages', 'AudioMessageEnabledType', 'ChannelsInChatListEnabledType', 'ChatPermissionRole', 'Description', 'GiphyRatingType', 'ReadReceiptsEnabledType')
     'Set-CsTenantDialPlan'                     = @('Identity', 'Description', 'ExternalAccessPrefix', 'OptimizeDeviceDialing', 'SimpleName')
-    'Set-CsTenantFederationConfiguration'      = @('Identity', 'AllowFederatedUsers', 'AllowTeamsConsumer', 'AllowTeamsConsumerInbound', 'BlockAllSubdomains', 'ExternalAccessWithTrialTenants', 'RestrictTeamsConsumerToExternalUserProfiles', 'SharedSipAddressSpace', 'TreatDiscoveredPartnersAsUnverified')
+    'Set-CsTenantFederationConfiguration'      = @('Identity', 'AllowTeamsConsumer', 'AllowTeamsConsumerInbound', 'BlockAllSubdomains', 'ExternalAccessWithTrialTenants', 'RestrictTeamsConsumerToExternalUserProfiles')
 }
 
 # Task-106: OneDrive site-level settings through PnP, one named site at a time.
@@ -250,12 +251,74 @@ $AllowedPnP = @{
     'Get-PnPTenantSite' = @('Identity')
 }
 
+# SharePoint structure (engine/collect/workloads/sharepointStructure.mjs). Hub sites, site
+# designs and site scripts are read on the admin site; a site template is read on the one
+# site the job names. Reads only. -Url never reaches the cmdlet: it names the site to
+# connect to, and must be the tenant root or a /sites/ or /teams/ site collection root on
+# the tenant's own host (Get-KeelSiteUrl). The template handlers are fixed here, never
+# taken from the job: structure only, no Files, Pages, PageContents, TermGroups,
+# PropertyBagEntries, Publishing or SiteSecurity (people and permissions are backed up elsewhere,
+# and a restore must never send them).
+$AllowedPnPStructure = @{
+    'Get-PnPHubSite'      = @()
+    'Get-PnPSiteDesign'   = @()
+    'Get-PnPSiteScript'   = @('Identity')
+    'Get-PnPSiteTemplate' = @('Url')
+}
+$SiteTemplateHandlers = 'Fields, ContentTypes, Lists, Navigation, Features, RegionalSettings, SupportedUILanguages, WebSettings, SiteHeader, SiteFooter, CustomActions'
+
+# SharePoint structure restore (engine/restore/workloads/sharepointStructure.mjs and
+# sharepointStructureWrites.mjs, which hold the same list). Nothing here deletes: no
+# Remove-, Unregister-, Revoke- or Grant- cmdlet. Invoke-PnPSiteTemplate connects to the
+# one site in -Url (a site collection root on the tenant host) and applies the template
+# KEEL built (-TemplateGzip, gzip and base64) with the handlers fixed below. The template
+# may hold only the PnP elements in $RestoreTemplateElements: never list items, files,
+# pages, permissions, webhooks, custom actions, property bags or features.
+$AllowedPnPStructureWrites = @{
+    'Invoke-PnPSiteTemplate' = @('TemplateGzip', 'Url')
+    'Register-PnPHubSite'    = @('Site')
+    'Set-PnPHubSite'         = @('Description', 'HideNameInNavigation', 'Identity', 'LogoUrl', 'RequiresJoinApproval', 'SiteDesignId', 'Title')
+    'Add-PnPSiteScript'      = @('Content', 'Description', 'Title')
+    'Set-PnPSiteScript'      = @('Content', 'Description', 'Identity', 'Title')
+    'Add-PnPSiteDesign'      = @('Description', 'IsDefault', 'PreviewImageAltText', 'PreviewImageUrl', 'SiteScriptIds', 'Title', 'WebTemplate')
+    'Set-PnPSiteDesign'      = @('Description', 'Identity', 'IsDefault', 'PreviewImageAltText', 'PreviewImageUrl', 'SiteScriptIds', 'Title', 'WebTemplate')
+}
+$RestoreTemplateHandlers = 'Fields, ContentTypes, Lists, Navigation'
+$RestoreTemplateElements = @(
+    'Provisioning', 'Preferences', 'Templates', 'ProvisioningTemplate',
+    'SiteFields', 'ContentTypes', 'ContentType', 'FieldRefs', 'FieldRef',
+    'Lists', 'ListInstance', 'ContentTypeBindings', 'ContentTypeBinding', 'Views', 'Fields', 'FieldDefaults', 'FieldDefault', 'Folders', 'Folder',
+    'Navigation', 'GlobalNavigation', 'CurrentNavigation', 'StructuralNavigation', 'NavigationNode'
+)
+$MaxTemplateGzipChars = 100000
+
+# The site a template job connects to, normalized, or $null when it is not a site
+# collection root on the host of the configured admin site (contoso-admin.sharepoint.com
+# gives contoso.sharepoint.com).
+function Get-KeelSiteUrl {
+    param([string]$Value, [string]$AdminUrl)
+    $admin = $null
+    if (-not [uri]::TryCreate($AdminUrl, [UriKind]::Absolute, [ref]$admin)) { return $null }
+    $adminHost = $admin.Host.ToLowerInvariant()
+    if (-not $adminHost.EndsWith('-admin.sharepoint.com')) { return $null }
+    $tenantHost = $adminHost.Substring(0, $adminHost.Length - '-admin.sharepoint.com'.Length) + '.sharepoint.com'
+    if ($tenantHost -notmatch '^[a-z0-9-]+\.sharepoint\.com$') { return $null }
+    $uri = $null
+    if (-not [uri]::TryCreate($Value, [UriKind]::Absolute, [ref]$uri)) { return $null }
+    if ($uri.Scheme -ne 'https' -or $uri.Host -ne $tenantHost -or $uri.Query -or $uri.Fragment -or $uri.UserInfo -or -not $uri.IsDefaultPort) { return $null }
+    $path = $uri.AbsolutePath.TrimEnd('/')
+    if ($path -ne '' -and $path -notmatch '^/(sites|teams)/[A-Za-z0-9_.-]+$') { return $null }
+    return "https://$tenantHost$path"
+}
+
 function Out-Envelope {
     param([hashtable]$Envelope, [int]$Code)
     # Depth 16: below that, ConvertTo-Json flattens deeper nested settings (DLP
     # sensitive information type groups, say) to type-name strings. Shallower answers
-    # serialize the same at either depth.
-    [Console]::Out.WriteLine((ConvertTo-Json -InputObject $Envelope -Depth 16 -Compress))
+    # serialize the same at either depth. When ConvertTo-Json throws (unloaded PnP
+    # collections, #638; non-string dictionary keys in Purview answers, Q179),
+    # ConvertTo-KeelJson writes a plain copy instead (keel-json.ps1).
+    [Console]::Out.WriteLine((ConvertTo-KeelJson -Value $Envelope -Depth 16))
     exit $Code
 }
 
@@ -293,6 +356,8 @@ elseif ($AllowedExchangeRoleGroups.ContainsKey($name) -and $module -eq 'Exchange
 elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurview[$name] }
 elseif ($AllowedPurviewRetentionDlp.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewRetentionDlp[$name] }
 elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnP[$name] }
+elseif ($AllowedPnPStructure.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnPStructure[$name] }
+elseif ($AllowedPnPStructureWrites.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnPStructureWrites[$name] }
 elseif ($AllowedTeamsPolicy.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsPolicy[$name] }
 elseif ($AllowedTeamsExtended.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsExtended[$name] }
 elseif ($AllowedPurviewExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewExtended[$name] }
@@ -316,11 +381,64 @@ $tenantConfigPath = if ($job['tenantConfigPath']) { [string]$job['tenantConfigPa
 try {
     $config = Get-Content -Raw -Path $tenantConfigPath | ConvertFrom-Json
     $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::CreateFromPemFile($config.certPath, $config.keyPath)
+} catch {
+    Out-Failure -Message "could not read the connection settings: $($_.Exception.Message)" -Category 'ConnectionError' -ErrorId 'ConnectFailed'
+}
+
+# A template is read (or applied) on its own site; everything else in the PnP session on the admin site.
+$pnpUrl = $config.sharePointAdminUrl
+if ($name -eq 'Get-PnPSiteTemplate') {
+    $pnpUrl = Get-KeelSiteUrl -Value ([string]$params['Url']) -AdminUrl ([string]$config.sharePointAdminUrl)
+    if (-not $pnpUrl) { Out-Failure -Message "the site is not a site collection root on this tenant's SharePoint host" -ErrorId 'SiteNotAllowed' }
+    $params.Remove('Url')
+    $params['Handlers'] = $SiteTemplateHandlers
+}
+# The restore template is applied on its own site, from a temporary file, with fixed handlers.
+$templateFile = $null
+if ($name -eq 'Invoke-PnPSiteTemplate') {
+    $pnpUrl = Get-KeelSiteUrl -Value ([string]$params['Url']) -AdminUrl ([string]$config.sharePointAdminUrl)
+    if (-not $pnpUrl) { Out-Failure -Message "the site is not a site collection root on this tenant's SharePoint host" -ErrorId 'SiteNotAllowed' }
+    $encoded = [string]$params['TemplateGzip']
+    if (-not $encoded -or $encoded.Length -gt $MaxTemplateGzipChars) { Out-Failure -Message 'the template is missing or too large' -ErrorId 'TemplateNotAllowed' }
+    try {
+        $raw = [System.IO.MemoryStream]::new([Convert]::FromBase64String($encoded))
+        $gzip = [System.IO.Compression.GZipStream]::new($raw, [System.IO.Compression.CompressionMode]::Decompress)
+        $xml = [System.IO.StreamReader]::new($gzip, [System.Text.Encoding]::UTF8).ReadToEnd()
+    } catch {
+        Out-Failure -Message 'the template is not gzip and base64' -ErrorId 'TemplateNotAllowed'
+    }
+    if ($xml -notmatch '<pnp:ProvisioningTemplate\b') { Out-Failure -Message 'the template is not a PnP template' -ErrorId 'TemplateNotAllowed' }
+    foreach ($match in [regex]::Matches($xml, '</?pnp:([A-Za-z]+)')) {
+        if ($RestoreTemplateElements -notcontains $match.Groups[1].Value) {
+            Out-Failure -Message "the template carries pnp:$($match.Groups[1].Value), which KEEL never sends" -ErrorId 'TemplateNotAllowed'
+        }
+    }
+    # The PnP namespace only ever as pnp:, and no DTD: no PnP element can hide under another prefix.
+    if ($xml -match '<!DOCTYPE|<!ENTITY') { Out-Failure -Message 'the template carries a DTD, which KEEL never sends' -ErrorId 'TemplateNotAllowed' }
+    foreach ($match in [regex]::Matches($xml, '\bxmlns(:[A-Za-z0-9_.-]+)?\s*=\s*["'']([^"'']*)["'']')) {
+        if ($match.Groups[2].Value -match 'schemas\.dev\.office\.com/PnP' -and $match.Groups[1].Value -ne ':pnp') {
+            Out-Failure -Message 'the template binds the PnP namespace to a prefix other than pnp:, which KEEL never sends' -ErrorId 'TemplateNotAllowed'
+        }
+    }
+    # The file is written just before the cmdlet runs, in the try whose finally removes it.
+    $templateXml = $xml
+    $templateFile = Join-Path ([System.IO.Path]::GetTempPath()) ("keel-restore-" + [guid]::NewGuid().ToString('N') + '.xml')
+    $params = @{ Path = $templateFile; Handlers = $RestoreTemplateHandlers }
+}
+# A hub is named by its site, which must be a site collection root on the tenant host.
+if ($name -eq 'Register-PnPHubSite' -or $name -eq 'Set-PnPHubSite') {
+    $key = if ($name -eq 'Register-PnPHubSite') { 'Site' } else { 'Identity' }
+    $hubUrl = Get-KeelSiteUrl -Value ([string]$params[$key]) -AdminUrl ([string]$config.sharePointAdminUrl)
+    if (-not $hubUrl) { Out-Failure -Message "the hub is not a site collection root on this tenant's SharePoint host" -ErrorId 'SiteNotAllowed' }
+    $params[$key] = $hubUrl
+}
+
+try {
     if ($session -eq 'pnp') {
         # PnP is never loaded beside ExchangeOnlineManagement (see probe-workloads.ps1).
         Import-Module PnP.PowerShell -ErrorAction Stop | Out-Null
         $pfx = [Convert]::ToBase64String($cert.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx))
-        Connect-PnPOnline -Url $config.sharePointAdminUrl -ClientId $config.clientId -Tenant $config.organization -CertificateBase64Encoded $pfx | Out-Null
+        Connect-PnPOnline -Url $pnpUrl -ClientId $config.clientId -Tenant $config.organization -CertificateBase64Encoded $pfx | Out-Null
     } elseif ($session -eq 'teams') {
         # Same app-only connection as the probe (probe-workloads.ps1, Teams block),
         # including its PKCS12 round trip of the certificate.
@@ -340,6 +458,7 @@ try {
 }
 
 try {
+    if ($templateFile) { Set-Content -Path $templateFile -Value $templateXml -Encoding utf8 -NoNewline }
     # Warnings from the module's own functions ignore this script's $WarningPreference and
     # would land on stdout ahead of the envelope (Get-LabelPolicy: "Force Validate not set").
     $output = & $name @params -ErrorAction Stop 3>$null
@@ -363,6 +482,7 @@ try {
     $record = $_
     Out-Failure -Message $record.Exception.Message -Category ([string]$record.CategoryInfo.Category) -ErrorId ([string]$record.FullyQualifiedErrorId)
 } finally {
+    if ($templateFile) { Remove-Item -LiteralPath $templateFile -Force -ErrorAction SilentlyContinue }
     if ($session -eq 'pnp') { try { Disconnect-PnPOnline -ErrorAction SilentlyContinue | Out-Null } catch {} }
     elseif ($session -eq 'teams') { try { Disconnect-MicrosoftTeams -Confirm:$false -ErrorAction SilentlyContinue | Out-Null } catch {} }
     else { try { Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null } catch {} }

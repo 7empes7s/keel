@@ -19,9 +19,12 @@
 // applied and become post-restore checks, and all of it is bound into the plan digest.
 //
 // node keel-restore.mjs --compensate <artifactId> [--persist-artifact <id>] [--requested-by <who>]
+//   [--delete-assigned <naturalKey> ...] [--skip-assigned <naturalKey> ...]
 // plans the conflict-aware compensation of one promoted restore (roadmap task-70) as
 // a dry run; it is executed only by promoting that compensation artifact with
-// --artifact <id> --enforce, through the same approval as any restore.
+// --artifact <id> --enforce, through the same approval as any restore. A policy the
+// restore created that is assigned now is undone only by choice: --delete-assigned
+// removes its assignments and deletes it, --skip-assigned leaves it as it is.
 //
 // node keel-restore.mjs --enforce-conditional-access <restoreArtifactId> --policy <naturalKey> [--persist-artifact <id>] [--requested-by <who>]
 // plans turning on one Conditional Access policy that restore left report-only
@@ -48,7 +51,9 @@
 //   teams-settings             --team <team id>
 //   purview-labels             --target label:<id> | label-policy:<id> (repeatable)
 //   mail flow, Exchange settings, Teams org-wide and voice policies, Purview retention,
-//   DLP and labels: [--target <key> ...].
+//   DLP and labels: [--target <key> ...]. A key is `<kind>:<Guid>` for rules, connectors
+//   and policies; `<kind>:<Name>` is accepted too and resolves to the one object of that
+//   kind with that name (more than one refuses the plan and lists the Guid keys).
 // On the test tenant every workload restore writes only KEEL-RT- fixtures (a mailbox,
 // team, member, label, policy or site named KEEL-RT-*); --allow-tenant-wide-test-writes
 // also plans tenant-wide objects (a Global policy, the SharePoint tenant settings, the
@@ -65,6 +70,7 @@
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { readConfigFile } from '../engine/config/configFile.mjs';
+import { parseCliArgs } from './args.mjs';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { GraphReader } from '../tools/tenant-probe/graph.mjs';
 import { collectM1 } from '../engine/collect/entraAdapter.mjs';
@@ -81,6 +87,9 @@ import { applyWave, applyPatches, retryThrottledGraphOperation } from '../engine
 import { breakGlassLockoutGate, closedLockoutGate } from '../engine/safety/lockoutGate.mjs';
 import { loadGroupMembership, loadLockoutGateInputs } from '../engine/safety/breakGlassReadiness.mjs';
 import { globalAdministratorPrincipalIds } from '../engine/safety/protectedPrincipals.mjs';
+import {
+  conditionalAccessGroupIds, gateRelationshipOperations, privilegedGroupIds, protectedEdgePrincipalIds,
+} from '../engine/safety/edgeLockoutGate.mjs';
 import { withProposedConditionalAccessPolicy } from '../engine/safety/lockoutGate.mjs';
 import {
   ENFORCED, EnforcementRefusal, applyConditionalAccessEnforcement, deletedPolicyRestoreRefusal, enforcementPendingFor,
@@ -113,7 +122,10 @@ import {
   BRANDING_RESOURCE_TYPES, applyBrandingAssetUploads, brandingLocaleFor, brandingUploadDigestInput, planBrandingAssetUploads,
   readLiveBrandingAssets,
 } from '../engine/restore/brandingAssets.mjs';
-import { compensationDigestInput, planCompensation } from '../engine/restore/compensation.mjs';
+import {
+  UNDO_CHOICES, applyUndoChoices, compensationDigestInput, planCompensation, undoChoicesOf,
+} from '../engine/restore/compensation.mjs';
+import { readUndoAssignments } from '../engine/restore/undoAssignedPolicy.mjs';
 import { assertContentEffectApproval, classifyContentEffects } from '../engine/safety/contentEffects.mjs';
 import { canonicalHash } from '../engine/cir/canonicalHash.mjs';
 import {
@@ -140,20 +152,22 @@ import {
   incidentsCoveringSnapshot, recordPostRestoreChecks, resolveIncidentRecovery,
 } from '../engine/govern/incidents.mjs';
 
-function arg(name, fallback, argv = process.argv) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : fallback;
-}
-// Repeatable flag (e.g. --select): every occurrence contributes one value.
-function argAll(name, argv = process.argv) {
-  const values = [];
-  for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i] === `--${name}` && argv[i + 1] !== undefined) values.push(argv[i + 1]);
-  }
-  return values;
-}
-function flag(name, argv = process.argv) {
-  return argv.includes(`--${name}`);
+// Security audit finding 4: argv is parsed strictly. A value that starts with "-"
+// (a restore target such as "--allow-tenant-wide-test-writes") is refused instead of
+// being read as a flag, and so is any unknown flag, a positional, or a repeated
+// single-value option.
+const STRING_OPTIONS = [
+  'plan', 'snapshot-id', 'artifact', 'persist-artifact', 'compensate', 'enforce-conditional-access', 'policy',
+  'requested-by', 'incident', 'compliance-fix', 'object', 'collector-config', 'target-config', 'workload',
+  'collection', 'tenant-host', 'mailbox', 'team', 'site', 'at',
+];
+const REPEATABLE_OPTIONS = ['select', 'delete', 'target', 'delete-assigned', 'skip-assigned'];
+const BOOLEAN_OPTIONS = ['enforce', 'include-organization', 'allow-tenant-wide-test-writes', 'accept-degradation'];
+
+export function parseRestoreArgs(argv = process.argv) {
+  return parseCliArgs(argv.slice(2), {
+    name: 'keel-restore', strings: STRING_OPTIONS, repeatable: REPEATABLE_OPTIONS, booleans: BOOLEAN_OPTIONS,
+  }).values;
 }
 
 // Exported so cli/keel-remediate.mjs (plan task 19) can reuse the exact same check
@@ -256,6 +270,27 @@ export function completionStepLines(entry) {
     .filter((step) => step && typeof step.description === 'string' && step.description.length > 0)
     .map((step) => `completion step: ${entry.naturalKey} — ${step.description}`);
 }
+/**
+ * Issue #642: what one applied write changed or would change (its fields, and
+ * parts written beside them such as an app's categories), so a dry run and
+ * its promotion both show a difference that is not in a field. Null when the
+ * entry names no change.
+ */
+export function changeLine(entry) {
+  const changes = entry?.changes;
+  if (!changes || typeof changes !== 'object') return null;
+  const parts = [];
+  for (const [name, value] of Object.entries(changes)) {
+    if (name === 'fields') {
+      if (Array.isArray(value) && value.length > 0) parts.push(`fields ${value.join(', ')}`);
+    } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+      parts.push(`${name} ${Object.entries(value).map(([key, count]) => `${key} ${typeof count === 'object' ? JSON.stringify(count) : count}`).join(', ')}`);
+    } else if (value !== undefined && value !== null) {
+      parts.push(`${name} ${Array.isArray(value) ? value.map((item) => (item && typeof item === 'object' ? JSON.stringify(item) : item)).join(', ') : value}`);
+    }
+  }
+  return parts.length > 0 ? `  changes ${entry.naturalKey}: ${parts.join('; ')}` : null;
+}
 function logFailures(logger, failed) {
   for (const entry of failed) logger.log(`  failed ${entry?.naturalKey ?? 'unknown'}: ${failureReason(entry)}`);
 }
@@ -298,6 +333,9 @@ export async function runRestore({
   // run, as a dry run. Never executes: the resulting compensation artifact is
   // promoted with artifactId, like any other dry run.
   compensateArtifactId,
+  // The person's choice for each policy the undo would delete that is assigned
+  // now: { [naturalKey]: 'delete' | 'skip' }. Only with compensateArtifactId.
+  undoChoices,
   // Roadmap task-152: plan turning on one Conditional Access policy a promoted
   // restore left report-only: { restoreArtifactId, naturalKey }. A dry run only;
   // the resulting artifact is promoted with artifactId after approval.
@@ -448,6 +486,13 @@ export async function runRestore({
       throw new Error('compensation is only ever planned as a dry run; execute it by promoting the compensation artifact through the normal approval');
     }
   }
+  if (undoChoices !== undefined) {
+    if (compensateArtifactId === undefined) throw new Error('undoChoices are made only when planning an undo (compensateArtifactId)');
+    if (undoChoices === null || typeof undoChoices !== 'object' || Array.isArray(undoChoices)
+      || Object.entries(undoChoices).some(([key, choice]) => key.length === 0 || !UNDO_CHOICES.includes(choice))) {
+      throw new Error(`undoChoices must map natural keys to one of ${UNDO_CHOICES.join(', ')}`);
+    }
+  }
 
   // §4.1: a selection-driven restore carries only the operator's RAW selection; the
   // dependency closure is recomputed here, server-side, from the snapshot — never
@@ -517,7 +562,7 @@ export async function runRestore({
     };
     if (compensateArtifactId !== undefined) {
       return await planCompensationRun({
-        client, compensateArtifactId, persistArtifactId, requestedBy, readFile, logger, deps: compensationDeps,
+        client, compensateArtifactId, undoChoices, persistArtifactId, requestedBy, readFile, logger, deps: compensationDeps,
       });
     }
     if (enforceConditionalAccess !== undefined) {
@@ -759,6 +804,9 @@ export async function runRestore({
     if (fixPlan && resources[0]?.verb !== 'update') {
       throw new Error(`${artifact ? 'restore promotion refused: ' : ''}compliance fix refused: ${fixPlan.naturalKey} would be ${resources[0]?.verb ?? 'left out'}, not updated in place`);
     }
+    // Security audit run 1, finding 2: the write carries its fix, so the named
+    // location trust gate lets through exactly this one setting and no other.
+    if (fixPlan) resources = [{ ...resources[0], complianceFix: fixPlan }];
     // An object matched by id under another name is known to the plan alone: its
     // snapshot key resolves to the live id for references and relationship edges.
     for (const resource of resources) {
@@ -877,6 +925,17 @@ export async function runRestore({
           families: RELATIONSHIP_RESTORE_FAMILIES,
         });
         const naturalKeyById = new Map([...existingTargetIds].map(([naturalKey, id]) => [String(id).toLowerCase(), naturalKey]));
+        // Security audit run 2, finding 1: the registered break-glass accounts are
+        // protected like Global Administrators, and member writes that can change
+        // their readiness go through the lockout gate with the proposed membership.
+        let edgeGateInputs = null;
+        let edgeGateError = null;
+        try {
+          edgeGateInputs = await loadLockoutGateInputsFn(client, { tenantRef: tenantRefFor(collectorConfig.tenantId) });
+        } catch (error) {
+          edgeGateError = error.message;
+        }
+        const edgeProtectedIds = protectedEdgePrincipalIds(targetResources, (edgeGateInputs?.accounts ?? []).map((account) => account.accountId));
         relationshipPlan = planRelationshipOperations({
           parents: edgeParents,
           desired: desiredEdges,
@@ -886,8 +945,17 @@ export async function runRestore({
             .filter((resource) => resource.verb === 'create' || resource.verb === 'restore-soft-deleted')
             .map((resource) => resource.naturalKey)),
           naturalKeyForTargetId: (id) => naturalKeyById.get(id) ?? null,
-          protectedPrincipalIds,
+          protectedPrincipalIds: edgeProtectedIds,
         });
+        const gatedEdges = gateRelationshipOperations({
+          operations: relationshipPlan.operations,
+          parentTargetIds: new Map(liveParents.map((parent) => [parent.naturalKey, parent.liveTargetId])),
+          caGroupIds: conditionalAccessGroupIds(targetResources),
+          privilegedGroupIds: privilegedGroupIds(targetResources),
+          inputs: edgeGateInputs,
+          loadError: edgeGateError,
+        });
+        relationshipPlan = { ...relationshipPlan, operations: gatedEdges.operations, refusals: [...relationshipPlan.refusals, ...gatedEdges.refusals] };
         for (const note of relationshipPlan.notes) logger.log(`relationship edges not reconciled: ${note.note}`);
         logger.log(`relationship edges: ${relationshipPlan.operations.length} planned, ${relationshipPlan.refusals.length} refused`);
       }
@@ -1152,6 +1220,10 @@ export async function runRestore({
       });
       logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
       logFailures(logger, result.failed);
+      for (const entry of result.applied) {
+        const line = changeLine(entry);
+        if (line) logger.log(line);
+      }
       for (const entry of [...result.applied, ...result.skipped]) {
         for (const line of completionStepLines(entry)) logger.log(line);
       }
@@ -1434,7 +1506,7 @@ export function incompleteReadDeleteRefusals(unreadTypes, plannedResources) {
   }));
 }
 
-async function buildCompensation({ client, forward, collectorConfig, targetConfig, collectorConfigPath, targetConfigPath, deps }) {
+async function buildCompensation({ client, forward, collectorConfig, targetConfig, collectorConfigPath, targetConfigPath, undoChoices = {}, deps }) {
   const entries = await deps.listJournalFn(client, { restoreRef: forward.id });
   if (entries.length === 0) {
     throw new Error(`compensation refused: restore ${forward.id} has no journaled writes (nothing was written, or it ran before operation journaling)`);
@@ -1445,7 +1517,10 @@ async function buildCompensation({ client, forward, collectorConfig, targetConfi
   const targetCollected = await deps.collectM1Fn(targetReader, { needed });
   const targetResources = deps.canonicalizeAllFn(targetCollected);
   const current = new Map(targetResources.map((resource) => [resource.naturalKey, { targetId: resource.sourceId, payload: resource.payload }]));
-  const plan = planCompensation({ restoreRef: forward.id, entries, current });
+  // An undo of a created policy that is assigned now waits for the person's
+  // choice: delete it with its assignments, or skip it.
+  const planned = planCompensation({ restoreRef: forward.id, entries, current });
+  const plan = applyUndoChoices(planned, { assigned: await readUndoAssignments(targetReader, planned.operations), choices: undoChoices });
   const order = plan.operations.map((op) => op.naturalKey);
   const scopeKeys = [...new Set(entries.map((entry) => entry.naturalKey))].sort((a, b) => a.localeCompare(b));
   // The compensation's own content effects (an undo can shorten retention too)
@@ -1492,10 +1567,13 @@ function logCompensation(logger, plan) {
   for (const conflict of plan.conflicts) logger.log(`  conflict: ${conflict.naturalKey} — ${conflict.reason}`);
   for (const item of plan.irrecoverable) logger.log(`  irrecoverable: ${item.naturalKey} — ${item.reason}`);
   for (const item of plan.manual) logger.log(`  manual: ${item.naturalKey} — ${item.reason}`);
+  for (const item of plan.choices ?? []) {
+    logger.log(`  assigned (${item.assignmentCount}): ${item.naturalKey} — ${item.choice === 'delete' ? 'delete it with its assignments' : item.choice === 'skip' ? 'skip it' : 'waiting for your choice: delete it with its assignments, or skip it'}`);
+  }
   logger.log(`  ${plan.statement}`);
 }
 
-async function planCompensationRun({ client, compensateArtifactId, persistArtifactId, requestedBy, readFile, logger, deps }) {
+async function planCompensationRun({ client, compensateArtifactId, undoChoices, persistArtifactId, requestedBy, readFile, logger, deps }) {
   const forward = await deps.getDryRunArtifactByIdFn(client, { id: compensateArtifactId });
   if (!forward) throw new Error(`compensation refused: restore artifact not found: ${compensateArtifactId}`);
   const collectorConfig = readCollectorConfig(forward.collectorConfigPath, readFile);
@@ -1504,7 +1582,7 @@ async function planCompensationRun({ client, compensateArtifactId, persistArtifa
 
   const ctx = await buildCompensation({
     client, forward, collectorConfig, targetConfig,
-    collectorConfigPath: forward.collectorConfigPath, targetConfigPath: forward.targetConfigPath, deps,
+    collectorConfigPath: forward.collectorConfigPath, targetConfigPath: forward.targetConfigPath, undoChoices: undoChoices ?? {}, deps,
   });
   logCompensation(logger, ctx.plan);
 
@@ -1567,13 +1645,20 @@ async function executeCompensationRun({ client, artifact, collectorConfig, targe
   if (!forward) throw new Error(`compensation promotion refused: the compensated restore ${artifact.compensation.compensates} no longer exists`);
   const ctx = await buildCompensation({
     client, forward, collectorConfig, targetConfig,
-    collectorConfigPath: artifact.collectorConfigPath, targetConfigPath: artifact.targetConfigPath, deps,
+    collectorConfigPath: artifact.collectorConfigPath, targetConfigPath: artifact.targetConfigPath,
+    // The choices the reviewed plan holds; any other plan changes the digest.
+    undoChoices: undoChoicesOf(artifact.compensation), deps,
   });
   // Exactly the forward promotion gate: a changed journal, plan or target refuses
   // before a single write; the compensation's content effects need their own
   // separate approval.
   const validation = deps.validateArtifactForExecutionFn(artifact, { digest: ctx.digest, currentStateFingerprint: ctx.fingerprint });
   if (!validation.ok) throw new Error(`compensation promotion refused: ${validation.reason}`);
+  // An assigned policy is undone only by the person's choice: a plan still waiting for one is not run.
+  const waiting = (ctx.plan.choices ?? []).filter((item) => item.choice == null).map((item) => item.naturalKey);
+  if (waiting.length > 0) {
+    throw new Error(`compensation promotion refused: ${waiting.length} assigned polic${waiting.length === 1 ? 'y waits' : 'ies wait'} for a choice to delete or skip (${waiting.join(', ')}); plan the undo again with the choices`);
+  }
   await deps.assertContentEffectApprovalFn(client, { artifact, effects: ctx.contentEffects.effects });
   logCompensation(logger, ctx.plan);
 
@@ -1965,18 +2050,21 @@ export async function main({
   dependencies,
   logger = console,
 } = {}) {
-  const planId = arg('plan', undefined, argv);
-  const snapshotId = arg('snapshot-id', undefined, argv);
-  const selection = argAll('select', argv);
-  const deleteKeys = argAll('delete', argv);
-  const artifactId = arg('artifact', undefined, argv);
-  const persistArtifactId = arg('persist-artifact', undefined, argv);
-  const compensateArtifactId = arg('compensate', undefined, argv);
-  const enforceRestoreArtifactId = arg('enforce-conditional-access', undefined, argv);
-  const enforcePolicy = arg('policy', undefined, argv);
-  const requestedBy = arg('requested-by', undefined, argv);
-  const incidentId = arg('incident', undefined, argv);
-  const mode = flag('enforce', argv) ? 'enforce' : 'dry-run';
+  const opts = parseRestoreArgs(argv);
+  const planId = opts.plan;
+  const snapshotId = opts['snapshot-id'];
+  const selection = opts.select;
+  const deleteKeys = opts.delete;
+  const artifactId = opts.artifact;
+  const persistArtifactId = opts['persist-artifact'];
+  const compensateArtifactId = opts.compensate;
+  const deleteAssigned = opts['delete-assigned'] ?? [];
+  const skipAssigned = opts['skip-assigned'] ?? [];
+  const enforceRestoreArtifactId = opts['enforce-conditional-access'];
+  const enforcePolicy = opts.policy;
+  const requestedBy = opts['requested-by'];
+  const incidentId = opts.incident;
+  const mode = opts.enforce ? 'enforce' : 'dry-run';
 
   // Task-70: a compensation is planned from the promoted restore's own journal and
   // frozen config — never with --enforce, and never alongside another scope.
@@ -1987,9 +2075,16 @@ export async function main({
     if (mode === 'enforce') {
       throw new Error('--compensate is a dry run only; execute it by promoting the compensation artifact with --artifact <id> --enforce');
     }
+    const both = deleteAssigned.filter((key) => skipAssigned.includes(key));
+    if (both.length > 0) throw new Error(`--delete-assigned and --skip-assigned both name ${both.join(', ')}`);
+    const undoChoices = Object.fromEntries([...deleteAssigned.map((key) => [key, 'delete']), ...skipAssigned.map((key) => [key, 'skip'])]);
     return runRestore({
-      compensateArtifactId, persistArtifactId, requestedBy, mode, readFile, dbUrl, dependencies, logger,
+      compensateArtifactId, ...(Object.keys(undoChoices).length > 0 ? { undoChoices } : {}),
+      persistArtifactId, requestedBy, mode, readFile, dbUrl, dependencies, logger,
     });
+  }
+  if (deleteAssigned.length > 0 || skipAssigned.length > 0) {
+    throw new Error('--delete-assigned and --skip-assigned are choices for an undo plan (--compensate) only');
   }
 
   // Task-152: turning a Conditional Access policy on is planned from one promoted
@@ -2010,18 +2105,18 @@ export async function main({
 
   // Gap 6: a compliance fix is planned for one control and one object — never
   // with --enforce, and never alongside another scope.
-  const fixControlId = arg('compliance-fix', undefined, argv);
+  const fixControlId = opts['compliance-fix'];
   if (fixControlId !== undefined) {
     if (planId || snapshotId || selection.length || deleteKeys.length || artifactId !== undefined || incidentId !== undefined) {
       throw new Error('--compliance-fix is mutually exclusive with --plan/--snapshot-id/--select/--delete/--artifact/--incident');
     }
-    const object = arg('object', undefined, argv);
+    const object = opts.object;
     if (!object) throw new Error('--compliance-fix requires --object <naturalKey>');
     if (mode === 'enforce') {
       throw new Error('--compliance-fix is a dry run only; execute it by promoting that artifact with --artifact <id> --enforce after approval');
     }
-    const fixCollectorPath = arg('collector-config', undefined, argv);
-    const fixTargetPath = arg('target-config', undefined, argv);
+    const fixCollectorPath = opts['collector-config'];
+    const fixTargetPath = opts['target-config'];
     if (!fixCollectorPath || !fixTargetPath) throw new Error('--compliance-fix requires --collector-config and --target-config');
     const fixCollector = readCollectorConfig(fixCollectorPath, readFile);
     const fixTarget = readRestorerConfig(fixTargetPath, readFile);
@@ -2036,7 +2131,7 @@ export async function main({
 
   // W2: a workload restore is planned from one recorded workload collection with the
   // collector only — never with --enforce, and never alongside another scope.
-  const workload = arg('workload', undefined, argv);
+  const workload = opts.workload;
   if (workload !== undefined) {
     if (planId || snapshotId || selection.length || artifactId !== undefined || incidentId !== undefined) {
       throw new Error('--workload is mutually exclusive with --plan/--snapshot-id/--select/--artifact/--incident');
@@ -2046,20 +2141,20 @@ export async function main({
     }
     // The dry run reads with the collector: the server's file (credentialPaths, the
     // same one its promotion reads) unless the operator names another.
-    const collectorConfigPath = arg('collector-config', undefined, argv)
+    const collectorConfigPath = opts['collector-config']
       ?? (dependencies?.credentialPaths ?? credentialPaths)().collectorConfig;
     return runRestore({
       workloadRestore: {
         workload,
-        collectionId: arg('collection', undefined, argv),
-        tenantHost: arg('tenant-host', undefined, argv),
-        mailbox: arg('mailbox', undefined, argv),
-        includeOrganization: flag('include-organization', argv),
-        teamId: arg('team', undefined, argv),
-        siteId: arg('site', undefined, argv),
-        at: arg('at', undefined, argv),
-        targets: argAll('target', argv),
-        allowTenantWide: flag('allow-tenant-wide-test-writes', argv),
+        collectionId: opts.collection,
+        tenantHost: opts['tenant-host'],
+        mailbox: opts.mailbox,
+        includeOrganization: opts['include-organization'],
+        teamId: opts.team,
+        siteId: opts.site,
+        at: opts.at,
+        targets: opts.target,
+        allowTenantWide: opts['allow-tenant-wide-test-writes'],
       },
       collectorConfig: readCollectorConfig(collectorConfigPath, readFile),
       collectorConfigPath,
@@ -2114,10 +2209,10 @@ export async function main({
   let collectorConfigPath;
   let targetConfigPath;
   if (artifactId === undefined) {
-    targetConfigPath = arg('target-config', undefined, argv);
+    targetConfigPath = opts['target-config'];
     if (!targetConfigPath) throw new Error('--target-config <path> required');
     targetConfig = readRestorerConfig(targetConfigPath, readFile);
-    collectorConfigPath = arg('collector-config', undefined, argv);
+    collectorConfigPath = opts['collector-config'];
     if (!collectorConfigPath) throw new Error('--collector-config <path> required for read-only sign-in-path evidence');
     collectorConfig = readCollectorConfig(collectorConfigPath, readFile);
     assertSeparateRestorer(collectorConfig, targetConfig);
@@ -2138,7 +2233,7 @@ export async function main({
     incidentId,
     requestedBy,
     readFile,
-    acceptDegradation: flag('accept-degradation', argv),
+    acceptDegradation: opts['accept-degradation'],
     dbUrl,
     dependencies,
     logger,

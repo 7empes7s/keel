@@ -20,8 +20,8 @@
  * (`field` holds the children; `path` holds `{item}` and `{child}`; the result
  * lands in each child's `as`). `itemReads` reads one more collection per object
  * (`path`, or `byType[@odata.type]` for a list of mixed kinds, holds `{item}`;
- * the result lands in the object's `as`; kinds not in `byType` are left as they
- * are). engine/collect/entraAdapter.mjs performs the reads.
+ * the result lands in the object's `as`, sorted by `sortBy` when set, left out when empty with `omitEmpty`; kinds not
+ * in `byType` are left as they are). engine/collect/entraAdapter.mjs performs the reads.
  *
  * Entries live in catalog.d/, one file per family, so families can change in
  * parallel. CATALOG is the families in the order below; a new family adds one
@@ -44,6 +44,7 @@ import otherRoleProviders from './catalog.d/other-role-providers.mjs';
 import intuneLeftovers from './catalog.d/intune-leftovers.mjs';
 import m365Settings from './catalog.d/m365-settings.mjs';
 import lastLeftovers from './catalog.d/last-leftovers.mjs';
+import adminCenterSettings from './catalog.d/admin-center-settings.mjs';
 
 export const CATALOG = [
   ...tenant,
@@ -63,6 +64,7 @@ export const CATALOG = [
   ...intuneLeftovers,
   ...m365Settings,
   ...lastLeftovers,
+  ...adminCenterSettings,
 ];
 
 /** Directory object types whose ids other resources reference by GUID. */

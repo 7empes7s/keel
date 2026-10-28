@@ -15,6 +15,7 @@ import { changeIntentsVerdict, type ChangeIntent } from "@/lib/change-intents-vi
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
+import { setAnonymity } from "../../engine/insights/anonymity.mjs";
 
 // Roadmap task-93: the approved emergency change routes. Approving, revoking and reading
 // require a central approve grant; the engine re-checks the approver and refuses an
@@ -129,6 +130,25 @@ test("an approver approves a change field by field, sees it in force, and revoke
   assert.equal(after.intents[0].state, "revoked");
   assert.equal(changeIntentsVerdict(after.intents, after.generatedAt).text, "No emergency change is approved right now. KEEL rolls changes back as its policies say.");
   assert.match(intentStateSentence(after.intents[0], after.generatedAt), /^Revoked just now by Amara Okafor: emergency over\.$/);
+});
+
+test("with \"Hide people's names\" on, the list names owner, approver and who revoked by code names only", async () => {
+  await setAnonymity(client, { tenantRef: tenantRef(), enabled: true, actor: APPROVER });
+  try {
+    const body = await (await listRoute(request("/api/change-intents", "GET", APPROVER, ["approve"]))).json() as { intents: ChangeIntent[]; people: { id: string; name: string }[]; generatedAt: string };
+    const intent = body.intents[0];
+    assert.equal(body.people.find((person) => person.id === APPROVER)?.name, intent.approver.name);
+    assert.match(intent.approver.name ?? "", /^Person [A-HJ-NP-Z2-9]{4}$/);
+    assert.match(intent.owner.name ?? "", /^Person [A-HJ-NP-Z2-9]{4}$/);
+    assert.equal(intent.revokedBy?.name, intent.approver.name, "one person, one code name");
+    assert.equal(intent.approver.email, null);
+    // Nothing a person is known by reaches the page, the list for choosing who made a change included.
+    const shown = JSON.stringify(body);
+    assert.doesNotMatch(shown, /Amara|Okafor|On-call engineer|@example\.com/);
+    assert.match(intentStateSentence(intent, body.generatedAt), /^Revoked just now by Person [A-HJ-NP-Z2-9]{4}: emergency over\.$/);
+  } finally {
+    await setAnonymity(client, { tenantRef: tenantRef(), enabled: false, actor: APPROVER });
+  }
 });
 
 test("the emergency change surfaces are closed around the approve guard", () => {

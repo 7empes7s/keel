@@ -9,8 +9,10 @@ import { spawn } from 'node:child_process';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { enqueue } from '../jobs/queue.mjs';
+import { BlockedDestinationError, assertDestinationAllowed, guardedRequest } from '../safety/outboundDestination.mjs';
 import {
-  ADAPTER_KINDS, MAX_RETRY_AFTER_MS, NotificationSendError, createAdapterTransports, validateChannelConfig,
+  ADAPTER_KINDS, ChannelConfigError, MAX_RETRY_AFTER_MS, NotificationSendError, createAdapterTransports,
+  validateChannelConfig,
 } from './adapters.mjs';
 
 export const DELIVERY_RETRY_BASE_MS = 30 * 1000;
@@ -78,6 +80,11 @@ export async function createChannel(client, { kind, config, enabled = true }) {
   // Task 84: provider channels hold credential references only, and an unsupported
   // endpoint or provider is refused here rather than stored as if it could send.
   if (ADAPTER_KINDS.includes(kind)) validateChannelConfig(kind, config ?? {});
+  // Security audit finding 6: a webhook to a private or local address is refused here.
+  if (kind === 'webhook') {
+    const problems = webhookConfigProblems(config ?? {});
+    if (problems.length) throw new ChannelConfigError(problems.join('; '));
+  }
   const { rows } = await client.query(
     `INSERT INTO channel (kind, config, enabled)
      VALUES ($1,$2,$3)
@@ -233,18 +240,57 @@ export async function listDeliveries(client, { channelId, status, limit = 50 } =
   return rows;
 }
 
-async function sendWebhook({ channel, event }) {
-  const url = requireNonEmptyString(channel.config?.url, 'channel.config.url');
-  const parsed = new URL(url);
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error('channel.config.url must use http or https');
+export const WEBHOOK_TIMEOUT_MS = 10 * 1000;
+
+function webhookAddress(config, options) {
+  const url = requireNonEmptyString(config?.url, 'channel.config.url');
+  try {
+    return assertDestinationAllowed(url, options);
+  } catch (cause) {
+    if (cause instanceof BlockedDestinationError) throw cause;
+    throw new Error('channel.config.url is not a valid address');
   }
-  const response = await fetch(parsed, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(event),
-  });
-  if (!response.ok) throw new Error(`webhook returned HTTP ${response.status}`);
+}
+
+/** Problems with a webhook channel config; empty when it is usable. */
+export function webhookConfigProblems(config) {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) return ['config must be an object'];
+  try {
+    webhookAddress(config, {});
+    return [];
+  } catch (cause) {
+    return [cause instanceof Error ? cause.message : String(cause)];
+  }
+}
+
+/**
+ * The generic webhook transport. It only reaches public addresses, checked after DNS
+ * and on every redirect (security audit finding 6). `allowLoopback` is for tests only.
+ */
+export function createWebhookTransport({
+  allowLoopback = false, timeoutMs = WEBHOOK_TIMEOUT_MS, request = guardedRequest, resolve,
+} = {}) {
+  return async function sendWebhook({ channel, event }) {
+    let response;
+    try {
+      const url = webhookAddress(channel.config, { allowLoopback });
+      response = await request(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(event),
+        signal: AbortSignal.timeout(timeoutMs),
+        allowLoopback,
+        resolve,
+      });
+    } catch (cause) {
+      if (cause instanceof BlockedDestinationError) {
+        // Final: resending to the same address will be refused the same way.
+        throw new NotificationSendError({ outcome: 'rejected', detail: `webhook address refused: ${cause.message}` });
+      }
+      throw cause;
+    }
+    if (!response.ok) throw new Error(`webhook returned HTTP ${response.status}`);
+  };
 }
 
 async function sendEmail({ channel, event }) {
@@ -276,7 +322,7 @@ async function sendEmail({ channel, event }) {
 }
 
 export const DEFAULT_TRANSPORTS = Object.freeze({
-  webhook: sendWebhook,
+  webhook: createWebhookTransport(),
   email: sendEmail,
   ...createAdapterTransports(),
 });

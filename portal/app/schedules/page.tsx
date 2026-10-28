@@ -8,6 +8,8 @@ import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import { businessTimeZone } from "@/lib/runtime-config";
 import type { SchedulesData } from "@/lib/schedules";
 import { scheduleCounts, schedulesStatus } from "@/lib/schedules-view";
+import { AnonymityNote } from "@/components/anonymity-note";
+import { getAnonymitySetting } from "@/lib/anonymity";
 
 const DESCRIPTION = "When Keel backs up and tidies up, and how hard each backup works Microsoft.";
 
@@ -27,6 +29,7 @@ export default async function SchedulesPage() {
   }
   return <>
     <PageHeader section="Backup" title="Schedules" description={DESCRIPTION} generatedAt={data.generatedAt} status={schedulesStatus(scheduleCounts(data.schedules, data.forecasts))} />
+    <AnonymityNote setting={await getAnonymitySetting()} />
     <SchedulesBody
       canEdit={access.capabilities.includes("configuration")}
       canRun={access.capabilities.includes("collect")}

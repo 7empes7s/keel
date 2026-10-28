@@ -20,6 +20,7 @@ import {
   CompareError, compareSnapshots, compareTenants, compareWithLive, differenceCount, latestCompletedSnapshot, listCompareSources,
 } from '../engine/govern/compare.mjs';
 import { connect } from '../engine/store/db.mjs';
+import { parseCliArgs } from './args.mjs';
 
 const USAGE = `usage:
   keel-compare.mjs snapshots --left <snapshotId> --right <snapshotId> --principal-id <uuid>
@@ -28,9 +29,26 @@ const USAGE = `usage:
   keel-compare.mjs sources --principal-id <uuid>
 options: --only settings,workloads,content  --json  --db-url $KEEL_DB_URL`;
 
+const ARGS = {
+  name: 'keel-compare',
+  strings: ['left', 'right', 'principal-id', 'snapshot', 'config', 'only', 'db-url'],
+  booleans: ['json', 'help'],
+  positionals: 1,
+};
+let parsed;
+function cliArgs() {
+  if (!parsed) {
+    try {
+      parsed = parseCliArgs(process.argv.slice(2), ARGS);
+    } catch (error) {
+      throw new UsageError(error.message);
+    }
+  }
+  return parsed;
+}
+
 function arg(name, fallback = undefined) {
-  const index = process.argv.indexOf(`--${name}`);
-  return index > -1 ? process.argv[index + 1] : fallback;
+  return cliArgs().values[name] ?? fallback;
 }
 
 function required(name) {
@@ -122,7 +140,7 @@ export function formatCompare(result) {
 }
 
 async function main() {
-  const command = process.argv[2];
+  const [command] = cliArgs().positionals;
   if (!['snapshots', 'live', 'tenants', 'sources'].includes(command)) {
     console.log(USAGE);
     process.exitCode = command ? 1 : 0;
@@ -140,7 +158,7 @@ async function main() {
     let result;
     if (command === 'sources') {
       const sources = await listCompareSources(client);
-      if (process.argv.includes('--json')) console.log(JSON.stringify(sources, null, 2));
+      if (arg('json')) console.log(JSON.stringify(sources, null, 2));
       else for (const tenant of sources) {
         console.log(tenant.tenantRef);
         for (const snapshot of tenant.snapshots) console.log(`  ${snapshot.id}  ${snapshot.completedAt}  ${snapshot.resourceCount} objects`);
@@ -164,7 +182,7 @@ async function main() {
       const reader = new GraphReader(async () => accessToken);
       result = await compareWithLive(client, { snapshotId, tenantRef, reader, tenantId: config.tenantId, sections });
     }
-    console.log(process.argv.includes('--json') ? JSON.stringify(result, null, 2) : formatCompare(result));
+    console.log(arg('json') ? JSON.stringify(result, null, 2) : formatCompare(result));
   } finally {
     await client.end();
   }

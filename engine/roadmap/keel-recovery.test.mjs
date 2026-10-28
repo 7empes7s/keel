@@ -17,6 +17,7 @@
  *   undefined tenantRef).
  */
 import { strict as assert } from 'node:assert';
+import { constants as bufferConstants } from 'node:buffer';
 import { generateKeyPairSync } from 'node:crypto';
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { appendFile, readFile, writeFile } from 'node:fs/promises';
@@ -56,7 +57,7 @@ import {
   RUNTIME_MIGRATIONS,
 } from '../../tools/recovery/reconstruct.mjs';
 import { signRecoveryAssertion } from '../../tools/recovery/recovery-assertion.mjs';
-import { copyColumnNames, decodeCopyField, DumpImportError, importDump, parseDump } from '../../tools/recovery/dumpImport.mjs';
+import { copyColumnNames, decodeCopyField, DumpImportError, importDump, parseDump, scanDump } from '../../tools/recovery/dumpImport.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 
 const source = await createIsolatedTestDatabase(`${import.meta.url}#source`);
@@ -594,6 +595,76 @@ test('COPY text fields decode NULL, escapes, octal and hex bytes', () => {
   assert.deepEqual(items.map((item) => item.kind), ['meta', 'copy', 'sql', 'meta']);
   assert.deepEqual(items[1].rows, ['1\t\\N']);
   assert.equal(items[2].text, "SELECT 'x;y'");
+});
+
+test('a dump longer than the JavaScript string limit is read as a stream, never as one string (issue #634)', async () => {
+  // The live dump passed 3.6 GB; gunzipSync(...).toString() crashed V8. One
+  // character past the limit proves no step joins the dump into a string.
+  const row = `${'x'.repeat(90)}\t\\N\n`;
+  const chunk = row.repeat(Math.floor(65536 / row.length));
+  const total = bufferConstants.MAX_STRING_LENGTH + 1;
+  let sent = 0;
+  const plan = await scanDump(async function* () {
+    yield '\\restrict k\nCOPY public.t (a, b) FROM stdin;\n';
+    while (sent < total) { yield chunk; sent += chunk.length; }
+    yield "\\.\nSELECT pg_catalog.setval('public.t_seq', 7, true);\n\\unrestrict k\n";
+  });
+  assert.ok(sent > bufferConstants.MAX_STRING_LENGTH);
+  assert.deepEqual(plan, { tables: 1, setvals: ["SELECT pg_catalog.setval('t_seq', 7, true)"], skippedStatements: 0 });
+});
+
+test('a streamed dump split at any byte loads like its text; foreign keys are checked at the end and rolled back on failure', async () => {
+  const target = await newTarget();
+  const client = await target.connect();
+  try {
+    await client.query(`CREATE TABLE parent_t (id int PRIMARY KEY, name text);
+      CREATE TABLE child_t (id int PRIMARY KEY, parent_id int NOT NULL REFERENCES parent_t(id) ON DELETE CASCADE, note text);`);
+    // Children before parents, a multi-line function body holding ';', a
+    // block comment over lines, an E-string, and multi-byte text: split into
+    // 5-byte Buffers, every construct straddles a chunk boundary.
+    const dump = [
+      '\\restrict k',
+      '/* a comment',
+      '   over lines; */',
+      'CREATE FUNCTION f() RETURNS void AS $body$',
+      "BEGIN RAISE NOTICE 'a;b'; END",
+      '$body$ LANGUAGE plpgsql;',
+      'COPY public.child_t (id, parent_id, note) FROM stdin;',
+      '1\t10\tété',
+      '2\t10\t\\N',
+      '\\.',
+      "INSERT INTO public.parent_t (id, name) VALUES (10, E'it\\'s; ok');",
+      '\\unrestrict k',
+      '',
+    ].join('\n');
+    const bytes = Buffer.from(dump, 'utf8');
+    const chunks = () => (async function* () {
+      for (let at = 0; at < bytes.length; at += 5) yield bytes.subarray(at, at + 5);
+    })();
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(await scanDump(chunks))),
+      JSON.parse(JSON.stringify(await scanDump(dump))),
+    );
+    const result = await importDump(client, chunks);
+    assert.deepEqual({ tables: result.tables, rows: result.rows }, { tables: 2, rows: 3 });
+    const { rows } = await client.query(`SELECT c.id, c.note, p.name FROM child_t c JOIN parent_t p ON p.id = c.parent_id ORDER BY c.id`);
+    assert.deepEqual(rows, [{ id: 1, note: 'été', name: "it's; ok" }, { id: 2, note: null, name: "it's; ok" }]);
+    const constraint = async () => (await client.query(
+      `SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid = 'child_t'::regclass AND contype = 'f'`,
+    )).rows.map((row) => row.def);
+    assert.deepEqual(await constraint(), ['FOREIGN KEY (parent_id) REFERENCES parent_t(id) ON DELETE CASCADE']);
+
+    // An orphan row fails when the foreign key comes back; nothing it loaded stays.
+    await client.query('TRUNCATE child_t, parent_t');
+    await assert.rejects(
+      importDump(client, 'COPY public.child_t (id, parent_id, note) FROM stdin;\n3\t99\tx\n\\.\n'),
+      /violates foreign key constraint/,
+    );
+    assert.equal((await client.query('SELECT count(*)::int AS n FROM child_t')).rows[0].n, 0);
+    assert.deepEqual(await constraint(), ['FOREIGN KEY (parent_id) REFERENCES parent_t(id) ON DELETE CASCADE']);
+  } finally {
+    await client.end();
+  }
 });
 
 test('reconstructed schedule read is scoped to the requested tenant (multi-tenant fixture; mutation pin: remove tenant_ref filter from reconstructed schedule query)', async () => {

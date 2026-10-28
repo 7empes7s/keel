@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { GraphWriter } from '../../engine/restore/graphWriter.mjs';
 import { getToken } from './auth.mjs';
 import { GraphReader } from './graph.mjs';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 /** Fields that changed as a SIDE EFFECT of a write: read an object, PATCH exactly one
  * writable field, re-read, and report every OTHER path that moved. Those are server-owned
@@ -71,8 +72,8 @@ function assertDisposableNaturalKey(naturalKey) {
   }
 }
 
-function readConfig(path) {
-  return JSON.parse(readFileSync(path, 'utf8'));
+function readConfig(path, what) {
+  return readConfigFile(path, { readFile: readFileSync, what });
 }
 
 function assertCredentialSeparation(collectorConfig, restorerConfig) {
@@ -110,8 +111,8 @@ async function runLive(naturalKey, restorerConfigPath) {
   assertDisposableNaturalKey(naturalKey);
   if (!restorerConfigPath) throw new Error('--restorer-config is required with --live');
 
-  const collectorConfig = readConfig('/etc/keel/tenant.json');
-  const restorerConfig = readConfig(restorerConfigPath);
+  const collectorConfig = readConfig('/etc/keel/tenant.json', 'collector settings');
+  const restorerConfig = readConfig(restorerConfigPath, 'restorer settings');
   assertCredentialSeparation(collectorConfig, restorerConfig);
 
   const collectorToken = await getToken(collectorConfig);

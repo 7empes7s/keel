@@ -30,7 +30,13 @@ export function isEligibleBaselineSource(snapshot, { tenantRef }) {
     const coverage = snapshot.coverage_digest[type];
     // A completed empty read is a strict coverage success, exactly like a
     // non-empty one; partial, failed and not-requested never qualify.
-    return isRecord(coverage) && (coverage.outcome === 'complete' || coverage.outcome === 'complete-empty');
+    // Unavailable (the tenant has no licence or feature for the type, #309)
+    // is not a gap either: nothing of that type can exist on the tenant.
+    // Issue #646: without this, no snapshot of a tenant without Entra ID
+    // Governance could ever seed a baseline. captureFromSnapshot still leaves
+    // the type out of the baseline's scope.
+    return isRecord(coverage)
+      && (coverage.outcome === 'complete' || coverage.outcome === 'complete-empty' || coverage.outcome === 'unavailable');
   });
 }
 

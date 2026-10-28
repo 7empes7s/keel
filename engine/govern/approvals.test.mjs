@@ -5,6 +5,7 @@ import {
   APPROVAL_REQUEST_EVIDENCE_KIND,
   ApprovalClosedError,
   ApprovalExpiredError,
+  ApprovalJobConflictError,
   ApprovalNotFoundError,
   ApprovalReasonRequiredError,
   ApprovalRequestRefusedError,
@@ -93,6 +94,8 @@ try {
   assert.equal(approved.decided_by, 'principal-approver');
   assert.ok(approved.decided_at, 'the decision is timestamped');
   assert.equal(job.kind, 'baseline-activate');
+  // Security audit run 2, finding 11: an approved job is claimed ahead of ordinary ones.
+  assert.equal(job.priority, 1, 'an approval mints a priority job');
   assert.deepEqual(job.params, { naturalKey: 'group:alpha' });
   assert.equal(job.requested_by, restorer);
   assert.equal(job.status, 'queued');
@@ -500,9 +503,63 @@ try {
   const undoPlanId = randomUUID();
   await enqueue(client, { kind: 'restore', params: { compensates: completedArtifact.id, artifactId: undoPlanId }, requestedBy: restorer });
   assert.equal(await restoreExecutorForArtifact(client, { artifactId: undoPlanId }), 'worker');
+  // A workload dry run from the Restore page (Exchange, Teams, Purview, SharePoint)
+  // is planned by the worker too, so approving it must mint the worker's restore job.
+  const workloadPlanId = randomUUID();
+  await enqueue(client, {
+    kind: 'restore',
+    params: { workloadRestore: { workload: 'exchange', collectionId: randomUUID(), mailbox: 'KEEL-RT-mailbox' }, artifactId: workloadPlanId },
+    requestedBy: restorer,
+  });
+  assert.equal(await restoreExecutorForArtifact(client, { artifactId: workloadPlanId }), 'worker');
+  const fixPlanId = randomUUID();
+  await enqueue(client, {
+    kind: 'restore',
+    params: { complianceFix: { controlId: 'KEEL-RT-control', naturalKey: 'policy:KEEL-RT-x' }, collectorConfig: '/c.json', targetConfig: '/t.json', artifactId: fixPlanId },
+    requestedBy: restorer,
+  });
+  assert.equal(await restoreExecutorForArtifact(client, { artifactId: fixPlanId }), 'worker');
   // The worker job an approval mints (mode enforce) is not a dry run: it never makes
   // a CLI-planned artifact look worker-planned.
   assert.equal(await restoreExecutorForArtifact(client, { artifactId: completedArtifact.id }), 'cli');
+
+  // Security audit: a job planted under `approval:<request id>` before the approval
+  // (another requester's dry run, say) is never taken for the approved restore. The
+  // approval fails closed, mints nothing, and the request stays pending.
+  const { rows: [{ id: squatter }] } = await client.query(
+    `INSERT INTO principal (email, display_name) VALUES ('squatter@approvals.test', 'Squatter') RETURNING id::text AS id`,
+  );
+  const squatted = await requestApproval(client, {
+    tenantRef, action: 'restore', params: { artifactId: completedArtifact.id }, requestedBy: restorer,
+  });
+  const squat = await enqueue(client, {
+    kind: 'restore',
+    params: { snapshotId: restoreSnapshotId, selection: ['group:Unrelated'], artifactId: randomUUID() },
+    requestedBy: squatter,
+    idempotencyKey: `approval:${squatted.id}`,
+  });
+  await assert.rejects(
+    approveRequest(client, { tenantRef, id: squatted.id, decidedBy: 'principal-approver' }),
+    ApprovalJobConflictError,
+  );
+  assert.equal((await requestRow(squatted.id)).status, 'pending', 'a squatted approval stays pending');
+  const squattedKeyJobs = (await jobRows()).filter((row) => row.idempotency_key === `approval:${squatted.id}`);
+  assert.deepEqual(squattedKeyJobs.map((row) => row.id), [squat.id], 'no job is reported or minted for the squatted approval');
+  // Same requester, same kind, but other params is still not this approval's job.
+  const squattedBySelf = await requestApproval(client, {
+    tenantRef, action: 'restore', params: { artifactId: completedArtifact.id }, requestedBy: restorer,
+  });
+  await enqueue(client, {
+    kind: 'restore',
+    params: { ...artifactDerivedJobParams, mode: 'dry-run' },
+    requestedBy: restorer,
+    idempotencyKey: `approval:${squattedBySelf.id}`,
+  });
+  await assert.rejects(
+    approveRequest(client, { tenantRef, id: squattedBySelf.id, decidedBy: 'principal-approver' }),
+    ApprovalJobConflictError,
+  );
+  assert.equal((await requestRow(squattedBySelf.id)).status, 'pending');
 
   // The evidence chain contains both the request and the decision, and verifies.
   const { rows: evidenceRows } = await client.query(

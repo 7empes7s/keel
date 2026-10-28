@@ -144,7 +144,8 @@ function restoreFakes({
   class FakeReader {
     async collect(version, path) {
       assert.equal(version, 'v1.0');
-      if (path === '/identity/conditionalAccess/policies' || path.startsWith('/roleManagement/directory/roleAssignments')
+      if (path === '/identity/conditionalAccess/policies' || path === '/identity/conditionalAccess/namedLocations'
+        || path.startsWith('/roleManagement/directory/roleAssignments')
         || path.startsWith('/groups?') || path.startsWith('/directory/deletedItems/microsoft.graph.group')
         // Task-152: deleted Conditional Access policies are looked up too.
         || path === '/identity/conditionalAccess/deletedItems/policies') {
@@ -373,7 +374,8 @@ function selectionFakes({ resourceSet = selectionResources() } = {}) {
   class FakeReader {
     async collect(version, path) {
       assert.equal(version, 'v1.0');
-      if (path === '/identity/conditionalAccess/policies' || path.startsWith('/roleManagement/directory/roleAssignments')
+      if (path === '/identity/conditionalAccess/policies' || path === '/identity/conditionalAccess/namedLocations'
+        || path.startsWith('/roleManagement/directory/roleAssignments')
         || path.startsWith('/groups?') || path.startsWith('/directory/deletedItems/microsoft.graph.group')
         // Task-152: deleted Conditional Access policies are looked up too.
         || path === '/identity/conditionalAccess/deletedItems/policies') {

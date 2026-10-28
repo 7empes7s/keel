@@ -30,12 +30,28 @@ async function post(path: string, body: Record<string, unknown>): Promise<unknow
     if (response.status === 409 && payload?.error === "no_change") {
       throw new NoChangeError(payload.message || "Nothing changed: the setting holds the same values as the approved setup.");
     }
+    // A refused ignore end date says why (for example, more than 90 days away).
+    if (response.status === 400 && payload?.message) throw new NoChangeError(`${payload.message[0].toUpperCase()}${payload.message.slice(1)}.`);
     throw new Error(`Action request failed (${response.status})`);
   }
   return response.json();
 }
 
 const failure = (error: unknown, fallback: string) => (error instanceof NoChangeError ? error.message : fallback);
+
+// The engine refuses a longer ignore (dispositionReview.mjs MAX_IGNORE_DAYS).
+const MAX_IGNORE_DAYS = 90;
+
+/** "Accepted 2 changes. 1 change to sign-in or admin access was sent to a second person." */
+export function decisionMessage(action: "accept" | "ignore", results: { sent: boolean }[]): string {
+  const count = (n: number) => `${n} ${n === 1 ? "change" : "changes"}`;
+  const sent = results.filter((result) => result.sent).length;
+  const done = results.length - sent;
+  const parts: string[] = [];
+  if (done) parts.push(`${action === "accept" ? "Accepted" : "Ignored"} ${count(done)}.`);
+  if (sent) parts.push(`${count(sent)} to sign-in or admin access ${sent === 1 ? "was" : "were"} sent to a second person to approve. Nothing changes until they do.`);
+  return parts.join(" ");
+}
 
 const sameIds = (a: string[], b: string[]) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
 
@@ -98,19 +114,25 @@ export function ChangeDecision({
         setError("Choose until when to ignore these changes.");
         return;
       }
+      // The day ends at 23:59 UTC, so the last day allowed is the one before day 90.
+      if (until.from >= addDays(today, MAX_IGNORE_DAYS)) {
+        setError(`Ignore for at most ${MAX_IGNORE_DAYS} days. Choose an earlier date.`);
+        return;
+      }
       expiresAt = new Date(`${until.from}T23:59:59Z`).toISOString();
     }
     setSubmitting(true);
     setError(null);
     try {
-      // A service setting change is accepted into its service's approved setup.
-      const settled = await Promise.all(items.map(async (item) => {
-        await post("/api/actions/dispose", item.serviceRead
+      // A service setting change is accepted into its service's approved setup. A change
+      // to sign-in or admin access goes to a second person instead (202 with a request).
+      const results = await Promise.all(items.map(async (item) => {
+        const result = await post("/api/actions/dispose", item.serviceRead
           ? { serviceChangeId: item.id, action, reason: justification }
-          : { driftId: item.id, action, reason: justification, ...(expiresAt ? { expiresAt } : {}) });
-        return item.id;
+          : { driftId: item.id, action, reason: justification, ...(expiresAt ? { expiresAt } : {}) }) as { approvalRequest?: unknown } | null;
+        return { id: item.id, sent: Boolean(result?.approvalRequest) };
       }));
-      onDone(settled, `${action === "accept" ? "Accepted" : "Ignored"} ${settled.length} ${settled.length === 1 ? "change" : "changes"}.`);
+      onDone(results.filter((result) => !result.sent).map((result) => result.id), decisionMessage(action, results));
     } catch (error) {
       setError(failure(error, "Keel could not save the decision. No further changes were sent."));
     } finally {
@@ -165,7 +187,10 @@ export function ChangeDecision({
         <small>Kept with the decision, so anyone can see later why it was made.</small>
       </label>
       {decision === "ignore" ? (
-        <DatePicker label="Ignore until" mode="single" onChange={setUntil} today={addDays(today, 1)} value={until} />
+        <div className="picker-field">
+          <DatePicker label="Ignore until" mode="single" onChange={setUntil} today={addDays(today, 1)} value={until} />
+          <small>Up to {MAX_IGNORE_DAYS} days. Keel shows the change again after that.</small>
+        </div>
       ) : null}
 
       {decision === "undo" && currentPreview ? (

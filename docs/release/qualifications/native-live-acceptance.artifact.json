@@ -1,20 +1,20 @@
 {
   "gate": "native-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "fb1493ea6a54d48fca03429409a35991a6386871",
-  "capturedAt": "2026-10-07T11:05:56.957Z",
+  "build": "e86afa9",
+  "capturedAt": "2026-10-28T07:15:17.536Z",
   "operations": [
     {
       "resourceType": "group",
-      "objectId": "b1b02d2f-3f30-4cb5-8a63-81f94de2734b",
+      "objectId": "5db0ee0a-a014-8fd8-8fc7-e068228e8c9c",
       "exchanges": [
         {
           "step": "read-live",
           "method": "GET",
-          "path": "/groups/b1b02d2f-3f30-4cb5-8a63-81f94de2734b",
+          "path": "/groups/5db0ee0a-a014-8fd8-8fc7-e068228e8c9c",
           "status": 200,
           "body": {
-            "id": "b1b02d2f-3f30-4cb5-8a63-81f94de2734b",
+            "id": "5db0ee0a-a014-8fd8-8fc7-e068228e8c9c",
             "displayName": "KEEL-RT-native-recovery-group",
             "deletedDateTime": null
           }
@@ -22,19 +22,19 @@
         {
           "step": "delete",
           "method": "DELETE",
-          "path": "/groups/b1b02d2f-3f30-4cb5-8a63-81f94de2734b",
+          "path": "/groups/5db0ee0a-a014-8fd8-8fc7-e068228e8c9c",
           "status": 204,
           "body": null
         },
         {
           "step": "read-deleted",
           "method": "GET",
-          "path": "/directory/deletedItems/b1b02d2f-3f30-4cb5-8a63-81f94de2734b",
+          "path": "/directory/deletedItems/5db0ee0a-a014-8fd8-8fc7-e068228e8c9c",
           "status": 200,
           "body": {
-            "id": "b1b02d2f-3f30-4cb5-8a63-81f94de2734b",
+            "id": "5db0ee0a-a014-8fd8-8fc7-e068228e8c9c",
             "displayName": "KEEL-RT-native-recovery-group",
-            "deletedDateTime": "2026-10-07T11:05:50Z"
+            "deletedDateTime": "2026-10-28T07:15:04Z"
           },
           "attempts": [
             404,
@@ -45,10 +45,10 @@
         {
           "step": "restore",
           "method": "POST",
-          "path": "/directory/deletedItems/b1b02d2f-3f30-4cb5-8a63-81f94de2734b/restore",
+          "path": "/directory/deletedItems/5db0ee0a-a014-8fd8-8fc7-e068228e8c9c/restore",
           "status": 200,
           "body": {
-            "id": "b1b02d2f-3f30-4cb5-8a63-81f94de2734b",
+            "id": "5db0ee0a-a014-8fd8-8fc7-e068228e8c9c",
             "displayName": "KEEL-RT-native-recovery-group",
             "deletedDateTime": null
           }
@@ -56,14 +56,16 @@
         {
           "step": "read-back",
           "method": "GET",
-          "path": "/groups/b1b02d2f-3f30-4cb5-8a63-81f94de2734b",
+          "path": "/groups/5db0ee0a-a014-8fd8-8fc7-e068228e8c9c",
           "status": 200,
           "body": {
-            "id": "b1b02d2f-3f30-4cb5-8a63-81f94de2734b",
+            "id": "5db0ee0a-a014-8fd8-8fc7-e068228e8c9c",
             "displayName": "KEEL-RT-native-recovery-group",
             "deletedDateTime": null
           },
           "attempts": [
+            404,
+            404,
             200
           ]
         }

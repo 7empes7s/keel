@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { postAction } from "@/lib/action-client";
+import { ActionRequestError, postAction } from "@/lib/action-client";
 import { type ListSort } from "@/components/list/list-paging";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { RecoveryMechanismTable, type RecoveryMechanism } from "@/components/recovery-mechanism";
@@ -466,8 +466,10 @@ export function RestoreSelection({
       setDryRunArtifactId(artifactId);
       setDryRunStatus("running");
       pollDryRun(job.id, artifactId);
-    } catch {
-      setError("KEEL could not start the check. Try again in a minute.");
+    } catch (failure) {
+      setError(failure instanceof ActionRequestError && failure.plain
+        ? failure.plain
+        : "KEEL could not start the check. Try again in a minute.");
     } finally {
       setPlanning(false);
     }

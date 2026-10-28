@@ -7,6 +7,8 @@ import { complianceCounts, complianceStatus } from "@/lib/compliance-view";
 import { getComplianceData, getOwnCheckChoices } from "@/lib/portal-data";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { ComplianceData, OwnCheckChoices } from "@/lib/types";
+import { AnonymityNote } from "@/components/anonymity-note";
+import { getAnonymitySetting } from "@/lib/anonymity";
 
 const DESCRIPTION = "Which security controls pass on this tenant, what each result rests on, and where backups are kept.";
 
@@ -44,6 +46,7 @@ export default async function BenchmarksPage() {
         status={complianceStatus(complianceCounts(data.findings))}
         title="Compliance"
       />
+      <AnonymityNote setting={await getAnonymitySetting()} />
       <CompliancePage canCheck={access.capabilities.includes("collect")} canConfigure={canConfigure} canRestore={access.capabilities.includes("restore")} data={data} now={data.generatedAt} ownChoices={ownChoices} />
     </>
   );

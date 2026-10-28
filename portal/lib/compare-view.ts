@@ -241,6 +241,7 @@ export const WORKLOAD_LABELS: Record<string, string> = {
   "purview-audit-alerts": "Purview alert and audit retention policies",
   "purview-retention-dlp": "Retention and data loss prevention",
   "sharepoint-site-settings": "SharePoint site settings",
+  "sharepoint-structure": "SharePoint site structure",
   "sharepoint-sites": "SharePoint sites",
   "onedrive-site-settings": "OneDrive settings",
   onedrive: "OneDrive files",

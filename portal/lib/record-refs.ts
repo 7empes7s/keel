@@ -6,6 +6,8 @@
 export type RefLike = { kind: string; id: string; name: string | null; readable: boolean; email?: string | null };
 
 /** What a linked record resolved to, for a field's usage line. */
+export { displayAccount } from "../../engine/insights/people.mjs";
+
 export function refUsage(ref: RefLike | null | undefined, extra?: string | null): string | undefined {
   if (!ref) return extra ?? undefined;
   const name = ref.readable ? ref.name : "no longer readable";

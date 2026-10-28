@@ -27,6 +27,7 @@ import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { snapshotHasFullCoverage } from '../engine/schedules/completions.mjs';
 import { snapshotIdForJob } from '../engine/schedules/forecast.mjs';
 import { schedulerPrincipal } from './keel-scheduler.mjs';
+import { parseCliArgs } from './args.mjs';
 
 export const TIERS = Object.freeze(['tier1', 'tier2', 'tier3']);
 
@@ -118,13 +119,21 @@ export async function health(client, { tenantRef, now = new Date() }) {
   return { tenantRef, tiers, ok: tiers.every((tier) => tier.ok) };
 }
 
-function arg(argv, name, fallback) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : fallback;
+// A cancel reason is free text a person types; see cli/args.mjs.
+const ARGS = {
+  name: 'keel-schedules-host',
+  strings: ['job', 'tenant-config', 'db-url'],
+  text: ['reason'],
+  booleans: ['help'],
+  positionals: 1,
+};
+
+function arg(opts, name, fallback) {
+  return opts[name] ?? fallback;
 }
 
 export async function main(argv = process.argv.slice(2)) {
-  const command = argv[0];
+  const { values: opts, positionals: [command] } = parseCliArgs(argv, ARGS);
   const commands = { preflight, 'run-now': runNow, health, cancel };
   if (!commands[command]) {
     console.error('usage: keel-schedules-host.mjs preflight|run-now|health --tenant-config FILE [--db-url URL]\n'
@@ -132,9 +141,9 @@ export async function main(argv = process.argv.slice(2)) {
     return 2;
   }
   const options = command === 'cancel'
-    ? { jobId: arg(argv, 'job'), reason: arg(argv, 'reason') }
-    : { tenantRef: tenantRefFor(readConfigFile(arg(argv, 'tenant-config', '/etc/keel/tenant.json'), { readFile: readFileSync, what: 'collector settings' }).tenantId) };
-  const dbUrl = arg(argv, 'db-url', process.env.KEEL_DB_URL);
+    ? { jobId: arg(opts, 'job'), reason: arg(opts, 'reason') }
+    : { tenantRef: tenantRefFor(readConfigFile(arg(opts, 'tenant-config', '/etc/keel/tenant.json'), { readFile: readFileSync, what: 'collector settings' }).tenantId) };
+  const dbUrl = arg(opts, 'db-url', process.env.KEEL_DB_URL);
   if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
   const client = await connect(dbUrl);
   try {

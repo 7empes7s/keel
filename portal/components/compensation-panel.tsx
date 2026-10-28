@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { type ContentEffect, ContentEffectsPanel } from "@/components/content-effects";
 import { Icon } from "@/components/shell/icons";
@@ -9,13 +9,16 @@ import { Badge, type BadgeTone } from "@/components/ui/badge";
 import { refusalSentence } from "@/lib/changes-view";
 import { type NamedKeys, namedResource } from "@/lib/job-names";
 import { refused, toast } from "@/lib/toast";
+import { type UndoChoice } from "@/lib/undo-choices";
 import {
   UNDO_STATEMENT,
+  assignmentReach,
   conflictSentence,
   fieldList,
   irrecoverableSentence,
   manualSentence,
   notAppliedSentence,
+  undoChoiceSentence,
   undoSubject,
 } from "@/lib/undo-view";
 
@@ -29,11 +32,27 @@ export interface CompensationPlan {
   compensates: string;
   atomic: false;
   statement: string;
-  operations: { naturalKey: string; resourceType: string; verb: "update" | "delete"; undoes: string; revertedFields?: string[] }[];
+  operations: {
+    naturalKey: string; resourceType: string; verb: "update" | "delete"; undoes: string; revertedFields?: string[];
+    // The person chose to delete this assigned policy: these assignments go first.
+    removeAssignments?: { ids: string[] };
+  }[];
   conflicts: { naturalKey: string; reason: string }[];
   notApplied: { naturalKey: string; reason: string }[];
   manual: { naturalKey: string; reason: string }[];
   irrecoverable: { naturalKey: string; effect: string; field: string; reason: string }[];
+  // A policy this restore created that is assigned now: undone only by the
+  // person's choice to delete it with its assignments, or skip it.
+  choices?: AssignedPolicyChoice[];
+}
+
+export interface AssignedPolicyChoice {
+  naturalKey: string;
+  resourceType: string;
+  assignmentCount: number;
+  assignmentIds: string[];
+  targets: { kind: string; groupId?: string }[];
+  choice: UndoChoice | null;
 }
 
 interface CompensationArtifact {
@@ -56,6 +75,10 @@ const STATUS_LABELS: Record<CompensationArtifact["status"], string> = {
 };
 
 function operationLabel(op: CompensationPlan["operations"][number]): string {
+  if (op.verb === "delete" && op.removeAssignments) {
+    const count = op.removeAssignments.ids.length;
+    return `Remove its ${count} assignment${count === 1 ? "" : "s"}, then delete the policy this restore created`;
+  }
   if (op.verb === "delete") return op.undoes === "restore-soft-deleted" ? "Delete again (return to deleted items)" : "Delete the object this restore created";
   return `Revert ${fieldList(op.revertedFields ?? []) || "changed fields"}`;
 }
@@ -79,10 +102,68 @@ function Section({ title, tone, items, names }: { title: string; tone: string; i
   );
 }
 
-export function CompensationPlanView({ plan, names = {} }: { plan: CompensationPlan; names?: NamedKeys }) {
+const CHOICE_LABELS: Record<UndoChoice, string> = { delete: "Delete it", skip: "Skip it" };
+const CHOSEN_TONES: Record<UndoChoice, BadgeTone> = { delete: "urgent", skip: "neutral" };
+
+/** The assigned policies the undo would delete: a choice per policy, or the choice made. */
+export function AssignedPolicyChoices({ items, names, picks, onPick }: {
+  items: AssignedPolicyChoice[];
+  names: NamedKeys;
+  // With onPick the choices are made here; without, the plan's choices are shown.
+  picks?: Record<string, UndoChoice | undefined>;
+  onPick?: (naturalKey: string, choice: UndoChoice) => void;
+}) {
+  if (items.length === 0) return null;
+  const pending = items.filter((item) => (picks?.[item.naturalKey] ?? item.choice) == null).length;
+  return (
+    <section className="compensation-section undo-choices" data-tone="soon">
+      <h3 className="compensation-head">
+        <Badge icon={null} tone="soon">{String(items.length)}</Badge>
+        {pending > 0 ? "Assigned now: choose delete or skip" : "Assigned now: your choice"}
+      </h3>
+      <p className="undo-choices-why">This restore created {items.length === 1 ? "this policy" : "these policies"}, and someone has assigned {items.length === 1 ? "it" : "them"} since. Deleting a policy takes its settings off every device and person it applies to.</p>
+      <ul className="compensation-list">
+        {items.map((item) => {
+          const picked = picks?.[item.naturalKey] ?? item.choice ?? null;
+          const reach = assignmentReach(item.targets);
+          const name = undoSubject(item.naturalKey, names, item.resourceType);
+          return (
+            <li className="undo-choice" data-choice={picked ?? "pending"} key={item.naturalKey}>
+              <div className="undo-choice-head">
+                <strong className="resource-name">{name}</strong>
+                <Badge icon={null} tone="soon">{`Assigned · ${item.assignmentCount}`}</Badge>
+                {reach ? <span className="undo-choice-reach">{reach}</span> : null}
+              </div>
+              {onPick ? (
+                <fieldset className="undo-choice-options">
+                  <legend className="visually-hidden">{`What should undo do with ${name}?`}</legend>
+                  {(["delete", "skip"] as const).map((choice) => (
+                    <label className="undo-choice-option" data-option={choice} key={choice}>
+                      <input checked={picked === choice} name={`undo-choice-${item.naturalKey}`} onChange={() => onPick(item.naturalKey, choice)} type="radio" value={choice} />
+                      <span className="undo-choice-label">{CHOICE_LABELS[choice]}</span>
+                      <span className="undo-choice-effect">{undoChoiceSentence(choice, item.assignmentCount)}</span>
+                    </label>
+                  ))}
+                </fieldset>
+              ) : (
+                <p className="undo-choice-made">
+                  {picked ? <Badge icon={null} tone={CHOSEN_TONES[picked]}>{`You chose: ${CHOICE_LABELS[picked].toLowerCase()}`}</Badge> : <Badge icon={null} tone="soon">Waiting for a choice</Badge>}
+                  {picked ? <span>{undoChoiceSentence(picked, item.assignmentCount)}</span> : null}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
+export function CompensationPlanView({ plan, names = {}, choices }: { plan: CompensationPlan; names?: NamedKeys; choices?: ReactNode }) {
   return (
     <div className="compensation-plan">
       <p className="compensation-statement">{UNDO_STATEMENT}</p>
+      {choices ?? <AssignedPolicyChoices items={plan.choices ?? []} names={names} />}
       <Section items={plan.operations.map((op) => ({ naturalKey: op.naturalKey, resourceType: op.resourceType, text: operationLabel(op) }))} names={names} title="Will be undone" tone="ok" />
       <Section items={plan.conflicts.map((item) => ({ naturalKey: item.naturalKey, text: conflictSentence(item.reason) }))} names={names} title="Changed since, so not overwritten" tone="warn" />
       <Section items={plan.irrecoverable.map((item) => ({ naturalKey: item.naturalKey, text: irrecoverableSentence(item, names) }))} names={names} title="Cannot be undone" tone="bad" />
@@ -99,6 +180,10 @@ export function CompensationPlanView({ plan, names = {} }: { plan: CompensationP
         {plan.irrecoverable.map((item, index) => <RecordField copy={false} key={`lost-${index}`} label={`Cannot be undone · ${item.naturalKey}`} value={`${item.effect} · ${item.field} · ${item.reason}`} />)}
         {plan.manual.map((item, index) => <RecordField copy={false} key={`manual-${index}`} label={`Manual review · ${item.naturalKey}`} value={item.reason} />)}
         {plan.notApplied.map((item, index) => <RecordField copy={false} key={`skip-${index}`} label={`Nothing to undo · ${item.naturalKey}`} value={item.reason} />)}
+        {(plan.choices ?? []).map((item, index) => (
+          <RecordField copy={false} key={`choice-${index}`} label={`Assigned now · ${item.naturalKey}`}
+            value={`${item.choice ?? "no choice yet"} · assignments ${item.assignmentIds.join(", ")}`} />
+        ))}
       </TechnicalDetails>
     </div>
   );
@@ -112,6 +197,10 @@ interface PanelProps {
   canApprove: boolean;
 }
 
+function pendingCount(items: AssignedPolicyChoice[], picks: Record<string, UndoChoice | undefined>): number {
+  return items.filter((item) => picks[item.naturalKey] == null).length;
+}
+
 export function CompensationPanel({ restoreArtifactId, compensationArtifactId = null, failed, canRestore, canApprove }: PanelProps) {
   const [artifactId, setArtifactId] = useState<string | null>(compensationArtifactId);
   const [artifact, setArtifact] = useState<CompensationArtifact | null>(null);
@@ -119,12 +208,16 @@ export function CompensationPanel({ restoreArtifactId, compensationArtifactId = 
   const [busy, setBusy] = useState(false);
   const [justification, setJustification] = useState("");
   const [requested, setRequested] = useState(false);
+  const [picks, setPicks] = useState<Record<string, UndoChoice | undefined>>({});
 
   async function load(id: string): Promise<boolean> {
     const response = await fetch(`/api/actions/restore/dry-run/${encodeURIComponent(id)}`, { cache: "no-store" });
     if (response.status === 404) return false; // the worker has not persisted it yet
     if (!response.ok) throw new Error(String(response.status));
-    setArtifact(((await response.json()) as { artifact: CompensationArtifact }).artifact);
+    const loaded = ((await response.json()) as { artifact: CompensationArtifact }).artifact;
+    setArtifact(loaded);
+    // A reload of the same plan (an approval) keeps picks not yet sent.
+    if (loaded.id !== artifact?.id) setPicks(Object.fromEntries((loaded.compensation?.choices ?? []).map((item) => [item.naturalKey, item.choice ?? undefined])));
     return true;
   }
 
@@ -146,13 +239,13 @@ export function CompensationPanel({ restoreArtifactId, compensationArtifactId = 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [artifactId]);
 
-  async function planUndo() {
+  async function planUndo(undoChoices?: Record<string, UndoChoice>) {
     setBusy(true);
     try {
       const response = await fetch("/api/actions/restore/compensate", {
         method: "POST",
         headers: { "content-type": "application/json", "idempotency-key": `compensate:${restoreArtifactId}:${Date.now()}` },
-        body: JSON.stringify({ restoreArtifactId }),
+        body: JSON.stringify(undoChoices ? { restoreArtifactId, undoChoices } : { restoreArtifactId }),
       });
       const payload = (await response.json().catch(() => ({}))) as { artifactId?: string; message?: string };
       if (!response.ok || !payload.artifactId) {
@@ -189,7 +282,38 @@ export function CompensationPanel({ restoreArtifactId, compensationArtifactId = 
   }
 
   const compensation = artifact?.compensation ?? null;
-  const executable = artifact?.status === "completed" && (compensation?.operations.length ?? 0) > 0;
+  const choiceItems = compensation?.choices ?? [];
+  const pendingInPlan = choiceItems.filter((item) => item.choice == null).length;
+  const allPicked = choiceItems.every((item) => picks[item.naturalKey] != null);
+  const picksChanged = choiceItems.some((item) => (picks[item.naturalKey] ?? null) !== item.choice);
+  const executable = artifact?.status === "completed" && pendingInPlan === 0 && !picksChanged && (compensation?.operations.length ?? 0) > 0;
+  const canChoose = canRestore && artifact?.status === "completed" && !requested;
+  const choices = choiceItems.length > 0 ? (
+    <>
+      <AssignedPolicyChoices
+        items={choiceItems}
+        names={artifact?.names ?? {}}
+        onPick={canChoose ? (naturalKey, choice) => setPicks((current) => ({ ...current, [naturalKey]: choice })) : undefined}
+        picks={picks}
+      />
+      {canChoose && (picksChanged || pendingInPlan > 0) ? (
+        <div className="undo-choices-apply">
+          <p>{allPicked ? "Your choices change the plan. Update it, then ask for approval." : `Choose delete or skip for ${pendingCount(choiceItems, picks)} more ${pendingCount(choiceItems, picks) === 1 ? "policy" : "policies"}.`}</p>
+          <button
+            aria-busy={busy || undefined}
+            className="btn btn-primary btn-sm"
+            disabled={busy || !allPicked}
+            onClick={() => void planUndo(Object.fromEntries(choiceItems.map((item) => [item.naturalKey, picks[item.naturalKey] as UndoChoice])))}
+            type="button"
+          >
+            Update the undo plan
+          </button>
+        </div>
+      ) : null}
+    </>
+  ) : undefined;
+  const statusTone: BadgeTone = artifact && artifact.status === "completed" && pendingInPlan > 0 ? "soon" : STATUS_TONES[artifact?.status ?? "completed"];
+  const statusLabel = artifact && artifact.status === "completed" && pendingInPlan > 0 ? "Waiting for your choice" : STATUS_LABELS[artifact?.status ?? "completed"];
   return (
     <section aria-labelledby="compensation-heading" className="panel compensation-panel">
       <div className="section-head">
@@ -213,7 +337,7 @@ export function CompensationPanel({ restoreArtifactId, compensationArtifactId = 
       ) : (
         <>
           <p className="compensation-status">
-            <Badge tone={STATUS_TONES[artifact.status]}>{STATUS_LABELS[artifact.status]}</Badge>
+            <Badge tone={statusTone}>{statusLabel}</Badge>
           </p>
           <TechnicalDetails summary="Technical details for this undo plan">
             <RecordField label="Undo plan ID" value={artifact.id} usage={<code>GET /api/actions/restore/dry-run/{artifact.id}</code>} />
@@ -239,7 +363,7 @@ export function CompensationPanel({ restoreArtifactId, compensationArtifactId = 
               onApproved={() => void load(artifact.id)}
             />
           ) : null}
-          {compensation ? <CompensationPlanView names={artifact.names ?? {}} plan={compensation} /> : null}
+          {compensation ? <CompensationPlanView choices={choices} names={artifact.names ?? {}} plan={compensation} /> : null}
           {executable && canRestore ? (
             requested ? (
               <p className="compensation-requested">Sent to approvers. Nothing changes until one of them approves.</p>

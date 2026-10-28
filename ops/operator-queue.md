@@ -9454,8 +9454,18 @@ item that needs it stays untouched.
     package is not uploaded (PATCH refused, and assumed the same for its links), are `skipped` with a `manual:` reason; nothing is written.
   - **Capture:** `entraLive.mjs capture --fixture KEEL-RT-209-app-web` (bare name) now finds `mobileApp:KEEL-RT-209-app-web`.
 - Needs: /opt/keel-live at `cb92c727` or later (`grep -q updateRelationships /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in progress (2026-10-28 11:40 UTC, root keel-operator)
-- Result: in progress (2026-10-28 11:40 UTC, root keel-operator): started at B `5b207ea`; order Q209 → Q210 → Q211.
+- Status: done in part (link parts blocked by #653)
+- Result: done in part (2026-10-28 11:52 UTC, root keel-operator): category round, recreate round and bare-name capture promoted; the link parts of steps 3–4 were skipped because Intune refuses links between unpublished shells (**#653**, decision needed); step 5's `manual:` skip could not be reached, because the drift itself is refused. B = **5b207ea**. Restorer for writes, Collector for reads/backups; global admin not used; no app assigned; no package uploaded.
+  - Fixtures: KEEL-RT-209-cat; web link KEEL-RT-209-app-web (KEEL-RT-209-cat + Business); Win32 shells KEEL-RT-209-app-main/-dep (no file). The dependency set by hand through `POST /beta/deviceAppManagement/mobileApps/{main}/updateRelationships` (main → dep, detect) → **400 BadRequest "Invalid operation: app's PublishingState is not 'Published'."** The route resolves; Intune refuses the app's state.
+  - Step 1: backup S `d912eccc`, exit 3 (unrelated accessPackageAssignment 504; snapshot complete). mobileApp complete (4), mobileAppCategory complete (10), mobileAppRelationship complete-empty (0). The web link's categories = [Business, KEEL-RT-209-cat]. No link in S.
+  - Step 2: dry run `9b51659b` exit 0, log `  changes mobileApp:KEEL-RT-209-app-web: categories added 1, removed 0`; artifact results `changes: {fields: [], categories: {added: 1, removed: 0}}`. Approval **1c968c56**; enforce exit 0 (`assignments already as in the backup; categories added 1, removed 0`). Reads back in both categories.
+  - Step 3: skipped (no link could be made).
+  - Step 4: deleted all four objects. Dry run `db07cdf2` exit 0 (web link: `categories added 1, removed 0, notInIntuneYet 1`); approval **22f8bc07**; enforce exit 0. Category, both shells and the web link were recreated (cat 71986b7f→32352d51, web be9f6b36→e3205478, main 5a2b3211→54debf9b, dep c98e820b→8b91a377). The web link is back in the **new** category and Business. **No "stored separately" step.** Upload-the-package steps were opened on both shells. Nothing assigned.
+  - Step 5: drift by hand `PATCH /v1.0/.../mobileApps/{main}` (description) → 400 "Invalid operation: app's PublishingState is not 'Published'." Dry run `0d4f20c0` exit 0: no-op, no PATCH attempted.
+  - Step 6: `entraLive.mjs capture --resource-type mobileApp --operation update --fixture KEEL-RT-209-app-web` (bare name): **captured**, exit 0.
+  - Evidence: `claude/live-evidence-q209` @ 93d94ee (off master, no PR). Promoted mobileApp.create, mobileApp.update and mobileAppCategory.create: fixture-tested → live-qualified. pseudonymize check exit 0; scans clean.
+  - Cleanup: all KEEL-RT-209 apps and the category deleted; re-read shows none. In KEEL, 11 completion items from db07cdf2 stay pending for the deleted fixtures.
+- Earlier result: in progress (2026-10-28 11:40 UTC, root keel-operator): started at B `5b207ea`; order Q209 → Q210 → Q211.
 - **Test tenant only. Restorer for writes; no app assigned; no package uploaded.** Fixtures (create by hand, KEEL-RT-209- prefix):
   app category `KEEL-RT-209-cat`; web link `KEEL-RT-209-app-web` (https://example.com/) in `KEEL-RT-209-cat` and `Business`;
   two Win32 shells `KEEL-RT-209-app-main` and `KEEL-RT-209-app-dep` (no file, as in Q185); a dependency main → dep (`detect`) set by
@@ -9488,8 +9498,9 @@ item that needs it stays untouched.
   - A link is deleted only as such an undo; any other delete is a `manual:` step.
 - Needs: Q209 `done` (it proves Intune accepts links between the KEEL-RT shells; if Q209 found it refuses them, mark this
   `blocked` with that answer). /opt/keel-live has the change: `grep -q appRelationshipDelete /opt/keel-live/engine/restore/intuneOperations.mjs`.
-- Status: in progress (2026-10-28 11:40 UTC, root keel-operator)
-- Result: in progress (2026-10-28 11:40 UTC, root keel-operator): started at B `5b207ea`; order Q209 → Q210 → Q211.
+- Status: blocked (#653, decision needed)
+- Result: blocked (2026-10-28 11:52 UTC, root keel-operator), not started. Q209 found that Intune refuses links between the KEEL-RT shells: `POST /beta/deviceAppManagement/mobileApps/{main}/updateRelationships` (main → dep, detect, both unpublished Win32 shells with no package) → **400 BadRequest "Invalid operation: app's PublishingState is not 'Published'."** The fixture links need an uploaded package, which the rules forbid. **#653** (decision needed: allow one harmless published test package for KEEL-RT shells, or keep links fixture-tested only). Nothing written; no KEEL-RT-210 object created.
+- Earlier result: in progress (2026-10-28 11:40 UTC, root keel-operator): started at B `5b207ea`; order Q209 → Q210 → Q211.
 - **Test tenant only. Restorer for writes, Collector for reads; no app assigned; no package uploaded.** Self-approve under the
   2026-10-14 standing authorization and log every approval id. Fixtures (by hand, KEEL-RT-210- prefix): three Win32 shells
   `KEEL-RT-210-app-main`, `KEEL-RT-210-app-dep`, `KEEL-RT-210-app-other` (no file, as in Q209); on main, two dependencies set by
@@ -9517,8 +9528,15 @@ item that needs it stays untouched.
   Intune types with a delete (fixtures only). This item is the one live check, on a device configuration.
 - Needs: /opt/keel-live at `5b207ea6` or later (`grep -q undoesCreate /opt/keel-live/engine/restore/recordWriter.mjs`).
   Independent of Q209/Q210.
-- Status: in progress (2026-10-28 11:40 UTC, root keel-operator)
-- Result: in progress (2026-10-28 11:40 UTC, root keel-operator): started at B `5b207ea`; order Q209 → Q210 → Q211.
+- Status: done
+- Result: done (2026-10-28 12:02 UTC, root keel-operator). B = **9550175** (live moved from 5b207ea before this item; the only change is the added test `engine/restore/undoCreatedIntunePolicy.test.mjs`). Restorer for writes, Collector for reads/backup; global admin not used; never assigned.
+  - Fixture KEEL-RT-211-config (windows10GeneralConfiguration, cameraBlocked false, no assignments): id0 `2471e848`.
+  - Step 1: backup S `a2714ea9`, exit 3 (unrelated entitlementManagementRoleAssignment 504; snapshot complete). deviceConfiguration complete (7); fixture in S, assignments complete-empty.
+  - Step 2: deleted by hand (GET 404). Dry run A `aa4a78b8` exit 0; approval **1e12a0eb**; enforce exit 0, applied 1. id1 `78fe636c`; reads back with cameraBlocked false; `/assignments` = [].
+  - Step 3: `--compensate A --persist-artifact C`, C `76300bbe`, exit 0: `compensation of aa4a78b8-…: 1 inverse write(s), 0 conflict(s), 0 not applied, 0 manual, 0 irrecoverable` (delete, undoes create, target id1). Approval **612a49b0**; `--artifact C --enforce` exit 0, `compensation applied 1, skipped 0, failed 0`. Journal: one `DELETE` of id1, succeeded; GET id1 → 404. **No `partial observation cannot authorise delete`.**
+  - Step 4: `$filter=displayName eq 'KEEL-RT-211-config'` → `[]`. Step 5: nothing left. In KEEL, 2 completion items from aa4a78b8 stay pending for the deleted fixture.
+  - Failed Graph calls: none. No `manual: the policy is assigned` step.
+- Earlier result: in progress (2026-10-28 11:40 UTC, root keel-operator): started at B `5b207ea`; order Q209 → Q210 → Q211.
 - **Test tenant only. Restorer for writes, Collector for reads. The policy is never assigned.** Self-approve under the 2026-10-14
   standing authorization and log every approval id. Fixture (by hand): a Windows 10 device restriction profile
   (`#microsoft.graph.windows10GeneralConfiguration`) named `KEEL-RT-211-config`, one harmless setting (for example

@@ -1,5 +1,5 @@
 import { CATALOG, catalogReadPath, catalogReadPaths } from '../../tools/tenant-probe/catalog.mjs';
-import { redactSecrets } from '../../tools/tenant-probe/graph.mjs';
+import { isServerError, redactSecrets } from '../../tools/tenant-probe/graph.mjs';
 import { DESCRIPTORS } from './descriptors.mjs';
 import { register, get } from './registry.mjs';
 import { ID_KEY_TYPES } from '../cir/naturalKey.mjs';
@@ -112,7 +112,7 @@ function graphNativeAdapter(type) {
     async collect(reader, scope = {}) {
       const { items, error, capped } = await collectRaw(reader, scope);
       if (error) {
-        const failure = new Error(`collecting ${type} failed: ${redactSecrets(error.error ?? error.message ?? error.status)}`);
+        const failure = new Error(`collecting ${type} failed: ${redactSecrets(error.error || error.message || `HTTP ${error.status ?? 'unknown'}`)}`);
         if (unavailableOnTenant(error)) failure.unavailableOnTenant = true;
         throw failure;
       }
@@ -381,11 +381,27 @@ export async function collectM1(reader, scope = {}) {
 }
 
 function errorDetail(error) {
+  const httpStatus = Number.isInteger(error?.status) ? error.status : null;
+  const graphCode = typeof error?.code === 'string' ? error.code : null;
+  const text = redactSecrets(error?.error ?? error?.message ?? '');
   return {
-    message: redactSecrets(error?.error ?? error?.message ?? `HTTP ${error?.status ?? 'unknown'}`),
-    httpStatus: Number.isInteger(error?.status) ? error.status : null,
-    graphCode: typeof error?.code === 'string' ? error.code : null,
+    message: isServerError(httpStatus) ? serviceErrorMessage(httpStatus, graphCode, text, error?.tries) : (text || `HTTP ${httpStatus ?? 'unknown'}`),
+    httpStatus,
+    graphCode,
   };
+}
+
+/**
+ * A 500, 502 or 504 that lasted through the reader's retries, in words: a fault
+ * on Microsoft's side, not a missing permission or a Keel bug. Graph often
+ * sends no message with it (To Do settings: 500 UnknownError, empty message).
+ * The kind stays a gap in the backup; this only says whose fault it is.
+ */
+export function serviceErrorMessage(httpStatus, graphCode, text, tries) {
+  const answer = `HTTP ${httpStatus}${graphCode ? ` ${graphCode}` : ''}`;
+  const attempts = Number.isSafeInteger(tries) && tries > 1 ? ` on all ${tries} tries` : '';
+  return `Microsoft service error: Microsoft 365 answered ${answer}${attempts}${text ? ` (${text})` : ''}. `
+    + 'This is a fault on Microsoft\'s side, not a missing permission. The next backup tries again.';
 }
 
 /**

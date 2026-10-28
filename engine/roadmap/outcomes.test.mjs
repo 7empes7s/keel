@@ -60,10 +60,12 @@ test('GraphReader: a second-page failure keeps page-one items, code and status, 
       json: async () => ({ error: { code: 'Error_InternalServer', message: `backend failed; echoed Authorization: Bearer ${JWT}` } }),
     };
   };
-  const reader = new GraphReader(async () => 'fixture-token');
+  const reader = new GraphReader(async () => 'fixture-token', { serverErrorDelayMs: 0 });
   const result = await reader.collect('v1.0', '/groups');
 
-  assert.equal(requested.length, 2, 'the walk attempted page two');
+  // Page one, then page two tried three times: a 500 is retried twice before it counts.
+  assert.equal(requested.length, 4, 'the walk attempted page two, and retried its 500');
+  assert.equal(result.error.tries, 3);
   // Mutation pin (2): the first page is partial evidence, never a completion.
   assert.deepEqual(result.items, [{ id: 'g1' }], 'first-page items survive the second-page failure');
   assert.equal(result.pages, 1);

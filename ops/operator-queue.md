@@ -9193,7 +9193,13 @@ item that needs it stays untouched.
   `servicenowLive.mjs` capture would refuse them. Test-user references (`env:KEEL_SN_TEST_USER_ONE` / `_TWO`) stay as
   they are: the capture still reads any `env:` name for test users.
 - Needs: PR #635 deployed (`keel/live-deploy` success on its merge commit).
-- Status: todo
+- Status: done
+- Result: done (2026-10-28 08:50 UTC, root keel-operator). Host files only; no tenant, ServiceNow instance or database write; no restart; no value printed. B = `031d977` (has #635, merge 3b6c925).
+  1. `keel_integration_reference` functions: **1**. ITSM adapter + Teams/Slack/PagerDuty/SMS channel rows: **0** (as Q199).
+  2. `/etc/keel/servicenow-qualification/servicenow-config.json` (600 root, kept): `credential.tokenRef` `env:KEEL_SN_TOKEN` → **`env:KEEL_INTEGRATION_SN_TOKEN`**; `callback.secretRef` `env:KEEL_SN_CALLBACK_SECRET` → **`env:KEEL_INTEGRATION_SN_CALLBACK_SECRET`**. Every other key unchanged.
+  3. `/etc/keel/servicenow-qualification.env` (600 root, kept): `KEEL_SN_CALLBACK_SECRET` renamed to `KEEL_INTEGRATION_SN_CALLBACK_SECRET` (same value). There was no `KEEL_SN_TOKEN=` line (the capture mints the token at capture time; from now on into `KEEL_INTEGRATION_SN_TOKEN`). Test-user names unchanged. Backups (same owner and mode): `servicenow-config.json.bak-q202` and `servicenow-qualification.env.bak-q202`, both next to the originals.
+  4. From `/opt/keel-live`: `servicenow.mjs check` exit **0**, `problems: []`. `servicenowLive.mjs plan` exit **0**; refusals only "the instance is not declared non-production: pass --confirm-non-production-instance <host>" and "the non-production declaration needs --declared-by <operator name>" (as in Q17); no `must name an env:KEEL_INTEGRATION_*` refusal.
+  5. `grep -c '^KEEL_SN_CALLBACK_SECRET=\|^KEEL_SN_TOKEN='`: **0**. `grep -c '^KEEL_INTEGRATION_'`: **1**.
 - **Host files only. No tenant, ServiceNow instance or database write. No restart.** Never print a value.
 - Do:
   1. Read-only check that the deploy applied the carry-over:

@@ -9289,8 +9289,8 @@ item that needs it stays untouched.
   `exchange-distribution-groups.distribution-group.add` (re-create a list that is gone) and `.update` (put back its settings).
   The container (`ops/powershell/run-dsc.ps1`) refuses any other resource, any undeclared property, and any Set that is not
   `Ensure = Present` (KEEL never removes through DSC). Owners, moderators, senders, send-on-behalf, addresses and members are never sent.
-- Needs: /opt/keel-live at the PR #637 merge or later (`test -f /opt/keel-live/ops/powershell/run-dsc.ps1`). Does **not** need PR #602.
-- Status: blocked (#662: base image digest; seed recipient decision needed)
+- Needs: /opt/keel-live at the PR #669 merge or later (`grep -q 042240d5 /opt/keel-live/ops/powershell/Dockerfile.dsc`). Does **not** need PR #602.
+- Status: todo (2026-10-28 22:40: #662 answered. Digest re-pinned in PR #669; seed recipients decided, see step 0. Rerun from step 0.)
 - Result: blocked (2026-10-28 21:40 UTC, root keel-operator). B = `39129d8a`. Nothing written in the tenant; global admin not used. Finding **#662**.
   1. Image: **build failed, exit 1** (`docker build -t keel-dsc:candidate -f Dockerfile.dsc .` from a clean `git archive` of `ops/powershell` at B). The pinned base image is not found (`Dockerfile.dsc:26`): `mcr.microsoft.com/powershell:7.5-ubuntu-24.04@sha256:370134f0be3867fadc2e5845c39ed59120fbd4d19ca5136f40831a96f0404cf1: not found`. `docker manifest inspect` on that digest → `no such manifest`; the tag's current digest is `sha256:042240d5…`. Inference: the pinned value was never this tag's digest. Fix: re-pin from `RepoDigests` (#662). keel-powershell:latest / :q197 untouched.
   0. Seed: not made (`KEEL-RT-capture-seed` absent). **Decision needed:** no KEEL-RT test user has a mailbox or is a MailUser, so `-Members/-ManagedBy/-ModeratedBy <KEEL-RT test user>` has no target. Options: use `KEEL-RT-recipients-shared`, mail-enable/license a KEEL-RT test user, or change the step.
@@ -9305,11 +9305,19 @@ item that needs it stays untouched.
     never deletes); remove it by hand afterwards only if you want to, with `Remove-DistributionGroup` as the Restorer, and say so.
   - one **seeded** list `KEEL-RT-capture-seed`, made once by you (step 0). The update is captured on it, to show a Set leaves members,
     owners and moderators alone on a list that has them. Each capture changes its display name and two settings. It stays.
+  - two dedicated recipients for the seed, made once by you (step 0), used by nothing else: `KEEL-RT-capture-owner`, a **shared
+    mailbox** (no licence; its account cannot sign in, as for every shared mailbox; do not set a password), and `KEEL-RT-capture-member`,
+    a **mail contact** with the address `keel-rt-capture-member@example.invalid` (an address that can never receive mail). They stay.
 - Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` from
   `/etc/keel/qualification.env` (never printed):
-  0. **Seed (once):** with your usual admin path (Restorer, Exchange), on the test tenant:
-     `New-DistributionGroup -Name KEEL-RT-capture-seed -Type Distribution -Members <a KEEL-RT test user> -ManagedBy <another KEEL-RT test user>`,
-     then `Set-DistributionGroup KEEL-RT-capture-seed -HiddenFromAddressListsEnabled $true -ModerationEnabled $true -ModeratedBy <a KEEL-RT test user> -BypassModerationFromSendersOrMembers <the owner> -ReportToManagerEnabled $true -BypassNestedModerationEnabled $true -MailTip "KEEL capture seed"`
+  0. **Seed (once):** with your usual admin path (Restorer, Exchange), on the test tenant (decision for #662: dedicated recipients, not
+     the Q178 fixtures and not a licensed user):
+     `New-Mailbox -Shared -Name KEEL-RT-capture-owner -Alias keel-rt-capture-owner`, then
+     `Set-Mailbox KEEL-RT-capture-owner -HiddenFromAddressListsEnabled $true`;
+     `New-MailContact -Name KEEL-RT-capture-member -ExternalEmailAddress keel-rt-capture-member@example.invalid`, then
+     `Set-MailContact KEEL-RT-capture-member -HiddenFromAddressListsEnabled $true`;
+     `New-DistributionGroup -Name KEEL-RT-capture-seed -Type Distribution -Members KEEL-RT-capture-member -ManagedBy KEEL-RT-capture-owner`,
+     then `Set-DistributionGroup KEEL-RT-capture-seed -HiddenFromAddressListsEnabled $true -ModerationEnabled $true -ModeratedBy KEEL-RT-capture-owner -BypassModerationFromSendersOrMembers KEEL-RT-capture-member -ReportToManagerEnabled $true -BypassNestedModerationEnabled $true -MailTip "KEEL capture seed"`
      (non-default values, so the capture would see a Set resetting them). Note its `Guid` (`Get-DistributionGroup KEEL-RT-capture-seed | Select Guid`).
      Skip if it already exists with all of these set.
   1. **Image:** as for keel-powershell (Q-rebuild pattern): from a clean `git archive` of `ops/powershell` at B,

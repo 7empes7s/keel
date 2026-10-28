@@ -9773,3 +9773,26 @@ item that needs it stays untouched.
   answer 500 and the next scheduled collect fails the same way, it is persistent.
 - **Report:** the six lines verbatim (status, request-id, client-request-id, error code and message), the control line,
   the step 2 outcome, and the build at `/opt/keel-live`. The request ids are what a Microsoft support case needs.
+
+### Q216: Recapture the SharePoint structure backup now that hub `Targets` is not expected (after PR #668, fixes #664)
+- Drafted by the "Fix hub site targets showing partial" thread (2026-10-28). Q189's rerun proved all four reads, but every run was
+  `sharepoint-structure: partial` ("Hub site: targets was not returned"): `Get-PnPHubSite` returns `Targets` as an unloaded
+  collection that the JSON converter drops. PR #668 stops declaring `Targets` (hub join rights are granted by hand and were never
+  restored). Expected now: `complete`.
+- Needs: /opt/keel-live at the PR #668 merge or later (`! grep -q "'LogoUrl', 'Targets'" /opt/keel-live/engine/collect/workloads/sharepointStructure.mjs`).
+  If the grep still matches, wait for the deploy.
+- Status: todo
+- **Tenant:** reads only, with the Collector `powershellConfigs.sharepoint` config (`/etc/keel/purview-collector.json`), as Q189.
+  Q189 fixtures and `/etc/keel/workload-scope.json` stay as they are. Nothing created, changed or granted.
+- Do, from your clone at the deployed commit B, as Q189 (same HMAC key and `db.env` handling; never print a secret):
+  1. Q189 step 3 (capture, then `pseudonymize.mjs check`, then `verify --gate workload-reads-live-acceptance --require-live`).
+     Report exit codes, `outcome`, `proven` and `notProven` verbatim.
+  2. Q189 step 4: commit the new record to `claude/live-evidence-sharepoint-structure` (fresh from `origin/master`, that file only,
+     secret and tenant-domain scan) and push. No PR.
+  3. Q189 step 5: import from the full `docs/release/qualifications` dir, then `workload-collect run` once. Report the
+     sharepoint-structure outcome and reasons, the collection id, and its hub row's field coverage (field name and status only).
+  4. Q189 step 6: a second `run` with no tenant change; report sharepoint-structure's new changes.
+- **Expected:** capture `outcome` "complete", proven all four, notProven []; both runs `sharepoint-structure: complete` with no
+  "targets" reason; every hub field `observed`; 0 new changes on the second run (dropping `Targets` must not show as a change).
+  Other workloads may still be partial for their own reasons (for example the purview auto-label timeout); list them, don't chase them.
+- **Report:** per step, the deployed commit, the evidence branch and commit.

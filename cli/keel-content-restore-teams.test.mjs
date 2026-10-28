@@ -105,7 +105,8 @@ test('request, approval and run of a fixture restore through the real write tran
   assert.equal(report.restored, 5);
   assert.equal(report.authorsReplaced, 1);
   const writes = sent.filter((request) => request.method === 'POST');
-  assert.equal(writes[0].body['@microsoft.graph.channelCreationMode'], 'migration');
+  assert.equal(writes[0].body['@microsoft.graph.channelCreationMode'], undefined);
+  assert.ok(new URL(writes[1].url).pathname.endsWith('/startMigration'), 'the new channel goes into import mode before any message');
   assert.match(writes[0].body.displayName, /^KEEL-RT-import-proof \(restored /);
   assert.ok(new URL(writes.at(-1).url).pathname.endsWith('/completeMigration'));
   assert.ok(writes.every((request) => decodeURIComponent(new URL(request.url).pathname).startsWith(`/v1.0/teams/${TEAM}/`)));

@@ -6,13 +6,15 @@
  * mode would hide new messages from its members until the import ends.
  *
  * How the import API works (Microsoft Graph, app-only, `Teamwork.Migrate.All`):
- *  1. POST /teams/{team}/channels with "@microsoft.graph.channelCreationMode": "migration"
- *     and a createdDateTime in the past creates the channel in import mode.
+ *  1. POST /teams/{team}/channels creates a plain standard channel, then
+ *     POST .../startMigration with a past conversationCreationDateTime puts it into import
+ *     mode (v1.0, then beta). Graph refuses a channel created in import mode
+ *     ("@microsoft.graph.channelCreationMode": "migration") unless the whole team was
+ *     created in import mode (live, #656), so that route is not used.
  *  2. POST .../messages and .../messages/{id}/replies with the original createdDateTime
  *     and author (`from.user`, a user of the tenant) import each message.
  *  3. POST .../completeMigration ends import mode; the channel opens to its members.
- *     A run that resumes after that puts the channel back into import mode with
- *     POST .../startMigration first (v1.0, then beta).
+ *     A run that resumes after that puts the channel back into import mode the same way.
  *
  * Where the messages come from:
  *  - The content store, container `team:<teamId>/channel:<channelId>/messages`, one item
@@ -343,8 +345,8 @@ export async function restoreTeamsMessages({
     return { id: fallback.id, displayName: fallback.displayName, replaced: true, original: original.displayName ?? original.id };
   };
 
-  // The channel: created once in import mode, reused by every resume.
-  // The channel starts a minute before its first message, as the import API expects.
+  // The channel: created once, reused by every resume. Imported history starts a minute
+  // before the first message.
   const earliest = new Date(new Date(plan.threads[0]?.message.createdDateTime ?? now()).valueOf() - 60 * 1000).toISOString();
   const findChannel = async (name) => {
     const filter = encodeURIComponent(`displayName eq '${name.replace(/'/g, "''")}'`);
@@ -368,17 +370,14 @@ export async function restoreTeamsMessages({
       name = nameFor(n);
       await journal.mark(plan.runId, 'channel', { kind: 'teams-channel', status: 'pending', reason: name });
       const res = await send('POST', `${team}/channels`, {
-        '@microsoft.graph.channelCreationMode': 'migration',
         displayName: name,
         ...(plan.channel.description ? { description: String(plan.channel.description).slice(0, 1024) } : {}),
         membershipType: 'standard',
-        createdDateTime: earliest,
       });
       if (ok(res) && typeof res.body?.id === 'string') { id = res.body.id; break; }
       if (!taken(res) || n >= 9) throw new Error(why(res, `creating channel ${name}`));
     }
     await journal.mark(plan.runId, 'channel', { kind: 'teams-channel', status: 'restored', targetId: id, reason: name });
-    await journal.mark(plan.runId, 'import-mode', { kind: 'teams-import-mode', status: 'pending', reason: 'open' });
     return { id, name };
   };
 
@@ -397,27 +396,27 @@ export async function restoreTeamsMessages({
   report.channel.id = channelId;
   const base = `${team}/channels/${seg(channelId)}`;
 
-  // A resumed run whose import was already completed reopens import mode first.
+  // Import mode opens before the first message, and again on a resume after it was completed.
   const mode = await journal.entry(plan.runId, 'import-mode');
   const pendingWork = [];
   for (const thread of plan.threads) {
     for (const message of [thread.message, ...thread.replies]) pendingWork.push(`message:${thread.message.id}${message === thread.message ? '' : `/${message.id}`}`);
   }
   const doneKeys = new Set((await journal.entries(plan.runId)).filter((entry) => entry.status === 'restored').map((entry) => entry.sourceKey));
-  if (mode?.status === 'restored' && pendingWork.some((key) => !doneKeys.has(key))) {
-    const reopen = { conversationCreationDateTime: earliest };
-    let res = await send('POST', `${base}/startMigration`, reopen);
-    // Reopening an existing channel may still be beta only on some clouds.
-    if (res?.status === 400 || res?.status === 404) res = await send('POST', `${base}/startMigration`, reopen, GRAPH_BETA);
+  if (mode?.status !== 'pending' && pendingWork.some((key) => !doneKeys.has(key))) {
+    const open = { conversationCreationDateTime: earliest };
+    let res = await send('POST', `${base}/startMigration`, open);
+    // Import mode on an existing channel may still be beta only on some clouds.
+    if (res?.status === 400 || res?.status === 404) res = await send('POST', `${base}/startMigration`, open, GRAPH_BETA);
     if (!ok(res)) {
-      report.errors.push({ channel: report.channel.name, error: why(res, 'reopening import mode') });
+      report.errors.push({ channel: report.channel.name, error: why(res, mode ? 'reopening import mode' : 'putting the channel into import mode') });
       report.failed = pendingWork.filter((key) => !doneKeys.has(key)).length;
       report.alreadyDone = pendingWork.length - report.failed;
       report.status = report.alreadyDone ? 'partial' : 'failed';
       await journal.finishRun(plan.runId, { status: report.status, report });
       return report;
     }
-    await journal.mark(plan.runId, 'import-mode', { kind: 'teams-import-mode', status: 'pending', reason: 'reopened' });
+    await journal.mark(plan.runId, 'import-mode', { kind: 'teams-import-mode', status: 'pending', reason: mode ? 'reopened' : 'open' });
   }
 
   const addNotes = (notes) => { for (const key of Object.keys(report.notes)) report.notes[key] += notes[key]; };
@@ -471,7 +470,7 @@ export async function restoreTeamsMessages({
   }
 
   // End import mode whenever this run left it open, so the channel never stays hidden from its members.
-  let closed = (await journal.entry(plan.runId, 'import-mode'))?.status === 'restored';
+  let closed = (await journal.entry(plan.runId, 'import-mode'))?.status !== 'pending';
   if (!closed) {
     try {
       const completed = await send('POST', `${base}/completeMigration`, {});

@@ -122,16 +122,16 @@ test('the restore creates a new channel in import mode, imports each message as 
   const writes = graph.writes();
   const [create] = writes;
   assert.equal(create.path, `/teams/${TEAM}/channels`);
-  assert.equal(create.body['@microsoft.graph.channelCreationMode'], 'migration');
+  assert.equal(create.body['@microsoft.graph.channelCreationMode'], undefined, 'Graph refuses an import-mode channel in an existing team (#656)');
   assert.equal(create.body.membershipType, 'standard');
   assert.match(create.body.displayName, /^KEEL-RT-general \(restored \d{4}-\d{2}-\d{2}\)$/);
-  assert.equal(create.body.createdDateTime, daysAgo(6, -1), 'the channel starts a minute before the first message');
 
   const base = `/teams/${TEAM}/channels/19:restored@thread.tacv2`;
   assert.deepEqual(writes.slice(1).map((w) => w.path), [
-    `${base}/messages`, `${base}/messages/m-1/replies`, `${base}/messages/m-1/replies`, `${base}/messages`, `${base}/completeMigration`,
+    `${base}/startMigration`, `${base}/messages`, `${base}/messages/m-1/replies`, `${base}/messages/m-1/replies`, `${base}/messages`, `${base}/completeMigration`,
   ]);
-  const [root, reply, goneReply, second] = writes.slice(1);
+  assert.deepEqual(writes[1].body, { conversationCreationDateTime: daysAgo(6, -1) }, 'imported history starts a minute before the first message');
+  const [root, reply, goneReply, second] = writes.slice(2);
   assert.equal(root.body.createdDateTime, daysAgo(6));
   assert.equal(root.body.from.user.id, ALEX);
   assert.equal(root.body.subject, 'Kick-off');
@@ -274,6 +274,15 @@ test('the live-proof fixture plans from its own file only, with dates before the
   assert.equal(done.notes.inlineImages, 1);
   assert.equal(done.notes.attachmentsDropped, 1);
   assert.equal(done.authorsReplaced, 1);
+});
+
+test('a channel Microsoft will not put into import mode fails the run before any message is sent', async () => {
+  const plan = await planTeamsMessageRestore(await seededStore(), request({ fallbackAuthorId: FALLBACK }));
+  const graph = fakeGraph({ fail: ({ method, path }) => (method === 'POST' && path.endsWith('/startMigration') ? { status: 400, headers: {}, body: { error: { code: 'BadRequest', message: 'no' } } } : null) });
+  const report = await run(plan, graph, createMemoryRestoreJournal());
+  assert.equal(report.status, 'failed');
+  assert.match(report.errors[0].error, /putting the channel into import mode failed: 400 BadRequest/);
+  assert.ok(!graph.writes().some((w) => w.path.endsWith('/messages') || w.path.endsWith('/completeMigration')));
 });
 
 test('reopening import mode falls back to beta when v1.0 does not offer it', async () => {

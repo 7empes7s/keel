@@ -23,7 +23,7 @@
 #
 # Pinned by digest as well as tag (security audit run 2, finding 8). To move it, pull the
 # new tag, read `docker image inspect --format '{{index .RepoDigests 0}}' <tag>`, update both.
-FROM mcr.microsoft.com/powershell:7.5-ubuntu-24.04@sha256:370134f0be3867fadc2e5845c39ed59120fbd4d19ca5136f40831a96f0404cf1
+FROM mcr.microsoft.com/powershell:7.5-ubuntu-24.04@sha256:042240d57ec9e47e511033b92625a8d95875ee5860af3015992c248b58a8be81
 
 ENV POWERSHELL_TELEMETRY_OPTOUT=1 \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \

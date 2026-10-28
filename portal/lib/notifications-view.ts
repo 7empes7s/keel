@@ -148,6 +148,9 @@ export function deliveryProblem(delivery: Pick<Delivery, "status" | "last_error"
   if (/did not answer|time ?out|timed out|in time/.test(raw)) {
     return { sentence: "It did not answer in time.", whatToDo: retrying ? "Keel tries again on its own." : "Check that the address is reachable from the Keel server, then send a test." };
   }
+  if (/public addresses|address refused/.test(raw)) {
+    return { sentence: "Keel does not send to private or internal addresses.", whatToDo: "Use a public web address, add it as a new channel, then turn this one off." };
+  }
   if (/not configured|setting .* is not set|is unset|missing/.test(raw)) {
     return { sentence: "The server setting that holds its address is not set.", whatToDo: "Ask whoever runs the Keel server to add the setting, then send a test." };
   }

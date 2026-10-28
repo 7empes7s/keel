@@ -106,6 +106,12 @@ export function addressProblem(address, { allowLoopback = false } = {}) {
   if (family === 6) {
     const v4 = mappedIpv4(raw);
     if (v4) { ip = v4; family = 4; }
+    // IPv4-translated (::ffff:0:a.b.c.d) is never a public destination. It is checked
+    // here because BlockList folds IPv4 into ::ffff:0:0/96 and would match every IPv4.
+    const groups = hextets(raw);
+    if (!v4 && groups.slice(0, 4).every((g) => g === 0) && groups[4] === 0xffff && groups[5] === 0) {
+      return `${raw} is a private, local or reserved address; Keel only sends to public addresses`;
+    }
   }
   const type = family === 4 ? 'ipv4' : 'ipv6';
   if (allowLoopback && LOOPBACK.check(ip, type)) return null;

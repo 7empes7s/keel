@@ -93,10 +93,11 @@ export function defaultResolveSecret(reference) {
 }
 
 /** The default transport: a POST that only reaches public addresses, on every redirect. */
-function guardedFetch(allowLoopback) {
+function guardedFetch(allowLoopback, resolve) {
   return (url, init) => guardedRequest(url, {
     ...init,
     allowLoopback,
+    resolve,
     protocols: allowLoopback ? ['http:', 'https:'] : ['https:'],
   });
 }
@@ -147,6 +148,7 @@ export function createWebhookAdapter({
   resolveSecret = defaultResolveSecret,
   timeoutMs = WEBHOOK_TIMEOUT_MS,
   allowLoopback = false,
+  resolve,
 } = {}) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
     throw new TypeError('timeoutMs must be a positive integer');
@@ -188,7 +190,7 @@ export function createWebhookAdapter({
         };
       }
 
-      const fetchCall = fetchImpl ?? guardedFetch(allowLoopback);
+      const fetchCall = fetchImpl ?? guardedFetch(allowLoopback, resolve);
 
       let response;
       try {

@@ -86,6 +86,14 @@ function fakeSendUdp() {
   return { calls, sendUdp: async ({ host, port, message }) => { calls.push({ host, port, message }); } };
 }
 
+function fakeResolve(table) {
+  return (hostname, options, callback) => {
+    const addresses = table[hostname];
+    if (!addresses) return callback(Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), { code: 'ENOTFOUND' }));
+    return callback(null, addresses.map((address) => ({ address, family: address.includes(':') ? 6 : 4 })));
+  };
+}
+
 async function setup(t) {
   const db = await createIsolatedTestDatabase(import.meta.url);
   const client = await db.connect();
@@ -383,6 +391,31 @@ test('an unresolvable webhook credential reference is a visible retry, never a s
   const outcome = await adapter.deliver({ destination, envelope, eventId: envelope.eventId, dedupKey: 'dk' });
   assert.equal(outcome.outcome, 'retry');
   assert.equal(calls.length, 0, 'no request may be sent while the credential is unresolved');
+});
+
+test('the default webhook transport checks names after DNS and every redirect hop', async (t) => {
+  let hits = 0;
+  const server = http.createServer((req, res) => {
+    hits += 1;
+    res.statusCode = 307;
+    res.setHeader('location', `https://internal.example.test:${server.address().port}/x`);
+    res.end();
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const resolve = fakeResolve({ 'rebind.example.test': ['127.0.0.1'], 'internal.example.test': ['10.0.0.5'] });
+  const envelope = fixtureEnvelope('fixture', 1);
+  const deliver = (adapter, url) => adapter.deliver({ destination: { kind: 'webhook', config: { url } }, envelope, eventId: envelope.eventId, dedupKey: 'dk' });
+
+  const rebound = await deliver(createWebhookAdapter({ resolve }), `https://rebind.example.test:${server.address().port}/stop`);
+  assert.equal(rebound.outcome, 'retry');
+  assert.match(rebound.error, /unusable: rebind\.example\.test resolves to/);
+  assert.equal(hits, 0);
+
+  const redirected = await deliver(createWebhookAdapter({ allowLoopback: true, resolve }), `http://127.0.0.1:${server.address().port}/go`);
+  assert.equal(redirected.outcome, 'retry');
+  assert.match(redirected.error, /unusable: internal\.example\.test resolves to/);
+  assert.equal(hits, 1, 'only the first hop is reached');
 });
 
 test('defaultResolveSecret only understands env:KEEL_INTEGRATION_* references and never invents a credential', () => {

@@ -24,6 +24,14 @@ async function setup(t) {
   return { client, admin };
 }
 
+function fakeResolve(table) {
+  return (hostname, options, callback) => {
+    const addresses = table[hostname];
+    if (!addresses) return callback(Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), { code: 'ENOTFOUND' }));
+    return callback(null, addresses.map((address) => ({ address, family: address.includes(':') ? 6 : 4 })));
+  };
+}
+
 async function listener(t, handler = (req, res) => res.end()) {
   const hits = [];
   const server = http.createServer((req, res) => { hits.push(req.url); handler(req, res); });
@@ -77,4 +85,25 @@ test('the production webhook transport never reaches a loopback listener, direct
     /webhook address refused/,
   );
   assert.equal(target.hits.length, 1);
+});
+
+test('the webhook transport checks names after DNS and every redirect hop itself', async (t) => {
+  const target = await listener(t);
+  const resolve = fakeResolve({ 'rebind.example.test': ['127.0.0.1'], 'internal.example.test': ['10.0.0.5'] });
+  const redirector = await listener(t, (req, res) => {
+    res.statusCode = 307;
+    res.setHeader('location', `http://internal.example.test:${target.port}/x`);
+    res.end();
+  });
+  // A name that resolves to loopback is refused by the transport, not only by the URL check.
+  await assert.rejects(
+    createWebhookTransport({ resolve })({ channel: { config: { url: `http://rebind.example.test:${target.port}/stop` } }, event: { kind: 'test' } }),
+    /webhook address refused: .*resolves to/,
+  );
+  // A redirect to a name that resolves to a private address is refused at that hop.
+  await assert.rejects(
+    createWebhookTransport({ allowLoopback: true, resolve })({ channel: { config: { url: `http://127.0.0.1:${redirector.port}/go` } }, event: { kind: 'test' } }),
+    /webhook address refused: internal\.example\.test resolves to/,
+  );
+  assert.equal(target.hits.length, 0);
 });

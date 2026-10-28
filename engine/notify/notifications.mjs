@@ -268,7 +268,7 @@ export function webhookConfigProblems(config) {
  * and on every redirect (security audit finding 6). `allowLoopback` is for tests only.
  */
 export function createWebhookTransport({
-  allowLoopback = false, timeoutMs = WEBHOOK_TIMEOUT_MS, request = guardedRequest,
+  allowLoopback = false, timeoutMs = WEBHOOK_TIMEOUT_MS, request = guardedRequest, resolve,
 } = {}) {
   return async function sendWebhook({ channel, event }) {
     let response;
@@ -280,6 +280,7 @@ export function createWebhookTransport({
         body: JSON.stringify(event),
         signal: AbortSignal.timeout(timeoutMs),
         allowLoopback,
+        resolve,
       });
     } catch (cause) {
       if (cause instanceof BlockedDestinationError) {

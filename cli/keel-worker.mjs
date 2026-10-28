@@ -532,6 +532,10 @@ export const JOB_HANDLERS = {
         return ['--artifact', requireString(params.artifactId, 'params.artifactId'), '--enforce'];
       }
 
+      // Each worker dry-run shape below (snapshotId, compensates, complianceFix,
+      // workloadRestore) must also be listed in restoreExecutorForArtifact
+      // (engine/govern/approvals.mjs), or approving its result queues no job.
+      //
       // Roadmap task-70: a compensation dry run carries only the promoted restore it
       // undoes and the id to persist the result under. Its configs, scope and
       // journal all come from that restore's own artifact inside the CLI.

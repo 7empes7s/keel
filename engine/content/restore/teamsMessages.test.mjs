@@ -282,7 +282,26 @@ test('a channel Microsoft will not put into import mode fails the run before any
   const report = await run(plan, graph, createMemoryRestoreJournal());
   assert.equal(report.status, 'failed');
   assert.match(report.errors[0].error, /putting the channel into import mode failed: 400 BadRequest/);
-  assert.ok(!graph.writes().some((w) => w.path.endsWith('/messages') || w.path.endsWith('/completeMigration')));
+  assert.ok(!graph.writes().some((w) => w.path.endsWith('/messages')));
+  assert.ok(graph.writes().at(-1).path.endsWith('/completeMigration'), 'in case Microsoft opened it after all, import mode is closed');
+});
+
+test('a lost answer to startMigration is asked again, and "already in migration" counts as open', async () => {
+  const plan = await planTeamsMessageRestore(await seededStore(), request({ fallbackAuthorId: FALLBACK }));
+  const journal = createMemoryRestoreJournal();
+  let lost = false;
+  const first = fakeGraph();
+  const transport = async (url, options) => {
+    if (!lost && url.endsWith('/startMigration')) { lost = true; throw new Error('socket hang up'); }
+    return first.transport(url, options);
+  };
+  const report = await restoreTeamsMessages({ transport, journal, plan, target: { id: TEAM }, now: () => RUN, sleep: async () => {}, gapMs: 0 });
+  assert.equal(report.status, 'failed');
+  const again = fakeGraph({ fail: ({ path }) => (path.endsWith('/startMigration') ? { status: 400, headers: {}, body: { error: { code: 'BadRequest', message: 'Channel is already in migration.' } } } : null) });
+  const second = await run(plan, again, journal);
+  assert.equal(second.status, 'completed');
+  assert.equal(second.restored, 4);
+  assert.equal(again.writes().filter((w) => w.path.endsWith('/startMigration')).length, 1, 'no beta retry for an already-open channel');
 });
 
 test('reopening import mode falls back to beta when v1.0 does not offer it', async () => {

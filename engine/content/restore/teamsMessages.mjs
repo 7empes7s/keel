@@ -403,20 +403,41 @@ export async function restoreTeamsMessages({
     for (const message of [thread.message, ...thread.replies]) pendingWork.push(`message:${thread.message.id}${message === thread.message ? '' : `/${message.id}`}`);
   }
   const doneKeys = new Set((await journal.entries(plan.runId)).filter((entry) => entry.status === 'restored').map((entry) => entry.sourceKey));
-  if (mode?.status !== 'pending' && pendingWork.some((key) => !doneKeys.has(key))) {
+  // The entry is marked before the call, so a crash or a lost answer never leaves the channel
+  // in import mode without the run knowing: a resume asks again, and "already" counts as open.
+  const opening = mode?.status === 'pending' && mode.reason === 'opening';
+  if ((mode?.status !== 'pending' || opening) && pendingWork.some((key) => !doneKeys.has(key))) {
+    const verb = mode && !opening ? 'reopening import mode' : 'putting the channel into import mode';
     const open = { conversationCreationDateTime: earliest };
-    let res = await send('POST', `${base}/startMigration`, open);
-    // Import mode on an existing channel may still be beta only on some clouds.
-    if (res?.status === 400 || res?.status === 404) res = await send('POST', `${base}/startMigration`, open, GRAPH_BETA);
-    if (!ok(res)) {
-      report.errors.push({ channel: report.channel.name, error: why(res, mode ? 'reopening import mode' : 'putting the channel into import mode') });
+    const already = (res) => /already|in migration|InMigration/i.test(`${res?.body?.error?.code ?? ''} ${res?.body?.error?.message ?? ''}`);
+    let res;
+    try {
+      await journal.mark(plan.runId, 'import-mode', { kind: 'teams-import-mode', status: 'pending', reason: 'opening' });
+      res = await send('POST', `${base}/startMigration`, open);
+      // Import mode on an existing channel may still be beta only on some clouds.
+      if (res?.status === 404 || (res?.status === 400 && !already(res))) {
+        const beta = await send('POST', `${base}/startMigration`, open, GRAPH_BETA);
+        if (ok(beta) || already(beta) || res.status === 404) res = beta;
+      }
+    } catch (error) {
+      res = { status: null, body: { error: { message: String(error?.message ?? error) } } };
+    }
+    if (!ok(res) && !already(res)) {
+      report.errors.push({ channel: report.channel.name, error: why(res, verb) });
+      // If Microsoft did open it after all, close it so the channel is not left hidden.
+      try {
+        const closedAgain = await send('POST', `${base}/completeMigration`, {});
+        await journal.mark(plan.runId, 'import-mode', { kind: 'teams-import-mode', status: ok(closedAgain) ? 'restored' : 'failed', reason: 'refused' });
+      } catch {
+        await journal.mark(plan.runId, 'import-mode', { kind: 'teams-import-mode', status: 'failed', reason: 'refused' }).catch(() => {});
+      }
       report.failed = pendingWork.filter((key) => !doneKeys.has(key)).length;
       report.alreadyDone = pendingWork.length - report.failed;
       report.status = report.alreadyDone ? 'partial' : 'failed';
       await journal.finishRun(plan.runId, { status: report.status, report });
       return report;
     }
-    await journal.mark(plan.runId, 'import-mode', { kind: 'teams-import-mode', status: 'pending', reason: mode ? 'reopened' : 'open' });
+    await journal.mark(plan.runId, 'import-mode', { kind: 'teams-import-mode', status: 'pending', reason: mode && !opening ? 'reopened' : 'open' });
   }
 
   const addNotes = (notes) => { for (const key of Object.keys(report.notes)) report.notes[key] += notes[key]; };

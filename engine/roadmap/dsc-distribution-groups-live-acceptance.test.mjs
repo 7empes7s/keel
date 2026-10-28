@@ -46,7 +46,8 @@ after(() => rmSync(dir, { recursive: true, force: true }));
 
 let suffixSeq = 0;
 const SEED = 'KEEL-RT-capture-seed';
-const seedList = (fields = {}) => fakeList({ Name: SEED, Members: ['m1@contoso.test'], ManagedBy: ['owner@contoso.test'], ModeratedBy: ['mod@contoso.test'], ModerationEnabled: true, ...fields });
+const seedList = (fields = {}) => fakeList({ Name: SEED, Members: ['m1@contoso.test'], ManagedBy: ['owner@contoso.test'], ModeratedBy: ['mod@contoso.test'], ModerationEnabled: true,
+  ReportToManagerEnabled: true, BypassNestedModerationEnabled: true, MailTip: 'KEEL capture seed', BypassModerationFromSendersOrMembers: ['owner@contoso.test'], ...fields });
 const seedOf = (tenant) => ({ name: SEED, guid: tenant.find(SEED)?.Guid ?? '00000000-0000-4000-8000-00000000dead' });
 const capture = (tenant, overrides = {}) => captureDscWrites({
   seed: seedOf(tenant),
@@ -101,6 +102,9 @@ test('a capture creates and changes one KEEL-RT-capture- list, reads each back, 
   for (const id of Object.keys(DSC_WRITE_OPERATIONS)) {
     const q = workloadWriteQualification(id, { readLedger, evidence: seam.writes, tenantRef, now: verifyNow, runtime: seam.runtime, grants: seam.restorerGrants });
     assert.equal(q.enabled, true, `${id}: ${JSON.stringify(q.reasons)}`);
+    // Stored proofs at another version stay off even when the stored runtime agrees with them: the pin in code decides.
+    const old = seam.writes.map((item) => ({ ...item, version: '2.25.1.1' }));
+    assert.equal(workloadWriteQualification(id, { readLedger, evidence: old, tenantRef, now: verifyNow, runtime: { modules: { Microsoft365DSC: '2.25.1.1' } }, grants: seam.restorerGrants }).enabled, false);
     // Without the read-back enabled, it stays off.
     assert.equal(workloadWriteQualification(id, { evidence: seam.writes, tenantRef, now: verifyNow, runtime: seam.runtime, grants: seam.restorerGrants }).enabled, false);
   }
@@ -130,8 +134,13 @@ test('a capture writes nothing when its list exists; a change to a field KEEL ne
   assert.match(half.evidence.subject.skipped.find((item) => item.operationId?.endsWith('.update')).reason, /has no Members/);
   assert.deepEqual(ledgerEvidenceFromDscWritesAcceptance(half.evidence, seamOptions).writes.map((item) => item.operationId), ['exchange-distribution-groups.distribution-group.add']);
 
-  // The update also clears the list's owners, or its members: the update is recorded, never proven.
-  for (const [field, clear] of [['ManagedBy', (list) => { list.ManagedBy = []; }], ['Members', (list) => { list.Members = []; }]]) {
+  // A seeded list whose other settings are defaults could not show a Set resetting them: the update is skipped.
+  const defaults = fakeDscTenant([seedList({ ReportToManagerEnabled: false })]);
+  const unproven = await captured(defaults);
+  assert.match(unproven.evidence.subject.skipped.find((item) => item.operationId?.endsWith('.update')).reason, /ReportToManagerEnabled/);
+
+  // The update also clears the list's owners, its members, or resets a setting KEEL never sends: recorded, never proven.
+  for (const [field, clear] of [['ManagedBy', (list) => { list.ManagedBy = []; }], ['Members', (list) => { list.Members = []; }], ['ReportToManagerEnabled', (list) => { list.ReportToManagerEnabled = false; }]]) {
     const tenant = fakeDscTenant([seedList()], { behave: { afterSet: (properties, list) => { if (/ updated /.test(properties.DisplayName ?? '')) clear(list); } } });
     const bad = await captured(tenant);
     const update = bad.evidence.subject.writes.find((item) => item.operationId === 'exchange-distribution-groups.distribution-group.update');

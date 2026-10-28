@@ -709,9 +709,13 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
   ...DSC_WRITE_OPERATIONS,
 });
 
-/** The version a write runs under now: its Graph version, or its module's version. */
+/**
+ * The version a write runs under now: its Graph version, or its module's version. A
+ * module pinned in code (Microsoft365DSC: the container refuses any other version) is
+ * taken from the code, so a stored proof stops counting the moment the pin moves.
+ */
 function writeVersion(declared, runtime) {
-  if (declared.kind === 'cmdlet') return runtime?.modules?.[declared.module] ?? null;
+  if (declared.kind === 'cmdlet') return declared.pinnedVersion ?? runtime?.modules?.[declared.module] ?? null;
   return declared.version;
 }
 

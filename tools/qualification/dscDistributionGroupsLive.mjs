@@ -71,6 +71,12 @@ const changesFor = (state, seedName, tag) => ({
 const UNTOUCHED = Object.freeze([...LISTED_FIELDS, 'Alias', 'PrimarySmtpAddress', 'Type', ...OBSERVED_ONLY]);
 // The seeded list must hold what KEEL never writes, or the update proves nothing about it.
 const SEEDED = Object.freeze(['Members', 'ManagedBy', 'ModeratedBy']);
+const SEEDED_SETTINGS = Object.freeze({
+  ReportToManagerEnabled: (value) => value === true,
+  BypassNestedModerationEnabled: (value) => value === true,
+  MailTip: (value) => typeof value === 'string' && value.trim() !== '',
+  BypassModerationFromSendersOrMembers: (value) => Array.isArray(value) && value.length > 0,
+});
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Offline: what a capture would send, in order. */
@@ -79,7 +85,7 @@ export function dscWritesCapturePlan() {
   return [
     { step: 0, credential: 'none', refused: 'EXODistributionGroup Set with Ensure = Absent (KEEL never removes; refused before sending)' },
     { step: 0, credential: 'none', refused: 'EXODistributionGroup Set of ManagedBy (a field KEEL only lists; refused before sending)' },
-    { step: 1, credential: 'collector', resource: DISTRIBUTION_GROUP_RESOURCE, method: 'Get', name: '<seed Guid>', expect: `present, named <seed list>, with ${SEEDED.join(', ')} set` },
+    { step: 1, credential: 'collector', resource: DISTRIBUTION_GROUP_RESOURCE, method: 'Get', name: '<seed Guid>', expect: `present, named <seed list>, with ${[...SEEDED, ...Object.keys(SEEDED_SETTINGS)].join(', ')} set (not defaults)` },
     { step: 1, credential: 'collector', resource: DISTRIBUTION_GROUP_RESOURCE, method: 'Get', name: '<random Guid>', expect: 'absent' },
     { step: 1, credential: 'collector', resource: DISTRIBUTION_GROUP_RESOURCE, method: 'Get', name, expect: 'absent' },
     { step: 2, credential: 'restorer', resource: DISTRIBUTION_GROUP_RESOURCE, method: 'Set', properties: { Identity: name, Name: name, Ensure: 'Present', Type: 'Distribution', DisplayName: name, Alias: '<name without punctuation>', ...CREATED }, operationId: DISTRIBUTION_GROUP_ADD },
@@ -234,7 +240,12 @@ export async function captureDscWrites({
 
     // 3. The update, on the seeded list (it has members, an owner and a moderator): the
     // declared set, the changed fields flipped, the rest as read.
-    const unseeded = SEEDED.filter((field) => normalize(seeded[field]) === null);
+    // Settings KEEL never writes must hold a non-default value, or a Set resetting them would go unseen.
+    // A setting the resource does not return (not in the state) cannot be checked either way.
+    const unseeded = [
+      ...SEEDED.filter((field) => normalize(seeded[field]) === null),
+      ...Object.entries(SEEDED_SETTINGS).filter(([field, wanted]) => Object.hasOwn(seeded, field) && !wanted(normalize(seeded[field]))).map(([field]) => field),
+    ];
     if (unseeded.length) skipped.push({ operationId: DISTRIBUTION_GROUP_UPDATE, reason: `${seed.name} has no ${unseeded.join(', ')}; seed it first, so the update shows they are left alone` });
     else {
       const update = { ...base(DISTRIBUTION_GROUP_UPDATE), fixture: seed.name };

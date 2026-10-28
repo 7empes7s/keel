@@ -5,7 +5,7 @@
  * so engine/coverage/qualification.mjs can spread the writes in without an import cycle
  * (the writer itself imports the evidence and dry-run modules, which import qualification).
  */
-import { DSC_MODULE } from '../../powershell/dscJob.mjs';
+import { DSC_MODULE, DSC_MODULE_VERSION } from '../../powershell/dscJob.mjs';
 import { isTrustField } from './writeDeclarations.mjs';
 
 export const DISTRIBUTION_GROUPS_WORKLOAD = 'exchange-distribution-groups';
@@ -67,7 +67,7 @@ function declare(id, { name, fields, method, source }) {
   if (trust.length) throw new Error(`${id}: ${trust.join(', ')} decide trust or sign-in and are never written`);
   return [id, Object.freeze({
     workload: DISTRIBUTION_GROUPS_WORKLOAD, family: DISTRIBUTION_GROUP_FAMILY, resourceType: 'exchangeDistributionGroup',
-    kind: 'cmdlet', module: DSC_MODULE, session: 'dsc', resource: DISTRIBUTION_GROUP_RESOURCE, method, name, readBack: READ_BACK,
+    kind: 'cmdlet', module: DSC_MODULE, pinnedVersion: DSC_MODULE_VERSION, session: 'dsc', resource: DISTRIBUTION_GROUP_RESOURCE, method, name, readBack: READ_BACK,
     fields: Object.freeze([...fields]), rbac: EXO_RBAC, grantsRequired: true, source,
   })];
 }

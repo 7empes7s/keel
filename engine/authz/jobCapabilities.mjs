@@ -35,6 +35,10 @@ export const JOB_KIND_CAPABILITIES = Object.freeze({
   'baseline-activate': 'baseline-create',
   'policy-evaluate': 'policies',
   remediate: 'remediate',
+  // Audit run 2, finding 3: an accept or ignore a second person approved (sign-in and
+  // admin-access changes). Only an approval mints it; the requester still needs
+  // dispose-accept when it runs.
+  dispose: 'dispose-accept',
   restore: 'restore',
   // Channels and subscriptions are configuration; a delivery retains the principal
   // that dispatched its event, so the same configuration grant is checked again when

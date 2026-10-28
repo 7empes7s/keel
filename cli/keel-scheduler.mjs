@@ -5,6 +5,7 @@ import { enqueue } from '../engine/jobs/queue.mjs';
 import { capabilitiesForPrincipal } from '../engine/authz/principals.mjs';
 import { nextDueAt, validateSchedule } from '../engine/schedules/cadence.mjs';
 import { processCollectionCompletions } from '../engine/schedules/completions.mjs';
+import { parseCliArgs } from './args.mjs';
 
 export async function schedulerPrincipal(client) {
   const { rows: [principal] } = await client.query(
@@ -64,7 +65,7 @@ export async function tick(client, { now = new Date(), afterEnqueue } = {}) {
 }
 
 async function main() {
-  if (process.argv.includes('--help')) {
+  if (parseCliArgs(process.argv.slice(2), { name: 'keel-scheduler', booleans: ['help'] }).values.help) {
     console.log('usage: keel-scheduler.mjs (with KEEL_DB_URL set)');
     return;
   }

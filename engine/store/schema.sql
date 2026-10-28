@@ -170,7 +170,7 @@ CREATE INDEX IF NOT EXISTS job_running_heartbeat_idx ON job (heartbeat_at) WHERE
 -- name keeps this idempotent without rewriting any rows.
 ALTER TABLE job DROP CONSTRAINT IF EXISTS job_kind_check;
 ALTER TABLE job ADD CONSTRAINT job_kind_check
-  CHECK (kind IN ('collect','prune','drift-detect','offsite','restore','remediate','baseline-create','baseline-activate','backup','policy-evaluate','notify','api-drift','workload-collect','content-collect','discover'));
+  CHECK (kind IN ('collect','prune','drift-detect','offsite','restore','remediate','baseline-create','baseline-activate','backup','policy-evaluate','notify','api-drift','workload-collect','content-collect','dispose','discover'));
 ALTER TABLE job ADD COLUMN IF NOT EXISTS idempotency_key text;
 CREATE UNIQUE INDEX IF NOT EXISTS job_kind_idempotency_key_idx
   ON job (kind, idempotency_key) WHERE idempotency_key IS NOT NULL;
@@ -180,6 +180,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS job_kind_idempotency_key_idx
 ALTER TABLE job ADD COLUMN IF NOT EXISTS not_before timestamptz NOT NULL DEFAULT now();
 CREATE INDEX IF NOT EXISTS job_status_not_before_created_idx
   ON job (status, not_before, created_at);
+
+-- Security audit run 2, finding 11: approval-minted jobs are claimed first, and the portal
+-- caps how many jobs one person may have waiting.
+ALTER TABLE job ADD COLUMN IF NOT EXISTS priority smallint NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS job_queued_requester_idx ON job (requested_by) WHERE status = 'queued';
 
 -- §3.2 authorisation model: who is allowed to do what. The role -> capability mapping is
 -- code (engine/authz/permissions.mjs), deny-by-default; these tables are only data.

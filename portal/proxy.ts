@@ -18,6 +18,7 @@ import {
   type ResolvedIdentity,
   type SignInHints,
 } from "@/lib/principal";
+import { isSameOriginRequest } from "@/lib/same-origin";
 
 type ConfigProvider = () => AccessVerificationConfig;
 type IdentityResolver = (email: string, hints?: SignInHints) => Promise<ResolvedIdentity>;
@@ -38,6 +39,13 @@ function forbidden(): NextResponse {
   );
 }
 
+function crossSiteRefused(): NextResponse {
+  return NextResponse.json(
+    { error: "cross-site request refused" },
+    { status: 403, headers: NO_STORE },
+  );
+}
+
 function isUnauthenticatedHealthCheck(request: NextRequest): boolean {
   return request.method === "GET" && request.nextUrl.pathname === "/api/health";
 }
@@ -50,6 +58,12 @@ export function createAccessMiddleware(
     // Intentional sole auth exception: this literal liveness probe reads no state.
     if (isUnauthenticatedHealthCheck(request)) {
       return NextResponse.next();
+    }
+
+    // A state change must come from the portal's own pages, never from another site
+    // riding on the browser's Access cookie.
+    if (!isSameOriginRequest(request.method, request.headers)) {
+      return crossSiteRefused();
     }
 
     const assertion = request.headers.get(ACCESS_ASSERTION_HEADER);

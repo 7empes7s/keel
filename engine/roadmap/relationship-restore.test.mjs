@@ -542,12 +542,12 @@ function cliDependencies(tenant) {
   };
 }
 
-async function dryRun(snapshotId, tenant, artifactId) {
+async function dryRun(snapshotId, tenant, artifactId, overrides = {}) {
   return runRestore({
     snapshotId, selection: ['group:eng'], mode: 'dry-run', persistArtifactId: artifactId, requestedBy: 'tester',
     collectorConfig: JSON.parse(configs.get('/fixtures/collector.json')), targetConfig: JSON.parse(configs.get('/fixtures/restorer.json')),
     collectorConfigPath: '/fixtures/collector.json', targetConfigPath: '/fixtures/restorer.json',
-    readFile, dbUrl: database.url, dependencies: cliDependencies(tenant), logger: quiet,
+    readFile, dbUrl: database.url, dependencies: { ...cliDependencies(tenant), ...overrides }, logger: quiet,
   });
 }
 
@@ -619,4 +619,43 @@ test('legacy artifacts (no relationship_operations column value) read as no edge
     currentStateFingerprint: 'f', digest: 'd', status: 'completed', requestedBy: 'x',
   });
   assert.equal(artifact.relationshipOperations, null);
+});
+
+// Security audit run 2, finding 1, through the production CLI path.
+test('a registered break-glass account is never removed by a member restore, and the dry run is refused', async (t) => {
+  const client = await schemaClient(t);
+  const snapshotId = await seedSnapshot(client);
+  const tenant = fakeTenant({ 'target-eng|member': ['target-alice', 'target-bob', 'target-mallory'], 'target-eng|owner': ['target-carol'] });
+  const artifactId = '61000000-0000-4000-8000-000000000005';
+  const dry = await dryRun(snapshotId, tenant, artifactId, {
+    // target-mallory is a registered break-glass account; it holds no role directly.
+    loadLockoutGateInputs: async () => ({ configured: true, accounts: [{ accountId: 'target-mallory' }], inventory: {}, groupMembers: () => null, now: new Date() }),
+  });
+  assert.deepEqual(dry.relationshipOperations, []);
+  const artifact = await getDryRunArtifactById(client, { id: artifactId });
+  assert.equal(artifact.status, 'refused');
+  assert.ok(artifact.guardRefusals.some((r) => /protected-principal: refusing to remove break-glass principal target-mallory/.test(r.reason)));
+  await assert.rejects(promote(artifactId, tenant), /not complete \(status: refused\)/);
+  assert.equal(tenant.writes.length, 0);
+});
+
+test('member writes on a Conditional Access exclusion group are refused when break-glass readiness cannot be read', async (t) => {
+  const client = await schemaClient(t);
+  const snapshotId = await seedSnapshot(client);
+  const tenant = fakeTenant({ 'target-eng|member': ['target-alice', 'target-mallory'], 'target-eng|owner': [] });
+  const base = cliDependencies(tenant);
+  const artifactId = '61000000-0000-4000-8000-000000000006';
+  const dry = await dryRun(snapshotId, tenant, artifactId, {
+    canonicalizeAll: () => [...base.canonicalizeAll(), {
+      naturalKey: 'conditionalAccessPolicy:Require MFA', resourceType: 'conditionalAccessPolicy', sourceId: 'ca-1',
+      payload: { id: 'ca-1', state: 'enabled', conditions: { users: { includeUsers: ['All'], excludeGroups: ['target-eng'] } } },
+    }],
+    loadLockoutGateInputs: async () => { throw new Error('database unavailable'); },
+  });
+  assert.deepEqual(dry.relationshipOperations.map(({ family, action, targetNaturalKey }) => `${family}:${action}:${targetNaturalKey}`), ['owner:add:user:carol'],
+    'only the owner add, which never changes who a policy covers, is left');
+  const artifact = await getDryRunArtifactById(client, { id: artifactId });
+  assert.equal(artifact.status, 'refused');
+  assert.equal(artifact.guardRefusals.filter((r) => /^lockout-gate: break-glass accounts could not be read \(database unavailable\)/.test(r.reason)).length, 2);
+  assert.equal(tenant.writes.length, 0);
 });

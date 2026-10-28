@@ -8,6 +8,7 @@ import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { createDryRunArtifact } from "../../engine/restore/dryRunArtifact.mjs";
 
 import { POST as restoreRoute } from "@/app/api/actions/restore/route";
+import { POST as compensateRoute } from "@/app/api/actions/restore/compensate/route";
 import { POST as dryRunRoute } from "@/app/api/actions/restore/dry-run/route";
 import { GET as dryRunArtifactRoute } from "@/app/api/actions/restore/dry-run/[id]/route";
 import { POST as selectionPreviewRoute } from "@/app/api/actions/restore/selection/route";
@@ -453,4 +454,50 @@ test("the dry-run artifact route serves the full per-resource results the dry ru
     get("/api/actions/restore/dry-run/bbbbbbbb-0000-4000-8000-000000000099", restorer),
   );
   assert.equal(notFound.status, 404, "an unknown artifact id must not be distinguishable from another tenant's");
+});
+
+// The undo of a restore that created a policy which is assigned now: the person's
+// choice to delete it with its assignments, or skip it, goes to the undo plan job.
+test("planning an undo carries the person's delete-or-skip choices, and refuses anything else", async () => {
+  const forward = await createDryRunArtifact(client, {
+    id: "aaaaaaaa-0000-4000-8000-000000000077",
+    tenantRef: currentTenantRef,
+    snapshotId,
+    selection: ["group:Admins"],
+    closureKeys: ["group:Admins"],
+    targetTenantId: "target-tenant",
+    collectorConfigPath: "/etc/keel/tenant-target.json",
+    targetConfigPath: "/etc/keel/restorer.json",
+    reconciliationResources: null,
+    waves: [["group:Admins"]],
+    patches: [],
+    guardRefusals: [],
+    results: { applied: [], skipped: [], failed: [], notRemediable: [] },
+    currentStateFingerprint: "fixture-fingerprint",
+    digest: "fixture-digest",
+    status: "completed",
+    requestedBy: RESTORER,
+  });
+  const plan = (body: unknown, key: string) => compensateRoute(new Request("http://localhost/api/actions/restore/compensate", {
+    method: "POST",
+    headers: new Headers({ "content-type": "application/json", [PRINCIPAL_ID_HEADER]: restorer.principalId, [CAPABILITIES_HEADER]: restorer.capabilities.join(" "), "idempotency-key": key }),
+    body: JSON.stringify(body),
+  }));
+
+  const plain = await plan({ restoreArtifactId: forward.id }, "undo-plain");
+  assert.equal(plain.status, 202);
+  const { job: plainJob, artifactId: plainId } = await plain.json();
+  assert.deepEqual(plainJob.params, { compensates: forward.id, artifactId: plainId });
+
+  const chosen = await plan({ restoreArtifactId: forward.id, undoChoices: { "deviceConfiguration:KEEL-RT-a": "delete", "configurationPolicy:KEEL-RT-b": "skip" } }, "undo-chosen");
+  assert.equal(chosen.status, 202);
+  const { job: chosenJob, artifactId: chosenId } = await chosen.json();
+  assert.deepEqual(chosenJob.params, {
+    compensates: forward.id, artifactId: chosenId, undoChoices: { "deviceConfiguration:KEEL-RT-a": "delete", "configurationPolicy:KEEL-RT-b": "skip" },
+  });
+
+  for (const [index, undoChoices] of [{ "deviceConfiguration:KEEL-RT-a": "remove" }, ["deviceConfiguration:KEEL-RT-a"], { "--enforce": "delete" }].entries()) {
+    const refused = await plan({ restoreArtifactId: forward.id, undoChoices }, `undo-bad-${index}`);
+    assert.equal(refused.status, 400, JSON.stringify(undoChoices));
+  }
 });

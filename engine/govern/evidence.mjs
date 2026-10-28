@@ -67,13 +67,15 @@ export async function appendEvidence(client, {
   return record;
 }
 
-export async function verifyChain(client, { tenantRef }) {
+// Walks the chain from `start` (a prefix verified earlier: { seq, hash, count }) or from
+// the first record, and checks the stored head against the walked tip.
+async function walkChain(client, tenantRef, start = null) {
   const { rows } = await client.query(
     `SELECT seq, tenant_ref, occurred_at, kind, subject, actor, prev_hash, record_hash
      FROM evidence
-     WHERE tenant_ref = $1
+     WHERE tenant_ref = $1 AND ($2::bigint IS NULL OR seq > $2)
      ORDER BY seq`,
-    [tenantRef],
+    [tenantRef, start?.seq ?? null],
   );
   const { rows: headRows } = await client.query(
     `SELECT head_seq, head_hash, record_count
@@ -82,7 +84,7 @@ export async function verifyChain(client, { tenantRef }) {
     [tenantRef],
   );
 
-  let prevHash = null;
+  let prevHash = start?.hash ?? null;
   for (const row of rows) {
     const expectedHash = evidenceHash({
       prevHash,
@@ -93,30 +95,82 @@ export async function verifyChain(client, { tenantRef }) {
       actor: row.actor,
     });
     if (row.prev_hash !== prevHash || row.record_hash !== expectedHash) {
-      return { ok: false, brokenAtSeq: row.seq };
+      return { result: { ok: false, brokenAtSeq: row.seq }, tip: null };
     }
     prevHash = row.record_hash;
   }
 
+  const count = BigInt(start?.count ?? 0) + BigInt(rows.length);
+  const last = rows.at(-1);
+  const tip = last ? { seq: String(last.seq), hash: last.record_hash, count: String(count) } : start;
   const head = headRows[0];
-  const actualHead = rows.at(-1);
   if (
-    (rows.length && !head)
+    (count > 0n && !head)
     || (head && (
-      head.head_seq !== actualHead?.seq
-      || head.head_hash !== actualHead?.record_hash
-      || head.record_count !== String(rows.length)
+      String(head.head_seq) !== tip?.seq
+      || head.head_hash !== tip?.hash
+      || head.record_count !== String(count)
     ))
   ) {
     return {
-      ok: false,
-      reason: 'truncated',
-      expectedSeq: head?.head_seq ?? null,
-      actualSeq: actualHead?.seq ?? null,
+      result: {
+        ok: false,
+        reason: 'truncated',
+        expectedSeq: head?.head_seq ?? null,
+        actualSeq: tip?.seq ?? null,
+      },
+      tip: null,
     };
   }
 
-  return { ok: true };
+  return { result: { ok: true }, tip };
+}
+
+export async function verifyChain(client, { tenantRef }) {
+  return (await walkChain(client, tenantRef)).result;
+}
+
+// Security audit run 2, finding 10: a page that shows chain integrity on every load must
+// not re-hash the whole chain each time. After one full walk, a later call hashes only the
+// records added since, provided the verified prefix is unchanged. "Unchanged" is checked
+// by the database without loading any record: every UPDATE, or DELETE and re-INSERT,
+// gives a row a new xmin, so the ordered list of xmins (and the row count) up to the
+// verified tip is a fingerprint of the stored prefix. Any mismatch, or a cache older than
+// `fullEveryMs`, falls back to a full walk; a broken result is never cached.
+//
+// Call it inside one REPEATABLE READ transaction (verifyAnchoredChain does), so the
+// fingerprint and the walk see the same rows.
+export const CHAIN_FULL_VERIFY_MS = 10 * 60 * 1000;
+
+async function prefixFingerprint(client, tenantRef, throughSeq) {
+  const { rows } = await client.query(
+    `SELECT count(*)::text AS count, md5(string_agg(xmin::text, ',' ORDER BY seq)) AS versions
+     FROM evidence
+     WHERE tenant_ref = $1 AND seq <= $2`,
+    [tenantRef, throughSeq],
+  );
+  return `${rows[0].count}:${rows[0].versions ?? ''}`;
+}
+
+export async function verifyChainCached(client, {
+  tenantRef, cache, now = Date.now(), fullEveryMs = CHAIN_FULL_VERIFY_MS,
+}) {
+  const entry = cache.get(tenantRef);
+  let start = null;
+  if (entry?.tip && now - entry.fullAt < fullEveryMs
+    && await prefixFingerprint(client, tenantRef, entry.tip.seq) === entry.fingerprint) {
+    start = entry.tip;
+  }
+  const { result, tip } = await walkChain(client, tenantRef, start);
+  if (!result.ok || !tip) {
+    cache.delete(tenantRef);
+    return result;
+  }
+  const fingerprint = start && tip.seq === start.seq
+    ? entry.fingerprint
+    : await prefixFingerprint(client, tenantRef, tip.seq);
+  cache.set(tenantRef, { tip, fingerprint, fullAt: start ? entry.fullAt : now });
+  return result;
 }
 
 // This checks internal consistency only. Operator-facing verification uses

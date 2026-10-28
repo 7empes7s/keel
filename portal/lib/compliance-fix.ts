@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { fixFor, listFixCandidates } from "../../engine/benchmarks/fix.mjs";
-import { enqueue } from "../../engine/jobs/queue.mjs";
+import { enqueue, PORTAL_QUEUED_JOBS_PER_PRINCIPAL } from "../../engine/jobs/queue.mjs";
 import { callerIdempotencyKey, guarded, normalizeJob, readActionParams, type GuardDeps } from "@/lib/action";
 import { queueableRestoreCredentialPaths } from "@/lib/restore-config";
 
@@ -50,6 +50,7 @@ export function guardedComplianceFix(deps: GuardDeps & { credentialPaths?: () =>
       requestedBy: principalId,
       idempotencyKey: callerIdempotencyKey(request, principalId, "compliance-fix"),
       notBefore: undefined,
+      maxQueuedForRequester: PORTAL_QUEUED_JOBS_PER_PRINCIPAL,
     })) as Record<string, unknown>;
     const artifactId = (job.params as Record<string, unknown>)?.artifactId;
     if (typeof artifactId !== "string" || artifactId.length === 0) throw new Error("compliance fix job is missing its artifact id");

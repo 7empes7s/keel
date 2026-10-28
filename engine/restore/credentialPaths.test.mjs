@@ -41,7 +41,7 @@ test('the Collector default is the file every collect command reads by default',
   // keel-operator (Q77): the old default, tenant-target.json, was never on the host, so a
   // workload restore needed KEEL_COLLECTOR_CONFIG_PATH set by hand.
   const source = readFileSync(fileURLToPath(new URL('../../cli/keel-collect.mjs', import.meta.url)), 'utf8');
-  assert.match(source, /arg\('config', '\/etc\/keel\/tenant\.json', argv\)/);
+  assert.match(source, /arg\(opts, 'config', '\/etc\/keel\/tenant\.json'\)/);
   assert.equal(DEFAULT_COLLECTOR_CONFIG_PATH, '/etc/keel/tenant.json');
 });
 

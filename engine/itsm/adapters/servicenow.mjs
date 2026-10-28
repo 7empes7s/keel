@@ -17,7 +17,7 @@
 //               key); 404 when no record has that sys_id.
 //   Write:      PATCH {instance}/api/now/table/{table}/{sys_id}, a partial update of the
 //               fields in the JSON body.
-//   Auth:       OAuth bearer token, referenced by credential.tokenRef (env:NAME). The
+//   Auth:       OAuth bearer token, referenced by credential.tokenRef (env:KEEL_INTEGRATION_*). The
 //               token never enters config, the outbox, errors or evidence.
 //   Callback:   ServiceNow does not sign outbound REST messages. The instance side (a
 //               business rule or flow, built in task-118) signs the body with
@@ -49,11 +49,17 @@
 // 5. KEEL never writes the approval state field: it writes only the plan version, plan
 //    digest, request and decision fields, so its own writes cannot be read back as an
 //    approval.
+// 6. PUBLIC ADDRESSES ONLY (security audit finding 6). The instance address is chosen by
+//    an admin and the worker runs as root on the deploy host, so a loopback, private,
+//    link-local (cloud metadata) or reserved instance address is refused in the config,
+//    and the default transport checks the address it actually connects to and every
+//    redirect hop.
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { can } from '../../authz/can.mjs';
 import { findPrincipalById } from '../../authz/principals.mjs';
 import { appendEvidence } from '../../govern/evidence.mjs';
 import { ITSM_CALLBACK_EVIDENCE_KIND, receiveCallback, reconcileRecord, runMirrorCycle } from '../bridge.mjs';
+import { BlockedDestinationError, assertDestinationAllowed, guardedRequest, isIntegrationReference } from '../../safety/outboundDestination.mjs';
 
 export const SERVICENOW_ADAPTER_NAME = 'servicenow';
 export const SERVICENOW_CONFIG_EVIDENCE_KIND = 'itsm-adapter-config';
@@ -84,7 +90,11 @@ const WRITE_ROLES = ['planVersion', 'planDigest', 'keelRequest', 'keelDecision']
 const TABLE_NAME = /^[a-z][a-z0-9_]{0,79}$/;
 const FIELD_PATH = /^[a-z][a-z0-9_]{0,79}(\.[a-z][a-z0-9_]{0,79}){0,3}$/;
 const SYS_ID = /^[0-9a-f]{32}$/;
+// The shape of a reference, used to tell whether the mapping names one at all. What
+// may be saved and resolved is narrower: env:KEEL_INTEGRATION_* only (isIntegrationReference),
+// so a ServiceNow setting can never pick up the database URL or another worker secret.
 const CREDENTIAL_REF = /^env:[A-Z_][A-Z0-9_]{0,127}$/;
+const isStorableReference = (value) => CREDENTIAL_REF.test(value) && isIntegrationReference(value);
 const STATE_VALUE = /^[^\s,][^,]{0,79}$/;
 const SECRET_VALUE_PATTERNS = [
   /Bearer\s+\S{8,}/i,
@@ -142,6 +152,13 @@ export function serviceNowConfigProblems(config) {
   }
   if (!url || url.protocol !== 'https:' || url.username || url.password || (url.pathname !== '/' && url.pathname !== '') || url.search) {
     problems.push(problem('instance-url', 'The instance address is missing or is not a plain https address.'));
+  } else {
+    try {
+      assertDestinationAllowed(url, { protocols: ['https:'] });
+    } catch (cause) {
+      if (!(cause instanceof BlockedDestinationError)) throw cause;
+      problems.push(problem('instance-url', 'The instance address is a private or local address. Keel only sends to public addresses.'));
+    }
   }
   if (typeof config.table !== 'string' || !TABLE_NAME.test(config.table)) {
     problems.push(problem('table', 'The ServiceNow table holding the change records is not set.'));
@@ -195,8 +212,8 @@ function assertStorableConfig(config) {
   }
   if (secretShaped(config)) throw new ServiceNowAdapterError('invalid', 'the ServiceNow config must hold credential references, not secret values');
   for (const [path, value] of [['credential.tokenRef', config.credential?.tokenRef], ['callback.secretRef', config.callback?.secretRef]]) {
-    if (value !== undefined && value !== null && (typeof value !== 'string' || !CREDENTIAL_REF.test(value))) {
-      throw new ServiceNowAdapterError('invalid', `${path} must be a credential reference such as env:KEEL_SERVICENOW_TOKEN`);
+    if (value !== undefined && value !== null && (typeof value !== 'string' || !isStorableReference(value))) {
+      throw new ServiceNowAdapterError('invalid', `${path} must be a credential reference such as env:KEEL_INTEGRATION_SERVICENOW_TOKEN`);
     }
   }
   if (isObject(config.credential) && Object.keys(config.credential).some((key) => key !== 'tokenRef')) {
@@ -207,9 +224,12 @@ function assertStorableConfig(config) {
   }
 }
 
-/** The env:NAME resolver. An unresolvable reference is a visible error, never a fallback. */
+/**
+ * The env:KEEL_INTEGRATION_* resolver. Any other name, and an unresolvable reference,
+ * is a visible error, never a fallback.
+ */
 export function defaultResolveSecret(reference) {
-  if (typeof reference === 'string' && CREDENTIAL_REF.test(reference)) {
+  if (typeof reference === 'string' && isStorableReference(reference)) {
     const value = process.env[reference.slice('env:'.length)];
     if (typeof value === 'string' && value.length > 0) return value;
   }
@@ -235,6 +255,15 @@ function permanent(message) {
 
 const PERMANENT_STATUSES = new Set([400, 403, 404, 405, 409, 413, 422]);
 
+/** The default transport: https to public addresses only, checked after DNS and on every
+ * redirect hop. `resolve` is for tests only. */
+function guardedFetch(resolve) {
+  return async (url, init) => {
+    const response = await guardedRequest(url, { ...init, resolve, protocols: ['https:'] });
+    return { ...response, json: async () => JSON.parse(await response.text()) };
+  };
+}
+
 /**
  * Builds the adapter from a stored config. Refuses (code 'disabled') when any mapping is
  * missing, so a half-configured adapter can never send or read. `fetchImpl` and
@@ -242,13 +271,14 @@ const PERMANENT_STATUSES = new Set([400, 403, 404, 405, 409, 413, 422]);
  * unless a caller passes a real transport.
  */
 export function createServiceNowAdapter({
-  config, fetchImpl = globalThis.fetch, resolveSecret = defaultResolveSecret, timeoutMs = SERVICENOW_DEFAULT_TIMEOUT_MS,
+  config, fetchImpl, resolveSecret = defaultResolveSecret, timeoutMs = SERVICENOW_DEFAULT_TIMEOUT_MS, resolve,
 } = {}) {
   const problems = serviceNowConfigProblems(config);
   if (problems.length > 0) {
     throw new ServiceNowAdapterError('disabled', `ServiceNow is off: ${problems.map((item) => item.message).join(' ')}`, problems);
   }
-  if (typeof fetchImpl !== 'function') throw new ServiceNowAdapterError('invalid', 'a fetch implementation is required');
+  const send = fetchImpl ?? guardedFetch(resolve);
+  if (typeof send !== 'function') throw new ServiceNowAdapterError('invalid', 'a fetch implementation is required');
   const base = new URL(config.instanceUrl).origin;
   const { fields } = config;
   const readFields = [...new Set([...READ_ROLES.map((role) => fields[role]), 'sys_id', 'sys_mod_count'])];
@@ -262,7 +292,7 @@ export function createServiceNowAdapter({
     const token = await resolveSecret(config.credential.tokenRef);
     let response;
     try {
-      response = await fetchImpl(url, {
+      response = await send(url, {
         method,
         headers: {
           accept: 'application/json',
@@ -273,8 +303,11 @@ export function createServiceNowAdapter({
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (cause) {
+      // A refused address is a config problem, not the event's: the event stays pending
+      // and the reason is shown.
+      if (cause instanceof BlockedDestinationError) throw transient(`ServiceNow address refused: ${cause.message}`);
       // A network error or timeout: the outcome is unknown, so the event stays pending.
-      throw transient(`ServiceNow ${method} did not complete: ${cause?.name === 'TimeoutError' ? 'timed out' : 'network error'}`);
+      throw transient(`ServiceNow ${method} did not complete: ${(cause?.name === 'TimeoutError' || cause?.name === 'AbortError') ? 'timed out' : 'network error'}`);
     }
     return response;
   }
@@ -446,13 +479,13 @@ export async function saveServiceNowConfig(client, { tenantRef, config, requeste
  * Loads the tenant's adapter. Throws ServiceNowAdapterError('disabled') with the
  * problems when ServiceNow is not set up or any mapping is missing.
  */
-export async function loadServiceNowAdapter(client, { tenantRef, fetchImpl, resolveSecret, timeoutMs }) {
+export async function loadServiceNowAdapter(client, { tenantRef, fetchImpl, resolveSecret, timeoutMs, resolve }) {
   const row = await storedConfig(client, tenantRef);
   if (!row) {
     const problems = serviceNowConfigProblems(null);
     throw new ServiceNowAdapterError('disabled', 'ServiceNow is not set up.', problems);
   }
-  return createServiceNowAdapter({ config: row.config, fetchImpl, resolveSecret, timeoutMs });
+  return createServiceNowAdapter({ config: row.config, fetchImpl, resolveSecret, timeoutMs, resolve });
 }
 
 async function refusedCallbackEvidence(client, { tenantRef, code, sysId = null }) {
@@ -501,10 +534,10 @@ export async function handleServiceNowCallback(client, { tenantRef, adapter, hea
  * the bridge's deterministic reconcile event id makes a second poll a duplicate).
  * A disabled adapter does nothing and says why.
  */
-export async function runServiceNowCycle(client, { tenantRef, fetchImpl, resolveSecret, timeoutMs, now = null }) {
+export async function runServiceNowCycle(client, { tenantRef, fetchImpl, resolveSecret, timeoutMs, resolve, now = null }) {
   let adapter;
   try {
-    adapter = await loadServiceNowAdapter(client, { tenantRef, fetchImpl, resolveSecret, timeoutMs });
+    adapter = await loadServiceNowAdapter(client, { tenantRef, fetchImpl, resolveSecret, timeoutMs, resolve });
   } catch (error) {
     if (error instanceof ServiceNowAdapterError && error.code === 'disabled') {
       return { enabled: false, problems: error.problems };

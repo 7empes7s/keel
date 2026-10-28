@@ -19,7 +19,7 @@ const ON: ServiceNowStatus = {
     instanceHost: "contoso.service-now.com", table: "u_keel_gated_change",
     fields: { state: "u_gate", approver: "u_gate_owner.email", planVersion: "u_plan_rev", planDigest: "u_plan_hash", keelRequest: "u_keel_ref", keelDecision: "u_keel_outcome" },
     approvedValues: ["gate_passed"], rejectedValues: ["gate_blocked"],
-    tokenRef: "env:KEEL_SERVICENOW_TOKEN", callbacks: "signed", callbackSecretRef: "env:KEEL_SERVICENOW_CALLBACK_SECRET",
+    tokenRef: "env:KEEL_INTEGRATION_SERVICENOW_TOKEN", callbacks: "signed", callbackSecretRef: "env:KEEL_INTEGRATION_SERVICENOW_CALLBACK_SECRET",
   },
   mirror: { records: 3, waiting: 1, pendingUpdates: 0, heldBack: 0, conflicts: 0 },
   heldBack: [], updatedAt: "2026-10-04T00:00:00.000Z", updatedBy: id,

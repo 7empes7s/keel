@@ -545,6 +545,19 @@ export function fakeGraph() {
         objects.set(base, { value: kept });
         return { ok: true, status: 204, body: null };
       }
+      // Issue #642: an app's links are set whole through the app's updateRelationships.
+      const linksOf = /^\/deviceAppManagement\/mobileApps\/([^/]+)\/updateRelationships$/.exec(path);
+      if (linksOf && method === 'POST') {
+        const appId = decodeURIComponent(linksOf[1]);
+        for (const [key, object] of [...objects.entries()]) {
+          if (key.startsWith('/deviceAppManagement/mobileAppRelationships/') && object.sourceId === appId && object.targetType !== 'parent') objects.delete(key);
+        }
+        for (const link of body.relationships ?? []) {
+          const id = `${link.targetId}_${appId}`;
+          objects.set(`/deviceAppManagement/mobileAppRelationships/${id}`, { ...link, id, sourceId: appId, targetType: 'child' });
+        }
+        return { ok: true, status: 204, body: null };
+      }
       const actions = /^(\/deviceManagement\/deviceCompliancePolicies\/[^/]+)\/scheduleActionsForRules$/.exec(path);
       if (actions && method === 'POST') {
         if (!objects.has(actions[1])) return { ok: false, status: 404, body: { error: { code: 'ResourceNotFound' } } };
@@ -663,6 +676,9 @@ export function fakeGraph() {
 
 const governor = { async acquire() {}, observeRetryAfter() {} };
 
+// Types whose delete is only the undo of a create a restore made (an app's link).
+const UNDO_ONLY_DELETES = new Set(['mobileAppRelationship']);
+
 function fixtureFor(resourceType, operation, graph) {
   const collection = graphPathFor(resourceType);
   const payload = FIXTURE_PAYLOADS[resourceType];
@@ -692,7 +708,9 @@ function fixtureFor(resourceType, operation, graph) {
   }
   if (operation === 'delete') {
     graph.objects.set(objectPath, { ...payload, id: existingId });
-    return { ...base, verb: 'delete', payload: null, targetId: existingId, live: { targetId: existingId, payload: { ...payload, id: existingId } } };
+    // A type deleted only as the undo of a create is driven as that undo.
+    const undo = UNDO_ONLY_DELETES.has(resourceType) ? { undoes: 'create', compensates: ['fixture-entry'] } : {};
+    return { ...base, verb: 'delete', payload: null, targetId: existingId, live: { targetId: existingId, payload: { ...payload, id: existingId } }, ...undo };
   }
   if (operation === 'restore-soft-deleted') {
     // Roadmap task-152: a deleted Conditional Access policy comes back in the

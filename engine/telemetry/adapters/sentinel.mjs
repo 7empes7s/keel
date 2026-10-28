@@ -43,8 +43,14 @@
 import { createHash, createSign, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { canonicalJson } from '../events.mjs';
+import { isIntegrationReference } from '../../safety/outboundDestination.mjs';
 
 export const SENTINEL_DESTINATION_KIND = 'azure-monitor-sentinel';
+// Security audit finding 6: the sender credential reference must name a variable in the
+// integration namespace, so a destination can never read the database URL or another
+// secret the worker holds.
+const SENTINEL_REFERENCE_PROBLEM =
+  'config.credentialRef must be a reference such as env:KEEL_INTEGRATION_SENTINEL_CREDENTIAL';
 export const LOGS_INGESTION_API_VERSION = '2023-01-01';
 export const LOGS_INGESTION_DOC_SOURCE = Object.freeze({
   url: 'https://learn.microsoft.com/en-us/azure/azure-monitor/logs/logs-ingestion-api-overview',
@@ -178,6 +184,11 @@ export function sentinelSetupPrerequisites(config = {}) {
       name: 'entra-app-credential-reference',
       detail: 'configure config.credentialRef naming the dedicated sender app registration credential; the app needs the Monitoring Metrics Publisher role on the DCR',
     });
+  } else if (!isIntegrationReference(config.credentialRef)) {
+    pending.push({
+      name: 'entra-app-credential-reference',
+      detail: SENTINEL_REFERENCE_PROBLEM,
+    });
   }
   if (config.cloud !== undefined && !LOGS_INGESTION_TOKEN_AUDIENCE[config.cloud]) {
     pending.push({
@@ -193,6 +204,13 @@ export function sentinelSetupPrerequisites(config = {}) {
     });
   }
   return pending;
+}
+
+/** Problems with a Sentinel destination config, checked when it is registered. */
+export function sentinelDestinationProblems(config = {}) {
+  const ref = config?.credentialRef;
+  if (ref === undefined || ref === null || isIntegrationReference(ref)) return [];
+  return [SENTINEL_REFERENCE_PROBLEM];
 }
 
 /**
@@ -239,7 +257,7 @@ export function recordForEnvelope({ envelope, destinationId, eventId }) {
 // client-credentials flow against the cloud's token endpoint, scoped to the LOGS
 // INGESTION audience. Adapted from the probe's hand-rolled flow
 // (tools/tenant-probe/auth.mjs) so no SDK hides retries. The credential REFERENCE
-// lives in destination config (`credentialRef: 'env:<VAR>'`); the referenced env
+// lives in destination config (`credentialRef: 'env:KEEL_INTEGRATION_<NAME>'`); the referenced env
 // var names a JSON file holding { tenantId, clientId, certificatePath,
 // privateKeyPath }. The file path and its contents never enter logs or evidence.
 
@@ -262,8 +280,8 @@ async function acquireCertificateToken({ credentialRef, scope, fetchImpl }) {
   if (cached && cached.scope === scope && cached.expiresAt > Date.now() + 60 * 1000) {
     return cached.accessToken;
   }
-  if (!credentialRef.startsWith('env:')) {
-    throw new Error('unsupported credential reference form (expected env:<VAR>)');
+  if (!isIntegrationReference(credentialRef)) {
+    throw new Error('unsupported credential reference form (expected env:KEEL_INTEGRATION_<NAME>)');
   }
   const credentialPath = process.env[credentialRef.slice(4)];
   if (typeof credentialPath !== 'string' || credentialPath.length === 0) {

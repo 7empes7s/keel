@@ -165,6 +165,9 @@ test("filters live in the address, narrow the rows, and read back as words", () 
   const csv = activityCsv(rows.slice(0, 2));
   assert.match(csv, /^When,What,Kind,Outcome,Who,Source,Job ID,Audit sequence,Account\n/);
   assert.match(csv, /"Amara Okafor approved a restore","Approval","Recorded","Amara Okafor","Audit record","","18205"/);
+  const risky = activityCsv([{ ...rows[0], title: "=HYPERLINK(\"https://example.invalid\")" }, { ...rows[1], title: "@SUM(1,1)" }]);
+  assert.match(risky, /,"'=HYPERLINK\(""https:\/\/example\.invalid""\)",/, "a formula title is neutralised");
+  assert.match(risky, /,"'@SUM\(1,1\)",/);
 });
 
 test("the page body renders rows by day, filters by address, and keeps ids in the record", async () => {

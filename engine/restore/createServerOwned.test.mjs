@@ -62,11 +62,12 @@ const group = { naturalKey: 'group:FIN-Admins', resourceType: 'group', blastRadi
     securityIdentifier: 'S-1-12-1-1', onPremisesSyncEnabled: false,
     assignedLicenses: [{ skuId: 'sku-e3', disabledPlans: ['plan-a'] }],
   } };
+// Untrusted: a restore never creates a trusted location (namedLocationTrust.test.mjs).
 const namedLocation = { naturalKey: 'namedLocation:HQ', resourceType: 'namedLocation', blastRadius: 'tenant-lockout',
   payload: {
     ...snapshotNoise,
     '@odata.type': '#microsoft.graph.ipNamedLocation',
-    displayName: 'HQ', isTrusted: true, ipRanges: [{ '@odata.type': '#microsoft.graph.iPv4CidrRange', cidrAddress: '203.0.113.0/24' }],
+    displayName: 'HQ', isTrusted: false, ipRanges: [{ '@odata.type': '#microsoft.graph.iPv4CidrRange', cidrAddress: '203.0.113.0/24' }],
   } };
 const caPolicy = { naturalKey: 'conditionalAccessPolicy:Block legacy', resourceType: 'conditionalAccessPolicy', blastRadius: 'tenant-lockout',
   payload: {

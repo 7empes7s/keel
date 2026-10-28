@@ -228,7 +228,7 @@ export const TYPE_DECISIONS = Object.freeze({
   multiTenantOrganizationPartnerConfigurationTemplate: automated('multitenantorganizationpartnerconfigurationtemplate', 'restore gaps batch 2: update in place; the template only affects tenants that join later'),
   identityUserFlowAttribute: manual('no writer yet; built-in attributes are Microsoft-managed'),
   authenticationEventListener: manual('no writer yet; it points to a custom authentication extension, which is not restored yet'),
-  externalDomainFederation: automated('samlorwsfedexternaldomainfederation', 'restore gaps batch 3: update in place of the federation settings and public signing certificate; its domains are not backed up yet, so a deleted federation is set up again by hand'),
+  externalDomainFederation: automated('samlorwsfedexternaldomainfederation', 'restore gaps batch 3: update in place of the federation name and protocol; its sign-in addresses and signing certificate are a manual step, and its domains are backed up but not written, so a deleted federation is set up again by hand'),
   // Remaining kinds, batch 5: Exchange and Defender admin roles, backed up read-only; no writer is built yet.
   exchangeRoleDefinition: manual('no writer yet; beta only, and built-in roles are Microsoft-managed'),
   exchangeRoleAssignment: manual('Exchange admin access needs a privilege review before it is granted again'),
@@ -246,7 +246,7 @@ export const TYPE_DECISIONS = Object.freeze({
   microsoftTunnelConfiguration: automated('intune-mstunnel-microsofttunnelconfiguration', 'restore gaps batch 8: create and update of the network, DNS, routes and port through Graph beta; the sites and servers that use it are not written', { view: 'graph-rest-beta' }),
   microsoftTunnelHealthThreshold: automated('intune-mstunnel-microsofttunnelhealththreshold', 'restore gaps batch 17: update in place through Graph beta of the healthy and unhealthy limits; the defaults are Microsoft\'s', { view: 'graph-rest-beta' }),
   iosLobAppProvisioningConfiguration: automated('intune-apps-ioslobappprovisioningconfiguration', 'restore gaps batch 12: create and update of the name, description, scope tags and profile file through Graph beta; a backup without the file, an expired file, or one older than the live profile is never written; batch 16: who it is assigned to is assigned again through /assign', { view: 'graph-rest-beta' }),
-  mobileAppRelationship: automated('intune-apps-mobileapprelationship', 'restore gaps batch 13: create and update of a dependency or supersedence between two apps through Graph beta; both apps must be in Intune (batch 19: apps recreated in the same run are linked by their new ids)', { view: 'graph-rest-beta' }),
+  mobileAppRelationship: automated('intune-apps-mobileapprelationship', 'restore gaps batch 13: create and update of a dependency or supersedence between two apps through Graph beta; both apps must be in Intune (batch 19: apps recreated in the same run are linked by their new ids; issue #642: written through the app\'s updateRelationships)', { view: 'graph-rest-beta' }),
   managedEBook: manual('no writer yet; beta only, and books come from the store'),
   managedEBookCategory: automated('intune-books-managedebookcategory', 'restore gaps batch 8: create and update of the name through Graph beta; which books are in a category is not written', { view: 'graph-rest-beta' }),
   cartToClassAssociation: automated('intune-education-carttoclassassociation', 'restore gaps batch 10: create and update of the name, description, devices and classes through Graph beta; the devices and classes must still exist', { view: 'graph-rest-beta' }),
@@ -275,6 +275,17 @@ export const TYPE_DECISIONS = Object.freeze({
   securityZone: manual('no writer yet; beta only'),
   sharedEmailDomain: manual('no writer yet; beta only'),
   schemaExtension: manual('no writer yet; only extensions owned by this tenant\'s apps are read'),
+  // Remaining kinds, batch 9: read once the Collector holds the read permission; no writer is built yet.
+  formsSettings: manual('no writer yet; beta only'),
+  todoSettings: manual('no writer yet; beta only'),
+  microsoft365AppsInstallationOptions: manual('no writer yet'),
+  appsAndServicesSettings: manual('no writer yet; beta only'),
+  adminReportSettings: manual('no writer yet'),
+  profileCardProperty: manual('no writer yet'),
+  pronounsSettings: manual('no writer yet'),
+  defenderDetectionRule: manual('no writer yet; beta only; a rule can run response actions, so it is rebuilt turned off'),
+  teamsCatalogApp: manual('Graph does not return the app package; it is uploaded again from your own copy'),
+  engageCommunity: manual('no writer yet; posts and members are content'),
 });
 
 // Why a retried operation can never double-apply — each names the mechanism in
@@ -1104,7 +1115,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
   authenticationEventListener: byHand('identity-application', 'POST /identity/authenticationEventListeners', 'EventListener.ReadWrite.All',
     'backed up; its custom authentication extension is recreated first'),
   externalDomainFederation: subset('policy', 'PATCH /directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation/{id}', 'Domain.ReadWrite.All',
-    'update in place is fixture-tested; its domains are not backed up, so a deleted federation is not recreated'),
+    'update in place is fixture-tested; its domains are backed up but not written, so a deleted federation is not recreated'),
   // Remaining kinds, batch 5: Exchange and Defender admin roles, backed up read-only; manual until a writer is built.
   exchangeRoleDefinition: byHand('identity-application', 'New-ManagementRole (Exchange Online PowerShell)', 'Exchange Organization Management role',
     'backed up; built-in roles are listed beside custom ones'),
@@ -1137,8 +1148,8 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'update in place of the two limits is fixture-tested'),
   iosLobAppProvisioningConfiguration: subset('device-management', 'POST /deviceAppManagement/iosLobAppProvisioningConfigurations (beta); PATCH .../{id} (beta); POST .../{id}/assign (beta)', 'DeviceManagementApps.ReadWrite.All',
     'create and update with the profile file are fixture-tested; expired or older files are never written; assignments are written through /assign'),
-  mobileAppRelationship: subset('device-management', 'POST /deviceAppManagement/mobileAppRelationships (beta); PATCH .../{id} (beta)', 'DeviceManagementApps.ReadWrite.All',
-    'create and update are fixture-tested; both apps must exist, and a link between apps recreated in the same run is remapped to their new ids; a link already set between the same apps is skipped'),
+  mobileAppRelationship: subset('device-management', 'POST /deviceAppManagement/mobileApps/{appId}/updateRelationships (beta), with the links the app already holds', 'DeviceManagementApps.ReadWrite.All',
+    'create and update are fixture-tested; both apps must exist, and a link between apps recreated in the same run is remapped to their new ids; a link already set between the same apps is skipped; Intune links only Win32 apps'),
   managedEBook: byHand('device-management', 'POST /deviceAppManagement/managedEBooks (beta)', 'DeviceManagementApps.ReadWrite.All',
     'backed up; no writer yet'),
   managedEBookCategory: subset('device-management', 'POST /deviceAppManagement/managedEBookCategories (beta); PATCH .../{id} (beta)', 'DeviceManagementApps.ReadWrite.All',
@@ -1193,6 +1204,27 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'backed up; Microsoft provisions the domain'),
   schemaExtension: byHand('administrative-configuration', 'POST /schemaExtensions', 'Application.ReadWrite.All',
     'backed up for this tenant\'s apps only; no writer yet'),
+  // Remaining kinds, batch 9: read once the Collector holds the read permission; manual until a writer is built.
+  formsSettings: byHand('administrative-configuration', 'PATCH /admin/forms (beta)', 'OrgSettings-Forms.ReadWrite.All',
+    'backed up; no writer yet'),
+  todoSettings: byHand('administrative-configuration', 'PATCH /admin/todo (beta)', 'OrgSettings-Todo.ReadWrite.All',
+    'backed up; no writer yet'),
+  microsoft365AppsInstallationOptions: byHand('administrative-configuration', 'PATCH /admin/microsoft365Apps/installationOptions', 'OrgSettings-Microsoft365Install.ReadWrite.All',
+    'backed up; no writer yet'),
+  appsAndServicesSettings: byHand('administrative-configuration', 'PATCH /admin/appsAndServices (beta)', 'OrgSettings-AppsAndServices.ReadWrite.All',
+    'backed up; no writer yet'),
+  adminReportSettings: byHand('administrative-configuration', 'PATCH /admin/reportSettings', 'ReportSettings.ReadWrite.All',
+    'backed up; no writer yet'),
+  profileCardProperty: byHand('administrative-configuration', 'POST /admin/people/profileCardProperties', 'PeopleSettings.ReadWrite.All',
+    'backed up; no writer yet'),
+  pronounsSettings: byHand('administrative-configuration', 'PATCH /admin/people/pronouns', 'PeopleSettings.ReadWrite.All',
+    'backed up; no writer yet'),
+  defenderDetectionRule: byHand('policy', 'POST /security/rules/detectionRules (beta)', 'CustomDetection.ReadWrite.All',
+    'backed up; no writer yet; a rebuilt rule starts turned off'),
+  teamsCatalogApp: byHand('identity-application', 'POST /appCatalogs/teamsApps', 'AppCatalog.ReadWrite.All',
+    'backed up without the app package, which Graph does not return'),
+  engageCommunity: byHand('administrative-configuration', 'POST /employeeExperience/communities', 'Community.ReadWrite.All',
+    'backed up without posts, files or members; no writer yet'),
 });
 
 const INVENTORY_FIELDS = new Set(['batch', 'status', 'api', 'permission', 'reason']);
@@ -1344,6 +1376,38 @@ export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
   schemaExtension: Object.freeze([
     lost('configuration', 'extension definition', 'no writer yet; created again by hand with the same id, owner app and properties'),
     lost('relationship', 'values stored on users and groups', 'the values live on each object, not in the definition, and are not restored'),
+  ]),
+  // Remaining kinds, batch 9.
+  formsSettings: Object.freeze([
+    lost('configuration', 'Forms settings', 'no writer yet; set by hand from the backup'),
+  ]),
+  todoSettings: Object.freeze([
+    lost('configuration', 'To Do settings', 'no writer yet; set by hand from the backup'),
+  ]),
+  microsoft365AppsInstallationOptions: Object.freeze([
+    lost('configuration', 'installation options', 'no writer yet; set by hand from the backup'),
+  ]),
+  appsAndServicesSettings: Object.freeze([
+    lost('configuration', 'apps and services settings', 'no writer yet; set by hand from the backup'),
+  ]),
+  adminReportSettings: Object.freeze([
+    lost('configuration', 'report privacy setting', 'no writer yet; set by hand from the backup'),
+  ]),
+  pronounsSettings: Object.freeze([
+    lost('configuration', 'pronouns setting', 'no writer yet; set by hand from the backup'),
+  ]),
+  profileCardProperty: Object.freeze([
+    lost('configuration', 'profile card field', 'no writer yet; added again by hand from the backup'),
+  ]),
+  defenderDetectionRule: Object.freeze([
+    lost('configuration', 'detection rule', 'no writer yet; rebuilt by hand from the backup and left off until its response actions are checked'),
+  ]),
+  teamsCatalogApp: Object.freeze([
+    lost('configuration', 'app package', 'Graph does not return the package; it is uploaded again from your own copy'),
+  ]),
+  engageCommunity: Object.freeze([
+    lost('configuration', 'community', 'no writer yet; recreated by hand from the backup'),
+    lost('relationship', 'groupId', 'each community has a Microsoft 365 group behind it; the group is rebuilt with the community'),
   ]),
 });
 

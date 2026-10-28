@@ -11,7 +11,7 @@
 // approval can never be granted against stale parameters.
 
 import { isDeepStrictEqual } from 'node:util';
-import { enqueue } from '../jobs/queue.mjs';
+import { APPROVED_JOB_PRIORITY, enqueue } from '../jobs/queue.mjs';
 import { appendEvidence } from './evidence.mjs';
 import { refuseSameContentDriftIds } from '../store/openDrift.mjs';
 import { canonicalDigest, getDryRunArtifact, validateArtifactForApproval } from '../restore/dryRunArtifact.mjs';
@@ -511,6 +511,7 @@ export async function approveRequest(client, {
       params: jobParams,
       requestedBy: request.requested_by,
       idempotencyKey: `approval:${request.id}`,
+      priority: APPROVED_JOB_PRIORITY,
     });
     if (job && !jobMatchesApproval(job, { kind: request.action, requestedBy: request.requested_by, params: jobParams })) {
       throw new ApprovalJobConflictError(`job key for approval request ${id} is held by another job`);

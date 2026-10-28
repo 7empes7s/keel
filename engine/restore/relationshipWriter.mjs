@@ -96,7 +96,8 @@ function compareOperations(a, b) {
  * - `resolveTargetId(naturalKey)`: target-tenant id of an existing object, or null.
  * - `pendingCreates`: natural keys this run will create (their id is resolved at execution).
  * - `naturalKeyForTargetId(id)`: display/digest natural key of a live edge target.
- * - `protectedPrincipalIds`: break-glass principals that are never removed from any edge set.
+ * - `protectedPrincipalIds`: Global Administrator principals and registered break-glass accounts,
+ *   never removed from any edge set. A group among them keeps every member it has.
  *
  * Returns `operations` (ordered), `refusals` (guard refusals: naturalKey + reason),
  * `notes` (edge sets deliberately not reconciled, e.g. a legacy snapshot) and
@@ -183,6 +184,12 @@ export function planRelationshipOperations({
         } else if (verb === 'edge-remove') {
           if (protectedIds.has(targetId)) {
             refuse(`protected-principal: refusing to remove break-glass principal ${targetId} from ${parent.naturalKey} ${family}s`);
+            continue;
+          }
+          // Security audit run 2, finding 1: a group that holds Global Administrator
+          // passes it to its members, so each member is a Global Administrator too.
+          if (family === 'member' && protectedIds.has(lower(parent.liveTargetId))) {
+            refuse(`protected-principal: refusing to remove ${naturalKeyForTargetId(targetId) ?? targetId} from ${parent.naturalKey}, which holds Global Administrator — remove it by hand after checking emergency access`);
             continue;
           }
           operations.push({ parentNaturalKey: parent.naturalKey, family, action: 'remove', targetNaturalKey: naturalKeyForTargetId(targetId), targetId });

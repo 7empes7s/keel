@@ -94,6 +94,8 @@ try {
   assert.equal(approved.decided_by, 'principal-approver');
   assert.ok(approved.decided_at, 'the decision is timestamped');
   assert.equal(job.kind, 'baseline-activate');
+  // Security audit run 2, finding 11: an approved job is claimed ahead of ordinary ones.
+  assert.equal(job.priority, 1, 'an approval mints a priority job');
   assert.deepEqual(job.params, { naturalKey: 'group:alpha' });
   assert.equal(job.requested_by, restorer);
   assert.equal(job.status, 'queued');

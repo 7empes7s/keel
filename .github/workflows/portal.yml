@@ -99,6 +99,9 @@ jobs:
           cache-dependency-path: |
             portal/package-lock.json
             engine/package-lock.json
+      - name: Install age
+        # The offsite tests encrypt and decrypt dumps with the age CLI, as the deploy host does.
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq age
       - name: Prepare database and tenant config
         # Test files run in parallel and each applies the schema; creating the
         # extension once up front avoids a race on CREATE EXTENSION.

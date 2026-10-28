@@ -88,6 +88,7 @@ after(async () => {
 function request(method = "GET", capabilities = "read", principal: string | null = viewer, body?: unknown) {
   const headers = new Headers({ [CAPABILITIES_HEADER]: capabilities });
   if (principal) headers.set(PRINCIPAL_ID_HEADER, principal);
+  if (body !== undefined) headers.set("content-type", "application/json");
   return new Request("http://localhost/api/schedules", { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
 }
 async function row(id = ids[0]) { return (await client.query("SELECT * FROM schedule WHERE id = $1", [id])).rows[0]; }

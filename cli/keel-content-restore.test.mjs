@@ -98,7 +98,7 @@ test('plan, gate, test-tenant guard, run and resume through the command line', a
   assert.equal(planned.items.mail, 1);
 
   const approval = async (params, decidedBy = approver.id) => (await setup.query(
-    `INSERT INTO approval_request (action, params, requested_by, decided_by, status, expires_at) VALUES ('content-restore', $1, $2, $3, 'approved', now() + interval '1 day') RETURNING id`,
+    `INSERT INTO approval_request (action, params, requested_by, decided_by, decided_at, status, expires_at) VALUES ('content-restore', $1, $2, $3, now(), 'approved', now() + interval '1 day') RETURNING id`,
     [params, actor.id, decidedBy],
   )).rows[0].id;
   const approvalId = await approval({ runId: planned.runId, tenantRef: TENANT, workload: 'mail', request });
@@ -126,7 +126,7 @@ test('plan, gate, test-tenant guard, run and resume through the command line', a
   assert.deepEqual(created.singleValueExtendedProperties.slice(0, 1), [{ id: 'Integer 0x0E07', value: '1' }], 'created as a received message, not a draft (#293)');
 
   const writes = graph.writes().length;
-  assert.equal(await run(approvalId), 0);
+  await assert.rejects(run(approvalId), /already completed/, 'a completed run never starts again (audit run 2, finding 6)');
   assert.equal(graph.writes().length, writes, 'running the approved request again writes nothing');
   const { rows: [held] } = await setup.query('SELECT status, requested_by, approved_by FROM content_restore_run WHERE id = $1', [planned.runId]);
   assert.deepEqual(held, { status: 'completed', requested_by: actor.id, approved_by: approver.id });

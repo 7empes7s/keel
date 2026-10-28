@@ -23,8 +23,12 @@ Each provider is a small, pure contract with three parts:
 
 - **Credential references only.**
   - Webhook addresses, the PagerDuty routing key and the Twilio auth token are stored
-    as `env:NAME` references. A webhook address counts as a secret, because its path
-    is the credential.
+    as `env:KEEL_INTEGRATION_NAME` references. A webhook address counts as a secret,
+    because its path is the credential.
+  - Only names that start with `KEEL_INTEGRATION_` are saved or read, so a channel can
+    never pick up the database URL or another worker secret. Older settings are carried
+    over by `engine/store/schema.d/79-integration-references.sql`
+    (`env:X` becomes `env:KEEL_INTEGRATION_X`; the server then needs that variable).
   - `createChannel` refuses a raw value, an unknown setting, or an unsupported provider
     or region.
   - The default resolver reads the worker's environment at send time. Tests inject one.

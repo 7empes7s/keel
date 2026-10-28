@@ -63,14 +63,24 @@ const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
 /**
  * The container answers with one JSON document on stdout. pwsh can print warning-stream
  * lines ahead of it (2026-10-05: Get-LabelPolicy's "WARNING: Force Validate not set"),
- * so when the whole of stdout is not JSON, the last non-empty line is taken as the answer
- * and the lines before it are returned as `noise`. Anything else still fails to parse.
+ * so when the whole of stdout is not JSON, `WARNING:` lines are set aside as `noise` and the
+ * rest parsed; failing that, the last non-empty line is taken as the answer and the lines
+ * before it are returned as `noise`. Anything else still fails to parse.
  */
 export function parseJobStdout(stdout) {
   try {
     return { value: JSON.parse(stdout), noise: [] };
   } catch (error) {
     const lines = String(stdout).replace(ANSI, '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    // pwsh warning-stream lines can also sit around a multi-line answer (2026-10-28, the probe's
+    // Get-Mailbox -ResultSize 1: "WARNING: There are more results available ..."). Without them,
+    // the rest must still be one JSON document.
+    const warnings = lines.filter((line) => /^WARNING:/.test(line));
+    if (warnings.length) {
+      try {
+        return { value: JSON.parse(lines.filter((line) => !/^WARNING:/.test(line)).join('\n')), noise: warnings };
+      } catch { /* fall through to the last-line answer */ }
+    }
     const last = lines.at(-1);
     if (lines.length < 2 || !last.startsWith('{')) throw error;
     return { value: JSON.parse(last), noise: lines.slice(0, -1) };

@@ -144,8 +144,8 @@ async function run() {
   }
 
   // 4b. Warning lines pwsh prints before the answer (ANSI-coloured) don't hide it: the
-  //     last line is the answer and the warnings land in stderr. Noise after the answer,
-  //     or no JSON line at all, is still BAD_JSON.
+  //     last line is the answer and the warnings land in stderr. Other noise after the
+  //     answer, or no JSON at all, is still BAD_JSON.
   {
     const warning = '\u001b[33;1mWARNING: Force Validate not set\u001b[0m\n';
     const answer = JSON.stringify({ ok: true, output: [{ Name: 'KEEL-RT-policy' }] });
@@ -155,7 +155,20 @@ async function run() {
     assert.match(res.stderr, /WARNING: Force Validate not set\nWARNING: Force Validate not set\n$/);
     assert.doesNotMatch(res.stderr, /\u001b/);
 
-    for (const stdout of [`${answer}\nWARNING: after\n`, 'WARNING: one\nWARNING: two\n']) {
+    // Live probe output (Q197, 2026-10-28): coloured WARNING lines before, inside and after
+    // a multi-line JSON array. The warnings go to stderr and the array is the answer.
+    const more = '\u001b[33;1mWARNING: There are more results available than are currently displayed. To view them, increase the value for the ResultSize parameter.\u001b[0m\n';
+    const rows = [{ workload: 'exo', ok: true, count: 1 }, { workload: 'teams', ok: true, count: 2 }];
+    const pretty = JSON.stringify(rows, null, 2).split('\n');
+    const live = () => makeFakeChild({ stdoutChunks: [more, `${pretty.slice(0, 3).join('\n')}\n`, more, `${pretty.slice(3).join('\n')}\n`, more, more], exitCode: 0 });
+    const probed = await runJob({ mode: 'probe' }, { spawnFn: live });
+    assert.deepEqual(probed.result, rows);
+    assert.equal(probed.stderr.match(/WARNING: There are more results/g).length, 4);
+    assert.doesNotMatch(probed.stderr, /\u001b/);
+    const after = await runJob({ mode: 'probe' }, { spawnFn: () => makeFakeChild({ stdoutChunks: [`${answer}\nWARNING: after\n`], exitCode: 0 }) });
+    assert.deepEqual(after.result, JSON.parse(answer));
+
+    for (const stdout of [`${answer}\nsomething else\n`, 'WARNING: one\nWARNING: two\n', `WARNING: one\n${pretty.slice(0, 3).join('\n')}\n`]) {
       const bad = () => makeFakeChild({ stdoutChunks: [stdout], exitCode: 0 });
       await assert.rejects(() => runJob({ mode: 'probe' }, { spawnFn: bad }), (err) => err instanceof JobQueueError && err.code === 'BAD_JSON');
     }

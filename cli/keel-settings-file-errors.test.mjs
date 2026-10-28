@@ -114,7 +114,7 @@ for (const [script, args] of [
 // on the command line (fixtures, proposals, evidence) may still be parsed directly.
 test('no command parses a settings file with a bare JSON.parse', () => {
   const allowed = new Set([
-    "keel-bootstrap.mjs: JSON.parse(readFileSync(flags.get('--fixture')",
+    'keel-bootstrap.mjs: JSON.parse(readFileSync(opts.fixture',
     'keel-discover.mjs: JSON.parse(readFile(commandsPath)',
     'keel-policy-scenario.mjs: JSON.parse(readFile(proposalPath',
     'keel-policy-scenario.mjs: JSON.parse(readFile(whatIfPath',

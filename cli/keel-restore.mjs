@@ -66,8 +66,8 @@
 // --collector-config for PowerShell; Graph still reads with --collector-config.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { parseArgs } from 'node:util';
 import { readConfigFile } from '../engine/config/configFile.mjs';
+import { parseCliArgs } from './args.mjs';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { GraphReader } from '../tools/tenant-probe/graph.mjs';
 import { collectM1 } from '../engine/collect/entraAdapter.mjs';
@@ -156,32 +156,9 @@ const REPEATABLE_OPTIONS = ['select', 'delete', 'target'];
 const BOOLEAN_OPTIONS = ['enforce', 'include-organization', 'allow-tenant-wide-test-writes', 'accept-degradation'];
 
 export function parseRestoreArgs(argv = process.argv) {
-  const options = Object.fromEntries([
-    ...[...STRING_OPTIONS, ...REPEATABLE_OPTIONS].map((name) => [name, { type: 'string', multiple: true }]),
-    ...BOOLEAN_OPTIONS.map((name) => [name, { type: 'boolean', multiple: true }]),
-  ]);
-  let values;
-  try {
-    ({ values } = parseArgs({ args: argv.slice(2), options, strict: true, allowPositionals: false }));
-  } catch (err) {
-    throw new Error(`keel-restore: ${err.message.split('\n')[0]}`);
-  }
-  const parsed = {};
-  for (const name of [...STRING_OPTIONS, ...BOOLEAN_OPTIONS]) {
-    const given = values[name] ?? [];
-    if (given.length > 1) throw new Error(`keel-restore: --${name} may be given only once`);
-  }
-  for (const name of [...STRING_OPTIONS, ...REPEATABLE_OPTIONS]) {
-    for (const value of values[name] ?? []) {
-      if (value.length === 0 || value.startsWith('-')) {
-        throw new Error(`keel-restore: --${name} needs a value that does not start with "-"`);
-      }
-    }
-  }
-  for (const name of STRING_OPTIONS) parsed[name] = values[name]?.[0];
-  for (const name of REPEATABLE_OPTIONS) parsed[name] = values[name] ?? [];
-  for (const name of BOOLEAN_OPTIONS) parsed[name] = values[name] !== undefined;
-  return parsed;
+  return parseCliArgs(argv.slice(2), {
+    name: 'keel-restore', strings: STRING_OPTIONS, repeatable: REPEATABLE_OPTIONS, booleans: BOOLEAN_OPTIONS,
+  }).values;
 }
 
 // Exported so cli/keel-remediate.mjs (plan task 19) can reuse the exact same check

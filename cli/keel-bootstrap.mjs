@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { planBootstrap } from '../engine/bootstrap/plan.mjs';
 import { approveBootstrapPlan, executeBootstrap } from '../engine/bootstrap/execute.mjs';
 import { assertTokenFree } from '../tools/tenant-probe/auth.mjs';
+import { parseCliArgs } from './args.mjs';
 
 // Server/CLI composition seam: journal derives tenant and principal from trusted
 // deployment/authentication context, never from a submitted plan or artifact.
@@ -24,14 +25,15 @@ export async function runBootstrap({ mode = 'plan', journal, ...options }) {
 // a host-injected qualified adapter and authenticated database journal. No
 // credential loading, network transport or live provisioning is installed here.
 export async function main(argv = process.argv.slice(2), output = console) {
-  const flags = new Map();
-  for (let i = 0; i < argv.length; i += 2) {
-    if (!['--mode', '--fixture'].includes(argv[i]) || !argv[i + 1] || flags.has(argv[i])) throw new Error('Usage: keel-bootstrap.mjs [--mode plan] --fixture FILE');
-    flags.set(argv[i], argv[i + 1]);
+  let opts;
+  try {
+    ({ values: opts } = parseCliArgs(argv, { name: 'keel-bootstrap', strings: ['mode', 'fixture'] }));
+  } catch {
+    throw new Error('Usage: keel-bootstrap.mjs [--mode plan] --fixture FILE');
   }
-  if ((flags.get('--mode') ?? 'plan') !== 'plan') throw new Error('Execution requires authenticated host integration and qualified injected adapters');
-  if (!flags.get('--fixture')) throw new Error('Offline planning requires --fixture FILE');
-  const fixture = assertTokenFree(JSON.parse(readFileSync(flags.get('--fixture'), 'utf8')));
+  if ((opts.mode ?? 'plan') !== 'plan') throw new Error('Execution requires authenticated host integration and qualified injected adapters');
+  if (!opts.fixture) throw new Error('Offline planning requires --fixture FILE');
+  const fixture = assertTokenFree(JSON.parse(readFileSync(opts.fixture, 'utf8')));
   const readAdapters = Object.fromEntries(['Applications', 'ServicePrincipals', 'AppRoleAssignments',
     'RoleAssignments', 'RoleEligibilitySchedules', 'SubscribedSkus'].map(name => {
     const key = name[0].toLowerCase() + name.slice(1);

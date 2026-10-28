@@ -31,6 +31,7 @@ import { findPrincipalById } from '../engine/authz/principals.mjs';
 import { connect } from '../engine/store/db.mjs';
 import { getActiveBaseline } from '../engine/store/governance.mjs';
 import { globalAdministratorPrincipalIds } from '../engine/safety/protectedPrincipals.mjs';
+import { parseCliArgs } from './args.mjs';
 
 function usage() {
   console.log(`usage:
@@ -46,13 +47,27 @@ Rollback without --confirm prints only the scoped plan. A confirmed rollback req
 its writes use the separate Restorer registration.`);
 }
 
+// A label, description or reason is free text a person types; see cli/args.mjs.
+const ARGS = {
+  name: 'keel-govern',
+  strings: ['snapshot', 'by', 'id', 'action', 'actor', 'expires', 'restorer-config', 'principal-id', 'config', 'db-url'],
+  text: ['label', 'description', 'reason'],
+  booleans: ['help', 'confirm'],
+  short: { h: 'help' },
+  positionals: 2,
+};
+let parsed;
+function cliArgs() {
+  parsed ??= parseCliArgs(process.argv.slice(2), ARGS);
+  return parsed;
+}
+
 function arg(name, fallback) {
-  const index = process.argv.indexOf(`--${name}`);
-  return index > -1 ? process.argv[index + 1] : fallback;
+  return cliArgs().values[name] ?? fallback;
 }
 
 function flag(name) {
-  return process.argv.includes(`--${name}`);
+  return cliArgs().values[name];
 }
 
 function requiredArg(name) {
@@ -333,12 +348,12 @@ async function verifyEvidence() {
 }
 
 async function main() {
-  if (flag('help') || flag('h')) {
+  if (flag('help')) {
     usage();
     return;
   }
 
-  const [command, subject] = process.argv.slice(2);
+  const [command, subject] = cliArgs().positionals;
   if (command === 'baseline' && subject === 'set') return setBaseline();
   if (command === 'baseline' && subject === 'show') return showBaseline();
   if (command === 'baseline' && subject === 'list') return listBaselinesCmd();

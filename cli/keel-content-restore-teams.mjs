@@ -24,6 +24,7 @@
 // `Channel.ReadBasic.All` and `Team.ReadBasic.All` to find the team and channel, and
 // `User.Read.All` to check authors.
 import { readConfigFile } from '../engine/config/configFile.mjs';
+import { argvParser } from './args.mjs';
 import { requestApproval } from '../engine/govern/approvals.mjs';
 import { canonicalDigest } from '../engine/restore/dryRunArtifact.mjs';
 import { CONTENT_RESTORE_ACTION, ContentRestoreRefusedError, authorizeContentRestore, targetProblems } from '../engine/content/restore/gate.mjs';
@@ -41,11 +42,22 @@ export const TEAMS_USAGE = [
   '       keel-content-restore.mjs teams fixture --author USER_ID --author USER_ID [--channel-name NAME]',
 ].join('\n');
 
+// Parsed strictly (cli/args.mjs). The spec names this workload's options and the
+// options every content-restore subcommand shares; the action (plan, request, run) is
+// the one positional.
+export const TEAMS_ARGS = {
+  name: 'keel-content-restore teams',
+  strings: ['team', 'channel', 'target-team', 'at', 'fallback-author', 'fixture', 'channel-name', 'actor', 'approval-id', 'config', 'reader', 'restorer', 'db-url'],
+  text: ['justification'],
+  repeatable: ['author'],
+  booleans: ['help'],
+  positionals: 1,
+};
+const options = argvParser(TEAMS_ARGS);
+
 function arg(argv, name, fallback) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : fallback;
+  return options(argv)[name] ?? fallback;
 }
-const args = (argv, name) => argv.flatMap((value, i) => (value === `--${name}` ? [argv[i + 1]] : []));
 
 /** The fixture file the command line names, parsed; only on the test tenant. */
 function fixtureFrom(argv, { tenantRef, testTenantRefs, readFile }) {
@@ -93,7 +105,7 @@ export async function teamsCommand(argv, ctx) {
   const { tenantRef, client, store, readFile, exists, getTokenFn, fetchImpl, writeTransportFor, testTenantRefs, canFn, logger, config } = ctx;
   const action = argv[0];
   if (action === 'fixture') {
-    logger.log(JSON.stringify(teamsMessageFixture({ authors: args(argv, 'author'), channelName: arg(argv, 'channel-name', 'KEEL-RT-import-proof') }), null, 2));
+    logger.log(JSON.stringify(teamsMessageFixture({ authors: options(argv).author, channelName: arg(argv, 'channel-name', 'KEEL-RT-import-proof') }), null, 2));
     return 0;
   }
   if (action === 'plan' || action === 'request') {

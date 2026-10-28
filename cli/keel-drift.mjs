@@ -22,6 +22,7 @@ import { diffSnapshots } from '../engine/govern/diffSnapshots.mjs';
 import { isSuppressed } from '../engine/govern/disposition.mjs';
 import { syncDriftAlerts } from '../engine/notify/alerts.mjs';
 import { runComplianceChecks } from '../engine/benchmarks/runChecks.mjs';
+import { parseCliArgs } from './args.mjs';
 
 function usage() {
   console.log(`usage:
@@ -30,9 +31,21 @@ function usage() {
   keel-drift.mjs show <driftId> [--db-url $KEEL_DB_URL]`);
 }
 
+const ARGS = {
+  name: 'keel-drift',
+  strings: ['config', 'db-url', 'snapshot-id', 'tenant-ref'],
+  booleans: ['help'],
+  short: { h: 'help' },
+  positionals: 2,
+};
+let parsed;
+function cliArgs() {
+  parsed ??= parseCliArgs(process.argv.slice(2), ARGS);
+  return parsed;
+}
+
 function arg(name, fallback) {
-  const index = process.argv.indexOf(`--${name}`);
-  return index > -1 ? process.argv[index + 1] : fallback;
+  return cliArgs().values[name] ?? fallback;
 }
 
 function tenantRefFor(config) {
@@ -271,12 +284,12 @@ async function show(driftId) {
 }
 
 async function main() {
-  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  if (arg('help')) {
     usage();
     return;
   }
 
-  const [command, driftId] = process.argv.slice(2);
+  const [command, driftId] = cliArgs().positionals;
   if (command === 'detect') return detect();
   if (command === 'list') return list();
   if (command === 'show') return show(driftId);

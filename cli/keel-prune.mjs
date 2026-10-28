@@ -11,24 +11,31 @@ import { readConfigFile } from '../engine/config/configFile.mjs';
 import { createHash } from 'node:crypto';
 import { connect } from '../engine/store/db.mjs';
 import { runPrune } from '../engine/store/retention.mjs';
+import { parseCliArgs } from './args.mjs';
 
 const USAGE = 'usage: keel-prune.mjs [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL] [--report out.json] [--apply]';
 
+const ARGS = {
+  name: 'keel-prune',
+  strings: ['config', 'db-url', 'report'],
+  booleans: ['help', 'apply', 'dry-run'],
+};
+let parsed;
 function arg(name, fallback) {
-  const i = process.argv.indexOf(`--${name}`);
-  return i > -1 ? process.argv[i + 1] : fallback;
+  parsed ??= parseCliArgs(process.argv.slice(2), ARGS).values;
+  return parsed[name] ?? fallback;
 }
 
 const totals = (counts) => Object.entries(counts).map(([kind, n]) => `${kind} ${n}`).join(', ') || 'none';
 
 async function main() {
-  if (process.argv.includes('--help')) {
+  if (arg('help')) {
     console.log(USAGE);
     return;
   }
 
-  const apply = process.argv.includes('--apply');
-  if (apply && process.argv.includes('--dry-run')) throw new Error('--apply and --dry-run cannot be used together');
+  const apply = arg('apply');
+  if (apply && arg('dry-run')) throw new Error('--apply and --dry-run cannot be used together');
   const config = readConfigFile(arg('config', '/etc/keel/tenant.json'), { readFile: readFileSync, what: 'collector settings' });
   const dbUrl = arg('db-url', process.env.KEEL_DB_URL);
   if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');

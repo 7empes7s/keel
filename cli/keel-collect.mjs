@@ -13,13 +13,19 @@ import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { progressWriter } from '../engine/jobs/progress.mjs';
 import { ingestCollectorAudit } from '../engine/identity/auditSources.mjs';
 import { schedulerPrincipal } from './keel-scheduler.mjs';
+import { parseCliArgs } from './args.mjs';
 import {
   FULL_READ_OUTCOMES, INCOMPLETE_TYPES_PREFIX, PARTIAL_EXIT_CODE, incompleteTypesOf,
 } from '../engine/collect/incomplete.mjs';
 
-function arg(name, fallback, argv = process.argv) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : fallback;
+const ARGS = {
+  name: 'keel-collect',
+  strings: ['tier', 'config', 'db-url'],
+  booleans: ['help'],
+};
+
+function arg(opts, name, fallback) {
+  return opts[name] ?? fallback;
 }
 
 /**
@@ -190,16 +196,17 @@ export async function main({
   dependencies,
   logger = console,
 } = {}) {
-  if (argv.includes('--help')) {
+  const opts = parseCliArgs(argv.slice(2), ARGS).values;
+  if (opts.help) {
     logger.log('usage: keel-collect.mjs [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL] [--tier tier1|tier2|tier3]');
     return 0;
   }
-  const tier = arg('tier', undefined, argv);
+  const tier = arg(opts, 'tier', undefined);
   if (tier && !['tier1', 'tier2', 'tier3'].includes(tier)) {
     throw new Error('--tier must be tier1, tier2, or tier3');
   }
-  const config = readConfigFile(arg('config', '/etc/keel/tenant.json', argv), { readFile, what: 'collector settings' });
-  const dbUrl = arg('db-url', process.env.KEEL_DB_URL, argv);
+  const config = readConfigFile(arg(opts, 'config', '/etc/keel/tenant.json'), { readFile, what: 'collector settings' });
+  const dbUrl = arg(opts, 'db-url', process.env.KEEL_DB_URL);
   const { exitCode } = await runCollect({ config, dbUrl, tier, dependencies, logger, readAudit: true });
   return exitCode;
 }

@@ -32,6 +32,7 @@ import { findPrincipalById } from '../engine/authz/principals.mjs';
 import { recordAutoRemediationTerminalOutcome } from '../engine/policy/execute.mjs';
 import { sweepEscalations } from '../engine/notify/escalation.mjs';
 import { sweepBreakGlassCanaries } from '../engine/safety/breakGlassReadiness.mjs';
+import { parseCliArgs } from './args.mjs';
 import {
   emitJobEvent, claimNext, complete, fail, JOB_HEARTBEAT_INTERVAL_MS, resetOrphaned, touchHeartbeat,
 } from '../engine/jobs/queue.mjs';
@@ -71,9 +72,15 @@ export const SIEM_ADAPTERS = Object.freeze({
   cef: createCefAdapter(),
 });
 
+const ARGS = {
+  name: 'keel-worker',
+  strings: ['worker-id', 'db-url', 'poll-interval-ms', 'audit-config', 'ownership-config'],
+  booleans: ['help', 'audit-migrate', 'audit-report', 'ownership-report'],
+};
+let parsed;
 function arg(name, fallback) {
-  const i = process.argv.indexOf(`--${name}`);
-  return i > -1 ? process.argv[i + 1] : fallback;
+  parsed ??= parseCliArgs(process.argv.slice(2), ARGS).values;
+  return parsed[name] ?? fallback;
 }
 
 function sleep(ms) {
@@ -945,7 +952,7 @@ export async function runWorkerLoop({
 }
 
 async function main() {
-  if (process.argv.includes('--help')) {
+  if (arg('help')) {
     console.log('usage: keel-worker.mjs [--worker-id ID] [--db-url $KEEL_DB_URL] [--poll-interval-ms 2000] [--audit-config FILE [--audit-report] | --audit-migrate | --ownership-config FILE [--ownership-report]]');
     return;
   }
@@ -961,22 +968,22 @@ async function main() {
 
   // Explicit local migration, archive reference or synthetic fixture execution.
   // No Graph route or restorer credential is loaded by this command.
-  if (process.argv.includes('--audit-migrate') || process.argv.includes('--audit-config')) {
+  if (arg('audit-migrate') || arg('audit-config')) {
     try {
-      if (process.argv.includes('--audit-migrate')) await migrateAuditIngestion(client);
+      if (arg('audit-migrate')) await migrateAuditIngestion(client);
       else {
         const config = JSON.parse(await readFile(arg('audit-config'), 'utf8'));
-        const result = await runAuditCommand(client, config, { report: process.argv.includes('--audit-report') });
+        const result = await runAuditCommand(client, config, { report: arg('audit-report') });
         console.log(JSON.stringify(result));
       }
     } finally { await client.end(); }
     return;
   }
 
-  if (process.argv.includes('--ownership-config')) {
+  if (arg('ownership-config')) {
     try {
       const config = JSON.parse(await readFile(arg('ownership-config'), 'utf8'));
-      console.log(JSON.stringify(await runOwnershipCommand(client, config, { report: process.argv.includes('--ownership-report') })));
+      console.log(JSON.stringify(await runOwnershipCommand(client, config, { report: arg('ownership-report') })));
     } finally { await client.end(); }
     return;
   }

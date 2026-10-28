@@ -9128,3 +9128,65 @@ item that needs it stays untouched.
 - **Expected:** step 1 gives 1 and 0; `check` exit 0 with `problems: []`; `plan` exits 0 and the only refusals are
   `--confirm-non-production-instance` and `--declared-by` (as in Q17); no `must name an env:KEEL_INTEGRATION_*` refusal.
 - **Report:** the step 1 numbers, the files changed (names only), the step 4 exit codes and refusals, the step 5 counts.
+
+### Q203: Build the keel-dsc image and capture the live proof of the distribution list writes (after PR #637)
+- Drafted by the "Restore distribution lists with Microsoft365DSC" thread (2026-10-28). Code: PR #637. New container profile
+  `keel-dsc` (`ops/powershell/Dockerfile.dsc`: PowerShell 7.5, Microsoft365DSC **2.26.1021.1** pinned, ~370 MB of modules, ~1 GB peak)
+  and two writes through the `EXODistributionGroup` resource, both off until this capture is imported:
+  `exchange-distribution-groups.distribution-group.add` (re-create a list that is gone) and `.update` (put back its settings).
+  The container (`ops/powershell/run-dsc.ps1`) refuses any other resource, any undeclared property, and any Set that is not
+  `Ensure = Present` (KEEL never removes through DSC). Owners, moderators, senders, send-on-behalf, addresses and members are never sent.
+- Needs: /opt/keel-live at the PR #637 merge or later (`test -f /opt/keel-live/ops/powershell/run-dsc.ps1`). Does **not** need PR #602.
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules and standing authorization as Q80. Writes run with the **Exchange Restorer** only
+  (`/etc/keel/exchange-restorer.json`, Exchange Administrator, already held; Q182 used it for the same resource). Reads with the
+  Exchange Collector. Grant nothing: if Exchange refuses, report blocked with the message verbatim.
+- **Fixture:** one distribution list `KEEL-RT-capture-<random>`, hidden from the address book, no members. It stays (KEEL never deletes);
+  remove it by hand afterwards only if you want to, with `Remove-DistributionGroup` as the Restorer, and say so.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never printed):
+  1. **Image:** as for keel-powershell (Q-rebuild pattern): from a clean `git archive` of `ops/powershell` at B,
+     `docker build -t keel-dsc:candidate -f Dockerfile.dsc .`; on success `docker tag keel-dsc:candidate keel-dsc:latest`. Report the
+     build exit code, image id and size, and the "module install complete" table. If the build fails, report the last 40 lines and stop.
+  2. **Smoke (read only):** run one Get through the job transport as the Collector:
+     `printf '%s' '{"mode":"dsc","resource":"EXODistributionGroup","moduleVersion":"2.26.1021.1","tenantConfigPath":"/etc/keel/exchange-collector.json","calls":[{"method":"Get","properties":{"Identity":"KEEL-RT-dsc-smoke","Name":"KEEL-RT-dsc-smoke","Ensure":"Present"}}]}' | docker run --rm -i --memory 1536m --memory-swap 1536m --network host -v /etc/keel:/etc/keel:ro -v "$PWD/ops/powershell":/app:ro keel-dsc:latest`
+     Expect exit 0 and one result with `"Ensure":"Absent"`. Report the last line verbatim (it holds no secrets) and the `missing` list.
+  3. **Plan (offline):** `node tools/qualification/dscDistributionGroupsLive.mjs plan`. Expect 2 refusals, then Get, Set, Get, Set, Get.
+  4. **Capture:**
+     ```bash
+     node tools/qualification/dscDistributionGroupsLive.mjs capture --confirm-live-tenant-write \
+       --tenant-ref <tenant ref> --collector-ref app:<exchange collector clientId> --restorer-ref app:<exchange restorer clientId> \
+       --collector-config /etc/keel/exchange-collector.json --restorer-config /etc/keel/exchange-restorer.json \
+       --grants <grants.json: {"restorer":{"permissions":["Exchange.ManageAsApp"],"roles":["Exchange Administrator"]}}> --build B \
+       --out docs/release/qualifications/dsc-distribution-groups-writes-live-acceptance.json
+     node tools/qualification/pseudonymize.mjs check docs/release/qualifications/dsc-distribution-groups-writes-live-acceptance.json
+     ```
+     (Use the real Exchange config paths from `/etc/keel/workload-scope.json` if they differ; confirm the restorer's grants are observed.)
+     Report the exit code and `proven`, `notProven`, `skipped`, `created`, `missingProperties` verbatim. `missingProperties` lists any
+     property name the module does not have: report it even when empty, it decides whether the field lists need a change.
+  5. **Evidence:** commit the record and its `.capture.json` on `claude/live-evidence-dsc-distribution-groups` (from `origin/master`,
+     secret scan and the check above first). No PR.
+  6. **Import:** `node cli/keel-workload-collect.mjs import --dir <checkout>/docs/release/qualifications`. Report the imported/refused lines.
+     (Both writes still stay off until the `exchange-distribution-groups` read is live, PR #602 + its capture; that is expected.)
+- **Report:** B; steps 1 to 6 with exit codes; evidence branch and commit; what is left in the tenant.
+
+### Q204: Round trip of a distribution list restore through Microsoft365DSC (after Q203, PR #602 and its read capture)
+- Drafted by the "Restore distribution lists with Microsoft365DSC" thread (2026-10-28).
+- Needs: Q203 done; PR #602 merged and deployed; the `exchange-distribution-groups` reads captured, imported and switched on (the Q157-style
+  item for #602). Check: `node /opt/keel-live/cli/keel-workload-collect.mjs status` shows `exchange-distribution-groups.distribution-groups` enabled.
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules and standing authorization as Q80; log every approval id.
+- **Fixtures:** with your usual admin path (Restorer, Exchange), create two lists: `KEEL-RT-dl-restore-a` (distribution, MemberJoinRestriction
+  ApprovalRequired, hidden from the address book) and `KEEL-RT-dl-restore-b` (mail-enabled security, defaults). No members.
+- Do, at the deployed build B:
+  1. `node /opt/keel-live/cli/keel-workload-collect.mjs run` once; note the new `exchange-distribution-groups` collection id C.
+  2. By hand: delete `KEEL-RT-dl-restore-b`; on `KEEL-RT-dl-restore-a` set MemberJoinRestriction to Open and unhide it.
+  3. Dry run as the Collector: `node /opt/keel-live/cli/keel-restore.mjs --workload exchange-distribution-groups --collection C --target KEEL-RT-dl-restore-a --target KEEL-RT-dl-restore-b`.
+     Expect 2 changes (update a, add b), 0 refused; report the manual lines verbatim (members, new identity).
+  4. Approve (someone other than the requester), then `--artifact <id> --enforce`. Expect `verified`; check with `Get-DistributionGroup`
+     (Collector, read) that b exists again as a security group and a is ApprovalRequired and hidden.
+  5. Re-run check: dry run again: 0 changes for a, and b listed as "another list now uses its name" (it has a new Guid). Promote the
+     step 3 artifact again: `stale`, no write.
+- **Report:** B; steps 1 to 5 with exit codes; approval ids; what is left in the tenant (the two KEEL-RT-dl-restore lists stay).

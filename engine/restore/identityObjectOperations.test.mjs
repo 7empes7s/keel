@@ -780,8 +780,11 @@ const FORMS = Object.freeze({
   },
 });
 
-const singletonWrite = (graph, resourceType, payload, live) => applyIdentityObjectWrite(graph,
-  { naturalKey: resourceType, resourceType, payload, references: [], live: { state: 'present', payload: live } }, 'update', FAST);
+// These settings are tenant-wide: a customer tenant writes them, the test
+// tenant only with the tenant-wide option (tested below).
+const CUSTOMER = Object.freeze({ ...FAST, tenantRef: 'sha256:customer0000000' });
+const singletonWrite = (graph, resourceType, payload, live, ctx = CUSTOMER) => applyIdentityObjectWrite(graph,
+  { naturalKey: resourceType, resourceType, payload, references: [], live: { state: 'present', payload: live } }, 'update', ctx);
 const writesOf = (graph) => graph.calls.filter((call) => call.method !== 'GET' && call.method !== undefined);
 
 test('restore gaps batch 20: each admin center setting is one object updated in place on its own route', () => {
@@ -882,8 +885,83 @@ test('restore gaps batch 20: a dry run plans the changed field and writes nothin
   const result = await applyIdentityObjectWrite(graph, {
     naturalKey: 'pronounsSettings', resourceType: 'pronounsSettings', payload: { isEnabledInOrganization: false }, references: [],
     live: { state: 'present', payload: { isEnabledInOrganization: true } },
-  }, 'update', { ...FAST, mode: 'dry-run' });
+  }, 'update', { ...CUSTOMER, mode: 'dry-run' });
   assert.deepEqual(result.applied.changes.fields, ['isEnabledInOrganization']);
+  assert.equal(writesOf(graph).length, 0);
+});
+
+// Review of PR #673: these five are tenant-wide, so on the test tenant they pass
+// the same gate as the workload writers' tenant-wide objects (fixtureGuard.mjs).
+const TENANT_WIDE_CASES = Object.freeze([
+  ['formsSettings', '/admin/forms', FORMS, { settings: { ...FORMS.settings, isBingImageSearchEnabled: false } }],
+  ['microsoft365AppsInstallationOptions', '/admin/microsoft365Apps/installationOptions',
+    { updateChannel: 'current', appsForWindows: { isVisioEnabled: true } }, { updateChannel: 'current', appsForWindows: { isVisioEnabled: false } }],
+  ['appsAndServicesSettings', '/admin/appsAndServices',
+    { settings: { isOfficeStoreEnabled: false, isAppAndServicesTrialEnabled: true } }, { settings: { isOfficeStoreEnabled: false, isAppAndServicesTrialEnabled: false } }],
+  ['adminReportSettings', '/admin/reportSettings', { displayConcealedNames: true }, { displayConcealedNames: false }],
+  ['pronounsSettings', '/admin/people/pronouns', { isEnabledInOrganization: false }, { isEnabledInOrganization: true }],
+]);
+const TEST_TENANT = Object.freeze({ ...FAST, tenantRef: 'sha256:keeltesttenant0', testTenantRefs: ['sha256:keeltesttenant0'] });
+
+test('restore gaps batch 20: the five admin center settings are marked tenant-wide, and only they are', () => {
+  const marked = Object.values(IDENTITY_RECORDS).filter((record) => record.tenantWide).map((record) => record.resourceType).sort();
+  assert.deepEqual(marked, ['adminReportSettings', 'appsAndServicesSettings', 'formsSettings', 'microsoft365AppsInstallationOptions', 'pronounsSettings']);
+  assert.equal(IDENTITY_RECORDS.engageCommunity.tenantWide, false, 'a community is one object, not a tenant setting');
+});
+
+test('restore gaps batch 20: on the test tenant a tenant-wide setting is refused without the tenant-wide option, in the dry run and the write', async () => {
+  for (const [type, path, backup, live] of TENANT_WIDE_CASES) {
+    for (const mode of ['dry-run', 'enforce']) {
+      const graph = idoFakeGraph({ seed: { [path]: live } });
+      const result = await singletonWrite(graph, type, backup, live, { ...TEST_TENANT, mode });
+      assert.equal(result.applied, undefined, `${type} ${mode}: ${JSON.stringify(result)}`);
+      assert.match(result.skipped?.reason ?? '', /tenant-wide and needs a dry run made with --allow-tenant-wide-test-writes/, `${type} ${mode}`);
+      assert.match(result.skipped.reason, new RegExp(type));
+      assert.equal(graph.calls.length, 0, `${type} ${mode}: nothing is read or written`);
+    }
+  }
+});
+
+test('restore gaps batch 20: on the test tenant the tenant-wide option lets the setting be written', async () => {
+  for (const [type, path, backup, live] of TENANT_WIDE_CASES) {
+    const graph = idoFakeGraph({ seed: { [path]: live } });
+    const result = await singletonWrite(graph, type, backup, live, { ...TEST_TENANT, allowTenantWide: true });
+    assert.equal(result.failed ?? result.skipped, undefined, `${type}: ${JSON.stringify(result)}`);
+    assert.equal(writesOf(graph).length, 1, type);
+    // Only exactly true opens it.
+    const other = idoFakeGraph({ seed: { [path]: live } });
+    const refused = await singletonWrite(other, type, backup, live, { ...TEST_TENANT, allowTenantWide: 'true' });
+    assert.match(refused.skipped?.reason ?? '', /tenant-wide/, type);
+    assert.equal(writesOf(other).length, 0, type);
+  }
+});
+
+test('restore gaps batch 20: a tenant-wide setting is not written when the target tenant is not known', async () => {
+  for (const [type, path, backup, live] of TENANT_WIDE_CASES) {
+    for (const tenantRef of [undefined, null, '']) {
+      const graph = idoFakeGraph({ seed: { [path]: live } });
+      const result = await singletonWrite(graph, type, backup, live, { ...FAST, tenantRef, allowTenantWide: true });
+      assert.match(result.skipped?.reason ?? '', /tenant-wide setting and the target tenant is not known/, `${type} ${tenantRef}`);
+      assert.equal(writesOf(graph).length, 0, type);
+    }
+  }
+});
+
+test('restore gaps batch 20: a tenant-wide setting that already matches is not refused on the test tenant', async () => {
+  for (const [type, path, backup] of TENANT_WIDE_CASES) {
+    const graph = idoFakeGraph({ seed: { [path]: backup } });
+    const result = await singletonWrite(graph, type, backup, backup, TEST_TENANT);
+    assert.equal(result.failed ?? result.skipped, undefined, `${type}: ${JSON.stringify(result)}`);
+    assert.deepEqual(result.applied.changes.fields, [], type);
+    assert.equal(writesOf(graph).length, 0, type);
+  }
+});
+
+test('restore gaps batch 20: the loosening refusal still comes first on the test tenant', async () => {
+  const graph = idoFakeGraph({ seed: { '/admin/reportSettings': { displayConcealedNames: true } } });
+  const result = await singletonWrite(graph, 'adminReportSettings', { displayConcealedNames: false }, { displayConcealedNames: true },
+    { ...TEST_TENANT, allowTenantWide: true });
+  assert.match(result.skipped?.reason ?? '', /never loosens/);
   assert.equal(writesOf(graph).length, 0);
 });
 

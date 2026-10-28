@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import { registerOperationCapability } from '../../coverage/capabilities.mjs';
 import { applyWave } from '../applyEngine.mjs';
 import { ThrottleGovernor } from '../throttleGovernor.mjs';
+import { tenantRefFor } from '../../store/tenantRef.mjs';
 import { WRITER_FRAGMENTS, registerWriter, registeredWriterKeys, writerFor } from './registry.mjs';
 
 const DIR = new URL('./', import.meta.url);
@@ -65,6 +66,20 @@ test('applyWave calls the registered writer for its type with the shared context
     assert.equal(typeof calls[0].ctx[name], 'function', name);
   }
   assert.deepEqual(await calls[0].ctx.journalBeforeMutation({ operation: 'create', priorState: null, intendedState: {} }), { ok: true, entryId: null });
+});
+
+test('applyWave tells a registered writer its target tenant and the tenant-wide option, off by default', async () => {
+  calls.length = 0;
+  await run([resource()]);
+  await run([resource()], { allowTenantWide: true });
+  await run([resource()], { allowTenantWide: 'yes' });
+  await run([resource()], { targetTenant: undefined });
+  assert.deepEqual(calls.map(({ ctx }) => [ctx.tenantRef, ctx.allowTenantWide]), [
+    [tenantRefFor('target'), false],
+    [tenantRefFor('target'), true],
+    [tenantRefFor('target'), false],
+    [null, false],
+  ]);
 });
 
 test('the shared gates still run before a registered writer', async () => {

@@ -50,7 +50,12 @@
  *    gone through `readVia`, and the ledger names `writeRoute` for it too;
  *  - `planChanges(io, step)`: in a dry run, the changes the record's
  *    `afterWrite` would make (an app's categories), read from live, so the plan
- *    shows a difference that is not in a field of the object.
+ *    shows a difference that is not in a field of the object;
+ *  - `tenantWide`: the object is one setting for the whole tenant and cannot
+ *    carry a KEEL-RT- fixture name. On the test tenant it is planned and
+ *    written only with the separate tenant-wide option (`ctx.allowTenantWide`),
+ *    the same gate the workload writers use (workloads/fixtureGuard.mjs). A
+ *    write whose tenant is not known is refused.
  *
  * Every write is journalled first and read back; every field it sent must read
  * back as sent (nulls and absent fields read the same). A reference held in a
@@ -68,6 +73,7 @@ import { remappingFor, withExplicitReferences } from '../coverage/qualification.
 import { VERBATIM_RESOLUTIONS, isServerOwnedReference, resolveSymbol } from '../graph/resolver.mjs';
 import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
 import { followUpSteps } from './bestEffortRecreate.mjs';
+import { TEST_TENANT_REFS, fixtureProblem } from './workloads/fixtureGuard.mjs';
 import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './rollbackJournal.mjs';
 
 export const RECORD_WRITER_CONTRACT_VERSION = 1;
@@ -124,6 +130,7 @@ export function defineRecord(spec) {
     deleteVia: null,
     planChanges: null,
     remapsReferences: false,
+    tenantWide: false,
     checkedAfterWrite: [],
     ...spec,
     operations: Object.freeze([...(spec.operations ?? [])]),
@@ -326,6 +333,22 @@ function readRecordObject(io, record, payload, targetId) {
   return io.retryOperation(() => io.writer.read(record.version, withQuery(record, recordObjectPath(record, payload, targetId))));
 }
 
+/**
+ * Why a tenant-wide record may not be planned or written here, or null.
+ * `ctx.tenantRef` is the target tenant's reference; `ctx.allowTenantWide` the
+ * separate tenant-wide option, off by default.
+ */
+export function tenantWideRecordProblem(record, ctx = {}) {
+  if (!record.tenantWide) return null;
+  if (typeof ctx.tenantRef !== 'string' || !ctx.tenantRef) {
+    return `${record.resourceType} is a tenant-wide setting and the target tenant is not known, so it is not written`;
+  }
+  return fixtureProblem({
+    tenantRef: ctx.tenantRef, testTenantRefs: ctx.testTenantRefs ?? TEST_TENANT_REFS,
+    label: record.resourceType, tenantWide: true, allowTenantWide: ctx.allowTenantWide === true,
+  });
+}
+
 const refusalEntry = (naturalKey, refusal) => (refusal.outcome === 'skipped'
   ? { skipped: { naturalKey, reason: refusal.reason, ...(refusal.completion ? { completion: refusal.completion } : {}) } }
   : { failed: { naturalKey, error: refusal.reason } });
@@ -387,7 +410,7 @@ function remapRecordReferences(record, resource, verb, ctx) {
 /**
  * One write through a record. `ctx`: { mode, retryOperation, referenceContext,
  * rollbackClient, runId, restoreRef, existingTargetIds, deletionGuardOptions,
- * observedCoverage, readAfterWriteOptions }. Returns { applied } | { skipped }
+ * observedCoverage, readAfterWriteOptions, tenantRef, allowTenantWide }. Returns { applied } | { skipped }
  * | { failed }.
  */
 export async function applyRecordWrite(writer, record, resource, verb, ctx = {}) {
@@ -444,6 +467,12 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
       if (changedRecordFields(record, payload, found.body, 'create').length === 0) return { applied: { naturalKey, targetId: existingId } };
       return { failed: { naturalKey, error: 'conflict: a different object with this key exists in the target — manual reconciliation required' } };
     }
+  }
+  // A tenant-wide setting with something to write passes the test tenant's
+  // fixture guard first, in the dry run and again before the write.
+  if (fields.length > 0 || record.afterWrite) {
+    const tenantWide = tenantWideRecordProblem(record, ctx);
+    if (tenantWide) return refusalEntry(naturalKey, { outcome: 'skipped', reason: tenantWide });
   }
   if (record.preflight && writer) {
     const reason = await record.preflight(io, { resource, payload, verb, targetId, ctx });

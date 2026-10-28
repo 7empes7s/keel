@@ -44,6 +44,7 @@ import {
   roleDefinitionReadPath, roleDefinitionWrite, ruleApprovers, ungrantedRequest, writtenReferences,
 } from './adminRoleOperations.mjs';
 import { writerFor } from './writers/registry.mjs';
+import { tenantRefFor } from '../store/tenantRef.mjs';
 import {
   namedLocationTrustKept, namedLocationTrustRefusal, skippedLocationPolicyRefusal, withoutNamedLocationTrust,
 } from './namedLocationTrust.mjs';
@@ -436,6 +437,10 @@ export async function applyWave(writer, governor, wave, {
   // Natural keys of the named locations earlier waves of this run skipped on
   // trust (namedLocationTrust.mjs recordTrustSkippedLocations).
   trustSkippedLocations = new Set(),
+  // The separate tenant-wide option for a record marked tenantWide on the test
+  // tenant (recordWriter.mjs#tenantWideRecordProblem). Off by default, and no
+  // restore run sets it yet.
+  allowTenantWide = false,
 }) {
   const applied = [];
   // Roadmap task-149: sign-in path sections a tenant policy write changed on
@@ -644,6 +649,8 @@ export async function applyWave(writer, governor, wave, {
       const outcome = await registeredWriter.apply(writer, resource, effectiveVerb, {
         mode, targetTenant, existingTargetIds, referenceContext, retryOperation, rollbackClient, runId, restoreRef,
         now, approvedContentEffects, readAfterWriteOptions, deletionGuardOptions, observedCoverage, graphFailure,
+        tenantRef: typeof targetTenant === 'string' && targetTenant ? tenantRefFor(targetTenant) : null,
+        allowTenantWide: allowTenantWide === true,
         targetId: resource.targetId ?? resource.live?.targetId ?? existingTargetIds.get(resource.naturalKey) ?? null,
         journalBeforeMutation: (fields) => journalBeforeMutation(rollbackClient, { runId, restoreRef, resource, ...fields }),
         noteOutcome: (journal, result, extras) => noteOutcome(rollbackClient, journal, result, extras),

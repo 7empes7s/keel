@@ -11,9 +11,11 @@ import {
   rejectRequest,
   requestApproval,
 } from "../../engine/govern/approvals.mjs";
-import { applyDisposition } from "../../engine/govern/disposition.mjs";
-import { SameContentDriftError } from "../../engine/store/openDrift.mjs";
-import { acceptServiceChange } from "../../engine/govern/workloadApproved.mjs";
+import { applyDisposition, dispositionNeedsReview } from "../../engine/govern/disposition.mjs";
+import { DISPOSE_APPROVAL_ACTION, IgnoreExpiryError, ignoreExpiry } from "../../engine/govern/dispositionReview.mjs";
+import { SameContentDriftError, refuseSameContentDriftIds } from "../../engine/store/openDrift.mjs";
+import { RestoreSettingsPathError } from "../../engine/restore/credentialPaths.mjs";
+import { acceptServiceChange, serviceChangeAcceptNeedsReview } from "../../engine/govern/workloadApproved.mjs";
 import { resolveAlert } from "../../engine/notify/alerts.mjs";
 import { appendEvidence } from "../../engine/govern/evidence.mjs";
 import { approveBootstrapPlan, executeBootstrap } from "../../engine/bootstrap/execute.mjs";
@@ -21,7 +23,8 @@ import { BootstrapJournal, migrateBootstrapJournal } from "../../engine/bootstra
 import { firstCollectReadiness, selectWorkloads, SETUP_SCOPES } from "../../engine/bootstrap/onboarding.mjs";
 import { planBootstrap } from "../../engine/bootstrap/plan.mjs";
 import { capabilityForJobKind } from "../../engine/authz/jobCapabilities.mjs";
-import { enqueue, listJobs, summarizeJobs } from "../../engine/jobs/queue.mjs";
+import { enqueue, listJobs, PORTAL_QUEUED_JOBS_PER_PRINCIPAL, QueueFullError, summarizeJobs } from "../../engine/jobs/queue.mjs";
+import { denialThrottle as sharedDenialThrottle, type DenialThrottle } from "@/lib/denial-throttle";
 import { connect } from "@/lib/db";
 import { updateSchedule, validateSchedule } from "../../engine/schedules/cadence.mjs";
 import { acknowledgeForecastWarning } from "../../engine/schedules/forecast.mjs";
@@ -33,6 +36,7 @@ import { approvalTtlMs, databaseUrl, tenantRef } from "@/lib/runtime-config";
 import { withSavedChangeNames } from "@/lib/saved-names";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 import { canProvision, setupHost, type SetupHost } from "@/lib/setup-host";
+import { isJsonContentType } from "@/lib/same-origin";
 
 // §2.3, plan task 13: the one guarded action API. Every mutating route is built from
 // guarded()/guardedAction(). The wrapper resolves the downstreamed principal, checks the
@@ -99,6 +103,7 @@ export interface GuardDeps {
   connect?: (url: string) => Promise<unknown>;
   databaseUrl?: () => string;
   tenantRef?: () => string;
+  denialThrottle?: DenialThrottle;
 }
 
 function forbidden(): Response {
@@ -295,6 +300,11 @@ export async function readActionParams(
 ): Promise<Record<string, unknown>> {
   const text = await request.text();
   if (text.trim() === "") return {};
+  // Only JSON bodies: a cross-site HTML form can send text/plain or form data
+  // without a preflight, but never application/json.
+  if (!isJsonContentType(request.headers.get("content-type"))) {
+    throw new InvalidActionRequest("request body must be sent as application/json");
+  }
 
   let parsed: unknown;
   try {
@@ -316,6 +326,7 @@ export function guarded(
   const connectDb = deps.connect ?? (connect as (url: string) => Promise<unknown>);
   const resolveDatabaseUrl = deps.databaseUrl ?? databaseUrl;
   const resolveTenantRef = deps.tenantRef ?? tenantRef;
+  const throttle = deps.denialThrottle ?? sharedDenialThrottle;
 
   return async function guardedRoute(request: Request): Promise<Response> {
     // Identity is read from the headers downstreamed by proxy.ts — the one module that
@@ -331,14 +342,24 @@ export function guarded(
     const client = (await connectDb(resolveDatabaseUrl())) as KeelClient;
     try {
       const deny = async (reason: string): Promise<Response> => {
+        let admitted: { key: string; repeats: number } | null = null;
         try {
+          const tenant = resolveTenantRef();
+          const key = JSON.stringify([tenant, actor, spec.action, reason]);
+          const repeatedDenials = throttle.admit(key);
+          if (repeatedDenials === null) return forbidden();
+          admitted = { key, repeats: repeatedDenials };
           await appendEvidence(client, {
-            tenantRef: resolveTenantRef(),
+            tenantRef: tenant,
             kind: ATTEMPT_EVIDENCE_KIND,
-            subject: { action: spec.action, decision: "denied", reason },
+            subject: {
+              action: spec.action, decision: "denied", reason,
+              ...(repeatedDenials > 0 ? { repeatedDenials } : {}),
+            },
             actor,
           });
         } catch (error) {
+          if (admitted) throttle.forget(admitted.key, admitted.repeats);
           console.error(
             "[keel-portal] failed to record a denied action attempt",
             error,
@@ -406,9 +427,24 @@ export function guarded(
       // Gap B11: the requester no longer resolves to an enabled principal, so no
       // request is created that could never be carried out.
       if (error instanceof ApprovalRequestRefusedError) return forbidden();
+      // Security audit run 2, finding 11: too many of this person's jobs are waiting.
+      if (error instanceof QueueFullError) {
+        return Response.json(
+          { error: "queue_full", message: error.message },
+          { status: 429, headers: NO_STORE },
+        );
+      }
       // A change whose setting holds the same values as the approved setup: nothing
       // to accept, roll back, preview or approve. Said plainly, never a 503.
       if (error instanceof SameContentDriftError) return noChange(error);
+      // The server's restore settings path is one the worker would refuse: nothing is
+      // queued, and the operator is told in plain words which setting to fix.
+      if (error instanceof RestoreSettingsPathError) {
+        return Response.json(
+          { error: "restore_settings_path", message: error.message },
+          { status: 503, headers: NO_STORE },
+        );
+      }
       console.error(`[keel-portal] guarded action ${spec.action} failed`, error);
       return Response.json(
         { error: "unavailable" },
@@ -431,6 +467,9 @@ export interface ActionSpec {
   // false: the route takes no parameters and always enqueues `{}`, so the job runs on the
   // server-side defaults. A body that sets any field is refused (issue #411).
   acceptsParams?: boolean;
+  // The only body fields the route passes on as job params. Any other field is refused,
+  // so a caller cannot steer the job at a server file through `config` (issue #411).
+  allowedParams?: readonly string[];
 }
 
 // The standard mutating route: parse the JSON body as job params and enqueue exactly one
@@ -467,12 +506,20 @@ export function guardedAction(
       if (spec.acceptsParams === false && Object.keys(params).length > 0) {
         throw new InvalidActionRequest("this action takes no parameters");
       }
+      const allowed = spec.allowedParams;
+      if (allowed) {
+        const extra = Object.keys(params).filter((key) => !allowed.includes(key));
+        if (extra.length > 0) {
+          throw new InvalidActionRequest(`this action takes only: ${allowed.join(", ")}`);
+        }
+      }
       const job = (await enqueue(client, {
         kind: spec.jobKind,
         params: spec.acceptsParams === false ? {} : params,
         requestedBy: principalId,
         idempotencyKey: request.headers.get(IDEMPOTENCY_KEY_HEADER) ?? undefined,
         notBefore: undefined,
+        maxQueuedForRequester: PORTAL_QUEUED_JOBS_PER_PRINCIPAL,
       })) as Record<string, unknown>;
       return Response.json(
         { job: normalizeJob(job) },
@@ -480,6 +527,26 @@ export function guardedAction(
       );
     },
     deps,
+  );
+}
+
+// Audit run 2, finding 3: an accept or ignore that needs a second person becomes an
+// approval request; approving it mints the 'dispose' job, run as the requester.
+async function sendDecisionForApproval(client: KeelClient, { tenantRef: tenant, principalId, reason, params, entityScope }: {
+  tenantRef: string; principalId: string; reason: string; params: Record<string, unknown>; entityScope: unknown;
+}): Promise<Response> {
+  const approvalRequest = (await requestApproval(client, {
+    tenantRef: tenant,
+    action: DISPOSE_APPROVAL_ACTION,
+    params,
+    requestedBy: principalId,
+    justification: reason,
+    ttlMs: approvalTtlMs(),
+    entityScope,
+  })) as Record<string, unknown>;
+  return Response.json(
+    { approvalRequest: normalizeApprovalRequest(approvalRequest) },
+    { status: 202, headers: NO_STORE },
   );
 }
 
@@ -503,6 +570,22 @@ export function guardedDispose(
         }
         if (action !== "accept") throw new InvalidActionRequest("a service setting change can only be accepted");
         if (typeof reason !== "string" || reason.trim().length === 0) throw new InvalidActionRequest("reason is required");
+        // Audit run 2, finding 3: an admin-access service change goes to a second person.
+        if (await serviceChangeAcceptNeedsReview(client, { tenantRef: tenant, changeId: serviceChangeId })) {
+          // The service and setting go with the request, so the approver sees what it is.
+          const { rows: [change] } = await client.query(
+            "SELECT workload, resource_key, change_type FROM workload_drift WHERE id::text = $1 AND tenant_ref = $2",
+            [serviceChangeId, tenant],
+          );
+          return await sendDecisionForApproval(client, {
+            tenantRef: tenant, principalId, reason,
+            params: {
+              serviceChangeId, action: "accept", reason: reason.trim(), tenantRef: tenant,
+              workload: change?.workload ?? null, resourceKey: change?.resource_key ?? null, changeType: change?.change_type ?? null,
+            },
+            entityScope: null,
+          });
+        }
         let accepted: { alertId: string | null };
         try {
           accepted = await acceptServiceChange(client, { tenantRef: tenant, changeId: serviceChangeId, actor: principalId, reason });
@@ -529,6 +612,29 @@ export function guardedDispose(
         throw new InvalidActionRequest("reason is required");
       }
 
+      // Audit run 2, finding 3: an ignore always ends, within 90 days; said plainly.
+      let until: Date | null = null;
+      if (action === "ignore") {
+        try {
+          until = ignoreExpiry(typeof expiresAt === "string" ? expiresAt : null);
+        } catch (error) {
+          if (error instanceof IgnoreExpiryError) {
+            return Response.json({ error: "invalid_request", message: error.message }, { status: 400, headers: NO_STORE });
+          }
+          throw error;
+        }
+      }
+      // A sign-in or admin-access change is decided by two people: this request waits
+      // for a different approver, and the worker applies it once approved.
+      if (await dispositionNeedsReview(client, { driftId })) {
+        await refuseSameContentDriftIds(client, [driftId]);
+        const params = { driftIds: [driftId], action, reason, ...(until ? { expiresAt: until.toISOString() } : {}) };
+        return await sendDecisionForApproval(client, {
+          tenantRef: tenant, principalId, reason, params,
+          entityScope: await approvalScopeFor(client, tenant, params),
+        });
+      }
+
       let disposition: unknown;
       try {
         disposition = await applyDisposition(client, {
@@ -536,7 +642,7 @@ export function guardedDispose(
           action,
           actor: principalId,
           reason,
-          expiresAt: typeof expiresAt === "string" ? expiresAt : undefined,
+          expiresAt: until ? until.toISOString() : undefined,
         });
       } catch (error) {
         if (error instanceof SameContentDriftError) return noChange(error);

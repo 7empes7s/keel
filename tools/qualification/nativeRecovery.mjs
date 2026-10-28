@@ -13,7 +13,9 @@
  *
  * Writes DIR/native-live-acceptance.json (the record) and
  * DIR/native-live-acceptance.artifact.json (the raw captured Graph exchanges,
- * reduced to ids, names and deletedDateTime; no tokens or content). The record
+ * reduced to ids, names and deletedDateTime; no tokens or content). Object ids
+ * are pseudonymized in both (pseudonymize.mjs), and nothing is written while
+ * either still holds an id that is not a pseudonym. The record
  * is signed with KEEL_QUALIFICATION_HMAC_KEY when it is set: live runs sign as
  * keel-release-runner, offline runs only ever as keel-fixture-runner.
  *
@@ -42,6 +44,8 @@ import {
 } from '../../engine/restore/nativeRecoveryEvidence.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence } from '../release/qualification.mjs';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
+import { pseudonymizer, unpseudonymizedIds } from './pseudonymize.mjs';
 
 export const OFFLINE_FIXTURE = Object.freeze({
   tenantId: 'native-recovery-offline-fixture',
@@ -246,7 +250,7 @@ export async function main({ argv = process.argv.slice(2), env = process.env, ou
       out.error('refused: --live needs --target-config, --docs-retrieved-at and at least one --permission'); return 2;
     }
     const readFile = deps.readFile ?? readFileSync;
-    const target = JSON.parse(readFile(targetConfigPath, 'utf8'));
+    const target = readConfigFile(targetConfigPath, { readFile, what: 'restorer settings' });
     tenantRef = tenantRefFor(target.tenantId);
     clientRef = targetConfigPath; // a reference only; no key material enters the record
     if (deps.graph) graph = deps.graph;
@@ -265,9 +269,18 @@ export async function main({ argv = process.argv.slice(2), env = process.env, ou
     out.error(error.message);
     return 1;
   }
+  // The repository is public: the fixture's object id is pseudonymized before the
+  // artifact is digested, so the record and artifact still agree with each other.
   const { evidence, artifactText } = buildEvidence({
-    live, tenantRef, build, capture, permissions, clientRef, docsRetrievedAt, observedAt: now().toISOString(),
+    live, tenantRef, build, capture: pseudonymizer(tenantRef).walk(capture), permissions, clientRef, docsRetrievedAt, observedAt: now().toISOString(),
   });
+  const leaked = unpseudonymizedIds(`${artifactText}\n${JSON.stringify(evidence)}`);
+  if (leaked.length > 0) {
+    // Printed to the operator only, so the leak can be traced after the round trip already ran.
+    out.error(`refused: the capture still holds ${leaked.length} id(s) that are not pseudonyms; nothing was written: ${leaked.join(', ')}`);
+    if (capture.failed) out.error(capture.failed);
+    return 1;
+  }
   const key = env.KEEL_QUALIFICATION_HMAC_KEY;
   const record = key ? signEvidence(evidence, key, live ? 'keel-release-runner' : 'keel-fixture-runner') : evidence;
   mkdirSync(outDir, { recursive: true });

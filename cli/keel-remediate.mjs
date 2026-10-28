@@ -15,6 +15,7 @@
 // restore scope.
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { pathToFileURL } from 'node:url';
 import { connect } from '../engine/store/db.mjs';
 import { buildRollbackPlan } from '../engine/govern/rollbackPlan.mjs';
@@ -22,22 +23,14 @@ import { refuseSameContentDrift } from '../engine/store/openDrift.mjs';
 import { resolveQueuedAutomationPolicies } from '../engine/policy/execute.mjs';
 import { assertNoApprovedTransition } from '../engine/policy/changeIntent.mjs';
 import { assertSeparateRestorer, runRestore } from './keel-restore.mjs';
+import { parseCliArgs } from './args.mjs';
 
-function arg(name, fallback, argv = process.argv) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : fallback;
-}
-// Repeatable flag (e.g. --drift-id): every occurrence contributes one value.
-function argAll(name, argv = process.argv) {
-  const values = [];
-  for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i] === `--${name}` && argv[i + 1] !== undefined) values.push(argv[i + 1]);
-  }
-  return values;
-}
-function flag(name, argv = process.argv) {
-  return argv.includes(`--${name}`);
-}
+const ARGS = {
+  name: 'keel-remediate',
+  strings: ['target-config', 'collector-config', 'requested-by'],
+  repeatable: ['drift-id'],
+  booleans: ['enforce', 'accept-degradation'],
+};
 
 /** Resolves drift ids to a restore scope: the natural keys that drifted, and the ONE
  * snapshot the shared baseline's resources were seeded from (seedFromSnapshot seeds a
@@ -212,16 +205,17 @@ export async function main({
   dependencies,
   logger = console,
 } = {}) {
-  const driftIds = argAll('drift-id', argv);
+  const opts = parseCliArgs(argv.slice(2), ARGS).values;
+  const driftIds = opts['drift-id'];
   if (driftIds.length === 0) throw new Error('--drift-id <uuid> required (repeatable)');
-  const targetConfigPath = arg('target-config', undefined, argv);
+  const targetConfigPath = opts['target-config'];
   if (!targetConfigPath) throw new Error('--target-config <path> required');
-  const targetConfig = JSON.parse(readFile(targetConfigPath, 'utf8'));
-  const collectorConfigPath = arg('collector-config', undefined, argv);
+  const targetConfig = readConfigFile(targetConfigPath, { readFile, what: 'restorer settings' });
+  const collectorConfigPath = opts['collector-config'];
   if (!collectorConfigPath) throw new Error('--collector-config <path> required for read-only sign-in-path evidence');
-  const collectorConfig = JSON.parse(readFile(collectorConfigPath, 'utf8'));
+  const collectorConfig = readConfigFile(collectorConfigPath, { readFile, what: 'collector settings' });
   assertSeparateRestorer(collectorConfig, targetConfig);
-  const mode = flag('enforce', argv) ? 'enforce' : 'dry-run';
+  const mode = opts.enforce ? 'enforce' : 'dry-run';
 
   return runRemediate({
     driftIds,
@@ -230,9 +224,9 @@ export async function main({
     targetConfigPath,
     collectorConfigPath,
     mode,
-    requestedBy: arg('requested-by', undefined, argv),
+    requestedBy: opts['requested-by'],
     readFile,
-    acceptDegradation: flag('accept-degradation', argv),
+    acceptDegradation: opts['accept-degradation'],
     dbUrl,
     dependencies,
     logger,

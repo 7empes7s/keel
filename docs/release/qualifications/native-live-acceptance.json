@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "native-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "fb1493ea6a54d48fca03429409a35991a6386871",
+  "build": "e86afa9",
   "operation": "native-recovery.live-acceptance",
   "credentialMode": "restorer",
-  "observedAt": "2026-10-07T11:05:56.957Z",
+  "observedAt": "2026-10-28T07:15:17.536Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -13,7 +13,6 @@
       "task": "task-64",
       "retentionDays": 30,
       "nativeRoutes": {
-        "conditionalAccessPolicy": "conditional-access-deleted-policies",
         "namedLocation": "conditional-access-deleted-named-locations"
       }
     },
@@ -28,7 +27,7 @@
     "bounds": {
       "maxObjects": 1,
       "objectsTouched": 1,
-      "elapsedMs": 6913
+      "elapsedMs": 13157
     },
     "operations": [
       {
@@ -37,25 +36,19 @@
         "route": "directory-deleted-items",
         "outcome": "automated",
         "fixture": {
-          "objectId": "b1b02d2f-3f30-4cb5-8a63-81f94de2734b",
+          "objectId": "5db0ee0a-a014-8fd8-8fc7-e068228e8c9c",
           "name": "KEEL-RT-native-recovery-group"
         },
-        "deletedDateTime": "2026-10-07T11:05:50Z",
-        "retentionDeadline": "2026-11-06T11:05:50.000Z",
-        "restoredAt": "2026-10-07T11:05:56.888Z",
-        "restoredObjectId": "b1b02d2f-3f30-4cb5-8a63-81f94de2734b",
+        "deletedDateTime": "2026-10-28T07:15:04Z",
+        "retentionDeadline": "2026-11-27T07:15:04.000Z",
+        "restoredAt": "2026-10-28T07:15:11.256Z",
+        "restoredObjectId": "5db0ee0a-a014-8fd8-8fc7-e068228e8c9c",
         "idPreserved": true,
         "docs": {
           "url": "https://learn.microsoft.com/en-us/graph/api/directory-deleteditems-restore?view=graph-rest-1.0",
           "apiVersion": "v1.0",
-          "retrievedAt": "2026-10-07"
+          "retrievedAt": "2026-10-28"
         }
-      },
-      {
-        "resourceType": "conditionalAccessPolicy",
-        "route": "conditional-access-deleted-policies",
-        "outcome": "manual-handoff",
-        "reason": "Conditional Access policy recovery from deleted items is not credential-qualified for KEEL"
       },
       {
         "resourceType": "namedLocation",
@@ -64,16 +57,16 @@
         "reason": "named location recovery from deleted items is not credential-qualified for KEEL"
       }
     ],
-    "captureSha256": "1a0a19b55b67845817725f54d6508d68a4043ab9be4cc670a377641344f9a769"
+    "captureSha256": "eca1649c6f030f705fcc30d2f230a749aae520d8847585f60051535e507ef1ab"
   },
   "proof": {
     "artifact": {
       "path": "native-live-acceptance.artifact.json",
-      "sha256": "1a0a19b55b67845817725f54d6508d68a4043ab9be4cc670a377641344f9a769"
+      "sha256": "eca1649c6f030f705fcc30d2f230a749aae520d8847585f60051535e507ef1ab"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "6038adf024f226a7d725adacbfa046f236158915ae8bf6d3cc8d88d96f1c3b4c"
+      "signature": "b660a2ab3ed27403a54436286b2b867c114d2392bcf491e2013c3636e1a8d390"
     }
   }
 }

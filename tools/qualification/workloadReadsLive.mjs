@@ -19,7 +19,7 @@
  *        --workload <workload> --tenant-ref sha256:... --collector-ref app:<collector app id> \
  *        --collector-config /etc/keel/<collector>.json --build <sha> \
  *        --out docs/release/qualifications/workload-reads-<workload>-live-acceptance.json \
- *        [--powershell-image <tag>]
+ *        [--powershell-image <tag>] [--site https://<tenant>.sharepoint.com/sites/KEEL-RT-... (sharepoint-structure, repeatable)]
  *
  * The record keeps, per read: its operation, family, status, object count, the module
  * version and the error code when it failed. No object, field value, name or tenant id
@@ -45,7 +45,9 @@ import {
   knownWorkload, provenReads, readModule, workloadReads, workloadReadsCapturePlan, workloadReadsRecordFile,
 } from './workloadReadsAcceptance.mjs';
 import { SHAREPOINT_WORKLOAD, readSiteSharing } from '../../engine/collect/workloads/sharepoint.mjs';
+import { SHAREPOINT_STRUCTURE_WORKLOAD, readSharePointStructure } from '../../engine/collect/workloads/sharepointStructure.mjs';
 import { WORKLOAD_READERS as WRITTEN_READERS, pinnedModuleVersions } from './workloadWritesLive.mjs';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 /**
  * The SharePoint per-site sharing read, in the shape the written workloads' readers
@@ -62,7 +64,25 @@ export async function readSharePointSiteSharing({ powershell }) {
 
 export const WORKLOAD_READERS = Object.freeze({
   ...WRITTEN_READERS, [SHAREPOINT_WORKLOAD]: readSharePointSiteSharing, 'exchange-role-groups': readExchangeRoleGroups,
+  [SHAREPOINT_STRUCTURE_WORKLOAD]: readSharePointStructure,
 });
+
+/**
+ * What a workload's reader needs beside the collector, from the capture's arguments and the
+ * collector config: SharePoint structure reads the templates of the sites named with --site,
+ * on the host of the config's admin site. Other workloads need nothing.
+ */
+export function readOptionsFor(workload, { sites = [], collectorConfig = {} } = {}) {
+  if (workload !== SHAREPOINT_STRUCTURE_WORKLOAD) {
+    if (sites.length) throw new Error(`--site is only for --workload ${SHAREPOINT_STRUCTURE_WORKLOAD}`);
+    return {};
+  }
+  let adminHost = '';
+  try { adminHost = new URL(String(collectorConfig.sharePointAdminUrl ?? '')).hostname.toLowerCase(); } catch { adminHost = ''; }
+  if (!/^[a-z0-9-]+-admin\.sharepoint\.com$/.test(adminHost)) throw new Error('the collector config names no SharePoint admin site (sharePointAdminUrl); nothing was sent');
+  if (!sites.length) throw new Error('a SharePoint structure capture needs at least one --site (a KEEL-RT- site); nothing was sent');
+  return { sites, tenantHost: adminHost.replace(/-admin\.sharepoint\.com$/, '.sharepoint.com') };
+}
 
 export { READ_FAMILIES, WORKLOAD_READS_LIVE_GATE, workloadReadsCapturePlan, workloadReadsRecordFile };
 
@@ -75,7 +95,7 @@ const MODULE_VERSION_RE = /^\d+\.\d+\.\d+(\.\d+)?$/;
  * name the tenant, so they stay out of the record). It never signs or writes files.
  */
 export async function captureWorkloadReads({
-  workload, collector, read = WORKLOAD_READERS[workload], tenantRef, build, credential, moduleVersion, now = () => new Date(),
+  workload, collector, read = WORKLOAD_READERS[workload], tenantRef, build, credential, moduleVersion, now = () => new Date(), readOptions = {},
 }) {
   knownWorkload(workload);
   const module = readModule(workload);
@@ -89,7 +109,7 @@ export async function captureWorkloadReads({
   let result = null;
   let error = null;
   try {
-    result = await read({ powershell: collector, families: declared.map((item) => item.family) });
+    result = await read({ ...readOptions, powershell: collector, families: declared.map((item) => item.family) });
   } catch (failure) {
     error = failure;
   }
@@ -155,12 +175,14 @@ export function ledgerEvidenceFromWorkloadReadsAcceptance(evidence, options = {}
 
 function parseArgs(argv) {
   const [command = 'plan', ...rest] = argv;
-  const options = { command };
+  const options = { command, sites: [] };
   const names = {
     '--workload': 'workload', '--tenant-ref': 'tenantRef', '--collector-ref': 'collectorRef', '--collector-config': 'collectorConfig',
     '--out': 'out', '--build': 'build', '--powershell-image': 'image',
   };
   for (let index = 0; index < rest.length; index += 1) {
+    // --site may be given more than once.
+    if (rest[index] === '--site') { options.sites.push(rest[++index]); continue; }
     if (!names[rest[index]]) throw new Error(`unknown argument: ${rest[index]}`);
     options[names[rest[index]]] = rest[++index];
   }
@@ -189,15 +211,17 @@ export async function main(argv = process.argv.slice(2), {
   }
   const build = options.build ?? env.KEEL_QUALIFICATION_BUILD;
   if (!build) throw new Error('capture needs --build (or KEEL_QUALIFICATION_BUILD): the build this capture qualifies');
-  const { tenantId } = JSON.parse(readFile(options.collectorConfig));
+  const collectorConfig = readConfigFile(options.collectorConfig, { readFile, what: 'collector settings' });
+  const { tenantId } = collectorConfig;
   if (typeof tenantId !== 'string' || options.tenantRef !== tenantRefFor(tenantId)) {
     throw new Error('--tenant-ref is not the tenant the collector config names; nothing was sent');
   }
   const module = readModule(options.workload);
   const moduleVersion = pins()[module];
   if (!moduleVersion) throw new Error(`ops/powershell/Dockerfile pins no ${module} version; nothing was sent`);
+  const readOptions = readOptionsFor(options.workload, { sites: options.sites, collectorConfig });
   const { record, diagnostics } = await capture({
-    workload: options.workload, collector: powershell(options.collectorConfig, options.image),
+    workload: options.workload, collector: powershell(options.collectorConfig, options.image), readOptions,
     tenantRef: options.tenantRef, build, credential: options.collectorRef, moduleVersion,
   });
   const hmacKey = env.KEEL_QUALIFICATION_HMAC_KEY ?? null;

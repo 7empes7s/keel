@@ -2,11 +2,13 @@
 //
 // Roadmap task-84: helpers shared by the provider contracts and adapters.mjs.
 import { createHash } from 'node:crypto';
+import { isIntegrationReference } from '../../safety/outboundDestination.mjs';
 
-// A credential reference names where the secret lives; it never is the secret.
-const REFERENCE = /^env:[A-Za-z_][A-Za-z0-9_]*$/;
+// A credential reference names where the secret lives; it never is the secret. It must
+// name an env:KEEL_INTEGRATION_* variable, so a channel can never pick up the database
+// URL or another secret the worker holds (security audit finding 6).
 export function isCredentialReference(value) {
-  return typeof value === 'string' && REFERENCE.test(value);
+  return isIntegrationReference(value);
 }
 
 /** Deterministic, provider-length-safe key: short keys are kept, long ones hashed. */
@@ -44,7 +46,7 @@ export function configProblems(config, { references = [], allowed = [] }) {
   const problems = [];
   for (const key of references) {
     if (config[key] === undefined) problems.push(`${key} is required`);
-    else if (!isCredentialReference(config[key])) problems.push(`${key} must be a credential reference such as env:NAME, not the secret itself`);
+    else if (!isCredentialReference(config[key])) problems.push(`${key} must be a credential reference such as env:KEEL_INTEGRATION_NAME, not the secret itself`);
   }
   for (const key of Object.keys(config)) {
     if (!references.includes(key) && !allowed.includes(key)) problems.push(`${key} is not a setting for this channel`);

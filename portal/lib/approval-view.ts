@@ -7,12 +7,13 @@ import type { ApprovalRequestRecord } from "@/lib/approval-inbox";
 import type { RiskTone } from "@/lib/menu-status";
 import { approvalSentence, personLabel } from "@/lib/sentences";
 
-export type ApprovalKind = "restore" | "undo" | "rollback" | "setup" | "other";
+export type ApprovalKind = "restore" | "undo" | "rollback" | "decision" | "setup" | "other";
 
 export const KIND_WORDS: Record<ApprovalKind, { label: string; plural: string; icon: IconName; about: string; verb: string }> = {
   restore: { label: "Restore", plural: "Restores", icon: "restore", about: "Put settings back from a backup", verb: "the restore" },
   undo: { label: "Undo of a restore", plural: "Undo a restore", icon: "swap", about: "Put back what a restore changed", verb: "the undo" },
   rollback: { label: "Undo change", plural: "Undo changes", icon: "swap", about: "Put changed settings back as the approved setup holds them", verb: "the undo" },
+  decision: { label: "Change decision", plural: "Change decisions", icon: "baselines", about: "Accept or ignore a change to sign-in or admin access", verb: "the decision" },
   setup: { label: "Approved-setup switch", plural: "Approved-setup switches", icon: "baselines", about: "Make another setup the one Keel checks against", verb: "the switch" },
   other: { label: "Request", plural: "Other requests", icon: "inbox", about: "Other requests", verb: "it" },
 };
@@ -21,12 +22,13 @@ export function approvalKind(request: Pick<ApprovalRequestRecord, "action" | "re
   switch (request.action) {
     case "restore": return request.references?.plan?.readable && request.references.plan.undo ? "undo" : "restore";
     case "remediate": return "rollback";
+    case "dispose": return "decision";
     case "baseline-activate": return "setup";
     default: return "other";
   }
 }
 
-export const KIND_ORDER: ApprovalKind[] = ["restore", "undo", "rollback", "setup", "other"];
+export const KIND_ORDER: ApprovalKind[] = ["restore", "undo", "rollback", "decision", "setup", "other"];
 
 /** The request's title: what approving it does, with names. */
 export function approvalTitle(request: Pick<ApprovalRequestRecord, "action" | "params" | "references">): string {

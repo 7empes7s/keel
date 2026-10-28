@@ -9,7 +9,7 @@
 //   interpret({ status, headers, body })    -> outcome + provider receipt
 // This file owns everything the providers share, so the rules hold for all of them:
 //
-//  - Secrets are credential references (env:NAME by default). A webhook address is a
+//  - Secrets are credential references (env:KEEL_INTEGRATION_NAME by default). A webhook address is a
 //    secret (its path is the credential), so Teams and Slack store `endpointRef`, never
 //    the URL. Raw secret-shaped values are refused when the channel is created.
 //  - Every resolved secret value is redacted from anything that is recorded: the

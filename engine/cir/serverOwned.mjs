@@ -108,6 +108,12 @@ SERVER_OWNED.set('roleAssignmentSchedule', new Set(['scheduleInfo.startDateTime'
 // rules by their fields alone (directoryPolicyOperations.mjs conditionSetDifference).
 SERVER_OWNED.set('permissionGrantPolicy', new Set(['includes.id', 'excludes.id']));
 
+// Restore gaps batch 19: an app keeps the categories it is in by each
+// category's id, which a recreated category does not keep (and a built-in one
+// has in each tenant on its own). Categories compare by name; the restore
+// finds each one in the target by id, by this run's recreate, or by name.
+SERVER_OWNED.set('mobileApp', new Set(['categories.id']));
+
 export const IMMUTABLE = new Map(
   RESOURCE_TYPES.map((resourceType) => [resourceType, new Set()]),
 );

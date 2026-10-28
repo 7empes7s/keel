@@ -26,6 +26,14 @@
 #   KEEL_OFFSITE_SSH_KEY  SSH key for KEEL_OFFSITE_REMOTE (default /root/.ssh/playground_vps)
 #   KEEL_STORAGE_TARGETS  target ids; when set, ship to every target in the registry instead
 #                         (settings per target: see engine/storage/targets.mjs)
+#   KEEL_OFFSITE_AGE_RECIPIENTS  file of age public recipients (age1...), one per line
+#                         (default /etc/keel/offsite-age-recipients.txt)
+#
+# Every copy that leaves the host is encrypted with age to those recipients first, and
+# ships as keel-db-<date>.sql.gz.age. The matching private identities are kept OFF this
+# host: a leaked copy is unreadable, and losing the host does not lose the means to
+# decrypt. With no recipient configured, or a private key in the recipients file,
+# nothing ships. Decrypt a copy with: age -d -i IDENTITY keel-db-<date>.sql.gz.age > keel-db.sql.gz
 
 set -euo pipefail
 # The dump holds every tenant baseline: keep the staged and promoted copies root-only.
@@ -83,11 +91,12 @@ flock -x 9
 MANIFEST_TOOL="$(dirname "$(readlink -f "$0")")/../engine/schedules/offsite.mjs"
 SHIPPED_MANIFEST="$BACKUP_ROOT/keel-db-shipped-manifest.json"
 PINNED_MANIFEST="$(mktemp "$BACKUP_ROOT/.keel-offsite-manifest.XXXXXX")"
-trap 'rm -f "$PINNED_MANIFEST"' EXIT
+ENCRYPT_DIR="$(mktemp -d "$BACKUP_ROOT/.keel-offsite-encrypt.XXXXXX")"
+trap 'rm -f "$PINNED_MANIFEST"; rm -rf "$ENCRYPT_DIR"' EXIT
 cp "$BACKUP_ROOT/keel-db-manifest.json" "$PINNED_MANIFEST"
 LOCAL_DUMP="$(node "$MANIFEST_TOOL" verify "$PINNED_MANIFEST" "$SHIPPED_MANIFEST")"
 LATEST_DATE="$(basename "$(dirname "$LOCAL_DUMP")")"
-REMOTE_NAME="keel-db-${LATEST_DATE}.sql.gz"
+REMOTE_NAME="keel-db-${LATEST_DATE}.sql.gz.age"
 
 log "candidate dump: $LOCAL_DUMP (dated $LATEST_DATE)"
 
@@ -126,6 +135,11 @@ fi
 log "local sha256: $LOCAL_SHA256"
 MANIFEST_SHA256="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).checksum)' "$PINNED_MANIFEST")"
 [ "$LOCAL_SHA256" = "$MANIFEST_SHA256" ] || fail "dump changed after manifest verification"
+
+# --- encryption is required before anything leaves the host --------------------------
+command -v age >/dev/null 2>&1 || fail "age is not installed — offsite copies must be encrypted, shipping nothing"
+node "$MANIFEST_TOOL" recipients || fail "no usable encryption recipient — shipping nothing"
+log "encryption recipients present"
 
 # --- storage target registry ------------------------------------------------------
 # With KEEL_STORAGE_TARGETS set, the dump ships to every configured target instead of
@@ -179,13 +193,27 @@ if ! on_target "mkdir -p '$REMOTE_DIR'"; then
 fi
 log "target reachable, $TARGET present"
 
+# --- encrypt ----------------------------------------------------------------------
+# The encrypt step re-hashes the dump it reads, so a dump swapped after the checks above
+# is refused rather than encrypted.
+
+ENCRYPTED="$ENCRYPT_DIR/$REMOTE_NAME"
+set +e
+SHIP_SHA256="$(node "$MANIFEST_TOOL" encrypt "$LOCAL_DUMP" "$ENCRYPTED" "$LOCAL_SHA256")"
+ENCRYPT_STATUS=$?
+set -e
+if [ "$ENCRYPT_STATUS" -ne 0 ] || [ -z "$SHIP_SHA256" ]; then
+  fail "could not encrypt $LOCAL_DUMP (exit $ENCRYPT_STATUS) — shipping nothing"
+fi
+log "encrypted with age; ciphertext sha256: $SHIP_SHA256"
+
 # --- ship -----------------------------------------------------------------------
 
 REMOTE_TMP="${REMOTE_DIR}/.${REMOTE_NAME}.partial"
 REMOTE_PATH="${REMOTE_DIR}/${REMOTE_NAME}"
 
-if ! copy_to_target "$LOCAL_DUMP" "$REMOTE_TMP"; then
-  fail "copy of $LOCAL_DUMP to $TARGET (staged as $REMOTE_TMP) failed"
+if ! copy_to_target "$ENCRYPTED" "$REMOTE_TMP"; then
+  fail "copy of $ENCRYPTED to $TARGET (staged as $REMOTE_TMP) failed"
 fi
 log "transfer completed (staged as $REMOTE_TMP)"
 
@@ -201,11 +229,11 @@ if [ "$REMOTE_SHA_STATUS" -ne 0 ] || [ -z "$REMOTE_SHA256" ]; then
 fi
 log "target sha256: $REMOTE_SHA256"
 
-if [ "$LOCAL_SHA256" != "$REMOTE_SHA256" ]; then
+if [ "$SHIP_SHA256" != "$REMOTE_SHA256" ]; then
   if ! on_target "rm -f '$REMOTE_TMP'"; then
     echo "[$(date -Iseconds)] WARN: could not remove partial remote file $REMOTE_TMP after sha256 mismatch — clean it up manually" >&2
   fi
-  fail "sha256 mismatch after transfer (local=$LOCAL_SHA256 target=$REMOTE_SHA256) — shipping considered FAILED"
+  fail "sha256 mismatch after transfer (local=$SHIP_SHA256 target=$REMOTE_SHA256) — shipping considered FAILED"
 fi
 log "sha256 verified — transfer is byte-identical"
 
@@ -214,11 +242,11 @@ if ! on_target "mv '$REMOTE_TMP' '$REMOTE_PATH'"; then
   fail "could not promote $REMOTE_TMP to $REMOTE_PATH on the target"
 fi
 log "offsite copy in place: $TARGET/$REMOTE_NAME"
-node "$MANIFEST_TOOL" record "$PINNED_MANIFEST" "$SHIPPED_MANIFEST"
+node "$MANIFEST_TOOL" record "$PINNED_MANIFEST" "$SHIPPED_MANIFEST" "$REMOTE_NAME" "$SHIP_SHA256"
 
 # --- prune offsite copies older than retention -------------------------------------
 
-PRUNE_CMD='find '"$REMOTE_DIR"' -maxdepth 1 -type f -name "keel-db-*.sql.gz" -mtime +'"$RETENTION_DAYS"' -print -delete'
+PRUNE_CMD='find '"$REMOTE_DIR"' -maxdepth 1 -type f -name "keel-db-*.sql.gz*" -mtime +'"$RETENTION_DAYS"' -print -delete'
 set +e
 PRUNED="$(on_target "$PRUNE_CMD")"
 PRUNE_STATUS=$?
@@ -233,4 +261,4 @@ else
   log "no offsite copies older than ${RETENTION_DAYS}d to prune"
 fi
 
-log "keel-offsite: done. Shipped $REMOTE_NAME, sha256 $LOCAL_SHA256"
+log "keel-offsite: done. Shipped $REMOTE_NAME (ciphertext sha256 $SHIP_SHA256, dump sha256 $LOCAL_SHA256)"

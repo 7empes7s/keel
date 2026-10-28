@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { enqueue } from "../../../../../../engine/jobs/queue.mjs";
+import { enqueue, PORTAL_QUEUED_JOBS_PER_PRINCIPAL } from "../../../../../../engine/jobs/queue.mjs";
 
 import {
   guarded,
@@ -9,7 +9,7 @@ import {
   normalizeJob,
   readActionParams,
 } from "@/lib/action";
-import { restoreCredentialPaths } from "@/lib/restore-config";
+import { queueableRestoreCredentialPaths } from "@/lib/restore-config";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -64,7 +64,7 @@ export const POST = guarded(
       throw new InvalidActionRequest("incidentId must be an incident id");
     }
 
-    const { collectorConfig, targetConfig } = restoreCredentialPaths();
+    const { collectorConfig, targetConfig } = queueableRestoreCredentialPaths();
     const artifactId = randomUUID();
     const job = (await enqueue(client, {
       kind: "restore",
@@ -75,6 +75,7 @@ export const POST = guarded(
       requestedBy: principalId,
       idempotencyKey: request.headers.get(IDEMPOTENCY_KEY_HEADER) ?? undefined,
       notBefore: undefined,
+      maxQueuedForRequester: PORTAL_QUEUED_JOBS_PER_PRINCIPAL,
     })) as Record<string, unknown>;
 
     const persistedArtifactId = (job.params as Record<string, unknown>)?.artifactId;

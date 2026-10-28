@@ -165,3 +165,44 @@ test('a rule for groups, roles or nobody says so without naming them', () => {
   assert.deepEqual(lineFor({ includeGuestsOrExternalUsers: { guestOrExternalUserTypes: 'b2bCollaborationGuest' } }), ['Only some', 'All']);
   assert.deepEqual(lineFor({ includeUsers: ['None'] }, ['None']), ['None', 'None']);
 });
+
+// Review note on #578: two sign-in rules with the same display name used to share one
+// subject, so their eight lines read as one rule's. Each gets its own numbered name,
+// fixed by the rule's own key (never shown), whatever order the backup lists them in.
+test('two blocking rules with the same name keep their own lines', () => {
+  const reportOnly = policy('b-report', 'enabledForReportingButNotEnforced', ['exchangeActiveSync', 'other']);
+  const someUsers = policy('a-some', 'enabled', ['exchangeActiveSync', 'other'], ['block'], ['user-1']);
+  reportOnly.displayName = 'KEEL-RT-Block legacy';
+  someUsers.displayName = 'KEEL-RT-Block legacy';
+  for (const order of [[reportOnly, someUsers], [someUsers, reportOnly]]) {
+    const result = check(order);
+    assert.equal(result.verdict, 'fail');
+    assert.equal(result.details.length, 8);
+    const subjects = [...new Set(result.details.map((line) => line.subject))].sort();
+    assert.deepEqual(subjects, ['KEEL-RT-Block legacy (1 of 2)', 'KEEL-RT-Block legacy (2 of 2)']);
+    // Numbered by key: a-some is 1, b-report is 2, in either order.
+    const failing = result.details.filter((line) => !line.ok).map((line) => [line.subject, line.setting]).sort();
+    assert.deepEqual(failing, [
+      ['KEEL-RT-Block legacy (1 of 2)', 'includeUsers'],
+      ['KEEL-RT-Block legacy (2 of 2)', 'state'],
+    ]);
+    for (const name of subjects) assert.equal(result.details.filter((line) => line.subject === name).length, 4);
+    assert.ok(!JSON.stringify(result.details).includes('a-some'));
+    assert.ok(!JSON.stringify(result.details).includes('b-report'));
+  }
+});
+
+test('a name used once is left as it is', () => {
+  const result = check([policy('legacy', 'enabled', ['exchangeActiveSync', 'other'])]);
+  assert.ok(result.details.every((line) => line.subject === 'KEEL-RT-legacy'));
+});
+
+test('a pass with a same-name rule that does not enforce shows the enforcing one unnumbered', () => {
+  const reportOnly = policy('a-report', 'enabledForReportingButNotEnforced', ['exchangeActiveSync', 'other']);
+  const enforced = policy('b-legacy', 'enabled', ['exchangeActiveSync', 'other']);
+  reportOnly.displayName = 'KEEL-RT-Block legacy';
+  enforced.displayName = 'KEEL-RT-Block legacy';
+  const result = check([reportOnly, enforced]);
+  assert.equal(result.verdict, 'pass');
+  assert.ok(result.details.every((line) => line.subject === 'KEEL-RT-Block legacy' && line.ok));
+});

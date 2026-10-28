@@ -2,6 +2,7 @@ import { ChannelConfigError } from "../../engine/notify/adapters.mjs";
 import { createEscalationRule, listEscalationRules, setEscalationRuleEnabled } from "../../engine/notify/escalation.mjs";
 import { CHANNEL_KIND_ERROR, CHANNEL_NOT_FOUND, CHANNEL_OFF, createChannel, createSubscription, listDeliveries, sendTestAlert } from "../../engine/notify/notifications.mjs";
 import { guarded, readActionParams, InvalidActionRequest, type GuardDeps } from "@/lib/action";
+import { peopleNamer, shownPerson } from "@/lib/people-names";
 import type { DataSurface } from "@/lib/read";
 
 const NO_STORE = { "cache-control": "no-store" };
@@ -135,7 +136,13 @@ export function guardedSubscriptionPatch(deps: GuardDeps = {}) {
 /** GET /api/escalation-rules: the tenant's "when nobody responds" rules. */
 export function guardedEscalationList(surface: DataSurface, deps: GuardDeps = {}) {
   return guarded({ action: "escalation-rules:list", capability: surface.capability }, async ({ client, tenantRef }) => {
-    const rules = await listEscalationRules(client, { tenantRef });
+    // "Hide people's names": each owner by code name, without their email.
+    const namer = await peopleNamer(client);
+    const rules = ((await listEscalationRules(client, { tenantRef })) as Record<string, unknown>[]).map((rule) => {
+      if (!namer || !rule.owner_principal_id || (rule.owner_email == null && rule.owner_name == null)) return rule;
+      const shown = shownPerson({ id: String(rule.owner_principal_id), email: (rule.owner_email as string | null) ?? null, name: (rule.owner_name as string | null) ?? null, readable: true }, namer);
+      return { ...rule, owner_name: shown.name, owner_email: null };
+    });
     return Response.json({ escalationRules: rules, generatedAt: new Date().toISOString() }, { headers: NO_STORE });
   }, deps);
 }

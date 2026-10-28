@@ -12,6 +12,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 
 import { grantRole, revokeRole } from '../authz/administration.mjs';
+import { setAnonymity } from '../insights/anonymity.mjs';
 import { collectWithOutcomes, M1_TYPES } from '../collect/entraAdapter.mjs';
 import { get } from '../collect/registry.mjs';
 import { updateSchedule } from '../schedules/cadence.mjs';
@@ -301,6 +302,12 @@ test('acceptance: acknowledging a warning cannot bypass the floor or current aut
   assert.equal(shown.status, 'warning', 'an acknowledged warning is still a warning');
   assert.equal(shown.warnings[0].acknowledged, true);
   assert.match(shown.acknowledgement.acknowledgedByName, /^admin-/);
+  // "Hide people's names": who accepted it shows by a code name, then by name again.
+  await setAnonymity(client, { tenantRef, enabled: true, actor: admin.id });
+  const hidden = byTier(await loadScheduleForecasts(client, { id: viewer.id }, { tenantRef, now: NOW }), 'tier1');
+  assert.match(hidden.acknowledgement.acknowledgedByName, /^Person [A-HJ-NP-Z2-9]{4}$/);
+  await setAnonymity(client, { tenantRef, enabled: false, actor: admin.id });
+  assert.match(byTier(await loadScheduleForecasts(client, { id: viewer.id }, { tenantRef, now: NOW }), 'tier1').acknowledgement.acknowledgedByName, /^admin-/);
 
   // The interval floor still applies on save after acknowledging.
   await assert.rejects(updateSchedule(client, { id: admin.id }, before.id, { cron_override: '*/5 * * * *' }), /schedule_minimum_interval/);

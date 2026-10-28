@@ -71,3 +71,22 @@ pass its outputs with `--cmdlets`.
 node tools/tenant-probe/delegated-probe.mjs run --config /etc/keel/tenant.json --out <dir> \
   --cmdlets sweep-exo.json,sweep-scc.json,sweep-teams.json,sweep-spo.json
 ```
+
+## Microsoft configuration snapshot probe (TCM)
+
+`utcm-probe.mjs` checks whether Microsoft's Tenant Configuration Management snapshots
+(`/admin/configurationManagement`, Graph v1.0) can read, on our licence and quota, the
+settings KEEL does not read itself. `check` only reads (the app's role, the TCM service
+principal and its grants, visible jobs). `run` creates one `KEEL-RT-utcm-probe-*` snapshot
+job per workload, waits, downloads it, and deletes only the jobs it created; it never writes
+tenant configuration. `utcm-types.mjs` lists the 270 TCM types and what KEEL already reads
+for each. Raw snapshots go to `<out>/raw/` (mode 600, never committed); the report is masked.
+
+```bash
+node tools/tenant-probe/utcm-probe.mjs check --config /etc/keel/tenant.json --out <dir>
+node tools/tenant-probe/utcm-probe.mjs run --config /etc/keel/tenant.json --out <dir>
+```
+
+`ops/powershell/dsc-probe.ps1` is the matching writer check: in a throwaway PowerShell 7.6
+container it installs Microsoft365DSC and creates, changes and removes one `KEEL-RT-`
+distribution list through `EXODistributionGroup`.

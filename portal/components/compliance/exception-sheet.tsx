@@ -108,6 +108,9 @@ export function ExceptionSheet({ findings, today, onDone, onClose }: {
         </p>
         <fieldset disabled={busy}>
           <legend>Who owns it</legend>
+          {prior && !prior.owner && prior.ownerRef?.pseudonym ? (
+            <p className="field-help">Names are hidden, so the current owner ({prior.ownerRef.name}) is not filled in. Choose or type the owner again.</p>
+          ) : null}
           {people === null ? <p className="field-help">Looking up people in Keel…</p> : people !== "unavailable" ? (
             <OptionPicker label="Owner" onChange={setOwner} options={options} placeholder="Choose a person" value={owner} />
           ) : null}

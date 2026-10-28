@@ -19,22 +19,30 @@
 // Read-side plus one evidence append: no Graph token, no tenant write.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { pathToFileURL } from 'node:url';
 
 import { DESCRIPTORS } from '../engine/collect/descriptors.mjs';
 import { recordOffsiteCopy } from '../engine/coverage/offsiteCopy.mjs';
 import { loadRecoveryMetrics } from '../engine/coverage/recoveryMetrics.mjs';
 import { connect } from '../engine/store/db.mjs';
+import { parseCliArgs } from './args.mjs';
 
-function arg(argv, name) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : undefined;
+const ARGS = {
+  name: 'keel-recovery-metrics',
+  strings: ['recovery-manifest', 'remote-sha256', 'shipped-at', 'actor', 'build-revision', 'schema-pin', 'config-export-dir', 'dump', 'evidence-head', 'tenant-ref', 'config', 'db-url'],
+  booleans: ['help'],
+  positionals: 1,
+};
+
+function arg(opts, name) {
+  return opts[name];
 }
 
-function resolveTenantRef(argv, readFile) {
-  const explicit = arg(argv, 'tenant-ref');
+function resolveTenantRef(opts, readFile) {
+  const explicit = arg(opts, 'tenant-ref');
   if (explicit) return explicit;
-  const config = JSON.parse(readFile(arg(argv, 'config') ?? '/etc/keel/tenant.json', 'utf8'));
+  const config = readConfigFile(arg(opts, 'config') ?? '/etc/keel/tenant.json', { readFile, what: 'collector settings' });
   return `sha256:${createHash('sha256').update(config.tenantId).digest('hex').slice(0, 16)}`;
 }
 
@@ -53,14 +61,14 @@ export async function main({
   logger = console,
   now = () => new Date(),
 } = {}) {
-  const [command] = argv;
-  if (!['report', 'record-offsite'].includes(command) || argv.includes('--help')) {
+  const { values: opts, positionals: [command] } = parseCliArgs(argv, ARGS);
+  if (!['report', 'record-offsite'].includes(command) || opts.help) {
     logger.log(USAGE);
-    return command === undefined || argv.includes('--help') ? 0 : 2;
+    return command === undefined || opts.help ? 0 : 2;
   }
-  const dbUrl = arg(argv, 'db-url') ?? process.env.KEEL_DB_URL;
+  const dbUrl = arg(opts, 'db-url') ?? process.env.KEEL_DB_URL;
   if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
-  const tenantRef = resolveTenantRef(argv, readFile);
+  const tenantRef = resolveTenantRef(opts, readFile);
   const client = await connectFn(dbUrl);
   try {
     if (command === 'report') {
@@ -68,19 +76,19 @@ export async function main({
       logger.log(JSON.stringify(metrics, null, 2));
       return 0;
     }
-    const manifestPath = arg(argv, 'recovery-manifest');
+    const manifestPath = arg(opts, 'recovery-manifest');
     if (!manifestPath) throw new Error('--recovery-manifest is required');
     const { subject, verdict } = await recordOffsiteCopy(client, {
       tenantRef,
       manifest: JSON.parse(readFile(manifestPath, 'utf8')),
-      remoteSha256: arg(argv, 'remote-sha256'),
-      shippedAt: arg(argv, 'shipped-at'),
-      actor: arg(argv, 'actor'),
+      remoteSha256: arg(opts, 'remote-sha256'),
+      shippedAt: arg(opts, 'shipped-at'),
+      actor: arg(opts, 'actor'),
       verifyOptions: {
-        dumpPath: arg(argv, 'dump'),
-        expectedBuild: { revision: arg(argv, 'build-revision'), schemaPin: arg(argv, 'schema-pin') },
-        configExportDir: arg(argv, 'config-export-dir'),
-        expectedCheckpoint: parseEvidenceHead(arg(argv, 'evidence-head')),
+        dumpPath: arg(opts, 'dump'),
+        expectedBuild: { revision: arg(opts, 'build-revision'), schemaPin: arg(opts, 'schema-pin') },
+        configExportDir: arg(opts, 'config-export-dir'),
+        expectedCheckpoint: parseEvidenceHead(arg(opts, 'evidence-head')),
       },
     });
     for (const failure of subject.verification.failures) logger.error(`verify: ${failure}`);

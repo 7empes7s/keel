@@ -72,7 +72,9 @@ export function classifyApprovalActions({ action, artifact = null, declared = []
   if (action === 'restore' && artifact) {
     const size = (artifact.closureKeys?.length ?? 0) + (artifact.relationshipOperations?.length ?? 0);
     if (size >= BULK_RESTORE_THRESHOLD) classes.add('bulk-restore');
-    if (hasDelete([artifact.waves, artifact.reconciliationResources, artifact.compensation, artifact.relationshipOperations])) {
+    // A member/owner edge removal is a delete too (security audit run 2, finding 7).
+    if (hasDelete([artifact.waves, artifact.reconciliationResources, artifact.compensation, artifact.relationshipOperations])
+      || (artifact.relationshipOperations ?? []).some((op) => op?.action === 'remove')) {
       classes.add('delete');
     }
     for (const effect of artifact.contentEffects ?? []) {

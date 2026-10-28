@@ -7,6 +7,13 @@ import { sameContent } from '../cir/canonicalHash.mjs';
  */
 export const RECORDED_CHANGE_PREDICATE = '(d.same_content IS NOT TRUE)';
 
+// Audit run 2, finding 3: an ignore lasts at most this long (govern/dispositionReview.mjs
+// refuses a longer one). It also counts for at most this long after it was decided,
+// whatever end it was stored with, so an ignore saved before the cap (even with
+// 'infinity') runs out too. For a disposition row aliased `p`.
+export const MAX_IGNORE_DAYS = 90;
+export const IGNORE_STILL_COUNTS_SQL = `((p.expires_at IS NULL OR p.expires_at > now()) AND p.decided_at > now() - interval '${MAX_IGNORE_DAYS} days')`;
+
 /** SQL predicate for an open drift. Consumers must alias the drift table as `d`. */
 export const OPEN_DRIFT_PREDICATE = `
   (${RECORDED_CHANGE_PREDICATE} AND (
@@ -21,11 +28,25 @@ export const OPEN_DRIFT_PREDICATE = `
       AND NOT EXISTS (
         SELECT 1 FROM disposition p
         WHERE p.drift_id = d.id
-          AND (p.action <> 'ignore' OR p.expires_at IS NULL OR p.expires_at > now())
+          AND (p.action <> 'ignore' OR ${IGNORE_STILL_COUNTS_SQL})
       )
     )
   ))
 `;
+
+/**
+ * Whether a recorded drift row (snake_case columns) records the same difference as
+ * one seen now: both sides hold the same content under the current field rules
+ * (sameContent), so a row whose hashes were stored under older rules still matches.
+ * Drift detection (store/governance.mjs reuseDrift) and change-intent settlement
+ * (policy/changeIntent.mjs currentResourceState) both use it, so they agree on which
+ * row stands for the newest collection.
+ */
+export function sameRecordedDifference(row, { resourceType, beforeHash, beforePayload, afterHash, afterPayload }) {
+  const side = (hash, payload) => ({ payload_hash: hash ?? null, payload: payload ?? null });
+  return sameContent(side(row.before_hash, row.before_payload), side(beforeHash, beforePayload), resourceType)
+    && sameContent(side(row.after_hash, row.after_payload), side(afterHash, afterPayload), resourceType);
+}
 
 /**
  * SQL predicate: something has already acted on this drift row (alias `d`): a decision
@@ -56,7 +77,7 @@ export const DRIFT_IGNORED_PREDICATE = `
     EXISTS (
       SELECT 1 FROM disposition p
        WHERE p.drift_id = d.id AND p.action = 'ignore'
-         AND (p.expires_at IS NULL OR p.expires_at > now())
+         AND ${IGNORE_STILL_COUNTS_SQL}
     )
     AND NOT EXISTS (
       SELECT 1 FROM disposition p WHERE p.drift_id = d.id AND p.action <> 'ignore'

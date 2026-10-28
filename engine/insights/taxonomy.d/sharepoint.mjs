@@ -9,7 +9,7 @@ export default Object.freeze({
   // the service has is listed, even with no type yet: `match` places a kind Keel has
   // not mapped yet (see placeUnmapped in ../taxonomy.mjs).
   categories: Object.freeze([
-    { key: 'sites', name: 'Sites and OneDrive', types: ['sharepoint-site-settings', 'onedrive-site-settings'], match: /site|onedrive|hub|library/ },
+    { key: 'sites', name: 'Sites and OneDrive', types: ['sharepoint-site-settings', 'sharepoint-structure', 'onedrive-site-settings'], match: /site|structure|onedrive|hub|library/ },
     { key: 'roles', name: 'Admin roles', types: [], match: /role|admin/ },
     { key: 'access', name: 'Sharing and access control', types: [], match: /sharing|access|guest|unmanaged|ipaddress|location/ },
     { key: 'tenant', name: 'Tenant settings', types: ['sharepointSettings', 'itemInsightsSettings'], match: /setting|tenant|insight|config/ },
@@ -24,6 +24,12 @@ export default Object.freeze({
       name: 'SharePoint setting',
       priority: 'high',
       reason: 'Controls external sharing and who can reach sites.',
+    },
+    // Read with PnP (a workload, so it sets its own priority).
+    'sharepoint-structure': {
+      name: 'SharePoint site structure',
+      priority: 'normal',
+      reason: 'Lists, libraries, columns and navigation that a site\'s content and pages depend on.',
     },
     'onedrive-site-settings': {
       name: 'OneDrive setting',

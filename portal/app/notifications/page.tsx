@@ -12,6 +12,8 @@ import { PageHeader } from "@/components/page-header";
 import type { Channel, Delivery, EscalationRule, Subscription } from "@/lib/notifications";
 import { notificationCounts, notificationsStatus } from "@/lib/notifications-view";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
+import { AnonymityNote } from "@/components/anonymity-note";
+import { getAnonymitySetting } from "@/lib/anonymity";
 
 const TITLE = "Notifications";
 const DESCRIPTION = "Where Keel sends alerts, who gets which alerts, and what was sent.";
@@ -66,6 +68,7 @@ export default async function NotificationsPage() {
     <>
       <PageHeader description={DESCRIPTION} generatedAt={history.generatedAt} section="Settings" status={status} title={TITLE} />
       {configurationUnavailable ? <DataUnavailable surface="Notification settings" /> : null}
+      <AnonymityNote setting={await getAnonymitySetting()} />
       <NotificationsBody
         canConfiguration={configured}
         channels={channels}

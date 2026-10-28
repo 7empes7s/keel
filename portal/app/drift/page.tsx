@@ -1,10 +1,12 @@
 import { connection } from "next/server";
 import { headers } from "next/headers";
 
+import { AnonymityNote } from "@/components/anonymity-note";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { ChangeList } from "@/components/baselines/change-list";
 import { PageHeader } from "@/components/page-header";
 import { Verdict } from "@/components/verdict";
+import { getAnonymitySetting } from "@/lib/anonymity";
 import { setupStatus } from "@/lib/baselines-view";
 import { changesVerdict } from "@/lib/changes-view";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
@@ -42,6 +44,7 @@ export default async function DriftPage() {
 
   // One list for every service: approved-setup changes and service setting changes.
   const items = [...displayItems(data.items), ...serviceChanges];
+  const anonymity = await getAnonymitySetting();
   const verdict = changesVerdict(items, data.baseline?.setAt ?? null, data.generatedAt);
   return (
     <>
@@ -51,6 +54,7 @@ export default async function DriftPage() {
         text={verdict.text}
         tone={verdict.tone}
       />
+      <AnonymityNote setting={anonymity} />
       {data.baseline || serviceChanges.length ? (
         <div data-layer="explanation">
           <ChangeList

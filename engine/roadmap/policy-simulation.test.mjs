@@ -276,7 +276,7 @@ test('the existing sign-in path gate and lockout-delete refusal cannot be bypass
   const reader = {
     collect: async (version, path) => {
       if (path === '/identity/conditionalAccess/policies') return { items: [{ id: 'ca-1', grantControls: { builtInControls: grantControls } }], capped: false, error: null };
-      if (path.startsWith('/roleManagement/directory/roleAssignments?')) return { items: [], capped: false, error: null };
+      if (path.startsWith('/roleManagement/directory/roleAssignments?') || path === '/identity/conditionalAccess/namedLocations') return { items: [], capped: false, error: null };
       throw new Error(`unexpected ${path}`);
     },
     get: async (version, path) => {

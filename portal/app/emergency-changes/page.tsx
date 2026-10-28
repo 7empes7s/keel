@@ -8,6 +8,8 @@ import { PageHeader } from "@/components/page-header";
 import { Verdict } from "@/components/verdict";
 import { requireChangeIntentAccess } from "@/lib/change-intents";
 import { changeIntentsVerdict, intentAlerts, intentsStatus, type ChangeIntentsData } from "@/lib/change-intents-view";
+import { AnonymityNote } from "@/components/anonymity-note";
+import { getAnonymitySetting } from "@/lib/anonymity";
 
 const DESCRIPTION = "Changes made outside the baseline on purpose, approved for a limited time.";
 
@@ -30,6 +32,7 @@ export default async function EmergencyChangesPage() {
     <>
       <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Automation center" status={intentsStatus(data.intents)} title="Emergency changes" />
       <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ec-attention" } : null} text={verdict.text} tone={verdict.tone} />
+      <AnonymityNote setting={await getAnonymitySetting()} />
       <div data-layer="explanation">
         <EmergencyChangesView data={data} />
       </div>

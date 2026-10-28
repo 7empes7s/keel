@@ -8,6 +8,7 @@ import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { createDryRunArtifact } from "../../engine/restore/dryRunArtifact.mjs";
 
 import { POST as restoreRoute } from "@/app/api/actions/restore/route";
+import { POST as compensateRoute } from "@/app/api/actions/restore/compensate/route";
 import { POST as dryRunRoute } from "@/app/api/actions/restore/dry-run/route";
 import { GET as dryRunArtifactRoute } from "@/app/api/actions/restore/dry-run/[id]/route";
 import { POST as selectionPreviewRoute } from "@/app/api/actions/restore/selection/route";
@@ -338,6 +339,37 @@ test("a raw selection starts a dry run, then only its completed artifact can req
   assert.equal(approvalRequest.executor, "worker");
 });
 
+// Issue #411 follow-up: the worker refuses a settings path that is not a .json file
+// under /etc/keel. A server whose environment moves either file elsewhere gets a plain
+// answer before anything is queued, never a restore job that fails later.
+test("a dry run is refused before queueing when a server settings path is outside /etc/keel", async () => {
+  const selection = ["conditionalAccessPolicy:Protect-Admins"];
+  for (const [variable, value] of [
+    ["KEEL_RESTORER_CONFIG_PATH", "/srv/hidden-place/restorer.json"],
+    ["KEEL_COLLECTOR_CONFIG_PATH", "/etc/keel/../hidden-place/tenant.json"],
+    ["KEEL_COLLECTOR_CONFIG_PATH", "/etc/keel/gh.env"],
+  ] as const) {
+    const saved = process.env[variable];
+    process.env[variable] = value;
+    try {
+      const { rows: before } = await client.query(`SELECT id FROM job WHERE kind = 'restore'`);
+      const refused = await dryRunRoute(post("/api/actions/restore/dry-run", { ...restorer, body: { snapshotId, selection } }));
+      assert.equal(refused.status, 503);
+      const body = await refused.json();
+      assert.deepEqual(body, {
+        error: "restore_settings_path",
+        message: `Keel's restore settings file must be a .json file in /etc/keel. Ask whoever runs the Keel server to fix ${variable}.`,
+      });
+      assert.ok(!JSON.stringify(body).includes("hidden-place"), "the path itself is never shown");
+      const { rows: after } = await client.query(`SELECT id FROM job WHERE kind = 'restore'`);
+      assert.equal(after.length, before.length, "nothing is queued");
+    } finally {
+      if (saved === undefined) delete process.env[variable];
+      else process.env[variable] = saved;
+    }
+  }
+});
+
 // Plan task 8, step 2: confirmation renders the dry run's ACTUAL planned changes and
 // refusals from the persisted artifact — never a client-side guess. This is the route
 // portal/components/restore-selection.tsx polls to show the operator what promotion
@@ -391,4 +423,50 @@ test("the dry-run artifact route serves the full per-resource results the dry ru
     get("/api/actions/restore/dry-run/bbbbbbbb-0000-4000-8000-000000000099", restorer),
   );
   assert.equal(notFound.status, 404, "an unknown artifact id must not be distinguishable from another tenant's");
+});
+
+// The undo of a restore that created a policy which is assigned now: the person's
+// choice to delete it with its assignments, or skip it, goes to the undo plan job.
+test("planning an undo carries the person's delete-or-skip choices, and refuses anything else", async () => {
+  const forward = await createDryRunArtifact(client, {
+    id: "aaaaaaaa-0000-4000-8000-000000000077",
+    tenantRef: currentTenantRef,
+    snapshotId,
+    selection: ["group:Admins"],
+    closureKeys: ["group:Admins"],
+    targetTenantId: "target-tenant",
+    collectorConfigPath: "/etc/keel/tenant-target.json",
+    targetConfigPath: "/etc/keel/restorer.json",
+    reconciliationResources: null,
+    waves: [["group:Admins"]],
+    patches: [],
+    guardRefusals: [],
+    results: { applied: [], skipped: [], failed: [], notRemediable: [] },
+    currentStateFingerprint: "fixture-fingerprint",
+    digest: "fixture-digest",
+    status: "completed",
+    requestedBy: RESTORER,
+  });
+  const plan = (body: unknown, key: string) => compensateRoute(new Request("http://localhost/api/actions/restore/compensate", {
+    method: "POST",
+    headers: new Headers({ "content-type": "application/json", [PRINCIPAL_ID_HEADER]: restorer.principalId, [CAPABILITIES_HEADER]: restorer.capabilities.join(" "), "idempotency-key": key }),
+    body: JSON.stringify(body),
+  }));
+
+  const plain = await plan({ restoreArtifactId: forward.id }, "undo-plain");
+  assert.equal(plain.status, 202);
+  const { job: plainJob, artifactId: plainId } = await plain.json();
+  assert.deepEqual(plainJob.params, { compensates: forward.id, artifactId: plainId });
+
+  const chosen = await plan({ restoreArtifactId: forward.id, undoChoices: { "deviceConfiguration:KEEL-RT-a": "delete", "configurationPolicy:KEEL-RT-b": "skip" } }, "undo-chosen");
+  assert.equal(chosen.status, 202);
+  const { job: chosenJob, artifactId: chosenId } = await chosen.json();
+  assert.deepEqual(chosenJob.params, {
+    compensates: forward.id, artifactId: chosenId, undoChoices: { "deviceConfiguration:KEEL-RT-a": "delete", "configurationPolicy:KEEL-RT-b": "skip" },
+  });
+
+  for (const [index, undoChoices] of [{ "deviceConfiguration:KEEL-RT-a": "remove" }, ["deviceConfiguration:KEEL-RT-a"], { "--enforce": "delete" }].entries()) {
+    const refused = await plan({ restoreArtifactId: forward.id, undoChoices }, `undo-bad-${index}`);
+    assert.equal(refused.status, 400, JSON.stringify(undoChoices));
+  }
 });

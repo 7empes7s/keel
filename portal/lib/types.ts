@@ -558,7 +558,8 @@ export interface ChangeAttribution {
   service?: string | null;
   // id is null when the account is outside the reader's entities; name is null when
   // KEEL holds no collected user or app with that id.
-  actors: Array<{ kind: "user" | "servicePrincipal"; id: string | null; name: string | null }>;
+  // pseudonym: "Hide people's names" is on and name is a stable code name.
+  actors: Array<{ kind: "user" | "servicePrincipal"; id: string | null; name: string | null; pseudonym?: boolean }>;
   evidence: Array<{ sourceEventId: string; occurredAt: string; operation: string; activity: string | null; fields: string[] }>;
   resourceObjectId: string | null;
   window: { from: string; until: string };
@@ -657,4 +658,6 @@ export interface Ref {
   id: string;
   name: string;
   href: string | null;
+  // "Hide people's names" is on and name is a person's code name.
+  pseudonym?: boolean;
 }

@@ -23,7 +23,7 @@ import { SERVER_OWNED } from '../cir/serverOwned.mjs';
 import { classifyForOperation, exportProjection } from '../contracts/fieldProjection.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
-import { BENCHMARK_REGISTRY_CONTRACT_VERSION, NOT_CONFIGURED, registerPredicate } from './registry.mjs';
+import { BENCHMARK_REGISTRY_CONTRACT_VERSION, NOT_CONFIGURED, distinctNames, registerPredicate } from './registry.mjs';
 
 export const OWN_FRAMEWORK = 'own';
 export const OWN_PREFIX = 'own.';
@@ -70,10 +70,16 @@ registerPredicate(OWN_PREDICATE, (facts, { field, operator, expected, appliesTo 
   const meets = (fact) => (operator === 'not-equals') !== sameValue(valueAt(fact, field), expected);
   const shouldBe = operator === 'not-equals' ? `Anything but ${typeof expected === 'string' ? expected : JSON.stringify(expected)}` : expected;
   // Every object read, passing or failing, so the panel can show what was checked.
-  const lines = facts.map((fact) => ({ subject: subjectOf(fact), setting: field, value: valueAt(fact, field), expected: shouldBe, ok: meets(fact) }));
+  const names = distinctNames(facts, subjectOf);
+  const lines = facts.map((fact, index) => ({ subject: names[index], setting: field, value: valueAt(fact, field), expected: shouldBe, ok: meets(fact) }));
   if (appliesTo === 'any') {
     // It passes on the objects that meet it; the others are not failures of the check.
-    if (facts.some(meets)) return { verdict: 'pass', details: lines.filter((line) => line.ok) };
+    // Numbered among the objects shown, so a lone "(2 of 2)" never appears.
+    if (facts.some(meets)) {
+      const passing = facts.filter(meets);
+      const shown = distinctNames(passing, subjectOf);
+      return { verdict: 'pass', details: passing.map((fact, index) => ({ ...lines[facts.indexOf(fact)], subject: shown[index] })) };
+    }
     // Nothing of the type exists, so the setting cannot be met anywhere: "not set up yet".
     if (facts.length === 0) return { verdict: 'fail', reason: NOT_CONFIGURED };
     return { verdict: 'fail', details: lines };

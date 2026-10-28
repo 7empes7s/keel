@@ -19,7 +19,7 @@ import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { buildCoverageReport } from '../coverage/report.mjs';
 import { readCoverageOutcome, readOutcome, readOutcomeDetail } from '../coverage/snapshots.mjs';
 import { readObservation } from '../contracts/observation.mjs';
-import { isEligibleBaselineSource } from '../govern/baseline.mjs';
+import { captureFromSnapshot, isEligibleBaselineSource } from '../govern/baseline.mjs';
 import { main as collectMain, runCollect } from '../../cli/keel-collect.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
@@ -209,7 +209,7 @@ test('adapter digest: a thrown exception carrying a token is redacted before the
   assert.equal(collected.some(([type]) => type === 'group' || type === 'user'), false);
 });
 
-test('baseline eligibility: complete-empty qualifies as a strict success, partial and failed never do', () => {
+test('baseline eligibility: complete-empty and unavailable qualify, partial and failed never do', () => {
   const tenantRef = 'sha256:baseline-eligibility';
   const digestWith = (outcomeFor) => Object.fromEntries(
     DESCRIPTORS.map(({ type }) => [type, { outcome: outcomeFor(type), itemCount: 0 }]),
@@ -229,6 +229,15 @@ test('baseline eligibility: complete-empty qualifies as a strict success, partia
   assert.equal(isEligibleBaselineSource(snapshot(digestWith((type) => (type === 'group' ? 'failed' : 'complete'))), { tenantRef }), false);
   assert.equal(isEligibleBaselineSource(snapshot(digestWith((type) => (type === 'group' ? 'not-requested' : 'complete'))), { tenantRef }), false,
     'a tier-filtered snapshot is not a whole-estate source');
+  // Issue #646: a type the tenant has no licence for is not a gap, and the
+  // baseline's captured scope leaves it out.
+  const unlicensed = snapshot(digestWith((type) => (type === 'lifecycleWorkflow' ? 'unavailable' : 'complete')),
+    { started_at: '2026-09-18T10:00:00Z' });
+  assert.equal(isEligibleBaselineSource(unlicensed, { tenantRef }), true, 'an unavailable type does not block a baseline');
+  assert.equal(captureFromSnapshot(unlicensed).scope.types.includes('lifecycleWorkflow'), false,
+    'an unavailable type is not part of what the baseline captured');
+  assert.equal(isEligibleBaselineSource(snapshot(digestWith((type) => (type === 'lifecycleWorkflow' ? 'failed' : 'complete'))), { tenantRef }), false,
+    'a failed read of the same type still blocks it');
   const missing = digestWith(() => 'complete');
   delete missing[DESCRIPTORS[0].type];
   assert.equal(isEligibleBaselineSource(snapshot(missing), { tenantRef }), false, 'an unrecorded type never qualifies');

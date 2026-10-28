@@ -47,6 +47,8 @@ const DETAILS = {
   conditionalAccessPolicy: { naturalKeyStrategy: 'displayName', remappable: true },
   domain: { naturalKeyStrategy: 'id' },
   subscribedSku: { naturalKeyStrategy: 'skuPartNumber' },
+  // Remaining kinds, batch 9: named by the directory field it shows.
+  profileCardProperty: { naturalKeyStrategy: 'directoryPropertyName' },
   application: { naturalKeyStrategy: 'appId' },
   servicePrincipal: { naturalKeyStrategy: 'appId' },
   roleDefinition: { naturalKeyStrategy: 'roleTemplateId' },

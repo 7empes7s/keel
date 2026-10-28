@@ -56,7 +56,7 @@ test('every type and workload read appears, with live failures dated', () => {
   for (const [type, decision] of Object.entries(TYPE_DECISIONS)) {
     for (const failure of Object.values(decision.liveFailures ?? {})) {
       const line = doc.split('\n').find((candidate) => candidate.startsWith(`| ${TYPE_GUIDE[type].name} |`));
-      assert.match(line, new RegExp(`failed on ${failure.failedAt}`), `${type} live failure shown`);
+      assert.match(line, new RegExp(failure.fix ? `failed on ${failure.failedAt}, fix in progress` : `not possible on our test tenant \\(checked ${failure.failedAt}\\)`), `${type} live failure shown`);
     }
   }
 });

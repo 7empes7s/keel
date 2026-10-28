@@ -434,6 +434,23 @@ test("Run now refuses request-chosen file paths and enqueues nothing", async () 
   }
 });
 
+test("collect and backup take only a tier, never a config path (issue #411)", async () => {
+  const operator = { principalId: OPERATOR, capabilities: ["collect", "backup"] };
+  const bodies = [
+    { config: "/etc/keel/content.key" },
+    { tier: "tier1", config: "/etc/keel/tenant.json" },
+    { tier: "tier1", scope: "/etc/keel/gh.env" },
+  ];
+  for (const [kind, route] of [["collect", collectRoute], ["backup", backupRoute]] as const) {
+    const before = (await jobRows(kind)).length;
+    for (const body of bodies) {
+      const response = await route(postAction(`/api/actions/${kind}`, { ...operator, body }));
+      assert.equal(response.status, 400, `${kind} ${JSON.stringify(body)}`);
+    }
+    assert.equal((await jobRows(kind)).length, before, `no ${kind} job from a refused body`);
+  }
+});
+
 test("the guided create sends the chosen backup through the baseline action", async () => {
   const form = renderCreateWizard();
   const originalFetch = globalThis.fetch;

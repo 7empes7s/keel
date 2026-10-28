@@ -22,6 +22,16 @@ function fixture() {
         grantControls: { operator: 'OR', builtInControls: ['block'] },
       },
     ],
+    namedLocations: [
+      {
+        '@odata.type': '#microsoft.graph.ipNamedLocation',
+        id: 'loc-1',
+        displayName: 'Office',
+        isTrusted: false,
+        modifiedDateTime: '2026-09-08T00:00:00Z',
+        ipRanges: [{ '@odata.type': '#microsoft.graph.iPv4CidrRange', cidrAddress: '198.51.100.0/24' }],
+      },
+    ],
     authenticationMethodsPolicy: {
       id: 'authenticationMethodsPolicy',
       lastModifiedDateTime: '2026-09-08T00:00:00Z',
@@ -62,6 +72,9 @@ function readerFor(state) {
           error: null,
         };
       }
+      if (path === '/identity/conditionalAccess/namedLocations') {
+        return { items: state.namedLocations, capped: false, error: null };
+      }
       throw new Error(`unexpected collection path ${path}`);
     },
     async get(version, path) {
@@ -99,6 +112,7 @@ const unchanged = fixture();
 unchanged.conditionalAccessPolicies[0].modifiedDateTime = '2026-09-08T01:00:00Z';
 unchanged.authenticationMethodsPolicy.lastModifiedDateTime = '2026-09-08T01:00:00Z';
 unchanged.securityDefaults.modifiedDateTime = '2026-09-08T01:00:00Z';
+unchanged.namedLocations[0].modifiedDateTime = '2026-09-08T01:00:00Z';
 assert.equal(compareSignInPaths(before, await snapshot(unchanged)).allowed, true);
 
 const changedCaPolicy = fixture();
@@ -116,6 +130,15 @@ assert.equal(compareSignInPaths(before, await snapshot(removedDirectoryRole)).al
 const changedSecurityDefaults = fixture();
 changedSecurityDefaults.securityDefaults.isEnabled = false;
 assert.equal(compareSignInPaths(before, await snapshot(changedSecurityDefaults)).allowed, false);
+
+// Security audit run 1, finding 2: what a named location trusts is part of the sign-in path.
+const trustedLocation = fixture();
+trustedLocation.namedLocations[0].isTrusted = true;
+assert.deepEqual(compareSignInPaths(before, await snapshot(trustedLocation)).changed, ['namedLocations']);
+
+const widerRange = fixture();
+widerRange.namedLocations[0].ipRanges.push({ '@odata.type': '#microsoft.graph.iPv4CidrRange', cidrAddress: '0.0.0.0/1' });
+assert.equal(compareSignInPaths(before, await snapshot(widerRange)).allowed, false);
 
 // Graph makes no ordering promise for collections or array-valued policy fields.
 const reordered = clone(fixture());

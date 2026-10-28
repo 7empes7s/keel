@@ -47,6 +47,7 @@ const NAMED_BY_FIELD = new Set([
   "cartToClassAssociation", "windowsManagedAppProtection", "userExperienceAnalyticsBaseline", "externalConnection",
   "simulationAutomation", "attackSimulation", "hardwareConfiguration", "certificateBasedApplicationConfiguration",
   "verifiedIdProfile", "externalOriginResourceConnector", "roleManagementCustomExtension", "securityZone",
+  "defenderDetectionRule", "teamsCatalogApp", "engageCommunity",
 ]);
 
 // Kinds keyed by a value that reads as a name: a domain, a licence's part number, an
@@ -72,6 +73,7 @@ const OWN_FIELD_FIXTURES: Record<string, { payload: Record<string, unknown>; nam
   vppToken: { payload: { organizationName: "Contoso Ltd", appleId: "vpp@contoso.example" }, name: "Contoso Ltd" },
   depOnboardingSetting: { payload: { tokenName: "Contoso DEP" }, name: "Contoso DEP" },
   enterpriseCodeSigningCertificate: { payload: { subjectName: "CN=Contoso Code Signing" }, name: "CN=Contoso Code Signing" },
+  profileCardProperty: { payload: { directoryPropertyName: "customAttribute1" }, name: "customAttribute1" },
 };
 const NAMED_BY_OWN_FIELD = new Set<string>([...Object.keys(OWN_NAME_FIELDS), ...RELATIONSHIP_KINDS]);
 

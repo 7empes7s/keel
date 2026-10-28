@@ -17,6 +17,7 @@
 // --content bytes also carries content item bytes, read through the content store the
 // content-reader file names; the default, refs, names each item by natural key and sha256.
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { exportSnapshot } from '../engine/export/configExport.mjs';
@@ -25,19 +26,25 @@ import { can } from '../engine/authz/can.mjs';
 import { findPrincipalByEmail } from '../engine/authz/principals.mjs';
 import { bundleKeysFromEnv, exportBundle, requireBundleCapability } from '../engine/export/bundle.mjs';
 import { contentStoreFromReader } from './keel-import.mjs';
+import { parseCliArgs } from './args.mjs';
 
-function arg(name, fallback, argv = process.argv) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : fallback;
+const ARGS = {
+  name: 'keel-export',
+  strings: ['export-root', 'bundle', 'as', 'content', 'reader', 'snapshot-id', 'tenant-ref', 'config', 'db-url'],
+  booleans: ['help'],
+};
+
+function arg(opts, name, fallback) {
+  return opts[name] ?? fallback;
 }
 
 // The tenant ref is the hash of the tenant id in the config file, exactly as
 // keel-collect.mjs and keel-baseline-create.mjs derive it; an explicit
 // --tenant-ref wins.
-function resolveTenantRef({ argv, readFile }) {
-  const explicit = arg('tenant-ref', undefined, argv);
+function resolveTenantRef({ opts, readFile }) {
+  const explicit = arg(opts, 'tenant-ref', undefined);
   if (explicit) return explicit;
-  const config = JSON.parse(readFile(arg('config', '/etc/keel/tenant.json', argv), 'utf8'));
+  const config = readConfigFile(arg(opts, 'config', '/etc/keel/tenant.json'), { readFile, what: 'collector settings' });
   return `sha256:${createHash('sha256').update(config.tenantId).digest('hex').slice(0, 16)}`;
 }
 
@@ -112,21 +119,22 @@ export async function main({
   dependencies,
   logger = console,
 } = {}) {
-  if (argv.includes('--help')) {
+  const opts = parseCliArgs(argv.slice(2), ARGS).values;
+  if (opts.help) {
     logger.log('usage: keel-export.mjs --export-root PATH [--snapshot-id ID] [--tenant-ref REF] [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]');
     logger.log('       keel-export.mjs --bundle FILE --as EMAIL [--content none|refs|bytes] [--reader FILE] [--snapshot-id ID] [--tenant-ref REF] [--config FILE] [--db-url URL]');
     return 0;
   }
-  const bundle = arg('bundle', undefined, argv);
+  const bundle = arg(opts, 'bundle', undefined);
   if (bundle !== undefined) {
     const { exitCode } = await runBundleExport({
-      tenantRef: resolveTenantRef({ argv, readFile }),
-      snapshotId: arg('snapshot-id', undefined, argv),
+      tenantRef: resolveTenantRef({ opts, readFile }),
+      snapshotId: arg(opts, 'snapshot-id', undefined),
       out: bundle,
-      as: arg('as', undefined, argv),
-      content: arg('content', 'refs', argv),
-      readerPath: arg('reader', undefined, argv),
-      dbUrl: arg('db-url', env.KEEL_DB_URL, argv),
+      as: arg(opts, 'as', undefined),
+      content: arg(opts, 'content', 'refs'),
+      readerPath: arg(opts, 'reader', undefined),
+      dbUrl: arg(opts, 'db-url', env.KEEL_DB_URL),
       env,
       readFile,
       dependencies,
@@ -135,10 +143,10 @@ export async function main({
     return exitCode;
   }
   const { exitCode } = await runExport({
-    tenantRef: resolveTenantRef({ argv, readFile }),
-    snapshotId: arg('snapshot-id', undefined, argv),
-    exportRoot: arg('export-root', process.env.KEEL_EXPORT_ROOT, argv),
-    dbUrl: arg('db-url', process.env.KEEL_DB_URL, argv),
+    tenantRef: resolveTenantRef({ opts, readFile }),
+    snapshotId: arg(opts, 'snapshot-id', undefined),
+    exportRoot: arg(opts, 'export-root', process.env.KEEL_EXPORT_ROOT),
+    dbUrl: arg(opts, 'db-url', process.env.KEEL_DB_URL),
     dependencies,
     logger,
   });

@@ -340,8 +340,16 @@ export const FIXTURE_GUIDANCE = Object.freeze({
   // assigned. No device installs or uninstalls anything.
   mobileAppRelationship: {
     kind: 'named-object', fixture: `two web link apps ${FIXTURE_PREFIX}-app-main and ${FIXTURE_PREFIX}-app-dep, neither assigned, with ${FIXTURE_PREFIX}-app-main depending on ${FIXTURE_PREFIX}-app-dep (detect only)`,
-    select: `${FIXTURE_PREFIX}-app-main`, drift: 'remove the dependency: the restore adds it back; then set it to install automatically: the restore sets it back to detect',
+    select: `${FIXTURE_PREFIX}-app-main`, drift: 'remove the dependency: the restore adds it back; then set it to install automatically: the restore sets it back to detect; then delete both apps and restore them with the dependency in one run: the dependency comes back between the two new apps',
     note: 'Use a dependency, never a supersedence set to replace (that uninstalls apps on devices). Never assign either app. If Intune refuses a dependency on a web link app, use two unassigned line-of-business test apps instead, or record that and skip this kind.',
+  },
+  // Restore gaps, batch 18: two unassigned fixture apps, one recreated in full
+  // (a web link) and one as a shell waiting for its package (a Win32 app with
+  // no file). Neither is ever assigned, so no device installs anything.
+  mobileApp: {
+    kind: 'named-object', fixture: `a web link app ${FIXTURE_PREFIX}-app-web (https://example.com/) in the app category ${FIXTURE_PREFIX}-cat and the built-in category Business, and a Win32 app shell ${FIXTURE_PREFIX}-app-win32 with no file uploaded, a file-exists detection rule and an install command that only echoes, both assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-app-web`, drift: 'delete both: the restore adds the web link back with its settings and in both its categories, and the Win32 app back as a shell with its commands and detection rule, plus an "upload the package" step; then change the web link\'s description and take it out of Business: the restore puts both back',
+    note: 'Never assign either app. Never upload a real package to the shell. Delete both fixtures after the run if the queue item says so.',
   },
   // Restore gaps, batch 2: Entra ID tenant singletons. None touches sign-in,
   // Conditional Access or any account; each is set back to its value after the run.
@@ -581,6 +589,32 @@ function setupFor(resourceType, operation, guidance, key) {
   }
 }
 
+/**
+ * Issue #641: the key `keel-restore --select` and `entraLive capture --fixture`
+ * take. A snapshot stores every object under `<type>:<natural key>`
+ * (engine/cir/canonicalize.mjs), so a bare name is never in the candidate set.
+ *  - A select that is a description, not a key, stays a placeholder the operator fills in.
+ *  - A relationship edge (`group#member`) is restored through its parent group.
+ *  - A singleton keyed by its type name is `<type>:<type>`. A singleton keyed by
+ *    its display name (authorizationPolicy, say) has a key Graph decides, so it
+ *    stays a placeholder rather than a guess.
+ *  - An id-keyed kind (deviceCategory, roleDefinition, ...) is stored under its
+ *    Graph id, which only the snapshot knows: a placeholder too.
+ */
+export function restoreKeyFor(resourceType, select) {
+  if (/\s/.test(select)) return `<natural key: ${select}>`;
+  const type = resourceType.split('#')[0];
+  if (select === type && !CONSTANT_KEY_TYPES.has(type)) {
+    return `<natural key: the key KEEL shows for the tenant's one ${type} object (it starts ${type}:)>`;
+  }
+  // These kinds are keyed by their Graph id (a role definition by its template
+  // id), never by the fixture's name, so the name alone is never in the snapshot.
+  if (ID_KEY_TYPES.has(type) || type === 'roleDefinition') {
+    return `<natural key: the id KEEL shows for ${select} (it starts ${type}:)>`;
+  }
+  return `${type}:${select}`;
+}
+
 function stepFor(row, inventory) {
   const { resourceType, operation } = row;
   const guidance = guidanceFor(resourceType);
@@ -588,8 +622,7 @@ function stepFor(row, inventory) {
   // one the other steps use is never deleted.
   const separate = operation === 'delete' && guidance.kind === 'named-object';
   const select = separate ? `${guidance.select}-delete` : guidance.select;
-  // A select that is a description, not a key, stays a placeholder the operator fills in.
-  const key = /\s/.test(select) ? `<natural key: ${select}>` : select;
+  const key = restoreKeyFor(resourceType, select);
   const setup = setupFor(resourceType, operation, guidance, key);
   const stem = evidenceStem(resourceType, operation);
   return {
@@ -605,6 +638,7 @@ function stepFor(row, inventory) {
     fixtureKind: guidance.kind,
     testObject: separate ? `a second fixture like the one above (${guidance.fixture}), named ${guidance.select}-delete, created after the snapshot` : guidance.fixture,
     select,
+    key,
     breakGlass: guidance.lockout ? [...BREAK_GLASS_COMMON, guidance.breakGlass ?? ''].filter(Boolean) : null,
     sharedRunAllowed: !guidance.lockout && operation !== 'delete',
     before: setup.before,
@@ -619,6 +653,7 @@ function stepFor(row, inventory) {
 
 function enforcementStep() {
   const guidance = guidanceFor('conditionalAccessPolicy');
+  const key = restoreKeyFor('conditionalAccessPolicy', `${FIXTURE_PREFIX}-ca`);
   return {
     id: `conditionalAccessPolicy:${ENFORCEMENT_STEP}`,
     resourceType: 'conditionalAccessPolicy',
@@ -632,14 +667,15 @@ function enforcementStep() {
     fixtureKind: 'named-object',
     testObject: `${FIXTURE_PREFIX}-ca, restored report-only by the restore-soft-deleted step from a snapshot where it was turned on (for carla only)`,
     select: `${FIXTURE_PREFIX}-ca`,
+    key,
     breakGlass: [...BREAK_GLASS_COMMON, guidance.breakGlass, 'This is the one step that turns a policy ON. It blocks only carla. The lockout gate runs at planning and again at execution.'],
     sharedRunAllowed: false,
     before: 'Run right after the Conditional Access restore-soft-deleted step, whose restore left an open "turn on" item for the policy.',
     commands: [
-      `node cli/keel-restore.mjs --enforce-conditional-access "$A" --policy '${FIXTURE_PREFIX}-ca' --persist-artifact "$E" --requested-by keel-operator`,
+      `node cli/keel-restore.mjs --enforce-conditional-access "$A" --policy '${key}' --persist-artifact "$E" --requested-by keel-operator`,
       '# Marouane approves artifact E in the portal (Restore, review).',
       'node cli/keel-restore.mjs --artifact "$E" --enforce',
-      `node tools/qualification/entraLive.mjs capture --restore-ref "$E" --resource-type conditionalAccessPolicy --operation ${ENFORCEMENT_STEP} --fixture '${FIXTURE_PREFIX}-ca' --target-config "$RESTORER" --build "$B" --out "$OUT"`,
+      `node tools/qualification/entraLive.mjs capture --restore-ref "$E" --resource-type conditionalAccessPolicy --operation ${ENFORCEMENT_STEP} --fixture '${key}' --target-config "$RESTORER" --build "$B" --out "$OUT"`,
     ],
     cleanup: `Delete ${FIXTURE_PREFIX}-ca and permanently delete it from deleted items. Confirm carla can sign in again.`,
     evidence: [`$OUT/conditionalAccessPolicy.${ENFORCEMENT_STEP}.json`, `$OUT/conditionalAccessPolicy.${ENFORCEMENT_STEP}.capture.json`],
@@ -732,7 +768,7 @@ export function renderMarkdown(plan) {
     if (step.alreadyLive) lines.push('- Already live-qualified: recapture only if the record is older than 30 days.');
     if (!step.reviewedGuidance) lines.push('- **No reviewed guidance for this type yet.** Read its roadmap doc first.');
     lines.push(`- Test object: ${step.testObject}`);
-    lines.push(`- Select: ${step.select}`);
+    lines.push(`- Select: ${step.key}`);
     lines.push(step.sharedRunAllowed
       ? '- Shared run: allowed (may share one snapshot and one restore with other shared steps)'
       : '- Shared run: no (runs alone, with its own snapshot and restore)');

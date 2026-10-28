@@ -168,7 +168,7 @@ describe('acting on a drift id', () => {
 
   test('ignore and roll back refuse it too', async () => {
     await assert.rejects(applyDisposition(client, {
-      driftId: ids.marked, action: 'ignore', actor: 'tester', reason: 'r', expiresAt: new Date(NOW.getTime() + 86_400_000),
+      driftId: ids.marked, action: 'ignore', actor: 'tester', reason: 'r', expiresAt: new Date(Date.now() + 86_400_000),
     }), refused);
     await assert.rejects(applyDisposition(client, { driftId: ids.unchecked, action: 'rollback', actor: 'tester', reason: 'r' }), refused);
     assert.equal(await count('SELECT count(*) FROM disposition'), 0);

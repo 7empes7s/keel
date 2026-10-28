@@ -7,6 +7,9 @@
 // never shown as a bare id: the portal renders it as "<kind> <short id> (no longer
 // readable)".
 
+import { readNamer } from '../insights/anonymity.mjs';
+import { displayPerson } from '../insights/people.mjs';
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function unique(values) {
@@ -19,7 +22,10 @@ export function unreadable(kind, id) {
 
 /**
  * People by principal id. A requester that is not a principal id (a system actor such
- * as "scheduler" or "policy-automation") is named by its own value.
+ * as "scheduler" or "policy-automation") is named by its own value. With "Hide people's
+ * names" on, each person comes back with a stable code name and no email
+ * (insights/people.mjs displayPerson), so every page that names people through here
+ * follows the setting.
  * @returns {Promise<Map<string, { kind: 'person', id: string, name: string | null, email: string | null, readable: boolean, system: boolean }>>}
  */
 export async function resolvePrincipals(client, ids) {
@@ -44,6 +50,10 @@ export async function resolvePrincipals(client, ids) {
       ? { ...unreadable('person', id), email: null, system: false }
       : { kind: 'person', id, name: id, email: null, readable: true, system: true });
   }
+  // Only a person can get a code name, so Keel's own accounts never cost a query.
+  if (![...result.values()].some((ref) => ref.readable && !ref.system)) return result;
+  const namer = await readNamer(client);
+  if (namer) for (const [id, ref] of result) result.set(id, displayPerson(ref, namer));
   return result;
 }
 

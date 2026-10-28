@@ -213,9 +213,28 @@ export function partialResult(handler, err, durationMs) {
   return { stdout: err.stdout, stderr: withholdParsedText(err.stderr ?? ''), durationMs, partial: true, incompleteTypes };
 }
 
+// Every requireString value becomes a child's argv entry. Security audit finding 4: a
+// value that starts with "-" (a restore target "--allow-tenant-wide-test-writes") would
+// be read by the child as a flag, so it is refused here.
 function requireString(value, label) {
   if (typeof value !== 'string' || value.length === 0) {
     throw new Error(`${label} must be a non-empty string`);
+  }
+  if (value.startsWith('-')) {
+    throw new Error(`${label} must not start with "-"`);
+  }
+  return value;
+}
+
+// Free text a person types (a baseline label, description or reason) may start with
+// "-", as in "- copied from prod". A flag never holds whitespace, so a dash-leading
+// value is refused only when it is a single word that a child could read as a flag.
+function requireText(value, label) {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+  if (value.startsWith('-') && !/\s/.test(value)) {
+    throw new Error(`${label} must not be a single word that starts with "-"`);
   }
   return value;
 }
@@ -414,13 +433,13 @@ export const JOB_HANDLERS = {
       // derived "(vN)" label; a new baseline always needs a label.
       if (params.supersedesBaselineId !== undefined) {
         args.push('--supersedes', requireString(params.supersedesBaselineId, 'params.supersedesBaselineId'));
-        if (params.label !== undefined) args.push('--label', requireString(params.label, 'params.label'));
+        if (params.label !== undefined) args.push('--label', requireText(params.label, 'params.label'));
       } else {
-        args.push('--label', requireString(params.label, 'params.label'));
+        args.push('--label', requireText(params.label, 'params.label'));
       }
       args.push('--set-by', requireString(job.requested_by, 'job.requested_by'));
       if (params.description !== undefined) {
-        args.push('--description', requireString(params.description, 'params.description'));
+        args.push('--description', requireText(params.description, 'params.description'));
       }
       if (params.tenantRef !== undefined) {
         args.push('--tenant-ref', requireString(params.tenantRef, 'params.tenantRef'));
@@ -444,7 +463,7 @@ export const JOB_HANDLERS = {
         }
         args.push('--actor', requireString(job.requested_by, 'job.requested_by'));
         if (params.reason !== undefined) {
-          args.push('--reason', requireString(params.reason, 'params.reason'));
+          args.push('--reason', requireText(params.reason, 'params.reason'));
         }
       }
       if (params.tenantRef !== undefined) {
@@ -503,7 +522,7 @@ export const JOB_HANDLERS = {
         if (!hasArtifactId) {
           throw new Error('params.artifactId is required to enforce a restore (a completed dry-run artifact must be promoted; a direct enforce is refused)');
         }
-        return ['--artifact', params.artifactId, '--enforce'];
+        return ['--artifact', requireString(params.artifactId, 'params.artifactId'), '--enforce'];
       }
 
       // Roadmap task-70: a compensation dry run carries only the promoted restore it

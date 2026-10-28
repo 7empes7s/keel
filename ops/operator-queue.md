@@ -1664,7 +1664,7 @@ being triggered by queue updates.
   anyway, so this is the Q50 chain again.
 - Needs: /opt/keel-live at the PR #607 merge or later
   (`grep -q unpseudonymizedMailNames /opt/keel-live/tools/qualification/pseudonymize.mjs`).
-- Status: todo
+- Status: done
 - **Test tenant only.** Same fixtures, flags and limits as Q50 (alice's mailbox and OneDrive, a fresh unpublished
   `KEEL-RT-<date>-label<n>`, `--fixture-policy KEEL-RT-20261005-policy`). Standing authorization 2026-10-14 / 2026-10-16;
   no new grant. Pass the real names on the command line as before: the tool pseudonymizes before signing.
@@ -1675,7 +1675,13 @@ being triggered by queue updates.
      `grep -ril "<real mail domain>" <the eight files>`: expected no hit (report any, without the domain).
   3. Commit the eight files on `claude/live-evidence-q186` from `origin/master`, open a PR with the `automerge` label.
   4. Import and proof as Q50 part C. Clean up the label as Q50.
-- Result:
+- Result: done (2026-10-28 08:05 UTC, root keel-operator). B = `e86afa9` (full e86afa9865da…). Same fixtures and flags as Q50: Collector + Restorer tokens, Exchange and Purview collector/restorer configs, `--allow-widening-toggle` (120), `--include-organization-config` (122), alice's OneDrive, fresh `KEEL-RT-20261028-label1`, `--fixture-policy KEEL-RT-20261005-policy` (123). Standing authorization 2026-10-14/16; global admin not used; nothing granted.
+  1. One sitting, 07:20–07:50: **120** capture exit 0 (tenant `isResharingByExternalUsersEnabled` written, read back and restored; pre and final fingerprint equal), verify exit 0 · **121** capture exit 0 (writes restored), verify exit 0 · **122** capture exit 0 (timeZone, PopEnabled restored; RetainDeletedItemsFor 23 → **24** days, extend-only by design; MailTipsLargeAudienceThreshold up one and back), verify exit 0 · **123** capture exit 0 (label update restored), verify exit 0. All verifies with `--require-live --build e86afa9 --tenant sha256:f7b3959300856957`.
+  2. `pseudonymize.mjs check` on the eight files: exit **0**, "every id is a pseudonym" for each. Grep for the real mail domain, the tenant host and the tenant id: **0 hits**; no JWT or key material.
+  3. Evidence branch `claude/live-evidence-q186` from origin/master (`76e1c712`): **PR #633** with `automerge`.
+  4. Import (from that checkout): exit 0, all four imported at evidenceBuild e86afa9, refused `[]`. Proof: exit 1 only because older stored proofs warn (the earliest row is 2026-11-06); the four new proofs **expire 2026-11-27**. `run` exit 0: complete for every workload except power-platform-settings and sharepoint-structure (disabled, not qualified).
+  - Cleanup: `KEEL-RT-20261028-label1` removed from `KEEL-RT-20261005-policy` and `Remove-Label` run; it reads back `PendingDeletion`. The policy's labels read back as before (KEEL-RT-20261005-label2, -anchor, KEEL-RT-20261007-label, KEEL-RT-20261005-label, -label3). Purview restorer used for the label steps.
+  - **Left changed in the tenant:** alice's RetainDeletedItemsFor is 24 days (extend-only); the label is pending deletion.
 - **Expected:** four captures exit 0, verify exit 0 each, check exit 0, import refused [], proofs about 4 weeks out.
 - **Report:** B, per-gate exit codes, check output, the evidence PR, the new expiry dates, cleanup.
 
@@ -1687,7 +1693,7 @@ being triggered by queue updates.
   `application.create`, `application.update`, `application.restore-soft-deleted` (`publisherDomain`) and
   `groupLifecyclePolicy.update` (alternate notification email).
 - Needs: /opt/keel-live at the PR #607 merge or later (same grep as Q186).
-- Status: todo
+- Status: done
 - **Test tenant only. No new restore and no tenant writes** (as Q54): `entraLive.mjs capture` only reads the journal,
   artifact and snapshot of the restore that already ran. The restore refs in the published records are pseudonyms; take the
   real ref of each from the DB journal (look up by resource type, operation and natural key, as you did in Q54).
@@ -1700,7 +1706,15 @@ being triggered by queue updates.
   2. `node tools/qualification/pseudonymize.mjs check` on every new file: expected exit 0. The soft-deleted user's
      `priorState.userPrincipalName` keeps its 32-hex pseudonym prefix and now ends in `keel-rt-u<12 hex>@t<11 hex>.example`.
   3. Commit the replaced files on `claude/live-evidence-q187` from `origin/master`, open a PR with the `automerge` label.
-- Result:
+- Result: done (2026-10-28 07:21 UTC, root keel-operator). No new restore, no tenant writes: the captures read only the existing restore journals (restorer.json as `--target-config`, no Graph calls); global admin not used.
+  - B = `e86afa9` (= /opt/keel-live HEAD, has PR #607). Run from a checkout at B.
+  - Real restore refs from the DB journal (read-only), matched by resource type, operation, natural key and `recorded_at` = the published `observedAt`: user.update 03c6d87c; user.restore-soft-deleted 52d30020; the 4 group edges and application.create 905a03a6; roleAssignment.create 4ce22be4; roleAssignment.delete 923132e0; application.update c8401172; application.restore-soft-deleted 71716157; groupLifecyclePolicy.update 846d079c.
+  - Fixtures and flags as the original captures (taken from the earlier sessions' commands): `user:<carla UPN>` for both user ops; edges KEEL-RT-Q51-g5, group:KEEL-RT-Q51-g6, KEEL-RT-Q51-g7, group:KEEL-RT-Q51-g8; roleAssignment create/delete by composed key (carla / ryan @ KEEL-RT-Q51-unit) with `--allow-by-reference`; application:<appId> (Q51 app11 / Q45 app) and application:<deleted app id>; groupLifecyclePolicy:<id> with `--allow-tenant-setting`.
+  - Captured (exit 0) and promoted ("fixture-tested -> live-qualified"): user update; user restore-soft-deleted; group#member edge-add; group#member edge-remove; group#owner edge-add; group#owner edge-remove; roleAssignment create; roleAssignment delete; application create; application update; application restore-soft-deleted; groupLifecyclePolicy update. **Refused: none.**
+  - `pseudonymize.mjs check` on all 24 new files: exit **0** ("every id is a pseudonym"). Before, on master: exit 1 with 20 files flagged (plain carla/ryan sign-in names; publisherDomain in the 3 application capture logs). The soft-deleted user's `priorState.userPrincipalName` is now `a0fcb2f8b0c38a889b94319165913d40keel-rt-u<12 hex>@t<11 hex>.example`. Scans: mail domain 0, tenant id 0, the 72 known fixture/restore ids 0, SID/JWT/secret markers 0.
+  - Replaced 24 files (all 12 record + `.capture.json` pairs; the item says 21 and check flagged 20, but each record is signed over its capture's sha256, so the record is replaced with it).
+  - Tests: `engine/roadmap/entra-live-gate.test.mjs` 27/27 pass; `tools/qualification/liveRecords.test.mjs` pass. `acceptance-harness.test.mjs` not run (needs a test DB URL not set on the host).
+  - Evidence: **PR #631** (`claude/live-evidence-q187` @ 4210d5a from origin/master 6017650) with `automerge`.
 - **Expected:** every operation captured and promoted, check exit 0, no record holds the real mail domain.
 - **Report:** B, per operation captured / refused (verbatim), the check output, the evidence PR.
 
@@ -1739,7 +1753,7 @@ being triggered by queue updates.
   `drill-live-acceptance{,.capture}.json` hold the real object id of the deleted `keel-rehearsal-*` drill group, because
   `capture-drill` never pseudonymized. PR #611 fixes it; the record is signed, so it must be recaptured.
 - Needs: /opt/keel-live at the PR #611 merge or later (same grep as Q192). Independent of Q192.
-- Status: todo
+- Status: blocked (reconstruct crashes on the 3.6 GB dump; needs #634 deployed, then rerun)
 - **Test tenant only.** Exactly as the Q39 116 run (steps in `docs/roadmap/operator-gates.md` and Q36 notes #5 and #7): a fresh
   recovery set and reconstruction at B into a fresh disposable DB, the onboarding result at B, a fresh drill DB (schema.sql +
   RUNTIME_MIGRATIONS, never `KEEL_DB_URL` or `keel_test`), build-manifest, the offline plan, the live bounded drill (one new
@@ -1753,7 +1767,16 @@ being triggered by queue updates.
   4. Commit both files on `claude/live-evidence-q193` from `origin/master`, run
      `cd engine && node --test roadmap/drill-live-acceptance.test.mjs` on a throwaway test DB, open a PR with the `automerge` label.
   5. Drop the disposable DBs this run created and report their names.
-- Result:
+- Result: blocked (2026-10-28 07:23 UTC, root keel-operator): **reconstruct crashes on the live-size dump. Filed #634.** No drill ran; nothing written to the tenant.
+  - B = `e86afa9` (has #611 `d460e8f`). Ran from a separate detached worktree at B.
+  - Onboarding still valid (read-only `bootstrap_plan`/`bootstrap_event`): read setup cbd974b9… complete, restore setup 174d8db6… complete.
+  - Fresh recovery set `/opt/keel-recovery-sets/2026-10-28-q193` (read-only pg_dump of live keel): exit 0; dump sha256 2d888664…, manifest c2ce69d0…, schema pin 983d3238…, snapshot 36259bb8…, evidence head 336800:69c6b594…:336800 (same before and after). `keel-dump-manifest --verify` exit 0, "recovery complete".
+  - Assertion signed (10 min). `reconstruct.mjs --authenticator signed-assertion` into a fresh `keel_q193_recon`: **exit 133, V8 fatal `Check failed: i::kMaxInt >= len`**; no reconstruction.json.
+    - Cause: the live DB is 2.9 GB, so the dump is 3.6 GB uncompressed (484 MB gz). `reconstructRecovery()` does `gunzipSync(dump).toString('utf8')` and `importDump(client, text)` takes the whole text; Node 20 caps strings at ~536 M chars. (Q39 had 4,656 evidence rows; now 336,800. Largest tables: resource_version 1.3 GB, relationship_edge_set 393 MB, drift 345 MB.)
+    - Needs: streamed gunzip and COPY import (#634), a new B, then rerun from a fresh recovery set at that B.
+  - Not reached: build-manifest, offline plan, live drill (0 writes, no `keel-rehearsal-*` group created), capture-drill, verify, check, evidence test, PR.
+  - DBs created and dropped: `keel_q193_recon`, `keel_q193_drill`. `keel_test` untouched.
+  - Left on the host: `/opt/keel-recovery-sets/2026-10-28-q193` (root-only, pinned to e86afa9) and `/root/keel-q193/` (env.sh, the consumed assertion, reconstruct.out). Credentials: live DB read and the recovery key only; no Graph calls, no restorer, no global admin.
 - **Expected:** drill passed with cleanup complete, verify exit 0, check exit 0, the evidence test passes.
 - **Report:** B, the drill outcome and write count, each exit code, the check output, the evidence PR, DBs dropped.
 

@@ -1800,7 +1800,7 @@ being triggered by queue updates.
   `drill-live-acceptance{,.capture}.json` hold the real object id of the deleted `keel-rehearsal-*` drill group, because
   `capture-drill` never pseudonymized. PR #611 fixes it; the record is signed, so it must be recaptured.
 - Needs: /opt/keel-live at the PR #611 merge or later (same grep as Q192). Independent of Q192.
-- Status: blocked (reconstruct crashes on the 3.6 GB dump; needs #634 deployed, then rerun)
+- Status: blocked via Q206 (#646)
 - **Test tenant only.** Exactly as the Q39 116 run (steps in `docs/roadmap/operator-gates.md` and Q36 notes #5 and #7): a fresh
   recovery set and reconstruction at B into a fresh disposable DB, the onboarding result at B, a fresh drill DB (schema.sql +
   RUNTIME_MIGRATIONS, never `KEEL_DB_URL` or `keel_test`), build-manifest, the offline plan, the live bounded drill (one new
@@ -1814,7 +1814,8 @@ being triggered by queue updates.
   4. Commit both files on `claude/live-evidence-q193` from `origin/master`, run
      `cd engine && node --test roadmap/drill-live-acceptance.test.mjs` on a throwaway test DB, open a PR with the `automerge` label.
   5. Drop the disposable DBs this run created and report their names.
-- Result: blocked (2026-10-28 07:23 UTC, root keel-operator): **reconstruct crashes on the live-size dump. Filed #634.** No drill ran; nothing written to the tenant.
+- Result: blocked via Q206 (2026-10-28 09:47 UTC, root keel-operator): reconstruct now passes at e3e49a8, but the live drill fails on the unlicensed lifecycleWorkflow collect (#646); no record captured, tenant clean.
+- Earlier result: blocked (2026-10-28 07:23 UTC, root keel-operator): **reconstruct crashes on the live-size dump. Filed #634.** No drill ran; nothing written to the tenant.
   - B = `e86afa9` (has #611 `d460e8f`). Ran from a separate detached worktree at B.
   - Onboarding still valid (read-only `bootstrap_plan`/`bootstrap_event`): read setup cbd974b9… complete, restore setup 174d8db6… complete.
   - Fresh recovery set `/opt/keel-recovery-sets/2026-10-28-q193` (read-only pg_dump of live keel): exit 0; dump sha256 2d888664…, manifest c2ce69d0…, schema pin 983d3238…, snapshot 36259bb8…, evidence head 336800:69c6b594…:336800 (same before and after). `keel-dump-manifest --verify` exit 0, "recovery complete".
@@ -9345,8 +9346,20 @@ item that needs it stays untouched.
   several minutes (it is read twice: a check pass, then the load).
 - Needs: the deployed build B at or after `e3e49a8`. Check from your checkout at B:
   `git merge-base --is-ancestor e3e49a8 B && grep -q scanDump tools/recovery/dumpImport.mjs`.
-- Status: in progress (2026-10-28 09:45 UTC, root keel-operator)
-- Result: in progress (2026-10-28 09:45 UTC, root keel-operator): started at B `e3e49a8` (has #643 scanDump).
+- Status: blocked (needs #646 fixed and deployed, then rerun from a fresh recovery set)
+- Result: blocked (2026-10-28 09:47 UTC, root keel-operator): **reconstruct now works on the live-size dump (#643 confirmed), but the live bounded drill fails at its baseline collect on the unlicensed `lifecycleWorkflow` type. Filed #646.** Capture refused; no record, no verify, no PR. Tenant clean.
+  - B = `e3e49a8a0bc68d129e1d18d00aabcb01235aa470` (unchanged throughout; has e3e49a8 + `scanDump`). Ran from a detached worktree at B (now removed).
+  - Onboarding still valid (read-only `bootstrap_plan`/`bootstrap_event`): read setup cbd974b9… complete, restore setup 174d8db6… complete.
+  - Read-only pg_dump of live keel: 491 MB gz; evidence head 338680 before and after. Fresh recovery set `/opt/keel-recovery-sets/2026-10-28-q206`: exit 0 (dump sha256 1c7ee010…, manifest 309b3fd3…, schema pin d60c21f9…). `keel-dump-manifest --verify`: exit 0, "recovery complete".
+  - `reconstruct.mjs --authenticator signed-assertion` into fresh `keel_q206_recon`: **exit 0, wall 3:17, peak RSS ~2.2 GB (2,255,440 KB)**; stage recovered, readOnly, writersDisabled, 338,680 evidence records, chain ok.
+  - Drill DB `keel_q206_drill`: full schema via `loadSchema` (schema.sql + schema.d fragments) + RUNTIME_MIGRATIONS. build-manifest exit 0 (one `keel-rehearsal-2026-10-28T09-45-04-839Z` group, 900000 ms / 30 writes); offline plan exit 0.
+  - **Live drill: exit 1, outcome `failed`, 5 writes, 27.5 s.** Error: `collecting lifecycleWorkflow failed: Insufficient license ... User workflows require an Entra ID Governance license`. Cause (from the code): `collectRehearsalSnapshot()` calls `collectM1` with no `needed` set, so it fails fast on any unreadable type (governance types added after Q39). The group was created and the drill's orphan cleanup deleted and purged it; the drill's own residual check still saw it in deletedItems, so cleanup = failed. Read-only recheck at 09:46 (Collector): /groups 404, deletedItems 404, 0 `keel-rehearsal*` groups active or deleted. So the residual was most likely a stale read (inference); this is in #646 too.
+  - `capture-drill`: exit 1, "the drill does not count as a recovery drill: cleanup-failed"; no file written. Not reached: verify, pseudonymize check, grep counts, evidence test, PR.
+  - Not retried: each attempt creates a new `keel-rehearsal-*` group. Needs #646 fixed and deployed, then a rerun from a fresh recovery set at that B.
+  - DBs created and dropped: `keel_q206_recon`, `keel_q206_drill`. `keel`/`keel_test` untouched.
+  - Host: kept `/opt/keel-recovery-sets/2026-10-28-q206` and `/root/keel-q206/` (mode 700). The Q193 set and `/root/keel-q193/` were kept too, because the run did not succeed. `/usr/bin/time -v` had copied the DB URL with its password into both reconstruct.out files; the password is now redacted in both.
+  - Credentials: live DB read, recovery officer key, Collector, Restorer (the drill's 5 writes). No global admin.
+- Earlier result: in progress (2026-10-28 09:45 UTC, root keel-operator): started at B `e3e49a8` (has #643 scanDump).
 - **Test tenant only.** Exactly the Q193 steps and hard rules (same chain as the Q39 116 run, one new `keel-rehearsal-*` group
   only, cleaned up by the drill), at the new B:
   1. A **fresh** recovery set at B (not `/opt/keel-recovery-sets/2026-10-28-q193`, which is pinned to `e86afa9`), then

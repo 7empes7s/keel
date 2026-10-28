@@ -26,7 +26,9 @@
 // content write transport as the content-restorer app, a separate app registration:
 //   { "tenantId": "...", "clientId": "...", "certPath": "...", "keyPath": "..." }
 // The run is journaled (schema.d/72-content-restore.sql): running the same request again
-// resumes it and writes nothing already restored.
+// resumes it and writes nothing already restored. An approval must be run within 24 hours
+// of its decision, and a completed run is never started again. A restore to another
+// mailbox is filed as content-restore-other-location (the tenant's two-person rule).
 import { existsSync, readFileSync } from 'node:fs';
 import { readConfigFile } from '../engine/config/configFile.mjs';
 import { argvParser, parseCliArgs } from './args.mjs';
@@ -41,7 +43,9 @@ import { createPgContentIndex } from '../engine/content/index.mjs';
 import { createContentStore, parseContentKey } from '../engine/content/store.mjs';
 import { requestApproval } from '../engine/govern/approvals.mjs';
 import { seg } from '../engine/content/exchangeMail.mjs';
-import { CONTENT_RESTORE_ACTION, ContentRestoreRefusedError, authorizeContentRestore, targetProblems } from '../engine/content/restore/gate.mjs';
+import {
+  CONTENT_RESTORE_ACTION, CONTENT_RESTORE_OTHER_LOCATION, ContentRestoreRefusedError, authorizeContentRestore, refuseFuturePointInTime, targetProblems,
+} from '../engine/content/restore/gate.mjs';
 import { createPgRestoreJournal } from '../engine/content/restore/journal.mjs';
 import { contentWriteTransport } from '../engine/content/restore/transport.mjs';
 import { GRAPH_ROOT, MAIL_RESTORE_KINDS, mailRestoreRunId, normalizeMailRestoreRequest, planMailRestore, restoreMail } from '../engine/content/restore/mail.mjs';
@@ -110,6 +114,9 @@ async function defaultWriteTransport(tokenSource, { guard, fetchImpl }) {
   return contentWriteTransport(tokenSource, fetchImpl, { guard });
 }
 
+/** The approval-policy classes of a mail restore: another mailbox is another location. */
+export const mailPolicyActions = (request) => (request.targetMailboxId !== request.sourceMailboxId ? [CONTENT_RESTORE_OTHER_LOCATION] : []);
+
 const summarize = (plan) => ({
   runId: plan.runId,
   request: plan.request,
@@ -127,10 +134,12 @@ async function mailCommand(argv, { config, tenantRef, client, store, readFile, e
   }
   if (action === 'request') {
     const request = mailRequestFromArgs(argv, tenantRef);
+    refuseFuturePointInTime(request.at);
     const plan = await planMailRestore(store, request);
     const filed = await requestApproval(client, {
       tenantRef, action: CONTENT_RESTORE_ACTION, params: { runId: plan.runId, tenantRef, workload: 'mail', request },
       requestedBy: arg(argv, 'actor'), justification: arg(argv, 'justification') ?? null, executor: 'cli',
+      policyActions: mailPolicyActions(request),
     });
     logger.log(JSON.stringify({ approvalId: filed.id, ...summarize(plan) }, null, 2));
     return 0;
@@ -149,6 +158,7 @@ async function mailCommand(argv, { config, tenantRef, client, store, readFile, e
   }
   const gate = await authorizeContentRestore(client, {
     actor: arg(argv, 'actor'), approvalId, runId: request ? mailRestoreRunId(request) : null, tenantRef, ...(canFn ? { canFn } : {}),
+    policyActions: request ? mailPolicyActions(request) : [],
   });
   const restorerPath = arg(argv, 'restorer', DEFAULT_RESTORER_PATH);
   if (!exists(restorerPath)) {

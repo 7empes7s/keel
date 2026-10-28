@@ -512,8 +512,9 @@ test('portal: Compliance and Baselines render the readers in words; a viewer can
       }
 
       // Grant an exception: a viewer is refused; an admin's is saved; a past end is refused.
+      const jsonHeaders = (headers) => { const h = new Headers(headers); h.set('content-type', 'application/json'); return h; };
       const grant = (headers, body) => grantException(new Request('http://keel.test/api/actions/compliance/exception', {
-        method: 'POST', headers, body: JSON.stringify(body),
+        method: 'POST', headers: jsonHeaders(headers), body: JSON.stringify(body),
       }));
       const evaluationId = ${JSON.stringify(evaluation.id)};
       const future = new Date(Date.now() + 30 * 86400000).toISOString();
@@ -540,7 +541,7 @@ test('portal: Compliance and Baselines render the readers in words; a viewer can
 
       // The action route refuses the viewer before anything is queued.
       const response = await POST(new Request('http://keel.test/api/actions/baseline', {
-        method: 'POST', headers: viewerHeaders,
+        method: 'POST', headers: jsonHeaders(viewerHeaders),
         body: JSON.stringify({ snapshotId: ${JSON.stringify(laterSnapshot)}, supersedesBaselineId: ${JSON.stringify(baselineId)} }),
       }));
       assert.equal(response.status, 403);

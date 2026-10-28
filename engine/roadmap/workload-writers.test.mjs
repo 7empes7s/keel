@@ -37,7 +37,7 @@ import {
 } from '../restore/workloads/cmdletSettings.mjs';
 import { WORKLOAD_RESTORES } from '../restore/workloads/dispatch.mjs';
 import { fixtureProblem, isFixtureName } from '../restore/workloads/fixtureGuard.mjs';
-import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
+import { TRUST_FIELDS, WKLD_WRITE_OPERATIONS, isTrustField } from '../restore/workloads/writeDeclarations.mjs';
 import { approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
@@ -626,6 +626,134 @@ test('each write re-reads first: a policy gone after the plan makes its rule sta
   const result = await execute(client, tenantRef, 'purview-retention-dlp', artifact, live);
   assert.deepEqual(result.operations.map((op) => op.outcome), ['stale']);
   assert.deepEqual(live.writes, []);
+});
+
+test('mail flow: connector trust, certificate and sender-IP fields are listed for an administrator, never written', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const live = fakeTenant('exchange-mail-flow');
+  // The backup holds trust values an attacker or a stale copy could plant.
+  const inbound = live.state['Get-InboundConnector'][0];
+  const outbound = live.state['Get-OutboundConnector'][0];
+  Object.assign(inbound, {
+    TlsSenderCertificateName: '*.attacker.example', RestrictDomainsToCertificate: true, TreatMessagesAsInternal: true,
+    TrustedOrganizations: ['attacker.example'], SenderIPAddresses: ['203.0.113.0/24'], RestrictDomainsToIPAddresses: true, EFSkipIPs: ['203.0.113.9'], RequireTls: false,
+    EFSkipLastIP: true, EFSkipMailGateway: ['203.0.113.10'], EFUsers: ['ceo@contoso.test'], SenderDomains: ['*'], ConnectorType: 'OnPremises',
+  });
+  Object.assign(outbound, { TlsSettings: 'EncryptionOnly', TlsDomain: '*.attacker.example', SmartHosts: ['relay.attacker.example'], ConnectorType: 'OnPremises' });
+  const source = await recordSource(client, tenantRef, 'exchange-mail-flow', live);
+  // Live has moved on (a partner certificate rotation, a removed range), and one harmless field drifted too.
+  Object.assign(inbound, {
+    TlsSenderCertificateName: 'mail.partner.example', RestrictDomainsToCertificate: false, TreatMessagesAsInternal: false,
+    TrustedOrganizations: [], SenderIPAddresses: ['198.51.100.10'], RestrictDomainsToIPAddresses: false, EFSkipIPs: [], RequireTls: true,
+    EFSkipLastIP: false, EFSkipMailGateway: [], EFUsers: [], SenderDomains: ['partner.example'], ConnectorType: 'Partner',
+    Comment: 'changed by an administrator',
+  });
+  Object.assign(outbound, { TlsSettings: 'DomainValidation', TlsDomain: 'mail.partner.example', SmartHosts: ['relay.partner.example'], ConnectorType: 'Partner' });
+
+  const { plan, artifact } = await planned(client, tenantRef, 'exchange-mail-flow', { source, live });
+  const trustEntries = (key) => plan.manual.filter((item) => item.resourceKey === key && item.trust === true).map((item) => item.field).sort();
+  assert.deepEqual(trustEntries(`inbound-connector:${inbound.Guid}`), [...TRUST_FIELDS.exchangeInboundConnector].sort());
+  assert.deepEqual(trustEntries(`outbound-connector:${outbound.Guid}`), [...TRUST_FIELDS.exchangeOutboundConnector].sort());
+  assert.ok(plan.manual.filter((item) => item.trust).every((item) => /never changes it/.test(item.reason) && /Exchange admin center/.test(item.reason)));
+  // Only the harmless field is written.
+  assert.deepEqual(plan.operations.map((op) => [op.cmdlet, op.parameters]), [['Set-InboundConnector', { Identity: inbound.Guid, Comment: 'KEEL-RT-Comment' }]]);
+
+  const result = await execute(client, tenantRef, 'exchange-mail-flow', artifact, live);
+  assert.equal(result.outcome, 'verified', JSON.stringify(result.operations));
+  assert.deepEqual(live.writes.map((write) => Object.keys(write.parameters).sort()), [['Comment', 'Identity']]);
+  assert.equal(inbound.TlsSenderCertificateName, 'mail.partner.example');
+  assert.equal(inbound.TreatMessagesAsInternal, false);
+  assert.equal(outbound.TlsDomain, 'mail.partner.example');
+  assert.deepEqual(outbound.SmartHosts, ['relay.partner.example']);
+  assert.deepEqual(inbound.SenderDomains, ['partner.example']);
+  assert.equal(inbound.EFSkipLastIP, false);
+  assert.equal(inbound.ConnectorType, 'Partner');
+  assert.equal(outbound.ConnectorType, 'Partner');
+
+  // An altered plan cannot send them either: the engine refuses before a job is built,
+  // and the container allowlist (run-cmdlet.ps1) does not carry them.
+  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-InboundConnector', parameters: { Identity: inbound.Guid, TlsSenderCertificateName: '*.attacker.example' } }), /does not take TlsSenderCertificateName/);
+  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-OutboundConnector', parameters: { Identity: outbound.Guid, TlsDomain: '*.attacker.example' } }), /does not take TlsDomain/);
+  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-OutboundConnector', parameters: { Identity: outbound.Guid, SmartHosts: ['relay.attacker.example'] } }), /does not take SmartHosts/);
+  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-InboundConnector', parameters: { Identity: inbound.Guid, EFSkipLastIP: true } }), /does not take EFSkipLastIP/);
+  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-InboundConnector', parameters: { Identity: inbound.Guid, SenderDomains: ['*'] } }), /does not take SenderDomains/);
+  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-OutboundConnector', parameters: { Identity: outbound.Guid, ConnectorType: 'OnPremises' } }), /does not take ConnectorType/);
+  const shipped = allowlist(WRITE_TABLES.exo);
+  for (const field of TRUST_FIELDS.exchangeInboundConnector) assert.ok(!shipped['Set-InboundConnector'].includes(field), field);
+  for (const field of TRUST_FIELDS.exchangeOutboundConnector) assert.ok(!shipped['Set-OutboundConnector'].includes(field), field);
+});
+
+// Trust fields outside connectors: the backup plants a value that would widen trust,
+// live holds another, and one harmless field drifted too.
+const TRUST_CASES = [
+  {
+    name: 'connection filter: allowed sender IP ranges and the safe list',
+    workload: 'exchange-extended', getter: 'Get-HostedConnectionFilterPolicy', cmdlet: 'Set-HostedConnectionFilterPolicy', resourceType: 'exchangeConnectionFilterPolicy',
+    planted: { IPAllowList: ['203.0.113.0/24'], EnableSafeList: true },
+    current: { IPAllowList: [], EnableSafeList: false },
+    harmless: ['AdminDisplayName', 'changed by an administrator'],
+    where: /Microsoft Defender portal .*Connection filter policy/,
+    altered: { IPAllowList: ['203.0.113.0/24'] },
+  },
+  {
+    name: 'Teams federation: federated organizations, allowed and blocked domains, SIP space and discovered partners',
+    workload: 'teams-org-policies', getter: 'Get-CsTenantFederationConfiguration', cmdlet: 'Set-CsTenantFederationConfiguration', resourceType: 'teamsFederationConfiguration',
+    planted: {
+      AllowFederatedUsers: true, AllowedDomains: { AllowedDomain: [{ Domain: 'attacker.example' }] }, BlockedDomains: [], SharedSipAddressSpace: true, TreatDiscoveredPartnersAsUnverified: false,
+    },
+    current: {
+      AllowFederatedUsers: false, AllowedDomains: { AllowedDomain: [{ Domain: 'partner.example' }] }, BlockedDomains: [{ Domain: 'blocked.example' }], SharedSipAddressSpace: false, TreatDiscoveredPartnersAsUnverified: true,
+    },
+    harmless: ['BlockAllSubdomains', true],
+    where: /Teams admin center > Users > External access/,
+    altered: { AllowFederatedUsers: true },
+  },
+];
+for (const c of TRUST_CASES) {
+  test(`${c.name} are listed for an administrator, never written`, async (t) => {
+    const client = await schemaClient(t);
+    const tenantRef = nextTenant();
+    const live = fakeTenant(c.workload);
+    const [body] = live.state[c.getter];
+    Object.assign(body, c.planted);
+    const source = await recordSource(client, tenantRef, c.workload, live);
+    Object.assign(body, c.current, { [c.harmless[0]]: c.harmless[1] });
+
+    const { plan, artifact } = await planned(client, tenantRef, c.workload, { source, live });
+    const trust = plan.manual.filter((item) => item.trust === true);
+    assert.deepEqual(trust.map((item) => item.field).sort(), Object.keys(c.planted).sort());
+    assert.ok(Object.keys(c.planted).every((field) => TRUST_FIELDS[c.resourceType].includes(field)));
+    for (const item of trust) {
+      assert.match(item.reason, /never changes it/);
+      assert.match(item.reason, c.where);
+      assert.deepEqual(item.after, c.planted[item.field]);
+    }
+    // Only the harmless field is written.
+    const sent = plan.operations.filter((op) => op.cmdlet === c.cmdlet);
+    assert.deepEqual(sent.map((op) => Object.keys(op.parameters).sort()), [['Identity', c.harmless[0]].sort()]);
+    if (plan.contentEffects.length) await approveEffects(client, tenantRef, artifact, plan);
+
+    const result = await execute(client, tenantRef, c.workload, artifact, live);
+    assert.equal(result.outcome, 'verified', JSON.stringify(result.operations));
+    assert.ok(live.writes.every((write) => Object.keys(write.parameters).every((name) => !TRUST_FIELDS[c.resourceType].includes(name))));
+    for (const [field, value] of Object.entries(c.current)) assert.deepEqual(body[field], value, field);
+
+    // An altered plan cannot send them, and the container allowlist does not carry them.
+    const [field] = Object.keys(c.altered);
+    await assert.rejects(workloadWriteCmdlet({ cmdlet: c.cmdlet, parameters: { Identity: body.Guid ?? body.Identity, ...c.altered } }), new RegExp(`does not take ${field}`));
+    const shipped = { ...allowlist(WRITE_TABLES.exo), ...allowlist(WRITE_TABLES.teams) };
+    for (const name of TRUST_FIELDS[c.resourceType]) assert.ok(!shipped[c.cmdlet].includes(name), name);
+  });
+}
+
+test('no write declares a trust, certificate or sign-in field', () => {
+  for (const [id, write] of Object.entries(WKLD_WRITE_OPERATIONS)) {
+    assert.deepEqual(write.fields.filter((field) => isTrustField(write.resourceType, field)), [], id);
+  }
+  // The name check bites on fields no list names yet.
+  assert.ok(['TlsSenderCertificateName', 'SigningCertificate', 'TrustedOrganizations', 'PassiveSignInUri', 'IssuerUri'].every((field) => isTrustField('anything', field)));
+  assert.ok(!isTrustField('exchangeTransportRule', 'RouteMessageOutboundRequireTls'));
 });
 
 // ------------------------------------------------------------ declarations

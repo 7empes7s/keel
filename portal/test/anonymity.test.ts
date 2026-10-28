@@ -17,7 +17,7 @@ const VIEWER = "00000000-0000-4000-8000-0000000000b2";
 function request(actor: string, capabilities: string[], body?: object) {
   return new Request("http://localhost/api/anonymity", {
     method: body ? "POST" : "GET",
-    headers: { [PRINCIPAL_ID_HEADER]: actor, [CAPABILITIES_HEADER]: capabilities.join(" ") },
+    headers: { [PRINCIPAL_ID_HEADER]: actor, [CAPABILITIES_HEADER]: capabilities.join(" "), ...(body ? { "content-type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
 }

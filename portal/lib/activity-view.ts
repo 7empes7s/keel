@@ -12,6 +12,7 @@ import type { RiskTone } from "@/lib/menu-status";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { displayEnum } from "@/lib/presentation";
 import { type EngineRef, evidenceSentence, jobName, jobStatusSentence, personLabel } from "@/lib/sentences";
+import { csvLine } from "@/lib/csv";
 
 const DAY = 86_400_000;
 
@@ -452,14 +453,13 @@ function shortDate(day: Day): string {
 
 /** A CSV of the chosen rows: the sentence, who, when and the outcome; ids in extra columns. */
 export function activityCsv(rows: ActivityRow[]): string {
-  const cell = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
   const lines = [["When", "What", "Kind", "Outcome", "Who", "Source", "Job ID", "Audit sequence", "Account"].join(",")];
   for (const row of rows) {
-    lines.push([
+    lines.push(csvLine([
       row.at ?? "", row.title, ACTIVITY_KINDS[row.kind].one, OUTCOMES[row.outcome].label,
       row.person ? capital(personLabel(row.person)) : "", row.type === "job" ? "Job" : "Audit record",
       row.job?.id ?? "", row.entry?.seq ?? "", row.who ?? "",
-    ].map(cell).join(","));
+    ], { always: true }));
   }
   return lines.join("\n");
 }

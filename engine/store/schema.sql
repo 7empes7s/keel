@@ -181,6 +181,11 @@ ALTER TABLE job ADD COLUMN IF NOT EXISTS not_before timestamptz NOT NULL DEFAULT
 CREATE INDEX IF NOT EXISTS job_status_not_before_created_idx
   ON job (status, not_before, created_at);
 
+-- Security audit run 2, finding 11: approval-minted jobs are claimed first, and the portal
+-- caps how many jobs one person may have waiting.
+ALTER TABLE job ADD COLUMN IF NOT EXISTS priority smallint NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS job_queued_requester_idx ON job (requested_by) WHERE status = 'queued';
+
 -- §3.2 authorisation model: who is allowed to do what. The role -> capability mapping is
 -- code (engine/authz/permissions.mjs), deny-by-default; these tables are only data.
 -- scope is reserved for later per-tenant or per-resource narrowing and is '*' for now.

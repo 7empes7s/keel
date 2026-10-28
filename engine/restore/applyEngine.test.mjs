@@ -480,6 +480,7 @@ function flakyThenOkReader(okBody) {
           error: null,
         };
       }
+      if (path === '/identity/conditionalAccess/namedLocations') return { items: [], capped: false, error: null };
       throw new Error(`unexpected collection ${path}`);
     },
     get: async (version, path) => {

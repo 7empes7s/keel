@@ -27,7 +27,9 @@ import { readConfigFile } from '../engine/config/configFile.mjs';
 import { argvParser } from './args.mjs';
 import { requestApproval } from '../engine/govern/approvals.mjs';
 import { canonicalDigest } from '../engine/restore/dryRunArtifact.mjs';
-import { CONTENT_RESTORE_ACTION, ContentRestoreRefusedError, authorizeContentRestore, targetProblems } from '../engine/content/restore/gate.mjs';
+import {
+  CONTENT_RESTORE_ACTION, CONTENT_RESTORE_OTHER_LOCATION, ContentRestoreRefusedError, authorizeContentRestore, refuseFuturePointInTime, targetProblems,
+} from '../engine/content/restore/gate.mjs';
 import { createPgRestoreJournal } from '../engine/content/restore/journal.mjs';
 import {
   GRAPH_ROOT, TEAMS_MESSAGES_WORKLOAD, normalizeTeamsMessagesRequest, planTeamsMessageRestore, restoreTeamsMessages,
@@ -92,6 +94,9 @@ export function teamsGuard(request) {
   };
 }
 
+/** The approval-policy classes of a Teams message restore: another team is another location. */
+export const teamsPolicyActions = (request) => (request.targetTeamId !== request.sourceTeamId ? [CONTENT_RESTORE_OTHER_LOCATION] : []);
+
 const summarize = (plan) => ({
   runId: plan.runId,
   request: plan.request,
@@ -111,6 +116,7 @@ export async function teamsCommand(argv, ctx) {
   if (action === 'plan' || action === 'request') {
     const fixture = fixtureFrom(argv, { tenantRef, testTenantRefs, readFile });
     const request = teamsRequestFromArgs(argv, tenantRef, fixture);
+    if (action === 'request') refuseFuturePointInTime(request.at);
     const plan = await planTeamsMessageRestore(store, request, { fixture });
     if (action === 'plan') {
       logger.log(JSON.stringify(summarize(plan), null, 2));
@@ -119,6 +125,7 @@ export async function teamsCommand(argv, ctx) {
     const filed = await requestApproval(client, {
       tenantRef, action: CONTENT_RESTORE_ACTION, params: { runId: plan.runId, tenantRef, workload: TEAMS_MESSAGES_WORKLOAD, request },
       requestedBy: arg(argv, 'actor'), justification: arg(argv, 'justification') ?? null, executor: 'cli',
+      policyActions: teamsPolicyActions(request),
     });
     logger.log(JSON.stringify({ approvalId: filed.id, ...summarize(plan) }, null, 2));
     return 0;
@@ -138,6 +145,7 @@ export async function teamsCommand(argv, ctx) {
   }
   const gate = await authorizeContentRestore(client, {
     actor: arg(argv, 'actor'), approvalId, runId: request ? teamsMessagesRunId(request) : null, tenantRef, ...(canFn ? { canFn } : {}),
+    policyActions: request ? teamsPolicyActions(request) : [],
   });
   const fixture = request.fixture ? fixtureFrom(argv, { tenantRef, testTenantRefs, readFile }) : null;
   if (request.fixture && !fixture) throw new ContentRestoreRefusedError('this restore was planned from a fixture file; pass the same --fixture file');

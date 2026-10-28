@@ -280,7 +280,7 @@ export function changeLine(entry) {
     } else if (value && typeof value === 'object' && !Array.isArray(value)) {
       parts.push(`${name} ${Object.entries(value).map(([key, count]) => `${key} ${typeof count === 'object' ? JSON.stringify(count) : count}`).join(', ')}`);
     } else if (value !== undefined && value !== null) {
-      parts.push(`${name} ${Array.isArray(value) ? value.join(', ') : value}`);
+      parts.push(`${name} ${Array.isArray(value) ? value.map((item) => (item && typeof item === 'object' ? JSON.stringify(item) : item)).join(', ') : value}`);
     }
   }
   return parts.length > 0 ? `  changes ${entry.naturalKey}: ${parts.join('; ')}` : null;

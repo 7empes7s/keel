@@ -368,3 +368,40 @@ test('#642: the run log shows each write\'s changes, fields and parts beside the
   assert.equal(changeLine({ naturalKey: 'mobileApp:x', changes: { fields: [] } }), null);
   assert.equal(changeLine({ naturalKey: 'mobileApp:x' }), null);
 });
+
+test('#642: a link Intune refuses because an app has no package yet is a plain step', async () => {
+  const graph = idoFakeGraph({
+    seed: appsInTarget('new-main', 'new-dep'),
+    failWrites: ({ path }) => (path.endsWith('/updateRelationships')
+      ? { ok: false, status: 400, body: { error: { code: 'BadRequest', message: "Invalid operation: app's PublishingState is not 'Published'." } } } : null),
+  });
+  const outcome = await wave(graph, [{ ...linkResource, verb: 'create' }], {
+    appliedIds: new Map([['mobileApp:KEEL-RT-app-main', 'new-main'], ['mobileApp:KEEL-RT-app-dep', 'new-dep']]),
+  });
+  assert.deepEqual(outcome.failed, []);
+  assert.match(outcome.skipped[0].reason, /^manual: Intune does not let KEEL-RT-app-main or KEEL-RT-app-dep be changed until its package is uploaded/);
+});
+
+test('#642: when the holding app\'s links cannot be read in full, nothing is written', async () => {
+  const graph = idoFakeGraph({ seed: appsInTarget('new-main', 'new-dep') });
+  const paged = { ...graph, read: async (version, path) => {
+    const answer = await graph.read(version, path);
+    return path.endsWith('/relationships') ? { ...answer, body: { ...answer.body, '@odata.nextLink': 'https://graph.microsoft.com/next' } } : answer;
+  } };
+  const outcome = await wave(paged, [{ ...linkResource, verb: 'create' }], {
+    appliedIds: new Map([['mobileApp:KEEL-RT-app-main', 'new-main'], ['mobileApp:KEEL-RT-app-dep', 'new-dep']]),
+  });
+  assert.match(outcome.failed[0].error, /more links than one page/);
+  assert.equal(graph.calls.some((call) => call.method !== 'GET'), false);
+});
+
+test('#642: the dry run matches categories as the write does, and counts one not in Intune apart', async () => {
+  const live = { ...webApp(), id: 'live-web' };
+  // The app is in its category under a new name (same id): no change. KEEL-RT-gone is in no tenant category.
+  const renamed = { id: 'cat-own', displayName: 'KEEL-RT-cat renamed' };
+  const graph = idoFakeGraph({ seed: { ...targetCategories(renamed), [`${APPS}/live-web`]: live, [`${APPS}/live-web/categories/cat-own`]: renamed } });
+  const dry = await applyIntuneExtendedWrite(graph, appOf(webApp([OWN, { id: 'gone', displayName: 'KEEL-RT-gone' }]), {
+    live: { state: 'present', targetId: 'live-web', payload: live },
+  }), 'update', { ...FAST, mode: 'dry-run', referenceContext: context() });
+  assert.deepEqual(dry.applied.changes.categories, { added: 0, removed: 0, notInIntuneYet: 1 });
+});

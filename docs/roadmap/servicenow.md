@@ -30,7 +30,10 @@ only through a mapped, enabled KEEL principal who may approve that request now.
   - **A missing mapping disables the adapter visibly.** `serviceNowConfigProblems`
     returns every missing or ambiguous mapping as a code and a sentence: a missing field
     or state map, one value mapped to both outcomes, two roles sharing a field, an
-    instance address that is not plain `https`, a token that is not a reference.
+    instance address that is not plain `https` or points at a private, local or
+    metadata address, a token that is not a reference. The default transport checks
+    the instance name again after DNS and on every redirect hop
+    (`engine/safety/outboundDestination.mjs`, security audit finding 6).
     `createServiceNowAdapter` refuses (`disabled`) while any problem remains, so a
     half-configured adapter never sends or reads. `runServiceNowCycle` returns
     `{ enabled: false, problems }` without contacting the instance.

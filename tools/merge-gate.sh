@@ -32,7 +32,22 @@ check_pr() {
   [ "$(jq -r .mergeable <<<"$pr")" = "true" ] || { echo "#$n: not mergeable yet ($(jq -r .mergeable_state <<<"$pr"))"; return 1; }
   # The label is dropped on every push (automerge-label.yml); re-check it on the PR we just read.
   jq -e 'any(.labels[]?; .name == "automerge")' <<<"$pr" >/dev/null || { echo "#$n: no automerge label"; return 1; }
+  [ "$(jq -r .base.ref <<<"$pr")" = "master" ] || { echo "#$n: not based on master"; return 1; }
   sha=$(jq -r .head.sha <<<"$pr")
+  # The label must have been added after this head arrived. Every open or push starts a
+  # merge-gate run on the new head (its job is skipped), so the first such run dates the head;
+  # the server sets that time, unlike commit dates. No run yet means the head is newer than
+  # any label. This holds even if automerge-label.yml has not dropped the label yet.
+  local labelled arrived
+  labelled=$(gh api --paginate "repos/$repo/issues/$n/events?per_page=100" \
+      -q '.[] | select(.event == "labeled" and .label.name == "automerge") | .created_at' | sort | tail -n 1) \
+    || { echo "#$n: could not read label events"; return 1; }
+  arrived=$(gh api --paginate "repos/$repo/actions/workflows/merge-gate.yml/runs?event=pull_request&head_sha=$sha&per_page=100" \
+      -q '.workflow_runs[].created_at' | sort | head -n 1) \
+    || { echo "#$n: could not read when $sha arrived"; return 1; }
+  if [ -z "$labelled" ] || [ -z "$arrived" ] || [[ ! "$labelled" > "$arrived" ]]; then
+    echo "#$n: automerge label predates head $sha; add it again after review"; return 1
+  fi
   author=$(jq -r .user.login <<<"$pr")
   files=$(gh api "repos/$repo/pulls/$n/files?per_page=100" --paginate -q '.[].filename') \
     || { echo "#$n: could not list files"; return 1; }

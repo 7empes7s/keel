@@ -46,12 +46,28 @@ function isGraphUrl(url) {
   }
 }
 
+// A 500, 502 or 504 is a fault on Microsoft's side. A backup read tries it
+// again a few times before it reports the fault (503 is throttling, above).
+const SERVER_ERROR = new Set([500, 502, 504]);
+
+/** True when Graph answered with a server error: Microsoft's side, not Keel's or the tenant's. */
+export function isServerError(status) {
+  return SERVER_ERROR.has(status);
+}
+
 export class GraphReader {
-  constructor(getAccessToken) {
+  /**
+   * `serverErrorRetries` and `serverErrorDelayMs` set how often a backup read
+   * (collect) tries a 500/502/504 again, waiting delay, 2 × delay, 4 × delay…
+   */
+  constructor(getAccessToken, { serverErrorRetries = 2, serverErrorDelayMs = 2000 } = {}) {
     this.getAccessToken = getAccessToken;
+    this.serverErrorRetries = serverErrorRetries;
+    this.serverErrorDelayMs = serverErrorDelayMs;
     this.stats = {
       requests: 0,
       throttled: 0,
+      serverErrors: 0,
       retryAfterSeconds: [],
       totalWaitMs: 0,
       statusCounts: {},
@@ -67,8 +83,11 @@ export class GraphReader {
    * Single GET with throttle handling. A 429 is honoured by waiting the full
    * Retry-After — never a shorter guess — and the wait is recorded so the
    * observed ceiling can be reported rather than estimated.
+   * A 500, 502 or 504 is tried again `serverErrorRetries` times (default 0:
+   * one-off reads fail fast; backup reads through collect() pass the reader's
+   * own setting). A failure after retries says how many tries it took.
    */
-  async get(version, path, { consistencyLevel = false, maxRetries = 5, acceptLanguage = 'en-US' } = {}) {
+  async get(version, path, { consistencyLevel = false, maxRetries = 5, acceptLanguage = 'en-US', serverErrorRetries = 0 } = {}) {
     const url = this.url(version, path);
     if (!isGraphUrl(url)) {
       return { ok: false, status: 0, code: 'UnsafeUrl', error: redactSecrets(`refused request to non-Graph host: ${url}`) };
@@ -95,6 +114,7 @@ export class GraphReader {
     };
     if (consistencyLevel) headers.ConsistencyLevel = 'eventual';
 
+    let serverErrorTries = 0;
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const started = Date.now();
       const res = await fetch(url, { method: 'GET', headers });
@@ -123,12 +143,23 @@ export class GraphReader {
         body = null;
       }
 
+      if (SERVER_ERROR.has(res.status)) {
+        this.stats.serverErrors++;
+        if (serverErrorTries < serverErrorRetries) {
+          await new Promise((r) => setTimeout(r, this.serverErrorDelayMs * 2 ** serverErrorTries));
+          serverErrorTries++;
+          attempt--; // a server error retry does not use up a throttle retry
+          continue;
+        }
+      }
+
       if (!res.ok) {
         return {
           ok: false,
           status: res.status,
           error: redactSecrets(body?.error?.message ?? res.statusText),
           code: body?.error?.code,
+          ...(isServerError(res.status) ? { tries: serverErrorTries + 1 } : {}),
         };
       }
       return { ok: true, status: res.status, body, elapsed };
@@ -203,6 +234,7 @@ export class GraphReader {
 
     while (next && pages < pageCap) {
       const res = await this.get(version, next, {
+        serverErrorRetries: this.serverErrorRetries,
         consistencyLevel: consistencyLevel && pages === 0,
         ...(acceptLanguage ? { acceptLanguage } : {}),
       });

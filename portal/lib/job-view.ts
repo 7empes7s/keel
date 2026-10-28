@@ -248,6 +248,14 @@ function rowService(type: string): string {
   return typeService(type).code;
 }
 
+// A setting kind whose read ended on a 500, 502 or 504 after Keel's retries: Microsoft's
+// fault, not a missing permission. Still a gap (amber), named for what it is.
+const SERVICE_ERROR_STATUSES = new Set([500, 502, 504]);
+const SERVICE_ERROR = {
+  label: "Microsoft service error",
+  problem: "Microsoft 365 had a fault on its side and Keel's retries did not get through. Nothing to fix in Keel; the next backup tries again",
+};
+
 /** One row per kind the job reads. A kind still "reading" on a job that ended stopped there. */
 export function jobTypeRows(job: Pick<JobRecord, "status" | "progress">, now: string): TypeRow[] {
   const types = job.progress?.types ?? {};
@@ -268,15 +276,16 @@ export function jobTypeRows(job: Pick<JobRecord, "status" | "progress">, now: st
     const items = reasons.map(contentGapItem);
     const total = Math.max(items.length, entry.reasonCount ?? 0);
     const label = items.length ? itemsLabel(key, total) : null;
+    const serviceError = (state === "failed" || state === "partial") && !items.length && SERVICE_ERROR_STATUSES.has(entry.httpStatus ?? 0);
     return {
       type,
       name,
       state,
-      label: look.label,
-      tone: look.tone,
+      label: serviceError ? SERVICE_ERROR.label : look.label,
+      tone: serviceError ? "soon" : look.tone,
       count: entry.itemCount ?? null,
       took: state === "reading" ? jobGap(entry.startedAt, now) : jobGap(entry.startedAt, entry.completedAt),
-      problem: look.problem ? (label ? itemsProblem(label, items) : readProblem(state, raw)) : null,
+      problem: look.problem ? (serviceError ? SERVICE_ERROR.problem : label ? itemsProblem(label, items) : readProblem(state, raw)) : null,
       raw: look.problem && !items.length ? raw : null,
       items,
       itemTotal: total,

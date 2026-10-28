@@ -76,6 +76,7 @@ import { readConfigFile } from '../engine/config/configFile.mjs';
 import { parseCliArgs } from './args.mjs';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { GraphReader } from '../tools/tenant-probe/graph.mjs';
+import { CATALOG } from '../tools/tenant-probe/catalog.mjs';
 import { collectM1 } from '../engine/collect/entraAdapter.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { canonicalizeAll } from '../engine/cir/canonicalize.mjs';
@@ -1499,14 +1500,20 @@ export function unreadTypesOf(collected) {
   return [...new Set(unread.map((entry) => entry?.type).filter((type) => typeof type === 'string'))].sort();
 }
 
+// Issue #666: kinds whose objects never hold another tenant object's id
+// (catalogue `holdsNoReferences`: To Do settings and other on/off org settings).
+const NO_REFERENCE_TYPES = new Set(CATALOG.filter((entry) => entry.holdsNoReferences === true).map((entry) => entry.type));
+
 /**
  * Issue #466: one refusal per planned delete when any type was left unread.
  * The dependent-impact check reads references from the live state, and a type
  * that was not read could still hold one, so a delete is never judged safe on
- * an incomplete read.
+ * an incomplete read. Issue #666: a kind that cannot hold a reference at all
+ * (NO_REFERENCE_TYPES) cannot hide one, so leaving it unread blocks nothing.
  */
-export function incompleteReadDeleteRefusals(unreadTypes, plannedResources) {
-  if (!Array.isArray(unreadTypes) || unreadTypes.length === 0) return [];
+export function incompleteReadDeleteRefusals(allUnreadTypes, plannedResources) {
+  const unreadTypes = Array.isArray(allUnreadTypes) ? allUnreadTypes.filter((type) => !NO_REFERENCE_TYPES.has(type)) : [];
+  if (unreadTypes.length === 0) return [];
   const keys = [...new Set((plannedResources ?? []).filter((resource) => resource?.verb === 'delete').map((resource) => resource.naturalKey))];
   return keys.map((naturalKey) => ({
     naturalKey,
@@ -1636,6 +1643,8 @@ async function planCompensationRun({ client, compensateArtifactId, undoChoices, 
       compensation: ctx.plan,
     });
     logger.log(`persisted compensation dry-run artifact ${persistArtifactId} (status: ${status})`);
+    // Issue #666: say why, not only that it was refused.
+    for (const refusal of refusals) logger.log(`refused ${refusal.naturalKey}: ${refusal.reason}`);
   }
 
   return {

@@ -11,20 +11,23 @@ function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** A finished snapshot of this tenant with a recorded coverage digest. */
+function isCompletedSource(snapshot, { tenantRef }) {
+  return Boolean(snapshot)
+    && snapshot.tenant_ref === tenantRef
+    && snapshot.status === 'complete'
+    && snapshot.completed_at !== null
+    && snapshot.completed_at !== undefined
+    && isRecord(snapshot.coverage_digest);
+}
+
 /**
  * A baseline represents the whole estate, so a source is safe only when every
  * descriptor explicitly reports a successful collection. A completed snapshot
  * alone proves only that collection finished; it does not prove its coverage.
  */
 export function isEligibleBaselineSource(snapshot, { tenantRef }) {
-  if (!snapshot
-    || snapshot.tenant_ref !== tenantRef
-    || snapshot.status !== 'complete'
-    || snapshot.completed_at === null
-    || snapshot.completed_at === undefined
-    || !isRecord(snapshot.coverage_digest)) {
-    return false;
-  }
+  if (!isCompletedSource(snapshot, { tenantRef })) return false;
 
   return DESCRIPTORS.every(({ type }) => {
     const coverage = snapshot.coverage_digest[type];
@@ -220,7 +223,7 @@ export function captureFromSnapshot(snapshot) {
   };
 }
 
-async function lockEligibleSnapshot(client, { tenantRef, snapshotId }) {
+async function lockEligibleSnapshot(client, { tenantRef, snapshotId, scoped = false }) {
   const { rows: snapshotRows } = await client.query(
     `SELECT id, tenant_ref, status, started_at, completed_at, coverage_digest
      FROM snapshot
@@ -229,18 +232,29 @@ async function lockEligibleSnapshot(client, { tenantRef, snapshotId }) {
     [snapshotId],
   );
   const snapshot = snapshotRows[0];
-  if (!isEligibleBaselineSource(snapshot, { tenantRef })) {
+  if (scoped) {
+    if (!isCompletedSource(snapshot, { tenantRef })) {
+      throw new Error(`snapshot is not a completed baseline source: ${snapshotId}`);
+    }
+  } else if (!isEligibleBaselineSource(snapshot, { tenantRef })) {
     throw new Error(`snapshot is not an eligible whole-estate baseline source: ${snapshotId}`);
   }
   return snapshot;
 }
 
+/**
+ * `scoped: true` is for the bounded recovery drill only (issue #663): it seeds
+ * from a finished snapshot even when some types could not be read. The
+ * baseline's captured scope (captureFromSnapshot) then names only the types
+ * read in full, so it never claims the whole estate. Every other caller keeps
+ * the whole-estate rule.
+ */
 export async function seedFromSnapshot(client, {
-  tenantRef, snapshotId, setBy, label, description,
+  tenantRef, snapshotId, setBy, label, description, scoped = false,
 }) {
   await client.query('BEGIN');
   try {
-    const snapshot = await lockEligibleSnapshot(client, { tenantRef, snapshotId });
+    const snapshot = await lockEligibleSnapshot(client, { tenantRef, snapshotId, scoped });
     const capture = captureFromSnapshot(snapshot);
 
     await client.query(

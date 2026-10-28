@@ -9830,8 +9830,14 @@ item that needs it stays untouched.
   restored). Expected now: `complete`.
 - Needs: /opt/keel-live at the PR #668 merge or later (`! grep -q "'LogoUrl', 'Targets'" /opt/keel-live/engine/collect/workloads/sharepointStructure.mjs`).
   If the grep still matches, wait for the deploy.
-- Status: in progress (2026-10-28 23:40 UTC, root keel-operator)
-- Result: in progress (2026-10-28 23:40 UTC, root keel-operator): started at B `57f36441`.
+- Status: done
+- Result: done, complete (2026-10-28 23:53 UTC, root keel-operator). **SharePoint structure backup now `complete`; all four reads proven; every hub field `observed`; 0 changes on the second run.** B = `57f36441` (Needs check passes). Collector reads only (`/etc/keel/purview-collector.json`); global admin not used; nothing created, changed or granted.
+  1. Capture exit 0; `pseudonymize.mjs check` exit 0; `verify --gate workload-reads-live-acceptance --require-live` exit 0 `{ok: true, failures: []}`. **outcome "complete"**; proven hub-sites, site-designs, site-scripts, site-templates; notProven []. Objects: hubs 2 (the second is Q194's `KEEL-RT-structure-hub`), designs 1, scripts 1, templates 1.
+  2. Evidence: `claude/live-evidence-sharepoint-structure` @ 85120991. The branch already held the Q189 commits, so origin/master was merged in and the record committed on top (no force-push); it differs from master by that one file only. Scan clean. No PR.
+  3. Import exit 0 (13 imported, refused []). `run` exit 0: collection `7f681d49`, `sharepoint-structure: complete`, no Targets reason. 1 new change, `added hub-site:cc9191d3-…`: KEEL-RT-structure-hub (inference). Both hubs' fields all `observed`; no `Targets`.
+  4. Second run: exit 3 from another workload only (exchange-mailbox-settings partial, "8 settings: not read (failed)"). Collection `81aedae6`: `sharepoint-structure: complete`, `0 new change(s) against the approved setup`.
+  - Failed calls: none.
+- Earlier result: in progress (2026-10-28 23:40 UTC, root keel-operator): started at B `57f36441`.
 - **Tenant:** reads only, with the Collector `powershellConfigs.sharepoint` config (`/etc/keel/purview-collector.json`), as Q189.
   Q189 fixtures and `/etc/keel/workload-scope.json` stay as they are. Nothing created, changed or granted.
 - Do, from your clone at the deployed commit B, as Q189 (same HMAC key and `db.env` handling; never print a secret):

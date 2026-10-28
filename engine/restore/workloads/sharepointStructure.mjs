@@ -412,7 +412,6 @@ const OPS = {
 };
 // Hub settings KEEL lists rather than writes.
 const HUB_MANUAL = Object.freeze({
-  Targets: 'who may join sites to the hub is granted by hand (Grant-PnPHubSiteRights or the SharePoint admin center)',
   ParentHubSiteId: 'joining a hub to a parent hub is done by hand in the SharePoint admin center',
 });
 

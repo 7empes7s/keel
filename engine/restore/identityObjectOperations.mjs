@@ -346,6 +346,17 @@ const ADMIN_CENTER_LOOSENING = Object.freeze({
   }),
 });
 
+/**
+ * A nested settings object reads the same when every member the backup holds
+ * matches; a member Graph added after the backup (a newer beta property) is
+ * not a difference, and is not checked on the read-back either.
+ */
+export function sameBackedUpMembers(_field, desired, live) {
+  const plain = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+  if (!plain(desired) || !plain(live)) return null;
+  return Object.keys(desired).every((key) => sameValue(desired[key], live[key]));
+}
+
 const fieldAt = (payload, path) => path.split('.').reduce((value, key) => (value && typeof value === 'object' ? value[key] : undefined), payload);
 const sameLoose = (value, loose) => (typeof loose === 'string' ? String(value ?? '').toLowerCase() === loose : value === loose);
 
@@ -355,10 +366,9 @@ export function adminCenterLooseningRefusal(resource, verb) {
   if (!spec || verb !== 'update') return null;
   const want = resource.payload ?? {};
   const now = resource.live?.payload ?? {};
-  const loosened = spec.rules.filter(([path, loose]) => {
-    const live = fieldAt(now, path);
-    return sameLoose(fieldAt(want, path), loose) && live !== undefined && live !== null && !sameLoose(live, loose);
-  });
+  // Fails closed: when live does not hold the field, the backup's loosening
+  // value cannot be shown to be what the tenant has now, so it is withheld.
+  const loosened = spec.rules.filter(([path, loose]) => sameLoose(fieldAt(want, path), loose) && !sameLoose(fieldAt(now, path), loose));
   if (loosened.length === 0) return null;
   const fields = loosened.map(([path]) => path);
   return {
@@ -617,17 +627,17 @@ export const IDENTITY_RECORDS = Object.freeze({
   // settings wait for their read to work (GET /beta/admin/todo answers 500).
   formsSettings: defineRecord({
     resourceType: 'formsSettings', version: 'beta', collection: '/admin/forms',
-    singleton: true, operations: ['update'], writable: ['settings'], refusal: adminCenterLooseningRefusal,
+    singleton: true, operations: ['update'], writable: ['settings'], refusal: adminCenterLooseningRefusal, sameField: sameBackedUpMembers,
     permission: 'OrgSettings-Forms.ReadWrite.All', docs: beta('adminforms-update'),
   }),
   microsoft365AppsInstallationOptions: defineRecord({
     resourceType: 'microsoft365AppsInstallationOptions', version: 'v1.0', collection: '/admin/microsoft365Apps/installationOptions',
-    singleton: true, operations: ['update'], writable: ['updateChannel', 'appsForWindows', 'appsForMac'],
+    singleton: true, operations: ['update'], writable: ['updateChannel', 'appsForWindows', 'appsForMac'], sameField: sameBackedUpMembers,
     permission: 'OrgSettings-Microsoft365Install.ReadWrite.All', docs: v1('m365appsinstallationoptions-update'),
   }),
   appsAndServicesSettings: defineRecord({
     resourceType: 'appsAndServicesSettings', version: 'beta', collection: '/admin/appsAndServices',
-    singleton: true, operations: ['update'], writable: ['settings'], refusal: adminCenterLooseningRefusal,
+    singleton: true, operations: ['update'], writable: ['settings'], refusal: adminCenterLooseningRefusal, sameField: sameBackedUpMembers,
     permission: 'OrgSettings-AppsAndServices.ReadWrite.All', docs: beta('adminappsandservices-update'),
   }),
   adminReportSettings: defineRecord({

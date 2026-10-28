@@ -916,3 +916,35 @@ test('restore gaps batch 20: a Viva Engage community is updated in place and nev
     assert.match(result.failed?.error ?? '', /unsupported operation/, verb);
   }
 });
+
+test('restore gaps batch 20: the loosening guard fails closed when live does not hold the field', async () => {
+  for (const live of [{}, { settings: null }, { settings: { isBingImageSearchEnabled: true } }]) {
+    const graph = idoFakeGraph({ seed: { '/admin/forms': live } });
+    const backup = { settings: { ...FORMS.settings, isExternalShareResultEnabled: true } };
+    const result = await singletonWrite(graph, 'formsSettings', backup, live);
+    assert.match(result.skipped?.reason ?? '', /never loosens/, JSON.stringify(live));
+    assert.equal(writesOf(graph).length, 0);
+  }
+  const graph = idoFakeGraph({ seed: { '/employeeExperience/communities/c-1': { id: 'c-1', displayName: 'X' } } });
+  const result = await applyIdentityObjectWrite(graph, {
+    naturalKey: 'c-1', resourceType: 'engageCommunity', payload: { id: 'c-1', displayName: 'X', privacy: 'public' }, references: [],
+    live: { state: 'present', targetId: 'c-1', payload: { id: 'c-1', displayName: 'X' } },
+  }, 'update', FAST);
+  assert.match(result.skipped?.reason ?? '', /makes the community public/);
+});
+
+test('restore gaps batch 20: a settings member Graph added after the backup is not a difference', async () => {
+  const path = '/admin/forms';
+  const live = { settings: { ...FORMS.settings, isNewerBetaSetting: true } };
+  let graph = idoFakeGraph({ seed: { [path]: live } });
+  let result = await singletonWrite(graph, 'formsSettings', FORMS, live);
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.equal(writesOf(graph).length, 0, 'nothing changed, so nothing is written');
+
+  // A real change is written and reads back, although live keeps the newer member.
+  const drifted = { settings: { ...live.settings, isBingImageSearchEnabled: false } };
+  graph = idoFakeGraph({ seed: { [path]: drifted } });
+  result = await singletonWrite(graph, 'formsSettings', FORMS, drifted);
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.deepEqual(writesOf(graph)[0].body, { settings: FORMS.settings });
+});

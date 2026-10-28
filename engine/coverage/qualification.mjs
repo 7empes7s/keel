@@ -1416,7 +1416,7 @@ export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
   engageCommunity: Object.freeze([
     lost('configuration', 'deleted community', 'only updated in place; a deleted community is recreated by hand from the backup'),
     lost('configuration', 'made public', 'a backup that makes a private community public is withheld for a person'),
-    lost('relationship', 'groupId', 'each community has a Microsoft 365 group behind it; the group is rebuilt with the community'),
+    lost('relationship', 'groupId', 'each community has a Microsoft 365 group behind it; it is never changed, and a deleted community and its group are set up again by hand'),
   ]),
 });
 

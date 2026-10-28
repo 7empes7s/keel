@@ -764,6 +764,9 @@ export async function runRestore({
     if (fixPlan && resources[0]?.verb !== 'update') {
       throw new Error(`${artifact ? 'restore promotion refused: ' : ''}compliance fix refused: ${fixPlan.naturalKey} would be ${resources[0]?.verb ?? 'left out'}, not updated in place`);
     }
+    // Security audit run 1, finding 2: the write carries its fix, so the named
+    // location trust gate lets through exactly this one setting and no other.
+    if (fixPlan) resources = [{ ...resources[0], complianceFix: fixPlan }];
     // An object matched by id under another name is known to the plan alone: its
     // snapshot key resolves to the live id for references and relationship edges.
     for (const resource of resources) {

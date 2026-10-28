@@ -26,7 +26,10 @@ import { compareSignInPaths } from './signInPathGate.mjs';
 const PREFIX = 'refusing to delete tenant-lockout resource';
 
 // The sign-in path section a delete of each type is expected to change.
-const EXPECTED_SECTIONS = Object.freeze({ conditionalAccessPolicy: Object.freeze(['conditionalAccessPolicies']) });
+const EXPECTED_SECTIONS = Object.freeze({
+  conditionalAccessPolicy: Object.freeze(['conditionalAccessPolicies']),
+  namedLocation: Object.freeze(['namedLocations']),
+});
 
 /**
  * Returns null when the delete may be sent, otherwise the refusal reason.

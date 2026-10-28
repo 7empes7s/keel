@@ -1,6 +1,8 @@
 import { isDeepStrictEqual } from 'node:util';
 import { canonicalize } from '../cir/canonicalHash.mjs';
 
+export const NAMED_LOCATIONS_PATH = '/identity/conditionalAccess/namedLocations';
+
 /**
  * §10.3's replacement for What If evaluation. Graph permits this complete
  * sign-in-path inventory to the Collector application credential, so evidence
@@ -12,8 +14,12 @@ export async function snapshotSignInPath(reader, { protectedPrincipalIds }) {
     throw new Error('sign-in path gate requires at least one protected principal');
   }
 
-  const [conditionalAccessPolicies, authenticationMethodsPolicy, securityDefaults, principalStates, roleAssignments] = await Promise.all([
+  const [conditionalAccessPolicies, namedLocations, authenticationMethodsPolicy, securityDefaults, principalStates, roleAssignments] = await Promise.all([
     collect(reader, '/identity/conditionalAccess/policies'),
+    // Security audit run 1, finding 2: a named location decides which networks
+    // and countries the policies above trust, so a change to one is a sign-in
+    // path change too.
+    collect(reader, NAMED_LOCATIONS_PATH),
     get(reader, '/policies/authenticationMethodsPolicy'),
     get(reader, '/policies/identitySecurityDefaultsEnforcementPolicy'),
     Promise.all(principalIds.map(async (principalId) => [
@@ -28,6 +34,7 @@ export async function snapshotSignInPath(reader, { protectedPrincipalIds }) {
 
   return {
     conditionalAccessPolicies: normaliseCollection(conditionalAccessPolicies, 'conditionalAccessPolicy'),
+    namedLocations: normaliseCollection(namedLocations, 'namedLocation'),
     authenticationMethodsPolicy: normalise(authenticationMethodsPolicy, 'authenticationMethodsPolicy'),
     // Security defaults is a singleton policy, not a collected resource type.
     // It has no type-specific server-owned fields; this deliberately reuses

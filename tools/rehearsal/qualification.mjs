@@ -238,33 +238,38 @@ export function boundedWriter(writer, { manifest, clock, startedAt }) {
  * Reads every created object back; anything still readable is a residual.
  * Issue #646: right after a purge, /directory/deletedItems can still answer 200
  * from a stale replica. Each surface is read again, up to `attempts` times,
- * until it answers 404, as hardDelete does on the happy path. Only a surface
- * that never reads as absent is reported, with the last answer it gave.
+ * until it answers 404, as hardDelete does on the happy path. A lagging replica
+ * can also answer a stale 404, and a retry gives it more chances to, so absence
+ * counts only after two 404s in a row. A surface that never reads as absent is
+ * reported, with the last answer it gave that was not a 404.
  */
 export async function verifyCleanup(reader, created, { attempts = 6, delayMs = 3000 } = {}) {
   const verifiedAbsent = [];
   const residuals = [];
   for (const [id, naturalKey] of created) {
     for (const [surface, path] of [['live', `/groups/${id}`], ['deleted-items', `/directory/deletedItems/${id}`]]) {
-      let residual = null;
-      for (let attempt = 0; attempt < attempts; attempt += 1) {
+      let residual = { objectId: id, naturalKey, surface, state: 'unknown', status: null };
+      let absentReads = 0;
+      for (let attempt = 0; attempt < attempts + 1 && absentReads < 2; attempt += 1) {
         if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
         let result;
         try {
           result = await reader.get('v1.0', path);
         } catch (error) {
+          absentReads = 0;
           residual = { objectId: id, naturalKey, surface, state: 'unknown', error: error.message };
           continue;
         }
         if (result?.ok === false && result.status === 404) {
-          residual = null;
-          break;
+          absentReads += 1;
+          continue;
         }
+        absentReads = 0;
         residual = {
           objectId: id, naturalKey, surface, state: result?.ok ? 'present' : 'unknown', status: result?.status ?? null,
         };
       }
-      if (residual) residuals.push(residual);
+      if (absentReads < 2) residuals.push(residual);
     }
     if (!residuals.some((residual) => residual.objectId === id)) verifiedAbsent.push({ objectId: id, naturalKey });
   }

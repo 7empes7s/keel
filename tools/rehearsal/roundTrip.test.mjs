@@ -362,6 +362,11 @@ assert.throws(
   const reader = {
     collect: async (version, path) => {
       collectionPaths.push(path);
+      // Issue #646: the live tenant has no Entra ID Governance licence. The
+      // round trip must still seed its baseline and finish.
+      if (path.startsWith('/identityGovernance/lifecycleWorkflows/')) {
+        return { status: 403, error: { status: 403, error: 'Insufficient license to complete this operation.' } };
+      }
       return { items: path.startsWith('/groups') && group && !softDeleted ? [group] : [] };
     },
     get: async (version, path) => {

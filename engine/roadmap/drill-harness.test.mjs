@@ -350,7 +350,7 @@ test('a purge that reads stale for a moment is not reported as a residual (#646)
   assert.equal(cleanup.status, 'complete');
   assert.deepEqual(cleanup.residuals, []);
   assert.deepEqual(cleanup.verifiedAbsent, [{ objectId: 'g', naturalKey: 'group:keel-rehearsal-x' }]);
-  assert.equal(deletedReads, 3);
+  assert.equal(deletedReads, 4, 'two stale reads, then two 404s in a row');
 
   // An object that never reads as absent is still a residual, with its last answer.
   let reads = 0;
@@ -361,7 +361,23 @@ test('a purge that reads stale for a moment is not reported as a residual (#646)
   );
   assert.equal(stuck.status, 'failed');
   assert.deepEqual(stuck.residuals.map((item) => [item.surface, item.state, item.status]), [['deleted-items', 'present', 200]]);
-  assert.equal(reads, 4, 'one live read that is already absent, three deleted-items reads');
+  assert.equal(reads, 6, 'two live reads that are absent, then attempts + 1 deleted-items reads');
+
+  // A single 404 between present reads is not enough: a lagging replica can answer one.
+  let flicker = 0;
+  const flickering = await verifyCleanup(
+    {
+      get: async (version, path) => {
+        if (path.startsWith('/groups/')) return { ok: false, status: 404 };
+        flicker += 1;
+        return flicker % 2 === 0 ? { ok: false, status: 404 } : { ok: true, status: 200 };
+      },
+    },
+    new Map([['g', 'group:keel-rehearsal-x']]),
+    { attempts: 3, delayMs: 1 },
+  );
+  assert.equal(flickering.status, 'failed');
+  assert.deepEqual(flickering.residuals.map((item) => [item.surface, item.state]), [['deleted-items', 'present']]);
 });
 
 test('an offline pass recorded as evidence never counts as a live recovery', async () => {

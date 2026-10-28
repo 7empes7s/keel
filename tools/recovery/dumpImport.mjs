@@ -386,7 +386,8 @@ async function foreignKeys(client) {
     SELECT c.conrelid::regclass::text AS table, quote_ident(c.conname) AS name, pg_get_constraintdef(c.oid) AS definition
       FROM pg_constraint c
       JOIN pg_class rel ON rel.oid = c.conrelid
-     WHERE c.contype = 'f' AND rel.relnamespace = current_schema()::regnamespace
+     WHERE c.contype = 'f' AND c.conparentid = 0 -- a partition's copy goes with its parent's key
+       AND rel.relnamespace = current_schema()::regnamespace
      ORDER BY c.conrelid, c.conname`);
   return rows;
 }

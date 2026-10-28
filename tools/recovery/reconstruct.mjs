@@ -285,8 +285,10 @@ export async function reconstructRecovery({
   try {
     plan = await scanDump(openDump);
   } catch (error) {
-    if (error instanceof DumpImportError) return refusal('import', `dump import failed: ${error.message}`);
-    return refusal('import', 'dump artifact is not gzip-readable');
+    if (typeof error?.code === 'string' && error.code.startsWith('Z_')) {
+      return refusal('import', 'dump artifact is not gzip-readable');
+    }
+    return refusal('import', `dump import failed: ${error.message}`);
   }
   try {
     target = await createTargetDatabase();

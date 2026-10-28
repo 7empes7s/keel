@@ -30,6 +30,7 @@
 import { can } from '../authz/can.mjs';
 import { webhookDestinationProblems } from './adapters/webhook.mjs';
 import { cefDestinationProblems } from './adapters/cef.mjs';
+import { SENTINEL_DESTINATION_KIND, sentinelDestinationProblems } from './adapters/sentinel.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 
 export const OUTBOX_RETRY_BASE_MS = 5 * 1000;
@@ -143,6 +144,11 @@ export async function registerDestination(client, {
   if (kind === 'cef') {
     const problems = cefDestinationProblems(config);
     if (problems.length) throw new Error(`cef destination config: ${problems.join('; ')}`);
+  }
+  // Sentinel: the sender credential reference must be in the integration namespace too.
+  if (kind === SENTINEL_DESTINATION_KIND) {
+    const problems = sentinelDestinationProblems(config);
+    if (problems.length) throw new Error(`sentinel destination config: ${problems.join('; ')}`);
   }
   await requireCapability(client, requestedBy, 'configuration');
 

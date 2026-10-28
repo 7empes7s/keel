@@ -322,8 +322,8 @@ export const TYPE_GUIDE = Object.freeze({
     'A device record is created by the device when it enrolls. It is state, not configuration.',
     'Nothing to restore. Devices enroll again on their own once enrollment settings are back.'),
   mobileApp: auto('Apps', {
-    keeps: 'Adds store apps, web links, Microsoft 365 Apps, Edge and WinGet apps again with their settings and who they are assigned to, and puts changed settings back. Win32 and line-of-business apps come back with their install commands, detection rules and other settings, unassigned.',
-    todo: 'Microsoft never returns an app\'s package (the installer file): upload it again for each recreated Win32 or line-of-business app, then assign it as the restore lists. Apps from Apple Business Manager or managed Google Play are synced again there; KEEL then puts back who they are assigned to. An uninstall assignment is never written: it removes the app and its data from devices. App categories and dependencies are set again by hand.',
+    keeps: 'Adds store apps, web links, Microsoft 365 Apps, Edge and WinGet apps again with their settings and who they are assigned to, and puts changed settings back. Win32 and line-of-business apps come back with their install commands, detection rules and other settings, unassigned. Each app is put back in its app categories.',
+    todo: 'Microsoft never returns an app\'s package (the installer file): upload it again for each recreated Win32 or line-of-business app, then assign it as the restore lists. Apps from Apple Business Manager or managed Google Play are synced again there; KEEL then puts back who they are assigned to. An uninstall assignment is never written: it removes the app and its data from devices. A category that is no longer in Intune is listed as a step: restore it first. Dependencies and supersedence are restored on their own.',
   }),
   managedAppPolicy: auto('App protection policies', {
     keeps: 'Puts the settings of iOS and Android app protection policies back, recreates them with the apps they protect, and removes an unassigned policy added since the backup.',
@@ -552,8 +552,8 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'Who a profile is assigned to is put back only when it is picked for a restore, from backups taken after assignments were read. An expired file, or one that expires before the profile in Intune now, is never uploaded: renew it with Apple and upload it in the Intune admin center, under Apps, iOS/iPadOS, App provisioning profiles. A backup taken before the profile file was read is refused; take a new backup.',
   }),
   mobileAppRelationship: auto('App dependencies and supersedence', {
-    keeps: 'Puts back which app depends on or replaces which, and how (install automatically or detect; update or replace), when both apps are in Intune.',
-    todo: 'Apps are not backed up, so add a deleted app again by hand first: a link to a missing app is not written. Setting an app to replace another uninstalls the older app on devices, so that needs the separate content approval.',
+    keeps: 'Puts back which app depends on or replaces which, and how (install automatically or detect; update or replace), when both apps are in Intune, including apps the same restore added again.',
+    todo: 'An app KEEL cannot add again (a synced app) is added by hand first: a link to a missing app is not written. Setting an app to replace another uninstalls the older app on devices, so that needs the separate content approval.',
   }),
   managedEBook: manual('Managed e-books', NOT_BUILT,
     'KEEL backs up each book\'s details but not yet who it is assigned to, and does not restore it yet.',

@@ -71,7 +71,7 @@ import { readList, useViewState } from "@/lib/use-view-state";
 
 type Step = "resolve" | "mute";
 
-const ownerRef = (alert: AlertItem): EngineRef | null => (alert.owner ? { kind: "principal", id: alert.owner.id, name: alert.owner.name, readable: true } : null);
+const ownerRef = (alert: AlertItem): EngineRef | null => (alert.owner ? { kind: "principal", id: alert.owner.id, name: alert.owner.name, readable: true, pseudonym: alert.owner.pseudonym } : null);
 // Alerts can also be ordered by when they last fired or first opened.
 const ALERT_SORTS: ListSort<AlertItem>[] = [
   { key: "fired", label: "Last fired", desc: true, compare: (a, b) => byTime(a.lastFiringAt, b.lastFiringAt) },

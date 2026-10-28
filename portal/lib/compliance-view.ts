@@ -666,7 +666,7 @@ export function orderFindings(findings: ComplianceFinding[]): ComplianceFinding[
 export function ownerPerson(finding: ComplianceFinding): EngineRef | null {
   const exception = finding.exception;
   if (!exception?.owner && !exception?.ownerRef) return null;
-  if (exception.ownerRef) return { kind: "person", id: exception.ownerRef.id, name: exception.ownerRef.name, readable: true, email: exception.owner ?? undefined } as EngineRef;
+  if (exception.ownerRef) return { kind: "person", id: exception.ownerRef.id, name: exception.ownerRef.name, readable: true, email: exception.owner ?? undefined, pseudonym: exception.ownerRef.pseudonym } as EngineRef;
   return { kind: "person", id: "", name: exception.owner ?? "", readable: true } as EngineRef;
 }
 

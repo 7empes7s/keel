@@ -1738,10 +1738,12 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   }),
   // Restore gaps, batch 13. Which app depends on or replaces which: the two
   // apps and the direction are set on create; an update changes only how
-  // (install automatically or detect; update or replace).
+  // (install automatically or detect; update or replace). Batch 19: the two
+  // apps are named by the ids they have in the target, so a link between apps
+  // this run recreated (or that exist under the same name) points at them.
   mobileAppRelationship: defineRecord({
     resourceType: 'mobileAppRelationship', version: 'beta', collection: '/deviceAppManagement/mobileAppRelationships',
-    odataType: 'required', operations: ['create', 'update'],
+    odataType: 'required', operations: ['create', 'update'], remapsReferences: true,
     writable: ['dependencyType', 'supersedenceType'], createOnly: ['sourceId', 'targetId', 'targetType'],
     refusal: appRelationshipRefusal, preflight: appRelationshipPreflight, permission: 'DeviceManagementApps.ReadWrite.All',
   }),
@@ -1753,7 +1755,7 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   mobileApp: defineRecord({
     resourceType: 'mobileApp', version: 'v1.0', collection: '/deviceAppManagement/mobileApps', odataType: 'required',
     operations: ['create', 'update'], excluded: MOBILE_APP_SERVER_FIELDS, createOnly: ['packageIdentifier', 'fileName'],
-    transform: mobileAppBody, refusal: mobileAppRefusal, afterWrite: appAssignmentsAfterWrite,
+    transform: mobileAppBody, refusal: mobileAppRefusal, afterWrite: appAfterWrite,
     assignmentType: '#microsoft.graph.mobileAppAssignment', assignmentBodyKey: 'mobileAppAssignments', assignmentExtras: Object.freeze(['intent', 'settings']),
     permission: 'DeviceManagementApps.ReadWrite.All',
   }),
@@ -1822,9 +1824,10 @@ export function onPremisesAccessRefusal(resource, verb) {
 }
 
 // Restore gaps batch 13: a dependency or supersedence between two Intune
-// apps. Apps are not backed up (packages are content), so both must already be
-// in Intune with the ids the backup names. Its id is the backup's, so a re-run
-// after a recreate looks for the link between the same two apps first.
+// apps. Both must be in Intune: with the ids the backup names, or (batch 19)
+// with the ids the record writer remapped them to, when this run recreated an
+// app or the target has it under the same name. A re-run after a recreate
+// looks for the link between the same two apps first.
 const RELATIONSHIP_KINDS = new Set(['mobileAppDependency', 'mobileAppSupersedence']);
 const appPath = (id) => `/deviceAppManagement/mobileApps/${encodeURIComponent(id)}`;
 
@@ -1974,6 +1977,109 @@ async function appAssignmentsAfterWrite(io, step) {
     return { changes: held.changes, ...(planned ? {} : { completion: [held.step] }) };
   }
   return assignmentsAfterWrite(io, step);
+}
+
+// ------------------------------------------- restore gaps, batch 19: app categories
+
+const APP_CATEGORIES = '/deviceAppManagement/mobileAppCategories';
+const APP_CATEGORY_URL = 'https://graph.microsoft.com/beta/deviceAppManagement/mobileAppCategories';
+const sameName = (left, right) => lower(String(left ?? '').trim()) === lower(String(right ?? '').trim());
+const idSet = (list) => [...new Set(list.map((item) => lower(item?.id)))].sort();
+
+/**
+ * The category in the target that a backed-up one is: the category this run
+ * recreated from it, the same category (same id), or the only one with its
+ * name (a built-in category, or one recreated by hand). null when none is.
+ */
+function targetCategory(category, known, runProvenance) {
+  const byId = (id) => (typeof id === 'string' && id.length > 0 ? known.find((item) => lower(item?.id) === lower(id)) ?? null : null);
+  const recreated = typeof runProvenance?.get === 'function' ? runProvenance.get(`mobileAppCategory:${category?.id}`) : null;
+  const named = known.filter((item) => sameName(item?.displayName, category?.displayName));
+  return byId(recreated) ?? byId(category?.id) ?? (named.length === 1 ? named[0] : null);
+}
+
+const readAppCategories = async (io, targetId) => {
+  const read = await io.retryOperation(() => io.writer.read('beta', `${appPath(targetId)}/categories?$select=id,displayName`));
+  if (read?.ok !== true) return { error: outcomeDetail(read) };
+  if (read.body?.['@odata.nextLink']) return { error: 'the list has more than one page' };
+  return { categories: read.body?.value ?? [] };
+};
+
+/**
+ * Restore gaps batch 19: puts an app back in the categories the backup lists
+ * (each matched in the target by targetCategory), and takes it out of the
+ * others, through the app's categories/$ref. A category that is not in the
+ * target is a step for a person, and a current category with its name is
+ * kept. No `categories` (a backup taken before they were read, or an app in
+ * no category, whose empty list the backup leaves out) changes nothing.
+ * Lists of more than one page are not guessed from: the app is left as it is.
+ */
+async function appCategoriesAfterWrite(io, { payload, targetId, ctx }) {
+  const want = payload?.categories;
+  if (!Array.isArray(want)) return null;
+  const listed = await io.retryOperation(() => io.writer.read('beta', `${APP_CATEGORIES}?$select=id,displayName`));
+  if (listed?.ok !== true || listed.body?.['@odata.nextLink']) {
+    return { error: `the app categories could not be read (${listed?.ok === true ? 'the list has more than one page' : outcomeDetail(listed)}), so the app's categories were not changed` };
+  }
+  const known = listed.body?.value ?? [];
+  const wanted = new Map();
+  const missing = [];
+  for (const category of want) {
+    const found = targetCategory(category, known, ctx?.referenceContext?.runProvenance);
+    if (found) wanted.set(lower(found.id), found);
+    else missing.push(category?.displayName ?? category?.id ?? 'a category with no name');
+  }
+  // A category the backup names but that could not be told apart (two with
+  // its name) is never taken away from the app.
+  const unsure = (item) => missing.some((name) => sameName(name, item?.displayName));
+  const current = await readAppCategories(io, targetId);
+  if (current.error) return { error: `the app's categories could not be read (${current.error}), so they were not changed` };
+  const have = new Set(current.categories.map((item) => lower(item?.id)));
+  const kept = current.categories.filter((item) => !wanted.has(lower(item?.id)) && unsure(item));
+  const removed = current.categories.filter((item) => !wanted.has(lower(item?.id)) && !unsure(item));
+  const added = [...wanted.values()].filter((item) => !have.has(lower(item.id)));
+  const base = appPath(targetId);
+  for (const item of removed) {
+    const result = await io.retryOperation(() => io.writer.write('beta', `${base}/categories/${encodeURIComponent(item.id)}/$ref`, { method: 'DELETE' }));
+    if (!result?.ok) return { error: `taking the app out of the category ${item.displayName ?? item.id} failed: ${outcomeDetail(result)}` };
+  }
+  for (const item of added) {
+    const result = await io.retryOperation(() => io.writer.write('beta', `${base}/categories/$ref`, {
+      method: 'POST', body: { '@odata.id': `${APP_CATEGORY_URL}/${encodeURIComponent(item.id)}` },
+    }));
+    if (!result?.ok) return { error: `adding the app to the category ${item.displayName ?? item.id} failed: ${outcomeDetail(result)}` };
+  }
+  if (removed.length > 0 || added.length > 0) {
+    const check = await readAppCategories(io, targetId);
+    if (check.error || !sameValue(idSet(check.categories), idSet([...wanted.values(), ...kept]))) {
+      return { error: 'post-state: the app\'s categories did not read back as written' };
+    }
+  }
+  const changes = { categories: removed.length > 0 || added.length > 0 ? { added: added.length, removed: removed.length } : 'already as in the backup' };
+  if (missing.length === 0) return { changes };
+  return {
+    changes,
+    completion: [Object.freeze({
+      kind: 'integration', requirement: 'categories',
+      description: `Categories not all restored: the app category ${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not in Intune. Restore or add ${missing.length === 1 ? 'it' : 'them'} first, then add the app to ${missing.length === 1 ? 'it' : 'them'} in ${APP_PORTAL}, the app, Properties, App information, Category`,
+    })],
+  };
+}
+
+/** An app's assignments, then its categories; the steps of both are kept. */
+async function appAfterWrite(io, step) {
+  const assigned = await appAssignmentsAfterWrite(io, step);
+  if (assigned?.error) return assigned;
+  const placed = await appCategoriesAfterWrite(io, assigned?.live ? { ...step, live: assigned.live } : step);
+  if (placed?.error) return placed;
+  if (!assigned && !placed) return null;
+  const changes = { ...(assigned?.changes ?? {}), ...(placed?.changes ?? {}) };
+  const completion = [...(assigned?.completion ?? []), ...(placed?.completion ?? [])];
+  return {
+    ...(Object.keys(changes).length > 0 ? { changes } : {}),
+    ...(assigned?.live ? { live: assigned.live } : {}),
+    ...(completion.length > 0 ? { completion } : {}),
+  };
 }
 
 /**

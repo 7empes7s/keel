@@ -246,7 +246,7 @@ export const TYPE_DECISIONS = Object.freeze({
   microsoftTunnelConfiguration: automated('intune-mstunnel-microsofttunnelconfiguration', 'restore gaps batch 8: create and update of the network, DNS, routes and port through Graph beta; the sites and servers that use it are not written', { view: 'graph-rest-beta' }),
   microsoftTunnelHealthThreshold: automated('intune-mstunnel-microsofttunnelhealththreshold', 'restore gaps batch 17: update in place through Graph beta of the healthy and unhealthy limits; the defaults are Microsoft\'s', { view: 'graph-rest-beta' }),
   iosLobAppProvisioningConfiguration: automated('intune-apps-ioslobappprovisioningconfiguration', 'restore gaps batch 12: create and update of the name, description, scope tags and profile file through Graph beta; a backup without the file, an expired file, or one older than the live profile is never written; batch 16: who it is assigned to is assigned again through /assign', { view: 'graph-rest-beta' }),
-  mobileAppRelationship: automated('intune-apps-mobileapprelationship', 'restore gaps batch 13: create and update of a dependency or supersedence between two apps through Graph beta; both apps must already be in Intune', { view: 'graph-rest-beta' }),
+  mobileAppRelationship: automated('intune-apps-mobileapprelationship', 'restore gaps batch 13: create and update of a dependency or supersedence between two apps through Graph beta; both apps must be in Intune (batch 19: apps recreated in the same run are linked by their new ids)', { view: 'graph-rest-beta' }),
   managedEBook: manual('no writer yet; beta only, and books come from the store'),
   managedEBookCategory: automated('intune-books-managedebookcategory', 'restore gaps batch 8: create and update of the name through Graph beta; which books are in a category is not written', { view: 'graph-rest-beta' }),
   cartToClassAssociation: automated('intune-education-carttoclassassociation', 'restore gaps batch 10: create and update of the name, description, devices and classes through Graph beta; the devices and classes must still exist', { view: 'graph-rest-beta' }),
@@ -334,6 +334,9 @@ recordRemappingProof('servicePrincipal', 'create', 'engine/roadmap/fidelity-expa
 // Roadmap task-151: an eligibility whose group or custom role was recreated in
 // the same run is requested for the NEW principal and role ids.
 recordRemappingProof('roleEligibilitySchedule', 'create', 'engine/roadmap/admin-role-fidelity.test.mjs');
+// Restore gaps batch 19: a dependency or supersedence between apps recreated
+// in the same run is created between the NEW app ids.
+recordRemappingProof('mobileAppRelationship', 'create', 'engine/restore/intuneAppLinks.test.mjs');
 
 function sourceFor(type, decision) {
   const entry = CATALOG.find((candidate) => candidate.type === type);
@@ -1001,7 +1004,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'beta-only, replaced by the settings catalog; intent settings are not backed up'),
   managedDevice: byHand('device-management', null, 'none', 'device state, enrolled by the device, not configuration'),
   mobileApp: subset('device-management', 'POST /deviceAppManagement/mobileApps; PATCH .../{id}; POST .../{id}/assign', 'DeviceManagementApps.ReadWrite.All',
-    'create and update are fixture-tested; a Win32 or line-of-business app comes back without its package and is assigned only once it is uploaded; synced apps are never created'),
+    'create and update are fixture-tested; a Win32 or line-of-business app comes back without its package and is assigned only once it is uploaded; synced apps are never created; categories are written through categories/$ref (beta)'),
   managedAppPolicy: subset('device-management', 'POST /deviceAppManagement/{ios|android}ManagedAppProtections; PATCH .../{id}; POST .../{id}/targetApps; POST .../{id}/assign; DELETE .../{id}', 'DeviceManagementApps.ReadWrite.All',
     'create, update and delete of iOS and Android protection are fixture-tested; the protected apps are read per policy (restore gaps batch 13)'),
   targetedManagedAppConfiguration: subset('device-management', 'POST /deviceAppManagement/targetedManagedAppConfigurations; PATCH .../{id}; POST .../{id}/targetApps; DELETE .../{id}', 'DeviceManagementApps.ReadWrite.All',
@@ -1135,7 +1138,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
   iosLobAppProvisioningConfiguration: subset('device-management', 'POST /deviceAppManagement/iosLobAppProvisioningConfigurations (beta); PATCH .../{id} (beta); POST .../{id}/assign (beta)', 'DeviceManagementApps.ReadWrite.All',
     'create and update with the profile file are fixture-tested; expired or older files are never written; assignments are written through /assign'),
   mobileAppRelationship: subset('device-management', 'POST /deviceAppManagement/mobileAppRelationships (beta); PATCH .../{id} (beta)', 'DeviceManagementApps.ReadWrite.All',
-    'create and update are fixture-tested; both apps must already exist; a link already set between the same apps is skipped'),
+    'create and update are fixture-tested; both apps must exist, and a link between apps recreated in the same run is remapped to their new ids; a link already set between the same apps is skipped'),
   managedEBook: byHand('device-management', 'POST /deviceAppManagement/managedEBooks (beta)', 'DeviceManagementApps.ReadWrite.All',
     'backed up; no writer yet'),
   managedEBookCategory: subset('device-management', 'POST /deviceAppManagement/managedEBookCategories (beta); PATCH .../{id} (beta)', 'DeviceManagementApps.ReadWrite.All',

@@ -1123,6 +1123,53 @@ const hideActors = <T extends { attribution?: DriftRecord["attribution"] }>(item
   ? { ...item, attribution: { ...item.attribution, actors: item.attribution.actors.map((actor) => displayActor(actor, HARNESS_NAMER)) } }
   : item);
 
+// "Hide people's names" on the pages that read people themselves (alerts, emergency
+// changes, rules, schedules, notifications, compliance, setup): the fixtures as the
+// server sends them then, each person by code name and without an email. Functions,
+// since some fixtures are declared further down.
+const codeName = (key: string) => HARNESS_NAMER(key.trim().toLowerCase());
+const hiddenAlerts = (): AlertItem[] => INBOX_ALERTS.map((alert) => ({
+  ...alert,
+  owner: alert.owner ? { ...alert.owner, name: codeName(alert.owner.name), pseudonym: true } : null,
+  acknowledgedByName: alert.acknowledgedByName ? codeName(alert.acknowledgedByName) : null,
+  history: alert.history.map((entry) => ({ ...entry, actorName: entry.actorName ? codeName(entry.actorName) : null })),
+}));
+const hiddenIntents = (): ChangeIntentsData => ({
+  intents: INTENTS.map((intent) => ({ ...intent, owner: hidePerson(intent.owner), approver: hidePerson(intent.approver), revokedBy: intent.revokedBy ? hidePerson(intent.revokedBy) : null })),
+  changes: INTENT_CHANGES,
+  people: [PERSON_AMARA, PERSON_ONCALL].map((person) => ({ id: person.id, name: String(hidePerson(person).name) })),
+  generatedAt: now,
+});
+const hiddenRunAs = (policy: Policy): Policy => ({
+  ...policy,
+  created_by: policy.created_by.includes("@") ? codeName(policy.created_by) : policy.created_by,
+  ...(policy.run_as_principal ? { run_as_principal: hidePerson(policy.run_as_principal) } : {}),
+});
+const hiddenPreview = (): ActivationPreview => ({ ...ACTIVATION_PREVIEW, runAs: { ...ACTIVATION_PREVIEW.runAs, name: codeName(ACTIVATION_PREVIEW.runAs.email ?? ""), email: null } });
+const hiddenForecasts = () => SCHEDULE_FORECASTS.map((forecast) => (forecast.acknowledgement?.acknowledgedByName
+  ? { ...forecast, acknowledgement: { ...forecast.acknowledgement, acknowledgedByName: codeName(forecast.acknowledgement.acknowledgedByName) } }
+  : forecast));
+const hiddenEscalations = () => ESCALATION_RULES.map((rule) => ({
+  ...rule, owner_name: String(hidePerson({ id: rule.owner_principal_id, email: rule.owner_email, name: rule.owner_name, readable: true }).name), owner_email: null,
+}));
+const hiddenCompliance = (): ComplianceData => ({
+  ...COMPLIANCE,
+  findings: COMPLIANCE.findings.map((finding) => (finding.exception ? {
+    ...finding,
+    exception: {
+      ...finding.exception,
+      owner: null,
+      ownerRef: finding.exception.owner ? { kind: "person", id: finding.exception.ownerRef?.id ?? "", name: codeName(finding.exception.owner), href: null, pseudonym: true } : null,
+      grantedByRef: finding.exception.grantedByRef ? { ...finding.exception.grantedByRef, name: codeName(finding.exception.grantedByRef.name), pseudonym: true } : null,
+    },
+  } : finding)),
+});
+const hiddenSetup = (): SetupState => ({
+  ...SETUP,
+  scopes: SETUP.scopes.map((scope) => (scope.run?.approvedByName ? { ...scope, run: { ...scope.run, approvedByName: codeName(scope.run.approvedByName) } } : scope)),
+});
+const ANONYMOUS_NOTE = <AnonymityNote setting={ANONYMITY_ON} />;
+
 const header = (section: NavSection, title: string, description: string, marker?: string, status?: { tone: "urgent" | "soon" | "low" | "fine"; label: string }, parents?: { href: string; label: string }[]) =>
   <PageHeader description={description} generatedAt={now} marker={marker} parents={parents} section={section} status={status} title={title} />;
 
@@ -2276,6 +2323,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
           </div>
         </div></>;
     }
+    case "/schedules/anonymous": {
+      const forecasts = hiddenForecasts();
+      return <>{header("Backup", "Schedules", "When Keel backs up and tidies up, and how hard each backup works Microsoft.", undefined, schedulesStatus(scheduleCounts(SCHEDULES, forecasts)))}
+        {ANONYMOUS_NOTE}
+        <SchedulesPage canEdit canRun deferrals={SCHEDULE_DEFERRALS} forecasts={forecasts} now={now} schedules={SCHEDULES} timeZone="Europe/Paris" /></>;
+    }
     case "/schedules":
     case "/schedules/viewer": {
       const viewer = path === "/schedules/viewer";
@@ -2341,6 +2394,9 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       ]} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/content-effects": return <>{header("Inbox", "Changes to kept or shared content", "A restore that shortens how long content is kept, releases a hold, widens sharing or deletes content needs its own approval.", undefined, { tone: "soon", label: "Waiting for you" }, [{ href: "/approvals", label: "Approvals" }])}
       <ContentEffectsReviewHarness /></>;
+    case "/notifications/anonymous": return <>{header("Settings", "Notifications", "Where Keel sends alerts, who gets which alerts, and what was sent.", undefined, { tone: "urgent", label: "Slack is failing" })}
+      {ANONYMOUS_NOTE}
+      <NotificationsPage canConfiguration channels={CHANNELS} deliveries={DELIVERIES} escalationRules={hiddenEscalations()} now={now} subscriptions={SUBSCRIPTIONS} /></>;
     case "/notifications": return <>{header("Settings", "Notifications", "Where Keel sends alerts, who gets which alerts, and what was sent.", undefined, { tone: "urgent", label: "Slack is failing" })}
       <NotificationsPage canConfiguration channels={CHANNELS} deliveries={DELIVERIES} escalationRules={ESCALATION_RULES} now={now} people={PEOPLE_CHOICES} subscriptions={SUBSCRIPTIONS} /></>;
     case "/notifications/viewer": return <>{header("Settings", "Notifications", "Where Keel sends alerts, who gets which alerts, and what was sent.")}
@@ -2372,6 +2428,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <BaselinesStyles />
         <CreateWizard completedSnapshotsExist disabled={false} snapshots={CAPTURE_SOURCES} today={toDay(new Date(now))} />
       </div></>;
+    case "/benchmarks/anonymous": {
+      const data = hiddenCompliance();
+      return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(data.findings))} title="Compliance" />
+      {ANONYMOUS_NOTE}
+      <CompliancePage canCheck canConfigure canRestore data={data} now={now} /></>;
+    }
     case "/benchmarks": case "/benchmarks/viewer": {
       // The viewer variant holds read only: no exception controls and no Check now.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(COMPLIANCE.findings))} title="Compliance" />
@@ -2414,11 +2476,23 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <PeoplePage canRoles={rolesToo} canUsers now={now} people={PEOPLE_PAGE} />
       </>;
     }
+    case "/alerts/anonymous": {
+      const alerts = hiddenAlerts();
+      return <>{header("Inbox", "Alerts", "Changes that need someone, who owns each one, and when it is due.", undefined, alertsStatus(alertCounts(alerts, now)))}
+        {ANONYMOUS_NOTE}
+        <AlertsPage alerts={alerts} canMute canRespond now={now} /></>;
+    }
     case "/alerts":
     case "/alerts/viewer": {
       const viewer = path === "/alerts/viewer";
       return <>{header("Inbox", "Alerts", "Changes that need someone, who owns each one, and when it is due.", undefined, alertsStatus(alertCounts(INBOX_ALERTS, now)))}
         <AlertsPage alerts={INBOX_ALERTS} canMute={!viewer} canRespond={!viewer} now={now} /></>;
+    }
+    case "/setup/anonymous": {
+      const state = hiddenSetup();
+      return <><PageHeader actions={<CheckAgain />} description="Connect Keel to your Microsoft tenant: what is in place, what waits on you, and when the first backup can run." generatedAt={now} section="Settings" status={setupPageStatus(state)} title="Setup" />
+        {ANONYMOUS_NOTE}
+        <SetupBody canBackup canStart services={serviceStatuses([], now)} state={state} /></>;
     }
     case "/setup":
     case "/setup/checked": {
@@ -2426,6 +2500,14 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <><PageHeader actions={<CheckAgain />} description="Connect Keel to your Microsoft tenant: what is in place, what waits on you, and when the first backup can run." generatedAt={now} section="Settings" status={setupPageStatus(state)} title="Setup" />
         <SetupBody canBackup canStart services={serviceStatuses(path === "/setup" ? [] : COVERAGE.types, now)} state={state} /></>;
     }
+    case "/emergency-changes/anonymous": {
+      const data = hiddenIntents();
+      const verdict = changeIntentsVerdict(data.intents, now);
+      const alerts = intentAlerts(data);
+      return <>{header("Automation center", "Emergency changes", "Changes made outside the baseline on purpose, approved for a limited time.", undefined, intentsStatus(data.intents))}
+      <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ec-attention" } : null} text={verdict.text} tone={verdict.tone} />
+      {ANONYMOUS_NOTE}
+      <div data-layer="explanation"><EmergencyChangesView data={data} /></div></>; }
     case "/emergency-changes": case "/emergency-changes/none": {
       const data: ChangeIntentsData = path === "/emergency-changes"
         ? { intents: INTENTS, changes: INTENT_CHANGES, people: [{ id: PERSON_AMARA.id, name: PERSON_AMARA.name }, { id: PERSON_ONCALL.id, name: PERSON_ONCALL.name }], generatedAt: now }
@@ -2435,6 +2517,22 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <>{header("Automation center", "Emergency changes", "Changes made outside the baseline on purpose, approved for a limited time.", undefined, intentsStatus(data.intents))}
       <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ec-attention" } : null} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><EmergencyChangesView data={data} /></div></>; }
+    case "/policies/p2/anonymous": {
+      const policy = hiddenRunAs(OFF_POLICY);
+      const state = RULE_STATES[ruleState(policy)];
+      return <>{header("Automation center", policy.name, `${RULE_KINDS[ruleKind(policy)].label}: what it watches, who it acts as, and what it did.`, undefined, { tone: state.tone === "neutral" ? "low" : state.tone, label: state.label }, [{ href: "/policies", label: "Policies" }])}
+        {ANONYMOUS_NOTE}
+        <PolicyPage actions={[]} canEdit halted={false} initialPreview={hiddenPreview()} now={now} policy={policy} />
+      </>;
+    }
+    case "/policies/anonymous": {
+      const policies = POLICIES.map(hiddenRunAs);
+      return <>
+        <PageHeader actions={<a className="btn" href="#/policies?new=1"><Icon name="plus" />New rule</a>} description="What Keel does on its own when something changes, and who it acts as." generatedAt={now} section="Automation center" status={rulesStatus(ruleCounts(policies), false)} title="Automatic rules" />
+        {ANONYMOUS_NOTE}
+        <PoliciesPage canEdit halted={false} now={now} policies={policies} />
+      </>;
+    }
     case "/policies/p1": case "/policies/p2": case "/policies/p3": {
       const policy = path === "/policies/p1" ? POLICY : path === "/policies/p2" ? OFF_POLICY : PAUSED_POLICY;
       const state = RULE_STATES[ruleState(policy)];

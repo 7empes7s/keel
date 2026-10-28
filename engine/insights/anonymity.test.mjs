@@ -42,6 +42,8 @@ test('displayPerson code-names people only, drops their email and keeps their id
   const gone = { kind: 'person', id: amara.id, name: null, email: null, readable: false, system: false };
   assert.equal(displayPerson(gone, namer), gone);
   assert.equal(displayPerson(amara, null), amara);
+  // Naming twice keeps the first code name: the email is gone by then.
+  assert.equal(displayPerson(shown, namer), shown);
   assert.equal(anonymityNamer({ enabled: false, salt: 'salt-a' }), null);
   // Audit-log actors: users are code-named by their Microsoft id, apps keep their names.
   const user = { kind: 'user', id: '1A2B0000-0000-4000-8000-000000000001', name: 'Lee Chen' };

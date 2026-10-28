@@ -35,6 +35,7 @@ import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { DRILL_LIMITS, DRILL_MANIFEST_KIND, DRILL_MANIFEST_VERSION } from '../rehearsal/qualification.mjs';
 import { DISPOSABLE_PREFIX } from '../rehearsal/roundTrip.mjs';
 import { RECOVERY_DRILL_EVIDENCE_KIND, classifyDrillRecord } from '../../engine/coverage/recoveryReadiness.mjs';
+import { pseudonymizer, unpseudonymizedIds } from '../qualification/pseudonymize.mjs';
 import { execFileSync } from 'node:child_process';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -651,7 +652,10 @@ export function captureDrillLiveAcceptance({
     throw new Error('the reconstruction did not recover read-only with a verified evidence chain');
   }
   const head = reconstruction.recovered.evidence;
-  const recon = {
+  // The repository is public: object ids (the drill's created group) are pseudonymized in
+  // the record and the artifact alike, so the signed record still equals its capture.
+  const { walk } = pseudonymizer(tenantRef);
+  const recon = walk({
     task: 'task-68',
     ok: true,
     stage: reconstruction.stage,
@@ -663,13 +667,13 @@ export function captureDrillLiveAcceptance({
     recoveryComplete: reconstruction.recoveryComplete ?? false,
     incomplete: reconstruction.incomplete ?? [],
     completedAt: reconstruction.completedAt,
-  };
+  });
+  const safeDrill = walk(drill);
   const row = {
     seq: Number(drillEvidence.seq), record_hash: drillEvidence.record_hash, kind: drillEvidence.kind,
-    tenant_ref: tenantRef, occurred_at: new Date(drillEvidence.occurred_at).toISOString(), subject: drill,
+    tenant_ref: tenantRef, occurred_at: new Date(drillEvidence.occurred_at).toISOString(), subject: safeDrill,
   };
   const bytes = Buffer.from(`${JSON.stringify({ drillEvidence: row, reconstruction: recon }, null, 2)}\n`);
-  if (artifactPath) writeFileSync(artifactPath, bytes);
   const unsigned = {
     contractVersion: QUALIFICATION_CONTRACT_VERSION,
     gate: DRILL_LIVE_GATE,
@@ -692,14 +696,19 @@ export function captureDrillLiveAcceptance({
           restoreSetupRunId: onboarding?.restoreSetupRunId ?? null,
         },
       },
-      testObject: { resourceType: 'group', naturalKey: drill.objects?.[0] ?? null },
-      drillRecord: drill,
+      testObject: { resourceType: 'group', naturalKey: safeDrill.objects?.[0] ?? null },
+      drillRecord: safeDrill,
       reconstruction: recon,
     },
     proof: {
       artifact: { path: artifactRef ?? artifactPath, sha256: createHash('sha256').update(bytes).digest('hex') },
     },
   };
+  const leaked = unpseudonymizedIds(`${bytes.toString('utf8')}\n${JSON.stringify(unsigned)}`);
+  if (leaked.length > 0) {
+    throw new Error(`refused: the drill capture still holds ${leaked.length} id(s) that are not pseudonyms; nothing was written`);
+  }
+  if (artifactPath) writeFileSync(artifactPath, bytes);
   return { evidence: signEvidence(unsigned, runner.key, runner.identity), artifact: bytes };
 }
 

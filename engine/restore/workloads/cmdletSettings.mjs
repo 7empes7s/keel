@@ -634,6 +634,38 @@ function createFields(write, observation, manual) {
 }
 
 /**
+ * Turns each `--target` into the resource key it names. Most objects (rules,
+ * connectors, policies) are keyed by Guid, so a target written with the object's name
+ * (`transport-rule:KEEL-RT-x`) would match nothing and quietly plan no change. When a
+ * target is not a key, it is matched case-insensitively on Name against the source and
+ * the live read, within the same kind of object (the part before the colon): one Guid
+ * found replaces it; two or more refuse the plan, naming each Guid key. A target that
+ * matches nothing is kept, so the plan lists it as found nowhere.
+ */
+export function resolveNamedTargets(targets, observations = [], liveResources = []) {
+  const items = [...observations, ...liveResources];
+  const known = new Set(items.map((item) => item.resourceKey));
+  const resolved = [];
+  for (const raw of targets ?? []) {
+    const target = String(raw).toLowerCase();
+    const colon = target.indexOf(':');
+    const name = target.slice(colon + 1);
+    if (known.has(target) || colon <= 0 || !name) { resolved.push(target); continue; }
+    const prefix = target.slice(0, colon + 1);
+    const matches = [...new Set(items
+      .filter((item) => String(item.resourceKey).startsWith(prefix)
+        && GUID_RE.test(String(item.resourceKey).slice(prefix.length))
+        && String(item.fields?.Name ?? '').toLowerCase() === name)
+      .map((item) => item.resourceKey))].sort();
+    if (matches.length > 1) {
+      throw new Error(`${raw} names ${matches.length} objects; these are keyed by Guid, so name one of them: ${matches.map((key) => `--target ${key}`).join(', ')}`);
+    }
+    resolved.push(matches[0] ?? target);
+  }
+  return [...new Set(resolved)];
+}
+
+/**
  * Builds the frozen plan. `source` is a recorded collection of `workload`
  * (loadWorkloadSource); `live` is the workload's read run now. `targets` names
  * resource keys to restore; empty means every object of a written family in the source.
@@ -652,7 +684,7 @@ export function planWorkloadSettingsRestore({
   const manualOnly = MANUAL_FAMILIES[workload] ?? {};
   if (Object.keys(families).length === 0) throw new Error(`KEEL declares no write for ${workload}`);
   const observations = source.observations ?? [];
-  const named = [...new Set((targets ?? []).map((key) => String(key).toLowerCase()))];
+  const named = resolveNamedTargets(targets, observations, live?.resources ?? []);
   const keys = named.length
     ? named
     : [...new Set([

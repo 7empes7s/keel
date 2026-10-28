@@ -547,7 +547,7 @@ export async function getOwnCheckChoices(): Promise<OwnCheckChoices> {
 
 /** An exception's owner by name when it is someone in Keel (the owner is stored as
  * typed, usually an email), and who granted it. Never a bare id or address. */
-async function withExceptionPeople(client: KeelClient, findings: ComplianceFinding[]): Promise<ComplianceFinding[]> {
+export async function withExceptionPeople(client: KeelClient, findings: ComplianceFinding[]): Promise<ComplianceFinding[]> {
   const exceptions = findings.map((finding) => finding.exception).filter((exception) => exception !== null);
   if (exceptions.length === 0) return findings;
   const owners = [...new Set(exceptions.map((exception) => exception.owner?.trim().toLowerCase()).filter((owner): owner is string => Boolean(owner)))];
@@ -560,14 +560,24 @@ async function withExceptionPeople(client: KeelClient, findings: ComplianceFindi
     for (const row of rows) byEmail.set(String(row.email), { kind: "person", id: String(row.id), name: String(row.display_name ?? row.email), href: "/principals" });
   }
   const granters = await principalRefs(client, exceptions.map((exception) => exception.grantedBy).filter((id) => typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)));
-  return findings.map((finding) => (finding.exception ? {
-    ...finding,
-    exception: {
-      ...finding.exception,
-      ownerRef: byEmail.get(finding.exception.owner?.trim().toLowerCase() ?? "") ?? null,
-      grantedByRef: finding.exception.grantedBy ? granters.get(finding.exception.grantedBy) ?? null : null,
-    },
-  } : finding));
+  // "Hide people's names": the owner by code name (a Keel user keeps theirs; a typed
+  // name or mailbox gets one of its own), and the typed value is not sent at all.
+  const namer = owners.length ? await readNamer(client) : null;
+  return findings.map((finding) => {
+    if (!finding.exception) return finding;
+    const typed = finding.exception.owner?.trim().toLowerCase() ?? "";
+    const known = byEmail.get(typed) ?? null;
+    const hidden = namer && typed;
+    return {
+      ...finding,
+      exception: {
+        ...finding.exception,
+        ...(hidden ? { owner: null } : {}),
+        ownerRef: hidden ? { kind: "person", id: known?.id ?? "", name: namer(typed), href: known ? "/principals" : null, pseudonym: true } : known,
+        grantedByRef: finding.exception.grantedBy ? granters.get(finding.exception.grantedBy) ?? null : null,
+      },
+    };
+  });
 }
 
 async function activeDriftFor(
@@ -1148,8 +1158,8 @@ export async function principalRefs(client: KeelClient, ids: (string | null | un
   const namer = await readNamer(client);
   for (const row of rows) {
     const id = String(row.id);
-    const name = namer ? displayPerson({ kind: "person", id, name: row.display_name ?? row.email, email: row.email ?? null, readable: true, system: row.system_kind != null }, namer).name : row.display_name ?? row.email;
-    refs.set(id, { kind: "person", id, name: String(name), href: "/principals" });
+    const shown = namer ? displayPerson({ kind: "person", id, name: row.display_name ?? row.email, email: row.email ?? null, readable: true, system: row.system_kind != null }, namer) : null;
+    refs.set(id, { kind: "person", id, name: String(shown ? shown.name : row.display_name ?? row.email), href: "/principals", ...(shown?.pseudonym ? { pseudonym: true } : {}) });
   }
   for (const id of wanted) {
     if (!refs.has(id)) refs.set(id, { kind: "person", id, name: `Account ${id.slice(0, 8)} (no longer readable)`, href: null });

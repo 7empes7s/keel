@@ -37,19 +37,26 @@ test("Excel workbooks write text as text, never as a formula", () => {
 
 // Every CSV export must build its cells through lib/csv (or engine/reports/csv.mjs),
 // so a new export can't bring back an unneutralised cell writer.
+// A doubled quote mark ("" for ") written by replace, replaceAll or split/join, in any quote style.
+const DOUBLED_QUOTE = /(?:replaceAll\(\s*|replace\(\s*\/"\/g\s*,\s*|split\(\s*['"`]\\?"['"`]\s*\)\s*\.join\(\s*)(?:['"`]\\?"['"`]\s*,\s*)?['"`]\\?"\\?"['"`]\s*\)/;
+
 test("no CSV export writes its own cells", () => {
+  for (const sample of [`replaceAll('"', '""')`, "replaceAll(`\"`, `\"\"`)", `replace(/"/g, '""')`, `split('"').join('""')`]) assert.match(sample, DOUBLED_QUOTE, sample);
   const root = join(__dirname, "..", "..");
-  const dirs = ["portal/app", "portal/components", "portal/lib", "engine/reports", "engine/export"];
+  const dirs = ["portal/app", "portal/components", "portal/lib", "engine", "cli", "tools"];
+  // engine/test quotes SQL identifiers, not CSV cells.
+  const skip = new Set(["node_modules", ".next", "engine/test"]);
   const allowed = new Set(["engine/reports/csv.mjs"]);
   const offenders: string[] = [];
   const walk = (dir: string) => {
     for (const name of readdirSync(dir)) {
       const path = join(dir, name);
+      if (skip.has(name) || skip.has(relative(root, path))) continue;
       if (statSync(path).isDirectory()) { walk(path); continue; }
       if (!/\.(ts|tsx|mjs)$/.test(name) || /\.test\./.test(name)) continue;
       const rel = relative(root, path);
       if (allowed.has(rel)) continue;
-      if (/replaceAll\(\s*['"]\\?"['"]\s*,\s*['"]\\?"\\?"['"]\s*\)|replace\(\s*\/"\/g\s*,\s*['"]\\?"\\?"['"]\s*\)/.test(readFileSync(path, "utf8"))) offenders.push(rel);
+      if (DOUBLED_QUOTE.test(readFileSync(path, "utf8"))) offenders.push(rel);
     }
   };
   for (const dir of dirs) { try { walk(join(root, dir)); } catch { /* folder not present */ } }

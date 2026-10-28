@@ -9900,6 +9900,11 @@ item that needs it stays untouched.
 - Needs: Q218 done; Marouane's admin consent for the KEEL Restorer (its SP holds the 6 Q218 permissions as appRoleAssignments; if any
   is missing, set `blocked: waiting on consent`, name them, and stop); /opt/keel-live at the PR #673 merge or later
   (`grep -q adminCenterLooseningRefusal /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
+- **HOLD (2026-10-28 23:20 UTC, after vps-deployer's comment on #673):** do **not** run the steps for the five tenant-wide
+  singletons (`formsSettings`, `microsoft365AppsInstallationOptions`, `appsAndServicesSettings`, `adminReportSettings`,
+  `pronounsSettings`): no drift, no restore, no capture for them, until Marouane approves it explicitly and a fixture/tenant-wide
+  guard lands (separate thread). Run only the `KEEL-RT-community` part (steps 0 to 6 for `engageCommunity` alone; select only that
+  kind in the restore). Report the five as `held`.
 - Status: todo
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q133. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. If Graph

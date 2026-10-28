@@ -73,6 +73,17 @@ Every failure path is `set -euo pipefail` and exits non-zero — nothing is swal
 usable, and report what would ship without copying anything. A dry run fails when the target
 is unusable, because a real run would too.
 
+Every copy that leaves the host is **encrypted with [age](https://age-encryption.org)** first and
+ships as `keel-db-<date>.sql.gz.age`; the ciphertext's sha256 is what the target copy is checked
+against, and it is recorded in `keel-db-shipped-manifest.json` (`shipped.sha256`) beside the
+dump's own hash. The public recipients (`age1...`, one per line) are read from
+`/etc/keel/offsite-age-recipients.txt` (or `KEEL_OFFSITE_AGE_RECIPIENTS`). The matching private
+identity is kept **off this host** (the operator's password manager): if the VPS is lost, the
+identity must not be lost with it. Nothing ships when `age` is missing, the recipients file is
+missing or empty, or it holds a private key (`AGE-SECRET-KEY-...`). To restore from a copy:
+`age -d -i IDENTITY keel-db-<date>.sql.gz.age > keel-db.sql.gz`. Copies shipped before
+encryption (plain `.sql.gz`) age out with the 30-day prune.
+
 Settings, all optional, go in `/etc/keel/offsite.env`, which the unit reads when it exists:
 `KEEL_OFFSITE_DIR` (destination, default `/mnt/keel-copy/keel-offsite`), and `KEEL_OFFSITE_REMOTE=user@host`
 with `KEEL_OFFSITE_SSH_KEY` to ship over SSH to another host instead.
@@ -144,3 +155,38 @@ To stop pruning, turn the `prune` schedule off on the Schedules page.
 governance state to `keel_test`; it defaults to `KEEL_DB_TEST_URL` and refuses to start against
 `KEEL_DB_URL` (use `--db-url` only for another non-production database). Production baselines must
 only ever be set by an operator because the public status page reports them.
+
+## Caddy admin API
+
+Caddy's admin API takes unauthenticated POSTs (`/load`, `/stop`, `/config/...`). With no global
+`admin` option it listens on `localhost:2019`, where any local process can rewrite or stop the web
+server for every site on the host (operator item Q195 found it open). It must stay off TCP:
+
+- The Caddyfile starts with a global block that puts the API on a unix socket:
+
+  ```
+  {
+  	admin unix//run/caddy/admin.sock
+  }
+  ```
+
+- `ops/caddy-admin-socket.conf` goes in `/etc/systemd/system/caddy.service.d/keel-admin-socket.conf`.
+  It makes systemd create `/run/caddy` (mode 0700, owned by Caddy's user) on each start, so only
+  Caddy and root can reach the socket.
+- `systemctl reload caddy` keeps working: `caddy reload` takes the admin address from the config.
+  Scripts that call `curl localhost:2019/...` or `caddy reload --address localhost:2019` stop working
+  and must drop the address. `admin off` also closes the API, but then every config change needs a
+  `systemctl restart caddy`, which drops connections on every site, so the socket is the default.
+- First switch, in this order (operator item Q201), with no restart:
+  1. install the drop-in and run `systemctl daemon-reload`;
+  2. `install -d -m 700 -o caddy -g caddy /run/caddy` (systemd only creates it on the next start);
+  3. add the global block and run `caddy validate --config /etc/caddy/Caddyfile`;
+  4. `caddy reload --config /etc/caddy/Caddyfile --address localhost:2019` (a plain `systemctl reload caddy`
+     fails here, because it sends to the new socket while the running Caddy still listens on 2019);
+  5. run the check below, then `systemctl reload caddy` to prove later reloads use the socket.
+
+  Never change the Caddyfile and restart before the drop-in is in place: without `/run/caddy` Caddy
+  cannot create the socket and fails to start, taking every site down.
+- After any change to the Caddyfile or the caddy unit, run as root:
+  `node /opt/keel-live/ops/caddy-admin-check.mjs` (exit 0 = no admin API on TCP, socket directory
+  private). It only connects to port 2019 and never sends a request.

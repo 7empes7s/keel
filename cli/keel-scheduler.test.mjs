@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -428,10 +428,18 @@ try {
     await assert.rejects(() => verifyFreshManifest(manifestPath, shippedPath), /not newer/);
     // Install fake transports before any script/worker invocation, including
     // stale-manifest paths exercised with the freshness guard mutated away.
-    await writeFile(join(directory, 'scp'), '#!/bin/sh\nexit 0\n', { mode: 0o700 });
-    await writeFile(join(directory, 'ssh'), `#!/bin/sh\ncase "$*" in *sha256sum*) echo '${manifest.checksum} fixture';; esac\n`, { mode: 0o700 });
+    // The fake target keeps what scp sent, so its sha256sum hashes the bytes that really shipped.
+    const received = join(directory, 'offsite-received');
+    // scp is called as `scp OPTIONS... SOURCE HOST:DEST`: keep SOURCE.
+    await writeFile(join(directory, 'scp'), ['#!/bin/sh', 'while [ "$#" -gt 2 ]; do shift; done', `cp "$1" '${received}'`, ''].join('\n'), { mode: 0o700 });
+    await writeFile(join(directory, 'ssh'), `#!/bin/sh\ncase "$*" in *sha256sum*) sha256sum '${received}';; esac\n`, { mode: 0o700 });
+    // Offsite copies are encrypted with age; the identity stays here to decrypt what shipped.
+    const ageIdentity = join(directory, 'age-identity.txt');
+    await exec('age-keygen', ['-o', ageIdentity]);
+    const ageRecipients = join(directory, 'age-recipients.txt');
+    await writeFile(ageRecipients, (await exec('age-keygen', ['-y', ageIdentity])).stdout);
     // KEEL_OFFSITE_REMOTE selects the SSH transport, so the fake ssh/scp above stand in for the target.
-    const env = { ...process.env, KEEL_OFFSITE_BACKUP_ROOT: directory, KEEL_OFFSITE_REMOTE: 'fixture@offsite', PATH: `${directory}:${process.env.PATH}` };
+    const env = { ...process.env, KEEL_OFFSITE_BACKUP_ROOT: directory, KEEL_OFFSITE_REMOTE: 'fixture@offsite', KEEL_OFFSITE_AGE_RECIPIENTS: ageRecipients, PATH: `${directory}:${process.env.PATH}` };
     await assert.rejects(() => exec('bash', ['ops/keel-offsite.sh', '--dry-run'], { cwd: repoRoot, env }), (error) => /not newer/.test(error.stderr));
     // A scheduled stale shipment must surface as a failed job, never success.
     await clearJobs();
@@ -459,8 +467,16 @@ try {
     await exec('bash', ['ops/keel-offsite.sh', '--dry-run'], { cwd: repoRoot, env });
     await assert.rejects(() => readFile(shippedPath), { code: 'ENOENT' });
     const fakeEnv = env;
-    await exec('bash', ['ops/keel-offsite.sh'], { cwd: repoRoot, env: fakeEnv });
-    assert.deepEqual(JSON.parse(await readFile(shippedPath)), manifest);
+    await assert.rejects(() => exec('bash', ['ops/keel-offsite.sh'], { cwd: repoRoot, env: { ...fakeEnv, KEEL_OFFSITE_AGE_RECIPIENTS: join(directory, 'absent.txt') } }),
+      (error) => /no encryption recipient/.test(error.stderr));
+    await assert.rejects(() => readFile(received), { code: 'ENOENT' }, 'nothing ships without an encryption recipient');
+    const { stdout: shippedLog } = await exec('bash', ['ops/keel-offsite.sh'], { cwd: repoRoot, env: fakeEnv });
+    const sent = await readFile(received);
+    assert.ok(!sent.equals(data), 'the copy that left the host is not the plaintext dump');
+    assert.deepEqual((await exec('age', ['-d', '-i', ageIdentity, received], { encoding: 'buffer' })).stdout, data, 'it decrypts to the dump');
+    const cipherSha = createHash('sha256').update(sent).digest('hex');
+    assert.deepEqual(JSON.parse(await readFile(shippedPath)), { ...manifest, shipped: { name: `keel-db-${basename(directory)}.sql.gz.age`, sha256: cipherSha } });
+    assert.match(shippedLog, new RegExp(`ciphertext sha256 ${cipherSha}`));
     await assert.rejects(() => exec('bash', ['ops/keel-offsite.sh'], { cwd: repoRoot, env: fakeEnv }), (error) => /not newer/.test(error.stderr));
     await writeFile(manifestPath, JSON.stringify({ ...manifest, timestamp: '2026-09-15T05:00:00Z', checksum: '0'.repeat(64) }));
     await assert.rejects(() => verifyFreshManifest(manifestPath, shippedPath), /checksum mismatch/);

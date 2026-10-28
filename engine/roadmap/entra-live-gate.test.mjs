@@ -875,3 +875,17 @@ test('the three Entra writes the test tenant cannot run are recorded as tenant l
     assert.equal(row.live.result, 'failed');
   }
 });
+
+test('issue #642: a bare fixture name captures the object of the kind named, and no other', async () => {
+  const { steps } = buildLiveGatePlan();
+  const app = steps.find((step) => step.id === 'mobileApp:update');
+  const restore = fixtureRestore(app, { naturalKey: 'mobileApp:KEEL-RT-148-app-web', displayName: 'KEEL-RT-148-app-web' });
+  const run = (fixture, resourceType = app.resourceType) => captureLive({
+    client: {}, restoreRef: restore.restoreRef, resourceType, operation: 'update', fixture,
+    targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, testTenantRefs: TEST_REFS,
+    getArtifact: restore.getArtifact, getJournal: restore.getJournal, getSnapshot: restore.getSnapshot,
+  });
+  assert.equal((await run('mobileApp:KEEL-RT-148-app-web')).status, 'captured');
+  assert.equal((await run('KEEL-RT-148-app-web')).status, 'captured');
+  assert.equal((await run('KEEL-RT-148-app-win32')).status, 'not-exercised');
+});

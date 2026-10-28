@@ -94,8 +94,6 @@ const STS_POLICY_MISSING = Object.freeze([
 const packagedApp = (payload) => (appGroupOf(payload) === 'packaged'
   ? [Object.freeze({ name: payload?.fileName ?? nameOf(payload), expires: null })] : []);
 const syncedApp = (payload) => (appGroupOf(payload) === 'synced' ? always(payload) : []);
-const categorisedApp = (payload) => (Array.isArray(payload?.categories) && payload.categories.length > 0
-  ? payload.categories.map((category) => Object.freeze({ name: category?.displayName ?? category?.id ?? 'unnamed', expires: null })) : []);
 
 const synced = (payload) => (payload?.onPremisesSyncEnabled === true ? always(payload) : []);
 
@@ -204,7 +202,6 @@ export const COMPLETENESS = Object.freeze({
   mobileApp: { missing: [
     part('The app package (the installer file), which must be uploaded before the app is assigned', 'binary-route', packagedApp),
     part('An app synced from Apple Business Manager, managed Google Play or Microsoft, which is synced again there', 'not-written', syncedApp),
-    part('Which app categories it is in', 'other-route', categorisedApp),
   ] },
   managedAppPolicy: { missing: [part('Windows Information Protection policies', 'not-written')] },
   targetedManagedAppConfiguration: {},

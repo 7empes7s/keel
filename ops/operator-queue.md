@@ -1771,6 +1771,9 @@ being triggered by queue updates.
   4. If a step fails, report the stderr verbatim (no secrets). Likely causes to name: Docker's bridge network has no outbound
      route (iptables/firewall), `/etc/keel/tenant.json`, cert or key is a symlink leaving `/etc/keel` (refused by design),
      or uid 10001 cannot read the `ops/powershell` checkout (give `stat -c '%a %U' ` of the path and its parents).
+  5. Host facts the container relies on: `getent passwd 10001` (expected empty: no host account shares the container uid),
+     `docker info --format '{{.SecurityOptions}}'` (say whether `userns` is listed), and
+     `docker network inspect bridge --format '{{.Name}}'` (expected `bridge`).
 - Result:
 - **Expected:** build exit 0; the probe connects to exo, teams and spo as it does today; both cmdlets return rows; no `/etc/keel`
   mount; 0 leftover staged dirs.

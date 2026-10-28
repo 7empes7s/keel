@@ -569,7 +569,8 @@ test("a replayed request with the same idempotency key does not enqueue twice", 
   assert.equal(repeatedJob.id, firstJob.id);
 
   const { rows } = await client.query(
-    `SELECT id FROM job WHERE kind = 'backup' AND idempotency_key = 'backup-replay-1'`,
+    `SELECT id FROM job WHERE kind = 'backup' AND idempotency_key = $1`,
+    [`client:${OPERATOR}:backup:backup-replay-1`],
   );
   assert.equal(rows.length, 1, "the replay must not create a second job row");
 });

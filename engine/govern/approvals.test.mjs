@@ -5,6 +5,7 @@ import {
   APPROVAL_REQUEST_EVIDENCE_KIND,
   ApprovalClosedError,
   ApprovalExpiredError,
+  ApprovalJobConflictError,
   ApprovalNotFoundError,
   ApprovalReasonRequiredError,
   ApprovalRequestRefusedError,
@@ -503,6 +504,44 @@ try {
   // The worker job an approval mints (mode enforce) is not a dry run: it never makes
   // a CLI-planned artifact look worker-planned.
   assert.equal(await restoreExecutorForArtifact(client, { artifactId: completedArtifact.id }), 'cli');
+
+  // Security audit: a job planted under `approval:<request id>` before the approval
+  // (another requester's dry run, say) is never taken for the approved restore. The
+  // approval fails closed, mints nothing, and the request stays pending.
+  const { rows: [{ id: squatter }] } = await client.query(
+    `INSERT INTO principal (email, display_name) VALUES ('squatter@approvals.test', 'Squatter') RETURNING id::text AS id`,
+  );
+  const squatted = await requestApproval(client, {
+    tenantRef, action: 'restore', params: { artifactId: completedArtifact.id }, requestedBy: restorer,
+  });
+  const squat = await enqueue(client, {
+    kind: 'restore',
+    params: { snapshotId: restoreSnapshotId, selection: ['group:Unrelated'], artifactId: randomUUID() },
+    requestedBy: squatter,
+    idempotencyKey: `approval:${squatted.id}`,
+  });
+  await assert.rejects(
+    approveRequest(client, { tenantRef, id: squatted.id, decidedBy: 'principal-approver' }),
+    ApprovalJobConflictError,
+  );
+  assert.equal((await requestRow(squatted.id)).status, 'pending', 'a squatted approval stays pending');
+  const squattedKeyJobs = (await jobRows()).filter((row) => row.idempotency_key === `approval:${squatted.id}`);
+  assert.deepEqual(squattedKeyJobs.map((row) => row.id), [squat.id], 'no job is reported or minted for the squatted approval');
+  // Same requester, same kind, but other params is still not this approval's job.
+  const squattedBySelf = await requestApproval(client, {
+    tenantRef, action: 'restore', params: { artifactId: completedArtifact.id }, requestedBy: restorer,
+  });
+  await enqueue(client, {
+    kind: 'restore',
+    params: { ...artifactDerivedJobParams, mode: 'dry-run' },
+    requestedBy: restorer,
+    idempotencyKey: `approval:${squattedBySelf.id}`,
+  });
+  await assert.rejects(
+    approveRequest(client, { tenantRef, id: squattedBySelf.id, decidedBy: 'principal-approver' }),
+    ApprovalJobConflictError,
+  );
+  assert.equal((await requestRow(squattedBySelf.id)).status, 'pending');
 
   // The evidence chain contains both the request and the decision, and verifies.
   const { rows: evidenceRows } = await client.query(

@@ -4,7 +4,7 @@ import { enqueue } from "../../../../../../engine/jobs/queue.mjs";
 
 import {
   guarded,
-  IDEMPOTENCY_KEY_HEADER,
+  callerIdempotencyKey,
   InvalidActionRequest,
   normalizeJob,
   readActionParams,
@@ -73,7 +73,7 @@ export const POST = guarded(
         ...(incidentId !== undefined ? { incidentId } : {}),
       },
       requestedBy: principalId,
-      idempotencyKey: request.headers.get(IDEMPOTENCY_KEY_HEADER) ?? undefined,
+      idempotencyKey: callerIdempotencyKey(request, principalId, "restore-dry-run"),
       notBefore: undefined,
     })) as Record<string, unknown>;
 

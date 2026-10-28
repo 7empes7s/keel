@@ -11,6 +11,7 @@ import { POST as restoreRoute } from "@/app/api/actions/restore/route";
 import { POST as dryRunRoute } from "@/app/api/actions/restore/dry-run/route";
 import { GET as dryRunArtifactRoute } from "@/app/api/actions/restore/dry-run/[id]/route";
 import { POST as selectionPreviewRoute } from "@/app/api/actions/restore/selection/route";
+import { IDEMPOTENCY_KEY_HEADER } from "@/lib/action";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
 import { schemaSql } from "../../engine/store/loadSchema.mjs";
@@ -119,11 +120,14 @@ after(async () => {
 
 function post(
   path: string,
-  options: { principalId?: string; capabilities?: string[]; body?: unknown } = {},
+  options: { principalId?: string; capabilities?: string[]; body?: unknown; idempotencyKey?: string } = {},
 ): Request {
   const headers = new Headers({ "content-type": "application/json" });
   if (options.principalId !== undefined) {
     headers.set(PRINCIPAL_ID_HEADER, options.principalId);
+  }
+  if (options.idempotencyKey !== undefined) {
+    headers.set(IDEMPOTENCY_KEY_HEADER, options.idempotencyKey);
   }
   if (options.capabilities !== undefined) {
     headers.set(CAPABILITIES_HEADER, options.capabilities.join(" "));
@@ -336,6 +340,33 @@ test("a raw selection starts a dry run, then only its completed artifact can req
   assert.deepEqual(approvalRequest.params, { artifactId });
   // Gap B11: a dry run planned in the portal is still carried out by the worker.
   assert.equal(approvalRequest.executor, "worker");
+});
+
+// Security audit: a caller's Idempotency-Key is stored only inside its own namespace,
+// so a dry run sent with `approval:<request id>` cannot pre-claim the key the approval
+// mints its restore job under.
+test("a caller's idempotency key cannot claim an approval's job key", async () => {
+  const requestId = "1b2a4a00-0000-4000-8000-00000000a9a9";
+  const rawKey = `approval:${requestId}`;
+  const send = () => dryRunRoute(
+    post("/api/actions/restore/dry-run", {
+      ...restorer,
+      idempotencyKey: rawKey,
+      body: { snapshotId, selection: ["group:Unrelated"] },
+    }),
+  );
+  const first = await send();
+  assert.equal(first.status, 202);
+  const { job } = await first.json();
+  const { rows } = await client.query(`SELECT idempotency_key FROM job WHERE id = $1`, [job.id]);
+  assert.equal(rows[0].idempotency_key, `client:${RESTORER}:restore-dry-run:${rawKey}`);
+  const { rows: claimed } = await client.query(`SELECT id FROM job WHERE idempotency_key = $1`, [rawKey]);
+  assert.equal(claimed.length, 0, "no job may hold a server-minted approval key");
+
+  // A replay with the same key still finds the same job.
+  const replay = await send();
+  assert.equal(replay.status, 202);
+  assert.equal((await replay.json()).job.id, job.id);
 });
 
 // Issue #411 follow-up: the worker refuses a settings path that is not a .json file

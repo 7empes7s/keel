@@ -1746,6 +1746,62 @@ being triggered by queue updates.
   `admin` line, the 2019 status code if it applies, and the counts from step 5.
 - **Report:** the table, the Caddy line, the step 3 code, step 5 counts and any rows that the new rules would refuse.
 
+### Q197: Check the hardened PowerShell container on Mulinux before it deploys (security audit finding 8)
+- Drafted by the "Harden PowerShell container and DB backups" thread (2026-10-28). Branch `claude/project-thread-ck66bm`
+  changes `engine/powershell/jobQueue.mjs`: the container no longer mounts `/etc/keel` and no longer uses `--network host`.
+  For each job it copies only that job's settings file, certificate and key into a private directory under `/run`, mounts it
+  read-only at `/run/keel-job`, and runs the container as uid 10001 with `--read-only`, `--cap-drop ALL`,
+  `--security-opt no-new-privileges`, `--pids-limit 512`, `--network bridge` and a `/tmp` tmpfs. The Dockerfile base image is
+  now pinned by digest. Tested in a cloud Docker (pwsh starts, reads the staged cert as uid 10001, root fs is read-only), but
+  not against the tenant: the cloud has no module download and no tenant access. The PR is held until this passes, because a
+  merge deploys it.
+- Needs: nothing.
+- Status: todo
+- **Read-only in the tenant** (Get cmdlets and the probe only). No restore, no write, no change to `/opt/keel-live` or the
+  running image tag. Never print a secret.
+- Do, from your own clone checked out at the tip of `origin/claude/project-thread-ck66bm` (not `/opt/keel-live`):
+  1. `docker build -t keel-powershell:q197 ops/powershell` and report the exit code (it now fails if a module install fails),
+     and `docker image inspect --format '{{index .RepoDigests 0}}' mcr.microsoft.com/powershell:7.4-ubuntu-22.04` if present.
+  2. As root, from `engine/`, run a probe and two cmdlets through the new code, image `keel-powershell:q197`:
+     `node -e "import('./powershell/jobQueue.mjs').then(async (q) => { const r = await q.runJob({ mode: 'probe', workload: 'exo,teams,spo' }, { image: 'keel-powershell:q197' }); console.log(JSON.stringify(r.result).slice(0, 2000)); })"`
+     then the same with `q.runCmdlet({ module: 'ExchangeOnlineManagement', cmdlet: 'Get-OrganizationConfig', parameters: {} }, { image: 'keel-powershell:q197', allowedCmdlets: new Set(['Get-OrganizationConfig']) })`
+     and with `{ module: 'PnP.PowerShell', cmdlet: 'Get-PnPTenant', ... }` (print only `output.length` for both).
+  3. While step 2 runs, `docker ps --format '{{.Command}} {{.Mounts}}'` once, and confirm no mount of `/etc/keel`.
+     After it, `ls /run | grep -c keel-ps-` (expected 0: the copies are removed).
+  4. If a step fails, report the stderr verbatim (no secrets). Likely causes to name: Docker's bridge network has no outbound
+     route (iptables/firewall), `/etc/keel/tenant.json`, cert or key is a symlink leaving `/etc/keel` (refused by design),
+     or uid 10001 cannot read the `ops/powershell` checkout (give `stat -c '%a %U' ` of the path and its parents).
+- Result:
+- **Expected:** build exit 0; the probe connects to exo, teams and spo as it does today; both cmdlets return rows; no `/etc/keel`
+  mount; 0 leftover staged dirs.
+- **Report:** build exit code, digest, per-workload probe status, the two row counts, the mount line, the leftover count.
+
+### Q198: Set up age encryption for the offsite DB dump (security audit finding 9)
+- Drafted by the "Harden PowerShell container and DB backups" thread (2026-10-28). Branch `claude/project-thread-ck66bm`
+  changes `ops/keel-offsite.sh` and `engine/schedules/offsite.mjs`: every offsite copy is encrypted with `age` before it
+  ships (`keel-db-<date>.sql.gz.age`), and nothing ships when `age` or a recipient is missing. Once the PR deploys, the
+  offsite run fails until this item is done, so do it now.
+- Needs: nothing (set-up only; the test run in step 5 uses your own checkout of the branch).
+- Status: todo
+- **Host only, no tenant.** Never print, log or commit the private identity (`AGE-SECRET-KEY-...`).
+- Do:
+  1. `apt-get install -y age` if `command -v age` is empty; report `age --version`.
+  2. `install -d -m 700 /root/keel-offsite-age && age-keygen -o /root/keel-offsite-age/identity.txt` (mode 600). This is the
+     **only** copy of the private key: it must be moved off the host by the human operator (see Report), never into git,
+     `/etc/keel`, the backups or the offsite volume.
+  3. `age-keygen -y /root/keel-offsite-age/identity.txt > /etc/keel/offsite-age-recipients.txt && chmod 644 /etc/keel/offsite-age-recipients.txt`.
+     The public recipient (`age1...`) is not a secret: put it in the Result.
+  4. From your own checkout of `origin/claude/project-thread-ck66bm`, as root:
+     `KEEL_OFFSITE_BACKUP_ROOT=/opt/backups bash ops/keel-offsite.sh --dry-run`: expected exit 0 with
+     "encryption recipients present".
+  5. Encryption round trip without shipping: `node engine/schedules/offsite.mjs encrypt <latest /opt/backups/<date>/keel-db.sql.gz> /root/keel-offsite-age/q198-test.age`
+     then `age -d -i /root/keel-offsite-age/identity.txt /root/keel-offsite-age/q198-test.age | cmp - <that dump>`: expected no
+     output, exit 0. Delete `q198-test.age` afterwards.
+- Result:
+- **Expected:** age installed, recipient file in place, dry run exit 0, round trip identical.
+- **Report:** the `age1...` recipient, each exit code, and the line "identity at /root/keel-offsite-age/identity.txt is
+  waiting to be moved off the host". After the human operator confirms it is stored off-host, a later item removes it.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

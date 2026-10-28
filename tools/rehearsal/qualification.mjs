@@ -237,13 +237,13 @@ export function boundedWriter(writer, { manifest, clock, startedAt }) {
 /**
  * Reads every created object back; anything still readable is a residual.
  * Issue #646: right after a purge, /directory/deletedItems can still answer 200
- * from a stale replica. Each surface is read again, up to `attempts` times,
- * until it answers 404, as hardDelete does on the happy path. A lagging replica
+ * from a stale replica (a recheck 35 s later read 404). Each surface is read
+ * again, about 36 s in all by default, until it answers 404, as hardDelete does. A lagging replica
  * can also answer a stale 404, and a retry gives it more chances to, so absence
  * counts only after two 404s in a row. A surface that never reads as absent is
  * reported, with the last answer it gave that was not a 404.
  */
-export async function verifyCleanup(reader, created, { attempts = 6, delayMs = 3000 } = {}) {
+export async function verifyCleanup(reader, created, { attempts = 12, delayMs = 3000 } = {}) {
   const verifiedAbsent = [];
   const residuals = [];
   for (const [id, naturalKey] of created) {

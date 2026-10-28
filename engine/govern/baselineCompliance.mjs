@@ -74,7 +74,13 @@ function captureOf(baseline, legacyWindow, now) {
 function changesSince(baselineRows, latest) {
   if (!latest) return { state: 'no-collection', comparedSnapshotId: null, comparedAt: null, added: 0, modified: 0, removed: 0, total: 0 };
   try {
-    const drift = diffSnapshots(baselineRows, latest.rows);
+    // A type the newest collection could not read because the tenant has no
+    // licence for it (issue #646) was not observed: it is neither removed nor kept.
+    const unavailable = latest.unavailableTypes ?? new Set();
+    const compared = unavailable.size
+      ? baselineRows.filter((row) => !unavailable.has(row.resource_type))
+      : baselineRows;
+    const drift = diffSnapshots(compared, latest.rows);
     const count = (type) => drift.filter((entry) => entry.changeType === type).length;
     return {
       state: 'compared',
@@ -137,7 +143,10 @@ async function latestEligibleSnapshot(client, tenantRef) {
      FROM resource_version WHERE snapshot_id = $1`,
     [snapshot.id],
   );
-  return { id: String(snapshot.id), completedAt: iso(snapshot.completed_at), rows: versions };
+  const unavailableTypes = new Set(Object.entries(snapshot.coverage_digest ?? {})
+    .filter(([, coverage]) => coverage?.outcome === 'unavailable')
+    .map(([type]) => type));
+  return { id: String(snapshot.id), completedAt: iso(snapshot.completed_at), rows: versions, unavailableTypes };
 }
 
 /** Every baseline of the tenant, newest first, with capture, scope, version chain and changes since capture. */

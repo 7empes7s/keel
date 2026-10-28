@@ -38,14 +38,15 @@ const STATE_WORDS = Object.freeze({
   full: 'Full', incomplete: 'Incomplete', 'microsoft-managed': 'Microsoft-managed', 'not-readable': 'Not readable',
 });
 
-const auto = (name, { keeps, todo = null } = {}) => Object.freeze({ decision: 'automated', name, keeps, todo });
+const auto = (name, { keeps, todo = null, words = null } = {}) => Object.freeze({ decision: 'automated', name, keeps, todo, words });
 const manual = (name, limit, why, todo) => Object.freeze({ decision: 'manual', name, limit, why, todo });
 
 /**
  * One entry per configuration type. `limit` says whose limit makes a manual type
  * manual: MS (Microsoft offers no way for any tool to do it) or KEEL (a safety or
  * scope choice KEEL made). `keeps` is what an automated restore covers; `todo` is
- * what is left to the reader.
+ * what is left to the reader; `words` replaces how the table names one
+ * operation when the type does less than the usual words say.
  */
 export const TYPE_GUIDE = Object.freeze({
   // ---- tenant settings
@@ -552,7 +553,8 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'Who a profile is assigned to is put back only when it is picked for a restore, from backups taken after assignments were read. An expired file, or one that expires before the profile in Intune now, is never uploaded: renew it with Apple and upload it in the Intune admin center, under Apps, iOS/iPadOS, App provisioning profiles. A backup taken before the profile file was read is refused; take a new backup.',
   }),
   mobileAppRelationship: auto('App dependencies and supersedence', {
-    keeps: 'Puts back which app depends on or replaces which, and how (install automatically or detect; update or replace), when both apps are in Intune, including apps the same restore added again.',
+    keeps: 'Puts back which app depends on or replaces which, and how (install automatically or detect; update or replace), when both apps are in Intune, including apps the same restore added again. Undoing a restore takes out a link it added.',
+    words: { delete: 'take out a link a restore added, when that restore is undone' },
     todo: 'An app KEEL cannot add again (a synced app) is added by hand first: a link to a missing app is not written. Intune links only Win32 apps, so a link to any other kind of app is a step for a person. Setting an app to replace another uninstalls the older app on devices, so that needs the separate content approval.',
   }),
   managedEBook: manual('Managed e-books', NOT_BUILT,
@@ -742,7 +744,7 @@ function typeRow(ledgerType, entry, { cadence, edges }) {
   if (ledgerType.decision === 'automated') {
     const supported = ledgerType.operations.filter((row) => row.decision === 'supported');
     const typeEdges = ledgerType.resourceType === 'group' ? edges.filter((row) => row.decision === 'supported') : [];
-    const words = supported.map((row) => OPERATION_WORDS[row.operation]);
+    const words = supported.map((row) => entry.words?.[row.operation] ?? OPERATION_WORDS[row.operation]);
     if (typeEdges.length > 0) words.push('add and remove members and owners');
     restore = `Yes: ${words.join('; ')}`;
     proof = proofText([...supported, ...typeEdges]);

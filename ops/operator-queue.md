@@ -9454,8 +9454,8 @@ item that needs it stays untouched.
     package is not uploaded (PATCH refused, and assumed the same for its links), are `skipped` with a `manual:` reason; nothing is written.
   - **Capture:** `entraLive.mjs capture --fixture KEEL-RT-209-app-web` (bare name) now finds `mobileApp:KEEL-RT-209-app-web`.
 - Needs: /opt/keel-live at `cb92c727` or later (`grep -q updateRelationships /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: in progress (2026-10-28 11:40 UTC, root keel-operator)
+- Result: in progress (2026-10-28 11:40 UTC, root keel-operator): started at B `5b207ea`; order Q209 → Q210 → Q211.
 - **Test tenant only. Restorer for writes; no app assigned; no package uploaded.** Fixtures (create by hand, KEEL-RT-209- prefix):
   app category `KEEL-RT-209-cat`; web link `KEEL-RT-209-app-web` (https://example.com/) in `KEEL-RT-209-cat` and `Business`;
   two Win32 shells `KEEL-RT-209-app-main` and `KEEL-RT-209-app-dep` (no file, as in Q185); a dependency main → dep (`detect`) set by
@@ -9488,8 +9488,8 @@ item that needs it stays untouched.
   - A link is deleted only as such an undo; any other delete is a `manual:` step.
 - Needs: Q209 `done` (it proves Intune accepts links between the KEEL-RT shells; if Q209 found it refuses them, mark this
   `blocked` with that answer). /opt/keel-live has the change: `grep -q appRelationshipDelete /opt/keel-live/engine/restore/intuneOperations.mjs`.
-- Status: todo
-- Result:
+- Status: in progress (2026-10-28 11:40 UTC, root keel-operator)
+- Result: in progress (2026-10-28 11:40 UTC, root keel-operator): started at B `5b207ea`; order Q209 → Q210 → Q211.
 - **Test tenant only. Restorer for writes, Collector for reads; no app assigned; no package uploaded.** Self-approve under the
   2026-10-14 standing authorization and log every approval id. Fixtures (by hand, KEEL-RT-210- prefix): three Win32 shells
   `KEEL-RT-210-app-main`, `KEEL-RT-210-app-dep`, `KEEL-RT-210-app-other` (no file, as in Q209); on main, two dependencies set by
@@ -9517,8 +9517,8 @@ item that needs it stays untouched.
   Intune types with a delete (fixtures only). This item is the one live check, on a device configuration.
 - Needs: /opt/keel-live at `5b207ea6` or later (`grep -q undoesCreate /opt/keel-live/engine/restore/recordWriter.mjs`).
   Independent of Q209/Q210.
-- Status: todo
-- Result:
+- Status: in progress (2026-10-28 11:40 UTC, root keel-operator)
+- Result: in progress (2026-10-28 11:40 UTC, root keel-operator): started at B `5b207ea`; order Q209 → Q210 → Q211.
 - **Test tenant only. Restorer for writes, Collector for reads. The policy is never assigned.** Self-approve under the 2026-10-14
   standing authorization and log every approval id. Fixture (by hand): a Windows 10 device restriction profile
   (`#microsoft.graph.windows10GeneralConfiguration`) named `KEEL-RT-211-config`, one harmless setting (for example

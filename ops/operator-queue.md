@@ -1561,7 +1561,9 @@ being triggered by queue updates.
   family (`test -f /opt/keel-live/tools/tenant-probe/catalog.d/admin-center-settings.mjs`).
 - Note (2026-10-28 18:45 UTC): Marouane reports admin consent granted for the KEEL Collector; PR #604 has the `automerge`
   label. Re-check both Needs (the 9 appRoleAssignments, and the family file in `/opt/keel-live` after the deploy), then run.
-- Status: blocked: waiting on consent (none of the 9 held at 19:40; PR #604 not deployed)
+- Note (2026-10-28 20:46 UTC): Marouane says he answered you about the Collector consent. PR #604 merged at 19:58 UTC.
+  Re-check both Needs now; if both hold, run the item. If consent is still missing, say so in Result and stop.
+- Status: todo
 - Result: blocked: waiting on consent (2026-10-28 19:40 UTC, root keel-operator). Re-checked after the 18:45 note: the KEEL Collector SP (f8741600…) still holds **none** of the 9: OrgSettings-Forms.Read.All, OrgSettings-Todo.Read.All, OrgSettings-Microsoft365Install.Read.All, OrgSettings-AppsAndServices.Read.All, ReportSettings.Read.All, PeopleSettings.Read.All, CustomDetection.Read.All, AppCatalog.Read.All, Community.Read.All. It has 49 appRoleAssignments in all (45 Graph, 3 SharePoint, 1 Exchange); the newest was created 2026-10-15T00:09Z. The consent most likely went to another app or didn't save (inference). Also `/opt/keel-live` (9550175) does not have `tools/tenant-probe/catalog.d/admin-center-settings.mjs` yet (PR #604 not deployed). Nothing run.
 - Earlier result: (earlier, 2026-10-28 07:35 UTC: blocked waiting on consent; none of the 9 held, PR #604 not deployed.)
 - **Tenant:** reads only, with the collector credential. No grants, no role or config changes, nothing written.

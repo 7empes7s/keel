@@ -9509,3 +9509,30 @@ item that needs it stays untouched.
 - **Report:** B; S, A, C, A2, C2 and approval ids; each step's exit code and the compensation plan lines; every Graph call that
   failed (status and message verbatim, no tokens); the links read back after steps 2 and 3. A 400/404 on `updateRelationships`
   during an undo is a finding for a new issue.
+
+### Q211: Live undo of a restore that created a KEEL-RT- Intune policy (after PR #651, tests in PR #652)
+- Drafted by the "Test undo of created restore items" thread (2026-10-28). Before PR #651, undoing a restore that created an
+  Intune policy failed with `partial observation cannot authorise delete: ... not recorded`, because the undo run passes no snapshot
+  coverage. #651 (merge `5b207ea6`) lets an undo of a create be authorised by the restore's journal. PR #652 tests this for all 9
+  Intune types with a delete (fixtures only). This item is the one live check, on a device configuration.
+- Needs: /opt/keel-live at `5b207ea6` or later (`grep -q undoesCreate /opt/keel-live/engine/restore/recordWriter.mjs`).
+  Independent of Q209/Q210.
+- Status: todo
+- Result:
+- **Test tenant only. Restorer for writes, Collector for reads. The policy is never assigned.** Self-approve under the 2026-10-14
+  standing authorization and log every approval id. Fixture (by hand): a Windows 10 device restriction profile
+  (`#microsoft.graph.windows10GeneralConfiguration`) named `KEEL-RT-211-config`, one harmless setting (for example
+  `cameraBlocked: false`), **no assignments**.
+- Do, from your own checkout at B (never `/opt/keel`):
+  1. Backup S. Report `deviceConfiguration` coverage and the fixture's id in S (id0).
+  2. Delete `KEEL-RT-211-config` by hand. Restore from S selecting `deviceConfiguration:KEEL-RT-211-config`; dry run, approve,
+     enforce: artifact A. Report the new id (id1) and that it has no assignments.
+  3. **Undo.** `keel-restore --compensate A --persist-artifact C`. Expect the plan line
+     `compensation of A: 1 inverse write(s), 0 conflict(s), ...` with a delete of id1. Approve C and promote `--artifact C --enforce`.
+     Expect exactly one write, `DELETE /deviceManagement/deviceConfigurations/{id1}`, then a read that shows it gone (404).
+     Before #651 this step failed with `partial observation cannot authorise delete`; if that text appears, quote it and B.
+  4. Read back: `GET /deviceManagement/deviceConfigurations?$filter=displayName eq 'KEEL-RT-211-config'` returns nothing.
+  5. Cleanup: if anything named KEEL-RT-211 is left, delete it by hand and report it.
+- **Report:** B; S, A, C and approval ids; id0 and id1; each step's exit code and the compensation plan lines; every Graph call
+  that failed (status and message verbatim, no tokens). A `manual: the policy is assigned` step in step 3 means the restore wrote
+  assignments: report the assignments it wrote.

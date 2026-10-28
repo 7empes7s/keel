@@ -44,7 +44,11 @@ export default [
   // Which custom authentication extension runs at which sign-in event, for which apps.
   { type: 'authenticationEventListener', path: '/identity/authenticationEventListeners', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
     note: 'Points to a custom authentication extension by id, so the extension is rebuilt first.' },
-  // SAML or WS-Fed sign-in for guests from a partner's domains.
-  { type: 'externalDomainFederation', path: '/directory/federationConfigurations', version: 'v1.0', criticality: 'tier2', blastRadius: 'access-affecting',
-    note: 'A missing federation stops guests from that domain signing in with their own identity provider.' },
+  // SAML or WS-Fed sign-in for guests from a partner's domains. The base
+  // collection answers only id and displayName (issue #640), so the read uses
+  // the derived-type collection, which returns the sign-in addresses, signing
+  // certificate and protocol, and expands the federated domains.
+  { type: 'externalDomainFederation', path: '/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation', version: 'v1.0',
+    query: '$expand=domains', criticality: 'tier2', blastRadius: 'access-affecting',
+    note: 'A missing federation stops guests from that domain signing in with their own identity provider. Its sign-in addresses and certificate are never written back by a restore.' },
 ];

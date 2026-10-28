@@ -509,8 +509,8 @@ export const IDENTITY_RECORDS = Object.freeze({
     operations: ['create', 'update'], writable: ['conditions'],
     permission: 'Policy.ReadWrite.PermissionGrant', docs: beta('permissiongrantpreapprovalpolicy-post'),
   }),
-  // A guest federation's settings are updated in place. Its domains are a
-  // separate collection the backup does not read yet, so a deleted federation
+  // A guest federation's settings are updated in place. Its domains are
+  // backed up (expanded on read) but not written, so a deleted federation
   // is set up again by hand. Its sign-in endpoints and signing certificate are
   // never written back (FEDERATION_SIGN_IN_FIELDS).
   externalDomainFederation: defineRecord({

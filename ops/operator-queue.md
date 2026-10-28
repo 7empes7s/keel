@@ -9143,7 +9143,7 @@ item that needs it stays untouched.
   `admin unix//run/caddy/admin.sock`, so `systemctl reload caddy` keeps working. No `admin off`: that would make every later
   config change a restart for all sites.
 - Needs: nothing. Use your own checkout of `origin/claude/project-thread-p6kbeu` (or `/opt/keel-live` once #632 has deployed).
-- Status: todo
+- Status: done
 - **Host only, no tenant. Never `systemctl restart` or `stop` caddy; switch with a reload only.** Never call `/load`, `/stop` or
   any admin path yourself other than through `caddy reload` in step 6. Never print a secret.
 - Do, as root:
@@ -9179,7 +9179,15 @@ item that needs it stays untouched.
   8. If step 6 or 7 fails: `cp -p /etc/caddy/Caddyfile.bak-q201 /etc/caddy/Caddyfile`, then
      `caddy reload --config /etc/caddy/Caddyfile --address unix//run/caddy/admin.sock` (or `--address localhost:2019` if the
      switch never happened), confirm the step 2 codes are back, and report. Leave the drop-in in place (harmless).
-- Result:
+- Result: done (2026-10-28 08:58 UTC, root keel-operator). **Caddy's admin API is now on `/run/caddy/admin.sock` (0700); port 2019 is closed; all sites unchanged; no restart.** Host only; B = `031d977` (has #632); used `/opt/keel-live/ops/caddy-admin-socket.conf` and `caddy-admin-check.mjs` (read only).
+  1. `caddy version` 2.6.2. Unit: `User=caddy`, `Group=caddy`, `ExecStart=/usr/bin/caddy run --environ --config /etc/caddy/Caddyfile`, `ExecReload=/usr/bin/caddy reload --config /etc/caddy/Caddyfile --force`. Search hits (excluding logs, caches, transcripts, docs and the KEEL trees): `/usr/local/bin/mimule-backup.sh` (copies the Caddyfile into a backup: read only, fine); `/root/.claude/settings.local.json` (an allow rule for `caddy reload:*`: a plain reload, fine); `/opt/backups/final-archive-2026-10-04/cleanup-configs/backup.sh.before` (archived, not run); `/opt/keel-worktrees/.dispatch-logs/m4-scaffold.log` (a log). **Nothing calls localhost:2019 and nothing regenerates the Caddyfile.**
+  2. Before: check exit **1**: `FAIL: /etc/caddy/Caddyfile has no global admin option (caddy adapt), so Caddy listens on localhost:2019` · `FAIL: something accepts connections on 127.0.0.1 port 2019` · `PASS: nothing listens on ::1 port 2019`. The only site address is `:80` with host matchers; codes by Host: relay 200, cracia 200, archipelago 200, keel 401 (Access), no match 200.
+  3. Backup `/etc/caddy/Caddyfile.bak-q201` (644 root, timestamps kept).
+  4. Drop-in installed as `/etc/systemd/system/caddy.service.d/keel-admin-socket.conf` (644; RuntimeDirectory=caddy, mode 0700); `daemon-reload` ok. `/run/caddy` did not exist; created `install -d -m 700 -o caddy -g caddy`.
+  5. Global block `{ admin unix//run/caddy/admin.sock }` added as the first lines (there was none). `caddy validate` exit **0** ("Valid configuration").
+  6. `caddy reload --config /etc/caddy/Caddyfile --address localhost:2019` exit **0**.
+  7. Check exit **0**: `PASS: /etc/caddy/Caddyfile puts the admin API on unix socket /run/caddy/admin.sock (caddy adapt)` · `PASS: socket directory /run/caddy is mode 0700` · `PASS: nothing listens on 127.0.0.1 port 2019` · `PASS: nothing listens on ::1 port 2019`. `curl …:2019/config/` → **`000`**. `stat`: `700 caddy /run/caddy` · `755 caddy /run/caddy/admin.sock` (reachable only through the 0700 directory). Site codes identical to step 2. `systemctl reload caddy` exit **0**, `is-active` **active**, check again exit 0, site codes again identical; no errors in the caddy journal.
+  - Backup still at `/etc/caddy/Caddyfile.bak-q201`. The step 8 rollback was not needed.
 - **Expected:** step 1 finds nothing that needs port 2019; validate 0; reload 0; check exit 0; port 2019 `000`; `/run/caddy`
   700; site codes unchanged; `systemctl reload caddy` 0 and active.
 - **Report:** step 1 facts and hits, every exit code, the check output before and after, the stat line, the site codes before

@@ -1816,7 +1816,7 @@ being triggered by queue updates.
   `drill-live-acceptance{,.capture}.json` hold the real object id of the deleted `keel-rehearsal-*` drill group, because
   `capture-drill` never pseudonymized. PR #611 fixes it; the record is signed, so it must be recaptured.
 - Needs: /opt/keel-live at the PR #611 merge or later (same grep as Q192). Independent of Q192.
-- Status: blocked via Q206 (#663)
+- Status: todo via Q206 (after PR #665 is deployed; run it as Q206)
 - **Test tenant only.** Exactly as the Q39 116 run (steps in `docs/roadmap/operator-gates.md` and Q36 notes #5 and #7): a fresh
   recovery set and reconstruction at B into a fresh disposable DB, the onboarding result at B, a fresh drill DB (schema.sql +
   RUNTIME_MIGRATIONS, never `KEEL_DB_URL` or `keel_test`), build-manifest, the offline plan, the live bounded drill (one new
@@ -9384,7 +9384,15 @@ item that needs it stays untouched.
   several minutes (it is read twice: a check pass, then the load).
 - Needs: the deployed build B at or after `e3e49a8`. Check from your checkout at B:
   `git merge-base --is-ancestor e3e49a8 B && grep -q scanDump tools/recovery/dumpImport.mjs`.
-- Status: blocked (#663: drill collect fails on non-licence unread types)
+- Status: todo (after PR #665 is deployed; #663 fixed)
+- Update (2026-10-28 22:00 UTC, "Unblock the recovery drill run" thread): PR #665 fixes #663. The drill now skips any type it
+  cannot read that is not a core type (todoSettings 500, privilegedAccessGroupResource PermissionScopeNotGranted), records it
+  as `failed` in the rehearsal snapshot, and seeds its throwaway baseline with only the types it read (`seedFromSnapshot(...,
+  { scoped: true })`). Core types (organization, user, group, roles, Conditional Access) still stop the drill. Step 2 now logs
+  `unreadTypes`: report that list.
+  Needs now: B at or after the PR #665 merge. Check from your checkout at B: `grep -q "scoped: true" tools/rehearsal/roundTrip.mjs`.
+  Rerun the whole item from a **fresh** recovery set at that B, one drill attempt only. If it fails again, report the error
+  verbatim and stop.
 - Update (2026-10-28, "Unblock the recovery drill run" thread): PR #650 fixes #646. The drill's collect now skips types the
   tenant has no licence for (lifecycle workflows) and records them as `unavailable`; a snapshot with such types can now seed a
   baseline; the drill's cleanup check rereads each surface for about 36 s and needs two 404s in a row before it counts the

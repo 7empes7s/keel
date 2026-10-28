@@ -41,8 +41,8 @@ the test tenant on 2026-10-15. Off by default; with `--allow-tenant-wide-test-wr
 
 ActiveSync organization settings and Defender for Office are always skipped: ActiveSync has no
 comment or true/false field, and every Defender field turns a protection off. Federation is
-skipped too once `TreatDiscoveredPartnersAsUnverified` is excluded, unless its read shows another
-harmless switch.
+skipped too: its federation and domain fields are never written (`TRUST_FIELDS`), and each
+remaining switch has a content-effect rule, unless its read shows another harmless switch.
 
 ## Operator steps
 

@@ -598,12 +598,19 @@ function setupFor(resourceType, operation, guidance, key) {
  *  - A singleton keyed by its type name is `<type>:<type>`. A singleton keyed by
  *    its display name (authorizationPolicy, say) has a key Graph decides, so it
  *    stays a placeholder rather than a guess.
+ *  - An id-keyed kind (deviceCategory, roleDefinition, ...) is stored under its
+ *    Graph id, which only the snapshot knows: a placeholder too.
  */
 export function restoreKeyFor(resourceType, select) {
   if (/\s/.test(select)) return `<natural key: ${select}>`;
   const type = resourceType.split('#')[0];
   if (select === type && !CONSTANT_KEY_TYPES.has(type)) {
     return `<natural key: the key KEEL shows for the tenant's one ${type} object (it starts ${type}:)>`;
+  }
+  // These kinds are keyed by their Graph id (a role definition by its template
+  // id), never by the fixture's name, so the name alone is never in the snapshot.
+  if (ID_KEY_TYPES.has(type) || type === 'roleDefinition') {
+    return `<natural key: the id KEEL shows for ${select} (it starts ${type}:)>`;
   }
   return `${type}:${select}`;
 }

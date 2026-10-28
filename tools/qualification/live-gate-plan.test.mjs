@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { CONSTANT_KEY_TYPES } from '../../engine/cir/naturalKey.mjs';
+import { CONSTANT_KEY_TYPES, ID_KEY_TYPES } from '../../engine/cir/naturalKey.mjs';
 import { canonicalizeAll } from '../../engine/cir/canonicalize.mjs';
 import { dependencyClosure } from '../../engine/restore/selection.mjs';
 import { buildLiveGatePlan, restoreKeyFor, FIXTURE_PREFIX } from './live-gate-plan.mjs';
@@ -67,4 +67,15 @@ test('a singleton keyed by a name Graph decides is never guessed', () => {
     assert.ok(isPlaceholder(restoreKeyFor(type, type)), type);
   }
   assert.ok(isPlaceholder(restoreKeyFor('groupLifecyclePolicy', 'the policy id KEEL shows')));
+});
+
+test('an id-keyed kind is never selected by its fixture name', () => {
+  // The snapshot keys these by Graph id (a role definition by its template id),
+  // so `<type>:<fixture name>` would be refused exactly like the bare name in #641.
+  const idKeyed = plan.steps.filter((step) => ID_KEY_TYPES.has(step.resourceType.split('#')[0]) || step.resourceType === 'roleDefinition');
+  assert.ok(idKeyed.length > 0, 'the plan has id-keyed steps');
+  for (const step of idKeyed) assert.ok(isPlaceholder(step.key), `${step.id}: ${step.key}`);
+  assert.ok(isPlaceholder(restoreKeyFor('deviceCategory', `${FIXTURE_PREFIX}-category`)));
+  const resources = canonicalizeAll([['deviceCategory', [{ id: 'cat-guid', displayName: `${FIXTURE_PREFIX}-category` }]]]);
+  assert.equal(resources[0].naturalKey, 'deviceCategory:cat-guid');
 });

@@ -9201,8 +9201,9 @@ item that needs it stays untouched.
   `/etc/keel/qualification.env` (never printed):
   0. **Seed (once):** with your usual admin path (Restorer, Exchange), on the test tenant:
      `New-DistributionGroup -Name KEEL-RT-capture-seed -Type Distribution -Members <a KEEL-RT test user> -ManagedBy <another KEEL-RT test user>`,
-     then `Set-DistributionGroup KEEL-RT-capture-seed -HiddenFromAddressListsEnabled $true -ModerationEnabled $true -ModeratedBy <a KEEL-RT test user>`.
-     Note its `Guid` (`Get-DistributionGroup KEEL-RT-capture-seed | Select Guid`). Skip if it already exists with a member, owner and moderator.
+     then `Set-DistributionGroup KEEL-RT-capture-seed -HiddenFromAddressListsEnabled $true -ModerationEnabled $true -ModeratedBy <a KEEL-RT test user> -BypassModerationFromSendersOrMembers <the owner> -ReportToManagerEnabled $true -BypassNestedModerationEnabled $true -MailTip "KEEL capture seed"`
+     (non-default values, so the capture would see a Set resetting them). Note its `Guid` (`Get-DistributionGroup KEEL-RT-capture-seed | Select Guid`).
+     Skip if it already exists with all of these set.
   1. **Image:** as for keel-powershell (Q-rebuild pattern): from a clean `git archive` of `ops/powershell` at B,
      `docker build -t keel-dsc:candidate -f Dockerfile.dsc .`; on success `docker tag keel-dsc:candidate keel-dsc:latest`. Report the
      build exit code, image id and size, and the "module install complete" table. If the build fails, report the last 40 lines and stop.

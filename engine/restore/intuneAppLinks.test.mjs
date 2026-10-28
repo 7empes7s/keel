@@ -12,6 +12,7 @@ import { applyIntuneExtendedWrite, buildIntuneExtendedLedger } from './intuneOpe
 import { followUpSteps } from './bestEffortRecreate.mjs';
 import { changeLine } from '../../cli/keel-restore.mjs';
 import { applyWave } from './applyEngine.mjs';
+import { planCompensation } from './compensation.mjs';
 import { canonicalizeAll } from '../cir/canonicalize.mjs';
 import { canonicalHash } from '../cir/canonicalHash.mjs';
 import { isServerOwnedReference } from '../graph/resolver.mjs';
@@ -278,6 +279,7 @@ test('#642: a link is written through its app\'s updateRelationships, never the 
   assert.deepEqual(rows.map(({ operation, method, route }) => ({ operation, method, route })), [
     { operation: 'create', method: 'POST', route: '/deviceAppManagement/mobileApps/{appId}/updateRelationships' },
     { operation: 'update', method: 'POST', route: '/deviceAppManagement/mobileApps/{appId}/updateRelationships' },
+    { operation: 'delete', method: 'POST', route: '/deviceAppManagement/mobileApps/{appId}/updateRelationships' },
   ]);
 });
 
@@ -404,4 +406,84 @@ test('#642: the dry run matches categories as the write does, and counts one not
     live: { state: 'present', targetId: 'live-web', payload: live },
   }), 'update', { ...FAST, mode: 'dry-run', referenceContext: context() });
   assert.deepEqual(dry.applied.changes.categories, { added: 0, removed: 0, notInIntuneYet: 1 });
+});
+
+// ------------------------------------------------------------ undo of a restored link
+
+// What a promoted restore journaled for the link, and the target as read now:
+// the link, and another one the same app holds that the restore never touched.
+const OTHER = '33333333-3333-4333-8333-333333333333';
+const otherLink = Object.freeze({
+  '@odata.type': '#microsoft.graph.mobileAppSupersedence', id: `${MAIN}_${OTHER}`,
+  sourceId: MAIN, targetId: OTHER, targetType: 'child', supersedenceType: 'update',
+});
+const linkedTarget = (dependencyType = 'autoInstall') => idoFakeGraph({ seed: {
+  ...appsInTarget(MAIN, DEP, OTHER),
+  [`${APPS}/${MAIN}/relationships/${link.id}`]: { ...link, dependencyType },
+  [`${APPS}/${MAIN}/relationships/${otherLink.id}`]: otherLink,
+} });
+const journaled = (fields) => ({
+  id: 'entry-1', naturalKey: linkResource.naturalKey, resourceType: 'mobileAppRelationship', targetId: link.id,
+  blastRadius: linkResource.blastRadius, outcome: 'succeeded', outcomeDetail: null, ...fields,
+});
+const undo = (graph, entries, livePayload) => {
+  const plan = planCompensation({
+    restoreRef: 'restore-1', entries, current: new Map([[linkResource.naturalKey, { targetId: link.id, payload: livePayload }]]),
+  });
+  return { plan, run: () => wave(graph, plan.operations, { deletionGuardOptions: { breakGlassUserIds: ['break-glass'] } }) };
+};
+const linksOf = async (graph) => (await graph.read('beta', `${APPS}/${MAIN}/relationships`)).body.value.map((item) => item.targetId).sort();
+
+test('undo of a link a restore created takes it out through its app\'s updateRelationships, and keeps the app\'s other links', async () => {
+  const graph = linkedTarget();
+  const { plan, run } = undo(graph, [journaled({ operation: 'create', priorState: null, intendedState: link, postState: link })], link);
+  assert.deepEqual(plan.operations.map((op) => op.verb), ['delete']);
+  const outcome = await run();
+  assert.deepEqual(outcome.failed, []);
+  assert.deepEqual(outcome.skipped, []);
+  assert.equal(outcome.applied.length, 1);
+  const writes = graph.calls.filter((call) => call.method !== 'GET');
+  assert.deepEqual(writes.map(({ version, method, path, body }) => ({ version, method, path, body })), [{
+    version: 'beta', method: 'POST', path: `${APPS}/${MAIN}/updateRelationships`,
+    body: { relationships: [{ '@odata.type': '#microsoft.graph.mobileAppSupersedence', targetId: OTHER, supersedenceType: 'update' }] },
+  }], 'never a DELETE on the tenant link list, which Intune does not route');
+  assert.deepEqual(await linksOf(graph), [OTHER]);
+});
+
+test('undo of a link update puts the earlier value back through updateRelationships', async () => {
+  const graph = linkedTarget('autoInstall');
+  const before = { ...link, dependencyType: 'detect' };
+  const { plan, run } = undo(graph, [journaled({ operation: 'update', priorState: before, intendedState: link, postState: link })], link);
+  assert.deepEqual(plan.operations.map((op) => [op.verb, op.revertedFields]), [['update', ['dependencyType']]]);
+  const outcome = await run();
+  assert.deepEqual(outcome.failed, []);
+  const [post] = graph.calls.filter((call) => call.method !== 'GET');
+  assert.equal(post.path, `${APPS}/${MAIN}/updateRelationships`);
+  assert.deepEqual(post.body.relationships.find((entry) => entry.targetId === DEP), {
+    '@odata.type': '#microsoft.graph.mobileAppDependency', targetId: DEP, dependencyType: 'detect',
+  });
+  assert.equal(post.body.relationships.some((entry) => entry.targetId === OTHER), true, 'the app\'s other link is sent again');
+});
+
+test('a link is never deleted except as the undo of a restore that created it', async () => {
+  const graph = linkedTarget();
+  const outcome = await wave(graph, [{
+    ...linkResource, verb: 'delete', payload: null, targetId: link.id, live: { state: 'present', targetId: link.id, payload: link },
+  }], { deletionGuardOptions: { breakGlassUserIds: ['break-glass'] }, observedCoverage: { mobileAppRelationship: { outcome: 'complete' } } });
+  assert.deepEqual(outcome.failed, []);
+  assert.match(outcome.skipped[0].reason, /^manual: a restore takes out only a link it added itself/);
+  assert.equal(graph.calls.some((call) => call.method !== 'GET'), false);
+  assert.deepEqual(await linksOf(graph), [DEP, OTHER]);
+});
+
+test('undo of a link Intune will not change (app package not uploaded) is a plain step', async () => {
+  const graph = idoFakeGraph({
+    seed: { ...appsInTarget(MAIN, DEP), [`${APPS}/${MAIN}/relationships/${link.id}`]: link },
+    failWrites: ({ path }) => (path.endsWith('/updateRelationships')
+      ? { ok: false, status: 400, body: { error: { code: 'BadRequest', message: "Invalid operation: app's PublishingState is not 'Published'." } } } : null),
+  });
+  const { run } = undo(graph, [journaled({ operation: 'create', priorState: null, intendedState: link, postState: link })], link);
+  const outcome = await run();
+  assert.deepEqual(outcome.failed, []);
+  assert.match(outcome.skipped[0].reason, /^manual: Intune does not let KEEL-RT-app-main or KEEL-RT-app-dep be changed until its package is uploaded.*undo the restore again$/);
 });

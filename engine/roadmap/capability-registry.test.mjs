@@ -143,7 +143,8 @@ const REGISTERED = Object.freeze({
   windowsManagedAppProtection: ['create', 'update'],
   iosLobAppProvisioningConfiguration: ['create', 'update'],
   // Restore gaps, batch 13.
-  mobileAppRelationship: ['create', 'update'],
+  // Its delete is only the undo of a link a restore created.
+  mobileAppRelationship: ['create', 'update', 'delete'],
   // Restore gaps, batch 18.
   mobileApp: ['create', 'update'],
   // Wave 2 ENTRA: directory policies and delegated consents.

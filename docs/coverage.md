@@ -450,7 +450,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
 | Microsoft Tunnel server configurations | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Microsoft Tunnel health thresholds | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Apple app provisioning profiles | Yes (Tier 2, important, daily) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| App dependencies and supersedence | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| App dependencies and supersedence | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back; take out a link a restore added, when that restore is undone | Tested against a simulated tenant |
 | Managed e-books | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | E-book categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Classroom device cart assignments | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -605,7 +605,7 @@ KEEL tracks 167 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* the default limits (set by Microsoft).
 - **Apple app provisioning profiles.** Recreates profiles and puts back their name, description, scope tags, the profile file from Apple and who they are assigned to.
   - *You do:* Who a profile is assigned to is put back only when it is picked for a restore, from backups taken after assignments were read. An expired file, or one that expires before the profile in Intune now, is never uploaded: renew it with Apple and upload it in the Intune admin center, under Apps, iOS/iPadOS, App provisioning profiles. A backup taken before the profile file was read is refused; take a new backup.
-- **App dependencies and supersedence.** Puts back which app depends on or replaces which, and how (install automatically or detect; update or replace), when both apps are in Intune, including apps the same restore added again.
+- **App dependencies and supersedence.** Puts back which app depends on or replaces which, and how (install automatically or detect; update or replace), when both apps are in Intune, including apps the same restore added again. Undoing a restore takes out a link it added.
   - *Not brought back:* the app packages on both ends, added again by hand before the link (a file the backup does not hold).
   - *You do:* An app KEEL cannot add again (a synced app) is added by hand first: a link to a missing app is not written. Intune links only Win32 apps, so a link to any other kind of app is a step for a person. Setting an app to replace another uninstalls the older app on devices, so that needs the separate content approval.
 - **Managed e-books** (not built yet). KEEL backs up each book's details but not yet who it is assigned to, and does not restore it yet.

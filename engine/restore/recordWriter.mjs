@@ -38,6 +38,9 @@
  *    written); `readVia` reads the one object back ({ ok, status, body }, 404
  *    when it is not there). A create's id comes from the read back.
  *    `writeRoute` names that route for the ledger;
+ *  - `deleteVia(io, step)`: the delete of such a type, through the same route
+ *    (an app's link, taken out of the links its app holds); it is verified as
+ *    gone through `readVia`, and the ledger names `writeRoute` for it too;
  *  - `planChanges(io, step)`: in a dry run, the changes the record's
  *    `afterWrite` would make (an app's categories), read from live, so the plan
  *    shows a difference that is not in a field of the object.
@@ -83,6 +86,9 @@ export function defineRecord(spec) {
   if (Boolean(spec.writeVia) !== Boolean(spec.readVia)) {
     throw new TypeError(`${spec.resourceType}: a record written through another route reads its object back through it too (writeVia and readVia)`);
   }
+  if (spec.deleteVia && !spec.writeVia) {
+    throw new TypeError(`${spec.resourceType}: a record deleted through another route is written and read through it too (deleteVia needs writeVia)`);
+  }
   if (spec.singleton && (spec.operations ?? []).some((verb) => verb !== 'update')) {
     throw new TypeError(`${spec.resourceType}: a singleton is only ever updated`);
   }
@@ -107,6 +113,7 @@ export function defineRecord(spec) {
     writeVia: null,
     readVia: null,
     writeRoute: null,
+    deleteVia: null,
     planChanges: null,
     remapsReferences: false,
     checkedAfterWrite: [],
@@ -520,16 +527,25 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
 }
 
 /**
+ * An undo of a create (compensation.mjs): the delete of an object this restore
+ * created, named by the journal entries it undoes. Its authority is that
+ * journal and the fresh read the plan compared, not the snapshot's absence.
+ */
+export const undoesCreate = (resource) => resource.undoes === 'create'
+  && Array.isArray(resource.compensates) && resource.compensates.length > 0;
+
+/**
  * A delete: the shared deletion guard, a complete observation of the type in
- * the source snapshot, the record's own guard, then DELETE and a read that
- * shows the object gone (absent or soft-deleted).
+ * the source snapshot (or, for an undo of a create, the journal), the record's
+ * own guard, then DELETE (or the record's `deleteVia`) and a read that shows
+ * the object gone (absent or soft-deleted).
  */
 async function applyRecordDelete(io, record, resource, payload, ctx) {
   const { naturalKey } = resource;
   const guard = refuseUnsafeDeletion({ ...resource, payload }, ctx.deletionGuardOptions ?? { breakGlassUserIds: [] });
   if (guard.refused) return { skipped: { naturalKey, reason: guard.reason } };
   const coverage = ctx.observedCoverage?.[resource.resourceType]?.outcome ?? null;
-  if (!COMPLETE.has(coverage)) {
+  if (!COMPLETE.has(coverage) && !undoesCreate(resource)) {
     return { failed: { naturalKey, error: `partial observation cannot authorise delete: the snapshot's ${resource.resourceType} collection is ${coverage ?? 'not recorded'}, so its absence there is not evidence` } };
   }
   const targetId = liveTargetId(resource, ctx);
@@ -543,12 +559,18 @@ async function applyRecordDelete(io, record, resource, payload, ctx) {
 
   const entry = await journal(ctx, resource, { operation: 'delete', targetId, priorState: payload, intendedState: null });
   if (!entry.ok) return { failed: { naturalKey, error: 'refusing to delete: rollback journal write failed' } };
-  const result = await io.retryOperation(() => io.writer.write(record.version, path, { method: 'DELETE', body: {} }));
-  if (!result.ok) {
+  const result = record.deleteVia
+    ? await record.deleteVia(io, { resource, payload, targetId, ctx })
+    : await io.retryOperation(() => io.writer.write(record.version, path, { method: 'DELETE', body: {} }));
+  if (!result?.ok) {
     await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
+    if (typeof result?.skipped === 'string') return refusalEntry(naturalKey, { outcome: 'skipped', reason: result.skipped });
     return { failed: writeFailure(record, naturalKey, result) };
   }
-  const reRead = await readUntil(io, record.version, path, (r) => r?.ok === true && r.body?.deletedDateTime == null, io.readOptions);
+  const gone = (r) => r?.ok === true && r.body?.deletedDateTime == null;
+  const reRead = record.readVia
+    ? await readUntilWith(() => record.readVia(io, { payload, targetId }), gone, io.readOptions)
+    : await readUntil(io, record.version, path, gone, io.readOptions);
   if (!isNotFound(reRead) && reRead?.body?.deletedDateTime == null) {
     await note(ctx, entry, 'uncertain', { postState: reRead?.body ?? null, detail: 'delete did not verify' });
     return { failed: { naturalKey, error: 'delete did not verify as absent or soft-deleted' } };
@@ -563,8 +585,8 @@ export function recordLedger(records) {
     resourceType: record.resourceType,
     operation,
     version: record.version,
-    method: operation === 'create' || (record.writeRoute && operation !== 'delete') ? 'POST' : operation === 'delete' ? 'DELETE' : record.updateMethod,
-    route: record.writeRoute && operation !== 'delete' ? record.writeRoute
+    method: operation === 'create' || (record.writeRoute && (operation !== 'delete' || record.deleteVia)) ? 'POST' : operation === 'delete' ? 'DELETE' : record.updateMethod,
+    route: record.writeRoute && (operation !== 'delete' || record.deleteVia) ? record.writeRoute
       : record.singleton ? record.collection
       : operation === 'create' ? (record.collection ?? '{subtype collection}') : `${record.collection ?? '{subtype collection}'}/{id}`,
     permission: record.permission ?? null,

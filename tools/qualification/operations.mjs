@@ -676,6 +676,9 @@ export function fakeGraph() {
 
 const governor = { async acquire() {}, observeRetryAfter() {} };
 
+// Types whose delete is only the undo of a create a restore made (an app's link).
+const UNDO_ONLY_DELETES = new Set(['mobileAppRelationship']);
+
 function fixtureFor(resourceType, operation, graph) {
   const collection = graphPathFor(resourceType);
   const payload = FIXTURE_PAYLOADS[resourceType];
@@ -705,7 +708,9 @@ function fixtureFor(resourceType, operation, graph) {
   }
   if (operation === 'delete') {
     graph.objects.set(objectPath, { ...payload, id: existingId });
-    return { ...base, verb: 'delete', payload: null, targetId: existingId, live: { targetId: existingId, payload: { ...payload, id: existingId } } };
+    // A type deleted only as the undo of a create is driven as that undo.
+    const undo = UNDO_ONLY_DELETES.has(resourceType) ? { undoes: 'create', compensates: ['fixture-entry'] } : {};
+    return { ...base, verb: 'delete', payload: null, targetId: existingId, live: { targetId: existingId, payload: { ...payload, id: existingId } }, ...undo };
   }
   if (operation === 'restore-soft-deleted') {
     // Roadmap task-152: a deleted Conditional Access policy comes back in the

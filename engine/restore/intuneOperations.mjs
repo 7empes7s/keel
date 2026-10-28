@@ -55,7 +55,7 @@ import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { appGroupOf, appHasPackage, appKindName, appKindWords } from './intuneAppKinds.mjs';
 import {
-  applyRecordWrite, defineRecord, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue,
+  applyRecordWrite, defineRecord, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue, undoesCreate,
 } from './recordWriter.mjs';
 
 export const INTUNE_OPERATIONS_CONTRACT_VERSION = 1;
@@ -1743,13 +1743,15 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // this run recreated (or that exist under the same name) points at them.
   // Issue #642: Graph has no POST or PATCH on the tenant's link list, so a
   // link is written through its app's updateRelationships, and read back from
-  // the app's links.
+  // the app's links. Its delete is only the undo of a link a restore created,
+  // through the same route, with the link left out.
   mobileAppRelationship: defineRecord({
     resourceType: 'mobileAppRelationship', version: 'beta', collection: '/deviceAppManagement/mobileAppRelationships',
-    odataType: 'required', operations: ['create', 'update'], remapsReferences: true,
+    odataType: 'required', operations: ['create', 'update', 'delete'], remapsReferences: true,
     writable: ['dependencyType', 'supersedenceType'], createOnly: ['sourceId', 'targetId', 'targetType'],
     refusal: appRelationshipRefusal, preflight: appRelationshipPreflight,
-    writeVia: appRelationshipWrite, readVia: appRelationshipRead, writeRoute: '/deviceAppManagement/mobileApps/{appId}/updateRelationships',
+    writeVia: appRelationshipWrite, readVia: appRelationshipRead, deleteVia: appRelationshipDelete,
+    writeRoute: '/deviceAppManagement/mobileApps/{appId}/updateRelationships',
     permission: 'DeviceManagementApps.ReadWrite.All',
   }),
   // Restore gaps, batch 18. An app is written from its settings (store and
@@ -1837,7 +1839,13 @@ const RELATIONSHIP_KINDS = new Set(['mobileAppDependency', 'mobileAppSupersedenc
 const appPath = (id) => `/deviceAppManagement/mobileApps/${encodeURIComponent(id)}`;
 
 function appRelationshipRefusal(resource, verb) {
-  const payload = resource.payload ?? {};
+  if (verb === 'delete' && !undoesCreate(resource)) {
+    return {
+      outcome: 'skipped',
+      reason: `manual: a restore takes out only a link it added itself (when that restore is undone); remove this link by hand in ${APP_PORTAL}: the app, Dependencies or Supersedence`,
+    };
+  }
+  const payload = (verb === 'delete' ? resource.live?.payload : resource.payload) ?? {};
   if (!RELATIONSHIP_KINDS.has(stripGraph(payload['@odata.type']))) {
     return { outcome: 'failed', reason: `the backup does not say whether this link is a dependency or a supersedence (${stripGraph(payload['@odata.type']) ?? 'no kind'}), so it is not written` };
   }
@@ -1924,6 +1932,11 @@ async function appRelationshipWrite(io, { payload }) {
   const result = await io.retryOperation(() => io.writer.write('beta', `${appPath(holder)}/updateRelationships`, {
     method: 'POST', body: { relationships: [...kept, relationshipEntry(payload, other)] },
   }));
+  return linkWriteAnswer(result, payload, 'restore the link again');
+}
+
+/** Intune's refusals of an updateRelationships call, as plain steps for a person. */
+function linkWriteAnswer(result, payload, then) {
   const answer = result?.ok !== true && result?.status === 400 ? JSON.stringify(result?.body ?? '') : '';
   const apps = `${payload.sourceDisplayName ?? payload.sourceId} or ${payload.targetDisplayName ?? payload.targetId}`;
   if (NOT_WIN32.test(answer)) {
@@ -1935,10 +1948,30 @@ async function appRelationshipWrite(io, { payload }) {
   if (NOT_PUBLISHED.test(answer)) {
     return {
       ...result,
-      skipped: `manual: Intune does not let ${apps} be changed until its package is uploaded, so the link was not written; upload the package in ${APP_PORTAL}, then restore the link again`,
+      skipped: `manual: Intune does not let ${apps} be changed until its package is uploaded, so the link was not written; upload the package in ${APP_PORTAL}, then ${then}`,
     };
   }
   return result;
+}
+
+/**
+ * The undo of a link a restore created: the app that holds it is sent the
+ * links it holds now, with this one left out (updateRelationships replaces
+ * them all; the tenant's link list has no DELETE route Intune accepts).
+ */
+async function appRelationshipDelete(io, { payload }) {
+  const { holder, other } = linkEnds(payload);
+  const listed = await io.retryOperation(() => io.writer.read('beta', `${appPath(holder)}/relationships`));
+  if (listed?.ok !== true) return listed ?? { ok: false, status: 400, error: 'the app\'s links could not be read; nothing was written' };
+  if (listed.body?.['@odata.nextLink']) return { ok: false, status: 400, error: 'the app has more links than one page holds; nothing was written' };
+  const held = (listed.body?.value ?? []).filter((link) => lower(link?.targetType) !== 'parent');
+  // Already gone: nothing to send; the read after it confirms.
+  if (!held.some((link) => lower(link?.targetId) === lower(other))) return { ok: true, status: 204, body: null };
+  const kept = held.filter((link) => lower(link?.targetId) !== lower(other)).map((link) => relationshipEntry(link, link.targetId));
+  const result = await io.retryOperation(() => io.writer.write('beta', `${appPath(holder)}/updateRelationships`, {
+    method: 'POST', body: { relationships: kept },
+  }));
+  return linkWriteAnswer(result, payload, 'undo the restore again');
 }
 
 /** The link as the backup names it, found among its source app's links (404 when it is not there). */

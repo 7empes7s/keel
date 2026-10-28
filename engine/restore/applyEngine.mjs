@@ -44,7 +44,9 @@ import {
   roleDefinitionReadPath, roleDefinitionWrite, ruleApprovers, ungrantedRequest, writtenReferences,
 } from './adminRoleOperations.mjs';
 import { writerFor } from './writers/registry.mjs';
-import { namedLocationTrustKept, namedLocationTrustRefusal, withoutNamedLocationTrust } from './namedLocationTrust.mjs';
+import {
+  namedLocationTrustKept, namedLocationTrustRefusal, skippedLocationPolicyRefusal, withoutNamedLocationTrust,
+} from './namedLocationTrust.mjs';
 
 /** Thrown by rewriteReferences when a reference cannot be resolved. Caught at every call site
  * and turned into a `failed` entry — a resource whose references don't all resolve must never
@@ -431,6 +433,9 @@ export async function applyWave(writer, governor, wave, {
   // Wave 2 RST: how many independent resources of this wave are written at
   // once. 1 is the serial path.
   concurrency = DEFAULT_WAVE_CONCURRENCY,
+  // Natural keys of the named locations earlier waves of this run skipped on
+  // trust (namedLocationTrust.mjs recordTrustSkippedLocations).
+  trustSkippedLocations = new Set(),
 }) {
   const applied = [];
   // Roadmap task-149: sign-in path sections a tenant policy write changed on
@@ -600,6 +605,20 @@ export async function applyWave(writer, governor, wave, {
     const trustRefusal = namedLocationTrustRefusal(resource, effectiveVerb);
     if (trustRefusal) {
       skipped.push({ naturalKey: resource.naturalKey, reason: trustRefusal.reason, completion: trustRefusal.completion });
+      return;
+    }
+    // A policy naming a location an earlier wave skipped on trust, which the
+    // target does not have, is skipped with a step instead of failing its reference.
+    // The same references the writer rewrites; any other unresolved one still fails below.
+    const writtenRefs = withExplicitReferences(resource).filter((ref) => !isServerOwnedReference(ref, resource.resourceType));
+    const locationRefusal = skippedLocationPolicyRefusal(resource, effectiveVerb, trustSkippedLocations, writtenRefs, {
+      resolves: (symbol) => resolveSymbol(symbol, referenceContext).resolved,
+      othersResolve: (refs) => {
+        try { rewriteReferences(resource.payload, refs, referenceContext, resource.naturalKey, resource.resourceType); return true; } catch { return false; }
+      },
+    });
+    if (locationRefusal) {
+      skipped.push({ naturalKey: resource.naturalKey, reason: locationRefusal.reason, completion: locationRefusal.completion });
       return;
     }
 

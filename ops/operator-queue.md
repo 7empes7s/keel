@@ -1295,8 +1295,12 @@ being triggered by queue updates.
   `/etc/keel/purview-collector.json` and K18 needs `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env`, which keelops
   is deliberately not granted. Run them here instead; grant nothing to keelops.
 - Needs: nothing.
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-28 06:50 UTC, root keel-operator). B = `e86afa9`. K16: Purview Collector (`/etc/keel/purview-collector.json`, IPPS session) reads only; K18: host read with `KEEL_QUALIFICATION_HMAC_KEY` (not printed). Nothing written, nothing granted, nothing given to keelops.
+  - **K16:** `KEEL-RT-retention` Enabled True, Mode Enforce, **DistributionStatus `Error`**, WhenChanged 10/17/2026 3:13:55 AM. DistributionResults (all `ResultCode: PolicySyncTimeout`, LastResultTime 2026-10-17T03:13:55Z): Exchange "It's taking longer than expected to deploy the policy. It might take an additional 2 hours to update the final deployment status, so check back in a couple hours."; Skype, ModernGroup, DynamicScope "Policy cannot be deployed to the content source due to a temporary Office 365 datacenter issue. The current policy is not applied to any content in the source, so there's no impact from the blocked deployment. To fix this issue, please try redeploying the policy." (AdditionalDiagnostics: "The configuration is changed at '10/17/2026 3:13:55 AM', but has not gotten status after '01:00:00'."). Output truncated by Format-List after 4 entries.
+    `KEEL-RT-dlp` Enabled True, Mode TestWithoutNotifications, **DistributionStatus `Success`**, DistributionResults `{}`, WhenChanged 10/16/2026 9:05:41 PM.
+    Inference: DLP is ready for the purview-retention-dlp recapture; retention is stuck 11 days and Microsoft's own text asks for a redeploy (a write, not done here).
+  - **K18:** evidence branch `claude/live-evidence-w2-entra` @ `bbd9086b`. `live evidence permissionGrantPolicy.create.json: fixture-tested -> live-qualified` · `live evidence permissionGrantPolicy.update.json: fixture-tested -> live-qualified`. #294 confirmed.
 - **Tenant:** Collector reads only (K16). Nothing is written, nothing is granted.
 - Do: K16 and K18 exactly as written in `ops/keelops-queue.md` on `claude/keelops-queue` (read them there). Write the results in this
   item's `Result` (not in the keelops queue). Never print a secret.

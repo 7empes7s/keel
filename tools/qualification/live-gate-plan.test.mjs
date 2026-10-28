@@ -89,6 +89,8 @@ test('a printed singleton key matches the key of its committed live capture', ()
   const dir = new URL('../../docs/release/qualifications/entra-live/', import.meta.url);
   for (const type of [...Object.keys(GRAPH_SINGLETON_NAMES), ...Object.keys(TENANT_NAMED_SINGLETONS)]) {
     const file = new URL(`${type}.update.json`, dir);
+    // A name the plan prints as a concrete key must be backed by a real capture.
+    assert.ok(existsSync(file) || !Object.hasOwn(GRAPH_SINGLETON_NAMES, type), `${type}: no committed live capture backs its name`);
     if (!existsSync(file)) continue;
     const live = readFileSync(file, 'utf8').match(/"naturalKey": "([^"]+)"/)?.[1];
     assert.ok(live, `${type}: the capture has a naturalKey`);

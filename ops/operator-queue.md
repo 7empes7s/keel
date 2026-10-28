@@ -9298,7 +9298,7 @@ item that needs it stays untouched.
   (today it reads any `env:` name; the variable holds the path to the sender credential file). Saved rows will be
   carried over (`env:X` becomes `env:KEEL_INTEGRATION_X`, upper-cased). We need the live names first so nothing breaks.
 - Needs: nothing. Independent of any PR.
-- Status: todo
+- Status: done
 - **Read-only. No config, env file, database or service change. No restart.** Print reference *names* only, never values
   or file paths held in a variable.
 - Do:
@@ -9309,7 +9309,15 @@ item that needs it stays untouched.
      `systemctl show keel-worker -p Environment | grep -c NAME`.
   3. Any Sentinel qualification files on the host (gate 117 is deferred, so probably none):
      `ls -la /etc/keel | grep -i sentinel` and `grep -l "KEEL_SENTINEL_" /etc/keel/*.env 2>/dev/null` (file names only).
-- Result:
+- Result: done (2026-10-28 08:40 UTC, root keel-operator). Read-only; B = `031d977`. No config, env, database or service change.
+  1. `siem_destination`: **0 rows** (the table is empty), so there is no `credentialRef` and no webhook `auth` reference.
+     | destination kind | reference name | rows | defined in env |
+     |---|---|---|---|
+     | azure-monitor-sentinel | none | 0 | n/a |
+     | webhook | none | 0 | n/a |
+  2. No `env:NAME` references, so nothing to look up. References not defined anywhere: none.
+  3. `ls -la /etc/keel | grep -i sentinel`: no files. `grep -l KEEL_SENTINEL_ /etc/keel/*.env`: none.
+  - No live Sentinel row uses a name outside `KEEL_INTEGRATION_`; restricting the reference breaks nothing today.
 - **Expected:** a short table: destination kind, reference name, rows, defined in env (where). "none" when there are no rows.
 - **Report:** the table, any reference not defined anywhere, and the step 3 file names. If a live Sentinel row uses a name
   outside `KEEL_INTEGRATION_`, say so: the thread then queues a rename item.

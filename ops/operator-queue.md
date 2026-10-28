@@ -9670,3 +9670,27 @@ item that needs it stays untouched.
 - **Report:** B; S, A, C0, C (and A2, C2) and approval ids; d1 and s1; each step's exit code and the compensation plan lines; the
   Graph calls of step 5; every Graph call that failed (status and message verbatim, no tokens); a screenshot or the text of the portal
   undo panel in step 4 if you can reach it.
+
+### Q214: Live check that a timed-out PowerShell job's container is removed (after PR #661)
+- Drafted by the "Stop PowerShell containers on job timeout" thread (2026-10-28). Before PR #661, a job timeout killed the
+  `docker run` client but left the container running. Now every job container is named `keel-job-<jobId>-<8 hex>`, and on timeout
+  `runJob` runs `docker rm -f <name>` (bounded to 30 s) before it rejects with `TIMEOUT`, then removes the staged `/run/keel-ps-*` copy.
+  A failed removal is added to the error's stderr as `keel: container <name> may still be running: <reason>`.
+- Needs: /opt/keel-live at `39129d8a` or later (`grep -q jobContainerName /opt/keel-live/engine/powershell/jobQueue.mjs`).
+- Status: todo
+- Result:
+- **Read-only in the tenant** (the probe only runs Get cmdlets). No restore, no write, no change to `/opt/keel-live` or the image tag.
+  Never print a secret.
+- Do, as root, from `/opt/keel-live/engine` (read-only use of the deployed code):
+  1. Before: `docker ps -a --filter name=keel-job- --format '{{.Names}} {{.Status}}'` and `ls /run | grep -c keel-ps-` (expected empty and 0).
+  2. Forced timeout: `node -e "import('./powershell/jobQueue.mjs').then(async (q) => { try { await q.runJob({ mode: 'probe', workload: 'exo,teams,spo', jobId: 'q214' }, { timeoutMs: 8000 }); console.log('NO TIMEOUT'); } catch (e) { console.log(e.code, JSON.stringify(e.stderr.slice(-400))); } })"`.
+     About 4 s in, in a second shell, run `docker ps --filter name=keel-job-q214 --format '{{.Names}} {{.Status}}'` once (expected one
+     running `keel-job-q214-xxxxxxxx`). Expected output of the node command: `TIMEOUT` with no `may still be running` line. If it prints
+     `NO TIMEOUT`, repeat with `timeoutMs: 3000`.
+  3. Right after step 2: `docker ps -a --filter name=keel-job- --format '{{.Names}} {{.Status}}'` (expected empty: the container is gone,
+     not just stopped) and `ls /run | grep -c keel-ps-` (expected 0).
+  4. Normal job still works: the same command with no `timeoutMs` (default 5 min) and print `Object.keys(r.result).length` or the
+     per-workload ok counts; then repeat step 3 (expected empty and 0).
+- **Expected:** step 2 `TIMEOUT` with no removal note; steps 3 and 4 leave no `keel-job-*` container and 0 staged dirs; step 4 probe ok as before.
+- **Report:** the deployed commit, each command's exit code and output (the step 2 `docker ps` line, the stderr tail, the leftover counts),
+  and any `keel-job-*` container in the `Created` state (a known limit if the timeout lands while docker is still creating it).

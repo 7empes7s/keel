@@ -1726,7 +1726,7 @@ being triggered by queue updates.
   guard, PR to follow) refuses loopback, private and link-local addresses. This item records what was exposed, so we know
   whether anything else needs closing.
 - Needs: nothing. Independent of the PR.
-- Status: todo
+- Status: done
 - **Read-only. No POST, PUT or DELETE to any local service, no config change, no restart.** Never print a secret or token.
 - Do:
   1. `ss -ltnp` as root. List every TCP listener on 127.0.0.0/8, ::1, 0.0.0.0, :: or a private address, with port and owning
@@ -1745,7 +1745,28 @@ being triggered by queue updates.
      (host and port only, never the path).
      Report the counts and any webhook destination whose auth reference does not start with `env:KEEL_INTEGRATION_`
      (it stops resolving after the PR) and any webhook channel whose URL host is an IP or `localhost` (give the host only).
-- Result:
+- Result: done (2026-10-28 06:38 UTC, root keel-operator). Read-only; B = `e86afa9`. No POST/PUT/DELETE sent, no config change. **Finding: Caddy's admin API is on by default at 127.0.0.1:2019 and answers without auth.**
+  1. `ss -ltnp` (unit taken from the PID):
+     | address | port | process (unit) | HTTP | unauth state-changing POST |
+     |---|---|---|---|---|
+     | 127.0.0.1 | 2019 | caddy (caddy.service) admin API | yes | **yes** (/load, /stop, /config/* per Caddy docs) |
+     | 127.0.0.1 | 3600 | node (keel-portal) | yes | no (Access JWT checked in app; /api/health 401 locally; cross-site POST 403, see Q196) |
+     | 127.0.0.1 | 20241 | cloudflared metrics | yes | no (docs: GET /metrics, /ready, /config only) |
+     | 127.0.0.1 | 8787 | bun (fact-checker-relay) | yes | no (POST needs a 32–64-char secret in the path; public as relay.*) |
+     | 127.0.0.1 | 8788 | node (civic-companion) | yes | no (public as cracia.*; writes return 405 "not open yet") |
+     | 127.0.0.1 | 8090 | python (civic-provenance) | yes | no (only POST /claims/grade, computes and stores nothing; from code) |
+     | 127.0.0.1 | 8091 | python (civic-agora, --read-only) | yes | no (POST gives 403 read_only; from code) |
+     | 127.0.0.1 | 8093 | python (civic-commons) | yes | no (no POST handler) |
+     | 127.0.0.1 | 8094 | node (civic-desk) | yes | no (writes need `Authorization: Staff|Resident <token>`; /enrol needs a valid code) |
+     | 127.0.0.1 | 5433 | docker-proxy → keel-postgres:5432 | no | n/a (password auth) |
+     | 127.0.0.53 / 127.0.0.54 | 53 | systemd-resolved | no | n/a |
+     | 0.0.0.0 / [::] | 22 | sshd | no | n/a |
+     | * | 80 | caddy | yes | no by itself (proxies 4 hosts) |
+     No other private-address TCP listeners.
+  2. Caddy (`caddy run --config /etc/caddy/Caddyfile`): no global options block and no `admin` line, so Caddy uses its default admin endpoint localhost:2019. Nothing sets `admin off` or a unix socket.
+  3. `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:2019/config/` → **`200`**. Before the fix a webhook could POST /load or /stop to it. Inference: it is the one open local POST surface; `admin off` (or a unix socket) in the Caddyfile would close it. **Operator decision**, not changed here.
+  4. See the table (docs-based for caddy and cloudflared; code-based, read-only grep of the deployed releases, for relay and civic).
+  5. `grep -c '^KEEL_INTEGRATION_'`: 0 in every /etc/keel/*.env (db, gh, offsite, portal, qualification, servicenow, servicenow-qualification, status-db); keel-worker unit has no inline Environment= (EnvironmentFile=/etc/keel/db.env only): 0; running worker and portal: 0. `siem_destination` webhook rows: 0 (table empty). `channel` webhook rows: 0 (table empty). Rows the new rules would refuse: **none**.
 - **Expected:** a short table of listeners (address, port, process, HTTP yes/no, unauthenticated POST yes/no/unknown), the Caddy
   `admin` line, the 2019 status code if it applies, and the counts from step 5.
 - **Report:** the table, the Caddy line, the step 3 code, step 5 counts and any rows that the new rules would refuse.
@@ -1760,7 +1781,7 @@ being triggered by queue updates.
   not against the tenant: the cloud has no module download and no tenant access. The PR is held until this passes, because a
   merge deploys it.
 - Needs: nothing.
-- Status: todo
+- Status: blocked (decision needed: fix the item's step 2, or fix parseJobStdout before merge; see Result)
 - **Read-only in the tenant** (Get cmdlets and the probe only). No restore, no write, no change to `/opt/keel-live` or the
   running image tag. Never print a secret.
 - Do, from your own clone checked out at the tip of `origin/claude/project-thread-ck66bm` (not `/opt/keel-live`):
@@ -1778,7 +1799,14 @@ being triggered by queue updates.
   5. Host facts the container relies on: `getent passwd 10001` (expected empty: no host account shares the container uid),
      `docker info --format '{{.SecurityOptions}}'` (say whether `userns` is listed), and
      `docker network inspect bridge --format '{{.Name}}'` (expected `bridge`).
-- Result:
+- Result: blocked (2026-10-28 06:40 UTC, root keel-operator): **the hardening works live, but step 2 as written cannot pass. Decision needed: fix the item, or fix `parseJobStdout` before merge.** Tested `ea96195c` (tip of origin/claude/project-thread-ck66bm) in a separate worktree; read-only in the tenant; `/opt/keel-live` and `keel-powershell:latest` untouched (`:q197` kept).
+  1. `docker build -t keel-powershell:q197 ops/powershell` exit **0** (image bc94519a40ad; ExchangeOnlineManagement 3.10.1, MicrosoftTeams 7.9.0, PnP.PowerShell 3.4.1). Base digest `mcr.microsoft.com/powershell@sha256:62300a213a9293916333df2b014cd3a8f22fb0b0b65f2bb446aaf436bcf8c868` (matches the Dockerfile pin).
+  2. Probe (`runJob` exo,teams,spo, image q197): the container ran and connected, but runJob rejected the answer: `ERR BAD_JSON job 4000900c-… produced non-JSON stdout: Unexpected token '', "[33;1mWAR"... is not valid JSON`. Stdout holds 4 pwsh lines `WARNING: There are more results available than are currently displayed. To view them, increase the value for the ResultSize parameter.` (Get-CASMailbox/Get-Mailbox -ResultSize 1), around a multi-line JSON array; `parseJobStdout` only accepts a last line starting `{` and is byte-identical to master. With the WARNING lines removed the stdout parses: **exo 39/39 ok, teams 23/23 ok, spo 9/9 ok**, synthetic=false; creds read from `/run/keel-job/tenant.json`.
+     - `runCmdlet` Get-OrganizationConfig: `CMDLET_ERROR could not connect (exo): Value cannot be null. (Parameter 'Organization cannot be null for certificate based connections.')`: the default `/etc/keel/tenant.json` has no `organization`; production callers pass `tenantConfigPath` (exchange-collector.json). The same cmdlet returned 1 row inside the probe. Row count: n/a.
+     - `runCmdlet` Get-PnPTenant: `cmdlet Get-PnPTenant is not allowed` (CmdletNotAllowed): not in the branch or master allowlist (`$AllowedPnP` has Get-PnPTenantSite). Row count: n/a.
+  3. Mount line while the probe ran: `"/app/run-job.sh" /opt/rc-keel-operator/wt-ck66bm/ops/powershell,/run/keel-ps-YS5IUf`: **no /etc/keel mount**. Inspect: /run/keel-ps-* → /run/keel-job ro, ops/powershell → /app ro, user 10001:10001, net bridge, ReadonlyRootfs true, CapDrop [ALL], no-new-privileges, pids 512. Leftover `ls /run | grep -c keel-ps-`: **0** (before, after each run).
+  5. `getent passwd 10001`: empty (exit 2). SecurityOptions `[name=apparmor name=seccomp,profile=builtin name=cgroupns]`: **no userns**. `docker network inspect bridge` → `bridge`; it has outbound access (EXO, Teams, Graph, SPO all connected). No symlink leaves /etc/keel; checkout path and parents 755 root.
+  - Inference (not run): the BAD_JSON probably happens on master and `:latest` today too (same parser). Suggested item fix: rerun step 2 with `tenantConfigPath: '/etc/keel/exchange-collector.json'` and an allowlisted PnP read (Get-PnPTenantSite); suggested code fix: drop `^WARNING:` lines (and ANSI) in `parseJobStdout`.
 - **Expected:** build exit 0; the probe connects to exo, teams and spo as it does today; both cmdlets return rows; no `/etc/keel`
   mount; 0 leftover staged dirs.
 - **Report:** build exit code, digest, per-workload probe status, the two row counts, the mount line, the leftover count.
@@ -1789,7 +1817,7 @@ being triggered by queue updates.
   ships (`keel-db-<date>.sql.gz.age`), and nothing ships when `age` or a recipient is missing. Once the PR deploys, the
   offsite run fails until this item is done, so do it now.
 - Needs: nothing (set-up only; the test run in step 5 uses your own checkout of the branch).
-- Status: todo
+- Status: blocked (rerun step 4 after the 2026-10-29 04:01 dump; identity waiting to be moved off the host)
 - **Host only, no tenant.** Never print, log or commit the private identity (`AGE-SECRET-KEY-...`).
 - Do:
   1. `apt-get install -y age` if `command -v age` is empty; report `age --version`.
@@ -1804,7 +1832,13 @@ being triggered by queue updates.
   5. Encryption round trip without shipping: `node engine/schedules/offsite.mjs encrypt <latest /opt/backups/<date>/keel-db.sql.gz> /root/keel-offsite-age/q198-test.age`
      then `age -d -i /root/keel-offsite-age/identity.txt /root/keel-offsite-age/q198-test.age | cmp - <that dump>`: expected no
      output, exit 0. Delete `q198-test.age` afterwards.
-- Result:
+- Result: blocked (2026-10-28 06:40 UTC, root keel-operator): **set-up done and the round trip is identical; step 4's dry run stops at the freshness gate before the age check.** Rerun step 4 after the next nightly dump (2026-10-29 ~04:01 UTC); keel-operator will. Host only, no tenant. Tested `ea96195c` (tip of origin/claude/project-thread-ck66bm).
+  1. age was missing; `apt-get install -y age` exit 0; `age --version` 1.1.1.
+  2. `install -d -m 700 /root/keel-offsite-age` exit 0; `age-keygen -o /root/keel-offsite-age/identity.txt` exit 0 (output to /dev/null). Dir 700 root, identity.txt 600 root; not copied anywhere.
+  3. `age-keygen -y … > /etc/keel/offsite-age-recipients.txt && chmod 644` exit 0 (644 root, no private key). **Recipient: `age1u8cnmzeerdjnxul3x8m8vj6ph6fs9mg6sgd4qpy5wp0mrz9arcnskfdtfy`**
+  4. `KEEL_OFFSITE_BACKUP_ROOT=/opt/backups bash ops/keel-offsite.sh --dry-run` exit **1**: `offsite refused: dump manifest is not newer than last shipped manifest` (today's 04:01 dump already shipped at 05:00; both manifests carry 2026-10-28T04:01:22.582Z). The gate runs before the age check, so "encryption recipients present" was not reached. Separately `node engine/schedules/offsite.mjs recipients` exit 0. Nothing shipped.
+  5. `node engine/schedules/offsite.mjs encrypt /opt/backups/2026-10-28/keel-db.sql.gz /root/keel-offsite-age/q198-test.age` exit 0; `age -d -i … | cmp - <dump>`: no output, exit 0 (**identical**). q198-test.age deleted.
+  - **identity at /root/keel-offsite-age/identity.txt is waiting to be moved off the host** (Marouane).
 - **Expected:** age installed, recipient file in place, dry run exit 0, round trip identical.
 - **Report:** the `age1...` recipient, each exit code, and the line "identity at /root/keel-offsite-age/identity.txt is
   waiting to be moved off the host". After the human operator confirms it is stored off-host, a later item removes it.
@@ -8740,7 +8774,14 @@ item that needs it stays untouched.
     refuse the plan with `... names 2 objects; these are keyed by Guid, so name one of them: --target <kind>:<guid>, ...`.
     Applies to mail flow, Exchange settings, Purview retention/DLP and Purview retention labels.
 - Needs: /opt/keel-live at the #609 merge or later (`grep -q resolveNamedTargets /opt/keel-live/engine/restore/workloads/cmdletSettings.mjs`).
-- Status: todo
+- Status: done
+- Result: done (2026-10-28 07:05 UTC, root keel-operator). **A target by name now plans the change (#609 works live).** B = `e86afa9`. Exchange Collector for reads, Exchange Restorer for the fixture writes and the enforce; global admin not used; nothing granted. Requester Gmail `2a47535a`, approver Entra `bac8d59b` (standing 2026-10-14 authorization).
+  1. Fixture `KEEL-RT-svc-change` created disabled, Mode Audit, Guid `b2b9c57d…`. Collect: 1 new; `added` row **6fd33b84** accepted (alert **a5fb5917**). Mode Enforce; collect: `modified` row **b0e47613** (Mode Audit→Enforce), previous_collection_id **d1b8da0f**.
+  2. Dry run by name (`--target transport-rule:KEEL-RT-svc-change`, no `--collector-config`): artifact **abf0cf7c**. `PowerShell connects as the collector with /etc/keel/exchange-collector.json` · `Mail flow restore plan: 1 change(s), 0 manual, 0 refused`: `Set-TransportRule` Mode Enforce→Audit. `workloadRestore.targets` = `["transport-rule:b2b9c57d-99c3-4b3a-a363-49cd8372ec46"]` (the Guid key, not the name).
+  3. Content-effect approval **c33355df** (`externally-sharing`), restore approval **3cc628d5** (`executor: cli`, so no worker job), enforced with `keel-restore --artifact abf0cf7c… --enforce`, exit 0: `PowerShell connects as the restorer with /etc/keel/exchange-restorer.json` · `Mail flow restore: verified`. Live rule Mode Audit (still Disabled). Collect: 0 new, no new row for the rule, alert `resolved` (06:53:46).
+  4. **Ambiguous name: skipped, Exchange refuses duplicate names.** Created `KEEL-RT-svc-change-2` (disabled, Guid `4d88148c…`); `Set-TransportRule -Name KEEL-RT-svc-change` refused: `Active Directory operation failed on <DC>. The object 'CN=KEEL-RT-svc-change,CN=TransportVersioned,CN=Rules,CN=Transport Settings,CN=Configuration,CN=<tenant>.onmicrosoft.com,…' already exists.` (DC and tenant names elided). The two-object refusal path stays fixture-tested only.
+  5. Cleanup: both rules deleted (count 0). Collect: `removed` row **ffe3c9a1** (the -2 rule was never collected); accepted; collect again: **0 changes**, `workload_approved` rows for either Guid 0.
+  - **Left in the tenant:** nothing.
 - **Test tenant only.** Same hard rules and standing approval as Q161. Collector for reads, Restorer for the write. Grant nothing.
   Never touch CA policies, break-glass or Marouane's account.
 - **Fixture:** transport rule `KEEL-RT-svc-change`, created **disabled**, as in Q161 (RecipientAddressContainsWords `keel-rt-nobody`,
@@ -8855,7 +8896,7 @@ item that needs it stays untouched.
   signed-in browser approve a restore depends on that cookie's SameSite setting. The portal fix (PR from branch
   `claude/project-thread-noleh6`) refuses cross-site state changes in the app anyway; this item records the edge setting.
 - Needs: nothing for steps 1 to 3. Step 4 needs `/opt/keel-live` at the merge of that PR or later.
-- Status: todo
+- Status: done
 - **Read-only. No change to the Access application, Caddy, Cloudflare rules or any service. No restart.** Never print a token,
   cookie value or JWT.
 - Do:
@@ -8871,7 +8912,11 @@ item that needs it stays untouched.
      - `curl -sI http://127.0.0.1:<port>/api/health`: report the `Content-Security-Policy` and `X-Frame-Options` lines.
      - `curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: https://evil.example' -H 'Sec-Fetch-Site: cross-site' http://127.0.0.1:<port>/api/approvals/00000000-0000-0000-0000-000000000000/reject`:
        expected `403` (refused before sign-in; nothing is recorded).
-- Result:
+- Result: done (2026-10-28 06:38 UTC, root keel-operator). Read-only; B = `e86afa9`. No Access, Caddy or Cloudflare change.
+  1. **No token on host.** No Cloudflare API token with Access read in /etc/keel, /etc/cloudflared or root's env (only CLOUDFLARE_ACCESS_AUD and CLOUDFLARE_ACCESS_TEAM_DOMAIN, not API tokens; the tunnel credentials were not used). `same_site_cookie_attribute`, `http_only_cookie_attribute`, `enable_binding_cookie`, `session_duration` **not verified**: Marouane can read them in Zero Trust → Access → Applications.
+  2. Hostnames under techinsiderbytes.com routed to this host by the cloudflared tunnel (names from the local metrics `/config`, a GET): Caddy :80 handlers: keel, relay, cracia, archipelago. Sent to Caddy :80 with no matching handler: desktop, play. Sent to localhost ports with no listener today: mimoun, hello, dashboard, terminal, goblin, csopus, cssol. All are same-site to the portal; relay and cracia serve live apps.
+  3. Portal site block: only `@keel host keel.techinsiderbytes.com` and `handle @keel {`. No `header`, CSP, X-Frame-Options or Origin lines (frame headers come from the app).
+  4. #620 (merge `de11bbb1`) is in the live tree `e86afa9` (deploy success 03:25:31; keel-portal started 03:25:28). Portal port 127.0.0.1:3600. `curl -sI …/api/health` → 401 (expected, no Access token) with `Content-Security-Policy: frame-ancestors 'none'` and `X-Frame-Options: DENY`. Cross-site POST `…/api/approvals/00000000-…/reject` → **`403`**. Both match Expected; SameSite/HttpOnly remain unverified (step 1).
 - **Expected:** SameSite `lax` or `strict`, HTTP-only on; frame headers `frame-ancestors 'none'` and `DENY`; step 4 code 403.
 - **Report:** the step 1 fields (or "no token on host"), step 2 hostnames, step 3 lines, step 4 lines and code.
 
@@ -8881,7 +8926,7 @@ item that needs it stays untouched.
   webhooks, so a reference can never pick up the database URL. Before that, we need the names the live settings use, so
   the change can carry them over without breaking a live integration.
 - Needs: nothing. Independent of any PR.
-- Status: todo
+- Status: done
 - **Read-only. No config, env file, database or service change. No restart.** Print reference *names* only, never values.
 - Do:
   1. `psql "$KEEL_DB_URL" -Atc "SELECT tenant_ref, adapter, config->'credential'->>'tokenRef', config->'callback'->>'secretRef', substring(config->>'instanceUrl' from '^https://([^/]+)') FROM itsm_adapter_config"`
@@ -8890,7 +8935,16 @@ item that needs it stays untouched.
   3. For every distinct `env:NAME` from steps 1 and 2, report whether `NAME` is defined in `/etc/keel/*.env` or the
      `keel-worker` / `keel-portal` unit environment (yes / no; never the value):
      `grep -l "^NAME=" /etc/keel/*.env` and `systemctl show keel-worker -p Environment | grep -c NAME`.
-- Result:
+- Result: done (2026-10-28 06:38 UTC, root keel-operator). Read-only; B = `e86afa9`.
+  1. `itsm_adapter_config`: query ran, **0 rows** (table empty).
+  2. `channel` for teams, slack, pagerduty, sms: query ran as written, **0 rows** (channel has no rows of any kind; columns id, kind, config, enabled, created_at, so no adaptation needed).
+  3. No `env:NAME` references exist.
+     | integration | reference name | rows | defined in env |
+     |---|---|---|---|
+     | servicenow token | none | 0 | n/a |
+     | servicenow callback | none | 0 | n/a |
+     | teams / slack / pagerduty / sms | none | 0 | n/a |
+     References not defined anywhere: none. Side note (names only): `/etc/keel/servicenow.env` defines SERVICENOW_INSTANCE_URL, SERVICENOW_OAUTH_CLIENT_ID, SERVICENOW_OAUTH_CLIENT_SECRET, SERVICENOW_ADMIN_USER, SERVICENOW_ADMIN_PASSWORD; neither keel-worker (db.env) nor keel-portal (db.env, portal.env) loads it. Inference: requiring `env:KEEL_INTEGRATION_*` breaks no live integration today.
 - **Expected:** a short table: integration (servicenow token, servicenow callback, teams, slack, pagerduty, sms), reference
   name, rows using it, defined in env (where). "none" when a table has no rows.
 - **Report:** the table, and any reference that is not defined anywhere.
@@ -8901,7 +8955,7 @@ item that needs it stays untouched.
   `job.priority` (approval-minted jobs first) and a 20-job per-person queue cap in the portal, and coalesces repeated
   identical denials in the evidence chain.
 - Needs: PR #627 deployed (`keel/live-deploy` success on its merge commit) and `keel-worker` reloaded by the deploy.
-- Status: todo
+- Status: done
 - **Read-only. No config, database or service change. No restart.** If the worker has not reloaded yet because a job
   is running, report that and stop; do not restart it.
 - Do:
@@ -8912,7 +8966,12 @@ item that needs it stays untouched.
   4. Count the worker's database connections: `psql "$KEEL_DB_URL" -Atc "SELECT count(*) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND application_name = '' AND backend_type = 'client backend'"`
      (an approximate count is fine; report what the query shows before and after, if it changes).
   5. `psql "$KEEL_DB_URL" -Atc "SELECT priority, status, count(*) FROM job WHERE created_at > now() - interval '1 day' GROUP BY 1,2 ORDER BY 1,2"`.
-- Result:
+- Result: done (2026-10-28 06:38 UTC, root keel-operator). Read-only, no restart; B = `e86afa9`. Everything matches Expected.
+  1. `priority|smallint|0`; index `job_queued_requester_idx` exists.
+  2. keel-worker MainPID 1733283, ActiveEnterTimestamp Wed 2026-10-28 03:25:38 UTC. Live tree `e86afa9865da…` contains #627's merge `7c23d684`; `keel/live-deploy` success on e86afa9 at 03:25:31. The deploy reloaded the worker (03:25:31 SIGUSR2 to old PID 1726251, 03:25:33 "exited cleanly", 03:25:38 new PID).
+  3. `journalctl -u keel-worker --since 03:25:38`: `worker Mulinux: polling for jobs every 2000ms` (03:25:38); **0** "safety sweep failed" lines.
+  4. Client connections with empty application_name: 3 at 06:38, unchanged on recount. Two from 172.17.0.1 started 03:25:38.54 and 03:25:38.56 (the worker's start: its job connection plus the new sweep connection, inferred by start time); the third started 06:38:06 (probably the portal, not confirmed).
+  5. Jobs in the last day: `0|succeeded|55`, `1|succeeded|1` (that one is Q159's approval-minted enforce job 784f1c26, so approval jobs do get priority 1).
 - **Expected:** `priority smallint` default 0 and the index exist; the live tree is at or after the #627 merge commit; the
   worker started after the deploy; no "safety sweep failed" lines (or, if any, the redacted reason); jobs grouped by priority.
 - **Report:** each step's output (no secrets) and anything that does not match.

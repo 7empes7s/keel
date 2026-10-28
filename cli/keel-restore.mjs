@@ -50,6 +50,9 @@
 //   exchange-mailbox-settings  --mailbox <user principal name> [--include-organization]
 //   teams-settings             --team <team id>
 //   purview-labels             --target label:<id> | label-policy:<id> (repeatable)
+//   exchange-distribution-groups [--target <list name or Guid> ...] (distribution lists and
+//                              mail-enabled security groups, through Microsoft365DSC in the
+//                              keel-dsc image; settings, and a list that is gone)
 //   mail flow, Exchange settings, Teams org-wide and voice policies, Purview retention,
 //   DLP and labels: [--target <key> ...]. A key is `<kind>:<Guid>` for rules, connectors
 //   and policies; `<kind>:<Name>` is accepted too and resolves to the one object of that

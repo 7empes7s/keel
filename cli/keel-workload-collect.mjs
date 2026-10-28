@@ -238,7 +238,8 @@ export async function importSeams() {
     { WRITTEN_WORKLOADS, workloadWritesRecordFile }, { ledgerEvidenceFromSiteGrantsAcceptance },
     { SITE_GRANTS_RECORD_FILE }, { ledgerEvidenceFromSitePermissionsAcceptance }, { SITE_PERMISSIONS_RECORD_FILE },
     { READ_FAMILIES, ledgerEvidenceFromWorkloadReadsAcceptance, workloadReadsRecordFile },
-    { ledgerEvidenceFromStructureWritesAcceptance }, { STRUCTURE_WRITES_RECORD_FILE }] = await Promise.all([
+    { ledgerEvidenceFromStructureWritesAcceptance }, { STRUCTURE_WRITES_RECORD_FILE },
+    { ledgerEvidenceFromDscWritesAcceptance }, { DSC_WRITES_RECORD_FILE }] = await Promise.all([
     import('../tools/qualification/sharepointLive.mjs'), import('../tools/qualification/teamsLive.mjs'),
     import('../tools/qualification/exchangeLive.mjs'), import('../tools/qualification/onedrivePurviewLive.mjs'),
     import('../tools/qualification/workloadWritesLive.mjs'), import('../tools/qualification/workloadWritesAcceptance.mjs'),
@@ -246,6 +247,7 @@ export async function importSeams() {
     import('../tools/qualification/sharepointSitePermissionsLive.mjs'), import('../tools/qualification/sharepointSitePermissionsAcceptance.mjs'),
     import('../tools/qualification/workloadReadsLive.mjs'),
     import('../tools/qualification/sharepointStructureWritesLive.mjs'), import('../tools/qualification/sharepointStructureWritesAcceptance.mjs'),
+    import('../tools/qualification/dscDistributionGroupsLive.mjs'), import('../tools/qualification/dscDistributionGroupsAcceptance.mjs'),
   ]);
   return [
     { file: 'sharepoint-live-acceptance.json', seam: ledgerEvidenceFromAcceptance },
@@ -272,6 +274,8 @@ export async function importSeams() {
     { file: SITE_PERMISSIONS_RECORD_FILE, optional: true, seam: ledgerEvidenceFromSitePermissionsAcceptance },
     // The SharePoint structure restore writes, optional until captured.
     { file: STRUCTURE_WRITES_RECORD_FILE, optional: true, seam: ledgerEvidenceFromStructureWritesAcceptance },
+    // The distribution list writes through Microsoft365DSC, optional until captured.
+    { file: DSC_WRITES_RECORD_FILE, optional: true, seam: ledgerEvidenceFromDscWritesAcceptance },
   ];
 }
 

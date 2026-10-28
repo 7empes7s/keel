@@ -9190,3 +9190,25 @@ item that needs it stays untouched.
   5. Re-run check: dry run again: 0 changes for a, and b listed as "another list now uses its name" (it has a new Guid). Promote the
      step 3 artifact again: `stale`, no write.
 - **Report:** B; steps 1 to 5 with exit codes; approval ids; what is left in the tenant (the two KEEL-RT-dl-restore lists stay).
+
+### Q205: Read-only list of the Sentinel credential reference names (security audit finding 6, part 3)
+- Drafted by the "Restrict Sentinel credential to integration names" thread (2026-10-28). A coming PR makes the Sentinel
+  (`azure-monitor-sentinel`) SIEM destination save and read only `env:KEEL_INTEGRATION_*` for `config.credentialRef`
+  (today it reads any `env:` name; the variable holds the path to the sender credential file). Saved rows will be
+  carried over (`env:X` becomes `env:KEEL_INTEGRATION_X`, upper-cased). We need the live names first so nothing breaks.
+- Needs: nothing. Independent of any PR.
+- Status: todo
+- **Read-only. No config, env file, database or service change. No restart.** Print reference *names* only, never values
+  or file paths held in a variable.
+- Do:
+  1. `psql "$KEEL_DB_URL" -Atc "SELECT kind, enabled, revoked_at IS NOT NULL, config->>'credentialRef' FROM siem_destination ORDER BY kind"`
+     (report every row's kind and reference name; webhook rows hold `config->'auth'` instead, list `config->'auth'->>'tokenRef'`/`secretRef` names too if present).
+  2. For every distinct `env:NAME` from step 1: is `NAME` defined in `/etc/keel/*.env` or the `keel-worker` unit
+     environment (yes / no, never the value): `grep -l "^NAME=" /etc/keel/*.env` and
+     `systemctl show keel-worker -p Environment | grep -c NAME`.
+  3. Any Sentinel qualification files on the host (gate 117 is deferred, so probably none):
+     `ls -la /etc/keel | grep -i sentinel` and `grep -l "KEEL_SENTINEL_" /etc/keel/*.env 2>/dev/null` (file names only).
+- Result:
+- **Expected:** a short table: destination kind, reference name, rows, defined in env (where). "none" when there are no rows.
+- **Report:** the table, any reference not defined anywhere, and the step 3 file names. If a live Sentinel row uses a name
+  outside `KEEL_INTEGRATION_`, say so: the thread then queues a rename item.

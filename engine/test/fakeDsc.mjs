@@ -10,6 +10,7 @@ const READ = [
   'Identity', 'Name', 'Ensure', 'DisplayName', 'Alias', 'PrimarySmtpAddress', 'Type', 'HiddenFromAddressListsEnabled', 'MemberJoinRestriction',
   'MemberDepartRestriction', 'RequireSenderAuthenticationEnabled', 'ModerationEnabled', 'SendModerationNotifications', 'SendOofMessageToOriginatorEnabled',
   'ManagedBy', 'ModeratedBy', 'GrantSendOnBehalfTo', 'AcceptMessagesOnlyFromSendersOrMembers', 'RejectMessagesFromSendersOrMembers', 'EmailAddresses', 'Members',
+  'ReportToManagerEnabled', 'ReportToOriginatorEnabled', 'BypassModerationFromSendersOrMembers', 'MailTip', 'BypassNestedModerationEnabled',
 ];
 
 /** A list as Exchange would hold it, with Exchange defaults for what is not given. */
@@ -20,6 +21,7 @@ export function fakeList(fields) {
     Type: 'Distribution', HiddenFromAddressListsEnabled: false, MemberJoinRestriction: 'Closed', MemberDepartRestriction: 'Closed',
     RequireSenderAuthenticationEnabled: true, ModerationEnabled: false, SendModerationNotifications: 'Always', SendOofMessageToOriginatorEnabled: false,
     ManagedBy: [], ModeratedBy: [], GrantSendOnBehalfTo: [], AcceptMessagesOnlyFromSendersOrMembers: [], RejectMessagesFromSendersOrMembers: [], EmailAddresses: [], Members: [],
+    ReportToManagerEnabled: false, ReportToOriginatorEnabled: true, BypassModerationFromSendersOrMembers: [], MailTip: null, BypassNestedModerationEnabled: false,
     ...fields,
   };
 }
@@ -38,8 +40,9 @@ export function fakeDscTenant(initial = [], { moduleVersion = DSC_MODULE_VERSION
     const key = String(identity).toLowerCase();
     return [...lists.values()].find((list) => list.Guid.toLowerCase() === key || list.Name.toLowerCase() === key) ?? null;
   };
+  // The worst case for KEEL: when Identity finds nothing, the lookup falls back to Name.
   const get = ({ Identity, Name }) => {
-    const list = find(Identity);
+    const list = find(Identity) ?? find(Name);
     if (!list) return { Identity, Name, Ensure: 'Absent' };
     return Object.fromEntries(READ.map((field) => [field, field === 'Identity' ? Identity : field === 'Ensure' ? 'Present' : structuredClone(list[field])]));
   };

@@ -38,7 +38,7 @@ import {
 } from './capabilities.mjs';
 import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 import { SHAREPOINT_STRUCTURE_WRITE_OPERATIONS } from '../restore/workloads/sharepointStructureWrites.mjs';
-import { DSC_WRITE_OPERATIONS } from '../restore/workloads/dscDistributionGroups.mjs';
+import { DSC_WRITE_OPERATIONS } from '../restore/workloads/dscDeclarations.mjs';
 
 export const LEDGER_CONTRACT_VERSION = 1;
 // Coverage plan v3: no type is left 'unknown'. A type with no writer is

@@ -1,18 +1,21 @@
 // The live proof for the distribution list writes through Microsoft365DSC.
 //
 // Acceptance:
-//  - a capture refuses a removal and a listed field before sending, creates one
-//    KEEL-RT-capture- list with the restorer, reads it back with the collector, changes
-//    its declared settings and reads them back with the fields KEEL never sends unchanged;
-//    the signed record verifies and imports as two write captures that enable exactly
-//    those writes, bound to the pinned Microsoft365DSC version;
-//  - a capture writes nothing when the list already exists, and the CLI needs confirmation;
-//  - a write that changed a field KEEL never sends is not proven;
+//  - a capture refuses a removal and a listed field before sending, finds the seeded list
+//    by its Guid and not an unknown Guid, creates one KEEL-RT-capture- list with the
+//    restorer and reads it back with the collector, changes the seeded list's declared
+//    settings and reads them back with its members, owners, moderators and everything
+//    else KEEL never sends unchanged; the signed record verifies and imports as two write
+//    captures that enable exactly those writes, bound to the pinned Microsoft365DSC version;
+//  - a capture writes nothing when its list exists or the seeded list is not found by its
+//    Guid, skips the update on a seeded list without members, and the CLI needs confirmation;
+//  - a write that changed a field KEEL never sends (owners, members) is not proven;
 //  - a tampered, unsigned, other-tenant or other-build record imports nothing.
 //
 // The capture runs against the fake DSC container with a test-only key. No tenant is read
 // or written, and no record produced here is persisted as evidence.
 import { strict as assert } from 'node:assert';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -42,7 +45,11 @@ const dir = mkdtempSync(join(tmpdir(), 'keel-dsc-writes-live-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 
 let suffixSeq = 0;
+const SEED = 'KEEL-RT-capture-seed';
+const seedList = (fields = {}) => fakeList({ Name: SEED, Members: ['m1@contoso.test'], ManagedBy: ['owner@contoso.test'], ModeratedBy: ['mod@contoso.test'], ModerationEnabled: true, ...fields });
+const seedOf = (tenant) => ({ name: SEED, guid: tenant.find(SEED)?.Guid ?? '00000000-0000-4000-8000-00000000dead' });
 const capture = (tenant, overrides = {}) => captureDscWrites({
+  seed: seedOf(tenant),
   collector: { ...tenant.powershell, tenantConfigPath: '/etc/keel/exchange-collector.json' }, restorer: tenant.powershell, tenantRef, build,
   credentials: { collector: 'app:keel-collector', restorer: 'app:keel-restorer' }, grants,
   now: () => observed, sleep: async () => {}, readBackDelayMs: 0, suffix: () => `c${suffixSeq += 1}`, ...overrides,
@@ -56,21 +63,29 @@ async function captured(tenant, overrides) {
 const seamOptions = { tenantRef, build, now: verifyNow, hmacKey: KEY, evidenceDir: dir };
 
 test('a capture creates and changes one KEEL-RT-capture- list, reads each back, and imports as two write captures', async () => {
-  const tenant = fakeDscTenant([fakeList({ Name: 'All Staff' })]);
+  const tenant = fakeDscTenant([fakeList({ Name: 'All Staff' }), seedList()]);
+  const seeded = structuredClone(tenant.find(SEED));
   const { evidence } = await captured(tenant);
   assert.equal(tenant.writes.length, 2);
   for (const write of tenant.writes) {
     assert.match(write.Name, /^KEEL-RT-capture-/);
     assert.equal(write.Ensure, 'Present');
-    assert.ok(!('ManagedBy' in write), 'owners are never sent');
+    for (const field of ['ManagedBy', 'ModeratedBy', 'Members']) assert.ok(!(field in write), `${field} is never sent`);
   }
+  assert.deepEqual(evidence.subject.identityRead, { byGuidFound: true, unknownGuidAbsent: true });
+  // The seeded list was read by its Guid, with Name = that Guid.
+  const guidRead = tenant.jobs.find((job) => job.calls[0].properties.Identity === seeded.Guid);
+  assert.equal(guidRead.calls[0].properties.Name, seeded.Guid);
   // Reads used the collector config, writes the restorer's.
   const configs = tenant.jobs.map((job) => `${job.calls[0].method}:${job.tenantConfigPath}`);
   assert.ok(configs.filter((item) => item.startsWith('Get:')).every((item) => item.endsWith('exchange-collector.json')));
   assert.ok(configs.filter((item) => item.startsWith('Set:')).every((item) => item.endsWith('exchange-restorer.json')));
-  const list = tenant.find(tenant.writes[0].Name);
-  assert.equal(list.MemberJoinRestriction, 'ApprovalRequired');
-  assert.equal(list.HiddenFromAddressListsEnabled, true, 'the capture list stays hidden from the address book');
+  const created = tenant.find(tenant.writes[0].Name);
+  assert.equal(created.HiddenFromAddressListsEnabled, true, 'the capture list stays hidden from the address book');
+  const seed = tenant.find(SEED);
+  assert.equal(seed.MemberJoinRestriction, 'ApprovalRequired');
+  assert.equal(tenant.writes[1].Name, SEED, 'the update runs on the seeded list');
+  for (const field of ['Members', 'ManagedBy', 'ModeratedBy', 'ModerationEnabled']) assert.deepEqual(seed[field], seeded[field], `${field} is left alone`);
   assert.equal(tenant.find('All Staff').DisplayName, 'All Staff', 'nothing else is touched');
 
   const verified = verifyEvidence(evidence, { ...seamOptions, gate: DSC_WRITES_LIVE_GATE, requireLive: true });
@@ -95,28 +110,48 @@ test('a capture creates and changes one KEEL-RT-capture- list, reads each back, 
 
 test('a capture writes nothing when its list exists; a change to a field KEEL never sends is not proven; the CLI needs confirmation', async () => {
   assert.equal(dscWritesCapturePlan().filter((step) => step.method === 'Set').length, 2);
-  const exists = fakeDscTenant([fakeList({ Name: 'KEEL-RT-capture-fixed' })]);
+  const exists = fakeDscTenant([fakeList({ Name: 'KEEL-RT-capture-fixed' }), seedList()]);
   const { evidence } = await captured(exists, { suffix: () => 'fixed' });
   assert.equal(exists.writes.length, 0);
   assert.match(evidence.subject.skipped.at(-1).reason, /already exists/);
   assert.equal(ledgerEvidenceFromDscWritesAcceptance(evidence, seamOptions).ok, false);
 
-  // The update also clears the list's owners: the update is recorded, never proven.
-  const tenant = fakeDscTenant([], { behave: { afterSet: (properties, list) => { if (/updated$/.test(properties.DisplayName ?? '')) list.ManagedBy = []; } } });
-  const bad = await captured(tenant);
-  const update = bad.evidence.subject.writes.find((item) => item.operationId === 'exchange-distribution-groups.distribution-group.update');
-  assert.equal(update.ok, false);
-  assert.match(update.error, /ManagedBy/);
-  const partial = ledgerEvidenceFromDscWritesAcceptance(bad.evidence, seamOptions);
-  assert.deepEqual(partial.writes.map((item) => item.operationId), ['exchange-distribution-groups.distribution-group.add']);
+  // The seeded list is not there (so not found by its Guid): nothing is written, nothing proven.
+  const noSeed = fakeDscTenant([]);
+  const unseeded = await captured(noSeed);
+  assert.equal(noSeed.writes.length, 0);
+  assert.match(unseeded.evidence.subject.skipped.at(-1).reason, /not found by its Guid/);
+  assert.equal(ledgerEvidenceFromDscWritesAcceptance(unseeded.evidence, seamOptions).ok, false);
+
+  // A seeded list without members proves nothing about members: the update is skipped.
+  const empty = fakeDscTenant([seedList({ Members: [] })]);
+  const half = await captured(empty);
+  assert.equal(empty.writes.length, 1);
+  assert.match(half.evidence.subject.skipped.find((item) => item.operationId?.endsWith('.update')).reason, /has no Members/);
+  assert.deepEqual(ledgerEvidenceFromDscWritesAcceptance(half.evidence, seamOptions).writes.map((item) => item.operationId), ['exchange-distribution-groups.distribution-group.add']);
+
+  // The update also clears the list's owners, or its members: the update is recorded, never proven.
+  for (const [field, clear] of [['ManagedBy', (list) => { list.ManagedBy = []; }], ['Members', (list) => { list.Members = []; }]]) {
+    const tenant = fakeDscTenant([seedList()], { behave: { afterSet: (properties, list) => { if (/ updated /.test(properties.DisplayName ?? '')) clear(list); } } });
+    const bad = await captured(tenant);
+    const update = bad.evidence.subject.writes.find((item) => item.operationId === 'exchange-distribution-groups.distribution-group.update');
+    assert.equal(update.ok, false, field);
+    assert.match(update.error, new RegExp(field));
+    const partial = ledgerEvidenceFromDscWritesAcceptance(bad.evidence, seamOptions);
+    assert.deepEqual(partial.writes.map((item) => item.operationId), ['exchange-distribution-groups.distribution-group.add']);
+  }
 
   const lines = [];
   assert.equal(await liveMain(['capture'], { out: (line) => lines.push(line) }), 2);
   assert.match(lines.at(-1), /--confirm-live-tenant-write/);
+  // Run as the operator runs it, in a fresh process: its imports load on their own (no import cycle).
+  const cli = spawnSync(process.execPath, [new URL('../../tools/qualification/dscDistributionGroupsLive.mjs', import.meta.url).pathname, 'plan'], { encoding: 'utf8' });
+  assert.equal(cli.status, 0, cli.stderr);
+  assert.equal(JSON.parse(cli.stdout).filter((step) => step.method === 'Set').length, 2);
 });
 
 test('a tampered, unsigned, other-tenant or other-build record imports nothing', async () => {
-  const { evidence } = await captured(fakeDscTenant([]));
+  const { evidence } = await captured(fakeDscTenant([seedList()]));
   const resign = (mutate) => {
     const copy = structuredClone(evidence);
     mutate(copy);
@@ -138,6 +173,9 @@ test('a tampered, unsigned, other-tenant or other-build record imports nothing',
     noRoles: resign((e) => { e.subject.grants.restorer.roles = []; }),
     synthetic: resign((e) => { e.subject.writes[1].synthetic = true; }),
     otherVersion: resign((e) => { e.subject.writes[1].version = '2.25.1.1'; }),
+    otherPinnedVersion: resign((e) => { e.subject.execution.moduleVersion = '2.25.1.1'; for (const write of e.subject.writes) write.version = '2.25.1.1'; }),
+    noGuidRead: resign((e) => { e.subject.identityRead.byGuidFound = false; }),
+    unknownGuidFound: resign((e) => { e.subject.identityRead.unknownGuidAbsent = false; }),
     sameCredential: resign((e) => { e.subject.credentials.restorer = e.subject.credentials.collector; }),
     capturedTwice: resign((e) => { e.subject.writes.push({ ...e.subject.writes[0] }); }),
     noWrites: resign((e) => { e.subject.writes = []; }),

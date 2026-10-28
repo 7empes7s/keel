@@ -13,7 +13,8 @@
 //  - owners, moderators, who may send, send on behalf, addresses, members, renames and
 //    room lists are listed for an administrator, never written;
 //  - on the test tenant only KEEL-RT- lists are written; a list whose name another list
-//    now uses is never touched;
+//    now uses is never touched, even by a read that falls back to the name;
+//  - a value the backup did not record (unread or redacted) is listed, never written;
 //  - letting outside senders mail a list needs the separate content-effect approval;
 //  - a list changed since the dry run is stale; an unknown outcome is never resent.
 //
@@ -78,7 +79,8 @@ function observation(list, extra = {}) {
     ReportToManagerEnabled: false, ReportToOriginatorEnabled: true, SendOofMessageToOriginatorEnabled: list.SendOofMessageToOriginatorEnabled,
     MailTip: null, WhenChangedUTC: '2026-10-27T10:00:00Z', ...extra,
   };
-  return { resourceKey: `distribution-group:${list.Guid}`, identity: list.Guid, kind: 'distributionGroup', fields, fieldCoverage: {} };
+  const fieldCoverage = Object.fromEntries(Object.keys(fields).map((field) => [field, { status: 'observed', operation: 'exchange-distribution-groups.distribution-groups' }]));
+  return { resourceKey: `distribution-group:${list.Guid.toLowerCase()}`, identity: list.Guid.toLowerCase(), kind: 'distributionGroup', fields, fieldCoverage };
 }
 const source = (observations) => ({ collectionId: randomUUID(), outcome: 'complete', observedTo: '2026-10-27T10:00:00Z', observations });
 
@@ -254,6 +256,49 @@ test('on the test tenant only KEEL-RT- lists are written, and a list whose name 
   // Off the test tenant the same plan writes the real list.
   const customer = planDistributionGroupRestore({ source: backup, live, tenantId: TENANT, tenantRef, testTenantRefs: [] });
   assert.deepEqual(customer.operations.map((op) => op.properties.Name), ['All Staff']);
+});
+
+test('a read by Guid never finds another list by the backed-up name, and a value the backup did not record is never written', async () => {
+  const tenantRef = nextTenant();
+  // The list was deleted and another list took its name. Even if the resource fell back from
+  // Identity to Name (the fake does), the Guid read sends the Guid as Name too.
+  const taken = fakeList({ Name: 'KEEL-RT-dl-reused' });
+  const usurper = fakeList({ Name: 'KEEL-RT-dl-reused', MemberJoinRestriction: 'Open' });
+  const tenant = fakeDscTenant([usurper]);
+  const dsc = dscRunner(tenant.powershell);
+  const live = await readLiveLists(dsc, [{ guid: taken.Guid, name: taken.Name }]);
+  assert.equal(live[taken.Guid].byGuid.state.Ensure, 'Absent');
+  assert.equal(tenant.jobs[0].calls[0].properties.Name, taken.Guid);
+  const plan = planDistributionGroupRestore({ source: source([observation(taken)]), live, tenantId: TENANT, tenantRef, testTenantRefs: [tenantRef] });
+  assert.deepEqual(plan.operations, []);
+  assert.ok(plan.manual.some((item) => /another list now uses its name/.test(item.reason)));
+
+  // A redacted or unread value is listed, never sent: not on a list that exists, not on a re-created one.
+  const kept = fakeList({ Name: 'KEEL-RT-dl-redacted', MemberJoinRestriction: 'Open' });
+  const gone = fakeList({ Name: 'KEEL-RT-dl-redacted-gone' });
+  const redact = (item, fields) => {
+    for (const field of fields) {
+      item.fields[field] = '[redacted]';
+      item.fieldCoverage[field] = { status: 'redacted', operation: 'exchange-distribution-groups.distribution-groups' };
+    }
+    return item;
+  };
+  const backup = source([
+    redact(observation({ ...kept, MemberJoinRestriction: 'Closed' }), ['DisplayName']),
+    redact(observation(gone), ['Alias', 'PrimarySmtpAddress']),
+  ]);
+  const both = fakeDscTenant([kept]);
+  const read = await readLiveLists(dscRunner(both.powershell), [{ guid: kept.Guid, name: kept.Name }, { guid: gone.Guid, name: gone.Name }]);
+  const redacted = planDistributionGroupRestore({ source: backup, live: read, tenantId: TENANT, tenantRef, testTenantRefs: [tenantRef] });
+  const update = redacted.operations.find((op) => op.kind === 'update');
+  assert.deepEqual(update.changes.map(({ field }) => field), ['MemberJoinRestriction']);
+  assert.equal(update.properties.DisplayName, kept.DisplayName, 'the live display name is kept, not the redacted one');
+  const add = redacted.operations.find((op) => op.kind === 'add');
+  assert.ok(!('Alias' in add.properties) && !('PrimarySmtpAddress' in add.properties));
+  assert.ok(!JSON.stringify(redacted.operations).includes('[redacted]'), 'a redacted value is never sent');
+  for (const field of ['DisplayName', 'Alias', 'PrimarySmtpAddress']) {
+    assert.ok(redacted.manual.some((item) => item.field === field && /did not record this value \(redacted\)/.test(item.reason)), `${field} is listed`);
+  }
 });
 
 test('a read that fails plans nothing for that list, and too many lists need --target', () => {

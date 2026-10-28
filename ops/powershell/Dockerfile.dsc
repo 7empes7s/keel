@@ -15,7 +15,15 @@
 # Microsoft365DSC 2.x asks for PowerShell 7.6 and prints a warning on 7.5. MCR has no
 # 7.6 image yet (Q182: "not found"), and the Q182 writer check passed on this 7.5 image.
 # Move to a 7.6 tag once Microsoft publishes one, with a new live capture.
-FROM mcr.microsoft.com/powershell:7.5-ubuntu-24.04
+#
+# Runtime contract (engine/powershell/jobQueue.mjs, as for keel-powershell): a hard memory
+# cap, a non-root user, a read-only root filesystem with a 256 MB /tmp (HOME=/tmp), every
+# capability dropped, and only the job's own settings, certificate and key mounted at
+# /run/keel-job. run-dsc.ps1 writes its temporary PFX under /tmp.
+#
+# Pinned by digest as well as tag (security audit run 2, finding 8). To move it, pull the
+# new tag, read `docker image inspect --format '{{index .RepoDigests 0}}' <tag>`, update both.
+FROM mcr.microsoft.com/powershell:7.5-ubuntu-24.04@sha256:370134f0be3867fadc2e5845c39ed59120fbd4d19ca5136f40831a96f0404cf1
 
 ENV POWERSHELL_TELEMETRY_OPTOUT=1 \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \
@@ -47,5 +55,6 @@ COPY run-job.sh /app/run-job.sh
 COPY run-dsc.ps1 /app/run-dsc.ps1
 RUN chmod +x /app/run-job.sh
 
-# No credentials baked in: /etc/keel is bind-mounted read-only at `docker run` time.
+# No credentials baked in: at `docker run` time jobQueue.mjs mounts a read-only copy of
+# the job's own settings, certificate and key at /run/keel-job.
 ENTRYPOINT ["/app/run-job.sh"]

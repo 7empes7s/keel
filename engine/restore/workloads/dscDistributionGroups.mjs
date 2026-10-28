@@ -44,88 +44,21 @@
 import { createHash, randomUUID } from 'node:crypto';
 
 import { appendEvidence } from '../../govern/evidence.mjs';
-import { DSC_MODULE, DSC_MODULE_VERSION, DscError, DscScopeError, runDsc } from '../../powershell/dscJob.mjs';
+import { DSC_MODULE_VERSION, DscError, DscScopeError, runDsc } from '../../powershell/dscJob.mjs';
 import { assertContentEffectApproval, disclosureFor } from '../../safety/contentEffects.mjs';
 import { createDryRunArtifact, getDryRunArtifact, validateArtifactForApproval } from '../dryRunArtifact.mjs';
 import { TEST_TENANT_REFS, fixtureProblem } from './fixtureGuard.mjs';
-import { isTrustField } from './writeDeclarations.mjs';
+import {
+  CREATE_FIELDS, DISTRIBUTION_GROUP_ADD, DISTRIBUTION_GROUP_FAMILY, DISTRIBUTION_GROUP_RESOURCE, DISTRIBUTION_GROUP_TYPES as TYPES,
+  DISTRIBUTION_GROUP_UPDATE, DISTRIBUTION_GROUPS_WORKLOAD, DSC_RESOURCES, DSC_RESTORE_EVIDENCE_KIND, DSC_WRITE_OPERATIONS, LISTED_FIELDS, LISTED_WHY,
+  MAX_DSC_TARGETS, NOT_CARRIED, OBSERVED_ONLY, UPDATE_FIELDS,
+} from './dscDeclarations.mjs';
 
-export const DISTRIBUTION_GROUPS_WORKLOAD = 'exchange-distribution-groups';
-export const DISTRIBUTION_GROUP_FAMILY = 'distributionGroup';
-export const DISTRIBUTION_GROUP_RESOURCE = 'EXODistributionGroup';
-export const DISTRIBUTION_GROUP_UPDATE = 'exchange-distribution-groups.distribution-group.update';
-export const DISTRIBUTION_GROUP_ADD = 'exchange-distribution-groups.distribution-group.add';
-export const DSC_RESTORE_EVIDENCE_KIND = 'workload-restore';
-// The read the backup comes from, which must be enabled for a write to run.
-const READ_BACK = 'exchange-distribution-groups.distribution-groups';
-export const MAX_DSC_TARGETS = 50;
+export {
+  CREATE_FIELDS, DISTRIBUTION_GROUP_ADD, DISTRIBUTION_GROUP_FAMILY, DISTRIBUTION_GROUP_RESOURCE, DISTRIBUTION_GROUP_UPDATE, DISTRIBUTION_GROUPS_WORKLOAD,
+  DSC_RESOURCES, DSC_RESTORE_EVIDENCE_KIND, DSC_WRITE_OPERATIONS, LISTED_FIELDS, MAX_DSC_TARGETS, OBSERVED_ONLY, UPDATE_FIELDS,
+};
 
-/** Settings KEEL writes on a list that exists. */
-export const UPDATE_FIELDS = Object.freeze([
-  'DisplayName', 'HiddenFromAddressListsEnabled', 'MemberJoinRestriction', 'MemberDepartRestriction',
-  'RequireSenderAuthenticationEnabled', 'ModerationEnabled', 'SendModerationNotifications', 'SendOofMessageToOriginatorEnabled',
-]);
-/** What a re-created list is created with: its addresses, then the same settings. */
-export const CREATE_FIELDS = Object.freeze(['Alias', 'PrimarySmtpAddress', ...UPDATE_FIELDS]);
-/** Compared and listed for an administrator, never sent. */
-export const LISTED_FIELDS = Object.freeze([
-  'ManagedBy', 'ModeratedBy', 'GrantSendOnBehalfTo', 'AcceptMessagesOnlyFromSendersOrMembers', 'RejectMessagesFromSendersOrMembers',
-  'EmailAddresses',
-]);
-// What each listed field decides, in plain words.
-const LISTED_WHY = Object.freeze({
-  ManagedBy: 'who owns the list (owners can change its members)',
-  ModeratedBy: 'who approves messages to the list',
-  GrantSendOnBehalfTo: 'who may send on behalf of the list',
-  AcceptMessagesOnlyFromSendersOrMembers: 'who may send to the list',
-  RejectMessagesFromSendersOrMembers: 'who may not send to the list',
-  EmailAddresses: 'the list\'s other addresses',
-  Alias: 'the list\'s alias (part of its address)',
-  PrimarySmtpAddress: 'the list\'s main address',
-});
-// Backed-up settings this resource does not carry; listed when a re-created list had them set.
-const NOT_CARRIED = Object.freeze(['ReportToManagerEnabled', 'ReportToOriginatorEnabled', 'BypassModerationFromSendersOrMembers', 'MailTip']);
-
-/** The allowlist the DSC job transport and run-dsc.ps1 hold (a test keeps them equal). */
-export const DSC_RESOURCES = Object.freeze({
-  [DISTRIBUTION_GROUP_RESOURCE]: Object.freeze({
-    properties: Object.freeze(['Identity', 'Name', 'Ensure', 'DisplayName', 'Alias', 'PrimarySmtpAddress', 'Type', ...UPDATE_FIELDS.slice(1), ...LISTED_FIELDS, 'Members']),
-    writable: Object.freeze(['Identity', 'Name', 'Ensure', 'DisplayName', 'Alias', 'PrimarySmtpAddress', 'Type', ...UPDATE_FIELDS.slice(1)]),
-  }),
-});
-
-// Exchange recipient type -> the EXODistributionGroup Type KEEL can create.
-const TYPES = Object.freeze({ MailUniversalDistributionGroup: 'Distribution', MailUniversalSecurityGroup: 'Security' });
-
-const EXO_RBAC = Object.freeze({ permissions: Object.freeze(['Exchange.ManageAsApp']), roles: Object.freeze(['Exchange Administrator']) });
-const DOCS = 'https://learn.microsoft.com/en-us/powershell/module/exchangepowershell';
-function declare(id, { name, fields, method, source }) {
-  const trust = fields.filter((field) => isTrustField('exchangeDistributionGroup', field));
-  if (trust.length) throw new Error(`${id}: ${trust.join(', ')} decide trust or sign-in and are never written`);
-  return [id, Object.freeze({
-    workload: DISTRIBUTION_GROUPS_WORKLOAD, family: DISTRIBUTION_GROUP_FAMILY, resourceType: 'exchangeDistributionGroup',
-    kind: 'cmdlet', module: DSC_MODULE, session: 'dsc', resource: DISTRIBUTION_GROUP_RESOURCE, method, name, readBack: READ_BACK,
-    fields: Object.freeze([...fields]), rbac: EXO_RBAC, grantsRequired: true, source,
-  })];
-}
-
-/**
- * The two writes, in the shape of WORKLOAD_WRITE_OPERATIONS (coverage/qualification.mjs
- * spreads them in). `kind: 'cmdlet'` with module Microsoft365DSC binds each proof to the
- * pinned Microsoft365DSC version. Field names follow Microsoft's Set-DistributionGroup and
- * New-DistributionGroup documentation, which EXODistributionGroup mirrors; the live
- * capture records any name the module does not have.
- */
-export const DSC_WRITE_OPERATIONS = Object.freeze(Object.fromEntries([
-  declare(DISTRIBUTION_GROUP_UPDATE, {
-    name: 'Distribution list settings', method: 'EXODistributionGroup Set (existing list)', fields: UPDATE_FIELDS,
-    source: `${DOCS}/set-distributiongroup`,
-  }),
-  declare(DISTRIBUTION_GROUP_ADD, {
-    name: 'Distribution lists that no longer exist', method: 'EXODistributionGroup Set (Ensure Present, new list)', fields: ['Name', 'Type', ...CREATE_FIELDS],
-    source: `${DOCS}/new-distributiongroup`,
-  }),
-]));
 
 // ------------------------------------------------------------ values
 
@@ -177,12 +110,17 @@ function liveFingerprint(state) {
 
 /** A DSC runner for one connection: (request) -> runDsc answer. */
 export function dscRunner(powershell = {}, { run = runDsc, env = process.env } = {}) {
-  const { tenantConfigPath = null, timeoutMs, credentialMount, scriptMount, dockerBin, spawnFn } = powershell;
-  const options = Object.fromEntries(Object.entries({ timeoutMs, credentialMount, scriptMount, dockerBin, spawnFn }).filter(([, value]) => value !== undefined));
+  const { tenantConfigPath = null, timeoutMs, credentialRoot, stagingRoot, scriptMount, dockerBin, spawnFn } = powershell;
+  const options = Object.fromEntries(Object.entries({ timeoutMs, credentialRoot, stagingRoot, scriptMount, dockerBin, spawnFn }).filter(([, value]) => value !== undefined));
   return (request) => run({ ...request, tenantConfigPath }, { ...options, resources: DSC_RESOURCES, image: env.KEEL_DSC_IMAGE || undefined });
 }
 
-const getCall = (identity, name) => ({ method: 'Get', properties: { Identity: identity, Name: name, Ensure: 'Present' } });
+/**
+ * A Get for one identity (a Guid or a name). Name carries the same value: the resource
+ * needs a Name, and if its lookup ever fell back from Identity to Name, a backed-up name
+ * sent beside a Guid could find another list that now uses that name.
+ */
+const getCall = (identity) => ({ method: 'Get', properties: { Identity: identity, Name: identity, Ensure: 'Present' } });
 
 /**
  * Reads each list live: by its Guid first, then, for one that is gone, by its backed-up
@@ -192,11 +130,11 @@ const getCall = (identity, name) => ({ method: 'Get', properties: { Identity: id
 export async function readLiveLists(dsc, lists) {
   const out = {};
   if (!lists.length) return out;
-  const first = await dsc({ resource: DISTRIBUTION_GROUP_RESOURCE, calls: lists.map(({ guid, name }) => getCall(guid, name)) });
+  const first = await dsc({ resource: DISTRIBUTION_GROUP_RESOURCE, calls: lists.map(({ guid }) => getCall(guid)) });
   lists.forEach(({ guid }, index) => { out[guid] = { byGuid: first.results[index], byName: null }; });
   const gone = lists.filter(({ guid }) => out[guid].byGuid.ok && out[guid].byGuid.state?.Ensure !== 'Present');
   if (gone.length) {
-    const second = await dsc({ resource: DISTRIBUTION_GROUP_RESOURCE, calls: gone.map(({ name }) => getCall(name, name)) });
+    const second = await dsc({ resource: DISTRIBUTION_GROUP_RESOURCE, calls: gone.map(({ name }) => getCall(name)) });
     gone.forEach(({ guid }, index) => { out[guid].byName = second.results[index]; });
   }
   return out;
@@ -214,6 +152,17 @@ function targetObservations(source, targets) {
   const unknown = [...wanted].filter((target) => !known.has(target));
   if (unknown.length) throw new Error(`the backup holds no distribution list named ${unknown.join(', ')}`);
   return picked;
+}
+
+/**
+ * The backed-up fields the collector actually observed. A field it could not read, or
+ * redacted because the value looked like a credential, holds no value KEEL may write
+ * (the same rule as the other cmdlet writers).
+ */
+export function recordedFields(observation) {
+  const fields = observation?.fields ?? {};
+  const coverage = observation?.fieldCoverage ?? {};
+  return Object.fromEntries(Object.entries(fields).filter(([field]) => coverage[field]?.status === 'observed'));
 }
 
 const listed = (resourceKey, field, before, after, reason) => ({ resourceKey, field, before: normalize(before), after: normalize(after), reason });
@@ -240,7 +189,7 @@ export function planDistributionGroupRestore({
   for (const observation of [...observations].sort((a, b) => a.resourceKey.localeCompare(b.resourceKey))) {
     const key = observation.resourceKey;
     const guid = observation.identity;
-    const backup = observation.fields ?? {};
+    const backup = recordedFields(observation);
     const naturalKey = `${DISTRIBUTION_GROUPS_WORKLOAD}:${key}`;
     const type = TYPES[backup.RecipientTypeDetails];
     if (!type) {
@@ -273,6 +222,11 @@ export function planDistributionGroupRestore({
       continue;
     }
 
+    // A field the backup did not record (unreadable or redacted) is never written; say so once.
+    for (const field of ['Alias', 'PrimarySmtpAddress', ...UPDATE_FIELDS]) {
+      const status = observation.fieldCoverage?.[field]?.status ?? 'unknown';
+      if (status !== 'observed') manual.push(listed(key, field, current?.[field] ?? null, null, `the backup did not record this value (${status}), so KEEL does not write it; an administrator checks it`));
+    }
     let op;
     if (current) {
       if (normalize(current.Type) && normalize(current.Type) !== type) {
@@ -280,11 +234,11 @@ export function planDistributionGroupRestore({
       }
       if (!sameValue(current.Name, backup.Name)) manual.push(listed(key, 'Name', current.Name, backup.Name, 'the list was renamed; KEEL does not rename it back'));
       for (const field of ['Alias', 'PrimarySmtpAddress', ...LISTED_FIELDS]) {
-        if (!sameValue(current[field], backup[field])) manual.push(listed(key, field, current[field], backup[field], `${LISTED_WHY[field]}; an administrator applies it`));
+        if (Object.hasOwn(backup, field) && !sameValue(current[field], backup[field])) manual.push(listed(key, field, current[field], backup[field], `${LISTED_WHY[field]}; an administrator applies it`));
       }
       const changes = [];
       for (const field of UPDATE_FIELDS) {
-        if (sameValue(current[field], backup[field])) continue;
+        if (!Object.hasOwn(backup, field) || sameValue(current[field], backup[field])) continue;
         if (!sendable(normalize(backup[field]))) {
           manual.push(listed(key, field, current[field], backup[field], 'the backup holds no value KEEL can send; an administrator applies it'));
           continue;
@@ -399,7 +353,7 @@ export async function createDistributionGroupArtifact(client, { tenantRef, plan,
 /** The list as read now for one operation, as { state } or { error }. */
 async function readOne(dsc, op) {
   try {
-    const { results: [result] } = await dsc({ resource: DISTRIBUTION_GROUP_RESOURCE, calls: [getCall(op.readIdentity, op.properties.Name)] });
+    const { results: [result] } = await dsc({ resource: DISTRIBUTION_GROUP_RESOURCE, calls: [getCall(op.readIdentity)] });
     return result.ok ? { state: result.state ?? null } : { error: result.error?.message ?? 'the read failed' };
   } catch (error) {
     return { error: error.message };
@@ -511,7 +465,7 @@ async function runOperation(op, { dsc, settle }) {
   let answer;
   try {
     // The write and its read-back in one job: one container start.
-    answer = await dsc({ resource: DISTRIBUTION_GROUP_RESOURCE, calls: [{ method: 'Set', properties: op.properties }, getCall(op.readIdentity, op.properties.Name)] });
+    answer = await dsc({ resource: DISTRIBUTION_GROUP_RESOURCE, calls: [{ method: 'Set', properties: op.properties }, getCall(op.readIdentity)] });
   } catch (error) {
     if (error instanceof DscScopeError) {
       await settle(op, { outcome: 'refused', reasons: [error.message] });
@@ -536,9 +490,17 @@ async function runOperation(op, { dsc, settle }) {
   }
   const [set, get] = answer.results;
   if (!set.ok) {
+    // A Set can apply part of a change before it fails: the read-back in the same job says which fields now hold the backup's value.
+    const after = get?.ok ? get.state : null;
+    const applied = after ? op.changes.filter(({ field, after: value }) => sameValue(after[field], value)).map(({ field }) => field) : [];
     await settle(op, {
       outcome: /access|denied|forbidden|unauthori[sz]ed|permission/i.test(set.error?.message ?? '') ? 'refused' : 'failed', writes: 1, attempts: 1,
-      reasons: [`the Set failed: ${set.error?.message ?? 'no message'}; nothing is retried automatically`], error: set.error ?? null,
+      verified: applied,
+      reasons: [
+        `the Set failed: ${set.error?.message ?? 'no message'}; nothing is retried automatically`,
+        after ? (applied.length ? `the read-back shows ${applied.join(', ')} already hold the backup's value` : 'the read-back shows none of the changes applied') : 'the list could not be read back after the failed Set',
+      ],
+      error: set.error ?? null,
     });
     return;
   }
@@ -567,8 +529,9 @@ export function distributionGroupRestore({ load, runner = dscRunner } = {}) {
       const source = await load(client, { tenantRef, collectionId: request.collectionId, workload: DISTRIBUTION_GROUPS_WORKLOAD });
       if (!source) throw new Error(`no recorded distribution list collection ${request.collectionId} for this tenant`);
       const lists = targetObservations(source, request.targets ?? [])
-        .filter((item) => typeof item.identity === 'string' && typeof item.fields?.Name === 'string' && TYPES[item.fields?.RecipientTypeDetails])
-        .map((item) => ({ guid: item.identity, name: item.fields.Name }));
+        .map((item) => ({ guid: item.identity, fields: recordedFields(item) }))
+        .filter(({ guid, fields }) => typeof guid === 'string' && typeof fields.Name === 'string' && TYPES[fields.RecipientTypeDetails])
+        .map(({ guid, fields }) => ({ guid, name: fields.Name }));
       if (lists.length > MAX_DSC_TARGETS) throw new Error(`a plan covers at most ${MAX_DSC_TARGETS} lists; name them with --target`);
       const live = await readLiveLists(runner(connection.powershell), lists);
       return planDistributionGroupRestore({ source, live, tenantId, tenantRef, targets: request.targets ?? [] });

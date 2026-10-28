@@ -4,14 +4,18 @@
  * tools/qualification/dscDistributionGroupsLive.mjs on the test tenant:
  *  - a KEEL-RT-capture- distribution list created through the writer's own DSC transport
  *    with the restorer, read back with the collector (the add);
- *  - its declared settings changed and read back, with the fields KEEL never sends
- *    (owners, moderators, senders, addresses) checked unchanged (the update).
+ *  - the declared settings of a seeded KEEL-RT-capture- list (one with members, an owner
+ *    and a moderator, made by the operator) changed and read back, with everything KEEL
+ *    never sends (members, owners, moderators, senders, addresses, the settings it does
+ *    not write) checked unchanged (the update);
+ *  - that seeded list found by its Guid, and an unknown Guid not found, as the writer
+ *    reads every backed-up list.
  *
  * It never sends a request and never enables anything. A verified record becomes ledger
  * evidence only through dscDistributionGroupsLive.mjs's import seam.
  */
-import { DSC_MODULE } from '../../engine/powershell/dscJob.mjs';
-import { DSC_RESOURCES, DSC_WRITE_OPERATIONS } from '../../engine/restore/workloads/dscDistributionGroups.mjs';
+import { DSC_MODULE, DSC_MODULE_VERSION } from '../../engine/powershell/dscJob.mjs';
+import { DSC_RESOURCES, DSC_WRITE_OPERATIONS } from '../../engine/restore/workloads/dscDeclarations.mjs';
 import { captureTimeProblems, secretProblems } from './sharepointAcceptance.mjs';
 
 export const DSC_WRITES_LIVE_GATE = 'dsc-distribution-groups-writes-live-acceptance';
@@ -60,6 +64,12 @@ export function validateDscWritesLiveSubject(evidence, context = {}) {
   if (execution.transport !== DSC_WRITES_TRANSPORT || execution.module !== DSC_MODULE) failures.push(`resources must run through the bounded ${DSC_WRITES_TRANSPORT} transport (${DSC_MODULE})`);
   const moduleVersion = typeof execution.moduleVersion === 'string' && MODULE_VERSION_RE.test(execution.moduleVersion) ? execution.moduleVersion : null;
   if (!moduleVersion) failures.push(`no ${DSC_MODULE} module version recorded`);
+  // The proof binds to the version this build pins, not only to the one the record names.
+  else if (moduleVersion !== DSC_MODULE_VERSION) failures.push(`captured with ${DSC_MODULE} ${moduleVersion}; this build pins ${DSC_MODULE_VERSION}`);
+  const identityRead = subject.identityRead ?? {};
+  if (identityRead.byGuidFound !== true || identityRead.unknownGuidAbsent !== true) {
+    failures.push('the seeded list was not found by its Guid, or an unknown Guid was found: the writer reads every list by Guid');
+  }
 
   const credentials = subject.credentials ?? {};
   for (const role of ['collector', 'restorer']) {

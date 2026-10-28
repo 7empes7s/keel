@@ -50,7 +50,11 @@ $AllowedDsc = @{
         'SendOofMessageToOriginatorEnabled',
         # Read only: compared and listed for an administrator, never sent.
         'ManagedBy', 'ModeratedBy', 'GrantSendOnBehalfTo', 'EmailAddresses',
-        'AcceptMessagesOnlyFromSendersOrMembers', 'RejectMessagesFromSendersOrMembers', 'Members'
+        'AcceptMessagesOnlyFromSendersOrMembers', 'RejectMessagesFromSendersOrMembers',
+        # Read only and never compared for a write: the members and the settings KEEL does not
+        # write, read so the live capture can show a Set left them as they were.
+        'Members', 'ReportToManagerEnabled', 'ReportToOriginatorEnabled', 'BypassModerationFromSendersOrMembers',
+        'MailTip', 'BypassNestedModerationEnabled'
     )
 }
 # Properties a Set may carry. Everything else in the list above is read only.
@@ -68,7 +72,7 @@ $MaxValueLength = 1024
 
 function Out-Envelope {
     param([hashtable]$Envelope, [int]$Code)
-    [Console]::Out.WriteLine((ConvertTo-Json -InputObject $Envelope -Depth 8 -Compress))
+    [Console]::Out.WriteLine((ConvertTo-Json -InputObject $Envelope -Depth 8 -Compress -EnumsAsStrings))
     exit $Code
 }
 function Out-Failure {
@@ -170,7 +174,13 @@ try {
                     $state = [ordered]@{}
                     $missing = @()
                     foreach ($name in $AllowedDsc[$resource]) {
-                        if ($answer.PSObject.Properties[$name]) { $state[$name] = $answer.$name } else { $missing += $name }
+                        if (-not $answer.PSObject.Properties[$name]) { $missing += $name; continue }
+                        # An enum (Ensure, Type, the restrictions) goes out by its name, never its number:
+                        # a numeric Ensure would read every existing list as gone.
+                        $value = $answer.$name
+                        if ($value -is [enum]) { $value = [string]$value }
+                        elseif ($value -is [array]) { $value = @($value | ForEach-Object { if ($_ -is [enum]) { [string]$_ } else { $_ } }) }
+                        $state[$name] = $value
                     }
                     $row.state = $state
                     $row.missing = $missing

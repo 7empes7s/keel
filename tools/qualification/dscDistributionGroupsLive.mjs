@@ -10,25 +10,33 @@
  *   [KEEL_QUALIFICATION_HMAC_KEY=...] node tools/qualification/dscDistributionGroupsLive.mjs capture --confirm-live-tenant-write \
  *        --tenant-ref sha256:... --collector-ref app:<collector app id> --restorer-ref app:<restorer app id> \
  *        --collector-config /etc/keel/exchange-collector.json --restorer-config /etc/keel/exchange-restorer.json \
+ *        --seed-list KEEL-RT-capture-seed --seed-guid <its Guid> \
  *        --grants grants.json --out docs/release/qualifications/dsc-distribution-groups-writes-live-acceptance.json [--build <sha>]
+ *
+ * The seeded list is made once by the operator on the test tenant, outside KEEL, with at
+ * least one member, one owner and one moderator (KEEL never writes those). The update runs
+ * against it, so the capture shows a Set leaves members, owners and moderators alone on a
+ * list that has them.
  *
  * What a capture does, in order (and nothing else):
  *  0. offline: asks the DSC transport for a Set with Ensure = Absent and for a Set of
  *     ManagedBy (a field KEEL only lists); both must be refused before anything is sent;
- *  1. collector: Get KEEL-RT-capture-<random> (expected absent);
+ *  1. collector: Get the seeded list by its Guid (expected found, by that name), Get an
+ *     unknown Guid (expected absent), Get KEEL-RT-capture-<random> (expected absent);
  *  2. restorer: one Set, Ensure Present, creating that list with a name, display name,
- *     alias, type and three settings (the add); collector: read back until it matches;
- *  3. restorer: one Set changing the declared settings, the others sent with the values
- *     just read (the update); collector: read back until it matches, and check that the
- *     fields KEEL never sends (owners, moderators, senders, addresses) did not change.
- * KEEL never deletes, so the KEEL-RT-capture- list stays; it holds no members and is hidden
- * from the address book. Tenant ids and addresses are pseudonymized. With
+ *     alias, type and the declared settings (the add); collector: read back until it matches;
+ *  3. restorer: one Set on the seeded list changing the declared settings, the others sent
+ *     with the values just read (the update); collector: read back until it matches, and
+ *     check that what KEEL never sends (members, owners, moderators, senders, addresses,
+ *     the settings it does not write) did not change.
+ * KEEL never deletes, so the new KEEL-RT-capture- list stays; it holds no members and is
+ * hidden from the address book. Tenant ids and addresses are pseudonymized. With
  * KEEL_QUALIFICATION_HMAC_KEY set the record is signed as `keel-release-runner`.
  *
  * ledgerEvidenceFromDscWritesAcceptance() is the import seam: a record that passes
  * `verify --require-live` becomes one live write capture per proven write.
  */
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -36,7 +44,7 @@ import { pathToFileURL } from 'node:url';
 import { readConfigFile } from '../../engine/config/configFile.mjs';
 import { DSC_MODULE, DSC_MODULE_VERSION, DscError, DscScopeError } from '../../engine/powershell/dscJob.mjs';
 import {
-  DISTRIBUTION_GROUP_ADD, DISTRIBUTION_GROUP_RESOURCE, DISTRIBUTION_GROUP_UPDATE, LISTED_FIELDS, UPDATE_FIELDS, dscRunner, normalize,
+  DISTRIBUTION_GROUP_ADD, DISTRIBUTION_GROUP_RESOURCE, DISTRIBUTION_GROUP_UPDATE, LISTED_FIELDS, OBSERVED_ONLY, UPDATE_FIELDS, dscRunner, normalize,
 } from '../../engine/restore/workloads/dscDistributionGroups.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, verifyEvidence } from '../release/qualification.mjs';
@@ -48,11 +56,22 @@ import { pseudonymizeCapture } from './pseudonymize.mjs';
 import { writeAcceptanceFiles } from './sharepointLive.mjs';
 
 const sha256Hex = (text) => createHash('sha256').update(text).digest('hex');
-// What the capture list is created with, and what the update changes.
-const CREATED = Object.freeze({ HiddenFromAddressListsEnabled: true, MemberJoinRestriction: 'Closed', MemberDepartRestriction: 'Closed' });
-const CHANGED = Object.freeze({ MemberJoinRestriction: 'ApprovalRequired', SendOofMessageToOriginatorEnabled: true });
-// Fields a write must leave alone: the ones KEEL only lists, and the addresses.
-const UNTOUCHED = Object.freeze([...LISTED_FIELDS, 'Alias', 'PrimarySmtpAddress', 'Type']);
+// What the capture list is created with: every declared setting KEEL can send on a new list.
+const CREATED = Object.freeze({
+  HiddenFromAddressListsEnabled: true, MemberJoinRestriction: 'Closed', MemberDepartRestriction: 'Closed', RequireSenderAuthenticationEnabled: true,
+  ModerationEnabled: false, SendModerationNotifications: 'Never', SendOofMessageToOriginatorEnabled: false,
+});
+/** What the update changes on the seeded list: each value flips from what was read, so every capture changes something. */
+const changesFor = (state, seedName, tag) => ({
+  DisplayName: `${seedName} updated ${tag}`,
+  MemberJoinRestriction: normalize(state.MemberJoinRestriction) === 'ApprovalRequired' ? 'Closed' : 'ApprovalRequired',
+  SendOofMessageToOriginatorEnabled: normalize(state.SendOofMessageToOriginatorEnabled) !== true,
+});
+// What a write must leave alone: the fields KEEL only lists, the addresses, the members and the settings it does not write.
+const UNTOUCHED = Object.freeze([...LISTED_FIELDS, 'Alias', 'PrimarySmtpAddress', 'Type', ...OBSERVED_ONLY]);
+// The seeded list must hold what KEEL never writes, or the update proves nothing about it.
+const SEEDED = Object.freeze(['Members', 'ManagedBy', 'ModeratedBy']);
+const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Offline: what a capture would send, in order. */
 export function dscWritesCapturePlan() {
@@ -60,11 +79,13 @@ export function dscWritesCapturePlan() {
   return [
     { step: 0, credential: 'none', refused: 'EXODistributionGroup Set with Ensure = Absent (KEEL never removes; refused before sending)' },
     { step: 0, credential: 'none', refused: 'EXODistributionGroup Set of ManagedBy (a field KEEL only lists; refused before sending)' },
+    { step: 1, credential: 'collector', resource: DISTRIBUTION_GROUP_RESOURCE, method: 'Get', name: '<seed Guid>', expect: `present, named <seed list>, with ${SEEDED.join(', ')} set` },
+    { step: 1, credential: 'collector', resource: DISTRIBUTION_GROUP_RESOURCE, method: 'Get', name: '<random Guid>', expect: 'absent' },
     { step: 1, credential: 'collector', resource: DISTRIBUTION_GROUP_RESOURCE, method: 'Get', name, expect: 'absent' },
     { step: 2, credential: 'restorer', resource: DISTRIBUTION_GROUP_RESOURCE, method: 'Set', properties: { Identity: name, Name: name, Ensure: 'Present', Type: 'Distribution', DisplayName: name, Alias: '<name without punctuation>', ...CREATED }, operationId: DISTRIBUTION_GROUP_ADD },
     { step: 2, credential: 'collector', resource: DISTRIBUTION_GROUP_RESOURCE, method: 'Get', name, expect: 'present, as created' },
-    { step: 3, credential: 'restorer', resource: DISTRIBUTION_GROUP_RESOURCE, method: 'Set', properties: { Identity: name, Name: name, Ensure: 'Present', DisplayName: `${name} updated`, ...CHANGED, '...': 'the other declared settings, as read' }, operationId: DISTRIBUTION_GROUP_UPDATE },
-    { step: 3, credential: 'collector', resource: DISTRIBUTION_GROUP_RESOURCE, method: 'Get', name, expect: `as changed; ${UNTOUCHED.join(', ')} unchanged` },
+    { step: 3, credential: 'restorer', resource: DISTRIBUTION_GROUP_RESOURCE, method: 'Set', properties: { Identity: '<seed list>', Name: '<seed list>', Ensure: 'Present', DisplayName: '<seed list> updated <random>', MemberJoinRestriction: 'flipped', SendOofMessageToOriginatorEnabled: 'flipped', '...': 'the other declared settings, as read' }, operationId: DISTRIBUTION_GROUP_UPDATE },
+    { step: 3, credential: 'collector', resource: DISTRIBUTION_GROUP_RESOURCE, method: 'Get', name: '<seed list>', expect: `as changed; ${UNTOUCHED.join(', ')} unchanged` },
   ];
 }
 
@@ -89,7 +110,7 @@ const matchesAll = (state, wanted) => state?.Ensure === 'Present' && Object.entr
  * pseudonymized; it never signs and never writes files.
  */
 export async function captureDscWrites({
-  collector, restorer, tenantRef, build, credentials, grants, runner = dscRunner,
+  collector, restorer, tenantRef, build, credentials, grants, seed, runner = dscRunner,
   now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)), readBackAttempts = 6, readBackDelayMs = 10_000,
   suffix = () => randomBytes(4).toString('hex'),
 }) {
@@ -97,6 +118,9 @@ export async function captureDscWrites({
   if (!tenantRef || !build) problems.push('a capture needs --tenant-ref and a build');
   if (!credentials?.collector || !credentials?.restorer || credentials.collector === credentials.restorer) problems.push('a capture needs two separate credential references (collector, restorer)');
   if (!grants?.restorer || !Array.isArray(grants.restorer.roles)) problems.push('--grants must name the restorer\'s roles');
+  if (typeof seed?.name !== 'string' || !seed.name.startsWith(DSC_CAPTURE_PREFIX) || !GUID_RE.test(seed?.guid ?? '')) {
+    problems.push(`a capture needs the seeded list: --seed-list ${DSC_CAPTURE_PREFIX}<name> and --seed-guid <its Guid>`);
+  }
   if (problems.length) throw new Error(problems.join('; '));
   const read = runner(collector);
   const write = runner(restorer);
@@ -167,6 +191,21 @@ export async function captureDscWrites({
   });
   const finish = (capture) => { capture.capturedAt = now().toISOString(); writes.push(capture); return capture; };
   let refusal = Object.values(refusals).every((item) => item.refused && !item.sent) ? null : 'the DSC transport did not refuse a removal or a listed field; nothing was written';
+  // 1. The reads the writer depends on: a list found by its Guid (with Name = the Guid, as the
+  // writer sends it), and an unknown Guid not found.
+  const identityRead = { byGuidFound: false, unknownGuidAbsent: false };
+  let seeded = null;
+  if (!refusal) {
+    try {
+      const byGuid = await get(seed.guid);
+      identityRead.byGuidFound = byGuid?.Ensure === 'Present' && sameValue(byGuid.Name, seed.name);
+      if (identityRead.byGuidFound) seeded = byGuid;
+      const unknown = await get(randomUUID());
+      identityRead.unknownGuidAbsent = unknown?.Ensure !== 'Present';
+    } catch (error) { refusal = `a read by Guid failed (${error.message}); nothing was written`; }
+  }
+  if (!refusal && !identityRead.byGuidFound) refusal = `${seed.name} was not found by its Guid; nothing was written`;
+  if (!refusal && !identityRead.unknownGuidAbsent) refusal = 'an unknown Guid read as an existing list; nothing was written';
   if (!refusal) {
     try {
       const first = await get(name);
@@ -193,18 +232,22 @@ export async function captureDscWrites({
     }
     finish(add);
 
-    // 3. The update: the declared set, changed fields from CHANGED, the rest as read.
-    if (state?.Ensure === 'Present') {
-      const update = base(DISTRIBUTION_GROUP_UPDATE);
-      const properties = { Identity: name, Name: name, Ensure: 'Present' };
+    // 3. The update, on the seeded list (it has members, an owner and a moderator): the
+    // declared set, the changed fields flipped, the rest as read.
+    const unseeded = SEEDED.filter((field) => normalize(seeded[field]) === null);
+    if (unseeded.length) skipped.push({ operationId: DISTRIBUTION_GROUP_UPDATE, reason: `${seed.name} has no ${unseeded.join(', ')}; seed it first, so the update shows they are left alone` });
+    else {
+      const update = { ...base(DISTRIBUTION_GROUP_UPDATE), fixture: seed.name };
+      const changed = changesFor(seeded, seed.name, name.slice(DSC_CAPTURE_PREFIX.length));
+      const properties = { Identity: seed.name, Name: seed.name, Ensure: 'Present' };
       for (const field of UPDATE_FIELDS) {
-        const value = field === 'DisplayName' ? `${name} updated` : Object.hasOwn(CHANGED, field) ? CHANGED[field] : normalize(state[field]);
-        if (value !== null && (['string', 'boolean', 'number'].includes(typeof value) || Array.isArray(value))) properties[field] = value;
+        const value = Object.hasOwn(changed, field) ? changed[field] : normalize(seeded[field]);
+        if (value !== null && ['string', 'boolean', 'number'].includes(typeof value)) properties[field] = value;
       }
-      const changed = { DisplayName: `${name} updated`, ...CHANGED };
-      const before = Object.fromEntries(UNTOUCHED.map((field) => [field, normalize(state[field])]));
+      const before = Object.fromEntries(UNTOUCHED.map((field) => [field, normalize(seeded[field])]));
+      log.values.seeded = seeded;
       if (await set(update, properties)) {
-        const seen = await readUntil(() => get(name), (found) => matchesAll(found, changed), timing);
+        const seen = await readUntil(() => get(seed.guid), (found) => matchesAll(found, changed), timing);
         update.readBackVerified = seen.matched;
         update.collateralUnchanged = seen.matched && UNTOUCHED.every((field) => sameValue(seen.found?.[field], before[field]));
         if (seen.matched && !update.collateralUnchanged) {
@@ -214,7 +257,7 @@ export async function captureDscWrites({
         log.values.updated = seen.found;
       }
       finish(update);
-    } else skipped.push({ operationId: DISTRIBUTION_GROUP_UPDATE, reason: 'the capture list was not created' });
+    }
   }
   if (refusal) skipped.push({ operationId: null, reason: refusal });
 
@@ -234,6 +277,7 @@ export async function captureDscWrites({
       credentials: { collector: credentials.collector, restorer: credentials.restorer },
       grants,
       refusals,
+      identityRead,
       writes,
       skipped,
       created,
@@ -274,6 +318,7 @@ function parseArgs(argv) {
   const names = {
     '--tenant-ref': 'tenantRef', '--collector-ref': 'collectorRef', '--restorer-ref': 'restorerRef',
     '--collector-config': 'collectorConfig', '--restorer-config': 'restorerConfig', '--grants': 'grants', '--out': 'out', '--build': 'build',
+    '--seed-list': 'seedList', '--seed-guid': 'seedGuid',
   };
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
@@ -295,11 +340,12 @@ export async function main(argv = process.argv.slice(2), {
   if (options.command !== 'capture') throw new Error('usage: dscDistributionGroupsLive.mjs plan|capture ...');
   if (!options.confirm) {
     out(JSON.stringify(dscWritesCapturePlan(), null, 2));
-    out('refused: a capture creates and changes one KEEL-RT-capture- distribution list in the tenant; rerun with --confirm-live-tenant-write');
+    out('refused: a capture creates one KEEL-RT-capture- distribution list and changes the seeded one in the tenant; rerun with --confirm-live-tenant-write');
     return 2;
   }
   for (const [flag, key] of [['--tenant-ref', 'tenantRef'], ['--collector-ref', 'collectorRef'], ['--restorer-ref', 'restorerRef'],
-    ['--collector-config', 'collectorConfig'], ['--restorer-config', 'restorerConfig'], ['--grants', 'grants'], ['--out', 'out']]) {
+    ['--collector-config', 'collectorConfig'], ['--restorer-config', 'restorerConfig'], ['--grants', 'grants'], ['--out', 'out'],
+    ['--seed-list', 'seedList'], ['--seed-guid', 'seedGuid']]) {
     if (!options[key]) throw new Error(`capture needs ${flag}`);
   }
   if (options.collectorConfig === options.restorerConfig) throw new Error('the collector and restorer must use separate config files');
@@ -315,7 +361,7 @@ export async function main(argv = process.argv.slice(2), {
   const { record, captureLog } = await capture({
     collector: { tenantConfigPath: options.collectorConfig }, restorer: { tenantConfigPath: options.restorerConfig },
     tenantRef: options.tenantRef, build, credentials: { collector: options.collectorRef, restorer: options.restorerRef },
-    grants: JSON.parse(readFile(options.grants)),
+    grants: readConfigFile(options.grants, { readFile, what: 'restorer grants' }), seed: { name: options.seedList, guid: options.seedGuid },
   });
   const { evidence, logPath } = writeAcceptanceFiles({ record, captureLog, outPath, hmacKey: env.KEEL_QUALIFICATION_HMAC_KEY ?? null });
   const result = verifyEvidence(evidence, { gate: DSC_WRITES_LIVE_GATE, tenantRef: options.tenantRef, build, requireLive: true, evidenceDir: dirname(outPath) });

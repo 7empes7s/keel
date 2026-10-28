@@ -8860,7 +8860,7 @@ item that needs it stays untouched.
 - **Expected:** SameSite `lax` or `strict`, HTTP-only on; frame headers `frame-ancestors 'none'` and `DENY`; step 4 code 403.
 - **Report:** the step 1 fields (or "no token on host"), step 2 hostnames, step 3 lines, step 4 lines and code.
 
-### Q197: Read-only list of credential reference names for ServiceNow and notify channels (security audit finding 6 follow-up)
+### Q199: Read-only list of credential reference names for ServiceNow and notify channels (security audit finding 6 follow-up)
 - Drafted by the "Guard CEF and ServiceNow outbound addresses" thread (2026-10-28). A later engine change will require
   ServiceNow and Teams/Slack/PagerDuty/SMS credential references to be `env:KEEL_INTEGRATION_*`, as PR #616 did for SIEM
   webhooks, so a reference can never pick up the database URL. Before that, we need the names the live settings use, so

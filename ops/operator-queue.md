@@ -9012,3 +9012,53 @@ item that needs it stays untouched.
 - **Expected:** `priority smallint` default 0 and the index exist; the live tree is at or after the #627 merge commit; the
   worker started after the deploy; no "safety sweep failed" lines (or, if any, the redacted reason); jobs grouped by priority.
 - **Report:** each step's output (no secrets) and anything that does not match.
+
+### Q201: Move Caddy's admin API off TCP onto a private unix socket (Q195 finding)
+- Drafted by the "Lock down Caddy admin API on server" thread (2026-10-28). Q195 found Caddy's admin API on
+  127.0.0.1:2019 answering `GET /config/` with 200 and no auth, so any local process can `POST /load` or `/stop` for all four
+  sites. PR #632 adds `ops/caddy-admin-socket.conf` (systemd drop-in: private `/run/caddy`, mode 0700) and
+  `ops/caddy-admin-check.mjs` (read-only check; it only connects to port 2019). The Caddyfile gets
+  `admin unix//run/caddy/admin.sock`, so `systemctl reload caddy` keeps working. No `admin off`: that would make every later
+  config change a restart for all sites.
+- Needs: nothing. Use your own checkout of `origin/claude/project-thread-p6kbeu` (or `/opt/keel-live` once #632 has deployed).
+- Status: todo
+- **Host only, no tenant. Never `systemctl restart` or `stop` caddy; switch with a reload only.** Never call `/load`, `/stop` or
+  any admin path yourself other than through `caddy reload` in step 6. Never print a secret.
+- Do, as root:
+  1. Facts: `caddy version`; `systemctl cat caddy | grep -E '^(User|Group|ExecStart|ExecReload)='`. Then look for anything that
+     uses the TCP admin API or rewrites the Caddyfile:
+     `grep -rIlE ':2019|caddy (reload|stop|load)|/etc/caddy/Caddyfile' /etc /opt /usr/local/bin /root /home --exclude-dir=node_modules --exclude-dir=.git 2>/dev/null | grep -v -e '/etc/caddy/' -e 'caddy.service'`.
+     For each hit, say what it does. **If anything calls `localhost:2019` / `--address localhost:2019`, or regenerates the
+     Caddyfile, stop here, set blocked, and report it.** (A plain `caddy reload --config ...` or `systemctl reload caddy` is fine.)
+  2. Before: `node ops/caddy-admin-check.mjs; echo exit=$?` (expected exit 1). For each site address in the Caddyfile:
+     `curl -s -o /dev/null -w '%{http_code}' -H 'Host: <site>' http://127.0.0.1/` and record the code.
+  3. `cp -p /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak-q201`.
+  4. `install -D -m 644 ops/caddy-admin-socket.conf /etc/systemd/system/caddy.service.d/keel-admin-socket.conf && systemctl daemon-reload`.
+     systemd creates `/run/caddy` only on the next start, so create it for the running instance now:
+     `install -d -m 700 -o <User from step 1, root if none> -g <Group, root if none> /run/caddy`.
+  5. Put this global block as the very first lines of `/etc/caddy/Caddyfile` (Q195: there is none today; if one exists, add
+     the `admin` line inside it instead):
+     ```
+     {
+     	admin unix//run/caddy/admin.sock
+     }
+     ```
+     Then `caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile; echo exit=$?` (expected 0). If not 0, restore the
+     backup and report.
+  6. Switch through the old endpoint, no restart: `caddy reload --config /etc/caddy/Caddyfile --address localhost:2019; echo exit=$?`
+     (expected 0).
+  7. Verify:
+     - `node ops/caddy-admin-check.mjs; echo exit=$?` (expected exit 0, all PASS);
+     - `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:2019/config/` (expected `000`);
+     - `stat -c '%a %U' /run/caddy /run/caddy/admin.sock`;
+     - the step 2 curls give the same codes as before;
+     - `systemctl reload caddy; echo exit=$?` then `systemctl is-active caddy` (expected 0 and `active`: reloads now go through
+       the socket), then the check again (expected exit 0).
+  8. If step 6 or 7 fails: `cp -p /etc/caddy/Caddyfile.bak-q201 /etc/caddy/Caddyfile`, then
+     `caddy reload --config /etc/caddy/Caddyfile --address unix//run/caddy/admin.sock` (or `--address localhost:2019` if the
+     switch never happened), confirm the step 2 codes are back, and report. Leave the drop-in in place (harmless).
+- Result:
+- **Expected:** step 1 finds nothing that needs port 2019; validate 0; reload 0; check exit 0; port 2019 `000`; `/run/caddy`
+  700; site codes unchanged; `systemctl reload caddy` 0 and active.
+- **Report:** step 1 facts and hits, every exit code, the check output before and after, the stat line, the site codes before
+  and after, and whether the backup is still at `/etc/caddy/Caddyfile.bak-q201`.

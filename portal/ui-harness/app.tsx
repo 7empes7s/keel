@@ -642,10 +642,10 @@ const INTENT_CHANGES: IntentCandidate[] = [{
 const CHANNELS = [
   { id: "c4e10000-0000-4000-8000-0000000000c1", kind: "webhook", config: { url: "https://hooks.contoso.com/keel" }, enabled: true, created_at: "2026-09-01T08:00:00Z" },
   { id: "c4e10000-0000-4000-8000-0000000000c2", kind: "email", config: { to: "secops@contoso.com", from: "keel@contoso.com" }, enabled: true, created_at: "2026-09-01T08:05:00Z" },
-  { id: "c4e10000-0000-4000-8000-0000000000c3", kind: "pagerduty", config: { routingKeyRef: "env:KEEL_PAGERDUTY_KEY", region: "eu" }, enabled: true, created_at: "2026-09-02T08:00:00Z" },
-  { id: "c4e10000-0000-4000-8000-0000000000c4", kind: "slack", config: { endpointRef: "env:KEEL_SLACK_WEBHOOK" }, enabled: true, created_at: "2026-09-03T08:00:00Z" },
+  { id: "c4e10000-0000-4000-8000-0000000000c3", kind: "pagerduty", config: { routingKeyRef: "env:KEEL_INTEGRATION_PAGERDUTY_KEY", region: "eu" }, enabled: true, created_at: "2026-09-02T08:00:00Z" },
+  { id: "c4e10000-0000-4000-8000-0000000000c4", kind: "slack", config: { endpointRef: "env:KEEL_INTEGRATION_SLACK_WEBHOOK" }, enabled: true, created_at: "2026-09-03T08:00:00Z" },
   // Turned off three days ago; its history is kept.
-  { id: "c4e10000-0000-4000-8000-0000000000c5", kind: "teams", config: { endpointRef: "env:KEEL_TEAMS_WEBHOOK" }, enabled: false, created_at: "2026-08-20T08:00:00Z" },
+  { id: "c4e10000-0000-4000-8000-0000000000c5", kind: "teams", config: { endpointRef: "env:KEEL_INTEGRATION_TEAMS_WEBHOOK" }, enabled: false, created_at: "2026-08-20T08:00:00Z" },
 ];
 const SIGN_IN_ALERT = { alertId: "a1e70000-0000-4000-8000-000000000001", resourceKey: "conditionalAccessPolicy:Block legacy auth", control: "baseline", condition: "drift", occurrence: 1 };
 const DEVICE_ALERT = { alertId: "a1e70000-0000-4000-8000-000000000002", resourceKey: "deviceConfiguration:Corporate laptops", control: "baseline", condition: "drift", occurrence: 1 };
@@ -689,7 +689,7 @@ const SERVICENOW_ON: ServiceNowStatus = {
     instanceHost: "contoso.service-now.com", table: "u_keel_gated_change",
     fields: { state: "u_gate", approver: "u_gate_owner.email", planVersion: "u_plan_rev", planDigest: "u_plan_hash", keelRequest: "u_keel_ref", keelDecision: "u_keel_outcome" },
     approvedValues: ["gate_passed"], rejectedValues: ["gate_blocked", "gate_withdrawn"],
-    tokenRef: "env:KEEL_SERVICENOW_TOKEN", callbacks: "signed", callbackSecretRef: "env:KEEL_SERVICENOW_CALLBACK_SECRET",
+    tokenRef: "env:KEEL_INTEGRATION_SERVICENOW_TOKEN", callbacks: "signed", callbackSecretRef: "env:KEEL_INTEGRATION_SERVICENOW_CALLBACK_SECRET",
   },
   mirror: { records: 12, waiting: 2, pendingUpdates: 1, heldBack: 1, conflicts: 0 },
   heldBack: [{ eventId: "keel:decision:5e9c0000-0000-4000-8000-000000000097", kind: "decision", externalRef: "9d3f0000000040008000000000000097", attempts: 1, reason: "rejected by adapter", lastError: "ServiceNow PATCH returned HTTP 403", createdAt: now }],

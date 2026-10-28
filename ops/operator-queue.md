@@ -1561,8 +1561,9 @@ being triggered by queue updates.
   family (`test -f /opt/keel-live/tools/tenant-probe/catalog.d/admin-center-settings.mjs`).
 - Note (2026-10-28 18:45 UTC): Marouane reports admin consent granted for the KEEL Collector; PR #604 has the `automerge`
   label. Re-check both Needs (the 9 appRoleAssignments, and the family file in `/opt/keel-live` after the deploy), then run.
-- Status: todo
-- Result: (earlier, 2026-10-28 07:35 UTC: blocked waiting on consent; none of the 9 held, PR #604 not deployed.)
+- Status: blocked: waiting on consent (none of the 9 held at 19:40; PR #604 not deployed)
+- Result: blocked: waiting on consent (2026-10-28 19:40 UTC, root keel-operator). Re-checked after the 18:45 note: the KEEL Collector SP (f8741600…) still holds **none** of the 9: OrgSettings-Forms.Read.All, OrgSettings-Todo.Read.All, OrgSettings-Microsoft365Install.Read.All, OrgSettings-AppsAndServices.Read.All, ReportSettings.Read.All, PeopleSettings.Read.All, CustomDetection.Read.All, AppCatalog.Read.All, Community.Read.All. It has 49 appRoleAssignments in all (45 Graph, 3 SharePoint, 1 Exchange); the newest was created 2026-10-15T00:09Z. The consent most likely went to another app or didn't save (inference). Also `/opt/keel-live` (9550175) does not have `tools/tenant-probe/catalog.d/admin-center-settings.mjs` yet (PR #604 not deployed). Nothing run.
+- Earlier result: (earlier, 2026-10-28 07:35 UTC: blocked waiting on consent; none of the 9 held, PR #604 not deployed.)
 - **Tenant:** reads only, with the collector credential. No grants, no role or config changes, nothing written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. `node cli/keel-collect.mjs` once by hand (no `--tier`, so every tier is read). Report its exit code and every log line
@@ -8792,8 +8793,19 @@ item that needs it stays untouched.
   The Restorer (`/etc/keel/content-restorer.json`) holding **`Teamwork.Migrate.All` (Application) with admin consent**, plus
   `Channel.ReadBasic.All`, `Team.ReadBasic.All`, `User.Read.All` (or broader ReadWrite forms of them).
 - Requeued by the "Restore Teams messages via import API" thread (2026-10-28 18:45 UTC): Marouane reports the grant done (Teamwork.Migrate.All added to the Restorer, admin consent granted). Run from step 1 again; step 1 still checks the grant and reports blocked if it is not there yet (it can take a while to apply).
-- Status: todo
-- Result: blocked: waiting on `Teamwork.Migrate.All` for the Restorer (2026-10-28 07:38 UTC, root keel-operator). Stopped at step 1: nothing created, no fixture, plan, request, approval or run; no tenant write; nothing granted; global admin not used.
+- Status: blocked (#656: migration channel refused on an existing team)
+- Result: blocked (2026-10-28 19:45 UTC, root keel-operator): **the grant is in place, but Graph refuses the import-mode channel on an existing team: `400 BadRequest Migration channels can only be created in a team under migration.` Filed #656.** Nothing created in the tenant.
+  - B = `9550175` (`engine/content/restore/teamsMessages.mjs` present). Ran `node /opt/keel-live/cli/keel-content-restore.mjs teams ... --restorer /etc/keel/content-restorer.json`.
+  - Step 1: the Restorer (SP 8cd199c9…) now holds **Teamwork.Migrate.All** (60 appRoleAssignments; the other 59 are the list in the earlier result below). Channel.ReadBasic.All, Team.ReadBasic.All, User.ReadWrite.All and Channel.Create are held.
+  - Step 2: TEAM = `KEEL-RT-20260908 Collaboration Hub` (9263e1d4…), CH = General (19:Cl2Z9N1H…@thread.tacv2); U1 alice, U2 carla, UF ben (there is no keel-rt bob user).
+  - Step 3: fixture `/tmp/keel-rt-teams-fixture.json` (`keel.teams.channelFixture/v1`, 4 threads, KEEL-RT text), exit 0.
+  - Step 4: plan exit 0: runId `teams-messages:b2c1eb5a…`, channel `KEEL-RT-import-proof`, **threads 3, messages 5**, skipped 2 (2002 "deleted before the backup", 4001 "a system message"), fixture sha256 f230a0f2…, T = 2026-10-28T19:38:19.969Z.
+  - Step 5: request `--at T --actor` Entra bac8d59b… → approval **25c19989**; approved as Gmail 2a47535a… (content-restore, executor cli). `teams run`: **exit 1**, `status: failed`, restored 0, failed 5, skipped 2, writes 1, authorsReplaced 0. Error: `creating channel KEEL-RT-import-proof (restored 2026-10-28) failed: 400 BadRequest Migration channels can only be created in a team under migration.` (v1.0 `POST /teams/{team}/channels` with `channelCreationMode: migration`, standard, past `createdDateTime`).
+  - Step 6: the channel list afterwards is unchanged (Engineering, General, Partner Shared, Finance Private); no channel was created.
+  - Steps 7–8: not run. A re-run would only repeat the refused POST.
+  - #656 lists the options for the thread: a new team in migration mode, a beta or other route, or a normal channel (not faithful).
+  - Credentials: Collector (team/user reads), content Restorer (the channel list and the one refused POST). No global admin; nothing granted.
+- Earlier result: blocked: waiting on `Teamwork.Migrate.All` for the Restorer (2026-10-28 07:38 UTC, root keel-operator). Stopped at step 1: nothing created, no fixture, plan, request, approval or run; no tenant write; nothing granted; global admin not used.
   - B: /opt/keel-live at `76e1c71` (after PR #596: `engine/content/restore/teamsMessages.mjs` present).
   - The content Restorer (`/etc/keel/content-restorer.json`; same clientId as `/etc/keel/restorer.json`, app "Keel Restorer", SP `8cd199c9…`): 59 appRoleAssignments read with the Collector (one page, no nextLink). **`Teamwork.Migrate.All` (dfb0dd15-61de-45b2-be36-d6a69fba3c79) is not assigned.**
   - The other prerequisites are held: Channel.ReadBasic.All, Team.ReadBasic.All, User.ReadWrite.All (covers User.Read.All); also Channel.Create, ChannelSettings.ReadWrite.All, ChannelMember.ReadWrite.All, TeamSettings.ReadWrite.All, TeamMember.ReadWrite.All, Group.ReadWrite.All.

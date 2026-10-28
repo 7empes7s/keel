@@ -8789,7 +8789,8 @@ item that needs it stays untouched.
 - Needs: /opt/keel-live at the PR #596 merge or later (`test -f /opt/keel-live/engine/content/restore/teamsMessages.mjs`).
   The Restorer (`/etc/keel/content-restorer.json`) holding **`Teamwork.Migrate.All` (Application) with admin consent**, plus
   `Channel.ReadBasic.All`, `Team.ReadBasic.All`, `User.Read.All` (or broader ReadWrite forms of them).
-- Status: blocked: waiting on Teamwork.Migrate.All for the Restorer
+- Requeued by the "Restore Teams messages via import API" thread (2026-10-28 18:45 UTC): Marouane reports the grant done (Teamwork.Migrate.All added to the Restorer, admin consent granted). Run from step 1 again; step 1 still checks the grant and reports blocked if it is not there yet (it can take a while to apply).
+- Status: todo
 - Result: blocked: waiting on `Teamwork.Migrate.All` for the Restorer (2026-10-28 07:38 UTC, root keel-operator). Stopped at step 1: nothing created, no fixture, plan, request, approval or run; no tenant write; nothing granted; global admin not used.
   - B: /opt/keel-live at `76e1c71` (after PR #596: `engine/content/restore/teamsMessages.mjs` present).
   - The content Restorer (`/etc/keel/content-restorer.json`; same clientId as `/etc/keel/restorer.json`, app "Keel Restorer", SP `8cd199c9…`): 59 appRoleAssignments read with the Collector (one page, no nextLink). **`Teamwork.Migrate.All` (dfb0dd15-61de-45b2-be36-d6a69fba3c79) is not assigned.**

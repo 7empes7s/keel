@@ -133,12 +133,13 @@ const WORKER_JOBS = [
   ['baseline-activate', { baselineId: 'b-1', reinstate: true, version: 2, reason: 'live gate done', tenantRef: 't-1' }],
   ['policy-evaluate', { tenantRef: 't-1' }],
   ['notify', { deliveryId: 'd-1' }],
+  ['dispose', {}, { ...JOB, idempotency_key: 'approval:a-1' }],
 ];
 
-for (const [kind, params] of WORKER_JOBS) {
+for (const [kind, params, job = JOB] of WORKER_JOBS) {
   test(`the ${kind} job's arguments parse under its CLI (${Object.keys(params).join(', ') || 'no params'})`, async () => {
     const handler = JOB_HANDLERS[kind];
-    const args = handler.argsFor(params, JOB);
+    const args = handler.argsFor(params, job);
     // --help stops each of these CLIs right after parsing, so only a parse error fails.
     const { stdout } = await run(process.execPath, [handler.script, ...args, '--help'], {
       env: { ...process.env, KEEL_DB_URL: '' },

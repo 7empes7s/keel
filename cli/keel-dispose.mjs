@@ -13,10 +13,17 @@ import { DISPOSE_APPROVAL_ACTION } from '../engine/govern/dispositionReview.mjs'
 import { acceptServiceChange } from '../engine/govern/workloadApproved.mjs';
 import { resolveAlert } from '../engine/notify/alerts.mjs';
 import { connect } from '../engine/store/db.mjs';
+import { parseCliArgs } from './args.mjs';
 
+const ARGS = {
+  name: 'keel-dispose',
+  strings: ['approval-id', 'actor', 'db-url'],
+  booleans: ['help'],
+};
+let parsed;
 function arg(name, fallback) {
-  const i = process.argv.indexOf(`--${name}`);
-  return i > -1 ? process.argv[i + 1] : fallback;
+  parsed ??= parseCliArgs(process.argv.slice(2), ARGS).values;
+  return parsed[name] ?? fallback;
 }
 
 function requireArg(name) {
@@ -54,7 +61,7 @@ export async function runApprovedDisposition(client, { approvalId, actor }) {
 }
 
 async function main() {
-  if (process.argv.includes('--help')) {
+  if (arg('help')) {
     console.log('usage: keel-dispose.mjs --approval-id ID --actor PRINCIPAL [--db-url $KEEL_DB_URL]');
     return;
   }

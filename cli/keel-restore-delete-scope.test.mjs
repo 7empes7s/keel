@@ -57,8 +57,7 @@ function fakes(artifacts) {
       if (path.startsWith('/directory/deletedItems/microsoft.graph.group')) return { items: [], capped: false, error: null };
       if (path === '/identity/conditionalAccess/namedLocations') return { items: LIVE.namedLocation, capped: false, error: null };
       // The sign-in path gate's own reads: no policies or assignments in this fixture.
-      if (path === '/identity/conditionalAccess/policies' || path === '/identity/conditionalAccess/namedLocations'
-        || path.startsWith('/roleManagement/directory/roleAssignments')) {
+      if (path === '/identity/conditionalAccess/policies' || path.startsWith('/roleManagement/directory/roleAssignments')) {
         return { items: [], capped: false, error: null };
       }
       throw new Error(`unexpected reader collection: ${path}`);

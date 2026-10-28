@@ -99,6 +99,7 @@ test('each trust field on its own is withheld: trust, ranges, countries and unkn
     [update({ ...liveOffice, ipRanges: [range('198.51.100.0/24'), range('203.0.113.0/24')] }), ['ipRanges']],
     [update({ ...country, countriesAndRegions: ['FR', 'MA'] }, country), ['countriesAndRegions']],
     [update({ ...country, includeUnknownCountriesAndRegions: true }, country), ['includeUnknownCountriesAndRegions']],
+    [update({ ...country, countryLookupMethod: 'authenticatorAppGps' }, { ...country, countryLookupMethod: 'clientIpAddress' }), ['countryLookupMethod']],
   ];
   for (const [resource, fields] of cases) {
     const graph = tenant([liveOffice, country]);
@@ -164,6 +165,7 @@ test('a compliance fix changes exactly its one declared setting, and nothing els
   assert.ok(namedLocationTrustRefusal(update({ ...fixed, includeUnknownCountriesAndRegions: true, isTrusted: false }, live, { complianceFix: fix }), 'update'), 'another field than the fix');
   assert.ok(namedLocationTrustRefusal(update(fixed, live, { complianceFix: { ...fix, to: true } }), 'update'), 'a value other than the declared one');
   assert.ok(namedLocationTrustRefusal(update(fixed, live, { complianceFix: { ...fix, resourceType: 'group' } }), 'update'), 'a fix for another type');
+  assert.ok(namedLocationTrustRefusal(update(fixed, live, { complianceFix: { ...fix, naturalKey: 'namedLocation:Other' } }), 'update'), 'a fix for another object');
 });
 
 test('other resource types are not touched by the named location gate', () => {

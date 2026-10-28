@@ -13,6 +13,8 @@
  */
 export const NAMED_LOCATION_TRUST_FIELDS = Object.freeze([
   'isTrusted', 'ipRanges', 'countriesAndRegions', 'includeUnknownCountriesAndRegions',
+  // Whether a country comes from the client IP or the Authenticator app's GPS.
+  'countryLookupMethod',
 ]);
 
 const PORTAL_PATH = 'Entra admin center > Protection > Conditional Access > Named locations';
@@ -58,7 +60,7 @@ export function namedLocationTrustRefusal(resource, verb) {
   const changes = namedLocationTrustChanges(resource, verb);
   if (changes.length === 0) return null;
   const fix = resource.complianceFix;
-  if (verb === 'update' && fix?.resourceType === 'namedLocation' && changes.length === 1
+  if (verb === 'update' && fix?.resourceType === 'namedLocation' && fix.naturalKey === resource.naturalKey && changes.length === 1
     && changes[0] === fix.field && same(resource.payload[fix.field], fix.to)) {
     return null;
   }

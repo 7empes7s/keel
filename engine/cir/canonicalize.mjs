@@ -78,6 +78,9 @@ export const CONTEXT_EXCLUDED_TYPES = new Set(['directoryRoleTemplate', 'directo
 const VOCABULARY_ID_TYPES = new Set([
   'organizationalBrandingLocalization',
   'attributeSet', 'customSecurityAttributeDefinition', 'b2xIdentityUserFlow',
+  // Remaining kinds, batch 9: a profile card field's id is a directory field
+  // name such as "Alias" or "customAttribute1".
+  'profileCardProperty',
 ]);
 
 function idKey(obj, type) {

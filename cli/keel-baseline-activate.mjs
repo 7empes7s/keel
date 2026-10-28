@@ -15,10 +15,18 @@ import { readConfigFile } from '../engine/config/configFile.mjs';
 import { createHash } from 'node:crypto';
 import { activateBaseline, reinstateBaseline } from '../engine/govern/baseline.mjs';
 import { connect } from '../engine/store/db.mjs';
+import { parseCliArgs } from './args.mjs';
 
+const ARGS = {
+  name: 'keel-baseline-activate',
+  strings: ['baseline-id', 'version', 'actor', 'tenant-ref', 'config', 'db-url'],
+  text: ['reason'],
+  booleans: ['help', 'reinstate'],
+};
+let parsed;
 function arg(name, fallback) {
-  const i = process.argv.indexOf(`--${name}`);
-  return i > -1 ? process.argv[i + 1] : fallback;
+  parsed ??= parseCliArgs(process.argv.slice(2), ARGS).values;
+  return parsed[name] ?? fallback;
 }
 
 function requireArg(name) {
@@ -39,7 +47,7 @@ function resolveTenantRef() {
 }
 
 async function main() {
-  if (process.argv.includes('--help')) {
+  if (arg('help')) {
     console.log('usage: keel-baseline-activate.mjs --baseline-id ID [--reinstate [--version N] --actor PRINCIPAL [--reason TEXT]] [--tenant-ref REF] [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]');
     return;
   }
@@ -49,7 +57,7 @@ async function main() {
 
   const client = await connect(dbUrl);
   try {
-    if (process.argv.includes('--reinstate')) {
+    if (arg('reinstate')) {
       const versionArg = arg('version');
       const version = versionArg === undefined ? undefined : Number(versionArg);
       if (version !== undefined && !Number.isInteger(version)) throw new Error('--version must be an integer');

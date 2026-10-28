@@ -49,6 +49,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { connect } from '../engine/store/db.mjs';
+import { parseCliArgs } from './args.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
 import { loadLedgerInputs, loadWorkloadLedger, proofExpiry, saveLedgerInputs } from '../engine/collect/workloadLedgerStore.mjs';
 import { WORKLOAD_COLLECTORS } from '../engine/collect/workloads/registry.mjs';
@@ -63,9 +64,15 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 export const DEFAULT_RECORD_DIR = join(__dirname, '..', 'docs', 'release', 'qualifications');
 const GRAPH_HOST = 'graph.microsoft.com';
 
-function arg(argv, name, fallback) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : fallback;
+const ARGS = {
+  name: 'keel-workload-collect',
+  strings: ['config', 'scope', 'tenant-ref', 'dir', 'build', 'db-url'],
+  booleans: ['help'],
+  positionals: 1,
+};
+
+function arg(opts, name, fallback) {
+  return opts[name] ?? fallback;
 }
 
 const sleep = (ms) => new Promise((done) => { setTimeout(done, ms); });
@@ -389,27 +396,27 @@ export async function main(argv = process.argv.slice(2), {
   readFile = (path) => readFileSync(path, 'utf8'), connectFn = connect, getTokenFn = getToken, fetchImpl = globalThis.fetch,
   env = process.env, logger = console, seams,
 } = {}) {
-  const command = argv[0];
-  if (!['run', 'import', 'proof'].includes(command) || argv.includes('--help')) {
+  const { values: opts, positionals: [command] } = parseCliArgs(argv, ARGS);
+  if (!['run', 'import', 'proof'].includes(command) || opts.help) {
     logger.log('usage: keel-workload-collect.mjs run|import|proof [--config /etc/keel/tenant.json] [--scope FILE] [--dir DIR] [--db-url URL]');
-    return command === undefined || argv.includes('--help') ? 0 : 2;
+    return command === undefined || opts.help ? 0 : 2;
   }
-  const configPath = arg(argv, 'config', '/etc/keel/tenant.json');
+  const configPath = arg(opts, 'config', '/etc/keel/tenant.json');
   const config = readConfigFile(configPath, { readFile, what: 'collector settings' });
   const tenantRef = tenantRefFor(config.tenantId);
-  const requested = arg(argv, 'tenant-ref');
+  const requested = arg(opts, 'tenant-ref');
   if (requested !== undefined && requested !== tenantRef) {
     throw new Error('the job names another tenant than the tenant config: refusing to collect');
   }
-  const dbUrl = arg(argv, 'db-url', env.KEEL_DB_URL);
+  const dbUrl = arg(opts, 'db-url', env.KEEL_DB_URL);
   if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
   const client = await connectFn(dbUrl);
   try {
     if (command === 'import') {
-      const dir = resolve(arg(argv, 'dir', DEFAULT_RECORD_DIR));
+      const dir = resolve(arg(opts, 'dir', DEFAULT_RECORD_DIR));
       const result = await importLedgerInputs(client, {
         tenantRef, dir, seams: seams ?? await importSeams(), readFile,
-        verify: { build: arg(argv, 'build', null), hmacKey: env.KEEL_QUALIFICATION_HMAC_KEY ?? null },
+        verify: { build: arg(opts, 'build', null), hmacKey: env.KEEL_QUALIFICATION_HMAC_KEY ?? null },
         observeRoles: () => observeCollectorRoles(
           readOnlyGraphTransport(async () => (await getTokenFn(config)).accessToken, fetchImpl), { appId: config.clientId },
         ),
@@ -424,8 +431,8 @@ export async function main(argv = process.argv.slice(2), {
       if (!proof.length) logger.log('No workload live proof is stored. Run the import after a live capture.');
       return proof.length && proof.every((entry) => entry.status === 'current') ? 0 : 1;
     }
-    const scopePath = arg(argv, 'scope', DEFAULT_SCOPE_PATH);
-    const scope = arg(argv, 'scope') !== undefined || existsSync(scopePath) ? readConfigFile(scopePath, { readFile, what: 'workload scope' }) : {};
+    const scopePath = arg(opts, 'scope', DEFAULT_SCOPE_PATH);
+    const scope = arg(opts, 'scope') !== undefined || existsSync(scopePath) ? readConfigFile(scopePath, { readFile, what: 'workload scope' }) : {};
     scope.powershellConfigs = powershellConfigPaths(scope, { config, readFile });
     const transport = readOnlyGraphTransport(async () => (await getTokenFn(config)).accessToken, fetchImpl);
     const result = await runWorkloadCollection(client, {

@@ -31,6 +31,7 @@
 // mailbox is filed as content-restore-other-location (the tenant's two-person rule).
 import { existsSync, readFileSync } from 'node:fs';
 import { readConfigFile } from '../engine/config/configFile.mjs';
+import { argvParser, parseCliArgs } from './args.mjs';
 import { pathToFileURL } from 'node:url';
 
 import { getToken } from '../tools/tenant-probe/auth.mjs';
@@ -49,14 +50,26 @@ import { createPgRestoreJournal } from '../engine/content/restore/journal.mjs';
 import { contentWriteTransport } from '../engine/content/restore/transport.mjs';
 import { GRAPH_ROOT, MAIL_RESTORE_KINDS, mailRestoreRunId, normalizeMailRestoreRequest, planMailRestore, restoreMail } from '../engine/content/restore/mail.mjs';
 import { DEFAULT_READER_PATH, readerProblems } from './keel-content-collect.mjs';
-import { filesCommand } from './keel-content-restore-files.mjs';
-import { teamsCommand } from './keel-content-restore-teams.mjs';
+import { FILES_ARGS, filesCommand } from './keel-content-restore-files.mjs';
+import { TEAMS_ARGS, teamsCommand } from './keel-content-restore-teams.mjs';
 
 export const DEFAULT_RESTORER_PATH = '/etc/keel/content-restorer.json';
 
+// Parsed strictly (cli/args.mjs). The spec names this workload's options and the
+// options every content-restore subcommand shares; the action (plan, request, run) is
+// the one positional.
+export const MAIL_ARGS = {
+  name: 'keel-content-restore mail',
+  strings: ['source-mailbox', 'target-mailbox', 'at', 'into', 'kinds', 'kind', 'folder', 'item', 'actor', 'approval-id', 'config', 'reader', 'restorer', 'db-url'],
+  text: ['justification'],
+  repeatable: [],
+  booleans: ['help'],
+  positionals: 1,
+};
+const options = argvParser(MAIL_ARGS);
+
 function arg(argv, name, fallback) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : fallback;
+  return options(argv)[name] ?? fallback;
 }
 
 const USAGE = [
@@ -181,6 +194,9 @@ async function mailCommand(argv, { config, tenantRef, client, store, readFile, e
 
 // One line per workload. `files` and `teams` live in their own modules.
 export const SUBCOMMANDS = Object.freeze({ mail: mailCommand, files: filesCommand, teams: teamsCommand });
+// Looked up when main runs: the files and teams modules import this one, so their specs
+// are not initialised yet while this module loads.
+const subcommandArgs = () => ({ mail: MAIL_ARGS, files: FILES_ARGS, teams: TEAMS_ARGS });
 
 export async function main(argv = process.argv.slice(2), {
   readFile = (path) => readFileSync(path, 'utf8'), exists = existsSync, connectFn = connect, getTokenFn = getToken,
@@ -192,23 +208,30 @@ export async function main(argv = process.argv.slice(2), {
   }),
 } = {}) {
   const command = subcommands[argv[0]];
-  if (!command || argv.includes('--help') || !argv[1]) {
+  const spec = Object.hasOwn(subcommandArgs(), argv[0]) ? subcommandArgs()[argv[0]] : undefined;
+  if (!command || !spec) {
     logger.log(USAGE);
-    return argv.length === 0 || argv.includes('--help') ? 0 : 2;
+    return argv.length === 0 || argv[0] === '--help' ? 0 : 2;
   }
-  const config = readConfigFile(arg(argv, 'config', '/etc/keel/tenant.json'), { readFile, what: 'collector settings' });
+  const rest = argv.slice(1);
+  const { values: opts, positionals: [action] } = parseCliArgs(rest, spec);
+  if (opts.help || !action) {
+    logger.log(USAGE);
+    return opts.help ? 0 : 2;
+  }
+  const config = readConfigFile(opts.config ?? '/etc/keel/tenant.json', { readFile, what: 'collector settings' });
   const tenantRef = tenantRefFor(config.tenantId);
-  const readerPath = arg(argv, 'reader', DEFAULT_READER_PATH);
+  const readerPath = opts.reader ?? DEFAULT_READER_PATH;
   if (!exists(readerPath)) throw new Error(`content restore reads the content store named in ${readerPath}, which does not exist yet`);
   const reader = readConfigFile(readerPath, { readFile, what: 'content backup reader settings' });
   const problems = readerProblems(reader, config);
   if (problems.length) throw new Error(`content reader file ${readerPath}: ${problems.join('; ')}`);
-  const dbUrl = arg(argv, 'db-url', env.KEEL_DB_URL);
+  const dbUrl = opts['db-url'] ?? env.KEEL_DB_URL;
   if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
   const client = await connectFn(dbUrl);
   try {
     const store = openStore(reader, client);
-    return await command(argv.slice(1), { config, tenantRef, client, store, readFile, exists, getTokenFn, fetchImpl, writeTransportFor, testTenantRefs, canFn, logger });
+    return await command(rest, { config, tenantRef, client, store, readFile, exists, getTokenFn, fetchImpl, writeTransportFor, testTenantRefs, canFn, logger });
   } finally {
     await client.end();
   }

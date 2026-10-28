@@ -27,6 +27,7 @@
 // writes only to KEEL-RT- sites and drives. Every Graph call goes through the content
 // write transport with a guard that keeps writes inside the target drive or site.
 import { readConfigFile } from '../engine/config/configFile.mjs';
+import { argvParser } from './args.mjs';
 import { requestApproval } from '../engine/govern/approvals.mjs';
 import {
   CONTENT_RESTORE_ACTION, CONTENT_RESTORE_OTHER_LOCATION, ContentRestoreRefusedError, authorizeContentRestore, refuseFuturePointInTime, requireContentPolicyAction,
@@ -47,9 +48,21 @@ export const FILES_USAGE = [
   '                [--target-site ID (--target-list ID | --target-list-name NAME)] [--conflict copy|replace|replace-newer] [--permissions]',
 ].join('\n');
 
+// Parsed strictly (cli/args.mjs). The spec names this workload's options and the
+// options every content-restore subcommand shares; the action (plan, request, run) is
+// the one positional.
+export const FILES_ARGS = {
+  name: 'keel-content-restore files',
+  strings: ['drive', 'site', 'file', 'folder', 'list', 'items', 'at', 'version', 'target-drive', 'target-folder', 'target-site', 'target-list', 'target-list-name', 'conflict', 'actor', 'approval-id', 'config', 'reader', 'restorer', 'db-url'],
+  text: ['justification'],
+  repeatable: [],
+  booleans: ['whole-drive', 'permissions', 'help'],
+  positionals: 1,
+};
+const options = argvParser(FILES_ARGS);
+
 function arg(argv, name, fallback) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : fallback;
+  return options(argv)[name] ?? fallback;
 }
 
 /**
@@ -77,7 +90,7 @@ export function filesRequestFromArgs(argv, tenantRef, now = () => new Date()) {
   }
   const driveId = arg(argv, 'drive');
   if (!driveId) throw new TypeError('name a source: --drive ID (files) or --site ID --list ID (a list)');
-  const picked = [['file', arg(argv, 'file')], ['folder', arg(argv, 'folder')], ['drive', argv.includes('--whole-drive') ? true : undefined]]
+  const picked = [['file', arg(argv, 'file')], ['folder', arg(argv, 'folder')], ['drive', options(argv)['whole-drive'] ? true : undefined]]
     .filter(([, value]) => value !== undefined);
   if (picked.length !== 1) throw new TypeError('name exactly one of --file ID, --folder ID or --whole-drive');
   const [kind, itemId] = picked[0];
@@ -90,7 +103,7 @@ export function filesRequestFromArgs(argv, tenantRef, now = () => new Date()) {
   return filesRestoreRequest({
     source, scope: kind === 'drive' ? { kind } : { kind, itemId }, at, version: arg(argv, 'version') ?? null,
     target: targetDrive || targetFolder ? { driveId: targetDrive ?? driveId, folderPath: targetFolder } : null,
-    conflict, permissions: argv.includes('--permissions'),
+    conflict, permissions: options(argv).permissions,
   });
 }
 

@@ -1647,8 +1647,13 @@ being triggered by queue updates.
 - Drafted by the "Probe Microsoft config snapshots for backup" thread (2026-10-27).
 - Needs: Q182 done; the Collector's SP holds `ConfigurationMonitoring.ReadWrite.All` as an appRoleAssignment (Marouane's consent; if
   missing, set `blocked: waiting on consent` and stop).
-- Status: blocked: waiting on consent
-- Result: blocked: waiting on consent (2026-10-28 07:35 UTC, root keel-operator). Q182 is done; the Collector's SP does **not** hold `ConfigurationMonitoring.ReadWrite.All` (in the manifest since 07:11, Q180/Q182 PATCH). Nothing run, no grant made to the TCM principal.
+- Status: blocked: waiting on consent (Keel Restorer AppRoleAssignment.ReadWrite.All)
+- Result: blocked: waiting on consent (2026-10-28 20:48 UTC, root keel-operator). The Collector consent landed at 20:43 (59 appRoleAssignments, ConfigurationMonitoring.ReadWrite.All held). Step 1 was done in part, as the Restorer:
+  - **Added:** Exchange Online `Exchange.ManageAsApp` on the TCM principal (df012486…). A repeat POST answered 409 "EntitlementGrant entry already exists". **Added:** directory role **Global Reader** (roleAssignment, scope `/`, 201).
+  - **Refused (403 "Insufficient privileges to complete the operation.")**: all 14 Microsoft Graph read roles (Policy.Read.All, Directory.Read.All, User.Read.All, Group.Read.All, Application.Read.All, RoleManagement.Read.Directory, EntitlementManagement.Read.All, IdentityProvider.Read.All, Organization.Read.All, DeviceManagementConfiguration.Read.All, DeviceManagementApps.Read.All, DeviceManagementServiceConfig.Read.All, DeviceManagementRBAC.Read.All, AppCatalog.Read.All). The Restorer lacks `AppRoleAssignment.ReadWrite.All`.
+  - Per Marouane (20:44, "Add the permissions yourself and ask for grant only"): added `AppRoleAssignment.ReadWrite.All` (Application) to the **Keel Restorer** manifest (app 31f2eb26…, one PATCH, 58 → 59 Graph roles; before copy kept in the scratchpad). **Waiting on Marouane's admin consent for Keel Restorer.** Then rerun step 1 for the 14 Graph roles, and steps 2–5.
+  - Global admin not used. Nothing with Write granted to the TCM principal.
+- Earlier result: blocked: waiting on consent (2026-10-28 07:35 UTC, root keel-operator). Q182 is done; the Collector's SP does **not** hold `ConfigurationMonitoring.ReadWrite.All` (in the manifest since 07:11, Q180/Q182 PATCH). Nothing run, no grant made to the TCM principal.
 - **Tenant:** step 1 gives Microsoft's TCM service principal **read-only** access, test tenant only, under Marouane's standing rule
   (2026-10-27: make test-tenant changes without asking, document each one). Log every grant in the Result. Step 3 creates snapshot jobs named
   `KEEL-RT-utcm-probe-*` and deletes them after reading; it writes no tenant configuration. The TCM principal and its grants stay in

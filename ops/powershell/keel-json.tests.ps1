@@ -99,6 +99,26 @@ Assert-Equal 'sensitive info type: culture key as its name' $item['AllLocalizedN
 Assert-Equal 'sensitive info type: number key as its digits' $item['AllLocalizedNames']['1036'] 'Numéro de carte'
 Assert-Equal 'sensitive info type: other fields kept' "$($item['Name'])|$($item['Id'])|$($item['Publisher'])" 'Credit Card Number|aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee|Microsoft Corporation'
 
+# Nested custom objects (and deserialized ones, as Exchange Online and Purview answer)
+# under a fallback answer keep their settings: every PSCustomObject shares one base.
+$innerNames = [System.Collections.Hashtable]::new(); $innerNames[1033] = 'one'
+$nested = [pscustomobject]@{ Name = 't'; Inner = [pscustomobject]@{ Value = 'kept'; Deeper = [pscustomobject]@{ Leaf = 2 } }; List = @([pscustomobject]@{ A = 1 }, [pscustomobject]@{ A = 2 }); Keys = $innerNames }
+$parsed = ConvertTo-KeelJson -Value @{ ok = $true; output = @($nested) } -Depth 16 | ConvertFrom-Json -AsHashtable
+$item = $parsed['output'][0]
+Assert-Equal 'nested custom object kept' $item['Inner']['Value'] 'kept'
+Assert-Equal 'custom object two levels down kept' $item['Inner']['Deeper']['Leaf'] 2
+Assert-Equal 'custom objects in a list kept' ((@($item['List']) | ForEach-Object { $_['A'] }) -join ',') '1,2'
+$deserialized = [System.Management.Automation.PSSerializer]::Deserialize([System.Management.Automation.PSSerializer]::Serialize($nested, 5))
+$deserialized.PSObject.Properties.Remove('Keys'); $deserialized | Add-Member -NotePropertyName Keys -NotePropertyValue $innerNames
+$parsed = ConvertTo-KeelJson -Value @{ ok = $true; output = @($deserialized) } -Depth 16 | ConvertFrom-Json -AsHashtable
+Assert-Equal 'deserialized nested object kept' $parsed['output'][0]['Inner']['Deeper']['Leaf'] 2
+Assert-Equal 'deserialized non-string key as its digits' $parsed['output'][0]['Keys']['1033'] 'one'
+
+# Keys that differ only in case stay two keys, as ConvertTo-Json writes them.
+$cased = [System.Collections.Generic.Dictionary[string, int]]::new()
+$cased['Name'] = 1; $cased['name'] = 2
+Assert-Equal 'case-only key difference kept' (ConvertTo-Json -InputObject (ConvertTo-KeelPlain -Value $cased) -Compress) (ConvertTo-Json -InputObject $cased -Compress)
+
 # 3. Answers that already serialise are written byte for byte as ConvertTo-Json writes them.
 $when = [datetime]::new(2026, 10, 28, 8, 0, 0, [DateTimeKind]::Utc)
 $samples = @(

@@ -66,10 +66,15 @@ function ConvertTo-KeelPlainValue {
     if ($Value -is [psobject]) { $base = $Value.PSObject.BaseObject }
     if (Test-KeelJsonScalar $base) { return , $base }
     if ($Depth -lt 0) { return [string]$base }
-    if (-not $Path.Add($base)) { return [string]$base }
+    # Every PSCustomObject shares one base instance, so a custom object is tracked by its
+    # own PSObject; otherwise a custom object inside another would look like a loop.
+    $identity = $base
+    if ($base -is [System.Management.Automation.PSCustomObject] -and $base.GetType() -eq [System.Management.Automation.PSCustomObject]) { $identity = $Value }
+    if (-not $Path.Add($identity)) { return [string]$base }
     try {
         if ($base -is [System.Collections.IDictionary]) {
-            $plain = [ordered]@{}
+            # Case-sensitive, as ConvertTo-Json is: Name and name stay two keys.
+            $plain = [System.Collections.Specialized.OrderedDictionary]::new([System.StringComparer]::Ordinal)
             foreach ($entry in $base.GetEnumerator()) {
                 $key = if ($null -eq $entry.Key) { '' } else { [string]$entry.Key }
                 $plain[$key] = ConvertTo-KeelPlainValue -Value $entry.Value -Depth ($Depth - 1) -Path $Path
@@ -95,7 +100,7 @@ function ConvertTo-KeelPlainValue {
         }
         return $plain
     } finally {
-        [void]$Path.Remove($base)
+        [void]$Path.Remove($identity)
     }
 }
 

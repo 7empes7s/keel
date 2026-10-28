@@ -30,6 +30,8 @@ async function post(path: string, body: Record<string, unknown>): Promise<unknow
     if (response.status === 409 && payload?.error === "no_change") {
       throw new NoChangeError(payload.message || "Nothing changed: the setting holds the same values as the approved setup.");
     }
+    // A refused ignore end date says why (for example, more than 90 days away).
+    if (response.status === 400 && payload?.message) throw new NoChangeError(`${payload.message[0].toUpperCase()}${payload.message.slice(1)}.`);
     throw new Error(`Action request failed (${response.status})`);
   }
   return response.json();

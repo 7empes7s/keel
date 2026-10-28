@@ -124,11 +124,11 @@ export async function loadApprovedSide(client, { setup, strip = (value) => value
  * An unknown change is left to acceptServiceChange's own not-found refusal. */
 export async function serviceChangeAcceptNeedsReview(client, { tenantRef, changeId }) {
   const { rows: [row] } = await client.query(
-    'SELECT workload, blast_radius FROM workload_drift WHERE id::text = $1 AND tenant_ref = $2',
+    'SELECT workload, blast_radius, change_type FROM workload_drift WHERE id::text = $1 AND tenant_ref = $2',
     [String(changeId), tenantRef],
   );
   if (!row) return false;
-  return serviceChangeNeedsReview({ workload: row.workload, blastRadius: row.blast_radius });
+  return serviceChangeNeedsReview({ workload: row.workload, blastRadius: row.blast_radius, changeType: row.change_type });
 }
 
 // Audit run 2, finding 3: an admin-access service change is accepted only under an

@@ -4,6 +4,7 @@
 // references the engine resolved. One module, so every page says the same thing the
 // same way. Raw codes and ids never appear in these strings; they live in the record.
 import { ago, displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel, words } from "@/lib/presentation";
+import { WORKLOAD_LABELS } from "@/lib/compare-view";
 import { holdsObjectId, jobIncompleteTypes, type NamedKeys, namedResource } from "@/lib/job-names";
 
 export interface EngineRef {
@@ -125,10 +126,19 @@ function changesPhrase(changes: (ChangeRef | undefined)[]): string {
   return first?.naturalKey ? `${count}, including ${resourceLabel(first.naturalKey)}` : count;
 }
 
+// A service setting change by its setting's name and service, never by an id.
+function serviceChangePhrase(params: Record<string, unknown>): string {
+  const key = typeof params.resourceKey === "string" && !holdsObjectId(params.resourceKey) ? resourceLabel(params.resourceKey) : null;
+  const service = typeof params.workload === "string" ? WORKLOAD_LABELS[params.workload] ?? null : null;
+  const verb = params.changeType === "added" ? "new" : params.changeType === "removed" ? "removed" : "changed";
+  if (key) return `the ${verb} setting ${key}${service ? ` in ${service}` : ""}`;
+  return service ? `a ${verb} ${service} setting` : "a service setting change";
+}
+
 // Audit run 2, finding 3: an accept or ignore a second person approves, as what it does:
 // "Accept into the approved setup: 1 change, including …".
 function decisionPhrase(params: Record<string, unknown>, refs: RowReferences): string {
-  const what = typeof params.serviceChangeId === "string" ? "a service setting change" : changesPhrase(refs.changes);
+  const what = typeof params.serviceChangeId === "string" ? serviceChangePhrase(params) : changesPhrase(refs.changes);
   if (params.action === "ignore") {
     return typeof params.expiresAt === "string" ? `Ignore until ${formatTimestamp(params.expiresAt)}: ${what}` : `Ignore: ${what}`;
   }

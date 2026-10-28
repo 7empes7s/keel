@@ -21,6 +21,8 @@ test("a decision approval is named by what approving does", () => {
     approvalSentence({ action: "dispose", params: { serviceChangeId: "c1", action: "accept", reason: "r", tenantRef: "t" } }),
     "Accept into the approved setup: a service setting change",
   );
+  const roleGroup = approvalSentence({ action: "dispose", params: { serviceChangeId: "c1", action: "accept", reason: "r", tenantRef: "t", workload: "exchange-role-groups", resourceKey: "role-group:KEEL-RT-admins", changeType: "added" } });
+  assert.match(roleGroup, /^Accept into the approved setup: the new setting .*KEEL-RT-admins.* in Exchange admin role groups$/);
   assert.equal(approvalKind({ action: "dispose", references }), "decision");
   assert.ok(KIND_ORDER.includes("decision"));
   assert.equal(KIND_WORDS.decision.label, "Change decision");

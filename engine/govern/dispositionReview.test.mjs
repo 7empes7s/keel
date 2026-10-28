@@ -108,9 +108,16 @@ test('which changes need a second person', () => {
   assert.equal(driftNeedsReview({ resourceType: 'user', blastRadius: 'cosmetic' }), false);
   assert.equal(driftNeedsReview({ resourceType: 'user', blastRadius: null }), true, 'an unrated change counts as the strictest');
   assert.equal(driftNeedsReview({ resourceType: 'user', blastRadius: 'something-new' }), true);
-  assert.equal(serviceChangeNeedsReview({ workload: 'exchange-role-groups', blastRadius: 'access-affecting' }), true);
-  assert.equal(serviceChangeNeedsReview({ workload: 'exchange-role-groups', blastRadius: 'cosmetic' }), false);
-  assert.equal(serviceChangeNeedsReview({ workload: 'exchange-mail-flow', blastRadius: 'access-affecting' }), false);
+  // Admin-role and sign-in-trust types the catalog rates only access-affecting.
+  for (const resourceType of ['exchangeRoleAssignment', 'deviceManagementRoleAssignment', 'unifiedRoleManagementPolicyAssignment', 'crossTenantAccessPolicyPartner', 'externalDomainFederation', 'identityProvider']) {
+    assert.equal(driftNeedsReview({ resourceType, blastRadius: 'access-affecting' }), true, resourceType);
+  }
+  assert.equal(serviceChangeNeedsReview({ workload: 'exchange-role-groups', blastRadius: 'access-affecting', changeType: 'modified' }), true);
+  assert.equal(serviceChangeNeedsReview({ workload: 'exchange-role-groups', blastRadius: 'cosmetic', changeType: 'modified' }), false, 'a rename');
+  // An added role group is rated cosmetic, but it can hold admin rights.
+  assert.equal(serviceChangeNeedsReview({ workload: 'exchange-role-groups', blastRadius: 'cosmetic', changeType: 'added' }), true);
+  assert.equal(serviceChangeNeedsReview({ workload: 'exchange-role-groups', blastRadius: 'access-affecting', changeType: 'removed' }), true);
+  assert.equal(serviceChangeNeedsReview({ workload: 'exchange-mail-flow', blastRadius: 'access-affecting', changeType: 'modified' }), false);
   assert.equal(capabilityForJobKind('dispose'), 'dispose-accept');
 });
 
@@ -158,6 +165,8 @@ test('a second person approves, and the dispose job applies exactly what was app
   assert.equal((await approvedPayload(client, fixture)).state, 'disabled', 'accepted once approved');
   const { rows: [disposition] } = await client.query('SELECT actor, action FROM disposition WHERE drift_id::text = $1', [fixture.driftId]);
   assert.deepEqual(disposition, { actor: operator, action: 'accept' });
+  // The approval is used: running it again is refused.
+  await assert.rejects(runApprovedDisposition(client, { approvalId: String(request.id), actor: operator }), /already decided/);
 });
 
 test('an approved ignore keeps the approved end date', async (t) => {
@@ -172,6 +181,19 @@ test('an approved ignore keeps the approved end date', async (t) => {
   const { rows: [row] } = await client.query('SELECT action, expires_at FROM disposition WHERE drift_id::text = $1', [fixture.driftId]);
   assert.equal(row.action, 'ignore');
   assert.equal(new Date(row.expires_at).toISOString(), expiresAt);
+});
+
+test('an ignore stored before the cap stops counting 90 days after it was decided', async (t) => {
+  const client = await schemaClient(t);
+  const { OPEN_DRIFT_PREDICATE } = await import('../store/openDrift.mjs');
+  const fresh = await driftFixture(client, { resourceType: 'group', blastRadius: 'access-affecting', before: { displayName: 'KEEL-RT-a' }, after: { displayName: 'KEEL-RT-a', description: 'x' } });
+  const old = await driftFixture(client, { resourceType: 'group', blastRadius: 'access-affecting', before: { displayName: 'KEEL-RT-b' }, after: { displayName: 'KEEL-RT-b', description: 'y' } });
+  // Written directly, as rows saved before this rule could be: no end, decided now or 91 days ago.
+  await client.query(`INSERT INTO disposition (drift_id, action, actor, reason, expires_at, decided_at) VALUES ($1, 'ignore', 'op', 'r', 'infinity', now())`, [fresh.driftId]);
+  await client.query(`INSERT INTO disposition (drift_id, action, actor, reason, expires_at, decided_at) VALUES ($1, 'ignore', 'op', 'r', 'infinity', now() - interval '91 days')`, [old.driftId]);
+  const open = async (driftId) => (await client.query(`SELECT 1 FROM drift d WHERE d.id::text = $1 AND ${OPEN_DRIFT_PREDICATE}`, [driftId])).rows.length === 1;
+  assert.equal(await open(fresh.driftId), false, 'a recent ignore still counts');
+  assert.equal(await open(old.driftId), true, 'a forever ignore from 91 days ago no longer hides the change');
 });
 
 test('a group change is still decided by one person, and its ignore is capped too', async (t) => {
@@ -196,7 +218,7 @@ async function serviceChange(client, { workload, resourceKey, before, after }) {
        VALUES ($1, $2, 'complete', $3, $3, $3) RETURNING id`,
       [tenantRef, workload, at],
     );
-    await client.query('INSERT INTO workload_observation (collection_id, resource_key, fields) VALUES ($1, $2, $3)', [collection.id, resourceKey, fields]);
+    if (fields) await client.query('INSERT INTO workload_observation (collection_id, resource_key, fields) VALUES ($1, $2, $3)', [collection.id, resourceKey, fields]);
     return collection.id;
   };
   await detectWorkloadDrift(client, { collectionId: await read(before) });
@@ -221,6 +243,10 @@ test('an Exchange admin role group change needs the second person too', async (t
   await runApprovedDisposition(client, { approvalId: String(request.id), actor: operator });
   const { rows: [row] } = await client.query('SELECT approved_by FROM workload_approved WHERE tenant_ref = $1 AND fields @> $2', [tenantRef, JSON.stringify({ Members: ['a', 'b'] })]);
   assert.equal(row.approved_by, operator);
+
+  // A new role group (rated cosmetic as an addition) needs the second person too.
+  const added = await serviceChange(client, { workload: 'exchange-role-groups', resourceKey: 'role-group:KEEL-RT-new', before: null, after: roleGroup(['c']) });
+  await assert.rejects(acceptServiceChange(client, { tenantRef: added.tenantRef, changeId: added.changeId, actor: operator, reason: 'new group' }), DispositionReviewRequiredError);
 
   // A mail-flow change is still one person's decision.
   const rule = (state) => ({ identity: 'KEEL-RT-rule', kind: 'transportRule', Name: 'KEEL-RT-rule', State: state });

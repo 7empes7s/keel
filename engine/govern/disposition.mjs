@@ -2,7 +2,7 @@ import { sameContent } from '../cir/canonicalHash.mjs';
 import { acceptDrift } from './baseline.mjs';
 import { recordDisposition } from '../store/governance.mjs';
 import { refuseSameContentDrift, refuseSameContentDriftIds } from '../store/openDrift.mjs';
-import { assertDispositionApproval, driftNeedsReview, ignoreExpiry } from './dispositionReview.mjs';
+import { DispositionApprovalError, assertDispositionApproval, driftNeedsReview, ignoreExpiry } from './dispositionReview.mjs';
 
 /** Spec M2.6.3. Ignore suppression keys on (naturalKey, afterHash) — never naturalKey alone. */
 export function isSuppressed(drift, dispositions, now) {
@@ -57,6 +57,10 @@ export async function applyDisposition(client, {
           && String(params.driftIds[0]) === String(driftId) && params.action === action
           && (action !== 'ignore' || new Date(params.expiresAt).valueOf() === until.valueOf()),
       });
+      // An approval is used once: a change already decided is never decided again
+      // under it (a replay would put an older version back into the approved setup).
+      const { rows: decided } = await client.query('SELECT 1 FROM disposition WHERE drift_id::text = $1 LIMIT 1', [String(driftId)]);
+      if (decided.length) throw new DispositionApprovalError('this change was already decided; the approval is used');
     }
     if (action === 'accept') return acceptDrift(client, { driftId, actor, reason });
     return recordDisposition(client, { driftId, action, actor, reason, expiresAt: until });

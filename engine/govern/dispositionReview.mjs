@@ -15,14 +15,31 @@
 // Both are enforced here, in the engine, so every caller (portal, keel-govern, worker)
 // gets them; the portal only turns the refusal into an approval request.
 import { gateBlastRadius } from '../safety/blastRadius.mjs';
+import { MAX_IGNORE_DAYS } from '../store/openDrift.mjs';
 
 export const DISPOSE_APPROVAL_ACTION = 'dispose';
-export const MAX_IGNORE_DAYS = 90;
+export { MAX_IGNORE_DAYS };
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Service settings whose changes are admin-role changes: the same weight as an Entra
 // role assignment, which is rated tenant-lockout.
 export const PRIVILEGED_SERVICE_WORKLOADS = Object.freeze(['exchange-role-groups']);
+
+// Entra and other admin-role and sign-in-trust types the catalog rates only
+// access-affecting: who holds an admin role in Exchange, Intune, Defender or access
+// packages, the rules that gate a PIM activation, and which other tenants and
+// identity providers sign-ins are trusted from. A decision on any of them needs a
+// second person, whatever their rating.
+export const PRIVILEGED_DRIFT_TYPES = Object.freeze([
+  'defenderRoleAssignment', 'defenderRoleDefinition',
+  'deviceManagementRoleAssignment', 'deviceManagementRoleDefinition',
+  'entitlementManagementRoleAssignment',
+  'exchangeRoleAssignment', 'exchangeRoleDefinition',
+  'privilegedAccessGroupResource', 'unifiedRoleManagementPolicyAssignment',
+  'crossTenantAccessPolicy', 'crossTenantAccessPolicyConfigurationDefault', 'crossTenantAccessPolicyPartner',
+  'externalDomainFederation', 'identityProvider', 'certificateBasedApplicationConfiguration',
+]);
+
 
 export class DispositionReviewRequiredError extends Error {
   constructor(message = 'this change can affect sign-in or admin access; a second person must approve the decision') {
@@ -64,16 +81,17 @@ export function ignoreExpiry(expiresAt, now = new Date()) {
  * when its own rules rate lower), and an unrecognised rating counts as the strictest.
  */
 export function driftNeedsReview({ resourceType, blastRadius }) {
+  if (PRIVILEGED_DRIFT_TYPES.includes(resourceType)) return true;
   const rating = gateBlastRadius(resourceType, blastRadius ?? null) ?? 'tenant-lockout';
   return rating !== 'cosmetic' && rating !== 'access-affecting';
 }
 
-/** The same rule for a service setting change: an admin-role service, or a rating that
- * is neither of the two lower ones. A rename (cosmetic) never needs one. */
-export function serviceChangeNeedsReview({ workload, blastRadius }) {
-  if (blastRadius === 'cosmetic') return false;
-  if (PRIVILEGED_SERVICE_WORKLOADS.includes(workload)) return true;
-  return blastRadius !== 'access-affecting';
+/** The same rule for a service setting change: any change to an admin-role service
+ * except a rename of an existing item (an added role group is rated cosmetic, but it
+ * can hold admin rights), or a rating that is neither of the two lower ones. */
+export function serviceChangeNeedsReview({ workload, blastRadius, changeType }) {
+  if (PRIVILEGED_SERVICE_WORKLOADS.includes(workload)) return !(changeType === 'modified' && blastRadius === 'cosmetic');
+  return blastRadius !== 'cosmetic' && blastRadius !== 'access-affecting';
 }
 
 /**

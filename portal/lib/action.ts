@@ -545,9 +545,17 @@ export function guardedDispose(
         if (typeof reason !== "string" || reason.trim().length === 0) throw new InvalidActionRequest("reason is required");
         // Audit run 2, finding 3: an admin-access service change goes to a second person.
         if (await serviceChangeAcceptNeedsReview(client, { tenantRef: tenant, changeId: serviceChangeId })) {
+          // The service and setting go with the request, so the approver sees what it is.
+          const { rows: [change] } = await client.query(
+            "SELECT workload, resource_key, change_type FROM workload_drift WHERE id::text = $1 AND tenant_ref = $2",
+            [serviceChangeId, tenant],
+          );
           return await sendDecisionForApproval(client, {
             tenantRef: tenant, principalId, reason,
-            params: { serviceChangeId, action: "accept", reason: reason.trim(), tenantRef: tenant },
+            params: {
+              serviceChangeId, action: "accept", reason: reason.trim(), tenantRef: tenant,
+              workload: change?.workload ?? null, resourceKey: change?.resource_key ?? null, changeType: change?.change_type ?? null,
+            },
             entityScope: null,
           });
         }

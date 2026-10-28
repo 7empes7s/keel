@@ -1803,7 +1803,7 @@ being triggered by queue updates.
   `drill-live-acceptance{,.capture}.json` hold the real object id of the deleted `keel-rehearsal-*` drill group, because
   `capture-drill` never pseudonymized. PR #611 fixes it; the record is signed, so it must be recaptured.
 - Needs: /opt/keel-live at the PR #611 merge or later (same grep as Q192). Independent of Q192.
-- Status: blocked via Q206 (#646)
+- Status: todo via Q206 (after PR #650 is deployed; run it as Q206)
 - **Test tenant only.** Exactly as the Q39 116 run (steps in `docs/roadmap/operator-gates.md` and Q36 notes #5 and #7): a fresh
   recovery set and reconstruction at B into a fresh disposable DB, the onboarding result at B, a fresh drill DB (schema.sql +
   RUNTIME_MIGRATIONS, never `KEEL_DB_URL` or `keel_test`), build-manifest, the offline plan, the live bounded drill (one new
@@ -9361,7 +9361,15 @@ item that needs it stays untouched.
   several minutes (it is read twice: a check pass, then the load).
 - Needs: the deployed build B at or after `e3e49a8`. Check from your checkout at B:
   `git merge-base --is-ancestor e3e49a8 B && grep -q scanDump tools/recovery/dumpImport.mjs`.
-- Status: blocked (needs #646 fixed and deployed, then rerun from a fresh recovery set)
+- Status: todo (after PR #650 is deployed; #646 fixed)
+- Update (2026-10-28, "Unblock the recovery drill run" thread): PR #650 fixes #646. The drill's collect now skips types the
+  tenant has no licence for (lifecycle workflows) and records them as `unavailable`; a snapshot with such types can now seed a
+  baseline; the drill's cleanup check rereads each surface for about 36 s and needs two 404s in a row before it counts the
+  group as gone, so a stale deletedItems read no longer gives `cleanup-failed`. Expect the drill to take about 6 s longer.
+  Needs now: B at or after the PR #650 merge. Check from your checkout at B:
+  `grep -q "needed: new Set(\['group'\])" tools/rehearsal/roundTrip.mjs && grep -q "coverage.outcome === 'unavailable'" engine/govern/baseline.mjs`.
+  Rerun the whole item below from a **fresh** recovery set at that B. If the drill fails again, report the error verbatim
+  and the residual check lines, and stop (one attempt only: each attempt creates a new `keel-rehearsal-*` group).
 - Result: blocked (2026-10-28 09:47 UTC, root keel-operator): **reconstruct now works on the live-size dump (#643 confirmed), but the live bounded drill fails at its baseline collect on the unlicensed `lifecycleWorkflow` type. Filed #646.** Capture refused; no record, no verify, no PR. Tenant clean.
   - B = `e3e49a8a0bc68d129e1d18d00aabcb01235aa470` (unchanged throughout; has e3e49a8 + `scanDump`). Ran from a detached worktree at B (now removed).
   - Onboarding still valid (read-only `bootstrap_plan`/`bootstrap_event`): read setup cbd974b9… complete, restore setup 174d8db6… complete.

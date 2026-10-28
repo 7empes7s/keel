@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { fixFor, listFixCandidates } from "../../engine/benchmarks/fix.mjs";
 import { enqueue, PORTAL_QUEUED_JOBS_PER_PRINCIPAL } from "../../engine/jobs/queue.mjs";
-import { guarded, IDEMPOTENCY_KEY_HEADER, normalizeJob, readActionParams, type GuardDeps } from "@/lib/action";
+import { callerIdempotencyKey, guarded, normalizeJob, readActionParams, type GuardDeps } from "@/lib/action";
 import { queueableRestoreCredentialPaths } from "@/lib/restore-config";
 
 const NO_STORE = { "cache-control": "no-store" };
@@ -48,7 +48,7 @@ export function guardedComplianceFix(deps: GuardDeps & { credentialPaths?: () =>
       kind: "restore",
       params: { complianceFix: { controlId, naturalKey }, collectorConfig, targetConfig, artifactId: randomUUID() },
       requestedBy: principalId,
-      idempotencyKey: request.headers.get(IDEMPOTENCY_KEY_HEADER) ?? undefined,
+      idempotencyKey: callerIdempotencyKey(request, principalId, "compliance-fix"),
       notBefore: undefined,
       maxQueuedForRequester: PORTAL_QUEUED_JOBS_PER_PRINCIPAL,
     })) as Record<string, unknown>;

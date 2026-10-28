@@ -5,7 +5,7 @@ import { getDryRunArtifact } from "../../../../../../engine/restore/dryRunArtifa
 
 import {
   guarded,
-  IDEMPOTENCY_KEY_HEADER,
+  callerIdempotencyKey,
   InvalidActionRequest,
   normalizeJob,
   readActionParams,
@@ -46,7 +46,7 @@ export const POST = guarded(
       kind: "restore",
       params: { compensates: restoreArtifactId, artifactId, ...(choices ? { undoChoices: choices } : {}) },
       requestedBy: principalId,
-      idempotencyKey: request.headers.get(IDEMPOTENCY_KEY_HEADER) ?? undefined,
+      idempotencyKey: callerIdempotencyKey(request, principalId, "restore-compensate"),
       notBefore: undefined,
       maxQueuedForRequester: PORTAL_QUEUED_JOBS_PER_PRINCIPAL,
     })) as Record<string, unknown>;

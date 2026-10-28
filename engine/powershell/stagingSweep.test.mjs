@@ -107,6 +107,10 @@ test('the first staged job sweeps once, and new copies carry this pid', withRoot
     const second = await stageJobCredentials(join(creds, 'tenant.json'), { credentialRoot: creds, stagingRoot: root });
     assert.ok(existsSync(second.dir));
     assert.ok(existsSync(join(root, `keel-ps-${dead}-left02`)));
+    // Another spelling of the same root does not sweep again and take the live copy.
+    const third = await stageJobCredentials(join(creds, 'tenant.json'), { credentialRoot: creds, stagingRoot: `${root}/` });
+    assert.ok(existsSync(second.dir), 'a live copy survives a job staged under another spelling of the root');
+    rmSync(third.dir, { recursive: true, force: true });
     rmSync(second.dir, { recursive: true, force: true });
   } finally { rmSync(creds, { recursive: true, force: true }); }
 }));

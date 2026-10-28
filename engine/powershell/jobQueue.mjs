@@ -24,7 +24,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { chown, lstat, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_IMAGE = 'keel-powershell:latest';
@@ -218,9 +218,12 @@ export async function sweepStaleStaging(stagingRoot, { selfPid = process.pid, is
 
 // One sweep per staging root per process, before that process stages its first copy.
 const sweeps = new Map();
+// Keyed on the resolved path, so /tmp and /tmp/ never sweep twice (a second sweep would
+// take this process's own live copy for a dead worker's).
 function sweepOnce(stagingRoot) {
-  if (!sweeps.has(stagingRoot)) sweeps.set(stagingRoot, sweepStaleStaging(stagingRoot).catch(() => []));
-  return sweeps.get(stagingRoot);
+  const key = resolve(stagingRoot);
+  if (!sweeps.has(key)) sweeps.set(key, sweepStaleStaging(key).catch(() => []));
+  return sweeps.get(key);
 }
 
 /**

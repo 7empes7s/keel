@@ -54,9 +54,13 @@ export const TRUST_FIELDS = Object.freeze({
   exchangeInboundConnector: Object.freeze([
     'SenderIPAddresses', 'RestrictDomainsToIPAddresses', 'RestrictDomainsToCertificate', 'RequireTls', 'TlsSenderCertificateName',
     'TreatMessagesAsInternal', 'TrustedOrganizations', 'EFSkipIPs',
+    // Enhanced Filtering skips (which hops and users the sender-IP check trusts), the sender
+    // domains the connector accepts mail for, and whether it is a partner or on-premises connector.
+    'EFSkipLastIP', 'EFSkipMailGateway', 'EFUsers', 'SenderDomains', 'ConnectorType',
   ]),
-  // SmartHosts: the hosts all of the connector's mail is relayed through.
-  exchangeOutboundConnector: Object.freeze(['TlsSettings', 'TlsDomain', 'SmartHosts']),
+  // SmartHosts: the hosts all of the connector's mail is relayed through. ConnectorType:
+  // partner or on-premises, which decides how the other side is trusted.
+  exchangeOutboundConnector: Object.freeze(['TlsSettings', 'TlsDomain', 'SmartHosts', 'ConnectorType']),
   // Sender IP ranges whose mail skips spam filtering, and Microsoft's own safe list.
   exchangeConnectionFilterPolicy: Object.freeze(['IPAllowList', 'EnableSafeList']),
   // Teams federation: which outside organizations and SIP domains the tenant trusts.
@@ -110,8 +114,7 @@ family(EXO, EXO_DOCS, {
   workload: MAIL_FLOW, prefix: 'mailflow.inbound-connector', family: 'inboundConnector', resourceType: 'exchangeInboundConnector',
   readBack: 'mailflow.inbound-connectors', set: 'Set-InboundConnector',
   fields: [
-    'Enabled', 'ConnectorType', 'ConnectorSource', 'Comment', 'SenderDomains', 'CloudServicesMailEnabled',
-    'AssociatedAcceptedDomains', 'EFSkipLastIP', 'EFSkipMailGateway', 'EFUsers', 'ScanAndDropRecipients',
+    'Enabled', 'ConnectorSource', 'Comment', 'CloudServicesMailEnabled', 'AssociatedAcceptedDomains', 'ScanAndDropRecipients',
     // Never written: TRUST_FIELDS.exchangeInboundConnector.
   ],
 });
@@ -119,7 +122,7 @@ family(EXO, EXO_DOCS, {
   workload: MAIL_FLOW, prefix: 'mailflow.outbound-connector', family: 'outboundConnector', resourceType: 'exchangeOutboundConnector',
   readBack: 'mailflow.outbound-connectors', set: 'Set-OutboundConnector',
   fields: [
-    'Enabled', 'ConnectorType', 'ConnectorSource', 'Comment', 'RecipientDomains', 'UseMXRecord',
+    'Enabled', 'ConnectorSource', 'Comment', 'RecipientDomains', 'UseMXRecord',
     'IsTransportRuleScoped', 'RouteAllMessagesViaOnPremises', 'CloudServicesMailEnabled', 'AllAcceptedDomains', 'SenderRewritingEnabled', 'TestMode',
     // Never written: TRUST_FIELDS.exchangeOutboundConnector.
   ],

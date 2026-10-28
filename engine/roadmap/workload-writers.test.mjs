@@ -638,16 +638,18 @@ test('mail flow: connector trust, certificate and sender-IP fields are listed fo
   Object.assign(inbound, {
     TlsSenderCertificateName: '*.attacker.example', RestrictDomainsToCertificate: true, TreatMessagesAsInternal: true,
     TrustedOrganizations: ['attacker.example'], SenderIPAddresses: ['203.0.113.0/24'], RestrictDomainsToIPAddresses: true, EFSkipIPs: ['203.0.113.9'], RequireTls: false,
+    EFSkipLastIP: true, EFSkipMailGateway: ['203.0.113.10'], EFUsers: ['ceo@contoso.test'], SenderDomains: ['*'], ConnectorType: 'OnPremises',
   });
-  Object.assign(outbound, { TlsSettings: 'EncryptionOnly', TlsDomain: '*.attacker.example', SmartHosts: ['relay.attacker.example'] });
+  Object.assign(outbound, { TlsSettings: 'EncryptionOnly', TlsDomain: '*.attacker.example', SmartHosts: ['relay.attacker.example'], ConnectorType: 'OnPremises' });
   const source = await recordSource(client, tenantRef, 'exchange-mail-flow', live);
   // Live has moved on (a partner certificate rotation, a removed range), and one harmless field drifted too.
   Object.assign(inbound, {
     TlsSenderCertificateName: 'mail.partner.example', RestrictDomainsToCertificate: false, TreatMessagesAsInternal: false,
     TrustedOrganizations: [], SenderIPAddresses: ['198.51.100.10'], RestrictDomainsToIPAddresses: false, EFSkipIPs: [], RequireTls: true,
+    EFSkipLastIP: false, EFSkipMailGateway: [], EFUsers: [], SenderDomains: ['partner.example'], ConnectorType: 'Partner',
     Comment: 'changed by an administrator',
   });
-  Object.assign(outbound, { TlsSettings: 'DomainValidation', TlsDomain: 'mail.partner.example', SmartHosts: ['relay.partner.example'] });
+  Object.assign(outbound, { TlsSettings: 'DomainValidation', TlsDomain: 'mail.partner.example', SmartHosts: ['relay.partner.example'], ConnectorType: 'Partner' });
 
   const { plan, artifact } = await planned(client, tenantRef, 'exchange-mail-flow', { source, live });
   const trustEntries = (key) => plan.manual.filter((item) => item.resourceKey === key && item.trust === true).map((item) => item.field).sort();
@@ -664,12 +666,19 @@ test('mail flow: connector trust, certificate and sender-IP fields are listed fo
   assert.equal(inbound.TreatMessagesAsInternal, false);
   assert.equal(outbound.TlsDomain, 'mail.partner.example');
   assert.deepEqual(outbound.SmartHosts, ['relay.partner.example']);
+  assert.deepEqual(inbound.SenderDomains, ['partner.example']);
+  assert.equal(inbound.EFSkipLastIP, false);
+  assert.equal(inbound.ConnectorType, 'Partner');
+  assert.equal(outbound.ConnectorType, 'Partner');
 
   // An altered plan cannot send them either: the engine refuses before a job is built,
   // and the container allowlist (run-cmdlet.ps1) does not carry them.
   await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-InboundConnector', parameters: { Identity: inbound.Guid, TlsSenderCertificateName: '*.attacker.example' } }), /does not take TlsSenderCertificateName/);
   await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-OutboundConnector', parameters: { Identity: outbound.Guid, TlsDomain: '*.attacker.example' } }), /does not take TlsDomain/);
   await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-OutboundConnector', parameters: { Identity: outbound.Guid, SmartHosts: ['relay.attacker.example'] } }), /does not take SmartHosts/);
+  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-InboundConnector', parameters: { Identity: inbound.Guid, EFSkipLastIP: true } }), /does not take EFSkipLastIP/);
+  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-InboundConnector', parameters: { Identity: inbound.Guid, SenderDomains: ['*'] } }), /does not take SenderDomains/);
+  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-OutboundConnector', parameters: { Identity: outbound.Guid, ConnectorType: 'OnPremises' } }), /does not take ConnectorType/);
   const shipped = allowlist(WRITE_TABLES.exo);
   for (const field of TRUST_FIELDS.exchangeInboundConnector) assert.ok(!shipped['Set-InboundConnector'].includes(field), field);
   for (const field of TRUST_FIELDS.exchangeOutboundConnector) assert.ok(!shipped['Set-OutboundConnector'].includes(field), field);

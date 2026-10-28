@@ -17,7 +17,9 @@ or treat outside mail as internal, as an ordinary restore. A security audit foun
 | Only the identity writer (federation) had a regression test for this. | `workload-writers.test.mjs` plans and runs a restore whose backup differs in every connector trust field and checks nothing but the harmless field is sent. A new writer adds its resource type to `TRUST_FIELDS` and the same kind of test. |
 
 Follow-up the same day: the rule also covers fields whose names do not say "trust".
-Outbound connector `SmartHosts` (where mail is relayed), connection filter `IPAllowList`
+Outbound connector `SmartHosts` (where mail is relayed), `ConnectorType` on both connectors
+(partner or on-premises), the inbound Enhanced Filtering skips (`EFSkipLastIP`,
+`EFSkipMailGateway`, `EFUsers`) and `SenderDomains`, connection filter `IPAllowList`
 and `EnableSafeList` (senders that skip spam filtering) and the Teams federation fields
 (`AllowFederatedUsers`, the allowed and blocked domain lists, `SharedSipAddressSpace`,
 `TreatDiscoveredPartnersAsUnverified`) are now in `TRUST_FIELDS` too. When a field decides

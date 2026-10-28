@@ -3,7 +3,8 @@ name: Automerge label
 # The `automerge` label approves the head commit it was added on, not later pushes. Every push
 # to a PR removes the label, so code pushed after the review needs a new review and a new label.
 # pull_request_target runs master's copy of this file with a write token, also for fork PRs.
-# It never checks out or runs PR code.
+# It never checks out or runs PR code. The gate also refuses a label older than the head
+# commit, so this job is cleanup and a visible signal, not the only control.
 
 on:
   pull_request_target:
@@ -28,7 +29,10 @@ jobs:
           SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           # A failed delete is fine only if the label is already gone (a second push raced this one).
-          if ! gh api -X DELETE "repos/$REPO/issues/$PR/labels/automerge" >/dev/null; then
-            gh api "repos/$REPO/issues/$PR/labels" -q '.[].name' | grep -qx automerge && exit 1
+          if gh api -X DELETE "repos/$REPO/issues/$PR/labels/automerge" >/dev/null; then
+            echo "Removed automerge from #$PR after a push to $SHA. Add it again once this commit is reviewed."
+          elif gh api "repos/$REPO/issues/$PR/labels" -q '.[].name' | grep -qx automerge; then
+            exit 1
+          else
+            echo "automerge was already gone from #$PR."
           fi
-          echo "Removed automerge from #$PR after a push to $SHA. Add it again once this commit is reviewed."

@@ -1,6 +1,7 @@
 // tools/merge-gate.sh must tie the merge to the head commit it checked: the label must still be
 // there, a required review must be on that commit, a later comment must not clear a change request,
-// every page of check runs counts, and the merge call is pinned to the checked SHA.
+// every page of check runs counts, and the merge call is pinned to the checked SHA. The label must
+// be newer than the head commit's arrival (its first pull_request run of merge-gate.yml).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -16,7 +17,10 @@ const review = (user, state, commit_id, submitted_at) => ({ user: { login: user 
 
 // Fake gh for one PR (#7, head cccc, author "builder"). `pages` maps an API path prefix to a list of
 // JSON pages; --paginate prints every page through -q, a plain call prints the first.
-function run({ labels = ['automerge'], reviews = [], checkPages, requireReview = true } = {}) {
+function run({
+  labels = ['automerge'], reviews = [], checkPages, requireReview = true, base = 'master',
+  labelledAt = ['2026-01-01T12:00:00Z'], arrivedAt = ['2026-01-01T11:00:00Z', '2026-01-01T12:00:01Z'],
+} = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'keel-merge-gate-'));
   const log = join(dir, 'gh.log');
   writeFileSync(log, '');
@@ -24,9 +28,15 @@ function run({ labels = ['automerge'], reviews = [], checkPages, requireReview =
     'issues?labels=automerge': [[{ number: 7, pull_request: {} }]],
     'pulls/7/files': [[{ filename: 'engine/x.mjs' }]],
     'pulls/7/reviews': [reviews],
+    'issues/7/events': [[
+      { event: 'labeled', label: { name: 'documentation' }, created_at: '2026-01-02T00:00:00Z' },
+      ...labelledAt.map((created_at) => ({ event: 'labeled', label: { name: 'automerge' }, created_at })),
+      { event: 'unlabeled', label: { name: 'automerge' }, created_at: '2026-01-01T13:00:00Z' },
+    ]],
+    'actions/workflows/merge-gate.yml/runs': [{ workflow_runs: arrivedAt.map((created_at) => ({ created_at })) }],
     [`commits/${HEAD}/check-runs`]: checkPages ?? [{ check_runs: [{ name: 'Portal tests', status: 'completed', conclusion: 'success' }] }],
     'actions/workflows/portal.yml/runs': [{ workflow_runs: [{ status: 'completed', conclusion: 'success' }] }],
-    'pulls/7': [{ state: 'open', draft: false, mergeable: true, mergeable_state: 'clean', head: { sha: HEAD }, user: { login: 'builder' }, labels: labels.map((name) => ({ name })) }],
+    'pulls/7': [{ state: 'open', draft: false, mergeable: true, mergeable_state: 'clean', head: { sha: HEAD }, base: { ref: base }, user: { login: 'builder' }, labels: labels.map((name) => ({ name })) }],
   };
   writeFileSync(join(dir, 'pages.json'), JSON.stringify(pages));
   writeFileSync(join(dir, 'gh'), `#!/usr/bin/env bash
@@ -59,7 +69,7 @@ echo "stub: unhandled $*" >&2; exit 1
     encoding: 'utf8',
   });
   const calls = readFileSync(log, 'utf8').split('\n').filter(Boolean);
-  return { out: res.stdout + res.stderr, status: res.status, merge: calls.find((c) => c.startsWith('pr merge')) };
+  return { out: res.stdout + res.stderr, status: res.status, calls, merge: calls.find((c) => c.startsWith('pr merge')) };
 }
 
 test('a review on the head commit lets the PR merge, pinned to that commit', () => {
@@ -138,4 +148,32 @@ test('without REQUIRE_REVIEW a labelled green PR still merges, pinned to its hea
   const r = run({ requireReview: false });
   assert.match(r.out, /#7: merging/);
   assert.match(r.merge, /--match-head-commit cccc$/);
+});
+
+test('a label added before the head commit arrived does not count', () => {
+  const r = run({ requireReview: false, labelledAt: ['2026-01-01T10:00:00Z'] });
+  assert.match(r.out, /#7: automerge label predates head cccc/);
+  assert.equal(r.merge, undefined);
+});
+
+test('adding the label again after the push makes it count', () => {
+  const r = run({ requireReview: false, labelledAt: ['2026-01-01T10:00:00Z', '2026-01-01T11:30:00Z'] });
+  assert.match(r.out, /#7: merging/);
+});
+
+test('a head with no recorded arrival is treated as newer than the label', () => {
+  const r = run({ requireReview: false, arrivedAt: [] });
+  assert.match(r.out, /#7: automerge label predates head/);
+  assert.equal(r.merge, undefined);
+});
+
+test('the arrival query is pinned to pull_request runs of this head', () => {
+  const r = run({ requireReview: false });
+  assert.ok(r.calls.some((c) => c.includes('repos/o/r/actions/workflows/merge-gate.yml/runs?event=pull_request&head_sha=cccc&')));
+});
+
+test('a PR into a branch other than master is not merged', () => {
+  const r = run({ requireReview: false, base: 'claude/other' });
+  assert.match(r.out, /#7: not based on master/);
+  assert.equal(r.merge, undefined);
 });

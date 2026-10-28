@@ -11,6 +11,7 @@
 // it. Changes still waiting for review at that moment keep their earlier value, so
 // taking the setup never quietly approves them.
 import { appendEvidence } from './evidence.mjs';
+import { assertDispositionApproval, serviceChangeNeedsReview } from './dispositionReview.mjs';
 
 // The alert states a change is still waiting in (the Changes page's own list).
 export const WAITING_ALERT_STATES = Object.freeze(['open', 'reopened', 'acknowledged']);
@@ -119,9 +120,30 @@ export async function loadApprovedSide(client, { setup, strip = (value) => value
  * evidence row. Returns { workload, resourceKey, changeType, alertId } so the caller
  * can settle the change's alert.
  */
-export async function acceptServiceChange(client, { tenantRef, changeId, actor, reason }) {
+/** Whether accepting this service change needs a second person (dispositionReview.mjs).
+ * An unknown change is left to acceptServiceChange's own not-found refusal. */
+export async function serviceChangeAcceptNeedsReview(client, { tenantRef, changeId }) {
+  const { rows: [row] } = await client.query(
+    'SELECT workload, blast_radius FROM workload_drift WHERE id::text = $1 AND tenant_ref = $2',
+    [String(changeId), tenantRef],
+  );
+  if (!row) return false;
+  return serviceChangeNeedsReview({ workload: row.workload, blastRadius: row.blast_radius });
+}
+
+// Audit run 2, finding 3: an admin-access service change is accepted only under an
+// approval a second person gave for exactly this change (`approvalId`).
+export async function acceptServiceChange(client, { tenantRef, changeId, actor, reason, approvalId = null }) {
   if (typeof reason !== 'string' || !reason.trim()) throw new ServiceChangeError('a reason is required');
   if (typeof actor !== 'string' || !actor) throw new ServiceChangeError('an actor is required');
+  if (await serviceChangeAcceptNeedsReview(client, { tenantRef, changeId })) {
+    await assertDispositionApproval(client, {
+      approvalId,
+      actor,
+      matches: (params) => String(params.serviceChangeId) === String(changeId) && params.action === 'accept'
+        && params.tenantRef === tenantRef,
+    });
+  }
   let change;
   await client.query('BEGIN');
   try {

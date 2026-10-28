@@ -11,10 +11,11 @@ import {
   rejectRequest,
   requestApproval,
 } from "../../engine/govern/approvals.mjs";
-import { applyDisposition } from "../../engine/govern/disposition.mjs";
-import { SameContentDriftError } from "../../engine/store/openDrift.mjs";
+import { applyDisposition, dispositionNeedsReview } from "../../engine/govern/disposition.mjs";
+import { DISPOSE_APPROVAL_ACTION, IgnoreExpiryError, ignoreExpiry } from "../../engine/govern/dispositionReview.mjs";
+import { SameContentDriftError, refuseSameContentDriftIds } from "../../engine/store/openDrift.mjs";
 import { RestoreSettingsPathError } from "../../engine/restore/credentialPaths.mjs";
-import { acceptServiceChange } from "../../engine/govern/workloadApproved.mjs";
+import { acceptServiceChange, serviceChangeAcceptNeedsReview } from "../../engine/govern/workloadApproved.mjs";
 import { resolveAlert } from "../../engine/notify/alerts.mjs";
 import { appendEvidence } from "../../engine/govern/evidence.mjs";
 import { approveBootstrapPlan, executeBootstrap } from "../../engine/bootstrap/execute.mjs";
@@ -502,6 +503,26 @@ export function guardedAction(
   );
 }
 
+// Audit run 2, finding 3: an accept or ignore that needs a second person becomes an
+// approval request; approving it mints the 'dispose' job, run as the requester.
+async function sendDecisionForApproval(client: KeelClient, { tenantRef: tenant, principalId, reason, params, entityScope }: {
+  tenantRef: string; principalId: string; reason: string; params: Record<string, unknown>; entityScope: unknown;
+}): Promise<Response> {
+  const approvalRequest = (await requestApproval(client, {
+    tenantRef: tenant,
+    action: DISPOSE_APPROVAL_ACTION,
+    params,
+    requestedBy: principalId,
+    justification: reason,
+    ttlMs: approvalTtlMs(),
+    entityScope,
+  })) as Record<string, unknown>;
+  return Response.json(
+    { approvalRequest: normalizeApprovalRequest(approvalRequest) },
+    { status: 202, headers: NO_STORE },
+  );
+}
+
 // Drift dispositions (accept/ignore) are synchronous single-row governance writes, not
 // jobs — the job-kind list is deliberately closed and has no dispose kind. The wrapper
 // still owns the database handle and the capability check.
@@ -522,6 +543,14 @@ export function guardedDispose(
         }
         if (action !== "accept") throw new InvalidActionRequest("a service setting change can only be accepted");
         if (typeof reason !== "string" || reason.trim().length === 0) throw new InvalidActionRequest("reason is required");
+        // Audit run 2, finding 3: an admin-access service change goes to a second person.
+        if (await serviceChangeAcceptNeedsReview(client, { tenantRef: tenant, changeId: serviceChangeId })) {
+          return await sendDecisionForApproval(client, {
+            tenantRef: tenant, principalId, reason,
+            params: { serviceChangeId, action: "accept", reason: reason.trim(), tenantRef: tenant },
+            entityScope: null,
+          });
+        }
         let accepted: { alertId: string | null };
         try {
           accepted = await acceptServiceChange(client, { tenantRef: tenant, changeId: serviceChangeId, actor: principalId, reason });
@@ -548,6 +577,29 @@ export function guardedDispose(
         throw new InvalidActionRequest("reason is required");
       }
 
+      // Audit run 2, finding 3: an ignore always ends, within 90 days; said plainly.
+      let until: Date | null = null;
+      if (action === "ignore") {
+        try {
+          until = ignoreExpiry(typeof expiresAt === "string" ? expiresAt : null);
+        } catch (error) {
+          if (error instanceof IgnoreExpiryError) {
+            return Response.json({ error: "invalid_request", message: error.message }, { status: 400, headers: NO_STORE });
+          }
+          throw error;
+        }
+      }
+      // A sign-in or admin-access change is decided by two people: this request waits
+      // for a different approver, and the worker applies it once approved.
+      if (await dispositionNeedsReview(client, { driftId })) {
+        await refuseSameContentDriftIds(client, [driftId]);
+        const params = { driftIds: [driftId], action, reason, ...(until ? { expiresAt: until.toISOString() } : {}) };
+        return await sendDecisionForApproval(client, {
+          tenantRef: tenant, principalId, reason, params,
+          entityScope: await approvalScopeFor(client, tenant, params),
+        });
+      }
+
       let disposition: unknown;
       try {
         disposition = await applyDisposition(client, {
@@ -555,7 +607,7 @@ export function guardedDispose(
           action,
           actor: principalId,
           reason,
-          expiresAt: typeof expiresAt === "string" ? expiresAt : undefined,
+          expiresAt: until ? until.toISOString() : undefined,
         });
       } catch (error) {
         if (error instanceof SameContentDriftError) return noChange(error);

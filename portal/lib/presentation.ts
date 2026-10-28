@@ -225,6 +225,7 @@ export const DISPLAY_ENUMS = {
     restore: "Restore",
     "restore-dry-run": "Dry run of a restore",
     remediate: "Roll back changes",
+    dispose: "Decision on a sign-in or admin change",
     "baseline-create": "Baseline creation",
     "baseline-activate": "Baseline activation",
     "policy-evaluate": "Policy run",

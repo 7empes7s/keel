@@ -2,6 +2,7 @@ import { sameContent } from '../cir/canonicalHash.mjs';
 import { acceptDrift } from './baseline.mjs';
 import { recordDisposition } from '../store/governance.mjs';
 import { refuseSameContentDrift, refuseSameContentDriftIds } from '../store/openDrift.mjs';
+import { assertDispositionApproval, driftNeedsReview, ignoreExpiry } from './dispositionReview.mjs';
 
 /** Spec M2.6.3. Ignore suppression keys on (naturalKey, afterHash) — never naturalKey alone. */
 export function isSuppressed(drift, dispositions, now) {
@@ -27,19 +28,38 @@ function sameAfter(ignored, drift) {
   return sameContent(side(ignored), side(drift), resourceType);
 }
 
-export async function applyDisposition(client, {
-  driftId, action, actor, reason, expiresAt,
-}) {
-  if (action === 'accept') {
-    return acceptDrift(client, { driftId, actor, reason });
-  }
+/** Whether accepting or ignoring this drift row needs a second person
+ * (dispositionReview.mjs). An unknown row is left to the caller's own not-found path. */
+export async function dispositionNeedsReview(client, { driftId }) {
+  const { rows: [drift] } = await client.query(
+    'SELECT resource_type, blast_radius FROM drift WHERE id::text = $1',
+    [String(driftId)],
+  );
+  if (!drift) return false;
+  return driftNeedsReview({ resourceType: drift.resource_type, blastRadius: drift.blast_radius });
+}
 
-  if (action === 'ignore') {
-    if (expiresAt == null) {
-      throw new Error('ignore disposition requires expiresAt');
-    }
+// Audit run 2, finding 3: accept and ignore of a sign-in or admin-access change run only
+// under an approval a second person gave for exactly this decision (`approvalId`). An
+// ignore always ends within MAX_IGNORE_DAYS. `now` is for tests.
+export async function applyDisposition(client, {
+  driftId, action, actor, reason, expiresAt, approvalId = null, now = new Date(),
+}) {
+  if (action === 'accept' || action === 'ignore') {
+    const until = action === 'ignore' ? ignoreExpiry(expiresAt, now) : null;
+    // A row that records no change is refused first: there is nothing to decide.
     await refuseSameContentDriftIds(client, [driftId]);
-    return recordDisposition(client, { driftId, action, actor, reason, expiresAt });
+    if (await dispositionNeedsReview(client, { driftId })) {
+      await assertDispositionApproval(client, {
+        approvalId,
+        actor,
+        matches: (params) => Array.isArray(params.driftIds) && params.driftIds.length === 1
+          && String(params.driftIds[0]) === String(driftId) && params.action === action
+          && (action !== 'ignore' || new Date(params.expiresAt).valueOf() === until.valueOf()),
+      });
+    }
+    if (action === 'accept') return acceptDrift(client, { driftId, actor, reason });
+    return recordDisposition(client, { driftId, action, actor, reason, expiresAt: until });
   }
 
   if (action === 'rollback') {

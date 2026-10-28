@@ -9441,3 +9441,40 @@ item that needs it stays untouched.
      `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; S and the step 1 symbol; per operation promoted / refused (exact message); approval ids; step 4 count; the
   evidence branch and commit; anything left in the tenant. If it still refuses, quote the message and comment on #641.
+
+### Q209: Live rerun of the Intune app gaps from Q185/Q191 (after PR #648, fixes #642)
+- Drafted by the "Close Intune app restore gaps" thread (2026-10-28). PR #648 (merge `cb92c727`), fixture-tested only:
+  - **App links:** a dependency or supersedence is now written with `POST /beta/deviceAppManagement/mobileApps/{appId}/updateRelationships`
+    (body `{ relationships: [...] }`, the links the app already holds sent again with the new one), and read back from
+    `GET /beta/.../mobileApps/{sourceId}/relationships`. The tenant list route (`POST /mobileAppRelationships`) is no longer used.
+  - **Dry run:** a category-only difference now shows as `changes.categories` = `{ added, removed[, notInIntuneYet] }`, and
+    keel-restore logs one `  changes <naturalKey>: ...` line per applied write (dry run and enforce).
+  - **No stale step:** a recreated app no longer gets "Which app categories it is in is stored separately and is not in the backup yet".
+  - **Plain steps for Graph limits:** a link Intune refuses because an app is not Win32, and any change to a Win32/LOB app whose
+    package is not uploaded (PATCH refused, and assumed the same for its links), are `skipped` with a `manual:` reason; nothing is written.
+  - **Capture:** `entraLive.mjs capture --fixture KEEL-RT-209-app-web` (bare name) now finds `mobileApp:KEEL-RT-209-app-web`.
+- Needs: /opt/keel-live at `cb92c727` or later (`grep -q updateRelationships /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only. Restorer for writes; no app assigned; no package uploaded.** Fixtures (create by hand, KEEL-RT-209- prefix):
+  app category `KEEL-RT-209-cat`; web link `KEEL-RT-209-app-web` (https://example.com/) in `KEEL-RT-209-cat` and `Business`;
+  two Win32 shells `KEEL-RT-209-app-main` and `KEEL-RT-209-app-dep` (no file, as in Q185); a dependency main → dep (`detect`) set by
+  hand through `.../mobileApps/{main}/updateRelationships`. If Intune refuses a dependency between two unpublished shells, report
+  the call and answer verbatim, skip steps 3 and 4's link parts, and go on.
+- Do:
+  1. Backup S. Report `mobileApp`, `mobileAppCategory`, `mobileAppRelationship` coverage; the web link's `categories`; the link in S.
+  2. **Category-only round:** take the web link out of `Business`. Dry run selecting the web link: expect the log line
+     `changes mobileApp:KEEL-RT-209-app-web: categories added 1, removed 0` and the same in the artifact `results`. Promote; read back in both.
+  3. **Link round:** remove the dependency by hand (`updateRelationships` on main with `{ relationships: [] }`). Restore from S selecting
+     the `mobileAppRelationship`; dry run then enforce. Expect one `POST .../mobileApps/{main}/updateRelationships`, the link back as in S.
+     Then set it to `autoInstall` by hand, restore again (update): expect the same route, `detect` back. Capture both with
+     `entraLive.mjs capture --resource-type mobileAppRelationship --operation create|update --fixture <natural key from the dry run>`.
+  4. **Recreate round:** delete the web link, both shells and the category. One restore from S selecting all of them. Expect: category
+     recreated; web link recreated in the new category and `Business`, with **no** "stored separately" step; both shells recreated
+     (upload-the-package step); the link created between the **new** shell ids (or the plain `manual:` package step if Intune refuses it).
+  5. **Unpublished update:** change main's description by hand; dry run from S selecting main: expect `skipped` with
+     `manual: Intune does not let KEEL-RT-209-app-main be changed until its package is uploaded`, and no PATCH attempted.
+  6. Capture `mobileApp update` with the bare `--fixture KEEL-RT-209-app-web`: expect `captured`, not `not-exercised`.
+  7. Cleanup: delete all KEEL-RT-209 apps and the category; report anything left.
+- **Report:** B; each step's exit code, dry-run and approval ids, the log `changes` lines, every Graph call that failed (status and
+  message verbatim, no tokens); evidence branch and promotions if captured. A 400/404 on `updateRelationships` is a finding for a new issue.

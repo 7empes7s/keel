@@ -9375,3 +9375,37 @@ item that needs it stays untouched.
   test passes.
 - **Report:** B, the reconstruct exit code, time and peak RSS, the drill outcome and write count, each exit code, the check
   output, the evidence PR, DBs dropped.
+
+### Q207: Live recapture and restore of a guest federation with its sign-in fields (after PR #645, fixes #640)
+- Drafted by the "Back up full guest federation settings" thread (2026-10-28). Q111's federation run found the backup held only
+  `id` and `displayName` (#640). PR #645 (merge `4298b86`) reads `externalDomainFederation` from
+  `/v1.0/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation?$expand=domains` (the route Q111 step 7 got
+  200 from). Restore is unchanged: it writes only `displayName` and `preferredAuthenticationProtocol`; the sign-in fields
+  (`issuerUri`, `metadataExchangeUri`, `passiveSignInUri`, `signingCertificate`) are never written, and a difference opens the
+  manual step `externalDomainFederationSignIn`. Fixture-tested only.
+- Needs: the deployed build B at or after `4298b86`. Check from your checkout at B:
+  `git merge-base --is-ancestor 4298b86 B && grep -q samlOrWsFedExternalDomainFederation tools/tenant-probe/catalog.d/entra-tenant-settings.mjs`.
+- Status: queued
+- **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval (2026-10-14 standing
+  authorization; log every approval id) as Q111. Never federate a real domain; never invite a guest. Nothing to grant.
+- Do, at B, from your own checkout (never `/opt/keel`):
+  1. Recreate the Q111 fixture: SAML federation `KEEL-RT-148-fed` for `keel-rt-fed.example` (issuer
+     `https://keel-rt-fed.example/issuer`, sign-in `https://keel-rt-fed.example/sso`, a fresh self-signed certificate).
+  2. Take snapshot S (one tier run that reads `externalDomainFederation`). **Check S's payload** for the federation holds
+     `issuerUri`, `passiveSignInUri`, `signingCertificate`, `preferredAuthenticationProtocol` and `domains`
+     (`keel-rt-fed.example`). If it still holds only id and name, stop and report the read URL from the collect log.
+  3. Take a second snapshot S2 with no change and run drift between S and S2: expect **no change** for the federation
+     (this checks `domains` comes back in a stable order). Report any diff.
+  4. **Manual-step round:** drift `passiveSignInUri` to `https://keel-rt-fed.example/drifted`. Dry run from S selecting the
+     federation. Expect it **not** written and a manual step `externalDomainFederationSignIn` naming `passiveSignInUri`
+     (refusal `manual: …`), 0 writes. If the dry run plans a write instead, approve, enforce and confirm the manual step is in the
+     run's completion list and `passiveSignInUri` is still `/drifted` (never claim it restored). Then put `passiveSignInUri` back to
+     `/sso` by hand.
+  5. **Name round:** change only the federation displayName to `KEEL-RT-148-fed-drifted`. Restore from S, approve, enforce,
+     capture the `update` (`entraLive.mjs capture`, as in Q111). Expect read back equal to S, no manual step, dry run lists only
+     `displayName`. Promote if it passes.
+  6. Cleanup: delete the federation and the test certificate's private key. Report anything left.
+  7. Commit the record and `.capture.json` under `docs/release/qualifications/entra-live/` on `claude/live-evidence-q207`,
+     branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR. Report the `live evidence` line.
+- **Report:** B; step 2 payload fields present; step 3 drift result; step 4 dry-run outcome and exact reason text; step 5
+  approval id, promoted or not; evidence branch and commit; anything left in the tenant.

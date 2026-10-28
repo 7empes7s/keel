@@ -252,6 +252,31 @@ $AllowedPnPStructure = @{
 }
 $SiteTemplateHandlers = 'Fields, ContentTypes, Lists, Navigation, Features, RegionalSettings, SupportedUILanguages, WebSettings, SiteHeader, SiteFooter, CustomActions'
 
+# SharePoint structure restore (engine/restore/workloads/sharepointStructure.mjs and
+# sharepointStructureWrites.mjs, which hold the same list). Nothing here deletes: no
+# Remove-, Unregister-, Revoke- or Grant- cmdlet. Invoke-PnPSiteTemplate connects to the
+# one site in -Url (a site collection root on the tenant host) and applies the template
+# KEEL built (-TemplateGzip, gzip and base64) with the handlers fixed below. The template
+# may hold only the PnP elements in $RestoreTemplateElements: never list items, files,
+# pages, permissions, webhooks, custom actions, property bags or features.
+$AllowedPnPStructureWrites = @{
+    'Invoke-PnPSiteTemplate' = @('TemplateGzip', 'Url')
+    'Register-PnPHubSite'    = @('Site')
+    'Set-PnPHubSite'         = @('Description', 'HideNameInNavigation', 'Identity', 'LogoUrl', 'RequiresJoinApproval', 'SiteDesignId', 'Title')
+    'Add-PnPSiteScript'      = @('Content', 'Description', 'Title')
+    'Set-PnPSiteScript'      = @('Content', 'Description', 'Identity', 'Title')
+    'Add-PnPSiteDesign'      = @('Description', 'IsDefault', 'PreviewImageAltText', 'PreviewImageUrl', 'SiteScriptIds', 'Title', 'WebTemplate')
+    'Set-PnPSiteDesign'      = @('Description', 'Identity', 'IsDefault', 'PreviewImageAltText', 'PreviewImageUrl', 'SiteScriptIds', 'Title', 'WebTemplate')
+}
+$RestoreTemplateHandlers = 'Fields, ContentTypes, Lists, Navigation'
+$RestoreTemplateElements = @(
+    'Provisioning', 'Preferences', 'Templates', 'ProvisioningTemplate',
+    'SiteFields', 'ContentTypes', 'ContentType', 'FieldRefs', 'FieldRef',
+    'Lists', 'ListInstance', 'ContentTypeBindings', 'ContentTypeBinding', 'Views', 'Fields', 'FieldDefaults', 'FieldDefault', 'Folders', 'Folder',
+    'Navigation', 'GlobalNavigation', 'CurrentNavigation', 'StructuralNavigation', 'NavigationNode'
+)
+$MaxTemplateGzipChars = 100000
+
 # The site a template job connects to, normalized, or $null when it is not a site
 # collection root on the host of the configured admin site (contoso-admin.sharepoint.com
 # gives contoso.sharepoint.com).
@@ -315,6 +340,7 @@ elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManag
 elseif ($AllowedPurviewRetentionDlp.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewRetentionDlp[$name] }
 elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnP[$name] }
 elseif ($AllowedPnPStructure.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnPStructure[$name] }
+elseif ($AllowedPnPStructureWrites.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnPStructureWrites[$name] }
 elseif ($AllowedTeamsPolicy.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsPolicy[$name] }
 elseif ($AllowedTeamsExtended.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsExtended[$name] }
 elseif ($AllowedPurviewExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewExtended[$name] }
@@ -340,13 +366,52 @@ try {
     Out-Failure -Message "could not read the connection settings: $($_.Exception.Message)" -Category 'ConnectionError' -ErrorId 'ConnectFailed'
 }
 
-# A template is read on its own site; everything else in the PnP session on the admin site.
+# A template is read (or applied) on its own site; everything else in the PnP session on the admin site.
 $pnpUrl = $config.sharePointAdminUrl
 if ($name -eq 'Get-PnPSiteTemplate') {
     $pnpUrl = Get-KeelSiteUrl -Value ([string]$params['Url']) -AdminUrl ([string]$config.sharePointAdminUrl)
     if (-not $pnpUrl) { Out-Failure -Message "the site is not a site collection root on this tenant's SharePoint host" -ErrorId 'SiteNotAllowed' }
     $params.Remove('Url')
     $params['Handlers'] = $SiteTemplateHandlers
+}
+# The restore template is applied on its own site, from a temporary file, with fixed handlers.
+$templateFile = $null
+if ($name -eq 'Invoke-PnPSiteTemplate') {
+    $pnpUrl = Get-KeelSiteUrl -Value ([string]$params['Url']) -AdminUrl ([string]$config.sharePointAdminUrl)
+    if (-not $pnpUrl) { Out-Failure -Message "the site is not a site collection root on this tenant's SharePoint host" -ErrorId 'SiteNotAllowed' }
+    $encoded = [string]$params['TemplateGzip']
+    if (-not $encoded -or $encoded.Length -gt $MaxTemplateGzipChars) { Out-Failure -Message 'the template is missing or too large' -ErrorId 'TemplateNotAllowed' }
+    try {
+        $raw = [System.IO.MemoryStream]::new([Convert]::FromBase64String($encoded))
+        $gzip = [System.IO.Compression.GZipStream]::new($raw, [System.IO.Compression.CompressionMode]::Decompress)
+        $xml = [System.IO.StreamReader]::new($gzip, [System.Text.Encoding]::UTF8).ReadToEnd()
+    } catch {
+        Out-Failure -Message 'the template is not gzip and base64' -ErrorId 'TemplateNotAllowed'
+    }
+    if ($xml -notmatch '<pnp:ProvisioningTemplate\b') { Out-Failure -Message 'the template is not a PnP template' -ErrorId 'TemplateNotAllowed' }
+    foreach ($match in [regex]::Matches($xml, '</?pnp:([A-Za-z]+)')) {
+        if ($RestoreTemplateElements -notcontains $match.Groups[1].Value) {
+            Out-Failure -Message "the template carries pnp:$($match.Groups[1].Value), which KEEL never sends" -ErrorId 'TemplateNotAllowed'
+        }
+    }
+    # The PnP namespace only ever as pnp:, and no DTD: no PnP element can hide under another prefix.
+    if ($xml -match '<!DOCTYPE|<!ENTITY') { Out-Failure -Message 'the template carries a DTD, which KEEL never sends' -ErrorId 'TemplateNotAllowed' }
+    foreach ($match in [regex]::Matches($xml, '\bxmlns(:[A-Za-z0-9_.-]+)?\s*=\s*["'']([^"'']*)["'']')) {
+        if ($match.Groups[2].Value -match 'schemas\.dev\.office\.com/PnP' -and $match.Groups[1].Value -ne ':pnp') {
+            Out-Failure -Message 'the template binds the PnP namespace to a prefix other than pnp:, which KEEL never sends' -ErrorId 'TemplateNotAllowed'
+        }
+    }
+    # The file is written just before the cmdlet runs, in the try whose finally removes it.
+    $templateXml = $xml
+    $templateFile = Join-Path ([System.IO.Path]::GetTempPath()) ("keel-restore-" + [guid]::NewGuid().ToString('N') + '.xml')
+    $params = @{ Path = $templateFile; Handlers = $RestoreTemplateHandlers }
+}
+# A hub is named by its site, which must be a site collection root on the tenant host.
+if ($name -eq 'Register-PnPHubSite' -or $name -eq 'Set-PnPHubSite') {
+    $key = if ($name -eq 'Register-PnPHubSite') { 'Site' } else { 'Identity' }
+    $hubUrl = Get-KeelSiteUrl -Value ([string]$params[$key]) -AdminUrl ([string]$config.sharePointAdminUrl)
+    if (-not $hubUrl) { Out-Failure -Message "the hub is not a site collection root on this tenant's SharePoint host" -ErrorId 'SiteNotAllowed' }
+    $params[$key] = $hubUrl
 }
 
 try {
@@ -374,6 +439,7 @@ try {
 }
 
 try {
+    if ($templateFile) { Set-Content -Path $templateFile -Value $templateXml -Encoding utf8 -NoNewline }
     # Warnings from the module's own functions ignore this script's $WarningPreference and
     # would land on stdout ahead of the envelope (Get-LabelPolicy: "Force Validate not set").
     $output = & $name @params -ErrorAction Stop 3>$null
@@ -382,6 +448,7 @@ try {
     $record = $_
     Out-Failure -Message $record.Exception.Message -Category ([string]$record.CategoryInfo.Category) -ErrorId ([string]$record.FullyQualifiedErrorId)
 } finally {
+    if ($templateFile) { Remove-Item -LiteralPath $templateFile -Force -ErrorAction SilentlyContinue }
     if ($session -eq 'pnp') { try { Disconnect-PnPOnline -ErrorAction SilentlyContinue | Out-Null } catch {} }
     elseif ($session -eq 'teams') { try { Disconnect-MicrosoftTeams -Confirm:$false -ErrorAction SilentlyContinue | Out-Null } catch {} }
     else { try { Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null } catch {} }

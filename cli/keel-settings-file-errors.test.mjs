@@ -168,6 +168,7 @@ test('no operator tool parses a settings file with a bare JSON.parse', () => {
     'qualification/sharepointSiteGrantsLive.mjs: JSON.parse(readFile(options.docs)',
     'qualification/sharepointSitePermissionsLive.mjs: JSON.parse(readFile(options.grants)',
     'qualification/sharepointSitePermissionsLive.mjs: JSON.parse(readFile(options.docs)',
+    'qualification/sharepointStructureWritesLive.mjs: JSON.parse(readFile(options.grants)',
     'qualification/teamsAcceptance.mjs: JSON.parse(readFileSync(join(evidenceDir ?? process.cwd()',
     'qualification/teamsLive.mjs: JSON.parse(readFile(sharePointPath)',
     'qualification/teamsLive.mjs: JSON.parse(readFile(options.grants)',

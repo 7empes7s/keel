@@ -27,6 +27,7 @@ import { importLedgerInputs, importSeams } from '../../cli/keel-workload-collect
 import { signEvidence, verifyEvidence } from '../../tools/release/qualification.mjs';
 import { SITE_GRANTS_RECORD_FILE } from '../../tools/qualification/sharepointSiteGrantsAcceptance.mjs';
 import { SITE_PERMISSIONS_RECORD_FILE } from '../../tools/qualification/sharepointSitePermissionsAcceptance.mjs';
+import { STRUCTURE_WRITES_RECORD_FILE } from '../../tools/qualification/sharepointStructureWritesAcceptance.mjs';
 import { READ_FAMILIES, workloadReadsRecordFile } from '../../tools/qualification/workloadReadsAcceptance.mjs';
 import {
   CAPTURE_CREATE_PREFIX, TENANT_WIDE_UNSAFE_SWITCHES, TENANT_WIDE_WRITES, WORKLOAD_WRITES_LIVE_GATE, WRITTEN_WORKLOADS, chooseCaptureChange, workloadWritesRecordFile,
@@ -254,7 +255,7 @@ test('the import stores the proven writes, skips absent writer records, and refu
   assert.deepEqual(result.refused, []);
   assert.deepEqual(result.imported.map(({ file, writes }) => ({ file, writes })), [{ file: workloadWritesRecordFile('exchange-mail-flow'), writes: 4 }]);
   assert.deepEqual(result.absent.sort(), [
-    ...Object.keys(WRITTEN_WORKLOADS).filter((w) => w !== 'exchange-mail-flow').map(workloadWritesRecordFile), SITE_GRANTS_RECORD_FILE, SITE_PERMISSIONS_RECORD_FILE,
+    ...Object.keys(WRITTEN_WORKLOADS).filter((w) => w !== 'exchange-mail-flow').map(workloadWritesRecordFile), SITE_GRANTS_RECORD_FILE, SITE_PERMISSIONS_RECORD_FILE, STRUCTURE_WRITES_RECORD_FILE,
     ...Object.keys(READ_FAMILIES).map(workloadReadsRecordFile),
   ].sort());
   const inserted = saved.filter(({ sql }) => /INSERT INTO workload_ledger_evidence/.test(sql));

@@ -10,7 +10,8 @@
  *
  * Rules (the same as the other cmdlet workloads):
  *  - Read only. Only Get-PnPHubSite, Get-PnPSiteDesign, Get-PnPSiteScript (list, then one
- *    per script by -Identity for its JSON) and Get-PnPSiteTemplate run. No writer exists.
+ *    per script by -Identity for its JSON) and Get-PnPSiteTemplate run. The restore is a
+ *    separate module (engine/restore/workloads/sharepointStructure.mjs) with its own allowlist.
  *  - Structure only. ops/powershell/run-cmdlet.ps1 fixes the template handlers: never
  *    Files, Pages, PageContents, TermGroups, PropertyBagEntries or Publishing. The term
  *    store is read by the SharePoint term store reader, not here.
@@ -155,7 +156,8 @@ const decode = (text) => text.replace(/&(#x[0-9a-f]+|#\d+|lt|gt|quot|apos|amp);/
   return ENTITIES[name.toLowerCase()];
 });
 
-function attributesOf(text) {
+/** The attributes of one start tag's text, decoded. The restore reads the template with it too. */
+export function attributesOf(text) {
   const attributes = {};
   for (const [, name, value] of String(text ?? '').matchAll(/([A-Za-z_][\w:.-]*)\s*=\s*"([^"]*)"/g)) attributes[name] = decode(value);
   return attributes;
@@ -167,7 +169,7 @@ function startTags(xml, name) {
 }
 
 /** The text between the first `<name ...>` and its `</name>`, or ''. */
-function section(xml, name) {
+export function section(xml, name) {
   const match = new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`).exec(xml);
   return match ? match[1] : '';
 }

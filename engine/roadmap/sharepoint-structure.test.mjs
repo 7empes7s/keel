@@ -3,7 +3,7 @@
 //
 // Acceptance:
 //  - the reads are declared, pass the scope validator, are run by the read-only probe, and
-//    ship disabled; the Node and container allowlists match; no writer exists;
+//    ship disabled; the Node and container allowlists match; the read path runs no write;
 //  - the container fixes the template handlers to structure only (no files, pages, term
 //    store or property bag) and connects only to a site collection root on the tenant host;
 //  - templates are read only for named site collection roots on the tenant host; anything
@@ -145,7 +145,11 @@ test('the reads are declared, in scope, probed, Get-only and ship disabled', asy
   assert.equal(SHAREPOINT_STRUCTURE_DESCRIPTOR.readOnly, true);
   assert.ok(listWorkloads().some((descriptor) => descriptor.workload === SHAREPOINT_STRUCTURE_WORKLOAD));
   assert.ok(WORKLOAD_COLLECTORS.some((entry) => entry.workload === SHAREPOINT_STRUCTURE_WORKLOAD && entry.powershellFamily === 'sharepoint'));
-  assert.deepEqual(Object.values(WORKLOAD_WRITE_OPERATIONS).filter((operation) => operation.workload === SHAREPOINT_STRUCTURE_WORKLOAD), [], 'no writer');
+  // The writes live in their own module and allowlist (sharepoint-structure-restore.test.mjs); the read path never runs them.
+  assert.deepEqual(Object.entries(WORKLOAD_WRITE_OPERATIONS).filter(([, operation]) => operation.workload === SHAREPOINT_STRUCTURE_WORKLOAD).map(([id]) => id).sort(), [
+    'sharepoint-structure.hub-site.add', 'sharepoint-structure.hub-site.update', 'sharepoint-structure.site-design.add', 'sharepoint-structure.site-design.update',
+    'sharepoint-structure.site-script.add', 'sharepoint-structure.site-script.update', 'sharepoint-structure.site-template.update',
+  ]);
 
   assert.deepEqual(Object.fromEntries(Object.entries(SHAREPOINT_STRUCTURE_CMDLET_PARAMETERS).map(([name, list]) => [name, [...list]])), ALLOWED,
     'the Node and container allowlists are identical');

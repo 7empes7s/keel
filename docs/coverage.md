@@ -875,9 +875,17 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - SharePoint site scripts
 - SharePoint site structure: lists, libraries, columns, content types and navigation
 
-**KEEL can restore:** nothing yet.
+**KEEL can restore:**
 
-**You do:** KEEL does not restore site structure yet. A deleted list, library, column, content type or navigation link is put back by hand, or by applying the saved PnP template to the site with Invoke-PnPSiteTemplate. Files and list items come back from the content backup. Site templates are backed up only for the sites named in the backup scope. The term store is backed up separately.
+- Put back: Lists, libraries, columns and content types missing from a named site, and its navigation
+- Add back: SharePoint hub site registrations
+- Put back: SharePoint hub site settings
+- Add back: SharePoint site scripts
+- Put back: SharePoint site scripts
+- Add back: SharePoint site designs
+- Put back: SharePoint site designs
+
+**You do:** KEEL adds back what a named site is missing (lists, libraries, site columns and content types) and puts its navigation back, but never changes or deletes an existing list, column or content type: those differences are listed for you to apply by hand. A re-added list comes back empty; its files and items come back from the content backup. Permissions, webhooks, custom actions, features and site settings are put back by hand. A site script or design comes back with a new id; who may use a design, and who may join a hub, are granted again by hand. Site templates are backed up only for the sites named in the backup scope. The term store is backed up separately.
 
 ### Teams calling, voice and live event policies
 

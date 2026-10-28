@@ -2,7 +2,8 @@
  * Gap register W2: the one table cli/keel-restore.mjs uses to plan and promote a
  * workload restore (SharePoint settings, site app grants and site permissions, Exchange, Teams, Purview, and from Wave 2 WKLD mail
  * flow, the Exchange settings READ-EXO added, Teams org-wide and voice policies,
- * Purview retention and DLP, and retention labels: cmdletSettings.mjs).
+ * Purview retention and DLP, and retention labels: cmdletSettings.mjs; SharePoint site
+ * structure: sharepointStructure.mjs).
  *
  * A workload artifact has no snapshot and no credential files of its own: its
  * config paths are the marker `workload:<name>`. Its plan is in
@@ -43,6 +44,8 @@ import {
 } from './teams.mjs';
 import { PURVIEW_WRITE_OPERATIONS, createPurviewRestoreArtifact, executePurviewRestore, planPurviewRestore } from './purview.mjs';
 import { workloadSettingsRestore } from './cmdletSettings.mjs';
+import { SHAREPOINT_STRUCTURE_WORKLOAD } from '../../collect/workloads/sharepointStructure.mjs';
+import { sharePointStructureRestore } from './sharepointStructure.mjs';
 
 export const WORKLOAD_CONFIG_PREFIX = 'workload:';
 
@@ -177,6 +180,9 @@ export const WORKLOAD_RESTORES = Object.freeze({
   [TEAMS_EXTENDED_WORKLOAD]: workloadSettingsRestore({ workload: TEAMS_EXTENDED_WORKLOAD, label: 'Teams voice and live event policies', read: readTeamsExtended }),
   [RETENTION_DLP_WORKLOAD]: workloadSettingsRestore({ workload: RETENTION_DLP_WORKLOAD, label: 'Purview retention and DLP', read: readRetentionDlp }),
   [PURVIEW_EXTENDED_WORKLOAD]: workloadSettingsRestore({ workload: PURVIEW_EXTENDED_WORKLOAD, label: 'Purview retention labels', read: readPurviewExtended }),
+  // SharePoint structure through PnP: hub sites, site designs and scripts, and named
+  // sites' missing lists, columns, content types and navigation (sharepointStructure.mjs).
+  [SHAREPOINT_STRUCTURE_WORKLOAD]: sharePointStructureRestore(),
 });
 
 /** The table entry for a workload name, or a usage error naming the ones that exist. */

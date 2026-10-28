@@ -21,6 +21,7 @@ import { loadNistProfile, NIST_MAPPINGS } from '../qualification/benchmarkLicens
 import { SHAREPOINT_LIVE_GATE, validateSharePointLiveSubject } from '../qualification/sharepointAcceptance.mjs';
 import { SITE_GRANTS_LIVE_GATE, validateSiteGrantsLiveSubject } from '../qualification/sharepointSiteGrantsAcceptance.mjs';
 import { SITE_PERMISSIONS_LIVE_GATE, validateSitePermissionsLiveSubject } from '../qualification/sharepointSitePermissionsAcceptance.mjs';
+import { STRUCTURE_WRITES_LIVE_GATE, validateStructureWritesLiveSubject } from '../qualification/sharepointStructureWritesAcceptance.mjs';
 import { TEAMS_LIVE_GATE, validateTeamsLiveSubject } from '../qualification/teamsAcceptance.mjs';
 import { EXCHANGE_LIVE_GATE, validateExchangeLiveSubject } from '../qualification/exchangeAcceptance.mjs';
 import { ONEDRIVE_PURVIEW_LIVE_GATE, validateOneDrivePurviewLiveSubject } from '../qualification/onedrivePurviewAcceptance.mjs';
@@ -741,6 +742,9 @@ const GATE_VALIDATORS = {
     if (!verifyRunnerProof(evidence, evidence.proof?.runner, context).ok) failures.push('site permissions runner proof required');
     return failures;
   },
+  // SharePoint structure restore writes (site template, hubs, scripts, designs); needs both proofs.
+  [STRUCTURE_WRITES_LIVE_GATE]: (evidence, context) => validateStructureWritesLiveSubject(evidence, {
+    ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
   // Task-121: Teams live acceptance; needs both proofs and a verified task-120 record.
   [TEAMS_LIVE_GATE]: (evidence, context) => validateTeamsLiveSubject(evidence, {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context), verifyEvidence }),

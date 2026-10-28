@@ -8699,3 +8699,51 @@ item that needs it stays untouched.
 - **If a call fails:** the step, HTTP status and Graph error code/message verbatim (no tokens). A 400/404 on `categories/$ref` is a finding for the
   thread (the route may differ on v1.0 vs beta); do not work around it by hand.
 - **Report:** B; per step; approval ids; old and new ids from step 4; evidence branch and commit; anything left in the tenant.
+
+### Q194: Live proof and round trip of the SharePoint structure restore (after PR #613 and Q189)
+- Drafted by the "Restore SharePoint structure" thread (2026-10-28). Code: PR #613. Seven PnP writes, all off until this capture is
+  imported: `Invoke-PnPSiteTemplate` (missing lists, libraries, site columns, content types; navigation put back), `Register-PnPHubSite`,
+  `Set-PnPHubSite`, `Add-/Set-PnPSiteScript`, `Add-/Set-PnPSiteDesign`. No Remove-, Unregister-, Revoke- or Grant- cmdlet exists in the
+  allowlist. The template the container applies is checked again there and its handlers are fixed (`Fields, ContentTypes, Lists, Navigation`).
+- Needs: Q189 done (the four reads live), and /opt/keel-live at the PR #613 merge or later
+  (`grep -q AllowedPnPStructureWrites /opt/keel-live/ops/powershell/run-cmdlet.ps1`).
+- Status: todo
+- **Test tenant only.** Same hard rules and standing authorization as Q80; log every approval id. Writes run with the **Restorer** only.
+  Grant nothing: if SharePoint refuses (401/403, access denied), report blocked with the cmdlet and the message verbatim.
+- **Restorer PnP config:** the restore and the capture use `powershellRestorerConfigs.sharepoint`, else the `-restorer.json` sibling of
+  `powershellConfigs.sharepoint` (that is `purview-collector.json`, so `/etc/keel/purview-restorer.json`, checked in Q161). Report yes/no only
+  (never values): it exists, is mode 600/640 root, names `tenantId`, `organization` and `sharePointAdminUrl`. If `sharePointAdminUrl` is
+  missing, add it with the collector file's value (back up as `.bak-q194`); nothing else changes.
+- **Fixtures** (all KEEL-RT-, left in place afterwards):
+  - the capture adds `KEEL-RT-capture-<random>` site script, site design (TeamSite, not default, scoped to nobody), and on
+    `KEEL-RT-20261004` one list, one site column, one content type and one navigation link (the link is removed again);
+  - it changes the description of the first hub whose site is a `/sites/KEEL-RT-*` site and puts it back (Q189 made one if none existed);
+  - optional `--hub-site`: a KEEL-RT- site collection that is **not** a hub (create communication site `KEEL-RT-structure-hub` with your usual
+    admin path if none exists). It stays a hub. Skip the flag if you can't create one; that one write then stays off.
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never printed) and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Plan (offline):** `node tools/qualification/sharepointStructureWritesLive.mjs plan --site https://<host>/sites/KEEL-RT-20261004 [--hub-site <url>]`.
+     Expect 2 refusals, 1 read, then 8 or 9 writes.
+  2. **Capture:**
+     ```bash
+     node tools/qualification/sharepointStructureWritesLive.mjs capture --confirm-live-tenant-write \
+       --tenant-ref <tenant ref> --site https://<host>/sites/KEEL-RT-20261004 [--hub-site <url>] \
+       --collector-ref app:<collector clientId> --restorer-ref app:<restorer clientId> \
+       --collector-config <powershellConfigs.sharepoint> --restorer-config <restorer file above> \
+       --grants <grants.json: {"restorer":{"permissions":["Sites.FullControl.All"],"roles":[]}}> --build B \
+       --out docs/release/qualifications/sharepoint-structure-writes-live-acceptance.json
+     node tools/qualification/pseudonymize.mjs check docs/release/qualifications/sharepoint-structure-writes-live-acceptance.json
+     ```
+     Report exit codes and `proven`, `notProven`, `skipped`, `created`, `needsManualRevert` verbatim. **Exit 3 means a put-back failed:**
+     do what its message says by hand (a hub description, or a navigation link) before anything else, and report it.
+  3. **Evidence:** commit the record and its `.capture.json` on `claude/live-evidence-sharepoint-structure-writes` (from `origin/master`,
+     secret scan and the check above first). No PR.
+  4. **Import:** `node cli/keel-workload-collect.mjs import --dir <checkout>/docs/release/qualifications`. Report the imported/refused lines.
+  5. **Backup:** `node /opt/keel-live/cli/keel-workload-collect.mjs run` once; note the new `sharepoint-structure` collection id C.
+  6. **Round trip:** by hand, delete the `KEEL-RT-capture-*` list on KEEL-RT-20261004 and change the `KEEL-RT-capture-*` site script's
+     description. Dry run as the Collector:
+     `node /opt/keel-live/cli/keel-restore.mjs --workload sharepoint-structure --collection C --target site-script:<its id> --target site-template:<site url>`.
+     Expect 2 changes (the script update; the site template adding the list), 0 refused; report the manual lines. Approve, then
+     `--artifact <id> --enforce`. Expect `verified`, the list back and the description back.
+  7. **Re-run check:** dry run again: 0 changes. Promote the step 6 artifact again: `stale`, no write.
+- **Report:** B; the config check; steps 1 to 7 with exit codes; approval ids; evidence branch and commit; anything left in the tenant.

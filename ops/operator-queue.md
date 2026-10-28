@@ -9936,3 +9936,25 @@ item that needs it stays untouched.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; the originals; per kind: written / refused (exact message) / skipped / blocked; step 4; step 5 values; approval ids;
   the evidence branch and commit; anything left in the tenant.
+
+### Q220: Rerun Q213 (live undo of an assigned created policy: delete it, and skip it) now that #666 is fixed (after PR #672)
+- Drafted by the "Offer delete or skip on policy undo" thread (2026-10-28). Q213 steps 1–4 passed. Step 5 was refused before any write with
+  `blocked-incomplete-read: … todoSettings could not be read` (#666). PR #672 (merge `0ec75cbf`) stops the six on/off org settings
+  (To Do among them) from blocking a planned delete, and a refused compensation dry run now prints `refused <key>: <reason>`.
+  Q213's fixtures were cleaned up, so this reruns it from the start.
+- Needs: /opt/keel-live at `0ec75cbf` or later (`grep -q holdsNoReferences -r /opt/keel-live/engine/collect`), and #655's code
+  (`grep -q removeChosenAssignments /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Same rules and fixtures as Q213** (test tenant only; Restorer for writes, Collector for reads; assign only to the empty group
+  `KEEL-RT-213-group`, never All devices or All users; self-approve and log every approval id; run from your own checkout at B).
+- Do: Q213 steps 1–3 (recreate the fixtures, backup, restore A, assign both). Step 4 can be shortened to the plan line check
+  (`assigned (1): … waiting for your choice` for each). Then Q213 **steps 5–8** in full:
+  - The plan with `--delete-assigned …-delete --skip-assigned …-skip` must persist as `completed`, not `refused`. If any
+    `refused <key>: <reason>` line prints, quote it and stop.
+  - Promote it. Expect exactly two writes: `POST …/{d1}/assign {"assignments":[]}`, then `DELETE …/{d1}`. Expect
+    `compensation applied 1, skipped 0, failed 0`. The journal detail is `absent; its 1 assignment(s) were removed first`, with the
+    removed assignment in its prior state.
+  - d1 reads 404. s1 is still there with its one assignment.
+  - Step 7 (assignments changed after the choice is refused). Then cleanup.
+- **Report:** as in Q213, plus the todoSettings read status in the backup (still a 500 or not).

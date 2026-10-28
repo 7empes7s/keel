@@ -8798,7 +8798,14 @@ item that needs it stays untouched.
   navigation, features, web/regional settings; no files, pages, term store, property bag or site security). Each read stays off
   until its own live record is imported.
 - Needs: /opt/keel-live at the #603 merge or later (`grep -q AllowedPnPStructure /opt/keel-live/ops/powershell/run-cmdlet.ps1`).
-- Status: todo
+- Status: done (site templates proven; 3 reads not proven, #638)
+- Result: done, partly proven (2026-10-28 08:55 UTC, root keel-operator). **Site templates proven and on; hub sites, site designs and site scripts fail in ConvertTo-Json (filed #638).** B = `76e1c71`. Collector reads with the `powershellConfigs.sharepoint` config (`/etc/keel/purview-collector.json`); fixtures made with its Restorer sibling (`purview-restorer.json`); global admin not used; nothing granted.
+  1. Fixtures: before, the tenant had **0** hub sites, 0 site scripts, 0 site designs. **Created** site script `KEEL-RT-structure-script` (one `createSPList` action for `KEEL RT list`) and site design `KEEL-RT-structure-design` (WebTemplate 64, IsDefault false, scoped to nobody). **Registered `KEEL-RT-20261004` as a hub site** (the tenant had none); nothing joins it. All left in place.
+  2. `/etc/keel/workload-scope.json` (644 root:root, kept): backed up to `workload-scope.json.bak-q189` (same owner and mode). Keys before: mailboxes, onedriveHost, onedriveSites, powershellConfigs, sharepointHost. After: the same plus `sharepointStructureSites` = [the KEEL-RT-20261004 URL].
+  3. Capture exit **0**; `pseudonymize.mjs check` exit **0** ("every id is a pseudonym"); verify `{ok: true, failures: []}`. `outcome` **"partial"**. `proven` `["sharepoint-structure.site-templates"]`. `notProven`: `sharepoint-structure.hub-sites`, `.site-designs` and `.site-scripts`, each `failed`, error `CMDLET_ERROR:Microsoft.SharePoint.Client.CollectionNotInitializedException,Microsoft.PowerShell.Commands.ConvertToJsonCommand`, message "The collection has not been initialized. It has not been requested or the request has not been executed. It may need to be explicitly requested." The fixtures existed, so the objects come back and the serialiser trips on an unloaded CSOM collection (inference). Issue **#638**.
+  4. Evidence: `claude/live-evidence-sharepoint-structure` @ **5cfe3871** (that file only; scan for tenant domain, host, id, JWT and keys clean). Pushed, no PR.
+  5. Import exit 0: `workload-reads-sharepoint-structure-live-acceptance.json` imported (reads 1, writes 0), refused `[]`. `run`: exit 3 (incomplete types only). `sharepoint-structure: partial`, reasons "Hub site: not switched on yet, so it was not read; Site design: not switched on yet, so it was not read; Site script: not switched on yet, so it was not read". Counts: `siteTemplate | 1 | max_lists 5 | max_template_bytes 40074`.
+  6. Second run with no tenant change: `sharepoint-structure: 0 new change(s) against the approved setup` (a re-export is not a change).
 - **Tenant:** reads only with the Collector (Sites.FullControl.All + SharePoint Administrator, already held). Grant nothing.
   Optional fixtures (step 1) are KEEL-RT- only, made with your usual admin path, and left in place.
 - Do, from your clone at the deployed commit B, with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print
@@ -8920,7 +8927,8 @@ item that needs it stays untouched.
   allowlist. The template the container applies is checked again there and its handlers are fixed (`Fields, ContentTypes, Lists, Navigation`).
 - Needs: Q189 done (the four reads live), and /opt/keel-live at the PR #613 merge or later
   (`grep -q AllowedPnPStructureWrites /opt/keel-live/ops/powershell/run-cmdlet.ps1`).
-- Status: todo
+- Status: blocked (waits for #638 and the three Q189 reads)
+- Result: blocked (2026-10-28 08:55 UTC, root keel-operator): needs Q189's four reads live, but only site templates are proven; hub sites, site designs and site scripts fail in ConvertTo-Json (#638). Needs check passes (`AllowedPnPStructureWrites` present at B = 76e1c71). Nothing run, nothing written.
 - **Test tenant only.** Same hard rules and standing authorization as Q80; log every approval id. Writes run with the **Restorer** only.
   Grant nothing: if SharePoint refuses (401/403, access denied), report blocked with the cmdlet and the message verbatim.
 - **Restorer PnP config:** the restore and the capture use `powershellRestorerConfigs.sharepoint`, else the `-restorer.json` sibling of

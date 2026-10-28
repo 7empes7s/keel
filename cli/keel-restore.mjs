@@ -66,6 +66,7 @@
 // --collector-config for PowerShell; Graph still reads with --collector-config.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { parseArgs } from 'node:util';
 import { readConfigFile } from '../engine/config/configFile.mjs';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { GraphReader } from '../tools/tenant-probe/graph.mjs';
@@ -142,20 +143,45 @@ import {
   incidentsCoveringSnapshot, recordPostRestoreChecks, resolveIncidentRecovery,
 } from '../engine/govern/incidents.mjs';
 
-function arg(name, fallback, argv = process.argv) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : fallback;
-}
-// Repeatable flag (e.g. --select): every occurrence contributes one value.
-function argAll(name, argv = process.argv) {
-  const values = [];
-  for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i] === `--${name}` && argv[i + 1] !== undefined) values.push(argv[i + 1]);
+// Security audit finding 4: argv is parsed strictly. A value that starts with "-"
+// (a restore target such as "--allow-tenant-wide-test-writes") is refused instead of
+// being read as a flag, and so is any unknown flag, a positional, or a repeated
+// single-value option.
+const STRING_OPTIONS = [
+  'plan', 'snapshot-id', 'artifact', 'persist-artifact', 'compensate', 'enforce-conditional-access', 'policy',
+  'requested-by', 'incident', 'compliance-fix', 'object', 'collector-config', 'target-config', 'workload',
+  'collection', 'tenant-host', 'mailbox', 'team', 'site', 'at',
+];
+const REPEATABLE_OPTIONS = ['select', 'delete', 'target'];
+const BOOLEAN_OPTIONS = ['enforce', 'include-organization', 'allow-tenant-wide-test-writes', 'accept-degradation'];
+
+export function parseRestoreArgs(argv = process.argv) {
+  const options = Object.fromEntries([
+    ...[...STRING_OPTIONS, ...REPEATABLE_OPTIONS].map((name) => [name, { type: 'string', multiple: true }]),
+    ...BOOLEAN_OPTIONS.map((name) => [name, { type: 'boolean', multiple: true }]),
+  ]);
+  let values;
+  try {
+    ({ values } = parseArgs({ args: argv.slice(2), options, strict: true, allowPositionals: false }));
+  } catch (err) {
+    throw new Error(`keel-restore: ${err.message.split('\n')[0]}`);
   }
-  return values;
-}
-function flag(name, argv = process.argv) {
-  return argv.includes(`--${name}`);
+  const parsed = {};
+  for (const name of [...STRING_OPTIONS, ...BOOLEAN_OPTIONS]) {
+    const given = values[name] ?? [];
+    if (given.length > 1) throw new Error(`keel-restore: --${name} may be given only once`);
+  }
+  for (const name of [...STRING_OPTIONS, ...REPEATABLE_OPTIONS]) {
+    for (const value of values[name] ?? []) {
+      if (value.length === 0 || value.startsWith('-')) {
+        throw new Error(`keel-restore: --${name} needs a value that does not start with "-"`);
+      }
+    }
+  }
+  for (const name of STRING_OPTIONS) parsed[name] = values[name]?.[0];
+  for (const name of REPEATABLE_OPTIONS) parsed[name] = values[name] ?? [];
+  for (const name of BOOLEAN_OPTIONS) parsed[name] = values[name] !== undefined;
+  return parsed;
 }
 
 // Exported so cli/keel-remediate.mjs (plan task 19) can reuse the exact same check
@@ -1967,18 +1993,19 @@ export async function main({
   dependencies,
   logger = console,
 } = {}) {
-  const planId = arg('plan', undefined, argv);
-  const snapshotId = arg('snapshot-id', undefined, argv);
-  const selection = argAll('select', argv);
-  const deleteKeys = argAll('delete', argv);
-  const artifactId = arg('artifact', undefined, argv);
-  const persistArtifactId = arg('persist-artifact', undefined, argv);
-  const compensateArtifactId = arg('compensate', undefined, argv);
-  const enforceRestoreArtifactId = arg('enforce-conditional-access', undefined, argv);
-  const enforcePolicy = arg('policy', undefined, argv);
-  const requestedBy = arg('requested-by', undefined, argv);
-  const incidentId = arg('incident', undefined, argv);
-  const mode = flag('enforce', argv) ? 'enforce' : 'dry-run';
+  const opts = parseRestoreArgs(argv);
+  const planId = opts.plan;
+  const snapshotId = opts['snapshot-id'];
+  const selection = opts.select;
+  const deleteKeys = opts.delete;
+  const artifactId = opts.artifact;
+  const persistArtifactId = opts['persist-artifact'];
+  const compensateArtifactId = opts.compensate;
+  const enforceRestoreArtifactId = opts['enforce-conditional-access'];
+  const enforcePolicy = opts.policy;
+  const requestedBy = opts['requested-by'];
+  const incidentId = opts.incident;
+  const mode = opts.enforce ? 'enforce' : 'dry-run';
 
   // Task-70: a compensation is planned from the promoted restore's own journal and
   // frozen config — never with --enforce, and never alongside another scope.
@@ -2012,18 +2039,18 @@ export async function main({
 
   // Gap 6: a compliance fix is planned for one control and one object — never
   // with --enforce, and never alongside another scope.
-  const fixControlId = arg('compliance-fix', undefined, argv);
+  const fixControlId = opts['compliance-fix'];
   if (fixControlId !== undefined) {
     if (planId || snapshotId || selection.length || deleteKeys.length || artifactId !== undefined || incidentId !== undefined) {
       throw new Error('--compliance-fix is mutually exclusive with --plan/--snapshot-id/--select/--delete/--artifact/--incident');
     }
-    const object = arg('object', undefined, argv);
+    const object = opts.object;
     if (!object) throw new Error('--compliance-fix requires --object <naturalKey>');
     if (mode === 'enforce') {
       throw new Error('--compliance-fix is a dry run only; execute it by promoting that artifact with --artifact <id> --enforce after approval');
     }
-    const fixCollectorPath = arg('collector-config', undefined, argv);
-    const fixTargetPath = arg('target-config', undefined, argv);
+    const fixCollectorPath = opts['collector-config'];
+    const fixTargetPath = opts['target-config'];
     if (!fixCollectorPath || !fixTargetPath) throw new Error('--compliance-fix requires --collector-config and --target-config');
     const fixCollector = readCollectorConfig(fixCollectorPath, readFile);
     const fixTarget = readRestorerConfig(fixTargetPath, readFile);
@@ -2038,7 +2065,7 @@ export async function main({
 
   // W2: a workload restore is planned from one recorded workload collection with the
   // collector only — never with --enforce, and never alongside another scope.
-  const workload = arg('workload', undefined, argv);
+  const workload = opts.workload;
   if (workload !== undefined) {
     if (planId || snapshotId || selection.length || artifactId !== undefined || incidentId !== undefined) {
       throw new Error('--workload is mutually exclusive with --plan/--snapshot-id/--select/--artifact/--incident');
@@ -2048,20 +2075,20 @@ export async function main({
     }
     // The dry run reads with the collector: the server's file (credentialPaths, the
     // same one its promotion reads) unless the operator names another.
-    const collectorConfigPath = arg('collector-config', undefined, argv)
+    const collectorConfigPath = opts['collector-config']
       ?? (dependencies?.credentialPaths ?? credentialPaths)().collectorConfig;
     return runRestore({
       workloadRestore: {
         workload,
-        collectionId: arg('collection', undefined, argv),
-        tenantHost: arg('tenant-host', undefined, argv),
-        mailbox: arg('mailbox', undefined, argv),
-        includeOrganization: flag('include-organization', argv),
-        teamId: arg('team', undefined, argv),
-        siteId: arg('site', undefined, argv),
-        at: arg('at', undefined, argv),
-        targets: argAll('target', argv),
-        allowTenantWide: flag('allow-tenant-wide-test-writes', argv),
+        collectionId: opts.collection,
+        tenantHost: opts['tenant-host'],
+        mailbox: opts.mailbox,
+        includeOrganization: opts['include-organization'],
+        teamId: opts.team,
+        siteId: opts.site,
+        at: opts.at,
+        targets: opts.target,
+        allowTenantWide: opts['allow-tenant-wide-test-writes'],
       },
       collectorConfig: readCollectorConfig(collectorConfigPath, readFile),
       collectorConfigPath,
@@ -2116,10 +2143,10 @@ export async function main({
   let collectorConfigPath;
   let targetConfigPath;
   if (artifactId === undefined) {
-    targetConfigPath = arg('target-config', undefined, argv);
+    targetConfigPath = opts['target-config'];
     if (!targetConfigPath) throw new Error('--target-config <path> required');
     targetConfig = readRestorerConfig(targetConfigPath, readFile);
-    collectorConfigPath = arg('collector-config', undefined, argv);
+    collectorConfigPath = opts['collector-config'];
     if (!collectorConfigPath) throw new Error('--collector-config <path> required for read-only sign-in-path evidence');
     collectorConfig = readCollectorConfig(collectorConfigPath, readFile);
     assertSeparateRestorer(collectorConfig, targetConfig);
@@ -2140,7 +2167,7 @@ export async function main({
     incidentId,
     requestedBy,
     readFile,
-    acceptDegradation: flag('accept-degradation', argv),
+    acceptDegradation: opts['accept-degradation'],
     dbUrl,
     dependencies,
     logger,

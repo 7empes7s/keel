@@ -213,9 +213,15 @@ export function partialResult(handler, err, durationMs) {
   return { stdout: err.stdout, stderr: withholdParsedText(err.stderr ?? ''), durationMs, partial: true, incompleteTypes };
 }
 
+// Every requireString value becomes a child's argv entry. Security audit finding 4: a
+// value that starts with "-" (a restore target "--allow-tenant-wide-test-writes") would
+// be read by the child as a flag, so it is refused here.
 function requireString(value, label) {
   if (typeof value !== 'string' || value.length === 0) {
     throw new Error(`${label} must be a non-empty string`);
+  }
+  if (value.startsWith('-')) {
+    throw new Error(`${label} must not start with "-"`);
   }
   return value;
 }
@@ -503,7 +509,7 @@ export const JOB_HANDLERS = {
         if (!hasArtifactId) {
           throw new Error('params.artifactId is required to enforce a restore (a completed dry-run artifact must be promoted; a direct enforce is refused)');
         }
-        return ['--artifact', params.artifactId, '--enforce'];
+        return ['--artifact', requireString(params.artifactId, 'params.artifactId'), '--enforce'];
       }
 
       // Roadmap task-70: a compensation dry run carries only the promoted restore it

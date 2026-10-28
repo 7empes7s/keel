@@ -43,18 +43,26 @@ const TEAMS_DOCS = 'https://learn.microsoft.com/en-us/powershell/module/teams';
 
 /**
  * Fields no restore ever writes (CLAUDE.md restore-writer rule): they decide which
- * senders, certificates or partners a connector trusts. A tampered or stale backup
- * could make a connector trust another certificate or IP range, treat outside mail
- * as internal, or accept a different partner certificate, so a difference is listed
- * for an administrator to check and apply by hand. declare() refuses them, and any
- * other field whose name says it carries trust, a certificate or a sign-in endpoint.
+ * senders, certificates, hosts, partners or federated organizations the tenant trusts.
+ * A tampered or stale backup could make a connector trust another certificate or IP
+ * range, treat outside mail as internal, send mail through another host, let a sender
+ * range skip spam filtering, or open Teams chat to other organizations, so a difference
+ * is listed for an administrator to check and apply by hand. declare() refuses them,
+ * and any other field whose name says it carries trust, a certificate or a sign-in endpoint.
  */
 export const TRUST_FIELDS = Object.freeze({
   exchangeInboundConnector: Object.freeze([
     'SenderIPAddresses', 'RestrictDomainsToIPAddresses', 'RestrictDomainsToCertificate', 'RequireTls', 'TlsSenderCertificateName',
     'TreatMessagesAsInternal', 'TrustedOrganizations', 'EFSkipIPs',
   ]),
-  exchangeOutboundConnector: Object.freeze(['TlsSettings', 'TlsDomain']),
+  // SmartHosts: the hosts all of the connector's mail is relayed through.
+  exchangeOutboundConnector: Object.freeze(['TlsSettings', 'TlsDomain', 'SmartHosts']),
+  // Sender IP ranges whose mail skips spam filtering, and Microsoft's own safe list.
+  exchangeConnectionFilterPolicy: Object.freeze(['IPAllowList', 'EnableSafeList']),
+  // Teams federation: which outside organizations and SIP domains the tenant trusts.
+  teamsFederationConfiguration: Object.freeze([
+    'AllowFederatedUsers', 'AllowedDomains', 'AllowedDomainsAsAList', 'BlockedDomains', 'SharedSipAddressSpace', 'TreatDiscoveredPartnersAsUnverified',
+  ]),
 });
 export const TRUST_FIELD_PATTERN = /certificate|trust|tlssender|tlsdomain|tlssettings|signin|issuer|metadataexchange/i;
 
@@ -111,7 +119,7 @@ family(EXO, EXO_DOCS, {
   workload: MAIL_FLOW, prefix: 'mailflow.outbound-connector', family: 'outboundConnector', resourceType: 'exchangeOutboundConnector',
   readBack: 'mailflow.outbound-connectors', set: 'Set-OutboundConnector',
   fields: [
-    'Enabled', 'ConnectorType', 'ConnectorSource', 'Comment', 'RecipientDomains', 'SmartHosts', 'UseMXRecord',
+    'Enabled', 'ConnectorType', 'ConnectorSource', 'Comment', 'RecipientDomains', 'UseMXRecord',
     'IsTransportRuleScoped', 'RouteAllMessagesViaOnPremises', 'CloudServicesMailEnabled', 'AllAcceptedDomains', 'SenderRewritingEnabled', 'TestMode',
     // Never written: TRUST_FIELDS.exchangeOutboundConnector.
   ],
@@ -156,7 +164,7 @@ extended('outboundSpamPolicy', 'outbound-spam-policy', 'outbound-spam-policies',
 ]);
 extended('outboundSpamRule', 'outbound-spam-rule', 'outbound-spam-rules', 'Set-HostedOutboundSpamFilterRule', 'exchangeOutboundSpamRule', SENDER_SCOPE);
 extended('connectionFilterPolicy', 'connection-filter-policy', 'connection-filter-policies', 'Set-HostedConnectionFilterPolicy', 'exchangeConnectionFilterPolicy', [
-  'AdminDisplayName', 'IPAllowList', 'IPBlockList', 'EnableSafeList',
+  'AdminDisplayName', 'IPBlockList', // Never written: TRUST_FIELDS.exchangeConnectionFilterPolicy.
 ]);
 extended('antiSpamRule', 'anti-spam-rule', 'anti-spam-rules', 'Set-HostedContentFilterRule', 'exchangeAntiSpamRule', RECIPIENT_SCOPE);
 extended('antiPhishRule', 'anti-phish-rule', 'anti-phish-rules', 'Set-AntiPhishRule', 'exchangeAntiPhishRule', RECIPIENT_SCOPE);
@@ -214,8 +222,9 @@ family(TEAMS, TEAMS_DOCS, {
   workload: TEAMS_POLICIES, prefix: 'teams.federation-configuration', family: 'federationConfiguration', resourceType: 'teamsFederationConfiguration',
   readBack: 'teams.federation-configuration', set: 'Set-CsTenantFederationConfiguration', identity: 'policy',
   fields: [
-    'AllowFederatedUsers', 'BlockAllSubdomains', 'AllowTeamsConsumer', 'AllowTeamsConsumerInbound', 'RestrictTeamsConsumerToExternalUserProfiles',
-    'TreatDiscoveredPartnersAsUnverified', 'SharedSipAddressSpace', 'ExternalAccessWithTrialTenants',
+    'BlockAllSubdomains', 'AllowTeamsConsumer', 'AllowTeamsConsumerInbound', 'RestrictTeamsConsumerToExternalUserProfiles',
+    'ExternalAccessWithTrialTenants',
+    // Never written: TRUST_FIELDS.teamsFederationConfiguration.
   ],
 });
 family(TEAMS, TEAMS_DOCS, {

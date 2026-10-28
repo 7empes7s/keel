@@ -9669,8 +9669,16 @@ item that needs it stays untouched.
   `assigned (N): … waiting for your choice`, and `keel-restore --compensate A --delete-assigned <key>` or `--skip-assigned <key>`
   re-plans with the choice (the portal sends the same through "Update the undo plan").
 - Needs: PR #655 merged and /opt/keel-live at that merge or later (`grep -q removeChosenAssignments /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: blocked (#666: todoSettings 500 trips the full-read guard on the undo delete)
+- Result: blocked (2026-10-28 21:59 UTC, root keel-operator) at step 5. **The undo with choices plans correctly but is refused before any write: `blocked-incomplete-read: deleting deviceConfiguration:KEEL-RT-213-delete needs a full read of the target, but todoSettings could not be read`** (`GET /beta/admin/todo` → 500 UnknownError, empty message, on every try 21:48–21:59). Filed **#666** (decision for the thread: exempt journal-authorised undo deletes from the full-read guard, and/or treat this 500 as unavailable; the CLI also hides the reason). Steps 1–4 as expected. B = **39129d8a**. Restorer for fixture writes and the two assigns, Collector for reads/backup; global admin not used. Assigned only to the empty group KEEL-RT-213-group.
+  - Fixtures: group KEEL-RT-213-group `fb54b6eb` (0 members, checked before each assign); profiles KEEL-RT-213-delete `3208f964` and KEEL-RT-213-skip `19b5f859` (windows10GeneralConfiguration, cameraBlocked false).
+  - Step 1: backup S `d1ac6783`, exit 3 (todoSettings 500; snapshot complete). deviceConfiguration complete (8); both fixtures in S, assignments complete-empty.
+  - Step 2: both deleted by hand. Dry run A `99206d78` exit 0; approval **728e64c3**; enforce exit 0, applied 2. d1 `57c5bbe6`, s1 `ea159afd`, no assignments.
+  - Step 3: `POST …/{d1|s1}/assign` to KEEL-RT-213-group: 200, 200 (one assignment each).
+  - Step 4: C0 `42977fa3`, exit 0: `compensation of 99206d78-…: 0 inverse write(s), 0 conflict(s), 0 not applied, 0 manual, 0 irrecoverable`, plus `assigned (1): deviceConfiguration:KEEL-RT-213-skip — waiting for your choice: delete it with its assignments, or skip it` (and the same for -delete). Approval **c8ca41ac**; `--artifact C0 --enforce` exit 1: `compensation promotion refused: 2 assigned policies wait for a choice to delete or skip (...); plan the undo again with the choices`. No write. Portal undo panel not reached (Cloudflare Access sign-in).
+  - Step 5: C `c1f68f0e` (`--delete-assigned …-delete --skip-assigned …-skip`), exit 0: `1 inverse write(s), 0 conflict(s), 0 not applied, 0 manual, 0 irrecoverable`; `skip it` / `delete it with its assignments`; operation = delete d1 with `removeAssignments.ids` [d1's assignment]. **Persisted `(status: refused)`**, with guard_refusals as above. It cannot be approved or promoted; 0 journal entries.
+  - Steps 6–7: not reached / skipped (same guard).
+  - Cleanup: d1 and s1 deleted; the group deleted and purged from deleted items (GET 404). Nothing left in the tenant. 4 completion items from A stay pending in KEEL.
 - **Test tenant only. Restorer for writes, Collector for reads and backups.** Self-approve under the 2026-10-14 standing authorization
   and log every approval id. Run every restore from your own checkout at B (never `/opt/keel`). Assign the fixtures **only** to the
   empty security group `KEEL-RT-213-group` (create it, no members). Never assign to All devices or All users.

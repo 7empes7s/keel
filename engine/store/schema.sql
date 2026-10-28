@@ -170,7 +170,7 @@ CREATE INDEX IF NOT EXISTS job_running_heartbeat_idx ON job (heartbeat_at) WHERE
 -- name keeps this idempotent without rewriting any rows.
 ALTER TABLE job DROP CONSTRAINT IF EXISTS job_kind_check;
 ALTER TABLE job ADD CONSTRAINT job_kind_check
-  CHECK (kind IN ('collect','prune','drift-detect','offsite','restore','remediate','baseline-create','baseline-activate','backup','policy-evaluate','notify','api-drift','workload-collect','content-collect','discover'));
+  CHECK (kind IN ('collect','prune','drift-detect','offsite','restore','remediate','baseline-create','baseline-activate','backup','policy-evaluate','notify','api-drift','workload-collect','content-collect','dispose','discover'));
 ALTER TABLE job ADD COLUMN IF NOT EXISTS idempotency_key text;
 CREATE UNIQUE INDEX IF NOT EXISTS job_kind_idempotency_key_idx
   ON job (kind, idempotency_key) WHERE idempotency_key IS NOT NULL;

@@ -23,7 +23,7 @@ export const ACTIVITY_KINDS: Record<ActivityKind, { label: string; one: string; 
   backup: { label: "Backups", one: "Backup", icon: "backup", jobs: ["backup", "collect", "workload-collect", "content-collect", "prune", "discover"], records: ["collection.completed", "job.started"] },
   restore: { label: "Restores", one: "Restore", icon: "restore", jobs: ["restore", "restore-dry-run"], records: ["recovery-completion", "content-effect-approval", "incident-recovery", "incident-recovery-check"] },
   rollback: { label: "Roll backs", one: "Roll back", icon: "swap", jobs: ["remediate"], records: ["automation-execution"] },
-  setup: { label: "Approved setups", one: "Approved setup", icon: "baselines", jobs: ["baseline-create", "baseline-activate"], records: ["baseline-resnapshot"] },
+  setup: { label: "Approved setups", one: "Approved setup", icon: "baselines", jobs: ["baseline-create", "baseline-activate", "dispose"], records: ["baseline-resnapshot"] },
   approval: { label: "Approvals", one: "Approval", icon: "check-circle", jobs: [], records: ["approval-request", "approval-decision", "approval-signoff", "approval.decided", "action-attempt"] },
   policy: { label: "Policy checks", one: "Policy check", icon: "automation", jobs: ["drift-detect", "policy-evaluate", "api-drift"], records: ["policy-evaluation", "benchmark-evaluation", "benchmark-exception"] },
   drill: { label: "Drills", one: "Drill", icon: "play", jobs: [], records: ["fidelity-drill", "recovery-drill"] },

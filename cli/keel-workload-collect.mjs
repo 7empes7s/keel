@@ -230,13 +230,15 @@ export async function importSeams() {
     { ledgerEvidenceFromOneDrivePurviewAcceptance }, { ledgerEvidenceFromWorkloadWritesAcceptance },
     { WRITTEN_WORKLOADS, workloadWritesRecordFile }, { ledgerEvidenceFromSiteGrantsAcceptance },
     { SITE_GRANTS_RECORD_FILE }, { ledgerEvidenceFromSitePermissionsAcceptance }, { SITE_PERMISSIONS_RECORD_FILE },
-    { READ_FAMILIES, ledgerEvidenceFromWorkloadReadsAcceptance, workloadReadsRecordFile }] = await Promise.all([
+    { READ_FAMILIES, ledgerEvidenceFromWorkloadReadsAcceptance, workloadReadsRecordFile },
+    { ledgerEvidenceFromStructureWritesAcceptance }, { STRUCTURE_WRITES_RECORD_FILE }] = await Promise.all([
     import('../tools/qualification/sharepointLive.mjs'), import('../tools/qualification/teamsLive.mjs'),
     import('../tools/qualification/exchangeLive.mjs'), import('../tools/qualification/onedrivePurviewLive.mjs'),
     import('../tools/qualification/workloadWritesLive.mjs'), import('../tools/qualification/workloadWritesAcceptance.mjs'),
     import('../tools/qualification/sharepointSiteGrantsLive.mjs'), import('../tools/qualification/sharepointSiteGrantsAcceptance.mjs'),
     import('../tools/qualification/sharepointSitePermissionsLive.mjs'), import('../tools/qualification/sharepointSitePermissionsAcceptance.mjs'),
     import('../tools/qualification/workloadReadsLive.mjs'),
+    import('../tools/qualification/sharepointStructureWritesLive.mjs'), import('../tools/qualification/sharepointStructureWritesAcceptance.mjs'),
   ]);
   return [
     { file: 'sharepoint-live-acceptance.json', seam: ledgerEvidenceFromAcceptance },
@@ -261,6 +263,8 @@ export async function importSeams() {
     { file: SITE_GRANTS_RECORD_FILE, optional: true, seam: ledgerEvidenceFromSiteGrantsAcceptance },
     // Gap 4: the site group, member, admin, level and role assignment writes, optional until captured.
     { file: SITE_PERMISSIONS_RECORD_FILE, optional: true, seam: ledgerEvidenceFromSitePermissionsAcceptance },
+    // The SharePoint structure restore writes, optional until captured.
+    { file: STRUCTURE_WRITES_RECORD_FILE, optional: true, seam: ledgerEvidenceFromStructureWritesAcceptance },
   ];
 }
 

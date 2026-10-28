@@ -9,7 +9,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runJob, JobQueueError, DEFAULT_MEMORY, CONTAINER_CREDENTIAL_DIR, defaultScriptMount } from './jobQueue.mjs';
+import { runJob, jobContainerName, JobQueueError, DEFAULT_MEMORY, CONTAINER_CREDENTIAL_DIR, defaultScriptMount } from './jobQueue.mjs';
 
 /**
  * Builds a fake ChildProcess-shaped object. Emits its scripted stdout/stderr
@@ -191,24 +191,96 @@ async function run() {
 
   // 6. A hung container (never closes) is killed and rejected once the
   //    timeout budget is exhausted — this is the safety net for a runaway
-  //    pwsh process on a memory-constrained host.
+  //    pwsh process on a memory-constrained host. Killing the docker client
+  //    does not stop the container, so the named container is force-removed
+  //    before the call rejects.
   {
     let killed = false;
-    const spawnFn = () => {
-      const child = makeFakeChild({ neverClose: true });
+    let runArgs;
+    const rmCalls = [];
+    const spawnFn = (bin, a) => {
+      if (a[0] === 'rm') { rmCalls.push({ bin, args: a }); return makeFakeChild(); }
+      runArgs = a;
+      const child = makeFakeChild({ neverClose: true, stderrChunks: ['pwsh: still working'] });
       const originalKill = child.kill;
-      child.kill = (...a) => { killed = true; return originalKill(...a); };
+      child.kill = (...k) => { killed = true; return originalKill(...k); };
       return child;
     };
     await assert.rejects(
-      () => runJob({ mode: 'probe' }, { spawnFn, timeoutMs: 20 }),
+      () => runJob({ mode: 'probe', jobId: 'job-6' }, { spawnFn, timeoutMs: 20 }),
       (err) => {
         assert.ok(err instanceof JobQueueError);
         assert.equal(err.code, 'TIMEOUT');
+        assert.equal(err.stderr, 'pwsh: still working', 'a clean removal adds nothing to stderr');
         return true;
       },
     );
     assert.ok(killed, 'the child must be killed on timeout');
+    const name = runArgs[runArgs.indexOf('--name') + 1];
+    assert.match(name, /^keel-job-job-6-[0-9a-f]{8}$/);
+    assert.ok(runArgs.indexOf('--name') < runArgs.indexOf('keel-powershell:latest'), '--name is a docker run option, before the image');
+    assert.deepEqual(rmCalls, [{ bin: 'docker', args: ['rm', '-f', name] }], 'the timed-out container is force-removed by name');
+  }
+
+  // 6b. Container names only use characters docker accepts and never collide.
+  {
+    assert.match(jobContainerName('a/b c:d'), /^keel-job-abcd-[0-9a-f]{8}$/);
+    assert.match(jobContainerName('../'), /^keel-job-\.\.-[0-9a-f]{8}$/);
+    assert.match(jobContainerName('///'), /^keel-job-[0-9a-f]{8}$/);
+    assert.ok(jobContainerName('x'.repeat(200)).length <= 'keel-job-'.length + 64 + 9);
+    assert.notEqual(jobContainerName('same'), jobContainerName('same'));
+  }
+
+  // 6c. A job that finishes never runs docker rm (--rm already removes it).
+  {
+    const bins = [];
+    const spawnFn = (bin, a) => { bins.push(a[0]); return makeFakeChild({ stdoutChunks: ['[]'] }); };
+    await runJob({ mode: 'probe' }, { spawnFn });
+    assert.deepEqual(bins, ['run']);
+  }
+
+  // 6d. The removal is best effort and bounded: a container that is already gone
+  //     is fine, a failed or hung `docker rm` is reported in stderr, and the job
+  //     still rejects as TIMEOUT.
+  {
+    const timeoutWith = async (rmChild, removeTimeoutMs = 1000) => {
+      const spawnFn = (bin, a) => (a[0] === 'rm' ? rmChild() : makeFakeChild({ neverClose: true }));
+      let caught;
+      await runJob({ mode: 'probe' }, { spawnFn, timeoutMs: 20, removeTimeoutMs }).catch((err) => { caught = err; });
+      assert.equal(caught?.code, 'TIMEOUT');
+      return caught.stderr;
+    };
+    assert.equal(await timeoutWith(() => makeFakeChild({ exitCode: 1, stderrChunks: ['Error response from daemon: No such container: keel-job-x'] })), '');
+    assert.match(await timeoutWith(() => makeFakeChild({ exitCode: 1, stderrChunks: ['Cannot connect to the Docker daemon'] })),
+      /^keel: container keel-job-\S+ may still be running: docker rm exited 1: Cannot connect to the Docker daemon\n$/);
+    assert.match(await timeoutWith(() => makeFakeChild({ emitError: new Error('ENOENT') })), /may still be running: could not run docker rm: ENOENT/);
+    assert.match(await timeoutWith(() => { throw new Error('spawn blew up'); }), /may still be running: could not run docker rm: spawn blew up/);
+    const started = Date.now();
+    assert.match(await timeoutWith(() => makeFakeChild({ neverClose: true }), 30), /may still be running: docker rm did not finish within 30ms/);
+    assert.ok(Date.now() - started < 1000, 'a hung docker rm does not hold the job');
+  }
+
+  // 6e. The staged credentials stay until the container is removed, then go.
+  {
+    const root = mkdtempSync(join(tmpdir(), 'keel-jq-root-'));
+    const staging = mkdtempSync(join(tmpdir(), 'keel-jq-staging-'));
+    try {
+      writeFileSync(join(root, 'tenant.json'), JSON.stringify({ tenantId: 't' }));
+      let stagedDuringRm;
+      const spawnFn = (bin, a) => {
+        if (a[0] === 'rm') { stagedDuringRm = readdirSync(staging).length; return makeFakeChild(); }
+        return makeFakeChild({ neverClose: true });
+      };
+      await assert.rejects(
+        () => runJob({ mode: 'probe', tenantConfigPath: join(root, 'tenant.json') }, { spawnFn, timeoutMs: 20, credentialRoot: root, stagingRoot: staging }),
+        (err) => err.code === 'TIMEOUT',
+      );
+      assert.equal(stagedDuringRm, 1, 'credentials are still staged while the container is being removed');
+      assert.deepEqual(readdirSync(staging), [], 'credentials are removed once the container is gone');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(staging, { recursive: true, force: true });
+    }
   }
 
   // 7. job must be a plain object. runJob is async, so an invalid job

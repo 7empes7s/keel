@@ -8885,7 +8885,10 @@ item that needs it stays untouched.
   navigation, features, web/regional settings; no files, pages, term store, property bag or site security). Each read stays off
   until its own live record is imported.
 - Needs: /opt/keel-live at the #603 merge or later (`grep -q AllowedPnPStructure /opt/keel-live/ops/powershell/run-cmdlet.ps1`).
-- Status: done (site templates proven; 3 reads not proven, #638)
+- Status: todo (rerun for #638: steps 3, 5 and 6 only, to prove hub sites, site designs and site scripts; fixtures and scope file from the first run stay)
+- Rerun needs (2026-10-28): /opt/keel-live at the PR #644 merge or later (`grep -q ConvertTo-KeelJson /opt/keel-live/ops/powershell/run-cmdlet.ps1`).
+  If `ConvertTo-KeelJson` is missing, wait for the deploy; do not rebuild the image (the worker mounts `ops/powershell` over `/app`).
+  Expected now: `proven` has all four reads, `notProven` empty. Append the new result below the first one.
 - Result: done, partly proven (2026-10-28 08:55 UTC, root keel-operator). **Site templates proven and on; hub sites, site designs and site scripts fail in ConvertTo-Json (filed #638).** B = `76e1c71`. Collector reads with the `powershellConfigs.sharepoint` config (`/etc/keel/purview-collector.json`); fixtures made with its Restorer sibling (`purview-restorer.json`); global admin not used; nothing granted.
   1. Fixtures: before, the tenant had **0** hub sites, 0 site scripts, 0 site designs. **Created** site script `KEEL-RT-structure-script` (one `createSPList` action for `KEEL RT list`) and site design `KEEL-RT-structure-design` (WebTemplate 64, IsDefault false, scoped to nobody). **Registered `KEEL-RT-20261004` as a hub site** (the tenant had none); nothing joins it. All left in place.
   2. `/etc/keel/workload-scope.json` (644 root:root, kept): backed up to `workload-scope.json.bak-q189` (same owner and mode). Keys before: mailboxes, onedriveHost, onedriveSites, powershellConfigs, sharepointHost. After: the same plus `sharepointStructureSites` = [the KEEL-RT-20261004 URL].
@@ -9024,7 +9027,8 @@ item that needs it stays untouched.
   allowlist. The template the container applies is checked again there and its handlers are fixed (`Fields, ContentTypes, Lists, Navigation`).
 - Needs: Q189 done (the four reads live), and /opt/keel-live at the PR #613 merge or later
   (`grep -q AllowedPnPStructureWrites /opt/keel-live/ops/powershell/run-cmdlet.ps1`).
-- Status: blocked (waits for #638 and the three Q189 reads)
+- Status: todo (after the Q189 rerun proves hub sites, site designs and site scripts; #638 fixed by PR #644)
+- Also needs (2026-10-28): /opt/keel-live at the PR #644 merge or later (`grep -q ConvertTo-KeelJson /opt/keel-live/ops/powershell/run-cmdlet.ps1`).
 - Result: blocked (2026-10-28 08:55 UTC, root keel-operator): needs Q189's four reads live, but only site templates are proven; hub sites, site designs and site scripts fail in ConvertTo-Json (#638). Needs check passes (`AllowedPnPStructureWrites` present at B = 76e1c71). Nothing run, nothing written.
 - **Test tenant only.** Same hard rules and standing authorization as Q80; log every approval id. Writes run with the **Restorer** only.
   Grant nothing: if SharePoint refuses (401/403, access denied), report blocked with the cmdlet and the message verbatim.

@@ -139,8 +139,13 @@ export default [
   { resourceType: 'iosLobAppProvisioningConfiguration', operation: 'create', path: '/deviceAppManagement/iosLobAppProvisioningConfigurations', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
   { resourceType: 'iosLobAppProvisioningConfiguration', operation: 'update', path: '/deviceAppManagement/iosLobAppProvisioningConfigurations', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   // Restore gaps, batch 13: app dependencies and supersedence.
-  { resourceType: 'mobileAppRelationship', operation: 'create', path: '/deviceAppManagement/mobileAppRelationships', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
-  { resourceType: 'mobileAppRelationship', operation: 'update', path: '/deviceAppManagement/mobileAppRelationships', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'mobileAppRelationship', operation: 'create', path: '/deviceAppManagement/mobileApps/{appId}/updateRelationships', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'mobileAppRelationship', operation: 'update', path: '/deviceAppManagement/mobileApps/{appId}/updateRelationships', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  // Only the undo of a link a restore created (the record refuses any other delete).
+  { resourceType: 'mobileAppRelationship', operation: 'delete', path: '/deviceAppManagement/mobileApps/{appId}/updateRelationships', handler: INTUNE, idOutcome: 'terminal', proofRef: INTUNE_PROOF },
+  // Restore gaps, batch 18: Intune apps (a Win32 or line-of-business app without its package).
+  { resourceType: 'mobileApp', operation: 'create', path: '/deviceAppManagement/mobileApps', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'mobileApp', operation: 'update', path: '/deviceAppManagement/mobileApps', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   // Add-only identity edges: an edge is never removed, so edge-remove is not registered.
   { resourceType: 'application#appOwner', operation: 'edge-add', path: '/applications/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },
   { resourceType: 'servicePrincipal#servicePrincipalOwner', operation: 'edge-add', path: '/servicePrincipals/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },

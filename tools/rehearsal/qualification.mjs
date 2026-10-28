@@ -31,6 +31,7 @@ import {
   DISPOSABLE_PREFIX, INTENDED_SEQUENCE, assertDisposable, assertRehearsalDatabase,
   assertSeparateRestorer, rehearsalGroup, runRoundTrip, tenantRefFor,
 } from './roundTrip.mjs';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 export const DRILL_MANIFEST_VERSION = 1;
 export const DRILL_MANIFEST_KIND = 'bounded-same-tenant-drill';
@@ -159,6 +160,11 @@ function readJson(path) {
   return path ? JSON.parse(readFileSync(path, 'utf8')) : undefined;
 }
 
+/** A Keel settings file under /etc/keel; a broken or missing one stops with a plain sentence. */
+function readSettings(path, what) {
+  return path ? readConfigFile(path, { readFile: readFileSync, what }) : undefined;
+}
+
 /**
  * Offline plan validation. Reads the two configuration files; makes no write,
  * no connection and no Graph call, and never counts as a recovery drill.
@@ -167,8 +173,8 @@ export function validateDrillPlan({
   manifest, collectorConfigPath = '/etc/keel/tenant.json', restorerConfigPath,
   dbUrl = process.env.KEEL_DB_TEST_URL, productionUrl = process.env.KEEL_DB_URL,
 }) {
-  const collectorConfig = readJson(collectorConfigPath);
-  const restorerConfig = readJson(restorerConfigPath);
+  const collectorConfig = readSettings(collectorConfigPath, 'collector settings');
+  const restorerConfig = readSettings(restorerConfigPath, 'restorer settings');
   const findings = validateDrillManifest(manifest, { collectorConfig, restorerConfig, dbUrl, productionUrl });
   return {
     mode: 'offline',
@@ -228,23 +234,42 @@ export function boundedWriter(writer, { manifest, clock, startedAt }) {
   };
 }
 
-/** Reads every created object back; anything still readable is a residual. */
-export async function verifyCleanup(reader, created) {
+/**
+ * Reads every created object back; anything still readable is a residual.
+ * Issue #646: right after a purge, /directory/deletedItems can still answer 200
+ * from a stale replica (a recheck 35 s later read 404). Each surface is read
+ * again, about 36 s in all by default, until it answers 404, as hardDelete does. A lagging replica
+ * can also answer a stale 404, and a retry gives it more chances to, so absence
+ * counts only after two 404s in a row. A surface that never reads as absent is
+ * reported, with the last answer it gave that was not a 404.
+ */
+export async function verifyCleanup(reader, created, { attempts = 12, delayMs = 3000 } = {}) {
   const verifiedAbsent = [];
   const residuals = [];
   for (const [id, naturalKey] of created) {
     for (const [surface, path] of [['live', `/groups/${id}`], ['deleted-items', `/directory/deletedItems/${id}`]]) {
-      let result;
-      try {
-        result = await reader.get('v1.0', path);
-      } catch (error) {
-        residuals.push({ objectId: id, naturalKey, surface, state: 'unknown', error: error.message });
-        continue;
+      let residual = { objectId: id, naturalKey, surface, state: 'unknown', status: null };
+      let absentReads = 0;
+      for (let attempt = 0; attempt < attempts + 1 && absentReads < 2; attempt += 1) {
+        if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+        let result;
+        try {
+          result = await reader.get('v1.0', path);
+        } catch (error) {
+          absentReads = 0;
+          residual = { objectId: id, naturalKey, surface, state: 'unknown', error: error.message };
+          continue;
+        }
+        if (result?.ok === false && result.status === 404) {
+          absentReads += 1;
+          continue;
+        }
+        absentReads = 0;
+        residual = {
+          objectId: id, naturalKey, surface, state: result?.ok ? 'present' : 'unknown', status: result?.status ?? null,
+        };
       }
-      if (result?.ok === false && result.status === 404) continue;
-      residuals.push({
-        objectId: id, naturalKey, surface, state: result?.ok ? 'present' : 'unknown', status: result?.status ?? null,
-      });
+      if (absentReads < 2) residuals.push(residual);
     }
     if (!residuals.some((residual) => residual.objectId === id)) verifiedAbsent.push({ objectId: id, naturalKey });
   }
@@ -272,6 +297,7 @@ export async function runBoundedDrill({
   log = (line) => process.stdout.write(`${line}\n`),
   actor = 'keel-drill',
   roundTrip = runRoundTrip,
+  cleanupRetry,
 } = {}) {
   if (mode === 'offline') {
     return validateDrillPlan({ manifest, collectorConfigPath, restorerConfigPath, dbUrl, productionUrl });
@@ -280,8 +306,8 @@ export async function runBoundedDrill({
   if (confirm !== true) {
     throw new Error('a live drill writes to the tenant: opt in explicitly with --confirm-bounded-drill');
   }
-  const collectorConfig = readJson(collectorConfigPath);
-  const restorerConfig = readJson(restorerConfigPath);
+  const collectorConfig = readSettings(collectorConfigPath, 'collector settings');
+  const restorerConfig = readSettings(restorerConfigPath, 'restorer settings');
   const findings = validateDrillManifest(manifest, { collectorConfig, restorerConfig, dbUrl, productionUrl });
   if (findings.length) {
     throw new Error(`drill refused before any write: ${findings.map((item) => item.code).join(', ')}`);
@@ -314,7 +340,7 @@ export async function runBoundedDrill({
     } catch (caught) {
       error = caught.message;
     }
-    const cleanup = await verifyCleanup(reader, guarded.created);
+    const cleanup = await verifyCleanup(reader, guarded.created, cleanupRetry);
     const finishedAt = clock();
     const elapsedMs = finishedAt - startedAt;
     let outcome = 'passed';
@@ -364,7 +390,7 @@ export async function runCli({ argv = process.argv.slice(2), log = (line) => pro
   const restorerConfigPath = argValue(argv, 'restorer-config');
   const dbUrl = argValue(argv, 'db-url') ?? process.env.KEEL_DB_TEST_URL;
   if (argv.includes('--build-manifest')) {
-    const manifest = buildDrillManifest({ collectorConfig: readJson(collectorConfigPath), now: dependencies.now?.() ?? new Date() });
+    const manifest = buildDrillManifest({ collectorConfig: readSettings(collectorConfigPath, 'collector settings'), now: dependencies.now?.() ?? new Date() });
     const out = argValue(argv, 'out');
     if (out) writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);
     log(JSON.stringify(manifest));
@@ -404,8 +430,8 @@ async function credentialClients({ collectorConfigPath, restorerConfigPath }) {
     import('../tenant-probe/graph.mjs'),
     import('../../engine/restore/graphWriter.mjs'),
   ]);
-  const collector = await getToken(readJson(collectorConfigPath));
-  const restorer = await getToken(readJson(restorerConfigPath));
+  const collector = await getToken(readSettings(collectorConfigPath, 'collector settings'));
+  const restorer = await getToken(readSettings(restorerConfigPath, 'restorer settings'));
   return {
     reader: new GraphReader(async () => collector.accessToken),
     writer: new GraphWriter(async () => restorer.accessToken),

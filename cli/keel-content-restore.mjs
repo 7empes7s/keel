@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // /opt/keel/cli/keel-content-restore.mjs
 //
-// Wave 2 content restore. One subcommand per workload; mail is here, files come with FILER.
+// Wave 2 content restore. One subcommand per workload: mail is here, files and teams
+// (channel messages) are in keel-content-restore-files.mjs and keel-content-restore-teams.mjs.
 //
 //   node keel-content-restore.mjs mail plan    --source-mailbox USER_ID --at ISO [restore options]
 //   node keel-content-restore.mjs mail request --source-mailbox USER_ID --at ISO [restore options] --actor PRINCIPAL_ID [--justification TEXT]
@@ -25,9 +26,12 @@
 // content write transport as the content-restorer app, a separate app registration:
 //   { "tenantId": "...", "clientId": "...", "certPath": "...", "keyPath": "..." }
 // The run is journaled (schema.d/72-content-restore.sql): running the same request again
-// resumes it and writes nothing already restored.
+// resumes it and writes nothing already restored. An approval must be run within 24 hours
+// of its decision, and a completed run is never started again. A restore to another
+// mailbox is filed as content-restore-other-location (the tenant's two-person rule).
 import { existsSync, readFileSync } from 'node:fs';
 import { readConfigFile } from '../engine/config/configFile.mjs';
+import { argvParser, parseCliArgs } from './args.mjs';
 import { pathToFileURL } from 'node:url';
 
 import { getToken } from '../tools/tenant-probe/auth.mjs';
@@ -39,24 +43,40 @@ import { createPgContentIndex } from '../engine/content/index.mjs';
 import { createContentStore, parseContentKey } from '../engine/content/store.mjs';
 import { requestApproval } from '../engine/govern/approvals.mjs';
 import { seg } from '../engine/content/exchangeMail.mjs';
-import { CONTENT_RESTORE_ACTION, ContentRestoreRefusedError, authorizeContentRestore, targetProblems } from '../engine/content/restore/gate.mjs';
+import {
+  CONTENT_RESTORE_ACTION, CONTENT_RESTORE_OTHER_LOCATION, ContentRestoreRefusedError, authorizeContentRestore, refuseFuturePointInTime, targetProblems,
+} from '../engine/content/restore/gate.mjs';
 import { createPgRestoreJournal } from '../engine/content/restore/journal.mjs';
 import { contentWriteTransport } from '../engine/content/restore/transport.mjs';
 import { GRAPH_ROOT, MAIL_RESTORE_KINDS, mailRestoreRunId, normalizeMailRestoreRequest, planMailRestore, restoreMail } from '../engine/content/restore/mail.mjs';
 import { DEFAULT_READER_PATH, readerProblems } from './keel-content-collect.mjs';
-import { filesCommand } from './keel-content-restore-files.mjs';
+import { FILES_ARGS, filesCommand } from './keel-content-restore-files.mjs';
+import { TEAMS_ARGS, teamsCommand } from './keel-content-restore-teams.mjs';
 
 export const DEFAULT_RESTORER_PATH = '/etc/keel/content-restorer.json';
 
+// Parsed strictly (cli/args.mjs). The spec names this workload's options and the
+// options every content-restore subcommand shares; the action (plan, request, run) is
+// the one positional.
+export const MAIL_ARGS = {
+  name: 'keel-content-restore mail',
+  strings: ['source-mailbox', 'target-mailbox', 'at', 'into', 'kinds', 'kind', 'folder', 'item', 'actor', 'approval-id', 'config', 'reader', 'restorer', 'db-url'],
+  text: ['justification'],
+  repeatable: [],
+  booleans: ['help'],
+  positionals: 1,
+};
+const options = argvParser(MAIL_ARGS);
+
 function arg(argv, name, fallback) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : fallback;
+  return options(argv)[name] ?? fallback;
 }
 
 const USAGE = [
   'usage: keel-content-restore.mjs mail plan    --source-mailbox USER_ID --at ISO [--target-mailbox USER_ID] [--into restored-folder|original] [--kinds LIST] [--kind KIND --folder ID [--item ID]]',
   '       keel-content-restore.mjs mail request (the plan options) --actor PRINCIPAL_ID [--justification TEXT]',
   '       keel-content-restore.mjs mail run     --approval-id ID --actor PRINCIPAL_ID',
+  '       keel-content-restore.mjs files help | teams help   (file and Teams message restores)',
   '       common: [--config /etc/keel/tenant.json] [--reader FILE] [--restorer FILE] [--db-url URL]',
 ].join('\n');
 
@@ -94,6 +114,9 @@ async function defaultWriteTransport(tokenSource, { guard, fetchImpl }) {
   return contentWriteTransport(tokenSource, fetchImpl, { guard });
 }
 
+/** The approval-policy classes of a mail restore: another mailbox is another location. */
+export const mailPolicyActions = (request) => (request.targetMailboxId !== request.sourceMailboxId ? [CONTENT_RESTORE_OTHER_LOCATION] : []);
+
 const summarize = (plan) => ({
   runId: plan.runId,
   request: plan.request,
@@ -111,10 +134,12 @@ async function mailCommand(argv, { config, tenantRef, client, store, readFile, e
   }
   if (action === 'request') {
     const request = mailRequestFromArgs(argv, tenantRef);
+    refuseFuturePointInTime(request.at);
     const plan = await planMailRestore(store, request);
     const filed = await requestApproval(client, {
       tenantRef, action: CONTENT_RESTORE_ACTION, params: { runId: plan.runId, tenantRef, workload: 'mail', request },
       requestedBy: arg(argv, 'actor'), justification: arg(argv, 'justification') ?? null, executor: 'cli',
+      policyActions: mailPolicyActions(request),
     });
     logger.log(JSON.stringify({ approvalId: filed.id, ...summarize(plan) }, null, 2));
     return 0;
@@ -133,6 +158,7 @@ async function mailCommand(argv, { config, tenantRef, client, store, readFile, e
   }
   const gate = await authorizeContentRestore(client, {
     actor: arg(argv, 'actor'), approvalId, runId: request ? mailRestoreRunId(request) : null, tenantRef, ...(canFn ? { canFn } : {}),
+    policyActions: request ? mailPolicyActions(request) : [],
   });
   const restorerPath = arg(argv, 'restorer', DEFAULT_RESTORER_PATH);
   if (!exists(restorerPath)) {
@@ -166,8 +192,11 @@ async function mailCommand(argv, { config, tenantRef, client, store, readFile, e
   return report.status === 'completed' ? 0 : 1;
 }
 
-// One line per workload. FILER adds `files` here from its own module.
-export const SUBCOMMANDS = Object.freeze({ mail: mailCommand, files: filesCommand });
+// One line per workload. `files` and `teams` live in their own modules.
+export const SUBCOMMANDS = Object.freeze({ mail: mailCommand, files: filesCommand, teams: teamsCommand });
+// Looked up when main runs: the files and teams modules import this one, so their specs
+// are not initialised yet while this module loads.
+const subcommandArgs = () => ({ mail: MAIL_ARGS, files: FILES_ARGS, teams: TEAMS_ARGS });
 
 export async function main(argv = process.argv.slice(2), {
   readFile = (path) => readFileSync(path, 'utf8'), exists = existsSync, connectFn = connect, getTokenFn = getToken,
@@ -179,23 +208,30 @@ export async function main(argv = process.argv.slice(2), {
   }),
 } = {}) {
   const command = subcommands[argv[0]];
-  if (!command || argv.includes('--help') || !argv[1]) {
+  const spec = Object.hasOwn(subcommandArgs(), argv[0]) ? subcommandArgs()[argv[0]] : undefined;
+  if (!command || !spec) {
     logger.log(USAGE);
-    return argv.length === 0 || argv.includes('--help') ? 0 : 2;
+    return argv.length === 0 || argv[0] === '--help' ? 0 : 2;
   }
-  const config = readConfigFile(arg(argv, 'config', '/etc/keel/tenant.json'), { readFile, what: 'collector settings' });
+  const rest = argv.slice(1);
+  const { values: opts, positionals: [action] } = parseCliArgs(rest, spec);
+  if (opts.help || !action) {
+    logger.log(USAGE);
+    return opts.help ? 0 : 2;
+  }
+  const config = readConfigFile(opts.config ?? '/etc/keel/tenant.json', { readFile, what: 'collector settings' });
   const tenantRef = tenantRefFor(config.tenantId);
-  const readerPath = arg(argv, 'reader', DEFAULT_READER_PATH);
+  const readerPath = opts.reader ?? DEFAULT_READER_PATH;
   if (!exists(readerPath)) throw new Error(`content restore reads the content store named in ${readerPath}, which does not exist yet`);
   const reader = readConfigFile(readerPath, { readFile, what: 'content backup reader settings' });
   const problems = readerProblems(reader, config);
   if (problems.length) throw new Error(`content reader file ${readerPath}: ${problems.join('; ')}`);
-  const dbUrl = arg(argv, 'db-url', env.KEEL_DB_URL);
+  const dbUrl = opts['db-url'] ?? env.KEEL_DB_URL;
   if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
   const client = await connectFn(dbUrl);
   try {
     const store = openStore(reader, client);
-    return await command(argv.slice(1), { config, tenantRef, client, store, readFile, exists, getTokenFn, fetchImpl, writeTransportFor, testTenantRefs, canFn, logger });
+    return await command(rest, { config, tenantRef, client, store, readFile, exists, getTokenFn, fetchImpl, writeTransportFor, testTenantRefs, canFn, logger });
   } finally {
     await client.end();
   }

@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { connection } from "next/server";
 
+import { AnonymityNote } from "@/components/anonymity-note";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
@@ -8,6 +9,7 @@ import {
   getApprovalInboxData,
   requireApprovalInboxAccess,
 } from "@/lib/approval-inbox";
+import { getAnonymitySetting } from "@/lib/anonymity";
 import { approvalCounts, approvalsStatus } from "@/lib/approval-view";
 import { PRINCIPAL_ID_HEADER } from "@/lib/principal";
 
@@ -25,6 +27,7 @@ export default async function ApprovalsPage() {
   try {
     const data = await getApprovalInboxData(scope);
     const status = approvalsStatus(approvalCounts(data, data.generatedAt));
+    const anonymity = await getAnonymitySetting();
     return (
       <>
         <PageHeader
@@ -37,6 +40,7 @@ export default async function ApprovalsPage() {
         <ApprovalInbox
           awaitingContentEffects={data.awaitingContentEffects}
           history={data.history}
+          notice={<AnonymityNote setting={anonymity} />}
           now={data.generatedAt}
           pending={data.pending}
           viewerId={viewerId}

@@ -296,6 +296,7 @@ assert.deepEqual(
     'baseline-activate': 'baseline-create',
     'policy-evaluate': 'policies',
     remediate: 'remediate',
+    dispose: 'dispose-accept',
     restore: 'restore',
     notify: 'configuration',
   },

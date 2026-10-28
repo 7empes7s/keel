@@ -45,6 +45,7 @@ import { kindParts } from "@/lib/type-groups";
 import type { CoverageData, CoverageType } from "@/lib/types";
 import { pushUrl } from "@/lib/url-history";
 import { useViewState } from "@/lib/use-view-state";
+import { csvLine } from "@/lib/csv";
 
 // What's protected (portal audit: one grouped list on a desktop, pick A; service cards
 // first on a phone, pick B). Four tiles filter the list (`health=`), a phone's service
@@ -193,16 +194,11 @@ function Meter({ service }: { service: ServiceSummary }) {
   );
 }
 
-function csvCell(value: string | number | null): string {
-  const text = value === null ? "" : String(value);
-  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
-}
-
 function downloadCsv(types: CoverageType[], now: string) {
   const rows = [["Kind", "Service", "Tier", "Backup health", "Can it be restored", "Last backup", "Items"],
     ...types.map((item) => [kindName(item), typeService(item.type).name, item.criticality ? tierLabel(item.criticality) : "No tier",
       HEALTH_BADGE[backupHealth(item)].label, STANDING_LABEL[restoreStanding(item)], item.lastCollectedAt ? ago(item.lastCollectedAt, now) : "Never", item.itemCount])];
-  const blob = new Blob([rows.map((row) => row.map(csvCell).join(",")).join("\n")], { type: "text/csv" });
+  const blob = new Blob([rows.map((row) => csvLine(row)).join("\n")], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

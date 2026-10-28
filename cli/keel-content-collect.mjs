@@ -41,14 +41,21 @@ import { MAX_LISTED_REASONS, listedReasons, progressTracker, progressWriter, rea
 
 export { MAX_LISTED_REASONS };
 import { INCOMPLETE_TYPES_PREFIX, PARTIAL_EXIT_CODE } from '../engine/collect/incomplete.mjs';
+import { parseCliArgs } from './args.mjs';
 
 export const DEFAULT_READER_PATH = '/etc/keel/content-reader.json';
 export const DEFAULT_SCOPE_PATH = '/etc/keel/content-scope.json';
 const CONFIG_DIR = '/etc/keel/';
 
-function arg(argv, name, fallback) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : fallback;
+const ARGS = {
+  name: 'keel-content-collect',
+  strings: ['config', 'reader', 'scope', 'tenant-ref', 'db-url'],
+  booleans: ['help'],
+  positionals: 1,
+};
+
+function arg(opts, name, fallback) {
+  return opts[name] ?? fallback;
 }
 
 const sleep = (ms) => new Promise((done) => { setTimeout(done, ms); });
@@ -147,15 +154,16 @@ export async function main(argv = process.argv.slice(2), {
   fetchImpl = globalThis.fetch, env = process.env, logger = console, collectors = CONTENT_COLLECTORS,
   storageFor = ({ root }) => createLocalStorageAdapter({ root }),
 } = {}) {
-  if (argv[0] !== 'run' || argv.includes('--help')) {
+  const { values: opts, positionals: [command] } = parseCliArgs(argv, ARGS);
+  if (command !== 'run' || opts.help) {
     logger.log('usage: keel-content-collect.mjs run [--config /etc/keel/tenant.json] [--reader FILE] [--scope FILE] [--tenant-ref REF] [--db-url URL]');
-    return argv[0] === undefined || argv.includes('--help') ? 0 : 2;
+    return command === undefined || opts.help ? 0 : 2;
   }
-  const config = readConfigFile(arg(argv, 'config', '/etc/keel/tenant.json'), { readFile, what: 'collector settings' });
+  const config = readConfigFile(arg(opts, 'config', '/etc/keel/tenant.json'), { readFile, what: 'collector settings' });
   const tenantRef = tenantRefFor(config.tenantId);
-  const requested = arg(argv, 'tenant-ref');
+  const requested = arg(opts, 'tenant-ref');
   if (requested !== undefined && requested !== tenantRef) throw new Error('the job names another tenant than the tenant config: refusing to collect');
-  const readerPath = arg(argv, 'reader', DEFAULT_READER_PATH);
+  const readerPath = arg(opts, 'reader', DEFAULT_READER_PATH);
   if (!exists(readerPath)) {
     logger.log(`content backup is waiting on the content-reader app (admin consent for content reads): ${readerPath} does not exist yet; nothing was read`);
     return 0;
@@ -163,9 +171,9 @@ export async function main(argv = process.argv.slice(2), {
   const reader = readConfigFile(readerPath, { readFile, what: 'content backup reader settings' });
   const problems = readerProblems(reader, config);
   if (problems.length) throw new Error(`content reader file ${readerPath}: ${problems.join('; ')}`);
-  const scopePath = arg(argv, 'scope', DEFAULT_SCOPE_PATH);
-  const scope = arg(argv, 'scope') !== undefined || exists(scopePath) ? readConfigFile(scopePath, { readFile, what: 'content scope' }) : {};
-  const dbUrl = arg(argv, 'db-url', env.KEEL_DB_URL);
+  const scopePath = arg(opts, 'scope', DEFAULT_SCOPE_PATH);
+  const scope = arg(opts, 'scope') !== undefined || exists(scopePath) ? readConfigFile(scopePath, { readFile, what: 'content scope' }) : {};
+  const dbUrl = arg(opts, 'db-url', env.KEEL_DB_URL);
   if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
   const client = await connectFn(dbUrl);
   try {

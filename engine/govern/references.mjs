@@ -7,6 +7,9 @@
 // never shown as a bare id: the portal renders it as "<kind> <short id> (no longer
 // readable)".
 
+import { readNamer } from '../insights/anonymity.mjs';
+import { displayPerson } from '../insights/people.mjs';
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function unique(values) {
@@ -19,7 +22,10 @@ export function unreadable(kind, id) {
 
 /**
  * People by principal id. A requester that is not a principal id (a system actor such
- * as "scheduler" or "policy-automation") is named by its own value.
+ * as "scheduler" or "policy-automation") is named by its own value. With "Hide people's
+ * names" on, each person comes back with a stable code name and no email
+ * (insights/people.mjs displayPerson), so every page that names people through here
+ * follows the setting.
  * @returns {Promise<Map<string, { kind: 'person', id: string, name: string | null, email: string | null, readable: boolean, system: boolean }>>}
  */
 export async function resolvePrincipals(client, ids) {
@@ -44,6 +50,10 @@ export async function resolvePrincipals(client, ids) {
       ? { ...unreadable('person', id), email: null, system: false }
       : { kind: 'person', id, name: id, email: null, readable: true, system: true });
   }
+  // Only a person can get a code name, so Keel's own accounts never cost a query.
+  if (![...result.values()].some((ref) => ref.readable && !ref.system)) return result;
+  const namer = await readNamer(client);
+  if (namer) for (const [id, ref] of result) result.set(id, displayPerson(ref, namer));
   return result;
 }
 
@@ -67,7 +77,9 @@ export async function resolveBaselines(client, { tenantRef, ids }) {
 /**
  * Restore dry runs (plans) by artifact id, scoped to the tenant: when the snapshot
  * was taken, how many resources the plan covers, whether it is an undo, its status,
- * and the job that computed it (the page a reviewer opens).
+ * and the job that computed it (the page a reviewer opens). A plan of another
+ * Microsoft 365 service (Exchange, Teams, Purview...) has no Entra snapshot: it names
+ * its workload, and its time is when that service's backup was read.
  */
 export async function resolveDryRuns(client, { tenantRef, ids }) {
   const wanted = unique(ids).filter((id) => UUID.test(id));
@@ -76,19 +88,23 @@ export async function resolveDryRuns(client, { tenantRef, ids }) {
     const { rows } = await client.query(
       `SELECT d.id::text AS id, d.status, d.compensation IS NOT NULL AS is_undo,
               jsonb_array_length(d.closure_keys) AS resources, s.completed_at AS snapshot_at,
+              d.workload_restore->>'workload' AS workload,
+              COALESCE(d.workload_restore->'source'->>'observedTo', d.workload_restore->'source'->>'storedAt') AS source_at,
+              d.compliance_fix IS NOT NULL AS compliance_fix,
               jsonb_array_length(COALESCE(d.content_effects, '[]'::jsonb)) AS content_effects,
               (SELECT j.id::text FROM job j
                 WHERE j.kind = 'restore' AND j.params->>'artifactId' = d.id::text
                   AND (j.params->>'mode') IS NULL
                 ORDER BY j.created_at DESC LIMIT 1) AS dry_run_job_id
-         FROM restore_dry_run d JOIN snapshot s ON s.id = d.snapshot_id
+         FROM restore_dry_run d LEFT JOIN snapshot s ON s.id = d.snapshot_id
         WHERE d.tenant_ref = $1 AND d.id::text = ANY($2::text[])`,
       [tenantRef, wanted],
     );
     for (const row of rows) {
       result.set(row.id, {
         kind: 'dry-run', id: row.id, name: null, readable: true, status: row.status, undo: row.is_undo,
-        resources: Number(row.resources), snapshotAt: row.snapshot_at, dryRunJobId: row.dry_run_job_id,
+        resources: Number(row.resources), snapshotAt: row.snapshot_at ?? row.source_at ?? null, dryRunJobId: row.dry_run_job_id,
+        workload: row.workload ?? null, complianceFix: row.compliance_fix === true,
         // Q45: how many content effects need their own approval, whichever surface planned it.
         contentEffects: Number(row.content_effects),
       });

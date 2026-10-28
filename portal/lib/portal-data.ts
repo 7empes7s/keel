@@ -1,3 +1,5 @@
+import { readNamer } from "../../engine/insights/anonymity.mjs";
+import { displayActor, displayPerson } from "../../engine/insights/people.mjs";
 import { buildCoverageReport } from "../../engine/coverage/report.mjs";
 import { loadRecoveryMetrics } from "../../engine/coverage/recoveryMetrics.mjs";
 import { protectionHeadline } from "../../engine/coverage/protectionHeadline.mjs";
@@ -545,7 +547,7 @@ export async function getOwnCheckChoices(): Promise<OwnCheckChoices> {
 
 /** An exception's owner by name when it is someone in Keel (the owner is stored as
  * typed, usually an email), and who granted it. Never a bare id or address. */
-async function withExceptionPeople(client: KeelClient, findings: ComplianceFinding[]): Promise<ComplianceFinding[]> {
+export async function withExceptionPeople(client: KeelClient, findings: ComplianceFinding[]): Promise<ComplianceFinding[]> {
   const exceptions = findings.map((finding) => finding.exception).filter((exception) => exception !== null);
   if (exceptions.length === 0) return findings;
   const owners = [...new Set(exceptions.map((exception) => exception.owner?.trim().toLowerCase()).filter((owner): owner is string => Boolean(owner)))];
@@ -558,14 +560,24 @@ async function withExceptionPeople(client: KeelClient, findings: ComplianceFindi
     for (const row of rows) byEmail.set(String(row.email), { kind: "person", id: String(row.id), name: String(row.display_name ?? row.email), href: "/principals" });
   }
   const granters = await principalRefs(client, exceptions.map((exception) => exception.grantedBy).filter((id) => typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)));
-  return findings.map((finding) => (finding.exception ? {
-    ...finding,
-    exception: {
-      ...finding.exception,
-      ownerRef: byEmail.get(finding.exception.owner?.trim().toLowerCase() ?? "") ?? null,
-      grantedByRef: finding.exception.grantedBy ? granters.get(finding.exception.grantedBy) ?? null : null,
-    },
-  } : finding));
+  // "Hide people's names": the owner by code name (a Keel user keeps theirs; a typed
+  // name or mailbox gets one of its own), and the typed value is not sent at all.
+  const namer = owners.length ? await readNamer(client) : null;
+  return findings.map((finding) => {
+    if (!finding.exception) return finding;
+    const typed = finding.exception.owner?.trim().toLowerCase() ?? "";
+    const known = byEmail.get(typed) ?? null;
+    const hidden = namer && typed;
+    return {
+      ...finding,
+      exception: {
+        ...finding.exception,
+        ...(hidden ? { owner: null } : {}),
+        ownerRef: hidden ? { kind: "person", id: known?.id ?? "", name: namer(typed), href: known ? "/principals" : null, pseudonym: true } : known,
+        grantedByRef: finding.exception.grantedBy ? granters.get(finding.exception.grantedBy) ?? null : null,
+      },
+    };
+  });
 }
 
 async function activeDriftFor(
@@ -636,16 +648,17 @@ export async function withApproverNames(client: KeelClient, baselines: BaselineR
   const ids = [...new Set(baselines.map((baseline) => baseline.setBy).filter((id) => PRINCIPAL_ID.test(id)))];
   const people = new Map<string, UnknownRecord>();
   if (ids.length) {
-    const { rows } = await client.query("SELECT id::text AS id, email, display_name FROM principal WHERE id::text = ANY($1::text[])", [ids]);
+    const { rows } = await client.query("SELECT id::text AS id, email, display_name, system_kind FROM principal WHERE id::text = ANY($1::text[])", [ids]);
     for (const row of rows) people.set(String(row.id), row);
   }
+  const namer = ids.length ? await readNamer(client) : null;
   return baselines.map((baseline) => {
     const id = baseline.setBy;
     const person = people.get(id);
     const name = !PRINCIPAL_ID.test(id)
       ? personLabel({ kind: "person", id, name: id, readable: true, system: true }, "Keel")
       : person
-        ? personLabel({ kind: "person", id, name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true }, "an account without a name")
+        ? personLabel(displayPerson({ kind: "person", id, name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true, system: person.system_kind != null }, namer), "an account without a name")
         : "an account that no longer exists";
     const setByRef: Ref = { kind: "person", id, name, href: person ? "/principals" : null };
     return { ...baseline, setByRef };
@@ -805,6 +818,9 @@ async function withAttribution(client: KeelClient, ref: string, baselineId: stri
         }
       }
     }
+    // "Hide people's names": the users the audit log names get their code names.
+    const namer = await readNamer(client);
+    if (namer) for (const entry of attributed) entry.actors = entry.actors.map((actor) => displayActor(actor, namer));
     byId = new Map(attributed.map((entry) => [entry.changeId, entry]));
   } catch (error) {
     console.error("[keel-portal] change attribution unavailable", error);
@@ -1136,12 +1152,14 @@ export async function principalRefs(client: KeelClient, ids: (string | null | un
   const refs = new Map<string, Ref>();
   if (wanted.length === 0) return refs;
   const { rows } = await client.query(
-    "SELECT id::text AS id, email, display_name FROM principal WHERE id::text = ANY($1::text[])",
+    "SELECT id::text AS id, email, display_name, system_kind FROM principal WHERE id::text = ANY($1::text[])",
     [wanted],
   );
+  const namer = await readNamer(client);
   for (const row of rows) {
     const id = String(row.id);
-    refs.set(id, { kind: "person", id, name: String(row.display_name ?? row.email), href: "/principals" });
+    const shown = namer ? displayPerson({ kind: "person", id, name: row.display_name ?? row.email, email: row.email ?? null, readable: true, system: row.system_kind != null }, namer) : null;
+    refs.set(id, { kind: "person", id, name: String(shown ? shown.name : row.display_name ?? row.email), href: "/principals", ...(shown?.pseudonym ? { pseudonym: true } : {}) });
   }
   for (const id of wanted) {
     if (!refs.has(id)) refs.set(id, { kind: "person", id, name: `Account ${id.slice(0, 8)} (no longer readable)`, href: null });

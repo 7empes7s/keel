@@ -142,6 +142,7 @@ function signInReader(graph, { onAfterRead = null } = {}) {
       if (path.startsWith('/roleManagement/directory/roleAssignments?')) {
         return { items: [{ id: 'role-1', principalId: BREAK_GLASS, roleDefinitionId: 'global-admin', directoryScopeId: '/' }], capped: false, error: null };
       }
+      if (path === '/identity/conditionalAccess/namedLocations') return { items: [], capped: false, error: null };
       throw new Error(`unexpected collection ${path}`);
     },
     async get(_version, path) {

@@ -7,7 +7,7 @@
   "resourceType": "user",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "eef1019317202dfe9ce6cf05d91cc0a8aeb6bd69",
+  "build": "e86afa9865da72964ce74567394eb41c3caf263a",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
@@ -16,14 +16,14 @@
   "readBackVerified": true,
   "observedAt": "2026-10-10T21:21:58.798Z",
   "restoreRef": "f6ab79fc-7858-8d60-ac6b-d927b5899d5b",
-  "naturalKey": "user:keel-rt-20260908-carla@techinsiderbytes.com",
+  "naturalKey": "user:keel-rt-u3f32611d4ab3@t42987720ee3.example",
   "fixtureKind": "named-object",
-  "captureSha256": "c0fda0e952f1c1f45e99c7b7b5db985a315a46338875cec48561ab82397ccb6c",
+  "captureSha256": "d06197f7251aa7619be4611820975aaa3ead76760477a731444aec64ea292483",
   "proofRef": "docs/release/qualifications/entra-live/user.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "7e62ff4f8c05d34eb10386e42205aa26c873a4bd51ee306138fc7374d664f755"
+      "signature": "92ab1dd11547eb617d9c1f28f56525510fce676473a987c374370da9a460856c"
     }
   }
 }

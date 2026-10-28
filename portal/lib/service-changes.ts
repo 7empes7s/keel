@@ -25,6 +25,10 @@ const LISTED = ["open", "reopened", "acknowledged"];
  * raised none). Newest first. Each carries the resource's name from the read that found it,
  * or from the read before it when the resource is gone.
  */
+// Fields a read keeps for a restore but never shows: a SharePoint site template's whole XML
+// (engine/collect/workloads/sharepointStructure.mjs, TEMPLATE_STORAGE_FIELDS) can be megabytes.
+const STORED_ONLY = ["templateXml", "templateSha256", "templateBytes"];
+
 export async function loadServiceChanges(
   client: KeelClient,
   { tenantRef: tenant, now = new Date(), days = 30, limit = 200 }: { tenantRef: string; now?: Date; days?: number; limit?: number },
@@ -34,7 +38,7 @@ export async function loadServiceChanges(
     `SELECT * FROM (
        SELECT DISTINCT ON (d.workload, d.resource_key)
               d.id, d.workload, d.resource_key, d.change_type, d.fields, d.blast_radius, d.collection_id, d.previous_collection_id, d.compared_with,
-              c.observed_to, pc.observed_to AS previous_observed_to, cur.fields AS current_fields, prev.fields AS previous_fields, a.id AS alert_id, a.state AS alert_state
+              c.observed_to, pc.observed_to AS previous_observed_to, cur.fields - $5::text[] AS current_fields, prev.fields - $5::text[] AS previous_fields, a.id AS alert_id, a.state AS alert_state
          FROM workload_drift d
          JOIN workload_collection c ON c.id = d.collection_id
          LEFT JOIN workload_collection pc ON pc.id = d.previous_collection_id
@@ -47,7 +51,7 @@ export async function loadServiceChanges(
      ) newest
      WHERE alert_state IS NULL OR alert_state = ANY($3::text[])
      ORDER BY observed_to DESC, workload, resource_key LIMIT $4`,
-    [tenant, since, LISTED, limit],
+    [tenant, since, LISTED, limit, STORED_ONLY],
   );
   const choices = await undoChoices(client, tenant, rows);
   return rows.map((row) => serviceChangeFrom(row, choices.get(String(row.id)) ?? null));

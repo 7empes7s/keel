@@ -170,6 +170,9 @@ KEEL uses three app registrations. A Global Administrator grants admin consent f
   - These roles took about 90 minutes to take effect (live; Microsoft says 30 minutes to 2 hours).
   - KEEL's setup never asks for tenant-wide `Mail.ReadWrite` or `Files.ReadWrite.All`, so an administrator grants the content
     restore permissions by hand.
+  - Teams channel messages are restored through Microsoft's message import API, which needs `Teamwork.Migrate.All`
+    (application), plus `Channel.ReadBasic.All`, `Team.ReadBasic.All` and `User.Read.All` to find the team and channel and
+    check each author. The import API needs no approval from Microsoft; only reading messages does (below).
 - **Power BI and Fabric** (live):
   - The Collector reads them through Microsoft's read-only admin APIs, which need a security group with the Collector as its only
     member.
@@ -184,6 +187,10 @@ KEEL uses three app registrations. A Global Administrator grants admin consent f
 - **Teams channel messages.** Microsoft's export API for them (`ChannelMessage.Read.All`) is a protected API: Microsoft has to
   approve each app before it can read messages. Once approved, the permission is added to the content reader and consented like the
   others. Until then, KEEL backs up teams, channels, tabs and apps, but not the messages.
+  - The restore side is ready: once messages are backed up, KEEL restores a channel's messages into a new channel with their
+    original authors and times (`keel-content-restore.mjs teams`). On the test tenant it is proved with a fixture file instead.
+  - The request to Microsoft is the "Protected APIs in Microsoft Teams" form, filed by the tenant's administrator for the
+    content reader app.
 
 ### Storage
 

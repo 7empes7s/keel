@@ -20,7 +20,7 @@ const id = "00000000-0000-0000-0000-000000000001";
 function request(op: string, actor: string, capabilities: string[], body?: object) {
   return new Request(`http://localhost/api/principals/${id}/${op}`, {
     method: body ? "POST" : "GET",
-    headers: { [PRINCIPAL_ID_HEADER]: actor, [CAPABILITIES_HEADER]: capabilities.join(" ") },
+    headers: { [PRINCIPAL_ID_HEADER]: actor, [CAPABILITIES_HEADER]: capabilities.join(" "), ...(body ? { "content-type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
 }
@@ -39,7 +39,7 @@ test("principal list and all writes refuse principals without users/roles", asyn
   }
   // Adding a person needs both users and roles: either alone is refused before any write.
   for (const capabilities of [["users"], ["roles"], ["read"]]) {
-    const add = new Request("http://localhost/api/principals", { method: "POST", headers: { [PRINCIPAL_ID_HEADER]: id, [CAPABILITIES_HEADER]: capabilities.join(" ") }, body: JSON.stringify({ email: "new@test.example", role: "viewer" }) });
+    const add = new Request("http://localhost/api/principals", { method: "POST", headers: { [PRINCIPAL_ID_HEADER]: id, [CAPABILITIES_HEADER]: capabilities.join(" "), "content-type": "application/json" }, body: JSON.stringify({ email: "new@test.example", role: "viewer" }) });
     assert.equal((await guardedPrincipalCreate(deps)(add)).status, 403);
   }
   assert.equal(writes, 0);
@@ -131,7 +131,7 @@ test("Add person creates a person with a first role; Enable again lets a disable
     await client.query("INSERT INTO principal(id,email) VALUES ($1,'admin@test.example')", [id]);
     await grantRole(client, { principalId: id, role: "admin", grantedBy: id });
     const deps = { connect: () => db.connect(), databaseUrl: () => db.url, tenantRef: () => "test" };
-    const add = (body: object) => guardedPrincipalCreate(deps)(new Request("http://localhost/api/principals", { method: "POST", headers: { [PRINCIPAL_ID_HEADER]: id, [CAPABILITIES_HEADER]: "users roles" }, body: JSON.stringify(body) }));
+    const add = (body: object) => guardedPrincipalCreate(deps)(new Request("http://localhost/api/principals", { method: "POST", headers: { [PRINCIPAL_ID_HEADER]: id, [CAPABILITIES_HEADER]: "users roles", "content-type": "application/json" }, body: JSON.stringify(body) }));
     const created = await add({ email: "lee.chen@test.example", displayName: "Lee Chen", role: "approver", reason: "Covers October" });
     assert.equal(created.status, 201);
     const person = (await created.json()).principal as PrincipalView;
@@ -143,8 +143,8 @@ test("Add person creates a person with a first role; Enable again lets a disable
     assert.equal((await add({ email: "nobody", role: "viewer" })).status, 400);
     assert.equal((await add({ email: "x@test.example", role: 5 })).status, 400);
     // Disable, then enable through the guarded route: the approver role applies again.
-    assert.equal((await guardedPrincipalWrite("disable", DATA_SURFACES.principalDisableApi, deps)(new Request(`http://localhost/api/principals/${person.id}/disable`, { method: "POST", headers: { [PRINCIPAL_ID_HEADER]: id, [CAPABILITIES_HEADER]: "users" }, body: "{}" }))).status, 200);
-    const enabled = await guardedPrincipalWrite("enable", DATA_SURFACES.principalEnableApi, deps)(new Request(`http://localhost/api/principals/${person.id}/enable`, { method: "POST", headers: { [PRINCIPAL_ID_HEADER]: id, [CAPABILITIES_HEADER]: "users" }, body: "{}" }));
+    assert.equal((await guardedPrincipalWrite("disable", DATA_SURFACES.principalDisableApi, deps)(new Request(`http://localhost/api/principals/${person.id}/disable`, { method: "POST", headers: { [PRINCIPAL_ID_HEADER]: id, [CAPABILITIES_HEADER]: "users", "content-type": "application/json" }, body: "{}" }))).status, 200);
+    const enabled = await guardedPrincipalWrite("enable", DATA_SURFACES.principalEnableApi, deps)(new Request(`http://localhost/api/principals/${person.id}/enable`, { method: "POST", headers: { [PRINCIPAL_ID_HEADER]: id, [CAPABILITIES_HEADER]: "users", "content-type": "application/json" }, body: "{}" }));
     assert.equal(enabled.status, 200);
     assert.deepEqual(await capabilitiesForPrincipal(client, { id: person.id, disabled_at: null }), ["approve"]);
     // Each write is recorded as an attempt in the evidence chain.

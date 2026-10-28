@@ -364,8 +364,8 @@ function removeContainer({ dockerBin, spawnFn, containerName, timeoutMs }) {
     child.stderr?.on('data', (chunk) => { stderr += chunk; });
     child.on('error', (err) => finish(`could not run ${dockerBin} rm: ${err.message}`));
     child.on('close', (code) => {
-      // A container that was never created (or already removed by --rm) is not a failure.
-      if (code === 0 || /no such container/i.test(stderr)) finish(null);
+      // A container that was never created, or that --rm already removed or is removing, is not a failure.
+      if (code === 0 || /no such container|already in progress/i.test(stderr)) finish(null);
       else finish(`${dockerBin} rm exited ${code}: ${stderr.trim() || '(no stderr)'}`);
     });
   });

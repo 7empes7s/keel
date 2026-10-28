@@ -251,6 +251,7 @@ async function run() {
       return caught.stderr;
     };
     assert.equal(await timeoutWith(() => makeFakeChild({ exitCode: 1, stderrChunks: ['Error response from daemon: No such container: keel-job-x'] })), '');
+    assert.equal(await timeoutWith(() => makeFakeChild({ exitCode: 1, stderrChunks: ['Error response from daemon: removal of container keel-job-x is already in progress'] })), '');
     assert.match(await timeoutWith(() => makeFakeChild({ exitCode: 1, stderrChunks: ['Cannot connect to the Docker daemon'] })),
       /^keel: container keel-job-\S+ may still be running: docker rm exited 1: Cannot connect to the Docker daemon\n$/);
     assert.match(await timeoutWith(() => makeFakeChild({ emitError: new Error('ENOENT') })), /may still be running: could not run docker rm: ENOENT/);
@@ -260,22 +261,27 @@ async function run() {
     assert.ok(Date.now() - started < 1000, 'a hung docker rm does not hold the job');
   }
 
-  // 6e. The staged credentials stay until the container is removed, then go.
+  // 6e. The staged credentials stay until the container removal has finished, then go.
   {
     const root = mkdtempSync(join(tmpdir(), 'keel-jq-root-'));
     const staging = mkdtempSync(join(tmpdir(), 'keel-jq-staging-'));
     try {
       writeFileSync(join(root, 'tenant.json'), JSON.stringify({ tenantId: 't' }));
-      let stagedDuringRm;
+      let rmChild;
       const spawnFn = (bin, a) => {
-        if (a[0] === 'rm') { stagedDuringRm = readdirSync(staging).length; return makeFakeChild(); }
+        if (a[0] === 'rm') { rmChild = makeFakeChild({ neverClose: true }); return rmChild; }
         return makeFakeChild({ neverClose: true });
       };
-      await assert.rejects(
-        () => runJob({ mode: 'probe', tenantConfigPath: join(root, 'tenant.json') }, { spawnFn, timeoutMs: 20, credentialRoot: root, stagingRoot: staging }),
-        (err) => err.code === 'TIMEOUT',
-      );
-      assert.equal(stagedDuringRm, 1, 'credentials are still staged while the container is being removed');
+      let settled = false;
+      const pending = runJob({ mode: 'probe', tenantConfigPath: join(root, 'tenant.json') }, { spawnFn, timeoutMs: 20, credentialRoot: root, stagingRoot: staging })
+        .finally(() => { settled = true; });
+      pending.catch(() => {});
+      while (!rmChild) await new Promise((r) => setTimeout(r, 5));
+      await new Promise((r) => setTimeout(r, 30));
+      assert.equal(settled, false, 'the job waits for docker rm before rejecting');
+      assert.equal(readdirSync(staging).length, 1, 'credentials are still staged while the container is being removed');
+      rmChild.emit('close', 0);
+      await assert.rejects(pending, (err) => err.code === 'TIMEOUT');
       assert.deepEqual(readdirSync(staging), [], 'credentials are removed once the container is gone');
     } finally {
       rmSync(root, { recursive: true, force: true });

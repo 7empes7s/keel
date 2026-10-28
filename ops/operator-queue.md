@@ -1559,8 +1559,10 @@ being triggered by queue updates.
 - Needs: Q180 done; Marouane's admin consent for the KEEL Collector (check that its SP holds the 9 Q180 permissions as
   appRoleAssignments; if any is missing, set `blocked: waiting on consent`, name them, and stop); `/opt/keel-live` has the
   family (`test -f /opt/keel-live/tools/tenant-probe/catalog.d/admin-center-settings.mjs`).
-- Status: blocked: waiting on consent
-- Result: blocked: waiting on consent (2026-10-28 07:35 UTC, root keel-operator). The Collector's SP holds **none** of the 9 Q180 permissions as appRoleAssignments: `OrgSettings-Forms.Read.All`, `OrgSettings-Todo.Read.All`, `OrgSettings-Microsoft365Install.Read.All`, `OrgSettings-AppsAndServices.Read.All`, `ReportSettings.Read.All`, `PeopleSettings.Read.All`, `CustomDetection.Read.All`, `AppCatalog.Read.All`, `Community.Read.All` (they are in the manifest since Q180). Also not met: `/opt/keel-live/tools/tenant-probe/catalog.d/admin-center-settings.mjs` is absent (PR #604 is still open). Nothing run.
+- Note (2026-10-28 18:45 UTC): Marouane reports admin consent granted for the KEEL Collector; PR #604 has the `automerge`
+  label. Re-check both Needs (the 9 appRoleAssignments, and the family file in `/opt/keel-live` after the deploy), then run.
+- Status: todo
+- Result: (earlier, 2026-10-28 07:35 UTC: blocked waiting on consent; none of the 9 held, PR #604 not deployed.)
 - **Tenant:** reads only, with the collector credential. No grants, no role or config changes, nothing written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. `node cli/keel-collect.mjs` once by hand (no `--tier`, so every tier is read). Report its exit code and every log line

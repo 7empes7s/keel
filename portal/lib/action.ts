@@ -34,6 +34,7 @@ import { approvalTtlMs, databaseUrl, tenantRef } from "@/lib/runtime-config";
 import { withSavedChangeNames } from "@/lib/saved-names";
 import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
 import { canProvision, setupHost, type SetupHost } from "@/lib/setup-host";
+import { isJsonContentType } from "@/lib/same-origin";
 
 // §2.3, plan task 13: the one guarded action API. Every mutating route is built from
 // guarded()/guardedAction(). The wrapper resolves the downstreamed principal, checks the
@@ -296,6 +297,11 @@ export async function readActionParams(
 ): Promise<Record<string, unknown>> {
   const text = await request.text();
   if (text.trim() === "") return {};
+  // Only JSON bodies: a cross-site HTML form can send text/plain or form data
+  // without a preflight, but never application/json.
+  if (!isJsonContentType(request.headers.get("content-type"))) {
+    throw new InvalidActionRequest("request body must be sent as application/json");
+  }
 
   let parsed: unknown;
   try {

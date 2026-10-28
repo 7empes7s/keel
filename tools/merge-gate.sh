@@ -10,9 +10,12 @@ code_paths='^(portal|engine|cli|tools)/|^\.github/workflows/portal\.yml$'
 gate_job="Merge gate"
 merged=0
 refused=0
+# Set by check_pr to the head commit it checked; the merge is pinned to it.
+head_sha=""
 
 check_pr() {
   local n="$1" pr sha author files ci runs reviews threads
+  head_sha=""
   # Inside `if check_pr`, set -e is off, so every call checks its own failure.
   pr=$(gh api "repos/$repo/pulls/$n") || { echo "#$n: could not read PR"; return 1; }
   [ "$(jq -r .state <<<"$pr")" = "open" ] || { echo "#$n: not open"; return 1; }
@@ -27,14 +30,31 @@ check_pr() {
     pr=$(gh api "repos/$repo/pulls/$n") || { echo "#$n: could not read PR"; return 1; }
   done
   [ "$(jq -r .mergeable <<<"$pr")" = "true" ] || { echo "#$n: not mergeable yet ($(jq -r .mergeable_state <<<"$pr"))"; return 1; }
+  # The label is dropped on every push (automerge-label.yml); re-check it on the PR we just read.
+  jq -e 'any(.labels[]?; .name == "automerge")' <<<"$pr" >/dev/null || { echo "#$n: no automerge label"; return 1; }
+  [ "$(jq -r .base.ref <<<"$pr")" = "master" ] || { echo "#$n: not based on master"; return 1; }
   sha=$(jq -r .head.sha <<<"$pr")
+  # The label must have been added after this head arrived. Every open or push starts a
+  # merge-gate run on the new head (its job is skipped), so the first such run dates the head;
+  # the server sets that time, unlike commit dates. No run yet means the head is newer than
+  # any label. This holds even if automerge-label.yml has not dropped the label yet.
+  local labelled arrived
+  labelled=$(gh api --paginate "repos/$repo/issues/$n/events?per_page=100" \
+      -q '.[] | select(.event == "labeled" and .label.name == "automerge") | .created_at' | sort | tail -n 1) \
+    || { echo "#$n: could not read label events"; return 1; }
+  arrived=$(gh api --paginate "repos/$repo/actions/workflows/merge-gate.yml/runs?event=pull_request&head_sha=$sha&per_page=100" \
+      -q '.workflow_runs[].created_at' | sort | head -n 1) \
+    || { echo "#$n: could not read when $sha arrived"; return 1; }
+  if [ -z "$labelled" ] || [ -z "$arrived" ] || [[ ! "$labelled" > "$arrived" ]]; then
+    echo "#$n: automerge label predates head $sha; add it again after review"; return 1
+  fi
   author=$(jq -r .user.login <<<"$pr")
   files=$(gh api "repos/$repo/pulls/$n/files?per_page=100" --paginate -q '.[].filename') \
     || { echo "#$n: could not list files"; return 1; }
 
   # Every check run on the head commit (except this gate) must be finished and not failed.
-  runs=$(gh api "repos/$repo/commits/$sha/check-runs?per_page=100" \
-    | jq --arg g "$gate_job" '[.check_runs[] | select(.name != $g)]') || { echo "#$n: could not read checks"; return 1; }
+  runs=$(gh api --paginate "repos/$repo/commits/$sha/check-runs?per_page=100" -q '.check_runs[]' \
+    | jq -s --arg g "$gate_job" '[.[] | select(.name != $g)]') || { echo "#$n: could not read checks"; return 1; }
   if jq -e 'any(.[]; .status != "completed")' <<<"$runs" >/dev/null; then echo "#$n: checks still running"; return 1; fi
   if jq -e 'any(.[]; .conclusion as $c | ["success","skipped","neutral"] | index($c) | not)' <<<"$runs" >/dev/null; then
     echo "#$n: a check failed"; return 1
@@ -48,13 +68,21 @@ check_pr() {
       || { echo "#$n: Portal has not passed on $sha"; return 1; }
   fi
 
-  # Latest review per reviewer: none may request changes.
-  reviews=$(gh api "repos/$repo/pulls/$n/reviews?per_page=100" \
-    | jq --arg a "$author" '[.[] | select(.user.login != $a and .state != "PENDING")] | group_by(.user.login) | map(max_by(.submitted_at))') \
+  reviews=$(gh api --paginate "repos/$repo/pulls/$n/reviews?per_page=100" -q '.[]' \
+    | jq -s --arg a "$author" '[.[] | select(.user.login != $a and .state != "PENDING")]') \
     || { echo "#$n: could not read reviews"; return 1; }
-  if jq -e 'any(.[]; .state == "CHANGES_REQUESTED")' <<<"$reviews" >/dev/null; then echo "#$n: changes requested"; return 1; fi
-  if [ "${REQUIRE_REVIEW:-}" = "true" ] && ! jq -e 'length > 0' <<<"$reviews" >/dev/null; then
-    echo "#$n: waiting for a review"; return 1
+  # Each reviewer's verdict is their latest approve, request-changes or dismissal, as on GitHub:
+  # a later plain comment does not clear a change request.
+  if jq -e '[.[] | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED")]
+      | group_by(.user.login) | map(max_by(.submitted_at)) | any(.[]; .state == "CHANGES_REQUESTED")' \
+      <<<"$reviews" >/dev/null; then
+    echo "#$n: changes requested"; return 1
+  fi
+  # The required review must be on the head commit: a review of an earlier commit doesn't cover
+  # code pushed after it. Dismissed reviews don't count.
+  if [ "${REQUIRE_REVIEW:-}" = "true" ] && ! jq -e --arg s "$sha" \
+      'any(.[]; .commit_id == $s and (.state == "APPROVED" or .state == "COMMENTED"))' <<<"$reviews" >/dev/null; then
+    echo "#$n: waiting for a review of $sha"; return 1
   fi
 
   threads=$(gh api graphql -F owner="$owner" -F name="$name" -F n="$n" -f query='
@@ -63,6 +91,7 @@ check_pr() {
     | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved | not)] | length') \
     || { echo "#$n: could not read review threads"; return 1; }
   [ "$threads" = "0" ] || { echo "#$n: $threads unresolved review thread(s)"; return 1; }
+  head_sha="$sha"
   return 0
 }
 
@@ -76,10 +105,11 @@ for n in $prs; do
     echo "#$n: merging"
     # One refused merge must not stop the others. GitHub refuses GITHUB_TOKEN merges of PRs
     # that change .github/workflows/ (no `workflows` permission); those need a person to merge.
-    if gh pr merge "$n" -R "$repo" --merge --delete-branch; then
+    # Pinned to the checked commit: GitHub refuses the merge if the head moved since.
+    if gh pr merge "$n" -R "$repo" --merge --delete-branch --match-head-commit "$head_sha"; then
       merged=$((merged + 1))
     else
-      echo "#$n: merge refused; a PR that changes .github/workflows/ must be merged by hand"
+      echo "#$n: merge refused (head moved past $head_sha, or the PR changes .github/workflows/ and must be merged by hand)"
       refused=$((refused + 1))
     fi
   fi

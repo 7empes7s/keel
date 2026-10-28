@@ -7,6 +7,7 @@
 #     trust auth for local TCP connections (CI: POSTGRES_HOST_AUTH_METHOD=trust)
 #   - the pgcrypto extension, created once up front
 #   - KEEL_DB_TEST_URL and KEEL_TENANT_CONFIG_PATH, with the CI tenant config file
+#   - the age CLI (the offsite tests encrypt and decrypt with it)
 #   - npm dependencies in engine/ and portal/
 # There are no separate migrations: each test file applies the schema in its own
 # isolated Postgres schema (engine/test/dbTestHelper.mjs).
@@ -45,6 +46,14 @@ if ! [ -x "/usr/lib/postgresql/${PG_VERSION}/bin/postgres" ]; then
   export DEBIAN_FRONTEND=noninteractive
   $SUDO apt-get update -qq
   $SUDO apt-get install -y -qq "postgresql-${PG_VERSION}" postgresql-client >/dev/null
+fi
+
+# age: the offsite tests encrypt and decrypt dumps with it, as the deploy host does.
+if ! command -v age >/dev/null 2>&1 || ! command -v age-keygen >/dev/null 2>&1; then
+  log "installing age"
+  export DEBIAN_FRONTEND=noninteractive
+  $SUDO apt-get update -qq
+  $SUDO apt-get install -y -qq age >/dev/null
 fi
 
 if ! pg_lsclusters -h 2>/dev/null | awk -v v="$PG_VERSION" '$1==v && $2=="main"' | grep -q .; then

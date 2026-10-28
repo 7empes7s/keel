@@ -8882,3 +8882,25 @@ item that needs it stays untouched.
 - **Expected:** a short table: integration (servicenow token, servicenow callback, teams, slack, pagerduty, sms), reference
   name, rows using it, defined in env (where). "none" when a table has no rows.
 - **Report:** the table, and any reference that is not defined anywhere.
+
+### Q200: Read-only live check of the safety-sweep lane and job priority (security audit run 2, findings 10 and 11, after PR #627)
+- Drafted by the "Keep safety sweeps running when worker busy" thread (2026-10-28). PR #627 moves the SIEM drain, alert
+  escalation and break-glass canary sweeps onto their own timer and database connection in `keel-worker`, adds
+  `job.priority` (approval-minted jobs first) and a 20-job per-person queue cap in the portal, and coalesces repeated
+  identical denials in the evidence chain.
+- Needs: PR #627 deployed (`keel/live-deploy` success on its merge commit) and `keel-worker` reloaded by the deploy.
+- Status: todo
+- **Read-only. No config, database or service change. No restart.** If the worker has not reloaded yet because a job
+  is running, report that and stop; do not restart it.
+- Do:
+  1. `psql "$KEEL_DB_URL" -Atc "SELECT column_name, data_type, column_default FROM information_schema.columns WHERE table_name = 'job' AND column_name = 'priority'"`
+     and `psql "$KEEL_DB_URL" -Atc "SELECT indexname FROM pg_indexes WHERE indexname = 'job_queued_requester_idx'"`.
+  2. `systemctl show keel-worker -p ActiveEnterTimestamp -p MainPID` and the live tree commit (`git -C /opt/keel-live rev-parse HEAD`).
+  3. `journalctl -u keel-worker --since "<reload time>" --no-pager | grep -iE "safety sweep failed|polling for jobs|exited cleanly" | tail -20`.
+  4. Count the worker's database connections: `psql "$KEEL_DB_URL" -Atc "SELECT count(*) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND application_name = '' AND backend_type = 'client backend'"`
+     (an approximate count is fine; report what the query shows before and after, if it changes).
+  5. `psql "$KEEL_DB_URL" -Atc "SELECT priority, status, count(*) FROM job WHERE created_at > now() - interval '1 day' GROUP BY 1,2 ORDER BY 1,2"`.
+- Result:
+- **Expected:** `priority smallint` default 0 and the index exist; the live tree is at or after the #627 merge commit; the
+  worker started after the deploy; no "safety sweep failed" lines (or, if any, the redacted reason); jobs grouped by priority.
+- **Report:** each step's output (no secrets) and anything that does not match.

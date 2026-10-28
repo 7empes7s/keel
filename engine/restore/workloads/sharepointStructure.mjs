@@ -122,8 +122,10 @@ export function readsBackAs(field, read, written) {
 
 /** True when a site script's JSON has no actions, which SharePoint refuses ("This site script has no actions"). */
 export function scriptHasNoActions(content) {
-  const parsed = scriptJson(content);
-  return Boolean(parsed) && typeof parsed === 'object' && !Array.isArray(parsed) && (!Array.isArray(parsed.actions) || parsed.actions.length === 0);
+  if (typeof content !== 'string' || !content) return false;
+  let parsed;
+  try { parsed = JSON.parse(content); } catch { return false; }
+  return !Array.isArray(parsed?.actions) || parsed.actions.length === 0;
 }
 const NO_ACTIONS_REASON = 'its script has no actions, and SharePoint refuses a site script with no actions; an administrator restores it';
 
@@ -211,7 +213,8 @@ export const TEMPLATE_ELEMENTS = Object.freeze([
 export const STRIPPED_ELEMENTS = Object.freeze([
   'DataRows', 'Security', 'Webhooks', 'UserCustomActions', 'PropertyBagEntries', 'DataSource', 'IRMSettings', 'DocumentTemplate',
 ]);
-// The order the provisioning schema requires inside ProvisioningTemplate.
+// A fixed section order (the schema itself takes them in any order), so the template
+// KEEL sends does not depend on how the backup happened to order them.
 const SECTION_ORDER = Object.freeze(['Navigation', 'SiteFields', 'ContentTypes', 'Lists']);
 const element = (name) => new RegExp(`<pnp:${name}\\b[^>]*?(?:\\/>|>[\\s\\S]*?<\\/pnp:${name}>)`, 'g');
 
@@ -253,7 +256,7 @@ export function backedUpTemplate(fields) {
  * Builds the template KEEL applies: only the named site columns, content types and lists
  * of the backed-up template (each as it was, minus content, permissions and code), and
  * its navigation when `navigation` is true, with existing navigation replaced. Sections
- * follow the provisioning schema's order. Returns { xml, included, skipped, removed }: `skipped`
+ * come in a fixed order (Navigation, SiteFields, ContentTypes, Lists). Returns { xml, included, skipped, removed }: `skipped`
  * names what could not be sent and why.
  */
 export function buildRestoreTemplate(source, { siteColumns = [], contentTypes = [], lists = [], navigation = false }) {
@@ -298,8 +301,6 @@ export function buildRestoreTemplate(source, { siteColumns = [], contentTypes = 
       included.navigation = true;
     }
   }
-  // The provisioning schema fixes the order (Navigation, SiteFields, ContentTypes, Lists),
-  // and PnP refuses a template out of it ("Template is not valid").
   sections.sort((a, b) => a.order - b.order);
   const xml = [
     '<?xml version="1.0"?>',

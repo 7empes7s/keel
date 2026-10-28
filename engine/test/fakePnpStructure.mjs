@@ -23,7 +23,7 @@ const listXml = (list) => `<pnp:ListInstance Title="${esc(list.Title)}" Url="${e
   <pnp:ContentTypeBindings><pnp:ContentTypeBinding ContentTypeID="0x0101" Default="true" /></pnp:ContentTypeBindings>
   <pnp:Views><View DisplayName="All Documents" Url="Forms/AllItems.aspx"><ViewFields><FieldRef Name="LinkFilename" /></ViewFields></View></pnp:Views>
   <pnp:Fields><Field ID="{11111111-0000-4000-8000-000000000001}" Name="KeelRtStatus" StaticName="KeelRtStatus" DisplayName="Status" Type="Choice"><CHOICES><CHOICE>Open</CHOICE></CHOICES></Field></pnp:Fields>
-  <pnp:FieldRefs><pnp:FieldRef ID="22222222-0000-4000-8000-000000000002" Name="KeelRtProject" /></pnp:FieldRefs>
+  <pnp:FieldRefs><pnp:FieldRef ID="22222222-0000-4000-8000-000000000002" Name="KeelRtProject" DisplayName="Project" /></pnp:FieldRefs>
   ${list.extra ?? ''}
   <pnp:DataRows><pnp:DataRow><pnp:DataValue FieldName="Title">secret row</pnp:DataValue><pnp:Security><pnp:BreakRoleInheritance CopyRoleAssignments="false" /></pnp:Security></pnp:DataRow></pnp:DataRows>
   <pnp:Security><pnp:BreakRoleInheritance CopyRoleAssignments="false" ClearSubscopes="true"><pnp:RoleAssignment Principal="Everyone" RoleDefinition="Full Control" /></pnp:BreakRoleInheritance></pnp:Security>
@@ -57,17 +57,10 @@ export const attr = (text, name) => new RegExp(`\\b${name}="([^"]*)"`).exec(text
 function scriptWithoutActions(content) {
   try { const parsed = JSON.parse(content); return !Array.isArray(parsed?.actions) || parsed.actions.length === 0; } catch { return false; }
 }
-// PnP validates against the provisioning schema: ID is xs:ID (unique in the document) and
-// the sections inside ProvisioningTemplate come in the schema's order.
-const SCHEMA_ORDER = ['Navigation', 'SiteFields', 'ContentTypes', 'Lists'];
+// Part of PnP's schema check: ID is xs:ID, so the template ids must be unique in the document.
 export function templateProblem(xml) {
   const ids = [...xml.matchAll(/<pnp:(?:Templates|ProvisioningTemplate)\b[^>]*\sID="([^"]*)"/g)].map(([, id]) => id);
-  if (new Set(ids).size !== ids.length) return 'duplicate ID';
-  const body = /<pnp:ProvisioningTemplate\b[^>]*>([\s\S]*)<\/pnp:ProvisioningTemplate>/.exec(xml)?.[1] ?? '';
-  const order = [...body.matchAll(/<pnp:(Navigation|SiteFields|ContentTypes|Lists)\b/g)].map(([, name]) => SCHEMA_ORDER.indexOf(name));
-  // Only top-level sections count: Lists can't hold another section, so a drop in order is wrong.
-  if (order.some((value, index) => index > 0 && value < order[index - 1])) return 'sections out of order';
-  return null;
+  return new Set(ids).size === ids.length ? null : 'duplicate ID';
 }
 
 /** The fake's state: what the backup sees before anything is changed. */

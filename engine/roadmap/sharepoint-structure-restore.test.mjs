@@ -165,7 +165,7 @@ test('the restore template holds only what is missing and the navigation, never 
   assert.ok(built.xml.includes('Name="KeelRtOwner"') && built.xml.includes('<CHOICE>Open</CHOICE>'), 'the column and the list keep their own definition');
   assert.match(built.xml, /<pnp:StructuralNavigation\b[^>]*\sRemoveExistingNodes="true"/);
   assert.ok(!built.xml.includes('RemoveExistingNodes="false"'), 'the navigation replaces what is there');
-  // The provisioning schema's order: Navigation, SiteFields, ContentTypes, Lists.
+  // A fixed order: Navigation, SiteFields, ContentTypes, Lists.
   assert.ok(built.xml.indexOf('<pnp:Navigation') < built.xml.indexOf('<pnp:SiteFields>'));
   assert.ok(built.xml.indexOf('<pnp:SiteFields>') < built.xml.indexOf('<pnp:ContentTypes>'));
   assert.ok(built.xml.indexOf('<pnp:ContentTypes>') < built.xml.indexOf('<pnp:Lists>'));
@@ -175,7 +175,7 @@ test('the restore template holds only what is missing and the navigation, never 
   assert.throws(() => buildRestoreTemplate('<pnp:Provisioning xmlns:pnp="http://evil.example/x"><pnp:ProvisioningTemplate /></pnp:Provisioning>', { lists: ['x'] }), /PnP provisioning schema/);
 });
 
-test('the restore template passes PnP\'s schema checks whatever order the backup holds its sections in (issue #667)', () => {
+test('the restore template has unique ids (PnP refused a duplicate, issue #667) and a fixed section order whatever the backup holds', () => {
   const site = initialState().sites[SITE.toLowerCase()];
   const move = (xml, name) => {
     const [whole] = xml.match(new RegExp(`<pnp:${name}>[\\s\\S]*?</pnp:${name}>`));
@@ -199,7 +199,9 @@ test('a backed-up site script with no actions is listed for an administrator, ne
   assert.equal(scriptHasNoActions('{"actions":[]}'), true);
   assert.equal(scriptHasNoActions('{"$schema":"x","version":1}'), true);
   assert.equal(scriptHasNoActions('{"actions":[{"verb":"createSPList","listName":"x"}]}'), false);
+  assert.equal(scriptHasNoActions('[]'), true);
   assert.equal(scriptHasNoActions('not json'), false, 'unreadable JSON is left to SharePoint');
+  assert.equal(scriptHasNoActions(null), false, 'no content is not an empty script');
   const client = await schemaClient(t);
   const tenantRef = nextTenant();
   const state = initialState();

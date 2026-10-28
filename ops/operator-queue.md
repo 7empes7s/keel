@@ -9612,3 +9612,42 @@ item that needs it stays untouched.
 - **Report:** B; the tool's five lines; publishingState per app; each step's exit code, dry-run, artifact (A, C, A2, C2) and approval
   ids, the log `changes` lines and compensation plan lines; every Graph call that failed (status and message verbatim, no tokens);
   the links read back after steps 4 and 5; evidence branch and promotions if captured. Then comment the result on #653.
+
+### Q213: Live undo of a created KEEL-RT- policy that is assigned now: delete it, and skip it (after PR #655)
+- Drafted by the "Offer delete or skip on policy undo" thread (2026-10-28). Q211 proved the undo of a created, unassigned policy.
+  The user decided that when the created policy is assigned by the time of the undo, the undo asks the person per policy to
+  **delete it** (assignments removed first) or **skip it**. PR #655 adds that: the undo plan lists the policy under
+  `assigned (N): … waiting for your choice`, and `keel-restore --compensate A --delete-assigned <key>` or `--skip-assigned <key>`
+  re-plans with the choice (the portal sends the same through "Update the undo plan").
+- Needs: PR #655 merged and /opt/keel-live at that merge or later (`grep -q removeChosenAssignments /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only. Restorer for writes, Collector for reads and backups.** Self-approve under the 2026-10-14 standing authorization
+  and log every approval id. Run every restore from your own checkout at B (never `/opt/keel`). Assign the fixtures **only** to the
+  empty security group `KEEL-RT-213-group` (create it, no members). Never assign to All devices or All users.
+- Fixtures (by hand): two Windows 10 device restriction profiles (`#microsoft.graph.windows10GeneralConfiguration`, one harmless
+  setting such as `cameraBlocked: false`, no assignments): `KEEL-RT-213-delete` and `KEEL-RT-213-skip`. Group `KEEL-RT-213-group`.
+- Do:
+  1. Backup S. Report `deviceConfiguration` coverage and both fixtures' ids in S.
+  2. Delete both profiles by hand. Restore from S selecting both (`deviceConfiguration:KEEL-RT-213-delete`,
+     `deviceConfiguration:KEEL-RT-213-skip`); dry run, approve, enforce: artifact A. Report the new ids (d1, s1), no assignments.
+  3. Assign both new profiles by hand to `KEEL-RT-213-group` (`POST .../deviceConfigurations/{id}/assign`). Read back
+     `.../assignments` for each and quote the assignment ids.
+  4. **Undo, no choice.** `keel-restore --compensate A --persist-artifact C0`. Expect `0 inverse write(s)` and two lines
+     `assigned (1): <key> — waiting for your choice: delete it with its assignments, or skip it`. Check the portal job page of A:
+     "Undo this restore" shows "Waiting for your choice" and the two policies under "Assigned now". Try `--artifact C0 --enforce`
+     (after approving C0): expect `compensation promotion refused: 2 assigned policies wait for a choice`, and no write.
+  5. **Undo with choices.** `keel-restore --compensate A --persist-artifact C --delete-assigned deviceConfiguration:KEEL-RT-213-delete
+     --skip-assigned deviceConfiguration:KEEL-RT-213-skip`. Expect `1 inverse write(s)` and the lines `assigned (1): … delete it with
+     its assignments` / `… skip it`. Approve C, `--artifact C --enforce`. Expect exactly two writes: `POST .../deviceConfigurations/{d1}/assign`
+     with `{"assignments":[]}`, then `DELETE .../deviceConfigurations/{d1}`; `compensation applied 1, skipped 0, failed 0`. The journal
+     entry for d1 is `delete`, `succeeded`, detail `absent; its 1 assignment(s) were removed first`, and its prior state holds the
+     removed assignment.
+  6. Read back: d1 → 404. s1 still exists with its one assignment to `KEEL-RT-213-group`.
+  7. **Changed since the choice (optional, quick).** Restore again to recreate KEEL-RT-213-delete (A2), assign it to the group, compensate
+     to C2 with `--delete-assigned`, approve, then add a second assignment by hand (an exclusion of the same group is fine) and promote C2:
+     expect `compensation promotion refused: the recomputed restore plan no longer matches` and no write.
+  8. Cleanup: delete every KEEL-RT-213 profile and the group; report anything left.
+- **Report:** B; S, A, C0, C (and A2, C2) and approval ids; d1 and s1; each step's exit code and the compensation plan lines; the
+  Graph calls of step 5; every Graph call that failed (status and message verbatim, no tokens); a screenshot or the text of the portal
+  undo panel in step 4 if you can reach it.

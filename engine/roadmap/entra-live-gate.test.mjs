@@ -64,8 +64,8 @@ function fixtureRestore(step, {
   const restoreRef = '0f0e0d0c-0b0a-4908-8706-050403020100';
   const edge = step.resourceType.includes('#');
   const family = edge ? step.resourceType.split('#')[1] : null;
-  const key = naturalKey ?? (/\s|</.test(step.select) ? `fixture-key-${step.resourceType}` : step.select);
-  const name = displayName ?? (step.fixtureKind === 'named-object' ? `${key}` : null);
+  const key = naturalKey ?? (step.key.startsWith('<') ? `${step.resourceType.split('#')[0]}:fixture-key` : step.key);
+  const name = displayName ?? (step.fixtureKind === 'named-object' ? key.slice(key.indexOf(':') + 1) : null);
   // The object's own name, in every field its kind is named by (issue #478).
   const named = (value) => (value ? { displayName: value, ...Object.fromEntries(nameFieldsFor(step.resourceType).map((field) => [field, value])) } : {});
   const targetId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';

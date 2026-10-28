@@ -589,6 +589,25 @@ function setupFor(resourceType, operation, guidance, key) {
   }
 }
 
+/**
+ * Issue #641: the key `keel-restore --select` and `entraLive capture --fixture`
+ * take. A snapshot stores every object under `<type>:<natural key>`
+ * (engine/cir/canonicalize.mjs), so a bare name is never in the candidate set.
+ *  - A select that is a description, not a key, stays a placeholder the operator fills in.
+ *  - A relationship edge (`group#member`) is restored through its parent group.
+ *  - A singleton keyed by its type name is `<type>:<type>`. A singleton keyed by
+ *    its display name (authorizationPolicy, say) has a key Graph decides, so it
+ *    stays a placeholder rather than a guess.
+ */
+export function restoreKeyFor(resourceType, select) {
+  if (/\s/.test(select)) return `<natural key: ${select}>`;
+  const type = resourceType.split('#')[0];
+  if (select === type && !CONSTANT_KEY_TYPES.has(type)) {
+    return `<natural key: the key KEEL shows for the tenant's one ${type} object (it starts ${type}:)>`;
+  }
+  return `${type}:${select}`;
+}
+
 function stepFor(row, inventory) {
   const { resourceType, operation } = row;
   const guidance = guidanceFor(resourceType);
@@ -596,8 +615,7 @@ function stepFor(row, inventory) {
   // one the other steps use is never deleted.
   const separate = operation === 'delete' && guidance.kind === 'named-object';
   const select = separate ? `${guidance.select}-delete` : guidance.select;
-  // A select that is a description, not a key, stays a placeholder the operator fills in.
-  const key = /\s/.test(select) ? `<natural key: ${select}>` : select;
+  const key = restoreKeyFor(resourceType, select);
   const setup = setupFor(resourceType, operation, guidance, key);
   const stem = evidenceStem(resourceType, operation);
   return {
@@ -613,6 +631,7 @@ function stepFor(row, inventory) {
     fixtureKind: guidance.kind,
     testObject: separate ? `a second fixture like the one above (${guidance.fixture}), named ${guidance.select}-delete, created after the snapshot` : guidance.fixture,
     select,
+    key,
     breakGlass: guidance.lockout ? [...BREAK_GLASS_COMMON, guidance.breakGlass ?? ''].filter(Boolean) : null,
     sharedRunAllowed: !guidance.lockout && operation !== 'delete',
     before: setup.before,
@@ -627,6 +646,7 @@ function stepFor(row, inventory) {
 
 function enforcementStep() {
   const guidance = guidanceFor('conditionalAccessPolicy');
+  const key = restoreKeyFor('conditionalAccessPolicy', `${FIXTURE_PREFIX}-ca`);
   return {
     id: `conditionalAccessPolicy:${ENFORCEMENT_STEP}`,
     resourceType: 'conditionalAccessPolicy',
@@ -640,14 +660,15 @@ function enforcementStep() {
     fixtureKind: 'named-object',
     testObject: `${FIXTURE_PREFIX}-ca, restored report-only by the restore-soft-deleted step from a snapshot where it was turned on (for carla only)`,
     select: `${FIXTURE_PREFIX}-ca`,
+    key,
     breakGlass: [...BREAK_GLASS_COMMON, guidance.breakGlass, 'This is the one step that turns a policy ON. It blocks only carla. The lockout gate runs at planning and again at execution.'],
     sharedRunAllowed: false,
     before: 'Run right after the Conditional Access restore-soft-deleted step, whose restore left an open "turn on" item for the policy.',
     commands: [
-      `node cli/keel-restore.mjs --enforce-conditional-access "$A" --policy '${FIXTURE_PREFIX}-ca' --persist-artifact "$E" --requested-by keel-operator`,
+      `node cli/keel-restore.mjs --enforce-conditional-access "$A" --policy '${key}' --persist-artifact "$E" --requested-by keel-operator`,
       '# Marouane approves artifact E in the portal (Restore, review).',
       'node cli/keel-restore.mjs --artifact "$E" --enforce',
-      `node tools/qualification/entraLive.mjs capture --restore-ref "$E" --resource-type conditionalAccessPolicy --operation ${ENFORCEMENT_STEP} --fixture '${FIXTURE_PREFIX}-ca' --target-config "$RESTORER" --build "$B" --out "$OUT"`,
+      `node tools/qualification/entraLive.mjs capture --restore-ref "$E" --resource-type conditionalAccessPolicy --operation ${ENFORCEMENT_STEP} --fixture '${key}' --target-config "$RESTORER" --build "$B" --out "$OUT"`,
     ],
     cleanup: `Delete ${FIXTURE_PREFIX}-ca and permanently delete it from deleted items. Confirm carla can sign in again.`,
     evidence: [`$OUT/conditionalAccessPolicy.${ENFORCEMENT_STEP}.json`, `$OUT/conditionalAccessPolicy.${ENFORCEMENT_STEP}.capture.json`],
@@ -740,7 +761,7 @@ export function renderMarkdown(plan) {
     if (step.alreadyLive) lines.push('- Already live-qualified: recapture only if the record is older than 30 days.');
     if (!step.reviewedGuidance) lines.push('- **No reviewed guidance for this type yet.** Read its roadmap doc first.');
     lines.push(`- Test object: ${step.testObject}`);
-    lines.push(`- Select: ${step.select}`);
+    lines.push(`- Select: ${step.key}`);
     lines.push(step.sharedRunAllowed
       ? '- Shared run: allowed (may share one snapshot and one restore with other shared steps)'
       : '- Shared run: no (runs alone, with its own snapshot and restore)');

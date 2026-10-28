@@ -10,7 +10,8 @@
 //                         a OneDrive, or with --site a document library of that site
 //   --site SITE_ID --list LIST_ID [--items ID,ID]
 // Restore options:
-//   --at ISO                         the point in time (default: the latest backup)
+//   --at ISO                         the point in time (default: now, so the backup as it is
+//                                    when the plan is made; later backups are never restored)
 //   --version VERSION_ID             one file's version (with --file)
 //   --target-drive ID [--target-folder PATH]       files to another drive or folder
 //   --target-site ID (--target-list ID | --target-list-name NAME)   a list elsewhere
@@ -20,12 +21,17 @@
 // plan reads the target through the content-restorer app and writes nothing. request files
 // a content-restore approval for exactly that request. run takes the request from the
 // approval: the actor must hold content-restore, must be the requester, and someone else
-// must have approved it (engine/content/restore/gate.mjs). On the test tenant a restore
+// must have approved it (engine/content/restore/gate.mjs), within 24 hours, and a run that
+// completed is never started again. A restore to another drive, folder or list is filed
+// as content-restore-other-location, so the tenant's two-person rule for it applies. On the test tenant a restore
 // writes only to KEEL-RT- sites and drives. Every Graph call goes through the content
 // write transport with a guard that keeps writes inside the target drive or site.
 import { readConfigFile } from '../engine/config/configFile.mjs';
 import { requestApproval } from '../engine/govern/approvals.mjs';
-import { CONTENT_RESTORE_ACTION, ContentRestoreRefusedError, authorizeContentRestore, targetProblems } from '../engine/content/restore/gate.mjs';
+import {
+  CONTENT_RESTORE_ACTION, CONTENT_RESTORE_OTHER_LOCATION, ContentRestoreRefusedError, authorizeContentRestore, refuseFuturePointInTime, requireContentPolicyAction,
+  targetProblems,
+} from '../engine/content/restore/gate.mjs';
 import { createPgRestoreJournal } from '../engine/content/restore/journal.mjs';
 import {
   CONFLICT_MODES, LIST_WORKLOAD, filesRestoreRequest, listRestoreRequest, restoreFiles, restoreList, restoreRunKey,
@@ -46,8 +52,12 @@ function arg(argv, name, fallback) {
   return i > -1 ? argv[i + 1] : fallback;
 }
 
-/** The file or list restore request the command line names, in canonical shape. */
-export function filesRequestFromArgs(argv, tenantRef) {
+/**
+ * The file or list restore request the command line names, in canonical shape. Without
+ * --at the point in time is now: the approved plan never grows with later backups.
+ */
+export function filesRequestFromArgs(argv, tenantRef, now = () => new Date()) {
+  const at = arg(argv, 'at') ?? now().toISOString();
   const conflict = arg(argv, 'conflict', 'copy');
   if (!CONFLICT_MODES.includes(conflict)) throw new TypeError(`--conflict must be one of ${CONFLICT_MODES.join(', ')}`);
   const siteId = arg(argv, 'site');
@@ -61,7 +71,7 @@ export function filesRequestFromArgs(argv, tenantRef) {
     const target = targetSite || targetList || targetListName ? { siteId: targetSite ?? siteId, listId: targetList, listName: targetListName } : null;
     const items = arg(argv, 'items');
     return listRestoreRequest({
-      source: { tenantRef, siteId, listId }, at: arg(argv, 'at'), target, conflict,
+      source: { tenantRef, siteId, listId }, at, target, conflict,
       itemIds: items === undefined ? null : items.split(',').map((id) => id.trim()).filter(Boolean),
     });
   }
@@ -78,7 +88,7 @@ export function filesRequestFromArgs(argv, tenantRef) {
   const targetDrive = arg(argv, 'target-drive');
   const targetFolder = arg(argv, 'target-folder');
   return filesRestoreRequest({
-    source, scope: kind === 'drive' ? { kind } : { kind, itemId }, at: arg(argv, 'at'), version: arg(argv, 'version') ?? null,
+    source, scope: kind === 'drive' ? { kind } : { kind, itemId }, at, version: arg(argv, 'version') ?? null,
     target: targetDrive || targetFolder ? { driveId: targetDrive ?? driveId, folderPath: targetFolder } : null,
     conflict, permissions: argv.includes('--permissions'),
   });
@@ -146,6 +156,7 @@ export async function filesCommand(argv, ctx) {
   const action = argv[0];
   if (action === 'plan' || action === 'request') {
     const request = filesRequestFromArgs(argv, tenantRef);
+    if (action === 'request') refuseFuturePointInTime(request.at);
     const transport = await restorerTransport(argv, request, ctx);
     const planned = await engineCall(request, { tenantRef, testTenantRefs })({ store, transport, dryRun: true, logger });
     if (planned.runKey !== restoreRunKey(request)) throw new Error('the planned run does not match the request');
@@ -156,6 +167,7 @@ export async function filesCommand(argv, ctx) {
     const filed = await requestApproval(client, {
       tenantRef, action: CONTENT_RESTORE_ACTION, params: { runId: planned.runKey, tenantRef, workload: workloadOf(request), request },
       requestedBy: arg(argv, 'actor'), justification: arg(argv, 'justification') ?? null, executor: 'cli',
+      policyActions: planned.summary.otherLocation ? [CONTENT_RESTORE_OTHER_LOCATION] : [],
     });
     logger.log(JSON.stringify({ approvalId: filed.id, ...brief(planned) }, null, 2));
     return 0;
@@ -173,6 +185,11 @@ export async function filesCommand(argv, ctx) {
   if (request && (request.source.tenantRef !== tenantRef || approved.params.runId !== restoreRunKey(request))) {
     throw new ContentRestoreRefusedError(`approval request ${approvalId} is not a file restore of this tenant`);
   }
+  // Approved before the point in time was fixed at request time: it would restore
+  // whatever the newest backup holds, which nobody reviewed.
+  if (request && request.at === null) {
+    throw new ContentRestoreRefusedError(`approval request ${approvalId} has no point in time; file a new request`);
+  }
   const gate = await authorizeContentRestore(client, {
     actor: arg(argv, 'actor'), approvalId, runId: request ? restoreRunKey(request) : null, tenantRef, ...(canFn ? { canFn } : {}),
   });
@@ -180,9 +197,10 @@ export async function filesCommand(argv, ctx) {
   const result = await engineCall(request, { tenantRef, testTenantRefs })({
     store, transport, journal: createPgRestoreJournal(client),
     // Authorized above for exactly this run.
-    gate: async ({ runKey }) => {
+    // The engine names the class (another location or not); the approval must cover it.
+    gate: async ({ runKey, action: actionClass }) => {
       if (runKey !== restoreRunKey(request)) throw new Error('the run is not the approved one');
-      return gate;
+      return requireContentPolicyAction(gate, actionClass);
     },
     logger,
   });

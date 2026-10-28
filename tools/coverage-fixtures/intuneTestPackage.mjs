@@ -33,6 +33,7 @@ export const SETUP_CONTENT = '@echo off\r\necho KEEL test package: nothing is in
 
 const GRAPH = 'https://graph.microsoft.com/beta';
 const GRAPH_HOST = 'graph.microsoft.com';
+const APP_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BLOB_HOST_SUFFIX = '.blob.core.windows.net';
 
 /* ------------------------------------------------------------- package --- */
@@ -142,13 +143,14 @@ export function assertTestApp(app, assignments) {
   if (app['@odata.type'] !== '#microsoft.graph.win32LobApp') {
     throw new PackageRefusal(`refusing ${name}: it is ${app['@odata.type']}, not a Win32 app`);
   }
-  if ((assignments ?? []).length > 0) throw new PackageRefusal(`refusing ${name}: it has ${assignments.length} assignment(s); test apps stay unassigned`);
+  if (!Array.isArray(assignments)) throw new PackageRefusal(`refusing ${name}: its assignments could not be read`);
+  if (assignments.length > 0) throw new PackageRefusal(`refusing ${name}: it has ${assignments.length} assignment(s); test apps stay unassigned`);
 }
 
 function isBlobUrl(url) {
   try {
     const parsed = new URL(url);
-    return parsed.protocol === 'https:' && parsed.host.endsWith(BLOB_HOST_SUFFIX);
+    return parsed.protocol === 'https:' && parsed.hostname.endsWith(BLOB_HOST_SUFFIX);
   } catch {
     return false;
   }
@@ -172,6 +174,7 @@ async function waitForState(graph, path, wanted, { sleep, attempts = 30 }) {
  *   putBlob(url, body, headers) -> { ok, status }        (Azure Storage, no token)
  */
 export async function uploadTestPackage(appId, { graph, putBlob, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), pkg = buildTestPackage() }) {
+  if (!APP_ID.test(appId ?? '')) throw new PackageRefusal(`refusing "${appId}": an app id is a GUID`);
   const appPath = `/deviceAppManagement/mobileApps/${appId}`;
   const appRes = await graph('GET', appPath);
   if (!appRes.ok) throw new Error(`GET app ${appId} failed (${appRes.status}): ${appRes.body?.error?.message ?? 'no message'}`);

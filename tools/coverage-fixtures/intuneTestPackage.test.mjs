@@ -58,13 +58,13 @@ test('the package decrypts, its MAC and digest check out, and it holds only inst
 
 const BLOB = 'https://keeltest.blob.core.windows.net/c/f?sv=1&sig=x';
 
-function fakeTenant({ app, assignments = [], blobUri = BLOB }) {
+function fakeTenant({ app, assignments, blobUri = BLOB }) {
   const calls = [];
   const blobCalls = [];
   let fileGets = 0;
   const graph = async (method, path, body) => {
     calls.push({ method, path, body });
-    if (method === 'GET' && path.endsWith('/assignments')) return { ok: true, status: 200, body: { value: assignments } };
+    if (method === 'GET' && path.endsWith('/assignments')) return { ok: true, status: 200, body: assignments === undefined ? {} : { value: assignments } };
     if (method === 'GET' && /\/files\/f1$/.test(path)) {
       fileGets += 1;
       const committed = calls.some((c) => c.path.endsWith('/commit'));
@@ -82,21 +82,22 @@ function fakeTenant({ app, assignments = [], blobUri = BLOB }) {
   return { calls, blobCalls, graph, putBlob, sleep: async () => {} };
 }
 
-const SHELL = { id: 'a1', displayName: 'KEEL-RT-209-app-main', '@odata.type': '#microsoft.graph.win32LobApp' };
+const ID = '5a2b3211-0000-4000-8000-000000000001';
+const SHELL = { id: ID, displayName: 'KEEL-RT-209-app-main', '@odata.type': '#microsoft.graph.win32LobApp' };
 
 test('uploads, commits and publishes a KEEL-RT- Win32 app in the documented order', async () => {
-  const t = fakeTenant({ app: SHELL });
+  const t = fakeTenant({ app: SHELL, assignments: [] });
   const pkg = buildTestPackage({ random: fixedRandom() });
-  const result = await uploadTestPackage('a1', { ...t, pkg });
+  const result = await uploadTestPackage(ID, { ...t, pkg });
   assert.deepEqual(result, { name: 'KEEL-RT-209-app-main', contentVersion: '1', publishingState: 'published' });
 
   const writes = t.calls.filter((c) => c.method !== 'GET').map((c) => `${c.method} ${c.path}`);
-  const win32 = '/deviceAppManagement/mobileApps/a1/microsoft.graph.win32LobApp/contentVersions';
+  const win32 = `/deviceAppManagement/mobileApps/${ID}/microsoft.graph.win32LobApp/contentVersions`;
   assert.deepEqual(writes, [
     `POST ${win32}`,
     `POST ${win32}/1/files`,
     `POST ${win32}/1/files/f1/commit`,
-    'PATCH /deviceAppManagement/mobileApps/a1',
+    `PATCH /deviceAppManagement/mobileApps/${ID}`,
   ]);
   const fileBody = t.calls.find((c) => c.path === `${win32}/1/files`).body;
   assert.equal(fileBody.name, PACKAGE_FILE_NAME);
@@ -120,17 +121,24 @@ for (const [label, app, assignments, pattern] of [
   ['a name without KEEL-RT-', { ...SHELL, displayName: 'Company Portal' }, [], /does not start with KEEL-RT-/],
   ['a web link', { ...SHELL, '@odata.type': '#microsoft.graph.webApp' }, [], /not a Win32 app/],
   ['an assigned app', SHELL, [{ id: 'x' }], /1 assignment/],
+  ['an app whose assignments cannot be read', SHELL, undefined, /could not be read/],
 ]) {
   test(`refuses ${label} before writing anything`, async () => {
     const t = fakeTenant({ app, assignments });
-    await assert.rejects(uploadTestPackage('a1', t), (error) => error instanceof PackageRefusal && pattern.test(error.message));
+    await assert.rejects(uploadTestPackage(ID, t), (error) => error instanceof PackageRefusal && pattern.test(error.message));
     assert.deepEqual(t.calls.filter((c) => c.method !== 'GET'), []);
     assert.deepEqual(t.blobCalls, []);
   });
 }
 
 test('refuses an upload address outside Azure Storage and sends no package there', async () => {
-  const t = fakeTenant({ app: SHELL, blobUri: 'https://evil.example.com/x?sig=1' });
-  await assert.rejects(uploadTestPackage('a1', t), /blob\.core\.windows\.net/);
+  const t = fakeTenant({ app: SHELL, assignments: [], blobUri: 'https://evil.example.com/x?sig=1' });
+  await assert.rejects(uploadTestPackage(ID, t), /blob\.core\.windows\.net/);
   assert.deepEqual(t.blobCalls, []);
+});
+
+test('refuses an app id that is not a GUID before any call', async () => {
+  const t = fakeTenant({ app: SHELL, assignments: [] });
+  await assert.rejects(uploadTestPackage('a1?x=', t), (error) => error instanceof PackageRefusal && /GUID/.test(error.message));
+  assert.deepEqual(t.calls, []);
 });

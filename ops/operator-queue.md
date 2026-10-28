@@ -1716,6 +1716,36 @@ being triggered by queue updates.
 - **Expected:** drill passed with cleanup complete, verify exit 0, check exit 0, the evidence test passes.
 - **Report:** B, the drill outcome and write count, each exit code, the check output, the evidence PR, DBs dropped.
 
+### Q195: Read-only check of local HTTP listeners on Mulinux (security audit finding 6)
+- Drafted by the "Block webhooks to internal addresses" thread (2026-10-28). Admin webhooks are sent by `keel-worker`, which
+  runs as root, so before the fix a webhook could POST to any service that listens only on the host. The fix (engine address
+  guard, PR to follow) refuses loopback, private and link-local addresses. This item records what was exposed, so we know
+  whether anything else needs closing.
+- Needs: nothing. Independent of the PR.
+- Status: todo
+- **Read-only. No POST, PUT or DELETE to any local service, no config change, no restart.** Never print a secret or token.
+- Do:
+  1. `ss -ltnp` as root. List every TCP listener on 127.0.0.0/8, ::1, 0.0.0.0, :: or a private address, with port and owning
+     process (name only).
+  2. Caddy: report whether the Caddyfile or JSON config sets a global `admin` option (`admin off`, a unix socket, or an address).
+     Give the option line, not the whole file.
+  3. Only if something listens on 127.0.0.1:2019 (or ::1:2019): run exactly
+     `curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:2019/config/` as root and report the status code. Do not call
+     `/stop`, `/load` or any other path.
+  4. For each other HTTP listener from step 1, name the service and say whether its docs list an unauthenticated state-changing
+     POST endpoint (yes / no / unknown). Do not send one.
+  5. `grep -c` (count only) in `/etc/keel/*.env` and the `keel-worker` unit environment for names starting `KEEL_INTEGRATION_`.
+     Then list the env var *names* (never values) referenced by stored integration configs:
+     `psql "$KEEL_DB_URL" -Atc "SELECT kind, config->'auth' FROM siem_destination WHERE kind='webhook'"` and
+     `psql "$KEEL_DB_URL" -Atc "SELECT substring(config->>'url' from '^[a-z]+://([^/?#]+)') FROM channel WHERE kind='webhook'"`
+     (host and port only, never the path).
+     Report the counts and any webhook destination whose auth reference does not start with `env:KEEL_INTEGRATION_`
+     (it stops resolving after the PR) and any webhook channel whose URL host is an IP or `localhost` (give the host only).
+- Result:
+- **Expected:** a short table of listeners (address, port, process, HTTP yes/no, unauthenticated POST yes/no/unknown), the Caddy
+  `admin` line, the 2019 status code if it applies, and the counts from step 5.
+- **Report:** the table, the Caddy line, the step 3 code, step 5 counts and any rows that the new rules would refuse.
+
 ## Operator decisions (human operator only)
 
 Write `yes`, `no` or your instructions after each one. If a decision is blank, every

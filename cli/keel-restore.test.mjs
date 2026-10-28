@@ -996,3 +996,20 @@ console.log('keel-restore.test.mjs — all assertions passed');
   assert.deepEqual(refusals.map((refusal) => refusal.naturalKey), ['group:A'], 'only deletes are refused, once each');
   assert.match(refusals[0].reason, /^blocked-incomplete-read: deleting group:A .* vppToken could not be read$/);
 }
+
+// Issue #666: To Do settings answering 500 blocked every undo delete in the tenant.
+// A kind that holds no reference to another object cannot hide one, so it blocks
+// nothing; any other unread kind still blocks, and is the only one named.
+{
+  const planned = [{ naturalKey: 'deviceConfiguration:KEEL-RT-213-delete', verb: 'delete' }];
+  assert.deepEqual(incompleteReadDeleteRefusals(['todoSettings'], planned), [], 'To Do settings hold no reference');
+  assert.deepEqual(incompleteReadDeleteRefusals(['formsSettings', 'pronounsSettings', 'adminReportSettings'], planned), []);
+  const mixed = incompleteReadDeleteRefusals(['todoSettings', 'vppToken'], planned);
+  assert.equal(mixed.length, 1);
+  assert.match(mixed[0].reason, /, but vppToken could not be read$/, 'only the kind that could hold a reference is named');
+  // Kinds that can point at other objects are never marked.
+  const { CATALOG } = await import('../tools/tenant-probe/catalog.mjs');
+  const marked = CATALOG.filter((entry) => entry.holdsNoReferences === true).map((entry) => entry.type).sort();
+  assert.deepEqual(marked, ['adminReportSettings', 'appsAndServicesSettings', 'formsSettings', 'microsoft365AppsInstallationOptions', 'pronounsSettings', 'todoSettings']);
+  assert.ok(CATALOG.filter((entry) => entry.holdsNoReferences === true).every((entry) => entry.singleton === true), 'only one-per-tenant settings');
+}

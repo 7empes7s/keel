@@ -22,7 +22,7 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { chown, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { chown, lstat, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -138,7 +138,9 @@ export async function stageJobCredentials(configPath, { credentialRoot = DEFAULT
     files[name] = await readFile(real);
     config[field] = `${CONTAINER_CREDENTIAL_DIR}/${name}`;
   }
-  const dir = await mkdtemp(join(stagingRoot ?? defaultStagingRoot(), 'keel-ps-'));
+  const root = stagingRoot ?? defaultStagingRoot();
+  await sweepOnce(root);
+  const dir = await mkdtemp(join(root, `${STAGING_PREFIX}${process.pid}-`));
   try {
     files['tenant.json'] = Buffer.from(JSON.stringify(config));
     for (const [name, bytes] of Object.entries(files)) {
@@ -156,6 +158,70 @@ export async function stageJobCredentials(configPath, { credentialRoot = DEFAULT
 
 // /run is a tmpfs on the deploy host, so the copies never reach a disk.
 const defaultStagingRoot = () => (process.getuid?.() === 0 && existsSync('/run') ? '/run' : tmpdir());
+
+/**
+ * Staged copies are named keel-ps-<pid>-<random>, after the process that made them.
+ * runJob removes its copy when the job ends, but a worker killed mid-job (SIGKILL, OOM,
+ * a host crash) leaves it behind. The first job a process stages first sweeps the
+ * staging root: a copy is removed when the process named in it is gone, or is this very
+ * process (nothing has been staged here yet, so it is a dead earlier worker's pid).
+ * Copies in the older keel-ps-<random> form carry no pid; they are removed once older
+ * than LEGACY_STAGING_MAX_AGE_MS, far beyond any job's time budget.
+ */
+export const STAGING_PREFIX = 'keel-ps-';
+export const LEGACY_STAGING_MAX_AGE_MS = 60 * 60 * 1000;
+const STAGED_WITH_PID = /^keel-ps-(\d+)-[A-Za-z0-9]{6}$/;
+const STAGED_LEGACY = /^keel-ps-[A-Za-z0-9]{6}$/;
+
+function processAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: it exists but belongs to another user.
+    return error.code !== 'ESRCH';
+  }
+}
+
+/**
+ * Removes staged copies left behind by dead workers under `stagingRoot`. Only
+ * directories whose names match a staged copy are considered; links and anything else
+ * are left alone. Returns the names removed. A copy that cannot be removed is skipped.
+ */
+export async function sweepStaleStaging(stagingRoot, { selfPid = process.pid, isAlive = processAlive, now = Date.now() } = {}) {
+  let names;
+  try {
+    names = await readdir(stagingRoot);
+  } catch {
+    return [];
+  }
+  const removed = [];
+  for (const name of names) {
+    const withPid = STAGED_WITH_PID.exec(name);
+    if (!withPid && !STAGED_LEGACY.test(name)) continue;
+    const path = join(stagingRoot, name);
+    try {
+      const info = await lstat(path);
+      if (!info.isDirectory()) continue;
+      if (withPid) {
+        const pid = Number(withPid[1]);
+        if (pid !== selfPid && isAlive(pid)) continue;
+      } else if (now - info.mtimeMs < LEGACY_STAGING_MAX_AGE_MS) {
+        continue;
+      }
+      await rm(path, { recursive: true, force: true });
+      removed.push(name);
+    } catch { /* gone already, or not ours to remove: leave it */ }
+  }
+  return removed;
+}
+
+// One sweep per staging root per process, before that process stages its first copy.
+const sweeps = new Map();
+function sweepOnce(stagingRoot) {
+  if (!sweeps.has(stagingRoot)) sweeps.set(stagingRoot, sweepStaleStaging(stagingRoot).catch(() => []));
+  return sweeps.get(stagingRoot);
+}
 
 /**
  * The user the container runs as: the worker's own user when it is not root (so the

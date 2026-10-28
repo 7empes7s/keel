@@ -71,13 +71,15 @@ const sit = (n, over = {}) => ({
 });
 const BUILT_IN_SIT = sit(1, { Name: 'Credit Card Number', Publisher: 'Microsoft Corporation' });
 const rulePackage = (over = {}) => ({
-  Name: 'KEEL-RT-rule-package', Publisher: 'Contoso', Version: '1.0.0.0', WhenChangedUTC: '2026-10-20T00:00:00Z',
-  Identity: 'KEEL-RT-rule-package', SerializedClassificationRuleCollection: utf16Bytes(packXml()), ...over,
+  // As Q179 saw them: Name empty, RuleCollectionName carries it, bytes UTF-16LE with no byte order mark.
+  Name: '', RuleCollectionName: 'KEEL-RT-rule-package', Publisher: 'KEEL-RT', Version: '1.0.0.0', Description: 'Test package',
+  IsEncrypted: false, SerializedClassificationRuleCollection: [...Buffer.from(packXml(), 'utf16le')], ...over,
 });
-const BUILT_IN_PACKAGE = rulePackage({ Name: 'Microsoft Rule Package', Publisher: 'Microsoft Corporation', SerializedClassificationRuleCollection: utf16Bytes(packXml(guid(99))) });
+const BUILT_IN_PACKAGE = rulePackage({ RuleCollectionName: 'Microsoft Rule Package', Publisher: 'Microsoft Corporation', SerializedClassificationRuleCollection: utf16Bytes(packXml(guid(99))) });
 const dictionary = (n, over = {}) => ({
-  Name: `KEEL-RT-dictionary-${n}`, Description: 'Test words', KeywordDictionary: 'alpha,beta', WhenChangedUTC: '2026-10-20T00:00:00Z',
-  Identity: guid(n), Guid: guid(n), ...over,
+  // No Guid property; Identity is the Guid (Q179).
+  Name: `KEEL-RT-dictionary-${n}`, Description: 'Test words', KeywordDictionary: 'alpha,beta', MatchStyle: 'Word', IsValid: true,
+  Identity: guid(n), ...over,
 });
 const alert = (n, over = {}) => ({
   Name: `KEEL-RT-alert-${n}`, Comment: '', Category: 'DataLossPrevention', Severity: 'Low', Disabled: true, IsSystemRule: false,
@@ -191,6 +193,12 @@ test('the reads are declared, in scope, probed, Get-only and ship disabled', asy
     assert.throws(() => PURVIEW_CLASSIFIERS.assertCmdlet({ cmdlet }), DlpSupportScopeError, cmdlet);
     assert.throws(() => PURVIEW_AUDIT_ALERTS.assertCmdlet({ cmdlet }), DlpSupportScopeError, cmdlet);
   }
+  // The container sends only the declared fields of a type (the full object fails ConvertTo-Json, Q179),
+  // and drops Microsoft's rule package by its RuleCollectionName (its Name is empty).
+  const script = readFileSync(new URL('../../ops/powershell/run-cmdlet.ps1', import.meta.url), 'utf8');
+  const projected = /'Get-DlpSensitiveInformationType'\) \{ \$output = @\(\$output \| Select-Object ([^)]*)\)/.exec(script)[1].split(',').map((name) => name.trim());
+  for (const field of CLASSIFIER_FAMILIES.sensitiveInfoType.fields) assert.ok(projected.includes(field), `${field} is sent`);
+  assert.match(script, /\$_\.RuleCollectionName -ne 'Microsoft Rule Package'/);
   // Each workload runs only its own reads, and none takes a parameter.
   assert.throws(() => PURVIEW_CLASSIFIERS.assertCmdlet({ cmdlet: 'Get-ProtectionAlert' }), DlpSupportScopeError);
   assert.throws(() => PURVIEW_AUDIT_ALERTS.assertCmdlet({ cmdlet: 'Get-DlpKeywordDictionary' }), DlpSupportScopeError);
@@ -238,7 +246,7 @@ test('custom types, packages and dictionaries are kept; Microsoft built-ins are 
 
   // A large custom package (the portal's own custom pack can grow past the upload cap) is kept, never taken for Microsoft's.
   const big = packXml().replace('</Rules>', `<!-- ${'x'.repeat(200 * 1024)} --></Rules>`);
-  compliance.state.answers['Get-DlpSensitiveInformationTypeRulePackage'] = [rulePackage({ Name: 'Microsoft.SCCManaged.CustomRulePack', SerializedClassificationRuleCollection: utf16Bytes(big) })];
+  compliance.state.answers['Get-DlpSensitiveInformationTypeRulePackage'] = [rulePackage({ RuleCollectionName: 'Microsoft.SCCManaged.CustomRulePack', SerializedClassificationRuleCollection: utf16Bytes(big) })];
   const large = await readPurviewClassifiers({ powershell: compliance.powershell, families: ['sitRulePackage'], now: () => NOW });
   assert.deepEqual(large.resources.map((resource) => resource.resourceKey), [`sit-rule-package:${PACK_ID}`]);
   assert.equal(large.discovery.builtIn.sitRulePackage, 0);
@@ -322,7 +330,7 @@ test('collection stays off until Exchange and the core reads are qualified, then
   const audit = await collectPurviewAuditAlerts(client, { tenantRef, ledger, powershell: compliance.powershell, now: () => NOW });
   assert.equal(audit.run.outcome, 'complete');
 
-  compliance.state.answers['Get-DlpKeywordDictionary'] = [dictionary(10, { KeywordDictionary: 'alpha,beta,gamma', WhenChangedUTC: '2026-10-26T09:00:00Z' })];
+  compliance.state.answers['Get-DlpKeywordDictionary'] = [dictionary(10, { KeywordDictionary: 'alpha,beta,gamma' })];
   const second = await collectPurviewClassifiers(client, { tenantRef, ledger, powershell: compliance.powershell, now: () => new Date('2026-10-27T02:00:00Z') });
   const drift = await detectWorkloadDrift(client, { collectionId: second.run.id });
   assert.equal(drift.status, 'detected');

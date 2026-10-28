@@ -100,7 +100,9 @@ export const CLASSIFIER_FAMILIES = Object.freeze({
   sensitiveInfoType: Object.freeze({
     operation: 'purview.sensitive-info-types', cmdlet: 'Get-DlpSensitiveInformationType', prefix: 'sensitive-info-type',
     identity: guidIn(['Id']),
-    fields: Object.freeze(['Name', 'Id', 'Description', 'Publisher', 'RecommendedConfidence']),
+    // The container keeps only these (and LastModifiedTime) from each type: the full object holds
+    // dictionaries ConvertTo-Json cannot serialize (Q179). RulePackId names the package it is in.
+    fields: Object.freeze(['Name', 'Id', 'Description', 'Publisher', 'RecommendedConfidence', 'RulePackId']),
     prepare: (output) => {
       const custom = output.filter((body) => !(body && typeof body === 'object' && body.Publisher === MICROSOFT_PUBLISHER));
       return { output: custom, builtIn: output.length - custom.length };
@@ -110,13 +112,14 @@ export const CLASSIFIER_FAMILIES = Object.freeze({
     operation: 'purview.sit-rule-packages', cmdlet: 'Get-DlpSensitiveInformationTypeRulePackage', prefix: 'sit-rule-package',
     identity: (body) => rulePackIdOf(body?.RulePackageXml),
     // RulePackageXml is decoded from SerializedClassificationRuleCollection (prepare).
-    fields: Object.freeze(['Name', 'Publisher', 'Version', 'RulePackageXml', 'WhenChangedUTC']),
+    // A package's Name is empty; RuleCollectionName carries it (Q179).
+    fields: Object.freeze(['RuleCollectionName', 'Publisher', 'Version', 'Description', 'RulePackageXml']),
     prepare: (output) => {
       const custom = [];
       let builtIn = 0;
       for (const body of output) {
         if (!body || typeof body !== 'object') { custom.push(body); continue; }
-        if (body.Name === MICROSOFT_RULE_PACKAGE) { builtIn += 1; continue; }
+        if (body.RuleCollectionName === MICROSOFT_RULE_PACKAGE) { builtIn += 1; continue; }
         const { SerializedClassificationRuleCollection: bytes, ...rest } = body;
         const xml = decodeRulePackage(bytes);
         custom.push(xml === null ? rest : { ...rest, RulePackageXml: xml });
@@ -126,7 +129,8 @@ export const CLASSIFIER_FAMILIES = Object.freeze({
   }),
   keywordDictionary: Object.freeze({
     operation: 'purview.keyword-dictionaries', cmdlet: 'Get-DlpKeywordDictionary', prefix: 'keyword-dictionary', identity: byGuid,
-    fields: Object.freeze(['Name', 'Description', 'KeywordDictionary', 'WhenChangedUTC']),
+    // No Guid property; Identity is the Guid (Q179).
+    fields: Object.freeze(['Name', 'Description', 'KeywordDictionary', 'MatchStyle']),
   }),
 });
 

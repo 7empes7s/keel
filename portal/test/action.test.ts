@@ -575,6 +575,30 @@ test("a replayed request with the same idempotency key does not enqueue twice", 
   assert.equal(rows.length, 1, "the replay must not create a second job row");
 });
 
+test("a caller's idempotency key cannot claim a scheduler or install-run job key", async () => {
+  for (const rawKey of [
+    "schedule:1b2a4a00-0000-4000-8000-00000000b001:2026-10-28T02:00:00.000Z",
+    "install-run:sha256:tenant:tier1:2026-10-28",
+  ]) {
+    const response = await backupRoute(postAction("/api/actions/backup", {
+      principalId: OPERATOR, capabilities: ["backup"], idempotencyKey: rawKey, body: { tier: "tier1" },
+    }));
+    assert.equal(response.status, 202);
+    const { rows } = await client.query(`SELECT id FROM job WHERE idempotency_key = $1`, [rawKey]);
+    assert.equal(rows.length, 0, `no caller job may hold ${rawKey.split(":")[0]}: keys`);
+  }
+});
+
+test("an over-long idempotency key is refused before anything is queued", async () => {
+  const { rows: before } = await client.query(`SELECT id FROM job`);
+  const response = await backupRoute(postAction("/api/actions/backup", {
+    principalId: OPERATOR, capabilities: ["backup"], idempotencyKey: "k".repeat(201), body: { tier: "tier1" },
+  }));
+  assert.equal(response.status, 400);
+  const { rows: after } = await client.query(`SELECT id FROM job`);
+  assert.equal(after.length, before.length);
+});
+
 test("every denial and every recorded attempt lands in the evidence chain", async () => {
   const { rows } = (await client.query(
     `SELECT actor, subject FROM evidence WHERE kind = $1`,

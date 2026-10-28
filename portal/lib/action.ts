@@ -50,7 +50,9 @@ export const IDEMPOTENCY_KEY_HEADER = "idempotency-key";
 // `client:<principal>:<route>:<raw key>`. Server-minted keys (such as
 // `approval:<request id>`) live outside it, so a caller can never pre-claim one and
 // make an approved job resolve to a job of their own. Two callers, or two routes, with
-// the same raw key also no longer collide.
+// the same raw key also no longer collide. This covers every server-minted prefix,
+// including `schedule:<id>:<due>` and `install-run:<tenant>:<tier>:<day>`.
+export const MAX_IDEMPOTENCY_KEY_LENGTH = 200;
 export function callerIdempotencyKey(
   request: Request,
   principalId: string,
@@ -58,6 +60,9 @@ export function callerIdempotencyKey(
 ): string | undefined {
   const raw = request.headers.get(IDEMPOTENCY_KEY_HEADER);
   if (raw === null || raw.length === 0) return undefined;
+  if (raw.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
+    throw new InvalidActionRequest(`the idempotency key must be at most ${MAX_IDEMPOTENCY_KEY_LENGTH} characters`);
+  }
   return `client:${principalId}:${route}:${raw}`;
 }
 export const ATTEMPT_EVIDENCE_KIND = "action-attempt";

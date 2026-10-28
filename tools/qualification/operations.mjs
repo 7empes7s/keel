@@ -545,6 +545,19 @@ export function fakeGraph() {
         objects.set(base, { value: kept });
         return { ok: true, status: 204, body: null };
       }
+      // Issue #642: an app's links are set whole through the app's updateRelationships.
+      const linksOf = /^\/deviceAppManagement\/mobileApps\/([^/]+)\/updateRelationships$/.exec(path);
+      if (linksOf && method === 'POST') {
+        const appId = decodeURIComponent(linksOf[1]);
+        for (const [key, object] of [...objects.entries()]) {
+          if (key.startsWith('/deviceAppManagement/mobileAppRelationships/') && object.sourceId === appId && object.targetType !== 'parent') objects.delete(key);
+        }
+        for (const link of body.relationships ?? []) {
+          const id = `${link.targetId}_${appId}`;
+          objects.set(`/deviceAppManagement/mobileAppRelationships/${id}`, { ...link, id, sourceId: appId, targetType: 'child' });
+        }
+        return { ok: true, status: 204, body: null };
+      }
       const actions = /^(\/deviceManagement\/deviceCompliancePolicies\/[^/]+)\/scheduleActionsForRules$/.exec(path);
       if (actions && method === 'POST') {
         if (!objects.has(actions[1])) return { ok: false, status: 404, body: { error: { code: 'ResourceNotFound' } } };

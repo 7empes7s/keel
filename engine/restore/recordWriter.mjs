@@ -29,7 +29,18 @@
  *    Graph may return in another form (a JSON string with other spacing);
  *  - `checkedAfterWrite`: sent fields the object's own read never returns
  *    (Graph leaves them out); the record's `afterWrite` reads each one back
- *    from its own collection and fails the write when it differs.
+ *    from its own collection and fails the write when it differs;
+ *  - `writeVia(io, step)` and `readVia(io, step)`: for a type Graph writes
+ *    through an action on another object rather than its own collection (an
+ *    app's links, through the app's updateRelationships). `writeVia` makes the
+ *    create or update and returns Graph's answer (a failed answer may carry
+ *    `skipped`, a plain reason the write was not possible, and nothing was
+ *    written); `readVia` reads the one object back ({ ok, status, body }, 404
+ *    when it is not there). A create's id comes from the read back.
+ *    `writeRoute` names that route for the ledger;
+ *  - `planChanges(io, step)`: in a dry run, the changes the record's
+ *    `afterWrite` would make (an app's categories), read from live, so the plan
+ *    shows a difference that is not in a field of the object.
  *
  * Every write is journalled first and read back; every field it sent must read
  * back as sent (nulls and absent fields read the same). A reference held in a
@@ -69,6 +80,9 @@ export function defineRecord(spec) {
   if (spec.readEach && (spec.readQuery || spec.preflight || spec.afterWrite || spec.updateGuard || spec.deleteGuard)) {
     throw new TypeError(`${spec.resourceType}: a record read field by field takes no readQuery and no read hook`);
   }
+  if (Boolean(spec.writeVia) !== Boolean(spec.readVia)) {
+    throw new TypeError(`${spec.resourceType}: a record written through another route reads its object back through it too (writeVia and readVia)`);
+  }
   if (spec.singleton && (spec.operations ?? []).some((verb) => verb !== 'update')) {
     throw new TypeError(`${spec.resourceType}: a singleton is only ever updated`);
   }
@@ -90,6 +104,10 @@ export function defineRecord(spec) {
     updateGuard: null,
     transform: null,
     sameField: null,
+    writeVia: null,
+    readVia: null,
+    writeRoute: null,
+    planChanges: null,
     remapsReferences: false,
     checkedAfterWrite: [],
     ...spec,
@@ -271,15 +289,26 @@ export function writeFailure(record, naturalKey, result) {
 
 export const isNotFound = (result) => result?.ok === false && result?.status === 404;
 
-/** Re-reads until `isStale` clears (Graph's read-after-write lag), bounded. */
-export async function readUntil(io, version, path, isStale, { attempts = 6, delayMs = 3000 } = {}) {
+/** Calls `read` until `isStale` clears (Graph's read-after-write lag), bounded. */
+async function readUntilWith(read, isStale, { attempts = 6, delayMs = 3000 } = {}) {
   let result;
   for (let i = 0; i < attempts; i += 1) {
-    result = await io.retryOperation(() => io.writer.read(version, path));
+    result = await read();
     if (!isStale(result)) return result;
     if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
   return result;
+}
+
+/** Re-reads until `isStale` clears (Graph's read-after-write lag), bounded. */
+export function readUntil(io, version, path, isStale, options = {}) {
+  return readUntilWith(() => io.retryOperation(() => io.writer.read(version, path)), isStale, options);
+}
+
+/** One object read back: through the record's own route, or at its path. */
+function readRecordObject(io, record, payload, targetId) {
+  if (record.readVia) return record.readVia(io, { payload, targetId });
+  return io.retryOperation(() => io.writer.read(record.version, withQuery(record, recordObjectPath(record, payload, targetId))));
 }
 
 const refusalEntry = (naturalKey, refusal) => (refusal.outcome === 'skipped'
@@ -393,7 +422,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
     const existingId = ctx.existingTargetIds?.get(naturalKey);
     if (existingId) {
       if (ctx.mode === 'dry-run') return { applied: { naturalKey, targetId: existingId, changes: { fields } } };
-      const found = await io.retryOperation(() => writer.read(record.version, withQuery(record, recordObjectPath(record, payload, existingId))));
+      const found = await readRecordObject(io, record, payload, existingId);
       if (found?.ok !== true) {
         return { failed: { naturalKey, error: `conflict: an object with this key exists in the target but could not be read (status ${found?.status}) — manual reconciliation required` } };
       }
@@ -411,22 +440,31 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
     const held = await record.updateGuard(io, { resource, payload, targetId, before, fields, ctx });
     if (held) return refusalEntry(naturalKey, { outcome: 'skipped', ...held });
   }
-  if (ctx.mode === 'dry-run') return { applied: { naturalKey, targetId, changes: { fields }, ...followUp } };
+  if (ctx.mode === 'dry-run') {
+    const planned = record.planChanges && writer ? await record.planChanges(io, { resource, payload, verb, targetId, before, ctx }) : null;
+    return { applied: { naturalKey, targetId, changes: { fields, ...(planned ?? {}) }, ...followUp } };
+  }
   if (verb === 'update' && fields.length === 0 && !record.afterWrite) return { applied: { naturalKey, targetId, changes: { fields } } };
 
   const entry = await journal(ctx, resource, { operation: verb, targetId, priorState: before, intendedState: body });
   if (!entry.ok) return { failed: { naturalKey, error: `refusing to ${verb}: rollback journal write failed` } };
 
+  // A failed write: Graph's answer, or the record's plain reason nothing could be written.
+  const writeFailed = async (result) => {
+    await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
+    if (typeof result?.skipped === 'string') return refusalEntry(naturalKey, { outcome: 'skipped', reason: result.skipped });
+    return { failed: writeFailure(record, naturalKey, result) };
+  };
+
   let sent = {};
   if (verb === 'create') {
     const collection = recordCollection(record, payload);
-    const result = await io.retryOperation(() => writer.write(record.version, collection, { method: 'POST', body }));
-    if (!result.ok) {
-      await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
-      return { failed: writeFailure(record, naturalKey, result) };
-    }
-    targetId = result.body?.id;
-    if (typeof targetId !== 'string' || targetId.length === 0) {
+    const result = record.writeVia
+      ? await record.writeVia(io, { resource, payload, verb, body, sent: body, targetId: null, ctx })
+      : await io.retryOperation(() => writer.write(record.version, collection, { method: 'POST', body }));
+    if (!result?.ok) return writeFailed(result);
+    targetId = result.body?.id ?? null;
+    if (!record.writeVia && (typeof targetId !== 'string' || targetId.length === 0)) {
       await note(ctx, entry, 'uncertain', { postState: result.body ?? null, detail: 'create returned no id' });
       return { failed: { naturalKey, error: 'create returned no id' } };
     }
@@ -434,21 +472,25 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   } else if (fields.length > 0) {
     sent = record.updateMethod === 'PUT' ? body
       : Object.fromEntries(Object.entries(body).filter(([field]) => field === '@odata.type' || fields.includes(field)));
-    const result = await io.retryOperation(() => writer.write(record.version, recordObjectPath(record, payload, targetId), { method: record.updateMethod, body: sent }));
-    if (!result.ok) {
-      await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
-      return { failed: writeFailure(record, naturalKey, result) };
-    }
+    const result = record.writeVia
+      ? await record.writeVia(io, { resource, payload, verb, body, sent, targetId, ctx })
+      : await io.retryOperation(() => writer.write(record.version, recordObjectPath(record, payload, targetId), { method: record.updateMethod, body: sent }));
+    if (!result?.ok) return writeFailed(result);
   }
 
-  const readPath = withQuery(record, recordObjectPath(record, payload, targetId));
-  const reRead = await readUntil(io, record.version, readPath,
+  const reRead = await readUntilWith(() => readRecordObject(io, record, payload, targetId),
     (r) => isNotFound(r) || (r?.ok === true && recordPostStateRefusal(record, sent, r.body) !== null), io.readOptions);
   if (reRead?.ok !== true) {
     await note(ctx, entry, 'uncertain', { targetId, detail: `${verb} could not be re-read` });
     return { failed: graphFailure(naturalKey, reRead) };
   }
   let live = reRead.body;
+  // A create written through another route has its id only once it reads back.
+  if (record.writeVia && !targetId) targetId = typeof live?.id === 'string' && live.id.length > 0 ? live.id : null;
+  if (record.writeVia && !targetId) {
+    await note(ctx, entry, 'uncertain', { postState: live, detail: 'create read back with no id' });
+    return { failed: { naturalKey, error: 'create read back with no id' } };
+  }
   const postState = recordPostStateRefusal(record, sent, live);
   if (postState) {
     await note(ctx, entry, 'uncertain', { targetId, postState: live, detail: 'post-state did not verify' });
@@ -521,8 +563,9 @@ export function recordLedger(records) {
     resourceType: record.resourceType,
     operation,
     version: record.version,
-    method: operation === 'create' ? 'POST' : operation === 'delete' ? 'DELETE' : record.updateMethod,
-    route: record.singleton ? record.collection
+    method: operation === 'create' || (record.writeRoute && operation !== 'delete') ? 'POST' : operation === 'delete' ? 'DELETE' : record.updateMethod,
+    route: record.writeRoute && operation !== 'delete' ? record.writeRoute
+      : record.singleton ? record.collection
       : operation === 'create' ? (record.collection ?? '{subtype collection}') : `${record.collection ?? '{subtype collection}'}/{id}`,
     permission: record.permission ?? null,
   }))));

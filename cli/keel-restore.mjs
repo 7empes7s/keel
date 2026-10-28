@@ -264,6 +264,27 @@ export function completionStepLines(entry) {
     .filter((step) => step && typeof step.description === 'string' && step.description.length > 0)
     .map((step) => `completion step: ${entry.naturalKey} — ${step.description}`);
 }
+/**
+ * Issue #642: what one applied write changed or would change (its fields, and
+ * parts written beside them such as an app's categories), so a dry run and
+ * its promotion both show a difference that is not in a field. Null when the
+ * entry names no change.
+ */
+export function changeLine(entry) {
+  const changes = entry?.changes;
+  if (!changes || typeof changes !== 'object') return null;
+  const parts = [];
+  for (const [name, value] of Object.entries(changes)) {
+    if (name === 'fields') {
+      if (Array.isArray(value) && value.length > 0) parts.push(`fields ${value.join(', ')}`);
+    } else if (value && typeof value === 'object' && !Array.isArray(value)) {
+      parts.push(`${name} ${Object.entries(value).map(([key, count]) => `${key} ${typeof count === 'object' ? JSON.stringify(count) : count}`).join(', ')}`);
+    } else if (value !== undefined && value !== null) {
+      parts.push(`${name} ${Array.isArray(value) ? value.join(', ') : value}`);
+    }
+  }
+  return parts.length > 0 ? `  changes ${entry.naturalKey}: ${parts.join('; ')}` : null;
+}
 function logFailures(logger, failed) {
   for (const entry of failed) logger.log(`  failed ${entry?.naturalKey ?? 'unknown'}: ${failureReason(entry)}`);
 }
@@ -1183,6 +1204,10 @@ export async function runRestore({
       });
       logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
       logFailures(logger, result.failed);
+      for (const entry of result.applied) {
+        const line = changeLine(entry);
+        if (line) logger.log(line);
+      }
       for (const entry of [...result.applied, ...result.skipped]) {
         for (const line of completionStepLines(entry)) logger.log(line);
       }

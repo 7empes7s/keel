@@ -1741,11 +1741,16 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // (install automatically or detect; update or replace). Batch 19: the two
   // apps are named by the ids they have in the target, so a link between apps
   // this run recreated (or that exist under the same name) points at them.
+  // Issue #642: Graph has no POST or PATCH on the tenant's link list, so a
+  // link is written through its app's updateRelationships, and read back from
+  // the app's links.
   mobileAppRelationship: defineRecord({
     resourceType: 'mobileAppRelationship', version: 'beta', collection: '/deviceAppManagement/mobileAppRelationships',
     odataType: 'required', operations: ['create', 'update'], remapsReferences: true,
     writable: ['dependencyType', 'supersedenceType'], createOnly: ['sourceId', 'targetId', 'targetType'],
-    refusal: appRelationshipRefusal, preflight: appRelationshipPreflight, permission: 'DeviceManagementApps.ReadWrite.All',
+    refusal: appRelationshipRefusal, preflight: appRelationshipPreflight,
+    writeVia: appRelationshipWrite, readVia: appRelationshipRead, writeRoute: '/deviceAppManagement/mobileApps/{appId}/updateRelationships',
+    permission: 'DeviceManagementApps.ReadWrite.All',
   }),
   // Restore gaps, batch 18. An app is written from its settings (store and
   // web links, Microsoft 365 Apps, Edge, WinGet), or as a shell waiting for its
@@ -1755,7 +1760,7 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   mobileApp: defineRecord({
     resourceType: 'mobileApp', version: 'v1.0', collection: '/deviceAppManagement/mobileApps', odataType: 'required',
     operations: ['create', 'update'], excluded: MOBILE_APP_SERVER_FIELDS, createOnly: ['packageIdentifier', 'fileName'],
-    transform: mobileAppBody, refusal: mobileAppRefusal, afterWrite: appAfterWrite,
+    transform: mobileAppBody, refusal: mobileAppRefusal, updateGuard: appWithoutPackageGuard, afterWrite: appAfterWrite, planChanges: appPlannedChanges,
     assignmentType: '#microsoft.graph.mobileAppAssignment', assignmentBodyKey: 'mobileAppAssignments', assignmentExtras: Object.freeze(['intent', 'settings']),
     permission: 'DeviceManagementApps.ReadWrite.All',
   }),
@@ -1869,6 +1874,67 @@ async function appRelationshipPreflight(io, { payload, verb }) {
   return {
     skipped: `already set: ${payload.sourceDisplayName ?? payload.sourceId} already has a ${stripGraph(same['@odata.type']) === 'mobileAppSupersedence' ? 'supersedence' : 'dependency'} link to ${payload.targetDisplayName ?? payload.targetId}, so it is not added again; check it in the Intune admin center if the backup holds another kind of link`,
   };
+}
+
+/**
+ * Issue #642: the app that holds a link (the one that depends on or replaces
+ * the other) and the app it points to. A link read from the app it points to
+ * names the holder as its target (targetType 'parent').
+ */
+const linkEnds = (payload) => (lower(payload?.targetType) === 'parent'
+  ? { holder: payload.targetId, other: payload.sourceId }
+  : { holder: payload.sourceId, other: payload.targetId });
+
+/** One link as updateRelationships takes it: its kind, the app it points to and how. */
+function relationshipEntry(link, targetId) {
+  const kind = stripGraph(link?.['@odata.type']);
+  return {
+    '@odata.type': `#microsoft.graph.${kind}`, targetId,
+    ...(kind === 'mobileAppSupersedence' ? { supersedenceType: link.supersedenceType } : { dependencyType: link.dependencyType }),
+  };
+}
+
+// Intune's answer when a link joins an app that is not a Win32 app.
+const NOT_WIN32 = /is not a Win32LobApp/i;
+
+/**
+ * Issue #642: Graph has no write route on the tenant's link list (POST answers
+ * "No method match route template"). An app's links are set through
+ * POST .../mobileApps/{id}/updateRelationships, which replaces all the links
+ * that app holds, so the ones it holds now are sent again with this one. A
+ * link Intune refuses because an app is not a Win32 app is a plain step.
+ */
+async function appRelationshipWrite(io, { payload }) {
+  const { holder, other } = linkEnds(payload);
+  const listed = await io.retryOperation(() => io.writer.read('beta', `${appPath(holder)}/relationships`));
+  if (listed?.ok !== true) return listed ?? { ok: false, error: 'the app\'s links could not be read' };
+  if (listed.body?.['@odata.nextLink']) return { ok: false, error: 'the app has more links than one page holds, so its links were not changed' };
+  const kept = (listed.body?.value ?? [])
+    .filter((link) => lower(link?.targetType) !== 'parent' && lower(link?.targetId) !== lower(other))
+    .map((link) => relationshipEntry(link, link.targetId));
+  const result = await io.retryOperation(() => io.writer.write('beta', `${appPath(holder)}/updateRelationships`, {
+    method: 'POST', body: { relationships: [...kept, relationshipEntry(payload, other)] },
+  }));
+  if (result?.ok !== true && result?.status === 400 && NOT_WIN32.test(JSON.stringify(result?.body ?? ''))) {
+    return {
+      ...result,
+      skipped: `manual: Intune sets dependencies and supersedence only between Win32 apps, and ${payload.sourceDisplayName ?? payload.sourceId} or ${payload.targetDisplayName ?? payload.targetId} is not one now; nothing was written. Check both apps in ${APP_PORTAL}, then set the link by hand under the app, Dependencies or Supersedence`,
+    };
+  }
+  return result;
+}
+
+/** The link as the backup names it, found among its source app's links (404 when it is not there). */
+async function appRelationshipRead(io, { payload }) {
+  const listed = await io.retryOperation(() => io.writer.read('beta', `${appPath(payload.sourceId)}/relationships`));
+  if (listed?.ok !== true) return listed;
+  const kind = stripGraph(payload['@odata.type']);
+  const side = lower(payload.targetType ?? 'child');
+  const found = (listed.body?.value ?? []).find((link) => lower(link?.targetId) === lower(payload.targetId)
+    && stripGraph(link?.['@odata.type']) === kind && lower(link?.targetType ?? 'child') === side);
+  if (!found) return { ok: false, status: 404, body: { error: { code: 'ResourceNotFound', message: 'the link is not among the app\'s links' } } };
+  // Listed under its source app, so that is its source, when Graph leaves it out.
+  return { ok: true, status: 200, body: { sourceId: payload.sourceId, ...found } };
 }
 
 // ---------------------------------------------- restore gaps, batch 18: apps
@@ -2063,6 +2129,41 @@ async function appCategoriesAfterWrite(io, { payload, targetId, ctx }) {
       kind: 'integration', requirement: 'categories',
       description: `Categories not all restored: the app category ${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not in Intune. Restore or add ${missing.length === 1 ? 'it' : 'them'} first, then add the app to ${missing.length === 1 ? 'it' : 'them'} in ${APP_PORTAL}, the app, Properties, App information, Category`,
     })],
+  };
+}
+
+/**
+ * Issue #642: in a dry run, which categories the app would be added to or
+ * taken out of, compared by name with the app's categories now (a recreated
+ * app is in none). Shown in the plan beside the changed fields.
+ */
+async function appPlannedChanges(io, { payload, verb, targetId }) {
+  const want = payload?.categories;
+  if (!Array.isArray(want)) return null;
+  let current = [];
+  if (verb !== 'create' && targetId) {
+    const read = await readAppCategories(io, targetId);
+    if (read.error) return { categories: `not read: ${read.error}` };
+    current = read.categories;
+  }
+  const names = (list) => [...new Set(list.map((item) => lower(String(item?.displayName ?? '').trim())))];
+  const have = names(current);
+  const wanted = names(want);
+  const added = wanted.filter((name) => !have.includes(name)).length;
+  const removed = have.filter((name) => !wanted.includes(name)).length;
+  return { categories: added > 0 || removed > 0 ? { added, removed } : 'already as in the backup' };
+}
+
+/**
+ * Issue #642: Intune refuses any change to a Win32 or line-of-business app
+ * whose package is not uploaded yet (400 "app's PublishingState is not
+ * 'Published'"), so such an update is a step for a person, in the plan too.
+ */
+function appWithoutPackageGuard(_io, { before, payload }) {
+  const live = before ?? {};
+  if (appGroupOf(live) !== 'packaged' || appHasPackage(live)) return null;
+  return {
+    reason: `manual: Intune does not let ${payload?.displayName ?? live.displayName ?? 'this app'} be changed until its package is uploaded, so nothing was written; upload the package in ${APP_PORTAL}, then restore again`,
   };
 }
 

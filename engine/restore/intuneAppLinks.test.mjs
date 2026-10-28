@@ -8,7 +8,9 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { applyIntuneExtendedWrite } from './intuneOperations.mjs';
+import { applyIntuneExtendedWrite, buildIntuneExtendedLedger } from './intuneOperations.mjs';
+import { followUpSteps } from './bestEffortRecreate.mjs';
+import { changeLine } from '../../cli/keel-restore.mjs';
 import { applyWave } from './applyEngine.mjs';
 import { canonicalizeAll } from '../cir/canonicalize.mjs';
 import { canonicalHash } from '../cir/canonicalHash.mjs';
@@ -220,10 +222,11 @@ test('a link between two apps this run recreated is created between their new id
   assert.deepEqual(outcome.failed, []);
   assert.equal(outcome.applied.length, 1);
   const post = graph.calls.find((call) => call.method === 'POST');
-  assert.equal(post.path, '/deviceAppManagement/mobileAppRelationships');
-  assert.deepEqual(post.body, {
-    '@odata.type': '#microsoft.graph.mobileAppDependency', sourceId: 'new-main', targetId: 'new-dep', targetType: 'child', dependencyType: 'autoInstall',
-  });
+  assert.equal(post.path, `${APPS}/new-main/updateRelationships`);
+  assert.deepEqual(post.body, { relationships: [
+    { '@odata.type': '#microsoft.graph.mobileAppDependency', targetId: 'new-dep', dependencyType: 'autoInstall' },
+  ] });
+  assert.equal(outcome.applied[0].targetId, 'new-dep_new-main', 'the new link\'s id is the one it reads back with');
   // Both new apps were checked, and the new app's links listed, before the write.
   assert.deepEqual(graph.calls.filter((call) => call.method === 'GET').slice(0, 3).map((call) => call.path.split('?')[0]),
     [`${APPS}/new-main`, `${APPS}/new-dep`, `${APPS}/new-main/relationships`]);
@@ -237,8 +240,8 @@ test('a link to an app that kept its id is written as backed up, and one already
   });
   assert.deepEqual(first.failed, []);
   const post = kept.calls.find((call) => call.method === 'POST');
-  assert.equal(post.body.sourceId, MAIN);
-  assert.equal(post.body.targetId, 'new-dep');
+  assert.equal(post.path, `${APPS}/${MAIN}/updateRelationships`);
+  assert.equal(post.body.relationships[0].targetId, 'new-dep');
 
   const set = idoFakeGraph({ seed: { ...appsInTarget('new-main', 'new-dep'), [`${APPS}/new-main/relationships/l1`]: { ...link, id: 'l1', sourceId: 'new-main', targetId: 'new-dep' } } });
   const again = await wave(set, [{ ...linkResource, verb: 'create' }], {
@@ -266,4 +269,102 @@ test('an update of a link whose apps now have other ids is left to a person, not
   assert.deepEqual(outcome.failed, []);
   assert.match(outcome.skipped[0].reason, /a link is never changed into another one/);
   assert.equal(graph.calls.some((call) => call.method !== 'GET'), false);
+});
+
+// ------------------------------------------------------------ issue #642 (found live in Q185/Q191)
+
+test('#642: a link is written through its app\'s updateRelationships, never the tenant list Graph cannot route', () => {
+  const rows = buildIntuneExtendedLedger().operations.filter((row) => row.resourceType === 'mobileAppRelationship');
+  assert.deepEqual(rows.map(({ operation, method, route }) => ({ operation, method, route })), [
+    { operation: 'create', method: 'POST', route: '/deviceAppManagement/mobileApps/{appId}/updateRelationships' },
+    { operation: 'update', method: 'POST', route: '/deviceAppManagement/mobileApps/{appId}/updateRelationships' },
+  ]);
+});
+
+test('#642: a link Intune refuses because an app is not a Win32 app is a plain step, and nothing is written', async () => {
+  const graph = idoFakeGraph({ seed: {
+    [`${APPS}/new-main`]: { '@odata.type': '#microsoft.graph.win32LobApp', id: 'new-main', displayName: 'KEEL-RT-app-main' },
+    [`${APPS}/new-dep`]: { '@odata.type': '#microsoft.graph.webApp', id: 'new-dep', displayName: 'KEEL-RT-app-dep' },
+  } });
+  const outcome = await wave(graph, [{ ...linkResource, verb: 'create' }], {
+    appliedIds: new Map([['mobileApp:KEEL-RT-app-main', 'new-main'], ['mobileApp:KEEL-RT-app-dep', 'new-dep']]),
+  });
+  assert.deepEqual(outcome.failed, []);
+  assert.equal(outcome.applied.length, 0);
+  assert.match(outcome.skipped[0].reason, /^manual: Intune sets dependencies and supersedence only between Win32 apps, and KEEL-RT-app-main or KEEL-RT-app-dep is not one now; nothing was written/);
+  assert.deepEqual((await graph.read('beta', `${APPS}/new-main/relationships`)).body.value, []);
+});
+
+test('#642: a link the backup read from the app it points to is set on the app that holds it', async () => {
+  const graph = idoFakeGraph({ seed: appsInTarget(MAIN, DEP) });
+  const parent = { ...link, id: `${DEP}_${MAIN}`, sourceId: DEP, sourceDisplayName: 'KEEL-RT-app-dep', targetId: MAIN, targetDisplayName: 'KEEL-RT-app-main', targetType: 'parent' };
+  // The holder lists it as its own link; the app it points to as a parent link.
+  const writes = [];
+  const mirrored = { ...graph, async write(version, path, request) {
+    writes.push(path);
+    const answer = await graph.write(version, path, request);
+    if (answer.ok) graph.objects.set(`${APPS}/${DEP}/relationships/${parent.id}`, parent);
+    return answer;
+  } };
+  const result = await applyIntuneExtendedWrite(mirrored, { naturalKey: `mobileAppRelationship:${parent.id}`, resourceType: 'mobileAppRelationship', payload: parent, references: [] }, 'create', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(writes, [`${APPS}/${MAIN}/updateRelationships`]);
+  const sent = graph.calls.find((call) => call.method === 'POST').body;
+  assert.deepEqual(sent.relationships, [{ '@odata.type': '#microsoft.graph.mobileAppDependency', targetId: DEP, dependencyType: 'autoInstall' }]);
+});
+
+test('#642: a dry run shows a category-only difference, and writes nothing', async () => {
+  const live = { ...webApp(), id: 'live-web' };
+  const graph = idoFakeGraph({ seed: {
+    ...targetCategories(OWN, BUSINESS),
+    [`${APPS}/live-web`]: live,
+    [`${APPS}/live-web/categories/cat-own`]: OWN,
+  } });
+  const resource = appOf(webApp([OWN, BUSINESS]), { live: { state: 'present', targetId: 'live-web', payload: live } });
+  const dry = await applyIntuneExtendedWrite(graph, resource, 'update', { ...FAST, mode: 'dry-run', referenceContext: context() });
+  assert.equal(dry.failed, undefined, dry.failed?.error);
+  assert.deepEqual(dry.applied.changes, { fields: [], categories: { added: 1, removed: 0 } });
+  assert.equal(graph.calls.some((call) => call.method !== 'GET'), false);
+  assert.equal(changeLine({ naturalKey: resource.naturalKey, ...dry.applied }), '  changes mobileApp:KEEL-RT-app-web: categories added 1, removed 0');
+
+  const create = await applyIntuneExtendedWrite(idoFakeGraph({ seed: targetCategories(OWN, BUSINESS) }), appOf(webApp([OWN, BUSINESS])), 'create', {
+    ...FAST, mode: 'dry-run', referenceContext: context(),
+  });
+  assert.deepEqual(create.applied.changes.categories, { added: 2, removed: 0 });
+
+  const same = await applyIntuneExtendedWrite(graph, appOf(webApp([OWN]), { live: { state: 'present', targetId: 'live-web', payload: live } }), 'update', {
+    ...FAST, mode: 'dry-run', referenceContext: context(),
+  });
+  assert.equal(same.applied.changes.categories, 'already as in the backup');
+});
+
+test('#642: a recreated app in categories gets no stale "not in the backup yet" step', async () => {
+  const steps = followUpSteps('mobileApp', webApp([OWN, BUSINESS]), { decision: 'automated' });
+  assert.equal(steps.some((step) => /categor/i.test(`${step.part} ${step.description}`)), false, JSON.stringify(steps));
+  const graph = idoFakeGraph({ seed: targetCategories(OWN, BUSINESS) });
+  const result = await applyIntuneExtendedWrite(graph, appOf(webApp([OWN, BUSINESS])), 'create', { ...FAST, referenceContext: context() });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.equal((result.applied.followUp ?? []).some((step) => /stored separately/.test(step.description)), false);
+});
+
+test('#642: a Win32 shell with no package is never patched (Intune refuses it); the plan says so', async () => {
+  const shell = {
+    '@odata.type': '#microsoft.graph.win32LobApp', id: 'live-win32', displayName: 'KEEL-RT-app-win32',
+    installCommandLine: 'cmd /c echo old', fileName: 'keel.intunewin', publishingState: 'notPublished',
+  };
+  for (const mode of ['dry-run', 'enforce']) {
+    const graph = idoFakeGraph({ seed: { [`${APPS}/live-win32`]: shell } });
+    const result = await applyIntuneExtendedWrite(graph, appOf({ ...shell, id: 'src-win32', installCommandLine: 'cmd /c echo install' }, {
+      live: { state: 'present', targetId: 'live-win32', payload: shell },
+    }), 'update', { ...FAST, mode, referenceContext: context() });
+    assert.match(result.skipped?.reason ?? '', /^manual: Intune does not let KEEL-RT-app-win32 be changed until its package is uploaded/, mode);
+    assert.equal(graph.calls.some((call) => call.method !== 'GET'), false, mode);
+  }
+});
+
+test('#642: the run log shows each write\'s changes, fields and parts beside them', () => {
+  assert.equal(changeLine({ naturalKey: 'mobileApp:x', changes: { fields: ['description'], assignments: 'already as in the backup' } }),
+    '  changes mobileApp:x: fields description; assignments already as in the backup');
+  assert.equal(changeLine({ naturalKey: 'mobileApp:x', changes: { fields: [] } }), null);
+  assert.equal(changeLine({ naturalKey: 'mobileApp:x' }), null);
 });

@@ -51,6 +51,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { projectAssignment } from '../collect/relationships.mjs';
 import { SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
 import { classifyContentEffects } from '../safety/contentEffects.mjs';
+import { classifyWriteOutcome } from './rollbackJournal.mjs';
 import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { appGroupOf, appHasPackage, appKindName, appKindWords } from './intuneAppKinds.mjs';
@@ -932,15 +933,72 @@ async function mobileAppsExist(io, { payload }) {
   return null;
 }
 
-/** A policy that is still assigned is never deleted. */
+/**
+ * A policy that is still assigned is never deleted, with one exception: the
+ * undo of a restore that created it, when the person planning the undo chose
+ * to delete it with its assignments (compensation.mjs applyUndoChoices). Then
+ * the live assignments must still be exactly the ones that choice named;
+ * removeChosenAssignments takes them off just before the delete.
+ */
 async function unassignedDeleteGuard(io, { resource, path }) {
   const listed = await io.retryOperation(() => io.writer.read(resource.record.version, `${path}/assignments`));
   if (listed?.ok !== true) return `manual: the policy's assignments could not be read (${outcomeDetail(listed)}), so it is not deleted`;
-  const count = (listed.body?.value ?? []).length;
-  if (count > 0) {
-    return `manual: the policy is assigned (${count} assignment${count === 1 ? '' : 's'}), and deleting it would unprotect every device it applies to; remove its assignments by hand, then restore again`;
+  const items = listed.body?.value ?? [];
+  const count = items.length;
+  if (count === 0) return null;
+  const chosen = chosenAssignmentIds(resource);
+  if (chosen) {
+    if (listed.body?.['@odata.nextLink']) return 'manual: the policy has more assignments than one read returns, so it is not deleted; remove them by hand';
+    // The full assignments are journaled with the delete, so they can be put back by hand.
+    if (sameIdList(items.map((item) => item?.id), chosen)) return { prior: { assignments: items } };
+    return `manual: the policy's assignments changed after you chose to delete it with its ${chosen.length} assignment${chosen.length === 1 ? '' : 's'} (it has ${count} now), so it is not deleted; plan the undo again`;
   }
-  return null;
+  return `manual: the policy is assigned (${count} assignment${count === 1 ? '' : 's'}), and deleting it would unprotect every device it applies to; remove its assignments by hand, then restore again`;
+}
+
+/** The assignment ids an undo was chosen to remove, or null when none was chosen. */
+function chosenAssignmentIds(resource) {
+  const ids = resource?.removeAssignments?.ids;
+  return undoesCreate(resource) && Array.isArray(ids) && ids.length > 0 ? ids : null;
+}
+
+const sameIdList = (left, right) => {
+  const a = left.map(String).sort();
+  const b = right.map(String).sort();
+  return a.length === b.length && a.every((id, index) => id === b[index]);
+};
+
+/**
+ * The undo chose to delete an assigned policy: its assignments are taken off
+ * through /assign with an empty list (every type with this guard takes it),
+ * and read back as none before the policy is deleted.
+ */
+async function removeChosenAssignments(io, { resource, path }) {
+  const chosen = chosenAssignmentIds(resource);
+  if (!chosen) return null;
+  const { version } = resource.record;
+  const result = await io.retryOperation(() => io.writer.write(version, `${path}/assign`, { method: 'POST', body: { assignments: [] } }));
+  if (!result.ok) {
+    const outcome = classifyWriteOutcome(result);
+    const maybe = outcome === 'uncertain' ? ' (Graph gave no clear answer, so they may be removed)' : '';
+    return { outcome, changed: outcome === 'uncertain', error: `removing the policy's assignments failed${maybe}, so it was not deleted: ${outcomeDetail(result)}` };
+  }
+  const check = await readUntil(io, version, `${path}/assignments`, (r) => r?.ok === true && (r.body?.value ?? []).length > 0, io.readOptions);
+  if (check?.ok !== true || (check.body?.value ?? []).length > 0) {
+    return { outcome: 'uncertain', changed: true, error: 'post-state: Graph accepted removing the policy\'s assignments, but they did not read back as removed, so it was not deleted' };
+  }
+  return { changes: { assignmentsRemoved: chosen.length } };
+}
+
+/**
+ * Where the undo of a created policy reads its live assignments, for the types
+ * that are never deleted while assigned; null for any other type.
+ */
+export function undoAssignmentsPath(resourceType, payload, targetId) {
+  const record = INTUNE_EXTENDED_RECORDS[resourceType];
+  if (record?.deleteGuard !== unassignedDeleteGuard || typeof targetId !== 'string' || targetId.length === 0) return null;
+  const path = recordObjectPath(record, payload, targetId);
+  return path ? { version: record.version, path: `${path}/assignments` } : null;
 }
 
 /** Localized messages of a notification template: added or updated by locale, never removed. */
@@ -979,7 +1037,7 @@ function builtInScopeTag(resource, verb) {
   return null;
 }
 
-const DELETE_POLICY = { deleteGuard: unassignedDeleteGuard };
+const DELETE_POLICY = { deleteGuard: unassignedDeleteGuard, beforeDelete: removeChosenAssignments };
 
 // Run results, assignments and Intune's own version bookkeeping: never part of a write body.
 const SCRIPT_SERVER_FIELDS = Object.freeze([

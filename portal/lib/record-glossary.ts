@@ -378,6 +378,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Cannot be undone": fact("Cannot be undone", "What Keel cannot reverse, and why."),
   "Manual review": fact("Needs a person", "Why someone must check this by hand."),
   "Nothing to undo": fact("Nothing to undo", "Why there is nothing to reverse here."),
+  "Assigned now": fact("Assigned now", "Your choice for a policy this restore created that is assigned now, and the exact assignments it covers."),
   "Operations": fact("Steps", "What Keel will do."),
   "Expanded dependencies": fact("Items brought along", "Items added because the chosen ones need them."),
   "Unsupported operations": fact("Steps Keel cannot do", "Steps that need a person."),

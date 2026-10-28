@@ -10,6 +10,7 @@ import {
   normalizeJob,
   readActionParams,
 } from "@/lib/action";
+import { parseUndoChoices } from "@/lib/undo-choices";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -25,11 +26,14 @@ export const POST = guarded(
   { action: "restore:compensate", capability: "restore", recordAttempt: true },
   async ({ client, principalId, tenantRef, request }) => {
     const body = await readActionParams(request);
-    const { restoreArtifactId } = body;
-    const unexpected = Object.keys(body).filter((key) => key !== "restoreArtifactId");
+    const { restoreArtifactId, undoChoices } = body;
+    const unexpected = Object.keys(body).filter((key) => key !== "restoreArtifactId" && key !== "undoChoices");
     if (unexpected.length > 0) {
       throw new InvalidActionRequest("a compensation is planned from the restore's artifact alone");
     }
+    // The person's choice for each policy the undo would delete that is assigned now.
+    const choices = parseUndoChoices(undoChoices);
+    if (choices === false) throw new InvalidActionRequest("undoChoices must map each assigned policy to delete or skip");
     if (typeof restoreArtifactId !== "string" || !UUID_PATTERN.test(restoreArtifactId)) {
       throw new InvalidActionRequest("restoreArtifactId must be the id of a promoted restore's dry-run artifact");
     }
@@ -40,7 +44,7 @@ export const POST = guarded(
     const artifactId = randomUUID();
     const job = (await enqueue(client, {
       kind: "restore",
-      params: { compensates: restoreArtifactId, artifactId },
+      params: { compensates: restoreArtifactId, artifactId, ...(choices ? { undoChoices: choices } : {}) },
       requestedBy: principalId,
       idempotencyKey: request.headers.get(IDEMPOTENCY_KEY_HEADER) ?? undefined,
       notBefore: undefined,
@@ -57,3 +61,4 @@ export const POST = guarded(
     );
   },
 );
+

@@ -49,3 +49,27 @@ export function irrecoverableSentence(item: { naturalKey: string; effect: string
 }
 
 export const UNDO_STATEMENT = "Undo is not atomic: each change is reversed and checked on its own, and only changes this restore actually made are undone. It never brings back erased or disclosed content.";
+
+/** Who an assigned policy applies to, in words: "All devices, 2 groups (1 left out)". */
+export function assignmentReach(targets: { kind: string }[]): string {
+  const count = (kind: string) => targets.filter((target) => target.kind === kind).length;
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const parts: string[] = [];
+  if (count("all-devices") > 0) parts.push("All devices");
+  if (count("all-users") > 0) parts.push("All users");
+  const groups = count("group");
+  if (groups > 0) parts.push(plural(groups, "group"));
+  const excluded = count("excluded-group");
+  if (excluded > 0) parts.push(`${plural(excluded, "group")} left out`);
+  const other = count("other");
+  if (other > 0) parts.push(plural(other, "other target"));
+  return parts.join(", ");
+}
+
+/** What each choice does to an assigned policy the undo would delete. */
+export function undoChoiceSentence(choice: "delete" | "skip", assignmentCount: number): string {
+  const assignments = `${assignmentCount} assignment${assignmentCount === 1 ? "" : "s"}`;
+  return choice === "delete"
+    ? `Removes its ${assignments}, then deletes the policy. Devices and people it applies to lose its settings.`
+    : `Keeps the policy and its ${assignments} as they are. Nothing is changed.`;
+}

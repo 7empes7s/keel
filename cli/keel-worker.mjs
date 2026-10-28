@@ -535,15 +535,25 @@ export const JOB_HANDLERS = {
       // Roadmap task-70: a compensation dry run carries only the promoted restore it
       // undoes and the id to persist the result under. Its configs, scope and
       // journal all come from that restore's own artifact inside the CLI.
+      // The person's choice for each assigned policy the undo would delete
+      // (params.undoChoices: { naturalKey: 'delete' | 'skip' }) goes along too.
       if (params.compensates !== undefined) {
-        const extra = paramKeys.filter((key) => key !== 'compensates' && key !== 'artifactId');
+        const extra = paramKeys.filter((key) => key !== 'compensates' && key !== 'artifactId' && key !== 'undoChoices');
         if (extra.length > 0) {
-          throw new Error(`a compensation dry run carries only params.compensates and params.artifactId (unexpected: ${extra.join(', ')})`);
+          throw new Error(`a compensation dry run carries only params.compensates and params.artifactId, and the person's params.undoChoices (unexpected: ${extra.join(', ')})`);
+        }
+        const choices = params.undoChoices ?? {};
+        if (choices === null || typeof choices !== 'object' || Array.isArray(choices)) throw new Error('params.undoChoices must be an object');
+        const choiceArgs = [];
+        for (const [naturalKey, choice] of Object.entries(choices)) {
+          if (choice !== 'delete' && choice !== 'skip') throw new Error(`params.undoChoices.${naturalKey} must be delete or skip`);
+          choiceArgs.push(choice === 'delete' ? '--delete-assigned' : '--skip-assigned', requireString(naturalKey, 'params.undoChoices key'));
         }
         return [
           '--compensate', requireString(params.compensates, 'params.compensates'),
           '--persist-artifact', requireString(params.artifactId, 'params.artifactId'),
           '--requested-by', requireString(job.requested_by, 'job.requested_by'),
+          ...choiceArgs,
         ];
       }
 

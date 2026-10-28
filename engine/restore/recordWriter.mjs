@@ -21,7 +21,14 @@
  *    already holds what the write would make (the write is skipped);
  *  - `afterWrite(io, step)`: child writes made after the object (target apps,
  *    localized messages), each verified by the record;
- *  - `deleteGuard(io, step)`: a type's own reason not to delete;
+ *  - `deleteGuard(io, step)`: a type's own reason not to delete (a string), or
+ *    null, or { prior } (fields journaled with the prior state, such as the
+ *    assignments an undo removes before the delete);
+ *  - `beforeDelete(io, step)`: writes made after the delete is journaled and
+ *    before it is sent (an undo that removes a policy's assignments first);
+ *    returns null, { changes }, or { error, outcome, changed } (the delete is
+ *    not sent; `outcome` is the journal outcome, `changed` says the tenant was
+ *    changed anyway);
  *  - `updateGuard(io, step)`: a type's own reason not to update, worked out
  *    from live reads; returns { reason, completion? } and the update is
  *    skipped as a manual step;
@@ -107,6 +114,7 @@ export function defineRecord(spec) {
     preflight: null,
     afterWrite: null,
     deleteGuard: null,
+    beforeDelete: null,
     updateGuard: null,
     transform: null,
     sameField: null,
@@ -551,21 +559,33 @@ async function applyRecordDelete(io, record, resource, payload, ctx) {
   const targetId = liveTargetId(resource, ctx);
   if (!targetId) return { failed: { naturalKey, error: 'delete has no targetId' } };
   const path = recordObjectPath(record, payload, targetId);
+  let prior = null;
   if (record.deleteGuard && io.writer) {
     const reason = await record.deleteGuard(io, { resource, payload, targetId, path, ctx });
-    if (reason) return { skipped: { naturalKey, reason } };
+    if (typeof reason === 'string' && reason) return { skipped: { naturalKey, reason } };
+    prior = reason?.prior ?? null;
   }
   if (ctx.mode === 'dry-run') return { applied: { naturalKey, targetId } };
 
-  const entry = await journal(ctx, resource, { operation: 'delete', targetId, priorState: payload, intendedState: null });
+  const entry = await journal(ctx, resource, { operation: 'delete', targetId, priorState: prior ? { ...payload, ...prior } : payload, intendedState: null });
   if (!entry.ok) return { failed: { naturalKey, error: 'refusing to delete: rollback journal write failed' } };
+  const before = record.beforeDelete ? await record.beforeDelete(io, { resource, payload, targetId, path, ctx }) : null;
+  if (before?.error) {
+    await note(ctx, entry, before.outcome ?? 'failed', { detail: before.error });
+    return { failed: { naturalKey, error: before.error } };
+  }
+  const changes = before?.changes ?? null;
+  // Assignments taken off before a delete that then fails: the tenant changed.
+  const removedFirst = changes?.assignmentsRemoved
+    ? ` (its ${changes.assignmentsRemoved} assignment(s) were already removed, and the policy was not deleted)` : '';
   const result = record.deleteVia
     ? await record.deleteVia(io, { resource, payload, targetId, ctx })
     : await io.retryOperation(() => io.writer.write(record.version, path, { method: 'DELETE', body: {} }));
   if (!result?.ok) {
-    await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
-    if (typeof result?.skipped === 'string') return refusalEntry(naturalKey, { outcome: 'skipped', reason: result.skipped });
-    return { failed: writeFailure(record, naturalKey, result) };
+    await note(ctx, entry, removedFirst ? 'uncertain' : classifyWriteOutcome(result), { detail: `${outcomeDetail(result)}${removedFirst}` });
+    if (typeof result?.skipped === 'string') return refusalEntry(naturalKey, { outcome: 'skipped', reason: `${result.skipped}${removedFirst}` });
+    const failure = writeFailure(record, naturalKey, result);
+    return { failed: removedFirst ? { ...failure, error: `${failure.error}${removedFirst}` } : failure };
   }
   const gone = (r) => r?.ok === true && r.body?.deletedDateTime == null;
   const reRead = record.readVia
@@ -575,8 +595,9 @@ async function applyRecordDelete(io, record, resource, payload, ctx) {
     await note(ctx, entry, 'uncertain', { postState: reRead?.body ?? null, detail: 'delete did not verify' });
     return { failed: { naturalKey, error: 'delete did not verify as absent or soft-deleted' } };
   }
-  await note(ctx, entry, 'succeeded', { detail: isNotFound(reRead) ? 'absent' : 'soft-deleted' });
-  return { applied: { naturalKey, targetId } };
+  const removed = changes?.assignmentsRemoved ? `; its ${changes.assignmentsRemoved} assignment(s) were removed first` : '';
+  await note(ctx, entry, 'succeeded', { detail: `${isNotFound(reRead) ? 'absent' : 'soft-deleted'}${removed}` });
+  return { applied: { naturalKey, targetId, ...(changes ? { changes } : {}) } };
 }
 
 /** The ledger rows of a set of records: what each writes, where and with which permission. */

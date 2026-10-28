@@ -9958,8 +9958,19 @@ item that needs it stays untouched.
   Q213's fixtures were cleaned up, so this reruns it from the start.
 - Needs: /opt/keel-live at `0ec75cbf` or later (`grep -q holdsNoReferences -r /opt/keel-live/engine/collect`), and #655's code
   (`grep -q removeChosenAssignments /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: in progress (2026-10-28 23:40 UTC, root keel-operator)
-- Result: in progress (2026-10-28 23:40 UTC, root keel-operator): started at B `57f36441`.
+- Status: blocked: waiting on Collector consent (PrivilegedAccess.Read.AzureADGroup, Q217)
+- Result: blocked (2026-10-28 23:48 UTC, root keel-operator) at step 5. **#672 works for todoSettings (no longer named), but the undo delete is now refused on `privilegedAccessGroupResource`: `refused deviceConfiguration:KEEL-RT-213-delete: blocked-incomplete-read: deleting deviceConfiguration:KEEL-RT-213-delete needs a full read of the target, but privilegedAccessGroupResource could not be read`.** The Collector read answers 403 PermissionScopeNotGranted. This is the gap Q217 found: the Collector holds no PIM for Groups scope, and `PrivilegedAccess.Read.AzureADGroup` was added to its manifest at 22:46 and is **waiting on Marouane's consent**. Rerun Q220 after that consent. B = **57f36441**. Restorer for fixture writes and assigns, Collector for reads; global admin not used.
+  - Needs: the item's grep (`holdsNoReferences` under engine/collect) does not match; the flag lives in `tools/tenant-probe/catalog.d/admin-center-settings.mjs`. #672's merge 0ec75cb is an ancestor of live, and entraAdapter.mjs is byte-identical, so the code is deployed.
+  - Fixtures: KEEL-RT-213-group `17dc77c7` (0 members); KEEL-RT-213-delete `aace87cf`, KEEL-RT-213-skip `1c7947bc`.
+  - Step 1: backup S `83b70c2c`, exit 3 (privilegedAccessGroupResource 403; todoSettings 500 "Microsoft service error … on all 3 tries"). deviceConfiguration complete (8).
+  - Step 2: dry run A `9137cf2f`; approval **8ef8ca28**; enforce applied 2 (d1 `a87f2268`, s1 `9f70cc6c`, no assignments).
+  - Step 3: assign both to KEEL-RT-213-group: 200, 200.
+  - Step 4 (shortened): C0 `386c5738`: `0 inverse write(s), 0 conflict(s), 0 not applied, 0 manual, 0 irrecoverable`, plus both `waiting for your choice` lines.
+  - Step 5: C `51f53c70`: `1 inverse write(s), 0 conflict(s), …`; `skip it` / `delete it with its assignments`; **persisted (status: refused)** with the reason above, now printed by the CLI. No write.
+  - Earlier backups read this type as 200-empty (Q209/Q211/Q213); Q217 shows PIM answers either way without the scope.
+  - Finding for the thread: a 403 on a type KEEL never writes still blocks an undo delete (#672 covers only the six on/off settings).
+  - Cleanup: d1 and s1 deleted; the group deleted and purged (the first purge got 404 before replication, the retry 204). Nothing left in the tenant. 4 completion items from A pending in KEEL.
+- Earlier result: in progress (2026-10-28 23:40 UTC, root keel-operator): started at B `57f36441`.
 - **Same rules and fixtures as Q213** (test tenant only; Restorer for writes, Collector for reads; assign only to the empty group
   `KEEL-RT-213-group`, never All devices or All users; self-approve and log every approval id; run from your own checkout at B).
 - Do: Q213 steps 1–3 (recreate the fixtures, backup, restore A, assign both). Step 4 can be shortened to the plan line check

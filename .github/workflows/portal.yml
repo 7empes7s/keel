@@ -7,6 +7,8 @@ on:
       - "engine/**"
       - "cli/**"
       - "tools/**"
+      # The container scripts and Dockerfiles: engine tests read them, and CI resolves pinned base images.
+      - "ops/powershell/**"
       - ".github/workflows/portal.yml"
   # Every push to master runs, with no path filter: the live auto-deploy deploys a commit
   # only when this workflow succeeded on that exact commit, so a docs-only commit on top of

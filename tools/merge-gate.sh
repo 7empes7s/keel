@@ -6,7 +6,7 @@ set -euo pipefail
 repo="${GITHUB_REPOSITORY:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
 owner="${repo%/*}"; name="${repo#*/}"
 # Keep in sync with the pull_request paths in portal.yml.
-code_paths='^(portal|engine|cli|tools)/|^\.github/workflows/portal\.yml$'
+code_paths='^(portal|engine|cli|tools|ops/powershell)/|^\.github/workflows/portal\.yml$'
 gate_job="Merge gate"
 merged=0
 refused=0

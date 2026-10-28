@@ -8,4 +8,4 @@ server's build failed with "not found" (#662) after the PR had merged with green
 | Mistake | Rule now |
 | --- | --- |
 | The digest came from a `HEAD` response header and was not checked. | Take a digest from `docker image inspect --format '{{index .RepoDigests 0}}' <tag>` after a pull, or from a `GET` of the manifest whose body hashes to it (`sha256sum`). |
-| Nothing in CI built or resolved the image, so a wrong pin reached master. | The Portal workflow resolves every pinned `FROM` in `ops/powershell/Dockerfile*` with `docker buildx imagetools inspect`, without pulling. |
+| Nothing in CI built or resolved the image, and a PR touching only `ops/powershell/` did not run Portal at all, so a wrong pin could reach master. | The Portal workflow resolves the `FROM` of every `ops/powershell/Dockerfile*` with `docker buildx imagetools inspect`, without pulling, and runs on PRs that touch `ops/powershell/` (the merge gate's code paths match). |

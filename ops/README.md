@@ -144,3 +144,28 @@ To stop pruning, turn the `prune` schedule off on the Schedules page.
 governance state to `keel_test`; it defaults to `KEEL_DB_TEST_URL` and refuses to start against
 `KEEL_DB_URL` (use `--db-url` only for another non-production database). Production baselines must
 only ever be set by an operator because the public status page reports them.
+
+## Caddy admin API
+
+Caddy's admin API takes unauthenticated POSTs (`/load`, `/stop`, `/config/...`). With no global
+`admin` option it listens on `localhost:2019`, where any local process can rewrite or stop the web
+server for every site on the host (operator item Q195 found it open). It must stay off TCP:
+
+- The Caddyfile starts with a global block that puts the API on a unix socket:
+
+  ```
+  {
+  	admin unix//run/caddy/admin.sock
+  }
+  ```
+
+- `ops/caddy-admin-socket.conf` goes in `/etc/systemd/system/caddy.service.d/keel-admin-socket.conf`.
+  It makes systemd create `/run/caddy` (mode 0700, owned by Caddy's user) on each start, so only
+  Caddy and root can reach the socket.
+- `systemctl reload caddy` keeps working: `caddy reload` takes the admin address from the config.
+  Scripts that call `curl localhost:2019/...` or `caddy reload --address localhost:2019` stop working
+  and must drop the address. `admin off` also closes the API, but then every config change needs a
+  `systemctl restart caddy`, which drops connections on every site, so the socket is the default.
+- After any change to the Caddyfile or the caddy unit, run as root:
+  `node /opt/keel-live/ops/caddy-admin-check.mjs` (exit 0 = no admin API on TCP, socket directory
+  private). It only connects to port 2019 and never sends a request.

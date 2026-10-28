@@ -33,13 +33,13 @@ import { loadWorkloadSource } from '../restore/workloads/cmdletSettings.mjs';
 import {
   MAX_TEMPLATE_GZIP_CHARS, SHAREPOINT_STRUCTURE_WRITE_OPS, STRIPPED_ELEMENTS, SharePointStructureWriteScopeError, TEMPLATE_ELEMENTS,
   buildRestoreTemplate, createSharePointStructureRestoreArtifact, executeSharePointStructureRestore, planSharePointStructureRestore,
-  siteScriptEffects, structureReader, structureWriteCmdlet, unsupportedElements,
+  scriptHasNoActions, siteScriptEffects, structureReader, structureWriteCmdlet, unsupportedElements,
 } from '../restore/workloads/sharepointStructure.mjs';
 import { SHAREPOINT_STRUCTURE_WRITE_CMDLET_PARAMETERS, SHAREPOINT_STRUCTURE_WRITE_OPERATIONS } from '../restore/workloads/sharepointStructureWrites.mjs';
 import { approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
-import { HOST, NS, SITE, WRITES, fakeTenant, initialState, newGuid, templateXml } from '../test/fakePnpStructure.mjs';
+import { HOST, NS, SITE, WRITES, fakeTenant, initialState, newGuid, templateProblem, templateXml } from '../test/fakePnpStructure.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 after(async () => { await database.cleanup(); });
@@ -165,7 +165,7 @@ test('the restore template holds only what is missing and the navigation, never 
   assert.ok(built.xml.includes('Name="KeelRtOwner"') && built.xml.includes('<CHOICE>Open</CHOICE>'), 'the column and the list keep their own definition');
   assert.match(built.xml, /<pnp:StructuralNavigation\b[^>]*\sRemoveExistingNodes="true"/);
   assert.ok(!built.xml.includes('RemoveExistingNodes="false"'), 'the navigation replaces what is there');
-  // The backed-up order is kept: navigation came first in this template.
+  // The provisioning schema's order: Navigation, SiteFields, ContentTypes, Lists.
   assert.ok(built.xml.indexOf('<pnp:Navigation') < built.xml.indexOf('<pnp:SiteFields>'));
   assert.ok(built.xml.indexOf('<pnp:SiteFields>') < built.xml.indexOf('<pnp:ContentTypes>'));
   assert.ok(built.xml.indexOf('<pnp:ContentTypes>') < built.xml.indexOf('<pnp:Lists>'));
@@ -173,6 +173,52 @@ test('the restore template holds only what is missing and the navigation, never 
   const empty = buildRestoreTemplate(source, {});
   assert.ok(!/<pnp:(Lists|SiteFields|ContentTypes|Navigation)\b/.test(empty.xml));
   assert.throws(() => buildRestoreTemplate('<pnp:Provisioning xmlns:pnp="http://evil.example/x"><pnp:ProvisioningTemplate /></pnp:Provisioning>', { lists: ['x'] }), /PnP provisioning schema/);
+});
+
+test('the restore template passes PnP\'s schema checks whatever order the backup holds its sections in (issue #667)', () => {
+  const site = initialState().sites[SITE.toLowerCase()];
+  const move = (xml, name) => {
+    const [whole] = xml.match(new RegExp(`<pnp:${name}>[\\s\\S]*?</pnp:${name}>`));
+    return xml.replace(whole, '').replace('</pnp:ProvisioningTemplate>', `${whole}</pnp:ProvisioningTemplate>`);
+  };
+  // Lists first, then site columns, navigation last: the reverse of what the schema wants.
+  const source = move(move(move(templateXml(site), 'SiteFields'), 'Navigation'), 'Lists');
+  const built = buildRestoreTemplate(source, { siteColumns: ['33333333-0000-4000-8000-000000000003'], contentTypes: ['0x0100aa'], lists: ['lists/keel-rt tasks'], navigation: true });
+  assert.deepEqual(built.skipped, []);
+  assert.equal(templateProblem(built.xml), null);
+  const order = [...built.xml.matchAll(/<pnp:(Navigation|SiteFields|ContentTypes|Lists)\b/g)].map(([, name]) => name);
+  assert.deepEqual(order, ['Navigation', 'SiteFields', 'ContentTypes', 'Lists']);
+  // ID is xs:ID: the two template ids differ.
+  const ids = [...built.xml.matchAll(/<pnp:(?:Templates|ProvisioningTemplate)\b[^>]*\sID="([^"]*)"/g)].map(([, id]) => id);
+  assert.equal(ids.length, 2);
+  assert.notEqual(ids[0], ids[1]);
+  assert.equal(templateProblem(buildRestoreTemplate(source, {}).xml), null, 'an empty template is valid too');
+});
+
+test('a backed-up site script with no actions is listed for an administrator, never sent (SharePoint refuses it)', async (t) => {
+  assert.equal(scriptHasNoActions('{"actions":[]}'), true);
+  assert.equal(scriptHasNoActions('{"$schema":"x","version":1}'), true);
+  assert.equal(scriptHasNoActions('{"actions":[{"verb":"createSPList","listName":"x"}]}'), false);
+  assert.equal(scriptHasNoActions('not json'), false, 'unreadable JSON is left to SharePoint');
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const state = initialState();
+  state.scripts[0].Content = '{"actions":[],"version":1}';
+  const live = fakeTenant(state);
+  const source = await recordSource(client, tenantRef, live);
+  // Gone from the tenant: an add is not planned.
+  live.state.scripts = [];
+  const gone = planSharePointStructureRestore({ source, live: await readAll(live), tenantId: TENANT, tenantRef, testTenantRefs: [tenantRef] });
+  assert.ok(!gone.operations.some((op) => op.family === 'siteScript'), JSON.stringify(opsOf(gone)));
+  assert.ok(gone.manual.some((item) => item.field === 'Content' && /no actions/.test(item.reason)));
+  // Still there with actions: the empty content is not sent, the rest is.
+  live.state.scripts = [{ ...initialState().scripts[0], Id: newGuid(), Description: 'changed' }];
+  live.state.scripts[0].Content = '{"actions":[{"verb":"createSPList","listName":"KEEL-RT list"}]}';
+  const changed = planSharePointStructureRestore({ source, live: await readAll(live), tenantId: TENANT, tenantRef, testTenantRefs: [tenantRef] });
+  const update = changed.operations.find((op) => op.family === 'siteScript');
+  assert.ok(update, JSON.stringify(opsOf(changed)));
+  assert.deepEqual(update.changes.map((change) => change.field), ['Description']);
+  assert.ok(changed.manual.some((item) => item.field === 'Content' && /no actions/.test(item.reason)));
 });
 
 test('a site script that would send site data out, share or add people is a content effect', () => {

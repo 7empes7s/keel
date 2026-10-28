@@ -53,6 +53,23 @@ export function templateXml(site, { id = 'T-1' } = {}) {
 
 export const attr = (text, name) => new RegExp(`\\b${name}="([^"]*)"`).exec(text)?.[1] ?? null;
 
+// What SharePoint and PnP refuse, as the live tenant did (issue #667).
+function scriptWithoutActions(content) {
+  try { const parsed = JSON.parse(content); return !Array.isArray(parsed?.actions) || parsed.actions.length === 0; } catch { return false; }
+}
+// PnP validates against the provisioning schema: ID is xs:ID (unique in the document) and
+// the sections inside ProvisioningTemplate come in the schema's order.
+const SCHEMA_ORDER = ['Navigation', 'SiteFields', 'ContentTypes', 'Lists'];
+export function templateProblem(xml) {
+  const ids = [...xml.matchAll(/<pnp:(?:Templates|ProvisioningTemplate)\b[^>]*\sID="([^"]*)"/g)].map(([, id]) => id);
+  if (new Set(ids).size !== ids.length) return 'duplicate ID';
+  const body = /<pnp:ProvisioningTemplate\b[^>]*>([\s\S]*)<\/pnp:ProvisioningTemplate>/.exec(xml)?.[1] ?? '';
+  const order = [...body.matchAll(/<pnp:(Navigation|SiteFields|ContentTypes|Lists)\b/g)].map(([, name]) => SCHEMA_ORDER.indexOf(name));
+  // Only top-level sections count: Lists can't hold another section, so a drop in order is wrong.
+  if (order.some((value, index) => index > 0 && value < order[index - 1])) return 'sections out of order';
+  return null;
+}
+
 /** The fake's state: what the backup sees before anything is changed. */
 export function initialState() {
   const scriptId = newGuid();
@@ -94,6 +111,7 @@ export function fakeTenant(state = initialState(), { crash = [] } = {}) {
       if (cmdlet === 'Invoke-PnPSiteTemplate') {
         const xml = gunzipSync(Buffer.from(parameters.TemplateGzip, 'base64')).toString('utf8');
         writes.at(-1).xml = xml;
+        if (templateProblem(xml)) return { error: { message: 'Template is not valid', category: 'NotSpecified', errorId: 'System.Exception,PnP.PowerShell.Commands.Provisioning.Site.InvokeSiteTemplate' } };
         const site = state.sites[String(parameters.Url).toLowerCase()];
         const siteFields = /<pnp:SiteFields>([\s\S]*?)<\/pnp:SiteFields>/.exec(xml)?.[1] ?? '';
         for (const [field] of siteFields.matchAll(/<Field\b[^>]*>/g)) {
@@ -121,6 +139,9 @@ export function fakeTenant(state = initialState(), { crash = [] } = {}) {
         return [hub];
       }
       const [list, add] = cmdlet.endsWith('SiteScript') ? [state.scripts, cmdlet.startsWith('Add-')] : [state.designs, cmdlet.startsWith('Add-')];
+      if (cmdlet.endsWith('SiteScript') && Object.hasOwn(parameters, 'Content') && scriptWithoutActions(parameters.Content)) {
+        return { error: { message: 'This site script has no actions.', category: 'WriteError', errorId: 'EXCEPTION,PnP.PowerShell.Commands.SiteDesigns.AddSiteScript' } };
+      }
       if (add) {
         const body = { Id: newGuid(), Version: 1, Description: '', ...parameters };
         list.push(body);

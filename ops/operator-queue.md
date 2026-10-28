@@ -1486,8 +1486,12 @@ being triggered by queue updates.
   refused with 403 only because the Collector lacks the read permission. Same rules and decision as Q55 / Q56 (D-Q55,
   D-93a "add any the tool needs to move along"): consent stays with Marouane.
 - Needs: none.
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-28 07:11 UTC, root keel-operator). Manifest only, one PATCH as the Restorer (`/etc/keel/restorer.json`), done together with Q182 step 1 so one consent covers both. Global admin not used; no appRoleAssignment, no consent. KEEL Collector app object `ce48109a`, SP `f8741600`.
+  - **Checked first:** the Collector's SP holds 45 Graph app roles; **none** of the 9 below.
+  - **Added** to Graph `requiredResourceAccess` (all resolved from the Graph SP's Application appRoles): `OrgSettings-Forms.Read.All` 434d7c66 · `OrgSettings-Todo.Read.All` e4d9cd09 · `OrgSettings-Microsoft365Install.Read.All` 6cdf1fb1 · `OrgSettings-AppsAndServices.Read.All` 56c84fa9 · `ReportSettings.Read.All` ee353f83 · `PeopleSettings.Read.All` ef02f2e7 · `CustomDetection.Read.All` 673a007a · `AppCatalog.Read.All` e12dae10 · `Community.Read.All` 407f0cce. (Q182: `ConfigurationMonitoring.ReadWrite.All` cfa85bfb in the same PATCH.)
+  - Already held: none. Skipped: none. Entries 50 → 60 across 3 resources; nothing removed (merge checked before the PATCH); re-read shows all 10 present.
+  - **Waiting for Marouane's admin consent:** all 9 above, plus `ConfigurationMonitoring.ReadWrite.All` (Q182/Q183). Entra admin center → App registrations → KEEL Collector → API permissions → Grant admin consent.
 - **Test tenant only. Manifest only, read permissions only.** GET the KEEL Collector application, MERGE, PATCH once (as the
   Restorer, as in Q55). Keep every existing resource and entry; remove nothing. Resolve each name to its id from the Microsoft
   Graph service principal's `appRoles` (type Role); skip and report any name with no appRole. Never create an
@@ -1508,8 +1512,8 @@ being triggered by queue updates.
 - Needs: Q180 done; Marouane's admin consent for the KEEL Collector (check that its SP holds the 9 Q180 permissions as
   appRoleAssignments; if any is missing, set `blocked: waiting on consent`, name them, and stop); `/opt/keel-live` has the
   family (`test -f /opt/keel-live/tools/tenant-probe/catalog.d/admin-center-settings.mjs`).
-- Status: todo
-- Result:
+- Status: blocked: waiting on consent
+- Result: blocked: waiting on consent (2026-10-28 07:35 UTC, root keel-operator). The Collector's SP holds **none** of the 9 Q180 permissions as appRoleAssignments: `OrgSettings-Forms.Read.All`, `OrgSettings-Todo.Read.All`, `OrgSettings-Microsoft365Install.Read.All`, `OrgSettings-AppsAndServices.Read.All`, `ReportSettings.Read.All`, `PeopleSettings.Read.All`, `CustomDetection.Read.All`, `AppCatalog.Read.All`, `Community.Read.All` (they are in the manifest since Q180). Also not met: `/opt/keel-live/tools/tenant-probe/catalog.d/admin-center-settings.mjs` is absent (PR #604 is still open). Nothing run.
 - **Tenant:** reads only, with the collector credential. No grants, no role or config changes, nothing written.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. `node cli/keel-collect.mjs` once by hand (no `--tier`, so every tier is read). Report its exit code and every log line
@@ -1537,8 +1541,26 @@ being triggered by queue updates.
 - Drafted by the "Probe Microsoft config snapshots for backup" thread (2026-10-27). Code: PR #601 (`tools/tenant-probe/utcm-probe.mjs`,
   `ops/powershell/dsc-probe.ps1`). Part A needs no new grant. Part B (Q183) needs Marouane's consent for the Collector only.
 - Needs: /opt/keel-live at the #601 merge or later (`test -f /opt/keel-live/ops/powershell/dsc-probe.ps1`).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-28 07:35 UTC, root keel-operator). B = `e86afa9`. Restorer for the manifest PATCH and the SP create; Exchange Restorer for the DSC fixture; Collector for the reads. Global admin not used; nothing granted to anyone.
+  1. Manifest: `ConfigurationMonitoring.ReadWrite.All` (cfa85bfb) **added** to the KEEL Collector's manifest, in the same single PATCH as Q180 (07:11). Not held (waiting for consent).
+  2. Service principals: Tenant Configuration Management `03b07b79-…`: **created** (201, SP `df012486`, displayName "Unified Tenant Configuration Management"); M365 Admin Services `6b91db1b-…`: **existed** (SP `6a2e8c0a`). Nothing granted to either.
+  3. `utcm-probe.mjs check` exit **3** (not ready, as expected before consent):
+     | Check | Result |
+     | --- | --- |
+     | App holds ConfigurationMonitoring.ReadWrite.All | no (no TCM roles) |
+     | TCM service principal exists | yes |
+     | M365 Admin Services principal exists | yes |
+     | TCM principal permissions | none |
+     | TCM principal directory roles | none |
+     | Snapshot jobs visible | error: UnknownError |
+     | Ready to run | no |
+  4. DSC writer: **`mcr.microsoft.com/powershell:7.6-ubuntu-24.04` does not exist** ("not found"); MCR has no 7.6 tag at all, so I used the nearest, **`7.5-ubuntu-24.04`**. Exit **0**. `steps.jsonl` (pwsh install chatter between the JSON lines omitted, including `WARNING: Microsoft365DSC requires PowerShell 7.6 or higher. The current session is running PowerShell 7.5.0.`):
+     `{"step":"powershell","outcome":"info","detail":"PowerShell 7.5.0 on Ubuntu 24.04.1 LTS"}` · `{"step":"install Microsoft365DSC","outcome":"ok","detail":"Microsoft365DSC 2.26.1021.1","seconds":11.2}` · `{"step":"install dependencies","outcome":"ok","detail":"modules on disk: 370 MB","seconds":19.1}` · `{"step":"install PSDesiredStateConfiguration","outcome":"ok","detail":"PSDesiredStateConfiguration 2.0.7","seconds":1.8}`
+     `{"step":"1 get (expect absent)","outcome":"ok","detail":"mode=class ensure=Absent description=''","seconds":6.4}` · `{"step":"2 set present","outcome":"ok","detail":"mode=class","seconds":4.1}` · `{"step":"3 get (expect present)","outcome":"ok","detail":"mode=class ensure=Present description='KEEL DSC probe: created'","seconds":0.8}` · `{"step":"4 set description","outcome":"ok","detail":"mode=class","seconds":1.3}` · `{"step":"5 test (expect true)","outcome":"ok","detail":"mode=class ensure=True","seconds":1.6}` · `{"step":"6 set absent (clean up)","outcome":"ok","detail":"mode=class","seconds":2.6}` · `{"step":"7 get (expect absent)","outcome":"ok","detail":"mode=class ensure=Absent description=''","seconds":0.6}` · `{"step":"peak memory","outcome":"info","detail":"951 MB"}`
+     All 7 steps match Expected (via the `class` route). `stderr.log` is empty. `Get-DistributionGroup -Identity KEEL-RT-DSC-probe-DL` (Collector): **absent**. Pulled image removed.
+  5. `$OUT` (`/root/utcm-probe`) scanned for the tenant's domains, tenant id, keys and JWTs: none. Nothing committed.
+  - **Left in the tenant:** the TCM service principal (needed by Q183; no permissions). The DL is gone.
 - **Tenant:** step 1 adds one permission to the Collector's **manifest only** (D-Q55: never an appRoleAssignment, never consent).
   Step 2 creates the service principals of two Microsoft first-party apps if they are missing; it grants them nothing. Step 3 reads
   only. Step 4 creates, changes and removes **one** distribution list, `KEEL-RT-DSC-probe-DL`, with the Restorer's Exchange config
@@ -1573,8 +1595,8 @@ being triggered by queue updates.
 - Drafted by the "Probe Microsoft config snapshots for backup" thread (2026-10-27).
 - Needs: Q182 done; the Collector's SP holds `ConfigurationMonitoring.ReadWrite.All` as an appRoleAssignment (Marouane's consent; if
   missing, set `blocked: waiting on consent` and stop).
-- Status: todo
-- Result:
+- Status: blocked: waiting on consent
+- Result: blocked: waiting on consent (2026-10-28 07:35 UTC, root keel-operator). Q182 is done; the Collector's SP does **not** hold `ConfigurationMonitoring.ReadWrite.All` (in the manifest since 07:11, Q180/Q182 PATCH). Nothing run, no grant made to the TCM principal.
 - **Tenant:** step 1 gives Microsoft's TCM service principal **read-only** access, test tenant only, under Marouane's standing rule
   (2026-10-27: make test-tenant changes without asking, document each one). Log every grant in the Result. Step 3 creates snapshot jobs named
   `KEEL-RT-utcm-probe-*` and deletes them after reading; it writes no tenant configuration. The TCM principal and its grants stay in

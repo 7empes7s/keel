@@ -277,16 +277,16 @@ export const TYPE_DECISIONS = Object.freeze({
   sharedEmailDomain: manual('no writer yet; beta only'),
   schemaExtension: manual('no writer yet; only extensions owned by this tenant\'s apps are read'),
   // Remaining kinds, batch 9: read once the Collector holds the read permission; no writer is built yet.
-  formsSettings: manual('no writer yet; beta only'),
+  formsSettings: automated('forms', 'restore gaps batch 20: update in place of the Forms settings through Graph beta; a backup that widens sharing outside the organisation or turns the phishing scan off is withheld for a person', { view: 'graph-rest-beta' }),
   todoSettings: manual('no writer yet; beta only'),
-  microsoft365AppsInstallationOptions: manual('no writer yet'),
-  appsAndServicesSettings: manual('no writer yet; beta only'),
-  adminReportSettings: manual('no writer yet'),
+  microsoft365AppsInstallationOptions: automated('m365appsinstallationoptions', 'restore gaps batch 20: update in place of the update channel and the apps people can install'),
+  appsAndServicesSettings: automated('adminappsandservices', 'restore gaps batch 20: update in place through Graph beta; a backup that turns the Office Store on is withheld for a person', { view: 'graph-rest-beta' }),
+  adminReportSettings: automated('adminreportsettings', 'restore gaps batch 20: update in place; a backup that shows real names in usage reports again is withheld for a person'),
   profileCardProperty: manual('no writer yet'),
-  pronounsSettings: manual('no writer yet'),
+  pronounsSettings: automated('pronounssettings', 'restore gaps batch 20: update in place'),
   defenderDetectionRule: manual('no writer yet; beta only; a rule can run response actions, so it is rebuilt turned off'),
   teamsCatalogApp: manual('Graph does not return the app package; it is uploaded again from your own copy'),
-  engageCommunity: manual('no writer yet; posts and members are content'),
+  engageCommunity: automated('community', 'restore gaps batch 20: update in place of the name, description and privacy; a private community is never made public, and a deleted community is set up by hand (a create makes a Microsoft 365 group and needs owners)'),
 });
 
 // Why a retried operation can never double-apply — each names the mechanism in
@@ -1213,26 +1213,26 @@ export const EXPANSION_INVENTORY = Object.freeze({
   schemaExtension: byHand('administrative-configuration', 'POST /schemaExtensions', 'Application.ReadWrite.All',
     'backed up for this tenant\'s apps only; no writer yet'),
   // Remaining kinds, batch 9: read once the Collector holds the read permission; manual until a writer is built.
-  formsSettings: byHand('administrative-configuration', 'PATCH /admin/forms (beta)', 'OrgSettings-Forms.ReadWrite.All',
-    'backed up; no writer yet'),
+  formsSettings: subset('administrative-configuration', 'PATCH /admin/forms (beta)', 'OrgSettings-Forms.ReadWrite.All',
+    'update in place is fixture-tested; a backup that widens sharing or turns the phishing scan off is withheld'),
   todoSettings: byHand('administrative-configuration', 'PATCH /admin/todo (beta)', 'OrgSettings-Todo.ReadWrite.All',
     'backed up; no writer yet'),
-  microsoft365AppsInstallationOptions: byHand('administrative-configuration', 'PATCH /admin/microsoft365Apps/installationOptions', 'OrgSettings-Microsoft365Install.ReadWrite.All',
-    'backed up; no writer yet'),
-  appsAndServicesSettings: byHand('administrative-configuration', 'PATCH /admin/appsAndServices (beta)', 'OrgSettings-AppsAndServices.ReadWrite.All',
-    'backed up; no writer yet'),
-  adminReportSettings: byHand('administrative-configuration', 'PATCH /admin/reportSettings', 'ReportSettings.ReadWrite.All',
-    'backed up; no writer yet'),
+  microsoft365AppsInstallationOptions: subset('administrative-configuration', 'PATCH /admin/microsoft365Apps/installationOptions', 'OrgSettings-Microsoft365Install.ReadWrite.All',
+    'update in place is fixture-tested'),
+  appsAndServicesSettings: subset('administrative-configuration', 'PATCH /admin/appsAndServices (beta)', 'OrgSettings-AppsAndServices.ReadWrite.All',
+    'update in place is fixture-tested; a backup that turns the Office Store on is withheld'),
+  adminReportSettings: subset('administrative-configuration', 'PATCH /admin/reportSettings', 'ReportSettings.ReadWrite.All',
+    'update in place is fixture-tested; a backup that shows real names again is withheld'),
   profileCardProperty: byHand('administrative-configuration', 'POST /admin/people/profileCardProperties', 'PeopleSettings.ReadWrite.All',
     'backed up; no writer yet'),
-  pronounsSettings: byHand('administrative-configuration', 'PATCH /admin/people/pronouns', 'PeopleSettings.ReadWrite.All',
-    'backed up; no writer yet'),
+  pronounsSettings: subset('administrative-configuration', 'PATCH /admin/people/pronouns', 'PeopleSettings.ReadWrite.All',
+    'update in place is fixture-tested'),
   defenderDetectionRule: byHand('policy', 'POST /security/rules/detectionRules (beta)', 'CustomDetection.ReadWrite.All',
     'backed up; no writer yet; a rebuilt rule starts turned off'),
   teamsCatalogApp: byHand('identity-application', 'POST /appCatalogs/teamsApps', 'AppCatalog.ReadWrite.All',
     'backed up without the app package, which Graph does not return'),
-  engageCommunity: byHand('administrative-configuration', 'POST /employeeExperience/communities', 'Community.ReadWrite.All',
-    'backed up without posts, files or members; no writer yet'),
+  engageCommunity: subset('administrative-configuration', 'PATCH /employeeExperience/communities/{id}', 'Community.ReadWrite.All',
+    'update in place of the name, description and privacy is fixture-tested; a deleted community is set up by hand'),
 });
 
 const INVENTORY_FIELDS = new Set(['batch', 'status', 'api', 'permission', 'reason']);
@@ -1387,22 +1387,22 @@ export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
   ]),
   // Remaining kinds, batch 9.
   formsSettings: Object.freeze([
-    lost('configuration', 'Forms settings', 'no writer yet; set by hand from the backup'),
+    lost('configuration', 'loosened sharing', 'a backup that widens sharing outside the organisation or turns the phishing scan off is withheld for a person'),
   ]),
   todoSettings: Object.freeze([
     lost('configuration', 'To Do settings', 'no writer yet; set by hand from the backup'),
   ]),
   microsoft365AppsInstallationOptions: Object.freeze([
-    lost('configuration', 'installation options', 'no writer yet; set by hand from the backup'),
+    lost('configuration', 'apps already installed', 'the setting decides what people may install from the portal; apps already on devices are not changed'),
   ]),
   appsAndServicesSettings: Object.freeze([
-    lost('configuration', 'apps and services settings', 'no writer yet; set by hand from the backup'),
+    lost('configuration', 'Office Store turned on', 'a backup that turns the Office Store on is withheld for a person'),
   ]),
   adminReportSettings: Object.freeze([
-    lost('configuration', 'report privacy setting', 'no writer yet; set by hand from the backup'),
+    lost('configuration', 'real names shown again', 'a backup that shows real names in usage reports again is withheld for a person'),
   ]),
   pronounsSettings: Object.freeze([
-    lost('configuration', 'pronouns setting', 'no writer yet; set by hand from the backup'),
+    lost('configuration', 'pronouns people entered', 'each person\'s pronouns live on their own profile and are not backed up'),
   ]),
   profileCardProperty: Object.freeze([
     lost('configuration', 'profile card field', 'no writer yet; added again by hand from the backup'),
@@ -1414,8 +1414,9 @@ export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
     lost('configuration', 'app package', 'Graph does not return the package; it is uploaded again from your own copy'),
   ]),
   engageCommunity: Object.freeze([
-    lost('configuration', 'community', 'no writer yet; recreated by hand from the backup'),
-    lost('relationship', 'groupId', 'each community has a Microsoft 365 group behind it; the group is rebuilt with the community'),
+    lost('configuration', 'deleted community', 'only updated in place; a deleted community is recreated by hand from the backup'),
+    lost('configuration', 'made public', 'a backup that makes a private community public is withheld for a person'),
+    lost('relationship', 'groupId', 'each community has a Microsoft 365 group behind it; it is never changed, and a deleted community and its group are set up again by hand'),
   ]),
 });
 

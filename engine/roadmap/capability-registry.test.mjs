@@ -139,6 +139,13 @@ const REGISTERED = Object.freeze({
   microsoftTunnelHealthThreshold: ['update'],
   onPremisesConditionalAccessSettings: ['update'],
   sharepointSettings: ['update'],
+  // Restore gaps, batch 20: admin center org settings and Viva Engage communities.
+  formsSettings: ['update'],
+  microsoft365AppsInstallationOptions: ['update'],
+  appsAndServicesSettings: ['update'],
+  adminReportSettings: ['update'],
+  pronounsSettings: ['update'],
+  engageCommunity: ['update'],
   // Restore gaps, batch 12.
   windowsManagedAppProtection: ['create', 'update'],
   iosLobAppProvisioningConfiguration: ['create', 'update'],

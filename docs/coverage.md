@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 39 are full, 131 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 92 at least in part; the other 85 are restored by hand from the backup.
+KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 41 are full, 129 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 98 at least in part; the other 79 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -354,14 +354,14 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Exposure management zones | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Shared email domains | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Schema extensions | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Microsoft Forms settings | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Microsoft Forms settings | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Microsoft To Do settings | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Microsoft 365 Apps installation options | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| User owned apps and services | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Usage report privacy | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Microsoft 365 Apps installation options | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| User owned apps and services | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| Usage report privacy | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Profile card fields | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Pronouns setting | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
-| Viva Engage communities | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Pronouns setting | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Viva Engage communities | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 
 ### Details and what you do
 
@@ -405,23 +405,24 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **Schema extensions** (not built yet). KEEL backs up the schema extensions this tenant's own apps defined, but not the values stored in them on users and groups, and does not restore them yet.
   - *Not brought back:* extensions owned by apps in other tenants (set by Microsoft).
   - *You do:* Create the extension again with PowerShell, with the same id, owner app and properties from the backup.
-- **Microsoft Forms settings** (not built yet). KEEL backs up the tenant-wide Forms settings, such as sharing forms outside the organisation and phishing scans, but not the forms or their answers, and does not restore them yet.
-  - *You do:* Set the same values in the Microsoft 365 admin center, under Settings, Org settings, Microsoft Forms, from the backup.
+- **Microsoft Forms settings.** Puts back the tenant-wide Forms settings, such as sharing forms outside the organisation, phishing scans and Bing image search. The forms and their answers are not backed up.
+  - *Not brought back:* sharing outside the organisation widened or the phishing scan turned off (in the backup, but KEEL does not write it yet).
+  - *You do:* A restore never widens sharing outside the organisation or turns the phishing scan off: when the backup does, nothing is written and you set it by hand in the Microsoft 365 admin center, under Settings, Org settings, Microsoft Forms.
 - **Microsoft To Do settings** (not built yet). KEEL backs up whether To Do lists can be shared with or joined by people outside the organisation, and push notifications, but does not restore them yet.
   - *You do:* Set the same values in the Microsoft 365 admin center, under Settings, Org settings, Microsoft To Do, from the backup.
-- **Microsoft 365 Apps installation options** (not built yet). KEEL backs up which Microsoft 365 apps people can install themselves and the update channel, but does not restore them yet.
-  - *You do:* Set the same values in the Microsoft 365 admin center, under Settings, Org settings, Microsoft 365 installation options, from the backup.
-- **User owned apps and services** (not built yet). KEEL backs up whether people can use the Office Store and start app trials, but does not restore it yet.
-  - *You do:* Set the same values in the Microsoft 365 admin center, under Settings, Org settings, User owned apps and services, from the backup.
-- **Usage report privacy** (not built yet). KEEL backs up whether usage reports show real user, group and site names, but does not restore it yet.
-  - *You do:* Set the same value in the Microsoft 365 admin center, under Settings, Org settings, Reports, from the backup.
+- **Microsoft 365 Apps installation options.** Puts back which Microsoft 365 apps people can install themselves on Windows and Mac, and the update channel.
+- **User owned apps and services.** Puts back whether people can use the Office Store and start app trials.
+  - *Not brought back:* the Office Store turned on (in the backup, but KEEL does not write it yet).
+  - *You do:* A restore never turns the Office Store on: when the backup does, nothing is written and you set it by hand in the Microsoft 365 admin center, under Settings, Org settings, User owned apps and services.
+- **Usage report privacy.** Puts back whether usage reports hide real user, group and site names.
+  - *Not brought back:* real names shown in usage reports again (in the backup, but KEEL does not write it yet).
+  - *You do:* A restore never shows real names again: when the backup does, nothing is written and you set it by hand in the Microsoft 365 admin center, under Settings, Org settings, Reports.
 - **Profile card fields** (not built yet). KEEL backs up the extra directory fields shown on profile cards and their labels, but does not restore them yet.
   - *You do:* Add the same fields again with PowerShell (New-MgAdminPeopleProfileCardProperty) from the backup.
-- **Pronouns setting** (not built yet). KEEL backs up whether people can add pronouns to their profile, but does not restore it yet.
-  - *You do:* Set the same value in the Microsoft 365 admin center, under Settings, Org settings, Pronouns, from the backup.
-- **Viva Engage communities** (not built yet). KEEL backs up each community's name, description and privacy, but not its posts, files or members, and does not restore it yet.
-  - *Not brought back:* posts, files and members of the community (stored separately and not in the backup yet).
-  - *You do:* Create the community again in Viva Engage with the same name, description and privacy from the backup, then add its owners and members.
+- **Pronouns setting.** Puts back whether people can add pronouns to their profile.
+- **Viva Engage communities.** Puts back the name, description and privacy of a community that still exists. Its posts, files and members are not backed up.
+  - *Not brought back:* a deleted community (in the backup, but KEEL does not write it yet); a private community made public (in the backup, but KEEL does not write it yet); posts, files and members of the community (stored separately and not in the backup yet).
+  - *You do:* A deleted community is created again by hand in Viva Engage with the same name, description and privacy from the backup, then its owners and members. A restore never makes a private community public: set that by hand if it is wanted.
 
 ## Intune device management
 

@@ -69,9 +69,13 @@ test('a refused read names the permission the probe found missing, and the setup
   assert.equal(missingGrant('/admin/sharepoint/settings', '', null).grant, 'SharePointTenantSettings.Read.All');
 });
 
-test('each type is backed up only (manual restore), named, placed in its service group, and keyed', () => {
+// Restore gaps batch 20 added an update-in-place writer for these; the rest are still restored by hand.
+const WRITTEN = new Set(['formsSettings', 'microsoft365AppsInstallationOptions', 'appsAndServicesSettings', 'adminReportSettings',
+  'pronounsSettings', 'engageCommunity']);
+
+test('each type is restored as planned (written in place, or by hand), named, placed in its service group, and keyed', () => {
   for (const [type] of EXPECTED) {
-    assert.equal(qualificationFor(type).decision, 'manual', type);
+    assert.equal(qualificationFor(type).decision, WRITTEN.has(type) ? 'automated' : 'manual', type);
     const info = typeInfo(type);
     assert.equal(info.known, true, `${type} has a plain name`);
     assert.notEqual(info.category, 'other', `${type} sits in a group`);

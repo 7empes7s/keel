@@ -312,16 +312,16 @@ export const COMPLETENESS = Object.freeze({
   sharedEmailDomain: { whole: 'not-written' },
   schemaExtension: { whole: 'not-written', missing: [part('Extensions owned by apps in other tenants', 'microsoft-managed')] },
   // Remaining kinds, batch 9: read once the Collector holds the read permission.
-  formsSettings: { whole: 'not-written' },
+  formsSettings: { missing: [part('Sharing outside the organisation widened or the phishing scan turned off', 'not-written')] },
   todoSettings: { whole: 'not-written' },
-  microsoft365AppsInstallationOptions: { whole: 'not-written' },
-  appsAndServicesSettings: { whole: 'not-written' },
-  adminReportSettings: { whole: 'not-written' },
+  microsoft365AppsInstallationOptions: {},
+  appsAndServicesSettings: { missing: [part('The Office Store turned on', 'not-written')] },
+  adminReportSettings: { missing: [part('Real names shown in usage reports again', 'not-written')] },
   profileCardProperty: { whole: 'not-written' },
-  pronounsSettings: { whole: 'not-written' },
+  pronounsSettings: {},
   defenderDetectionRule: { whole: 'not-written', missing: [part('Past runs and the alerts a rule raised', 'other-route')] },
   teamsCatalogApp: { whole: 'not-written', missing: [part('The app package', 'other-route')] },
-  engageCommunity: { whole: 'not-written', missing: [part('Posts, files and members of the community', 'other-route')] },
+  engageCommunity: { missing: [part('A deleted community', 'not-written'), part('A private community made public', 'not-written'), part('Posts, files and members of the community', 'other-route')] },
 });
 
 const RECORD_FIELDS = new Set(['managed', 'unreadable', 'whole', 'missing']);

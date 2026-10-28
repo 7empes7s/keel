@@ -643,36 +643,40 @@ export const TYPE_GUIDE = Object.freeze({
     'KEEL backs up the schema extensions this tenant\'s own apps defined, but not the values stored in them on users and groups, and does not restore them yet.',
     'Create the extension again with PowerShell, with the same id, owner app and properties from the backup.'),
   // Remaining kinds, batch 9: read once the Collector holds the read permission.
-  formsSettings: manual('Microsoft Forms settings', NOT_BUILT,
-    'KEEL backs up the tenant-wide Forms settings, such as sharing forms outside the organisation and phishing scans, but not the forms or their answers, and does not restore them yet.',
-    'Set the same values in the Microsoft 365 admin center, under Settings, Org settings, Microsoft Forms, from the backup.'),
+  formsSettings: auto('Microsoft Forms settings', {
+    keeps: 'Puts back the tenant-wide Forms settings, such as sharing forms outside the organisation, phishing scans and Bing image search. The forms and their answers are not backed up.',
+    todo: 'A restore never widens sharing outside the organisation or turns the phishing scan off: when the backup does, nothing is written and you set it by hand in the Microsoft 365 admin center, under Settings, Org settings, Microsoft Forms.',
+  }),
   todoSettings: manual('Microsoft To Do settings', NOT_BUILT,
     'KEEL backs up whether To Do lists can be shared with or joined by people outside the organisation, and push notifications, but does not restore them yet.',
     'Set the same values in the Microsoft 365 admin center, under Settings, Org settings, Microsoft To Do, from the backup.'),
-  microsoft365AppsInstallationOptions: manual('Microsoft 365 Apps installation options', NOT_BUILT,
-    'KEEL backs up which Microsoft 365 apps people can install themselves and the update channel, but does not restore them yet.',
-    'Set the same values in the Microsoft 365 admin center, under Settings, Org settings, Microsoft 365 installation options, from the backup.'),
-  appsAndServicesSettings: manual('User owned apps and services', NOT_BUILT,
-    'KEEL backs up whether people can use the Office Store and start app trials, but does not restore it yet.',
-    'Set the same values in the Microsoft 365 admin center, under Settings, Org settings, User owned apps and services, from the backup.'),
-  adminReportSettings: manual('Usage report privacy', NOT_BUILT,
-    'KEEL backs up whether usage reports show real user, group and site names, but does not restore it yet.',
-    'Set the same value in the Microsoft 365 admin center, under Settings, Org settings, Reports, from the backup.'),
+  microsoft365AppsInstallationOptions: auto('Microsoft 365 Apps installation options', {
+    keeps: 'Puts back which Microsoft 365 apps people can install themselves on Windows and Mac, and the update channel.',
+  }),
+  appsAndServicesSettings: auto('User owned apps and services', {
+    keeps: 'Puts back whether people can use the Office Store and start app trials.',
+    todo: 'A restore never turns the Office Store on: when the backup does, nothing is written and you set it by hand in the Microsoft 365 admin center, under Settings, Org settings, User owned apps and services.',
+  }),
+  adminReportSettings: auto('Usage report privacy', {
+    keeps: 'Puts back whether usage reports hide real user, group and site names.',
+    todo: 'A restore never shows real names again: when the backup does, nothing is written and you set it by hand in the Microsoft 365 admin center, under Settings, Org settings, Reports.',
+  }),
   profileCardProperty: manual('Profile card fields', NOT_BUILT,
     'KEEL backs up the extra directory fields shown on profile cards and their labels, but does not restore them yet.',
     'Add the same fields again with PowerShell (New-MgAdminPeopleProfileCardProperty) from the backup.'),
-  pronounsSettings: manual('Pronouns setting', NOT_BUILT,
-    'KEEL backs up whether people can add pronouns to their profile, but does not restore it yet.',
-    'Set the same value in the Microsoft 365 admin center, under Settings, Org settings, Pronouns, from the backup.'),
+  pronounsSettings: auto('Pronouns setting', {
+    keeps: 'Puts back whether people can add pronouns to their profile.',
+  }),
   defenderDetectionRule: manual('Defender custom detection rules', NOT_BUILT,
     'KEEL backs up each custom detection rule: its hunting query, schedule, alert details and response actions. It does not restore them yet.',
     'Create the rule again in the Microsoft Defender portal, under Hunting, Custom detection rules, from the backup. Leave it off until you have checked its response actions, because a rule can isolate devices or disable users.'),
   teamsCatalogApp: manual('Teams custom apps', NOT_BUILT,
     'KEEL backs up each app your organisation uploaded to Teams, with its versions and publishing state, but not the app package, which Microsoft does not give out. It does not restore them yet.',
     'Upload the app package again in the Teams admin center, under Teams apps, Manage apps, from your own copy, then check its details against the backup.'),
-  engageCommunity: manual('Viva Engage communities', NOT_BUILT,
-    'KEEL backs up each community\'s name, description and privacy, but not its posts, files or members, and does not restore it yet.',
-    'Create the community again in Viva Engage with the same name, description and privacy from the backup, then add its owners and members.'),
+  engageCommunity: auto('Viva Engage communities', {
+    keeps: 'Puts back the name, description and privacy of a community that still exists. Its posts, files and members are not backed up.',
+    todo: 'A deleted community is created again by hand in Viva Engage with the same name, description and privacy from the backup, then its owners and members. A restore never makes a private community public: set that by hand if it is wanted.',
+  }),
 });
 
 const FAMILY_HEADINGS = Object.freeze({

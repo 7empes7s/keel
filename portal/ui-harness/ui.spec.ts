@@ -2653,8 +2653,10 @@ test("Setup · missing permissions come first with a consent link, and the table
   const exchange = missing.filter({ hasText: "Exchange.ManageAsApp" });
   await expect(exchange.locator(".su-ptable-api")).toHaveText("Exchange Online");
   await expect(exchange.getByRole("link", { name: /Add in Entra ID/ })).toBeVisible();
-  // The app with the most missing is listed first.
-  await expect(panel.locator(".su-ptable-app")).toHaveText([/Restore writer app/, /Backup reader app/]);
+  // The app with the most missing is listed first. The table is paged: the
+  // restore writer's rows can fill the first page, so the order of both apps is
+  // checked below with only the missing rows shown.
+  await expect(panel.locator(".su-ptable-app").first()).toHaveText(/Restore writer app/);
 
   // Tiles of one kind add up (OR); the app picker and Find narrow (AND).
   const tile = (name: string) => panel.locator(".su-pp-tile", { hasText: name });
@@ -2672,6 +2674,7 @@ test("Setup · missing permissions come first with a consent link, and the table
   await expect(tile("Missing").locator("b")).toHaveText("5");
   await tile("Missing").click();
   await expect(panel.locator(".su-ptable-row")).toHaveCount(5);
+  await expect(panel.locator(".su-ptable-app")).toHaveText([/Restore writer app/, /Backup reader app/]);
   await expect(tile("Not used by Keel").locator("small")).toHaveText("+1 if added");
   await tile("Not used by Keel").click();
   await expect(panel.locator(".su-ptable-row")).toHaveCount(6);

@@ -194,6 +194,12 @@ export const KEEL_PERMISSIONS = Object.freeze([
   write('Sites.FullControl.All', 'sharepoint', 'Settings', 'Full control of sites', 'Restore site settings and which apps can reach a site'),
   entry('restorer', 'sharepoint', 'Sites.FullControl.All', 'sharepoint', 'Settings', 'Full control of sites (SharePoint)', 'Restore site groups and sharing through SharePoint'),
   write('SharePointTenantSettings.ReadWrite.All', 'sharepoint', 'Settings', 'Change SharePoint settings', 'Restore tenant-wide sharing settings'),
+  write('PeopleSettings.ReadWrite.All', 'entra', 'Users', 'Change profile card settings', 'Restore the pronouns setting'),
+  write('ReportSettings.ReadWrite.All', 'reports', 'Settings', 'Change the report privacy setting', 'Restore whether usage reports hide real names'),
+  write('OrgSettings-Forms.ReadWrite.All', 'other', 'Settings', 'Change Microsoft Forms settings', 'Restore tenant-wide Forms settings'),
+  write('OrgSettings-Microsoft365Install.ReadWrite.All', 'other', 'Apps', 'Change Microsoft 365 Apps install options', 'Restore which Office apps people can install themselves'),
+  write('OrgSettings-AppsAndServices.ReadWrite.All', 'other', 'Apps', 'Change Office Store and trial settings', 'Restore whether people can start app trials'),
+  write('Community.ReadWrite.All', 'other', 'Groups', 'Change Viva Engage communities', 'Restore the name, description and privacy of Viva Engage communities'),
   write('TeamMember.ReadWrite.All', 'teams', 'Memberships', 'Change team members', 'Restore team owners and members'),
   write('TeamSettings.ReadWrite.All', 'teams', 'Settings', 'Change team settings', 'Restore each team\'s settings'),
 

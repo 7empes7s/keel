@@ -44,6 +44,7 @@ import {
   roleDefinitionReadPath, roleDefinitionWrite, ruleApprovers, ungrantedRequest, writtenReferences,
 } from './adminRoleOperations.mjs';
 import { writerFor } from './writers/registry.mjs';
+import { namedLocationTrustKept, namedLocationTrustRefusal, withoutNamedLocationTrust } from './namedLocationTrust.mjs';
 
 /** Thrown by rewriteReferences when a reference cannot be resolved. Caught at every call site
  * and turned into a `failed` entry — a resource whose references don't all resolve must never
@@ -593,6 +594,15 @@ export async function applyWave(writer, governor, wave, {
       }
     }
 
+    // Security audit run 1, finding 2: a restore never changes which networks
+    // or countries Conditional Access trusts, and never creates a trusted
+    // location. The difference becomes a step for a person (namedLocationTrust.mjs).
+    const trustRefusal = namedLocationTrustRefusal(resource, effectiveVerb);
+    if (trustRefusal) {
+      skipped.push({ naturalKey: resource.naturalKey, reason: trustRefusal.reason, completion: trustRefusal.completion });
+      return;
+    }
+
     // Wave 2 seam: a (type, verb) with no built-in writer is written by the
     // writer its package registered in engine/restore/writers/, after the shared
     // gates above plus the deletion and synced-object guards. The capability
@@ -966,7 +976,9 @@ export async function applyWave(writer, governor, wave, {
       // Verification compares what a write can set: server-owned fields, OData
       // annotations and nulls are left out on both sides (verificationView).
       const normalisedDesired = verificationView(desired, resource.resourceType);
-      const payload = writableProjection(desired, resource.resourceType);
+      // A named location's trust fields match live here (namedLocationTrustRefusal)
+      // and are still never sent, so a change made since the plan read is kept.
+      const payload = withoutNamedLocationTrust(writableProjection(desired, resource.resourceType), resource);
       const patchRefusal = isPolicyGoverned(resource.resourceType) ? policyPatchRefusal(resource.resourceType, payload)
         : isAdministrativeGoverned(resource.resourceType) ? administrativePatchRefusal(resource.resourceType, payload) : null;
       if (patchRefusal) {
@@ -1227,6 +1239,11 @@ export async function applyWave(writer, governor, wave, {
   // a Conditional Access policy, a tenant-wide policy) still runs one at a
   // time, in wave order, after the others: the lockout gate judges each one
   // against the ones before it. Results keep wave order whatever finishes first.
+  // The named locations this wave creates or updates, with the compliance fix
+  // that may change one of their trust settings (null for a restore).
+  const writtenLocationKeys = new Map(wave
+    .filter((resource) => resource.resourceType === 'namedLocation' && (resource.verb === 'create' || resource.verb === 'update'))
+    .map((resource) => [resource.naturalKey, resource.complianceFix ?? null]));
   const lanes = wave.map((resource) => ({ resource, sink: { applied: [], skipped: [], failed: [], notRemediable: [] } }));
   const limit = Number.isInteger(concurrency) && concurrency > 1 ? concurrency : 1;
   const alone = limit === 1 ? lanes : lanes.filter((lane) => runsAlone(lane.resource));
@@ -1265,10 +1282,20 @@ export async function applyWave(writer, governor, wave, {
         const item = after.itemOf(id);
         return item !== null && item.state !== 'enabled';
       });
-    const signInPathAfter = restoredPolicies.length ? await after.without(restoredPolicies) : after.snapshot;
+    // Security audit run 1, finding 2: a named location this wave wrote is left
+    // out only when what it trusts reads back as before (a new one: untrusted),
+    // apart from the one setting an approved compliance fix changed.
+    const writtenLocations = mode === 'dry-run' ? [] : applied
+      .filter((entry) => writtenLocationKeys.has(entry.naturalKey) && !entry.unchanged
+        && typeof entry.targetId === 'string' && entry.targetId.length > 0)
+      .filter((entry) => namedLocationTrustKept(signInPath.itemOf(entry.targetId), after.itemOf(entry.targetId),
+        writtenLocationKeys.get(entry.naturalKey)))
+      .map((entry) => entry.targetId);
+    const leftOutAfter = [...restoredPolicies, ...writtenLocations];
+    const signInPathAfter = leftOutAfter.length ? await after.without(leftOutAfter) : after.snapshot;
     // Gap register D1: an allowed lockout delete that verified is the one
     // change expected; everything else must read as before.
-    const leftOut = [...lockoutDeletesVerified, ...restoredPolicies];
+    const leftOut = [...lockoutDeletesVerified, ...leftOutAfter];
     const expected = leftOut.length ? await signInPath.without(leftOut) : signInPathBefore;
     const gate = compareSignInPaths(expected, signInPathAfter, { intendedSections: [...intendedSignInSections] });
     if (!gate.allowed) {

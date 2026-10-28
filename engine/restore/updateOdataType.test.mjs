@@ -70,7 +70,9 @@ test('types outside the reviewed set still drop @odata.type from a PATCH body', 
 });
 
 test('a namedLocation update reaches Graph with its derived type and is applied', async () => {
-  const live = { ...snapshot, displayName: 'HQ (renamed)', isTrusted: false };
+  // A rename: what the location trusts matches live (a trust change is never
+  // written, namedLocationTrust.test.mjs).
+  const live = { ...snapshot, displayName: 'HQ (renamed)' };
   const graph = namedLocationGraph(live);
   const result = await applyWave(graph, governor, [{
     naturalKey: 'namedLocation:HQ', resourceType: 'namedLocation', verb: 'update', targetId: 'loc-1',

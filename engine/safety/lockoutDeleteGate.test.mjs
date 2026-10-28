@@ -88,7 +88,7 @@ function readinessInventory(store) {
 function readerFor(store) {
   return {
     async collect(_version, path) {
-      if (path === CA_PATH) return { items: [...store[CA_PATH].values()].map((item) => structuredClone(item)) };
+      if (path === CA_PATH || path === LOCATION_PATH) return { items: [...store[path].values()].map((item) => structuredClone(item)) };
       if (path.startsWith(`${ROLE_PATH}?`)) {
         const principalId = /principalId eq '([^']+)'/.exec(decodeURIComponent(path.replace(/\+/g, ' ')))[1];
         return { items: [...store[ROLE_PATH].values()].filter((item) => item.principalId === principalId).map((item) => structuredClone(item)) };

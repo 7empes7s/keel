@@ -62,6 +62,7 @@ import { orderGroups } from "@/lib/selection";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
 import { useViewState } from "@/lib/use-view-state";
+import { csvLine } from "@/lib/csv";
 
 // Notifications (portal audit, pick A): three tabs. "Where alerts go" lists the channels
 // with their health from the last send; "Who gets which alerts" lists the rules and,
@@ -217,11 +218,10 @@ export function NotificationsPage({ canConfiguration, channels, subscriptions, e
 
   function exportCsv(ids: string[]) {
     const rows = allDeliveries.filter((delivery) => ids.includes(delivery.id));
-    const cell = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
     const lines = [["When", "What", "Sent to", "Outcome", "Tries", "Problem"].join(",")];
     for (const delivery of rows) {
       const channel = channelById.get(delivery.channel_id);
-      lines.push([deliveryTime(delivery) ?? "", deliveryTitle(delivery), channel ? channelName(channel) : channelKindLabel(delivery.channel_kind), deliveryBadge(delivery).label, delivery.attempts, deliveryProblem(delivery)?.sentence ?? ""].map(cell).join(","));
+      lines.push(csvLine([deliveryTime(delivery) ?? "", deliveryTitle(delivery), channel ? channelName(channel) : channelKindLabel(delivery.channel_kind), deliveryBadge(delivery).label, delivery.attempts, deliveryProblem(delivery)?.sentence ?? ""], { always: true }));
     }
     const blob = new Blob([lines.join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);

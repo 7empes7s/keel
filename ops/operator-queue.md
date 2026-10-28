@@ -8742,7 +8742,7 @@ item that needs it stays untouched.
   5. **Backup:** `node /opt/keel-live/cli/keel-workload-collect.mjs run` once; note the new `sharepoint-structure` collection id C.
   6. **Round trip:** by hand, delete the `KEEL-RT-capture-*` list on KEEL-RT-20261004 and change the `KEEL-RT-capture-*` site script's
      description. Dry run as the Collector:
-     `node /opt/keel-live/cli/keel-restore.mjs --workload sharepoint-structure --collection C --target site-script:<its id> --target site-template:<site url>`.
+     `node /opt/keel-live/cli/keel-restore.mjs --workload sharepoint-structure --collection C --target site-script:<its id> --target site-template:<site url in lower case>`.
      Expect 2 changes (the script update; the site template adding the list), 0 refused; report the manual lines. Approve, then
      `--artifact <id> --enforce`. Expect `verified`, the list back and the description back.
   7. **Re-run check:** dry run again: 0 changes. Promote the step 6 artifact again: `stale`, no write.

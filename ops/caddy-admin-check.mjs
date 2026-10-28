@@ -24,22 +24,23 @@ function stripComment(line) {
   return line.replace(/(^|\s)#.*$/, '').trim();
 }
 
-// Reads the global `admin` option from Caddyfile text.
-// Returns { mode: 'default' } when there is no global block or no admin line,
+// Reads the global `admin` option from Caddyfile text. Caddy keeps the last `admin` line, so
+// this does too. Returns { mode: 'default' } when there is no global block or no admin line,
 // { mode: 'off' }, { mode: 'unix', path } or { mode: 'tcp', address }.
 export function adminFromCaddyfile(text) {
   const lines = text.split(/\r?\n/).map(stripComment).filter(Boolean);
   if (lines[0] !== '{') return { mode: 'default' };
   let depth = 0;
+  let admin = { mode: 'default' };
   for (const line of lines) {
     if (depth === 1) {
       const [name, value] = line.split(/\s+/);
-      if (name === 'admin') return adminFromValue(value);
+      if (name === 'admin') admin = adminFromValue(value);
     }
     depth += (line.match(/{/g) || []).length - (line.match(/}/g) || []).length;
     if (depth === 0) break;
   }
-  return { mode: 'default' };
+  return admin;
 }
 
 // Reads the `admin` object from Caddy's JSON config (the output of `caddy adapt`).
@@ -51,7 +52,8 @@ export function adminFromJson(config) {
 }
 
 function adminFromValue(value) {
-  if (!value) return { mode: 'default' };
+  // `admin {` (options, no address) keeps the default address.
+  if (!value || value === '{') return { mode: 'default' };
   const v = value.replace(/^"|"$/g, '');
   if (v === 'off') return { mode: 'off' };
   // `unix//path` or `unix//path|0600` (the suffix is the socket's file mode).
@@ -63,7 +65,7 @@ function adminFromValue(value) {
 // and falls back to reading the Caddyfile text.
 export function readAdmin(configPath, { caddy = 'caddy' } = {}) {
   try {
-    const out = execFileSync(caddy, ['adapt', '--config', configPath], { stdio: ['ignore', 'pipe', 'ignore'] });
+    const out = execFileSync(caddy, ['adapt', '--config', configPath], { stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000 });
     return { ...adminFromJson(JSON.parse(out.toString())), source: 'caddy adapt' };
   } catch {
     return { ...adminFromCaddyfile(readFileSync(configPath, 'utf8')), source: 'Caddyfile text' };

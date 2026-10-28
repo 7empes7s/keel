@@ -40,6 +40,9 @@ test('reads the global admin option from Caddyfile text', () => {
   assert.deepEqual(adminFromCaddyfile(`# header\n{\n\tadmin off # no API\n}\n${SITE}`), { mode: 'off' });
   assert.deepEqual(adminFromCaddyfile(`{\n\tadmin unix//run/caddy/admin.sock|0600\n}\n${SITE}`), { mode: 'unix', path: '/run/caddy/admin.sock' });
   assert.deepEqual(adminFromCaddyfile(`{\n\tadmin localhost:2020 {\n\t\torigins localhost\n\t}\n}\n${SITE}`), { mode: 'tcp', address: 'localhost:2020' });
+  // Caddy keeps the last admin line: a later TCP address overrides an earlier socket.
+  assert.deepEqual(adminFromCaddyfile(`{\n\tadmin unix//run/caddy/admin.sock\n\tadmin 0.0.0.0:2020\n}\n${SITE}`), { mode: 'tcp', address: '0.0.0.0:2020' });
+  assert.deepEqual(adminFromCaddyfile(`{\n\tadmin {\n\t\torigins localhost\n\t}\n}\n${SITE}`), { mode: 'default' });
   // An `admin` word inside a site block is not the global option.
   assert.deepEqual(adminFromCaddyfile(`{\n\tservers {\n\t\tadmin off\n\t}\n}\n${SITE}`), { mode: 'default' });
 });

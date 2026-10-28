@@ -166,6 +166,16 @@ server for every site on the host (operator item Q195 found it open). It must st
   Scripts that call `curl localhost:2019/...` or `caddy reload --address localhost:2019` stop working
   and must drop the address. `admin off` also closes the API, but then every config change needs a
   `systemctl restart caddy`, which drops connections on every site, so the socket is the default.
+- First switch, in this order (operator item Q201), with no restart:
+  1. install the drop-in and run `systemctl daemon-reload`;
+  2. `install -d -m 700 -o caddy -g caddy /run/caddy` (systemd only creates it on the next start);
+  3. add the global block and run `caddy validate --config /etc/caddy/Caddyfile`;
+  4. `caddy reload --config /etc/caddy/Caddyfile --address localhost:2019` (a plain `systemctl reload caddy`
+     fails here, because it sends to the new socket while the running Caddy still listens on 2019);
+  5. run the check below, then `systemctl reload caddy` to prove later reloads use the socket.
+
+  Never change the Caddyfile and restart before the drop-in is in place: without `/run/caddy` Caddy
+  cannot create the socket and fails to start, taking every site down.
 - After any change to the Caddyfile or the caddy unit, run as root:
   `node /opt/keel-live/ops/caddy-admin-check.mjs` (exit 0 = no admin API on TCP, socket directory
   private). It only connects to port 2019 and never sends a request.

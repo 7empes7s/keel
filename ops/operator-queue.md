@@ -1816,7 +1816,7 @@ being triggered by queue updates.
   `drill-live-acceptance{,.capture}.json` hold the real object id of the deleted `keel-rehearsal-*` drill group, because
   `capture-drill` never pseudonymized. PR #611 fixes it; the record is signed, so it must be recaptured.
 - Needs: /opt/keel-live at the PR #611 merge or later (same grep as Q192). Independent of Q192.
-- Status: todo via Q206 (after PR #665 is deployed; run it as Q206)
+- Status: done via Q206
 - **Test tenant only.** Exactly as the Q39 116 run (steps in `docs/roadmap/operator-gates.md` and Q36 notes #5 and #7): a fresh
   recovery set and reconstruction at B into a fresh disposable DB, the onboarding result at B, a fresh drill DB (schema.sql +
   RUNTIME_MIGRATIONS, never `KEEL_DB_URL` or `keel_test`), build-manifest, the offline plan, the live bounded drill (one new
@@ -1830,7 +1830,8 @@ being triggered by queue updates.
   4. Commit both files on `claude/live-evidence-q193` from `origin/master`, run
      `cd engine && node --test roadmap/drill-live-acceptance.test.mjs` on a throwaway test DB, open a PR with the `automerge` label.
   5. Drop the disposable DBs this run created and report their names.
-- Result: blocked via Q206 (2026-10-28 21:46 UTC, root keel-operator): reconstruct passes at 39129d8, but the live drill fails on non-licence unread types in its collect (#663); cleanup complete, tenant clean, no record captured.
+- Result: done via Q206 (2026-10-28 22:48 UTC, root keel-operator; B da3f9d7: drill passed, 9 writes, cleanup complete; verify exit 0; pseudonymize check exit 0; real-id grep 0/0; evidence test 8/8; PR #674 merged).
+- Earlier result: blocked via Q206 (2026-10-28 21:46 UTC, root keel-operator): reconstruct passes at 39129d8, but the live drill fails on non-licence unread types in its collect (#663); cleanup complete, tenant clean, no record captured.
 - Earlier result: blocked via Q206 (2026-10-28 09:47 UTC, root keel-operator): reconstruct now passes at e3e49a8, but the live drill fails on the unlicensed lifecycleWorkflow collect (#646); no record captured, tenant clean.
 - Earlier result: blocked (2026-10-28 07:23 UTC, root keel-operator): **reconstruct crashes on the live-size dump. Filed #634.** No drill ran; nothing written to the tenant.
   - B = `e86afa9` (has #611 `d460e8f`). Ran from a separate detached worktree at B.
@@ -9408,7 +9409,7 @@ item that needs it stays untouched.
   several minutes (it is read twice: a check pass, then the load).
 - Needs: the deployed build B at or after `e3e49a8`. Check from your checkout at B:
   `git merge-base --is-ancestor e3e49a8 B && grep -q scanDump tools/recovery/dumpImport.mjs`.
-- Status: todo (after PR #665 is deployed; #663 fixed)
+- Status: done
 - Update (2026-10-28 22:00 UTC, "Unblock the recovery drill run" thread): PR #665 fixes #663. The drill now skips any type it
   cannot read that is not a core type (todoSettings 500, privilegedAccessGroupResource PermissionScopeNotGranted), records it
   as `failed` in the rehearsal snapshot, and seeds its throwaway baseline with only the types it read (`seedFromSnapshot(...,
@@ -9425,7 +9426,18 @@ item that needs it stays untouched.
   `grep -q "needed: new Set(\['group'\])" tools/rehearsal/roundTrip.mjs && grep -q "coverage.outcome === 'unavailable'" engine/govern/baseline.mjs`.
   Rerun the whole item below from a **fresh** recovery set at that B. If the drill fails again, report the error verbatim
   and the residual check lines, and stop (one attempt only: each attempt creates a new `keel-rehearsal-*` group).
-- Result: blocked (2026-10-28 21:46 UTC, root keel-operator): **reconstruct passes at the new B; the one live drill attempt fails at its baseline collect on two non-licence read errors (`privilegedAccessGroupResource` PermissionScopeNotGranted, `todoSettings` empty error). Filed #663 (follow-up to #646).** #650's cleanup fix worked (cleanup complete, residuals []). Capture refused; no record, no PR.
+- Result: done (2026-10-28 22:48 UTC, root keel-operator). **Gate 116 (drill-live-acceptance) recaptured live at B = `da3f9d7`; the drill group's id is now a pseudonym. Evidence PR #674 (merged).**
+  - B = `da3f9d7f` (checked at start and just before the drill at 22:43:24). /opt/keel-live moved to `2ef6399e` (#670) by 22:48, after the drill; capture and verify ran pinned to da3f9d7. Detached worktree, now removed.
+  - Onboarding still valid (read-only). Read-only pg_dump: 510 MB gz; evidence head 353111 before and after. Fresh set `/opt/keel-recovery-sets/2026-10-28-q206c`: exit 0 (dump bdcc61a6…, manifest bac16eec…). `--verify` exit 0, "recovery complete".
+  - `reconstruct.mjs --authenticator signed-assertion` into fresh `keel_q206c_recon`: **exit 0, 3:27, peak RSS 2,314,100 KB**; recovered, 353,111 records, chain ok.
+  - Drill DB `keel_q206c_drill` (96 tables). build-manifest exit 0 (one `keel-rehearsal-2026-10-28T22-43-24-373Z`, 900000 ms / 30 writes); offline plan exit 0.
+  - **Live drill: exit 0, outcome `passed`, countsAsRecoveryDrill true, 9 writes, 176.8 s.** unreadTypes `[privilegedAccessGroupResource, todoSettings]` were skipped as scoped. Sequence: create → baseline → drift → detected → rollback applied 1 → restored hash = baseline (16a43753…) → immutable-field probes (mailNickname 204; mailEnabled/securityEnabled/groupTypes 400) → deleted. Cleanup complete, verifiedAbsent 1, residuals []. Recheck at 22:46: /groups and deletedItems 404, 0 keel-rehearsal* groups.
+  - `capture-drill` exit 0 (live-qualified). `verify --require-live --gate drill-live-acceptance` **exit 0** `{"ok":true,"failures":[]}`. `pseudonymize.mjs check` **exit 0** on both files. `grep -c <real group id>`: **0 / 0**. Evidence test 8/8 pass (throwaway `keel_q206c_test`). Scan clean.
+  - Commit 749a78f9 on `claude/live-evidence-q193` → **PR #674**, automerge, merged.
+  - DBs created and dropped: `keel_q206c_recon`, `keel_q206c_drill`, `keel_q206c_test`. `keel`/`keel_test` untouched.
+  - Host: deleted the old q193/q206/q206b sets and `/root/keel-q193`, `/root/keel-q206`, `/root/keel-q206b`. Kept `/opt/keel-recovery-sets/2026-10-28-q206c` (497 MB, root-only) and `/root/keel-q206c/` (mode 700, DB password redacted).
+  - Credentials: live DB read, recovery officer key, Collector, Restorer (9 drill writes), qualification HMAC key. No global admin.
+- Earlier result: blocked (2026-10-28 21:46 UTC, root keel-operator): **reconstruct passes at the new B; the one live drill attempt fails at its baseline collect on two non-licence read errors (`privilegedAccessGroupResource` PermissionScopeNotGranted, `todoSettings` empty error). Filed #663 (follow-up to #646).** #650's cleanup fix worked (cleanup complete, residuals []). Capture refused; no record, no PR.
   - B = `39129d8a` (unchanged). Needs pass: e3e49a8 and 4aa4878 are ancestors. Detached worktree, now removed.
   - Onboarding still valid (read-only). Read-only pg_dump: 507 MB gz; evidence head 351922 before and after. Fresh set `/opt/keel-recovery-sets/2026-10-28-q206b`: exit 0 (dump 16de6d0d…, manifest ba52206b…). `--verify` exit 0, "recovery complete".
   - `reconstruct.mjs --authenticator signed-assertion` into fresh `keel_q206b_recon`: **exit 0, 3:32, peak RSS 2,253,164 KB**; recovered, 351,922 evidence records, chain ok. DB password redacted in reconstruct.out.

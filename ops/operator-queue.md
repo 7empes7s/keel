@@ -9267,8 +9267,13 @@ item that needs it stays untouched.
   The container (`ops/powershell/run-dsc.ps1`) refuses any other resource, any undeclared property, and any Set that is not
   `Ensure = Present` (KEEL never removes through DSC). Owners, moderators, senders, send-on-behalf, addresses and members are never sent.
 - Needs: /opt/keel-live at the PR #637 merge or later (`test -f /opt/keel-live/ops/powershell/run-dsc.ps1`). Does **not** need PR #602.
-- Status: todo
-- Result:
+- Status: blocked (#662: base image digest; seed recipient decision needed)
+- Result: blocked (2026-10-28 21:40 UTC, root keel-operator). B = `39129d8a`. Nothing written in the tenant; global admin not used. Finding **#662**.
+  1. Image: **build failed, exit 1** (`docker build -t keel-dsc:candidate -f Dockerfile.dsc .` from a clean `git archive` of `ops/powershell` at B). The pinned base image is not found (`Dockerfile.dsc:26`): `mcr.microsoft.com/powershell:7.5-ubuntu-24.04@sha256:370134f0be3867fadc2e5845c39ed59120fbd4d19ca5136f40831a96f0404cf1: not found`. `docker manifest inspect` on that digest → `no such manifest`; the tag's current digest is `sha256:042240d5…`. Inference: the pinned value was never this tag's digest. Fix: re-pin from `RepoDigests` (#662). keel-powershell:latest / :q197 untouched.
+  0. Seed: not made (`KEEL-RT-capture-seed` absent). **Decision needed:** no KEEL-RT test user has a mailbox or is a MailUser, so `-Members/-ManagedBy/-ModeratedBy <KEEL-RT test user>` has no target. Options: use `KEEL-RT-recipients-shared`, mail-enable/license a KEEL-RT test user, or change the step.
+  2–6. Not run. No evidence, no PR.
+  - Credentials: Exchange Collector (two read-only sessions). Exchange Restorer not used.
+  - Next: re-pin the digest (code PR, deploy) and decide on the seed recipient, then rerun from step 0. Q204 still also needs PR #602.
 - **Test tenant only.** Same hard rules and standing authorization as Q80. Writes run with the **Exchange Restorer** only
   (`/etc/keel/exchange-restorer.json`, Exchange Administrator, already held; Q182 used it for the same resource). Reads with the
   Exchange Collector. Grant nothing: if Exchange refuses, report blocked with the message verbatim.
@@ -9677,8 +9682,13 @@ item that needs it stays untouched.
   `runJob` runs `docker rm -f <name>` (bounded to 30 s) before it rejects with `TIMEOUT`, then removes the staged `/run/keel-ps-*` copy.
   A failed removal is added to the error's stderr as `keel: container <name> may still be running: <reason>`.
 - Needs: /opt/keel-live at `39129d8a` or later (`grep -q jobContainerName /opt/keel-live/engine/powershell/jobQueue.mjs`).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-28 21:41 UTC, root keel-operator). B = `39129d8a` (`jobContainerName` present). Read-only probe only; no tenant write; nothing changed in /opt/keel-live or the image tag.
+  1. Before: no `keel-job-*` container; `/run` keel-ps- count 0.
+  2. Forced timeout (`timeoutMs: 8000`), exit 0. At ~4 s: `keel-job-q214-de66246c Up 3 seconds`. Output: `TIMEOUT` plus the stderr tail (the last exo probe lines, `.../Get-SafeLinksPolicy -> ok, count=6`), and **no** `may still be running` line.
+  3. Right after: `docker ps -a --filter name=keel-job-` empty (the container is removed, not just stopped); keel-ps- count 0.
+  4. Normal job (default timeout), exit 0, ~30 s: 71 probe results, exo ok 39, teams ok 23, spo ok 9 (all ok). Afterwards: no `keel-job-q214*` container. `/run` showed one keel-ps- dir and one `keel-job-<uuid>-…` container from a parallel worker/agent job (not this item's; gone 20 s later, count 0).
+  - No container was left in the `Created` state.
 - **Read-only in the tenant** (the probe only runs Get cmdlets). No restore, no write, no change to `/opt/keel-live` or the image tag.
   Never print a secret.
 - Do, as root, from `/opt/keel-live/engine` (read-only use of the deployed code):

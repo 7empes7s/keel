@@ -95,6 +95,7 @@ test("provider errors become a sentence and a next step; codes stay out of them"
   assert.equal(deliveryProblem({ status: "retrying", attempts: 1, channel_kind: "pagerduty", last_error: "PagerDuty asked Keel to slow down (HTTP 429)", provider_receipt: { httpStatus: 429 } })?.whatToDo, "Keel tries again on its own.");
   assert.equal(deliveryProblem({ status: "retrying", attempts: 2, channel_kind: "webhook", last_error: "the webhook did not answer in time", provider_receipt: null })?.sentence, "It did not answer in time.");
   assert.equal(deliveryProblem({ status: "failed", attempts: 1, channel_kind: "webhook", last_error: "the hook said no (HTTP 418)", provider_receipt: null })?.sentence, "Web address refused the message.");
+  assert.equal(deliveryProblem({ status: "failed", attempts: 1, channel_kind: "webhook", last_error: "webhook address refused: 127.0.0.1 is a private, local or reserved address; Keel only sends to public addresses", provider_receipt: null })?.sentence, "Keel does not send to private or internal addresses.");
   assert.equal(deliveryProblem({ status: "delivered", attempts: 1, channel_kind: "email", last_error: null, provider_receipt: null }), null);
 });
 

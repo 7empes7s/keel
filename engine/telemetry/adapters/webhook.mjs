@@ -23,6 +23,9 @@
 //    request was sent is 'uncertain' — the receiver may have accepted, so the event is
 //    redelivered under the SAME id rather than reported delivered.
 import { createHmac } from 'node:crypto';
+import {
+  BlockedDestinationError, assertDestinationAllowed, guardedRequest, isIntegrationReference,
+} from '../../safety/outboundDestination.mjs';
 
 export const WEBHOOK_DESTINATION_KIND = 'webhook';
 export const WEBHOOK_TIMEOUT_MS = 10 * 1000;
@@ -31,8 +34,6 @@ export const WEBHOOK_EVENT_ID_HEADER = 'x-keel-event-id';
 export const WEBHOOK_DEDUP_KEY_HEADER = 'x-keel-dedup-key';
 export const WEBHOOK_SIGNATURE_HEADER = 'x-keel-signature';
 
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
-
 function requireNonEmptyString(value, label) {
   if (typeof value !== 'string' || value.length === 0) {
     throw new TypeError(`${label} must be a non-empty string`);
@@ -40,27 +41,64 @@ function requireNonEmptyString(value, label) {
   return value;
 }
 
-// The configured URL is the only routing input. https is required; plain http is
-// accepted for loopback only, so bounded local fixtures remain possible without
-// opening a plaintext path to a remote sink.
-export function webhookDestinationUrl(destination) {
+// The configured URL is the only routing input. It must be https and must not point at
+// a private or local address (security audit finding 6). `allowLoopback` is for tests
+// only: it allows http and https to 127.0.0.1 or ::1 so a local fixture can listen.
+export function webhookDestinationUrl(destination, { allowLoopback = false } = {}) {
   const raw = destination?.config?.url;
   requireNonEmptyString(raw, 'webhook destination config.url');
-  const url = new URL(raw);
-  if (url.protocol === 'https:') return url;
-  if (url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname)) return url;
-  throw new Error('webhook destination config.url must use https (http is loopback-only)');
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error('webhook destination config.url is not a valid address');
+  }
+  if (allowLoopback && url.protocol === 'http:') return assertDestinationAllowed(url, { allowLoopback, protocols: ['http:'] });
+  if (url.protocol !== 'https:') throw new Error('webhook destination config.url must use https');
+  return assertDestinationAllowed(url, { allowLoopback, protocols: ['https:'] });
 }
 
-// The default resolver understands env:NAME references only. It never invents a
-// credential: an unresolvable reference is a visible delivery error, not a fallback.
+const CREDENTIAL_REFERENCE_KEYS = Object.freeze({ bearer: 'tokenRef', 'hmac-sha256': 'secretRef' });
+
+/** Problems with a webhook destination config, checked when it is registered. */
+export function webhookDestinationProblems(config) {
+  const problems = [];
+  try {
+    webhookDestinationUrl({ config });
+  } catch (cause) {
+    problems.push(cause instanceof Error ? cause.message : String(cause));
+  }
+  const auth = config?.auth;
+  if (auth !== undefined && auth !== null) {
+    const key = CREDENTIAL_REFERENCE_KEYS[auth?.type];
+    if (!key) problems.push(`unsupported webhook auth type: ${String(auth?.type)}`);
+    else if (!isIntegrationReference(auth[key])) {
+      problems.push(`auth.${key} must be a reference such as env:KEEL_INTEGRATION_SIEM_TOKEN`);
+    }
+  }
+  return problems;
+}
+
+// The default resolver understands env:KEEL_INTEGRATION_* references only, so a
+// destination can never pick up the database URL or another secret the worker holds.
+// It never invents a credential: an unresolvable reference is a visible delivery error,
+// not a fallback.
 export function defaultResolveSecret(reference) {
   requireNonEmptyString(reference, 'credential reference');
-  if (reference.startsWith('env:')) {
+  if (isIntegrationReference(reference)) {
     const value = process.env[reference.slice('env:'.length)];
     if (typeof value === 'string' && value.length > 0) return value;
   }
   throw new Error(`unresolved credential reference: ${reference}`);
+}
+
+/** The default transport: a POST that only reaches public addresses, on every redirect. */
+function guardedFetch(allowLoopback) {
+  return (url, init) => guardedRequest(url, {
+    ...init,
+    allowLoopback,
+    protocols: allowLoopback ? ['http:', 'https:'] : ['https:'],
+  });
 }
 
 async function authHeaders({ config, body, resolveSecret }) {
@@ -108,6 +146,7 @@ export function createWebhookAdapter({
   fetchImpl,
   resolveSecret = defaultResolveSecret,
   timeoutMs = WEBHOOK_TIMEOUT_MS,
+  allowLoopback = false,
 } = {}) {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
     throw new TypeError('timeoutMs must be a positive integer');
@@ -131,7 +170,7 @@ export function createWebhookAdapter({
         // Routing and authentication are functions of the registered destination
         // configuration ONLY. The envelope is the payload; nothing in it may steer
         // the request line or the credential.
-        url = webhookDestinationUrl(destination);
+        url = webhookDestinationUrl(destination, { allowLoopback });
         body = JSON.stringify(envelope);
         headers = {
           'content-type': 'application/json',
@@ -149,10 +188,7 @@ export function createWebhookAdapter({
         };
       }
 
-      const fetchCall = fetchImpl ?? globalThis.fetch?.bind(globalThis);
-      if (typeof fetchCall !== 'function') {
-        return { outcome: 'retry', error: 'webhook delivery has no fetch implementation' };
-      }
+      const fetchCall = fetchImpl ?? guardedFetch(allowLoopback);
 
       let response;
       try {
@@ -163,6 +199,9 @@ export function createWebhookAdapter({
           signal: AbortSignal.timeout(timeoutMs),
         });
       } catch (cause) {
+        if (cause instanceof BlockedDestinationError) {
+          return { outcome: 'retry', error: `webhook destination unusable: ${cause.message}` };
+        }
         if (isTimeout(cause)) {
           return {
             outcome: 'uncertain',

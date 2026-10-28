@@ -13,13 +13,16 @@ task-79 outbox. One task-77 envelope becomes one authenticated `POST`:
 
 - **Routing is destination-only.** The URL comes exclusively from the registered
   `siem_destination.config.url` — never from the event payload — so an event can
-  never choose or redirect its own delivery target. `https` is required; plain
-  `http` is accepted for loopback hosts only, which keeps bounded local fixtures
-  possible without opening a plaintext path to a remote sink.
+  never choose or redirect its own delivery target. `https` to a public address
+  is required. Loopback, private, link-local (metadata) and reserved addresses
+  are refused at registration, after DNS when the connection opens, and on every
+  redirect hop (`engine/safety/outboundDestination.mjs`, security audit finding
+  6). Only tests may open loopback, with `createWebhookAdapter({ allowLoopback: true })`.
 - **Authentication** resolves credential *references* through an injected resolver
   (`bearer` via `Authorization: Bearer <token>`, `hmac-sha256` via a signed
-  `x-keel-signature` header); the default resolver understands only `env:NAME`
-  references and never invents a credential — an unresolved reference is a visible
+  `x-keel-signature` header); the default resolver understands only `env:KEEL_INTEGRATION_*`
+  references (checked again at registration), so a destination can never pick up
+  the database URL or another secret the worker holds, and never invents a credential — an unresolved reference is a visible
   retry, not a silent unauthenticated send.
 - **Identity.** The stable task-77 `eventId` and the outbox's `(tenantRef,
   destinationId, eventId)` dedup key travel as `x-keel-event-id` /

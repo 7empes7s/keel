@@ -28,6 +28,7 @@
 //    secrets (bearer tokens, JWTs, private keys, credentialed DSNs) are refused at
 //    registration; secrets never enter the outbox, logs or evidence.
 import { can } from '../authz/can.mjs';
+import { webhookDestinationProblems } from './adapters/webhook.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 
 export const OUTBOX_RETRY_BASE_MS = 5 * 1000;
@@ -131,6 +132,12 @@ export async function registerDestination(client, {
     throw new TypeError('config must be an object');
   }
   assertConfigHasNoSecrets(config);
+  // Security audit finding 6: a webhook must be https to a public address, and its
+  // credential reference must be in the integration namespace.
+  if (kind === 'webhook') {
+    const problems = webhookDestinationProblems(config);
+    if (problems.length) throw new Error(`webhook destination config: ${problems.join('; ')}`);
+  }
   await requireCapability(client, requestedBy, 'configuration');
 
   await client.query('BEGIN');

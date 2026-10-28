@@ -8,6 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import dgram from 'node:dgram';
+import http from 'node:http';
 
 import { defineEvent } from '../telemetry/events.mjs';
 import {
@@ -16,6 +17,7 @@ import {
   WEBHOOK_SIGNATURE_HEADER,
   createWebhookAdapter,
   webhookDestinationUrl,
+  webhookDestinationProblems,
   defaultResolveSecret,
 } from '../telemetry/adapters/webhook.mjs';
 import {
@@ -179,10 +181,67 @@ test('CEF delivery routes using only the registered destination host/port/url, n
   assert.equal(calls[0].port, 5514);
 });
 
-test('webhook and cef destination URL resolution refuses plaintext http except loopback', () => {
+test('webhook destination URL resolution requires https to a public address (audit finding 6)', () => {
   assert.equal(webhookDestinationUrl({ config: { url: 'https://sink.example.test/x' } }).protocol, 'https:');
-  assert.equal(webhookDestinationUrl({ config: { url: 'http://127.0.0.1:8080/x' } }).protocol, 'http:');
   assert.throws(() => webhookDestinationUrl({ config: { url: 'http://sink.example.test/x' } }), /https/);
+  // Production refuses loopback, link-local (metadata) and private addresses, in any spelling.
+  for (const url of [
+    'http://127.0.0.1:2019/stop', 'http://localhost:2019/load', 'https://127.0.0.1:2019/stop',
+    'https://localhost/x', 'https://169.254.169.254/latest', 'https://10.0.0.5/x', 'https://[::1]/x',
+    'https://[::ffff:127.0.0.1]/x', 'https://2130706433/x', 'https://0x7f.0.0.1/x',
+  ]) {
+    assert.throws(() => webhookDestinationUrl({ config: { url } }), /https|public|local/, url);
+  }
+  // Tests may opt in to a loopback listener; nothing else changes.
+  assert.equal(webhookDestinationUrl({ config: { url: 'http://127.0.0.1:8080/x' } }, { allowLoopback: true }).protocol, 'http:');
+  assert.throws(() => webhookDestinationUrl({ config: { url: 'https://10.0.0.5/x' } }, { allowLoopback: true }), /public/);
+});
+
+test('registering a webhook destination refuses internal addresses and out-of-namespace credential references', async (t) => {
+  const { client, admin } = await setup(t);
+  for (const config of [
+    { url: 'http://127.0.0.1:2019/stop' },
+    { url: 'https://169.254.169.254/latest' },
+    { url: 'https://sink.example.test/ingest', auth: { type: 'bearer', tokenRef: 'env:KEEL_DB_URL' } },
+    { url: 'https://sink.example.test/ingest', auth: { type: 'hmac-sha256', secretRef: 'env:DATABASE_URL' } },
+  ]) {
+    await assert.rejects(
+      registerDestination(client, { tenantRef: 'fixture', name: 'refused', kind: 'webhook', config, requestedBy: admin.id }),
+      /webhook destination config/,
+      JSON.stringify(config),
+    );
+  }
+  assert.deepEqual(webhookDestinationProblems({
+    url: 'https://sink.example.test/ingest', auth: { type: 'bearer', tokenRef: 'env:KEEL_INTEGRATION_SIEM_TOKEN' },
+  }), []);
+  const { rows } = await client.query('SELECT count(*)::int AS n FROM siem_destination');
+  assert.equal(rows[0].n, 0);
+});
+
+test('the default webhook transport delivers to a local listener only when a test allows loopback', async (t) => {
+  const received = [];
+  const server = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => { received.push({ url: req.url, headers: req.headers, body }); res.statusCode = 202; res.end(); });
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const url = `http://127.0.0.1:${server.address().port}/ingest`;
+  const envelope = fixtureEnvelope('fixture', 1);
+  const destination = { kind: 'webhook', config: { url } };
+
+  const production = createWebhookAdapter();
+  const refused = await production.deliver({ destination, envelope, eventId: envelope.eventId, dedupKey: 'dk' });
+  assert.equal(refused.outcome, 'retry');
+  assert.match(refused.error, /unusable/);
+  assert.equal(received.length, 0, 'production settings must not reach a loopback listener');
+
+  const local = createWebhookAdapter({ allowLoopback: true });
+  assert.equal(await local.deliver({ destination, envelope, eventId: envelope.eventId, dedupKey: 'dk' }), 'accepted');
+  assert.equal(received.length, 1);
+  assert.equal(received[0].headers[WEBHOOK_EVENT_ID_HEADER], envelope.eventId);
+  assert.equal(JSON.parse(received[0].body).eventId, envelope.eventId);
 });
 
 // ---------------------------------------------------------------------------
@@ -326,12 +385,16 @@ test('an unresolvable webhook credential reference is a visible retry, never a s
   assert.equal(calls.length, 0, 'no request may be sent while the credential is unresolved');
 });
 
-test('defaultResolveSecret only understands env: references and never invents a credential', () => {
-  process.env.KEEL_TEST_GENERIC_SIEM_SECRET = 'resolved-value';
-  assert.equal(defaultResolveSecret('env:KEEL_TEST_GENERIC_SIEM_SECRET'), 'resolved-value');
-  assert.throws(() => defaultResolveSecret('env:KEEL_TEST_GENERIC_SIEM_MISSING'), /unresolved credential reference/);
+test('defaultResolveSecret only understands env:KEEL_INTEGRATION_* references and never invents a credential', () => {
+  process.env.KEEL_INTEGRATION_TEST_GENERIC_SIEM_SECRET = 'resolved-value';
+  process.env.KEEL_TEST_GENERIC_SIEM_DB_URL = 'postgres://fixture-only';
+  assert.equal(defaultResolveSecret('env:KEEL_INTEGRATION_TEST_GENERIC_SIEM_SECRET'), 'resolved-value');
+  assert.throws(() => defaultResolveSecret('env:KEEL_INTEGRATION_TEST_GENERIC_SIEM_MISSING'), /unresolved credential reference/);
+  // Set, but outside the integration namespace: never resolved (audit hardening note).
+  assert.throws(() => defaultResolveSecret('env:KEEL_TEST_GENERIC_SIEM_DB_URL'), /unresolved credential reference/);
   assert.throws(() => defaultResolveSecret('vault:some/path'), /unresolved credential reference/);
-  delete process.env.KEEL_TEST_GENERIC_SIEM_SECRET;
+  delete process.env.KEEL_INTEGRATION_TEST_GENERIC_SIEM_SECRET;
+  delete process.env.KEEL_TEST_GENERIC_SIEM_DB_URL;
 });
 
 // ---------------------------------------------------------------------------
@@ -414,12 +477,24 @@ test('cli/keel-worker.mjs registers webhook and cef adapters that the outbox dra
   });
   await enqueueEvent(client, { tenantRef: 'fixture', destinationId: webhookDestination.id, envelope: fixtureEnvelope('fixture', 1) });
 
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => ({ status: 200, headers: { get: () => null } });
-  t.after(() => { globalThis.fetch = originalFetch; });
-
+  // The production webhook adapter goes through the address guard: a destination row
+  // that points at the host's own loopback (written behind registration's back) is
+  // never contacted, and the event stays pending with the reason. Delivery to a
+  // listener is proven above with the same default transport and allowLoopback.
+  let listenerHits = 0;
+  const listener = http.createServer((req, res) => { listenerHits += 1; res.end(); });
+  await new Promise((resolve) => listener.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => listener.close(resolve)));
+  await client.query('UPDATE siem_destination SET config = $2 WHERE id = $1', [
+    webhookDestination.id, { url: `https://127.0.0.1:${listener.address().port}/stop` },
+  ]);
   const webhookResults = await drainDueDestinations(client, { adapters: SIEM_ADAPTERS, now: NOW });
-  assert.equal(webhookResults.find((r) => r.destinationId === webhookDestination.id)?.delivered, 1);
+  assert.equal(webhookResults.find((r) => r.destinationId === webhookDestination.id)?.delivered, 0);
+  const { rows: [blockedRow] } = await client.query(
+    'SELECT status, last_error FROM siem_outbox_event WHERE destination_id = $1', [webhookDestination.id]);
+  assert.equal(blockedRow.status, 'pending');
+  assert.match(blockedRow.last_error, /public addresses/);
+  assert.equal(listenerHits, 0);
 
   // The CEF udp path is exercised against a real bounded loopback socket (no external
   // egress, no live tenant object touched) so the wiring itself — not just the adapter

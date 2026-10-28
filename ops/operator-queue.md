@@ -1628,7 +1628,17 @@ being triggered by queue updates.
   replies and hosted contents. The protected-API error text reportedly reads "...requires Protected API access in
   application-only context when not using Resource Specific Consent". This item records today's baseline before any RSC work.
 - Needs: nothing.
-- Status: todo
+- Status: done
+- Result: done (2026-10-28 07:15 UTC, root keel-operator). **The content reader cannot read channel messages today: both message calls return 403 for a missing role.** Read-only GETs only; nothing granted, installed, created or changed; global admin not used. Team: `KEEL-RT-20260908 Collaboration Hub` (the only KEEL-RT- team), General channel via `primaryChannel` (200).
+  1. Content reader client (app) id: `00c7eb61-40d2-432a-a56f-1577d26ac9f8`. 17 Graph application permissions (SP appRoleAssignments, mapped via the Graph SP appRoles; the token `roles` claim lists the same 17): Calendars.Read, Channel.ReadBasic.All, ChannelMember.Read.All, ChannelSettings.Read.All, Contacts.Read, Files.Read.All, Group.Read.All, Mail.Read, MailboxFolder.Read.All, MailboxItem.Read.All, MailboxSettings.Read, Sites.Read.All, Tasks.Read.All, Team.ReadBasic.All, TeamsAppInstallation.ReadForTeam.All, TeamsTab.Read.All, User.Read.All. `ChannelMessage.Read.All`: **not held**. `ChannelMessage.Read.Group` RSC grant: none (2d). `TeamsAppInstallation.*`: `TeamsAppInstallation.ReadForTeam.All` (read only).
+  2a. `GET /v1.0/teams/<TEAM>/channels/<CH>/messages?$top=1` → **403** `Forbidden`: "Missing role permissions on the request. API requires one of 'ChannelMessage.Read.All, ChannelMessage.Read.Group'. Roles on the request '<the 17 roles above>'. Resource specific consent grants on the request ''."
+  2b. `GET /v1.0/teams/<TEAM>/channels/getAllMessages?$top=1` → **403** `Forbidden`: "Missing role permissions on the request. API requires one of 'ChannelMessage.Read.All'. Roles on the request '<the 17 roles above>'." (no RSC clause: this endpoint does not take ChannelMessage.Read.Group).
+  2c. `GET /v1.0/teams/<TEAM>/installedApps?$expand=teamsAppDefinition($select=displayName)` → 200, 62 apps, all Microsoft or store apps (e.g. Activity, Calling, Planner, Wiki, Power Automate Actions, Outgoing Webhook, Datadog (Legacy), Asana (Legacy)); no KEEL app.
+  2d. `GET /v1.0/teams/<TEAM>/permissionGrants` → 200, **0 grants**.
+  - Neither 403 has the "requires Protected API access in application-only context when not using Resource Specific Consent" wording. Inference: Graph checks the role first; the protected-API check would only show once a ChannelMessage role or RSC grant is present.
+  3a. `GET /beta/team/rscConfiguration` (Collector) → **400** `BadRequest`: "Resource not found for the segment 'team'." Restorer not tried (400, not 403). Inference: the path is not routed in beta today (wrong path or not deployed), not a permission problem. Team RSC state: unknown.
+  3b. `GET /beta/chats/rscConfiguration` (Collector) → **403** `Forbidden`: "Missing role permissions on the request. API requires one of 'Chat.ReadBasic.WhereInstalled, Chat.Read.WhereInstalled, Chat.ReadWrite.WhereInstalled, Chat.ReadBasic.All, Chat.Read.All, Chat.ReadWrite.All, ChatSettings.Read.Chat, ChatSettings.ReadWrite.Chat, Chat.Manage.Chat'. Roles on the request '<collector roles>'. Resource specific consent grants on the request ''." Restorer: same 403. Stopped; no grant. Chat RSC state: unknown.
+  - Next step options (operator decision): `ChannelMessage.Read.Group` RSC via a Teams app installed in the team (client id above), or tenant-wide `ChannelMessage.Read.All` (protected API).
 - **Read-only. Test tenant only. Grant nothing, install nothing, create nothing, change no setting.** Content reader identity
   (`/etc/keel/content-reader.json`) for the Graph calls. No tokens or secrets in the Result.
 - Do:
@@ -1700,7 +1710,7 @@ being triggered by queue updates.
   `nativeRecovery.mjs` never pseudonymized. PR #611 fixes the tool; the record is signed, so it must be recaptured.
 - Needs: /opt/keel-live at the PR #611 merge or later
   (`grep -q PSEUDONYM_CHECK_FROM /opt/keel-live/engine/test/committedEvidence.mjs`).
-- Status: todo
+- Status: done
 - **Test tenant only.** Same fixture and flags as the Q39 115 run: one delete and restore of `KEEL-RT-native-recovery-group`
   with the Restorer (`--resource-type group --object-id <real id> --confirm-disposable-fixture <real id>
   --target-config /etc/keel/restorer.json --permission Group.ReadWrite.All`, fresh `--docs-retrieved-at`). Standing
@@ -1715,7 +1725,12 @@ being triggered by queue updates.
   4. Confirm the group reads back active, not in deleted items, 0 members.
   5. Commit both files on `claude/live-evidence-q192` from `origin/master`, run
      `cd engine && node --test roadmap/native-live-acceptance.test.mjs` (it now checks the ids), open a PR with the `automerge` label.
-- Result:
+- Result: done (2026-10-28 07:45 UTC, root keel-operator). B = `e86afa9`. Restorer (`/etc/keel/restorer.json`, Group.ReadWrite.All) for the one delete and restore; Collector for the read-back; global admin not used; nothing granted.
+  1. `nativeRecovery.mjs capture --live --resource-type group --object-id <id> --confirm-disposable-fixture <id> --target-config /etc/keel/restorer.json --docs-retrieved-at 2026-10-28 --permission Group.ReadWrite.All --build e86afa9` exit **0**: "captured live-qualified native recovery evidence". No "refused: … not pseudonyms".
+  2. `verify --require-live --gate native-live-acceptance --build e86afa9 --tenant sha256:f7b3959300856957` exit **0** (`"ok": true, "failures": []`).
+  3. `pseudonymize.mjs check` exit **0**: "every id is a pseudonym" for both files. `grep -c <real object id>`: 0 and 0.
+  4. `KEEL-RT-native-recovery-group` reads back active (`deletedDateTime` null), `GET /directory/deletedItems/<id>` 404 (not in deleted items), **0 members**.
+  5. Evidence branch `claude/live-evidence-q192` from origin/master (`e86afa98`); `node --test roadmap/native-live-acceptance.test.mjs`: **14 pass, 0 fail**; secret and tenant-name scan clean. **PR #630** with `automerge`.
 - **Expected:** capture exit 0, verify exit 0, check exit 0, the evidence test passes, the group is back as before.
 - **Report:** B, each exit code, the check output, the group's read-back, the evidence PR.
 

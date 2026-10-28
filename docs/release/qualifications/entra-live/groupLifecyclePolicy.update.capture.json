@@ -12,20 +12,20 @@
       "id": "d2d8b3c9-4c24-8802-8339-62280318617e",
       "managedGroupTypes": "Selected",
       "groupLifetimeInDays": 400,
-      "alternateNotificationEmails": "keel-rt-20260908-carla@techinsiderbytes.com"
+      "alternateNotificationEmails": "keel-rt-u3f32611d4ab3@t42987720ee3.example"
     },
     "intendedState": {
       "id": "d2d8b3c9-4c24-8802-8339-62280318617e",
       "managedGroupTypes": "Selected",
       "groupLifetimeInDays": 365,
-      "alternateNotificationEmails": "keel-rt-20260908-carla@techinsiderbytes.com"
+      "alternateNotificationEmails": "keel-rt-u3f32611d4ab3@t42987720ee3.example"
     },
     "postState": {
       "id": "d2d8b3c9-4c24-8802-8339-62280318617e",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#groupLifecyclePolicies/$entity",
       "managedGroupTypes": "Selected",
       "groupLifetimeInDays": 365,
-      "alternateNotificationEmails": "keel-rt-20260908-carla@techinsiderbytes.com"
+      "alternateNotificationEmails": "keel-rt-u3f32611d4ab3@t42987720ee3.example"
     }
   }
 }

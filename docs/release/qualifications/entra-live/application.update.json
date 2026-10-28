@@ -7,7 +7,7 @@
   "resourceType": "application",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "2b9d310751a663e41a1b24c2febdc5756968814b",
+  "build": "e86afa9865da72964ce74567394eb41c3caf263a",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
@@ -18,12 +18,12 @@
   "restoreRef": "479b1e53-417b-8fab-b5ca-f2739c4049ce",
   "naturalKey": "application:de5939b1-05b5-8f6d-aafd-af9f278b08bb",
   "fixtureKind": "named-object",
-  "captureSha256": "61d2a04896a2218c980e9b01aedd1c56437a1161b5c2ff6bbc51c6e6a37c7caf",
+  "captureSha256": "2943bcde7a9b6901490b1995a2ed6edc88669197ec3dc35665ad86e270c1a500",
   "proofRef": "docs/release/qualifications/entra-live/application.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "37c8c4b5576070a27d310398c031957401ea662af908e87abad95a35041ccf98"
+      "signature": "54bc7ed8a5bd5fb36e499b2dd836f2a35760c09b814bb01178e845196d45de6d"
     }
   }
 }

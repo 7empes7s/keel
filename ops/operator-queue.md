@@ -9345,8 +9345,8 @@ item that needs it stays untouched.
   several minutes (it is read twice: a check pass, then the load).
 - Needs: the deployed build B at or after `e3e49a8`. Check from your checkout at B:
   `git merge-base --is-ancestor e3e49a8 B && grep -q scanDump tools/recovery/dumpImport.mjs`.
-- Status: todo
-- Result:
+- Status: in progress (2026-10-28 09:45 UTC, root keel-operator)
+- Result: in progress (2026-10-28 09:45 UTC, root keel-operator): started at B `e3e49a8` (has #643 scanDump).
 - **Test tenant only.** Exactly the Q193 steps and hard rules (same chain as the Q39 116 run, one new `keel-rehearsal-*` group
   only, cleaned up by the drill), at the new B:
   1. A **fresh** recovery set at B (not `/opt/keel-recovery-sets/2026-10-28-q193`, which is pinned to `e86afa9`), then

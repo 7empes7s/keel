@@ -330,6 +330,8 @@ test('failure reasons and grant hints', () => {
   assert.deepEqual(missingGrant('/identityGovernance/privilegedAccess/group/resources',
     'Authorization failed due to missing permission scope PrivilegedEligibilitySchedule.Read.AzureADGroup,PrivilegedAccess.Read.AzureADGroup.'),
   { grant: 'PrivilegedAccess.Read.AzureADGroup', source: 'documented', held: false });
+  // PIM custom extensions are role management, not PIM for Groups: no hint.
+  assert.equal(missingGrant('/identityGovernance/privilegedAccess/customExtensions', 'denied'), null);
   assert.equal(missingGrant('/deviceManagement/virtualEndpoint/cloudPCs', 'accessDenied: Access is denied to the requested resource.').grant, 'CloudPC.Read.All');
 });
 

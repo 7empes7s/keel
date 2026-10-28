@@ -31,8 +31,11 @@ import { buildDrillManifest, runBoundedDrill, validateDrillPlan } from '../../to
 import { tenantRefFor } from '../../tools/rehearsal/roundTrip.mjs';
 import { assertCommittedLiveRecord, isPendingPlaceholder } from '../test/committedEvidence.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
+import { pseudonymizer, unpseudonymizedIds } from '../../tools/qualification/pseudonymize.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 
+// Shaped like an Entra object id, so the test shows the capture pseudonymizes it.
+const GROUP_ID = '0d7c2a51-3b8e-4f6a-9c21-5e4b7a8d9f10';
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const KEY = 'test-only-drill-key';
 const BUILD = 'fixture-build-116';
@@ -73,19 +76,19 @@ function fakeTenant({ purgeStatus = 204 } = {}) {
     write: async (version, path, { method, body }) => {
       state.time += 1000;
       if (method === 'POST' && path === '/groups') {
-        state.group = { ...body, id: 'drill-group-1' };
+        state.group = { ...body, id: GROUP_ID };
         return { ok: true, status: 201, body: state.group };
       }
-      if (method === 'PATCH' && path === '/groups/drill-group-1') {
+      if (method === 'PATCH' && path === `/groups/${GROUP_ID}`) {
         state.group = { ...state.group, ...body };
         return { ok: true, status: 204, body: null };
       }
-      if (method === 'DELETE' && path === '/groups/drill-group-1') {
+      if (method === 'DELETE' && path === `/groups/${GROUP_ID}`) {
         if (state.softDeleted) return { ok: false, status: 404, body: null };
         state.softDeleted = true;
         return { ok: true, status: 204, body: null };
       }
-      if (method === 'DELETE' && path === '/directory/deletedItems/drill-group-1') {
+      if (method === 'DELETE' && path === `/directory/deletedItems/${GROUP_ID}`) {
         if (purgeStatus >= 300) return { ok: false, status: purgeStatus, body: { error: 'Authorization_RequestDenied' } };
         state.hardDeleted = true;
         return { ok: true, status: 204, body: null };
@@ -93,7 +96,7 @@ function fakeTenant({ purgeStatus = 204 } = {}) {
       throw new Error(`unexpected fake Graph write: ${method} ${path}`);
     },
     read: async (version, path) => {
-      if (path === '/groups/drill-group-1') return getGroup();
+      if (path === `/groups/${GROUP_ID}`) return getGroup();
       throw new Error(`unexpected fake Graph writer read: ${path}`);
     },
   };
@@ -205,6 +208,18 @@ test('a valid independently captured drill and reconstruction record verifies', 
   assert.equal(evidence.subject.drillRecord.mode, 'live');
   assert.match(evidence.subject.testObject.naturalKey, /^group:keel-rehearsal-/);
   assert.deepEqual(verify(evidence), { ok: true, failures: [] });
+  // The repository is public: the created group is named by its pseudonym in the record and artifact.
+  assert.equal(drillRow.subject.createdObjects[0].objectId, GROUP_ID);
+  assert.equal(evidence.subject.drillRecord.createdObjects[0].objectId, pseudonymizer(tenantRef).guid(GROUP_ID));
+  for (const text of [JSON.stringify(evidence), readFileSync(join(dir, evidence.proof.artifact.path), 'utf8')]) {
+    assert.ok(!text.includes(GROUP_ID), 'the raw object id never reaches the record or the artifact');
+    assert.deepEqual(unpseudonymizedIds(text), []);
+  }
+  // An id that cannot be pseudonymized (an on-premises SID) is refused, and no artifact is written.
+  const leaky = structuredClone(drillRow);
+  leaky.subject.note = 'owner S-1-5-21-1111-2222-3333-500';
+  assert.throws(() => capture({ row: leaky, name: 'leaky' }), /not pseudonyms; nothing was written/);
+  assert.throws(() => readFileSync(join(dir, 'leaky.capture.json')), /ENOENT/);
   // The consistent forge helper itself leaves a valid record valid.
   assert.equal(verify(forge(evidence, () => {})).ok, true);
 });

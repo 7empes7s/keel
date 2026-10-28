@@ -15,6 +15,7 @@ import { byTime } from "@/lib/paging";
 import { Icon, type IconName } from "@/components/shell/icons";
 import { RecordGroup, TechnicalDetails } from "@/components/technical-details";
 import { Badge } from "@/components/ui/badge";
+import { ObjectLabel, ObjectStatusBadge } from "@/components/ui/object-label";
 import { Person } from "@/components/ui/person";
 import { Verdict } from "@/components/verdict";
 import { alertCall, alertCallWords, type AlertAction } from "@/lib/alert-calls";
@@ -51,6 +52,7 @@ import {
   type StateGroup,
 } from "@/lib/alerts-view";
 import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile, type FilterTile } from "@/lib/filter-set";
+import { splitObjectTitle } from "@/lib/object-label";
 import { ago, formatTimestamp, fromNow } from "@/lib/presentation";
 import { serviceOrder } from "@/lib/services";
 import type { EngineRef } from "@/lib/sentences";
@@ -69,7 +71,7 @@ import { readList, useViewState } from "@/lib/use-view-state";
 
 type Step = "resolve" | "mute";
 
-const ownerRef = (alert: AlertItem): EngineRef | null => (alert.owner ? { kind: "principal", id: alert.owner.id, name: alert.owner.name, readable: true } : null);
+const ownerRef = (alert: AlertItem): EngineRef | null => (alert.owner ? { kind: "principal", id: alert.owner.id, name: alert.owner.name, readable: true, pseudonym: alert.owner.pseudonym } : null);
 // Alerts can also be ordered by when they last fired or first opened.
 const ALERT_SORTS: ListSort<AlertItem>[] = [
   { key: "fired", label: "Last fired", desc: true, compare: (a, b) => byTime(a.lastFiringAt, b.lastFiringAt) },
@@ -201,7 +203,10 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
       <div className="al-row" data-state={stateGroup(alert)}>
         <span aria-hidden="true" className="al-kind" data-tone={alertTone(alert) ?? undefined} title={service.name}><Icon name={service.icon} /></span>
         <span className="al-row-name">
-          <Link className="al-row-link" href={openHref(alert.id)} onClick={(event) => follow(event, openHref(alert.id))}>{alertTitle(alert)}</Link>
+          <span className="al-row-title">
+            <Link className="al-row-link" href={openHref(alert.id)} onClick={(event) => follow(event, openHref(alert.id))}><AlertObjectLabel alert={alert} /></Link>
+            <ObjectStatusBadge deletedSince={alert.object?.deletedSince} status={alert.object?.status} />
+          </span>
           <small>{causeSentence(alert)}</small>
         </span>
         <span className="al-row-mid">
@@ -341,6 +346,13 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
   );
 }
 
+// The alert's object as name and kind ("Finance" in bold, "(group)" soft). The words
+// are alertTitle's, so search, toasts and the panel title read the same.
+function AlertObjectLabel({ alert }: { alert: AlertItem }) {
+  const { name, type } = splitObjectTitle(alertTitle(alert));
+  return <ObjectLabel name={name} type={type} />;
+}
+
 function AlertPanel({ alert, now, canRespond, note, setNote, onAcknowledge }: {
   alert: AlertItem;
   now: string;
@@ -361,6 +373,14 @@ function AlertPanel({ alert, now, canRespond, note, setNote, onAcknowledge }: {
       </section>
 
       <dl className="al-facts">
+        <div>
+          <dt><Icon name="info" />About</dt>
+          <dd>
+            <AlertObjectLabel alert={alert} />
+            <ObjectStatusBadge deletedSince={alert.object?.deletedSince} status={alert.object?.status} />
+            {alert.object?.status === "deleted" && alert.object.lastSeenAt ? <small className="al-seen">Last in a backup {ago(alert.object.lastSeenAt, now)}</small> : null}
+          </dd>
+        </div>
         <div>
           <dt><Icon name="bell" />Owner</dt>
           <dd>

@@ -1,4 +1,4 @@
-import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE, OPEN_DRIFT_PREDICATE } from './openDrift.mjs';
+import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE, OPEN_DRIFT_PREDICATE, sameRecordedDifference } from './openDrift.mjs';
 
 export { markSameContentDrift } from './openDrift.mjs';
 import { evaluateDrift } from '../policy/evaluate.mjs';
@@ -38,7 +38,7 @@ export async function recordDrift(client, {
   // Conditional Access changes are rated by what the rule does, not by its type.
   const blastRadius = changeBlastRadius(resourceType, beforePayload, afterPayload, storedBlastRadius);
   const reused = await reuseDrift(client, {
-    tenantRef, baselineId, naturalKey, changeType, beforeHash, afterHash,
+    tenantRef, baselineId, naturalKey, resourceType, changeType, beforeHash, afterHash, beforePayload, afterPayload,
   });
   // A change seen again takes the current rating, so a row recorded before
   // per-rule rating reads the same as a new one.
@@ -86,12 +86,14 @@ export async function recordDrift(client, {
  * even an expired ignore, and no finished or cancelled auto remediation) or it is ignored
  * right now (DRIFT_IGNORED_PREDICATE), so an ignored change stays ignored until the
  * setting changes again or the ignore runs out. The row stays the record of when and in
- * which collection KEEL first saw the change. Any other row something acted on gets a new
+ * which collection KEEL first saw the change. Hashes stored under older field rules are
+ * checked again from the payloads (cir/canonicalHash.mjs sameContent), so an ignore
+ * recorded before a rule change still covers the same content. Any other row something acted on gets a new
  * row when the change is seen again, so a failed or undone auto remediation runs again
  * for it. Returns { row, ignored } for the reused row, or null when a new row is needed.
  */
 async function reuseDrift(client, {
-  tenantRef, baselineId, naturalKey, changeType, beforeHash, afterHash,
+  tenantRef, baselineId, naturalKey, resourceType, changeType, beforeHash, afterHash, beforePayload, afterPayload,
 }) {
   const { rows: [latest] } = await client.query(
     `SELECT d.*,
@@ -105,8 +107,7 @@ async function reuseDrift(client, {
   );
   if (!latest || (latest.acted_on && !latest.ignored)) return null;
   if (latest.change_type !== changeType
-    || latest.before_hash !== (beforeHash ?? null)
-    || latest.after_hash !== (afterHash ?? null)) return null;
+    || !sameRecordedDifference(latest, { resourceType, beforeHash, beforePayload, afterHash, afterPayload })) return null;
   const { acted_on: _actedOn, ignored, ...row } = latest;
   return { row, ignored };
 }

@@ -146,7 +146,7 @@ them.
    `DestinationId`.
 3. **Credentials.** Use two separate app registrations.
    - **Sender:** Monitoring Metrics Publisher on the DCR. It is referenced by the
-     destination's `credentialRef`.
+     destination's `credentialRef`, which must be `env:KEEL_INTEGRATION_<NAME>`.
    - **Reader:** Log Analytics Reader on the workspace only.
 
    Put what each actually holds into `roles.json`:
@@ -169,7 +169,7 @@ them.
    node tools/qualification/sentinelLive.mjs capture --confirm-live-workspace-ingest \
      --tenant-ref <tenant_ref> --destination-id <destination id> \
      --workspace-id <workspace guid> --endpoint https://<dce>.ingest.monitor.azure.com \
-     --dcr-immutable-id dcr-... --sender-ref env:<credential var> --reader-ref app:<reader app id> \
+     --dcr-immutable-id dcr-... --sender-ref env:KEEL_INTEGRATION_<credential var> --reader-ref app:<reader app id> \
      --roles roles.json --docs docs.json --build "$(git rev-parse HEAD)" \
      --out docs/release/qualifications/sentinel-live-acceptance.json
    ```

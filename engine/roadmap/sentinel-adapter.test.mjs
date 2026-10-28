@@ -57,7 +57,7 @@ function fixtureConfig(overrides = {}) {
   return {
     endpoint: FIXTURE_ENDPOINT,
     dcrImmutableId: FIXTURE_DCR,
-    credentialRef: 'env:KEEL_SENTINEL_FIXTURE_CREDENTIAL',
+    credentialRef: 'env:KEEL_INTEGRATION_SENTINEL_FIXTURE_CREDENTIAL',
     ...overrides,
   };
 }
@@ -679,7 +679,7 @@ test('the default credential path acquires a certificate token for the Monitor a
   writeFileSync(credentialPath, JSON.stringify({
     tenantId: 'fixture-tenant', clientId: 'fixture-client', certificatePath, privateKeyPath,
   }));
-  const envVar = 'KEEL_SENTINEL_PROD_CREDENTIAL_TEST';
+  const envVar = 'KEEL_INTEGRATION_SENTINEL_PROD_CREDENTIAL_TEST';
   const previous = process.env[envVar];
   process.env[envVar] = credentialPath;
   t.after(() => {

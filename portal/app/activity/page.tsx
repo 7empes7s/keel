@@ -5,10 +5,12 @@ import { GET as loadEvidence } from "@/app/api/evidence/route";
 import { GET as loadIntegrity } from "@/app/api/evidence/verify/route";
 import { GET as loadJobs } from "@/app/api/jobs/route";
 import { ActivityPage as ActivityBody } from "@/components/activity/activity-page";
+import { AnonymityNote } from "@/components/anonymity-note";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { JobRefresher } from "@/components/job-refresher";
 import { PageHeader } from "@/components/page-header";
-import { type ActivityNames, entrySubjectKey, getActivityNames } from "@/lib/activity-names";
+import { type ActivityNames, actorsForFilter, entrySubjectKey, getActivityNames, hideAddresses } from "@/lib/activity-names";
+import { getAnonymitySetting } from "@/lib/anonymity";
 import { ACTIVITY_KINDS, OUTCOMES, activityCounts, activityStatus, parseFilters, rangeBounds } from "@/lib/activity-view";
 import type { ChainIntegrity, EvidenceData } from "@/lib/evidence";
 import type { JobsData } from "@/lib/portal-jobs";
@@ -39,7 +41,8 @@ export default async function ActivityPage({ searchParams }: {
   const evidenceQuery = new URLSearchParams();
   if (filters.what.length) evidenceQuery.set("kind", filters.what.flatMap((key) => ACTIVITY_KINDS[key].records).join(",") || "none");
   if (bounds) { evidenceQuery.set("from", bounds.from); evidenceQuery.set("to", bounds.to); }
-  if (filters.who.length) evidenceQuery.set("actor", filters.who.join(","));
+  // While names are hidden a "Who" filter holds code names: read them back to the stored actors.
+  if (filters.who.length) evidenceQuery.set("actor", (await actorsForFilter(filters.who).catch(() => filters.who)).join(","));
   if (before) evidenceQuery.set("before", before);
   // A job filter with no job kinds (drills) or an outcome only jobs have skips that side.
   const wantJobs = filters.show !== "records" && !before && jobQuery.get("kind") !== "none" && jobQuery.get("status") !== "none";
@@ -71,8 +74,9 @@ export default async function ActivityPage({ searchParams }: {
     const entries = evidence?.entries ?? [];
     const actors = new Set(entries.map((entry) => entry.actor));
     for (const who of filters.who) actors.add(who);
-    names = await getActivityNames([...actors], entries.map((entry) => entrySubjectKey(entry.subject)));
+    names = await getActivityNames([...actors], entries.map((entry) => entrySubjectKey(entry.subject)), entries);
   } catch { /* Actors and objects are then named in general words. */ }
+  const anonymity = await getAnonymitySetting();
   const allJobs = jobs?.jobs ?? [];
   const status = wantJobs ? activityStatus(activityCounts(allJobs, generatedAt)) : undefined;
 
@@ -80,11 +84,12 @@ export default async function ActivityPage({ searchParams }: {
     <PageHeader description={DESCRIPTION} generatedAt={generatedAt} section="Audit log" status={status} title={TITLE} />
     <ActivityBody
       canBackup={access.capabilities.includes("backup")}
-      entries={evidence?.entries ?? []}
+      entries={names.entries ?? (anonymity?.enabled || !anonymity ? hideAddresses(evidence?.entries ?? []) : evidence?.entries ?? [])}
       integrity={integrity}
       jobs={allJobs}
       names={names.names}
       nextBefore={evidence?.nextBefore ?? null}
+      notice={<AnonymityNote setting={anonymity} />}
       now={generatedAt}
       people={names.people}
     />

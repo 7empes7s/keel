@@ -54,8 +54,8 @@ const USER_ONE = 'qa.approver.one@example.com';
 const USER_TWO = 'qa.approver.two@example.com';
 const USER_TOKENS = { [USER_ONE]: 'fixture-user-one-token-DO-NOT-LEAK', [USER_TWO]: 'fixture-user-two-token-DO-NOT-LEAK' };
 const SECRETS = {
-  'env:KEEL_SERVICENOW_TOKEN': KEEL_TOKEN,
-  'env:KEEL_SERVICENOW_CALLBACK_SECRET': CALLBACK_SECRET,
+  'env:KEEL_INTEGRATION_SERVICENOW_TOKEN': KEEL_TOKEN,
+  'env:KEEL_INTEGRATION_SERVICENOW_CALLBACK_SECRET': CALLBACK_SECRET,
   'env:KEEL_SN_TEST_USER_ONE': USER_TOKENS[USER_ONE],
   'env:KEEL_SN_TEST_USER_TWO': USER_TOKENS[USER_TWO],
 };
@@ -68,13 +68,13 @@ const resolveSecret = (reference) => {
 const CONFIG = {
   instanceUrl: `https://${HOST}`,
   table: 'u_keel_gated_change',
-  credential: { tokenRef: 'env:KEEL_SERVICENOW_TOKEN' },
+  credential: { tokenRef: 'env:KEEL_INTEGRATION_SERVICENOW_TOKEN' },
   fields: {
     state: 'u_gate', approver: 'u_gate_owner.email', planVersion: 'u_plan_rev', planDigest: 'u_plan_hash',
     keelRequest: 'u_keel_ref', keelDecision: 'u_keel_outcome',
   },
   states: { approved: ['gate_passed'], rejected: ['gate_blocked', 'gate_withdrawn'] },
-  callback: { secretRef: 'env:KEEL_SERVICENOW_CALLBACK_SECRET', maxSkewSeconds: 120 },
+  callback: { secretRef: 'env:KEEL_INTEGRATION_SERVICENOW_CALLBACK_SECRET', maxSkewSeconds: 120 },
 };
 const TEST_USERS = [
   { externalUser: USER_ONE, credentialRef: 'env:KEEL_SN_TEST_USER_ONE' },
@@ -248,9 +248,11 @@ test('the capture refuses an undeclared or production instance, a default workfl
     [{ declaredBy: '' }, /--declared-by/],
     [{ config: { ...CONFIG, table: 'change_request', fields: { ...CONFIG.fields, state: 'approval' }, states: { approved: ['approved'], rejected: ['rejected'] } } }, /out-of-the-box change_request/],
     [{ config: { ...CONFIG, callback: undefined } }, /callbacks must be signed/],
+    [{ config: { ...CONFIG, credential: { tokenRef: 'env:KEEL_SN_TOKEN' } } }, /credential\.tokenRef must name an env:KEEL_INTEGRATION_\* setting/],
+    [{ config: { ...CONFIG, callback: { ...CONFIG.callback, secretRef: 'env:KEEL_DB_URL' } } }, /callback\.secretRef must name an env:KEEL_INTEGRATION_\* setting/],
     [{ config: { ...CONFIG, states: { approved: ['gate_passed'] } } }, /No state value is mapped to rejected/],
     [{ testUsers: TEST_USERS.slice(0, 1) }, /at least 2 test users/],
-    [{ testUsers: [TEST_USERS[0], { ...TEST_USERS[1], credentialRef: 'env:KEEL_SERVICENOW_TOKEN' }] }, /shares a credential/],
+    [{ testUsers: [TEST_USERS[0], { ...TEST_USERS[1], credentialRef: 'env:KEEL_INTEGRATION_SERVICENOW_TOKEN' }] }, /shares a credential/],
     [{ testUsers: [TEST_USERS[0], { ...TEST_USERS[1], credentialRef: USER_TOKENS[USER_TWO] }] }, /own env: credential reference/],
     [{ testUsers: [TEST_USERS[0], { ...TEST_USERS[1], password: 'x' }] }, /only externalUser and credentialRef/],
     [{ testUsers: [TEST_USERS[0], TEST_USERS[0]] }, /listed twice/],

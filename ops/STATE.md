@@ -95,6 +95,7 @@ so queue edits never deploy.
 |---|---|---|---|
 | Exchange undo and Defender "Make it pass" (#548, closes #542) | K14 then K15 (moved from root Q159 step 4 and Q161) | `todo` on the keelops queue | Marouane's K14 and K15 lines under Operator decisions |
 | App with API permissions restores; replaced follow-up steps drop off (#563, #565) | K6 via K13 | In progress; decision filled in | keelops result |
+| Teams channel message restore through the import API (#596) | Q188 (root queue) | Waits on the grant | `Teamwork.Migrate.All` on the Restorer (Marouane); backing up messages still waits on Microsoft's export API approval |
 | Portal visuals for #572–#575, #577–#579 | none | Not seen live (keelops can't open pages) | Playwright screenshots at 390 and 1440, light and dark |
 
 Done on keelops: K1 (2026-10-25), K2–K4 and K7–K12 (2026-10-27) (K7, own compliance checks for #567, green at 20:11 UTC). K5 (Ask month questions) failed on the 5 s

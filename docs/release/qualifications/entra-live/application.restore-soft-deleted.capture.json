@@ -63,7 +63,7 @@
       "signInAudience": "AzureADMyOrg",
       "createdDateTime": "2026-10-14T12:24:46Z",
       "deletedDateTime": null,
-      "publisherDomain": "techinsiderbytes.com",
+      "publisherDomain": "t42987720ee3.example",
       "samlMetadataUrl": null,
       "verifiedPublisher": {
         "displayName": null,
@@ -145,7 +145,7 @@
       "signInAudience": "AzureADMyOrg",
       "createdDateTime": "2026-10-14T12:24:46Z",
       "deletedDateTime": null,
-      "publisherDomain": "techinsiderbytes.com",
+      "publisherDomain": "t42987720ee3.example",
       "samlMetadataUrl": null,
       "verifiedPublisher": {
         "displayName": null,

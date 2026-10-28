@@ -5,6 +5,7 @@
 //                     --target-config /etc/keel/tenant-target.json \
 //                     --db-url $KEEL_DB_URL
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { pathToFileURL } from 'node:url';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { GraphReader } from '../tools/tenant-probe/graph.mjs';
@@ -16,10 +17,22 @@ import { assertBreakGlassCoverage } from '../engine/safety/breakGlassInvariant.m
 import { globalAdministratorPrincipalIds } from '../engine/safety/protectedPrincipals.mjs';
 import { connect, getLatestSnapshot, getResourceVersions, getReferences } from '../engine/store/db.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
+import { parseCliArgs } from './args.mjs';
 
-function arg(name, fallback, argv = process.argv) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : fallback;
+const ARGS = {
+  name: 'keel-plan',
+  strings: ['source-config', 'target-config', 'db-url'],
+};
+
+function arg(opts, name, fallback) {
+  return opts[name] ?? fallback;
+}
+
+// The target tenant has no default file: name the missing flag, not an "undefined" path.
+function requiredTargetConfig(opts) {
+  const path = arg(opts, 'target-config', undefined);
+  if (!path) throw new Error('--target-config is required (the target tenant settings file)');
+  return path;
 }
 
 function isUsableSnapshot(snapshot) {
@@ -106,12 +119,13 @@ export async function main({
   dependencies,
   logger = console,
 } = {}) {
-  const sourceConfig = JSON.parse(readFile(arg('source-config', '/etc/keel/tenant.json', argv), 'utf8'));
-  const targetConfig = JSON.parse(readFile(arg('target-config', undefined, argv), 'utf8'));
+  const opts = parseCliArgs(argv.slice(2), ARGS).values;
+  const sourceConfig = readConfigFile(arg(opts, 'source-config', '/etc/keel/tenant.json'), { readFile, what: 'source tenant settings' });
+  const targetConfig = readConfigFile(requiredTargetConfig(opts), { readFile, what: 'target tenant settings' });
   return runPlan({
     sourceConfig,
     targetConfig,
-    dbUrl: arg('db-url', dbUrl, argv),
+    dbUrl: arg(opts, 'db-url', dbUrl),
     dependencies,
     logger,
   });

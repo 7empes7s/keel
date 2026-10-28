@@ -4,6 +4,7 @@ import { knownEntities } from "../../engine/query/execute.mjs";
 import { loadValueReport, valueReportCsv } from "../../engine/reports/value.mjs";
 import { connect } from "@/lib/db";
 
+import { peopleNamer, shownTypedPerson } from "@/lib/people-names";
 import type { EntityScope } from "@/lib/principal";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
 import type { ReportWindow, ValueReport } from "@/lib/value-report-view";
@@ -54,7 +55,7 @@ export async function getValueReport({ scope, period, entities = [], now = new D
   const path = valueEstimatePath();
   const client = (await connect(databaseUrl())) as KeelClient;
   try {
-    return (await loadValueReport(client, {
+    const report = (await loadValueReport(client, {
       tenantRef: ref,
       from: new Date(period.from),
       to: new Date(period.to),
@@ -63,6 +64,11 @@ export async function getValueReport({ scope, period, entities = [], now = new D
       estimate: readEstimate(path),
       estimateSource: path,
     })) as ValueReport;
+    // "Hide people's names": the estimate owner, typed in the estimate file, by code
+    // name on the page and in every download made from this report.
+    if (!report.hoursSaved?.owner) return report;
+    const namer = await peopleNamer(client as unknown as Parameters<typeof peopleNamer>[0]);
+    return namer ? { ...report, hoursSaved: { ...report.hoursSaved, owner: String(shownTypedPerson(report.hoursSaved.owner, namer)) } } : report;
   } finally {
     await client.end();
   }

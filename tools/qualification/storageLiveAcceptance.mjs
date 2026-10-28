@@ -56,6 +56,7 @@ import {
   storageLivePrerequisite, storageLiveUnqualified,
 } from '../../engine/storage/storageLiveEvidence.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence } from '../release/qualification.mjs';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 export const STORAGE_OFFLINE_FIXTURE = Object.freeze({
   tenantId: 'storage-recovery-offline-fixture',
@@ -271,7 +272,7 @@ export async function main({ argv = process.argv.slice(2), env = process.env, ou
     const tenantConfig = arg(argv, 'tenant-config') ?? env.KEEL_TENANT_CONFIG_PATH;
     if (!tenantConfig) { out.error('refused: --live needs --tenant-config or KEEL_TENANT_CONFIG_PATH'); return 2; }
     const readFile = deps.readFile ?? readFileSync;
-    tenantRef = tenantRefFor(JSON.parse(readFile(tenantConfig, 'utf8')).tenantId);
+    tenantRef = tenantRefFor(readConfigFile(tenantConfig, { readFile, what: 'collector settings' }).tenantId);
     const principal = arg(argv, 'recovery-principal');
     options = {
       primaryRoot: arg(argv, 'primary-root'),

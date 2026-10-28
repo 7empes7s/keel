@@ -338,12 +338,33 @@ function objectName(fact, fallback) {
   return typeof fact?.displayName === 'string' && fact.displayName.length > 0 ? fact.displayName : fallback;
 }
 
+// The names detail lines give `facts`, in the same order, each one different. Names
+// can repeat (two sign-in rules called "Block legacy"), and the page would then show
+// one subject for two objects, so a repeated name gets "(1 of 2)", "(2 of 2)", numbered
+// by the object's own key so the same object keeps its number from run to run. The key
+// itself is never shown.
+export function distinctNames(facts, nameOf) {
+  const names = facts.map(nameOf);
+  const byName = new Map();
+  names.forEach((name, index) => byName.set(name, [...(byName.get(name) ?? []), index]));
+  const keyOf = (fact) => String(fact?.id ?? fact?.identity ?? fact?.Guid ?? '');
+  const out = [...names];
+  for (const [name, indexes] of byName) {
+    if (indexes.length < 2) continue;
+    const ordered = [...indexes].sort((a, b) => (keyOf(facts[a]) < keyOf(facts[b]) ? -1 : keyOf(facts[a]) > keyOf(facts[b]) ? 1 : a - b));
+    ordered.forEach((index, position) => { out[index] = `${name} (${position + 1} of ${ordered.length})`; });
+  }
+  return out;
+}
+
 registerPredicate('named-location-no-untrusted-all-countries', (facts) => {
   if (facts.length === 0) return 'not-applicable';
   // Only a trusted location can make this fail, so each trusted one is a checked line.
-  const details = facts.filter((fact) => fact.isTrusted === true).map((fact) => {
+  const trusted = facts.filter((fact) => fact.isTrusted === true);
+  const names = distinctNames(trusted, (fact) => objectName(fact, 'Unnamed location'));
+  const details = trusted.map((fact, index) => {
     const value = fact.includeUnknownCountriesAndRegions === true;
-    return { subject: objectName(fact, 'Unnamed location'), setting: 'includeUnknownCountriesAndRegions', value, expected: false, ok: !value };
+    return { subject: names[index], setting: 'includeUnknownCountriesAndRegions', value, expected: false, ok: !value };
   });
   return { verdict: details.some((line) => !line.ok) ? 'fail' : 'pass', details };
 });
@@ -382,9 +403,11 @@ registerPredicate('group-role-assignable-not-synced', (facts) => {
   if (facts.length === 0) return 'not-applicable';
   // Only a role-assignable group can make this fail, so each one is a checked line. A
   // cloud-only group has no sync flag at all (null): it is not synchronized.
-  const details = facts.filter((fact) => fact.isAssignableToRole === true).map((fact) => {
+  const assignable = facts.filter((fact) => fact.isAssignableToRole === true);
+  const names = distinctNames(assignable, (fact) => objectName(fact, 'Unnamed group'));
+  const details = assignable.map((fact, index) => {
     const value = fact.onPremisesSyncEnabled === true;
-    return { subject: objectName(fact, 'Unnamed group'), setting: 'onPremisesSyncEnabled', value, expected: false, ok: !value };
+    return { subject: names[index], setting: 'onPremisesSyncEnabled', value, expected: false, ok: !value };
   });
   return { verdict: details.some((line) => !line.ok) ? 'fail' : 'pass', details };
 });
@@ -444,11 +467,12 @@ function policyName(fact) {
 function checkPolicies(facts, { kind, settings, applies = () => true }) {
   const policies = facts.filter((fact) => fact?.kind === kind && applies(fact));
   if (policies.length === 0) return { verdict: 'not-applicable', details: [] };
+  const names = distinctNames(policies, policyName);
   const details = [];
-  for (const policy of policies) {
+  for (const [index, policy] of policies.entries()) {
     for (const [setting, rule] of Object.entries(settings)) {
       const value = policy[setting];
-      details.push({ subject: policyName(policy), setting, value: value ?? null, expected: rule.expected, ok: rule.test(value) });
+      details.push({ subject: names[index], setting, value: value ?? null, expected: rule.expected, ok: rule.test(value) });
     }
   }
   return { verdict: details.some((line) => !line.ok) ? 'fail' : 'pass', details };
@@ -570,8 +594,7 @@ function reach(list, others = []) {
 }
 
 // The four settings that decide whether one blocking policy blocks legacy sign-in.
-function legacyLines(fact) {
-  const subject = objectName(fact, 'Unnamed sign-in rule');
+function legacyLines(fact, subject) {
   const clients = LEGACY_CLIENTS.filter((client) => fact.conditions.clientAppTypes.includes(client));
   const scope = fact.conditions?.users ?? {};
   const users = reach(scope.includeUsers, [scope.includeGroups, scope.includeRoles, scope.includeGuestsOrExternalUsers]);
@@ -589,9 +612,15 @@ registerPredicate('conditional-access-block-legacy', (facts) => {
   if (candidates.length === 0) return { verdict: 'fail', reason: NOT_CONFIGURED };
   // One policy that meets all four is enough: then only that policy's lines are shown.
   // Otherwise every blocking policy is listed, so the page names each one and what it misses.
-  const perPolicy = candidates.map(legacyLines);
-  const enforcing = perPolicy.filter((lines) => lines.every((line) => line.ok));
-  if (enforcing.length > 0) return { verdict: 'pass', details: enforcing.flat() };
+  // Two rules can share a name; each keeps its own subject so their lines stay apart.
+  const names = distinctNames(candidates, (fact) => objectName(fact, 'Unnamed sign-in rule'));
+  const perPolicy = candidates.map((fact, index) => legacyLines(fact, names[index]));
+  const enforcing = candidates.filter((fact, index) => perPolicy[index].every((line) => line.ok));
+  if (enforcing.length > 0) {
+    // Numbered among the rules shown, so a lone "(2 of 2)" never appears.
+    const shown = distinctNames(enforcing, (fact) => objectName(fact, 'Unnamed sign-in rule'));
+    return { verdict: 'pass', details: enforcing.flatMap((fact, index) => legacyLines(fact, shown[index])) };
+  }
   return { verdict: 'fail', details: perPolicy.flat() };
 });
 

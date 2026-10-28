@@ -31,6 +31,7 @@ import { exchangeExtendedActivation } from '../collect/workloads/exchangeExtende
 import { exchangeRoleGroupsActivation } from '../collect/workloads/exchangeRoleGroups.mjs';
 import { mailFlowActivation } from '../collect/workloads/mailFlow.mjs';
 import { siteSharingActivation } from '../collect/workloads/sharepoint.mjs';
+import { sharePointStructureActivation } from '../collect/workloads/sharepointStructure.mjs';
 import { purviewExtendedActivation } from '../collect/workloads/purviewExtended.mjs';
 import { retentionDlpActivation } from '../collect/workloads/purviewRetentionDlp.mjs';
 import { teamsExtendedActivation } from '../collect/workloads/teamsExtended.mjs';
@@ -55,11 +56,12 @@ const ACTIVATION = {
   'purview-governance': purviewExtendedActivation,
   // SharePoint's per-site sharing read: the rest of the SharePoint read never waits for it.
   'sharepoint-site-settings': siteSharingActivation,
+  'sharepoint-structure': sharePointStructureActivation,
 };
 const TABLES = {
   ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
   MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended'],
-  'PnP.PowerShell': ['AllowedPnP'],
+  'PnP.PowerShell': ['AllowedPnP', 'AllowedPnPStructure'],
 };
 // The run-cmdlet.ps1 allowlists, cmdlet names with digits included (Get-AtpPolicyForO365).
 const SCRIPT = readFileSync(new URL('../../ops/powershell/run-cmdlet.ps1', import.meta.url), 'utf8');
@@ -70,19 +72,25 @@ function containerAllowlist(variable) {
 }
 const allowlistFor = (module) => Object.assign({}, ...TABLES[module].map(containerAllowlist));
 
+// A site template is never empty: a site always answers with its template.
+const TEMPLATE = '<pnp:Provisioning xmlns:pnp="http://schemas.dev.office.com/PnP/2022/09/ProvisioningSchema"><pnp:Templates><pnp:ProvisioningTemplate ID="TEMPLATE-1"/></pnp:Templates></pnp:Provisioning>';
+const NOT_EMPTY = { 'Get-PnPSiteTemplate': [TEMPLATE] };
+
 /** A tenant that answers every allowed Get- with nothing, or with `fail[cmdlet]`. */
 function fakeTenant(workload, fail = {}) {
   const module = readModule(workload);
   return fakeCmdletContainer({
     module,
     allowlist: allowlistFor(module),
-    answer: (cmdlet) => fail[cmdlet] ?? [],
+    answer: (cmdlet) => fail[cmdlet] ?? NOT_EMPTY[cmdlet] ?? [],
   });
 }
 
+// What a capture names beside the collector (--site for SharePoint structure).
+const READ_OPTIONS = { 'sharepoint-structure': { sites: ['https://contoso.sharepoint.com/sites/KEEL-RT-structure'], tenantHost: 'contoso.sharepoint.com' } };
 const capture = (workload, live, extra = {}) => captureWorkloadReads({
   workload, collector: live.powershell, tenantRef, build, credential: 'app:collector',
-  moduleVersion: MODULE_VERSIONS[readModule(workload)], now, ...extra,
+  moduleVersion: MODULE_VERSIONS[readModule(workload)], now, readOptions: READ_OPTIONS[workload] ?? {}, ...extra,
 });
 const verifyOptions = (extra = {}) => ({ gate: WORKLOAD_READS_LIVE_GATE, tenantRef, build, hmacKey: KEY, requireLive: true, now: NOW, ...extra });
 const signed = (record) => signEvidence(record, KEY, 'keel-release-runner');

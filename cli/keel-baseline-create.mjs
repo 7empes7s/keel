@@ -15,18 +15,24 @@
 // process-group teardown as every other job kind. All governance logic stays in the
 // engine module — this file only parses argv and connects.
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { replaceBaseline, seedFromSnapshot } from '../engine/govern/baseline.mjs';
 import { connect } from '../engine/store/db.mjs';
+import { parseCliArgs } from './args.mjs';
 
-function arg(name, fallback, argv = process.argv) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : fallback;
-}
+// A label or description is free text a person types, so it may start with "-" when it
+// holds whitespace ("- copied from prod"); see cli/args.mjs.
+const ARGS = {
+  name: 'keel-baseline-create',
+  strings: ['snapshot-id', 'supersedes', 'set-by', 'tenant-ref', 'config', 'db-url'],
+  text: ['label', 'description'],
+  booleans: ['help'],
+};
 
-function requireArg(name, argv = process.argv) {
-  const value = arg(name, undefined, argv);
+function requireArg(name, opts) {
+  const value = opts[name];
   if (typeof value !== 'string' || value.length === 0) {
     throw new Error(`--${name} is required`);
   }
@@ -35,10 +41,10 @@ function requireArg(name, argv = process.argv) {
 
 // The tenant ref is the hash of the tenant id in the config file, exactly as
 // keel-collect.mjs and keel-prune.mjs derive it; an explicit --tenant-ref wins.
-function resolveTenantRef({ argv, readFile }) {
-  const explicit = arg('tenant-ref', undefined, argv);
+function resolveTenantRef({ opts, readFile }) {
+  const explicit = opts['tenant-ref'];
   if (explicit) return explicit;
-  const config = JSON.parse(readFile(arg('config', '/etc/keel/tenant.json', argv), 'utf8'));
+  const config = readConfigFile(opts.config ?? '/etc/keel/tenant.json', { readFile, what: 'collector settings' });
   return `sha256:${createHash('sha256').update(config.tenantId).digest('hex').slice(0, 16)}`;
 }
 
@@ -49,12 +55,13 @@ export async function main({
   dependencies = {},
   logger = console,
 } = {}) {
-  if (argv.includes('--help')) {
+  const opts = parseCliArgs(argv.slice(2), ARGS).values;
+  if (opts.help) {
     logger.log('usage: keel-baseline-create.mjs --snapshot-id ID (--label LABEL | --supersedes BASELINE_ID) --set-by PRINCIPAL [--description TEXT] [--tenant-ref REF] [--config /etc/keel/tenant.json] [--db-url $KEEL_DB_URL]');
     return;
   }
 
-  const selectedDbUrl = arg('db-url', dbUrl, argv);
+  const selectedDbUrl = opts['db-url'] ?? dbUrl;
   if (!selectedDbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
   const {
     connect: connectFn = connect,
@@ -62,27 +69,27 @@ export async function main({
     replaceBaseline: replaceBaselineFn = replaceBaseline,
   } = dependencies;
 
-  const supersedes = arg('supersedes', undefined, argv);
+  const supersedes = opts.supersedes;
   const client = await connectFn(selectedDbUrl);
   try {
     if (supersedes) {
       const created = await replaceBaselineFn(client, {
-        tenantRef: resolveTenantRef({ argv, readFile }),
+        tenantRef: resolveTenantRef({ opts, readFile }),
         baselineId: supersedes,
-        snapshotId: requireArg('snapshot-id', argv),
-        principalId: requireArg('set-by', argv),
-        label: arg('label', undefined, argv) ?? undefined,
-        description: arg('description', undefined, argv) ?? undefined,
+        snapshotId: requireArg('snapshot-id', opts),
+        principalId: requireArg('set-by', opts),
+        label: opts.label,
+        description: opts.description,
       });
       logger.log(`baseline ${created.id} created as version ${created.version}; ${supersedes} preserved`);
       return created.id;
     }
     const baselineId = await seedFromSnapshotFn(client, {
-      tenantRef: resolveTenantRef({ argv, readFile }),
-      snapshotId: requireArg('snapshot-id', argv),
-      setBy: requireArg('set-by', argv),
-      label: requireArg('label', argv),
-      description: arg('description', undefined, argv) ?? null,
+      tenantRef: resolveTenantRef({ opts, readFile }),
+      snapshotId: requireArg('snapshot-id', opts),
+      setBy: requireArg('set-by', opts),
+      label: requireArg('label', opts),
+      description: opts.description ?? null,
     });
     logger.log(`baseline ${baselineId} created and active`);
     return baselineId;

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 import { useBackup } from "@/components/backup-controls";
 import { ChangedObjects, ChangedValuesStyles } from "@/components/changed-values";
@@ -57,7 +57,8 @@ import type { NamedKeys } from "@/lib/job-names";
 import type { JobRecord } from "@/lib/portal-jobs";
 import { byRisk, byText, byTime } from "@/lib/paging";
 import { formatTimestamp } from "@/lib/presentation";
-import { jobStatusSentence, personLabel } from "@/lib/sentences";
+import { displayAccount } from "@/lib/record-refs";
+import { type EngineRef, jobStatusSentence, personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
 import { useViewState } from "@/lib/use-view-state";
@@ -85,8 +86,10 @@ const SORTS: ListSort<ActivityRow>[] = [
 
 const SERVER_KEYS = { show: null, range: null, who: null, what: null, outcome: null, before: null };
 
-export function ActivityPage({ canBackup, jobs, entries, integrity, people = {}, names = {}, now = new Date().toISOString(), nextBefore = null }: {
+export function ActivityPage({ canBackup, jobs, entries, integrity, people = {}, names = {}, now = new Date().toISOString(), nextBefore = null, notice = null }: {
   canBackup: boolean;
+  // A page-wide note shown under the verdict, such as "Names hidden".
+  notice?: ReactNode;
   jobs: JobRecord[];
   entries: EvidenceEntry[];
   integrity: ChainIntegrity | null;
@@ -227,6 +230,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
   return (
     <div className="ac-page">
       <Verdict action={verdictAction} detail={verdict.detail} text={verdict.text} tone={verdict.tone} />
+      {notice}
       <div data-layer="explanation">
         <section aria-label="Activity at a glance" className="ac-tiles">
           {tiles.map((tile) => (
@@ -294,7 +298,7 @@ export function ActivityPage({ canBackup, jobs, entries, integrity, people = {},
           ))}
           {entries.map((entry) => (
             <RecordGroup key={entry.seq} note={`audit entry ${entry.seq} · ${entry.kind}`} title={rows.find((row) => row.entry === entry)?.title ?? entry.kind}>
-              <EntryRecordFields entry={entry} />
+              <EntryRecordFields entry={entry} person={people[entry.actor]} />
             </RecordGroup>
           ))}
         </TechnicalDetails>
@@ -403,7 +407,7 @@ function RowPanel({ row, now, canBackup, retryBusy, retryLabel, onRetry, onClose
         {entry ? <p className="ac-plain ac-muted">Audit entries cannot be changed or removed. Each one is chained to the one before it, and the chain is checked against an off-site copy.</p> : null}
         <TechnicalDetails>
           {job ? <JobRecordFields job={job} /> : null}
-          {entry ? <EntryRecordFields entry={entry} /> : null}
+          {entry ? <EntryRecordFields entry={entry} person={row.person} /> : null}
         </TechnicalDetails>
       </div>
     </DetailsSheet>
@@ -459,11 +463,11 @@ function groupBy<T>(items: T[], key: (item: T) => string, meta: (key: string, li
 }
 
 /** Every stored field of one audit entry. */
-function EntryRecordFields({ entry }: { entry: EvidenceEntry }) {
+function EntryRecordFields({ entry, person }: { entry: EvidenceEntry; person?: EngineRef | null }) {
   return <>
     <RecordField copy={false} label="Entry number" usage="entries are numbered in order; each is chained to the one before it" value={entry.seq} />
     <RecordField copy={false} label="Kind" value={entry.kind} />
-    <RecordField label="Done by (account)" value={entry.actor} />
+    <RecordField label="Done by (account)" value={displayAccount(entry.actor, person)} />
     <RecordField copy={false} label="When" value={entry.occurred_at} />
     <RecordField label="Subject" value={entry.subject as RecordValue} />
   </>;

@@ -101,6 +101,11 @@ verified copy.
   It was not changed here because it is deployed operations. Until the operator
   adds a `keel-recovery-metrics.mjs record-offsite` step after a verified ship,
   the recovery point stays "Not measured". This is reported, not worked around.
+  Offsite copies are now age-encrypted (`keel-db-<date>.sql.gz.age`): the hash
+  checked on the target and recorded as `shipped.sha256` is the ciphertext's,
+  while the recovery metrics compare the plaintext dump's hash. A future
+  `record-offsite` step must pass the plaintext dump hash (the manifest's
+  `checksum`), or verify after decrypting, never `shipped.sha256`.
 - **Fixture-tested only.** Tests use the isolated test database, real snapshots,
   edge sets, restore plans, jobs and completion items, and one real recovery
   manifest verified against its export and dump bytes. No live tenant object,

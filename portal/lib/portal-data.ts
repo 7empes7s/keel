@@ -1,9 +1,12 @@
+import { readNamer } from "../../engine/insights/anonymity.mjs";
+import { displayActor, displayPerson } from "../../engine/insights/people.mjs";
 import { buildCoverageReport } from "../../engine/coverage/report.mjs";
 import { loadRecoveryMetrics } from "../../engine/coverage/recoveryMetrics.mjs";
 import { protectionHeadline } from "../../engine/coverage/protectionHeadline.mjs";
 import { DESCRIPTORS } from "../../engine/collect/descriptors.mjs";
 import { readFileSync } from "node:fs";
 
+import { sameContent } from "../../engine/cir/canonicalHash.mjs";
 import { listBaselines } from "../../engine/govern/baseline.mjs";
 import {
   baselineCompliance,
@@ -544,7 +547,7 @@ export async function getOwnCheckChoices(): Promise<OwnCheckChoices> {
 
 /** An exception's owner by name when it is someone in Keel (the owner is stored as
  * typed, usually an email), and who granted it. Never a bare id or address. */
-async function withExceptionPeople(client: KeelClient, findings: ComplianceFinding[]): Promise<ComplianceFinding[]> {
+export async function withExceptionPeople(client: KeelClient, findings: ComplianceFinding[]): Promise<ComplianceFinding[]> {
   const exceptions = findings.map((finding) => finding.exception).filter((exception) => exception !== null);
   if (exceptions.length === 0) return findings;
   const owners = [...new Set(exceptions.map((exception) => exception.owner?.trim().toLowerCase()).filter((owner): owner is string => Boolean(owner)))];
@@ -557,14 +560,24 @@ async function withExceptionPeople(client: KeelClient, findings: ComplianceFindi
     for (const row of rows) byEmail.set(String(row.email), { kind: "person", id: String(row.id), name: String(row.display_name ?? row.email), href: "/principals" });
   }
   const granters = await principalRefs(client, exceptions.map((exception) => exception.grantedBy).filter((id) => typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id)));
-  return findings.map((finding) => (finding.exception ? {
-    ...finding,
-    exception: {
-      ...finding.exception,
-      ownerRef: byEmail.get(finding.exception.owner?.trim().toLowerCase() ?? "") ?? null,
-      grantedByRef: finding.exception.grantedBy ? granters.get(finding.exception.grantedBy) ?? null : null,
-    },
-  } : finding));
+  // "Hide people's names": the owner by code name (a Keel user keeps theirs; a typed
+  // name or mailbox gets one of its own), and the typed value is not sent at all.
+  const namer = owners.length ? await readNamer(client) : null;
+  return findings.map((finding) => {
+    if (!finding.exception) return finding;
+    const typed = finding.exception.owner?.trim().toLowerCase() ?? "";
+    const known = byEmail.get(typed) ?? null;
+    const hidden = namer && typed;
+    return {
+      ...finding,
+      exception: {
+        ...finding.exception,
+        ...(hidden ? { owner: null } : {}),
+        ownerRef: hidden ? { kind: "person", id: known?.id ?? "", name: namer(typed), href: known ? "/principals" : null, pseudonym: true } : known,
+        grantedByRef: finding.exception.grantedBy ? granters.get(finding.exception.grantedBy) ?? null : null,
+      },
+    };
+  });
 }
 
 async function activeDriftFor(
@@ -635,16 +648,17 @@ export async function withApproverNames(client: KeelClient, baselines: BaselineR
   const ids = [...new Set(baselines.map((baseline) => baseline.setBy).filter((id) => PRINCIPAL_ID.test(id)))];
   const people = new Map<string, UnknownRecord>();
   if (ids.length) {
-    const { rows } = await client.query("SELECT id::text AS id, email, display_name FROM principal WHERE id::text = ANY($1::text[])", [ids]);
+    const { rows } = await client.query("SELECT id::text AS id, email, display_name, system_kind FROM principal WHERE id::text = ANY($1::text[])", [ids]);
     for (const row of rows) people.set(String(row.id), row);
   }
+  const namer = ids.length ? await readNamer(client) : null;
   return baselines.map((baseline) => {
     const id = baseline.setBy;
     const person = people.get(id);
     const name = !PRINCIPAL_ID.test(id)
       ? personLabel({ kind: "person", id, name: id, readable: true, system: true }, "Keel")
       : person
-        ? personLabel({ kind: "person", id, name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true }, "an account without a name")
+        ? personLabel(displayPerson({ kind: "person", id, name: (person.display_name as string | null) ?? null, email: (person.email as string | null) ?? null, readable: true, system: person.system_kind != null }, namer), "an account without a name")
         : "an account that no longer exists";
     const setByRef: Ref = { kind: "person", id, name, href: person ? "/principals" : null };
     return { ...baseline, setByRef };
@@ -710,7 +724,9 @@ async function scopedBaselineCount(client: KeelClient, ref: string, baselineId: 
 // attribution and drops only the route.
 export const ATTRIBUTION_WINDOW_SQL = `SELECT d.id,
         COALESCE(prev.completed_at, bs.completed_at, bs.started_at, b.set_at) AS window_from,
-        COALESCE(fs.completed_at, f.detected_at, os.completed_at, d.detected_at) AS window_until
+        COALESCE(fs.completed_at, f.detected_at, os.completed_at, d.detected_at) AS window_until,
+        d.change_type, d.natural_key, d.resource_type, d.before_hash, d.before_payload,
+        COALESCE(fs.started_at, os.started_at) AS prev_ceiling
    FROM drift d
    JOIN baseline b ON b.id = d.baseline_id
    JOIN snapshot os ON os.id = d.observed_snapshot
@@ -734,13 +750,58 @@ export const ATTRIBUTION_WINDOW_SQL = `SELECT d.id,
    ) prev ON true
   WHERE d.tenant_ref = $1 AND d.baseline_id = $2 AND d.id = ANY($3::uuid[])`;
 
+// A baseline version hashed under older field rules (#288, #294) matches no later backup
+// by hash, so its window would start at the baseline (or the last backup before the rule
+// change) and come out too wide. A later backup in the window that holds the same content
+// (sameContent, recomputed from the payloads) starts the window instead. Only backups
+// whose hash differs from the baseline's are read, and at most CONTENT_WINDOW_BACKUPS
+// per change.
+// At most this many backups per change are read back; past it the window keeps its
+// wider start, as before.
+const CONTENT_WINDOW_BACKUPS = 60;
+
+async function windowStartsByContent(client: KeelClient, ref: string, rows: Record<string, unknown>[]): Promise<Map<string, string>> {
+  const starts = new Map<string, string>();
+  const open = rows.filter((row) => row.change_type !== "added" && row.before_payload != null && row.window_from && row.prev_ceiling);
+  if (!open.length) return starts;
+  const { rows: candidates } = await client.query(
+    `SELECT k.id, c.completed_at, c.payload_hash, c.payload
+       FROM unnest($2::uuid[], $3::text[], $4::text[], $5::timestamptz[], $6::timestamptz[]) AS k(id, natural_key, before_hash, after_at, until_at)
+       CROSS JOIN LATERAL (
+         SELECT s.completed_at, rv.payload_hash, rv.payload
+           FROM resource_version rv
+           JOIN snapshot s ON s.id = rv.snapshot_id
+          WHERE rv.natural_key = k.natural_key AND rv.payload_hash IS DISTINCT FROM k.before_hash
+            AND s.tenant_ref = $1 AND s.completed_at IS NOT NULL
+            AND s.completed_at > k.after_at AND s.completed_at <= k.until_at
+          ORDER BY s.completed_at DESC
+          LIMIT ${CONTENT_WINDOW_BACKUPS}
+       ) c
+      ORDER BY k.id, c.completed_at DESC`,
+    [ref, open.map((row) => String(row.id)), open.map((row) => String(row.natural_key)), open.map((row) => (row.before_hash ?? null) as string | null),
+      open.map((row) => row.window_from), open.map((row) => row.prev_ceiling)],
+  );
+  const byId = new Map(open.map((row) => [String(row.id), row]));
+  for (const candidate of candidates) {
+    const id = String(candidate.id);
+    const row = byId.get(id);
+    if (!row || starts.has(id)) continue;
+    if (sameContent({ payload_hash: row.before_hash ?? null, payload: row.before_payload }, candidate, String(row.resource_type))) {
+      const at = iso(candidate.completed_at);
+      if (at) starts.set(id, at);
+    }
+  }
+  return starts;
+}
+
 async function withAttribution(client: KeelClient, ref: string, baselineId: string, items: DriftRecord[], scope: EntityScope): Promise<DriftRecord[]> {
   const bounded = items.slice(0, MAX_ATTRIBUTED_CHANGES);
   if (!bounded.length) return items;
   let byId: Map<string, Omit<ChangeAttribution, "route"> & { changeId: string }>;
   try {
     const { rows } = await client.query(ATTRIBUTION_WINDOW_SQL, [ref, baselineId, bounded.map((item) => item.id)]);
-    const windows = new Map(rows.map((row) => [String(row.id), { from: iso(row.window_from), until: iso(row.window_until) }]));
+    const contentStarts = await windowStartsByContent(client, ref, rows);
+    const windows = new Map(rows.map((row) => [String(row.id), { from: contentStarts.get(String(row.id)) ?? iso(row.window_from), until: iso(row.window_until) }]));
     const changes = bounded.filter((item) => windows.get(item.id)?.until).map((item) => ({
       id: item.id, resourceType: item.resourceType, naturalKey: item.naturalKey, changeType: item.changeType,
       fields: changedFields(item.before, item.after), window: windows.get(item.id)!,
@@ -757,6 +818,9 @@ async function withAttribution(client: KeelClient, ref: string, baselineId: stri
         }
       }
     }
+    // "Hide people's names": the users the audit log names get their code names.
+    const namer = await readNamer(client);
+    if (namer) for (const entry of attributed) entry.actors = entry.actors.map((actor) => displayActor(actor, namer));
     byId = new Map(attributed.map((entry) => [entry.changeId, entry]));
   } catch (error) {
     console.error("[keel-portal] change attribution unavailable", error);
@@ -1088,12 +1152,14 @@ export async function principalRefs(client: KeelClient, ids: (string | null | un
   const refs = new Map<string, Ref>();
   if (wanted.length === 0) return refs;
   const { rows } = await client.query(
-    "SELECT id::text AS id, email, display_name FROM principal WHERE id::text = ANY($1::text[])",
+    "SELECT id::text AS id, email, display_name, system_kind FROM principal WHERE id::text = ANY($1::text[])",
     [wanted],
   );
+  const namer = await readNamer(client);
   for (const row of rows) {
     const id = String(row.id);
-    refs.set(id, { kind: "person", id, name: String(row.display_name ?? row.email), href: "/principals" });
+    const shown = namer ? displayPerson({ kind: "person", id, name: row.display_name ?? row.email, email: row.email ?? null, readable: true, system: row.system_kind != null }, namer) : null;
+    refs.set(id, { kind: "person", id, name: String(shown ? shown.name : row.display_name ?? row.email), href: "/principals", ...(shown?.pseudonym ? { pseudonym: true } : {}) });
   }
   for (const id of wanted) {
     if (!refs.has(id)) refs.set(id, { kind: "person", id, name: `Account ${id.slice(0, 8)} (no longer readable)`, href: null });

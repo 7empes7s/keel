@@ -34,6 +34,8 @@ const M365 = 'Microsoft 365 admin center';
 const EXCHANGE = 'Exchange admin center';
 const DEFENDER = 'Microsoft Defender portal';
 const SHAREPOINT = 'SharePoint admin center';
+const TEAMS = 'Teams admin center';
+const ENGAGE = 'Viva Engage';
 const at = (center, ...steps) => [center, ...steps].join(' > ');
 
 /**
@@ -200,6 +202,17 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   securityZone: at(DEFENDER, 'Exposure management', 'Settings', 'Zones'),
   sharedEmailDomain: 'Microsoft Graph: /directory/sharedEmailDomains (beta, no admin center page)',
   schemaExtension: 'Microsoft Graph: /schemaExtensions (no admin center page)',
+  // Remaining kinds, batch 9: settings that only lacked a read permission.
+  formsSettings: at(M365, 'Settings', 'Org settings', 'Microsoft Forms'),
+  todoSettings: at(M365, 'Settings', 'Org settings', 'Microsoft To Do'),
+  microsoft365AppsInstallationOptions: at(M365, 'Settings', 'Org settings', 'Microsoft 365 installation options'),
+  appsAndServicesSettings: at(M365, 'Settings', 'Org settings', 'User owned apps and services'),
+  adminReportSettings: at(M365, 'Settings', 'Org settings', 'Reports'),
+  profileCardProperty: 'Microsoft Graph: /admin/people/profileCardProperties (PowerShell, no admin center page)',
+  pronounsSettings: at(M365, 'Settings', 'Org settings', 'Pronouns'),
+  defenderDetectionRule: at(DEFENDER, 'Investigation and response', 'Hunting', 'Custom detection rules'),
+  teamsCatalogApp: at(TEAMS, 'Teams apps', 'Manage apps'),
+  engageCommunity: at(ENGAGE, 'Communities'),
 });
 
 export function adminCenterPathFor(resourceType) {

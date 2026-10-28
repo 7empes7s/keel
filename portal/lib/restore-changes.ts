@@ -1,4 +1,5 @@
 import { connect } from "@/lib/db";
+import { sameContent } from "../../engine/cir/canonicalHash.mjs";
 import { semanticChange } from "../../engine/govern/semanticDrift.mjs";
 import { MAX_ATTRIBUTED_CHANGES, attributeChanges } from "../../engine/identity/attribution.mjs";
 import { changeObjectIds } from "../../engine/identity/auditSources.mjs";
@@ -103,6 +104,8 @@ interface DiffRow {
   naturalKey: string;
   resourceType: string;
   hash: string;
+  // The chosen backup's payload, to compare by content where a hash was stored under other rules.
+  payload: unknown;
   // The Microsoft object ids an audit record about it would name.
   objectIds: string[];
   kind: "changed" | "deleted";
@@ -116,7 +119,7 @@ async function diff(client: Client, fromId: string, toId: string): Promise<DiffR
   for (const row of rows) {
     const resourceType = String(row.resource_type);
     const base = {
-      naturalKey: String(row.natural_key), resourceType, hash: String(row.payload_hash),
+      naturalKey: String(row.natural_key), resourceType, hash: String(row.payload_hash), payload: row.before,
       objectIds: changeObjectIds({ naturalKey: String(row.natural_key), before: row.before, after: row.after }) as string[],
     };
     if (row.deleted) {
@@ -141,32 +144,39 @@ async function diff(client: Client, fromId: string, toId: string): Promise<DiffR
 }
 
 /** For each changed key, the last backup that still matched the chosen one and the
- * first that did not, walking the backups taken after it in order. */
+ * first that did not, walking the backups taken after it in order. A backup counts as
+ * matching when it holds the same content (sameContent), not only the same stored hash:
+ * a hash stored before a field rule changed (#288, #294) would otherwise name the first
+ * backup after the rule change as the change, and widen the who-changed window. */
 async function whenChanged(client: Client, ref: string, after: SnapshotRow[], rows: DiffRow[]) {
   const found = new Map<string, { sameUntil: string | null; seenAt: string | null }>();
   if (!after.length || !rows.length) return found;
   const ids = after.map((snapshot) => snapshot.id);
+  // The payload is read only where the hash differs, which is where content decides.
   const { rows: versions } = await client.query(
-    `SELECT rv.snapshot_id, rv.natural_key, rv.payload_hash
+    `SELECT rv.snapshot_id, rv.natural_key, rv.payload_hash,
+            CASE WHEN rv.payload_hash IS DISTINCT FROM k.hash THEN rv.payload END AS payload
        FROM resource_version rv
        JOIN snapshot s ON s.id = rv.snapshot_id
-      WHERE s.tenant_ref = $1 AND rv.snapshot_id = ANY($2::uuid[]) AND rv.natural_key = ANY($3::text[])`,
-    [ref, ids, rows.map((row) => row.naturalKey)],
+       JOIN unnest($3::text[], $4::text[]) AS k(natural_key, hash) ON k.natural_key = rv.natural_key
+      WHERE s.tenant_ref = $1 AND rv.snapshot_id = ANY($2::uuid[])`,
+    [ref, ids, rows.map((row) => row.naturalKey), rows.map((row) => row.hash)],
   );
   const { rows: types } = await client.query(
     `SELECT DISTINCT snapshot_id, resource_type FROM resource_version
       WHERE snapshot_id = ANY($1::uuid[]) AND resource_type = ANY($2::text[])`,
     [ids, [...new Set(rows.map((row) => row.resourceType))]],
   );
-  const hashAt = new Map(versions.map((version) => [`${version.snapshot_id}|${version.natural_key}`, String(version.payload_hash)]));
+  const versionAt = new Map(versions.map((version) => [`${version.snapshot_id}|${version.natural_key}`, { payload_hash: String(version.payload_hash), payload: version.payload }]));
   const read = new Set(types.map((type) => `${type.snapshot_id}|${type.resource_type}`));
   for (const row of rows) {
     let sameUntil: string | null = null;
     let seenAt: string | null = null;
+    const chosen = { payload_hash: row.hash, payload: row.payload };
     for (const snapshot of after) {
       if (!read.has(`${snapshot.id}|${row.resourceType}`)) continue;
-      const hash = hashAt.get(`${snapshot.id}|${row.naturalKey}`);
-      if (hash === row.hash) {
+      const version = versionAt.get(`${snapshot.id}|${row.naturalKey}`);
+      if (version && sameContent(chosen, version, row.resourceType)) {
         sameUntil = snapshot.takenAt;
         continue;
       }

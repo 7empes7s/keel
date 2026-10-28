@@ -1,0 +1,162 @@
+{
+  "contractVersion": 1,
+  "gate": "sharepoint-site-grants-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "76e1c71268db6eb687765869f0637c589edeecd1",
+  "operation": "sharepoint.site-grants-qualification",
+  "credentialMode": "collector-read+restorer-write",
+  "observedAt": "2026-10-28T07:40:00.175Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "tenantHost": "ta036f59837f.sharepoint.com",
+    "fixtureSite": {
+      "id": "ta036f59837f.sharepoint.com,65ef79a7-bc1d-8946-931f-e102a1a527bd,f061c4c3-7dd5-858b-b1b0-b2dc4123924c",
+      "webUrl": "https://ta036f59837f.sharepoint.com/sites/KEEL-RT-20261004"
+    },
+    "application": {
+      "id": "f7e58da2-cb3c-8505-9132-0fa1cf9dbf43",
+      "displayName": "KEEL-RT-site-grant-app"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c",
+      "restorer": "app:ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf"
+    },
+    "grants": {
+      "collector": {
+        "permissions": [
+          "Sites.FullControl.All",
+          "Sites.Read.All"
+        ],
+        "roles": [
+          "SharePoint Administrator"
+        ]
+      },
+      "restorer": {
+        "permissions": [
+          "Sites.FullControl.All"
+        ],
+        "roles": [
+          "SharePoint Administrator"
+        ]
+      }
+    },
+    "reads": [
+      {
+        "operationId": "sharepoint.site-discovery",
+        "version": "v1.0",
+        "capturedAt": "2026-10-28T07:39:59.324Z",
+        "ok": true,
+        "synthetic": false,
+        "pages": 1,
+        "items": 44
+      },
+      {
+        "operationId": "sharepoint.site-permissions",
+        "version": "v1.0",
+        "capturedAt": "2026-10-28T07:39:59.419Z",
+        "ok": true,
+        "synthetic": false,
+        "pages": 1,
+        "items": 0
+      }
+    ],
+    "writes": [
+      {
+        "operationId": "sharepoint.site-permissions.add",
+        "version": "v1.0",
+        "synthetic": false,
+        "role": "read",
+        "ok": true,
+        "readBackVerified": true,
+        "capturedAt": "2026-10-28T07:39:59.615Z",
+        "grantedName": "KEEL-RT-site-grant-app"
+      },
+      {
+        "operationId": "sharepoint.site-permissions.update",
+        "version": "v1.0",
+        "synthetic": false,
+        "role": "write",
+        "ok": true,
+        "readBackVerified": true,
+        "capturedAt": "2026-10-28T07:40:00.086Z"
+      }
+    ],
+    "requests": [
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/sites/getAllSites",
+        "status": 200
+      },
+      {
+        "credential": "collector",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/sites/ta036f59837f.sharepoint.com%2C65ef79a7-bc1d-8946-931f-e102a1a527bd%2Cf061c4c3-7dd5-858b-b1b0-b2dc4123924c/permissions",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "POST",
+        "version": "v1.0",
+        "path": "/sites/ta036f59837f.sharepoint.com%2C65ef79a7-bc1d-8946-931f-e102a1a527bd%2Cf061c4c3-7dd5-858b-b1b0-b2dc4123924c/permissions",
+        "status": 201
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/sites/ta036f59837f.sharepoint.com%2C65ef79a7-bc1d-8946-931f-e102a1a527bd%2Cf061c4c3-7dd5-858b-b1b0-b2dc4123924c/permissions",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "PATCH",
+        "version": "v1.0",
+        "path": "/sites/ta036f59837f.sharepoint.com%2C65ef79a7-bc1d-8946-931f-e102a1a527bd%2Cf061c4c3-7dd5-858b-b1b0-b2dc4123924c/permissions/aTowaS50fG1zLnNwLmV4dHxmN2U1OGRhMi1jYjNjLTg1MDUtOTEzMi0wZmExY2Y5ZGJmNDNAZGMyNWZhYTAtZmJmZS04MTA0LTk1OGQtNDFiOTBhNDlmNWQ4",
+        "status": 200
+      },
+      {
+        "credential": "restorer",
+        "method": "GET",
+        "version": "v1.0",
+        "path": "/sites/ta036f59837f.sharepoint.com%2C65ef79a7-bc1d-8946-931f-e102a1a527bd%2Cf061c4c3-7dd5-858b-b1b0-b2dc4123924c/permissions",
+        "status": 200
+      }
+    ],
+    "throttle": {
+      "retryAfterResponses": 0
+    },
+    "documentation": [
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/site-getallsites",
+        "retrievedAt": "2026-10-28T07:39:57.864Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/site-list-permissions",
+        "retrievedAt": "2026-10-28T07:39:58.066Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/site-post-permissions?view=graph-rest-1.0",
+        "retrievedAt": "2026-10-28T07:39:58.207Z"
+      },
+      {
+        "url": "https://learn.microsoft.com/en-us/graph/api/site-update-permission?view=graph-rest-1.0",
+        "retrievedAt": "2026-10-28T07:39:58.554Z"
+      }
+    ],
+    "captureLogSha256": "c5db20931ae129cd3456fa2629260463c85da413b57adc511d0da21adf1147ff"
+  },
+  "proof": {
+    "artifact": {
+      "path": "sharepoint-site-grants-live-acceptance.capture.json",
+      "sha256": "c5db20931ae129cd3456fa2629260463c85da413b57adc511d0da21adf1147ff"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "3ff07ff5e2ddf97e562ffb8cf00eef31e5892286b25e92299c69562b629a95ee"
+    }
+  }
+}

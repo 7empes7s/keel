@@ -2,9 +2,12 @@ import {
   ALERT_SUPPRESS_CAPABILITY, AlertAuthorizationError, AlertStateError, acknowledgeAlert, listAlerts, listAlertTransitionsFor,
   resolveAlert, suppressAlert, unsuppressAlert,
 } from "../../engine/notify/alerts.mjs";
+import { lookupNames } from "../../engine/insights/names.mjs";
 import { guarded, InvalidActionRequest, readActionParams, type GuardDeps } from "@/lib/action";
 import { alertWorkload, type AlertInboxData, type AlertItem } from "@/lib/alerts-view";
+import type { ObjectFacts } from "@/lib/object-label";
 import { savedNames } from "@/lib/saved-names";
+import { peopleNamer, principalPerson, type Namer } from "@/lib/people-names";
 import { personLabel } from "@/lib/sentences";
 
 // Roadmap task-83: what the alerts inbox reads and what an operator can do to an alert.
@@ -27,11 +30,18 @@ function iso(value: unknown): string | null {
 }
 
 // A person by name, never an email: an account without a display name reads from the
-// email's local part ("ops@contoso.com" is "Ops").
-function personName(row: Row | undefined): string | null {
+// email's local part ("ops@contoso.com" is "Ops"). With "Hide people's names" on, a
+// code name.
+function personName(row: Row | undefined, namer: Namer): string | null {
   if (!row) return null;
-  const label = personLabel({ kind: "principal", id: String(row.id), name: (row.display_name as string | null) ?? null, email: (row.email as string | null) ?? null, readable: true }, "");
+  const label = personLabel(principalPerson(row, namer), "");
   return label || null;
+}
+
+function objectFacts(entry: (ObjectFacts & { name: string | null }) | undefined): ObjectFacts | null {
+  if (!entry) return null;
+  const { status, deletedSince, lastSeenAt, objectId } = entry;
+  return { status, deletedSince, lastSeenAt, objectId };
 }
 
 function noteOf(entry: Row): string | null {
@@ -44,7 +54,7 @@ interface QueryClient {
   query(sql: string, values?: unknown[]): Promise<{ rows: Row[] }>;
 }
 
-const WORKLOAD_NAME_SQL = `COALESCE(${["displayName", "name", "title", "webUrl"].map((field) => `NULLIF(o.fields->>'${field}', '')`).join(", ")})`;
+const WORKLOAD_NAME_SQL = `COALESCE(${["displayName", "DisplayName", "name", "Name", "title", "Title", "webUrl"].map((field) => `NULLIF(o.fields->>'${field}', '')`).join(", ")})`;
 
 /**
  * Names, not ids: the name each alerted resource carries. A backup key reads the name
@@ -88,6 +98,27 @@ export async function alertResourceNames(client: QueryClient, tenantRef: string,
   return names;
 }
 
+/**
+ * Whether each backup key is still in the newest backup, or since when it is gone, and
+ * the name it last had (engine/insights/names.mjs). Service settings keys are left out:
+ * they are not in backups. A failed read leaves every alert without these facts, never
+ * the page down.
+ */
+export async function alertObjects(client: QueryClient, tenantRef: string, keys: string[]): Promise<Map<string, ObjectFacts & { name: string | null }>> {
+  const facts = new Map<string, ObjectFacts & { name: string | null }>();
+  const backupKeys = [...new Set(keys)].filter((key) => alertWorkload(key) === null);
+  if (!backupKeys.length) return facts;
+  try {
+    const names = await lookupNames(client, { tenantRef, ids: backupKeys });
+    for (const [key, object] of names) {
+      facts.set(key, { status: object.status, deletedSince: object.deletedSince, lastSeenAt: object.lastSeenAt, objectId: object.objectId, name: object.name });
+    }
+  } catch (error) {
+    console.error("[keel-portal] alert object names unavailable", error);
+  }
+  return facts;
+}
+
 export function guardedAlertInbox(deps: GuardDeps = {}) {
   return guarded({ action: "alerts:list", capability: "read" }, async ({ client, principalId, tenantRef }) => {
     const rows = await listAlerts(client, { tenantRef, actor: principalId, limit: 200 }) as Row[];
@@ -105,17 +136,21 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
     }
     const people = new Map<string, Row>();
     if (ids.size) {
-      const { rows: found } = await client.query("SELECT id::text AS id, email, display_name FROM principal WHERE id::text = ANY($1)", [[...ids]]);
+      const { rows: found } = await client.query("SELECT id::text AS id, email, display_name, system_kind FROM principal WHERE id::text = ANY($1)", [[...ids]]);
       for (const person of found) people.set(String(person.id), person);
     }
-    const resourceNames = await alertResourceNames(client as QueryClient, tenantRef, rows.map((row) => String(row.resource_key)));
+    const namer = people.size ? await peopleNamer(client as QueryClient) : null;
+    const keys = rows.map((row) => String(row.resource_key));
+    const resourceNames = await alertResourceNames(client as QueryClient, tenantRef, keys);
+    const objects = await alertObjects(client as QueryClient, tenantRef, keys);
     const alerts: AlertItem[] = rows.map((row) => {
       const detail = (row.detail ?? {}) as Row;
       const ownerId = typeof row.owner_principal_id === "string" ? row.owner_principal_id : null;
       return {
         id: String(row.id),
         resourceKey: String(row.resource_key),
-        name: resourceNames.get(String(row.resource_key)) ?? null,
+        name: resourceNames.get(String(row.resource_key)) ?? objects.get(String(row.resource_key))?.name ?? null,
+        object: objectFacts(objects.get(String(row.resource_key))),
         control: String(row.control),
         condition: String(row.condition),
         state: row.state as AlertItem["state"],
@@ -127,8 +162,8 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
         lastFiringAt: iso(row.last_firing_at)!,
         ackDeadlineAt: iso(row.ack_deadline_at),
         acknowledgedAt: iso(row.acknowledged_at),
-        acknowledgedByName: row.acknowledged_by ? personName(people.get(String(row.acknowledged_by))) ?? "someone no longer listed" : null,
-        owner: ownerId ? { id: ownerId, name: personName(people.get(ownerId)) ?? "someone no longer listed" } : null,
+        acknowledgedByName: row.acknowledged_by ? personName(people.get(String(row.acknowledged_by)), namer) ?? "someone no longer listed" : null,
+        owner: ownerId ? { id: ownerId, name: personName(people.get(ownerId), namer) ?? "someone no longer listed", ...(people.has(ownerId) && principalPerson(people.get(ownerId)!, namer).pseudonym ? { pseudonym: true } : {}) } : null,
         escalated: Number(row.escalated_occurrence) >= Number(row.occurrence),
         escalationError: (row.escalation_error as string | null) ?? null,
         cause: {
@@ -144,7 +179,7 @@ export function guardedAlertInbox(deps: GuardDeps = {}) {
           toState: entry.to_state as AlertItem["state"],
           reason: String(entry.reason),
           actor: String(entry.actor),
-          actorName: personName(people.get(String(entry.actor))),
+          actorName: personName(people.get(String(entry.actor)), namer),
           at: iso(entry.occurred_at)!,
           eventId: (entry.event_id as string | null) ?? null,
           note: noteOf(entry),

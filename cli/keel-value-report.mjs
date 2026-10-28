@@ -15,28 +15,30 @@
 // Read-only: no Graph token, no tenant write, no evidence append.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { readConfigFile } from '../engine/config/configFile.mjs';
 import { pathToFileURL } from 'node:url';
 
 import { loadValueReport, valueReportCsv } from '../engine/reports/value.mjs';
 import { connect } from '../engine/store/db.mjs';
+import { parseCliArgs } from './args.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function arg(argv, name) {
-  const i = argv.indexOf(`--${name}`);
-  return i > -1 ? argv[i + 1] : undefined;
+const ARGS = {
+  name: 'keel-value-report',
+  strings: ['from', 'to', 'days', 'format', 'estimate', 'tenant-ref', 'config', 'db-url'],
+  repeatable: ['entity'],
+  booleans: ['help'],
+};
+
+function arg(opts, name) {
+  return opts[name];
 }
 
-function args(argv, name) {
-  const values = [];
-  for (let i = 0; i < argv.length; i += 1) if (argv[i] === `--${name}` && argv[i + 1] !== undefined) values.push(argv[i + 1]);
-  return values;
-}
-
-function resolveTenantRef(argv, readFile) {
-  const explicit = arg(argv, 'tenant-ref');
+function resolveTenantRef(opts, readFile) {
+  const explicit = arg(opts, 'tenant-ref');
   if (explicit) return explicit;
-  const config = JSON.parse(readFile(arg(argv, 'config') ?? '/etc/keel/tenant.json', 'utf8'));
+  const config = readConfigFile(arg(opts, 'config') ?? '/etc/keel/tenant.json', { readFile, what: 'collector settings' });
   return `sha256:${createHash('sha256').update(config.tenantId).digest('hex').slice(0, 16)}`;
 }
 
@@ -50,25 +52,26 @@ export async function main({
   env = process.env,
   now = () => new Date(),
 } = {}) {
-  if (argv.includes('--help')) {
+  const opts = parseCliArgs(argv, ARGS).values;
+  if (opts.help) {
     logger.log(USAGE);
     return 0;
   }
-  const format = arg(argv, 'format') ?? 'json';
+  const format = arg(opts, 'format') ?? 'json';
   if (!['json', 'csv'].includes(format)) {
     logger.log(USAGE);
     return 2;
   }
   const at = now();
-  const to = arg(argv, 'to') ? new Date(arg(argv, 'to')) : at;
-  const days = Number(arg(argv, 'days') ?? 30);
-  const from = arg(argv, 'from') ? new Date(arg(argv, 'from')) : new Date(to.getTime() - days * DAY_MS);
-  const entities = args(argv, 'entity');
-  const estimatePath = arg(argv, 'estimate') ?? env.KEEL_VALUE_ESTIMATE_PATH;
+  const to = arg(opts, 'to') ? new Date(arg(opts, 'to')) : at;
+  const days = Number(arg(opts, 'days') ?? 30);
+  const from = arg(opts, 'from') ? new Date(arg(opts, 'from')) : new Date(to.getTime() - days * DAY_MS);
+  const entities = opts.entity;
+  const estimatePath = arg(opts, 'estimate') ?? env.KEEL_VALUE_ESTIMATE_PATH;
   const estimate = estimatePath ? JSON.parse(readFile(estimatePath, 'utf8')) : null;
-  const dbUrl = arg(argv, 'db-url') ?? env.KEEL_DB_URL;
+  const dbUrl = arg(opts, 'db-url') ?? env.KEEL_DB_URL;
   if (!dbUrl) throw new Error('KEEL_DB_URL not set (source /etc/keel/db.env or pass --db-url)');
-  const tenantRef = resolveTenantRef(argv, readFile);
+  const tenantRef = resolveTenantRef(opts, readFile);
   const client = await connectFn(dbUrl);
   try {
     const report = await loadValueReport(client, {

@@ -47,7 +47,8 @@ const RESTORABLE = Object.freeze(['deviceCompliancePolicy', 'deviceConfiguration
 const WAVE2_PROOF = 'engine/restore/intuneExtended.test.mjs';
 // Restore gaps batch 1 made device categories restorable (the category, not which devices are in it),
 // and batch 6 Autopilot profiles (the profile, not the devices it applies to).
-const WAVE2_AUTOMATED = Object.freeze(['managedAppPolicy', 'targetedManagedAppConfiguration', 'mobileAppConfiguration', 'deviceCategory', 'windowsAutopilotDeploymentProfile']);
+// Batch 18 made apps restorable (settings and assignments; a package is uploaded by hand).
+const WAVE2_AUTOMATED = Object.freeze(['managedAppPolicy', 'targetedManagedAppConfiguration', 'mobileAppConfiguration', 'deviceCategory', 'windowsAutopilotDeploymentProfile', 'mobileApp']);
 const INTUNE_TYPES = Object.freeze([
   'deviceConfiguration', 'deviceCompliancePolicy', 'configurationPolicy', 'deviceEnrollmentConfiguration',
   'windowsAutopilotDeploymentProfile', 'managedAppPolicy', 'targetedManagedAppConfiguration', 'mobileAppConfiguration',

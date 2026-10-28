@@ -46,8 +46,10 @@ const byId = (body) => guidOf(body.Id ?? body.ID);
 export const FAMILIES = Object.freeze({
   hubSite: Object.freeze({
     operation: 'sharepoint-structure.hub-sites', cmdlet: 'Get-PnPHubSite', prefix: 'hub-site', identity: byId,
+    // Not Targets: Get-PnPHubSite hands it back as an unloaded collection, so it never
+    // arrives, and who may join sites to a hub is granted by hand anyway (issue #664).
     fields: Object.freeze([
-      'Title', 'SiteUrl', 'SiteId', 'Description', 'LogoUrl', 'Targets', 'SiteDesignId', 'RequiresJoinApproval', 'HideNameInNavigation', 'ParentHubSiteId',
+      'Title', 'SiteUrl', 'SiteId', 'Description', 'LogoUrl', 'SiteDesignId', 'RequiresJoinApproval', 'HideNameInNavigation', 'ParentHubSiteId',
     ]),
   }),
   siteDesign: Object.freeze({

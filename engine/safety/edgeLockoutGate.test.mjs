@@ -150,17 +150,29 @@ test('when break-glass accounts cannot be read, every removal is refused (fails 
 });
 
 test('proposed membership: direct adds and removes, other users, and nested groups', () => {
-  const ops = [
+  const userOps = [
     { ...memberOp('g', 'remove', 'user:bg1', BG1), parentId: 'g' },
     { ...memberOp('h', 'add', 'user:bg2', BG2), parentId: 'h' },
     { ...memberOp('i', 'remove', 'user:other', OTHER), parentId: 'i' },
-    { ...memberOp('j', 'remove', null, NESTED), parentId: 'j' },
   ];
-  const lookup = withProposedMembership(() => true, ops);
+  const lookup = withProposedMembership(() => true, userOps);
   assert.equal(lookup('g', BG1), null, 'removed directly: may still be a member through a nested group');
   assert.equal(lookup('h', BG2), true);
   assert.equal(lookup('i', BG1), true, 'another user leaving changes nothing');
-  assert.equal(lookup('j', BG1), null, 'an object of unknown type leaving makes membership unknown');
-  assert.equal(withProposedMembership(() => false, ops)('j', BG1), false, 'a non-member stays a non-member when something leaves');
   assert.equal(lookup('untouched', BG1), true);
+  const nestedOps = [...userOps, { ...memberOp('j', 'remove', null, NESTED), parentId: 'j' }];
+  const nested = withProposedMembership(() => true, nestedOps);
+  assert.equal(nested('j', BG1), null, 'an object of unknown type leaving makes membership unknown');
+  assert.equal(nested('untouched', BG1), null, 'and in every other group too: it may be nested one level down');
+  assert.equal(withProposedMembership(() => false, nestedOps)('untouched', BG1), false, 'a non-member stays a non-member when something leaves');
+});
+
+test('a nested group leaving a group one level below an exclusion group is gated (review finding)', () => {
+  // The exclusion group contains group:plain; group:nested (holding break-glass) leaves group:plain.
+  const ops = [memberOp('group:plain', 'remove', 'group:nested', NESTED)];
+  const result = gate(ops);
+  assert.deepEqual(result.operations, []);
+  assert.match(result.refusals[0].reason, /^lockout-gate: /);
+  const userOnly = [memberOp('group:plain', 'remove', 'user:other', OTHER)];
+  assert.deepEqual(gate(userOnly), { operations: userOnly, refusals: [] }, 'a user leaving an unrelated group is not gated');
 });

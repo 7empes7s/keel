@@ -13,8 +13,10 @@
  * 2. Every other member write that can change break-glass readiness goes through
  *    the break-glass lockout gate, evaluated with the membership as it would be
  *    after the writes (`gateRelationshipOperations`): adds and removes on a group
- *    a Conditional Access policy includes or excludes, and removes on a group
- *    that holds a directory role or can hold one. A gate whose inputs could not
+ *    a Conditional Access policy includes or excludes, a group joining or
+ *    leaving any group (nesting can carry an account into or out of a
+ *    Conditional Access group), and removes on a group that holds a directory
+ *    role or can hold one. A gate whose inputs could not
  *    be read refuses them, and also every removal, because the registered
  *    break-glass accounts are then unknown.
  *
@@ -86,10 +88,13 @@ export function withProposedMembership(groupMembers, operations) {
     list.push(op);
     byGroup.set(op.parentId, list);
   }
+  // A group joining or leaving any group can change who a Conditional Access group
+  // holds through nesting (E contains G contains N), so it counts for every group.
+  const nested = operations.filter((op) => op.family === 'member' && op.parentId && !isUserKey(op.targetNaturalKey));
   return (group, accountId) => {
     const before = groupMembers(group, accountId);
-    const ops = byGroup.get(lower(group));
-    if (!ops) return before;
+    const ops = [...new Set([...(byGroup.get(lower(group)) ?? []), ...nested])];
+    if (ops.length === 0) return before;
     const account = lower(accountId);
     let after = before;
     for (const op of ops) {
@@ -123,8 +128,11 @@ export function gateRelationshipOperations({
   inputs = null, loadError = null,
 }) {
   const withParent = operations.map((op) => ({ op, parentId: lower(parentTargetIds.get(op.parentNaturalKey) ?? null) }));
+  // A group (or an object of unknown type) joining or leaving any group is gated
+  // too: it can carry a break-glass account into or out of a Conditional Access
+  // group through nesting.
   const gated = ({ op, parentId }) => op.family === 'member' && parentId !== null
-    && (caGroupIds.has(parentId) || (op.action === 'remove' && privileged.has(parentId)));
+    && (caGroupIds.has(parentId) || !isUserKey(op.targetNaturalKey) || (op.action === 'remove' && privileged.has(parentId)));
   const refuse = (entries, reason) => entries.map(({ op }) => ({ naturalKey: relationshipOperationKey(op), reason }));
 
   if (!inputs) {

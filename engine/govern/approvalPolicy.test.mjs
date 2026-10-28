@@ -60,6 +60,11 @@ assert.deepEqual(
   'adding a member is not a delete',
 );
 assert.deepEqual(
+  classifyApprovalActions({ action: 'restore', artifact: { closureKeys: keys(1), waves: [[{ naturalKey: 'x', payload: { action: 'remove' } }]] } }),
+  [],
+  'a payload field named action is not an edge removal',
+);
+assert.deepEqual(
   classifyApprovalActions({ action: 'restore', artifact: { closureKeys: keys(1), contentEffects: [{ effect: 'retention-reducing' }, { effect: 'hold-releasing' }, { effect: 'externally-sharing' }] } }),
   ['retention-shortening', 'legal-hold-release'],
 );

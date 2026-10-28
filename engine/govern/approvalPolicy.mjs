@@ -56,8 +56,7 @@ const CONTENT_EFFECT_CLASSES = Object.freeze({
 function hasDelete(value, depth = 0) {
   if (depth > 6 || value == null || typeof value !== 'object') return false;
   if (Array.isArray(value)) return value.some((item) => hasDelete(item, depth + 1));
-  // A member/owner edge removal (relationshipOperations) is a delete too (security audit run 2, finding 7).
-  if (value.verb === 'delete' || value.operation === 'delete' || value.action === 'remove') return true;
+  if (value.verb === 'delete' || value.operation === 'delete') return true;
   return Object.values(value).some((item) => hasDelete(item, depth + 1));
 }
 
@@ -73,7 +72,9 @@ export function classifyApprovalActions({ action, artifact = null, declared = []
   if (action === 'restore' && artifact) {
     const size = (artifact.closureKeys?.length ?? 0) + (artifact.relationshipOperations?.length ?? 0);
     if (size >= BULK_RESTORE_THRESHOLD) classes.add('bulk-restore');
-    if (hasDelete([artifact.waves, artifact.reconciliationResources, artifact.compensation, artifact.relationshipOperations])) {
+    // A member/owner edge removal is a delete too (security audit run 2, finding 7).
+    if (hasDelete([artifact.waves, artifact.reconciliationResources, artifact.compensation, artifact.relationshipOperations])
+      || (artifact.relationshipOperations ?? []).some((op) => op?.action === 'remove')) {
       classes.add('delete');
     }
     for (const effect of artifact.contentEffects ?? []) {

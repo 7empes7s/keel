@@ -1,0 +1,48 @@
+{
+  "restoreRef": "af55e7e4-adfa-8f47-8741-1e5267f630b5",
+  "entry": {
+    "naturalKey": "mobileApp:KEEL-RT-148-app-web",
+    "resourceType": "mobileApp",
+    "operation": "create",
+    "targetId": "78c6b377-ab6f-8cda-9a87-f093ed450532",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-28T08:05:37.425Z",
+    "priorState": null,
+    "intendedState": {
+      "notes": null,
+      "owner": null,
+      "appUrl": "https://example.com/",
+      "developer": null,
+      "largeIcon": null,
+      "publisher": "KEEL",
+      "isFeatured": false,
+      "@odata.type": "#microsoft.graph.webApp",
+      "description": "KEEL fixture web link web",
+      "displayName": "KEEL-RT-148-app-web",
+      "informationUrl": null,
+      "useManagedBrowser": false,
+      "privacyInformationUrl": null
+    },
+    "postState": {
+      "id": "78c6b377-ab6f-8cda-9a87-f093ed450532",
+      "notes": null,
+      "owner": null,
+      "appUrl": "https://example.com/",
+      "developer": null,
+      "largeIcon": null,
+      "publisher": "KEEL",
+      "isFeatured": false,
+      "@odata.type": "#microsoft.graph.webApp",
+      "description": "KEEL fixture web link web",
+      "displayName": "KEEL-RT-148-app-web",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceAppManagement/mobileApps/$entity",
+      "informationUrl": null,
+      "createdDateTime": "2026-10-28T08:05:37.6664122Z",
+      "publishingState": "published",
+      "useManagedBrowser": false,
+      "lastModifiedDateTime": "2026-10-28T08:05:37.6664122Z",
+      "privacyInformationUrl": null
+    }
+  }
+}

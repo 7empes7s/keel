@@ -100,7 +100,7 @@ export const CLASSIFIER_FAMILIES = Object.freeze({
   sensitiveInfoType: Object.freeze({
     operation: 'purview.sensitive-info-types', cmdlet: 'Get-DlpSensitiveInformationType', prefix: 'sensitive-info-type',
     identity: guidIn(['Id']),
-    // The container keeps only these (and LastModifiedTime) from each type: the full object holds
+    // The container sends only these from each type: the full object holds
     // dictionaries ConvertTo-Json cannot serialize (Q179). RulePackId names the package it is in.
     fields: Object.freeze(['Name', 'Id', 'Description', 'Publisher', 'RecommendedConfidence', 'RulePackId']),
     prepare: (output) => {
@@ -119,7 +119,7 @@ export const CLASSIFIER_FAMILIES = Object.freeze({
       let builtIn = 0;
       for (const body of output) {
         if (!body || typeof body !== 'object') { custom.push(body); continue; }
-        if (body.RuleCollectionName === MICROSOFT_RULE_PACKAGE) { builtIn += 1; continue; }
+        if (body.RuleCollectionName === MICROSOFT_RULE_PACKAGE || body.Name === MICROSOFT_RULE_PACKAGE) { builtIn += 1; continue; }
         const { SerializedClassificationRuleCollection: bytes, ...rest } = body;
         const xml = decodeRulePackage(bytes);
         custom.push(xml === null ? rest : { ...rest, RulePackageXml: xml });

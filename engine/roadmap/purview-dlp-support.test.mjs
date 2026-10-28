@@ -196,9 +196,9 @@ test('the reads are declared, in scope, probed, Get-only and ship disabled', asy
   // The container sends only the declared fields of a type (the full object fails ConvertTo-Json, Q179),
   // and drops Microsoft's rule package by its RuleCollectionName (its Name is empty).
   const script = readFileSync(new URL('../../ops/powershell/run-cmdlet.ps1', import.meta.url), 'utf8');
-  const projected = /'Get-DlpSensitiveInformationType'\) \{ \$output = @\(\$output \| Select-Object ([^)]*)\)/.exec(script)[1].split(',').map((name) => name.trim());
+  const projected = [.../\$keep = @\(([^)]*)\)/.exec(script)[1].matchAll(/'([A-Za-z]+)'/g)].map((match) => match[1]);
   for (const field of CLASSIFIER_FAMILIES.sensitiveInfoType.fields) assert.ok(projected.includes(field), `${field} is sent`);
-  assert.match(script, /\$_\.RuleCollectionName -ne 'Microsoft Rule Package'/);
+  assert.match(script, /\$_\.RuleCollectionName -ne 'Microsoft Rule Package' -and \$_\.Name -ne 'Microsoft Rule Package'/);
   // Each workload runs only its own reads, and none takes a parameter.
   assert.throws(() => PURVIEW_CLASSIFIERS.assertCmdlet({ cmdlet: 'Get-ProtectionAlert' }), DlpSupportScopeError);
   assert.throws(() => PURVIEW_AUDIT_ALERTS.assertCmdlet({ cmdlet: 'Get-DlpKeywordDictionary' }), DlpSupportScopeError);

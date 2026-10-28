@@ -346,10 +346,18 @@ try {
     # Microsoft's built-in rule package is megabytes of XML that Keel never stores
     # (engine/collect/workloads/purviewDlpSupport.mjs): drop it here so it is not sent.
     # Its Name is empty; RuleCollectionName carries the name.
-    if ($name -eq 'Get-DlpSensitiveInformationTypeRulePackage') { $output = @($output | Where-Object { $_.RuleCollectionName -ne 'Microsoft Rule Package' }) }
+    if ($name -eq 'Get-DlpSensitiveInformationTypeRulePackage') { $output = @($output | Where-Object { $_.RuleCollectionName -ne 'Microsoft Rule Package' -and $_.Name -ne 'Microsoft Rule Package' }) }
     # A sensitive information type holds dictionaries with non-string keys, which
-    # ConvertTo-Json refuses (NonStringKeyInDictionary): send only the fields Keel keeps.
-    if ($name -eq 'Get-DlpSensitiveInformationType') { $output = @($output | Select-Object Name, Id, Description, Publisher, RecommendedConfidence, RulePackId, LastModifiedTime) }
+    # ConvertTo-Json refuses (NonStringKeyInDictionary): send only the fields Keel keeps,
+    # and only those the object has, so a missing one is still reported as not read.
+    if ($name -eq 'Get-DlpSensitiveInformationType') {
+        $keep = @('Name', 'Id', 'Description', 'Publisher', 'RecommendedConfidence', 'RulePackId')
+        $output = @($output | ForEach-Object {
+            $item = $_; $kept = [ordered]@{}
+            foreach ($field in $keep) { if ($item.PSObject.Properties.Name -contains $field) { $kept[$field] = $item.$field } }
+            [pscustomobject]$kept
+        })
+    }
     Out-Envelope -Envelope @{ ok = $true; output = @($output) } -Code 0
 } catch {
     $record = $_

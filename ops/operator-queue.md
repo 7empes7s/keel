@@ -9721,3 +9721,23 @@ item that needs it stays untouched.
 - **Expected:** step 2 `TIMEOUT` with no removal note; steps 3 and 4 leave no `keel-job-*` container and 0 staged dirs; step 4 probe ok as before.
 - **Report:** the deployed commit, each command's exit code and output (the step 2 `docker ps` line, the stderr tail, the leftover counts),
   and any `keel-job-*` container in the `Created` state (a known limit if the timeout lands while docker is still creating it).
+
+### Q215: Read-only retry of To Do settings (GET /beta/admin/todo): is the 500 transient or persistent? (follows Q181)
+- Drafted by the "Handle To Do settings read errors" thread (2026-10-28). Q181 saw `GET /beta/admin/todo` answer HTTP 500
+  `UnknownError` with an empty message, so the full collect exited 3. This item tells a passing Microsoft fault from a
+  lasting one. A PR from this thread will retry 5xx reads with backoff and report a lasting one as a Microsoft service error.
+- Needs: nothing (reads only, with the Collector credential the deployed build already uses).
+- Status: todo
+- **Tenant:** reads only, with the Collector credential (`/etc/keel/tenant.json`). No grants, no changes, nothing written.
+  Never print the token.
+- Do, from `/opt/keel-live`:
+  1. Six reads of To Do settings, 30 s apart, with one Forms settings read first as a control:
+     ```
+     node --input-type=module -e "import { getToken } from './tools/tenant-probe/auth.mjs'; import { readFileSync } from 'node:fs'; import { randomUUID } from 'node:crypto'; const c = JSON.parse(readFileSync('/etc/keel/tenant.json','utf8')); const t = (await getToken(c)).accessToken; const go = async (p) => { const cid = randomUUID(); const r = await fetch('https://graph.microsoft.com/beta' + p, { headers: { authorization: 'Bearer ' + t, 'accept-language': 'en-US', 'client-request-id': cid } }); const b = await r.text(); let j = null; try { j = JSON.parse(b); } catch {} console.log(new Date().toISOString(), p, r.status, 'request-id=' + r.headers.get('request-id'), 'client-request-id=' + cid, j?.error ? JSON.stringify({ code: j.error.code, message: j.error.message, inner: j.error.innerError ?? null }) : 'keys=' + Object.keys(j ?? {}).join(',')); }; await go('/admin/forms'); for (let i = 0; i < 6; i++) { await go('/admin/todo'); if (i < 5) await new Promise((r) => setTimeout(r, 30000)); }"
+     ```
+  2. The todoSettings outcome in the coverage of the newest scheduled collect that finished after 2026-10-28 21:47 UTC
+     (outcome, HTTP status, Graph code), and its snapshot id. If no scheduled collect ran yet, say so.
+- **Expected:** if any of the six reads answers 200, the 500 is transient (report its keys; values are not secret). If all six
+  answer 500 and the next scheduled collect fails the same way, it is persistent.
+- **Report:** the six lines verbatim (status, request-id, client-request-id, error code and message), the control line,
+  the step 2 outcome, and the build at `/opt/keel-live`. The request ids are what a Microsoft support case needs.

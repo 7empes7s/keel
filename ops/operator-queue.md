@@ -9091,3 +9091,35 @@ item that needs it stays untouched.
   700; site codes unchanged; `systemctl reload caddy` 0 and active.
 - **Report:** step 1 facts and hits, every exit code, the check output before and after, the stat line, the site codes before
   and after, and whether the backup is still at `/etc/caddy/Caddyfile.bak-q201`.
+
+### Q202: Rename the ServiceNow qualification references to KEEL_INTEGRATION_ names (security audit finding 6, part 2)
+- Drafted by the "Move integration secrets to safe names" thread (2026-10-28). PR #635 makes ServiceNow and the
+  Teams/Slack/PagerDuty/SMS channels save and read only `env:KEEL_INTEGRATION_*` references, so a setting can never
+  read `KEEL_DB_URL` or another worker secret. Q199 found no live ServiceNow or channel rows, so no live integration
+  changes. The only files still using old names are the gate-118 qualification files from Q17. The next
+  `servicenowLive.mjs` capture would refuse them. Test-user references (`env:KEEL_SN_TEST_USER_ONE` / `_TWO`) stay as
+  they are: the capture still reads any `env:` name for test users.
+- Needs: PR #635 deployed (`keel/live-deploy` success on its merge commit).
+- Status: todo
+- **Host files only. No tenant, ServiceNow instance or database write. No restart.** Never print a value.
+- Do:
+  1. Read-only check that the deploy applied the carry-over:
+     `psql "$KEEL_DB_URL" -Atc "SELECT count(*) FROM pg_proc WHERE proname = 'keel_integration_reference'"` (expect 1) and
+     `psql "$KEEL_DB_URL" -Atc "SELECT (SELECT count(*) FROM itsm_adapter_config) + (SELECT count(*) FROM channel WHERE kind IN ('teams','slack','pagerduty','sms'))"`
+     (expect 0, as in Q199).
+  2. In `/etc/keel/servicenow-qualification/servicenow-config.json` (keep mode 0600): set `credential.tokenRef` to
+     `env:KEEL_INTEGRATION_SN_TOKEN` and `callback.secretRef` to `env:KEEL_INTEGRATION_SN_CALLBACK_SECRET`.
+     Leave every other key as it is.
+  3. In `/etc/keel/servicenow-qualification.env` (keep mode 0600): rename the variable `KEEL_SN_CALLBACK_SECRET` to
+     `KEEL_INTEGRATION_SN_CALLBACK_SECRET`, same value. If a line `KEEL_SN_TOKEN=` exists, rename it to
+     `KEEL_INTEGRATION_SN_TOKEN` too. From now on, mint KEEL's capture-time bearer token into
+     `KEEL_INTEGRATION_SN_TOKEN` instead of `KEEL_SN_TOKEN`.
+  4. Offline checks from `/opt/keel-live` (nothing is sent to the instance):
+     `node tools/qualification/servicenow.mjs check --config /etc/keel/servicenow-qualification/servicenow-config.json`
+     and `node tools/qualification/servicenowLive.mjs plan --config /etc/keel/servicenow-qualification/servicenow-config.json --test-users /etc/keel/servicenow-qualification/servicenow-test-users.json`.
+     Report both exit codes and any refusal lines.
+  5. `grep -c '^KEEL_SN_CALLBACK_SECRET=\|^KEEL_SN_TOKEN=' /etc/keel/servicenow-qualification.env` (expect 0) and
+     `grep -c '^KEEL_INTEGRATION_' /etc/keel/servicenow-qualification.env` (count only).
+- **Expected:** step 1 gives 1 and 0; `check` exit 0 with `problems: []`; `plan` exits 0 and the only refusals are
+  `--confirm-non-production-instance` and `--declared-by` (as in Q17); no `must name an env:KEEL_INTEGRATION_*` refusal.
+- **Report:** the step 1 numbers, the files changed (names only), the step 4 exit codes and refusals, the step 5 counts.

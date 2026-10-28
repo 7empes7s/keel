@@ -9409,3 +9409,35 @@ item that needs it stays untouched.
      branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR. Report the `live evidence` line.
 - **Report:** B; step 2 payload fields present; step 3 drift result; step 4 dry-run outcome and exact reason text; step 5
   approval id, promoted or not; evidence branch and commit; anything left in the tenant.
+
+### Q208: Live restore proof of the app pre-approval policy (the Q111 part blocked by #641, after PR #647)
+- Drafted by the "Fix consent pre-approval policy restore" thread (2026-10-28). Q111 found every pre-approval policy dry run
+  refused: `cannot resolve reference at "conditions[0].permissions.permissionIds[0]" (symbol null)`. PR #647 (merge `1fd1cc5d`)
+  stores the permission ids a pre-approval policy (and a permission grant policy) lists as global, written as stored. Fixture-tested
+  only.
+- Needs: the deployed build B at or after `1fd1cc5d`. Check from your checkout at B:
+  `git merge-base --is-ancestor 1fd1cc5d B && grep -q 'conditions\\.permissions\\.permissionIds' tools/tenant-probe/references.mjs`.
+- **A fresh snapshot is required.** References are stored per snapshot, so Q111's S (`569a4390`) still holds the null symbol and
+  still refuses. Take the snapshot at B, after creating the fixture.
+- Status: open
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q111. Self-approve under the 2026-10-14
+  standing authorization and log every approval id. Restorer for writes, Collector for reads; global admin not used; grant nothing
+  (the Restorer holds Policy.ReadWrite.PermissionGrant). Never assign the policy to any service principal.
+- **Fixture** (as in Q111): one pre-approval policy, one condition, scopeType `chat`, all sensitivity labels, Microsoft Graph
+  application permission ChatMessage.Read.Chat. Unassigned. Write down that there were 0 pre-approval policies before (or list any).
+- Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Create the fixture, then take snapshot S (a tier run that reads `permissionGrantPreApprovalPolicy`). Confirm it is in S and
+     that its `conditions[0].permissions.permissionIds[0]` reference has a non-null symbol (`to_symbol` starts with `global:` or
+     `permission:`).
+  2. **Update round:** drift the condition scopeType from `chat` to `team` (Graph refuses `group`). Restore from S selecting it
+     (`live-gate-plan.mjs` steps, `--allow-tenant-setting`), approve, `--enforce`, capture the `update`. Expect the dry run to list
+     only `conditions` and the read back to equal S.
+  3. **Create round:** delete the policy, restore from S, approve, enforce, capture the `create` (new id expected). Leave it unassigned.
+  4. **Re-run check:** dry run from S again. Expect 0 planned writes.
+  5. Cleanup: delete the recreated policy. Report anything left.
+  6. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on `claude/live-evidence-q208`,
+     branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR. Run
+     `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; S and the step 1 symbol; per operation promoted / refused (exact message); approval ids; step 4 count; the
+  evidence branch and commit; anything left in the tenant. If it still refuses, quote the message and comment on #641.

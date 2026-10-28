@@ -48,6 +48,7 @@ const KIND_ICONS: Record<string, IconName> = {
   remediate: "restore",
   "baseline-create": "baselines",
   "baseline-activate": "baselines",
+  dispose: "baselines",
   "drift-detect": "baselines",
   "policy-evaluate": "automation",
   notify: "bell",

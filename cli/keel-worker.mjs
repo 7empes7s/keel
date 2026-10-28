@@ -695,6 +695,17 @@ export const JOB_HANDLERS = {
   // delivery id; channel config and the event are read from the durable delivery log,
   // never accepted as arbitrary worker arguments. keel-notify records failed attempts
   // and enqueues their backoff retries before exiting non-zero.
+  // Audit run 2, finding 3: an approved accept or ignore. The decision itself is read
+  // from the approval row by the wrapper; the job names only the approval and the
+  // person who asked, who is the recorded actor.
+  dispose: {
+    script: join(__dirname, 'keel-dispose.mjs'),
+    argsFor(_params = {}, job = {}) {
+      const match = /^approval:(.+)$/.exec(String(job.idempotency_key ?? ''));
+      if (!match) throw new Error('a dispose job is minted only by an approval');
+      return ['--approval-id', match[1], '--actor', requireString(job.requested_by, 'job.requested_by')];
+    },
+  },
   notify: {
     script: join(__dirname, 'keel-notify.mjs'),
     argsFor(params = {}) {

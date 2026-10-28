@@ -20,6 +20,7 @@ import {
 import { getActiveBaseline, listOpenDrift, markSameContentDrift, recordDrift } from '../engine/store/governance.mjs';
 import { diffSnapshots } from '../engine/govern/diffSnapshots.mjs';
 import { isSuppressed } from '../engine/govern/disposition.mjs';
+import { IGNORE_STILL_COUNTS_SQL } from '../engine/store/openDrift.mjs';
 import { syncDriftAlerts } from '../engine/notify/alerts.mjs';
 import { runComplianceChecks } from '../engine/benchmarks/runChecks.mjs';
 import { parseCliArgs } from './args.mjs';
@@ -80,7 +81,8 @@ async function activeIgnoreDispositions(client, tenantRef) {
      JOIN drift d ON d.id = p.drift_id
      WHERE d.tenant_ref = $1
        AND p.action = 'ignore'
-       AND p.expires_at > now()`,
+       AND p.expires_at > now()
+       AND ${IGNORE_STILL_COUNTS_SQL}`,
     [tenantRef],
   );
   return rows.map((row) => ({

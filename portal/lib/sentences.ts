@@ -4,6 +4,7 @@
 // references the engine resolved. One module, so every page says the same thing the
 // same way. Raw codes and ids never appear in these strings; they live in the record.
 import { ago, displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel, words } from "@/lib/presentation";
+import { WORKLOAD_LABELS } from "@/lib/compare-view";
 import { holdsObjectId, jobIncompleteTypes, type NamedKeys, namedResource } from "@/lib/job-names";
 
 export interface EngineRef {
@@ -125,6 +126,25 @@ function changesPhrase(changes: (ChangeRef | undefined)[]): string {
   return first?.naturalKey ? `${count}, including ${resourceLabel(first.naturalKey)}` : count;
 }
 
+// A service setting change by its setting's name and service, never by an id.
+function serviceChangePhrase(params: Record<string, unknown>): string {
+  const key = typeof params.resourceKey === "string" && !holdsObjectId(params.resourceKey) ? resourceLabel(params.resourceKey) : null;
+  const service = typeof params.workload === "string" ? WORKLOAD_LABELS[params.workload] ?? null : null;
+  const verb = params.changeType === "added" ? "new" : params.changeType === "removed" ? "removed" : "changed";
+  if (key) return `the ${verb} setting ${key}${service ? ` in ${service}` : ""}`;
+  return service ? `a ${verb} ${service} setting` : "a service setting change";
+}
+
+// Audit run 2, finding 3: an accept or ignore a second person approves, as what it does:
+// "Accept into the approved setup: 1 change, including …".
+function decisionPhrase(params: Record<string, unknown>, refs: RowReferences): string {
+  const what = typeof params.serviceChangeId === "string" ? serviceChangePhrase(params) : changesPhrase(refs.changes);
+  if (params.action === "ignore") {
+    return typeof params.expiresAt === "string" ? `Ignore until ${formatTimestamp(params.expiresAt)}: ${what}` : `Ignore: ${what}`;
+  }
+  return `Accept into the approved setup: ${what}`;
+}
+
 function tierPhrase(tier: unknown): string {
   if (typeof tier !== "string" || !tier) return "every tier";
   const match = /^tier(\d)$/.exec(tier);
@@ -156,6 +176,7 @@ export function jobName(job: JobLike): string {
       return `Dry run of a restore of ${plural(selected, "selected resource")} from the snapshot of ${when(refs.snapshot?.readable ? refs.snapshot.takenAt : null)}`;
     }
     case "remediate": return `Roll back of ${changesPhrase(refs.changes)}`;
+    case "dispose": return decisionPhrase(params, refs);
     case "baseline-create": return typeof params.label === "string" && params.label ? `New approved setup “${params.label}”` : "New approved setup";
     case "baseline-activate": return refs.baseline?.readable && refs.baseline.name
       ? `Switch to approved setup “${refs.baseline.name}”`
@@ -214,6 +235,7 @@ export function approvalSentence(request: RequestLike): string {
         ? `Switch to the approved setup “${refs.baseline.name}”`
         : "Switch to an approved setup that is no longer readable";
     case "remediate": return `Undo ${changesPhrase(refs.changes)}`;
+    case "dispose": return decisionPhrase((request.params ?? {}) as Record<string, unknown>, refs);
     default: return displayEnum("jobKind", request.action);
   }
 }

@@ -9804,3 +9804,29 @@ item that needs it stays untouched.
   "targets" reason; every hub field `observed`; 0 new changes on the second run (dropping `Targets` must not show as a change).
   Other workloads may still be partial for their own reasons (for example the purview auto-label timeout); list them, don't chase them.
 - **Report:** per step, the deployed commit, the evidence branch and commit.
+
+### Q217: Why the drill's Collector reader is refused on PIM for Groups, and add the permission it needs (follows Q206, #663, PR #670)
+- Drafted by the "Fix drill reader refused on access groups" thread (2026-10-28). Q206's drill got `PermissionScopeNotGranted` on
+  `GET /beta/identityGovernance/privilegedAccess/group/resources` (privilegedAccessGroupResource), while the hourly collect at the
+  same build recorded it `complete-empty`. In the code both use the same settings file (`/etc/keel/tenant.json`), the same token
+  code (`tools/tenant-probe/auth.mjs`), the same `GraphReader` and the same catalogue read, so it is not a separate token path.
+  Keel never listed a permission for this read (fixed on the setup page by PR #670: `PrivilegedAccess.Read.AzureADGroup`).
+  Inference: the Collector has none of the PIM for Groups scopes, and the 200 in the hourly collect is PIM answering an empty list
+  without checking. This item checks that and adds the permission.
+- Needs: nothing (steps 1 to 3 are read-only; step 4 changes only the KEEL Collector app registration).
+- Status: todo
+- **Tenant:** reads only, plus one app registration change (step 4). Never print a token: report role names only.
+- Do:
+  1. Get a Collector token from `/etc/keel/tenant.json` with `tools/tenant-probe/auth.mjs` and report whether its `roles` claim holds
+     any of `PrivilegedAccess.Read.AzureADGroup`, `PrivilegedAccess.ReadWrite.AzureADGroup`,
+     `PrivilegedEligibilitySchedule.Read.AzureADGroup`, `PrivilegedEligibilitySchedule.ReadWrite.AzureADGroup`,
+     `PrivilegedAssignmentSchedule.Read.AzureADGroup` (yes/no each).
+  2. With that token and `GraphReader`, read `beta /identityGovernance/privilegedAccess/group/resources` three times, 30 s apart.
+     Report HTTP status, item count and the Graph error code each time.
+  3. From the live DB, list the coverage digest entry for `privilegedAccessGroupResource` in the last 24 h of snapshots
+     (snapshot time, outcome, httpStatus, pagesCompleted, requests). Report whether any read was refused.
+  4. If step 1 found none of the scopes: add the Microsoft Graph **application** permission `PrivilegedAccess.Read.AzureADGroup`
+     to the **KEEL Collector** app registration (not the Restorer). Do not grant consent; the human operator clicks
+     "Grant admin consent" for KEEL Collector. Write in the Result that the click is pending.
+- **Expected:** step 1 no PIM for Groups scope; step 2 refused, or 200 with 0 items; step 3 shows 200 complete-empty reads.
+- **Report:** each step's output as above, and whether the permission was added in step 4.

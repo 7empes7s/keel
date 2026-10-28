@@ -9478,3 +9478,34 @@ item that needs it stays untouched.
   7. Cleanup: delete all KEEL-RT-209 apps and the category; report anything left.
 - **Report:** B; each step's exit code, dry-run and approval ids, the log `changes` lines, every Graph call that failed (status and
   message verbatim, no tokens); evidence branch and promotions if captured. A 400/404 on `updateRelationships` is a finding for a new issue.
+
+### Q210: Live undo of a restored Intune app link (after PR for the link undo, follows Q209)
+- Drafted by the "Fix undo for restored Intune app links" thread (2026-10-28). Undoing a restore that created an app dependency
+  failed before (no delete for links; an undo delete was also held to the snapshot's observation). Now, fixture-tested only:
+  - **Undo of a created link:** the app that holds it is sent its current links with this one left out, through
+    `POST /beta/deviceAppManagement/mobileApps/{main}/updateRelationships`; never `DELETE /mobileAppRelationships/{id}`.
+  - **Undo of a link update:** the earlier value goes back through the same route, the app's other links sent again.
+  - A link is deleted only as such an undo; any other delete is a `manual:` step.
+- Needs: Q209 `done` (it proves Intune accepts links between the KEEL-RT shells; if Q209 found it refuses them, mark this
+  `blocked` with that answer). /opt/keel-live has the change: `grep -q appRelationshipDelete /opt/keel-live/engine/restore/intuneOperations.mjs`.
+- Status: todo
+- Result:
+- **Test tenant only. Restorer for writes, Collector for reads; no app assigned; no package uploaded.** Self-approve under the
+  2026-10-14 standing authorization and log every approval id. Fixtures (by hand, KEEL-RT-210- prefix): three Win32 shells
+  `KEEL-RT-210-app-main`, `KEEL-RT-210-app-dep`, `KEEL-RT-210-app-other` (no file, as in Q209); on main, two dependencies set by
+  hand in one `updateRelationships` call: main → dep (`detect`) and main → other (`detect`).
+- Do, from your own checkout at B (never `/opt/keel`):
+  1. Backup S. Report the two links in S (natural keys and ids).
+  2. **Create, then undo it.** Remove main → dep by hand (`updateRelationships` on main with only the main → other entry). Restore
+     from S selecting the main → dep link; approve, enforce: artifact A. Then `keel-restore --compensate A --persist-artifact C`.
+     Expect the plan line `compensation of A: 1 inverse write(s), 0 conflict(s), ...`. Approve C and promote `--artifact C --enforce`.
+     Expect exactly one write, `POST .../mobileApps/{main}/updateRelationships` whose body holds only main → other; afterwards
+     `GET .../mobileApps/{main}/relationships` lists only main → other. If the plan says `not applied` / `already absent` while the
+     link is there, quote it and the link's id before and after step 2's restore (a new id would mean the undo cannot find the link).
+  3. **Update, then undo it.** Put main → dep back by hand as `autoInstall` (both links in the call). Restore from S selecting the
+     link (update to `detect`): artifact A2. Compensate A2 to C2, approve, promote. Expect one `updateRelationships` on main with
+     main → dep `autoInstall` and main → other `detect`; read back the same.
+  4. Cleanup: delete the three KEEL-RT-210 shells; report anything left.
+- **Report:** B; S, A, C, A2, C2 and approval ids; each step's exit code and the compensation plan lines; every Graph call that
+  failed (status and message verbatim, no tokens); the links read back after steps 2 and 3. A 400/404 on `updateRelationships`
+  during an undo is a finding for a new issue.

@@ -1,4 +1,5 @@
 import { applyWave } from '../restore/applyEngine.mjs';
+import { recordTrustSkippedLocations } from '../restore/namedLocationTrust.mjs';
 import { phaseOneResources } from '../restore/wavePlanner.mjs';
 
 /** Evaluate the real apply guards in dry-run mode. No writer, governor or journal
@@ -9,6 +10,7 @@ export async function previewApplyPlan({
   deletionGuardOptions, signInPathGate, targetTenant, lockoutGate = null,
 }) {
   const appliedIds = new Map();
+  const trustSkippedLocations = new Set();
   const refusals = [];
   for (const [index, keys] of [...waves, ...deletionWaves].entries()) {
     const selected = resources.filter((resource) => keys.includes(resource.naturalKey));
@@ -16,8 +18,9 @@ export async function previewApplyPlan({
     try {
       const result = await applyWave(null, null, wave, {
         mode: 'dry-run', targetTenant, existingTargetIds, appliedIds,
-        deletionGuardOptions, signInPathGate, lockoutGate,
+        deletionGuardOptions, signInPathGate, lockoutGate, trustSkippedLocations,
       });
+      recordTrustSkippedLocations(trustSkippedLocations, result.skipped);
       refusals.push(...result.skipped, ...result.failed.map(({ naturalKey, error }) => ({
         naturalKey, reason: error,
       })));

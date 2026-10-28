@@ -84,6 +84,7 @@ import { buildReconciliationPlan } from '../engine/reconcile/reconciliationPlan.
 import { ThrottleGovernor } from '../engine/restore/throttleGovernor.mjs';
 import { GraphWriter } from '../engine/restore/graphWriter.mjs';
 import { applyWave, applyPatches, retryThrottledGraphOperation } from '../engine/restore/applyEngine.mjs';
+import { recordTrustSkippedLocations } from '../engine/restore/namedLocationTrust.mjs';
 import { breakGlassLockoutGate, closedLockoutGate } from '../engine/safety/lockoutGate.mjs';
 import { loadGroupMembership, loadLockoutGateInputs } from '../engine/safety/breakGlassReadiness.mjs';
 import { globalAdministratorPrincipalIds } from '../engine/safety/protectedPrincipals.mjs';
@@ -1173,6 +1174,8 @@ export async function runRestore({
     const governor = new ThrottleGovernorClass(seeds);
     const runId = planId !== undefined ? `run-${planId}` : `run-selection-${sourceSnapshot}`;
     const appliedIds = new Map();
+    // Named locations skipped on trust: a later policy that names one is skipped too.
+    const trustSkippedLocations = new Set();
     // Accumulated across every wave and the deferred-patch phase. Ordinarily a
     // failure throws immediately (below) — retry is safe, since applies are
     // idempotent by natural key, spec §9.3 — but persistArtifactId asks for the
@@ -1217,6 +1220,7 @@ export async function runRestore({
         observedCoverage,
         lockoutGate,
         approvedContentEffects,
+        trustSkippedLocations,
       });
       logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
       logFailures(logger, result.failed);
@@ -1232,6 +1236,7 @@ export async function runRestore({
       results.failed.push(...result.failed);
       results.notRemediable.push(...(result.notRemediable ?? []));
       recordAppliedIds(appliedIds, result.applied);
+      recordTrustSkippedLocations(trustSkippedLocations, result.skipped);
       if (result.failed.length) {
         await reportPoliciesThatMayBeOn(result.failed);
         if (persistArtifactId === undefined) {

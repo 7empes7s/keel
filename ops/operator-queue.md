@@ -9336,3 +9336,29 @@ item that needs it stays untouched.
 - **Expected:** a short table: destination kind, reference name, rows, defined in env (where). "none" when there are no rows.
 - **Report:** the table, any reference not defined anywhere, and the step 3 file names. If a live Sentinel row uses a name
   outside `KEEL_INTEGRATION_`, say so: the thread then queues a rename item.
+
+### Q206: Rerun Q193 (bounded drill recapture, gate 116) now that reconstruct streams the dump (after PR #643)
+- Drafted by the "Fix recovery crash on large dumps" thread (2026-10-28). Q193 stopped because `reconstruct.mjs` crashed on the
+  3.6 GB live dump (#634). PR #643 (merge `e3e49a8`) streams the gunzip and the import: no whole-dump string, rows load in
+  batches of at most 1,000, and foreign keys are set aside and re-checked at the end in one transaction. In a cloud test a
+  537M-character dump (5.5M rows, past the string limit) loaded in 77 s at 135 MB RSS. Expect the 3.6 GB dump to take
+  several minutes (it is read twice: a check pass, then the load).
+- Needs: the deployed build B at or after `e3e49a8`. Check from your checkout at B:
+  `git merge-base --is-ancestor e3e49a8 B && grep -q scanDump tools/recovery/dumpImport.mjs`.
+- Status: todo
+- Result:
+- **Test tenant only.** Exactly the Q193 steps and hard rules (same chain as the Q39 116 run, one new `keel-rehearsal-*` group
+  only, cleaned up by the drill), at the new B:
+  1. A **fresh** recovery set at B (not `/opt/keel-recovery-sets/2026-10-28-q193`, which is pinned to `e86afa9`), then
+     `keel-dump-manifest --verify`, then `reconstruct.mjs --authenticator signed-assertion` into a fresh disposable DB.
+     Record its exit code, wall time and peak RSS (`/usr/bin/time -v`, "Maximum resident set size"). If it fails, report the
+     refusal stage and message verbatim and stop.
+  2. Then Q193 steps 1 to 5 as written (drill, `capture-drill`, `verify --require-live --gate drill-live-acceptance`,
+     `pseudonymize.mjs check` plus the `grep -c` of the real id, evidence branch `claude/live-evidence-q193` and PR with
+     `automerge`, drop the disposable DBs).
+  3. When done, set Q193's Status to point here (`done via Q206`), and you may delete the old
+     `/opt/keel-recovery-sets/2026-10-28-q193` set and `/root/keel-q193/`.
+- **Expected:** reconstruct exit 0 ("recovered"), drill passed with cleanup complete, verify exit 0, check exit 0, the evidence
+  test passes.
+- **Report:** B, the reconstruct exit code, time and peak RSS, the drill outcome and write count, each exit code, the check
+  output, the evidence PR, DBs dropped.

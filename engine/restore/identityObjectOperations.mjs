@@ -625,28 +625,31 @@ export const IDENTITY_RECORDS = Object.freeze({
   // since PR #604, each one object per tenant and updated in place. A backup
   // that loosens access is withheld (adminCenterLooseningRefusal). To Do
   // settings wait for their read to work (GET /beta/admin/todo answers 500).
+  // Each is tenant-wide: on the test tenant it is written only with the
+  // tenant-wide option, which no restore run sets yet, so a person's approval
+  // comes first (recordWriter.mjs#tenantWideRecordProblem).
   formsSettings: defineRecord({
-    resourceType: 'formsSettings', version: 'beta', collection: '/admin/forms',
+    resourceType: 'formsSettings', tenantWide: true, version: 'beta', collection: '/admin/forms',
     singleton: true, operations: ['update'], writable: ['settings'], refusal: adminCenterLooseningRefusal, sameField: sameBackedUpMembers,
     permission: 'OrgSettings-Forms.ReadWrite.All', docs: beta('adminforms-update'),
   }),
   microsoft365AppsInstallationOptions: defineRecord({
-    resourceType: 'microsoft365AppsInstallationOptions', version: 'v1.0', collection: '/admin/microsoft365Apps/installationOptions',
+    resourceType: 'microsoft365AppsInstallationOptions', tenantWide: true, version: 'v1.0', collection: '/admin/microsoft365Apps/installationOptions',
     singleton: true, operations: ['update'], writable: ['updateChannel', 'appsForWindows', 'appsForMac'], sameField: sameBackedUpMembers,
     permission: 'OrgSettings-Microsoft365Install.ReadWrite.All', docs: v1('m365appsinstallationoptions-update'),
   }),
   appsAndServicesSettings: defineRecord({
-    resourceType: 'appsAndServicesSettings', version: 'beta', collection: '/admin/appsAndServices',
+    resourceType: 'appsAndServicesSettings', tenantWide: true, version: 'beta', collection: '/admin/appsAndServices',
     singleton: true, operations: ['update'], writable: ['settings'], refusal: adminCenterLooseningRefusal, sameField: sameBackedUpMembers,
     permission: 'OrgSettings-AppsAndServices.ReadWrite.All', docs: beta('adminappsandservices-update'),
   }),
   adminReportSettings: defineRecord({
-    resourceType: 'adminReportSettings', version: 'v1.0', collection: '/admin/reportSettings',
+    resourceType: 'adminReportSettings', tenantWide: true, version: 'v1.0', collection: '/admin/reportSettings',
     singleton: true, operations: ['update'], writable: ['displayConcealedNames'], refusal: adminCenterLooseningRefusal,
     permission: 'ReportSettings.ReadWrite.All', docs: v1('adminreportsettings-update'),
   }),
   pronounsSettings: defineRecord({
-    resourceType: 'pronounsSettings', version: 'v1.0', collection: '/admin/people/pronouns',
+    resourceType: 'pronounsSettings', tenantWide: true, version: 'v1.0', collection: '/admin/people/pronouns',
     singleton: true, operations: ['update'], writable: ['isEnabledInOrganization'],
     permission: 'PeopleSettings.ReadWrite.All', docs: v1('pronounssettings-update'),
   }),

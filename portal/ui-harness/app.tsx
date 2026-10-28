@@ -975,6 +975,70 @@ const MANY_COMPLIANCE: ComplianceData = {
       { detailCounts: { checked: 70, failing: 0 } }),
   ],
 };
+// The live test tenant's compliance results on 2026-10-27 (keelops K8 and K11): nine
+// controls, five failing. The legacy sign-in rule lists both rules that block old
+// clients, failing lines first; the other names stand in for masked ones.
+const ENTRA_EVIDENCE = (resourceType: string) => evidenceWindow(resourceType, "2026-10-02T09:00:00Z", "2026-10-02T09:12:00Z", "0b5e0000-0000-4000-8000-0000000000d6");
+const entraFinding = (id: string, controlId: string, title: string, resourceType: string, verdict: ComplianceFinding["verdict"], details: ComplianceFinding["details"], extra: Partial<ComplianceFinding> = {}): ComplianceFinding => ({
+  id: `e7a10000-0000-4000-8000-0000000000${id}`, controlId, title, severity: "high", framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 2,
+  verdict, reason: null, details, evaluatedAt: "2026-10-02T09:20:00Z", evidenceSeq: "4200", exceptionState: "none", exposed: verdict === "fail", exception: null,
+  evidence: [ENTRA_EVIDENCE(resourceType)],
+  links: { backup: { state: "linked", linked: [ENTRA_EVIDENCE(resourceType)], mismatched: [] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } },
+  ...extra,
+});
+const legacyLines = (reportOnly: string, scoped: string) => [
+  { subject: reportOnly, setting: "state", value: "enabledForReportingButNotEnforced", expected: "enabled", ok: false },
+  { subject: scoped, setting: "includeUsers", value: "Only some", expected: "All", ok: false },
+  { subject: reportOnly, setting: "includeUsers", value: "All", expected: "All", ok: true },
+  { subject: reportOnly, setting: "includeApplications", value: "All", expected: "All", ok: true },
+  { subject: reportOnly, setting: "clientAppTypes", value: ["exchangeActiveSync", "other"], expected: ["exchangeActiveSync", "other"], ok: true },
+  { subject: scoped, setting: "state", value: "enabled", expected: "enabled", ok: true },
+  { subject: scoped, setting: "includeApplications", value: "All", expected: "All", ok: true },
+  { subject: scoped, setting: "clientAppTypes", value: ["exchangeActiveSync", "other"], expected: ["exchangeActiveSync", "other"], ok: true },
+];
+const mailLines = (policies: string[], settings: [string, unknown, unknown][], failing: (policy: number, setting: number) => boolean) => {
+  const lines = policies.flatMap((subject, p) => settings.map(([setting, good, bad], s) => ({ subject, setting, value: failing(p, s) ? bad : good, expected: good, ok: !failing(p, s) })));
+  return [...lines.filter((line) => !line.ok), ...lines.filter((line) => line.ok)];
+};
+const MAIL_POLICIES = ["Default", "KEEL-RT-Finance inbound", "KEEL-RT-Sales inbound", "KEEL-RT-Executives", "KEEL-RT-Contractors", "KEEL-RT-Shared mailboxes"];
+const liveCompliance = (legacy: ComplianceFinding["details"]): ComplianceData => ({
+  ...COMPLIANCE,
+  summary: { controls: 9, exposed: 5, excepted: 0, expiredExceptions: 0, incompleteExceptions: 0, notConfigured: 0, passing: 4, unknown: 0, notApplicable: 0 },
+  findings: [
+    entraFinding("b1", "keel-custom.conditional-access.block-legacy", "Legacy authentication is blocked", "conditionalAccessPolicy", "fail", legacy, { detailCounts: { checked: 8, failing: 2 } }),
+    entraFinding("b2", "keel-custom.role-assignment.admin-count-at-most", "Global Administrator assignment count stays at or below a set limit", "roleAssignment", "fail",
+      [{ subject: "Global Administrator", setting: "assignmentCount", value: 6, expected: { atMost: 5 }, ok: false }], { evaluatorVersion: 1, detailCounts: { checked: 1, failing: 1 } }),
+    entraFinding("b3", "keel-custom.group.role-assignable-not-synced", "Role-assignable groups are not synchronized from on-premises AD", "group", "pass",
+      [{ subject: "KEEL-RT-Helpdesk admins", setting: "onPremisesSyncEnabled", value: false, expected: false, ok: true }], { evaluatorVersion: 1, detailCounts: { checked: 1, failing: 0 } }),
+    entraFinding("b4", "keel-custom.named-location.no-untrusted-all-countries", "No named location marks unknown-country traffic as trusted", "namedLocation", "pass", [
+      { subject: "KEEL-RT-Head office", setting: "includeUnknownCountriesAndRegions", value: false, expected: false, ok: true },
+      { subject: "KEEL-RT-Branch offices", setting: "includeUnknownCountriesAndRegions", value: false, expected: false, ok: true },
+    ], { evaluatorVersion: 1, detailCounts: { checked: 2, failing: 0 } }),
+    mailFinding("b5", "keel-custom.defender-email.safe-links-email", "fail",
+      mailLines(MAIL_POLICIES, [["EnableSafeLinksForEmail", true, false], ["ScanUrls", true, false], ["AllowClickThrough", false, true]], (p, s) => s === 2 && p < 5), { detailCounts: { checked: 18, failing: 5 } }),
+    mailFinding("b6", "keel-custom.defender-email.anti-phish-spoof-protection", "pass",
+      mailLines(MAIL_POLICIES.slice(0, 4), [["EnableSpoofIntelligence", true, false], ["HonorDmarcPolicy", true, false], ["EnableUnauthenticatedSender", true, false]], () => false), { detailCounts: { checked: 12, failing: 0 } }),
+    mailFinding("b7", "keel-custom.defender-email.anti-spam-no-allowed-domains", "fail", [
+      { subject: "KEEL-RT-Finance inbound", setting: "AllowedSenderDomains", value: ["contoso-partner.example", "invoices.example"], expected: [], ok: false },
+      { subject: "KEEL-RT-Sales inbound", setting: "AllowedSenderDomains", value: ["crm-mail.example"], expected: [], ok: false },
+      { subject: "Default", setting: "AllowedSenderDomains", value: [], expected: [], ok: true },
+    ], { detailCounts: { checked: 3, failing: 2 } }),
+    mailFinding("b8", "keel-custom.defender-email.anti-spam-phish-quarantined", "fail",
+      mailLines(MAIL_POLICIES.slice(0, 3), [["PhishSpamAction", "Quarantine", "MoveToJmf"], ["HighConfidencePhishAction", "Quarantine", "MoveToJmf"], ["PhishZapEnabled", true, false]], (p, s) => (p === 0 && s < 2) || (p === 1 && s !== 1) ), { detailCounts: { checked: 9, failing: 4 } }),
+    mailFinding("b9", "keel-custom.defender-email.malware-file-filter", "pass",
+      mailLines(MAIL_POLICIES.slice(0, 5), [["EnableFileFilter", true, false], ["ZapEnabled", true, false]], () => false), { detailCounts: { checked: 10, failing: 0 } }),
+  ],
+});
+const LIVE_COMPLIANCE = liveCompliance(legacyLines("Block legacy sign-in (report-only pilot)", "KEEL-RT-20260908 Block Legacy Authentication"));
+// Two sign-in rules with the same name (#588): each keeps its own lines, numbered.
+const SAME_NAME_COMPLIANCE = liveCompliance(legacyLines("KEEL-RT-Block legacy sign-in (1 of 2)", "KEEL-RT-Block legacy sign-in (2 of 2)"));
+// Results stored before the counts existed (#573): a full list of 50 lines says "or more".
+const OLD_FULL_COMPLIANCE: ComplianceData = { ...LIVE_COMPLIANCE, findings: LIVE_COMPLIANCE.findings.map((finding) => finding.id.endsWith("b5")
+  ? { ...finding, detailCounts: null, details: [
+    ...Array.from({ length: 8 }, (_, index) => ({ subject: `KEEL-RT-Policy ${String(index).padStart(2, "0")}`, setting: "AllowClickThrough", value: true, expected: false, ok: false })),
+    ...Array.from({ length: 42 }, (_, index) => ({ subject: `KEEL-RT-Policy ${String(index).padStart(2, "0")}`, setting: index % 2 ? "ScanUrls" : "EnableSafeLinksForEmail", value: true, expected: true, ok: true })),
+  ] }
+  : finding) };
 const PLAN_REF = { kind: "dry-run", id: "7f3c0000-0000-4000-8000-000000000011", name: null, readable: true, status: "completed", undo: false, resources: 12, snapshotAt: "2026-10-02T09:12:00Z", dryRunJobId: "a3" };
 const TWO_PERSON_REQUEST = "a9e10000-0000-4000-8000-000000000101";
 
@@ -1924,6 +1988,50 @@ const ASK_MANY: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], sc
   records: ASK_MANY_RECORDS,
 } };
 
+// A month-long question shaped like the live answer of 2026-10-27 (keelops K12): 1,887
+// matches, the newest 1,000 listed, the first days before Keel's history, and every modified
+// row naming the settings it changed (#579 drops the ones with nothing changed).
+const ASK_MONTH_KINDS: [string, string, string, string, string[] | null][] = [
+  ["roleAssignmentSchedule", "Privileged Role Administrator for KEEL-RT-Admin", "added", "tenant-lockout", null],
+  ["roleAssignmentSchedule", "Security Reader for KEEL-RT-Analyst", "modified", "tenant-lockout", ["scheduleInfo.expiration.endDateTime"]],
+  ["user", "KEEL-RT-Guest reviewer", "modified", "access-affecting", ["accountEnabled", "department"]],
+  ["group", "KEEL-RT-Finance approvers", "modified", "access-affecting", ["membershipRule"]],
+  ["conditionalAccessPolicy", "KEEL-RT-20260908 Block Legacy Authentication", "modified", "tenant-lockout", ["conditions.users.includeGroups"]],
+  ["deviceCompliancePolicy", "KEEL-RT-Windows baseline", "modified", "access-affecting", ["passwordMinimumLength"]],
+  ["namedLocation", "KEEL-RT-Branch offices", "removed", "access-affecting", null],
+  ["teams-org-policies", "KEEL-RT-Meetings for guests", "modified", "cosmetic", ["AllowAnonymousUsersToJoinMeeting"]],
+];
+const ASK_MONTH_RECORDS = Array.from({ length: 1000 }, (_, index) => {
+  const [resourceType, name, changeType, impact, fields] = ASK_MONTH_KINDS[index % ASK_MONTH_KINDS.length];
+  const at = new Date(Date.parse("2026-10-02T06:00:00.000Z") - index * 3600_000 * 0.6);
+  at.setUTCMinutes(0, 0, 0);
+  const id = `a5c20000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+  return {
+    kind: "change" as const, id, resourceType, naturalKey: `${resourceType}:${name} ${index + 1}`, name: `${name} ${index + 1}`, changeType, impact,
+    decision: null, seenAt: at.toISOString(), fields,
+    window: { from: new Date(at.getTime() - 3600_000).toISOString(), to: at.toISOString() },
+    source: { kind: "change" as const, id, href: "/drift", collectionId: null },
+  };
+});
+const ASK_MONTH: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: {
+  ...ASK_BASE, scope: { central: true, entities: [] }, status: "partial", intent: "changes", question: "What changed in the last month?",
+  plan: { intent: "changes", params: { entity: null, from: "2026-09-02T00:00:00.000Z", to: now, resourceType: null, resourceTypes: null, name: null, changeType: null, limit: 1000 } },
+  window: { from: "2026-09-02T00:00:00.000Z", to: now }, known: { from: "2026-09-05T14:09:06.825Z", to: "2026-10-02T06:00:00.000Z" },
+  gaps: [{ from: "2026-09-02T00:00:00.000Z", to: "2026-09-05T14:09:06.825Z", reason: "before-history" }, { from: "2026-10-02T06:00:00.000Z", to: now, reason: "not-compared-yet" }],
+  total: 1887, shown: 1000, truncated: true, sentence: "1887 matching changes found up to 2026-10-02T06:00:00.000Z. Part of this period is not known yet, so this may not be everything. Showing the newest 1000.",
+  summary: [
+    { resourceType: "roleAssignmentSchedule", changeType: "added", impact: "tenant-lockout", count: 812 },
+    { resourceType: "roleAssignmentSchedule", changeType: "modified", impact: "tenant-lockout", count: 455 },
+    { resourceType: "user", changeType: "modified", impact: "access-affecting", count: 104 },
+    { resourceType: "group", changeType: "modified", impact: "access-affecting", count: 196 },
+    { resourceType: "conditionalAccessPolicy", changeType: "modified", impact: "tenant-lockout", count: 61 },
+    { resourceType: "deviceCompliancePolicy", changeType: "modified", impact: "access-affecting", count: 133 },
+    { resourceType: "namedLocation", changeType: "removed", impact: "access-affecting", count: 4 },
+    { resourceType: "teams-org-policies", changeType: "modified", impact: "cosmetic", count: 122 },
+  ],
+  records: ASK_MONTH_RECORDS,
+} };
+
 function askPage(data: AskData) {
   const verdict = askVerdict(data.answer);
   return <>{header("Reports", "Ask", "Ask about changes, backup coverage or failed jobs. Every answer comes from KEEL's own records and names them.")}
@@ -2393,6 +2501,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/ask": return askPage(ASK_ANSWERED);
     case "/ask/unknown": return askPage(ASK_UNKNOWN);
     case "/ask/many": return askPage(ASK_MANY);
+    case "/ask/month": return askPage(ASK_MONTH);
     case "/readiness": return readinessPage(READINESS);
     case "/readiness/ready": return readinessPage(READINESS_READY);
     case "/readiness/empty": return readinessPage(READINESS_EMPTY);
@@ -2500,6 +2609,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       // Controls that checked more than the 50 settings a result lists.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(MANY_COMPLIANCE.findings))} title="Compliance" />
       <CompliancePage canCheck canConfigure canRestore data={MANY_COMPLIANCE} now={now} /></>;
+    }
+    case "/benchmarks/live": case "/benchmarks/same-name": case "/benchmarks/old-full": {
+      // Shaped like the live results of 2026-10-27; same-name and old-full are their two edge cases.
+      const data = path === "/benchmarks/live" ? LIVE_COMPLIANCE : path === "/benchmarks/same-name" ? SAME_NAME_COMPLIANCE : OLD_FULL_COMPLIANCE;
+      return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(data.findings))} title="Compliance" />
+      <CompliancePage canCheck canConfigure canRestore data={data} now={now} /></>;
     }
     case "/benchmarks/empty": case "/benchmarks/empty-viewer": {
       // Nothing checked yet and the storage location not known: each empty state has its button.

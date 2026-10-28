@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
 
-import { answerSummary, askAlerts, askInputFrom, understoodFilters, type GroundedAnswer } from "@/lib/ask-view";
+import { answerSummary, askAlerts, askInputFrom, recordFields, understoodFilters, type GroundedAnswer } from "@/lib/ask-view";
 
 const BASE: GroundedAnswer = {
   version: 1, status: "answered", intent: "changes", understood: null, scope: { central: true, entities: [] },
@@ -46,4 +46,12 @@ test("words the reading left out are said plainly, and the summary counts every 
   const summary = answerSummary(BASE)!;
   assert.deepEqual(summary.services.map((row) => [row.label, row.count]), [["Teams", 2], ["Entra ID", 1]]);
   assert.deepEqual(summary.risks.map((row) => [row.key, row.count]), [["tenant-lockout", 1], ["access-affecting", 2]]);
+});
+
+test("the settings a change touched read as words, not as Microsoft's field names", () => {
+  const record = { kind: "change", id: "x", resourceType: "user", naturalKey: "user:x", name: "x", changeType: "modified", impact: "access-affecting", decision: null,
+    seenAt: null, window: { from: null, to: null }, source: { kind: "change", id: "x", href: "/drift", collectionId: null } } as const;
+  assert.equal(recordFields({ ...record, fields: ["accountEnabled", "scheduleInfo.expiration.endDateTime"] } as never), "Account enabled, Schedule info › expiration › end date time");
+  assert.equal(recordFields({ ...record, fields: ["department"], moreFields: true } as never), "Department and more");
+  assert.equal(recordFields({ ...record, fields: [] } as never), "");
 });

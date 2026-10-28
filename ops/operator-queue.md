@@ -9554,3 +9554,46 @@ item that needs it stays untouched.
 - **Report:** B; S, A, C and approval ids; id0 and id1; each step's exit code and the compensation plan lines; every Graph call
   that failed (status and message verbatim, no tokens). A `manual: the policy is assigned` step in step 3 means the restore wrote
   assignments: report the assignments it wrote.
+
+### Q212: Live link restore and link undo for Intune apps, with a harmless test package (after PR #654, unblocks Q209 links and Q210, #653)
+- Drafted by the "Live test Intune app links with test package" thread (2026-10-28). Q209 found that Intune refuses any link or change
+  on a Win32 app with no package: `400 "Invalid operation: app's PublishingState is not 'Published'."` (#653). On 2026-10-28 16:02 UTC
+  the human operator approved uploading a harmless test package to KEEL-RT- Win32 apps, so the link parts of Q209 and all of Q210 can
+  run. This item replaces both of those parts; leave Q209 and Q210 as they are.
+- The tool (PR #654): `node tools/coverage-fixtures/intuneTestPackage.mjs --app <appId> [--app <appId> ...]` (Restorer). The package
+  holds only `install.cmd`, which echoes one line and exits 0. It refuses any app whose name does not start with `KEEL-RT-`, that is
+  not a Win32 app, or that has an assignment. It prints `uploaded <name>: content version <n>, publishingState <state>` per app.
+- Needs: PR #654 merged (`tools/coverage-fixtures/intuneTestPackage.mjs` on master). /opt/keel-live at `9550175` or later
+  (`grep -q appRelationshipDelete /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only. Restorer for writes, Collector for reads and backups. No app is ever assigned.** The package is uploaded only to
+  the KEEL-RT-212 Win32 shells below, with the tool, never by hand. Self-approve under the 2026-10-14 standing authorization and log
+  every approval id. Run every restore from your own checkout at B (never `/opt/keel`).
+- Fixtures (by hand, KEEL-RT-212- prefix): Win32 shells made as in Q209 (no file, same commands and detection rule), named
+  `KEEL-RT-212-a-main`, `KEEL-RT-212-a-dep`, `KEEL-RT-212-b-main`, `KEEL-RT-212-b-dep`, `KEEL-RT-212-b-other`.
+- Do:
+  1. **Package.** Run the tool once with all five app ids. Expect five `uploaded` lines. Read back each app: `publishingState` is
+     `published` (wait up to 5 minutes), `committedContentVersion` set, `GET .../assignments` = []. If the tool prints `failed`, quote
+     the line and stop (a 4xx from Graph or Azure Storage is a finding for a new issue).
+  2. **Links by hand.** `updateRelationships` on a-main with a-main → a-dep (`detect`). `updateRelationships` on b-main with b-main →
+     b-dep (`detect`) and b-main → b-other (`detect`) in one call. Quote the status of each call (expect 200/204 now, not 400).
+  3. Backup S. Report `mobileApp` and `mobileAppRelationship` coverage and the three links in S (natural keys and ids).
+  4. **Link restore (Q209 step 3).** Remove a-main → a-dep by hand (`{ relationships: [] }`). Restore from S selecting that link; dry run,
+     approve, enforce. Expect one `POST .../mobileApps/{a-main}/updateRelationships` and the link back as in S. Then set it to
+     `autoInstall` by hand and restore again (update): same route, `detect` back. Capture both:
+     `entraLive.mjs capture --resource-type mobileAppRelationship --operation create|update --fixture <natural key from the dry run>`.
+  5. **Link undo (Q210 steps 2 and 3, on the b- apps).** Remove b-main → b-dep by hand (send only b-main → b-other). Restore from S
+     selecting b-main → b-dep: artifact A. `keel-restore --compensate A --persist-artifact C`: expect
+     `compensation of A: 1 inverse write(s), 0 conflict(s), ...`. Approve C, `--artifact C --enforce`: expect exactly one
+     `updateRelationships` on b-main whose body holds only b-main → b-other, and a read-back with only that link. Then put b-main → b-dep
+     back by hand as `autoInstall` (both links in the call); restore from S selecting it (update to `detect`): A2. Compensate A2 to
+     C2, approve, promote: expect one `updateRelationships` with b-main → b-dep `autoInstall` and b-main → b-other `detect`; read back
+     the same. If a plan says `not applied` / `already absent` while the link is there, quote it and the link id before and after.
+  6. **Recreate with a link (Q209 step 4's link part).** Delete a-main and a-dep. One restore from S selecting both shells and the
+     a-main → a-dep link. Expect both shells recreated without a package (upload-the-package step), and the link `skipped` with a
+     `manual:` reason about the package, with no `updateRelationships` call. Do not upload a package to the recreated shells.
+  7. Cleanup: delete every KEEL-RT-212 app (published ones included); report anything left.
+- **Report:** B; the tool's five lines; publishingState per app; each step's exit code, dry-run, artifact (A, C, A2, C2) and approval
+  ids, the log `changes` lines and compensation plan lines; every Graph call that failed (status and message verbatim, no tokens);
+  the links read back after steps 4 and 5; evidence branch and promotions if captured. Then comment the result on #653.

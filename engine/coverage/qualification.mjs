@@ -228,7 +228,7 @@ export const TYPE_DECISIONS = Object.freeze({
   multiTenantOrganizationPartnerConfigurationTemplate: automated('multitenantorganizationpartnerconfigurationtemplate', 'restore gaps batch 2: update in place; the template only affects tenants that join later'),
   identityUserFlowAttribute: manual('no writer yet; built-in attributes are Microsoft-managed'),
   authenticationEventListener: manual('no writer yet; it points to a custom authentication extension, which is not restored yet'),
-  externalDomainFederation: automated('samlorwsfedexternaldomainfederation', 'restore gaps batch 3: update in place of the federation settings and public signing certificate; its domains are not backed up yet, so a deleted federation is set up again by hand'),
+  externalDomainFederation: automated('samlorwsfedexternaldomainfederation', 'restore gaps batch 3: update in place of the federation name and protocol; its sign-in addresses and signing certificate are a manual step, and its domains are backed up but not written, so a deleted federation is set up again by hand'),
   // Remaining kinds, batch 5: Exchange and Defender admin roles, backed up read-only; no writer is built yet.
   exchangeRoleDefinition: manual('no writer yet; beta only, and built-in roles are Microsoft-managed'),
   exchangeRoleAssignment: manual('Exchange admin access needs a privilege review before it is granted again'),
@@ -1104,7 +1104,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
   authenticationEventListener: byHand('identity-application', 'POST /identity/authenticationEventListeners', 'EventListener.ReadWrite.All',
     'backed up; its custom authentication extension is recreated first'),
   externalDomainFederation: subset('policy', 'PATCH /directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation/{id}', 'Domain.ReadWrite.All',
-    'update in place is fixture-tested; its domains are not backed up, so a deleted federation is not recreated'),
+    'update in place is fixture-tested; its domains are backed up but not written, so a deleted federation is not recreated'),
   // Remaining kinds, batch 5: Exchange and Defender admin roles, backed up read-only; manual until a writer is built.
   exchangeRoleDefinition: byHand('identity-application', 'New-ManagementRole (Exchange Online PowerShell)', 'Exchange Organization Management role',
     'backed up; built-in roles are listed beside custom ones'),

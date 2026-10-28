@@ -264,7 +264,7 @@ export const COMPLETENESS = Object.freeze({
   multiTenantOrganizationPartnerConfigurationTemplate: {},
   identityUserFlowAttribute: { whole: 'not-written', missing: [part('Built-in attributes', 'microsoft-managed')] },
   authenticationEventListener: { whole: 'not-written' },
-  externalDomainFederation: { missing: [part('Its domains', 'other-route')] },
+  externalDomainFederation: { missing: [part('Its domains', 'not-written')] },
   // Remaining kinds, batch 5.
   exchangeRoleDefinition: { whole: 'not-written', missing: [part('Built-in roles', 'microsoft-managed')] },
   exchangeRoleAssignment: { whole: 'not-written' },

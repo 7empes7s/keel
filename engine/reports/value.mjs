@@ -48,6 +48,7 @@ import { createHash } from 'node:crypto';
 import { CENTRAL, ownershipOfResources, ownershipVisibleTo } from '../authz/entityScope.mjs';
 import { OWN_PREFIX, controlFromRow, ownCheckRows } from '../benchmarks/ownChecks.mjs';
 import { controlFor } from '../benchmarks/registry.mjs';
+import { csvCell } from './csv.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { CONTENT_COLLECTORS } from '../content/collectors.mjs';
 import { readCoverageOutcome } from '../coverage/snapshots.mjs';
@@ -935,12 +936,6 @@ export async function loadValueReport(client, {
   };
   report.provenance.digest = digestOf({ ...report, generatedAt: undefined, provenance: { ...report.provenance, digest: undefined } });
   return report;
-}
-
-function csvCell(value) {
-  if (value === null || value === undefined) return '';
-  const text = Array.isArray(value) ? value.join(' ') : String(value);
-  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
 /**

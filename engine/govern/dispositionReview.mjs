@@ -102,7 +102,7 @@ export function serviceChangeNeedsReview({ workload, blastRadius, changeType }) 
 export async function assertDispositionApproval(client, { approvalId, actor, matches }) {
   if (typeof approvalId !== 'string' || approvalId.length === 0) throw new DispositionReviewRequiredError();
   const { rows: [request] } = await client.query(
-    `SELECT id, action, params, requested_by, decided_by, status FROM approval_request
+    `SELECT id, action, params, requested_by, decided_by, status, created_at FROM approval_request
       WHERE id::text = $1`,
     [approvalId],
   );

@@ -50,16 +50,20 @@ export async function applyDisposition(client, {
     // A row that records no change is refused first: there is nothing to decide.
     await refuseSameContentDriftIds(client, [driftId]);
     if (await dispositionNeedsReview(client, { driftId })) {
-      await assertDispositionApproval(client, {
+      const approval = await assertDispositionApproval(client, {
         approvalId,
         actor,
         matches: (params) => Array.isArray(params.driftIds) && params.driftIds.length === 1
           && String(params.driftIds[0]) === String(driftId) && params.action === action
           && (action !== 'ignore' || new Date(params.expiresAt).valueOf() === until.valueOf()),
       });
-      // An approval is used once: a change already decided is never decided again
-      // under it (a replay would put an older version back into the approved setup).
-      const { rows: decided } = await client.query('SELECT 1 FROM disposition WHERE drift_id::text = $1 LIMIT 1', [String(driftId)]);
+      // An approval is used once: a change decided since it was asked for is never
+      // decided again under it (a replay would put an older version back into the
+      // approved setup). An older decision, such as an ignore that ran out, does not count.
+      const { rows: decided } = await client.query(
+        'SELECT 1 FROM disposition WHERE drift_id::text = $1 AND decided_at >= $2 LIMIT 1',
+        [String(driftId), approval.created_at],
+      );
       if (decided.length) throw new DispositionApprovalError('this change was already decided; the approval is used');
     }
     if (action === 'accept') return acceptDrift(client, { driftId, actor, reason });

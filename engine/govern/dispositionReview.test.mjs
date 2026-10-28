@@ -174,11 +174,13 @@ test('an approved ignore keeps the approved end date', async (t) => {
   const fixture = await driftFixture(client, { resourceType: 'namedLocation', blastRadius: 'tenant-lockout', before: { displayName: 'KEEL-RT-office' }, after: { displayName: 'KEEL-RT-office', ipRanges: ['0.0.0.0/0'] } });
   const operator = await principal(client, 'operator');
   const approver = await principal(client, 'approver');
+  // An older ignore that ran out does not use up a new approval.
+  await client.query(`INSERT INTO disposition (drift_id, action, actor, reason, expires_at, decided_at) VALUES ($1, 'ignore', 'op', 'r', now() - interval '10 days', now() - interval '100 days')`, [fixture.driftId]);
   const expiresAt = new Date(Date.now() + 14 * DAY).toISOString();
   const request = await requestApproval(client, { tenantRef: fixture.tenantRef, action: 'dispose', params: { driftIds: [fixture.driftId], action: 'ignore', reason: 'office move', expiresAt }, requestedBy: operator });
   await approveRequest(client, { tenantRef: fixture.tenantRef, id: request.id, decidedBy: approver });
   await runApprovedDisposition(client, { approvalId: String(request.id), actor: operator });
-  const { rows: [row] } = await client.query('SELECT action, expires_at FROM disposition WHERE drift_id::text = $1', [fixture.driftId]);
+  const { rows: [row] } = await client.query('SELECT action, expires_at FROM disposition WHERE drift_id::text = $1 ORDER BY decided_at DESC LIMIT 1', [fixture.driftId]);
   assert.equal(row.action, 'ignore');
   assert.equal(new Date(row.expires_at).toISOString(), expiresAt);
 });

@@ -44,7 +44,7 @@
  */
 import { readFile as fsReadFile, writeFile as fsWriteFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { gunzipSync } from 'node:zlib';
+import { createGunzip } from 'node:zlib';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -62,7 +62,7 @@ import { sha256Hex } from '../../engine/export/manifest.mjs';
 import { verifyChain } from '../../engine/govern/evidence.mjs';
 import { connect } from '../../engine/store/db.mjs';
 import { schemaBytes as fullSchemaBytes } from '../../engine/store/loadSchema.mjs';
-import { importDump } from './dumpImport.mjs';
+import { DumpImportError, importDump, scanDump } from './dumpImport.mjs';
 import { migrateBootstrapJournal } from '../../engine/bootstrap/journal.mjs';
 import { migrateAuditIngestion } from '../../engine/identity/auditIngest.mjs';
 import { assertTenantRef } from '../../engine/store/tenantRef.mjs';
@@ -270,13 +270,22 @@ export async function reconstructRecovery({
   } catch {
     return refusal('import', `dump artifact unreadable at ${dumpPath ?? manifest.dump.path}`);
   }
-  let dumpSql;
   if (dumpBytes.length < 2 || dumpBytes[0] !== 0x1f || dumpBytes[1] !== 0x8b) {
     return refusal('import', 'dump artifact is not gzip-compressed SQL');
   }
+  // The dump is streamed through gunzip, never held as one string: a live
+  // dump passed 3.6 GB uncompressed, beyond the JavaScript string limit.
+  const openDump = () => {
+    const gunzip = createGunzip();
+    gunzip.setEncoding('utf8');
+    gunzip.end(dumpBytes);
+    return gunzip;
+  };
+  let plan;
   try {
-    dumpSql = gunzipSync(dumpBytes).toString('utf8');
-  } catch {
+    plan = await scanDump(openDump);
+  } catch (error) {
+    if (error instanceof DumpImportError) return refusal('import', `dump import failed: ${error.message}`);
     return refusal('import', 'dump artifact is not gzip-readable');
   }
   try {
@@ -285,7 +294,7 @@ export async function reconstructRecovery({
     try {
       await importClient.query(schemaBytes.toString('utf8'));
       for (const migrate of RUNTIME_MIGRATIONS) await migrate(importClient);
-      await importDump(importClient, dumpSql);
+      await importDump(importClient, openDump, plan);
     } finally {
       await importClient.end();
     }

@@ -21,13 +21,18 @@
  *   the structure is the pinned schema's, never the dump's;
  * - `\restrict` / `\unrestrict` are skipped; any other meta-command is refused.
  *
- * Tables load parents first, in the target's foreign-key order, since a full
- * dump orders data without regard to constraints it adds afterwards. Within a
- * table that references itself, rows load parents first too, so a child that
- * pg_dump wrote before its parent never lands in an earlier statement. Names
- * qualified with `public.` (pg_dump's default) resolve through the target's
- * search_path instead, so a disposable target need not be the public schema.
+ * The dump is read as a stream of lines, never as one string, so its size is
+ * not bounded by the JavaScript string limit (a live dump passed 3.6 GB,
+ * issue #634). It is read twice: once to refuse anything it must not carry
+ * before the target is touched, then once to load it. Foreign keys are set
+ * aside during the load and added back at the end, which checks every row,
+ * so tables and self-referencing rows load in whatever order the dump wrote
+ * them. Names qualified with `public.` (pg_dump's default) resolve through
+ * the target's search_path instead, so a disposable target need not be the
+ * public schema.
  */
+
+import { StringDecoder } from 'node:string_decoder';
 
 export class DumpImportError extends Error {}
 
@@ -36,102 +41,236 @@ const ALLOWED_META = new Set(['restrict', 'unrestrict']);
 const MAX_PARAMS = 60000;
 const MAX_ROWS_PER_INSERT = 1000;
 
+/**
+ * Incremental dump parser. Lines go in one at a time (without their '\n'),
+ * so a dump of any size is read without ever holding it as one string.
+ * Each push returns the events it completed:
+ * - { kind: 'meta', name, line }
+ * - { kind: 'sql', text }
+ * - { kind: 'copy-start', table, columns } / { kind: 'copy-row', line } / { kind: 'copy-end' }
+ */
+export class DumpParser {
+  #buf = '';
+  #i = 0;
+  #start = -1; // start of the statement being read; -1 between statements
+  #quote = null; // "'", '"', 'E' (escape string) or a dollar tag
+  #copy = null; // table of the COPY block being read
+
+  push(line) {
+    const events = [];
+    if (this.#copy !== null) {
+      const row = line.endsWith('\r') ? line.slice(0, -1) : line;
+      if (row === '\\.') { this.#copy = null; events.push({ kind: 'copy-end' }); } else events.push({ kind: 'copy-row', line: row });
+      return events;
+    }
+    this.#buf += `${line}\n`;
+    this.#scan(events, false);
+    return events;
+  }
+
+  end() {
+    if (this.#copy !== null) throw new DumpImportError(`COPY data for ${this.#copy} has no terminating \\.`);
+    const events = [];
+    this.#scan(events, true);
+    return events;
+  }
+
+  #lineEnd(pos) {
+    const end = this.#buf.indexOf('\n', pos);
+    return end === -1 ? this.#buf.length : end;
+  }
+
+  #compact() {
+    const keep = this.#start === -1 ? this.#i : this.#start;
+    if (keep > 0) {
+      this.#buf = this.#buf.slice(keep);
+      this.#i -= keep;
+      if (this.#start !== -1) this.#start = 0;
+    }
+  }
+
+  #scan(events, final) {
+    const text = () => this.#buf;
+    for (;;) {
+      let t = text();
+      let n = t.length;
+      if (this.#start === -1) {
+        while (this.#i < n) {
+          const i = this.#i;
+          const ch = t[i];
+          if (ch === ' ' || ch === '\t' || ch === '\r' || ch === '\n') { this.#i += 1; continue; }
+          if (t.startsWith('--', i)) { this.#i = this.#lineEnd(i); continue; }
+          if (t.startsWith('/*', i)) {
+            const end = t.indexOf('*/', i + 2);
+            if (end === -1) {
+              if (final) throw new DumpImportError('unterminated comment in dump');
+              this.#compact();
+              return;
+            }
+            this.#i = end + 2;
+            continue;
+          }
+          if (ch === '\\') {
+            const end = this.#lineEnd(i);
+            const line = t.slice(i + 1, end).trim();
+            events.push({ kind: 'meta', name: line.split(/\s+/, 1)[0], line });
+            this.#i = end;
+            continue;
+          }
+          this.#start = i;
+          this.#quote = null;
+          break;
+        }
+        if (this.#start === -1) { this.#compact(); return; }
+      }
+
+      // Inside a statement: find its ';' outside quotes and comments.
+      let i = this.#i;
+      const start = this.#start;
+      let quote = this.#quote;
+      let complete = false;
+      while (i < n) {
+        const c = t[i];
+        if (quote === "'" || quote === 'E') {
+          if (quote === 'E' && c === '\\') { i += 2; continue; }
+          if (c === "'") {
+            if (t[i + 1] === "'") { i += 2; continue; }
+            quote = null;
+          }
+          i += 1;
+          continue;
+        }
+        if (quote === '"') {
+          if (c === '"') {
+            if (t[i + 1] === '"') { i += 2; continue; }
+            quote = null;
+          }
+          i += 1;
+          continue;
+        }
+        if (quote !== null) {
+          if (t.startsWith(quote, i)) { i += quote.length; quote = null; } else { i += 1; }
+          continue;
+        }
+        if (c === "'") {
+          quote = (i > start && /[eE]/.test(t[i - 1]) && !/[\w$]/.test(t[i - 2] ?? '')) ? 'E' : "'";
+          i += 1;
+          continue;
+        }
+        if (c === '"') { quote = '"'; i += 1; continue; }
+        if (c === '$') {
+          const tag = /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/.exec(t.slice(i, i + 64));
+          if (tag) { quote = tag[0]; i += tag[0].length; continue; }
+        }
+        if (t.startsWith('--', i)) { i = this.#lineEnd(i); continue; }
+        if (t.startsWith('/*', i)) {
+          const end = t.indexOf('*/', i + 2);
+          if (end === -1) {
+            if (final) throw new DumpImportError('unterminated comment in dump');
+            break; // wait for the rest of the comment
+          }
+          i = end + 2;
+          continue;
+        }
+        if (c === ';') { complete = true; break; }
+        // psql would run an unquoted backslash command even mid-statement.
+        if (c === '\\') throw new DumpImportError('dump contains a psql meta-command inside a statement');
+        i += 1;
+      }
+      if (!complete && !final) {
+        // Resume from here when the next line arrives.
+        this.#i = Math.min(i, n);
+        this.#quote = quote;
+        this.#compact();
+        return;
+      }
+      if (!complete && quote !== null) throw new DumpImportError('unterminated quoted text in dump');
+      const statement = t.slice(start, i).trim();
+      i += 1; // past ';' (or end of text)
+      this.#start = -1;
+      this.#quote = null;
+
+      const copy = /^COPY\s+(.+?)\s*(\(.*\))?\s+FROM\s+stdin$/is.exec(statement);
+      if (copy) {
+        if (!complete) throw new DumpImportError(`COPY data for ${copy[1]} has no terminating \\.`);
+        // Data starts on the next line; the rest of this one is ignored.
+        this.#buf = t.slice(Math.min(this.#lineEnd(i) + 1, n));
+        this.#i = 0;
+        this.#copy = copy[1];
+        events.push({ kind: 'copy-start', table: copy[1], columns: copy[2] ?? null });
+        // Lines already buffered after the COPY line are its rows.
+        const pending = this.#buf;
+        this.#buf = '';
+        if (pending) {
+          const lines = pending.split('\n');
+          lines.pop(); // the buffer always ends with '\n'
+          for (const line of lines) events.push(...this.push(line));
+        }
+        return;
+      }
+      if (statement) events.push({ kind: 'sql', text: statement });
+      this.#i = Math.min(i, n);
+      t = text();
+      n = t.length;
+      if (this.#i >= n) { this.#buf = ''; this.#i = 0; return; }
+    }
+  }
+}
+
+/** Yields arrays of lines (without '\n') from string or Buffer chunks. */
+async function* lineBatches(chunks) {
+  let parts = [];
+  // A Buffer chunk can end inside a multi-byte character; the decoder holds it over.
+  const decoder = new StringDecoder('utf8');
+  for await (const chunk of chunks) {
+    const s = typeof chunk === 'string' ? chunk : decoder.write(chunk);
+    let from = 0;
+    let nl = s.indexOf('\n');
+    if (nl === -1) { parts.push(s); continue; }
+    const lines = [];
+    lines.push(parts.length ? parts.join('') + s.slice(0, nl) : s.slice(0, nl));
+    parts = [];
+    from = nl + 1;
+    while ((nl = s.indexOf('\n', from)) !== -1) { lines.push(s.slice(from, nl)); from = nl + 1; }
+    if (from < s.length) parts.push(s.slice(from));
+    yield lines;
+  }
+  const last = decoder.end();
+  if (last) parts.push(last);
+  if (parts.length) yield parts.join('').split('\n');
+}
+
+/** A dump source is its text, or a function that opens a fresh stream of its text each time. */
+function openSource(source) {
+  if (typeof source === 'string') return [source];
+  if (typeof source === 'function') return source();
+  throw new TypeError('a dump source is its text or a function that opens a stream of it');
+}
+
+/** Streams parser events for a whole dump source. */
+async function* dumpEvents(source) {
+  const parser = new DumpParser();
+  for await (const lines of lineBatches(openSource(source))) {
+    for (const line of lines) yield* parser.push(line);
+  }
+  yield* parser.end();
+}
+
 /** Splits plain-format dump text into statements, COPY blocks and meta-commands. */
 export function parseDump(text) {
   const items = [];
-  let i = 0;
-  const n = text.length;
-  const lineEnd = (pos) => {
-    const end = text.indexOf('\n', pos);
-    return end === -1 ? n : end;
+  const parser = new DumpParser();
+  const take = (events) => {
+    for (const event of events) {
+      if (event.kind === 'copy-start') items.push({ kind: 'copy', table: event.table, columns: event.columns, rows: [] });
+      else if (event.kind === 'copy-row') items.at(-1).rows.push(event.line);
+      else if (event.kind !== 'copy-end') items.push(event);
+    }
   };
-
-  while (i < n) {
-    const ch = text[i];
-    if (ch === ' ' || ch === '\t' || ch === '\r' || ch === '\n') { i += 1; continue; }
-    if (text.startsWith('--', i)) { i = lineEnd(i); continue; }
-    if (text.startsWith('/*', i)) {
-      const end = text.indexOf('*/', i + 2);
-      if (end === -1) throw new DumpImportError('unterminated comment in dump');
-      i = end + 2;
-      continue;
-    }
-    if (ch === '\\') {
-      const end = lineEnd(i);
-      const line = text.slice(i + 1, end).trim();
-      items.push({ kind: 'meta', name: line.split(/\s+/, 1)[0], line });
-      i = end;
-      continue;
-    }
-
-    const start = i;
-    let quote = null; // "'", '"', 'E' (escape string) or a dollar tag
-    while (i < n) {
-      const c = text[i];
-      if (quote === "'" || quote === 'E') {
-        if (quote === 'E' && c === '\\') { i += 2; continue; }
-        if (c === "'") {
-          if (text[i + 1] === "'") { i += 2; continue; }
-          quote = null;
-        }
-        i += 1;
-        continue;
-      }
-      if (quote === '"') {
-        if (c === '"') {
-          if (text[i + 1] === '"') { i += 2; continue; }
-          quote = null;
-        }
-        i += 1;
-        continue;
-      }
-      if (quote !== null) {
-        if (text.startsWith(quote, i)) { i += quote.length; quote = null; } else { i += 1; }
-        continue;
-      }
-      if (c === "'") {
-        quote = (i > start && /[eE]/.test(text[i - 1]) && !/[\w$]/.test(text[i - 2] ?? '')) ? 'E' : "'";
-        i += 1;
-        continue;
-      }
-      if (c === '"') { quote = '"'; i += 1; continue; }
-      if (c === '$') {
-        const tag = /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/.exec(text.slice(i, i + 64));
-        if (tag) { quote = tag[0]; i += tag[0].length; continue; }
-      }
-      if (text.startsWith('--', i)) { i = lineEnd(i); continue; }
-      if (text.startsWith('/*', i)) {
-        const end = text.indexOf('*/', i + 2);
-        if (end === -1) throw new DumpImportError('unterminated comment in dump');
-        i = end + 2;
-        continue;
-      }
-      if (c === ';') break;
-      // psql would run an unquoted backslash command even mid-statement.
-      if (c === '\\') throw new DumpImportError('dump contains a psql meta-command inside a statement');
-      i += 1;
-    }
-    if (quote !== null) throw new DumpImportError('unterminated quoted text in dump');
-    const statement = text.slice(start, i).trim();
-    i += 1; // past ';' (or end of text)
-
-    const copy = /^COPY\s+(.+?)\s*(\(.*\))?\s+FROM\s+stdin$/is.exec(statement);
-    if (copy) {
-      i = lineEnd(i) + 1; // data starts on the next line
-      const rows = [];
-      for (;;) {
-        if (i > n) throw new DumpImportError(`COPY data for ${copy[1]} has no terminating \\.`);
-        const end = lineEnd(i);
-        const line = text.slice(i, end).replace(/\r$/, '');
-        i = end + 1;
-        if (line === '\\.') break;
-        rows.push(line);
-      }
-      items.push({ kind: 'copy', table: copy[1], columns: copy[2] ?? null, rows });
-      continue;
-    }
-    if (statement) items.push({ kind: 'sql', text: statement });
-  }
+  const lines = text.split('\n');
+  if (text.endsWith('\n')) lines.pop();
+  for (const line of lines) take(parser.push(line));
+  take(parser.end());
   return items;
 }
 
@@ -202,9 +341,9 @@ function classify(item) {
     }
     return null;
   }
-  if (item.kind === 'copy') {
+  if (item.kind === 'copy-start') {
     const names = item.columns ? copyColumnNames(item.columns) : null;
-    return { kind: 'copy', key: tableKey(item.table), table: localName(item.table), columns: item.columns, names, rows: item.rows };
+    return { kind: 'copy', key: tableKey(item.table), table: localName(item.table), columns: item.columns, names };
   }
   const insert = /^INSERT\s+INTO\s+((?:"(?:[^"]|"")*"|[\w$]+)(?:\.(?:"(?:[^"]|"")*"|[\w$]+))?)/i.exec(item.text);
   if (insert) {
@@ -220,118 +359,113 @@ function classify(item) {
   return { kind: 'skipped' };
 }
 
-/** Single-column foreign keys from a table to itself: table → { column, references }. */
-async function selfReferences(client) {
-  const { rows } = await client.query(`
-    SELECT rel.relname AS table, a.attname AS column, ra.attname AS references
-      FROM pg_constraint c
-      JOIN pg_class rel     ON rel.oid = c.conrelid
-      JOIN pg_attribute a   ON a.attrelid = c.conrelid AND a.attnum = c.conkey[1]
-      JOIN pg_attribute ra  ON ra.attrelid = c.confrelid AND ra.attnum = c.confkey[1]
-     WHERE c.contype = 'f' AND c.conrelid = c.confrelid AND cardinality(c.conkey) = 1
-       AND rel.relnamespace = current_schema()::regnamespace`);
-  return new Map(rows.map((row) => [row.table, row]));
+/**
+ * Reads the whole dump once without touching any database: every refusal
+ * (meta-commands, statements a plain dump never carries, bad COPY column
+ * lists, unterminated text) surfaces here, before anything is written.
+ * Returns the plan the import pass needs: tables, setvals and skipped count.
+ */
+export async function scanDump(source) {
+  const tables = new Set();
+  const setvals = [];
+  let skipped = 0;
+  for await (const event of dumpEvents(source)) {
+    if (event.kind === 'copy-row' || event.kind === 'copy-end') continue;
+    const item = classify(event);
+    if (item === null) continue;
+    if (item.kind === 'setval') setvals.push(item.text);
+    else if (item.kind === 'skipped') skipped += 1;
+    else tables.add(item.key);
+  }
+  return { tables: tables.size, setvals, skippedStatements: skipped };
 }
 
-/** Orders rows so each row's parent (same table) comes before it. */
-function parentsFirst(rows, fkIndex, keyIndex) {
-  const keys = new Set(rows.map((row) => row[keyIndex]));
-  const children = new Map();
-  const ordered = [];
-  for (const row of rows) {
-    const parent = row[fkIndex];
-    if (parent === null || parent === row[keyIndex] || !keys.has(parent)) ordered.push(row);
-    else {
-      if (!children.has(parent)) children.set(parent, []);
-      children.get(parent).push(row);
+/** Foreign keys of the target's tables, so they can be set aside during the load. */
+async function foreignKeys(client) {
+  const { rows } = await client.query(`
+    SELECT c.conrelid::regclass::text AS table, quote_ident(c.conname) AS name, pg_get_constraintdef(c.oid) AS definition
+      FROM pg_constraint c
+      JOIN pg_class rel ON rel.oid = c.conrelid
+     WHERE c.contype = 'f' AND rel.relnamespace = current_schema()::regnamespace
+     ORDER BY c.conrelid, c.conname`);
+  return rows;
+}
+
+/** Loads one COPY block's rows in bounded batches as they stream past. */
+class CopyLoader {
+  constructor(client, item) {
+    this.client = client;
+    this.item = item;
+    this.width = item.names?.length ?? null;
+    this.batch = [];
+    this.rows = 0;
+  }
+
+  async add(line) {
+    const row = line.split('\t').map(decodeCopyField);
+    if (this.width === null) this.width = row.length;
+    if (row.length !== this.width) {
+      throw new DumpImportError(`COPY data for ${this.item.table} has rows that do not match its ${this.width} columns`);
     }
+    this.batch.push(row);
+    if (this.batch.length >= this.perInsert()) await this.flush();
   }
-  for (let i = 0; i < ordered.length; i += 1) ordered.push(...(children.get(ordered[i][keyIndex]) ?? []));
-  // Rows in a cycle are never reached; they go last so the foreign key check names them.
-  if (ordered.length < rows.length) {
-    const placed = new Set(ordered);
-    ordered.push(...rows.filter((row) => !placed.has(row)));
-  }
-  return ordered;
-}
 
-/** Orders table keys parents-first by the target's foreign keys, else dump order. */
-async function loadOrder(client, keys) {
-  const { rows } = await client.query(`
-    SELECT child.relname AS child, parent.relname AS parent
-      FROM pg_constraint c
-      JOIN pg_class child  ON child.oid  = c.conrelid
-      JOIN pg_class parent ON parent.oid = c.confrelid
-     WHERE c.contype = 'f' AND child.relnamespace = current_schema()::regnamespace`);
-  const present = new Set(keys);
-  const parents = new Map(keys.map((key) => [key, new Set()]));
-  for (const { child, parent } of rows) {
-    if (child !== parent && present.has(child) && present.has(parent)) parents.get(child).add(parent);
+  perInsert() {
+    return Math.max(1, Math.min(MAX_ROWS_PER_INSERT, Math.floor(MAX_PARAMS / this.width)));
   }
-  const ordered = [];
-  const done = new Set();
-  while (ordered.length < keys.length) {
-    const ready = keys.find((key) => !done.has(key) && [...parents.get(key)].every((p) => done.has(p)));
-    // A foreign-key cycle falls back to dump order for what is left.
-    const next = ready ?? keys.find((key) => !done.has(key));
-    done.add(next);
-    ordered.push(next);
-  }
-  return ordered;
-}
 
-async function insertCopyRows(client, item, selfReference) {
-  if (item.rows.length === 0) return;
-  let split = item.rows.map((line) => line.split('\t').map(decodeCopyField));
-  const width = item.names?.length ?? split[0].length;
-  if (split.some((row) => row.length !== width)) {
-    throw new DumpImportError(`COPY data for ${item.table} has rows that do not match its ${width} columns`);
-  }
-  const fkIndex = selfReference ? item.names?.indexOf(selfReference.column) ?? -1 : -1;
-  const keyIndex = selfReference ? item.names?.indexOf(selfReference.references) ?? -1 : -1;
-  if (fkIndex >= 0 && keyIndex >= 0) split = parentsFirst(split, fkIndex, keyIndex);
-  const perInsert = Math.max(1, Math.min(MAX_ROWS_PER_INSERT, Math.floor(MAX_PARAMS / width)));
-  for (let at = 0; at < split.length; at += perInsert) {
-    const batch = split.slice(at, at + perInsert);
+  async flush() {
+    if (this.batch.length === 0) return;
+    const { width } = this;
+    const batch = this.batch;
+    this.batch = [];
     const tuples = batch.map((_, r) => `(${Array.from({ length: width }, (__, c) => `$${r * width + c + 1}`).join(', ')})`);
-    await client.query(
+    await this.client.query(
       // COPY writes GENERATED ALWAYS identity values as given; INSERT needs the override.
-      `INSERT INTO ${item.table} ${item.columns ?? ''} OVERRIDING SYSTEM VALUE VALUES ${tuples.join(', ')}`,
+      `INSERT INTO ${this.item.table} ${this.item.columns ?? ''} OVERRIDING SYSTEM VALUE VALUES ${tuples.join(', ')}`,
       batch.flat(),
     );
+    this.rows += batch.length;
   }
 }
 
 /**
  * Imports the dump's data into the connected database, whose schema must
- * already be applied. Returns counts of what was loaded and skipped.
+ * already be applied. `source` is the dump text, or a function that opens a
+ * fresh stream of it (string or Buffer chunks); a stream is read twice, once
+ * to check it and once to load it, and is never held whole in memory.
+ *
+ * The load runs in one transaction. Foreign keys are set aside for the load
+ * and added back at the end, which checks every row against them (as
+ * pg_restore does), so a full dump loads in its own order whatever order it
+ * wrote parents and children in. Returns counts of what was loaded and skipped.
  */
-export async function importDump(client, text) {
-  const classified = parseDump(text).map(classify).filter(Boolean);
-  const byTable = new Map();
-  const setvals = [];
-  let skipped = 0;
-  for (const item of classified) {
-    if (item.kind === 'setval') setvals.push(item);
-    else if (item.kind === 'skipped') skipped += 1;
-    else {
-      if (!byTable.has(item.key)) byTable.set(item.key, []);
-      byTable.get(item.key).push(item);
-    }
-  }
+export async function importDump(client, source, plan) {
+  const checked = plan ?? await scanDump(source);
   let rows = 0;
-  const selfRefs = await selfReferences(client);
-  for (const key of await loadOrder(client, [...byTable.keys()])) {
-    for (const item of byTable.get(key)) {
-      if (item.kind === 'copy') {
-        await insertCopyRows(client, item, selfRefs.get(key));
-        rows += item.rows.length;
-      } else {
+  await client.query('BEGIN');
+  try {
+    const keys = await foreignKeys(client);
+    for (const fk of keys) await client.query(`ALTER TABLE ${fk.table} DROP CONSTRAINT ${fk.name}`);
+    let copy = null;
+    for await (const event of dumpEvents(source)) {
+      if (event.kind === 'copy-row') { await copy.add(event.line); continue; }
+      if (event.kind === 'copy-end') { await copy.flush(); rows += copy.rows; copy = null; continue; }
+      const item = classify(event);
+      if (item === null || item.kind === 'setval' || item.kind === 'skipped') continue;
+      if (item.kind === 'copy') copy = new CopyLoader(client, item);
+      else {
         const result = await client.query(item.text);
         rows += result.rowCount ?? 0;
       }
     }
+    for (const fk of keys) await client.query(`ALTER TABLE ${fk.table} ADD CONSTRAINT ${fk.name} ${fk.definition}`);
+    for (const text of checked.setvals) await client.query(text);
+    await client.query('COMMIT');
+  } catch (error) {
+    try { await client.query('ROLLBACK'); } catch { /* the original error matters */ }
+    throw error;
   }
-  for (const item of setvals) await client.query(item.text);
-  return { tables: byTable.size, rows, sequences: setvals.length, skippedStatements: skipped };
+  return { tables: checked.tables, rows, sequences: checked.setvals.length, skippedStatements: checked.skippedStatements };
 }

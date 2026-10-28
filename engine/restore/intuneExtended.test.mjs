@@ -1553,10 +1553,10 @@ test('an app dependency is created on beta between the two apps the backup names
   assert.equal(result.failed, undefined, result.failed?.error);
   const post = graph.calls.find((call) => call.method === 'POST');
   assert.equal(post.version, 'beta');
-  assert.equal(post.path, APP_LINKS);
-  assert.deepEqual(post.body, {
-    '@odata.type': '#microsoft.graph.mobileAppDependency', sourceId: 'app-main', targetId: 'app-dep', targetType: 'child', dependencyType: 'detect',
-  });
+  // Issue #642: the tenant's link list has no write route; the app's own action sets its links.
+  assert.equal(post.path, '/deviceAppManagement/mobileApps/app-main/updateRelationships');
+  assert.deepEqual(post.body, { relationships: [{ '@odata.type': '#microsoft.graph.mobileAppDependency', targetId: 'app-dep', dependencyType: 'detect' }] });
+  assert.equal(graph.calls.some((call) => call.path.startsWith(APP_LINKS)), false);
   // Both apps were checked, and the app's links listed, before the write.
   const reads = graph.calls.filter((call) => call.method === 'GET').map((call) => call.path.split('?')[0]);
   assert.deepEqual(reads.slice(0, 3), ['/deviceAppManagement/mobileApps/app-main', '/deviceAppManagement/mobileApps/app-dep', '/deviceAppManagement/mobileApps/app-main/relationships']);
@@ -1582,15 +1582,30 @@ test('an app link already set between the same two apps is skipped, also in a dr
 test('an app link update changes only how it applies; a link between other apps is never rewritten', async () => {
   const path = `${APP_LINKS}/link-live`;
   const live = { ...appLink, id: 'link-live', dependencyType: 'autoInstall' };
-  const graph = idoFakeGraph({ seed: { ...bothApps(), [path]: live } });
+  // The app holds this link and a supersedence; it is also the target of another app's link.
+  const replaces = { '@odata.type': '#microsoft.graph.mobileAppSupersedence', id: 'old_app-main', sourceId: 'app-main', targetId: 'app-old', targetType: 'child', supersedenceType: 'update' };
+  const held = { '@odata.type': '#microsoft.graph.mobileAppDependency', id: 'app-main_app-top', sourceId: 'app-main', targetId: 'app-top', targetType: 'parent', dependencyType: 'detect' };
+  const graph = idoFakeGraph({ seed: {
+    ...bothApps(), [path]: live,
+    '/deviceAppManagement/mobileApps/app-main/relationships/link-live': live,
+    '/deviceAppManagement/mobileApps/app-main/relationships/old_app-main': replaces,
+    '/deviceAppManagement/mobileApps/app-main/relationships/app-main_app-top': held,
+  } });
   const updated = await applyIntuneExtendedWrite(graph, resourceOf('mobileAppRelationship', appLink, {
     live: { state: 'present', targetId: 'link-live', payload: live },
   }), 'update', FAST);
   assert.equal(updated.failed, undefined, updated.failed?.error);
-  const patch = graph.calls.find((call) => call.method === 'PATCH');
-  assert.equal(patch.path, path);
-  assert.deepEqual(patch.body, { '@odata.type': '#microsoft.graph.mobileAppDependency', dependencyType: 'detect' });
-  assert.equal(graph.objects.get(path).dependencyType, 'detect');
+  assert.equal(graph.calls.some((call) => call.method === 'PATCH'), false);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.path, '/deviceAppManagement/mobileApps/app-main/updateRelationships');
+  // The links the app holds are sent again (the action replaces them all); one held by another app is not.
+  assert.deepEqual(post.body, { relationships: [
+    { '@odata.type': '#microsoft.graph.mobileAppSupersedence', targetId: 'app-old', supersedenceType: 'update' },
+    { '@odata.type': '#microsoft.graph.mobileAppDependency', targetId: 'app-dep', dependencyType: 'detect' },
+  ] });
+  const links = (await graph.read('beta', '/deviceAppManagement/mobileApps/app-main/relationships')).body.value;
+  assert.equal(links.find((link) => link.targetId === 'app-dep').dependencyType, 'detect');
+  assert.ok(links.some((link) => link.targetType === 'parent' && link.targetId === 'app-top'));
 
   const moved = { ...live, targetId: 'app-other' };
   const other = idoFakeGraph({ seed: { ...bothApps(), [path]: moved } });

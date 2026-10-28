@@ -137,8 +137,10 @@ const edgeParent = (naturalKey) => {
   return { symbol, name: symbol.replace(/^[A-Za-z]+:/, '') };
 };
 
-const matchesFixture = (entry, fixture) => {
-  if (entry.naturalKey === fixture) return true;
+// Issue #642: a bare fixture name names the object of the kind being captured
+// (`--fixture KEEL-RT-148-app-web` for `mobileApp:KEEL-RT-148-app-web`).
+const matchesFixture = (entry, fixture, resourceType) => {
+  if (entry.naturalKey === fixture || entry.naturalKey === `${resourceType}:${fixture}`) return true;
   const parent = edgeParent(entry.naturalKey);
   return parent !== null && (parent.symbol === fixture || parent.name === fixture);
 };
@@ -160,7 +162,7 @@ const isDefaultBrandingLanguage = (entry) => entry.resourceType === 'organizatio
 function isCapturedWrite(entry, { resourceType, operation, fixture, enforcement }) {
   const identity = journalIdentity(entry, { enforcement });
   if (identity.operation !== operation) return false;
-  if (identity.key === resourceType && matchesFixture(entry, fixture)) return true;
+  if (identity.key === resourceType && matchesFixture(entry, fixture, resourceType)) return true;
   return resourceType === 'organizationalBranding' && isDefaultBrandingLanguage(entry) && DEFAULT_BRANDING_FIXTURES.includes(fixture);
 }
 

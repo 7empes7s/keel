@@ -23,7 +23,8 @@ Logs Ingestion API as a task-79 outbox adapter (destination kind
   configuration, so the Graph audience is structurally impossible, not just
   discouraged. The sender credential is a *dedicated* Entra app registration
   (certificate client-credentials) referenced by the destination config as
-  `credentialRef: 'env:<VAR>'`; it is neither the collector nor the restorer
+  `credentialRef: 'env:KEEL_INTEGRATION_<NAME>'` (only that namespace is read, so a
+  destination can never pick up the database URL or another worker secret); it is neither the collector nor the restorer
   credential, and the read/write credential separation is untouched.
 - **Event identity**: every record carries the deterministic task-77 KEEL event id
   (`KeelEventId`), the tenant (`TenantRef`), a tenant-specific source identity

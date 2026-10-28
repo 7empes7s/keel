@@ -64,7 +64,7 @@ await client.query(
 
 const TOKEN = 'fixture-oauth-token-never-logged';
 const CALLBACK_SECRET = 'fixture-callback-secret';
-const SECRETS = { 'env:KEEL_SERVICENOW_TOKEN': TOKEN, 'env:KEEL_SERVICENOW_CALLBACK_SECRET': CALLBACK_SECRET };
+const SECRETS = { 'env:KEEL_INTEGRATION_SERVICENOW_TOKEN': TOKEN, 'env:KEEL_INTEGRATION_SERVICENOW_CALLBACK_SECRET': CALLBACK_SECRET };
 const resolveSecret = (reference) => {
   if (!(reference in SECRETS)) throw new Error(`unresolved credential reference: ${reference}`);
   return SECRETS[reference];
@@ -74,13 +74,13 @@ const resolveSecret = (reference) => {
 const DEFAULT_CONFIG = {
   instanceUrl: 'https://keel-fixture.service-now.com',
   table: 'change_request',
-  credential: { tokenRef: 'env:KEEL_SERVICENOW_TOKEN' },
+  credential: { tokenRef: 'env:KEEL_INTEGRATION_SERVICENOW_TOKEN' },
   fields: {
     state: 'approval', approver: 'u_keel_approver.user_name', planVersion: 'u_keel_plan_version',
     planDigest: 'u_keel_plan_digest', keelRequest: 'u_keel_request', keelDecision: 'u_keel_decision',
   },
   states: { approved: ['approved'], rejected: ['rejected'] },
-  callback: { secretRef: 'env:KEEL_SERVICENOW_CALLBACK_SECRET', maxSkewSeconds: 300 },
+  callback: { secretRef: 'env:KEEL_INTEGRATION_SERVICENOW_CALLBACK_SECRET', maxSkewSeconds: 300 },
 };
 
 // A non-default workflow: its own table and gate field. Its value "approved" is an
@@ -88,13 +88,13 @@ const DEFAULT_CONFIG = {
 const CUSTOM_CONFIG = {
   instanceUrl: 'https://keel-fixture-custom.service-now.com',
   table: 'u_keel_gated_change',
-  credential: { tokenRef: 'env:KEEL_SERVICENOW_TOKEN' },
+  credential: { tokenRef: 'env:KEEL_INTEGRATION_SERVICENOW_TOKEN' },
   fields: {
     state: 'u_gate', approver: 'u_gate_owner.email', planVersion: 'u_plan_rev', planDigest: 'u_plan_hash',
     keelRequest: 'u_keel_ref', keelDecision: 'u_keel_outcome',
   },
   states: { approved: ['gate_passed'], rejected: ['gate_blocked', 'gate_withdrawn'] },
-  callback: { secretRef: 'env:KEEL_SERVICENOW_CALLBACK_SECRET', maxSkewSeconds: 120 },
+  callback: { secretRef: 'env:KEEL_INTEGRATION_SERVICENOW_CALLBACK_SECRET', maxSkewSeconds: 120 },
 };
 
 /**
@@ -250,7 +250,7 @@ test('a missing mapping disables the adapter visibly and nothing is sent', async
   // Credentials are references only; a viewer cannot change the config.
   for (const leaked of [
     { ...DEFAULT_CONFIG, credential: { tokenRef: `Bearer ${TOKEN}` } },
-    { ...DEFAULT_CONFIG, credential: { tokenRef: 'env:KEEL_SERVICENOW_TOKEN', token: TOKEN } },
+    { ...DEFAULT_CONFIG, credential: { tokenRef: 'env:KEEL_INTEGRATION_SERVICENOW_TOKEN', token: TOKEN } },
     { ...DEFAULT_CONFIG, instanceUrl: 'https://admin:hunter22@keel-fixture.service-now.com' },
     { ...DEFAULT_CONFIG, password: 'x' },
   ]) {
@@ -503,7 +503,7 @@ test('a failed external update does not roll back the canonical decision silentl
   assert.equal(shown.heldBack[0].externalRef, refused.ref);
   assert.match(shown.heldBack[0].lastError, /HTTP 403/);
   assert.equal(shown.heldBack[0].reason, 'rejected by adapter');
-  assert.equal(shown.mapping.tokenRef, 'env:KEEL_SERVICENOW_TOKEN');
+  assert.equal(shown.mapping.tokenRef, 'env:KEEL_INTEGRATION_SERVICENOW_TOKEN');
   assert.ok(!JSON.stringify(shown).includes(TOKEN) && !JSON.stringify(shown).includes(CALLBACK_SECRET));
   const mirror = await listMirror(client, { tenantRef: DEFAULT_TENANT, principalId: VIEWER });
   assert.equal(mirror.find((row) => row.externalRef === refused.ref).outbox.quarantined, 1);

@@ -65,7 +65,7 @@ export function channelShort(channel: Pick<Channel, "kind" | "config">): string 
   return channelName(channel);
 }
 
-/** A credential reference ("env:KEEL_SLACK_WEBHOOK") as words: the setting's name, never the value. */
+/** A credential reference ("env:KEEL_INTEGRATION_SLACK_WEBHOOK") as words: the setting's name, never the value. */
 export function settingName(value: unknown): string | null {
   return typeof value === "string" && value.startsWith("env:") ? value.slice(4) : null;
 }

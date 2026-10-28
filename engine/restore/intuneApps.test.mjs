@@ -109,19 +109,24 @@ test('a Win32 app comes back as an unassigned shell with an upload step and the 
 
 test('an existing Win32 app is assigned once its package is in Intune, and not before', async () => {
   const path = `${APPS}/live-win32`;
-  for (const [state, writes] of [['published', true], ['notPublished', false]]) {
-    const graph = idoFakeGraph({ seed: { [path]: { ...win32, id: 'live-win32', publishingState: state, description: 'Changed' } } });
-    const resource = resourceOf(win32, {
-      targetId: 'live-win32', live: { state: 'present', payload: { ...win32, id: 'live-win32', publishingState: state, description: 'Changed' } },
-      assignments: assigned('required', { settings, settingsDigest: 'd' }),
-    });
-    const result = await applyIntuneExtendedWrite(graph, resource, 'update', { ...FAST, referenceContext: context() });
-    assert.equal(result.failed, undefined, result.failed?.error);
-    const patch = graph.calls.find((call) => call.method === 'PATCH');
-    assert.deepEqual(Object.keys(patch.body).sort(), ['@odata.type', 'description']);
-    assert.equal(graph.calls.some((call) => call.path.endsWith('/assign')), writes, state);
-    assert.equal(result.applied.completion, undefined, 'the plan already holds the step');
-  }
+  const resourceIn = (state) => resourceOf(win32, {
+    targetId: 'live-win32', live: { state: 'present', payload: { ...win32, id: 'live-win32', publishingState: state, description: 'Changed' } },
+    assignments: assigned('required', { settings, settingsDigest: 'd' }),
+  });
+  const graph = idoFakeGraph({ seed: { [path]: { ...win32, id: 'live-win32', publishingState: 'published', description: 'Changed' } } });
+  const result = await applyIntuneExtendedWrite(graph, resourceIn('published'), 'update', { ...FAST, referenceContext: context() });
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const patch = graph.calls.find((call) => call.method === 'PATCH');
+  assert.deepEqual(Object.keys(patch.body).sort(), ['@odata.type', 'description']);
+  assert.equal(graph.calls.some((call) => call.path.endsWith('/assign')), true);
+  assert.equal(result.applied.completion, undefined, 'the plan already holds the step');
+
+  // Issue #642 (live): Intune refuses any PATCH of an app whose package is not
+  // uploaded, so nothing is written and the step says to upload it first.
+  const shell = idoFakeGraph({ seed: { [path]: { ...win32, id: 'live-win32', publishingState: 'notPublished', description: 'Changed' } } });
+  const held = await applyIntuneExtendedWrite(shell, resourceIn('notPublished'), 'update', { ...FAST, referenceContext: context() });
+  assert.match(held.skipped?.reason ?? '', /until its package is uploaded/);
+  assert.equal(shell.calls.some((call) => call.method !== 'GET'), false);
 });
 
 test('an app synced from Apple is never created; on update only who it is assigned to is written', async () => {

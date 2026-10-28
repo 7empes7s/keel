@@ -23,7 +23,7 @@ only through a mapped, enabled KEEL principal who may approve that request now.
       that mean rejected;
     - the field naming who decided (it may be dot-walked, such as `u_owner.email`);
     - the fields KEEL writes the plan version, plan digest, request id and decision into;
-    - the access token, as a reference only (`credential.tokenRef`, `env:NAME`).
+    - the access token, as a reference only (`credential.tokenRef`, `env:KEEL_INTEGRATION_NAME`; other names are refused and never read).
 
     Any other state value is informational, and the bridge ignores it. Nothing assumes
     the out-of-the-box `change_request` workflow.

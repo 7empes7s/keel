@@ -10,12 +10,15 @@ export default Object.freeze({
   // not mapped yet (see placeUnmapped in ../taxonomy.mjs).
   categories: Object.freeze([
     { key: 'teams', name: 'Teams and members', types: ['teams-settings'], match: /^teams(settings|team|channel|member|owner|template)/ },
+    { key: 'apps', name: 'Custom apps', types: ['teamsCatalogApp'], match: /catalogapp|customapp/ },
     { key: 'roles', name: 'Admin roles', types: [], match: /role/ },
     { key: 'org', name: 'Organization policies', types: ['teams-org-policies'], match: /orgpolic|external|guest|federation|apppermission|appsetup|messaging|chat|update|channelpolic/ },
     { key: 'calling', name: 'Calling and meetings', types: ['teams-voice-policies'], match: /voice|calling|call|meeting|liveevent|events|webinar|townhall|emergency|dialplan|phone/ },
     { key: 'tenant', name: 'Tenant settings', types: [], match: /setting|config|tenant/ },
   ]),
   entries: Object.freeze({
+    // Remaining kinds, batch 9: a catalogue type; priority comes from the catalogue.
+    teamsCatalogApp: { name: 'Teams custom app' },
     'teams-settings': {
       name: 'Team setting or membership',
       priority: 'normal',

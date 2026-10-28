@@ -103,6 +103,8 @@ const DEPENDS: Record<string, string[]> = {
 let jobPolls = 0;
 // The setting the last "Make it pass" asked for: a mail policy setting is named after a #.
 let fixTarget = "";
+// The undo of r11: the choice sent for its assigned policy, when one was.
+let undoChoicesSent: Record<string, string> | null = null;
 let contentEffectsApproved = false;
 let lastClosure: string[] = [];
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -248,6 +250,13 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.includes("/api/actions/restore/dry-run/f1c00000")) return json({ artifact: { id: "f1c00000-0000-4000-8000-000000000001", status: "completed", guardRefusals: [], complianceFix: { naturalKey: "namedLocation:Branch offices", field: "includeUnknownCountriesAndRegions", from: true, to: false } } });
   if (url.includes("/api/actions/restore/dry-run/wd000000")) return json({ artifact: WORKLOAD_ARTIFACT });
   if (url.includes("/api/actions/restore/dry-run/mb000000")) return json({ artifact: mailboxArtifact(url.slice(-1)) });
+  // The undo of r11: a policy that restore created is assigned now, so it waits for a choice.
+  if (url.endsWith("/api/actions/restore/compensate") && String(init?.body ?? "").includes(ASSIGNED_UNDO_RESTORE)) {
+    undoChoicesSent = (JSON.parse(String(init?.body)) as { undoChoices?: Record<string, string> }).undoChoices ?? null;
+    return json({ job: { id: "job-undo-r11" }, artifactId: undoChoicesSent ? "c0de0000-0000-4000-8000-000000000012" : "c0de0000-0000-4000-8000-000000000011" }, 202);
+  }
+  if (url.includes("/api/actions/restore/dry-run/c0de0000-0000-4000-8000-000000000011")) return json({ artifact: assignedUndoArtifact("c0de0000-0000-4000-8000-000000000011", null) });
+  if (url.includes("/api/actions/restore/dry-run/c0de0000-0000-4000-8000-000000000012")) return json({ artifact: assignedUndoArtifact("c0de0000-0000-4000-8000-000000000012", undoChoicesSent) });
   // Task-70: the undo plan of failed restore r10.
   if (url.endsWith("/api/actions/restore/compensate")) return json({ job: { id: "job-undo-r10" }, artifactId: "c0de0000-0000-4000-8000-000000000010" }, 202);
   if (url.includes("/api/actions/restore/dry-run/c0de0000")) return json({ artifact: COMPENSATION_ARTIFACT });
@@ -344,6 +353,43 @@ const COMPENSATION_ARTIFACT = {
     notApplied: [{ naturalKey: "namedLocation:HQ egress", reason: "Graph rejected this write (status 400); nothing to undo" }],
   },
 };
+
+const ASSIGNED_UNDO_RESTORE = "7f3c0000-0000-4000-8000-000000000011";
+const ASSIGNED_POLICY = "deviceConfiguration:KEEL-RT-Windows baseline";
+const ASSIGNED_PROFILE = "windowsFeatureUpdateProfile:KEEL-RT-Feature updates";
+
+/** The undo plan of r11, before and after the choice for each assigned policy. */
+function assignedUndoArtifact(id: string, choices: Record<string, string> | null) {
+  const policies = [
+    { naturalKey: ASSIGNED_POLICY, resourceType: "deviceConfiguration", targetId: "c0a10000-0000-4000-8000-0000000000d1",
+      assignmentIds: ["c0a1_all", "c0a1_g1"], targets: [{ kind: "all-devices" }, { kind: "group", groupId: "6f1e0000-0000-4000-8000-0000000000f1" }] },
+    { naturalKey: ASSIGNED_PROFILE, resourceType: "windowsFeatureUpdateProfile", targetId: "c0a10000-0000-4000-8000-0000000000d2",
+      assignmentIds: ["c0a2_g2"], targets: [{ kind: "group", groupId: "6f1e0000-0000-4000-8000-0000000000f2" }] },
+  ];
+  const choiceOf = (key: string) => (choices?.[key] === "delete" || choices?.[key] === "skip" ? choices[key] : null);
+  return {
+    id,
+    status: "completed",
+    guardRefusals: [],
+    contentEffects: [],
+    compensation: {
+      compensates: ASSIGNED_UNDO_RESTORE,
+      atomic: false,
+      statement: COMPENSATION_ARTIFACT.compensation.statement,
+      operations: [
+        { naturalKey: "group:Finance", resourceType: "group", verb: "update", undoes: "update", revertedFields: ["description"] },
+        ...policies.filter((policy) => choiceOf(policy.naturalKey) === "delete").map((policy) => ({
+          naturalKey: policy.naturalKey, resourceType: policy.resourceType, verb: "delete", undoes: "create", removeAssignments: { ids: policy.assignmentIds },
+        })),
+      ],
+      conflicts: [],
+      irrecoverable: [],
+      manual: [],
+      notApplied: [],
+      choices: policies.map((policy) => ({ ...policy, assignmentCount: policy.assignmentIds.length, choice: choiceOf(policy.naturalKey) })),
+    },
+  };
+}
 
 const now = "2026-10-02T09:40:00Z";
 const DRIFT = [
@@ -642,10 +688,10 @@ const INTENT_CHANGES: IntentCandidate[] = [{
 const CHANNELS = [
   { id: "c4e10000-0000-4000-8000-0000000000c1", kind: "webhook", config: { url: "https://hooks.contoso.com/keel" }, enabled: true, created_at: "2026-09-01T08:00:00Z" },
   { id: "c4e10000-0000-4000-8000-0000000000c2", kind: "email", config: { to: "secops@contoso.com", from: "keel@contoso.com" }, enabled: true, created_at: "2026-09-01T08:05:00Z" },
-  { id: "c4e10000-0000-4000-8000-0000000000c3", kind: "pagerduty", config: { routingKeyRef: "env:KEEL_PAGERDUTY_KEY", region: "eu" }, enabled: true, created_at: "2026-09-02T08:00:00Z" },
-  { id: "c4e10000-0000-4000-8000-0000000000c4", kind: "slack", config: { endpointRef: "env:KEEL_SLACK_WEBHOOK" }, enabled: true, created_at: "2026-09-03T08:00:00Z" },
+  { id: "c4e10000-0000-4000-8000-0000000000c3", kind: "pagerduty", config: { routingKeyRef: "env:KEEL_INTEGRATION_PAGERDUTY_KEY", region: "eu" }, enabled: true, created_at: "2026-09-02T08:00:00Z" },
+  { id: "c4e10000-0000-4000-8000-0000000000c4", kind: "slack", config: { endpointRef: "env:KEEL_INTEGRATION_SLACK_WEBHOOK" }, enabled: true, created_at: "2026-09-03T08:00:00Z" },
   // Turned off three days ago; its history is kept.
-  { id: "c4e10000-0000-4000-8000-0000000000c5", kind: "teams", config: { endpointRef: "env:KEEL_TEAMS_WEBHOOK" }, enabled: false, created_at: "2026-08-20T08:00:00Z" },
+  { id: "c4e10000-0000-4000-8000-0000000000c5", kind: "teams", config: { endpointRef: "env:KEEL_INTEGRATION_TEAMS_WEBHOOK" }, enabled: false, created_at: "2026-08-20T08:00:00Z" },
 ];
 const SIGN_IN_ALERT = { alertId: "a1e70000-0000-4000-8000-000000000001", resourceKey: "conditionalAccessPolicy:Block legacy auth", control: "baseline", condition: "drift", occurrence: 1 };
 const DEVICE_ALERT = { alertId: "a1e70000-0000-4000-8000-000000000002", resourceKey: "deviceConfiguration:Corporate laptops", control: "baseline", condition: "drift", occurrence: 1 };
@@ -689,7 +735,7 @@ const SERVICENOW_ON: ServiceNowStatus = {
     instanceHost: "contoso.service-now.com", table: "u_keel_gated_change",
     fields: { state: "u_gate", approver: "u_gate_owner.email", planVersion: "u_plan_rev", planDigest: "u_plan_hash", keelRequest: "u_keel_ref", keelDecision: "u_keel_outcome" },
     approvedValues: ["gate_passed"], rejectedValues: ["gate_blocked", "gate_withdrawn"],
-    tokenRef: "env:KEEL_SERVICENOW_TOKEN", callbacks: "signed", callbackSecretRef: "env:KEEL_SERVICENOW_CALLBACK_SECRET",
+    tokenRef: "env:KEEL_INTEGRATION_SERVICENOW_TOKEN", callbacks: "signed", callbackSecretRef: "env:KEEL_INTEGRATION_SERVICENOW_CALLBACK_SECRET",
   },
   mirror: { records: 12, waiting: 2, pendingUpdates: 1, heldBack: 1, conflicts: 0 },
   heldBack: [{ eventId: "keel:decision:5e9c0000-0000-4000-8000-000000000097", kind: "decision", externalRef: "9d3f0000000040008000000000000097", attempts: 1, reason: "rejected by adapter", lastError: "ServiceNow PATCH returned HTTP 403", createdAt: now }],
@@ -2379,6 +2425,7 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/jobs/a4": { const detail = { ...jobs.find((item) => item.id === "a4")!, progress: tierProgress("failed") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/r10": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010" } }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
+    case "/jobs/r11": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r11", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000011" } }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     // Item 5 (#548 review): a workload restore dry run that stopped on a settings file the server lacks.
     case "/jobs/r13": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r13", kind: "restore", params: { workloadRestore: { workload: "exchange-mail-flow", collectionId: "c0110000-0000-4000-8000-000000000013", targets: ["organization"] }, artifactId: "7f3c0000-0000-4000-8000-000000000013" }, error: SETTINGS_FILE_ERROR }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }

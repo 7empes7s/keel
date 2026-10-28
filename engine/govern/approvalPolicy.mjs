@@ -56,7 +56,8 @@ const CONTENT_EFFECT_CLASSES = Object.freeze({
 function hasDelete(value, depth = 0) {
   if (depth > 6 || value == null || typeof value !== 'object') return false;
   if (Array.isArray(value)) return value.some((item) => hasDelete(item, depth + 1));
-  if (value.verb === 'delete' || value.operation === 'delete') return true;
+  // A member/owner edge removal (relationshipOperations) is a delete too (security audit run 2, finding 7).
+  if (value.verb === 'delete' || value.operation === 'delete' || value.action === 'remove') return true;
   return Object.values(value).some((item) => hasDelete(item, depth + 1));
 }
 

@@ -326,6 +326,10 @@ test('failure reasons and grant hints', () => {
   assert.deepEqual(missingGrant('/deviceManagement/deviceConfigurations', null), { grant: 'DeviceManagementConfiguration.Read.All', source: 'documented', held: false });
   assert.deepEqual(missingGrant('/sites', 'Required scopes = [Sites.Read.All, Sites.ReadWrite.All]'), { grant: 'Sites.Read.All', source: 'graph', held: false });
   assert.equal(missingGrant('/somethingNew', 'denied'), null);
+  // Issue #663: the PIM for Groups read names its scopes in a shape Graph's own errors do not use.
+  assert.deepEqual(missingGrant('/identityGovernance/privilegedAccess/group/resources',
+    'Authorization failed due to missing permission scope PrivilegedEligibilitySchedule.Read.AzureADGroup,PrivilegedAccess.Read.AzureADGroup.'),
+  { grant: 'PrivilegedAccess.Read.AzureADGroup', source: 'documented', held: false });
   assert.equal(missingGrant('/deviceManagement/virtualEndpoint/cloudPCs', 'accessDenied: Access is denied to the requested resource.').grant, 'CloudPC.Read.All');
 });
 

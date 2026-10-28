@@ -53,6 +53,7 @@ export const READ_GRANTS = Object.freeze({
   '/identityGovernance/accessReviews': 'AccessReview.Read.All',
   '/identityGovernance/entitlementManagement': 'EntitlementManagement.Read.All',
   '/identityGovernance/lifecycleWorkflows': 'LifecycleWorkflows.Read.All',
+  '/identityGovernance/privilegedAccess/group': 'PrivilegedAccess.Read.AzureADGroup',
   '/identityGovernance/termsOfUse': 'Agreement.Read.All',
   '/identityProtection': 'IdentityRiskEvent.Read.All',
   '/informationProtection': 'InformationProtectionPolicy.Read.All',

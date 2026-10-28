@@ -113,6 +113,7 @@ export const KEEL_PERMISSIONS = Object.freeze([
   read('AccessReview.Read.All', 'governance', 'Policies', 'Read access reviews', 'Back up access reviews'),
   read('EntitlementManagement.Read.All', 'governance', 'Policies', 'Read access packages', 'Back up access packages and catalogs'),
   read('LifecycleWorkflows.Read.All', 'governance', 'Policies', 'Read joiner and leaver workflows', 'Back up lifecycle workflows'),
+  read('PrivilegedAccess.Read.AzureADGroup', 'governance', 'Policies', 'Read groups under Privileged Identity Management', 'Back up which groups need approval or activation before someone joins them'),
   read('Agreement.Read.All', 'governance', 'Policies', 'Read terms of use', 'Back up terms of use'),
   read('DeviceManagementRBAC.Read.All', 'intune', 'Roles', 'Read Intune roles', 'Back up Intune roles and scope tags'),
   read('DeviceManagementManagedDevices.Read.All', 'intune', 'Devices', 'Read managed devices', 'Back up device categories and device settings'),

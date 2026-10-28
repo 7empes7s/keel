@@ -70,6 +70,7 @@ const HAND_PARSING = [
   [/\b(?:argv|args)\s*\.\s*(?:includes|indexOf|lastIndexOf|findIndex|find|flatMap|some)\s*\(/, 'argv.includes/indexOf'],
   [/\b(?:argv|args)\s*\[\s*[^\]]*\+\s*1\s*\]/, 'argv[i + 1]'],
   [/process\.argv\s*\[\s*[2-9]\s*\]/, 'process.argv[2]'],
+  [/\bargv\s*\.\s*slice\([^)]*\)\s*\.\s*(?:includes|indexOf|lastIndexOf|findIndex|find|some|filter)\s*\(/, 'argv.slice().includes'],
   [/process\.argv\s*\.\s*(?:includes|indexOf|lastIndexOf|findIndex|find|some)\s*\(/, 'process.argv.includes/indexOf'],
 ];
 
@@ -98,6 +99,7 @@ test('the guard catches the hand-rolled forms it is meant to block', () => {
     "const i = process.argv.indexOf(`--${name}`);",
     'return i > -1 ? argv[i + 1] : fallback;',
     "const command = process.argv[2];",
+    "if (process.argv.slice(2).includes('--apply')) {}",
     "argv.flatMap((value, i) => (value === `--${name}` ? [argv[i + 1]] : []))",
   ]) assert.notDeepEqual(handParsingIn(source), [], source);
   assert.deepEqual(handParsingIn("const { values } = parseCliArgs(argv.slice(2), ARGS);"), []);

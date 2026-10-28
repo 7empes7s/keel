@@ -124,6 +124,7 @@ const ARGS = {
   name: 'keel-schedules-host',
   strings: ['job', 'tenant-config', 'db-url'],
   text: ['reason'],
+  booleans: ['help'],
   positionals: 1,
 };
 

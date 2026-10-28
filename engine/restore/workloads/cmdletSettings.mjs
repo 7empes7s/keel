@@ -579,8 +579,12 @@ export function weakensMailProtection(resourceType, field, before, after) {
   return typeof test === 'function' && test(before ?? null, after ?? null) === true;
 }
 
-const TRUST_REASON = 'this decides which senders, certificates or partners the connector trusts; a restore never changes it, so a changed backup '
-  + 'cannot make it trust someone else. An administrator confirms the value and sets it in the Exchange admin center > Mail flow > Connectors';
+const CONNECTOR_TYPES = new Set(['exchangeInboundConnector', 'exchangeOutboundConnector']);
+const trustReason = (resourceType) => (CONNECTOR_TYPES.has(resourceType)
+  ? 'this decides which senders, certificates or partners the connector trusts; a restore never changes it, so a changed backup '
+    + 'cannot make it trust someone else. An administrator confirms the value and sets it in the Exchange admin center > Mail flow > Connectors'
+  : 'this decides who or what the service trusts; a restore never changes it, so a changed backup cannot make it trust someone else. '
+    + 'An administrator confirms the value and sets it in the admin center');
 const WEAKENING_REASON = 'this would weaken mail protection; KEEL only writes the stricter direction, so an administrator decides and applies it';
 
 /** The changes for one present object, and the manual entries it adds. */
@@ -600,7 +604,7 @@ function planFields(write, { observation, current, manual }) {
     }
     if (same(before, after)) continue;
     if (isTrustField(write.resourceType, field)) {
-      manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: TRUST_REASON, trust: true });
+      manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: trustReason(write.resourceType), trust: true });
       continue;
     }
     if (!writable.has(field)) {

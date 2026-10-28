@@ -67,6 +67,7 @@ import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile
 import { formatTimestamp } from "@/lib/presentation";
 import { pushUrl } from "@/lib/url-history";
 import { useViewState } from "@/lib/use-view-state";
+import { csvLine } from "@/lib/csv";
 
 // Value report (portal audit, pick A: dashboard of charts). Four count tiles, one
 // results chart drawn to scale (opens full screen with `chart=full`), cards for
@@ -154,9 +155,8 @@ export function ValueReportPage({ data }: { data: ValueReportData }) {
 
   function downloadRows(ids: string[]) {
     const chosen = shown.filter((row) => ids.includes(row.id));
-    const cell = (value: string | number) => { const text = String(value); return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text; };
     const lines = [["What was asked", "Kind", "Result", "Why", "Attempts", "Last activity", "Job ID"].join(",")];
-    for (const row of chosen) lines.push([outcomeName(row), FAMILY_WORDS[row.family].one, OUTCOME_STATE_LABELS[row.state], reasonSentence(row.reason), row.attempts, (outcomeWhen(row) ?? "").slice(0, 10), row.lastJobId ?? ""].map(cell).join(","));
+    for (const row of chosen) lines.push(csvLine([outcomeName(row), FAMILY_WORDS[row.family].one, OUTCOME_STATE_LABELS[row.state], reasonSentence(row.reason), row.attempts, (outcomeWhen(row) ?? "").slice(0, 10), row.lastJobId ?? ""]));
     const url = URL.createObjectURL(new Blob([`${lines.join("\n")}\n`], { type: "text/csv" }));
     const link = document.createElement("a");
     link.href = url;

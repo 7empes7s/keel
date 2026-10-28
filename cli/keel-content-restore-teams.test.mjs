@@ -111,9 +111,8 @@ test('request, approval and run of a fixture restore through the real write tran
   assert.ok(writes.every((request) => decodeURIComponent(new URL(request.url).pathname).startsWith(`/v1.0/teams/${TEAM}/`)));
 
   const count = sent.length;
-  assert.equal(await run(['--fixture', '/tmp/keel-rt-fixture.json']), 0);
-  assert.equal(JSON.parse(lines.pop()).alreadyDone, 5);
-  assert.ok(sent.slice(count).filter((request) => request.method === 'POST').every((request) => request.url.endsWith('/completeMigration')), 'a second run imports nothing again');
+  await assert.rejects(run(['--fixture', '/tmp/keel-rt-fixture.json']), /already completed/, 'a completed run never starts again (audit run 2, finding 6)');
+  assert.equal(sent.length, count, 'a second run sends nothing');
   const { rows: [held] } = await setup.query('SELECT status, workload FROM content_restore_run');
   assert.deepEqual(held, { status: 'completed', workload: 'teams' });
 });

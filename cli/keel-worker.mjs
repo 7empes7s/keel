@@ -800,7 +800,7 @@ export async function runJob(client, job, { dbUrl, onInFlightChange, handlers = 
   }
 }
 
-// Roadmap task-79: drain due SIEM outbox events between job polls. The outbox is
+// Roadmap task-79: drain due SIEM outbox events on the safety-sweep timer. The outbox is
 // durable, so a drain failure must not kill the worker: it is logged redacted and the
 // next poll retries. Exported so the task-79 boundary tests drive this exact isolation
 // seam with injected adapters and a failing client.
@@ -813,7 +813,7 @@ export async function drainSiemOutbox(client, { workerId, adapters = SIEM_ADAPTE
   }
 }
 
-// Task 83: between job polls, escalate alerts whose acknowledgement deadline passed.
+// Task 83: on the safety-sweep timer, escalate alerts whose acknowledgement deadline passed.
 // Deadlines live on the alert rows, so a restarted worker finds every overdue alert;
 // the claim is atomic per occurrence, so several workers never escalate it twice.
 export async function sweepAlertEscalations(client, { workerId, now, log = console.error } = {}) {
@@ -825,7 +825,7 @@ export async function sweepAlertEscalations(client, { workerId, now, log = conso
   }
 }
 
-// Task 94: between job polls, at most once per interval, raise emergency-account
+// Task 94: on the safety-sweep timer, at most once per interval, raise emergency-account
 // usage alerts from the ingested audit facts and the validation / credential
 // reminders. It reads KEEL's own tables only; it never calls Microsoft, rotates a
 // credential or changes a policy. Idempotent per audit event, so a restart re-sweeps
@@ -906,8 +906,48 @@ export function installShutdownSignals(shutdown, proc = process) {
   proc.on('SIGINT', () => shutdown.stop('SIGINT'));
 }
 
+// Security audit run 2, finding 11: the safety sweeps (SIEM outbox, alert escalation,
+// break-glass canary) used to run only when the queue was empty, so a long restore or a
+// full queue paused them. They now run on their own timer, beside the job loop, on their
+// own database connection. One sweep runs at a time; a slow sweep delays the next one
+// instead of stacking up. A failing sweep is logged and retried on the next tick.
+export function startSafetySweeps({
+  sweep, intervalMs, setTimer = setTimeout, clearTimer = clearTimeout, logError = console.error,
+}) {
+  let stopped = false;
+  let timer = null;
+  let current = null;
+  const schedule = () => {
+    if (!stopped) timer = setTimer(() => { timer = null; current = tick(); }, intervalMs);
+  };
+  const tick = async () => {
+    try { await sweep(); } catch (err) {
+      logError(`safety sweep failed — ${redactPayload(err instanceof Error ? err.message : String(err))}`);
+    } finally {
+      current = null;
+      schedule();
+    }
+  };
+  current = tick();
+  return {
+    async stop() {
+      stopped = true;
+      if (timer) clearTimer(timer);
+      timer = null;
+      await current;
+    },
+  };
+}
+
+export async function runSafetySweeps(client, { workerId }) {
+  // Each sweep catches and logs its own failure, so one cannot block the others.
+  await drainSiemOutbox(client, { workerId });
+  await sweepAlertEscalations(client, { workerId });
+  await sweepBreakGlassCanary(client, { workerId });
+}
+
 export async function runWorkerLoop({
-  shutdown, pollIntervalMs, claim, idle, run, requeue, failUnrun, wait = sleep,
+  shutdown, pollIntervalMs, claim, idle = async () => {}, run, requeue, failUnrun, wait = sleep,
 }) {
   while (!shutdown.done) {
     const job = await claim();
@@ -973,31 +1013,37 @@ async function main() {
   const shutdown = createShutdownControl({ workerId });
   installShutdownSignals(shutdown);
 
-  console.log(`worker ${workerId}: polling for jobs every ${pollIntervalMs}ms`);
-  await runWorkerLoop({
-    shutdown,
-    pollIntervalMs,
-    claim: () => claimNext(client, { workerId }),
-    idle: async () => {
-      // Between job polls, drain any due SIEM outbox events (task-79). The outbox is
-      // durable, so a drain failure must not kill the worker: the next poll retries.
-      await drainSiemOutbox(client, { workerId });
-      await sweepAlertEscalations(client, { workerId });
-      await sweepBreakGlassCanary(client, { workerId });
-    },
-    run: (job) => runJob(client, job, {
-      dbUrl,
-      onInFlightChange: (execution) => shutdown.setInFlight(execution),
-    }),
-    // A job claimed while a drain began goes back to the queue for the next worker; a job
-    // claimed while stopping fails, as before.
-    requeue: (job) => client.query(
-      `UPDATE job SET status = 'queued', started_at = NULL, heartbeat_at = NULL, worker_id = NULL
-       WHERE id = $1 AND status = 'running'`, [job.id],
-    ),
-    failUnrun: (job) => fail(client, { id: job.id, error: 'worker stopped before job execution' }),
+  // The sweeps get their own connection: a job's queries and a sweep's transaction must
+  // never interleave on one client.
+  const sweepClient = await connect(dbUrl);
+  const sweeps = startSafetySweeps({
+    intervalMs: pollIntervalMs,
+    sweep: () => runSafetySweeps(sweepClient, { workerId }),
   });
 
+  console.log(`worker ${workerId}: polling for jobs every ${pollIntervalMs}ms`);
+  try {
+    await runWorkerLoop({
+      shutdown,
+      pollIntervalMs,
+      claim: () => claimNext(client, { workerId }),
+      run: (job) => runJob(client, job, {
+        dbUrl,
+        onInFlightChange: (execution) => shutdown.setInFlight(execution),
+      }),
+      // A job claimed while a drain began goes back to the queue for the next worker; a job
+      // claimed while stopping fails, as before.
+      requeue: (job) => client.query(
+        `UPDATE job SET status = 'queued', started_at = NULL, heartbeat_at = NULL, worker_id = NULL
+         WHERE id = $1 AND status = 'running'`, [job.id],
+      ),
+      failUnrun: (job) => fail(client, { id: job.id, error: 'worker stopped before job execution' }),
+    });
+  } finally {
+    // Also on a loop error, so a stuck sweep timer cannot keep a broken worker alive.
+    await sweeps.stop();
+    await sweepClient.end();
+  }
   await client.end();
   console.log(`worker ${workerId}: exited cleanly`);
   process.exit(0);

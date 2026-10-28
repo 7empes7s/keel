@@ -46,7 +46,7 @@ import { CmdletError, runCmdlet } from '../../powershell/jobQueue.mjs';
 import { assertContentEffectApproval, disclosureFor, isPreservationLockFailure } from '../../safety/contentEffects.mjs';
 import { createDryRunArtifact, getDryRunArtifact, validateArtifactForApproval } from '../dryRunArtifact.mjs';
 import { TEST_TENANT_REFS, fixtureProblem } from './fixtureGuard.mjs';
-import { MANUAL_FAMILIES, WKLD_WRITE_OPERATIONS } from './writeDeclarations.mjs';
+import { MANUAL_FAMILIES, WKLD_WRITE_OPERATIONS, isTrustField } from './writeDeclarations.mjs';
 
 export const WORKLOAD_SETTINGS_EVIDENCE_KIND = 'workload-restore';
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -151,15 +151,13 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
   ],
   // A connector routes mail through the hosts it names; each of these sends more mail there.
   exchangeOutboundConnector: [
-    rule('SmartHosts', SHARING, addsEntry),
     rule('Enabled', SHARING, disabledToEnabled),
     rule('RecipientDomains', SHARING, changes),
     rule('IsTransportRuleScoped', SHARING, enabledToDisabled),
     rule('UseMXRecord', SHARING, enabledToDisabled),
     rule('RouteAllMessagesViaOnPremises', SHARING, changes),
     rule('AllAcceptedDomains', SHARING, changes),
-    rule('TlsSettings', SHARING, changes),
-    rule('TlsDomain', SHARING, changes),
+    // SmartHosts, TlsSettings and TlsDomain are never written (TRUST_FIELDS), so they need no rule.
   ],
   // Mail protection that flags more mail sends it to junk or quarantine, or rejects it;
   // quarantine is purged when its retention ends. Each switch turned on, each action
@@ -206,7 +204,7 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
     rule('AllowUserDeleteChat', IRREVERSIBLE, disabledToEnabled),
   ],
   teamsFederationConfiguration: [
-    rule('AllowFederatedUsers', SHARING, disabledToEnabled),
+    // AllowFederatedUsers and the domain lists are never written (TRUST_FIELDS), so they need no rule.
     rule('AllowTeamsConsumer', SHARING, disabledToEnabled),
     rule('AllowTeamsConsumerInbound', SHARING, disabledToEnabled),
     rule('RestrictTeamsConsumerToExternalUserProfiles', SHARING, enabledToDisabled),
@@ -303,7 +301,6 @@ export const WORKLOAD_OBJECT_EFFECTS = Object.freeze({
 // Written fields whose names look content-bearing but are not, and why.
 export const BENIGN_FIELDS = Object.freeze({
   RecipientLimitExternalPerHour: 'a sending rate limit; it never deletes or discloses mail',
-  SharedSipAddressSpace: 'hybrid SIP routing between Teams and on-premises; not who sees content',
   ExternalLocationLookupMode: 'emergency address lookup for remote workers',
   ExternalAccessPrefix: 'the digit dialled for an outside line',
   RetentionDurationDisplayHint: 'the unit the portal shows a retention duration in',
@@ -580,6 +577,21 @@ export function weakensMailProtection(resourceType, field, before, after) {
   return typeof test === 'function' && test(before ?? null, after ?? null) === true;
 }
 
+// What each type's trust fields decide, and where an administrator sets them.
+const CONNECTOR_TRUST = ['which senders, certificates, partners or relay hosts the connector trusts', 'the Exchange admin center > Mail flow > Connectors'];
+const TRUST_WHERE = Object.freeze({
+  exchangeInboundConnector: CONNECTOR_TRUST,
+  exchangeOutboundConnector: CONNECTOR_TRUST,
+  exchangeConnectionFilterPolicy: ['which sender IP ranges skip spam filtering',
+    'the Microsoft Defender portal > Email & collaboration > Policies & rules > Threat policies > Anti-spam > Connection filter policy'],
+  teamsFederationConfiguration: ['which outside organizations and domains Teams users can chat and meet with',
+    'the Teams admin center > Users > External access'],
+});
+const trustReason = (resourceType) => {
+  const [what, where] = TRUST_WHERE[resourceType] ?? ['who or what the service trusts', 'the admin center'];
+  return `this decides ${what}; a restore never changes it, so a changed backup cannot make it trust someone else. `
+    + `An administrator confirms the value and sets it in ${where}`;
+};
 const WEAKENING_REASON = 'this would weaken mail protection; KEEL only writes the stricter direction, so an administrator decides and applies it';
 
 /** The changes for one present object, and the manual entries it adds. */
@@ -598,6 +610,10 @@ function planFields(write, { observation, current, manual }) {
       continue;
     }
     if (same(before, after)) continue;
+    if (isTrustField(write.resourceType, field)) {
+      manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: trustReason(write.resourceType), trust: true });
+      continue;
+    }
     if (!writable.has(field)) {
       manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: field === 'State' || field === 'Enabled'
         ? 'turning this on or off is a separate Enable-/Disable- step an administrator takes'

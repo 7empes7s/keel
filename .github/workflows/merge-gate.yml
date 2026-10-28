@@ -3,12 +3,14 @@ name: Merge gate
 # Merges PRs labelled `automerge` once they are safe. This repo is private on the free
 # GitHub plan, so branch protection can't enforce it; this workflow is the gate instead.
 # A PR merges when all of these hold:
+#   - it still has the `automerge` label (automerge-label.yml removes it on every push)
 #   - it is not a draft and has no merge conflict
 #   - every check run on its head commit has finished, and none failed
 #   - if it touches code (the Portal workflow's paths), the Portal workflow passed on its head commit
-#   - no reviewer's latest review requests changes, and no review thread is unresolved
+#   - no reviewer's latest verdict requests changes, and no review thread is unresolved
 #   - when the repo variable REQUIRE_REVIEW is "true", someone other than the author has reviewed
-#     it (for example Codex)
+#     its head commit (for example Codex)
+# The merge is pinned to the head commit it checked, so a push during the check can't slip in.
 # Pushes made with GITHUB_TOKEN don't start push workflows, so after a merge this dispatches
 # the Portal workflow on master. The live auto-deploy needs a successful run on that commit.
 
@@ -19,7 +21,8 @@ on:
   pull_request_review:
     types: [submitted]
   pull_request:
-    types: [labeled, ready_for_review, synchronize]
+    # Not synchronize: a push removes the label (automerge-label.yml) instead.
+    types: [labeled, ready_for_review]
   workflow_dispatch:
 
 concurrency:

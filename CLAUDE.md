@@ -14,6 +14,7 @@ The live portal is https://keel.techinsiderbytes.com, behind Cloudflare Access.
 ## Ship
 - **One task per branch** (`claude/<topic>`) and one PR against `master`.
 - **Merging:** add the `automerge` label. The **Merge gate** workflow merges once every check is green, Portal has passed on the head commit, and no review blocks it. Never call the merge API on your own PR.
+  - The label covers only the commit it was added on: any push (a fix, or bringing in master) removes it. Add it again once the new head is reviewed.
 - **Deploying:** green `master` deploys automatically to Mulinux (`keel-deploy.timer` to `/opt/keel-live`), and only commits whose Portal run succeeded are deployed. Check the live URL after a deploy.
 - **Never** skip, disable or quarantine a test to get green.
 

@@ -8777,3 +8777,29 @@ item that needs it stays untouched.
      `--artifact <id> --enforce`. Expect `verified`, the list back and the description back.
   7. **Re-run check:** dry run again: 0 changes. Promote the step 6 artifact again: `stale`, no write.
 - **Report:** B; the config check; steps 1 to 7 with exit codes; approval ids; evidence branch and commit; anything left in the tenant.
+
+### Q196: Read-only check of the Cloudflare Access cookie and cross-site headers (security audit finding 5)
+- Drafted by the "Add cross-site request protection to portal" thread (2026-10-28). The portal's only credential is the
+  Access assertion that Cloudflare builds from the browser's `CF_Authorization` cookie, so whether another site can make a
+  signed-in browser approve a restore depends on that cookie's SameSite setting. The portal fix (PR from branch
+  `claude/project-thread-noleh6`) refuses cross-site state changes in the app anyway; this item records the edge setting.
+- Needs: nothing for steps 1 to 3. Step 4 needs `/opt/keel-live` at the merge of that PR or later.
+- Status: todo
+- **Read-only. No change to the Access application, Caddy, Cloudflare rules or any service. No restart.** Never print a token,
+  cookie value or JWT.
+- Do:
+  1. If a Cloudflare API token with Access read is available on the host, list the Access applications
+     (`GET /accounts/<account id>/access/apps`) and for the one whose domain covers `keel.techinsiderbytes.com` report only:
+     `domain`, `same_site_cookie_attribute`, `http_only_cookie_attribute`, `enable_binding_cookie`, `session_duration`.
+     If no such token is on the host, say so and skip to step 2.
+  2. Report whether any other hostname under `techinsiderbytes.com` is served from this host or by Caddy (names only). Any of
+     them is "same-site" to the portal, so SameSite would not stop it.
+  3. Caddy: give the portal's site block lines (only lines with `header`, `Content-Security-Policy`, `X-Frame-Options`,
+     `Origin` or `@`-matchers), or say there are none.
+  4. After the PR is deployed, against the local portal port (the one Caddy proxies to; no Access token needed):
+     - `curl -sI http://127.0.0.1:<port>/api/health`: report the `Content-Security-Policy` and `X-Frame-Options` lines.
+     - `curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: https://evil.example' -H 'Sec-Fetch-Site: cross-site' http://127.0.0.1:<port>/api/approvals/00000000-0000-0000-0000-000000000000/reject`:
+       expected `403` (refused before sign-in; nothing is recorded).
+- Result:
+- **Expected:** SameSite `lax` or `strict`, HTTP-only on; frame headers `frame-ancestors 'none'` and `DENY`; step 4 code 403.
+- **Report:** the step 1 fields (or "no token on host"), step 2 hostnames, step 3 lines, step 4 lines and code.

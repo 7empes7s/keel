@@ -9479,7 +9479,7 @@ item that needs it stays untouched.
 - **Report:** B; each step's exit code, dry-run and approval ids, the log `changes` lines, every Graph call that failed (status and
   message verbatim, no tokens); evidence branch and promotions if captured. A 400/404 on `updateRelationships` is a finding for a new issue.
 
-### Q210: Live undo of a restored Intune app link (after PR for the link undo, follows Q209)
+### Q210: Live undo of a restored Intune app link (after PR #651, follows Q209)
 - Drafted by the "Fix undo for restored Intune app links" thread (2026-10-28). Undoing a restore that created an app dependency
   failed before (no delete for links; an undo delete was also held to the snapshot's observation). Now, fixture-tested only:
   - **Undo of a created link:** the app that holds it is sent its current links with this one left out, through

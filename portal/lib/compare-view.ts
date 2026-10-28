@@ -237,6 +237,8 @@ export const WORKLOAD_LABELS: Record<string, string> = {
   teams: "Teams",
   "purview-labels": "Sensitivity labels",
   "purview-governance": "Purview governance",
+  "purview-classifiers": "Purview sensitive info types and keyword dictionaries",
+  "purview-audit-alerts": "Purview alert and audit retention policies",
   "purview-retention-dlp": "Retention and data loss prevention",
   "sharepoint-site-settings": "SharePoint site settings",
   "sharepoint-structure": "SharePoint site structure",

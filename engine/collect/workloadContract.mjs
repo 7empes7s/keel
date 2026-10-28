@@ -14,7 +14,9 @@
  *  - the Exchange and Defender settings mail flow does not read (READ-EXO);
  *  - Teams calling, voice and live event policies and policy assignments, and Purview
  *    retention labels, adaptive scopes, auto-labeling and eDiscovery cases and holds
- *    (Wave 1 READ-TEAMS-PV).
+ *    (Wave 1 READ-TEAMS-PV);
+ *  - Purview sensitive information types, keyword dictionaries, alert policies and
+ *    audit log retention policies (the pieces DLP depends on).
  * Each entry records, per read operation:
  *  - the Graph endpoint or cmdlet;
  *  - its version;
@@ -49,6 +51,7 @@ export const WORKLOADS = Object.freeze([
   'sharepoint-structure',
   'teams-voice-policies', 'purview-governance',
   'power-platform-settings',
+  'purview-classifiers', 'purview-audit-alerts',
 ]);
 export const WORKLOAD_STATES = Object.freeze(['refused', 'disabled', 'fixture-tested', 'pending-prerequisite', 'live-qualified']);
 export const GRAPH_VERSIONS = Object.freeze(['v1.0', 'beta']);
@@ -414,6 +417,24 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     operation: cmdlet(name, 'ExchangeOnlineManagement', options),
     auth: { application: true, delegated: true },
     rbac: { permissions: ['Exchange.ManageAsApp'], roles },
+    paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
+  })),
+  // The Purview pieces DLP depends on (custom sensitive information types, their rule
+  // packages, keyword dictionaries), and alert and audit log retention policies, in the
+  // Security & Compliance session with no parameters. engine/collect/workloads/
+  // purviewDlpSupport.mjs holds the fields, identities and the audit licence.
+  ...[
+    ['purview.sensitive-info-types', 'purview-classifiers', 'Custom sensitive information types', 'Get-DlpSensitiveInformationType'],
+    ['purview.sit-rule-packages', 'purview-classifiers', 'Sensitive information type rule packages', 'Get-DlpSensitiveInformationTypeRulePackage'],
+    ['purview.keyword-dictionaries', 'purview-classifiers', 'Keyword dictionaries', 'Get-DlpKeywordDictionary'],
+    ['purview.alert-policies', 'purview-audit-alerts', 'Alert policies', 'Get-ProtectionAlert'],
+    ['purview.audit-retention-policies', 'purview-audit-alerts', 'Audit log retention policies', 'Get-UnifiedAuditLogRetentionPolicy'],
+  ].map(([id, workload, resource, name]) => ({
+    id, workload, resource,
+    operation: cmdlet(name, 'ExchangeOnlineManagement'),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Compliance Administrator'] },
     paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
     source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
   })),

@@ -212,6 +212,16 @@ export const CONCEPT_WORDS = Object.freeze([
     kinds: ['purview-retention-dlp'],
   },
   {
+    pattern: /\b(?:sensitive info(?:rmation)? types?|keyword dictionar(?:y|ies)|classifiers?)\b/i,
+    label: 'sensitive information types and keyword dictionaries',
+    kinds: ['purview-classifiers'],
+  },
+  {
+    pattern: /\b(?:alert polic(?:y|ies)|protection alerts?|audit (?:log )?retention(?: polic(?:y|ies))?)\b/i,
+    label: 'alert and audit log retention policies',
+    kinds: ['purview-audit-alerts'],
+  },
+  {
     pattern: /\b(?:retention(?: polic(?:y|ies)| labels?)?|records management|legal holds?|litigation holds?)\b/i,
     label: 'retention policies and labels',
     kinds: ['purview-retention-dlp', 'purview-governance'],

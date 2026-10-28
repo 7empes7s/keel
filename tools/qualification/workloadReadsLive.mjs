@@ -37,6 +37,9 @@ import { pathToFileURL } from 'node:url';
 
 import { structuredFailure } from '../../engine/collect/workloads/exchange.mjs';
 import { readExchangeRoleGroups } from '../../engine/collect/workloads/exchangeRoleGroups.mjs';
+import {
+  PURVIEW_AUDIT_ALERTS_WORKLOAD, PURVIEW_CLASSIFIERS_WORKLOAD, readPurviewAuditAlerts, readPurviewClassifiers,
+} from '../../engine/collect/workloads/purviewDlpSupport.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
 import { pseudonymizeCapture } from './pseudonymize.mjs';
@@ -64,6 +67,7 @@ export async function readSharePointSiteSharing({ powershell }) {
 
 export const WORKLOAD_READERS = Object.freeze({
   ...WRITTEN_READERS, [SHAREPOINT_WORKLOAD]: readSharePointSiteSharing, 'exchange-role-groups': readExchangeRoleGroups,
+  [PURVIEW_CLASSIFIERS_WORKLOAD]: readPurviewClassifiers, [PURVIEW_AUDIT_ALERTS_WORKLOAD]: readPurviewAuditAlerts,
   [SHAREPOINT_STRUCTURE_WORKLOAD]: readSharePointStructure,
 });
 

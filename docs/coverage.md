@@ -995,3 +995,26 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 **KEEL can restore:** nothing yet.
 
 **You do:** KEEL does not restore these yet. Change them by hand in the Power Platform admin center or the Fabric admin portal using the backup.
+
+### Purview sensitive information types and keyword dictionaries
+
+**Backed up:**
+
+- Custom sensitive information types
+- Sensitive information type rule packages
+- Keyword dictionaries
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. Re-upload a deleted custom type from its saved rule package, and recreate a keyword dictionary from its saved terms, in the Purview portal or with Security & Compliance PowerShell, before restoring a data loss prevention rule that uses them. Microsoft's built-in types are not backed up: they come back with the service.
+
+### Purview alert and audit retention policies
+
+**Backed up:**
+
+- Alert policies
+- Audit log retention policies
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. Turn a built-in alert policy back on, and recreate a deleted alert or audit retention policy, by hand in the Purview portal using the backup. Audit retention policies are backed up only when the tenant has Microsoft Purview Audit (Premium).

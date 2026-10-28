@@ -20,7 +20,7 @@
   Fixture-tested only through engine/roadmap/exchange-config.test.mjs,
   engine/roadmap/onedrive-purview.test.mjs, engine/roadmap/exchange-mail-flow.test.mjs,
   engine/roadmap/teams-org-policies.test.mjs, engine/roadmap/exchange-extended.test.mjs,
-  engine/roadmap/exchange-role-groups.test.mjs,
+  engine/roadmap/exchange-role-groups.test.mjs, engine/roadmap/purview-dlp-support.test.mjs,
   engine/roadmap/purview-retention-dlp.test.mjs and engine/roadmap/workload-writers.test.mjs
   (which play this contract); it has not
   been run against a tenant.
@@ -156,6 +156,20 @@ $AllowedPurviewExtended = @{
     'Get-ComplianceCase'             = @('CaseType')
     'Get-CaseHoldPolicy'             = @('Case')
     'Get-CaseHoldRule'               = @('Policy')
+}
+
+# The Purview pieces DLP depends on, and alert and audit retention policies
+# (engine/collect/workloads/purviewDlpSupport.mjs), in the Security & Compliance
+# session with no parameters. Reads only: nothing that reads matches, raised alerts or
+# audit records.
+$AllowedPurviewClassifiers = @{
+    'Get-DlpSensitiveInformationType'            = @()
+    'Get-DlpSensitiveInformationTypeRulePackage' = @()
+    'Get-DlpKeywordDictionary'                   = @()
+}
+$AllowedPurviewAuditAlerts = @{
+    'Get-ProtectionAlert'                = @()
+    'Get-UnifiedAuditLogRetentionPolicy' = @()
 }
 
 # Wave 2 WKLD: workload configuration writes, one Set- (or New- for a named Teams
@@ -347,6 +361,8 @@ elseif ($AllowedPnPStructureWrites.ContainsKey($name) -and $module -eq 'PnP.Powe
 elseif ($AllowedTeamsPolicy.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsPolicy[$name] }
 elseif ($AllowedTeamsExtended.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsExtended[$name] }
 elseif ($AllowedPurviewExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewExtended[$name] }
+elseif ($AllowedPurviewClassifiers.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewClassifiers[$name] }
+elseif ($AllowedPurviewAuditAlerts.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewAuditAlerts[$name] }
 elseif ($AllowedExchangeWrites.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeWrites[$name] }
 elseif ($AllowedPurviewWrites.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewWrites[$name] }
 elseif ($AllowedTeamsWrites.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsWrites[$name] }
@@ -446,6 +462,21 @@ try {
     # Warnings from the module's own functions ignore this script's $WarningPreference and
     # would land on stdout ahead of the envelope (Get-LabelPolicy: "Force Validate not set").
     $output = & $name @params -ErrorAction Stop 3>$null
+    # Microsoft's built-in rule package is megabytes of XML that Keel never stores
+    # (engine/collect/workloads/purviewDlpSupport.mjs): drop it here so it is not sent.
+    # Its Name is empty; RuleCollectionName carries the name.
+    if ($name -eq 'Get-DlpSensitiveInformationTypeRulePackage') { $output = @($output | Where-Object { $_.RuleCollectionName -ne 'Microsoft Rule Package' -and $_.Name -ne 'Microsoft Rule Package' }) }
+    # A sensitive information type holds dictionaries with non-string keys, which
+    # ConvertTo-Json refuses (NonStringKeyInDictionary): send only the fields Keel keeps,
+    # and only those the object has, so a missing one is still reported as not read.
+    if ($name -eq 'Get-DlpSensitiveInformationType') {
+        $keep = @('Name', 'Id', 'Description', 'Publisher', 'RecommendedConfidence', 'RulePackId')
+        $output = @($output | ForEach-Object {
+            $item = $_; $kept = [ordered]@{}
+            foreach ($field in $keep) { if ($item.PSObject.Properties.Name -contains $field) { $kept[$field] = $item.$field } }
+            [pscustomobject]$kept
+        })
+    }
     Out-Envelope -Envelope @{ ok = $true; output = @($output) } -Code 0
 } catch {
     $record = $_

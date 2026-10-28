@@ -22,6 +22,10 @@ import { collectMailFlow, recordMailFlowRun } from './mailFlow.mjs';
 import { collectOneDrive, recordOneDriveRun } from './onedrive.mjs';
 import { POWER_PLATFORM_WORKLOAD, collectPowerPlatform, powerPlatformTransportFor, recordPowerPlatformRun } from './powerPlatform.mjs';
 import { collectPurview, recordPurviewRun } from './purview.mjs';
+import {
+  PURVIEW_AUDIT_ALERTS_WORKLOAD, PURVIEW_CLASSIFIERS_WORKLOAD, collectPurviewAuditAlerts, collectPurviewClassifiers,
+  recordPurviewAuditAlertsRun, recordPurviewClassifiersRun,
+} from './purviewDlpSupport.mjs';
 import { collectPurviewExtended, recordPurviewExtendedRun } from './purviewExtended.mjs';
 import { collectRetentionDlp, recordRetentionDlpRun } from './purviewRetentionDlp.mjs';
 import { SHAREPOINT_WORKLOAD, collectSharePointSites, recordSharePointRun } from './sharepoint.mjs';
@@ -54,6 +58,11 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   // purview.mjs
   { workload: 'purview-labels', powershellFamily: 'purview', record: recordPurviewRun,
     collect: (client, { base, powershell }) => collectPurview(client, { ...base, powershell }) },
+  // purviewDlpSupport.mjs
+  { workload: PURVIEW_CLASSIFIERS_WORKLOAD, powershellFamily: 'purview', record: recordPurviewClassifiersRun,
+    collect: (client, { base, powershell }) => collectPurviewClassifiers(client, { ...base, powershell }) },
+  { workload: PURVIEW_AUDIT_ALERTS_WORKLOAD, powershellFamily: 'purview', record: recordPurviewAuditAlertsRun,
+    collect: (client, { base, powershell }) => collectPurviewAuditAlerts(client, { ...base, powershell }) },
   // purviewExtended.mjs
   { workload: 'purview-governance', powershellFamily: 'purview', record: recordPurviewExtendedRun,
     collect: (client, { base, powershell }) => collectPurviewExtended(client, { ...base, powershell }) },

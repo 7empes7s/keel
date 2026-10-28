@@ -83,6 +83,9 @@ import { applyWave, applyPatches, retryThrottledGraphOperation } from '../engine
 import { breakGlassLockoutGate, closedLockoutGate } from '../engine/safety/lockoutGate.mjs';
 import { loadGroupMembership, loadLockoutGateInputs } from '../engine/safety/breakGlassReadiness.mjs';
 import { globalAdministratorPrincipalIds } from '../engine/safety/protectedPrincipals.mjs';
+import {
+  conditionalAccessGroupIds, gateRelationshipOperations, privilegedGroupIds, protectedEdgePrincipalIds,
+} from '../engine/safety/edgeLockoutGate.mjs';
 import { withProposedConditionalAccessPolicy } from '../engine/safety/lockoutGate.mjs';
 import {
   ENFORCED, EnforcementRefusal, applyConditionalAccessEnforcement, deletedPolicyRestoreRefusal, enforcementPendingFor,
@@ -879,6 +882,17 @@ export async function runRestore({
           families: RELATIONSHIP_RESTORE_FAMILIES,
         });
         const naturalKeyById = new Map([...existingTargetIds].map(([naturalKey, id]) => [String(id).toLowerCase(), naturalKey]));
+        // Security audit run 2, finding 1: the registered break-glass accounts are
+        // protected like Global Administrators, and member writes that can change
+        // their readiness go through the lockout gate with the proposed membership.
+        let edgeGateInputs = null;
+        let edgeGateError = null;
+        try {
+          edgeGateInputs = await loadLockoutGateInputsFn(client, { tenantRef: tenantRefFor(collectorConfig.tenantId) });
+        } catch (error) {
+          edgeGateError = error.message;
+        }
+        const edgeProtectedIds = protectedEdgePrincipalIds(targetResources, (edgeGateInputs?.accounts ?? []).map((account) => account.accountId));
         relationshipPlan = planRelationshipOperations({
           parents: edgeParents,
           desired: desiredEdges,
@@ -888,8 +902,17 @@ export async function runRestore({
             .filter((resource) => resource.verb === 'create' || resource.verb === 'restore-soft-deleted')
             .map((resource) => resource.naturalKey)),
           naturalKeyForTargetId: (id) => naturalKeyById.get(id) ?? null,
-          protectedPrincipalIds,
+          protectedPrincipalIds: edgeProtectedIds,
         });
+        const gatedEdges = gateRelationshipOperations({
+          operations: relationshipPlan.operations,
+          parentTargetIds: new Map(liveParents.map((parent) => [parent.naturalKey, parent.liveTargetId])),
+          caGroupIds: conditionalAccessGroupIds(targetResources),
+          privilegedGroupIds: privilegedGroupIds(targetResources),
+          inputs: edgeGateInputs,
+          loadError: edgeGateError,
+        });
+        relationshipPlan = { ...relationshipPlan, operations: gatedEdges.operations, refusals: [...relationshipPlan.refusals, ...gatedEdges.refusals] };
         for (const note of relationshipPlan.notes) logger.log(`relationship edges not reconciled: ${note.note}`);
         logger.log(`relationship edges: ${relationshipPlan.operations.length} planned, ${relationshipPlan.refusals.length} refused`);
       }

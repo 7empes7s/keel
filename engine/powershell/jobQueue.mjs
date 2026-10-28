@@ -38,6 +38,8 @@ export const CONTAINER_CREDENTIAL_DIR = '/run/keel-job';
 /** The unprivileged user the container runs as when the worker itself is root. */
 export const CONTAINER_USER = '10001:10001';
 export const DEFAULT_PIDS_LIMIT = 512;
+/** How long the `docker rm -f` that follows a timed-out job may take before it is abandoned. */
+export const CONTAINER_REMOVE_TIMEOUT_MS = 30 * 1000;
 /**
  * The deployed container scripts (run-job.sh, run-cmdlet.ps1, list-commands.ps1, probe-workloads.ps1).
  * A function, as catalogue.mjs does: a `new URL(literal, import.meta.url)` makes the
@@ -252,7 +254,8 @@ function containerUser() {
  *   swap headroom beyond the hard cap — required on a host that is already
  *   swap-constrained.
  * @param {number} [options.timeoutMs] - Wall-clock budget before the child is
- *   SIGKILLed and the call rejects.
+ *   SIGKILLed, its container is force-removed (`docker rm -f`) and the call rejects.
+ * @param {number} [options.removeTimeoutMs] - How long that `docker rm -f` may take.
  * @param {string} [options.credentialRoot] - Host directory the job's connection
  *   settings, certificate and key must resolve inside. Only those three files are
  *   copied into the container, never the directory.
@@ -274,6 +277,7 @@ export async function runJob(job, options = {}) {
     image = DEFAULT_IMAGE,
     memory = DEFAULT_MEMORY,
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    removeTimeoutMs = CONTAINER_REMOVE_TIMEOUT_MS,
     credentialRoot = DEFAULT_CREDENTIAL_ROOT,
     stagingRoot,
     scriptMount = defaultScriptMount(),
@@ -289,10 +293,14 @@ export async function runJob(job, options = {}) {
   const staged = await stageJobCredentials(job.tenantConfigPath ?? DEFAULT_TENANT_CONFIG, { credentialRoot, stagingRoot, owner });
   const payload = JSON.stringify({ ...job, jobId, ...(staged ? { tenantConfigPath: staged.configPath } : {}) });
 
+  // Killing the docker client on a timeout does not stop the container, so every
+  // container gets a name the timeout path can remove it by.
+  const containerName = jobContainerName(jobId);
   const args = [
     'run',
     '--rm',
     '-i',
+    '--name', containerName,
     '--memory', memory,
     '--memory-swap', memory,
     '--pids-limit', String(DEFAULT_PIDS_LIMIT),
@@ -310,13 +318,60 @@ export async function runJob(job, options = {}) {
   ];
 
   try {
-    return await spawnContainer({ dockerBin, args, spawnFn, timeoutMs, payload, jobId });
+    return await spawnContainer({ dockerBin, args, spawnFn, timeoutMs, removeTimeoutMs, payload, jobId, containerName });
   } finally {
     if (staged) await rm(staged.dir, { recursive: true, force: true });
   }
 }
 
-function spawnContainer({ dockerBin, args, spawnFn, timeoutMs, payload, jobId }) {
+/**
+ * A docker container name for one job: `keel-job-` plus the job id reduced to the
+ * characters docker accepts, plus a random suffix so two runs that reuse a job id
+ * never collide.
+ */
+export function jobContainerName(jobId) {
+  const safe = String(jobId).replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 64);
+  return `keel-job-${safe ? `${safe}-` : ''}${randomUUID().slice(0, 8)}`;
+}
+
+/**
+ * Force-removes a job's container after a timeout (`docker rm -f` stops it first).
+ * Best effort: it never throws, and gives up after CONTAINER_REMOVE_TIMEOUT_MS so a
+ * hung daemon cannot hold the job. Resolves to null when the container is gone (or
+ * never started), otherwise to a one-line reason.
+ */
+function removeContainer({ dockerBin, spawnFn, containerName, timeoutMs }) {
+  return new Promise((done) => {
+    let child;
+    try {
+      child = spawnFn(dockerBin, ['rm', '-f', containerName], { stdio: ['ignore', 'ignore', 'pipe'] });
+    } catch (err) {
+      done(`could not run ${dockerBin} rm: ${err.message}`);
+      return;
+    }
+    let stderr = '';
+    let settled = false;
+    const finish = (reason) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      done(reason);
+    };
+    const timer = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch { /* already gone */ }
+      finish(`${dockerBin} rm did not finish within ${timeoutMs}ms`);
+    }, timeoutMs);
+    child.stderr?.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', (err) => finish(`could not run ${dockerBin} rm: ${err.message}`));
+    child.on('close', (code) => {
+      // A container that was never created, or that --rm already removed or is removing, is not a failure.
+      if (code === 0 || /no such container|already in progress/i.test(stderr)) finish(null);
+      else finish(`${dockerBin} rm exited ${code}: ${stderr.trim() || '(no stderr)'}`);
+    });
+  });
+}
+
+function spawnContainer({ dockerBin, args, spawnFn, timeoutMs, removeTimeoutMs, payload, jobId, containerName }) {
   return new Promise((resolve, reject) => {
     let child;
     try {
@@ -340,10 +395,14 @@ function spawnContainer({ dockerBin, args, spawnFn, timeoutMs, payload, jobId })
     };
 
     const timer = setTimeout(() => {
-      finish(() => {
+      finish(async () => {
         try { child.kill('SIGKILL'); } catch { /* already gone */ }
+        // Wait for the container to go before rejecting, so runJob only removes the
+        // staged credentials once nothing can still read them.
+        const failed = await removeContainer({ dockerBin, spawnFn, containerName, timeoutMs: removeTimeoutMs });
+        const note = failed ? `${stderr}${stderr && !stderr.endsWith('\n') ? '\n' : ''}keel: container ${containerName} may still be running: ${failed}\n` : stderr;
         reject(new JobQueueError(`job ${jobId} timed out after ${timeoutMs}ms`, {
-          code: 'TIMEOUT', stderr, stdout, jobId,
+          code: 'TIMEOUT', stderr: note, stdout, jobId,
         }));
       });
     }, timeoutMs);

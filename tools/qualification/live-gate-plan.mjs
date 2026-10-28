@@ -324,6 +324,38 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: 'sharepointSettings', drift: 'switch isLoopEnabled to the other value; write the original down first; never change legacy authentication, unmanaged sync or any sharing field',
     note: 'Set the original value back right after the run.',
   },
+  // Restore gaps, batch 20: Microsoft 365 admin center org settings, each
+  // drifted by one harmless value and set back right after the run.
+  formsSettings: {
+    kind: 'tenant-setting', fixture: 'the Microsoft Forms org settings',
+    select: 'formsSettings', drift: 'switch settings.isBingImageSearchEnabled to the other value; write the original down first; never change an external sharing field or the phishing scan',
+    note: 'Set the original value back right after the run.',
+  },
+  microsoft365AppsInstallationOptions: {
+    kind: 'tenant-setting', fixture: 'the Microsoft 365 Apps installation options',
+    select: 'microsoft365AppsInstallationOptions', drift: 'switch appsForWindows.isVisioEnabled to the other value; write the original down first',
+    note: 'Only what people may install themselves from the portal changes, for a few minutes; installed apps are not touched. Set the original value back right after the run.',
+  },
+  appsAndServicesSettings: {
+    kind: 'tenant-setting', fixture: 'the user owned apps and services settings',
+    select: 'appsAndServicesSettings', drift: 'switch settings.isAppAndServicesTrialEnabled to the other value; write the original down first; never turn the Office Store on',
+    note: 'Set the original value back right after the run.',
+  },
+  adminReportSettings: {
+    kind: 'tenant-setting', fixture: 'the usage report privacy setting',
+    select: 'adminReportSettings', drift: 'if displayConcealedNames is false, set it to true (the restore puts back false only if it is not withheld, so expect a manual step instead); if it is true, set it to false and let the restore hide names again',
+    note: 'Set the original value back right after the run.',
+  },
+  pronounsSettings: {
+    kind: 'tenant-setting', fixture: 'the pronouns org setting',
+    select: 'pronounsSettings', drift: 'switch isEnabledInOrganization to the other value; write the original down first',
+    note: 'Set the original value back right after the run.',
+  },
+  engageCommunity: {
+    kind: 'named-object', fixture: `private Viva Engage community ${FIXTURE_PREFIX}-community (description Fixture), owned by a test user`,
+    select: `${FIXTURE_PREFIX}-community`, drift: 'change its description: the restore puts it back; never make it public',
+    note: 'Update only: a deleted community is not recreated. Delete the community (and its group) after the run.',
+  },
   // Restore gaps, batch 12: a Windows app protection policy and an iOS
   // provisioning profile, both assigned to nobody. No device or user is affected.
   windowsManagedAppProtection: {
@@ -589,6 +621,32 @@ function setupFor(resourceType, operation, guidance, key) {
   }
 }
 
+/**
+ * Issue #641: the key `keel-restore --select` and `entraLive capture --fixture`
+ * take. A snapshot stores every object under `<type>:<natural key>`
+ * (engine/cir/canonicalize.mjs), so a bare name is never in the candidate set.
+ *  - A select that is a description, not a key, stays a placeholder the operator fills in.
+ *  - A relationship edge (`group#member`) is restored through its parent group.
+ *  - A singleton keyed by its type name is `<type>:<type>`. A singleton keyed by
+ *    its display name (authorizationPolicy, say) has a key Graph decides, so it
+ *    stays a placeholder rather than a guess.
+ *  - An id-keyed kind (deviceCategory, roleDefinition, ...) is stored under its
+ *    Graph id, which only the snapshot knows: a placeholder too.
+ */
+export function restoreKeyFor(resourceType, select) {
+  if (/\s/.test(select)) return `<natural key: ${select}>`;
+  const type = resourceType.split('#')[0];
+  if (select === type && !CONSTANT_KEY_TYPES.has(type)) {
+    return `<natural key: the key KEEL shows for the tenant's one ${type} object (it starts ${type}:)>`;
+  }
+  // These kinds are keyed by their Graph id (a role definition by its template
+  // id), never by the fixture's name, so the name alone is never in the snapshot.
+  if (ID_KEY_TYPES.has(type) || type === 'roleDefinition') {
+    return `<natural key: the id KEEL shows for ${select} (it starts ${type}:)>`;
+  }
+  return `${type}:${select}`;
+}
+
 function stepFor(row, inventory) {
   const { resourceType, operation } = row;
   const guidance = guidanceFor(resourceType);
@@ -596,8 +654,7 @@ function stepFor(row, inventory) {
   // one the other steps use is never deleted.
   const separate = operation === 'delete' && guidance.kind === 'named-object';
   const select = separate ? `${guidance.select}-delete` : guidance.select;
-  // A select that is a description, not a key, stays a placeholder the operator fills in.
-  const key = /\s/.test(select) ? `<natural key: ${select}>` : select;
+  const key = restoreKeyFor(resourceType, select);
   const setup = setupFor(resourceType, operation, guidance, key);
   const stem = evidenceStem(resourceType, operation);
   return {
@@ -613,6 +670,7 @@ function stepFor(row, inventory) {
     fixtureKind: guidance.kind,
     testObject: separate ? `a second fixture like the one above (${guidance.fixture}), named ${guidance.select}-delete, created after the snapshot` : guidance.fixture,
     select,
+    key,
     breakGlass: guidance.lockout ? [...BREAK_GLASS_COMMON, guidance.breakGlass ?? ''].filter(Boolean) : null,
     sharedRunAllowed: !guidance.lockout && operation !== 'delete',
     before: setup.before,
@@ -627,6 +685,7 @@ function stepFor(row, inventory) {
 
 function enforcementStep() {
   const guidance = guidanceFor('conditionalAccessPolicy');
+  const key = restoreKeyFor('conditionalAccessPolicy', `${FIXTURE_PREFIX}-ca`);
   return {
     id: `conditionalAccessPolicy:${ENFORCEMENT_STEP}`,
     resourceType: 'conditionalAccessPolicy',
@@ -640,14 +699,15 @@ function enforcementStep() {
     fixtureKind: 'named-object',
     testObject: `${FIXTURE_PREFIX}-ca, restored report-only by the restore-soft-deleted step from a snapshot where it was turned on (for carla only)`,
     select: `${FIXTURE_PREFIX}-ca`,
+    key,
     breakGlass: [...BREAK_GLASS_COMMON, guidance.breakGlass, 'This is the one step that turns a policy ON. It blocks only carla. The lockout gate runs at planning and again at execution.'],
     sharedRunAllowed: false,
     before: 'Run right after the Conditional Access restore-soft-deleted step, whose restore left an open "turn on" item for the policy.',
     commands: [
-      `node cli/keel-restore.mjs --enforce-conditional-access "$A" --policy '${FIXTURE_PREFIX}-ca' --persist-artifact "$E" --requested-by keel-operator`,
+      `node cli/keel-restore.mjs --enforce-conditional-access "$A" --policy '${key}' --persist-artifact "$E" --requested-by keel-operator`,
       '# Marouane approves artifact E in the portal (Restore, review).',
       'node cli/keel-restore.mjs --artifact "$E" --enforce',
-      `node tools/qualification/entraLive.mjs capture --restore-ref "$E" --resource-type conditionalAccessPolicy --operation ${ENFORCEMENT_STEP} --fixture '${FIXTURE_PREFIX}-ca' --target-config "$RESTORER" --build "$B" --out "$OUT"`,
+      `node tools/qualification/entraLive.mjs capture --restore-ref "$E" --resource-type conditionalAccessPolicy --operation ${ENFORCEMENT_STEP} --fixture '${key}' --target-config "$RESTORER" --build "$B" --out "$OUT"`,
     ],
     cleanup: `Delete ${FIXTURE_PREFIX}-ca and permanently delete it from deleted items. Confirm carla can sign in again.`,
     evidence: [`$OUT/conditionalAccessPolicy.${ENFORCEMENT_STEP}.json`, `$OUT/conditionalAccessPolicy.${ENFORCEMENT_STEP}.capture.json`],
@@ -740,7 +800,7 @@ export function renderMarkdown(plan) {
     if (step.alreadyLive) lines.push('- Already live-qualified: recapture only if the record is older than 30 days.');
     if (!step.reviewedGuidance) lines.push('- **No reviewed guidance for this type yet.** Read its roadmap doc first.');
     lines.push(`- Test object: ${step.testObject}`);
-    lines.push(`- Select: ${step.select}`);
+    lines.push(`- Select: ${step.key}`);
     lines.push(step.sharedRunAllowed
       ? '- Shared run: allowed (may share one snapshot and one restore with other shared steps)'
       : '- Shared run: no (runs alone, with its own snapshot and restore)');

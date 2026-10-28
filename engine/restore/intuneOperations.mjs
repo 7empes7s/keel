@@ -51,11 +51,12 @@ import { isDeepStrictEqual } from 'node:util';
 import { projectAssignment } from '../collect/relationships.mjs';
 import { SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
 import { classifyContentEffects } from '../safety/contentEffects.mjs';
+import { classifyWriteOutcome } from './rollbackJournal.mjs';
 import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { appGroupOf, appHasPackage, appKindName, appKindWords } from './intuneAppKinds.mjs';
 import {
-  applyRecordWrite, defineRecord, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue,
+  applyRecordWrite, defineRecord, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue, undoesCreate,
 } from './recordWriter.mjs';
 
 export const INTUNE_OPERATIONS_CONTRACT_VERSION = 1;
@@ -932,15 +933,72 @@ async function mobileAppsExist(io, { payload }) {
   return null;
 }
 
-/** A policy that is still assigned is never deleted. */
+/**
+ * A policy that is still assigned is never deleted, with one exception: the
+ * undo of a restore that created it, when the person planning the undo chose
+ * to delete it with its assignments (compensation.mjs applyUndoChoices). Then
+ * the live assignments must still be exactly the ones that choice named;
+ * removeChosenAssignments takes them off just before the delete.
+ */
 async function unassignedDeleteGuard(io, { resource, path }) {
   const listed = await io.retryOperation(() => io.writer.read(resource.record.version, `${path}/assignments`));
   if (listed?.ok !== true) return `manual: the policy's assignments could not be read (${outcomeDetail(listed)}), so it is not deleted`;
-  const count = (listed.body?.value ?? []).length;
-  if (count > 0) {
-    return `manual: the policy is assigned (${count} assignment${count === 1 ? '' : 's'}), and deleting it would unprotect every device it applies to; remove its assignments by hand, then restore again`;
+  const items = listed.body?.value ?? [];
+  const count = items.length;
+  if (count === 0) return null;
+  const chosen = chosenAssignmentIds(resource);
+  if (chosen) {
+    if (listed.body?.['@odata.nextLink']) return 'manual: the policy has more assignments than one read returns, so it is not deleted; remove them by hand';
+    // The full assignments are journaled with the delete, so they can be put back by hand.
+    if (sameIdList(items.map((item) => item?.id), chosen)) return { prior: { assignments: items } };
+    return `manual: the policy's assignments changed after you chose to delete it with its ${chosen.length} assignment${chosen.length === 1 ? '' : 's'} (it has ${count} now), so it is not deleted; plan the undo again`;
   }
-  return null;
+  return `manual: the policy is assigned (${count} assignment${count === 1 ? '' : 's'}), and deleting it would unprotect every device it applies to; remove its assignments by hand, then restore again`;
+}
+
+/** The assignment ids an undo was chosen to remove, or null when none was chosen. */
+function chosenAssignmentIds(resource) {
+  const ids = resource?.removeAssignments?.ids;
+  return undoesCreate(resource) && Array.isArray(ids) && ids.length > 0 ? ids : null;
+}
+
+const sameIdList = (left, right) => {
+  const a = left.map(String).sort();
+  const b = right.map(String).sort();
+  return a.length === b.length && a.every((id, index) => id === b[index]);
+};
+
+/**
+ * The undo chose to delete an assigned policy: its assignments are taken off
+ * through /assign with an empty list (every type with this guard takes it),
+ * and read back as none before the policy is deleted.
+ */
+async function removeChosenAssignments(io, { resource, path }) {
+  const chosen = chosenAssignmentIds(resource);
+  if (!chosen) return null;
+  const { version } = resource.record;
+  const result = await io.retryOperation(() => io.writer.write(version, `${path}/assign`, { method: 'POST', body: { assignments: [] } }));
+  if (!result.ok) {
+    const outcome = classifyWriteOutcome(result);
+    const maybe = outcome === 'uncertain' ? ' (Graph gave no clear answer, so they may be removed)' : '';
+    return { outcome, changed: outcome === 'uncertain', error: `removing the policy's assignments failed${maybe}, so it was not deleted: ${outcomeDetail(result)}` };
+  }
+  const check = await readUntil(io, version, `${path}/assignments`, (r) => r?.ok === true && (r.body?.value ?? []).length > 0, io.readOptions);
+  if (check?.ok !== true || (check.body?.value ?? []).length > 0) {
+    return { outcome: 'uncertain', changed: true, error: 'post-state: Graph accepted removing the policy\'s assignments, but they did not read back as removed, so it was not deleted' };
+  }
+  return { changes: { assignmentsRemoved: chosen.length } };
+}
+
+/**
+ * Where the undo of a created policy reads its live assignments, for the types
+ * that are never deleted while assigned; null for any other type.
+ */
+export function undoAssignmentsPath(resourceType, payload, targetId) {
+  const record = INTUNE_EXTENDED_RECORDS[resourceType];
+  if (record?.deleteGuard !== unassignedDeleteGuard || typeof targetId !== 'string' || targetId.length === 0) return null;
+  const path = recordObjectPath(record, payload, targetId);
+  return path ? { version: record.version, path: `${path}/assignments` } : null;
 }
 
 /** Localized messages of a notification template: added or updated by locale, never removed. */
@@ -979,7 +1037,7 @@ function builtInScopeTag(resource, verb) {
   return null;
 }
 
-const DELETE_POLICY = { deleteGuard: unassignedDeleteGuard };
+const DELETE_POLICY = { deleteGuard: unassignedDeleteGuard, beforeDelete: removeChosenAssignments };
 
 // Run results, assignments and Intune's own version bookkeeping: never part of a write body.
 const SCRIPT_SERVER_FIELDS = Object.freeze([
@@ -1741,11 +1799,18 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // (install automatically or detect; update or replace). Batch 19: the two
   // apps are named by the ids they have in the target, so a link between apps
   // this run recreated (or that exist under the same name) points at them.
+  // Issue #642: Graph has no POST or PATCH on the tenant's link list, so a
+  // link is written through its app's updateRelationships, and read back from
+  // the app's links. Its delete is only the undo of a link a restore created,
+  // through the same route, with the link left out.
   mobileAppRelationship: defineRecord({
     resourceType: 'mobileAppRelationship', version: 'beta', collection: '/deviceAppManagement/mobileAppRelationships',
-    odataType: 'required', operations: ['create', 'update'], remapsReferences: true,
+    odataType: 'required', operations: ['create', 'update', 'delete'], remapsReferences: true,
     writable: ['dependencyType', 'supersedenceType'], createOnly: ['sourceId', 'targetId', 'targetType'],
-    refusal: appRelationshipRefusal, preflight: appRelationshipPreflight, permission: 'DeviceManagementApps.ReadWrite.All',
+    refusal: appRelationshipRefusal, preflight: appRelationshipPreflight,
+    writeVia: appRelationshipWrite, readVia: appRelationshipRead, deleteVia: appRelationshipDelete,
+    writeRoute: '/deviceAppManagement/mobileApps/{appId}/updateRelationships',
+    permission: 'DeviceManagementApps.ReadWrite.All',
   }),
   // Restore gaps, batch 18. An app is written from its settings (store and
   // web links, Microsoft 365 Apps, Edge, WinGet), or as a shell waiting for its
@@ -1755,7 +1820,7 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   mobileApp: defineRecord({
     resourceType: 'mobileApp', version: 'v1.0', collection: '/deviceAppManagement/mobileApps', odataType: 'required',
     operations: ['create', 'update'], excluded: MOBILE_APP_SERVER_FIELDS, createOnly: ['packageIdentifier', 'fileName'],
-    transform: mobileAppBody, refusal: mobileAppRefusal, afterWrite: appAfterWrite,
+    transform: mobileAppBody, refusal: mobileAppRefusal, updateGuard: appWithoutPackageGuard, afterWrite: appAfterWrite, planChanges: appPlannedChanges,
     assignmentType: '#microsoft.graph.mobileAppAssignment', assignmentBodyKey: 'mobileAppAssignments', assignmentExtras: Object.freeze(['intent', 'settings']),
     permission: 'DeviceManagementApps.ReadWrite.All',
   }),
@@ -1832,7 +1897,13 @@ const RELATIONSHIP_KINDS = new Set(['mobileAppDependency', 'mobileAppSupersedenc
 const appPath = (id) => `/deviceAppManagement/mobileApps/${encodeURIComponent(id)}`;
 
 function appRelationshipRefusal(resource, verb) {
-  const payload = resource.payload ?? {};
+  if (verb === 'delete' && !undoesCreate(resource)) {
+    return {
+      outcome: 'skipped',
+      reason: `manual: a restore takes out only a link it added itself (when that restore is undone); remove this link by hand in ${APP_PORTAL}: the app, Dependencies or Supersedence`,
+    };
+  }
+  const payload = (verb === 'delete' ? resource.live?.payload : resource.payload) ?? {};
   if (!RELATIONSHIP_KINDS.has(stripGraph(payload['@odata.type']))) {
     return { outcome: 'failed', reason: `the backup does not say whether this link is a dependency or a supersedence (${stripGraph(payload['@odata.type']) ?? 'no kind'}), so it is not written` };
   }
@@ -1861,6 +1932,12 @@ async function appRelationshipPreflight(io, { payload, verb }) {
     if (recordNotFound(found)) return `${end} (${name ?? id}) is not in Intune; add the app again first, then restore`;
     if (found?.ok !== true) return `${end} could not be read (${outcomeDetail(found)})`;
   }
+  // The links the app that holds this one has now are sent again with it, so
+  // they must be readable in full before anything is written.
+  const { holder } = linkEnds(payload);
+  const held = await io.retryOperation(() => io.writer.read('beta', `${appPath(holder)}/relationships`));
+  if (held?.ok !== true) return `the app's current links could not be read (${outcomeDetail(held)})`;
+  if (held.body?.['@odata.nextLink']) return 'the app has more links than one page holds, so its links are not changed';
   if (verb !== 'create') return null;
   const listed = await io.retryOperation(() => io.writer.read('beta', `${appPath(payload.sourceId)}/relationships`));
   if (listed?.ok !== true) return `the app's current links could not be read (${outcomeDetail(listed)})`;
@@ -1869,6 +1946,103 @@ async function appRelationshipPreflight(io, { payload, verb }) {
   return {
     skipped: `already set: ${payload.sourceDisplayName ?? payload.sourceId} already has a ${stripGraph(same['@odata.type']) === 'mobileAppSupersedence' ? 'supersedence' : 'dependency'} link to ${payload.targetDisplayName ?? payload.targetId}, so it is not added again; check it in the Intune admin center if the backup holds another kind of link`,
   };
+}
+
+/**
+ * Issue #642: the app that holds a link (the one that depends on or replaces
+ * the other) and the app it points to. A link read from the app it points to
+ * names the holder as its target (targetType 'parent').
+ */
+const linkEnds = (payload) => (lower(payload?.targetType) === 'parent'
+  ? { holder: payload.targetId, other: payload.sourceId }
+  : { holder: payload.sourceId, other: payload.targetId });
+
+/** One link as updateRelationships takes it: its kind, the app it points to and how. */
+function relationshipEntry(link, targetId) {
+  const kind = stripGraph(link?.['@odata.type']);
+  return {
+    '@odata.type': `#microsoft.graph.${kind}`, targetId,
+    ...(kind === 'mobileAppSupersedence' ? { supersedenceType: link.supersedenceType } : { dependencyType: link.dependencyType }),
+  };
+}
+
+// Intune's answers when a link joins an app that is not a Win32 app (seen
+// live in Q191), and when an app's package is not uploaded yet (seen live on
+// PATCH in Q185; assumed the same for its links until proven).
+const NOT_WIN32 = /is not a Win32LobApp/i;
+const NOT_PUBLISHED = /PublishingState is not 'Published'/i;
+
+/**
+ * Issue #642: Graph has no write route on the tenant's link list (POST answers
+ * "No method match route template"). An app's links are set through
+ * POST .../mobileApps/{id}/updateRelationships, which replaces all the links
+ * that app holds, so the ones it holds now are sent again with this one. A
+ * link Intune refuses because an app is not a Win32 app is a plain step.
+ */
+async function appRelationshipWrite(io, { payload }) {
+  const { holder, other } = linkEnds(payload);
+  const listed = await io.retryOperation(() => io.writer.read('beta', `${appPath(holder)}/relationships`));
+  if (listed?.ok !== true) return listed ?? { ok: false, status: 400, error: 'the app\'s links could not be read; nothing was written' };
+  if (listed.body?.['@odata.nextLink']) return { ok: false, status: 400, error: 'the app has more links than one page holds; nothing was written' };
+  const kept = (listed.body?.value ?? [])
+    .filter((link) => lower(link?.targetType) !== 'parent' && lower(link?.targetId) !== lower(other))
+    .map((link) => relationshipEntry(link, link.targetId));
+  const result = await io.retryOperation(() => io.writer.write('beta', `${appPath(holder)}/updateRelationships`, {
+    method: 'POST', body: { relationships: [...kept, relationshipEntry(payload, other)] },
+  }));
+  return linkWriteAnswer(result, payload, 'restore the link again');
+}
+
+/** Intune's refusals of an updateRelationships call, as plain steps for a person. */
+function linkWriteAnswer(result, payload, then) {
+  const answer = result?.ok !== true && result?.status === 400 ? JSON.stringify(result?.body ?? '') : '';
+  const apps = `${payload.sourceDisplayName ?? payload.sourceId} or ${payload.targetDisplayName ?? payload.targetId}`;
+  if (NOT_WIN32.test(answer)) {
+    return {
+      ...result,
+      skipped: `manual: Intune sets dependencies and supersedence only between Win32 apps, and ${apps} is not one now; nothing was written. Check both apps in ${APP_PORTAL}, then set the link by hand under the app, Dependencies or Supersedence`,
+    };
+  }
+  if (NOT_PUBLISHED.test(answer)) {
+    return {
+      ...result,
+      skipped: `manual: Intune does not let ${apps} be changed until its package is uploaded, so the link was not written; upload the package in ${APP_PORTAL}, then ${then}`,
+    };
+  }
+  return result;
+}
+
+/**
+ * The undo of a link a restore created: the app that holds it is sent the
+ * links it holds now, with this one left out (updateRelationships replaces
+ * them all; the tenant's link list has no DELETE route Intune accepts).
+ */
+async function appRelationshipDelete(io, { payload }) {
+  const { holder, other } = linkEnds(payload);
+  const listed = await io.retryOperation(() => io.writer.read('beta', `${appPath(holder)}/relationships`));
+  if (listed?.ok !== true) return listed ?? { ok: false, status: 400, error: 'the app\'s links could not be read; nothing was written' };
+  if (listed.body?.['@odata.nextLink']) return { ok: false, status: 400, error: 'the app has more links than one page holds; nothing was written' };
+  const held = (listed.body?.value ?? []).filter((link) => lower(link?.targetType) !== 'parent');
+  // Already gone: nothing to send; the read after it confirms.
+  if (!held.some((link) => lower(link?.targetId) === lower(other))) return { ok: true, status: 204, body: null };
+  const kept = held.filter((link) => lower(link?.targetId) !== lower(other)).map((link) => relationshipEntry(link, link.targetId));
+  const result = await io.retryOperation(() => io.writer.write('beta', `${appPath(holder)}/updateRelationships`, {
+    method: 'POST', body: { relationships: kept },
+  }));
+  return linkWriteAnswer(result, payload, 'undo the restore again');
+}
+
+/** The link as the backup names it, found among its source app's links (404 when it is not there). */
+async function appRelationshipRead(io, { payload }) {
+  const listed = await io.retryOperation(() => io.writer.read('beta', `${appPath(payload.sourceId)}/relationships`));
+  if (listed?.ok !== true) return listed;
+  const kind = stripGraph(payload['@odata.type']);
+  const side = lower(payload.targetType ?? 'child');
+  const found = (listed.body?.value ?? []).find((link) => lower(link?.targetId) === lower(payload.targetId)
+    && stripGraph(link?.['@odata.type']) === kind && lower(link?.targetType ?? 'child') === side);
+  if (!found) return { ok: false, status: 404, body: { error: { code: 'ResourceNotFound', message: 'the link is not among the app\'s links' } } };
+  // Listed under its source app, so that is its source, when Graph leaves it out.
+  return { ok: true, status: 200, body: { sourceId: payload.sourceId, ...found } };
 }
 
 // ---------------------------------------------- restore gaps, batch 18: apps
@@ -2063,6 +2237,56 @@ async function appCategoriesAfterWrite(io, { payload, targetId, ctx }) {
       kind: 'integration', requirement: 'categories',
       description: `Categories not all restored: the app category ${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not in Intune. Restore or add ${missing.length === 1 ? 'it' : 'them'} first, then add the app to ${missing.length === 1 ? 'it' : 'them'} in ${APP_PORTAL}, the app, Properties, App information, Category`,
     })],
+  };
+}
+
+/**
+ * Issue #642: in a dry run, which categories the app would be added to or
+ * taken out of, compared by name with the app's categories now (a recreated
+ * app is in none). Shown in the plan beside the changed fields.
+ */
+async function appPlannedChanges(io, { payload, verb, targetId, ctx }) {
+  const want = payload?.categories;
+  if (!Array.isArray(want)) return null;
+  const listed = await io.retryOperation(() => io.writer.read('beta', `${APP_CATEGORIES}?$select=id,displayName`));
+  if (listed?.ok !== true || listed.body?.['@odata.nextLink']) {
+    return { categories: `not read: ${listed?.ok === true ? 'the list has more than one page' : outcomeDetail(listed)}` };
+  }
+  let current = [];
+  if (verb !== 'create' && targetId) {
+    const read = await readAppCategories(io, targetId);
+    if (read.error) return { categories: `not read: ${read.error}` };
+    current = read.categories;
+  }
+  // Matched as the write matches them (targetCategory). A category not in
+  // Intune yet (one this run is about to add again, or missing) is counted
+  // apart: the run adds the app to one it recreates, and lists a step otherwise.
+  const known = listed.body?.value ?? [];
+  const wanted = new Map();
+  const missing = [];
+  for (const category of want) {
+    const found = targetCategory(category, known, ctx?.referenceContext?.runProvenance);
+    if (found) wanted.set(lower(found.id), found);
+    else missing.push(category?.displayName ?? category?.id);
+  }
+  const have = new Set(current.map((item) => lower(item?.id)));
+  const unsure = (item) => missing.some((name) => sameName(name, item?.displayName));
+  const added = [...wanted.keys()].filter((id) => !have.has(id)).length;
+  const removed = current.filter((item) => !wanted.has(lower(item?.id)) && !unsure(item)).length;
+  if (added === 0 && removed === 0 && missing.length === 0) return { categories: 'already as in the backup' };
+  return { categories: { added, removed, ...(missing.length > 0 ? { notInIntuneYet: missing.length } : {}) } };
+}
+
+/**
+ * Issue #642: Intune refuses any change to a Win32 or line-of-business app
+ * whose package is not uploaded yet (400 "app's PublishingState is not
+ * 'Published'"), so such an update is a step for a person, in the plan too.
+ */
+function appWithoutPackageGuard(_io, { before, payload }) {
+  const live = before ?? {};
+  if (appGroupOf(live) !== 'packaged' || appHasPackage(live)) return null;
+  return {
+    reason: `manual: Intune does not let ${payload?.displayName ?? live.displayName ?? 'this app'} be changed until its package is uploaded, so nothing was written; upload the package in ${APP_PORTAL}, then restore again`,
   };
 }
 

@@ -11683,7 +11683,7 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 .ak-sort:hover .icon, .ak-sort[data-active] .icon { opacity: 1; }
 .ak-sort[data-active] { color: var(--text); }
 .ak-sort:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
-.ak-fields { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.ak-fields { font-size: 0.8125rem; overflow-wrap: anywhere; }
 .ak-none { color: var(--text-soft); font-size: 0.8125rem; }
 .ak-service { display: inline-flex; align-items: center; gap: var(--space-2xs); }
 .ak-service .icon { width: 1rem; height: 1rem; }
@@ -11758,3 +11758,70 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 .object-label { min-width: 0; overflow-wrap: anywhere; }
 .object-label-type { color: var(--text-soft); font-weight: 400; }
 .object-label-name[data-unnamed] { font-style: italic; }
+
+/* Undo of a created policy that is assigned now: delete it with its assignments, or skip it. */
+.undo-choices-why { margin: 0; color: var(--text-soft); font-size: 0.875rem; max-width: 72ch; }
+
+.undo-choice {
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  border-left: 3px solid var(--partial);
+  background: var(--surface-muted);
+  font-size: 0.875rem;
+}
+
+.undo-choice[data-choice="delete"] { border-left-color: var(--failed); }
+.undo-choice[data-choice="skip"] { border-left-color: var(--line-strong); }
+
+.undo-choice-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs) var(--space-sm); }
+.undo-choice-reach { color: var(--text-soft); }
+
+.undo-choice-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.undo-choice-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 2px var(--space-xs);
+  min-height: 2.75rem;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.undo-choice-option input { margin-top: 3px; }
+.undo-choice-label { font-weight: 650; }
+.undo-choice-effect { grid-column: 2; color: var(--text-soft); }
+.undo-choice-option[data-option="delete"]:has(input:checked) { border-color: var(--failed); background: var(--failed-bg); }
+.undo-choice-option[data-option="skip"]:has(input:checked) { border-color: var(--line-strong); }
+.undo-choice-option:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.undo-choice-made { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); margin: 0; color: var(--text-soft); }
+
+.undo-choices-apply {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  border-left: 3px solid var(--partial);
+  background: var(--partial-bg);
+}
+
+.undo-choices-apply p { margin: 0; }
+.undo-choices-apply .btn { min-height: 2.75rem; }
+
+@media (max-width: 640px) {
+  .undo-choice-options { grid-template-columns: minmax(0, 1fr); }
+}

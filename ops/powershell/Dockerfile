@@ -60,6 +60,7 @@ WORKDIR /app
 COPY run-job.sh /app/run-job.sh
 COPY probe-workloads.ps1 /app/probe-workloads.ps1
 COPY run-cmdlet.ps1 /app/run-cmdlet.ps1
+COPY keel-json.ps1 /app/keel-json.ps1
 COPY list-commands.ps1 /app/list-commands.ps1
 RUN chmod +x /app/run-job.sh
 

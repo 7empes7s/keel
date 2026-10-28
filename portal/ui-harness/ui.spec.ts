@@ -2001,7 +2001,7 @@ const RECORD_IDS: Record<string, string[]> = {
   "incidents-closed": ["1c1d0000-0000-4000-8000-000000000070", "d2110000-0000-4000-8000-000000000070"],
   benchmarks: ["e7a10000-0000-4000-8000-0000000000e1", "e7c10000-0000-4000-8000-0000000000c1", "d7100000-0000-4000-8000-0000000000d1", "d7100000-0000-4000-8000-0000000000d2", "7f3c0000-0000-4000-8000-000000000011", "0b5e0000-0000-4000-8000-0000000000d6", "/opt/backups/keel-recovery-manifest.json"],
   notifications: ["c4e10000-0000-4000-8000-0000000000c1", "c4e10000-0000-4000-8000-0000000000c2", "c4e10000-0000-4000-8000-0000000000c3", "d0e10000-0000-4000-8000-0000000000d1", "d0e10000-0000-4000-8000-0000000000d3"],
-  integrations: ["de570000-0000-4000-8000-0000000000e1", "keel:decision:5e9c0000-0000-4000-8000-000000000097", "9d3f0000000040008000000000000097", "u_keel_gated_change", "u_gate_owner.email", "env:KEEL_SERVICENOW_TOKEN", "gate_passed", "gate_withdrawn", "HTTP 403"],
+  integrations: ["de570000-0000-4000-8000-0000000000e1", "keel:decision:5e9c0000-0000-4000-8000-000000000097", "9d3f0000000040008000000000000097", "u_keel_gated_change", "u_gate_owner.email", "env:KEEL_INTEGRATION_SERVICENOW_TOKEN", "gate_passed", "gate_withdrawn", "HTTP 403"],
   "integrations-servicenow-off": ["states-rejected", "field-approver", "u_keel_gated_change"],
   protect: ["engine/restore/updatePath.test.mjs", "docs/release/qualification/ca-update.json", "0b5e0000-0000-4000-8000-0000000000d5", "authenticationMethodsPolicy", "Authorization_RequestDenied"],
   schedules: ["5c4e0000-0000-4000-8000-000000000001", "5c4e0000-0000-4000-8000-000000000005", "5c4e0000-0000-4000-8000-000000000009", "0 0 * * 1", "a11c0000-0000-4000-8000-0000000000a1", "throttle-heavy", "overlap (acknowledged)", "d71f0000-0000-4000-8000-0000000000d7"],
@@ -2380,6 +2380,69 @@ test("the undo plan fits a phone without sideways scrolling", async ({ page }) =
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
 
+// Undo of a restore that created an Intune policy which is assigned now: the person
+// chooses, for each such policy, to delete it with its assignments or to skip it.
+// The choice re-plans the undo, and only then can it go for approval.
+test("an undo of a created policy that is assigned now asks to delete or skip it before approval", async ({ page }) => {
+  await open(page, "/jobs/r11");
+  await page.getByRole("button", { name: "Plan undo" }).click();
+  await expect(page.locator(".compensation-status")).toHaveText("Waiting for your choice", { timeout: 15_000 });
+  const choices = page.locator(".undo-choices");
+  await expect(choices.getByRole("heading")).toHaveText("2Assigned now: choose delete or skip");
+  const baseline = choices.locator(".undo-choice").filter({ hasText: "KEEL-RT-Windows baseline" });
+  await expect(baseline.locator(".badge")).toHaveText("Assigned · 2");
+  await expect(baseline.locator(".undo-choice-reach")).toHaveText("All devices, 1 group");
+  await expect(baseline.getByText("Removes its 2 assignments, then deletes the policy. Devices and people it applies to lose its settings.")).toBeVisible();
+  // Nothing can be sent for approval while a choice is open.
+  await expect(page.getByRole("button", { name: "Request approval to undo" })).toHaveCount(0);
+  const update = page.getByRole("button", { name: "Update the undo plan" });
+  await expect(update).toBeDisabled();
+  await expect(page.locator(".undo-choices-apply")).toContainText("Choose delete or skip for 2 more policies.");
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+
+  await baseline.getByRole("radio", { name: /^Delete it/ }).check();
+  const profile = choices.locator(".undo-choice").filter({ hasText: "KEEL-RT-Feature updates" });
+  await profile.getByRole("radio", { name: /^Skip it/ }).check();
+  await expect(update).toBeEnabled();
+  await update.click();
+
+  await expect(page.locator(".compensation-status")).toHaveText("Ready for approval", { timeout: 15_000 });
+  await expect(choices.getByRole("heading")).toHaveText("2Assigned now: your choice");
+  await expect(baseline.getByRole("radio", { name: /^Delete it/ })).toBeChecked();
+  await expect(profile.getByRole("radio", { name: /^Skip it/ })).toBeChecked();
+  const undone = page.locator(".compensation-section").filter({ hasText: "Will be undone" });
+  await expect(undone.locator(".compensation-item").filter({ hasText: "KEEL-RT-Windows baseline" })).toContainText("Remove its 2 assignments, then delete the policy this restore created");
+  await expect(undone).not.toContainText("KEEL-RT-Feature updates");
+  // The record keeps the exact assignments the approval binds.
+  const records = (await page.locator('.compensation-panel [data-layer="record"]').allTextContents()).join("\n");
+  expect(records).toContain("delete · assignments c0a1_all, c0a1_g1");
+  expect(records).toContain("skip · assignments c0a2_g2");
+
+  await page.getByLabel("Why undo this restore?").fill("Wrong snapshot restored");
+  await page.getByRole("button", { name: "Request approval to undo" }).click();
+  await expect(page.locator(".compensation-requested")).toBeVisible();
+});
+
+for (const theme of ["dark", "light"] as const) {
+  test(`a11y · undo with an assigned policy · ${theme}`, async ({ page }) => {
+    await open(page, "/jobs/r11", theme);
+    await page.getByRole("button", { name: "Plan undo" }).click();
+    await expect(page.locator(".undo-choices")).toBeVisible({ timeout: 15_000 });
+    await page.locator(".undo-choice").first().getByRole("radio", { name: /^Delete it/ }).check();
+    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    const summary = results.violations.map((violation) => ({ rule: violation.id, targets: violation.nodes.slice(0, 5).map((node) => node.target.join(" ")) }));
+    expect(summary, JSON.stringify(summary, null, 2)).toEqual([]);
+  });
+}
+
+test("the delete-or-skip choice fits a phone without sideways scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/jobs/r11", "light");
+  await page.getByRole("button", { name: "Plan undo" }).click();
+  await expect(page.locator(".undo-choices")).toBeVisible({ timeout: 15_000 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
 // Setup (portal audit, pick A): a step is done only when Keel has seen it in the tenant,
 // so the page offers no way to tick one off; continuing re-checks the tenant through
 // the guarded route. The step waiting on you is open first, with its Microsoft page.
@@ -2590,8 +2653,10 @@ test("Setup · missing permissions come first with a consent link, and the table
   const exchange = missing.filter({ hasText: "Exchange.ManageAsApp" });
   await expect(exchange.locator(".su-ptable-api")).toHaveText("Exchange Online");
   await expect(exchange.getByRole("link", { name: /Add in Entra ID/ })).toBeVisible();
-  // The app with the most missing is listed first.
-  await expect(panel.locator(".su-ptable-app")).toHaveText([/Restore writer app/, /Backup reader app/]);
+  // The app with the most missing is listed first. The table is paged: the
+  // restore writer's rows can fill the first page, so the order of both apps is
+  // checked below with only the missing rows shown.
+  await expect(panel.locator(".su-ptable-app").first()).toHaveText(/Restore writer app/);
 
   // Tiles of one kind add up (OR); the app picker and Find narrow (AND).
   const tile = (name: string) => panel.locator(".su-pp-tile", { hasText: name });
@@ -2609,6 +2674,7 @@ test("Setup · missing permissions come first with a consent link, and the table
   await expect(tile("Missing").locator("b")).toHaveText("5");
   await tile("Missing").click();
   await expect(panel.locator(".su-ptable-row")).toHaveCount(5);
+  await expect(panel.locator(".su-ptable-app")).toHaveText([/Restore writer app/, /Backup reader app/]);
   await expect(tile("Not used by Keel").locator("small")).toHaveText("+1 if added");
   await tile("Not used by Keel").click();
   await expect(panel.locator(".su-ptable-row")).toHaveCount(6);
@@ -3630,6 +3696,68 @@ test("ask cites its records, states unknown periods first, and fits a phone", as
   await expect(page.locator(".ask-answer .ui-alert").first()).toContainText("This is not the same as nothing happening");
   await expect(page.locator('.ask-answer .ui-tile[data-tile="found"] .ui-tile-value')).toHaveText("Not known");
   await expect(page.locator(".ask-answer")).not.toContainText("Nothing matched");
+});
+
+// A month-long answer shaped like the live one (keelops K12): every changed row names
+// its settings in words, never Microsoft's field names, and none says "Not recorded".
+test("ask month answer names changed settings in words and lists no empty changed rows", async ({ page }) => {
+  for (const [width, theme] of [[1440, "dark"], [390, "light"]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/ask/month", theme);
+    const answer = page.locator(".ask-answer");
+    await expect(answer.locator('.ui-tile[data-tile="found"] .ui-tile-value')).toHaveText("1,887");
+    await expect(answer.locator(".ui-alert").first()).toContainText("Not known from 2 Sept 2026");
+    const rows = answer.locator("tr.ask-record");
+    await expect(rows).toHaveCount(25);
+    await expect(rows.first().locator(".ak-fields")).toHaveText("Account enabled, Department");
+    await expect(answer.locator(".pg-table")).not.toContainText("Not recorded");
+    for (const raw of ["accountEnabled", "scheduleInfo", "membershipRule"]) await expect(answer.locator(".pg-table")).not.toContainText(raw);
+    expect(await rows.first().locator(".ak-fields").evaluate((el) => getComputedStyle(el).fontFamily)).not.toMatch(/mono/i);
+    // Group and admin role rows sit on later pages: find them and read their settings too.
+    await answer.getByLabel("Find").fill("Finance approvers");
+    await expect(rows.first().locator(".ak-fields")).toHaveText("Membership rule");
+    await answer.getByLabel("Find").fill("Security Reader");
+    await expect(rows.first().locator(".ak-fields")).toHaveText("Schedule info › expiration › end date time");
+    await expect(answer.locator(".pg-table")).not.toContainText("scheduleInfo");
+    await answer.getByLabel("Find").fill("");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  }
+});
+
+// The legacy sign-in control as it reads live (keelops K11): failing lines first, then
+// "Only some users"; two rules with the same name each keep their own numbered lines (#588).
+test("Compliance · legacy sign-in lists each rule it read, failing first, and numbers same-name rules", async ({ page }) => {
+  for (const [width, theme] of [[1440, "dark"], [390, "light"]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/benchmarks/live?open=e7a10000-0000-4000-8000-0000000000b1", theme);
+    let sheet = page.getByRole("dialog", { name: "Old sign-in methods are blocked" });
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("2 settings");
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("6 meet the standard");
+    await expect(sheet.getByRole("switch", { name: /Show every setting/ })).toContainText("8 in all");
+    const failing = sheet.locator('.cp-misses tbody tr[data-ok="false"]');
+    await expect(failing).toHaveCount(2);
+    await expect(failing.nth(0)).toContainText("Report-only");
+    await expect(failing.nth(1)).toContainText("Only some users");
+    await sheet.getByRole("switch", { name: /Show every setting/ }).click();
+    await expect(sheet.locator(".cp-misses tbody tr")).toHaveCount(8);
+    await expect(sheet.locator('.cp-misses tbody tr[data-ok="true"]').first()).toContainText("All users");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+
+    await open(page, "/benchmarks/same-name?open=e7a10000-0000-4000-8000-0000000000b1", theme);
+    sheet = page.getByRole("dialog", { name: "Old sign-in methods are blocked" });
+    const rows = sheet.locator('.cp-misses tbody tr[data-ok="false"]');
+    await expect(rows.nth(0)).toContainText("KEEL-RT-Block legacy sign-in (1 of 2)");
+    await expect(rows.nth(1)).toContainText("KEEL-RT-Block legacy sign-in (2 of 2)");
+    const axe = await new AxeBuilder({ page }).include(".bl-sheet").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    expect(axe.violations.map((violation) => violation.id)).toEqual([]);
+
+    // A result stored before the counts existed, with a full list of 50 lines: "or more".
+    await open(page, "/benchmarks/old-full?open=e7a10000-0000-4000-8000-0000000000b5", theme);
+    sheet = page.getByRole("dialog", { name: "Links in email are checked when clicked" });
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("8 settings");
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("42 or more meet the standard");
+    await expect(sheet.getByRole("switch", { name: /Show every setting/ })).toContainText("50 or more in all");
+  }
 });
 
 // A broad answer: understood filters as badges, words not understood said plainly, a

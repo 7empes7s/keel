@@ -5,10 +5,11 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import {
   assertDisposable, assertRehearsalDatabase, assertSingleModifiedDrift, collectRehearsalSnapshot,
-  getWithRetry, hardDelete, readGroupWithRetry, runRoundTrip, writeWithRetry,
+  getWithRetry, hardDelete, persistSnapshot, readGroupWithRetry, runRoundTrip, writeWithRetry,
 } from './roundTrip.mjs';
 import { createIsolatedTestDatabase } from '../../engine/test/dbTestHelper.mjs';
 import { schemaSql } from '../../engine/store/loadSchema.mjs';
+import { seedFromSnapshot } from '../../engine/govern/baseline.mjs';
 
 // Separate Collector and Restorer configs for one fixture tenant, written to a temp dir.
 const fixtureConfigDir = mkdtempSync(join(tmpdir(), 'keel-roundtrip-'));
@@ -362,6 +363,13 @@ assert.throws(
   const reader = {
     collect: async (version, path) => {
       collectionPaths.push(path);
+      // Issue #646: the live tenant has no Entra ID Governance licence. The
+      // round trip must still seed its baseline and finish.
+      if (path.startsWith('/identityGovernance/lifecycleWorkflows/')) {
+        return { status: 403, error: { status: 403, error: 'Insufficient license to complete this operation.' } };
+      }
+      // Issue #663: and /admin/todo answers 500 with an empty error.
+      if (path.startsWith('/admin/todo')) return { status: 500, error: { status: 500, error: '' } };
       return { items: path.startsWith('/groups') && group && !softDeleted ? [group] : [] };
     },
     get: async (version, path) => {
@@ -461,6 +469,92 @@ assert.throws(
   assert.ok(
     deletedItemReads >= 4,
     `expected the post-purge deletedItems read to be retried until 404, got ${deletedItemReads} reads`,
+  );
+}
+
+// Issue #646: a tenant without Entra ID Governance answers the lifecycle
+// workflow reads with 403 "Insufficient license". The rehearsal collect must
+// skip those types, and the snapshot it persists must record them as
+// unavailable, not complete.
+{
+  const body = { id: 'g646', displayName: 'keel-rehearsal-z', description: 'baseline', mailNickname: 'keel-rehearsal-z' };
+  const licence = { status: 403, error: 'Insufficient license to complete this operation. User workflows require an Entra ID Governance license.' };
+  const reader = {
+    collect: async (version, path) => {
+      if (path.startsWith('/identityGovernance/lifecycleWorkflows/')) return { error: licence, status: 403 };
+      return { items: path.startsWith('/groups') ? [body] : [] };
+    },
+    get: async () => ({ ok: true, status: 200, body }),
+  };
+  const resources = await collectRehearsalSnapshot(reader, 'g646', { delayMs: 1, tenantId: 'tenant-fixture' });
+  assert.ok(resources.some((resource) => resource.resourceType === 'group' && resource.sourceId === 'g646'));
+  assert.equal(resources.collectedTypes.has('group'), true);
+  assert.equal(resources.collectedTypes.has('lifecycleWorkflow'), false);
+
+  const isolated = await createIsolatedTestDatabase(import.meta.url);
+  const client = await isolated.connect();
+  try {
+    await client.query(schemaSql());
+    const snapshotId = await persistSnapshot(client, { tenantRef: 'tenant-646', resources });
+    const { rows } = await client.query('SELECT status, coverage_digest FROM snapshot WHERE id = $1', [snapshotId]);
+    assert.equal(rows[0].status, 'complete');
+    const digest = rows[0].coverage_digest;
+    assert.equal(digest.lifecycleWorkflow.outcome, 'unavailable');
+    assert.equal(digest.lifecycleWorkflow.itemCount, null);
+    assert.equal(digest.group.outcome, 'complete');
+    assert.equal(digest.group.itemCount, 1);
+  } finally {
+    await client.end();
+    await isolated.cleanup();
+  }
+
+  // Issue #663: any other failed read of a type the drill does not round-trip
+  // is skipped too (/admin/todo answered 500 live), and recorded as failed.
+  const brokenReader = {
+    ...reader,
+    collect: async (version, path) => {
+      if (path.startsWith('/admin/todo')) return { error: { status: 500, error: '' }, status: 500 };
+      return reader.collect(version, path);
+    },
+  };
+  const partial = await collectRehearsalSnapshot(brokenReader, 'g646', { delayMs: 1, tenantId: 'tenant-fixture' });
+  assert.equal(partial.collectedTypes.has('todoSettings'), false);
+  assert.deepEqual(partial.unread.map(({ type }) => type), ['todoSettings']);
+  const isolated2 = await createIsolatedTestDatabase(import.meta.url);
+  const client2 = await isolated2.connect();
+  try {
+    await client2.query(schemaSql());
+    const snapshotId = await persistSnapshot(client2, { tenantRef: 'tenant-663', resources: partial });
+    const { rows } = await client2.query('SELECT coverage_digest FROM snapshot WHERE id = $1', [snapshotId]);
+    assert.equal(rows[0].coverage_digest.todoSettings.outcome, 'failed');
+    assert.equal(rows[0].coverage_digest.todoSettings.itemCount, null);
+    assert.equal(rows[0].coverage_digest.lifecycleWorkflow.outcome, 'unavailable');
+    // The whole-estate rule still refuses it; only the drill's scoped seed takes it.
+    await assert.rejects(
+      seedFromSnapshot(client2, { tenantRef: 'tenant-663', snapshotId, setBy: 'fixture' }),
+      /not an eligible whole-estate baseline source/,
+    );
+    const baselineId = await seedFromSnapshot(client2, { tenantRef: 'tenant-663', snapshotId, setBy: 'fixture', scoped: true });
+    const { rows: [baseline] } = await client2.query('SELECT observation_scope FROM baseline WHERE id = $1', [baselineId]);
+    assert.equal(baseline.observation_scope.types.includes('group'), true);
+    assert.equal(baseline.observation_scope.types.includes('todoSettings'), false, 'an unread type is not in the captured scope');
+    assert.equal(baseline.observation_scope.types.includes('lifecycleWorkflow'), false);
+  } finally {
+    await client2.end();
+    await isolated2.cleanup();
+  }
+
+  // A type every caller needs stays strict.
+  const noUsers = {
+    ...reader,
+    collect: async (version, path) => {
+      if (path.startsWith('/users')) return { error: { status: 500, error: 'boom' }, status: 500 };
+      return reader.collect(version, path);
+    },
+  };
+  await assert.rejects(
+    collectRehearsalSnapshot(noUsers, 'g646', { delayMs: 1, tenantId: 'tenant-fixture' }),
+    /collecting user failed/,
   );
 }
 

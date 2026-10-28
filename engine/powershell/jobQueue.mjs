@@ -22,9 +22,9 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { chown, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { chown, lstat, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, sep } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const DEFAULT_IMAGE = 'keel-powershell:latest';
@@ -38,6 +38,8 @@ export const CONTAINER_CREDENTIAL_DIR = '/run/keel-job';
 /** The unprivileged user the container runs as when the worker itself is root. */
 export const CONTAINER_USER = '10001:10001';
 export const DEFAULT_PIDS_LIMIT = 512;
+/** How long the `docker rm -f` that follows a timed-out job may take before it is abandoned. */
+export const CONTAINER_REMOVE_TIMEOUT_MS = 30 * 1000;
 /**
  * The deployed container scripts (run-job.sh, run-cmdlet.ps1, list-commands.ps1, probe-workloads.ps1).
  * A function, as catalogue.mjs does: a `new URL(literal, import.meta.url)` makes the
@@ -138,7 +140,9 @@ export async function stageJobCredentials(configPath, { credentialRoot = DEFAULT
     files[name] = await readFile(real);
     config[field] = `${CONTAINER_CREDENTIAL_DIR}/${name}`;
   }
-  const dir = await mkdtemp(join(stagingRoot ?? defaultStagingRoot(), 'keel-ps-'));
+  const root = stagingRoot ?? defaultStagingRoot();
+  await sweepOnce(root);
+  const dir = await mkdtemp(join(root, `${STAGING_PREFIX}${process.pid}-`));
   try {
     files['tenant.json'] = Buffer.from(JSON.stringify(config));
     for (const [name, bytes] of Object.entries(files)) {
@@ -156,6 +160,73 @@ export async function stageJobCredentials(configPath, { credentialRoot = DEFAULT
 
 // /run is a tmpfs on the deploy host, so the copies never reach a disk.
 const defaultStagingRoot = () => (process.getuid?.() === 0 && existsSync('/run') ? '/run' : tmpdir());
+
+/**
+ * Staged copies are named keel-ps-<pid>-<random>, after the process that made them.
+ * runJob removes its copy when the job ends, but a worker killed mid-job (SIGKILL, OOM,
+ * a host crash) leaves it behind. The first job a process stages first sweeps the
+ * staging root: a copy is removed when the process named in it is gone, or is this very
+ * process (nothing has been staged here yet, so it is a dead earlier worker's pid).
+ * Copies in the older keel-ps-<random> form carry no pid; they are removed once older
+ * than LEGACY_STAGING_MAX_AGE_MS, far beyond any job's time budget.
+ */
+export const STAGING_PREFIX = 'keel-ps-';
+export const LEGACY_STAGING_MAX_AGE_MS = 60 * 60 * 1000;
+const STAGED_WITH_PID = /^keel-ps-(\d+)-[A-Za-z0-9]{6}$/;
+const STAGED_LEGACY = /^keel-ps-[A-Za-z0-9]{6}$/;
+
+function processAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // EPERM: it exists but belongs to another user.
+    return error.code !== 'ESRCH';
+  }
+}
+
+/**
+ * Removes staged copies left behind by dead workers under `stagingRoot`. Only
+ * directories whose names match a staged copy are considered; links and anything else
+ * are left alone. Returns the names removed. A copy that cannot be removed is skipped.
+ */
+export async function sweepStaleStaging(stagingRoot, { selfPid = process.pid, isAlive = processAlive, now = Date.now() } = {}) {
+  let names;
+  try {
+    names = await readdir(stagingRoot);
+  } catch {
+    return [];
+  }
+  const removed = [];
+  for (const name of names) {
+    const withPid = STAGED_WITH_PID.exec(name);
+    if (!withPid && !STAGED_LEGACY.test(name)) continue;
+    const path = join(stagingRoot, name);
+    try {
+      const info = await lstat(path);
+      if (!info.isDirectory()) continue;
+      if (withPid) {
+        const pid = Number(withPid[1]);
+        if (pid !== selfPid && isAlive(pid)) continue;
+      } else if (now - info.mtimeMs < LEGACY_STAGING_MAX_AGE_MS) {
+        continue;
+      }
+      await rm(path, { recursive: true, force: true });
+      removed.push(name);
+    } catch { /* gone already, or not ours to remove: leave it */ }
+  }
+  return removed;
+}
+
+// One sweep per staging root per process, before that process stages its first copy.
+const sweeps = new Map();
+// Keyed on the resolved path, so /tmp and /tmp/ never sweep twice (a second sweep would
+// take this process's own live copy for a dead worker's).
+function sweepOnce(stagingRoot) {
+  const key = resolve(stagingRoot);
+  if (!sweeps.has(key)) sweeps.set(key, sweepStaleStaging(key).catch(() => []));
+  return sweeps.get(key);
+}
 
 /**
  * The user the container runs as: the worker's own user when it is not root (so the
@@ -183,7 +254,8 @@ function containerUser() {
  *   swap headroom beyond the hard cap — required on a host that is already
  *   swap-constrained.
  * @param {number} [options.timeoutMs] - Wall-clock budget before the child is
- *   SIGKILLed and the call rejects.
+ *   SIGKILLed, its container is force-removed (`docker rm -f`) and the call rejects.
+ * @param {number} [options.removeTimeoutMs] - How long that `docker rm -f` may take.
  * @param {string} [options.credentialRoot] - Host directory the job's connection
  *   settings, certificate and key must resolve inside. Only those three files are
  *   copied into the container, never the directory.
@@ -205,6 +277,7 @@ export async function runJob(job, options = {}) {
     image = DEFAULT_IMAGE,
     memory = DEFAULT_MEMORY,
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    removeTimeoutMs = CONTAINER_REMOVE_TIMEOUT_MS,
     credentialRoot = DEFAULT_CREDENTIAL_ROOT,
     stagingRoot,
     scriptMount = defaultScriptMount(),
@@ -220,10 +293,14 @@ export async function runJob(job, options = {}) {
   const staged = await stageJobCredentials(job.tenantConfigPath ?? DEFAULT_TENANT_CONFIG, { credentialRoot, stagingRoot, owner });
   const payload = JSON.stringify({ ...job, jobId, ...(staged ? { tenantConfigPath: staged.configPath } : {}) });
 
+  // Killing the docker client on a timeout does not stop the container, so every
+  // container gets a name the timeout path can remove it by.
+  const containerName = jobContainerName(jobId);
   const args = [
     'run',
     '--rm',
     '-i',
+    '--name', containerName,
     '--memory', memory,
     '--memory-swap', memory,
     '--pids-limit', String(DEFAULT_PIDS_LIMIT),
@@ -241,13 +318,60 @@ export async function runJob(job, options = {}) {
   ];
 
   try {
-    return await spawnContainer({ dockerBin, args, spawnFn, timeoutMs, payload, jobId });
+    return await spawnContainer({ dockerBin, args, spawnFn, timeoutMs, removeTimeoutMs, payload, jobId, containerName });
   } finally {
     if (staged) await rm(staged.dir, { recursive: true, force: true });
   }
 }
 
-function spawnContainer({ dockerBin, args, spawnFn, timeoutMs, payload, jobId }) {
+/**
+ * A docker container name for one job: `keel-job-` plus the job id reduced to the
+ * characters docker accepts, plus a random suffix so two runs that reuse a job id
+ * never collide.
+ */
+export function jobContainerName(jobId) {
+  const safe = String(jobId).replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 64);
+  return `keel-job-${safe ? `${safe}-` : ''}${randomUUID().slice(0, 8)}`;
+}
+
+/**
+ * Force-removes a job's container after a timeout (`docker rm -f` stops it first).
+ * Best effort: it never throws, and gives up after CONTAINER_REMOVE_TIMEOUT_MS so a
+ * hung daemon cannot hold the job. Resolves to null when the container is gone (or
+ * never started), otherwise to a one-line reason.
+ */
+function removeContainer({ dockerBin, spawnFn, containerName, timeoutMs }) {
+  return new Promise((done) => {
+    let child;
+    try {
+      child = spawnFn(dockerBin, ['rm', '-f', containerName], { stdio: ['ignore', 'ignore', 'pipe'] });
+    } catch (err) {
+      done(`could not run ${dockerBin} rm: ${err.message}`);
+      return;
+    }
+    let stderr = '';
+    let settled = false;
+    const finish = (reason) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      done(reason);
+    };
+    const timer = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch { /* already gone */ }
+      finish(`${dockerBin} rm did not finish within ${timeoutMs}ms`);
+    }, timeoutMs);
+    child.stderr?.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', (err) => finish(`could not run ${dockerBin} rm: ${err.message}`));
+    child.on('close', (code) => {
+      // A container that was never created, or that --rm already removed or is removing, is not a failure.
+      if (code === 0 || /no such container|already in progress/i.test(stderr)) finish(null);
+      else finish(`${dockerBin} rm exited ${code}: ${stderr.trim() || '(no stderr)'}`);
+    });
+  });
+}
+
+function spawnContainer({ dockerBin, args, spawnFn, timeoutMs, removeTimeoutMs, payload, jobId, containerName }) {
   return new Promise((resolve, reject) => {
     let child;
     try {
@@ -271,10 +395,14 @@ function spawnContainer({ dockerBin, args, spawnFn, timeoutMs, payload, jobId })
     };
 
     const timer = setTimeout(() => {
-      finish(() => {
+      finish(async () => {
         try { child.kill('SIGKILL'); } catch { /* already gone */ }
+        // Wait for the container to go before rejecting, so runJob only removes the
+        // staged credentials once nothing can still read them.
+        const failed = await removeContainer({ dockerBin, spawnFn, containerName, timeoutMs: removeTimeoutMs });
+        const note = failed ? `${stderr}${stderr && !stderr.endsWith('\n') ? '\n' : ''}keel: container ${containerName} may still be running: ${failed}\n` : stderr;
         reject(new JobQueueError(`job ${jobId} timed out after ${timeoutMs}ms`, {
-          code: 'TIMEOUT', stderr, stdout, jobId,
+          code: 'TIMEOUT', stderr: note, stdout, jobId,
         }));
       });
     }, timeoutMs);

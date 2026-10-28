@@ -97,7 +97,7 @@ function template({ id = 'TEMPLATE-1', generator = 'PnP.Framework, 1.17.0', list
 </pnp:Provisioning>`;
 }
 
-const HUB = { ID: guid(1), Title: 'KEEL-RT hub', SiteUrl: SITE, SiteId: guid(2), Description: '', LogoUrl: '', Targets: null, SiteDesignId: guid(0), RequiresJoinApproval: false, HideNameInNavigation: false, ParentHubSiteId: guid(0), Context: { internal: true } };
+const HUB = { ID: guid(1), Title: 'KEEL-RT hub', SiteUrl: SITE, SiteId: guid(2), Description: '', LogoUrl: '', SiteDesignId: guid(0), RequiresJoinApproval: false, HideNameInNavigation: false, ParentHubSiteId: guid(0), Context: { internal: true } };
 const DESIGN = { Id: guid(3), Title: 'KEEL-RT design', Description: 'd', WebTemplate: '64', SiteScriptIds: [guid(4)], PreviewImageUrl: '', PreviewImageAltText: '', IsDefault: false, Version: 1, DesignPackageId: guid(0) };
 const SCRIPT_LISTED = { Id: guid(4), Title: 'KEEL-RT script', Description: 's', Version: 1 };
 const SCRIPT_FULL = { ...SCRIPT_LISTED, Content: '{"actions":[{"verb":"createSPList","listName":"KEEL-RT list"}]}' };
@@ -265,6 +265,14 @@ test('templates: no site named, a site out of scope, a bad or huge answer and a 
   const capped = await read(fakeTenant(), { families: ['siteTemplate'], sites: [SITE, `https://${HOST}/sites/KEEL-RT-two`], maxSites: 1 });
   assert.equal(capped.outcome, 'partial');
   assert.equal(capped.discovery.capped, true);
+});
+
+test('a hub as PnP returns it (no Targets) is read in full, so the workload is complete (#664)', async () => {
+  assert.equal(FAMILIES.hubSite.fields.includes('Targets'), false, 'Targets never arrives from Get-PnPHubSite, so it is not declared');
+  const result = await read(fakeTenant(), { families: ['hubSite'] });
+  assert.equal(result.outcome, 'complete', JSON.stringify(result.failures));
+  const hub = result.resources.find((resource) => resource.resourceKey === `hub-site:${guid(1)}`);
+  assert.ok(Object.values(hub.fieldCoverage).every((coverage) => coverage.status === 'observed'), JSON.stringify(hub.fieldCoverage));
 });
 
 test('hub sites, designs and scripts: an empty tenant is complete, a failure is a failure', async () => {

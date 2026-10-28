@@ -66,7 +66,7 @@ export function initialState() {
         nav: ['Home', 'KEEL-RT tasks'],
       },
     },
-    hubs: [{ ID: newGuid(), Title: 'KEEL-RT-hub', SiteUrl: SITE, SiteId: newGuid(), Description: 'the hub', LogoUrl: '', Targets: null, SiteDesignId: '00000000-0000-0000-0000-000000000000', RequiresJoinApproval: false, HideNameInNavigation: false, ParentHubSiteId: '00000000-0000-0000-0000-000000000000' }],
+    hubs: [{ ID: newGuid(), Title: 'KEEL-RT-hub', SiteUrl: SITE, SiteId: newGuid(), Description: 'the hub', LogoUrl: '', SiteDesignId: '00000000-0000-0000-0000-000000000000', RequiresJoinApproval: false, HideNameInNavigation: false, ParentHubSiteId: '00000000-0000-0000-0000-000000000000' }],
     scripts: [{ Id: scriptId, Title: 'KEEL-RT-script', Description: 's', Content: '{"actions":[{"verb":"createSPList","listName":"KEEL-RT list"}]}', Version: 1 }],
     designs: [{ Id: newGuid(), Title: 'KEEL-RT-design', Description: 'd', WebTemplate: '64', SiteScriptIds: [scriptId], PreviewImageUrl: '', PreviewImageAltText: '', IsDefault: false, Version: 1 }],
   };
@@ -110,7 +110,7 @@ export function fakeTenant(state = initialState(), { crash = [] } = {}) {
         return [];
       }
       if (cmdlet === 'Register-PnPHubSite') {
-        const hub = { ID: newGuid(), Title: 'KEEL-RT-structure', SiteUrl: parameters.Site, SiteId: newGuid(), Description: '', LogoUrl: '', Targets: null, SiteDesignId: '00000000-0000-0000-0000-000000000000', RequiresJoinApproval: false, HideNameInNavigation: false, ParentHubSiteId: '00000000-0000-0000-0000-000000000000' };
+        const hub = { ID: newGuid(), Title: 'KEEL-RT-structure', SiteUrl: parameters.Site, SiteId: newGuid(), Description: '', LogoUrl: '', SiteDesignId: '00000000-0000-0000-0000-000000000000', RequiresJoinApproval: false, HideNameInNavigation: false, ParentHubSiteId: '00000000-0000-0000-0000-000000000000' };
         state.hubs.push(hub);
         return [hub];
       }

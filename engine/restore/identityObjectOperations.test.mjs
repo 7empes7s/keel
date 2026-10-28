@@ -769,3 +769,182 @@ test('restore gaps batch 17: a SharePoint restore never loosens who can reach fi
   assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
   assert.deepEqual(graph.calls.find((call) => call.method === 'PATCH').body, { isLegacyAuthProtocolsEnabled: false });
 });
+
+// ------------------------------------------- restore gaps, batch 20: admin center org settings
+
+const FORMS = Object.freeze({
+  settings: {
+    isBingImageSearchEnabled: true, isExternalSendFormEnabled: false, isExternalShareCollaborationEnabled: false,
+    isExternalShareResultEnabled: false, isExternalShareTemplateEnabled: false, isInOrgFormsPhishingScanEnabled: true,
+    isRecordIdentityByDefaultEnabled: true,
+  },
+});
+
+const singletonWrite = (graph, resourceType, payload, live) => applyIdentityObjectWrite(graph,
+  { naturalKey: resourceType, resourceType, payload, references: [], live: { state: 'present', payload: live } }, 'update', FAST);
+const writesOf = (graph) => graph.calls.filter((call) => call.method !== 'GET' && call.method !== undefined);
+
+test('restore gaps batch 20: each admin center setting is one object updated in place on its own route', () => {
+  const expected = {
+    formsSettings: ['beta', '/admin/forms', ['settings'], 'OrgSettings-Forms.ReadWrite.All'],
+    microsoft365AppsInstallationOptions: ['v1.0', '/admin/microsoft365Apps/installationOptions', ['updateChannel', 'appsForWindows', 'appsForMac'], 'OrgSettings-Microsoft365Install.ReadWrite.All'],
+    appsAndServicesSettings: ['beta', '/admin/appsAndServices', ['settings'], 'OrgSettings-AppsAndServices.ReadWrite.All'],
+    adminReportSettings: ['v1.0', '/admin/reportSettings', ['displayConcealedNames'], 'ReportSettings.ReadWrite.All'],
+    pronounsSettings: ['v1.0', '/admin/people/pronouns', ['isEnabledInOrganization'], 'PeopleSettings.ReadWrite.All'],
+  };
+  for (const [type, [version, collection, writable, permission]] of Object.entries(expected)) {
+    const record = IDENTITY_RECORDS[type];
+    assert.equal(record.singleton, true, type);
+    assert.deepEqual(record.operations, ['update'], type);
+    assert.deepEqual({ version: record.version, collection: record.collection, writable: [...record.writable], permission: record.permission },
+      { version, collection, writable, permission }, type);
+  }
+  const community = IDENTITY_RECORDS.engageCommunity;
+  assert.equal(community.singleton, false);
+  assert.deepEqual(community.operations, ['update'], 'a community is never created or deleted');
+  assert.deepEqual([...community.writable], ['displayName', 'description', 'privacy']);
+});
+
+test('restore gaps batch 20: Forms settings are written back as one settings object', async () => {
+  const path = '/admin/forms';
+  const live = { settings: { ...FORMS.settings, isBingImageSearchEnabled: false } };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await singletonWrite(graph, 'formsSettings', { '@odata.context': 'x', ...FORMS }, live);
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  const writes = writesOf(graph);
+  assert.equal(writes.length, 1);
+  assert.deepEqual([writes[0].method, writes[0].version, writes[0].path], ['PATCH', 'beta', path]);
+  assert.deepEqual(writes[0].body, { settings: FORMS.settings }, 'the whole settings object, no annotation');
+  assert.deepEqual(result.applied.changes.fields, ['settings']);
+});
+
+test('restore gaps batch 20: a Forms restore never widens sharing outside the organisation or turns the phishing scan off', async () => {
+  const path = '/admin/forms';
+  for (const [field, loose] of [['isExternalSendFormEnabled', true], ['isExternalShareCollaborationEnabled', true],
+    ['isExternalShareResultEnabled', true], ['isExternalShareTemplateEnabled', true], ['isInOrgFormsPhishingScanEnabled', false]]) {
+    const graph = idoFakeGraph({ seed: { [path]: FORMS } });
+    const backup = { settings: { ...FORMS.settings, [field]: loose, isBingImageSearchEnabled: false } };
+    const result = await singletonWrite(graph, 'formsSettings', backup, FORMS);
+    assert.match(result.skipped?.reason ?? '', /never loosens/, field);
+    assert.deepEqual(result.skipped.completion.fields, [`settings.${field}`], field);
+    assert.match(result.skipped.completion.portalPath, /Microsoft Forms/);
+    assert.equal(writesOf(graph).length, 0, field);
+  }
+  // Tightening is written: the backup turns external sending off again.
+  const loose = { settings: { ...FORMS.settings, isExternalSendFormEnabled: true } };
+  const graph = idoFakeGraph({ seed: { [path]: loose } });
+  const result = await singletonWrite(graph, 'formsSettings', FORMS, loose);
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.deepEqual(writesOf(graph)[0].body, { settings: FORMS.settings });
+});
+
+test('restore gaps batch 20: install options, apps and services, report privacy and pronouns send only what changed', async () => {
+  const cases = [
+    ['microsoft365AppsInstallationOptions', '/admin/microsoft365Apps/installationOptions', 'v1.0',
+      { updateChannel: 'current', appsForWindows: { isMicrosoft365AppsEnabled: true, isVisioEnabled: true }, appsForMac: { isMicrosoft365AppsEnabled: true } },
+      { updateChannel: 'semiAnnual', appsForWindows: { isMicrosoft365AppsEnabled: true, isVisioEnabled: false }, appsForMac: { isMicrosoft365AppsEnabled: true } },
+      { updateChannel: 'current', appsForWindows: { isMicrosoft365AppsEnabled: true, isVisioEnabled: true } }],
+    ['appsAndServicesSettings', '/admin/appsAndServices', 'beta',
+      { settings: { isOfficeStoreEnabled: false, isAppAndServicesTrialEnabled: true } },
+      { settings: { isOfficeStoreEnabled: false, isAppAndServicesTrialEnabled: false } },
+      { settings: { isOfficeStoreEnabled: false, isAppAndServicesTrialEnabled: true } }],
+    ['adminReportSettings', '/admin/reportSettings', 'v1.0', { displayConcealedNames: true }, { displayConcealedNames: false }, { displayConcealedNames: true }],
+    ['pronounsSettings', '/admin/people/pronouns', 'v1.0', { isEnabledInOrganization: false }, { isEnabledInOrganization: true }, { isEnabledInOrganization: false }],
+  ];
+  for (const [type, path, version, backup, live, body] of cases) {
+    const graph = idoFakeGraph({ seed: { [path]: live } });
+    const result = await singletonWrite(graph, type, backup, live);
+    assert.equal(result.failed ?? result.skipped, undefined, `${type}: ${JSON.stringify(result)}`);
+    const writes = writesOf(graph);
+    assert.equal(writes.length, 1, type);
+    assert.deepEqual([writes[0].method, writes[0].version, writes[0].path], ['PATCH', version, path], type);
+    assert.deepEqual(writes[0].body, body, type);
+  }
+});
+
+test('restore gaps batch 20: a restore never turns the Office Store on or shows real names in reports again', async () => {
+  const store = { settings: { isOfficeStoreEnabled: false, isAppAndServicesTrialEnabled: true } };
+  let graph = idoFakeGraph({ seed: { '/admin/appsAndServices': store } });
+  let result = await singletonWrite(graph, 'appsAndServicesSettings', { settings: { isOfficeStoreEnabled: true, isAppAndServicesTrialEnabled: false } }, store);
+  assert.match(result.skipped?.reason ?? '', /Office Store add-ins; a restore never loosens/);
+  assert.deepEqual(result.skipped.completion.fields, ['settings.isOfficeStoreEnabled']);
+  assert.equal(writesOf(graph).length, 0, 'withheld whole: the trial setting is not written either');
+
+  graph = idoFakeGraph({ seed: { '/admin/reportSettings': { displayConcealedNames: true } } });
+  result = await singletonWrite(graph, 'adminReportSettings', { displayConcealedNames: false }, { displayConcealedNames: true });
+  assert.match(result.skipped?.reason ?? '', /real user, group and site names/);
+  assert.equal(writesOf(graph).length, 0);
+});
+
+test('restore gaps batch 20: a dry run plans the changed field and writes nothing', async () => {
+  const path = '/admin/people/pronouns';
+  const graph = idoFakeGraph({ seed: { [path]: { isEnabledInOrganization: true } } });
+  const result = await applyIdentityObjectWrite(graph, {
+    naturalKey: 'pronounsSettings', resourceType: 'pronounsSettings', payload: { isEnabledInOrganization: false }, references: [],
+    live: { state: 'present', payload: { isEnabledInOrganization: true } },
+  }, 'update', { ...FAST, mode: 'dry-run' });
+  assert.deepEqual(result.applied.changes.fields, ['isEnabledInOrganization']);
+  assert.equal(writesOf(graph).length, 0);
+});
+
+test('restore gaps batch 20: a Viva Engage community is updated in place and never made public', async () => {
+  const collection = '/employeeExperience/communities';
+  const backup = { id: 'community-1', displayName: 'KEEL-RT-community', description: 'Fixture', privacy: 'private', groupId: 'group-1' };
+  const drifted = { ...backup, description: 'Drifted' };
+  let graph = idoFakeGraph({ seed: { [`${collection}/community-1`]: drifted } });
+  let result = await applyIdentityObjectWrite(graph, {
+    naturalKey: 'community-1', resourceType: 'engageCommunity', payload: backup, references: [],
+    live: { state: 'present', targetId: 'community-1', payload: drifted },
+  }, 'update', FAST);
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  const writes = writesOf(graph);
+  assert.equal(writes.length, 1);
+  assert.deepEqual([writes[0].method, writes[0].version, writes[0].path], ['PATCH', 'v1.0', `${collection}/community-1`]);
+  assert.deepEqual(writes[0].body, { description: 'Fixture' }, 'the group behind it is never sent');
+
+  const live = { ...backup, privacy: 'private' };
+  graph = idoFakeGraph({ seed: { [`${collection}/community-1`]: live } });
+  result = await applyIdentityObjectWrite(graph, {
+    naturalKey: 'community-1', resourceType: 'engageCommunity', payload: { ...backup, privacy: 'Public', description: 'Other' }, references: [],
+    live: { state: 'present', targetId: 'community-1', payload: live },
+  }, 'update', FAST);
+  assert.match(result.skipped?.reason ?? '', /makes the community public/);
+  assert.equal(writesOf(graph).length, 0);
+
+  for (const verb of ['create', 'delete']) {
+    result = await applyIdentityObjectWrite(idoFakeGraph(), { naturalKey: 'community-1', resourceType: 'engageCommunity', payload: backup, references: [] }, verb, FAST);
+    assert.match(result.failed?.error ?? '', /unsupported operation/, verb);
+  }
+});
+
+test('restore gaps batch 20: the loosening guard fails closed when live does not hold the field', async () => {
+  for (const live of [{}, { settings: null }, { settings: { isBingImageSearchEnabled: true } }]) {
+    const graph = idoFakeGraph({ seed: { '/admin/forms': live } });
+    const backup = { settings: { ...FORMS.settings, isExternalShareResultEnabled: true } };
+    const result = await singletonWrite(graph, 'formsSettings', backup, live);
+    assert.match(result.skipped?.reason ?? '', /never loosens/, JSON.stringify(live));
+    assert.equal(writesOf(graph).length, 0);
+  }
+  const graph = idoFakeGraph({ seed: { '/employeeExperience/communities/c-1': { id: 'c-1', displayName: 'X' } } });
+  const result = await applyIdentityObjectWrite(graph, {
+    naturalKey: 'c-1', resourceType: 'engageCommunity', payload: { id: 'c-1', displayName: 'X', privacy: 'public' }, references: [],
+    live: { state: 'present', targetId: 'c-1', payload: { id: 'c-1', displayName: 'X' } },
+  }, 'update', FAST);
+  assert.match(result.skipped?.reason ?? '', /makes the community public/);
+});
+
+test('restore gaps batch 20: a settings member Graph added after the backup is not a difference', async () => {
+  const path = '/admin/forms';
+  const live = { settings: { ...FORMS.settings, isNewerBetaSetting: true } };
+  let graph = idoFakeGraph({ seed: { [path]: live } });
+  let result = await singletonWrite(graph, 'formsSettings', FORMS, live);
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.equal(writesOf(graph).length, 0, 'nothing changed, so nothing is written');
+
+  // A real change is written and reads back, although live keeps the newer member.
+  const drifted = { settings: { ...live.settings, isBingImageSearchEnabled: false } };
+  graph = idoFakeGraph({ seed: { [path]: drifted } });
+  result = await singletonWrite(graph, 'formsSettings', FORMS, drifted);
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.deepEqual(writesOf(graph)[0].body, { settings: FORMS.settings });
+});

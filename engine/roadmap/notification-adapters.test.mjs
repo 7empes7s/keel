@@ -39,21 +39,21 @@ async function schemaClient(t) {
 
 // Secret values the fixtures resolve. None of them may show up in anything KEEL records.
 const SECRETS = {
-  'env:KEEL_TEAMS_WEBHOOK': 'https://prod-12.westus.logic.azure.com:443/workflows/0a1b2c/triggers/manual/paths/invoke?api-version=2016-06-01&sig=TeamsSig0123456789secret',
-  'env:KEEL_SLACK_WEBHOOK': 'https://hooks.slack.com/services/T0KEEL000/B0KEEL000/SlackSecretToken0123456789',
-  'env:KEEL_PAGERDUTY_KEY': 'R0utingKey0123456789abcdefABCDEF',
-  'env:KEEL_TWILIO_TOKEN': 'twilioAuthToken0123456789abcdef',
-  'env:KEEL_LEGACY_TEAMS': 'https://contoso.webhook.office.com/webhookb2/aaaa@bbbb/IncomingWebhook/cccc/dddd',
-  'env:KEEL_NOT_SLACK': 'https://hooks.contoso.example/services/T0/B0/xyzSecretPath',
+  'env:KEEL_INTEGRATION_TEAMS_WEBHOOK': 'https://prod-12.westus.logic.azure.com:443/workflows/0a1b2c/triggers/manual/paths/invoke?api-version=2016-06-01&sig=TeamsSig0123456789secret',
+  'env:KEEL_INTEGRATION_SLACK_WEBHOOK': 'https://hooks.slack.com/services/T0KEEL000/B0KEEL000/SlackSecretToken0123456789',
+  'env:KEEL_INTEGRATION_PAGERDUTY_KEY': 'R0utingKey0123456789abcdefABCDEF',
+  'env:KEEL_INTEGRATION_TWILIO_TOKEN': 'twilioAuthToken0123456789abcdef',
+  'env:KEEL_INTEGRATION_LEGACY_TEAMS': 'https://contoso.webhook.office.com/webhookb2/aaaa@bbbb/IncomingWebhook/cccc/dddd',
+  'env:KEEL_INTEGRATION_NOT_SLACK': 'https://hooks.contoso.example/services/T0/B0/xyzSecretPath',
 };
 const SECRET_VALUES = [...Object.values(SECRETS), ...Object.values(SECRETS).filter((value) => value.startsWith('https:')).map((value) => new URL(value).href)];
 const resolveSecret = (reference) => SECRETS[reference] ?? null;
 
 const CONFIGS = {
-  teams: { endpointRef: 'env:KEEL_TEAMS_WEBHOOK' },
-  slack: { endpointRef: 'env:KEEL_SLACK_WEBHOOK' },
-  pagerduty: { routingKeyRef: 'env:KEEL_PAGERDUTY_KEY', region: 'eu' },
-  sms: { provider: 'twilio', accountSid: `AC${'0123456789abcdef'.repeat(2)}`, authTokenRef: 'env:KEEL_TWILIO_TOKEN', from: '+15551230000', to: '+15551239999' },
+  teams: { endpointRef: 'env:KEEL_INTEGRATION_TEAMS_WEBHOOK' },
+  slack: { endpointRef: 'env:KEEL_INTEGRATION_SLACK_WEBHOOK' },
+  pagerduty: { routingKeyRef: 'env:KEEL_INTEGRATION_PAGERDUTY_KEY', region: 'eu' },
+  sms: { provider: 'twilio', accountSid: `AC${'0123456789abcdef'.repeat(2)}`, authTokenRef: 'env:KEEL_INTEGRATION_TWILIO_TOKEN', from: '+15551230000', to: '+15551239999' },
 };
 
 const EVENT = Object.freeze({
@@ -113,7 +113,7 @@ const THROTTLE = { status: 429, headers: { 'retry-after': '120' }, body: 'rate_l
 test('each adapter sends the provider-shaped request and reads its success reply', async () => {
   const expectations = {
     teams: ({ url, init }) => {
-      assert.equal(url, new URL(SECRETS['env:KEEL_TEAMS_WEBHOOK']).href);
+      assert.equal(url, new URL(SECRETS['env:KEEL_INTEGRATION_TEAMS_WEBHOOK']).href);
       const body = JSON.parse(init.body);
       assert.equal(body.type, 'message');
       assert.equal(body.attachments[0].contentType, 'application/vnd.microsoft.card.adaptive');
@@ -121,7 +121,7 @@ test('each adapter sends the provider-shaped request and reads its success reply
       assert.match(body.attachments[0].content.body[0].text, /^\[KEEL CRITICAL\] alert\.escalated: group:board/);
     },
     slack: ({ url, init }) => {
-      assert.equal(url, new URL(SECRETS['env:KEEL_SLACK_WEBHOOK']).href);
+      assert.equal(url, new URL(SECRETS['env:KEEL_INTEGRATION_SLACK_WEBHOOK']).href);
       const body = JSON.parse(init.body);
       assert.match(body.text, /^\[KEEL CRITICAL\] alert\.escalated/);
       assert.equal(body.unfurl_links, false);
@@ -129,7 +129,7 @@ test('each adapter sends the provider-shaped request and reads its success reply
     pagerduty: ({ url, init }) => {
       assert.equal(url, 'https://events.eu.pagerduty.com/v2/enqueue', 'the configured region decides the endpoint');
       const body = JSON.parse(init.body);
-      assert.equal(body.routing_key, SECRETS['env:KEEL_PAGERDUTY_KEY']);
+      assert.equal(body.routing_key, SECRETS['env:KEEL_INTEGRATION_PAGERDUTY_KEY']);
       assert.equal(body.event_action, 'trigger');
       assert.equal(body.dedup_key, `keel:alert:${EVENT.alertId}:2`);
       assert.equal(body.payload.severity, 'critical');
@@ -138,7 +138,7 @@ test('each adapter sends the provider-shaped request and reads its success reply
     sms: ({ url, init }) => {
       assert.equal(url, `https://api.twilio.com/2010-04-01/Accounts/${CONFIGS.sms.accountSid}/Messages.json`);
       assert.equal(init.headers['content-type'], 'application/x-www-form-urlencoded');
-      assert.equal(init.headers.authorization, `Basic ${Buffer.from(`${CONFIGS.sms.accountSid}:${SECRETS['env:KEEL_TWILIO_TOKEN']}`).toString('base64')}`);
+      assert.equal(init.headers.authorization, `Basic ${Buffer.from(`${CONFIGS.sms.accountSid}:${SECRETS['env:KEEL_INTEGRATION_TWILIO_TOKEN']}`).toString('base64')}`);
       const form = new URLSearchParams(init.body);
       assert.equal(form.get('To'), '+15551239999');
       assert.equal(form.get('From'), '+15551230000');
@@ -180,15 +180,15 @@ test('throttling is a retry that carries the provider\'s Retry-After; a refusal 
 
 test('missing setup, an unsupported endpoint or an unsupported provider stays unconfigured and sends nothing', async () => {
   const cases = [
-    ['teams', { endpointRef: 'env:KEEL_UNSET' }, /env:KEEL_UNSET has no value/],
-    ['slack', { endpointRef: 'env:KEEL_UNSET' }, /has no value/],
-    ['pagerduty', { routingKeyRef: 'env:KEEL_UNSET' }, /has no value/],
-    ['sms', { ...CONFIGS.sms, authTokenRef: 'env:KEEL_UNSET' }, /has no value/],
-    ['teams', { endpointRef: 'env:KEEL_LEGACY_TEAMS' }, /retired Office 365 connector/],
-    ['teams', { endpointRef: 'env:KEEL_SLACK_WEBHOOK' }, /not a Teams Workflows webhook host/],
-    ['slack', { endpointRef: 'env:KEEL_NOT_SLACK' }, /not a Slack incoming webhook/],
+    ['teams', { endpointRef: 'env:KEEL_INTEGRATION_UNSET' }, /env:KEEL_INTEGRATION_UNSET has no value/],
+    ['slack', { endpointRef: 'env:KEEL_INTEGRATION_UNSET' }, /has no value/],
+    ['pagerduty', { routingKeyRef: 'env:KEEL_INTEGRATION_UNSET' }, /has no value/],
+    ['sms', { ...CONFIGS.sms, authTokenRef: 'env:KEEL_INTEGRATION_UNSET' }, /has no value/],
+    ['teams', { endpointRef: 'env:KEEL_INTEGRATION_LEGACY_TEAMS' }, /retired Office 365 connector/],
+    ['teams', { endpointRef: 'env:KEEL_INTEGRATION_SLACK_WEBHOOK' }, /not a Teams Workflows webhook host/],
+    ['slack', { endpointRef: 'env:KEEL_INTEGRATION_NOT_SLACK' }, /not a Slack incoming webhook/],
     ['sms', { ...CONFIGS.sms, provider: 'vonage' }, /SMS provider vonage is not supported/],
-    ['pagerduty', { routingKeyRef: 'env:KEEL_PAGERDUTY_KEY', region: 'apac' }, /region must be us or eu/],
+    ['pagerduty', { routingKeyRef: 'env:KEEL_INTEGRATION_PAGERDUTY_KEY', region: 'apac' }, /region must be us or eu/],
   ];
   for (const [kind, config, reason] of cases) {
     const { fetchImpl, calls } = fixtureFetch(FIXTURES[kind].ok);
@@ -203,9 +203,9 @@ test('missing setup, an unsupported endpoint or an unsupported provider stays un
 test('channels store credential references only and refuse an unsupported provider', async (t) => {
   const client = await schemaClient(t);
   const refused = [
-    ['teams', { url: SECRETS['env:KEEL_TEAMS_WEBHOOK'] }, /url is not a setting|endpointRef is required/],
-    ['slack', { endpointRef: SECRETS['env:KEEL_SLACK_WEBHOOK'] }, /endpointRef must be a credential reference/],
-    ['pagerduty', { routingKeyRef: SECRETS['env:KEEL_PAGERDUTY_KEY'] }, /routingKeyRef must be a credential reference/],
+    ['teams', { url: SECRETS['env:KEEL_INTEGRATION_TEAMS_WEBHOOK'] }, /url is not a setting|endpointRef is required/],
+    ['slack', { endpointRef: SECRETS['env:KEEL_INTEGRATION_SLACK_WEBHOOK'] }, /endpointRef must be a credential reference/],
+    ['pagerduty', { routingKeyRef: SECRETS['env:KEEL_INTEGRATION_PAGERDUTY_KEY'] }, /routingKeyRef must be a credential reference/],
     ['sms', { ...CONFIGS.sms, provider: 'vonage' }, /SMS provider vonage is not supported \(supported: twilio\)/],
     ['sms', { ...CONFIGS.sms, provider: undefined }, /provider is required/],
     ['sms', { ...CONFIGS.sms, to: '5551239999' }, /to must be one phone number in E\.164 form/],
@@ -334,10 +334,10 @@ test('no secret reaches the delivery log, the job log or the evidence ledger', a
   // Providers that echo the request back, and a network error that names the address,
   // are the realistic ways a secret leaks into an error message.
   const echoes = {
-    teams: [new TypeError(`fetch failed for ${SECRETS['env:KEEL_TEAMS_WEBHOOK']}`), { status: 403, body: `forbidden ${SECRETS['env:KEEL_TEAMS_WEBHOOK']}` }],
-    slack: [{ status: 429, body: `slow down ${SECRETS['env:KEEL_SLACK_WEBHOOK']}` }, { status: 410, body: `channel_is_archived ${new URL(SECRETS['env:KEEL_SLACK_WEBHOOK']).pathname}` }],
-    pagerduty: [{ status: 500, body: SECRETS['env:KEEL_PAGERDUTY_KEY'] }, { status: 400, body: JSON.stringify({ message: `bad key ${SECRETS['env:KEEL_PAGERDUTY_KEY']}` }) }],
-    sms: [{ status: 503, body: SECRETS['env:KEEL_TWILIO_TOKEN'] }, { status: 401, body: JSON.stringify({ code: 20003, message: `Authenticate ${SECRETS['env:KEEL_TWILIO_TOKEN']}` }) }],
+    teams: [new TypeError(`fetch failed for ${SECRETS['env:KEEL_INTEGRATION_TEAMS_WEBHOOK']}`), { status: 403, body: `forbidden ${SECRETS['env:KEEL_INTEGRATION_TEAMS_WEBHOOK']}` }],
+    slack: [{ status: 429, body: `slow down ${SECRETS['env:KEEL_INTEGRATION_SLACK_WEBHOOK']}` }, { status: 410, body: `channel_is_archived ${new URL(SECRETS['env:KEEL_INTEGRATION_SLACK_WEBHOOK']).pathname}` }],
+    pagerduty: [{ status: 500, body: SECRETS['env:KEEL_INTEGRATION_PAGERDUTY_KEY'] }, { status: 400, body: JSON.stringify({ message: `bad key ${SECRETS['env:KEEL_INTEGRATION_PAGERDUTY_KEY']}` }) }],
+    sms: [{ status: 503, body: SECRETS['env:KEEL_INTEGRATION_TWILIO_TOKEN'] }, { status: 401, body: JSON.stringify({ code: 20003, message: `Authenticate ${SECRETS['env:KEEL_INTEGRATION_TWILIO_TOKEN']}` }) }],
   };
   const deliveryIds = [];
   for (const kind of Object.keys(CONFIGS)) {

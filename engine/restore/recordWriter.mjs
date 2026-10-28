@@ -21,7 +21,14 @@
  *    already holds what the write would make (the write is skipped);
  *  - `afterWrite(io, step)`: child writes made after the object (target apps,
  *    localized messages), each verified by the record;
- *  - `deleteGuard(io, step)`: a type's own reason not to delete;
+ *  - `deleteGuard(io, step)`: a type's own reason not to delete (a string), or
+ *    null, or { prior } (fields journaled with the prior state, such as the
+ *    assignments an undo removes before the delete);
+ *  - `beforeDelete(io, step)`: writes made after the delete is journaled and
+ *    before it is sent (an undo that removes a policy's assignments first);
+ *    returns null, { changes }, or { error, outcome, changed } (the delete is
+ *    not sent; `outcome` is the journal outcome, `changed` says the tenant was
+ *    changed anyway);
  *  - `updateGuard(io, step)`: a type's own reason not to update, worked out
  *    from live reads; returns { reason, completion? } and the update is
  *    skipped as a manual step;
@@ -29,7 +36,21 @@
  *    Graph may return in another form (a JSON string with other spacing);
  *  - `checkedAfterWrite`: sent fields the object's own read never returns
  *    (Graph leaves them out); the record's `afterWrite` reads each one back
- *    from its own collection and fails the write when it differs.
+ *    from its own collection and fails the write when it differs;
+ *  - `writeVia(io, step)` and `readVia(io, step)`: for a type Graph writes
+ *    through an action on another object rather than its own collection (an
+ *    app's links, through the app's updateRelationships). `writeVia` makes the
+ *    create or update and returns Graph's answer (a failed answer may carry
+ *    `skipped`, a plain reason the write was not possible, and nothing was
+ *    written); `readVia` reads the one object back ({ ok, status, body }, 404
+ *    when it is not there). A create's id comes from the read back.
+ *    `writeRoute` names that route for the ledger;
+ *  - `deleteVia(io, step)`: the delete of such a type, through the same route
+ *    (an app's link, taken out of the links its app holds); it is verified as
+ *    gone through `readVia`, and the ledger names `writeRoute` for it too;
+ *  - `planChanges(io, step)`: in a dry run, the changes the record's
+ *    `afterWrite` would make (an app's categories), read from live, so the plan
+ *    shows a difference that is not in a field of the object.
  *
  * Every write is journalled first and read back; every field it sent must read
  * back as sent (nulls and absent fields read the same). A reference held in a
@@ -69,6 +90,12 @@ export function defineRecord(spec) {
   if (spec.readEach && (spec.readQuery || spec.preflight || spec.afterWrite || spec.updateGuard || spec.deleteGuard)) {
     throw new TypeError(`${spec.resourceType}: a record read field by field takes no readQuery and no read hook`);
   }
+  if (Boolean(spec.writeVia) !== Boolean(spec.readVia)) {
+    throw new TypeError(`${spec.resourceType}: a record written through another route reads its object back through it too (writeVia and readVia)`);
+  }
+  if (spec.deleteVia && !spec.writeVia) {
+    throw new TypeError(`${spec.resourceType}: a record deleted through another route is written and read through it too (deleteVia needs writeVia)`);
+  }
   if (spec.singleton && (spec.operations ?? []).some((verb) => verb !== 'update')) {
     throw new TypeError(`${spec.resourceType}: a singleton is only ever updated`);
   }
@@ -87,9 +114,15 @@ export function defineRecord(spec) {
     preflight: null,
     afterWrite: null,
     deleteGuard: null,
+    beforeDelete: null,
     updateGuard: null,
     transform: null,
     sameField: null,
+    writeVia: null,
+    readVia: null,
+    writeRoute: null,
+    deleteVia: null,
+    planChanges: null,
     remapsReferences: false,
     checkedAfterWrite: [],
     ...spec,
@@ -271,15 +304,26 @@ export function writeFailure(record, naturalKey, result) {
 
 export const isNotFound = (result) => result?.ok === false && result?.status === 404;
 
-/** Re-reads until `isStale` clears (Graph's read-after-write lag), bounded. */
-export async function readUntil(io, version, path, isStale, { attempts = 6, delayMs = 3000 } = {}) {
+/** Calls `read` until `isStale` clears (Graph's read-after-write lag), bounded. */
+async function readUntilWith(read, isStale, { attempts = 6, delayMs = 3000 } = {}) {
   let result;
   for (let i = 0; i < attempts; i += 1) {
-    result = await io.retryOperation(() => io.writer.read(version, path));
+    result = await read();
     if (!isStale(result)) return result;
     if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
   return result;
+}
+
+/** Re-reads until `isStale` clears (Graph's read-after-write lag), bounded. */
+export function readUntil(io, version, path, isStale, options = {}) {
+  return readUntilWith(() => io.retryOperation(() => io.writer.read(version, path)), isStale, options);
+}
+
+/** One object read back: through the record's own route, or at its path. */
+function readRecordObject(io, record, payload, targetId) {
+  if (record.readVia) return record.readVia(io, { payload, targetId });
+  return io.retryOperation(() => io.writer.read(record.version, withQuery(record, recordObjectPath(record, payload, targetId))));
 }
 
 const refusalEntry = (naturalKey, refusal) => (refusal.outcome === 'skipped'
@@ -393,7 +437,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
     const existingId = ctx.existingTargetIds?.get(naturalKey);
     if (existingId) {
       if (ctx.mode === 'dry-run') return { applied: { naturalKey, targetId: existingId, changes: { fields } } };
-      const found = await io.retryOperation(() => writer.read(record.version, withQuery(record, recordObjectPath(record, payload, existingId))));
+      const found = await readRecordObject(io, record, payload, existingId);
       if (found?.ok !== true) {
         return { failed: { naturalKey, error: `conflict: an object with this key exists in the target but could not be read (status ${found?.status}) — manual reconciliation required` } };
       }
@@ -411,22 +455,31 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
     const held = await record.updateGuard(io, { resource, payload, targetId, before, fields, ctx });
     if (held) return refusalEntry(naturalKey, { outcome: 'skipped', ...held });
   }
-  if (ctx.mode === 'dry-run') return { applied: { naturalKey, targetId, changes: { fields }, ...followUp } };
+  if (ctx.mode === 'dry-run') {
+    const planned = record.planChanges && writer ? await record.planChanges(io, { resource, payload, verb, targetId, before, ctx }) : null;
+    return { applied: { naturalKey, targetId, changes: { fields, ...(planned ?? {}) }, ...followUp } };
+  }
   if (verb === 'update' && fields.length === 0 && !record.afterWrite) return { applied: { naturalKey, targetId, changes: { fields } } };
 
   const entry = await journal(ctx, resource, { operation: verb, targetId, priorState: before, intendedState: body });
   if (!entry.ok) return { failed: { naturalKey, error: `refusing to ${verb}: rollback journal write failed` } };
 
+  // A failed write: Graph's answer, or the record's plain reason nothing could be written.
+  const writeFailed = async (result) => {
+    await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
+    if (typeof result?.skipped === 'string') return refusalEntry(naturalKey, { outcome: 'skipped', reason: result.skipped });
+    return { failed: writeFailure(record, naturalKey, result) };
+  };
+
   let sent = {};
   if (verb === 'create') {
     const collection = recordCollection(record, payload);
-    const result = await io.retryOperation(() => writer.write(record.version, collection, { method: 'POST', body }));
-    if (!result.ok) {
-      await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
-      return { failed: writeFailure(record, naturalKey, result) };
-    }
-    targetId = result.body?.id;
-    if (typeof targetId !== 'string' || targetId.length === 0) {
+    const result = record.writeVia
+      ? await record.writeVia(io, { resource, payload, verb, body, sent: body, targetId: null, ctx })
+      : await io.retryOperation(() => writer.write(record.version, collection, { method: 'POST', body }));
+    if (!result?.ok) return writeFailed(result);
+    targetId = result.body?.id ?? null;
+    if (!record.writeVia && (typeof targetId !== 'string' || targetId.length === 0)) {
       await note(ctx, entry, 'uncertain', { postState: result.body ?? null, detail: 'create returned no id' });
       return { failed: { naturalKey, error: 'create returned no id' } };
     }
@@ -434,21 +487,25 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   } else if (fields.length > 0) {
     sent = record.updateMethod === 'PUT' ? body
       : Object.fromEntries(Object.entries(body).filter(([field]) => field === '@odata.type' || fields.includes(field)));
-    const result = await io.retryOperation(() => writer.write(record.version, recordObjectPath(record, payload, targetId), { method: record.updateMethod, body: sent }));
-    if (!result.ok) {
-      await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
-      return { failed: writeFailure(record, naturalKey, result) };
-    }
+    const result = record.writeVia
+      ? await record.writeVia(io, { resource, payload, verb, body, sent, targetId, ctx })
+      : await io.retryOperation(() => writer.write(record.version, recordObjectPath(record, payload, targetId), { method: record.updateMethod, body: sent }));
+    if (!result?.ok) return writeFailed(result);
   }
 
-  const readPath = withQuery(record, recordObjectPath(record, payload, targetId));
-  const reRead = await readUntil(io, record.version, readPath,
+  const reRead = await readUntilWith(() => readRecordObject(io, record, payload, targetId),
     (r) => isNotFound(r) || (r?.ok === true && recordPostStateRefusal(record, sent, r.body) !== null), io.readOptions);
   if (reRead?.ok !== true) {
     await note(ctx, entry, 'uncertain', { targetId, detail: `${verb} could not be re-read` });
     return { failed: graphFailure(naturalKey, reRead) };
   }
   let live = reRead.body;
+  // A create written through another route has its id only once it reads back.
+  if (record.writeVia && !targetId) targetId = typeof live?.id === 'string' && live.id.length > 0 ? live.id : null;
+  if (record.writeVia && !targetId) {
+    await note(ctx, entry, 'uncertain', { postState: live, detail: 'create read back with no id' });
+    return { failed: { naturalKey, error: 'create read back with no id' } };
+  }
   const postState = recordPostStateRefusal(record, sent, live);
   if (postState) {
     await note(ctx, entry, 'uncertain', { targetId, postState: live, detail: 'post-state did not verify' });
@@ -478,41 +535,69 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
 }
 
 /**
+ * An undo of a create (compensation.mjs): the delete of an object this restore
+ * created, named by the journal entries it undoes. Its authority is that
+ * journal and the fresh read the plan compared, not the snapshot's absence.
+ */
+export const undoesCreate = (resource) => resource.undoes === 'create'
+  && Array.isArray(resource.compensates) && resource.compensates.length > 0;
+
+/**
  * A delete: the shared deletion guard, a complete observation of the type in
- * the source snapshot, the record's own guard, then DELETE and a read that
- * shows the object gone (absent or soft-deleted).
+ * the source snapshot (or, for an undo of a create, the journal), the record's
+ * own guard, then DELETE (or the record's `deleteVia`) and a read that shows
+ * the object gone (absent or soft-deleted).
  */
 async function applyRecordDelete(io, record, resource, payload, ctx) {
   const { naturalKey } = resource;
   const guard = refuseUnsafeDeletion({ ...resource, payload }, ctx.deletionGuardOptions ?? { breakGlassUserIds: [] });
   if (guard.refused) return { skipped: { naturalKey, reason: guard.reason } };
   const coverage = ctx.observedCoverage?.[resource.resourceType]?.outcome ?? null;
-  if (!COMPLETE.has(coverage)) {
+  if (!COMPLETE.has(coverage) && !undoesCreate(resource)) {
     return { failed: { naturalKey, error: `partial observation cannot authorise delete: the snapshot's ${resource.resourceType} collection is ${coverage ?? 'not recorded'}, so its absence there is not evidence` } };
   }
   const targetId = liveTargetId(resource, ctx);
   if (!targetId) return { failed: { naturalKey, error: 'delete has no targetId' } };
   const path = recordObjectPath(record, payload, targetId);
+  let prior = null;
   if (record.deleteGuard && io.writer) {
     const reason = await record.deleteGuard(io, { resource, payload, targetId, path, ctx });
-    if (reason) return { skipped: { naturalKey, reason } };
+    if (typeof reason === 'string' && reason) return { skipped: { naturalKey, reason } };
+    prior = reason?.prior ?? null;
   }
   if (ctx.mode === 'dry-run') return { applied: { naturalKey, targetId } };
 
-  const entry = await journal(ctx, resource, { operation: 'delete', targetId, priorState: payload, intendedState: null });
+  const entry = await journal(ctx, resource, { operation: 'delete', targetId, priorState: prior ? { ...payload, ...prior } : payload, intendedState: null });
   if (!entry.ok) return { failed: { naturalKey, error: 'refusing to delete: rollback journal write failed' } };
-  const result = await io.retryOperation(() => io.writer.write(record.version, path, { method: 'DELETE', body: {} }));
-  if (!result.ok) {
-    await note(ctx, entry, classifyWriteOutcome(result), { detail: outcomeDetail(result) });
-    return { failed: writeFailure(record, naturalKey, result) };
+  const before = record.beforeDelete ? await record.beforeDelete(io, { resource, payload, targetId, path, ctx }) : null;
+  if (before?.error) {
+    await note(ctx, entry, before.outcome ?? 'failed', { detail: before.error });
+    return { failed: { naturalKey, error: before.error } };
   }
-  const reRead = await readUntil(io, record.version, path, (r) => r?.ok === true && r.body?.deletedDateTime == null, io.readOptions);
+  const changes = before?.changes ?? null;
+  // Assignments taken off before a delete that then fails: the tenant changed.
+  const removedFirst = changes?.assignmentsRemoved
+    ? ` (its ${changes.assignmentsRemoved} assignment(s) were already removed, and the policy was not deleted)` : '';
+  const result = record.deleteVia
+    ? await record.deleteVia(io, { resource, payload, targetId, ctx })
+    : await io.retryOperation(() => io.writer.write(record.version, path, { method: 'DELETE', body: {} }));
+  if (!result?.ok) {
+    await note(ctx, entry, removedFirst ? 'uncertain' : classifyWriteOutcome(result), { detail: `${outcomeDetail(result)}${removedFirst}` });
+    if (typeof result?.skipped === 'string') return refusalEntry(naturalKey, { outcome: 'skipped', reason: `${result.skipped}${removedFirst}` });
+    const failure = writeFailure(record, naturalKey, result);
+    return { failed: removedFirst ? { ...failure, error: `${failure.error}${removedFirst}` } : failure };
+  }
+  const gone = (r) => r?.ok === true && r.body?.deletedDateTime == null;
+  const reRead = record.readVia
+    ? await readUntilWith(() => record.readVia(io, { payload, targetId }), gone, io.readOptions)
+    : await readUntil(io, record.version, path, gone, io.readOptions);
   if (!isNotFound(reRead) && reRead?.body?.deletedDateTime == null) {
     await note(ctx, entry, 'uncertain', { postState: reRead?.body ?? null, detail: 'delete did not verify' });
     return { failed: { naturalKey, error: 'delete did not verify as absent or soft-deleted' } };
   }
-  await note(ctx, entry, 'succeeded', { detail: isNotFound(reRead) ? 'absent' : 'soft-deleted' });
-  return { applied: { naturalKey, targetId } };
+  const removed = changes?.assignmentsRemoved ? `; its ${changes.assignmentsRemoved} assignment(s) were removed first` : '';
+  await note(ctx, entry, 'succeeded', { detail: `${isNotFound(reRead) ? 'absent' : 'soft-deleted'}${removed}` });
+  return { applied: { naturalKey, targetId, ...(changes ? { changes } : {}) } };
 }
 
 /** The ledger rows of a set of records: what each writes, where and with which permission. */
@@ -521,8 +606,9 @@ export function recordLedger(records) {
     resourceType: record.resourceType,
     operation,
     version: record.version,
-    method: operation === 'create' ? 'POST' : operation === 'delete' ? 'DELETE' : record.updateMethod,
-    route: record.singleton ? record.collection
+    method: operation === 'create' || (record.writeRoute && (operation !== 'delete' || record.deleteVia)) ? 'POST' : operation === 'delete' ? 'DELETE' : record.updateMethod,
+    route: record.writeRoute && (operation !== 'delete' || record.deleteVia) ? record.writeRoute
+      : record.singleton ? record.collection
       : operation === 'create' ? (record.collection ?? '{subtype collection}') : `${record.collection ?? '{subtype collection}'}/{id}`,
     permission: record.permission ?? null,
   }))));

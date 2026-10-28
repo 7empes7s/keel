@@ -70,9 +70,25 @@ import {
   serviceNowWorkflowIsDefault,
 } from './servicenowAcceptance.mjs';
 import { schemaSql } from '../../engine/store/loadSchema.mjs';
+import { isIntegrationReference } from '../../engine/safety/outboundDestination.mjs';
 
 export const SERVICENOW_DEFAULT_RELAY_TABLE = 'u_keel_callback_relay';
 const CREDENTIAL_REF = /^env:[A-Z_][A-Z0-9_]{0,127}$/;
+
+/**
+ * Resolves the capture's env: references. KEEL's own token and callback secret go
+ * through the product resolver (env:KEEL_INTEGRATION_* only). A test user's token is
+ * not a KEEL setting: the operator names it on the command line, so any env: name is
+ * read for those.
+ */
+export function qualificationResolveSecret(reference) {
+  if (isIntegrationReference(reference)) return defaultResolveSecret(reference);
+  if (typeof reference === 'string' && CREDENTIAL_REF.test(reference)) {
+    const value = process.env[reference.slice('env:'.length)];
+    if (typeof value === 'string' && value.length > 0) return value;
+  }
+  throw new Error(`unresolved credential reference: ${String(reference)}`);
+}
 const SYS_ID = /^[0-9a-f]{32}$/;
 const QUALIFICATION_DB_NAME = /(^|_)(qualification|test)(_|$)/;
 
@@ -98,6 +114,11 @@ export function serviceNowCaptureRefusals({ config, testUsers, declaredHost, dec
   else if (!host || host !== String(declaredHost).toLowerCase()) refusals.push(`the configured instance '${host ?? 'missing'}' is not the host declared non-production ('${declaredHost}')`);
   if (typeof declaredBy !== 'string' || !declaredBy.trim()) refusals.push('the non-production declaration needs --declared-by <operator name>');
   for (const item of serviceNowConfigProblems(config)) refusals.push(`adapter mapping: ${item.message}`);
+  for (const [path, value] of [['credential.tokenRef', config?.credential?.tokenRef], ['callback.secretRef', config?.callback?.secretRef]]) {
+    if (typeof value === 'string' && CREDENTIAL_REF.test(value) && !isIntegrationReference(value)) {
+      refusals.push(`adapter mapping: ${path} must name an env:KEEL_INTEGRATION_* setting (rename ${value})`);
+    }
+  }
   if (config && !config.callback) refusals.push('callbacks must be signed (callback.secretRef) to qualify both directions');
   if (config && serviceNowWorkflowIsDefault({
     table: config.table, fields: config.fields, approvedValues: config.states?.approved, rejectedValues: config.states?.rejected,
@@ -254,7 +275,7 @@ export async function prepareServiceNowQualification(client, { tenantRef, runId,
  * the unsigned record and the capture log, with tenant ids pseudonymized (pseudonymize.mjs); it never signs and never writes files.
  */
 export async function captureServiceNowAcceptance({
-  client, fetchImpl = globalThis.fetch, resolveSecret = defaultResolveSecret, tenantRef, build, config, testUsers,
+  client, fetchImpl = globalThis.fetch, resolveSecret = qualificationResolveSecret, tenantRef, build, config, testUsers,
   declaredHost, declaredBy, relayTable = SERVICENOW_DEFAULT_RELAY_TABLE, recordTemplate = null, documentation = [],
   runId = `keel-rt-servicenow-${randomUUID()}`, now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
   relayAttempts = 20, relayDelayMs = 3 * 1000,

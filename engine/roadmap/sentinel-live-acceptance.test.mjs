@@ -123,7 +123,7 @@ async function capture(behaviour = {}, overrides = {}) {
     query: logAnalyticsQueryTransport({ token: READER_TOKEN, workspaceId: WORKSPACE, fetchImpl: workspace.fetchImpl }),
     tenantRef, build, destinationId: DESTINATION,
     workspace: { workspaceId: WORKSPACE, endpoint: ENDPOINT, dcrImmutableId: DCR },
-    credentials: { sender: 'env:KEEL_SENTINEL_SENDER_CREDENTIAL', reader: 'app:keel-sentinel-reader' },
+    credentials: { sender: 'env:KEEL_INTEGRATION_SENTINEL_SENDER_CREDENTIAL', reader: 'app:keel-sentinel-reader' },
     roles: { sender: ['Monitoring Metrics Publisher'], reader: ['Log Analytics Reader'] },
     documentation: documentation(), runId: 'keel-rt-sentinel-fixture', now: clock, sleep: async () => {}, queryAttempts: 2, queryDelayMs: 0,
     ...overrides,
@@ -393,7 +393,7 @@ test('fixture evidence is never elevated to live-qualified, and only a verified 
 
 function writeConfig() {
   const path = join(dir, 'sentinel-config.json');
-  writeFileSync(path, JSON.stringify({ endpoint: ENDPOINT, dcrImmutableId: DCR, credentialRef: 'env:KEEL_SENTINEL_SENDER_CREDENTIAL' }));
+  writeFileSync(path, JSON.stringify({ endpoint: ENDPOINT, dcrImmutableId: DCR, credentialRef: 'env:KEEL_INTEGRATION_SENTINEL_SENDER_CREDENTIAL' }));
   return path;
 }
 
@@ -412,13 +412,13 @@ test('the capture tool is offline by default, refuses without confirmation, and 
 
   const full = [
     'capture', '--confirm-live-workspace-ingest', ...base, '--workspace-id', WORKSPACE, '--endpoint', ENDPOINT,
-    '--dcr-immutable-id', DCR, '--sender-ref', 'env:KEEL_SENTINEL_SENDER_CREDENTIAL', '--reader-ref', 'app:keel-sentinel-reader',
+    '--dcr-immutable-id', DCR, '--sender-ref', 'env:KEEL_INTEGRATION_SENTINEL_SENDER_CREDENTIAL', '--reader-ref', 'app:keel-sentinel-reader',
     '--roles', join(dir, 'roles.json'), '--docs', join(dir, 'docs.json'), '--out', join(dir, 'cli-sentinel.json'), '--build', build,
   ];
   writeFileSync(join(dir, 'roles.json'), JSON.stringify({ sender: ['Monitoring Metrics Publisher'], reader: ['Log Analytics Reader'] }));
   writeFileSync(join(dir, 'docs.json'), JSON.stringify(sentinelRequiredDocumentation().map((url) => ({ url, retrievedAt: new Date().toISOString() }))));
   await assert.rejects(sentinelMain(full, { out: () => {}, env: {}, fetchImpl: counting }), /KEEL_SENTINEL_SENDER_TOKEN/);
-  await assert.rejects(sentinelMain(full.map((arg) => (arg === 'app:keel-sentinel-reader' ? 'env:KEEL_SENTINEL_SENDER_CREDENTIAL' : arg)),
+  await assert.rejects(sentinelMain(full.map((arg) => (arg === 'app:keel-sentinel-reader' ? 'env:KEEL_INTEGRATION_SENTINEL_SENDER_CREDENTIAL' : arg)),
     { out: () => {}, env: { KEEL_SENTINEL_SENDER_TOKEN: SENDER_TOKEN, KEEL_SENTINEL_READER_TOKEN: READER_TOKEN }, fetchImpl: counting }), /separate from the sender/);
   await assert.rejects(sentinelMain(full.map((arg) => (arg === DCR ? '' : arg)),
     { out: () => {}, env: { KEEL_SENTINEL_SENDER_TOKEN: SENDER_TOKEN, KEEL_SENTINEL_READER_TOKEN: READER_TOKEN }, fetchImpl: counting }), /capture needs --dcr-immutable-id/);

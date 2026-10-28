@@ -94,8 +94,6 @@ const STS_POLICY_MISSING = Object.freeze([
 const packagedApp = (payload) => (appGroupOf(payload) === 'packaged'
   ? [Object.freeze({ name: payload?.fileName ?? nameOf(payload), expires: null })] : []);
 const syncedApp = (payload) => (appGroupOf(payload) === 'synced' ? always(payload) : []);
-const categorisedApp = (payload) => (Array.isArray(payload?.categories) && payload.categories.length > 0
-  ? payload.categories.map((category) => Object.freeze({ name: category?.displayName ?? category?.id ?? 'unnamed', expires: null })) : []);
 
 const synced = (payload) => (payload?.onPremisesSyncEnabled === true ? always(payload) : []);
 
@@ -204,7 +202,6 @@ export const COMPLETENESS = Object.freeze({
   mobileApp: { missing: [
     part('The app package (the installer file), which must be uploaded before the app is assigned', 'binary-route', packagedApp),
     part('An app synced from Apple Business Manager, managed Google Play or Microsoft, which is synced again there', 'not-written', syncedApp),
-    part('Which app categories it is in', 'other-route', categorisedApp),
   ] },
   managedAppPolicy: { missing: [part('Windows Information Protection policies', 'not-written')] },
   targetedManagedAppConfiguration: {},
@@ -264,7 +261,7 @@ export const COMPLETENESS = Object.freeze({
   multiTenantOrganizationPartnerConfigurationTemplate: {},
   identityUserFlowAttribute: { whole: 'not-written', missing: [part('Built-in attributes', 'microsoft-managed')] },
   authenticationEventListener: { whole: 'not-written' },
-  externalDomainFederation: { missing: [part('Its domains', 'other-route')] },
+  externalDomainFederation: { missing: [part('Its domains', 'not-written')] },
   // Remaining kinds, batch 5.
   exchangeRoleDefinition: { whole: 'not-written', missing: [part('Built-in roles', 'microsoft-managed')] },
   exchangeRoleAssignment: { whole: 'not-written' },
@@ -314,6 +311,17 @@ export const COMPLETENESS = Object.freeze({
   securityZone: { whole: 'not-written', missing: [part('The environments in the zone', 'other-route')] },
   sharedEmailDomain: { whole: 'not-written' },
   schemaExtension: { whole: 'not-written', missing: [part('Extensions owned by apps in other tenants', 'microsoft-managed')] },
+  // Remaining kinds, batch 9: read once the Collector holds the read permission.
+  formsSettings: { missing: [part('Sharing outside the organisation widened or the phishing scan turned off', 'not-written')] },
+  todoSettings: { whole: 'not-written' },
+  microsoft365AppsInstallationOptions: {},
+  appsAndServicesSettings: { missing: [part('The Office Store turned on', 'not-written')] },
+  adminReportSettings: { missing: [part('Real names shown in usage reports again', 'not-written')] },
+  profileCardProperty: { whole: 'not-written' },
+  pronounsSettings: {},
+  defenderDetectionRule: { whole: 'not-written', missing: [part('Past runs and the alerts a rule raised', 'other-route')] },
+  teamsCatalogApp: { whole: 'not-written', missing: [part('The app package', 'other-route')] },
+  engageCommunity: { missing: [part('A deleted community', 'not-written'), part('A private community made public', 'not-written'), part('Posts, files and members of the community', 'other-route')] },
 });
 
 const RECORD_FIELDS = new Set(['managed', 'unreadable', 'whole', 'missing']);

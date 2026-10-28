@@ -130,9 +130,11 @@ test('three operation records, each a fixture-tested registration; every sibling
 test('the evidence report names what cannot be recovered and carries no coverage percentage', () => {
   const ledger = buildAdministrativeFamilyLedger();
   assert.deepEqual(ledger.families.map((family) => family.resourceType).sort(),
-    ['administrativeUnit', 'directorySettingTemplate', 'domain', 'externalConnection', 'groupLifecyclePolicy', 'groupSetting',
-      'itemInsightsSettings', 'organization', 'organizationalBranding', 'organizationalBrandingLocalization', 'schemaExtension',
-      'securityZone', 'sharedEmailDomain', 'sharepointSettings', 'subscribedSku']);
+    ['adminReportSettings', 'administrativeUnit', 'appsAndServicesSettings', 'directorySettingTemplate', 'domain', 'engageCommunity',
+      'externalConnection', 'formsSettings', 'groupLifecyclePolicy', 'groupSetting', 'itemInsightsSettings',
+      'microsoft365AppsInstallationOptions', 'organization', 'organizationalBranding', 'organizationalBrandingLocalization',
+      'profileCardProperty', 'pronounsSettings', 'schemaExtension', 'securityZone', 'sharedEmailDomain', 'sharepointSettings',
+      'subscribedSku', 'todoSettings']);
   const byType = new Map(ledger.families.map((family) => [family.resourceType, family]));
   const unit = byType.get('administrativeUnit');
   assert.deepEqual({ status: unit.status, restoreScope: unit.restoreScope }, { status: 'qualified-subset', restoreScope: 'partial' });
@@ -391,7 +393,10 @@ test('the administrative batch runner drives the subset through applyWave and re
   assert.deepEqual(report.operations.map((op) => `${op.resourceType} ${op.operation} ${op.result}`).sort(),
     ['administrativeUnit update passed', 'groupLifecyclePolicy update passed', 'groupSetting delete passed', 'groupSetting update passed',
       'organizationalBranding update passed', 'organizationalBrandingLocalization update passed',
-      'sharepointSettings update passed']);
+      'sharepointSettings update passed',
+      // Restore gaps, batch 20.
+      'adminReportSettings update passed', 'appsAndServicesSettings update passed', 'engageCommunity update passed',
+      'formsSettings update passed', 'microsoft365AppsInstallationOptions update passed', 'pronounsSettings update passed'].sort());
   assert.ok(report.operations.every((op) => op.synthetic === true));
   assert.ok(report.administrativeLedger.families.some((family) => family.resourceType === 'administrativeUnit'
     && family.unrecoverable.some((item) => item.name === 'members')));

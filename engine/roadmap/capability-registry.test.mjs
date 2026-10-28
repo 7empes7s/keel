@@ -139,11 +139,19 @@ const REGISTERED = Object.freeze({
   microsoftTunnelHealthThreshold: ['update'],
   onPremisesConditionalAccessSettings: ['update'],
   sharepointSettings: ['update'],
+  // Restore gaps, batch 20: admin center org settings and Viva Engage communities.
+  formsSettings: ['update'],
+  microsoft365AppsInstallationOptions: ['update'],
+  appsAndServicesSettings: ['update'],
+  adminReportSettings: ['update'],
+  pronounsSettings: ['update'],
+  engageCommunity: ['update'],
   // Restore gaps, batch 12.
   windowsManagedAppProtection: ['create', 'update'],
   iosLobAppProvisioningConfiguration: ['create', 'update'],
   // Restore gaps, batch 13.
-  mobileAppRelationship: ['create', 'update'],
+  // Its delete is only the undo of a link a restore created.
+  mobileAppRelationship: ['create', 'update', 'delete'],
   // Restore gaps, batch 18.
   mobileApp: ['create', 'update'],
   // Wave 2 ENTRA: directory policies and delegated consents.

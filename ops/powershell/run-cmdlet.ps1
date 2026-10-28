@@ -26,6 +26,7 @@
   been run against a tenant.
 #>
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'keel-json.ps1')
 $ProgressPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 
@@ -300,8 +301,10 @@ function Out-Envelope {
     param([hashtable]$Envelope, [int]$Code)
     # Depth 16: below that, ConvertTo-Json flattens deeper nested settings (DLP
     # sensitive information type groups, say) to type-name strings. Shallower answers
-    # serialize the same at either depth.
-    [Console]::Out.WriteLine((ConvertTo-Json -InputObject $Envelope -Depth 16 -Compress))
+    # serialize the same at either depth. When ConvertTo-Json throws (unloaded PnP
+    # collections, #638; non-string dictionary keys in Purview answers, Q179),
+    # ConvertTo-KeelJson writes a plain copy instead (keel-json.ps1).
+    [Console]::Out.WriteLine((ConvertTo-KeelJson -Value $Envelope -Depth 16))
     exit $Code
 }
 

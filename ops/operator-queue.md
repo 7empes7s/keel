@@ -9836,3 +9836,66 @@ item that needs it stays untouched.
      "Grant admin consent" for KEEL Collector. Write in the Result that the click is pending.
 - **Expected:** step 1 no PIM for Groups scope; step 2 refused, or 200 with 0 items; step 3 shows 200 complete-empty reads.
 - **Report:** each step's output as above, and whether the permission was added in step 4.
+
+### Q218: Add the write permissions for the admin center settings restore to the Restorer's manifest (manifest only)
+- Drafted by the "Restore the newly backed-up settings" thread (2026-10-28). Code: PR #673 (restore gaps batch 20: update in
+  place of Forms, Microsoft 365 Apps installation options, apps and services, report privacy, pronouns, and Viva Engage
+  communities). Under the 2026-10-28 rule, keel-operator adds the permission to the app registration; Marouane only clicks
+  "Grant admin consent".
+- Needs: none.
+- Status: todo
+- **Test tenant only. Manifest only.** GET the **KEEL Restorer** application, MERGE, PATCH once (as the Restorer, as in Q180).
+  Keep every existing resource and entry; remove nothing. Resolve each name to its id from the Microsoft Graph service
+  principal's `appRoles` (type Role); skip and report any name with no appRole. Never create an appRoleAssignment or grant
+  consent. Global admin not used. Never touch break-glass or `marouane.defili`.
+- **First, check the tenant:** list the Graph appRoleAssignments the Restorer's SP holds now. Any name below that is already
+  held is reported as "already held".
+- **Add to the Restorer's Graph `requiredResourceAccess` (6):** `OrgSettings-Forms.ReadWrite.All`,
+  `OrgSettings-Microsoft365Install.ReadWrite.All`, `OrgSettings-AppsAndServices.ReadWrite.All`, `ReportSettings.ReadWrite.All`,
+  `PeopleSettings.ReadWrite.All`, `Community.ReadWrite.All`. Not added on purpose: `OrgSettings-Todo.ReadWrite.All` (To Do has
+  no writer while its read answers 500).
+- **Report:** names added, already held, skipped and why, and the list still waiting for consent. Short ids only.
+
+### Q219: Live restore of the admin center settings and a Viva Engage community (restore gaps batch 20, after PR #673)
+- Drafted by the "Restore the newly backed-up settings" thread (2026-10-28). Code: PR #673. Fixture-tested only.
+  - Kinds, all **update in place only**: `formsSettings` (beta `PATCH /admin/forms`, the `settings` object), `microsoft365AppsInstallationOptions`
+    (v1.0), `appsAndServicesSettings` (beta `PATCH /admin/appsAndServices`, the `settings` object), `adminReportSettings` (v1.0),
+    `pronounsSettings` (v1.0), `engageCommunity` (v1.0 `PATCH /employeeExperience/communities/{id}`: displayName, description, privacy).
+  - Guards (skipped as manual, nothing written): Forms external sending/sharing turned on or the phishing scan turned off;
+    the Office Store turned on; report names shown again (`displayConcealedNames` true to false); a private community made public.
+  - Unmeasured: every PATCH above and its read-back.
+  - Tenant-wide settings: approved by Marouane on 2026-10-22 for the test tenant, provided each value is **set back right after**.
+- Needs: Q218 done; Marouane's admin consent for the KEEL Restorer (its SP holds the 6 Q218 permissions as appRoleAssignments; if any
+  is missing, set `blocked: waiting on consent`, name them, and stop); /opt/keel-live at the PR #673 merge or later
+  (`grep -q adminCenterLooseningRefusal /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
+- Status: todo
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q133. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. If Graph
+  answers 403, report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.
+  **Never** turn on a Forms external sharing field, turn off the Forms phishing scan, turn the Office Store on, or make a community
+  public. Capture each with `--allow-tenant-setting` (the community is a named fixture).
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set.
+  Before step 1, write down the original value of every field you will drift (report them).
+  0. **Fixture:** create a private Viva Engage community `KEEL-RT-community` (description `Fixture`), owned by a KEEL-RT test user
+     (`POST /v1.0/employeeExperience/communities`, as the Restorer; it is async, so poll its operation until it succeeds).
+  1. Take snapshot S. **Backup check:** each of the six kinds is in S (the community by its id).
+  2. Drift, one value each:
+     - `formsSettings`: `settings.isBingImageSearchEnabled` to the other value.
+     - `microsoft365AppsInstallationOptions`: `appsForWindows.isVisioEnabled` to the other value.
+     - `appsAndServicesSettings`: `settings.isAppAndServicesTrialEnabled` to the other value.
+     - `adminReportSettings`: if `displayConcealedNames` is **true**, set it to false (the restore hides names again). If it is
+       **false**, set it to true and expect the restore to **skip** it as manual ("shows real user, group and site names"), then set
+       it back to false by hand. Report which case ran.
+     - `pronounsSettings`: `isEnabledInOrganization` to the other value.
+     - `KEEL-RT-community`: description to `Drifted`.
+  3. Restore from S selecting those six kinds. Expect the dry run to plan one `update` per kind with only the drifted field
+     (`settings` for Forms and apps and services); approve, enforce, capture each `update`. Expect each to read back at its step 1
+     value. Report the exact Graph answer for any refused write.
+  4. **Re-run check:** dry run from S. Expect 0 planned writes.
+  5. **Set back:** confirm every drifted field is at its original value (it should be after step 3; set it by hand if not). Report
+     each. Delete `KEEL-RT-community` and its group.
+  6. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-20`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; the originals; per kind: written / refused (exact message) / skipped / blocked; step 4; step 5 values; approval ids;
+  the evidence branch and commit; anything left in the tenant.

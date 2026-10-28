@@ -9291,8 +9291,9 @@ item that needs it stays untouched.
   The container (`ops/powershell/run-dsc.ps1`) refuses any other resource, any undeclared property, and any Set that is not
   `Ensure = Present` (KEEL never removes through DSC). Owners, moderators, senders, send-on-behalf, addresses and members are never sent.
 - Needs: /opt/keel-live at the PR #669 merge or later (`grep -q 042240d5 /opt/keel-live/ops/powershell/Dockerfile.dsc`). Does **not** need PR #602.
-- Status: todo (2026-10-28 22:40: #662 answered. Digest re-pinned in PR #669; seed recipients decided, see step 0. Rerun from step 0.)
-- Result: blocked (2026-10-28 21:40 UTC, root keel-operator). B = `39129d8a`. Nothing written in the tenant; global admin not used. Finding **#662**.
+- Status: in progress (2026-10-28 23:40 UTC, root keel-operator)
+- Result: in progress (2026-10-28 23:40 UTC, root keel-operator): started at B `57f36441`.
+- Earlier result: blocked (2026-10-28 21:40 UTC, root keel-operator). B = `39129d8a`. Nothing written in the tenant; global admin not used. Finding **#662**.
   1. Image: **build failed, exit 1** (`docker build -t keel-dsc:candidate -f Dockerfile.dsc .` from a clean `git archive` of `ops/powershell` at B). The pinned base image is not found (`Dockerfile.dsc:26`): `mcr.microsoft.com/powershell:7.5-ubuntu-24.04@sha256:370134f0be3867fadc2e5845c39ed59120fbd4d19ca5136f40831a96f0404cf1: not found`. `docker manifest inspect` on that digest → `no such manifest`; the tag's current digest is `sha256:042240d5…`. Inference: the pinned value was never this tag's digest. Fix: re-pin from `RepoDigests` (#662). keel-powershell:latest / :q197 untouched.
   0. Seed: not made (`KEEL-RT-capture-seed` absent). **Decision needed:** no KEEL-RT test user has a mailbox or is a MailUser, so `-Members/-ManagedBy/-ModeratedBy <KEEL-RT test user>` has no target. Options: use `KEEL-RT-recipients-shared`, mail-enable/license a KEEL-RT test user, or change the step.
   2–6. Not run. No evidence, no PR.
@@ -9818,7 +9819,8 @@ item that needs it stays untouched.
   restored). Expected now: `complete`.
 - Needs: /opt/keel-live at the PR #668 merge or later (`! grep -q "'LogoUrl', 'Targets'" /opt/keel-live/engine/collect/workloads/sharepointStructure.mjs`).
   If the grep still matches, wait for the deploy.
-- Status: todo
+- Status: in progress (2026-10-28 23:40 UTC, root keel-operator)
+- Result: in progress (2026-10-28 23:40 UTC, root keel-operator): started at B `57f36441`.
 - **Tenant:** reads only, with the Collector `powershellConfigs.sharepoint` config (`/etc/keel/purview-collector.json`), as Q189.
   Q189 fixtures and `/etc/keel/workload-scope.json` stay as they are. Nothing created, changed or granted.
 - Do, from your clone at the deployed commit B, as Q189 (same HMAC key and `db.env` handling; never print a secret):
@@ -9905,7 +9907,8 @@ item that needs it stays untouched.
   `pronounsSettings`): no drift, no restore, no capture for them, until Marouane approves it explicitly and a fixture/tenant-wide
   guard lands (separate thread). Run only the `KEEL-RT-community` part (steps 0 to 6 for `engageCommunity` alone; select only that
   kind in the restore). Report the five as `held`.
-- Status: todo
+- Status: blocked: waiting on consent (Keel Restorer, 6 Q218 roles)
+- Result: blocked: waiting on consent (2026-10-28 23:40 UTC, root keel-operator). Q218 is done and /opt/keel-live (57f36441) has #673 (`adminCenterLooseningRefusal` present), but the Keel Restorer SP (8cd199c9…) holds **none** of the 6 Q218 permissions as appRoleAssignments: OrgSettings-Forms.ReadWrite.All, OrgSettings-Microsoft365Install.ReadWrite.All, OrgSettings-AppsAndServices.ReadWrite.All, ReportSettings.ReadWrite.All, PeopleSettings.ReadWrite.All, Community.ReadWrite.All. Waiting on Marouane: App registrations → Keel Restorer → API permissions → Grant admin consent. Nothing run.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q133. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. If Graph
   answers 403, report blocked with what Graph names; grant nothing. Never touch CA policies, break-glass or Marouane's account.
@@ -9944,8 +9947,8 @@ item that needs it stays untouched.
   Q213's fixtures were cleaned up, so this reruns it from the start.
 - Needs: /opt/keel-live at `0ec75cbf` or later (`grep -q holdsNoReferences -r /opt/keel-live/engine/collect`), and #655's code
   (`grep -q removeChosenAssignments /opt/keel-live/engine/restore/intuneOperations.mjs`).
-- Status: todo
-- Result:
+- Status: in progress (2026-10-28 23:40 UTC, root keel-operator)
+- Result: in progress (2026-10-28 23:40 UTC, root keel-operator): started at B `57f36441`.
 - **Same rules and fixtures as Q213** (test tenant only; Restorer for writes, Collector for reads; assign only to the empty group
   `KEEL-RT-213-group`, never All devices or All users; self-approve and log every approval id; run from your own checkout at B).
 - Do: Q213 steps 1–3 (recreate the fixtures, backup, restore A, assign both). Step 4 can be shortened to the plan line check

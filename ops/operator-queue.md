@@ -10605,6 +10605,30 @@ item that needs it stays untouched.
 - **Report:** B; per type and operation: promoted / failed (exact message) / blocked; new `observedAt`; approval ids; the step 4
   counts; the evidence branch and commit; anything left.
 
+### Q249: Recapture the Conditional Access delete record before it lapses on 2026-11-15 (Q98 again; Marouane approved 2026-10-29 21:56 UTC)
+- Drafted by the "Rerun restores for older Entra records" thread (2026-10-29). `conditionalAccessPolicy.delete` was observed
+  2026-10-16 20:32 (Q98) and lapses **2026-11-15 20:32 UTC**. A new restore is needed (as Q244). Finish by **2026-11-13**.
+- Needs: Q248 done or blocked. Break-glass readiness **ready** (`node cli/keel-breakglass.mjs report --config "$COLLECTOR"`); if
+  not, stop and report blocked.
+- Status: todo
+- Result:
+- **Marouane's decision (2026-10-29 21:56 UTC, decision card in the thread):** reuse the Q98 exception once more. It covers only
+  the fixture `KEEL-RT-249-ca-delete` in this item. Every other new CA policy still excludes marouane.defili and the break-glass accounts.
+- **Test tenant only.** Never target, assign or sign in as marouane.defili. The policy is **never turned on**.
+- Do exactly Q98 A to E, with these names:
+  - **A.** Report-only `KEEL-RT-249-ca-delete`, created with the Restorer: includes `keel-rt-20260908-carla` only, **no
+    exclusions**, target apps `None`. Read it back (state `enabledForReportingButNotEnforced`, include list carla only).
+  - **B.** Back it up; the delete runs from the last snapshot taken before the policy existed.
+  - **C.** Dry run, self-approve (usual requester/approver split; log the approval id), `--artifact <id> --enforce`. Expect Graph 404 after.
+  - **D.** Capture, `pseudonymize.mjs check` (exit 0), scans. Commit `conditionalAccessPolicy.delete{,.capture}.json` only on
+    `claude/live-evidence-q249`, branched from `origin/master`. Push. No PR; the cloud thread lands it. Run
+    `operations.mjs --live-evidence` on that directory and report the line.
+  - **E.** Nothing left in the tenant.
+- **Keep the fixture short-lived:** run A to C back to back. If anything stops the delete, delete the policy yourself at once
+  with the Restorer and say so.
+- **Report:** B; readiness; the dry run and enforce results (or the refusal verbatim); new `observedAt`; approval id; the check
+  exit code; the evidence branch and commit; the fixture's lifetime.
+
 ### Q228: Live restore proof of app credential policies and access package catalogs (wave 2, never run live)
 - Drafted by the "Finish Q207 and Q208 live proofs" thread (2026-10-29). Writers, fixture-tested only, never run live:
   `appManagementPolicy` (v1.0 `/policies/appManagementPolicies`, create + update; `appliesTo` is never written) and

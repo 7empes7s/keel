@@ -11538,3 +11538,65 @@ item that needs it stays untouched.
   5. Cleanup: delete the recreated catalog; report anything left.
 - **Report:** B; S; dry run id, its status and content effects; approval id; enforce exit code and new id; second dry run's planned
   writes; capture result and commit; anything left in the tenant.
+
+### Q253: Find why the test tenant refuses 4 Intune fixtures (licences, Windows licence check, notification template body), then run the Q229 proof for whatever unblocks
+- Drafted by the "Unblock four refused Intune test fixtures" thread (2026-10-29). In Q229 the fixture could not be created for
+  4 kinds, so their writers (create + update each, `engine/restore/intuneOperations.mjs`) are still fixture-tested only:
+  - `windowsQualityUpdateProfile`, `windowsDriverUpdateProfile`: POST 403 "An error has occurred" from `Updates/SoftwareUpdateService`
+    (also the hotpatch `windowsQualityUpdatePolicy` in Q148). Feature update profiles work.
+  - `notificationMessageTemplate`: POST 400 "An error has occurred" on v1.0 and beta (Q120, Q229), each time with
+    defaultLocale `en-US`, brandingOptions `none`, roleScopeTagIds `["0"]`.
+  - `windowsAutopilotDeploymentProfile`: POST 400 for every body tried, the newer field names included (Q116, Q130, Q229), and
+    `GET beta /deviceManagement/windowsAutopilotSettings` answers 404. So it is **not** a body problem: no more body variants here.
+- **What this item tests (inference, not yet checked):**
+  - Expedited quality update and driver update profiles use the Windows Update for Business deployment service, which needs a
+    Windows Enterprise E3/E5 entitlement (Microsoft 365 E3/E5/F3, Business Premium, Windows Education A3/A5, Windows VDA E3/E5)
+    **and** Intune's "Windows license verification" attestation (Tenant administration > Connectors and tokens > Windows data,
+    Graph `beta /deviceManagement/dataProcessorServiceForWindowsFeaturesOnboarding`, field `hasValidWindowsLicense`). Either one
+    missing would explain the 403.
+  - Autopilot needs Microsoft Entra ID P1 and Intune; a 404 on the settings singleton suggests the tenant's Autopilot service was
+    never set up.
+- Needs: nothing (no code change). Run at the deployed commit B (`git -C /opt/keel-live rev-parse HEAD`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q229 (log every approval id).
+  Never assign any fixture; never put the notification template on a compliance policy. Grant nothing. Global admin not used.
+- **One tenant-wide setting may change (step 2), under the 2026-10-22 approval, and only if the tenant really owns a qualifying
+  licence:** `hasValidWindowsLicense`. Write down its value before, and put it back right after step 2 (read it back). Never
+  attest a licence the tenant does not own. Never change `areDataProcessorServiceForWindowsFeaturesEnabled` (that sends Windows
+  diagnostic data to Microsoft).
+- Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. **Read only (Collector):**
+     - `GET v1.0 /subscribedSkus`: for every SKU, `skuPartNumber`, `capabilityStatus`, `prepaidUnits.enabled`, `consumedUnits`,
+       and the names of any service plans matching `WIN10|WIN11|WINDOWS|WINBIZ|INTUNE|AAD_PREMIUM|WUFB|UPDATE` with their
+       `provisioningStatus`. (Keel's own backup holds `subscribedSku` too; a live read is fine.)
+     - `GET beta /deviceManagement/dataProcessorServiceForWindowsFeaturesOnboarding`: the full body.
+     - `GET beta /deviceManagement/windowsAutopilotSettings` and `GET beta /deviceManagement/windowsAutopilotDeploymentProfiles?$top=1`:
+       status and body.
+     - Say whether a **qualifying Windows licence** is present: an enabled SKU carrying a `WIN10_PRO_ENT_SUB`, `WIN10_VDA_E3`,
+       `WIN10_VDA_E5`, `WIN10_ENT_A3*`/`A5*`, `WINBIZ` or `WINDOWSUPDATEFORBUSINESS_DEPLOYMENTSERVICE` plan (name what you found
+       if it is another Windows Enterprise plan). And whether Entra ID P1 (`AAD_PREMIUM`) and Intune (`INTUNE_A`) are present.
+  2. **Quality and driver update profiles (Restorer):**
+     - No qualifying licence: do not attest. Skip to step 3 and report **blocked: missing licence** with the SKU list.
+     - Qualifying licence and `hasValidWindowsLicense` already true: retry the two POSTs once (bodies as Q229) and report the exact
+       answers; if still 403, report blocked with request ids and skip to step 3.
+     - Qualifying licence and `hasValidWindowsLicense` false: `PATCH` it to `true` (keep every other field as read), wait 2 minutes,
+       retry the two POSTs. If they now succeed, run Q229 steps 1–5 for these two kinds only (`KEEL-RT-253-quality`,
+       `KEEL-RT-253-driver`, assigned to nobody; drift = the description). Whether or not they succeed, `PATCH` it back to `false`
+       and read it back.
+  3. **Notification template (Restorer), tried in this order, stop at the first 2xx, each on v1.0 `/deviceManagement/notificationMessageTemplates`:**
+     - a) `{"displayName":"KEEL-RT-253-notice","description":"KEEL-RT test fixture","brandingOptions":"includeCompanyLogo"}`
+       (no defaultLocale, no roleScopeTagIds);
+     - b) a) plus `"defaultLocale":"en-us"` (lower case) and `"roleScopeTagIds":["0"]`;
+     - c) b) on beta.
+     Report each status, error body and request-id. If one works, add the message: `POST .../{id}/localizedNotificationMessages`
+     `{"locale":"en-us","subject":"KEEL-RT","messageTemplate":"KEEL-RT test","isDefault":true}`, then run Q229 steps 1–5 for this
+     kind (drift = the message subject). If the restore's create of a backed-up template fails where the fixture body worked, quote
+     Graph's answer and file an `operator-report` issue (the writer sends the backed-up fields).
+  4. **Autopilot:** nothing to write. Steps 1's reads are the report.
+  5. Captures, `pseudonymize.mjs check`, secret scan and `operations.mjs --live-evidence` as in Q229 step 6, on
+     `claude/live-evidence-q253` from `origin/master` (no PR). Cleanup: delete every `KEEL-RT-253-*` object; report anything left.
+- **Report:** B; step 1 verbatim (SKU list, onboarding body, the two Autopilot reads, and the licence verdicts); step 2: the
+  `hasValidWindowsLicense` value before, any change, the POST answers and the value read back after; step 3: each attempt's answer;
+  per kind and operation: promoted / refused (exact message) / skipped / blocked; approval ids; evidence branch and commit;
+  anything left in the tenant.

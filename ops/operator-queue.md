@@ -10556,3 +10556,31 @@ item that needs it stays untouched.
   4. `node cli/keel-workload-collect.mjs run` once by hand. Report outcome, n_reasons and observations for the four workloads.
      Expected: none `disabled` (Teams may stay `partial` from unknown fields only).
 - **Report:** B; per step the result; the evidence branch and commit; the new expiry date of each record (observedAt + 30 days).
+
+### Q232: Confirm the 41 Entra and Intune live records from PR #690 verify with the signing key (no tenant access)
+- Drafted by the "Land stranded Entra and Intune live evidence" thread (2026-10-29). PR #690 (merge 05b1e55) landed 41 live
+  records (25 kinds) that sat on `claude/live-evidence-*` branches: restore-gaps-1/2/3/4/5/8/9/14/15, 546, admin-templates,
+  assigned-scripts, category-update, compliance-create, policy-set, q209, rerun-after-create, reusable-settings, w2-entra.
+  Every check except the runner signature passed in the cloud; only you hold `KEEL_QUALIFICATION_HMAC_KEY`.
+- Needs: /opt/keel-live at or after 05b1e55. Run it at the deployed commit B (`git -C /opt/keel-live rev-parse HEAD`).
+- Status: todo
+- **Tenant:** none. Reads committed files only.
+- Do, from your clone at B, with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print it):
+  1. `node tools/qualification/operations.mjs --live-evidence docs/release/qualifications/entra-live`. Report the line for each
+     of the 41 files below; expected: promoted, no failures. Report any `runner signature mismatch` or other failure verbatim.
+     Files: accessReviewPolicy.update, appleUserInitiatedEnrollmentProfile.{create,update}, b2bManagementPolicy.update,
+     deviceCategory.{create,update}, deviceComplianceScript.update, deviceCustomAttributeShellScript.{create,update},
+     deviceHealthScript.{create,update}, deviceManagementCompliancePolicy.{create,update},
+     deviceManagementReusablePolicySetting.{create,update}, deviceManagementScript.{create,update}, deviceShellScript.update,
+     exchangeCustomAppScope.create, groupPolicyConfiguration.{create,update}, intuneBrandingProfile.{create,update},
+     managedDeviceCleanupRule.update, managedEBookCategory.{create,update}, microsoftTunnelConfiguration.{create,update},
+     mobileApp.{create,update}, mobileAppCategory.{create,update}, multiTenantOrganizationIdentitySyncPolicyTemplate.update,
+     multiTenantOrganizationPartnerConfigurationTemplate.update, oauth2PermissionGrant.{create,update},
+     permissionGrantPolicy.{create,update}, policySet.{create,update}, windowsManagedAppProtection.update.
+  2. On the live portal (curl to the local keel-portal, not through Cloudflare), the live-records view: report how many Entra and
+     Intune writes show as live before vs after (expected about 41 more than before #690).
+- **If a record fails the signature:** do not edit it. File an issue `keel-operator: live record <stem> fails signature` and
+  queue a recapture item for that write.
+- **Note on expiry:** oauth2PermissionGrant and permissionGrantPolicy records were observed 2026-10-15 and lapse on
+  **2026-11-14**; the 2026-10-22 ones lapse 2026-11-21; the 2026-10-28 ones 2026-11-27. A recapture before then is a separate item.
+- **Report:** B, step 1 lines for the 41 files, step 2 counts.

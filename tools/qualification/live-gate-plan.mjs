@@ -497,6 +497,17 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-fed`, drift: 'change its passiveSignInUri to https://keel-rt-fed.example/drifted',
     note: 'Update only: a deleted federation is set up again by hand. No guest is invited from the domain. Delete it at the end.',
   },
+  // Q228 (live run 2026-10-29): both carry their own displayName, so the capture checks the name.
+  appManagementPolicy: {
+    kind: 'named-object', fixture: 'an app credential policy KEEL-RT-228-credpolicy applied to nothing: one password restriction passwordLifetime, maxLifetime P90D (Graph needs state enabled on the restriction)',
+    select: 'the policy id KEEL shows for the fixture', drift: 'change its maxLifetime to P180D',
+    note: 'Never add an app or service principal to its appliesTo, and never touch the tenant default policy. A deleted policy goes to deleted items: purge it before a create round. Delete and purge it at the end.',
+  },
+  accessPackageCatalog: {
+    kind: 'named-object', fixture: 'an empty catalog KEEL-RT-228-catalog (userManaged, published, not externally visible)',
+    select: 'the catalog id KEEL shows for the fixture', drift: 'change its description',
+    note: 'No access package, resource or user goes into the catalog. Delete it at the end.',
+  },
   // Issue #156: basic tenant settings. None can lock anyone out.
   organizationalBranding: {
     kind: 'tenant-setting', fixture: 'the tenant default company branding (sign-in page)', select: 'organizationalBranding',

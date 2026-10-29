@@ -17,3 +17,11 @@ A reviewer of the stranded live evidence (PR #690) spotted it.
 | The trust rule was enforced for one family of writers only. | `defineRecord()` checks `writable` and `createOnly` with `isTrustField` and throws at load, as `declare()` does. |
 | Only `inboundTrust` was treated as trust on cross-tenant settings. | Consent suppression and the B2B access lists are trust too: they decide who from another tenant reaches this one. They are in `TRUST_FIELDS`, and a difference is a `crossTenantAccess` manual step. |
 | A domain allow or block list was written because it looked like plain settings. | Domain lists that decide who can come in are trust fields, like the Teams federation domain lists. `b2bManagementPolicy` is now a manual kind with no writer. |
+
+Follow-up the same day: the tenant default and partner writers (`tenantPolicyOperations.mjs`,
+`CROSS_TENANT_SETTINGS`) still sent the same consent and B2B fields. The fix had covered one
+writer of the setting, not every writer of it.
+
+| Mistake | Rule now |
+| --- | --- |
+| A trust field was gated on one resource type while two other types carry the same field. | `CROSS_TENANT_TRUST_FIELDS` is shared by the template, the default and the partner in `TRUST_FIELDS`. The tenant policy `record()` throws at load when a record lists one of its type's trust fields. When a field is made a trust field, search every writer for it. |

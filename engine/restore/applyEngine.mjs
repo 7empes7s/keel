@@ -27,7 +27,7 @@ import { RETRY_AFTER_FALLBACK_SECONDS } from './graphWriter.mjs';
 import { isDeepStrictEqual } from 'node:util';
 import {
   isTenantPolicyGoverned, methodConfigurationWrites, reviewerQueryObjects, tenantPolicyPostStateRefusal, tenantPolicyRecordFor,
-  inboundTrustCompletion, tenantPolicyRootWrite, tenantPolicyRoute, tenantPolicyWriteRefusal,
+  crossTenantTrustCompletion, tenantPolicyRootWrite, tenantPolicyRoute, tenantPolicyWriteRefusal,
 } from './tenantPolicyOperations.mjs';
 import {
   assignLicenseBody, changedUserFields, groupLicenceReadPath, isSyncedUser, isUserGoverned, licencePlan, manualUserFields,
@@ -1367,9 +1367,9 @@ async function applyTenantPolicyWrite(writer, resource, verb, {
     return { failed: { naturalKey, error: err.message } };
   }
   const targetId = resource.targetId ?? resource.live?.targetId ?? null;
-  // Inbound trust is never written; a difference is reported as a follow-up step.
-  const inboundTrust = inboundTrustCompletion(resource, verb);
-  const followUp = inboundTrust ? { completion: inboundTrust } : {};
+  // Cross-tenant trust is never written; a difference is reported as a follow-up step.
+  const crossTenantTrust = crossTenantTrustCompletion(resource, verb);
+  const followUp = crossTenantTrust ? { completion: crossTenantTrust } : {};
   const writes = [...methods, ...(root ? [root] : [])];
   if (writes.length === 0) return { applied: { naturalKey, targetId, ...followUp } };
   if (mode === 'dry-run') return { applied: { naturalKey, targetId, ...followUp } };

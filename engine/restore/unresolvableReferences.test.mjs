@@ -47,6 +47,7 @@ const application = Object.freeze({
 const partner = Object.freeze({
   tenantId: FOREIGN_TENANT, isServiceProvider: false, inboundTrust: { isMfaAccepted: true },
   b2bCollaborationInbound: { usersAndGroups: { accessType: 'allowed' } },
+  tenantRestrictions: { usersAndGroups: { accessType: 'blocked' } },
 });
 const compliance = Object.freeze({
   '@odata.type': '#microsoft.graph.windows10CompliancePolicy',
@@ -167,14 +168,14 @@ test('partner create and update carry the foreign tenant id verbatim', async () 
 
   graph = recordingGraph();
   const path = `/policies/crossTenantAccessPolicy/partners/${FOREIGN_TENANT}`;
-  const live = { ...partner, b2bCollaborationInbound: { usersAndGroups: { accessType: 'blocked' } } };
+  const live = { ...partner, tenantRestrictions: { usersAndGroups: { accessType: 'allowed' } } };
   graph.objects.set(path, live);
   outcome = await run(graph, [{
     ...resource, verb: 'update', targetId: FOREIGN_TENANT, blastRadius: 'access-affecting',
     live: { state: 'present', targetId: FOREIGN_TENANT, payload: live },
   }]);
   assert.deepEqual(outcome.failed, []);
-  assert.deepEqual(graph.bodies, [{ method: 'PATCH', path, body: { b2bCollaborationInbound: { usersAndGroups: { accessType: 'allowed' } } } }]);
+  assert.deepEqual(graph.bodies, [{ method: 'PATCH', path, body: { tenantRestrictions: { usersAndGroups: { accessType: 'blocked' } } } }]);
 });
 
 test('compliance policy update: the backup child ids are never written and the update succeeds', async () => {

@@ -1551,7 +1551,7 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   })])),
   managedAppPolicy: defineRecord({
     resourceType: 'managedAppPolicy', version: 'v1.0', odataType: 'required', operations: ['create', 'update', 'delete'],
-    collectionFor: (payload) => APP_PROTECTION_COLLECTIONS[stripGraph(payload?.['@odata.type'])] ?? null,
+    collectionFor: (payload) => APP_PROTECTION_COLLECTIONS[stripGraph(payload?.['@odata.type'])] ?? null, collectionNamesType: true,
     excluded: APP_POLICY_SERVER_FIELDS, refusal: managedAppRefusal, afterWrite: targetAppsAfterWrite,
     assignmentType: '#microsoft.graph.targetedManagedAppPolicyAssignment', permission: 'DeviceManagementApps.ReadWrite.All', ...DELETE_POLICY,
   }),

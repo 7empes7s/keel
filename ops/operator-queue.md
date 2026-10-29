@@ -10010,7 +10010,14 @@ item that needs it stays untouched.
 - Drafted by the "Handle To Do settings read errors" thread (2026-10-29). PR #679 (merged as `6fb16358`): a minor (tier3) kind
   whose read failed with 500/502/504 no longer blocks a baseline; it is left out (`observation_scope.leftOut`) and never drift.
 - Needs: `/opt/keel-live` at `6fb16358` or later (`grep -q leftOutForServiceError /opt/keel-live/engine/govern/baseline.mjs`).
-- Status: todo
+- Status: blocked (KEEL Collector consent for PrivilegedAccess.Read.AzureADGroup, as Q220)
+- Result: blocked (2026-10-29 08:40 UTC, root keel-operator, build `6fb16358` in /opt/keel-live, Needs grep met): **the To Do part works (todoSettings 500 is left out), but the snapshot is still not eligible because privilegedAccessGroupResource is refused with 403**, which PR #679 rightly still treats as blocking. That is the KEEL Collector's missing `PrivilegedAccess.Read.AzureADGroup` consent (same as Q220; added to the manifest 2026-10-28, consent click still pending). Rerun this item after that consent. Credential: Collector (read only). No tenant write, no baseline created; the only DB write was KEEL's own collect CLI recording its snapshot.
+  1. `node cli/keel-collect.mjs` exit **3**. `incomplete types: [{"type":"privilegedAccessGroupResource","outcome":"failed","httpStatus":403},{"type":"todoSettings","outcome":"failed","httpStatus":500}]`
+  2. Run from `/opt/keel-live/engine` with `./govern/baseline.mjs` (adapted: `pg` resolves only from engine/node_modules), otherwise verbatim:
+     `newest f896cfdd-5e82-4c9e-84d1-7903535d90d4 eligible: false`
+     `leftOut [{"type":"todoSettings","reason":"microsoft-service-error","httpStatus":500}]`
+     Extra check (same snapshot, coverage entries that are not complete/complete-empty/unavailable and not left out): `blocking ["privilegedAccessGroupResource:failed:403"]`.
+  - Evidence: `$SCRATCH/q222/collect.out`, `step2.out` (keel-operator scratchpad).
 - **Reads only.** No tenant write, no baseline created or activated, nothing changed in KEEL's database.
 - Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
   1. `node cli/keel-collect.mjs` once (no `--tier`). Report the exit code and the `incomplete types:` line (expected: exit 3,

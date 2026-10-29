@@ -563,12 +563,12 @@ export const evidenceStem = (resourceType, operation) => `${resourceType.replace
 
 /**
  * Records the test tenant writes only with the tenant-wide option
- * (recordWriter.mjs#tenantWideRecordProblem). A record whose marking depends on
- * the object (the default branding profile) counts: its live proof is the
- * tenant-wide one.
+ * (recordWriter.mjs#tenantWideRecordProblem). A record tenant-wide for some
+ * objects only (the branding profile) is left out: its live proof is a KEEL-RT-
+ * fixture, so the option is not needed.
  */
 export const TENANT_WIDE_RECORD_TYPES = Object.freeze(new Set([...Object.values(IDENTITY_RECORDS), ...Object.values(INTUNE_EXTENDED_RECORDS)]
-  .filter((record) => record.tenantWide === true || typeof record.tenantWide === 'function').map((record) => record.resourceType)));
+  .filter((record) => record.tenantWide === true).map((record) => record.resourceType)));
 
 function setupFor(resourceType, operation, guidance, key) {
   const tenantWide = TENANT_WIDE_RECORD_TYPES.has(resourceType) ? ' --allow-tenant-wide-test-writes' : '';

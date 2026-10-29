@@ -87,6 +87,14 @@ assert.equal(standingPolicyRefusal(restoreOn(TEST_REF, TEST_TENANT_ID)), null);
 assert.match(standingPolicyRefusal(restoreOn(TEST_REF, 'production-tenant')), /only the test tenant/);
 assert.match(standingPolicyRefusal(restoreOn(PROD_REF, TEST_TENANT_ID)), /only the test tenant/);
 assert.match(standingPolicyRefusal({ ...restoreOn(TEST_REF, TEST_TENANT_ID), artifact: null }), /dry run/);
+// A snapshot restore planned with the tenant-wide option writes Entra or Intune
+// tenant settings: a person approves it, never the standing policy.
+{
+  const tenantWide = restoreOn(TEST_REF, TEST_TENANT_ID);
+  assert.match(standingPolicyRefusal({ ...tenantWide, artifact: { ...tenantWide.artifact, allowTenantWide: true } }),
+    /does not cover a tenant-wide setting write; a person approves it/);
+  assert.equal(standingPolicyRefusal({ ...tenantWide, artifact: { ...tenantWide.artifact, allowTenantWide: false } }), null);
+}
 assert.match(standingPolicyRefusal({ ...restoreOn(TEST_REF, TEST_TENANT_ID), request: { action: 'remediate' } }), /does not cover remediate/);
 assert.match(standingPolicyRefusal({ ...restoreOn(TEST_REF, TEST_TENANT_ID), policy: 'anything-goes' }), /unknown standing policy/);
 assert.match(standingPolicyRefusal({ ...restoreOn(TEST_REF, TEST_TENANT_ID), testTenantRefs: undefined }), /only the test tenant/,

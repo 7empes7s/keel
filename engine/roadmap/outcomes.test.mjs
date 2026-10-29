@@ -240,6 +240,28 @@ test('baseline eligibility: complete-empty and unavailable qualify, partial and 
     'an unavailable type is not part of what the baseline captured');
   assert.equal(isEligibleBaselineSource(snapshot(digestWith((type) => (type === 'lifecycleWorkflow' ? 'failed' : 'complete'))), { tenantRef }), false,
     'a failed read of the same type still blocks it');
+  // Issue #666 (owner's decision): a minor kind nothing could be read of because
+  // Microsoft kept answering 500/502/504 is left out of the baseline, and listed.
+  const withEntry = (type, entry) => ({ ...digestWith(() => 'complete'), [type]: { itemCount: null, ...entry } });
+  for (const httpStatus of [500, 502, 504]) {
+    const faulty = snapshot(withEntry('todoSettings', { outcome: 'failed', httpStatus }), { started_at: '2026-09-18T10:00:00Z' });
+    assert.equal(isEligibleBaselineSource(faulty, { tenantRef }), true, String(httpStatus));
+    const { scope } = captureFromSnapshot(faulty);
+    assert.equal(scope.types.includes('todoSettings'), false);
+    assert.deepEqual(scope.leftOut, [{ type: 'todoSettings', reason: 'microsoft-service-error', httpStatus }]);
+  }
+  assert.equal(captureFromSnapshot(snapshot(digestWith(() => 'complete'), { started_at: '2026-09-18T10:00:00Z' })).scope.leftOut, undefined,
+    'a full read leaves nothing out');
+  for (const [type, entry, why] of [
+    ['todoSettings', { outcome: 'failed', httpStatus: 403 }, 'a refusal is not a Microsoft fault'],
+    ['todoSettings', { outcome: 'failed', httpStatus: 503 }, 'throttling is not a Microsoft fault'],
+    ['todoSettings', { outcome: 'failed', httpStatus: null }, 'an unknown failure still blocks'],
+    ['todoSettings', { outcome: 'partial', httpStatus: 500, itemCount: 1 }, 'a partial read still blocks'],
+    ['lifecycleWorkflow', { outcome: 'failed', httpStatus: 500 }, 'a tier2 kind still blocks'],
+    ['conditionalAccessPolicy', { outcome: 'failed', httpStatus: 500 }, 'a tier1 kind still blocks'],
+  ]) {
+    assert.equal(isEligibleBaselineSource(snapshot(withEntry(type, entry)), { tenantRef }), false, why);
+  }
   const missing = digestWith(() => 'complete');
   delete missing[DESCRIPTORS[0].type];
   assert.equal(isEligibleBaselineSource(snapshot(missing), { tenantRef }), false, 'an unrecorded type never qualifies');

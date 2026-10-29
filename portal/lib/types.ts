@@ -228,6 +228,8 @@ export interface BaselineCapture {
   sourceSnapshotId: string | null;
   window: { startedAt: string | null; completedAt: string | null } | null;
   types: string[];
+  // Kinds left out because Microsoft kept failing to answer when it was captured (#666).
+  leftOut?: { type: string; reason: string }[];
 }
 
 export interface BaselineChanges {

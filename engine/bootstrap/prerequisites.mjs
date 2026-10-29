@@ -40,6 +40,7 @@
 
 import { CONTENT_READER_IDENTITY } from '../collect/workloadContract.mjs';
 import { CREDENTIAL_MODES } from '../coverage/capabilities.mjs';
+import { ENGAGE_WRITER_IDENTITY, ENGAGE_WRITER_SCOPES } from '../restore/engageWriter.mjs';
 import { ROLE_TEMPLATES } from '../coverage/diagnosis.mjs';
 
 export const BOOTSTRAP_CONTRACT_VERSION = 1;
@@ -93,7 +94,9 @@ export const FORBIDDEN_BROAD_GRANTS = Object.freeze([
 // Wave 1 CONT: content backup runs as its own app registration, the content reader.
 // Content-read scopes are plannable for that identity only (never for the collector or
 // the restorer), and the content reader takes read scopes only.
-export const PREREQUISITE_IDENTITIES = Object.freeze([...CREDENTIAL_MODES, CONTENT_READER_IDENTITY]);
+// Issue #681: Viva Engage writes run as a fourth, small app, the Engage writer, which
+// holds only ENGAGE_WRITER_SCOPES.
+export const PREREQUISITE_IDENTITIES = Object.freeze([...CREDENTIAL_MODES, CONTENT_READER_IDENTITY, ENGAGE_WRITER_IDENTITY]);
 // Sites.Read.All is not listed: configuration reads (site discovery and properties)
 // need it too. These scopes read nothing but content.
 export const CONTENT_READ_SCOPES = Object.freeze([
@@ -149,6 +152,9 @@ export function registerWorkloadPrerequisite({
     }
     if (identity === CONTENT_READER_IDENTITY && (/Write/.test(scope) || !scope.split('.').some((part) => part.startsWith('Read')))) {
       throw new TypeError(`${workload}: '${scope}' is not a read scope — the content reader only reads`);
+    }
+    if (identity === ENGAGE_WRITER_IDENTITY && !ENGAGE_WRITER_SCOPES.includes(scope)) {
+      throw new TypeError(`${workload}: '${scope}' is not a Viva Engage write — the ${ENGAGE_WRITER_IDENTITY} holds ${ENGAGE_WRITER_SCOPES.join(', ')} only`);
     }
     if (identity !== CONTENT_READER_IDENTITY && CONTENT_READ_SCOPES.includes(scope)) {
       throw new TypeError(`${workload}: '${scope}' reads content — only the ${CONTENT_READER_IDENTITY} identity may hold it`);
@@ -328,6 +334,19 @@ registerWorkloadPrerequisite({
   source: {
     url: 'https://learn.microsoft.com/en-us/graph/permissions-reference',
     retrievedAt: '2026-10-14',
+  },
+});
+
+// Issue #681: Viva Engage community restores sign in as the Engage writer, a small
+// app of its own, because Engage's front proxy refuses the Restorer's large token.
+registerWorkloadPrerequisite({
+  workload: 'engage-community-restore',
+  identity: ENGAGE_WRITER_IDENTITY,
+  graphPermissions: [...ENGAGE_WRITER_SCOPES],
+  keelAppPermissions: ['keel.restore'],
+  source: {
+    url: 'https://learn.microsoft.com/en-us/graph/api/community-update',
+    retrievedAt: '2026-10-29',
   },
 });
 

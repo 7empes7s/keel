@@ -139,6 +139,7 @@ import {
 import { newestWorkloadRead } from '../engine/benchmarks/runChecks.mjs';
 import { planWorkloadComplianceFix } from '../engine/benchmarks/workloadFix.mjs';
 import { credentialPaths } from '../engine/restore/credentialPaths.mjs';
+import { engageWriterConfigPath, restoreWriterTokens } from '../engine/restore/engageWriter.mjs';
 import {
   DEFAULT_SCOPE_PATH as DEFAULT_WORKLOAD_SCOPE_PATH, readWorkloadScope, workloadPowershellConfigPath,
 } from '../engine/collect/workloads/powershellConfigs.mjs';
@@ -414,6 +415,7 @@ export async function runRestore({
     workloadQualifications: workloadQualificationsFn = defaultWorkloadQualifications,
     contentStore: contentStoreFn = defaultContentStore,
     credentialPaths: credentialPathsFn = credentialPaths,
+    engageWriterConfigPath: engageWriterConfigPathFn = engageWriterConfigPath,
     workloadScope: workloadScopeFn = defaultWorkloadScope,
     sleep = (ms) => new Promise((done) => { setTimeout(done, ms); }),
     loadSnapshotBrandingAssets: loadSnapshotBrandingAssetsFn = loadSnapshotBrandingAssets,
@@ -565,6 +567,7 @@ export async function runRestore({
       collectM1Fn, canonicalizeAllFn, applyWaveFn, assessDeletePlanFn, computePlanDigestFn,
       computeCurrentStateFingerprintFn, createDryRunArtifactFn, validateArtifactForExecutionFn,
       assertContentEffectApprovalFn, classifyDryRunStatusFn, loadLockoutGateInputsFn, loadGroupMembershipFn,
+      engageWriterConfigPathFn,
     };
     if (compensateArtifactId !== undefined) {
       return await planCompensationRun({
@@ -755,8 +758,13 @@ export async function runRestore({
     const targetReader = new GraphReaderClass(async () => collectorToken);
     let writer;
     if (!previewOnly) {
-      const { accessToken: restorerToken } = await getTokenFn(targetConfig);
-      writer = new GraphWriterClass(async () => restorerToken);
+      // Issue #681: Viva Engage writes sign in as the Engage writer when it is set up.
+      const { tokenFor } = await restoreWriterTokens({
+        getTokenFn, targetConfig, collectorConfig, readFile, logger,
+        resourceTypes: resources.map((resource) => resource.resourceType),
+        path: engageWriterConfigPathFn(),
+      });
+      writer = new GraphWriterClass(tokenFor);
     }
 
     // Re-collect the target's CURRENT state — not what planning saw — so a retry
@@ -1688,7 +1696,7 @@ async function planCompensationRun({ client, compensateArtifactId, undoChoices, 
   };
 }
 
-async function executeCompensationRun({ client, artifact, collectorConfig, targetConfig, logger, deps }) {
+async function executeCompensationRun({ client, artifact, collectorConfig, targetConfig, readFile, logger, deps }) {
   const forward = await deps.getDryRunArtifactByIdFn(client, { id: artifact.compensation.compensates });
   if (!forward) throw new Error(`compensation promotion refused: the compensated restore ${artifact.compensation.compensates} no longer exists`);
   const ctx = await buildCompensation({
@@ -1712,8 +1720,13 @@ async function executeCompensationRun({ client, artifact, collectorConfig, targe
 
   const results = { applied: [], skipped: [], failed: [], notRemediable: [] };
   if (ctx.plan.operations.length > 0) {
-    const { accessToken: restorerToken } = await deps.getTokenFn(targetConfig);
-    const writer = new deps.GraphWriterClass(async () => restorerToken);
+    // Issue #681: undoing a Viva Engage write signs in as the Engage writer too.
+    const { tokenFor } = await restoreWriterTokens({
+      getTokenFn: deps.getTokenFn, targetConfig, collectorConfig, readFile, logger,
+      resourceTypes: ctx.plan.operations.map((operation) => operation.resourceType),
+      path: deps.engageWriterConfigPathFn?.(),
+    });
+    const writer = new deps.GraphWriterClass(tokenFor);
     const result = await deps.applyWaveFn(writer, new deps.ThrottleGovernorClass(WRITE_SEEDS(targetConfig.tenantId)), ctx.plan.operations, {
       targetTenant: targetConfig.tenantId,
       mode: 'enforce',

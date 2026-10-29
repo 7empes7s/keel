@@ -12,7 +12,8 @@
  * stops using cannot linger as "needed".
  *
  * The content reader (the third app, which reads mail, files and Teams content) is
- * listed too, against its prerequisite in bootstrap/prerequisites.mjs. So are the admin
+ * listed too, against its prerequisite in bootstrap/prerequisites.mjs, and so is the
+ * Engage writer (the fourth, which only restores Viva Engage communities). So are the admin
  * roles each app needs (type 'admin-role'): Microsoft's admin consent never assigns a
  * role, so the table shows them beside the permissions with their own fix link.
  */
@@ -76,6 +77,7 @@ const entry = (identity, api, name, service, kind, words, usedFor, need = 'requi
 const read = (name, service, kind, words, usedFor, need) => entry('collector', 'graph', name, service, kind, words, usedFor, need);
 const write = (name, service, kind, words, usedFor, need) => entry('restorer', 'graph', name, service, kind, words, usedFor, need);
 const content = (name, service, kind, words, usedFor, need) => entry('content-reader', 'graph', name, service, kind, words, usedFor, need);
+const engage = (name, service, kind, words, usedFor, need) => entry('engage-writer', 'graph', name, service, kind, words, usedFor, need);
 // An Entra directory role ('directory', matched on its template id) or an Intune role
 // ('intune', matched on its name).
 const role = (identity, api, name, service, words, usedFor) => Object.freeze({
@@ -199,7 +201,6 @@ export const KEEL_PERMISSIONS = Object.freeze([
   write('OrgSettings-Forms.ReadWrite.All', 'other', 'Settings', 'Change Microsoft Forms settings', 'Restore tenant-wide Forms settings'),
   write('OrgSettings-Microsoft365Install.ReadWrite.All', 'other', 'Apps', 'Change Microsoft 365 Apps install options', 'Restore which Office apps people can install themselves'),
   write('OrgSettings-AppsAndServices.ReadWrite.All', 'other', 'Apps', 'Change Office Store and trial settings', 'Restore whether people can start app trials'),
-  write('Community.ReadWrite.All', 'other', 'Groups', 'Change Viva Engage communities', 'Restore the name, description and privacy of Viva Engage communities'),
   write('TeamMember.ReadWrite.All', 'teams', 'Memberships', 'Change team members', 'Restore team owners and members'),
   write('TeamSettings.ReadWrite.All', 'teams', 'Settings', 'Change team settings', 'Restore each team\'s settings'),
 
@@ -222,6 +223,11 @@ export const KEEL_PERMISSIONS = Object.freeze([
   content('ChannelSettings.Read.All', 'teams', 'Settings', 'Read channel settings', 'Back up each channel\'s settings'),
   content('ChannelMessage.Read.All', 'teams', 'Content', 'Read channel messages', 'Back up Teams channel messages (coming soon: Microsoft must approve this permission for Keel first)', 'optional'),
   content('Tasks.Read.All', 'planner', 'Content', 'Read tasks', 'Back up Planner plans and tasks'),
+
+  // ---- Engage writer (issue #681): Viva Engage community restores only. Viva Engage
+  // refuses the restore writer's sign-in once it holds many permissions, so this small
+  // app holds this one permission and nothing else.
+  engage('Community.ReadWrite.All', 'other', 'Groups', 'Change Viva Engage communities', 'Restore the name, description and privacy of Viva Engage communities'),
 ]);
 
 export function permissionsFor(identity) {

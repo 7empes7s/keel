@@ -14,6 +14,7 @@ import { WORKLOAD_DESCRIPTORS } from '../collect/workloadContract.mjs';
 import { EXPANSION_INVENTORY, WORKLOAD_WRITE_OPERATIONS } from '../coverage/qualification.mjs';
 import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 import { UNIFIED_AUDIT } from '../identity/auditSources.mjs';
+import { ENGAGE_WRITER_IDENTITY, ENGAGE_WRITER_SCOPES } from '../restore/engageWriter.mjs';
 
 // Discovery names these as hints only; Keel reads no people's data, so it never uses them.
 const NEVER_USED_HINTS = new Set(['CallRecords.Read.All', 'Bookings.Read.All', 'SubjectRightsRequest.Read.All']);
@@ -54,6 +55,8 @@ function restorerUses() {
   for (const file of readdirSync(dir).filter((name) => name.endsWith('Operations.mjs'))) {
     for (const match of readFileSync(new URL(file, dir), 'utf8').matchAll(/permission: '([A-Za-z0-9.]+)'/g)) names.add(match[1]);
   }
+  // Viva Engage writes sign in as the Engage writer (issue #681), not the restore writer.
+  for (const name of ENGAGE_WRITER_SCOPES) names.delete(name);
   return names;
 }
 
@@ -139,4 +142,21 @@ test('each entry names a known API, service and kind, has words, and appears onc
   }
   assert.equal(apiForAppId(PERMISSION_APIS.exchange.appId), 'exchange');
   assert.equal(apiForAppId('not-an-api'), null);
+});
+
+test('the Engage writer lists exactly its one permission, which the restore code uses and the restore writer does not list', () => {
+  const asked = registeredWorkloads().filter((requirement) => requirement.identity === ENGAGE_WRITER_IDENTITY).flatMap((requirement) => requirement.graphPermissions);
+  assert.deepEqual(asked, [...ENGAGE_WRITER_SCOPES]);
+  assert.deepEqual(listed(ENGAGE_WRITER_IDENTITY), new Set(ENGAGE_WRITER_SCOPES));
+  assert.deepEqual(rolesFor(ENGAGE_WRITER_IDENTITY), [], 'the Engage writer needs no admin role');
+  const all = new Set();
+  declared(WORKLOAD_WRITE_OPERATIONS, all);
+  const dir = new URL('../restore/', import.meta.url);
+  for (const file of readdirSync(dir).filter((name) => name.endsWith('Operations.mjs'))) {
+    for (const match of readFileSync(new URL(file, dir), 'utf8').matchAll(/permission: '([A-Za-z0-9.]+)'/g)) all.add(match[1]);
+  }
+  for (const name of ENGAGE_WRITER_SCOPES) {
+    assert.ok(all.has(name), `${name}: no restore write uses it`);
+    assert.ok(!listed('restorer').has(name), `${name}: the restore writer should not ask for it`);
+  }
 });

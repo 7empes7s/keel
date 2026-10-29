@@ -101,7 +101,7 @@ test("a failed read fails the Overview and every connection goes back to the poo
   assert.equal(data.evidence.ok, true, "the next load works");
 });
 
-test("the menu and the Overview share one approvals count per page load", () => {
+test("the menu and the Overview both read the request-cached approvals count, never their own", () => {
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
   for (const file of ["../app/layout.tsx", "../app/page.tsx"]) {
     const source = read(file);

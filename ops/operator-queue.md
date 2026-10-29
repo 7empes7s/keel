@@ -9597,7 +9597,36 @@ item that needs it stays untouched.
   manual step `externalDomainFederationSignIn`. Fixture-tested only.
 - Needs: the deployed build B at or after `4298b86`. Check from your checkout at B:
   `git merge-base --is-ancestor 4298b86 B && grep -q samlOrWsFedExternalDomainFederation tools/tenant-probe/catalog.d/entra-tenant-settings.mjs`.
-- Status: todo
+- Status: done (name round promoted; #695)
+- Result: done (2026-10-29 22:05 UTC, keel-operator). **The backup now holds the full federation. The name round is promoted.** The manual-step round planned correctly (0 writes, step naming `passiveSignInUri`), but `keel-restore` crashed afterwards: **#695**.
+  - B = **844bbe18** (includes 4298b86; `samlOrWsFedExternalDomainFederation` in the catalog).
+  - Credentials: Restorer for the fixture writes, Collector for reads and backups. Global admin not used; nothing granted.
+  - Self-approved under the 2026-10-14 authorization: requester Gmail, approver Entra.
+  - No real domain federated; no guest invited.
+  - Step 1:
+    - Before: 0 federations.
+    - Created `KEEL-RT-148-fed` (cae3b937…) for `keel-rt-fed.example`, protocol saml, issuer `/issuer`, sign-in `/sso`, a fresh self-signed 30-day cert. Answered 201; read back with the domain.
+  - Step 2: S = `e8b32c50`, exit 3 (incomplete only on todoSettings 500). Read URL: `/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation?$expand=domains`.
+    - **The payload holds** displayName, domains (`keel-rt-fed.example`), id, issuerUri, metadataExchangeUri, passiveSignInUri, preferredAuthenticationProtocol (saml) and signingCertificate (1068 chars).
+  - Step 3: S2 = `05944c92`. `keel-compare snapshots` S→S2: **no change for the federation**.
+    - Its 4 differences are unrelated: an app's passwordCredentials list, and 2 Exchange role assignments plus 1 role definition that appeared in S2.
+  - Step 4:
+    - Drift: the plain `/directory/federationConfigurations/{id}` PATCH answers 400 "Expected property 'passiveSignInUri' is not present on resource of type 'FederationConfiguration'". The typed `/…/graph.samlOrWsFedExternalDomainFederation/{id}` route answered 204, and it read `/drifted` after ~15 s.
+    - Dry run from S: `skipped 1, failed 0`, **0 writes**. Completion step: `Where this guest federation's guests sign in (passiveSignInUri) differs from the backup. A restore never changes it, so a changed backup cannot send guests to another sign-in page: confirm the values with the partner, then set them in Entra admin center > External Identities > All identity providers > SAML/WS-Fed.` (refusal reason `manual: ` + the same text).
+    - **Then exit 1:** `TypeError: (entry.completion ?? []).some is not a function` at `recordTrustSkippedLocations` (namedLocationTrust.mjs:106). `federationRefusal()` returns `completion` as an object, not a list, so no artifact was saved. **#695.**
+    - `passiveSignInUri` put back to `/sso` by hand (204; read `/sso` 4 times).
+  - Step 5: displayName → `KEEL-RT-148-fed-drifted` (204). Dry run `8c34e896` planned `fields displayName` only.
+    - Approval **2ee38899** (executor cli). Enforce exit 0; journal `update succeeded`; no manual step.
+    - Read back as in S: name, `/sso`, `/issuer`, saml, domain.
+    - Capture:
+      - `--fixture KEEL-RT-148-fed` answered `not-exercised`: the natural key is the id, and #685's name lookup covers Engage only.
+      - `--fixture <federation id>` worked: captured, exit 0.
+      - `pseudonymize.mjs check`: every id is a pseudonym. Secret scan 0 hits; no raw ids.
+      - The capture log holds the test cert's **public** certificate twice. No private key.
+    - **`live evidence externalDomainFederation.update.json: fixture-tested -> live-qualified`.**
+  - Step 6: federation deleted (204; 0 federations left). The test key was shredded and the cert removed from the host.
+  - Step 7: commit **c23e5e39** on `claude/live-evidence-q207` (pushed, no PR).
+  - **Left in the tenant: nothing.**
 - **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval (2026-10-14 standing
   authorization; log every approval id) as Q111. Never federate a real domain; never invite a guest. Nothing to grant.
 - Do, at B, from your own checkout (never `/opt/keel`):

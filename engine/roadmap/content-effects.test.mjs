@@ -194,6 +194,97 @@ test('issue #700: making an access package catalog externally visible, on create
   assert.equal(effects[0].disclosure, disclosureFor('externally-sharing'));
 });
 
+// ------------------------------------- iOS and Android app protection (issue #705)
+
+// The live Q229 fixture: Graph's defaults, no wipe settings chosen by us.
+const iosProtection = Object.freeze({
+  '@odata.type': '#microsoft.graph.iosManagedAppProtection', displayName: 'KEEL-RT-ios-mam', description: 'Fixture',
+  periodOfflineBeforeAccessCheck: 'PT12H', periodOnlineBeforeAccessCheck: 'PT30M', periodOfflineBeforeWipeIsEnforced: 'P90D',
+  allowedInboundDataTransferSources: 'allApps', allowedOutboundDataTransferDestinations: 'allApps',
+  allowedOutboundClipboardSharingLevel: 'managedAppsWithPasteIn', allowedOutboundClipboardSharingExceptionLength: 0,
+  dataBackupBlocked: false, saveAsBlocked: false, printBlocked: false, pinRequired: true, maximumPinRetries: 5,
+  appActionIfMaximumPinRetriesExceeded: 'block', appActionIfDeviceComplianceRequired: 'block',
+  appActionIfUnableToAuthenticateUser: null, mobileThreatDefenseRemediationAction: 'block',
+  minimumWipeOsVersion: null, minimumWipeAppVersion: null, minimumWipeSdkVersion: null,
+});
+const androidProtection = Object.freeze({
+  ...iosProtection, '@odata.type': '#microsoft.graph.androidManagedAppProtection', displayName: 'KEEL-RT-android-mam',
+  minimumWipePatchVersion: null, minimumWipeCompanyPortalVersion: null, wipeAfterCompanyPortalUpdateDeferralInDays: 0,
+  appActionIfAndroidDeviceManufacturerNotAllowed: 'block', appActionIfDeviceLockNotSet: 'block',
+});
+const appPolicy = (payload, extra = {}) => ({ ...create('managedAppPolicy', payload, `managedAppPolicy:${payload.displayName}`), ...extra });
+const shape = (effects) => effects.map(({ naturalKey, field, effect, before, after }) => ({ naturalKey, field, effect, before, after }));
+
+test('issue #705: an unassigned iOS or Android app protection create is classified, never an unclassified content effect', () => {
+  const { effects, refusals } = classifyContentEffects([appPolicy(iosProtection), appPolicy(androidProtection)]);
+  assert.deepEqual(refusals, [], 'the wipe and clipboard fields are classified');
+  assert.deepEqual(effects, [], 'a policy assigned to no one reaches no device');
+});
+
+test('issue #705: an assigned app protection create with an offline wipe needs the irreversible approval; its clipboard level does not', () => {
+  const { effects, refusals } = classifyContentEffects([appPolicy(iosProtection, { newAssignments: ['group:KEEL-RT-Users'] })]);
+  assert.deepEqual(refusals, []);
+  assert.deepEqual(shape(effects), [
+    { naturalKey: 'managedAppPolicy:KEEL-RT-ios-mam', field: 'periodOfflineBeforeWipeIsEnforced', effect: 'irreversible', before: null, after: 'P90D' },
+  ], 'a new policy only ever narrows clipboard sharing, so the level is not an effect');
+  assert.deepEqual(effects[0].newAssignments, ['group:KEEL-RT-Users']);
+  assert.equal(effects[0].disclosure, disclosureFor('irreversible'));
+});
+
+test('issue #705: app protection wipes that are new, sooner or wider are irreversible on update', () => {
+  const after = {
+    ...androidProtection, periodOfflineBeforeWipeIsEnforced: 'P30D', minimumWipeOsVersion: '14.0', minimumWipePatchVersion: '2024-06-01',
+    minimumWipeCompanyPortalVersion: '5.0.6000', wipeAfterCompanyPortalUpdateDeferralInDays: 30,
+    appActionIfMaximumPinRetriesExceeded: 'wipe', appActionIfDeviceLockNotSet: 'wipe',
+  };
+  const before = { ...androidProtection, minimumWipePatchVersion: '2024-01-01' };
+  const { effects, refusals } = classifyContentEffects([update('managedAppPolicy', before, after, 'managedAppPolicy:android')]);
+  assert.deepEqual(refusals, []);
+  assert.deepEqual(shape(effects), [
+    { naturalKey: 'managedAppPolicy:android', field: 'appActionIf* (actions that wipe)', effect: 'irreversible', before: [], after: ['appActionIfDeviceLockNotSet', 'appActionIfMaximumPinRetriesExceeded'] },
+    { naturalKey: 'managedAppPolicy:android', field: 'minimumWipeCompanyPortalVersion', effect: 'irreversible', before: null, after: '5.0.6000' },
+    { naturalKey: 'managedAppPolicy:android', field: 'minimumWipeOsVersion', effect: 'irreversible', before: null, after: '14.0' },
+    { naturalKey: 'managedAppPolicy:android', field: 'minimumWipePatchVersion', effect: 'irreversible', before: '2024-01-01', after: '2024-06-01' },
+    { naturalKey: 'managedAppPolicy:android', field: 'periodOfflineBeforeWipeIsEnforced', effect: 'irreversible', before: 'P90D', after: 'P30D' },
+    { naturalKey: 'managedAppPolicy:android', field: 'wipeAfterCompanyPortalUpdateDeferralInDays', effect: 'irreversible', before: 0, after: 30 },
+  ]);
+});
+
+test('issue #705: app protection wipes that are removed, later or narrower are benign', () => {
+  const before = {
+    ...iosProtection, periodOfflineBeforeWipeIsEnforced: 'P30D', minimumWipeOsVersion: '16.0',
+    appActionIfMaximumPinRetriesExceeded: 'wipe', allowedOutboundClipboardSharingLevel: 'allApps', allowedOutboundClipboardSharingExceptionLength: 40,
+  };
+  const after = {
+    ...iosProtection, periodOfflineBeforeWipeIsEnforced: 'P90D', minimumWipeOsVersion: '15.0',
+    appActionIfMaximumPinRetriesExceeded: 'block', allowedOutboundClipboardSharingLevel: 'blocked', allowedOutboundClipboardSharingExceptionLength: 10,
+  };
+  const { effects, refusals } = classifyContentEffects([
+    update('managedAppPolicy', before, after, 'managedAppPolicy:narrowed'),
+    update('managedAppPolicy', { ...iosProtection, periodOfflineBeforeWipeIsEnforced: 'PT2160H' }, iosProtection, 'managedAppPolicy:same-period'),
+    update('managedAppPolicy', { ...iosProtection, periodOfflineBeforeWipeIsEnforced: 'P30D' }, { ...iosProtection, periodOfflineBeforeWipeIsEnforced: 'P0D' }, 'managedAppPolicy:off'),
+  ]);
+  assert.deepEqual(refusals, []);
+  assert.deepEqual(effects, []);
+});
+
+test('issue #705: copying app protection work data to more apps is externally-sharing on update', () => {
+  const { effects, refusals } = classifyContentEffects([update('managedAppPolicy',
+    { ...iosProtection, allowedOutboundClipboardSharingLevel: 'managedApps' },
+    { ...iosProtection, allowedOutboundClipboardSharingLevel: 'allApps', allowedOutboundClipboardSharingExceptionLength: 20 },
+    'managedAppPolicy:wider')]);
+  assert.deepEqual(refusals, []);
+  assert.deepEqual(shape(effects), [
+    { naturalKey: 'managedAppPolicy:wider', field: 'allowedOutboundClipboardSharingExceptionLength', effect: 'externally-sharing', before: 0, after: 20 },
+    { naturalKey: 'managedAppPolicy:wider', field: 'allowedOutboundClipboardSharingLevel', effect: 'externally-sharing', before: 'managedApps', after: 'allApps' },
+  ]);
+});
+
+test('issue #705: an unreadable offline wipe period counts as shorter', () => {
+  const { effects } = classifyContentEffects([update('managedAppPolicy', iosProtection, { ...iosProtection, periodOfflineBeforeWipeIsEnforced: 'soon' }, 'managedAppPolicy:odd')]);
+  assert.deepEqual(effects.map((e) => e.field), ['periodOfflineBeforeWipeIsEnforced']);
+});
+
 test('a compliance policy that wipes or retires noncompliant devices is irreversible and needs the separate approval', async (t) => {
   const created = classifyContentEffects([create('deviceCompliancePolicy', complianceWith('block', 'wipe'))]);
   assert.deepEqual(created.refusals, []);

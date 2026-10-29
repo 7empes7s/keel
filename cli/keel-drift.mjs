@@ -203,7 +203,12 @@ async function detect() {
     // Only types read in full are compared on both sides (issue #447): a failed
     // type has no rows and a partial type has only some, so neither can show
     // as removed or added.
-    const covered = (rows) => (coveredTypes ? rows.filter((row) => coveredTypes.includes(row.resource_type)) : rows);
+    // Issue #666: a kind the baseline left out (Microsoft kept failing on it when
+    // it was captured) holds nothing in the baseline. Its items are not "added"
+    // when Microsoft answers again: an added drift would plan their deletion.
+    const leftOut = new Set((baseline.observation_scope?.leftOut ?? []).map((item) => item?.type).filter(Boolean));
+    const covered = (rows) => rows.filter((row) => !leftOut.has(row.resource_type)
+      && (!coveredTypes || coveredTypes.includes(row.resource_type)));
     const drift = diffSnapshots(covered(before), covered(after));
     const beforeByNaturalKey = new Map(before.map((row) => [row.natural_key, row]));
     const afterByNaturalKey = new Map(after.map((row) => [row.natural_key, row]));

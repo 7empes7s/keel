@@ -9597,7 +9597,7 @@ item that needs it stays untouched.
   manual step `externalDomainFederationSignIn`. Fixture-tested only.
 - Needs: the deployed build B at or after `4298b86`. Check from your checkout at B:
   `git merge-base --is-ancestor 4298b86 B && grep -q samlOrWsFedExternalDomainFederation tools/tenant-probe/catalog.d/entra-tenant-settings.mjs`.
-- Status: queued
+- Status: todo (2026-10-29 21:15 UTC: was `queued`, which the pass never picks; ready to run)
 - **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval (2026-10-14 standing
   authorization; log every approval id) as Q111. Never federate a real domain; never invite a guest. Nothing to grant.
 - Do, at B, from your own checkout (never `/opt/keel`):
@@ -9631,7 +9631,7 @@ item that needs it stays untouched.
   `git merge-base --is-ancestor 1fd1cc5d B && grep -q 'conditions\\.permissions\\.permissionIds' tools/tenant-probe/references.mjs`.
 - **A fresh snapshot is required.** References are stored per snapshot, so Q111's S (`569a4390`) still holds the null symbol and
   still refuses. Take the snapshot at B, after creating the fixture.
-- Status: open
+- Status: todo (2026-10-29 21:15 UTC: was `open`, which the pass never picks; ready to run)
 - Result:
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q111. Self-approve under the 2026-10-14
   standing authorization and log every approval id. Restorer for writes, Collector for reads; global admin not used; grant nothing
@@ -10371,3 +10371,39 @@ item that needs it stays untouched.
   4. Promote with `operations.mjs --live-evidence` as in Q219 step 6, commit the records, and open the PR the usual way.
 - **Hard rules:** no tenant writes; never print a token or key; never push the old 50304c0f records.
 - **Report:** steps 1–4, the build used, the check output, and the PR link.
+
+### Q228: Live restore proof of app credential policies and access package catalogs (wave 2, never run live)
+- Drafted by the "Finish Q207 and Q208 live proofs" thread (2026-10-29). Writers, fixture-tested only, never run live:
+  `appManagementPolicy` (v1.0 `/policies/appManagementPolicies`, create + update; `appliesTo` is never written) and
+  `accessPackageCatalog` (v1.0 `/identityGovernance/entitlementManagement/catalogs`, create + update; the catalog's resources,
+  roles and access packages are never written). Both are in `engine/restore/identityObjectOperations.mjs`.
+- Needs: none beyond a deployed build B on master (the writers have been there since wave 2). Run after Q207 and Q208.
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and Restorer/Collector split as Q111. Self-approve under the 2026-10-14
+  standing authorization and log every approval id. Restorer for writes, Collector for reads; global admin not used. The Restorer's
+  manifest holds Policy.ReadWrite.ApplicationConfiguration and EntitlementManagement.ReadWrite.All; check the token before saying one
+  is missing. If Graph answers 403 or a licence error, report blocked with Graph's exact message; grant nothing.
+- **Never apply the credential policy to anything:** never add an app or service principal to its `appliesTo`. Unapplied, it changes
+  nothing. Never touch the tenant default (`/policies/defaultAppManagementPolicy`). No access package, no resource and no user goes
+  into the catalog.
+- **Fixtures** (write down that there were none with the `KEEL-RT-228` prefix before):
+  - credential policy `KEEL-RT-228-credpolicy`: description `KEEL-RT test fixture`, `isEnabled` true, one password restriction
+    `passwordLifetime` with `maxLifetime` `P90D` and `restrictForAppsCreatedAfterDateTime` `2026-01-01T00:00:00Z`, no key restrictions;
+  - catalog `KEEL-RT-228-catalog`: description `KEEL-RT test fixture`, `catalogType` `userManaged`, `state` `published`,
+    `isExternallyVisible` false.
+- Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set. Use the `live-gate-plan.mjs` steps
+  for these two types (sections "appManagementPolicy create/update" and "accessPackageCatalog create/update"):
+  1. Create both fixtures, then take snapshot S (one tier run that reads both). Confirm both are in S with the fields above.
+  2. **Update round:** change the policy's `maxLifetime` to `P180D` and the catalog's description to `KEEL-RT drifted`. One restore
+     from S selecting both, approve, `--enforce`, capture each `update`. Expect the dry run to list only `restrictions` and
+     `description`, and each read back equal to S.
+  3. **Create round:** delete both fixtures. Restore from S selecting both, approve, enforce, capture each `create` (new ids expected).
+     Leave the policy unapplied and the catalog empty.
+  4. **Re-run check:** dry run from S again. Expect 0 planned writes for both.
+  5. Cleanup: delete the recreated policy and catalog. Report anything left.
+  6. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on `claude/live-evidence-q228`,
+     branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR. Run
+     `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; S; per type and operation promoted / refused (exact message) / blocked; approval ids; step 4 count; the evidence
+  branch and commit; anything left in the tenant.

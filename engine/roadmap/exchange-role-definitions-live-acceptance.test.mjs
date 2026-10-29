@@ -142,6 +142,9 @@ test('a tampered, unsigned, other-tenant or other-build record imports nothing',
     sameCredential: resign((e) => { e.subject.credentials.restorer = e.subject.credentials.collector; }),
     capturedTwice: resign((e) => { e.subject.writes.push({ ...e.subject.writes[0] }); }),
     noWrites: resign((e) => { e.subject.writes = []; }),
+    noRequests: resign((e) => { e.subject.requests = []; }),
+    noTrimSent: resign((e) => { e.subject.requests = e.subject.requests.filter((request) => request.cmdlet !== 'Set-ManagementRoleEntry'); }),
+    createFailed: resign((e) => { firstWrite(e).outcome = 'failed'; }),
   };
   for (const [name, record] of Object.entries(cases)) {
     assert.equal(ledgerEvidenceFromRoleWritesAcceptance(record, seamOptions).ok, false, name);

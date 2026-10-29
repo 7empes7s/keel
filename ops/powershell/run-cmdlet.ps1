@@ -382,7 +382,7 @@ if ($null -ne $job['parameters']) {
 # wildcard role, and a removal never touches a whole role. A role name never holds a wildcard.
 if ($name -like '*-ManagementRoleEntry') {
     $entryId = [string]$params['Identity']
-    $entryPattern = if ($name -eq 'Get-ManagementRoleEntry') { '^[^\\*?]{1,64}\\\*$' } else { '^[^\\*?]{1,64}\\[A-Za-z]+-[A-Za-z0-9]+$' }
+    $entryPattern = if ($name -eq 'Get-ManagementRoleEntry') { '^[^\\*?]{1,64}\\\*\z' } else { '^[^\\*?]{1,64}\\[A-Za-z]+-[A-Za-z0-9]+\z' }
     if ($entryId -notmatch $entryPattern) { Out-Failure -Message "$name takes one role entry identity, not $entryId" -ErrorId 'IdentityNotAllowed' }
 }
 if ($name -eq 'New-ManagementRole' -and (([string]$params['Name']) -match '[\\*?]' -or -not $params['Parent'] -or ([string]$params['Parent']) -match '[\\*?]')) {

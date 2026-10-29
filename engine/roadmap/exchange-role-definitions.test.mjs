@@ -315,3 +315,20 @@ test('the dispatch entry plans from the backup through the collector connection'
   broken.powershell.spawnFn = () => { throw new Error('docker is not running'); };
   await assert.rejects(entry.plan(client, { tenantRef, tenantId: TENANT, request: { collectionId }, connection: { powershell: broken.powershell } }), /could not be read live/);
 });
+
+test('a role that appears between the last check and the create is never trimmed or changed', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const theirs = { 'Get-AddressList': ['Identity', 'ResultSize'], 'Set-AddressList': ['Identity'] };
+  const tenant = fakeExchange({
+    roles: builtInLive(),
+    beforeNew: (state, parameters) => { if (!state.has(parameters.Name.toLowerCase())) state.set(parameters.Name.toLowerCase(), { name: parameters.Name, parent: 'Address Lists', description: 'made by someone else', entries: structuredClone(theirs) }); },
+  });
+  const collectionId = await snapshot(client, tenantRef, [ADDRESS_LISTS, MAIL_RECIPIENTS, READER]);
+  const { artifact } = await planned(client, tenantRef, tenant, collectionId);
+  const result = await execute(client, tenantRef, artifact, tenant);
+  assert.equal(result.operations[0].outcome, 'verification-failed');
+  assert.match(result.operations[0].reasons[0], /cannot tell it made it/);
+  assert.deepEqual(tenant.sent().map(({ cmdlet }) => cmdlet), ['New-ManagementRole'], 'nothing is sent to the role after the failed create');
+  assert.deepEqual(tenant.state.get(READER.displayName.toLowerCase()).entries, theirs);
+});

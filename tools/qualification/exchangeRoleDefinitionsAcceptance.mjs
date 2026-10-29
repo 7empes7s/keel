@@ -43,6 +43,15 @@ function captureProblems(capture, { moduleVersion, observedAt }) {
   return problems;
 }
 
+/** The record's own request list must show the restorer's create and a trim of the capture role, both answered. */
+function requestProblems(capture, requests) {
+  const sent = (cmdlet) => requests.some((request) => request?.cmdlet === cmdlet && request.credential === 'restorer' && request.outcome === 'ok' && request.role === capture.fixture);
+  const problems = [];
+  if (!sent('New-ManagementRole')) problems.push(`${capture.operationId}: the record shows no answered New-ManagementRole for ${capture.fixture}`);
+  if (!sent('Set-ManagementRoleEntry')) problems.push(`${capture.operationId}: the record shows no answered Set-ManagementRoleEntry for ${capture.fixture}`);
+  return problems;
+}
+
 /** Gate validator. Returns failure reasons; empty means the subject holds. */
 export function validateRoleWritesLiveSubject(evidence, context = {}) {
   const { tenantRef, build, artifact, runner } = context;
@@ -94,7 +103,7 @@ export function validateRoleWritesLiveSubject(evidence, context = {}) {
   for (const capture of writes) {
     if (seen.has(capture?.operationId)) failures.push(`${capture.operationId}: captured twice`);
     seen.add(capture?.operationId);
-    if (capture?.ok === true) failures.push(...captureProblems(capture, { moduleVersion, observedAt }));
+    if (capture?.ok === true) failures.push(...captureProblems(capture, { moduleVersion, observedAt }), ...requestProblems(capture, Array.isArray(subject.requests) ? subject.requests : []));
   }
   if (provenRoleWrites(subject).length === 0) failures.push('no write was captured and read back: the record proves nothing');
   return [...new Set(failures)];

@@ -5,11 +5,12 @@
  *
  * `roles` is [{ name, parent?, description?, entries: { cmdlet: [parameters] } }].
  * `ignoreEnabledCmdlets` makes New-ManagementRole copy every parent entry; `failNew` is an
- * answer New-ManagementRole gives instead of creating.
+ * answer New-ManagementRole gives instead of creating; `beforeNew(state, parameters)` runs just
+ * before New-ManagementRole is answered (to make a role appear after Keel's last check).
  */
 import { containerAllowlist, fakeCmdletContainer } from './fakeCmdletContainer.mjs';
 
-export function fakeExchangeRoles({ roles = [], ignoreEnabledCmdlets = false, failNew = null } = {}) {
+export function fakeExchangeRoles({ roles = [], ignoreEnabledCmdlets = false, failNew = null, beforeNew = null } = {}) {
   const state = new Map(roles.map(({ name, parent = null, description = null, entries }) => [name.toLowerCase(), { name, parent, description, entries: structuredClone(entries) }]));
   const allowlist = { ...containerAllowlist('AllowedExchangeRoleReads'), ...containerAllowlist('AllowedExchangeRoleWrites') };
   const missing = (name) => ({ error: { message: `The operation couldn't be performed because object '${name}' couldn't be found.`, category: 'NotSpecified', errorId: 'ManagementObjectNotFoundException' } });
@@ -18,6 +19,7 @@ export function fakeExchangeRoles({ roles = [], ignoreEnabledCmdlets = false, fa
     allowlist,
     answer(cmdlet, parameters) {
       if (cmdlet === 'Get-ManagementRole') return [...state.values()].map(({ name, parent, description }) => ({ Name: name, Parent: parent, Description: description, RoleType: 'Custom' }));
+      if (cmdlet === 'New-ManagementRole' && beforeNew) beforeNew(state, parameters);
       const [roleName, entryName] = String(parameters.Identity ?? '').split('\\');
       const found = state.get(String(cmdlet === 'New-ManagementRole' ? parameters.Name : roleName).toLowerCase());
       if (cmdlet === 'Get-ManagementRoleEntry') {

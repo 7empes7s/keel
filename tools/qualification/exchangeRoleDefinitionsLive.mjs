@@ -196,7 +196,7 @@ export async function captureRoleWrites({
     if (stillAbsent) {
       const result = await recreateRole(op, { cmdlet: write });
       log.values.result = result;
-      if (result.writes > 0) created.push({ kind: 'managementRole', name, parent: op.parent });
+      if (result.outcome !== 'failed' && result.outcome !== 'refused') created.push({ kind: 'managementRole', name, parent: op.parent });
       capture.trimmedParameters = result.trimmed?.parameters ?? 0;
       capture.trimmedEntries = result.trimmed?.entries ?? 0;
       capture.enabledCmdletsHonoured = result.trimmed ? result.trimmed.entries === 0 : null;

@@ -508,7 +508,12 @@ export async function recreateRole(op, { cmdlet }) {
         reasons: [`New-ManagementRole failed: ${error.message}; ${there === false ? 'the role does not exist, and nothing is retried automatically' : 'the role could not be read again'}`],
       };
     }
-    reasons.push(`New-ManagementRole answered ${error.message}, but the role exists, so it was not resent`);
+    // The role exists, but Keel cannot tell it made it (another admin or run may have, just
+    // before): it is never trimmed or changed, and the create is not resent.
+    return {
+      outcome: 'verification-failed', writes, attempts: 1, error: errorDetail(error),
+      reasons: [`New-ManagementRole answered ${error.message}, and a role with this name exists now; Keel cannot tell it made it, so it does not change it. An administrator compares it with the backup`],
+    };
   }
 
   // 2. Trim the new role's entries to the backup. These run only on the role just created.

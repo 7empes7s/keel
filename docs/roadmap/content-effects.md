@@ -37,6 +37,7 @@ The rules are explicit before/after field rules per type (`CONTENT_EFFECT_RULES`
 | ediscoveryHoldPolicy | (object deleted) | hold-releasing |
 | conditionalAccessPolicy, namedLocation, roleAssignment | — | reviewed: access configuration only |
 | application | — | reviewed: sign-in configuration only (`publicClient`, `isFallbackPublicClient`, `signInAudience`, redirect URIs, declared permissions); live gate Q45 steps 11, 13, 14 |
+| accessPackageCatalog | `isExternallyVisible` | false → true → externally-sharing (external users can request its access packages). Judged on create too: a catalog restored as not visible passes; one restored visible needs the approval (issue #700) |
 | deviceCompliancePolicy | `scheduledActionsForRule[actionType]` | noncompliance actions gain `wipe` or `retire` → irreversible (judged on create too) |
 | deviceConfiguration | `passcodeSignInFailureCountBeforeWipe`, `passwordSignInFailureCountBeforeFactoryReset`, `workProfilePasswordSignInFailureCountBeforeFactoryReset` | a failed-sign-in wipe is introduced or lowered → irreversible (judged on create too) |
 | deviceConfiguration | `accountManagerPolicy.accountDeletionPolicy` | becomes `immediately` (shared PC) → irreversible |

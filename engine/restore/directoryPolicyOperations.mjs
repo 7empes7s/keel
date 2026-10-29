@@ -29,6 +29,11 @@
  *    The read-back checks the whole sets, not only what was written. Otherwise
  *    they are a follow-up step. Built-in microsoft-* policies are
  *    Microsoft-managed and skipped.
+ *  - An app creation policy (servicePrincipalCreationPolicy, beta, restore
+ *    gaps batch 21) is written the same way: its name and description, then
+ *    its include and exclude condition sets, synced to exactly the backup's.
+ *    Graph gives it its own id, so a create first looks for a custom policy
+ *    with the same name. Built-in policies are skipped.
  *  - A consent is matched on (app, resource, consent type, user): Graph keeps
  *    one grant per such pair, so a re-run updates the grant it made instead of
  *    adding a second one. Its scopes are written as the backup had them.
@@ -61,6 +66,15 @@ const stsPolicy = (resourceType, collection, docsName) => Object.freeze({
   updateFields: Object.freeze(['displayName', 'definition']),
 });
 
+const PERMISSION_GRANT_CONDITION_FIELDS = Object.freeze([
+  'permissionClassification', 'permissionType', 'resourceApplication', 'permissions', 'clientApplicationIds',
+  'clientApplicationTenantIds', 'clientApplicationPublisherIds', 'clientApplicationsFromVerifiedPublisherOnly',
+  'certifiedClientApplicationsOnly',
+]);
+const SERVICE_PRINCIPAL_CREATION_CONDITION_FIELDS = Object.freeze([
+  'applicationIds', 'applicationPublisherIds', 'applicationsFromVerifiedPublisherOnly', 'applicationTenantIds', 'certifiedApplicationsOnly',
+]);
+
 export const DIRECTORY_POLICY_RECORDS = Object.freeze({
   tokenLifetimePolicy: stsPolicy('tokenLifetimePolicy', '/policies/tokenLifetimePolicies', 'tokenlifetimepolicy'),
   tokenIssuancePolicy: stsPolicy('tokenIssuancePolicy', '/policies/tokenIssuancePolicies', 'tokenissuancepolicy'),
@@ -76,6 +90,26 @@ export const DIRECTORY_POLICY_RECORDS = Object.freeze({
     // The id is chosen by the admin and sent on create; it names the policy.
     createFields: Object.freeze(['id', 'displayName', 'description']),
     updateFields: Object.freeze(['displayName', 'description']),
+    conditionFields: PERMISSION_GRANT_CONDITION_FIELDS,
+  }),
+  // Restore gaps, batch 21. An app creation policy: which apps may get an
+  // enterprise app (service principal) in the tenant. Beta only and not in
+  // Microsoft's Graph docs; the route is the Graph beta metadata's (includes
+  // and excludes are contained condition sets). Graph expands the condition
+  // sets on every read of the policy and refuses $expand (Q111 step 7), so
+  // they are read from the policy itself. Its id is Graph's; a recreated
+  // policy is found again by its name. Built-in policies are Microsoft's.
+  servicePrincipalCreationPolicy: Object.freeze({
+    resourceType: 'servicePrincipalCreationPolicy',
+    family: 'creation-policy',
+    collection: '/policies/servicePrincipalCreationPolicies',
+    version: 'beta',
+    permission: APP_CONFIG,
+    docs: 'https://github.com/microsoftgraph/msgraph-metadata (beta: servicePrincipalCreationPolicy)',
+    createFields: Object.freeze(['displayName', 'description']),
+    updateFields: Object.freeze(['displayName', 'description']),
+    conditionFields: SERVICE_PRINCIPAL_CREATION_CONDITION_FIELDS,
+    conditionsOnObject: true,
   }),
   oauth2PermissionGrant: Object.freeze({
     resourceType: 'oauth2PermissionGrant',
@@ -96,11 +130,6 @@ export function isDirectoryPolicyGoverned(resourceType) {
   return Object.hasOwn(DIRECTORY_POLICY_RECORDS, resourceType);
 }
 
-const PERMISSION_GRANT_CONDITION_FIELDS = Object.freeze([
-  'permissionClassification', 'permissionType', 'resourceApplication', 'permissions', 'clientApplicationIds',
-  'clientApplicationTenantIds', 'clientApplicationPublisherIds', 'clientApplicationsFromVerifiedPublisherOnly',
-  'certifiedClientApplicationsOnly',
-]);
 const CONDITION_SETS = Object.freeze(['includes', 'excludes']);
 
 const isBuiltInGrantPolicy = (payload) => /^microsoft-/i.test(String(payload?.id ?? ''));
@@ -141,25 +170,28 @@ function sameField(field, desired, live) {
   return isDeepStrictEqual(desired ?? null, live ?? null);
 }
 
-function conditionSetBody(condition) {
+/** True for a type whose include and exclude condition sets are written. */
+const hasConditionSets = (entry) => Array.isArray(entry?.conditionFields);
+
+function conditionSetBody(condition, fields = PERMISSION_GRANT_CONDITION_FIELDS) {
   const body = {};
-  for (const field of PERMISSION_GRANT_CONDITION_FIELDS) {
+  for (const field of fields) {
     if (condition?.[field] !== undefined && condition[field] !== null) body[field] = condition[field];
   }
   return body;
 }
-const sameCondition = (left, right) => isDeepStrictEqual(conditionSetBody(left), conditionSetBody(right));
+const sameCondition = (left, right, fields) => isDeepStrictEqual(conditionSetBody(left, fields), conditionSetBody(right, fields));
 
 /**
  * Pairs each desired condition with a distinct live one it equals. Returns the
  * desired conditions nobody matched (`missing`) and the live ones left over
  * (`extra`); both empty means the live set is the backup's set.
  */
-export function conditionSetDifference(desired, live) {
+export function conditionSetDifference(desired, live, fields = PERMISSION_GRANT_CONDITION_FIELDS) {
   const unmatched = [...(live ?? [])];
   const missing = [];
   for (const condition of desired ?? []) {
-    const at = unmatched.findIndex((existing) => sameCondition(existing, condition));
+    const at = unmatched.findIndex((existing) => sameCondition(existing, condition, fields));
     if (at === -1) missing.push(condition);
     else unmatched.splice(at, 1);
   }
@@ -193,6 +225,19 @@ export function directoryPolicyWriteRefusal(resource, verb) {
       return { outcome: 'skipped', reason: `${payload.id} is a built-in app consent policy: Microsoft manages it and nobody can change it` };
     }
     if (typeof payload.id !== 'string' || payload.id.length === 0) return { outcome: 'failed', reason: 'permissionGrantPolicy: the backup has no id to recreate the policy under' };
+  }
+  if (entry.family === 'creation-policy') {
+    if (payload.isBuiltIn !== false) {
+      return {
+        outcome: 'skipped',
+        reason: payload.isBuiltIn === true
+          ? `"${payload.displayName ?? payload.id}" is a built-in app creation policy: Microsoft manages it and nobody can change it`
+          : 'the backup does not say whether this app creation policy is built in, so KEEL does not write it',
+      };
+    }
+    if (typeof payload.displayName !== 'string' || payload.displayName.length === 0) {
+      return { outcome: 'failed', reason: 'servicePrincipalCreationPolicy: the backup has no displayName to find or recreate the policy by' };
+    }
   }
   if (entry.family === 'consent') {
     for (const field of ['clientId', 'resourceId', 'consentType']) {
@@ -246,6 +291,8 @@ function matcherFor(entry, desired) {
       && object.consentType === desired.consentType
       && (desired.consentType !== 'Principal' || String(object.principalId).toLowerCase() === String(desired.principalId).toLowerCase());
   }
+  // Graph gives a created app creation policy its own id, so a re-run finds it by name.
+  if (entry.family === 'creation-policy') return (object) => object.isBuiltIn !== true && sameText(object.displayName, desired.displayName);
   return null;
 }
 
@@ -278,7 +325,7 @@ function listPath(entry, desired) {
  */
 export function directoryPolicyFollowUp(entry, resource, verb, desired, live, decision) {
   const steps = [...followUpSteps(entry.resourceType, resource.payload, decision)];
-  if (entry.family === 'permission-grant-policy') {
+  if (hasConditionSets(entry)) {
     // Condition sets the backup holds are written, so their step is dropped.
     const held = CONDITION_SETS.every((set) => Array.isArray(resource.payload?.[set]));
     if (held) return steps.filter((step) => !/include and exclude rules/i.test(step.part));
@@ -458,7 +505,7 @@ export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}
   const body = operation === 'create'
     ? directoryPolicyBody(entry, desired, 'create')
     : Object.fromEntries(changedDirectoryPolicyFields(entry, desired, live).map((field) => [field, directoryPolicyBody(entry, desired, 'update')[field]]));
-  const conditions = entry.family === 'permission-grant-policy'
+  const conditions = hasConditionSets(entry)
     ? await conditionSetChanges(writer, entry, desired, operation === 'create' ? null : targetId, { retryOperation })
     : { writes: [], live: {} };
   if (conditions.failed) return { failed: { naturalKey, error: conditions.failed } };
@@ -525,7 +572,7 @@ export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}
   const postStateRefusal = directoryPolicyPostStateRefusal(entry, desired, reRead.body, written)
     ?? (operation === 'create' && entry.family === 'sts-policy' && reRead.body?.isOrganizationDefault === true
       ? `${entry.resourceType}: the recreated policy reads back as the organization default` : null)
-    ?? (entry.family === 'permission-grant-policy'
+    ?? (hasConditionSets(entry)
       ? await conditionSetsPostStateRefusal(writer, entry, desired, targetId, { retryOperation, ...readAfterWrite })
       : null);
   if (postStateRefusal) {
@@ -554,19 +601,22 @@ export async function applyDirectoryPolicyWrite(writer, resource, verb, ctx = {}
 async function conditionSetChanges(writer, entry, desired, targetId, { retryOperation }) {
   const live = {};
   const changes = {};
+  const fields = entry.conditionFields;
   for (const set of CONDITION_SETS) {
     if (!Array.isArray(desired[set])) continue;
     live[set] = [];
     if (targetId) {
-      const listed = await retryOperation(() => writer.read(entry.version, `${entry.collection}/${encodeURIComponent(targetId)}/${set}`));
+      const listed = await retryOperation(() => writer.read(entry.version, conditionReadPath(entry, targetId, set)));
       if (listed?.ok !== true) return { failed: `could not read the ${set} of ${targetId}: ${detailOf(listed)}` };
-      live[set] = listed.body?.value ?? [];
+      const held = conditionsIn(entry, listed.body, set);
+      if (!held) return { failed: `the ${set} of ${targetId} did not come back with the policy, so KEEL cannot compare them` };
+      live[set] = held;
     }
-    changes[set] = conditionSetDifference(desired[set], live[set]);
+    changes[set] = conditionSetDifference(desired[set], live[set], fields);
     const unnamed = changes[set].extra.find((condition) => typeof condition?.id !== 'string' || condition.id.length === 0);
     if (unnamed) return { failed: `an extra rule in the ${set} of ${targetId} has no id, so KEEL cannot remove it` };
   }
-  const add = (set) => (changes[set]?.missing ?? []).map((condition) => ({ set, method: 'POST', body: conditionSetBody(condition) }));
+  const add = (set) => (changes[set]?.missing ?? []).map((condition) => ({ set, method: 'POST', body: conditionSetBody(condition, fields) }));
   const remove = (set) => (changes[set]?.extra ?? []).map((condition) => ({ set, method: 'DELETE', id: condition.id }));
   const removeIncludes = remove('includes');
   const addIncludes = add('includes');
@@ -576,20 +626,37 @@ async function conditionSetChanges(writer, entry, desired, targetId, { retryOper
 }
 
 /**
+ * Where a policy's condition set is read: its own list, or (for a type Graph
+ * expands on every read and refuses $expand for) the policy itself.
+ */
+function conditionReadPath(entry, targetId, set) {
+  const policy = `${entry.collection}/${encodeURIComponent(targetId)}`;
+  return entry.conditionsOnObject ? policy : `${policy}/${set}`;
+}
+
+/** The condition set in a read's answer, or null when the answer does not hold it. */
+function conditionsIn(entry, body, set) {
+  const held = entry.conditionsOnObject ? body?.[set] : (body?.value ?? []);
+  return Array.isArray(held) ? held : null;
+}
+
+/**
  * Null when every condition set the backup holds reads back equal to it, as a
  * whole: a rule the write left in place counts as much as one it wrote.
  */
 async function conditionSetsPostStateRefusal(writer, entry, desired, targetId, { retryOperation, ...options }) {
   for (const set of CONDITION_SETS) {
     if (!Array.isArray(desired[set])) continue;
-    const path = `${entry.collection}/${encodeURIComponent(targetId)}/${set}`;
+    const path = conditionReadPath(entry, targetId, set);
+    const difference = (r) => conditionSetDifference(desired[set], conditionsIn(entry, r.body, set) ?? [], entry.conditionFields);
     const differs = (r) => {
-      const { missing, extra } = conditionSetDifference(desired[set], r.body?.value ?? []);
+      const { missing, extra } = difference(r);
       return missing.length > 0 || extra.length > 0;
     };
     const reRead = await readBack(writer, entry.version, path, (r) => isNotFound(r) || (r?.ok === true && differs(r)), { retryOperation, ...options });
     if (reRead?.ok !== true) return `${entry.resourceType}: the ${set} could not be re-read (${detailOf(reRead)})`;
-    const { missing, extra } = conditionSetDifference(desired[set], reRead.body?.value ?? []);
+    if (!conditionsIn(entry, reRead.body, set)) return `${entry.resourceType}: the ${set} did not come back on the re-read`;
+    const { missing, extra } = difference(reRead);
     if (missing.length > 0 || extra.length > 0) {
       return `${entry.resourceType} post-state did not verify: the ${set} read back with ${missing.length} rule(s) missing and ${extra.length} extra against the backup`;
     }

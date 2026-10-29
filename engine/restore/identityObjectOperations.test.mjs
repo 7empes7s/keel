@@ -1026,3 +1026,49 @@ test('restore gaps batch 20: a settings member Graph added after the backup is n
   assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
   assert.deepEqual(writesOf(graph)[0].body, { settings: FORMS.settings });
 });
+
+// ------------------------------------------------- restore gaps, batch 21
+
+const DEFENDER_ROLES = '/roleManagement/defender/roleDefinitions';
+const defenderRole = (extra = {}) => ({
+  id: 'role-src', displayName: 'KEEL-RT-defender-role', description: 'Reads security data', isBuiltIn: false, isEnabled: true,
+  rolePermissions: [{ allowedResourceActions: ['microsoft.xdr/secops/securitydata/read'] }], ...extra,
+});
+
+test('restore gaps batch 21: a custom Defender role is recreated with its permissions and updated in place', async () => {
+  const backup = defenderRole();
+  const graph = idoFakeGraph();
+  const created = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload: backup, references: [] }, 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.version, 'beta');
+  assert.equal(post.path, DEFENDER_ROLES);
+  assert.deepEqual(post.body, { displayName: 'KEEL-RT-defender-role', description: 'Reads security data', rolePermissions: backup.rolePermissions });
+
+  const drifted = defenderRole({ id: 'role-1', description: 'Changed', rolePermissions: [{ allowedResourceActions: ['microsoft.xdr/secops/securitydata/read', 'microsoft.xdr/secops/securitydata/manage'] }] });
+  const second = idoFakeGraph({ seed: { [`${DEFENDER_ROLES}/role-1`]: drifted } });
+  const updated = await applyIdentityObjectWrite(second, {
+    naturalKey: 'role-1', resourceType: 'defenderRoleDefinition', payload: { ...backup, id: 'role-1' }, references: [],
+    live: { state: 'present', targetId: 'role-1', payload: drifted },
+  }, 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  const patch = second.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.path, `${DEFENDER_ROLES}/role-1`);
+  assert.deepEqual(patch.body, { description: 'Reads security data', rolePermissions: backup.rolePermissions }, 'the wider permission is taken away');
+});
+
+test('restore gaps batch 21: a built-in or unmarked Defender role, or one with no permissions, is never written', async () => {
+  for (const [payload, expect] of [
+    [defenderRole({ isBuiltIn: true, displayName: 'Security Reader' }), /^manual: "Security Reader" is a built-in Defender role/],
+    [defenderRole({ isBuiltIn: undefined }), /does not say whether this Defender role is built in/],
+  ]) {
+    const graph = idoFakeGraph();
+    const result = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload, references: [] }, 'create', FAST);
+    assert.match(result.skipped?.reason ?? '', expect);
+    assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
+  }
+  const graph = idoFakeGraph();
+  const empty = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload: defenderRole({ rolePermissions: [] }), references: [] }, 'create', FAST);
+  assert.match(empty.failed?.error ?? '', /has no permissions/);
+  assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
+});

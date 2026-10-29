@@ -126,6 +126,8 @@ const REGISTERED = Object.freeze({
   // Restore gaps, batch 9.
   intuneBrandingProfile: ['create', 'update'],
   exchangeCustomAppScope: ['create', 'update'],
+  // Restore gaps, batch 21.
+  defenderRoleDefinition: ['create', 'update'],
   // Restore gaps, batch 10.
   userExperienceAnalyticsBaseline: ['create', 'update'],
   cartToClassAssociation: ['create', 'update'],
@@ -161,6 +163,8 @@ const REGISTERED = Object.freeze({
   homeRealmDiscoveryPolicy: ['create', 'update'],
   permissionGrantPolicy: ['create', 'update'],
   oauth2PermissionGrant: ['create', 'update'],
+  // Restore gaps, batch 21.
+  servicePrincipalCreationPolicy: ['create', 'update'],
 });
 
 function governor() {

@@ -51,6 +51,8 @@ export const FIXTURE_PAYLOADS = Object.freeze({
   claimsMappingPolicy: { displayName: 'Fixture claims mapping', definition: ['{"ClaimsMappingPolicy":{"Version":1,"IncludeBasicClaimSet":"true"}}'], isOrganizationDefault: false },
   homeRealmDiscoveryPolicy: { displayName: 'Fixture sign-in routing', definition: ['{"HomeRealmDiscoveryPolicy":{"AccelerateToFederatedDomain":false}}'], isOrganizationDefault: false },
   permissionGrantPolicy: { id: 'fixture-consent-policy', displayName: 'Fixture consent policy', description: 'Fixture' },
+  // Restore gaps, batch 21: a custom app creation policy (no condition sets in the fixture).
+  servicePrincipalCreationPolicy: { displayName: 'Fixture app creation policy', description: 'Fixture', isBuiltIn: false },
   oauth2PermissionGrant: { clientId: 'fixture-client-sp', consentType: 'AllPrincipals', principalId: null, resourceId: 'fixture-resource-sp', scope: 'User.Read' },
   group: { displayName: 'Fixture group', mailNickname: 'fixture-group', mailEnabled: false, securityEnabled: true, groupTypes: [] },
   // Roadmap task-150: a cloud user with one direct licence.
@@ -295,6 +297,11 @@ export const FIXTURE_PAYLOADS = Object.freeze({
   exchangeCustomAppScope: {
     type: 'RecipientScope', displayName: 'Fixture app scope',
     customAttributes: { Exclusive: false, RecipientFilter: "PrimarySmtpAddress -like 'keel-rt-fixture*'" },
+  },
+  // Restore gaps, batch 21: a custom Defender XDR role with one read permission.
+  defenderRoleDefinition: {
+    displayName: 'Fixture Defender role', description: 'Fixture', isBuiltIn: false,
+    rolePermissions: [{ allowedResourceActions: ['microsoft.xdr/secops/securitydata/read'] }],
   },
   // Restore gaps, batch 10.
   userExperienceAnalyticsBaseline: { displayName: 'Fixture baseline', isBuiltIn: false },

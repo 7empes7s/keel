@@ -98,7 +98,7 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   exchangeCustomAppScope: 'Exchange Online PowerShell: New-ManagementScope (no admin center page)',
   defenderRoleDefinition: at(DEFENDER, 'System', 'Permissions', 'Microsoft Defender XDR', 'Roles'),
   defenderRoleAssignment: at(DEFENDER, 'System', 'Permissions', 'Microsoft Defender XDR', 'Roles', '<role>', 'Assignments'),
-  defenderCustomAppScope: 'Microsoft Graph: /roleManagement/defender/customAppScopes (beta, no admin center page)',
+  defenderCustomAppScope: 'Microsoft Graph lists them at /roleManagement/defender/customAppScopes (beta) but cannot write them; no admin center page',
   synchronizationJob: at(ENTRA, 'Enterprise apps', '<app>', 'Provisioning'),
   // sign-in and security policies
   authenticationStrengthPolicy: at(ENTRA, 'Protection', 'Conditional Access', 'Authentication strengths'),

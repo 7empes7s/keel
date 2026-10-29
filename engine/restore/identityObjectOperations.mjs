@@ -472,6 +472,22 @@ async function allowedValuesAfterWrite(io, { payload, verb, targetId, live }) {
   return { changes: { allowedValues: written } };
 }
 
+/** A Defender role is written only when the backup says it is a custom role with at least one permission. */
+function defenderRoleRefusal(resource) {
+  const payload = resource.payload ?? {};
+  if (payload.isBuiltIn !== false) {
+    return {
+      outcome: 'skipped',
+      reason: payload.isBuiltIn === true
+        ? `manual: "${payload.displayName ?? payload.id}" is a built-in Defender role: Microsoft manages it and nobody can change it`
+        : 'manual: the backup does not say whether this Defender role is built in, so KEEL does not write it',
+    };
+  }
+  const actions = (payload.rolePermissions ?? []).flatMap((permission) => permission?.allowedResourceActions ?? []);
+  if (actions.length === 0) return { outcome: 'failed', reason: 'defenderRoleDefinition: the backed-up role has no permissions, so it cannot be written' };
+  return null;
+}
+
 const v1 = (page) => `${DOCS}/${page}?view=graph-rest-1.0`;
 const beta = (page) => `${DOCS}/${page}?view=graph-rest-beta`;
 
@@ -610,6 +626,17 @@ export const IDENTITY_RECORDS = Object.freeze({
     operations: ['create', 'update'], writable: ['displayName', 'customAttributes'], createOnly: ['type'],
     updateGuard: appScopeGuard,
     permission: 'RoleManagement.ReadWrite.Exchange', docs: beta('customappscope-update'),
+  }),
+  // Restore gaps, batch 21. A custom Microsoft Defender XDR role: its name,
+  // description and permissions. Microsoft's own roles (isBuiltIn true, or
+  // no flag at all) are never written. Who holds the role is a separate kind
+  // (defenderRoleAssignment), restored by hand after a privilege review.
+  // Graph documents the create; the update uses the same PATCH as the other
+  // role providers and is confirmed by the live proof.
+  defenderRoleDefinition: defineRecord({
+    resourceType: 'defenderRoleDefinition', version: 'beta', collection: '/roleManagement/defender/roleDefinitions',
+    operations: ['create', 'update'], writable: ['displayName', 'description', 'rolePermissions'], refusal: defenderRoleRefusal,
+    permission: 'RoleManagement.ReadWrite.Defender', docs: beta('rbacapplication-post-roledefinitions'),
   }),
   // Restore gaps, batch 17 (tenant-wide, approved by the user on 2026-10-22).
   // The SharePoint tenant settings other than sharing: sync app limits, idle

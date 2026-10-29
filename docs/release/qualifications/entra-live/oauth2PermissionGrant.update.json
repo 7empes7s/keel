@@ -7,23 +7,23 @@
   "resourceType": "oauth2PermissionGrant",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "c3b5f6c84ae90c2d800e17bed1277a92eab8d360",
+  "build": "4b880d3453c1e0904ed0f6c5e091759e5a4c4c29",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-10-15T10:30:38.343Z",
-  "restoreRef": "5eae4f2c-d9ef-82a5-9113-c2bd36f32520",
-  "naturalKey": "oauth2PermissionGrant:SW1XHIIh44O84u65-O-nd5RgNnxsqFiEuzf8YbpswCJ5WcvCDg19h7p-s_8FPjS_",
+  "observedAt": "2026-10-29T23:36:48.519Z",
+  "restoreRef": "fd4b6542-011c-8980-9b62-5a111e551ff0",
+  "naturalKey": "oauth2PermissionGrant:H3gFLbixv4aVBF_dxYpCd5RgNnxsqFiEuzf8YbpswCJ5WcvCDg19h7p-s_8FPjS_",
   "fixtureKind": "by-reference",
-  "captureSha256": "bfc47cf2c4062d081495b4d1b21eba4b95c38d7903b7c040541546b510724bc8",
+  "captureSha256": "933931582af3d1479b62df7a74b17ae0b84d26310829bfdab6945c0fb15f662d",
   "proofRef": "docs/release/qualifications/entra-live/oauth2PermissionGrant.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "c1d6e12a9631e1040bf754b4b779f6d81f300cb384c8940877d468cb1a32f23f"
+      "signature": "5095e5ee9fd799c2ee0a407fc4df3fd3a66b759248b24165653e6be5f1db1793"
     }
   }
 }

@@ -11227,7 +11227,7 @@ item that needs it stays untouched.
 - Drafted by the "Speed up the portal" thread (2026-10-29). The portal feels slow. This item collects live timings so the fix
   targets the real cause and the before/after numbers are real. **Read-only: no tenant calls, no writes to the database, no
   service restarts, no config changes.** Never print the database URL, a password, a token or a tenant id.
-- Needs: nothing.
+- Needs: nothing. **Quick (about 5 minutes, read-only): fine to take between other items, even while one waits on a merge.**
 - Status: todo
 - Result:
 - Do, on Mulinux, against the deployed build (report the commit `/opt/keel-live` is at):

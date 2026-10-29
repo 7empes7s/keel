@@ -281,6 +281,16 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   // separate consent). Credentials never reach a write body (fieldProjection).
   // The restore keeps its own access-affecting approval, as before.
   application: { reviewed: true, rules: [] },
+  // Issue #700: an access package catalog. Reviewed (every field the restore
+  // writes: displayName, description, state, catalogType, isExternallyVisible). Making it
+  // externally visible lets users outside the organization request its access
+  // packages, and through them reach the groups, apps and sites they grant, so
+  // false -> true needs the separate approval. A recreated catalog is judged too
+  // (judgesCreates): restoring it visible exposes it from the moment it exists,
+  // while restoring false (not visible) is no effect.
+  accessPackageCatalog: { reviewed: true, judgesCreates: true, rules: [
+    rule('isExternallyVisible', 'externally-sharing', disabledToEnabled),
+  ] },
   // Issue #155: Intune policies. These rules land on DEVICE content, which a
   // policy reaches as soon as it is assigned, whether the policy is new or
   // changed, so these three types judge creates too (judgesCreates). Reviewed

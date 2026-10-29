@@ -1,0 +1,46 @@
+{
+  "restoreRef": "00f25c72-0eac-8890-a877-0218b8fd7623",
+  "entry": {
+    "naturalKey": "accessPackageCatalog:ae7d49ce-9a8c-812c-a636-e7d092bb261b",
+    "resourceType": "accessPackageCatalog",
+    "operation": "update",
+    "targetId": "ae7d49ce-9a8c-812c-a636-e7d092bb261b",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-29T22:15:53.039Z",
+    "priorState": {
+      "id": "ae7d49ce-9a8c-812c-a636-e7d092bb261b",
+      "state": "published",
+      "uniqueName": null,
+      "catalogType": "userManaged",
+      "description": "KEEL-RT drifted",
+      "displayName": "KEEL-RT-228-catalog",
+      "createdDateTime": "2026-10-29T22:09:20.853Z",
+      "modifiedDateTime": "2026-10-29T22:12:57.84Z",
+      "isExternallyVisible": false,
+      "serviceManagementReference": null
+    },
+    "intendedState": {
+      "state": "published",
+      "uniqueName": null,
+      "catalogType": "userManaged",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-228-catalog",
+      "isExternallyVisible": false,
+      "serviceManagementReference": null
+    },
+    "postState": {
+      "id": "ae7d49ce-9a8c-812c-a636-e7d092bb261b",
+      "state": "published",
+      "uniqueName": null,
+      "catalogType": "userManaged",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-228-catalog",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identityGovernance/entitlementManagement/catalogs/$entity",
+      "createdDateTime": "2026-10-29T22:09:20.853Z",
+      "modifiedDateTime": "2026-10-29T22:15:53.14Z",
+      "isExternallyVisible": false,
+      "serviceManagementReference": null
+    }
+  }
+}

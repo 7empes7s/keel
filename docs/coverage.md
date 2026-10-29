@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 41 are full, 129 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 100 at least in part; the other 77 are restored by hand from the backup.
+KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 39 are full, 131 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 99 at least in part; the other 78 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -235,11 +235,11 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Multitenant organization | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Cross-tenant sync per organization | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | External user leave settings | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
-| Guest invitation domain restrictions | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Guest invitation domain restrictions | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
 | App creation policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | App permission pre-approval policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Multitenant organization sync template | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
-| Multitenant organization access template | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
+| Multitenant organization access template | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Guest SAML or WS-Fed sign-in | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Attack simulation automations | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Attack simulations | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
@@ -304,8 +304,8 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **Cross-tenant sync per organization** (not built yet). These settings let a partner tenant sync its users into yours, so KEEL will not write them without a review step, which is not built yet.
   - *You do:* Set the partner's sync settings again in the Entra admin center under cross-tenant access settings, using the backup.
 - **External user leave settings.** Puts back whether external users can leave your organization themselves, and whether their data is removed when they do.
-- **Guest invitation domain restrictions.** Puts back the list of domains guests may, or may not, be invited from.
-  - *You do:* If the restriction was removed completely, set the domains again in the Entra admin center, under External collaboration settings.
+- **Guest invitation domain restrictions** (KEEL choice). KEEL backs up the list of domains guests may, or may not, be invited from, and shows when it changes. A restore never changes who can be invited.
+  - *You do:* Set the domains again in the Entra admin center, under External Identities, External collaboration settings, Collaboration restrictions.
 - **App creation policies.** Recreates custom app creation policies and puts their name and description back, with their include and exclude conditions, and removes conditions added since the backup.
   - *Not brought back:* the include and exclude rules of a custom policy (stored separately and not in the backup yet); a built-in app creation policy (set by Microsoft).
   - *You do:* Microsoft's built-in policies cannot be changed by anyone. There is no admin center page for these policies.
@@ -314,8 +314,9 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* A policy only works once it is assigned to its app. Assign a recreated policy to the app again with PowerShell.
 - **Multitenant organization sync template.** Puts back the user sync settings a tenant gets when it joins your multitenant organization.
   - *You do:* Tenants that already joined keep their own settings; change those per organization.
-- **Multitenant organization access template.** Puts back the cross-tenant access settings a tenant gets when it joins your multitenant organization.
-  - *You do:* Tenants that already joined keep their own settings; change those per organization.
+- **Multitenant organization access template.** Puts back when the template applies to tenants that join your multitenant organization.
+  - *Not brought back:* its cross-tenant access settings (trust in partner sign-ins, automatic consent, who may cross) (in the backup, but KEEL does not write it yet).
+  - *You do:* Which partner users and apps get in, automatic consent, and trust in partner MFA and devices are never changed by a restore: set them by hand. Tenants that already joined keep their own settings.
 - **Guest SAML or WS-Fed sign-in.** Puts back each partner's name and sign-in protocol.
   - *Not brought back:* its domains (in the backup, but KEEL does not write it yet).
   - *You do:* KEEL never puts back a partner's sign-in addresses or signing certificate, so a changed backup cannot send guests to another sign-in page. Check those with the partner and set them in the Entra admin center, under External Identities, All identity providers. A deleted partner is set up again there too, with its domains.

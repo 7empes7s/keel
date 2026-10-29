@@ -1,5 +1,5 @@
 import { OPEN_DRIFT_PREDICATE } from '../engine/store/openDrift.mjs';
-import { verifyChain } from '../engine/govern/evidence.mjs';
+import { verifyChain, verifyChainCached } from '../engine/govern/evidence.mjs';
 import { TYPE_COVERAGE_CTES, readCoverageOutcome } from '../engine/coverage/snapshots.mjs';
 
 async function getLatestSnapshotMeta(client, { tenantRef }) {
@@ -64,13 +64,30 @@ export async function getLastCollection(client, { tenantRef }) {
   return snapshot ? { completedAt: snapshot.completed_at, status: snapshot.status } : null;
 }
 
-export async function getEvidenceIntegrity(client, { tenantRef }) {
-  const result = await verifyChain(client, { tenantRef });
+// With `chainCache` (a Map a long-lived caller such as the portal keeps), only records
+// added since the last check are hashed, with a full walk every few minutes
+// (engine CHAIN_FULL_VERIFY_MS). The portal's Overview runs this on every load and the
+// menu asks for it every minute, so a full walk each time made every page slower as the
+// audit record grew. The cached walk must see one snapshot, hence the transaction.
+export async function getEvidenceIntegrity(client, { tenantRef, chainCache }) {
+  const result = chainCache ? await verifyInSnapshot(client, tenantRef, chainCache) : await verifyChain(client, { tenantRef });
   const { rows } = await client.query(
     'SELECT record_count FROM evidence_head WHERE tenant_ref = $1',
     [tenantRef],
   );
   return { ok: result.ok, chainLength: rows[0] ? Number(rows[0].record_count) : 0 };
+}
+
+async function verifyInSnapshot(client, tenantRef, cache) {
+  await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+  try {
+    const result = await verifyChainCached(client, { tenantRef, cache });
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
 }
 
 export async function getRecentDispositionCounts(client, { tenantRef, days = 7 }) {

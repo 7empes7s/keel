@@ -1,0 +1,102 @@
+{
+  "requests": [
+    {
+      "credential": "collector",
+      "read": "sharepoint-structure",
+      "families": [
+        "hubSite",
+        "siteDesign",
+        "siteScript",
+        "siteTemplate"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-28T22:00:28.829Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Add-PnPSiteScript",
+      "parameters": {
+        "Title": "KEEL-RT-capture-6646418f",
+        "Description": "KEEL capture 2026-10-28T22:00:28.829Z",
+        "Content": "{\"$schema\":\"https://developer.microsoft.com/json-schemas/sp/site-design-script-actions.schema.json\",\"actions\":[],\"bindata\":{},\"version\":1}"
+      },
+      "outcome": "failed",
+      "at": "2026-10-28T22:00:51.878Z",
+      "error": {
+        "code": "CMDLET_ERROR",
+        "errorId": "PnP.PowerShell.Commands.AddSiteScript"
+      }
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-PnPHubSite",
+      "parameters": {
+        "Identity": "https://ta036f59837f.sharepoint.com/sites/KEEL-RT-20261004",
+        "Description": "KEEL capture 2026-10-28T22:00:28.829Z"
+      },
+      "outcome": "ok",
+      "at": "2026-10-28T22:00:53.712Z"
+    },
+    {
+      "credential": "collector",
+      "read": "sharepoint-structure",
+      "families": [
+        "hubSite"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-28T22:00:55.748Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Set-PnPHubSite",
+      "parameters": {
+        "Identity": "https://ta036f59837f.sharepoint.com/sites/KEEL-RT-20261004",
+        "Description": ""
+      },
+      "outcome": "ok",
+      "at": "2026-10-28T22:00:57.670Z"
+    },
+    {
+      "credential": "collector",
+      "read": "sharepoint-structure",
+      "families": [
+        "hubSite"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-28T22:00:59.553Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Register-PnPHubSite",
+      "parameters": {
+        "Site": "https://ta036f59837f.sharepoint.com/sites/KEEL-RT-structure-hub"
+      },
+      "outcome": "ok",
+      "at": "2026-10-28T22:01:01.351Z"
+    },
+    {
+      "credential": "collector",
+      "read": "sharepoint-structure",
+      "families": [
+        "hubSite"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-28T22:01:04.567Z"
+    },
+    {
+      "credential": "restorer",
+      "cmdlet": "Invoke-PnPSiteTemplate",
+      "parameters": {
+        "Url": "https://ta036f59837f.sharepoint.com/sites/KEEL-RT-20261004",
+        "TemplateGzipSha256": "3694b0739fffcb6b51a09df028bc7dd7b8c745a507b959d4f2152dabe57ea5ed"
+      },
+      "outcome": "failed",
+      "at": "2026-10-28T22:01:06.569Z",
+      "error": {
+        "code": "CMDLET_ERROR",
+        "errorId": "PnP.PowerShell.Commands.Provisioning.Site.InvokeSiteTemplate"
+      }
+    }
+  ],
+  "values": {}
+}

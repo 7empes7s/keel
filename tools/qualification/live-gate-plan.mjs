@@ -383,6 +383,54 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-app-web`, drift: 'delete both: the restore adds the web link back with its settings and in both its categories, and the Win32 app back as a shell with its commands and detection rule, plus an "upload the package" step; then change the web link\'s description and take it out of Business: the restore puts both back',
     note: 'Never assign either app. Never upload a real package to the shell. Delete both fixtures after the run if the queue item says so.',
   },
+  // Intune policy kinds that never ran live (completion push, item 3). Each is
+  // named by its displayName and assigned to nobody, so no device or user is
+  // affected. Without these entries the capture took them for objects with no
+  // name of their own and refused them (Q129, windowsFeatureUpdateProfile).
+  assignmentFilter: {
+    kind: 'named-object', fixture: `Windows assignment filter ${FIXTURE_PREFIX}-filter (rule: (device.deviceName -startsWith "KEELRT-")), used by no assignment`,
+    select: `${FIXTURE_PREFIX}-filter`, drift: 'delete it: the restore recreates it with the same platform and rule; then change its rule: the restore puts it back',
+    note: 'The platform is never changed on update. No assignment uses the filter, so no policy targets change.',
+  },
+  roleScopeTag: {
+    kind: 'named-object', fixture: `scope tag ${FIXTURE_PREFIX}-scope-tag, on no object and in no role assignment`,
+    select: `${FIXTURE_PREFIX}-scope-tag`, drift: 'delete it: the restore recreates it with the same description; then change its description: the restore puts it back',
+    note: 'Never touch the built-in Default tag (the restore refuses it).',
+  },
+  windowsFeatureUpdateProfile: {
+    kind: 'named-object', fixture: `Windows feature update profile ${FIXTURE_PREFIX}-feature (any supported version), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-feature`, drift: 'delete it: the restore recreates it with the same version; then change its description: the restore puts it back',
+  },
+  windowsQualityUpdateProfile: {
+    kind: 'named-object', fixture: `Windows expedited quality update profile ${FIXTURE_PREFIX}-quality (any offered release), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-quality`, drift: 'delete it: the restore recreates it with the same release; then change its description: the restore puts it back',
+    note: 'Assigned to nobody, so no device is pushed an update.',
+  },
+  windowsDriverUpdateProfile: {
+    kind: 'named-object', fixture: `Windows driver update profile ${FIXTURE_PREFIX}-driver (manual approval), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-driver`, drift: 'delete it: the restore recreates it with manual approval; then change its description: the restore puts it back',
+    note: 'If Intune refuses it (for example a Windows driver update licence is missing), record that and skip this kind.',
+  },
+  notificationMessageTemplate: {
+    kind: 'named-object', fixture: `compliance notification template ${FIXTURE_PREFIX}-notice (default locale en-US, one en-US message: subject KEEL-RT, body KEEL-RT test), used by no compliance policy`,
+    select: `${FIXTURE_PREFIX}-notice`, drift: 'delete it: the restore recreates it with its message; then change the message subject: the restore puts it back',
+    note: 'Never add it to a compliance policy action, so no email is sent.',
+  },
+  managedAppPolicy: {
+    kind: 'named-object', fixture: `iOS app protection policy ${FIXTURE_PREFIX}-ios-mam protecting Microsoft Outlook (com.microsoft.office.outlook), PIN required, no wipe settings, assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-ios-mam`, drift: 'delete it: the restore recreates it with Outlook as its app; then turn its PIN off: the restore turns it back on',
+    note: 'Back it up after the per-policy apps read is deployed (PR #459): an older backup holds no apps and a recreate is refused. Never assign it.',
+  },
+  targetedManagedAppConfiguration: {
+    kind: 'named-object', fixture: `managed apps app configuration policy ${FIXTURE_PREFIX}-app-config for Microsoft Outlook (one setting: com.microsoft.outlook.Mail.FocusedInbox = false), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-app-config`, drift: 'delete it: the restore recreates it with Outlook and its setting; then change the setting value: the restore puts it back',
+    note: 'Never assign it.',
+  },
+  mobileAppConfiguration: {
+    kind: 'named-object', fixture: `managed devices iOS app configuration policy ${FIXTURE_PREFIX}-device-config for an unassigned iOS store app ${FIXTURE_PREFIX}-ios-app (one setting: KEELRT = 1), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-device-config`, drift: 'delete it: the restore recreates it for the same app with its setting; then change the setting value: the restore puts it back',
+    note: 'The app must exist in the target (the restore checks). Never assign the app or the policy.',
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons. None touches sign-in,
   // Conditional Access or any account; each is set back to its value after the run.
   externalIdentitiesPolicy: {

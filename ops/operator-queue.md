@@ -1944,7 +1944,7 @@ being triggered by queue updates.
   ships (`keel-db-<date>.sql.gz.age`), and nothing ships when `age` or a recipient is missing. Once the PR deploys, the
   offsite run fails until this item is done, so do it now.
 - Needs: nothing (set-up only; the test run in step 5 uses your own checkout of the branch).
-- Status: blocked (rerun step 4 after the 2026-10-29 04:01 dump; identity waiting to be moved off the host)
+- Status: done (identity waiting to be moved off the host)
 - **Host only, no tenant.** Never print, log or commit the private identity (`AGE-SECRET-KEY-...`).
 - Do:
   1. `apt-get install -y age` if `command -v age` is empty; report `age --version`.
@@ -1959,7 +1959,9 @@ being triggered by queue updates.
   5. Encryption round trip without shipping: `node engine/schedules/offsite.mjs encrypt <latest /opt/backups/<date>/keel-db.sql.gz> /root/keel-offsite-age/q198-test.age`
      then `age -d -i /root/keel-offsite-age/identity.txt /root/keel-offsite-age/q198-test.age | cmp - <that dump>`: expected no
      output, exit 0. Delete `q198-test.age` afterwards.
-- Result: blocked (2026-10-28 06:40 UTC, root keel-operator): **set-up done and the round trip is identical; step 4's dry run stops at the freshness gate before the age check.** Rerun step 4 after the next nightly dump (2026-10-29 ~04:01 UTC); keel-operator will. Host only, no tenant. Tested `ea96195c` (tip of origin/claude/project-thread-ck66bm).
+- Result: done (2026-10-29 04:37 UTC, root keel-operator): **step 4 rerun passes: dry run exit 0 with "encryption recipients present".** Run from /opt/keel-live at `d974df91` (PR #621 deployed), as root: `KEEL_OFFSITE_BACKUP_ROOT=/opt/backups bash ops/keel-offsite.sh --dry-run` exit **0**. Candidate /opt/backups/2026-10-29/keel-db.sql.gz (dump 04:01, not yet shipped by the 05:00 run); gzip check passed; content check 96 COPY blocks; local sha256 `33461780634c864181d47276ee3108897eb7a611a0b12617c6d15e2b0f52d300`; "encryption recipients present"; would ship `/mnt/keel-copy/keel-offsite/keel-db-2026-10-29.sql.gz.age`; target usable; nothing transferred. Recipient unchanged: `age1u8cnmzeerdjnxul3x8m8vj6ph6fs9mg6sgd4qpy5wp0mrz9arcnskfdtfy`. Identity not printed. Host only, no tenant.
+  - **identity at /root/keel-offsite-age/identity.txt is waiting to be moved off the host** (Marouane; still present at 04:37 UTC).
+- Earlier result: blocked (2026-10-28 06:40 UTC, root keel-operator): **set-up done and the round trip is identical; step 4's dry run stops at the freshness gate before the age check.** Rerun step 4 after the next nightly dump (2026-10-29 ~04:01 UTC); keel-operator will. Host only, no tenant. Tested `ea96195c` (tip of origin/claude/project-thread-ck66bm).
   1. age was missing; `apt-get install -y age` exit 0; `age --version` 1.1.1.
   2. `install -d -m 700 /root/keel-offsite-age` exit 0; `age-keygen -o /root/keel-offsite-age/identity.txt` exit 0 (output to /dev/null). Dir 700 root, identity.txt 600 root; not copied anywhere.
   3. `age-keygen -y … > /etc/keel/offsite-age-recipients.txt && chmod 644` exit 0 (644 root, no private key). **Recipient: `age1u8cnmzeerdjnxul3x8m8vj6ph6fs9mg6sgd4qpy5wp0mrz9arcnskfdtfy`**

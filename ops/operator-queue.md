@@ -1653,7 +1653,8 @@ being triggered by queue updates.
 - Drafted by the "Probe Microsoft config snapshots for backup" thread (2026-10-27).
 - Needs: Q182 done; the Collector's SP holds `ConfigurationMonitoring.ReadWrite.All` as an appRoleAssignment (Marouane's consent; if
   missing, set `blocked: waiting on consent` and stop).
-- Status: blocked: waiting on consent (Keel Restorer AppRoleAssignment.ReadWrite.All)
+- Requeued by the "Resume tests after Collector and Restorer consent" thread (2026-10-29 10:58 UTC): Marouane reports admin consent granted on Keel Restorer (incl. `AppRoleAssignment.ReadWrite.All`). Needs now also: **Q223 done**, and Q222, Q221 and Q219 each done or blocked (run the quick items first; this one has 40-minute jobs). Rerun step 1 for the 14 Graph read roles (Exchange.ManageAsApp and Global Reader are already held; report them as already held), then steps 2–5.
+- Status: todo (after Q223, Q222, Q221, Q219)
 - Result: blocked: waiting on consent (2026-10-28 20:48 UTC, root keel-operator). The Collector consent landed at 20:43 (59 appRoleAssignments, ConfigurationMonitoring.ReadWrite.All held). Step 1 was done in part, as the Restorer:
   - **Added:** Exchange Online `Exchange.ManageAsApp` on the TCM principal (df012486…). A repeat POST answered 409 "EntitlementGrant entry already exists". **Added:** directory role **Global Reader** (roleAssignment, scope `/`, 201).
   - **Refused (403 "Insufficient privileges to complete the operation.")**: all 14 Microsoft Graph read roles (Policy.Read.All, Directory.Read.All, User.Read.All, Group.Read.All, Application.Read.All, RoleManagement.Read.Directory, EntitlementManagement.Read.All, IdentityProvider.Read.All, Organization.Read.All, DeviceManagementConfiguration.Read.All, DeviceManagementApps.Read.All, DeviceManagementServiceConfig.Read.All, DeviceManagementRBAC.Read.All, AppCatalog.Read.All). The Restorer lacks `AppRoleAssignment.ReadWrite.All`.
@@ -9926,7 +9927,8 @@ item that needs it stays untouched.
   `pronounsSettings`): no drift, no restore, no capture for them, until Marouane approves it explicitly and a fixture/tenant-wide
   guard lands (separate thread). Run only the `KEEL-RT-community` part (steps 0 to 6 for `engageCommunity` alone; select only that
   kind in the restore). Report the five as `held`.
-- Status: blocked: waiting on consent (Keel Restorer, 6 Q218 roles)
+- Requeued by the "Resume tests after Collector and Restorer consent" thread (2026-10-29 10:58 UTC): Marouane reports admin consent granted on Keel Restorer (the 6 Q218 roles). Needs now also: **Q223 done**. The **HOLD above still stands**: run only the `KEEL-RT-community` part and report the five tenant-wide singletons as `held`. They wait for PR #677 (tenant-wide restore option `--allow-tenant-wide-test-writes`; open, not merged) and for Marouane to approve each tenant-wide artifact himself; a separate item will be queued for them.
+- Status: todo (community part only, after Q223)
 - Result: blocked: waiting on consent (2026-10-28 23:40 UTC, root keel-operator). Q218 is done and /opt/keel-live (57f36441) has #673 (`adminCenterLooseningRefusal` present), but the Keel Restorer SP (8cd199c9…) holds **none** of the 6 Q218 permissions as appRoleAssignments: OrgSettings-Forms.ReadWrite.All, OrgSettings-Microsoft365Install.ReadWrite.All, OrgSettings-AppsAndServices.ReadWrite.All, ReportSettings.ReadWrite.All, PeopleSettings.ReadWrite.All, Community.ReadWrite.All. Waiting on Marouane: App registrations → Keel Restorer → API permissions → Grant admin consent. Nothing run.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q133. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer only; global admin not used. If Graph
@@ -9966,6 +9968,7 @@ item that needs it stays untouched.
   Q213's fixtures were cleaned up, so this reruns it from the start.
 - Needs: /opt/keel-live at `0ec75cbf` or later (`grep -q holdsNoReferences -r /opt/keel-live/engine/collect`), and #655's code
   (`grep -q removeChosenAssignments /opt/keel-live/engine/restore/intuneOperations.mjs`).
+- Coordinator note (2026-10-29 10:58 UTC): superseded by Q221; do not rerun this item.
 - Status: blocked: waiting on Collector consent (PrivilegedAccess.Read.AzureADGroup, Q217)
 - Result: blocked (2026-10-28 23:48 UTC, root keel-operator) at step 5. **#672 works for todoSettings (no longer named), but the undo delete is now refused on `privilegedAccessGroupResource`: `refused deviceConfiguration:KEEL-RT-213-delete: blocked-incomplete-read: deleting deviceConfiguration:KEEL-RT-213-delete needs a full read of the target, but privilegedAccessGroupResource could not be read`.** The Collector read answers 403 PermissionScopeNotGranted. This is the gap Q217 found: the Collector holds no PIM for Groups scope, and `PrivilegedAccess.Read.AzureADGroup` was added to its manifest at 22:46 and is **waiting on Marouane's consent**. Rerun Q220 after that consent. B = **57f36441**. Restorer for fixture writes and assigns, Collector for reads; global admin not used.
   - Needs: the item's grep (`holdsNoReferences` under engine/collect) does not match; the flag lives in `tools/tenant-probe/catalog.d/admin-center-settings.mjs`. #672's merge 0ec75cb is an ancestor of live, and entraAdapter.mjs is byte-identical, so the code is deployed.
@@ -9999,7 +10002,8 @@ item that needs it stays untouched.
 - Needs: #678 merged and deployed (`grep -q refersOnlyTo /opt/keel-live/tools/tenant-probe/catalog.d/last-leftovers.mjs`).
   Do **not** wait for the `PrivilegedAccess.Read.AzureADGroup` consent: this check is meant to run while that read still answers 403.
   If the consent has already been given and the read now succeeds, run it anyway and say so in the Result.
-- Status: waiting for #678 deploy
+- Requeued by the "Resume tests after Collector and Restorer consent" thread (2026-10-29 10:58 UTC): #678 is merged (`d974df91`) and `/opt/keel-live` was at `6fb16358` (contains it) at Q222. The Collector consent for `PrivilegedAccess.Read.AzureADGroup` is now reported given, so expect the PIM for Groups read to succeed; run it anyway as written and report the read status. Needs now also: **Q223 done**. This rerun replaces Q220 (do not run Q220 separately).
+- Status: todo (after Q223)
 - Do: Q220 exactly as written (same rules, same `KEEL-RT-213-*` fixtures recreated from scratch, test tenant only, assign only to
   the empty `KEEL-RT-213-group`, self-approve and log every approval id). At step 5 the plan with
   `--delete-assigned …-delete --skip-assigned …-skip` must persist as `completed`. If any `refused <key>: <reason>` line prints,
@@ -10010,7 +10014,8 @@ item that needs it stays untouched.
 - Drafted by the "Handle To Do settings read errors" thread (2026-10-29). PR #679 (merged as `6fb16358`): a minor (tier3) kind
   whose read failed with 500/502/504 no longer blocks a baseline; it is left out (`observation_scope.leftOut`) and never drift.
 - Needs: `/opt/keel-live` at `6fb16358` or later (`grep -q leftOutForServiceError /opt/keel-live/engine/govern/baseline.mjs`).
-- Status: blocked (KEEL Collector consent for PrivilegedAccess.Read.AzureADGroup, as Q220)
+- Requeued by the "Resume tests after Collector and Restorer consent" thread (2026-10-29 10:58 UTC): Marouane reports admin consent granted on KEEL Collector (`PrivilegedAccess.Read.AzureADGroup`). Needs now also: **Q223 done**. Rerun steps 1–2 as written. Expected now: exit 3 or 0 with only todoSettings (500) incomplete, `privilegedAccessGroupResource` complete or complete-empty, and `eligible: true`. If eligible, also report that the portal's "New approved setup" picker lists that backup (read-only check; do not create or activate a baseline).
+- Status: todo (after Q223)
 - Result: blocked (2026-10-29 08:40 UTC, root keel-operator, build `6fb16358` in /opt/keel-live, Needs grep met): **the To Do part works (todoSettings 500 is left out), but the snapshot is still not eligible because privilegedAccessGroupResource is refused with 403**, which PR #679 rightly still treats as blocking. That is the KEEL Collector's missing `PrivilegedAccess.Read.AzureADGroup` consent (same as Q220; added to the manifest 2026-10-28, consent click still pending). Rerun this item after that consent. Credential: Collector (read only). No tenant write, no baseline created; the only DB write was KEEL's own collect CLI recording its snapshot.
   1. `node cli/keel-collect.mjs` exit **3**. `incomplete types: [{"type":"privilegedAccessGroupResource","outcome":"failed","httpStatus":403},{"type":"todoSettings","outcome":"failed","httpStatus":500}]`
   2. Run from `/opt/keel-live/engine` with `./govern/baseline.mjs` (adapted: `pg` resolves only from engine/node_modules), otherwise verbatim:
@@ -10029,3 +10034,26 @@ item that needs it stays untouched.
 - **Expected:** step 2 prints `eligible: true` for the step 1 snapshot and `leftOut [{"type":"todoSettings","reason":"microsoft-service-error","httpStatus":500}]`
   (or `eligible: true` and `[]` if To Do read fine). The portal's "New approved setup" picker then lists that backup.
 - **Report:** both outputs verbatim, the snapshot id and the build.
+
+### Q223: Check the new admin consents on KEEL Collector and Keel Restorer, and the PIM for Groups read (read-only)
+- Drafted by the "Resume tests after Collector and Restorer consent" thread (2026-10-29 10:58 UTC). Marouane reports (10:53 UTC) "Grant done for both
+  collector and restorer": admin consent on **KEEL Collector** (incl. `PrivilegedAccess.Read.AzureADGroup`, Q217) and on
+  **Keel Restorer** (the 6 Q218 roles plus `AppRoleAssignment.ReadWrite.All`, Q183). This item confirms it in the tenant before
+  Q222, Q221, Q219 (community part) and Q183 run. Those items need this one done.
+- Needs: none.
+- Status: todo
+- **Reads only.** No tenant write, no grant, no consent, no app registration change. Global admin not used. Never print a token:
+  report role names only.
+- Do:
+  1. Collector SP (from `/etc/keel/tenant.json`): list its Graph appRoleAssignments. Report the count and whether
+     `PrivilegedAccess.Read.AzureADGroup` is held. Get a fresh Collector token and report whether its `roles` claim holds it.
+  2. Restorer SP (8cd199c9…): list its Graph appRoleAssignments. Report the count and, for each of these 7, held yes/no:
+     `OrgSettings-Forms.ReadWrite.All`, `OrgSettings-Microsoft365Install.ReadWrite.All`, `OrgSettings-AppsAndServices.ReadWrite.All`,
+     `ReportSettings.ReadWrite.All`, `PeopleSettings.ReadWrite.All`, `Community.ReadWrite.All`, `AppRoleAssignment.ReadWrite.All`.
+     Get a fresh Restorer token and report the same 7 from its `roles` claim.
+  3. With the Collector token and `GraphReader`, read `beta /identityGovernance/privilegedAccess/group/resources` three times,
+     30 s apart. Report HTTP status, item count and any Graph error code each time.
+  4. If a role is not held yet (consent can take a few minutes to apply), wait 10 minutes and repeat steps 1–3 once. If still
+     missing, set `Status: blocked: waiting on consent`, name exactly which roles on which app, and stop. Grant nothing.
+- **Expected:** every listed role held in both the assignments and the token; step 3 answers 200 three times (0 or more items).
+- **Report:** steps 1–3 as above; then go on to Q222, Q221, Q219 (community part only) and Q183, in that order.

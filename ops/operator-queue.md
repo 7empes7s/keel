@@ -11342,8 +11342,38 @@ item that needs it stays untouched.
   targets the real cause and the before/after numbers are real. **Read-only: no tenant calls, no writes to the database, no
   service restarts, no config changes.** Never print the database URL, a password, a token or a tenant id.
 - Needs: nothing. **Quick (about 5 minutes, read-only): fine to take between other items, even while one waits on a merge.**
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-29 22:57 UTC, keel-operator). Read-only: no tenant calls, no DB writes, no restarts or config changes. Deployed commit **53cbe462** (/opt/keel-live = checkout).
+  1. **How it runs** (exit 0):
+     - `ExecStart=/usr/bin/npm run start -- -H 127.0.0.1 -p 3600` (next start, Next.js 16.4.1). No `Environment=` lines; EnvironmentFile db.env and portal.env.
+     - MemoryCurrent ≈ 79 MiB; NRestarts=0.
+     - Host: uptime 197 d, load 0.11/0.22/0.29, nproc 4. free -m: total 7745, used 2854, avail 4891; swap 3169 of 8191 used.
+  2. **Request timings: not available.**
+     - Caddy has no `log` directive for the site, `/var/log/caddy` is empty, and `journalctl -u caddy --since -7d` has 0 `duration` lines. Logging was not turned on.
+     - `journalctl -u keel-portal --since -7d` (1313 lines) has no timings. It shows:
+       - 54 starts (deploy restarts, Ready in ~100 ms);
+       - per-run memory peak median 110 MB, **max 1.7 GB** (runs with 1.3–1.7 GB peaks, 25–34 s CPU, some swap);
+       - 7× pg `DeprecationWarning: Calling client.query() when the client is already executing a query`.
+  3. **Data sizes** (exit 0, 0):
+
+     | table | rows | size |
+     |---|---:|---:|
+     | resource_version | 798,872 | 1351 MB |
+     | relationship_edge_set | 541,821 | 450 MB |
+     | drift | 106,043 | 345 MB |
+     | evidence | 383,653 | 241 MB |
+     | resource_reference | 1,031,610 | 240 MB |
+     | alert_event_receipt | 383,519 | 158 MB |
+     | job | 1,408 | 121 MB |
+     | relationship_edge | 241,732 | 94 MB |
+     | workload_observation | 15,986 | 28 MB |
+     | content_item | 12,810 | 21 MB |
+
+     The other top-25 tables are each under 10 MB. Evidence: 383,653 rows; `subject` column 138 MB.
+  4. **`verifyChain` alone** (1 tenant, 383,653 records), each ok true, exit 0: **3478 ms, 3713 ms, 3469 ms**.
+     - Note: the portal's /activity uses `verifyAnchoredChain(..., chainCache)` (portal/lib/evidence.ts), so its real cost may differ.
+  5. **Slow queries:** skipped. pg_stat_statements is not installed (extensions: plpgsql, pgcrypto) and was not installed.
+  - Inference, not measured per request: a full chain check takes ~3.5 s per run over 384k records. If the Overview runs it without the cache helping, that alone would explain most of the slowness. The 1.3–1.7 GB memory peaks point to heavy in-process loads too.
 - Do, on Mulinux, against the deployed build (report the commit `/opt/keel-live` is at):
   1. **How the portal runs:** `systemctl cat keel-portal | grep -E 'ExecStart|Environment='` (redact any secret value),
      `systemctl show keel-portal -p MemoryCurrent -p NRestarts`, `uptime`, `free -m`, `nproc`.

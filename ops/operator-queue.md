@@ -10407,3 +10407,75 @@ item that needs it stays untouched.
      `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; S; per type and operation promoted / refused (exact message) / blocked; approval ids; step 4 count; the evidence
   branch and commit; anything left in the tenant.
+
+### Q229: Live restore proof of 10 Intune policy kinds that never ran live (filters, scope tags, Autopilot, update profiles, notification templates, app protection, app configuration; after PR #688)
+- Drafted by the "Live test 10 Intune policy restores" thread (2026-10-29). Writers, fixture-tested only, never run live, all in
+  `engine/restore/intuneOperations.mjs` (create + update each): `assignmentFilter` (beta; platform is create-only), `roleScopeTag`
+  (beta; the built-in Default tag is refused), `windowsAutopilotDeploymentProfile` (beta), `windowsFeatureUpdateProfile`,
+  `windowsQualityUpdateProfile`, `windowsDriverUpdateProfile` (beta), `notificationMessageTemplate` (v1.0, with its localized
+  messages), `managedAppPolicy` (iOS/Android app protection, with its apps), `targetedManagedAppConfiguration` (with its apps),
+  `mobileAppConfiguration` (v1.0; the apps it targets must exist).
+- What earlier runs found, so it is not re-run blind:
+  - **Capture refusal fixed by PR #688:** these kinds (except Autopilot) had no reviewed live-gate guidance, so the capture took them
+    for objects with no name of their own and refused them ("has no name of its own: pass --allow-by-reference", Q129 feature
+    update profile). After #688 each is a named fixture: **never pass `--allow-by-reference` for these kinds.**
+  - **Autopilot:** Q116 and Q130 could not create the fixture: `POST beta /deviceManagement/windowsAutopilotDeploymentProfiles` answered
+    400 "An error has occurred" for every body tried. See step 0.
+  - **Notification template:** Q120 noted that a `notificationMessageTemplates` create returned 400 (no message recorded). See step 0.
+  - **App protection and app configuration:** Q128 never ran (blocked on #466, fixed since). The per-policy apps read from PR #459
+    has never been checked live: check it in step 1.
+- Needs: /opt/keel-live at the #688 merge or later
+  (`grep -q "targetedManagedAppConfiguration: {" /opt/keel-live/tools/qualification/live-gate-plan.mjs`).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and Restorer/Collector split as Q129. Self-approve under the 2026-10-14
+  standing authorization and log every approval id (content effects included). Restorer for writes, Collector for reads; global
+  admin not used. The Restorer holds DeviceManagementConfiguration, ServiceConfig, Apps and RBAC ReadWrite (Q129 step 0): check the
+  token before saying one is missing. If Graph answers 403 or a licence error, report blocked with Graph's exact message; grant nothing.
+  Never touch CA policies, break-glass or Marouane's account. No tenant-wide setting is changed.
+- **Never assign any fixture** (no group, user, device, "All users" or "All devices"). Never put the filter on an assignment, the scope
+  tag on an object or role assignment, or the notification template on a compliance policy. Never touch the built-in Default scope tag.
+- **Fixtures** (write down that there were none with the `KEEL-RT-229` prefix before; the plan's `KEEL-RT-148-*` names are examples):
+  - assignment filter `KEEL-RT-229-filter`: platform `windows10AndLater`, rule `(device.deviceName -startsWith "KEELRT-")`;
+  - scope tag `KEEL-RT-229-scope-tag`, description `KEEL-RT test fixture`;
+  - Autopilot profile `KEEL-RT-229-autopilot`: Microsoft Entra joined, device name template `KEELRT-%RAND:4%` (only if step 0 works);
+  - feature update profile `KEEL-RT-229-feature` (Windows 11, any supported version); expedited quality update profile
+    `KEEL-RT-229-quality` (any offered release); driver update profile `KEEL-RT-229-driver` (manual approval);
+  - notification template `KEEL-RT-229-notice` (step 0);
+  - iOS app protection policy `KEEL-RT-229-ios-mam` protecting Microsoft Outlook (`com.microsoft.office.outlook`), PIN required, no wipe settings;
+  - managed apps app configuration `KEEL-RT-229-app-config` for Outlook, one setting `com.microsoft.outlook.Mail.FocusedInbox` = `false`;
+  - iOS store app `KEEL-RT-229-ios-app` (any free App Store app, for example Microsoft Outlook) and a managed devices app configuration
+    `KEEL-RT-229-device-config` targeting it, one setting `KEELRT` (string) = `1`.
+- Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set. Use the `live-gate-plan.mjs` steps
+  for these ten types (create and update):
+  0. **Two fixtures that failed before, tried once each:**
+     - Autopilot: first read `GET beta /deviceManagement/windowsAutopilotSettings` and report it. Then one POST with the full body
+       (`@odata.type` `#microsoft.graph.azureADWindowsAutopilotDeploymentProfile`, displayName, description, language `os-default`,
+       deviceNameTemplate, deviceType `windowsPc`, enableWhiteGlove false, extractHardwareHash false, roleScopeTagIds `["0"]`,
+       outOfBoxExperienceSettings with hidePrivacySettings true, hideEULA true, userType `standard`, deviceUsageType `singleUser`,
+       skipKeyboardSelectionPage true, hideEscapeLink true). If it answers 400 again, report the full error body and response headers
+       (request-id, client-request-id) and skip Autopilot; no more attempts.
+     - Notification template: POST v1.0 `/deviceManagement/notificationMessageTemplates` with displayName, defaultLocale `en-US`,
+       brandingOptions `none`, roleScopeTagIds `["0"]`, then POST `.../{id}/localizedNotificationMessages` with locale `en-US`,
+       subject `KEEL-RT`, messageTemplate `KEEL-RT test`, isDefault true. If either answers 400, report the exact body, retry once on
+       beta, and skip the kind if that fails too.
+  1. Create the fixtures, then take snapshot S. **Backup check:** for each type, the read outcome (complete / failed, with the
+     exact Graph error). For `KEEL-RT-229-ios-mam` and `KEEL-RT-229-app-config`, whether S holds `apps` with Outlook; for
+     `KEEL-RT-229-notice`, whether S holds its en-US message. If `managedAppPolicy` or `targetedManagedAppConfiguration` failed to
+     read, report the per-policy apps error and leave those two out.
+  2. **Update round:** drift each fixture: filter rule to `(device.deviceName -startsWith "DRIFT-")`; scope tag and the three update
+     profiles' descriptions to `KEEL-RT drifted`; Autopilot device name template to `DRIFT-%SERIAL%`; notification subject to
+     `KEEL-RT drifted`; app protection PIN off; app config setting to `true`; device app config value to `2`. One restore from S
+     selecting all fixtures, approve, `--enforce`, capture each `update`. Expect each read back equal to S.
+  3. **Create round:** delete every fixture policy (keep the iOS store app). One restore from S, approve, enforce, capture each
+     `create` (new ids expected). Expect each back as in S, the app protection and app config with Outlook, the device app config
+     targeting `KEEL-RT-229-ios-app`, and nothing assigned.
+  4. **Re-run check:** dry run from S again. Expect 0 planned writes (the closure may add `roleScopeTag:0` with no changed fields,
+     as in Q122).
+  5. Cleanup: delete every `KEEL-RT-229-*` fixture, the iOS store app included. Report anything left.
+  6. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on `claude/live-evidence-q229`,
+     branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). Push the branch. No PR. Run
+     `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; step 0 for both (exact Graph answers); the step 1 backup check; per type and operation: promoted / refused (exact
+  message) / skipped (fixture could not be created) / blocked; approval ids; the step 4 count; the evidence branch and commit;
+  anything left in the tenant. Any writer bug: file an `operator-report` issue and keep going with the other kinds.

@@ -106,8 +106,8 @@ export function defineRecord(spec) {
   if (Boolean(spec.writeVia) !== Boolean(spec.readVia)) {
     throw new TypeError(`${spec.resourceType}: a record written through another route reads its object back through it too (writeVia and readVia)`);
   }
-  if (spec.collectionNamesType && typeof spec.collectionFor !== 'function') {
-    throw new TypeError(`${spec.resourceType}: only a record whose collection is picked by subtype (collectionFor) reads its type from the collection`);
+  if (spec.collectionNamesType && (typeof spec.collectionFor !== 'function' || spec.readVia)) {
+    throw new TypeError(`${spec.resourceType}: only a record whose collection is picked by subtype (collectionFor), and read back from it (no readVia), reads its type from the collection`);
   }
   if (spec.deleteVia && !spec.writeVia) {
     throw new TypeError(`${spec.resourceType}: a record deleted through another route is written and read through it too (deleteVia needs writeVia)`);

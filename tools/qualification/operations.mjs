@@ -112,11 +112,13 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     isServiceDefault: false,
     inboundTrust: { isMfaAccepted: true, isCompliantDeviceAccepted: false, isHybridAzureADJoinedDeviceAccepted: false },
     b2bCollaborationInbound: { usersAndGroups: { accessType: 'allowed', targets: [{ target: 'AllUsers', targetType: 'user' }] } },
+    tenantRestrictions: { usersAndGroups: { accessType: 'blocked', targets: [{ target: 'AllUsers', targetType: 'user' }] } },
   },
   crossTenantAccessPolicyPartner: {
     tenantId: 'fixture-partner-tenant',
     inboundTrust: { isMfaAccepted: true, isCompliantDeviceAccepted: false, isHybridAzureADJoinedDeviceAccepted: false },
     b2bCollaborationInbound: { usersAndGroups: { accessType: 'allowed', targets: [{ target: 'AllUsers', targetType: 'user' }] } },
+    tenantRestrictions: { usersAndGroups: { accessType: 'blocked', targets: [{ target: 'AllUsers', targetType: 'user' }] } },
   },
   adminConsentRequestPolicy: {
     isEnabled: true, notifyReviewers: true, remindersEnabled: true, requestDurationInDays: 30,
@@ -386,9 +388,9 @@ const FIXTURE_DRIFT = Object.freeze({
   }),
   identitySecurityDefaultsEnforcementPolicy: () => ({ isEnabled: true }),
   crossTenantAccessPolicy: () => ({ allowedCloudEndpoints: ['microsoftonline.us'] }),
-  // Inbound trust is never written, so the cross-tenant settings drift B2B collaboration.
-  crossTenantAccessPolicyConfigurationDefault: (payload) => ({ b2bCollaborationInbound: { usersAndGroups: { ...payload.b2bCollaborationInbound.usersAndGroups, accessType: 'blocked' } } }),
-  crossTenantAccessPolicyPartner: (payload) => ({ b2bCollaborationInbound: { usersAndGroups: { ...payload.b2bCollaborationInbound.usersAndGroups, accessType: 'blocked' } } }),
+  // Inbound trust, consent and the B2B lists are never written, so the cross-tenant settings drift tenant restrictions.
+  crossTenantAccessPolicyConfigurationDefault: (payload) => ({ tenantRestrictions: { usersAndGroups: { ...payload.tenantRestrictions.usersAndGroups, accessType: 'allowed' } } }),
+  crossTenantAccessPolicyPartner: (payload) => ({ tenantRestrictions: { usersAndGroups: { ...payload.tenantRestrictions.usersAndGroups, accessType: 'allowed' } } }),
   adminConsentRequestPolicy: () => ({ isEnabled: false }),
   // Issue #156: the restore reverts defaced text, a shortened group lifetime
   // (a longer one is restored; a shorter one would be refused) and an enabled

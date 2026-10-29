@@ -42,6 +42,16 @@ const EXO_DOCS = 'https://learn.microsoft.com/en-us/powershell/module/exchange';
 const TEAMS_DOCS = 'https://learn.microsoft.com/en-us/powershell/module/teams';
 
 /**
+ * Cross-tenant access: whether another tenant's MFA and device claims are
+ * accepted, whether invitations from and to it skip the consent prompt, and
+ * which of its users and apps may come in (and where ours may go).
+ */
+export const CROSS_TENANT_TRUST_FIELDS = Object.freeze([
+  'inboundTrust', 'automaticUserConsentSettings',
+  'b2bCollaborationInbound', 'b2bCollaborationOutbound', 'b2bDirectConnectInbound', 'b2bDirectConnectOutbound',
+]);
+
+/**
  * Fields no restore ever writes (CLAUDE.md restore-writer rule): they decide which
  * senders, certificates, hosts, partners or federated organizations the tenant trusts.
  * A tampered or stale backup could make a connector trust another certificate or IP
@@ -72,10 +82,11 @@ export const TRUST_FIELDS = Object.freeze({
   // Cross-tenant access for tenants that join the multitenant organization: whether
   // their MFA and device claims are accepted, whether invitations from and to them
   // skip the consent prompt, and which of their users and apps may collaborate.
-  multiTenantOrganizationPartnerConfigurationTemplate: Object.freeze([
-    'inboundTrust', 'automaticUserConsentSettings',
-    'b2bCollaborationInbound', 'b2bCollaborationOutbound', 'b2bDirectConnectInbound', 'b2bDirectConnectOutbound',
-  ]),
+  multiTenantOrganizationPartnerConfigurationTemplate: CROSS_TENANT_TRUST_FIELDS,
+  // The same settings on the tenant default and on each partner entry
+  // (tenantPolicyOperations.mjs records are held to the rule too).
+  crossTenantAccessPolicyConfigurationDefault: CROSS_TENANT_TRUST_FIELDS,
+  crossTenantAccessPolicyPartner: CROSS_TENANT_TRUST_FIELDS,
   // The guest invitation allow and block lists: which outside domains guests may come from.
   b2bManagementPolicy: Object.freeze(['definition']),
 });

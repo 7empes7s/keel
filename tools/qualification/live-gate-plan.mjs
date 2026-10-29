@@ -142,11 +142,11 @@ export const FIXTURE_GUIDANCE = Object.freeze({
   crossTenantAccessPolicy: { kind: 'tenant-setting', fixture: 'the tenant cross-tenant access policy', select: 'crossTenantAccessPolicy', drift: 'none expected: allowedCloudEndpoints is usually empty; add one cloud only if decision D-148b allows it' },
   crossTenantAccessPolicyConfigurationDefault: {
     kind: 'tenant-setting', fixture: 'the tenant default cross-tenant settings', select: 'crossTenantAccessPolicyConfigurationDefault',
-    drift: 'turn inbound trust of MFA from other tenants on or off',
+    drift: 'change tenantRestrictions (users and groups allowed or blocked); never change inboundTrust, automaticUserConsentSettings or the b2b* settings (a restore never writes them); write the original down first',
   },
   crossTenantAccessPolicyPartner: {
     kind: 'tenant-setting', fixture: 'a partner entry for a Microsoft-owned tenant id Marouane chooses (decision D-148b)',
-    select: 'the partner tenant id (pseudonymized in the evidence)', drift: 'turn its inbound MFA trust on or off',
+    select: 'the partner tenant id (pseudonymized in the evidence)', drift: 'change its tenantRestrictions; never change inboundTrust, automaticUserConsentSettings or the b2b* settings (a restore never writes them)',
     note: 'Graph refuses a tenantId that does not exist. Remove the partner entry afterwards.',
   },
   adminConsentRequestPolicy: {

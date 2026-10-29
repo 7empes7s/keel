@@ -10829,3 +10829,48 @@ item that needs it stays untouched.
      `pseudonymize.mjs check` first). Push. No PR. Run `operations.mjs --live-evidence` on that directory and report the lines.
 - **Report:** B; the four settings before and after; per type and operation: promoted / refused (exact message); new `observedAt`;
   approval ids; the step 4 count; the evidence branch and commit; anything left.
+
+### Q239: Live restore of a custom app creation policy and a custom Defender role (restore gaps batch 21, after PR #693)
+- Drafted by the "Add restore for four missing setting kinds" thread (2026-10-29). Code: PR #693. Fixture-tested only.
+  - `servicePrincipalCreationPolicy` (beta, create + update): name and description, then the include and exclude conditions synced to
+    exactly the backup's (missing ones added, extra ones removed). Graph gives a created policy its own id, so a create first looks for
+    a custom policy with the same name. The condition sets are read from the policy itself (Graph auto-expands them, Q111 step 7).
+    Built-in policies are skipped. Unmeasured: the POST of the policy (Microsoft does not document this API; route from the Graph beta
+    metadata), POST/DELETE on `.../{id}/includes|excludes`, and whether a GET by id also auto-expands.
+  - `defenderRoleDefinition` (beta, create + update): name, description, rolePermissions of a custom Defender XDR role. Built-in roles
+    skipped. The create is in Microsoft's docs; **the PATCH is not** (docs list only Cloud PC, Intune and directory for update).
+  - Not in this item: `exchangeRoleDefinition` and `defenderCustomAppScope` stay restored by hand: Graph has no write for either.
+- Needs: /opt/keel-live at the PR #693 merge or later (`grep -q defenderRoleRefusal /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
+- Status: open
+- **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q111. Under the 2026-10-14 standing
+  authorization, approve these restores yourself and log every approval id. Restorer for writes, Collector for reads; global admin
+  not used. Permissions the code declares: `Policy.ReadWrite.ApplicationConfiguration` and `RoleManagement.ReadWrite.Defender`
+  (both in the Restorer's grants per the acceptance records). **Check the Restorer's appRoleAssignments first**; if one is missing,
+  add it to the Restorer's manifest (2026-10-28 rule), set `blocked: waiting on consent` naming the exact permission and the app
+  (Keel Restorer), and stop. Never touch CA policies, break-glass or Marouane's account. Never change the built-in app creation policy.
+- **Fixtures** (the reviewed guidance in `live-gate-plan.mjs` at B says the same):
+  - app creation policy `KEEL-RT-app-creation`: write down the tenant's existing policies first (expected: 1 built-in, includes 2,
+    excludes 0). Create the fixture with include conditions copied from the built-in policy's (so it allows what the tenant allows
+    today) and no exclude. If creating it changes which apps can be added in the tenant, record what changed. Delete it at the end.
+  - custom Defender XDR role `KEEL-RT-defender-role`, one permission `microsoft.xdr/secops/securitydata/read`, **assigned to
+    nobody**. If Defender XDR unified roles are not turned on in the test tenant and the create is refused, record the exact
+    answer and skip this kind (do not turn the feature on).
+- Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. `node tools/qualification/live-gate-plan.mjs > ~/keel-rg21/plan-B.md`. Use its steps for both kinds.
+  2. Create the fixtures, then take snapshot S. Confirm both are in S, and that the app creation policy in S holds `includes` and
+     `excludes` arrays (report their lengths).
+  3. **Create round:** delete both fixtures. Restore from S selecting them, dry run, approve, enforce, capture each `create`.
+     Expect a new id for each, read back equal to S (policy name, description and conditions; role name, description, permissions).
+  4. **Update round:** add an exclude condition (`applicationTenantIds`: the test tenant id) to the recreated policy and change its
+     description; change the role's description. Restore from S, approve, enforce, capture each `update`. Expect the extra exclude
+     removed and both descriptions back. If the Defender PATCH is refused, report Graph's exact answer and do not promote it.
+  5. **Re-run check:** dry run from S again. Expect 0 planned writes for both.
+  6. **Built-in check (no write expected):** dry run from S selecting the built-in app creation policy. Expect it skipped as
+     built-in, 0 writes. Do not promote.
+  7. Cleanup: delete both fixtures. Confirm the tenant's app creation policies match what was written down first.
+  8. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-restore-gaps-21`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first), and
+     open the PR the usual way. Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the
+     `live evidence` lines.
+- **Report:** B; per kind and operation: promoted / refused (exact message) / skipped (tenant); step 2, 5 and 6 results; approval ids;
+  the evidence branch, commit and PR; anything left in the tenant.

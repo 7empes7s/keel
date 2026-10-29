@@ -10622,3 +10622,68 @@ item that needs it stays untouched.
      `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B; S; whether the fixtures already existed; per type promoted / refused (exact message) / blocked; approval ids;
   step 3 count; the evidence branch and commit; any permission added and which app needs consent.
+
+### Q234: Recapture the six Wave 2 writer records before they expire (2026-11-15 and 2026-11-21; KEEL-RT- fixtures, every value put back)
+- Drafted by the "Recapture expiring restore writer records" thread (2026-10-29). Six live writer records on master pass the 30-day
+  window (`DEFAULT_MAX_AGE_HOURS`) only until: **2026-11-15** for exchange-extended (Q93), purview-governance, purview-retention-dlp,
+  teams-org-policies (Q92) and teams-voice-policies (Q93/#348), all observed 2026-10-16; **2026-11-21** for exchange-mail-flow (Q159,
+  observed 2026-10-22). When a record lapses, that workload's restore writes switch off. This item takes fresh records with the same
+  tool, flags and fixtures as those runs; a cloud PR then lands them on master.
+- Needs: nothing. Run at the deployed commit B (`git -C /opt/keel-live rev-parse HEAD`), from your own clone checked out at B
+  (never `/opt/keel`). If the auto-deploy moves B mid-run, recapture only the workloads whose verify then fails on build mismatch.
+- Status: todo
+- **Tenant (test tenant only, covered by the 2026-10-14/-16/-22 standing authorizations; no approval to file, captures only):**
+  - `tools/qualification/workloadWritesLive.mjs capture` writes one harmless field (comment, description or a no-effect switch) on the
+    first `KEEL-RT-` object of each family, reads it back, **puts the original value back** and reads it back. Restorer for writes,
+    Collector for reads. Global admin not used. Nothing granted, no CA, no break-glass, no Marouane account.
+  - Tenant-wide settings (`--allow-tenant-wide-test-writes`, exchange-extended and teams-org-policies only): the same write-and-put-back
+    on the tool's allowlisted tenant-wide objects, as on 2026-10-16. Marouane approved this 2026-10-15/2026-10-22, provided each value is
+    put back right away, which the tool does.
+  - The two Teams captures create new `KEEL-RT-capture-<random>` policies (1 messaging, 10 voice) with a Description, assigned to nobody,
+    as before. Keep them (the tool never deletes). Do not pass `--no-create`: the `.add` writes need them.
+- Do, with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`.
+  Tenant ref `sha256:f7b3959300856957`, `--directory-tenant-id` the test tenant guid, collector and restorer refs and `grants.json` as
+  in the current records (Collector `app:<collector clientId>`, Restorer `app:<restorer clientId>`). Default image
+  `keel-powershell:latest` with the deployed scripts mounted, as Q87–Q93. Configs:
+  - exchange-mail-flow, exchange-extended: `--collector-config /etc/keel/exchange-collector.json --restorer-config /etc/keel/exchange-restorer.json`
+  - purview-governance, purview-retention-dlp: `--collector-config /etc/keel/purview-collector.json --restorer-config /etc/keel/purview-restorer.json`
+  - teams-org-policies, teams-voice-policies: the same Collector and Restorer Teams configs as your Q92/Q93 Teams runs.
+  1. **Captures**, one per workload, each followed by its verify:
+     ```bash
+     B="$(git -C /opt/keel-live rev-parse HEAD)"
+     for w in exchange-mail-flow exchange-extended purview-governance purview-retention-dlp teams-org-policies teams-voice-policies; do
+       out=docs/release/qualifications/workload-writers-$w-live-acceptance.json
+       node tools/qualification/workloadWritesLive.mjs capture --confirm-live-tenant-write --workload "$w" \
+         --tenant-ref sha256:f7b3959300856957 --directory-tenant-id <tenant guid> \
+         --collector-ref app:<collector id> --restorer-ref app:<restorer id> \
+         --collector-config <that workload's collector config> --restorer-config <that workload's restorer config> \
+         --grants grants.json --build "$B" --out "$out" \
+         $( [ "$w" = exchange-extended ] || [ "$w" = teams-org-policies ] && echo --allow-tenant-wide-test-writes )
+       echo "capture $w exit $?"
+       node tools/release/qualification.mjs verify --require-live --gate workload-writers-live-acceptance --evidence "$out"
+       echo "verify $w exit $?"
+     done
+     ```
+     Leave `--module-version` out (the tool reads the Dockerfile pin: ExchangeOnlineManagement 3.10.1, MicrosoftTeams 7.9.0).
+     **Exit 3 = a value may not be back:** stop, set the named object, field and original value back by hand, read it back, report it.
+     Expected per workload (proven = ok, readBackVerified; updates also restoredToOriginal). At least these, as in the current record:
+     - exchange-mail-flow, 5: transport-rule, inbound-connector, anti-phish-policy, anti-spam-policy, safe-links-policy `.update`.
+       `anti-malware-policy.update` failed last time (CustomNotifications needs a CustomFromAddress); outbound connector skipped.
+     - exchange-extended, 2 (tenant-wide): connection-filter-policy, quarantine-global-settings `.update`.
+     - purview-governance, 1: retention-label `.update`.
+     - purview-retention-dlp, 2: retention-rule, dlp-policy `.update`. retention-policy failed last time (KEEL-RT-retention
+       DistributionStatus Error, Q176/K16) and dlp-rule hit a server-side error; either may now pass. Do not redeploy the policy.
+     - teams-org-policies, 6: messaging-policy add and update; client, guest meeting, guest messaging, guest calling configuration update.
+     - teams-voice-policies, 20: add and update for calling, voice routing, dial plan, emergency calling, emergency call routing,
+       call park, caller id, voicemail, live events and events policies.
+  2. `node tools/qualification/pseudonymize.mjs check` on all 12 files (record and `.capture.json`) plus a secret scan (tenant domain,
+     tenant id, JWT, key markers). Not exit 0 or a hit: stop, file an `operator-report` issue, do not publish.
+  3. **Evidence:** commit, per workload, the record and its `.capture.json` **only if it proves every write listed above for it**
+     (a superset is fine). A workload that proves fewer: keep master's file, report the lost write with its exact error, file an
+     `operator-report` issue. Commit to a new branch `claude/live-evidence-writers-recapture` from `origin/master` (those files only)
+     and push. No PR; the cloud thread lands them.
+  4. **Import** with `--dir` your clone's `docs/release/qualifications`: `node cli/keel-workload-collect.mjs import --dir <dir>`.
+     Report exit code and the six `workload-writers-*` lines (imported, writes N) and `refused` (expect `[]`).
+- **Report:** B; per workload the capture and verify exit codes, proven / not proven ops (with the exact error for any not proven),
+  `needsManualRevert`, and the new `observedAt` (expiry = observedAt + 30 days); the step 2 check; the evidence branch and commit;
+  the import lines; the `KEEL-RT-capture-*` policies created; anything left changed in the tenant (expected: nothing but those policies).

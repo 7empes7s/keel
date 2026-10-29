@@ -165,6 +165,35 @@ test('the same publicClient change is still refused on a type nobody has reviewe
   assert.match(refusals[0].reason, /unclassified-content-effect: unreviewedAppType changes publicClient, isFallbackPublicClient/);
 });
 
+// ------------------------------------------- access package catalogs (issue #700)
+
+const catalog = Object.freeze({ displayName: 'KEEL-RT-Catalog', description: 'Fixture', state: 'published', isExternallyVisible: false });
+
+test('issue #700: an access package catalog restored as not externally visible passes the guard, create or update', () => {
+  const { effects, refusals } = classifyContentEffects([
+    create('accessPackageCatalog', catalog, 'accessPackageCatalog:created'),
+    update('accessPackageCatalog', catalog, { ...catalog, description: 'Restored' }, 'accessPackageCatalog:updated'),
+    update('accessPackageCatalog', { ...catalog, isExternallyVisible: true }, catalog, 'accessPackageCatalog:narrowed'),
+  ]);
+  assert.deepEqual(refusals, [], 'isExternallyVisible is classified, never an unclassified content effect');
+  assert.deepEqual(effects, [], 'not visible, or made not visible, exposes nothing');
+});
+
+test('issue #700: making an access package catalog externally visible, on create or update, is externally-sharing', () => {
+  const visible = { ...catalog, isExternallyVisible: true };
+  const { effects, refusals } = classifyContentEffects([
+    create('accessPackageCatalog', visible, 'accessPackageCatalog:created'),
+    update('accessPackageCatalog', catalog, visible, 'accessPackageCatalog:updated'),
+    update('accessPackageCatalog', visible, { ...visible, description: 'Still visible' }, 'accessPackageCatalog:unchanged'),
+  ]);
+  assert.deepEqual(refusals, []);
+  assert.deepEqual(effects.map(({ naturalKey, field, effect, before, after }) => ({ naturalKey, field, effect, before, after })), [
+    { naturalKey: 'accessPackageCatalog:created', field: 'isExternallyVisible', effect: 'externally-sharing', before: null, after: true },
+    { naturalKey: 'accessPackageCatalog:updated', field: 'isExternallyVisible', effect: 'externally-sharing', before: false, after: true },
+  ]);
+  assert.equal(effects[0].disclosure, disclosureFor('externally-sharing'));
+});
+
 test('a compliance policy that wipes or retires noncompliant devices is irreversible and needs the separate approval', async (t) => {
   const created = classifyContentEffects([create('deviceCompliancePolicy', complianceWith('block', 'wipe'))]);
   assert.deepEqual(created.refusals, []);

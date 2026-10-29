@@ -282,7 +282,7 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   // The restore keeps its own access-affecting approval, as before.
   application: { reviewed: true, rules: [] },
   // Issue #700: an access package catalog. Reviewed (every field the restore
-  // writes: displayName, description, state, isExternallyVisible). Making it
+  // writes: displayName, description, state, catalogType, isExternallyVisible). Making it
   // externally visible lets users outside the organization request its access
   // packages, and through them reach the groups, apps and sites they grant, so
   // false -> true needs the separate approval. A recreated catalog is judged too

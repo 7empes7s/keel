@@ -10458,8 +10458,62 @@ item that needs it stays untouched.
   `crossTenantAccessPolicyConfigurationDefault` u, `deviceConfiguration` u, `groupSetting` u, `user` u (11-09 21:21);
   `configurationPolicy` u (11-09 21:52) and c (11-09 22:06); `group` delete (11-10 08:31); `groupSetting` delete (11-10 08:32).
 - Needs: nothing. Run at the deployed commit B (`git -C /opt/keel-live rev-parse HEAD`), from your own checkout at B (never `/opt/keel`).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-29 23:30 UTC, keel-operator). **All 11 promoted, with new observedAt 2026-10-29**, so they lapse 2026-11-28.
+  - B = **53cbe462**.
+  - Credentials: Restorer for writes, Collector for reads and backups. Global admin not used; nothing granted. No CA, no break-glass, not Marouane's account.
+  - Self-approved: requester Gmail, approver Entra. Nothing assigned.
+  - Before: no KEEL-RT-244 objects.
+  - **Tenant settings, written down first:**
+    - `Group.Unified`: **absent** (other settings: Consent Policy Settings and Password Rule Settings, untouched).
+    - adminConsentRequestPolicy: isEnabled true, notifyReviewers false, remindersEnabled false, requestDurationInDays 0, reviewers [].
+    - crossTenantAccessPolicy allowedCloudEndpoints `["microsoftonline.us"]`.
+    - Default `b2bCollaborationOutbound`: users and groups allowed (AllUsers), applications allowed (AllApplications). inboundTrust: all false, never touched.
+    - carla department `Engineering`.
+  - Step 1: fixtures created: AU `KEEL-RT-244-unit`, `KEEL-RT-244-restrictions` (camera allowed), `KEEL-RT-244-settings` (Defender real-time monitoring on).
+    - `Group.Unified` created from its template with default values (EnableGroupCreation true).
+    - S1 = `d01bf4ea`, exit 3 (incomplete only on todoSettings 500).
+  - Step 2, update. Drifts, all read back:
+    - AU description; cameraBlocked true; setting `_0`; carla department; requestDurationInDays 30; EnableGroupCreation false; allowedCloudEndpoints + `partner.microsoftonline.cn`.
+    - **Default outbound:** users-only blocked was refused with 400 `Conflicting configuration for access type Application:Allowed, UsersAndGroups: Blocked`, so **users and groups AND applications** were set to blocked.
+    - Dry run `86b9bccc`: field lists for deviceConfiguration (`cameraBlocked`), user (`department`) and configurationPolicy (`settings`). The five tenant settings and the AU show no field list in the dry run, but wrote.
+    - Approval **4f4200d6**. Enforce exit 0, 8× `update succeeded`. Read back: every value equal to S1.
+  - Step 3, create: `KEEL-RT-244-settings` deleted (Intune keeps no deleted items).
+    - Dry run `f739b373`, approval **3a170774**, exit 0. `create succeeded`, new id a0005267…, setting on, 0 assignments.
+  - Step 4, delete round:
+    - Deleted `Group.Unified`. S2 = `008a8abe`.
+    - Baseline v4 `276dfe28` from S2 (supersedes v3 `b4635c7f`; `--set-by` must be a principal id, the Entra principal was used) and activated.
+    - Created `KEEL-RT-244-group-delete` and `Group.Unified` (same default values). Drift detect: `added` for both (drifts 68cf0646 and f1c6f5b6).
+    - **`keel-remediate --enforce` saves the dry-run artifact and enforces it in one step, without waiting for an approval.** The CLI requires one only for compliance fixes, CA enforcement and workload restores. Without `--enforce` it is a preview and saves no artifact.
+      - Artifacts `ea9842b8` (group) and `b616ba85` (Group.Unified): both `delete succeeded`.
+      - Approvals **db95e8fb** and **610e5cd1** were filed afterwards, marked post-hoc.
+    - Group.Unified is **absent**, as at the start.
+    - Baseline v3 reinstated as **v5 `410f841c`** (active).
+  - Step 5: dry run `475706f2` from S1, **0 planned writes** for the 8 step-2 objects.
+  - Step 6, cleanup:
+    - AU, restrictions profile and recreated settings policy deleted. Group purged (404).
+    - **The AU stays in deleted items:** GET 200, but purge answers 404 `Resource 'AdministrativeUnit_b33d9e3c…' does not exist`, also on the typed route. Older KEEL-RT-148 units sit there the same way; they expire after 30 days.
+    - Before → after: Group.Unified absent → absent; adminConsent 0 → 0; allowedCloudEndpoints → `["microsoftonline.us"]`; default outbound allowed/allowed → allowed/allowed; carla Engineering → Engineering.
+  - Step 7:
+    - Checks: `pseudonymize.mjs check` passes on 22 files; secret scan 0; no raw ids (tenant id included).
+    - Commit **b3efde17** on `claude/live-evidence-q244` (pushed, no PR).
+    - Live evidence, each `fixture-tested -> live-qualified`, with observedAt (all 2026-10-29, UTC):
+
+      | record | observedAt |
+      |---|---|
+      | adminConsentRequestPolicy.update | 23:05:30 |
+      | administrativeUnit.update | 23:05:27 |
+      | crossTenantAccessPolicy.update | 23:05:31 |
+      | crossTenantAccessPolicyConfigurationDefault.update | 23:05:40 |
+      | deviceConfiguration.update | 23:05:27 |
+      | groupSetting.update | 23:05:27 |
+      | user.update | 23:05:27 |
+      | configurationPolicy.update | 23:05:48 |
+      | configurationPolicy.create | 23:09:12 |
+      | group.delete | 23:21:51 |
+      | groupSetting.delete | 23:24:33 |
+
+  - **Left in the tenant:** the soft-deleted AU `KEEL-RT-244-unit` (can't be purged; expires after 30 days). Nothing else.
 - **Test tenant only.** Same hard rules, tooling and requester/approver split as Q43/Q45/Q48. Self-approve restores and
   content effects under the 2026-10-14 standing authorization; log every approval id. Restorer for writes, Collector for
   reads; global admin not used; grant nothing; no CA, no break-glass, not Marouane's account. Tenant-wide settings follow the

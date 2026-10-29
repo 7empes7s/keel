@@ -6580,7 +6580,7 @@ section.wizard-panel {
 }
 
 @media (min-width: 62rem) {
-  .section-tabs:not([data-section="inbox"]) {
+  .section-tabs:not([data-section="inbox"]):not(.changes-views) {
     display: none;
   }
 }

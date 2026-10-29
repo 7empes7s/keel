@@ -386,6 +386,7 @@ export async function runRestore({
     ThrottleGovernor: ThrottleGovernorClass = ThrottleGovernor,
     applyWave: applyWaveFn = applyWave,
     applyPatches: applyPatchesFn = applyPatches,
+    previewApplyPlan: previewApplyPlanFn = previewApplyPlan,
     getDryRunArtifactById: getDryRunArtifactByIdFn = getDryRunArtifactById,
     createDryRunArtifact: createDryRunArtifactFn = createDryRunArtifact,
     computePlanDigest: computePlanDigestFn = computePlanDigest,
@@ -1104,11 +1105,13 @@ export async function runRestore({
     // enforcement, but returns before acquiring Restorer credentials or a writer.
     if (previewOnly) {
       const guardRefusals = withDependentImpact([
-        ...await previewApplyPlan({
+        ...await previewApplyPlanFn({
           resources, waves, deletionWaves, patches, existingTargetIds,
           deletionGuardOptions,
           signInPathGate: { reader: targetReader, protectedPrincipalIds },
-          targetTenant: collectorConfig.tenantId,
+          // The tenant the restore writes to, as the enforce run uses. A preview
+          // may run without a Restorer config, so fall back to the collector's.
+          targetTenant: targetConfig?.tenantId ?? collectorConfig.tenantId,
           lockoutGate,
         }),
         ...relationshipPlan.refusals,

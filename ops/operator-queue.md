@@ -10027,8 +10027,43 @@ item that needs it stays untouched.
 - Requeued by the "Resume tests after Collector and Restorer consent" thread (2026-10-29 10:58 UTC): Marouane reports admin consent granted on Keel Restorer (the 6 Q218 roles). Needs now also: **Q223 done**. The **HOLD above still stands**: run only the `KEEL-RT-community` part and report the five tenant-wide singletons as `held`. They wait for PR #677 (tenant-wide restore option `--allow-tenant-wide-test-writes`; open, not merged) and for Marouane to approve each tenant-wide artifact himself; a separate item will be queued for them.
 - Requeued by the "Fix Viva Engage restores failing as Restorer" thread (2026-10-29 11:55 UTC): Q224 confirmed the 400 is a header-size limit in Engage's front proxy that the Restorer's token (5326 bytes, 64 roles) is over. Needs now also: **Q225 done** (a small KEEL-RT app holding only `Community.ReadWrite.All`). For the community part, use `/etc/keel/engage-writer.json` everywhere this item says "as the Restorer" (step 0 fixture create and poll, and the restore's target config in step 3). Collector for reads as before. Report the target config used. The HOLD on the five tenant-wide settings still stands.
 - Requeued by the "Add a separate Engage writer app" thread (2026-10-29 12:55 UTC): Marouane granted admin consent on `KEEL-RT-engage-writer` at 12:53 UTC. PR #682 (merge 76e71e25) is merged, and Keel itself now signs Viva Engage writes in as `/etc/keel/engage-writer.json`. **This replaces the 11:55 note for step 3:** run the restore at a build at or after 76e71e25 with the **usual target config `/etc/keel/restorer.json`**. Do **not** pass engage-writer.json as the target config: the restore refuses an Engage writer file that is the same app as the target. Keel routes only the `/employeeExperience` calls to the Engage writer. In the restore log, confirm the line `Viva Engage writes: signed in as the Engage writer` and report it. Step 0 (fixture create and poll) still uses `/etc/keel/engage-writer.json` directly. Run once Q225 step 3 answers 200. The HOLD on the five tenant-wide settings still stands.
-- Status: blocked: Restorer gets HTML 400 from Viva Engage (#681); 5 settings held
-- Result: blocked (2026-10-29 11:20 UTC, root keel-operator): **step 0 cannot create KEEL-RT-community. Every Viva Engage call made as the Keel Restorer, GETs included, answers 400 UnknownError with an HTML "400 Bad request / Your browser sent an invalid request." body, while the Collector reads the same endpoint with 200. Filed #681.** Steps 1–6 not run; nothing written in the tenant.
+- Status: done (community part; 5 settings held; evidence held for #684)
+- Result: done for the community part (2026-10-29 13:15 UTC, keel-operator). **engageCommunity update written live and read back as in S; the ledger says live-qualified.** Two Keel bugs found (#683, #684). The evidence commit is held locally, not pushed (#684).
+  - B = **76e71e25** (deployed 12:57; the run used a detached worktree at B).
+  - Credentials:
+    - Collector for reads and the backup.
+    - `/etc/keel/engage-writer.json` directly for step 0, the drift and the community delete.
+    - Usual target config `/etc/keel/restorer.json` for the restores. The log says `Viva Engage writes: signed in as the Engage writer` in every dry run and enforce.
+    - Restorer to purge the soft-deleted group.
+    - Global admin not used; nothing granted.
+  - Originals: `KEEL-RT-community` description `Fixture`, privacy private (its M365 group's description is `Fixture` too). The tenant's 2 other communities were not touched.
+  - Step 0, 12:55: `POST /v1.0/employeeExperience/communities` as the engage writer, owner keel-rt-20260908-alice. Answered 202; the operation `succeeded` at the first poll.
+  - Step 1: backup S `2df111c5`, exit 3 (incomplete only on todoSettings 500). engageCommunity complete (3); the fixture is in S with description `Fixture`. Its group `group:keel-rt-community` is in S too.
+  - Step 2: PATCH description to `Drifted` answered 204 and reads back `Drifted`. Engage later copied it onto the group.
+  - Step 3:
+    - **First pass:**
+      - Dry run `bf4aeb67` (exit 0) planned `fields description` on the community and nothing on the group. Approval **52f8bd30**.
+      - Enforce **exit 1**: wave 1 patched the group, whose description had meanwhile followed to `Drifted`. It read back `Fixture` but was journaled `uncertain: residual drift after update`, and the run stopped before the community.
+      - Cause, checked offline: the group's read-back holds the Graph-filled `exchangeResourceUrls` and `sharepointResourceUrls`, which verification doesn't ignore (**#683**).
+    - **Retry:** dry run `232a820a` (group already matching; community `fields description`). Approval **91990b96**. Enforce **exit 0**; journal `engageCommunity update succeeded`. Read back: community description `Fixture`, private; group `Fixture`.
+  - Per kind:
+    - engageCommunity: **written** (and captured).
+    - formsSettings, microsoft365AppsInstallationOptions, appsAndServicesSettings, adminReportSettings, pronounsSettings: **held** (HOLD of 2026-10-28; nothing drifted, restored or captured).
+  - Step 4: dry run `ecd816de` from S planned **0 writes**: no `changes` on either resource.
+  - Step 5:
+    - Values: the community and its group were back at `Fixture` before cleanup.
+    - Community: DELETE as the engage writer answered 204 (GET now 422).
+    - Group: soft-deleted by Engage, then purged as the Restorer (204; reads 404).
+    - Communities left: the original 2.
+  - Step 6:
+    - Capture: `entraLive.mjs capture --restore-ref 232a820a --resource-type engageCommunity --operation update --fixture <community id> --allow-tenant-setting`, exit 0. `--fixture KEEL-RT-community` answered `not-exercised`, because the natural key is the id (#684).
+    - Checks: the secret scan is clean and `pseudonymize.mjs check` passes, **but the raw Engage community id (base64 of a numeric group id, not a GUID) is in the records 5 times** (#684).
+    - Commit **50304c0f** on local `claude/live-evidence-restore-gaps-20` is **not pushed**. It waits for #684; the records can be captured again from the DB.
+    - `operations.mjs --live-evidence`: `live evidence engageCommunity.update.json: fixture-tested -> live-qualified`.
+  - **Left in the tenant:** the fixture app `KEEL-RT-engage-writer` (Q225).
+    - The community's SharePoint site `keel-rt-community` may still be in the SharePoint recycle bin, as is normal after a group purge. It was not checked.
+    - Approvals: 52f8bd30, 91990b96.
+- Earlier result: blocked (2026-10-29 11:20 UTC, root keel-operator): **step 0 cannot create KEEL-RT-community. Every Viva Engage call made as the Keel Restorer, GETs included, answers 400 UnknownError with an HTML "400 Bad request / Your browser sent an invalid request." body, while the Collector reads the same endpoint with 200. Filed #681.** Steps 1–6 not run; nothing written in the tenant.
   - B = `6fb16358` (deployed; run from a detached worktree at B). Collector `/etc/keel/tenant.json` for reads; Restorer `/etc/keel/restorer.json` for 3 POST attempts (all refused) and GETs. Global admin not used; nothing granted or changed on any app.
   - Consent: Q223 (11:18) confirms the Restorer holds `Community.ReadWrite.All` in its assignments and in a fresh token (64 Graph roles).
   - Originals: none drifted. The fixture would have started with description `Fixture`. The tenant's 2 existing private communities were not touched.

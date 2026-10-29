@@ -15,6 +15,11 @@
  *    service computes); `createOnly`: fields sent on create and never on update;
  *  - `odataType`: 'required' (sent and checked), 'keep' (sent when present) or
  *    'drop' (never sent);
+ *  - `collectionNamesType`: each collection `collectionFor` picks holds only
+ *    the subtype it was picked for, so an object read back from it with no
+ *    `@odata.type` is that subtype (Graph's typed collections, such as
+ *    iosManagedAppProtections, leave the annotation out; issue #703). A read
+ *    that names another type is still refused;
  *  - `refusal(resource, verb, ctx)`: a type's own refusals before any call;
  *  - `preflight(io, step)`: live reads before a write; returns null, the text
  *    of a missing dependency (the write fails), or { skipped } when live
@@ -101,6 +106,9 @@ export function defineRecord(spec) {
   if (Boolean(spec.writeVia) !== Boolean(spec.readVia)) {
     throw new TypeError(`${spec.resourceType}: a record written through another route reads its object back through it too (writeVia and readVia)`);
   }
+  if (spec.collectionNamesType && (typeof spec.collectionFor !== 'function' || spec.readVia)) {
+    throw new TypeError(`${spec.resourceType}: only a record whose collection is picked by subtype (collectionFor), and read back from it (no readVia), reads its type from the collection`);
+  }
   if (spec.deleteVia && !spec.writeVia) {
     throw new TypeError(`${spec.resourceType}: a record deleted through another route is written and read through it too (deleteVia needs writeVia)`);
   }
@@ -135,6 +143,7 @@ export function defineRecord(spec) {
     deleteVia: null,
     planChanges: null,
     remapsReferences: false,
+    collectionNamesType: false,
     tenantWide: false,
     checkedAfterWrite: [],
     ...spec,
@@ -223,9 +232,11 @@ export function changedRecordFields(record, desired, live, verb = 'update') {
 /** null, or the post-state refusal text: every sent field reads back as sent. */
 export function recordPostStateRefusal(record, sent, live) {
   if (!live || typeof live !== 'object') return 'post-state: the object could not be read back';
+  const liveType = live['@odata.type'] === undefined && record.collectionNamesType && recordCollection(record, sent) !== null
+    ? sent['@odata.type'] : live['@odata.type'];
   if (record.odataType === 'required' && typeof sent['@odata.type'] === 'string'
-    && stripGraph(live['@odata.type']) !== stripGraph(sent['@odata.type'])) {
-    return `post-state: the object reads back as ${stripGraph(live['@odata.type']) ?? 'an unnamed kind'}, not ${stripGraph(sent['@odata.type'])}`;
+    && stripGraph(liveType) !== stripGraph(sent['@odata.type'])) {
+    return `post-state: the object reads back as ${stripGraph(liveType) ?? 'an unnamed kind'}, not ${stripGraph(sent['@odata.type'])}`;
   }
   const wrong = Object.keys(sent).filter((key) => key !== '@odata.type' && key !== 'id' && !record.checkedAfterWrite.includes(key)
     && !sameRecordField(record, key, sent[key], live[key]));

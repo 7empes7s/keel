@@ -351,6 +351,18 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: 'pronounsSettings', drift: 'switch isEnabledInOrganization to the other value; write the original down first',
     note: 'Set the original value back right after the run.',
   },
+  // Graph allows only letters and digits in these names, so the fixtures start
+  // KEELRT (no hyphen). Neither can ever be deleted: reuse the same two.
+  attributeSet: {
+    kind: 'named-object', fixture: 'custom security attribute set KEELRTSet (description Fixture)',
+    select: 'KEELRTSet', drift: 'change its description: the restore puts it back',
+    note: 'Update only. An attribute set can never be deleted: create it once and reuse it. Never change its maximum number of attributes.',
+  },
+  customSecurityAttributeDefinition: {
+    kind: 'named-object', fixture: 'custom security attribute KEELRTAttr (String, single value, description Fixture) in the set KEELRTSet, assigned to nobody',
+    select: 'KEELRTSet_KEELRTAttr', drift: 'change its description: the restore puts it back',
+    note: 'Update only. An attribute can never be deleted, only deactivated: create it once and reuse it. Never assign it to a user or app.',
+  },
   engageCommunity: {
     kind: 'named-object', fixture: `private Viva Engage community ${FIXTURE_PREFIX}-community (description Fixture), owned by a test user`,
     select: `${FIXTURE_PREFIX}-community`, drift: 'change its description: the restore puts it back; never make it public',
@@ -458,6 +470,17 @@ export const FIXTURE_GUIDANCE = Object.freeze({
   },
   // Restore gaps, batch 3: guest and app consent settings. None touches
   // Conditional Access or any account.
+  // Restore gaps, batch 21: an app creation policy and a Defender role.
+  servicePrincipalCreationPolicy: {
+    kind: 'named-object', fixture: `custom app creation policy ${FIXTURE_PREFIX}-app-creation whose include conditions are copies of the built-in policy's (so it allows what the tenant allows today) and no exclude`,
+    select: `${FIXTURE_PREFIX}-app-creation`, drift: 'delete it: the restore recreates it with the same name and conditions; then add an exclude condition (applicationTenantIds: the test tenant id): the restore removes it',
+    note: 'Never change the built-in policy: KEEL refuses to write it. If adding a policy changes which apps can be added in the tenant, record what changed and delete the fixture at the end.',
+  },
+  defenderRoleDefinition: {
+    kind: 'named-object', fixture: `custom Microsoft Defender XDR role ${FIXTURE_PREFIX}-defender-role with one read permission (microsoft.xdr/secops/securitydata/read), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-defender-role`, drift: 'delete it: the restore recreates it with the same name and permission; then change its description: the restore puts it back',
+    note: 'No assignment, so nobody gains access. If Defender XDR unified roles are not turned on in the test tenant and the create is refused, record that and skip this kind. The update route is not in Microsoft\'s docs: if the PATCH is refused, record its answer.',
+  },
   permissionGrantPreApprovalPolicy: {
     kind: 'tenant-setting', fixture: 'a pre-approval policy assigned to no app: one condition, scopeType chat, Microsoft Graph application permission ChatMessage.Read.Chat',
     select: 'the policy id KEEL shows for the fixture', drift: 'change the condition scopeType from chat to group',
@@ -467,6 +490,17 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     kind: 'named-object', fixture: `a SAML federation ${FIXTURE_PREFIX}-fed for the domain keel-rt-fed.example (sign-in https://keel-rt-fed.example/sso, a self-signed certificate)`,
     select: `${FIXTURE_PREFIX}-fed`, drift: 'change its passiveSignInUri to https://keel-rt-fed.example/drifted',
     note: 'Update only: a deleted federation is set up again by hand. No guest is invited from the domain. Delete it at the end.',
+  },
+  // Q228 (live run 2026-10-29): both carry their own displayName, so the capture checks the name.
+  appManagementPolicy: {
+    kind: 'named-object', fixture: 'an app credential policy KEEL-RT-228-credpolicy applied to nothing: one password restriction passwordLifetime, maxLifetime P90D (Graph needs state enabled on the restriction)',
+    select: 'the policy id KEEL shows for the fixture', drift: 'change its maxLifetime to P180D',
+    note: 'Never add an app or service principal to its appliesTo, and never touch the tenant default policy. A deleted policy goes to deleted items: purge it before a create round. Delete and purge it at the end.',
+  },
+  accessPackageCatalog: {
+    kind: 'named-object', fixture: 'an empty catalog KEEL-RT-228-catalog (userManaged, published, not externally visible)',
+    select: 'the catalog id KEEL shows for the fixture', drift: 'change its description',
+    note: 'No access package, resource or user goes into the catalog. Delete it at the end.',
   },
   // Issue #156: basic tenant settings. None can lock anyone out.
   organizationalBranding: {

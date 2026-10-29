@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 39 are full, 131 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 97 at least in part; the other 80 are restored by hand from the backup.
+KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 39 are full, 131 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 99 at least in part; the other 78 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -64,9 +64,9 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Exchange admin roles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Exchange admin role assignments | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
 | Exchange app access scopes | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Defender admin roles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Defender admin roles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Defender admin role assignments | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Defender app access scopes | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Defender app access scopes | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
 | App certificate authority trust | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Verified ID profiles | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Entitlement management outside connectors | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
@@ -170,7 +170,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Recreate each custom attribute in the Entra admin center, under External Identities, Custom user attributes, from the backup, before the user flows that collect it.
 - **Authentication event listeners** (not built yet). KEEL backs these up but does not restore them yet. Each one points to a custom authentication extension.
   - *You do:* Recreate the custom authentication extension first, then the listener with PowerShell from the backup, for the same apps.
-- **Exchange admin roles** (not built yet). KEEL backs up the custom roles but does not restore them yet. The built-in roles are set by Microsoft.
+- **Exchange admin roles** (not built yet). KEEL backs up the custom roles but does not restore them yet: the Microsoft interface KEEL uses can list Exchange roles but not create or change them, so this needs Exchange Online PowerShell. The built-in roles are set by Microsoft.
   - *Not brought back:* built-in roles (set by Microsoft).
   - *You do:* Recreate each custom role with Exchange Online PowerShell from the backup, from the same parent role, before the role groups or apps that use it.
 - **Exchange admin role assignments** (not built yet). KEEL backs up who holds each Exchange role and over which scope, but does not restore them yet. Admin access needs a privilege review first.
@@ -178,12 +178,13 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **Exchange app access scopes.** Recreates scopes and puts back their name and which mailboxes they cover (the recipient filter).
   - *Not brought back:* the app role assignments that use it (stored separately and not in the backup yet).
   - *You do:* An app role assignment points to its scope by id and is not restored: point the assignment at a recreated scope again with Exchange Online PowerShell.
-- **Defender admin roles** (not built yet). KEEL backs these up but does not restore them yet.
-  - *You do:* Recreate each role in the Microsoft Defender portal, under System, Permissions, Microsoft Defender XDR, Roles, from the backup.
+- **Defender admin roles.** Recreates custom Defender roles and puts back their name, description and permissions.
+  - *Not brought back:* a built-in Defender role (set by Microsoft).
+  - *You do:* Who holds each role is not restored: add the assignments again in the Microsoft Defender portal, under System, Permissions, Microsoft Defender XDR, Roles, after a privilege review.
 - **Defender admin role assignments** (not built yet). KEEL backs up who holds each Defender role and for which data sources, but does not restore them yet. Admin access needs a privilege review first.
   - *You do:* Check the backup with the person who approves admin access, then add the assignments again in the Microsoft Defender portal, under the role, Assignments.
-- **Defender app access scopes** (not built yet). KEEL backs these up but does not restore them yet.
-  - *You do:* Recreate each scope with PowerShell from the backup, before the assignments that use it. There is no admin center page for it.
+- **Defender app access scopes** (Microsoft limit). KEEL backs these up, but Microsoft offers no way for a tool to create or change them.
+  - *You do:* Recreate each scope by hand from the backup, before the assignments that use it. There is no admin center page for it.
 - **App certificate authority trust** (not built yet). KEEL backs up which apps have a certificate authority trust list, but not the authorities on it, and does not restore it yet.
   - *Not brought back:* the trusted certificate authorities (stored separately and not in the backup yet).
   - *You do:* Create the configuration again with PowerShell, then add the same certificate authorities from your own copies.
@@ -235,7 +236,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Cross-tenant sync per organization | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | External user leave settings | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Guest invitation domain restrictions | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
-| App creation policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| App creation policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | App permission pre-approval policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Multitenant organization sync template | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Multitenant organization access template | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
@@ -305,9 +306,9 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **External user leave settings.** Puts back whether external users can leave your organization themselves, and whether their data is removed when they do.
 - **Guest invitation domain restrictions** (KEEL choice). KEEL backs up the list of domains guests may, or may not, be invited from, and shows when it changes. A restore never changes who can be invited.
   - *You do:* Set the domains again in the Entra admin center, under External Identities, External collaboration settings, Collaboration restrictions.
-- **App creation policies** (not built yet). KEEL backs up each policy's name and settings but not yet its include and exclude conditions.
-  - *Not brought back:* its include and exclude conditions (stored separately and not in the backup yet).
-  - *You do:* Recreate the policy with PowerShell from the backup, then add its conditions again. There is no admin center page for it.
+- **App creation policies.** Recreates custom app creation policies and puts their name and description back, with their include and exclude conditions, and removes conditions added since the backup.
+  - *Not brought back:* the include and exclude rules of a custom policy (stored separately and not in the backup yet); a built-in app creation policy (set by Microsoft).
+  - *You do:* Microsoft's built-in policies cannot be changed by anyone. There is no admin center page for these policies.
 - **App permission pre-approval policies.** Puts back which app permissions are pre-approved, and where (chats, teams or the whole organization).
   - *Not brought back:* which app it is assigned to (stored separately and not in the backup yet).
   - *You do:* A policy only works once it is assigned to its app. Assign a recreated policy to the app again with PowerShell.

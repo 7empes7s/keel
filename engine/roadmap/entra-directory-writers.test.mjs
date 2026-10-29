@@ -28,7 +28,9 @@ import { buildReconciliationPlan } from '../reconcile/reconciliationPlan.mjs';
 
 const governor = { async acquire() {}, observeRetryAfter() {} };
 const STS_TYPES = ['tokenLifetimePolicy', 'tokenIssuancePolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy'];
-const WRITER_TYPES = [...STS_TYPES, 'permissionGrantPolicy', 'oauth2PermissionGrant'];
+const WRITER_TYPES = [...STS_TYPES, 'permissionGrantPolicy', 'oauth2PermissionGrant', 'servicePrincipalCreationPolicy'];
+const SETS = '(?:permissionGrantPolicies|servicePrincipalCreationPolicies)';
+const CREATION = '/policies/servicePrincipalCreationPolicies';
 
 /**
  * fakeGraph plus: a collection read lists the objects under it (with the
@@ -48,8 +50,14 @@ function directoryGraph({ readOverride = null } = {}) {
       graph.objects.set(`${path}/${request.body.id}`, created);
       return { ok: true, status: 201, body: created };
     }
+    // Graph gives a created app creation policy its own id; it is a custom one.
+    if (request.method === 'POST' && path === CREATION) {
+      const created = { ...request.body, id: `creation-${graph.objects.size + 1}`, isBuiltIn: false };
+      graph.objects.set(`${path}/${created.id}`, created);
+      return { ok: true, status: 201, body: created };
+    }
     // A condition set is added to its policy's list.
-    const set = /^(\/policies\/permissionGrantPolicies\/[^/]+)\/(includes|excludes)$/.exec(path);
+    const set = new RegExp(`^(/policies/${SETS}/[^/]+)/(includes|excludes)$`).exec(path);
     if (set && request.method === 'POST') {
       if (!graph.objects.has(set[1])) return { ok: false, status: 404, body: null };
       const listPath = `${set[1]}/${set[2]}`;
@@ -59,7 +67,7 @@ function directoryGraph({ readOverride = null } = {}) {
       return { ok: true, status: 201, body: created };
     }
     // A condition set is removed from its policy's list by its id.
-    const member = /^(\/policies\/permissionGrantPolicies\/[^/]+\/(?:includes|excludes))\/([^/]+)$/.exec(path);
+    const member = new RegExp(`^(/policies/${SETS}/[^/]+/(?:includes|excludes))/([^/]+)$`).exec(path);
     if (member && request.method === 'DELETE') {
       const list = graph.objects.get(member[1])?.value ?? [];
       const id = decodeURIComponent(member[2]);
@@ -85,10 +93,15 @@ function directoryGraph({ readOverride = null } = {}) {
         .filter((object) => !clientId || object.clientId === clientId);
       result = { ok: true, status: 200, body: { value } };
     } else {
-      const set = /^\/policies\/permissionGrantPolicies\/[^/]+\/(includes|excludes)$/.exec(path);
+      const set = new RegExp(`^/policies/${SETS}/[^/]+/(includes|excludes)$`).exec(path);
       result = set && !graph.objects.has(path) && graph.objects.has(path.replace(/\/(includes|excludes)$/, ''))
         ? { ok: true, status: 200, body: { value: [] } }
         : await read(version, requested);
+      // An app creation policy comes back with its condition sets expanded (Q111).
+      if (result.ok && path.startsWith(`${CREATION}/`) && !path.slice(CREATION.length + 1).includes('/')) {
+        const sets = Object.fromEntries(['includes', 'excludes'].map((name) => [name, graph.objects.get(`${path}/${name}`)?.value ?? []]));
+        result = { ...result, body: { ...result.body, ...sets } };
+      }
     }
     return readOverride && result.ok ? { ...result, body: readOverride(result.body, path) } : result;
   };
@@ -481,6 +494,92 @@ test('a built-in app consent policy is skipped before any write', async () => {
   assert.equal(result.applied.length, 0);
   assert.match(result.skipped[0].reason, /built-in app consent policy/);
   assert.equal(graph.bodies.length, 0);
+});
+
+// ----------------------------------------- app creation policies (restore gaps, batch 21)
+
+const creationPolicy = (extra = {}) => ({
+  id: 'policy-src', displayName: 'KEEL-RT-app-creation', description: 'Fixture', isBuiltIn: false,
+  includes: [{ id: 'inc-src', applicationTenantIds: ['all'], applicationsFromVerifiedPublisherOnly: false }],
+  excludes: [],
+  ...extra,
+});
+const creationResource = (verb, payload = creationPolicy(), extra = {}) => ({
+  naturalKey: `servicePrincipalCreationPolicy:${payload.id}`, resourceType: 'servicePrincipalCreationPolicy', verb, payload,
+  references: [], blastRadius: 'access-affecting', ...extra,
+});
+
+test('batch 21: an app creation policy is recreated under a new id with its include conditions, and a re-run finds it by name', async () => {
+  const graph = directoryGraph();
+  const result = await run(graph, [creationResource('create')]);
+  assert.deepEqual(result.failed, []);
+  const [post, include] = graph.bodies;
+  assert.equal(`${post.method} ${post.path}`, `POST ${CREATION}`);
+  assert.deepEqual(post.body, { displayName: 'KEEL-RT-app-creation', description: 'Fixture' }, 'no id, no built-in flag');
+  const { targetId } = result.applied[0];
+  assert.notEqual(targetId, 'policy-src');
+  assert.equal(`${include.method} ${include.path}`, `POST ${CREATION}/${targetId}/includes`);
+  assert.deepEqual(include.body, { applicationTenantIds: ['all'], applicationsFromVerifiedPublisherOnly: false }, 'the rule id is never sent');
+  assert.deepEqual(result.applied[0].followUp, [], 'the backup held the conditions, so nothing is left');
+
+  const again = await run(graph, [creationResource('create')]);
+  assert.deepEqual(again.failed, []);
+  assert.equal(again.applied[0].targetId, targetId);
+  assert.equal(graph.bodies.length, 2, 'a re-run writes nothing');
+});
+
+test('batch 21: a drifted app creation policy gets the backup\'s conditions back, read from the policy itself', async () => {
+  const graph = directoryGraph();
+  const path = `${CREATION}/policy-1`;
+  graph.objects.set(path, { id: 'policy-1', displayName: 'KEEL-RT-app-creation', description: 'Changed', isBuiltIn: false });
+  graph.objects.set(`${path}/includes`, { value: [{ id: 'inc-1', applicationTenantIds: ['all'], applicationsFromVerifiedPublisherOnly: false }] });
+  graph.objects.set(`${path}/excludes`, { value: [{ id: 'exc-1', applicationTenantIds: ['tenant-x'] }] });
+  const reads = [];
+  const read = graph.read;
+  graph.read = async (version, requested) => {
+    reads.push(requested);
+    return read(version, requested);
+  };
+  const live = { id: 'policy-1', displayName: 'KEEL-RT-app-creation', description: 'Changed', isBuiltIn: false };
+  const result = await run(graph, [creationResource('update', creationPolicy({ id: 'policy-1' }), { targetId: 'policy-1', live: { state: 'present', targetId: 'policy-1', payload: live } })]);
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(graph.bodies.map((write) => `${write.method} ${write.path}`), [`PATCH ${path}`, `DELETE ${path}/excludes/exc-1`]);
+  assert.deepEqual(graph.bodies[0].body, { description: 'Fixture' });
+  assert.ok(!reads.some((requested) => /\/(includes|excludes)$/.test(requested)), 'the condition sets are never read on their own (Graph expands them on the policy)');
+  assert.deepEqual(graph.objects.get(`${path}/excludes`).value, []);
+});
+
+test('batch 21: a create that finds the policy by name brings its drifted conditions back to the backup\'s', async () => {
+  const graph = directoryGraph();
+  const path = `${CREATION}/policy-9`;
+  graph.objects.set(path, { id: 'policy-9', displayName: 'KEEL-RT-app-creation', description: 'Fixture', isBuiltIn: false });
+  graph.objects.set(`${path}/includes`, { value: [{ id: 'inc-9', applicationTenantIds: ['all'], applicationsFromVerifiedPublisherOnly: false }] });
+  graph.objects.set(`${path}/excludes`, { value: [{ id: 'exc-9', applicationPublisherIds: ['publisher-x'] }] });
+  // A listed policy with no built-in flag is never taken over by name.
+  graph.objects.set(`${CREATION}/policy-unmarked`, { id: 'policy-unmarked', displayName: 'KEEL-RT-app-creation' });
+  const result = await run(graph, [creationResource('create')]);
+  assert.deepEqual(result.failed, []);
+  assert.equal(result.applied[0].targetId, 'policy-9');
+  assert.deepEqual(graph.bodies.map((write) => `${write.method} ${write.path}`), [`DELETE ${path}/excludes/exc-9`]);
+});
+
+test('batch 21: a built-in or unmarked app creation policy is skipped before any write', async () => {
+  for (const [extra, expect] of [[{ isBuiltIn: true, displayName: 'Default policy' }, /"Default policy" is a built-in app creation policy/], [{ isBuiltIn: undefined }, /does not say whether this app creation policy is built in/]]) {
+    const graph = directoryGraph();
+    const result = await run(graph, [creationResource('create', creationPolicy(extra))]);
+    assert.equal(result.applied.length, 0);
+    assert.match(result.skipped[0].reason, expect);
+    assert.equal(graph.bodies.length, 0);
+  }
+});
+
+test('batch 21: an app creation policy without its conditions in the backup leaves a step to set them', async () => {
+  const graph = directoryGraph();
+  const { includes: _i, excludes: _e, ...bare } = creationPolicy();
+  const result = await run(graph, [creationResource('create', bare)]);
+  assert.deepEqual(result.failed, []);
+  assert.equal(graph.bodies.length, 1);
+  assert.deepEqual(result.applied[0].followUp.map((step) => step.part), ['The include and exclude rules of a custom policy']);
 });
 
 // ------------------------------------------------------- delegated consents

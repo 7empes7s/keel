@@ -520,9 +520,9 @@ test('an Exchange app access scope an app role assignment uses never has its fil
     const { result, writes } = await run(broader, { mode });
     assert.equal(result.applied, undefined, `${mode}: the filter is withheld`);
     assert.match(result.skipped?.reason ?? '', /^manual: .*used by 1 app role assignment/);
-    assert.deepEqual(result.skipped.completion, {
+    assert.deepEqual(result.skipped.completion, [{
       kind: 'manual-setting', requirement: 'exchangeAppScopeFilter', fields: ['customAttributes'], description: result.skipped.reason.replace(/^manual: /, ''),
-    });
+    }]);
     assert.equal(writes.length, 0, `${mode}: nothing is written`);
   }
   // A name change alone still writes.
@@ -586,7 +586,7 @@ test('the app scope guard fails closed when the beta assignment list pages unsta
   // live 3,3,3,1,3,0,... pattern): the filter is still held back.
   const missed = await run({ reads: [[...others(4), others(1)[0]]] });
   assert.match(missed.result.skipped?.reason ?? '', /^manual: It could not be confirmed that no app role assignment uses this app access scope \(a read of the app role assignments repeated rows \(4 distinct of 5\)/);
-  assert.equal(missed.result.skipped.completion.requirement, 'exchangeAppScopeFilter');
+  assert.deepEqual(missed.result.skipped.completion.map((step) => step.requirement), ['exchangeAppScopeFilter']);
   assert.equal(missed.patches.length, 0);
 
   // Reads without repeats that disagree are doubted too, even when none names the scope.
@@ -649,7 +649,8 @@ test('a guest federation restore never writes its sign-in endpoints or signing c
       const { result, writes } = await run({ ...live, [field]: value }, mode);
       assert.equal(result.applied, undefined, `${field} (${mode}) is withheld`);
       assert.match(result.skipped?.reason ?? '', new RegExp(`^manual: .*${field}`), `${field} (${mode})`);
-      assert.deepEqual(result.skipped.completion.fields, [field]);
+      // #695: a list of steps, like every other completion, so a run can read it.
+      assert.deepEqual(result.skipped.completion.map((step) => [step.requirement, step.fields]), [['externalDomainFederationSignIn', [field]]]);
       assert.equal(writes.length, 0, `${field} (${mode}): nothing is written`);
     }
     // The name differs too: only the name is written, the sign-in field is a step.
@@ -1049,4 +1050,69 @@ test('restore gaps batch 20: a settings member Graph added after the backup is n
   result = await singletonWrite(graph, 'formsSettings', FORMS, drifted);
   assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
   assert.deepEqual(writesOf(graph)[0].body, { settings: FORMS.settings });
+});
+
+// ------------------------------------------------- restore gaps, batch 21
+
+const DEFENDER_ROLES = '/roleManagement/defender/roleDefinitions';
+// The provider object, so its role list reads as empty rather than missing.
+const DEFENDER = { '/roleManagement/defender': {} };
+const defenderRole = (extra = {}) => ({
+  id: 'role-src', displayName: 'KEEL-RT-defender-role', description: 'Reads security data', isBuiltIn: false, isEnabled: true,
+  rolePermissions: [{ allowedResourceActions: ['microsoft.xdr/secops/securitydata/read'] }], ...extra,
+});
+
+test('restore gaps batch 21: a custom Defender role is recreated with its permissions and updated in place', async () => {
+  const backup = defenderRole();
+  const graph = idoFakeGraph({ seed: DEFENDER });
+  const created = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload: backup, references: [] }, 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.version, 'beta');
+  assert.equal(post.path, DEFENDER_ROLES);
+  assert.deepEqual(post.body, { displayName: 'KEEL-RT-defender-role', description: 'Reads security data', rolePermissions: backup.rolePermissions });
+
+  const drifted = defenderRole({ id: 'role-1', description: 'Changed', rolePermissions: [{ allowedResourceActions: ['microsoft.xdr/secops/securitydata/read', 'microsoft.xdr/secops/securitydata/manage'] }] });
+  const second = idoFakeGraph({ seed: { ...DEFENDER, [`${DEFENDER_ROLES}/role-1`]: drifted } });
+  const updated = await applyIdentityObjectWrite(second, {
+    naturalKey: 'role-1', resourceType: 'defenderRoleDefinition', payload: { ...backup, id: 'role-1' }, references: [],
+    live: { state: 'present', targetId: 'role-1', payload: drifted },
+  }, 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  const patch = second.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.path, `${DEFENDER_ROLES}/role-1`);
+  assert.deepEqual(patch.body, { description: 'Reads security data', rolePermissions: backup.rolePermissions }, 'the wider permission is taken away');
+});
+
+test('restore gaps batch 21: a built-in or unmarked Defender role, or one with no permissions, is never written', async () => {
+  for (const [payload, expect] of [
+    [defenderRole({ isBuiltIn: true, displayName: 'Security Reader' }), /^manual: "Security Reader" is a built-in Defender role/],
+    [defenderRole({ isBuiltIn: undefined }), /does not say whether this Defender role is built in/],
+  ]) {
+    const graph = idoFakeGraph({ seed: DEFENDER });
+    const result = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload, references: [] }, 'create', FAST);
+    assert.match(result.skipped?.reason ?? '', expect);
+    assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
+  }
+  const graph = idoFakeGraph({ seed: DEFENDER });
+  const empty = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload: defenderRole({ rolePermissions: [] }), references: [] }, 'create', FAST);
+  assert.match(empty.failed?.error ?? '', /has no permissions/);
+  assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
+});
+
+test('restore gaps batch 21: a second create of a Defender role finds the first by name and never makes a twin', async () => {
+  const backup = defenderRole();
+  const graph = idoFakeGraph({ seed: DEFENDER });
+  const first = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload: backup, references: [] }, 'create', FAST);
+  assert.equal(first.failed, undefined, first.failed?.error);
+  const posts = () => graph.calls.filter((call) => call.method === 'POST').length;
+  assert.equal(posts(), 1);
+
+  const again = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload: backup, references: [] }, 'create', FAST);
+  assert.match(again.skipped?.reason ?? '', /already there/);
+  assert.equal(posts(), 1, 'the re-run writes nothing');
+
+  const other = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload: defenderRole({ description: 'Other' }), references: [] }, 'create', FAST);
+  assert.match(other.failed?.error ?? '', /already exists with other settings/);
+  assert.equal(posts(), 1, 'a role with the same name and other settings is never duplicated');
 });

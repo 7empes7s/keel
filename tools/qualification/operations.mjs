@@ -51,6 +51,8 @@ export const FIXTURE_PAYLOADS = Object.freeze({
   claimsMappingPolicy: { displayName: 'Fixture claims mapping', definition: ['{"ClaimsMappingPolicy":{"Version":1,"IncludeBasicClaimSet":"true"}}'], isOrganizationDefault: false },
   homeRealmDiscoveryPolicy: { displayName: 'Fixture sign-in routing', definition: ['{"HomeRealmDiscoveryPolicy":{"AccelerateToFederatedDomain":false}}'], isOrganizationDefault: false },
   permissionGrantPolicy: { id: 'fixture-consent-policy', displayName: 'Fixture consent policy', description: 'Fixture' },
+  // Restore gaps, batch 21: a custom app creation policy (no condition sets in the fixture).
+  servicePrincipalCreationPolicy: { displayName: 'Fixture app creation policy', description: 'Fixture', isBuiltIn: false },
   oauth2PermissionGrant: { clientId: 'fixture-client-sp', consentType: 'AllPrincipals', principalId: null, resourceId: 'fixture-resource-sp', scope: 'User.Read' },
   group: { displayName: 'Fixture group', mailNickname: 'fixture-group', mailEnabled: false, securityEnabled: true, groupTypes: [] },
   // Roadmap task-150: a cloud user with one direct licence.
@@ -295,6 +297,11 @@ export const FIXTURE_PAYLOADS = Object.freeze({
   exchangeCustomAppScope: {
     type: 'RecipientScope', displayName: 'Fixture app scope',
     customAttributes: { Exclusive: false, RecipientFilter: "PrimarySmtpAddress -like 'keel-rt-fixture*'" },
+  },
+  // Restore gaps, batch 21: a custom Defender XDR role with one read permission.
+  defenderRoleDefinition: {
+    displayName: 'Fixture Defender role', description: 'Fixture', isBuiltIn: false,
+    rolePermissions: [{ allowedResourceActions: ['microsoft.xdr/secops/securitydata/read'] }],
   },
   // Restore gaps, batch 10.
   userExperienceAnalyticsBaseline: { displayName: 'Fixture baseline', isBuiltIn: false },
@@ -669,7 +676,8 @@ export function fakeGraph() {
       // Batch 18: an app KEEL wrote reads back as written.
       if (/^\/deviceAppManagement\/mobileApps\/[^/]+$/.test(path) && !objects.has(path)) return { ok: true, status: 200, body: { id: decodeURIComponent(path.split('/').pop()) } };
       // Restore gaps batch 12: the imported ADMX files are listed before an upload.
-      if (path === '/deviceManagement/groupPolicyUploadedDefinitionFiles') {
+      // and batch 21: the Defender roles are listed before a create.
+      if (path === '/deviceManagement/groupPolicyUploadedDefinitionFiles' || path === '/roleManagement/defender/roleDefinitions') {
         const value = [...objects.entries()].filter(([key]) => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes('/')).map(([, object]) => object);
         return { ok: true, status: 200, body: { value } };
       }

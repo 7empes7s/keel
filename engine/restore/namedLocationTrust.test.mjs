@@ -288,3 +288,16 @@ test('a policy that also names a missing group still fails on that group: the sk
   assert.equal(result.failed.length, 1);
   assert.match(result.failed[0].error, /cannot resolve reference/, 'it fails on its references, exactly as before this gate');
 });
+
+test('recordTrustSkippedLocations reads a single completion step as well as a list (#695)', () => {
+  const trust = { kind: 'manual-setting', requirement: 'namedLocationTrust' };
+  const other = { kind: 'manual-setting', requirement: 'externalDomainFederationSignIn' };
+  const keys = recordTrustSkippedLocations(new Set(), [
+    { naturalKey: 'namedLocation:KEEL-RT-List', completion: [trust] },
+    { naturalKey: 'namedLocation:KEEL-RT-One', completion: trust },
+    { naturalKey: 'externalDomainFederation:KEEL-RT-fed', completion: other },
+    { naturalKey: 'externalDomainFederation:KEEL-RT-fed-list', completion: [other] },
+    { naturalKey: 'group:KEEL-RT-none' },
+  ]);
+  assert.deepEqual([...keys], ['namedLocation:KEEL-RT-List', 'namedLocation:KEEL-RT-One']);
+});

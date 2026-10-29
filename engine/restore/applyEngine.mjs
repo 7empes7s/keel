@@ -438,8 +438,9 @@ export async function applyWave(writer, governor, wave, {
   // trust (namedLocationTrust.mjs recordTrustSkippedLocations).
   trustSkippedLocations = new Set(),
   // The separate tenant-wide option for a record marked tenantWide on the test
-  // tenant (recordWriter.mjs#tenantWideRecordProblem). Off by default, and no
-  // restore run sets it yet.
+  // tenant (recordWriter.mjs#tenantWideRecordProblem). Off by default; a
+  // snapshot restore sets it from its dry run (keel-restore
+  // --allow-tenant-wide-test-writes, test tenant only).
   allowTenantWide = false,
 }) {
   const applied = [];

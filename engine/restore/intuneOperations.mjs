@@ -1368,6 +1368,11 @@ function defaultBrandingProfile(resource, verb) {
   return { outcome: 'skipped', reason: 'manual: the backup and the live profile disagree on which one is the default Company Portal branding, so neither is written; check it by hand' };
 }
 
+/** A write that touches the default profile is a tenant-wide setting (recordWriter.mjs#tenantWideRecordProblem). */
+function isDefaultBrandingWrite(resource) {
+  return isDefaultBranding(resource?.payload) || isDefaultBranding(resource?.live?.payload);
+}
+
 /** The default profile applies to every user and has no assignments to write. */
 async function brandingAfterWrite(io, step) {
   if (isDefaultBranding(step.payload)) return { changes: { assignments: 'the default profile applies to every user' } };
@@ -1711,7 +1716,7 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   intuneBrandingProfile: defineRecord({
     resourceType: 'intuneBrandingProfile', version: 'beta', collection: '/deviceManagement/intuneBrandingProfiles',
     operations: ['create', 'update'], excluded: ['isDefaultProfile', 'assignments', ...BRANDING_PROFILE_IMAGES],
-    refusal: defaultBrandingProfile, afterWrite: brandingAfterWrite, assignmentType: '#microsoft.graph.intuneBrandingProfileAssignment',
+    tenantWide: isDefaultBrandingWrite, refusal: defaultBrandingProfile, afterWrite: brandingAfterWrite, assignmentType: '#microsoft.graph.intuneBrandingProfileAssignment',
     permission: 'DeviceManagementServiceConfig.ReadWrite.All',
   }),
   // Restore gaps, batch 10. A custom Endpoint analytics baseline is only a
@@ -1825,7 +1830,9 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
     permission: 'DeviceManagementApps.ReadWrite.All',
   }),
   // Restore gaps, batch 17: Intune tenant-wide settings, approved by the user
-  // on 2026-10-22. Each is updated in place only.
+  // on 2026-10-22. Each is updated in place only. Each is tenantWide: on the
+  // test tenant it is written only with the tenant-wide option
+  // (keel-restore --allow-tenant-wide-test-writes, recorded in the dry run).
   // The Intune tenant settings: the compliance settings (settings). Graph
   // sends a read naming fields of more than one backend to a backend that
   // cannot answer it (issue #447), so the read back reads each field on its
@@ -1833,7 +1840,7 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // (managedDeviceCleanupRule), and the Company Portal brand on this object is
   // the default branding profile; each is written there.
   deviceManagementSettings: defineRecord({
-    resourceType: 'deviceManagementSettings', version: 'beta', collection: '/deviceManagement', singleton: true,
+    resourceType: 'deviceManagementSettings', tenantWide: true, version: 'beta', collection: '/deviceManagement', singleton: true,
     readEach: ['settings'], operations: ['update'],
     writable: ['settings'], refusal: deviceManagementSettingsRefusal,
     permission: 'DeviceManagementConfiguration.ReadWrite.All',
@@ -1841,14 +1848,14 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // The Microsoft Tunnel health limits: only the two limits are written; the
   // defaults beside them are Microsoft's.
   microsoftTunnelHealthThreshold: defineRecord({
-    resourceType: 'microsoftTunnelHealthThreshold', version: 'beta', collection: '/deviceManagement/microsoftTunnelHealthThresholds',
+    resourceType: 'microsoftTunnelHealthThreshold', tenantWide: true, version: 'beta', collection: '/deviceManagement/microsoftTunnelHealthThresholds',
     operations: ['update'], writable: ['healthyThreshold', 'unhealthyThreshold'],
     permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
   // Exchange on-premises access for managed devices. A restore never turns it
   // on: that could block mail on every device that is not managed.
   onPremisesConditionalAccessSettings: defineRecord({
-    resourceType: 'onPremisesConditionalAccessSettings', version: 'v1.0', collection: '/deviceManagement/conditionalAccessSettings', singleton: true,
+    resourceType: 'onPremisesConditionalAccessSettings', tenantWide: true, version: 'v1.0', collection: '/deviceManagement/conditionalAccessSettings', singleton: true,
     operations: ['update'], writable: ['enabled', 'includedGroups', 'excludedGroups', 'overrideDefaultRule'],
     refusal: onPremisesAccessRefusal, permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),

@@ -33,6 +33,8 @@ import { CONSTANT_KEY_TYPES, ID_KEY_TYPES } from '../../engine/cir/naturalKey.mj
 import { buildExpansionInventory, buildOperationLedger } from '../../engine/coverage/qualification.mjs';
 import { ENFORCEMENT_STEP } from '../../engine/restore/conditionalAccessEnforcement.mjs';
 import { DIRECTORY_POLICY_RECORDS } from '../../engine/restore/directoryPolicyOperations.mjs';
+import { IDENTITY_RECORDS } from '../../engine/restore/identityObjectOperations.mjs';
+import { INTUNE_EXTENDED_RECORDS } from '../../engine/restore/intuneOperations.mjs';
 import { TENANT_POLICY_RECORDS } from '../../engine/restore/tenantPolicyOperations.mjs';
 
 export const LIVE_GATE_PLAN_VERSION = 1;
@@ -559,11 +561,21 @@ const capture = (resourceType, operation, guidance, key) => {
 /** The file name stem of one operation's evidence (an edge key's # becomes a dot). */
 export const evidenceStem = (resourceType, operation) => `${resourceType.replace('#', '.')}.${operation}`;
 
+/**
+ * Records the test tenant writes only with the tenant-wide option
+ * (recordWriter.mjs#tenantWideRecordProblem). A record tenant-wide for some
+ * objects only (the branding profile) is left out: its live proof is a KEEL-RT-
+ * fixture, so the option is not needed.
+ */
+export const TENANT_WIDE_RECORD_TYPES = Object.freeze(new Set([...Object.values(IDENTITY_RECORDS), ...Object.values(INTUNE_EXTENDED_RECORDS)]
+  .filter((record) => record.tenantWide === true).map((record) => record.resourceType)));
+
 function setupFor(resourceType, operation, guidance, key) {
+  const tenantWide = TENANT_WIDE_RECORD_TYPES.has(resourceType) ? ' --allow-tenant-wide-test-writes' : '';
   const restoreRun = [
     'node cli/keel-collect.mjs --config "$COLLECTOR"   # note the snapshot id as S',
     '# now change the tenant as in "Before the restore"',
-    `node cli/keel-restore.mjs --snapshot-id "$S" --select '${key}' --collector-config "$COLLECTOR" --target-config "$RESTORER" --persist-artifact "$A" --requested-by keel-operator`,
+    `node cli/keel-restore.mjs --snapshot-id "$S" --select '${key}' --collector-config "$COLLECTOR" --target-config "$RESTORER" --persist-artifact "$A" --requested-by keel-operator${tenantWide}`,
     '# Marouane approves artifact A in the portal (Restore, review). The requester can never approve it.',
     'node cli/keel-restore.mjs --artifact "$A" --enforce',
   ];

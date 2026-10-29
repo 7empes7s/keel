@@ -703,7 +703,7 @@ const governor = { async acquire() {}, observeRetryAfter() {} };
 // Types whose delete is only the undo of a create a restore made (an app's link).
 const UNDO_ONLY_DELETES = new Set(['mobileAppRelationship']);
 
-function fixtureFor(resourceType, operation, graph) {
+export function fixtureFor(resourceType, operation, graph) {
   const collection = graphPathFor(resourceType);
   const payload = FIXTURE_PAYLOADS[resourceType];
   const blastRadius = CATALOG.find((entry) => entry.type === resourceType)?.blastRadius ?? null;

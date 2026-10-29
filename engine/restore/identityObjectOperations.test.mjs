@@ -12,7 +12,8 @@ import {
 } from './identityObjectOperations.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
 
-const FAST = { readAfterWriteOptions: { attempts: 1, delayMs: 0 } };
+// A customer tenant: tenant-wide records are written there without the tenant-wide option.
+const FAST = { readAfterWriteOptions: { attempts: 1, delayMs: 0 }, tenantRef: 'sha256:customer0000000' };
 const GUARD = { breakGlassUserIds: ['break-glass-1'], keelAppIds: ['keel-app-id'], caPolicies: [] };
 const COMPLETE = (type) => ({ [type]: { outcome: 'complete' } });
 
@@ -903,9 +904,8 @@ const TENANT_WIDE_CASES = Object.freeze([
 ]);
 const TEST_TENANT = Object.freeze({ ...FAST, tenantRef: 'sha256:keeltesttenant0', testTenantRefs: ['sha256:keeltesttenant0'] });
 
-test('restore gaps batch 20: the five admin center settings are marked tenant-wide, and only they are', () => {
-  const marked = Object.values(IDENTITY_RECORDS).filter((record) => record.tenantWide).map((record) => record.resourceType).sort();
-  assert.deepEqual(marked, ['adminReportSettings', 'appsAndServicesSettings', 'formsSettings', 'microsoft365AppsInstallationOptions', 'pronounsSettings']);
+test('restore gaps batch 20: the five admin center settings are marked tenant-wide (every tenant-wide record: tenantWideRecords.test.mjs)', () => {
+  for (const [type] of TENANT_WIDE_CASES) assert.equal(IDENTITY_RECORDS[type].tenantWide, true, type);
   assert.equal(IDENTITY_RECORDS.engageCommunity.tenantWide, false, 'a community is one object, not a tenant setting');
 });
 

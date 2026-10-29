@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
-import { connect, DatabaseBusyError, POOL_WAIT_MS, type DbClient } from "@/lib/db";
+import { connect, DatabaseBusyError, POOL_MAX, POOL_WAIT_MS, type DbClient } from "@/lib/db";
 
 // When every pooled connection is in use, the next caller gives up after POOL_WAIT_MS
 // with a clear error instead of waiting forever, and the pool works again once a
@@ -11,7 +11,7 @@ test("a full pool fails the next wait after the timeout instead of hanging, then
   const db = await createIsolatedTestDatabase(import.meta.url);
   const held: DbClient[] = [];
   try {
-    for (let i = 0; i < 8; i++) held.push(await connect(db.url));
+    for (let i = 0; i < POOL_MAX; i++) held.push(await connect(db.url));
 
     const started = Date.now();
     await assert.rejects(connect(db.url), (error: unknown) => {

@@ -15,6 +15,9 @@ export interface DbClient {
 
 type PoolRegistry = Map<string, pg.Pool>;
 
+/** Connections each pool may open. */
+export const POOL_MAX = 8;
+
 /** How long a caller waits for a free pooled connection before giving up. */
 export const POOL_WAIT_MS = 5_000;
 
@@ -38,7 +41,7 @@ function poolFor(url: string): pg.Pool {
   if (!pool) {
     pool = new pg.Pool({
       connectionString: url,
-      max: 8,
+      max: POOL_MAX,
       idleTimeoutMillis: 30_000,
       // Without this, a caller waits forever when all connections are in use.
       connectionTimeoutMillis: POOL_WAIT_MS,

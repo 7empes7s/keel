@@ -11600,3 +11600,44 @@ item that needs it stays untouched.
   `hasValidWindowsLicense` value before, any change, the POST answers and the value read back after; step 3: each attempt's answer;
   per kind and operation: promoted / refused (exact message) / skipped / blocked; approval ids; evidence branch and commit;
   anything left in the tenant.
+
+### Q254: Rerun Q229's iOS app protection create round now that the guard classifies the wipe and clipboard fields (after PR #718, fixes #705)
+- Drafted by the "Classify app protection wipe and clipboard fields" thread (2026-10-29). In Q229 step 3 the `managedAppPolicy`
+  create was refused (`unclassified-content-effect: managedAppPolicy changes periodOfflineBeforeWipeIsEnforced,
+  allowedOutboundClipboardSharingLevel`, dry run `7ef354bc`). PR #718 (merge `e552b30c`) makes `managedAppPolicy` a reviewed
+  content-effect type:
+  - Wipes are `irreversible`: an offline period before wipe, wipe versions, a Company Portal wipe deferral, or an action that
+    becomes `wipe`. They are judged on create **only when the restore assigns the policy**. An unassigned create carries no
+    content effect.
+  - Wider clipboard or data-transfer levels are `externally-sharing`, on update only.
+- Needs: the deployed build B at or after `e552b30c`. Check: `git -C /opt/keel-live merge-base --is-ancestor e552b30c HEAD`.
+  Only the app protection create is in scope here. Its update stays blocked on #703, which is a separate fix, so don't run it.
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q229 (log every approval
+  id). Never assign the policy. Grant nothing. Global admin not used.
+- Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Write down that no `KEEL-RT-254` object exists.
+  2. Create the fixtures, both as in Q229 and assigned to nobody:
+     - iOS store app `KEEL-RT-254-ios-app` (Outlook, `minimumSupportedOperatingSystem` v14_0);
+     - iOS app protection `KEEL-RT-254-ios-mam` (PIN required, Graph defaults otherwise, Outlook `com.microsoft.office.outlook`
+       added through `/targetApps`).
+  3. Take snapshot S and confirm S holds `apps` = Outlook for the policy.
+  4. Delete the policy and keep the app. Restore from S, selecting only the policy. Expect the dry run to be:
+     - **not refused**;
+     - planning one `create`;
+     - carrying **no content effects** (the policy is unassigned).
+     Approve, then `--enforce`. Expect `create succeeded` with a new id, and a read back equal to S (Outlook in its apps, nothing
+     assigned). If the dry run is still refused, or lists a content effect, quote it and comment on #705.
+  5. Run a second dry run from S. Expect 0 planned writes for the policy.
+  6. Capture the `managedAppPolicy.create` record (natural key as `--fixture`). Run `pseudonymize.mjs check`, the secret scan and
+     `operations.mjs --live-evidence`. Commit to `claude/live-evidence-q254`, branched from `origin/master` (no PR).
+  7. Cleanup: delete every `KEEL-RT-254-*` object, the iOS app included. Report anything left.
+- **Report:**
+  - B and S;
+  - the dry run id, its status and its content effects;
+  - the approval id;
+  - the enforce exit code and the new id;
+  - the second dry run's planned writes;
+  - the capture result and commit;
+  - anything left in the tenant.

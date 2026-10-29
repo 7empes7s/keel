@@ -211,14 +211,16 @@ for (const step of [1, 2, 3]) {
 const chainCache = new Map();
 const walkStarts = [];
 const walkSpy = { query: (text, values) => {
-  if (typeof text === 'string' && text.includes('FROM evidence') && text.includes('ORDER BY seq') && values?.length === 2) walkStarts.push(values[1]);
+  if (typeof text === 'string' && text.includes('FROM evidence') && text.includes('ORDER BY seq') && !text.includes('xmin') && values?.length === 2) walkStarts.push(values[1]);
   return client.query(text, values);
 } };
 assert.deepEqual(await getEvidenceIntegrity(walkSpy, { tenantRef: chainTenant, chainCache }), { ok: true, chainLength: 3 });
 await appendEvidence(superuser, { tenantRef: chainTenant, kind: 'test.step', subject: { step: 4 }, actor: 'status-test', eventSink: () => {} });
 assert.deepEqual(await getEvidenceIntegrity(walkSpy, { tenantRef: chainTenant, chainCache }), { ok: true, chainLength: 4 });
+assert.equal(walkStarts.length, 2, 'one walk per check');
 assert.equal(walkStarts[0], null, 'the first check walks the whole chain');
-assert.notEqual(walkStarts[1], null, 'a repeat check starts after the verified records');
+const { rows: [verifiedTip] } = await client.query('SELECT max(seq)::text AS seq FROM evidence WHERE tenant_ref = $1 AND seq < (SELECT max(seq) FROM evidence WHERE tenant_ref = $1)', [chainTenant]);
+assert.equal(String(walkStarts[1]), verifiedTip.seq, 'a repeat check starts after the verified records');
 await superuser.query(
   `UPDATE evidence SET subject = '{"step": 99}'::jsonb
    WHERE seq = (SELECT min(seq) FROM evidence WHERE tenant_ref = $1)`,

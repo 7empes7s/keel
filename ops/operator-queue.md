@@ -10662,7 +10662,8 @@ item that needs it stays untouched.
   `accessPackageCatalog` (v1.0 `/identityGovernance/entitlementManagement/catalogs`, create + update; the catalog's resources,
   roles and access packages are never written). Both are in `engine/restore/identityObjectOperations.mjs`.
 - Needs: none beyond a deployed build B on master (the writers have been there since wave 2). Run after Q207 and Q208.
-- Status: blocked: captures wait on PR #699; catalog create #700
+- Status: todo
+- Resume (2026-10-29 22:35 UTC, drafting thread): PR #699 is merged as `53cbe462`. Once /opt/keel-live is at or after it, capture the 3 records from restores `a6c6e1cd` (policy update, catalog update) and `e443ff7a` (policy create), run `pseudonymize.mjs check`, the secret scan and `operations.mjs --live-evidence`, and commit them to `claude/live-evidence-q228` (no PR). The catalog create stays out until #700 is fixed (a new item will follow). Keep the earlier Result below and add to it.
 - Result: in part; captures blocked (2026-10-29 22:35 UTC, keel-operator). **Policy update, catalog update and policy create all wrote live and read back as in S. Capture refuses all three: these types have no FIXTURE_GUIDANCE yet, so they're treated as "by reference" (PR #699). The catalog create is refused by a Keel guard (#700).**
   - B = **05b1e553**.
   - Credentials: Restorer for writes, Collector for reads and the backup. Global admin not used; nothing granted. The Restorer token holds Policy.ReadWrite.ApplicationConfiguration and EntitlementManagement.ReadWrite.All.

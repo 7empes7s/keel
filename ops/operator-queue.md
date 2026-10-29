@@ -1654,8 +1654,105 @@ being triggered by queue updates.
 - Needs: Q182 done; the Collector's SP holds `ConfigurationMonitoring.ReadWrite.All` as an appRoleAssignment (Marouane's consent; if
   missing, set `blocked: waiting on consent` and stop).
 - Requeued by the "Resume tests after Collector and Restorer consent" thread (2026-10-29 10:58 UTC): Marouane reports admin consent granted on Keel Restorer (incl. `AppRoleAssignment.ReadWrite.All`). Needs now also: **Q223 done**, and Q222, Q221 and Q219 each done or blocked (run the quick items first; this one has 40-minute jobs). Rerun step 1 for the 14 Graph read roles (Exchange.ManageAsApp and Global Reader are already held; report them as already held), then steps 2–5.
-- Status: todo (after Q223, Q222, Q221, Q219)
-- Result: blocked: waiting on consent (2026-10-28 20:48 UTC, root keel-operator). The Collector consent landed at 20:43 (59 appRoleAssignments, ConfigurationMonitoring.ReadWrite.All held). Step 1 was done in part, as the Restorer:
+- Status: done
+- Result: done (2026-10-29 11:40 UTC, root keel-operator): **TCM snapshots work on this tenant: 5 workloads read, 105 of 168 types returned data, 1724 resources (quota 20000 a month), every job created and deleted (5/0).** It took two probe fixes, PR #680 (automerge, reviewed): (1) TCM accepts job names of letters, digits and spaces only, 8–32 characters, so the first run (11:11) was refused 5/5 with `400 … One or more validation errors occurred.`; (2) splitting around unsupported types used up all 12 job slots (second run, 11:14: Exchange only, 889 resources, 4 workloads skipped). Third run (11:21–11:35) from the PR head `44cb3acf`; everything else at B = `6fb16358`. Credentials: Restorer for step 1 grants, Collector (ConfigurationMonitoring.ReadWrite.All) for check and run; global admin not used. Tenant writes: the grants below, and probe snapshot jobs only (named `KEEL RT <workload> <stamp>`, and one `KEEL RT ENTRA 202610291114 1` diagnostic job created and deleted, 200/204). No tenant configuration written.
+  - **Step 1 grants on the TCM principal df012486… (they stay for the follow-up):** Microsoft Graph, all **added 201** at 10:55 (as the Restorer, after the 10:53 consent): Policy.Read.All, Directory.Read.All, User.Read.All, Group.Read.All, Application.Read.All, RoleManagement.Read.Directory, EntitlementManagement.Read.All, IdentityProvider.Read.All, Organization.Read.All, DeviceManagementConfiguration.Read.All, DeviceManagementApps.Read.All, DeviceManagementServiceConfig.Read.All, DeviceManagementRBAC.Read.All, AppCatalog.Read.All. Exchange Online `Exchange.ManageAsApp` and directory role **Global Reader** were added 2026-10-28 (already held). Nothing with Write.
+  - **Step 2** (11:11, after 15 min): `check` exit 0. All checks pass: app holds ConfigurationMonitoring.ReadWrite.All yes; TCM principal yes; M365 Admin Services principal yes; the 14 Graph roles + Exchange.ManageAsApp; Global Reader; 0 snapshot jobs visible; **Ready to run | yes**.
+  - **Step 3:** run exit **0** (all three runs). Sections of the third run, verbatim:
+    ## Summary
+    
+    | Measure | Value |
+    | --- | --- |
+    | Resources extracted (counts against 20000 a month) | 1724 |
+    | Types requested | 168 |
+    | Types with data | 105 |
+    | Types refused at create | 21 |
+    | Types not sent (no room for another job) | 0 |
+    | Types empty | 42 |
+    | Jobs deleted / not deleted | 5 / 0 |
+    
+
+    ## Types KEEL does not read that returned data (best first)
+    
+    | Type | Tier | Count |
+    | --- | --- | --- |
+    | microsoft.exchange.recipientpermission | 1 | 358 |
+    | microsoft.exchange.mailboxpermission | 1 | 88 |
+    | microsoft.exchange.calendarprocessing | 1 | 57 |
+    | microsoft.exchange.mailboxcalendarfolder | 1 | 57 |
+    | microsoft.exchange.place | 1 | 11 |
+    | microsoft.exchange.sharedmailbox | 1 | 7 |
+    | microsoft.exchange.distributiongroup | 1 | 6 |
+    | microsoft.exchange.mailcontact | 1 | 2 |
+    | microsoft.exchange.dataclassification | 2 | 226 |
+    | microsoft.exchange.groupsettings | 2 | 13 |
+    | microsoft.securityandcompliance.fileplanpropertycategory | 2 | 13 |
+    | microsoft.securityandcompliance.fileplanpropertydepartment | 2 | 10 |
+    | microsoft.securityandcompliance.fileplanpropertycitation | 2 | 5 |
+    | microsoft.exchange.casmailboxplan | 2 | 4 |
+    | microsoft.exchange.mailboxplan | 2 | 4 |
+    | microsoft.exchange.sharingpolicy | 2 | 3 |
+    | microsoft.securityandcompliance.fileplanpropertyauthority | 2 | 3 |
+    | microsoft.securityandcompliance.retentioneventtype | 2 | 3 |
+    | microsoft.exchange.owamailboxpolicy | 2 | 2 |
+    | microsoft.exchange.irmconfiguration | 2 | 1 |
+    | microsoft.exchange.mailtips | 2 | 1 |
+    | microsoft.exchange.omeconfiguration | 2 | 1 |
+    | microsoft.exchange.perimeterconfiguration | 2 | 1 |
+    | microsoft.exchange.reportsubmissionpolicy | 2 | 1 |
+    | microsoft.exchange.roleassignmentpolicy | 2 | 1 |
+    | microsoft.exchange.transportconfig | 2 | 1 |
+    | microsoft.teams.upgradepolicy | 3 | 11 |
+    | microsoft.teams.feedbackpolicy | 3 | 4 |
+    | microsoft.teams.enhancedencryptionpolicy | 3 | 3 |
+    | microsoft.teams.channelspolicy | 3 | 2 |
+    | microsoft.teams.mobilitypolicy | 3 | 2 |
+    | microsoft.teams.shiftspolicy | 3 | 2 |
+    | microsoft.teams.updatemanagementpolicy | 3 | 2 |
+    | microsoft.teams.audioconferencingpolicy | 3 | 1 |
+    | microsoft.teams.callholdpolicy | 3 | 1 |
+    | microsoft.teams.compliancerecordingpolicy | 3 | 1 |
+    | microsoft.teams.cortanapolicy | 3 | 1 |
+    | microsoft.teams.dialinconferencingtenantsettings | 3 | 1 |
+    | microsoft.teams.filespolicy | 3 | 1 |
+    | microsoft.teams.ipphonepolicy | 3 | 1 |
+    | microsoft.teams.meetingconfiguration | 3 | 1 |
+    | microsoft.teams.networkroamingpolicy | 3 | 1 |
+    | microsoft.teams.templatespolicy | 3 | 1 |
+    | microsoft.teams.upgradeconfiguration | 3 | 1 |
+    | microsoft.teams.vdipolicy | 3 | 1 |
+    | microsoft.teams.voiceroute | 3 | 1 |
+    | microsoft.teams.workloadpolicy | 3 | 1 |
+    | microsoft.teams.onlinevoiceuser | 4 | 24 |
+    
+
+    ## Jobs
+    
+    | Workload | Types | Status | Seconds | Errors | Download | Resources |
+    | --- | --- | --- | --- | --- | --- | --- |
+    | exchange | 66 | partiallySuccessful | 371 | 4 | 200 (graph) | 1345 |
+    | exchange | 10 | refused 400: BadRequest: One or more validation errors occurred.: ResourceType 'microsoft.exchange.addressbookpolicy' is not supported.: ResourceType 'microsoft.exchange.addresslist' is not supported.: ResourceType 'microsoft.exchange.applicationaccesspolicy' is not supported.: ResourceType 'microsoft.exchange.clientaccessrule' is not supported.: ResourceType 'microsoft.exchange.
+    | securityandcompliance | 24 | partiallySuccessful | 201 | 8 | 200 (graph) | 48 |
+    | securityandcompliance | 4 | refused 400: BadRequest: One or more validation errors occurred.: ResourceType 'microsoft.securityandcompliance.auditconfigurationpolicy' is not supported.: ResourceType 'microsoft.securityandcompliance.autosensitivitylabelrule' is not supported.: ResourceType 'microsoft.securityandcompliance.dlpcompliancerule' is not supported.: ResourceType 'microsoft.securityandcom
+    | teams | 51 | succeeded | 155 | 0 | 200 (graph) | 291 |
+    | teams | 7 | refused 400: BadRequest: One or more validation errors occurred.: ResourceType 'microsoft.teams.channel' is not supported.: ResourceType 'microsoft.teams.channeltab' is not supported.: ResourceType 'microsoft.teams.onlinevoicemailusersettings' is not supported.: ResourceType 'microsoft.teams.orgwideappsettings' is not supported.: ResourceType 'microsoft.teams.usercallingsettings' is 
+    | entra | 3 | succeeded | 93 | 0 | 200 (graph) | 28 |
+    | intune | 3 | partiallySuccessful | 155 | 1 | 200 (graph) | 12 |
+    
+
+    ## Snapshot format
+    
+    - exchange: envelope keys @odata.context, description, displayName, id, parameters, resources; item keys displayName, properties, resourceType, resourceVersion
+    - securityandcompliance: envelope keys @odata.context, description, displayName, id, parameters, resources; item keys displayName, properties, resourceType, resourceVersion
+    - teams: envelope keys @odata.context, description, displayName, id, parameters, resources; item keys displayName, properties, resourceType, resourceVersion
+    - entra: envelope keys @odata.context, description, displayName, id, parameters, resources; item keys displayName, properties, resourceType, resourceVersion
+    - intune: envelope keys @odata.context, description, displayName, id, parameters, resources; item keys displayName, properties, resourceType, resourceVersion
+    
+
+  - Also in the report: 21 types refused at create, each named by TCM as "ResourceType '…' is not supported" (for example exchange addresslist/globaladdresslist, teams channel/team, securityandcompliance sensitivitylabel/dlpcompliancerule); 42 types empty; and job errors. Exchange and S&C: some cmdlets "not recognized" in TCM's session (Get-AvailabilityConfig, Get-EmailAddressPolicy, Get-ComplianceCase, Get-ComplianceSearch, …). Intune devicecategory: Forbidden, TCM needs DeviceManagementManagedDevices.Read.All, which is not in this item's grant list and was not granted.
+  - **Step 4:** checked utcm-probe-run.md and .json: no addresses, no tenant domain, no GUIDs, no tokens, no tenant id, no user names (the only `@` hits are `@odata.type` property names). `pseudonymize.mjs check`: "every id is a pseudonym". Committed **only** the .md as `docs/release/qualifications/utcm-probe.md` on **`claude/live-evidence-utcm-probe`** (from origin/master), commit **`83864e2b`**. No PR; raw/ not committed.
+  - **Step 5:** `$HOME/utcm-probe/raw/` (mode 700 dir, files 600) kept: entra-0.json 38903, exchange-0.json 654688, intune-0.json 35363, securityandcompliance-0.json 17171, teams-0.json 123222 (third run); exchange-1…11.json from the second run (6511, 563, 313, 147190, 84464, 9152, 1379, 27258, 91551, 19832, 81472). The first and second runs' reports are kept at /tmp/claude-0/-opt-rc-keel-operator/62af8e74-249f-42ca-bec9-e08a62e73fbe/scratchpad/q183/run1, run2.
+- Earlier result: blocked: waiting on consent (2026-10-28 20:48 UTC, root keel-operator). The Collector consent landed at 20:43 (59 appRoleAssignments, ConfigurationMonitoring.ReadWrite.All held). Step 1 was done in part, as the Restorer:
   - **Added:** Exchange Online `Exchange.ManageAsApp` on the TCM principal (df012486…). A repeat POST answered 409 "EntitlementGrant entry already exists". **Added:** directory role **Global Reader** (roleAssignment, scope `/`, 201).
   - **Refused (403 "Insufficient privileges to complete the operation.")**: all 14 Microsoft Graph read roles (Policy.Read.All, Directory.Read.All, User.Read.All, Group.Read.All, Application.Read.All, RoleManagement.Read.Directory, EntitlementManagement.Read.All, IdentityProvider.Read.All, Organization.Read.All, DeviceManagementConfiguration.Read.All, DeviceManagementApps.Read.All, DeviceManagementServiceConfig.Read.All, DeviceManagementRBAC.Read.All, AppCatalog.Read.All). The Restorer lacks `AppRoleAssignment.ReadWrite.All`.
   - Per Marouane (20:44, "Add the permissions yourself and ask for grant only"): added `AppRoleAssignment.ReadWrite.All` (Application) to the **Keel Restorer** manifest (app 31f2eb26…, one PATCH, 58 → 59 Graph roles; before copy kept in the scratchpad). **Waiting on Marouane's admin consent for Keel Restorer.** Then rerun step 1 for the 14 Graph roles, and steps 2–5.

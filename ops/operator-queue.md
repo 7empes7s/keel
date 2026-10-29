@@ -9597,7 +9597,7 @@ item that needs it stays untouched.
   manual step `externalDomainFederationSignIn`. Fixture-tested only.
 - Needs: the deployed build B at or after `4298b86`. Check from your checkout at B:
   `git merge-base --is-ancestor 4298b86 B && grep -q samlOrWsFedExternalDomainFederation tools/tenant-probe/catalog.d/entra-tenant-settings.mjs`.
-- Status: todo (2026-10-29 21:15 UTC: was `queued`, which the pass never picks; ready to run)
+- Status: todo
 - **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval (2026-10-14 standing
   authorization; log every approval id) as Q111. Never federate a real domain; never invite a guest. Nothing to grant.
 - Do, at B, from your own checkout (never `/opt/keel`):
@@ -9631,7 +9631,7 @@ item that needs it stays untouched.
   `git merge-base --is-ancestor 1fd1cc5d B && grep -q 'conditions\\.permissions\\.permissionIds' tools/tenant-probe/references.mjs`.
 - **A fresh snapshot is required.** References are stored per snapshot, so Q111's S (`569a4390`) still holds the null symbol and
   still refuses. Take the snapshot at B, after creating the fixture.
-- Status: todo (2026-10-29 21:15 UTC: was `open`, which the pass never picks; ready to run)
+- Status: todo
 - Result:
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q111. Self-approve under the 2026-10-14
   standing authorization and log every approval id. Restorer for writes, Collector for reads; global admin not used; grant nothing

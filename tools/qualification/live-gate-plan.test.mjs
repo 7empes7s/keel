@@ -3,12 +3,13 @@
 // `<type>:<natural key>` (canonicalizeAll), so a bare type name or fixture name is
 // refused with "selected key is not present in the candidate set".
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { CONSTANT_KEY_TYPES, ID_KEY_TYPES } from '../../engine/cir/naturalKey.mjs';
 import { canonicalizeAll } from '../../engine/cir/canonicalize.mjs';
 import { dependencyClosure } from '../../engine/restore/selection.mjs';
-import { buildLiveGatePlan, restoreKeyFor, FIXTURE_PREFIX } from './live-gate-plan.mjs';
+import { buildLiveGatePlan, restoreKeyFor, FIXTURE_PREFIX, GRAPH_SINGLETON_NAMES, TENANT_NAMED_SINGLETONS } from './live-gate-plan.mjs';
 
 const plan = buildLiveGatePlan();
 const selectOf = (step) => step.commands.map((command) => command.match(/--select '([^']*)'/)?.[1]).find(Boolean) ?? null;
@@ -62,11 +63,59 @@ test('named fixtures, edges and the enforcement step carry their type', () => {
   assert.doesNotThrow(() => dependencyClosure(resources, [restoreKeyFor('group', `${FIXTURE_PREFIX}-group`)]));
 });
 
-test('a singleton keyed by a name Graph decides is never guessed', () => {
-  for (const type of ['authorizationPolicy', 'authenticationMethodsPolicy', 'crossTenantAccessPolicy']) {
-    assert.ok(isPlaceholder(restoreKeyFor(type, type)), type);
+test('a singleton keyed by its display name is selected by the name Graph gives it', () => {
+  for (const [type, name] of Object.entries(GRAPH_SINGLETON_NAMES)) {
+    const expected = `${type}:${name}`;
+    assert.equal(restoreKeyFor(type, type), expected, type);
+    // The collector keys the tenant's one object by its display name, so the
+    // restore's selection finds exactly this key, and refuses the bare type pair.
+    const resources = canonicalizeAll([[type, [{ id: `${type}-id`, displayName: name }]]]);
+    assert.equal(resources[0].naturalKey, expected, `${type}: snapshot key`);
+    assert.doesNotThrow(() => dependencyClosure(resources, [expected]), type);
+    assert.throws(() => dependencyClosure(resources, [`${type}:${type}`]), /not present in the candidate set/, type);
+    const steps = plan.steps.filter((step) => step.resourceType === type);
+    assert.ok(steps.length > 0, `the plan has a ${type} step`);
+    for (const step of steps) {
+      assert.equal(step.key, expected, step.id);
+      if (selectOf(step) !== null) assert.equal(selectOf(step), expected, `${step.id}: --select`);
+      assert.equal(fixtureOf(step), expected, `${step.id}: --fixture`);
+    }
   }
   assert.ok(isPlaceholder(restoreKeyFor('groupLifecyclePolicy', 'the policy id KEEL shows')));
+});
+
+test('a printed singleton key matches the key of its committed live capture', () => {
+  // The table above is only right if a real tenant keys the object the same way.
+  const dir = new URL('../../docs/release/qualifications/entra-live/', import.meta.url);
+  for (const type of [...Object.keys(GRAPH_SINGLETON_NAMES), ...Object.keys(TENANT_NAMED_SINGLETONS)]) {
+    const file = new URL(`${type}.update.json`, dir);
+    // A name the plan prints as a concrete key must be backed by a real capture.
+    assert.ok(existsSync(file) || !Object.hasOwn(GRAPH_SINGLETON_NAMES, type), `${type}: no committed live capture backs its name`);
+    if (!existsSync(file)) continue;
+    const live = readFileSync(file, 'utf8').match(/"naturalKey": "([^"]+)"/)?.[1];
+    assert.ok(live, `${type}: the capture has a naturalKey`);
+    if (Object.hasOwn(GRAPH_SINGLETON_NAMES, type)) assert.equal(restoreKeyFor(type, type), live, type);
+    else assert.ok(live.startsWith(`${type}:${TENANT_NAMED_SINGLETONS[type].split('<')[0]}`), `${type}: ${live}`);
+  }
+});
+
+test('a singleton whose name carries the tenant id shows the key shape, never a guess', () => {
+  assert.equal(restoreKeyFor('crossTenantAccessPolicy', 'crossTenantAccessPolicy'),
+    '<natural key: crossTenantAccessPolicy:CrossTenantAccessPolicy for <the test tenant id>, as KEEL shows it>');
+});
+
+test('every singleton selected by its type name has a reviewed key', () => {
+  // A new singleton keyed by display name must be reviewed into GRAPH_SINGLETON_NAMES
+  // (checked against a live capture) or TENANT_NAMED_SINGLETONS, never guessed.
+  const byTypeName = plan.steps.filter((step) => step.fixtureKind === 'tenant-setting' && step.select === step.resourceType);
+  assert.ok(byTypeName.length > 10, 'the plan has singleton steps');
+  for (const step of byTypeName) {
+    if (ID_KEY_TYPES.has(step.resourceType) || Object.hasOwn(TENANT_NAMED_SINGLETONS, step.resourceType)) {
+      assert.ok(isPlaceholder(step.key), `${step.id}: a key only the tenant knows stays a placeholder`);
+      continue;
+    }
+    assert.ok(!isPlaceholder(step.key), `${step.id}: ${step.key}`);
+  }
 });
 
 test('an id-keyed kind is never selected by its fixture name', () => {

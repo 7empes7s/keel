@@ -622,27 +622,54 @@ function setupFor(resourceType, operation, guidance, key) {
 }
 
 /**
+ * Tenant singletons the collector keys by display name (engine/collect/descriptors.mjs
+ * naturalKeyStrategy 'displayName'), with the display name Graph gives the one
+ * object in every tenant. The snapshot key is `<type>:<that name>`, so the plan
+ * can print it instead of asking the operator to copy it.
+ */
+export const GRAPH_SINGLETON_NAMES = Object.freeze({
+  authorizationPolicy: 'Authorization Policy',
+  authenticationMethodsPolicy: 'Authentication Methods Policy',
+});
+
+/**
+ * Singletons whose Graph display name carries the tenant id, so the plan can
+ * only show the shape of the key: the live capture of crossTenantAccessPolicy
+ * is keyed `crossTenantAccessPolicy:CrossTenantAccessPolicy for <tenant id>`.
+ */
+export const TENANT_NAMED_SINGLETONS = Object.freeze({
+  crossTenantAccessPolicy: 'CrossTenantAccessPolicy for <the test tenant id>',
+});
+
+/**
  * Issue #641: the key `keel-restore --select` and `entraLive capture --fixture`
  * take. A snapshot stores every object under `<type>:<natural key>`
  * (engine/cir/canonicalize.mjs), so a bare name is never in the candidate set.
  *  - A select that is a description, not a key, stays a placeholder the operator fills in.
  *  - A relationship edge (`group#member`) is restored through its parent group.
  *  - A singleton keyed by its type name is `<type>:<type>`. A singleton keyed by
- *    its display name (authorizationPolicy, say) has a key Graph decides, so it
- *    stays a placeholder rather than a guess.
- *  - An id-keyed kind (deviceCategory, roleDefinition, ...) is stored under its
- *    Graph id, which only the snapshot knows: a placeholder too.
+ *    its display name is `<type>:<the name Graph gives it>` (GRAPH_SINGLETON_NAMES).
+ *    One whose name carries the tenant id stays a placeholder showing the key's
+ *    shape (TENANT_NAMED_SINGLETONS).
+ *  - An id-keyed kind (deviceCategory, roleDefinition, microsoftTunnelHealthThreshold,
+ *    ...) is stored under its Graph id, which only the snapshot knows: a placeholder.
+ *  - Any other singleton has a key nobody reviewed yet: a placeholder, never a guess.
  */
 export function restoreKeyFor(resourceType, select) {
   if (/\s/.test(select)) return `<natural key: ${select}>`;
   const type = resourceType.split('#')[0];
-  if (select === type && !CONSTANT_KEY_TYPES.has(type)) {
-    return `<natural key: the key KEEL shows for the tenant's one ${type} object (it starts ${type}:)>`;
+  if (select === type && CONSTANT_KEY_TYPES.has(type)) return `${type}:${type}`;
+  if (select === type && Object.hasOwn(GRAPH_SINGLETON_NAMES, type)) return `${type}:${GRAPH_SINGLETON_NAMES[type]}`;
+  if (select === type && Object.hasOwn(TENANT_NAMED_SINGLETONS, type)) {
+    return `<natural key: ${type}:${TENANT_NAMED_SINGLETONS[type]}, as KEEL shows it>`;
   }
   // These kinds are keyed by their Graph id (a role definition by its template
   // id), never by the fixture's name, so the name alone is never in the snapshot.
   if (ID_KEY_TYPES.has(type) || type === 'roleDefinition') {
-    return `<natural key: the id KEEL shows for ${select} (it starts ${type}:)>`;
+    return `<natural key: the id KEEL shows for ${select === type ? `the ${type} you drift` : select} (it starts ${type}:)>`;
+  }
+  if (select === type) {
+    return `<natural key: the key KEEL shows for the tenant's one ${type} object (it starts ${type}:)>`;
   }
   return `${type}:${select}`;
 }

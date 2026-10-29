@@ -11221,3 +11221,27 @@ item that needs it stays untouched.
   5. **Slow queries:** only if the `pg_stat_statements` extension is already installed (do not install it): the top 15 by
      `total_exec_time` with `calls`, `mean_exec_time` and the first 120 characters of `query`.
 - **Report:** steps 1 to 5 verbatim (tables are fine), each exit code, and the deployed commit.
+
+### Q250: Rerun Q207 step 4 (guest federation manual step) now that the dry run no longer crashes (after PR #697, fixes #695)
+- Drafted by the "Finish Q207 and Q208 live proofs" thread (2026-10-29). In Q207 step 4 the dry run planned correctly (0 writes,
+  manual step naming `passiveSignInUri`) but `keel-restore` then crashed in `recordTrustSkippedLocations`
+  (`(entry.completion ?? []).some is not a function`) and saved no artifact (#695). PR #697 (merge `8e17fe11`, fix `fd8cd139`) makes
+  the refusal return a list.
+- Needs: the deployed build B at or after `fd8cd139`. Check: `git -C /opt/keel-live merge-base --is-ancestor fd8cd139 HEAD` (or the
+  same from your checkout at B).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, Restorer/Collector split and self-approval as Q207. Never federate a real domain; never invite
+  a guest. Nothing to grant.
+- Do, at B, from your own checkout (never `/opt/keel`):
+  1. Recreate `KEEL-RT-148-fed` for `keel-rt-fed.example` exactly as in Q207 step 1 (fresh self-signed certificate), then take snapshot S.
+  2. Drift `passiveSignInUri` to `https://keel-rt-fed.example/drifted` through the typed route
+     `/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation/{id}` (the plain route answers 400, per Q207).
+  3. Dry run from S selecting the federation, with `--persist-artifact`. Expect: **exit 0, an artifact saved**, 0 planned writes, and
+     the manual step `externalDomainFederationSignIn` naming `passiveSignInUri` in the artifact's completion list.
+     If it still crashes, quote the stack and comment on #695.
+  4. Put `passiveSignInUri` back to `/sso` by hand. Do not enforce.
+  5. Cleanup: delete the federation; shred the test key and remove the cert from the host. Report anything left.
+- No capture and no evidence branch: this only confirms the fix (the federation update record is already on
+  `claude/live-evidence-q207`).
+- **Report:** B; step 3 exit code, artifact id, planned writes and the exact completion text; anything left in the tenant.

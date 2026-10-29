@@ -1,0 +1,77 @@
+{
+  "restoreRef": "00f25c72-0eac-8890-a877-0218b8fd7623",
+  "entry": {
+    "naturalKey": "appManagementPolicy:244e4d11-2b4a-8679-82c8-4cf4cace708f",
+    "resourceType": "appManagementPolicy",
+    "operation": "update",
+    "targetId": "244e4d11-2b4a-8679-82c8-4cf4cace708f",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-29T22:15:53.041Z",
+    "priorState": {
+      "id": "244e4d11-2b4a-8679-82c8-4cf4cace708f",
+      "isEnabled": true,
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-228-credpolicy",
+      "restrictions": {
+        "keyCredentials": [],
+        "passwordCredentials": [
+          {
+            "state": "enabled",
+            "maxLifetime": "P180D",
+            "excludeActors": null,
+            "restrictionType": "passwordLifetime",
+            "restrictForAppsCreatedAfterDateTime": "2026-01-01T00:00:00Z"
+          }
+        ],
+        "applicationRestrictions": {
+          "identifierUris": null
+        }
+      },
+      "deletedDateTime": null
+    },
+    "intendedState": {
+      "isEnabled": true,
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-228-credpolicy",
+      "restrictions": {
+        "keyCredentials": [],
+        "passwordCredentials": [
+          {
+            "state": "enabled",
+            "maxLifetime": "P90D",
+            "excludeActors": null,
+            "restrictionType": "passwordLifetime",
+            "restrictForAppsCreatedAfterDateTime": "2026-01-01T00:00:00Z"
+          }
+        ],
+        "applicationRestrictions": {
+          "identifierUris": null
+        }
+      }
+    },
+    "postState": {
+      "id": "244e4d11-2b4a-8679-82c8-4cf4cace708f",
+      "isEnabled": true,
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-228-credpolicy",
+      "restrictions": {
+        "keyCredentials": [],
+        "passwordCredentials": [
+          {
+            "state": "enabled",
+            "maxLifetime": "P90D",
+            "excludeActors": null,
+            "restrictionType": "passwordLifetime",
+            "restrictForAppsCreatedAfterDateTime": "2026-01-01T00:00:00Z"
+          }
+        ],
+        "applicationRestrictions": {
+          "identifierUris": null
+        }
+      },
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/appManagementPolicies/$entity",
+      "deletedDateTime": null
+    }
+  }
+}

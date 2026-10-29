@@ -496,9 +496,9 @@ test('an Exchange app access scope an app role assignment uses never has its fil
     const { result, writes } = await run(broader, { mode });
     assert.equal(result.applied, undefined, `${mode}: the filter is withheld`);
     assert.match(result.skipped?.reason ?? '', /^manual: .*used by 1 app role assignment/);
-    assert.deepEqual(result.skipped.completion, {
+    assert.deepEqual(result.skipped.completion, [{
       kind: 'manual-setting', requirement: 'exchangeAppScopeFilter', fields: ['customAttributes'], description: result.skipped.reason.replace(/^manual: /, ''),
-    });
+    }]);
     assert.equal(writes.length, 0, `${mode}: nothing is written`);
   }
   // A name change alone still writes.
@@ -562,7 +562,7 @@ test('the app scope guard fails closed when the beta assignment list pages unsta
   // live 3,3,3,1,3,0,... pattern): the filter is still held back.
   const missed = await run({ reads: [[...others(4), others(1)[0]]] });
   assert.match(missed.result.skipped?.reason ?? '', /^manual: It could not be confirmed that no app role assignment uses this app access scope \(a read of the app role assignments repeated rows \(4 distinct of 5\)/);
-  assert.equal(missed.result.skipped.completion.requirement, 'exchangeAppScopeFilter');
+  assert.deepEqual(missed.result.skipped.completion.map((step) => step.requirement), ['exchangeAppScopeFilter']);
   assert.equal(missed.patches.length, 0);
 
   // Reads without repeats that disagree are doubted too, even when none names the scope.
@@ -625,7 +625,8 @@ test('a guest federation restore never writes its sign-in endpoints or signing c
       const { result, writes } = await run({ ...live, [field]: value }, mode);
       assert.equal(result.applied, undefined, `${field} (${mode}) is withheld`);
       assert.match(result.skipped?.reason ?? '', new RegExp(`^manual: .*${field}`), `${field} (${mode})`);
-      assert.deepEqual(result.skipped.completion.fields, [field]);
+      // #695: a list of steps, like every other completion, so a run can read it.
+      assert.deepEqual(result.skipped.completion.map((step) => [step.requirement, step.fields]), [['externalDomainFederationSignIn', [field]]]);
       assert.equal(writes.length, 0, `${field} (${mode}): nothing is written`);
     }
     // The name differs too: only the name is written, the sign-in field is a step.

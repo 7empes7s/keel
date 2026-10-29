@@ -116,7 +116,7 @@ function federationRefusal(resource, verb) {
   if (live && !FEDERATION_WRITABLE_FIELDS.every((field) => sameValue(resource.payload[field], live[field]))) return null;
   return {
     outcome: 'skipped', reason: `manual: ${federationSignInStep(differs)}`,
-    completion: { kind: 'manual-setting', requirement: 'externalDomainFederationSignIn', fields: differs, description: federationSignInStep(differs) },
+    completion: [{ kind: 'manual-setting', requirement: 'externalDomainFederationSignIn', fields: differs, description: federationSignInStep(differs) }],
   };
 }
 
@@ -224,7 +224,7 @@ async function appScopeGuard(io, { payload, targetId, before, fields }) {
   const description = appScopeStep(detail);
   return {
     reason: `manual: ${description}`,
-    completion: { kind: 'manual-setting', requirement: 'exchangeAppScopeFilter', fields: ['customAttributes'], description },
+    completion: [{ kind: 'manual-setting', requirement: 'exchangeAppScopeFilter', fields: ['customAttributes'], description }],
   };
 }
 

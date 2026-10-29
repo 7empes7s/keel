@@ -1,6 +1,8 @@
 import { strict as assert } from 'node:assert';
 import { applyWave } from '../engine/restore/applyEngine.mjs';
 import { planWaves } from '../engine/restore/wavePlanner.mjs';
+import { applyIdentityObjectWrite } from '../engine/restore/identityObjectOperations.mjs';
+import { idoFakeGraph } from '../engine/test/idoFakeGraph.mjs';
 import { incompleteReadDeleteRefusals, runCli, runRestore, unreadTypesOf } from './keel-restore.mjs';
 
 const testDbUrl = process.env.KEEL_DB_TEST_URL;
@@ -278,6 +280,35 @@ async function runFixture(dependencies, { logger = { log() {}, error() {} } } = 
   assert.equal(fixture.state.writes.length, 0, 'unresolved provenance must fail before any writer call');
   assert.deepEqual(fixture.state.waveCalls, [['group:Finance'], ['roleAssignment:GlobalAdmin:Finance']]);
   assert.equal(fixture.state.clientEnds, 1);
+}
+
+// Issue #695: a guest federation whose sign-in field differs from the backup is
+// skipped with a manual step. The run records that skip and carries on, instead
+// of crashing on its completion step before anything is saved.
+{
+  const live = {
+    '@odata.type': '#microsoft.graph.samlOrWsFedExternalDomainFederation', id: 'fed-1', displayName: 'KEEL-RT-fed',
+    passiveSignInUri: 'https://keel-rt-fed.example/sso', preferredAuthenticationProtocol: 'saml',
+  };
+  const federation = await applyIdentityObjectWrite(idoFakeGraph(), {
+    naturalKey: 'externalDomainFederation:KEEL-RT-fed', resourceType: 'externalDomainFederation',
+    payload: { ...live, passiveSignInUri: 'https://keel-rt-other.example/sso' }, references: [],
+    live: { state: 'present', targetId: 'fed-1', payload: live },
+  }, 'update', { mode: 'dry-run', readAfterWriteOptions: { attempts: 1, delayMs: 0 } });
+  assert.ok(federation.skipped, 'the federation is skipped with a manual step');
+  let waveCount = 0;
+  const fixture = restoreFakes({
+    applyWave: async (...args) => {
+      waveCount += 1;
+      const result = await applyWave(...args);
+      return waveCount === 1 ? { ...result, skipped: [...result.skipped, federation.skipped] } : result;
+    },
+  });
+  const lines = [];
+  const exitCode = await runFixture(fixture.dependencies, { logger: { log: (line) => lines.push(line), error: (line) => lines.push(line) } });
+  assert.equal(exitCode, 0, lines.join('\n'));
+  assert.equal(fixture.state.waveCalls.length, 2, 'the waves after the skip still run');
+  assert.ok(lines.some((line) => /completion step: externalDomainFederation:KEEL-RT-fed — .*passiveSignInUri/.test(line)), lines.join('\n'));
 }
 
 // A failed wave stops the run before later waves can write, returns a non-zero

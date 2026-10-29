@@ -10353,3 +10353,21 @@ item that needs it stays untouched.
   `Viva Engage writes: signed in as the Engage writer` and report it in Q219's Result.
 - **Hard rules:** read-only. Never print a token or key.
 - **Report:** steps 1–3, with the build checked.
+
+### Q227: Recapture the Q219 Viva Engage community evidence with ids pseudonymized (after PR #685, #684)
+- Drafted by the "Hide Viva Engage community ids in evidence" thread (2026-10-29 13:35 UTC). PR #685 (merge 7e10beda) pseudonymizes
+  Engage community ids and lets `capture --fixture` take the fixture name. The Q219 records in commit 50304c0f hold the raw id 5 times.
+- Needs: /opt/keel-live at 7e10beda or later (`grep -q ENGAGE_TOKEN /opt/keel-live/tools/qualification/pseudonymize.mjs`).
+- Status: open
+- Do (no tenant writes; capture reads the Keel database only):
+  1. **Discard the held records:** drop commit 50304c0f and local branch `claude/live-evidence-restore-gaps-20` (never push it).
+     Report that it is gone.
+  2. **Recapture** from restore `232a820a` on a fresh branch from master:
+     `node tools/qualification/entraLive.mjs capture --restore-ref 232a820a --resource-type engageCommunity --operation update --fixture KEEL-RT-community --allow-tenant-setting --target-config /etc/keel/engage-writer.json --build <deployed sha> --out "$OUT"`
+     The fixture name must now work. If it answers `not-exercised`, retry with the community's natural key and report both.
+  3. **Check:** `node tools/qualification/pseudonymize.mjs check $OUT/engageCommunity.update.json $OUT/engageCommunity.update.capture.json`
+     must exit 0, and `grep -c eyJfdHlwZSI6Ikdyb3VwIiwiaWQiOiI` on both files may only find ids whose decoded number has 20 digits
+     starting with 8 (pseudonyms). Run the secret scan as in Q219.
+  4. Promote with `operations.mjs --live-evidence` as in Q219 step 6, commit the records, and open the PR the usual way.
+- **Hard rules:** no tenant writes; never print a token or key; never push the old 50304c0f records.
+- **Report:** steps 1–4, the build used, the check output, and the PR link.

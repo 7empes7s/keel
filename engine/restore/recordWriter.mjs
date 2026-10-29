@@ -210,8 +210,57 @@ export function recordWriteBody(record, payload, verb) {
     if (verb !== 'create' && record.createOnly.includes(key)) continue;
     body[key] = withoutAnnotations(value);
   }
-  return record.transform ? record.transform(body, { verb, payload }) : body;
+  return withoutTrustFields(record.resourceType, record.transform ? record.transform(body, { verb, payload }) : body);
 }
+
+/**
+ * CLAUDE.md restore-writer rule, enforced on every body a whole-payload writer
+ * sends: a writer that sends the payload minus a few fields (a record with no
+ * `writable` list, the built-in Intune policy writer) must not carry a trust,
+ * certificate or sign-in field through. defineRecord() refuses such a field in
+ * `writable`; this covers the rest. Top-level fields, as isTrustField names them.
+ */
+export function withoutTrustFields(resourceType, body) {
+  if (!body || typeof body !== 'object') return body;
+  const trust = Object.keys(body).filter((key) => key !== '@odata.type' && isTrustField(resourceType, key));
+  if (trust.length === 0) return body;
+  const kept = { ...body };
+  for (const key of trust) delete kept[key];
+  return kept;
+}
+
+/**
+ * The manual step for the trust fields a write leaves out, or null: on a create
+ * (or with no live object) each one the backup holds a value for, on an update
+ * each one whose backup value live does not hold. `same(field, desired, live)`
+ * is the writer's own field equality. Nothing is written for them; a person
+ * checks them and applies them by hand.
+ */
+// A value a create would not set: nothing, off, zero, empty.
+const isUnset = (value) => value === false || value === 0 || value === '' || sameValue(value, null)
+  || (Array.isArray(value) && value.length === 0) || (value && typeof value === 'object' && Object.keys(normalised(value)).length === 0);
+
+export function trustFieldStep(resourceType, payload, live, verb, { excluded = [], same = (_field, left, right) => sameValue(left, right) } = {}) {
+  const differing = Object.keys(payload ?? {})
+    .filter((key) => key !== '@odata.type' && !isAnnotation(key) && !SERVER_OWNED_ALWAYS.has(key) && !excluded.includes(key))
+    .filter((key) => isTrustField(resourceType, key))
+    .filter((key) => (verb === 'create' || !live ? !isUnset(payload[key]) : !same(key, payload[key], live[key])));
+  if (differing.length === 0) return null;
+  return Object.freeze({
+    kind: 'manual-setting', requirement: 'trustFields', fields: Object.freeze(differing),
+    description: `A restore never writes trust, certificate or sign-in settings. Check ${differing.join(', ')} in the admin center and set the backup's value by hand if it is still wanted.`,
+  });
+}
+
+/**
+ * The trust-field step of one record write (see trustFieldStep). Only a record
+ * that sends the whole payload: one with a `writable` list sends nothing else,
+ * and lists its own trust differences (a federation's sign-in, a template's
+ * cross-tenant access).
+ */
+export const recordTrustFieldStep = (record, payload, live, verb) => (record.writable ? null : trustFieldStep(record.resourceType, payload, live, verb, {
+  excluded: record.excluded, same: (field, left, right) => sameRecordField(record, field, left, right),
+}));
 
 /** The fields of the desired body whose value live does not hold. */
 export function changedRecordFields(record, desired, live, verb = 'update') {
@@ -459,6 +508,9 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   const fields = verb === 'create' || !before
     ? Object.keys(body).filter((field) => field !== '@odata.type' && field !== 'id')
     : changedRecordFields(record, payload, before, verb);
+  // Trust fields are never sent: a difference in one is a step for a person.
+  const trustStep = recordTrustFieldStep(record, payload, before, verb);
+  const trustCompletion = trustStep ? { completion: [trustStep] } : {};
 
   // A recreate lists the parts the backup cannot give back (ENTRA's
   // best-effort rule), worked out before anything is written.
@@ -466,12 +518,16 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   if (verb === 'create') {
     const existingId = ctx.existingTargetIds?.get(naturalKey);
     if (existingId) {
-      if (ctx.mode === 'dry-run') return { applied: { naturalKey, targetId: existingId, changes: { fields } } };
+      if (ctx.mode === 'dry-run') return { applied: { naturalKey, targetId: existingId, changes: { fields }, ...trustCompletion } };
       const found = await readRecordObject(io, record, payload, existingId);
       if (found?.ok !== true) {
         return { failed: { naturalKey, error: `conflict: an object with this key exists in the target but could not be read (status ${found?.status}) — manual reconciliation required` } };
       }
-      if (changedRecordFields(record, payload, found.body, 'create').length === 0) return { applied: { naturalKey, targetId: existingId } };
+      if (changedRecordFields(record, payload, found.body, 'create').length === 0) {
+        // Equal in what a write sends; a trust field that differs is still a step for a person.
+        const step = recordTrustFieldStep(record, payload, found.body, 'update');
+        return { applied: { naturalKey, targetId: existingId, ...(step ? { completion: [step] } : {}) } };
+      }
       return { failed: { naturalKey, error: 'conflict: a different object with this key exists in the target — manual reconciliation required' } };
     }
   }
@@ -493,9 +549,9 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   }
   if (ctx.mode === 'dry-run') {
     const planned = record.planChanges && writer ? await record.planChanges(io, { resource, payload, verb, targetId, before, ctx }) : null;
-    return { applied: { naturalKey, targetId, changes: { fields, ...(planned ?? {}) }, ...followUp } };
+    return { applied: { naturalKey, targetId, changes: { fields, ...(planned ?? {}) }, ...trustCompletion, ...followUp } };
   }
-  if (verb === 'update' && fields.length === 0 && !record.afterWrite) return { applied: { naturalKey, targetId, changes: { fields } } };
+  if (verb === 'update' && fields.length === 0 && !record.afterWrite) return { applied: { naturalKey, targetId, changes: { fields }, ...trustCompletion } };
 
   const entry = await journal(ctx, resource, { operation: verb, targetId, priorState: before, intendedState: body });
   if (!entry.ok) return { failed: { naturalKey, error: `refusing to ${verb}: rollback journal write failed` } };
@@ -560,11 +616,12 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
 
   await note(ctx, entry, 'succeeded', { targetId, postState: live });
   const changes = { fields, ...(extra?.changes ?? {}) };
+  const completion = [trustStep ?? [], extra?.completion ?? []].flat();
   return {
     applied: {
       naturalKey, targetId,
       changes,
-      ...(extra?.completion?.length ? { completion: extra.completion } : {}),
+      ...(completion.length ? { completion } : {}),
       ...followUp,
     },
   };

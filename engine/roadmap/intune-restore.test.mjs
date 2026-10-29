@@ -438,6 +438,32 @@ test('a device configuration update PATCHes the changed fields with its kind, an
   assert.deepEqual(outcome.applied[0].changes.fields, ['cameraBlocked']);
 });
 
+test('a device configuration restore never sends a trust or certificate field; a difference is a step for a person', async () => {
+  // CLAUDE.md restore writers: the policy body is the whole payload, so the rule is checked on the body itself.
+  const backup = { ...restrictions, firewallCertificateRevocationListCheckMethod: 'attempt' };
+  const graph = recordingGraph();
+  const outcome = await run(graph, [plannedUpdate(graph, 'deviceConfiguration', backup, { ...backup, cameraBlocked: false, firewallCertificateRevocationListCheckMethod: 'none' })]);
+  assert.deepEqual(outcome.failed, []);
+  assert.deepEqual(graph.bodies[0].body, { '@odata.type': '#microsoft.graph.windows10GeneralConfiguration', cameraBlocked: true });
+  assert.deepEqual(outcome.applied[0].changes.fields, ['cameraBlocked']);
+  assert.deepEqual(outcome.applied[0].completion.map((step) => [step.requirement, step.fields]), [['trustFields', ['firewallCertificateRevocationListCheckMethod']]]);
+
+  // Only the certificate setting differs: nothing is written, and the step is listed, dry run included.
+  for (const mode of ['dry-run', 'enforce']) {
+    const quiet = recordingGraph();
+    const only = await run(quiet, [plannedUpdate(quiet, 'deviceConfiguration', backup, { ...backup, firewallCertificateRevocationListCheckMethod: 'none' })], { mode });
+    assert.deepEqual(only.failed, [], mode);
+    assert.deepEqual(quiet.bodies, [], `${mode}: nothing is written`);
+    assert.deepEqual(only.applied[0].completion[0].fields, ['firewallCertificateRevocationListCheckMethod'], mode);
+  }
+
+  const created = recordingGraph();
+  const made = await run(created, [plannedCreate('deviceConfiguration', { ...backup, displayName: 'KEEL-RT-Restrictions' })]);
+  assert.deepEqual(made.failed, []);
+  assert.ok(!('firewallCertificateRevocationListCheckMethod' in created.bodies[0].body), 'a create leaves it out too');
+  assert.deepEqual(made.applied[0].completion[0].fields, ['firewallCertificateRevocationListCheckMethod']);
+});
+
 test('a write that does not read back as written fails with the field named', async (t) => {
   immediateTimers(t);
   const graph = recordingGraph({ readOverride: (path, body) => (path.startsWith('/deviceManagement/deviceConfigurations/') && !path.endsWith('/assignments') ? { ...body, cameraBlocked: false } : body) });

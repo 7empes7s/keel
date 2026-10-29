@@ -35,7 +35,7 @@ import {
 } from './userOperations.mjs';
 import {
   ASSIGNMENT_FILTER_PATH, assignRequest, assignmentChange, assignmentPlan, assignmentsReadPath, changedIntuneFields, intuneReadPath,
-  intunePostStateRefusal, intuneRecordFor, intuneWriteBody, intuneWriteRefusal, isIntuneGoverned, liveAssignmentIdentities,
+  intunePostStateRefusal, intuneRecordFor, intuneTrustFieldStep, intuneWriteBody, intuneWriteRefusal, isIntuneGoverned, liveAssignmentIdentities,
   backupHoldsActions, sameIdentities, scheduledActionsBody, scheduledActionsDiffer, unreadAssignmentsStep,
 } from './intuneOperations.mjs';
 import {
@@ -1479,6 +1479,9 @@ async function applyIntuneWrite(writer, resource, verb, {
   const fields = verb === 'create' || !before
     ? Object.keys(intuneWriteBody(resourceType, desired, verb)).filter((field) => field !== '@odata.type')
     : changedIntuneFields(resourceType, desired, before, verb).filter((field) => field !== '@odata.type');
+  // Trust, certificate and sign-in fields are never sent: a difference is a step for a person.
+  const trustStep = intuneTrustFieldStep(resourceType, desired, before, verb);
+  const trustCompletion = trustStep ? { completion: [trustStep] } : {};
   // A backup taken before actions were backed up leaves the live actions alone:
   // an absent list is never sent as an empty one (that would remove them).
   const actionsInBackup = backupHoldsActions(desired);
@@ -1509,16 +1512,20 @@ async function applyIntuneWrite(writer, resource, verb, {
   if (verb === 'create') {
     const existingId = existingTargetIds.get(naturalKey);
     if (existingId) {
-      if (mode === 'dry-run') return { applied: { naturalKey, targetId: existingId, changes: changes() } };
+      if (mode === 'dry-run') return { applied: { naturalKey, targetId: existingId, changes: changes(), ...trustCompletion } };
       const found = await retryOperation(() => writer.read(entry.version, intuneReadPath(resourceType, existingId)));
       if (found?.ok !== true) {
         return { failed: { naturalKey, error: `conflict: a policy with this name exists in the target but could not be read (status ${found?.status}) — manual reconciliation required` } };
       }
-      if (changedIntuneFields(resourceType, desired, found.body, 'create').length === 0) return { applied: { naturalKey, targetId: existingId } };
+      if (changedIntuneFields(resourceType, desired, found.body, 'create').length === 0) {
+        // Equal in what a write sends; a trust field that differs is still a step for a person.
+        const step = intuneTrustFieldStep(resourceType, desired, found.body, 'update');
+        return { applied: { naturalKey, targetId: existingId, ...(step ? { completion: [step] } : {}) } };
+      }
       return { failed: { naturalKey, error: 'conflict: a different policy with this name exists in the target — manual reconciliation required' } };
     }
   }
-  if (mode === 'dry-run') return { applied: { naturalKey, targetId, changes: changes() } };
+  if (mode === 'dry-run') return { applied: { naturalKey, targetId, changes: changes(), ...trustCompletion } };
 
   const journal = await journalBeforeMutation(rollbackClient, {
     runId, restoreRef, resource, operation: verb, targetId, priorState: before, intendedState: desired,
@@ -1609,7 +1616,7 @@ async function applyIntuneWrite(writer, resource, verb, {
   }
 
   await noteOutcome(rollbackClient, journal, 'succeeded', { targetId, postState: live });
-  return { applied: { naturalKey, targetId, changes: changes(assignmentsWritten) } };
+  return { applied: { naturalKey, targetId, changes: changes(assignmentsWritten), ...trustCompletion } };
 }
 
 /**

@@ -889,3 +889,29 @@ test('issue #642: a bare fixture name captures the object of the kind named, and
   assert.equal((await run('KEEL-RT-148-app-web')).status, 'captured');
   assert.equal((await run('KEEL-RT-148-app-win32')).status, 'not-exercised');
 });
+
+test('issue #684: a community keyed by its id is captured by its fixture name too, unless two share it', async () => {
+  const { steps } = buildLiveGatePlan();
+  const community = steps.find((step) => step.id === 'engageCommunity:update');
+  const communityId = Buffer.from('{"_type":"Group","id":"474060623424"}').toString('base64').replace(/=+$/, '');
+  const restore = fixtureRestore(community, { naturalKey: `engageCommunity:${communityId}`, displayName: 'KEEL-RT-community' });
+  const journal = await restore.getJournal({}, { restoreRef: restore.restoreRef });
+  const run = (fixture, entries = journal) => captureLive({
+    client: {}, restoreRef: restore.restoreRef, resourceType: 'engageCommunity', operation: 'update', fixture,
+    targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, testTenantRefs: TEST_REFS,
+    getArtifact: restore.getArtifact, getJournal: async () => entries, getSnapshot: restore.getSnapshot,
+  });
+  for (const fixture of [`engageCommunity:${communityId}`, communityId, 'KEEL-RT-community']) {
+    const result = await run(fixture);
+    assert.equal(result.status, 'captured', fixture);
+    assert.ok(!result.captureLog.includes(communityId), `${fixture}: the community id is pseudonymized`);
+    assert.deepEqual(unpseudonymizedIds(result.captureLog), [], fixture);
+  }
+  assert.equal((await run('KEEL-RT-other-community')).status, 'not-exercised');
+  // A name only in the intended or post-write state does not name the write.
+  const renamed = [{ ...journal[0], priorState: { id: communityId, displayName: 'Finance', name: 'Finance' }, postState: { displayName: 'KEEL-RT-community' } }];
+  assert.equal((await run('KEEL-RT-community', renamed)).status, 'not-exercised');
+  // Two communities of that name: the id is needed.
+  const twin = { ...journal[0], naturalKey: 'engageCommunity:other-id', targetId: 'other-id' };
+  await assert.rejects(run('KEEL-RT-community', [...journal, twin]), /2 engageCommunity objects named KEEL-RT-community: pass the natural key/);
+});

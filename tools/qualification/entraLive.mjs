@@ -166,6 +166,14 @@ function isCapturedWrite(entry, { resourceType, operation, fixture, enforcement 
   return resourceType === 'organizationalBranding' && isDefaultBrandingLanguage(entry) && DEFAULT_BRANDING_FIXTURES.includes(fixture);
 }
 
+/** Whether a journal entry is the write asked for, named by its fixture name rather than its key. */
+function isNamedWrite(entry, { resourceType, operation, fixture, enforcement }) {
+  const identity = journalIdentity(entry, { enforcement });
+  const prior = entry.priorState;
+  if (identity.key !== resourceType || identity.operation !== operation || !prior || typeof prior !== 'object') return false;
+  return nameFieldsFor(resourceType).some((field) => prior[field] === fixture);
+}
+
 const namesOf = (state) => (state && typeof state === 'object'
   ? NAME_FIELDS.map((field) => state[field]).filter((value) => typeof value === 'string')
   : []);
@@ -373,8 +381,18 @@ export async function captureLive({
   }
 
   const guidance = guidanceFor(resourceType);
-  const entries = (await getJournal(client, { restoreRef }))
-    .filter((entry) => isCapturedWrite(entry, { resourceType, operation, fixture, enforcement }));
+  const journal = await getJournal(client, { restoreRef });
+  let entries = journal.filter((entry) => isCapturedWrite(entry, { resourceType, operation, fixture, enforcement }));
+  // Issue #684: a kind keyed by id (a Viva Engage community) can be named by its fixture name,
+  // read from the prior state's own name fields. Two objects of that name need the id.
+  if (entries.length === 0 && !enforcement) {
+    const named = journal.filter((entry) => isNamedWrite(entry, { resourceType, operation, fixture, enforcement }));
+    const keys = [...new Set(named.map((entry) => entry.naturalKey))];
+    if (keys.length > 1) {
+      throw new LiveGateRefusal(`restore ${restoreRef} wrote ${keys.length} ${resourceType} objects named ${fixture}: pass the natural key KEEL shows for the one to capture as --fixture`);
+    }
+    entries = named;
+  }
   if (entries.length === 0) {
     return { status: 'not-exercised', record: null, captureLog: null, reason: `restore ${restoreRef} made no ${resourceType} ${operation} write for ${fixture}${await brandingFileHint(client, { restoreRef, resourceType, getJournal })}` };
   }

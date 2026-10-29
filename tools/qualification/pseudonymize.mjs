@@ -39,6 +39,54 @@ const BASE64_TOKEN = /[A-Za-z0-9+_=-]{40,}/g;
 const ROLE_ASSIGNMENT_ID = /^([A-Za-z0-9_-]{64}|[A-Za-z0-9_-]{43})((?:-[A-Za-z0-9]{1,8})*)$/;
 const ROLE_ASSIGNMENT_TOKEN = /(?<![A-Za-z0-9_-])(?:[A-Za-z0-9_-]{64}|[A-Za-z0-9_-]{43})(?:-[A-Za-z0-9]{1,8})*(?![A-Za-z0-9_-])/g;
 
+// A Viva Engage id (a community's `id`, issue #684) is the base64 of `{"_type":"Group","id":"<number>"}`.
+// Only an object with a `_type` and a decimal `id` counts.
+// It holds no GUID, so the token rule above cannot see it. The match may run on past the id into a
+// URL path (`/` is in the alphabet), so the id is the shortest prefix that decodes to such an object.
+const ENGAGE_TOKEN = /eyJfdHlwZSI6[A-Za-z0-9+/_-]+={0,2}/g;
+// A pseudonymized Engage number has 20 digits and starts with 8: above 2^64, so never a real id.
+const ENGAGE_NUMBER_PSEUDONYM = /^8\d{19}$/;
+
+/** The Engage id at the start of `token`: { length, object } or null. */
+export function engageIdAt(token) {
+  for (let length = 16; length <= token.length; length += 1) {
+    const core = token.slice(0, length);
+    if (core.includes('=')) break;
+    const url = /[-_]/.test(core);
+    if (url && /[+/]/.test(core)) break;
+    const bytes = Buffer.from(core, url ? 'base64url' : 'base64');
+    if (bytes.toString(url ? 'base64url' : 'base64').replace(/=+$/, '') !== core) continue;
+    let object;
+    try { object = JSON.parse(bytes.toString('utf8')); } catch { continue; }
+    if (!object || typeof object !== 'object' || Array.isArray(object) || typeof object._type !== 'string') continue;
+    // A number past 2^53 loses digits in JSON.parse, but is still an id to replace.
+    if (!(typeof object.id === 'string' ? /^\d+$/.test(object.id) : Number.isInteger(object.id) && object.id >= 0)) continue;
+    const padding = /^=*/.exec(token.slice(length))[0].slice(0, 2);
+    return { length: length + padding.length, object };
+  }
+  return null;
+}
+
+/** Every Engage id in `text`, as written. */
+export function engageIds(text) {
+  const found = [];
+  for (const match of text.matchAll(ENGAGE_TOKEN)) {
+    let rest = match[0];
+    while (rest.length > 0) {
+      const id = engageIdAt(rest);
+      if (id) found.push(rest.slice(0, id.length));
+      const next = rest.slice(id ? id.length : 1).search(/eyJfdHlwZSI6/);
+      if (next < 0) break;
+      rest = rest.slice((id ? id.length : 1) + next);
+    }
+  }
+  return found;
+}
+const isEngagePseudonym = (token) => {
+  const id = engageIdAt(token);
+  return id !== null && id.length === token.length && ENGAGE_NUMBER_PSEUDONYM.test(String(id.object.id));
+};
+
 // A GUID written without dashes. Only one that reads as an RFC 4122 GUID (a version 1-8 nibble
 // and the RFC variant) counts, so most 32-digit hashes are left alone; longer hex runs never match.
 const HEX_GUID = /(?<![0-9a-f])[0-9a-f]{12}[1-8][0-9a-f]{3}[89ab][0-9a-f]{15}(?![0-9a-f])/gi;
@@ -167,7 +215,7 @@ export function roleAssignmentIdGuids(token) {
 export function rawIdentifiers(text) {
   const roleAssignmentIds = [...text.matchAll(ROLE_ASSIGNMENT_TOKEN)].filter((m) => roleAssignmentIdGuids(m[0]));
   return [...new Set([...[...text.matchAll(GUID), ...text.matchAll(HEX_GUID), ...text.matchAll(CLOUD_SID), ...text.matchAll(ONPREM_SID), ...roleAssignmentIds]
-    .map((m) => m[0].toLowerCase()), ...claimsLogins(text), ...unpseudonymizedMailNames(text)])];
+    .map((m) => m[0].toLowerCase()), ...engageIds(text).map((id) => id.toLowerCase()), ...claimsLogins(text), ...unpseudonymizedMailNames(text)])];
 }
 
 /**
@@ -184,8 +232,11 @@ export function unpseudonymizedIds(text) {
   const isPseudonym = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-8/i.test(value) || /^0{8}-0{4}-[0-9a-f]0{3}-[0-9a-f]0{3}-0{12}$/i.test(value);
   const rawClaims = new Set(unpseudonymizedClaimsLogins(text));
   const rawMail = new Set(unpseudonymizedMailNames(text));
+  const engage = new Map(engageIds(text).map((token) => [token.toLowerCase(), token]));
   return rawIdentifiers(text).filter((id) => {
     if (rawMail.has(id)) return true;
+    // An Engage id, lower-cased by rawIdentifiers: decode the original spelling.
+    if (engage.has(id)) return !isEngagePseudonym(engage.get(id));
     // A claims login is checked by shape: a pseudonymized one has a digest user part and domain.
     if (/^(?:\||%7c)membership/.test(id)) return rawClaims.has(id);
     if (GUID_ONLY.test(id)) return !isPseudonym(id);
@@ -286,7 +337,43 @@ export function pseudonymizer(tenantRef) {
     if (reencode(decoded) !== token || !/^[\x20-\x7e]+$/.test(inner) || !inner.match(GUID)) return token;
     return reencode(Buffer.from(plain(inner), 'latin1'));
   };
-  const text = (value) => personalSite(mail(claims(plain(value.replace(ROLE_ASSIGNMENT_TOKEN, roleAssignmentId).replace(BASE64_TOKEN, encoded)))));
+  // An Engage id maps through its number and keeps its padding. The pseudonym is picked so its
+  // encoding holds only letters and digits: the same in both base64 alphabets and safe in a URL path.
+  const engageToken = (object, padded) => {
+    const raw = String(object.id);
+    const encode = (id) => {
+      const out = Buffer.from(JSON.stringify({ ...object, id })).toString('base64');
+      return padded ? out : out.replace(/=+$/, '');
+    };
+    const MAX_ATTEMPTS = 64;
+    let out = '';
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      const digits = (BigInt(`0x${digest(`engage-id:${attempt}`, raw)}`) % (10n ** 19n)).toString().padStart(19, '0');
+      out = encode(`8${digits}`);
+      if (/^[A-Za-z0-9]+=*$/.test(out)) return out;
+    }
+    // Text other than the digits (an odd `_type`) can force a `+` or `/`: keep the last pseudonym.
+    return out;
+  };
+  const engage = (value) => value.replace(ENGAGE_TOKEN, (whole) => {
+    let out = '';
+    let rest = whole;
+    while (rest.length > 0) {
+      const id = engageIdAt(rest);
+      if (id && !isEngagePseudonym(rest.slice(0, id.length))) {
+        out += engageToken(id.object, rest.slice(0, id.length).endsWith('='));
+        rest = rest.slice(id.length);
+      } else {
+        const step = id ? id.length : 1;
+        const next = rest.slice(step).search(/eyJfdHlwZSI6/);
+        const cut = next < 0 ? rest.length : step + next;
+        out += rest.slice(0, cut);
+        rest = rest.slice(cut);
+      }
+    }
+    return out;
+  });
+  const text = (value) => personalSite(mail(claims(plain(engage(value).replace(ROLE_ASSIGNMENT_TOKEN, roleAssignmentId).replace(BASE64_TOKEN, encoded)))));
   const walk = (value) => {
     if (typeof value === 'string') return text(value);
     if (Array.isArray(value)) return value.map(walk);

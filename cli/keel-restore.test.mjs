@@ -1041,3 +1041,28 @@ console.log('keel-restore.test.mjs — all assertions passed');
   assert.deepEqual(marked, ['adminReportSettings', 'appsAndServicesSettings', 'formsSettings', 'microsoft365AppsInstallationOptions', 'pronounsSettings', 'todoSettings']);
   assert.ok(CATALOG.filter((entry) => entry.holdsNoReferences === true).every((entry) => entry.singleton === true), 'only one-per-tenant settings');
 }
+
+// Q220: an unread PIM for Groups resource (Collector 403) blocked the undo
+// delete of a created Intune policy. A kind that names only groups cannot hide
+// a reference to a policy, so it blocks only group deletes; any kind without
+// such a flag, and a delete of unknown kind, still blocks.
+{
+  const policy = { naturalKey: 'deviceConfiguration:KEEL-RT-220-delete', resourceType: 'deviceConfiguration', verb: 'delete' };
+  const group = { naturalKey: 'group:KEEL-RT-220-group', verb: 'delete' };
+  const unknown = { naturalKey: 'no-kind-here', verb: 'delete' };
+  assert.deepEqual(incompleteReadDeleteRefusals(['privilegedAccessGroupResource'], [policy]), [], 'a group-only kind cannot hide a reference to a policy');
+  assert.deepEqual(incompleteReadDeleteRefusals(['privilegedAccessGroupResource'], [policy, group, unknown]).map((refusal) => refusal.naturalKey),
+    ['group:KEEL-RT-220-group', 'no-kind-here'], 'a group delete, and a delete of unknown kind, still need the read');
+  const mixed = incompleteReadDeleteRefusals(['privilegedAccessGroupResource', 'todoSettings', 'vppToken'], [policy, group]);
+  assert.match(mixed.find((refusal) => refusal.naturalKey === policy.naturalKey).reason, /, but vppToken could not be read$/, 'only the kinds that could point at the policy are named');
+  assert.match(mixed.find((refusal) => refusal.naturalKey === group.naturalKey).reason, /, but privilegedAccessGroupResource, vppToken could not be read$/);
+  // Every flag names kinds Keel knows, and is set only where the object's fields are known.
+  const { CATALOG } = await import('../tools/tenant-probe/catalog.mjs');
+  const types = new Set(CATALOG.map((entry) => entry.type));
+  const flagged = CATALOG.filter((entry) => entry.refersOnlyTo !== undefined);
+  assert.deepEqual(flagged.map((entry) => entry.type), ['privilegedAccessGroupResource']);
+  for (const entry of flagged) {
+    assert.ok(Array.isArray(entry.refersOnlyTo) && entry.refersOnlyTo.length > 0 && entry.refersOnlyTo.every((type) => types.has(type)), `${entry.type} refersOnlyTo names known kinds`);
+    assert.notEqual(entry.holdsNoReferences, true, `${entry.type} sets one flag, not both`);
+  }
+}

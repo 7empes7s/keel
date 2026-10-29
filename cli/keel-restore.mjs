@@ -1506,22 +1506,50 @@ export function unreadTypesOf(collected) {
 // Issue #666: kinds whose objects never hold another tenant object's id
 // (catalogue `holdsNoReferences`: To Do settings and other on/off org settings).
 const NO_REFERENCE_TYPES = new Set(CATALOG.filter((entry) => entry.holdsNoReferences === true).map((entry) => entry.type));
+// Kinds whose objects can name only the kinds listed (catalogue `refersOnlyTo`):
+// a PIM for Groups resource names one group and nothing else.
+const REFERS_ONLY_TO = new Map(CATALOG.filter((entry) => Array.isArray(entry.refersOnlyTo)).map((entry) => [entry.type, new Set(entry.refersOnlyTo)]));
+
+/** The kind a planned resource is of: its resourceType, else its natural key's prefix. */
+function plannedTypeOf(resource) {
+  if (typeof resource?.resourceType === 'string' && resource.resourceType) return resource.resourceType;
+  const key = String(resource?.naturalKey ?? '');
+  return key.includes(':') ? key.slice(0, key.indexOf(':')) : null;
+}
+
+/** True when an object of `unreadType` could name an object of `deletedType`. */
+function couldReference(unreadType, deletedType) {
+  if (NO_REFERENCE_TYPES.has(unreadType)) return false;
+  const only = REFERS_ONLY_TO.get(unreadType);
+  return !only || deletedType === null || only.has(deletedType);
+}
 
 /**
- * Issue #466: one refusal per planned delete when any type was left unread.
+ * Issue #466: one refusal per planned delete when a type was left unread.
  * The dependent-impact check reads references from the live state, and a type
  * that was not read could still hold one, so a delete is never judged safe on
  * an incomplete read. Issue #666: a kind that cannot hold a reference at all
  * (NO_REFERENCE_TYPES) cannot hide one, so leaving it unread blocks nothing.
+ * Q220: an unread kind blocks only the deletes it could point at. A kind with
+ * `refersOnlyTo` cannot hide a reference to a kind outside that list (an unread
+ * PIM for Groups resource blocks a group delete, not an Intune policy delete).
+ * Any kind without such a flag, and a delete of unknown kind, still block.
  */
 export function incompleteReadDeleteRefusals(allUnreadTypes, plannedResources) {
   const unreadTypes = Array.isArray(allUnreadTypes) ? allUnreadTypes.filter((type) => !NO_REFERENCE_TYPES.has(type)) : [];
   if (unreadTypes.length === 0) return [];
-  const keys = [...new Set((plannedResources ?? []).filter((resource) => resource?.verb === 'delete').map((resource) => resource.naturalKey))];
-  return keys.map((naturalKey) => ({
-    naturalKey,
-    reason: `blocked-incomplete-read: deleting ${naturalKey} needs a full read of the target, but ${unreadTypes.join(', ')} could not be read`,
-  }));
+  const refusals = new Map();
+  for (const resource of plannedResources ?? []) {
+    if (resource?.verb !== 'delete' || refusals.has(resource.naturalKey)) continue;
+    const deletedType = plannedTypeOf(resource);
+    const blocking = unreadTypes.filter((type) => couldReference(type, deletedType));
+    if (blocking.length === 0) continue;
+    refusals.set(resource.naturalKey, {
+      naturalKey: resource.naturalKey,
+      reason: `blocked-incomplete-read: deleting ${resource.naturalKey} needs a full read of the target, but ${blocking.join(', ')} could not be read`,
+    });
+  }
+  return [...refusals.values()];
 }
 
 async function buildCompensation({ client, forward, collectorConfig, targetConfig, collectorConfigPath, targetConfigPath, undoChoices = {}, deps }) {

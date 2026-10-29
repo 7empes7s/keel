@@ -10282,3 +10282,20 @@ item that needs it stays untouched.
   Do not change the Keel Restorer or the Collector.
 - **Report:** app object id, appId and SP id (first 8 characters), cert path and expiry, the requiredResourceAccess names,
   steps 3–4, and anything left in the tenant.
+
+### Q226: Live check after PR #682 (Engage writer app in the product), read-only (#681)
+- Drafted by the "Add a separate Engage writer app" thread (2026-10-29 12:50 UTC). PR #682 (merge 76e71e25) makes Keel itself sign
+  Viva Engage community restores and their undo in as the app in `/etc/keel/engage-writer.json` (Q225's `KEEL-RT-engage-writer`).
+  Every other write still uses the Restorer. Setup → Connections gets a fourth app, "Keel Engage Writer".
+- Needs: /opt/keel-live at 76e71e25 or later (`test -f /opt/keel-live/engine/store/schema.d/81-engage-writer-connection.sql`).
+- Status: open
+- Do (read-only, no tenant writes):
+  1. Confirm the live database has the widened check: `access_connection_role_check` lists `engage-writer`.
+     If not, apply the schema the usual way (`node engine/store/loadSchema.mjs | psql`) and report it.
+  2. Load the live Setup page (or `GET /api/setup`) and report: whether it loads, and the `connections` entries (role, state, appId first 8
+     characters) for `engage-writer`. Expected: `waiting-for-consent` until Marouane grants consent on `KEEL-RT-engage-writer`, then `working`.
+  3. Check the keel-portal and keel-worker logs since the deploy for any `access_connection` or CHECK constraint error.
+- When Q225 reaches 200 and Q219 runs the community restore: in the restore log, confirm the line
+  `Viva Engage writes: signed in as the Engage writer` and report it in Q219's Result.
+- **Hard rules:** read-only. Never print a token or key.
+- **Report:** steps 1–3, with the build checked.

@@ -11,11 +11,11 @@ import { DATA_SURFACES, readAccess } from "@/lib/read";
 
 import { AppShell } from "@/components/shell/app-shell";
 import { Toaster } from "@/components/toaster";
-import { approvalInboxScope, getPendingApprovalCount } from "@/lib/approval-inbox";
 import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER, principalDisplayName } from "@/lib/principal";
 import { accessInFull, accessSummary } from "@/lib/presentation";
 import { MENU_COOKIE, parseMenuPrefs } from "@/lib/menu-prefs";
+import { pendingApprovalCountFor } from "@/lib/pending-approvals";
 import { parseThemePreference, THEME_COOKIE } from "@/lib/theme";
 
 export const metadata: Metadata = {
@@ -50,15 +50,7 @@ export default async function RootLayout({
 
   // Only approvers see the count, and a failed read hides the badge rather than
   // breaking every page's chrome.
-  let pendingApprovals: number | null = null;
-  const approverScope = approvalInboxScope(requestHeaders);
-  if (approverScope) {
-    try {
-      pendingApprovals = await getPendingApprovalCount(approverScope);
-    } catch {
-      pendingApprovals = null;
-    }
-  }
+  const pendingApprovals = await pendingApprovalCountFor(requestHeaders);
 
   // The menu shows the person's name, never their email as a name. A failed read
   // falls back to the email-derived label rather than breaking every page's chrome.

@@ -16,7 +16,7 @@
  *
  * `run` asks TCM for one snapshot per workload, waits for each job, downloads the result
  * and deletes the jobs it created. Nothing in the tenant's configuration is written: the
- * transport sends GET, the createSnapshot POST (named `KEEL-RT-…`) and a DELETE of a job
+ * transport sends GET, the createSnapshot POST (named `KEEL RT …`) and a DELETE of a job
  * this run created, and refuses everything else. Entra and Intune are sampled (KEEL reads
  * them through its own Graph catalogue), to spend little of the monthly quota.
  *
@@ -37,7 +37,15 @@ import { UTCM_TYPES, UTCM_WORKLOADS } from './utcm-types.mjs';
 export const TCM_APP_ID = '03b07b79-c5bc-4b5e-9bfa-13acf4a99998';
 export const ADMIN_SERVICES_APP_ID = '6b91db1b-f05b-405a-a0b2-e3f60b28d645';
 export const NEEDED_ROLE = 'ConfigurationMonitoring.ReadWrite.All';
-export const JOB_PREFIX = 'KEEL-RT-utcm-probe';
+/**
+ * TCM refuses a job name with anything but letters, digits and spaces, or outside 8 to 32
+ * characters (live, 2026-10-29: "Only alphabets, numbers, and spaces are allowed."), so the
+ * KEEL-RT fixture prefix is spelled with spaces here.
+ */
+export const JOB_PREFIX = 'KEEL RT';
+const JOB_NAME = /^KEEL RT [A-Za-z0-9 ]+$/;
+/** Short workload codes keep every job name within TCM's 32 characters. */
+const WORKLOAD_CODE = { exchange: 'EXO', securityandcompliance: 'SCC', teams: 'TEAMS', entra: 'ENTRA', intune: 'INTUNE' };
 /** TCM shows at most 12 snapshot jobs at once. */
 export const VISIBLE_JOB_LIMIT = 12;
 const TERMINAL = new Set(['succeeded', 'failed', 'partiallySuccessful']);
@@ -77,8 +85,9 @@ export function assertProbeRequest(url, method = 'GET', body = undefined, create
   }
   if (verb === 'GET' && body === undefined) return { auth: true };
   if (verb === 'POST' && CREATE_PATH.test(parsed.pathname) && !parsed.search) {
-    if (typeof body?.displayName !== 'string' || !body.displayName.startsWith('KEEL-RT-')) {
-      throw new ProbeScopeError('a snapshot job must be named KEEL-RT-…');
+    const name = body?.displayName;
+    if (typeof name !== 'string' || !JOB_NAME.test(name) || name.length < 8 || name.length > 32) {
+      throw new ProbeScopeError('a snapshot job must be named KEEL RT … (letters, digits and spaces, 8 to 32 characters)');
     }
     if (!Array.isArray(body.resources) || body.resources.length === 0) throw new ProbeScopeError('a snapshot names its resources');
     return { auth: true };
@@ -128,7 +137,9 @@ export function probeTransport(token, fetchImpl = globalThis.fetch, { timeoutMs 
 const errorText = (answer) => {
   if (answer.networkError) return `network: ${answer.networkError}`;
   const error = answer.json?.error ?? answer.json;
-  return [error?.code, error?.message].filter(Boolean).join(': ') || (answer.text ?? '').slice(0, 300);
+  // Graph's "One or more validation errors occurred." says what was wrong only in details[].
+  const details = Array.isArray(error?.details) ? error.details.map((detail) => detail?.message).filter(Boolean) : [];
+  return [error?.code, error?.message, ...details].filter(Boolean).join(': ') || (answer.text ?? '').slice(0, 300);
 };
 const outcome = (answer) => ({ status: answer.status, error: answer.status >= 200 && answer.status < 300 ? null : mask(errorText(answer)) });
 
@@ -191,7 +202,10 @@ const LIMIT_TEXT = /quota|limit|maximum|exceed|too many/i;
 
 export async function createJobs({ send, version, workload, types, depth = 0, stamp, room = { left: VISIBLE_JOB_LIMIT } }) {
   if (room.left <= 0) return { jobs: [], refused: [{ types, status: null, error: `not sent: no room for another snapshot job (TCM shows at most ${VISIBLE_JOB_LIMIT})` }] };
-  const body = { displayName: `${JOB_PREFIX}-${workload}-${stamp}${depth ? `-${depth}-${types.length}` : ''}`, description: 'KEEL probe: read-only snapshot, deleted after reading', resources: types };
+  room.seq = (room.seq ?? 0) + 1;
+  const code = WORKLOAD_CODE[workload] ?? String(workload).replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toUpperCase();
+  const displayName = `${JOB_PREFIX} ${code} ${stamp}${depth ? ` ${room.seq}` : ''}`;
+  const body = { displayName, description: 'KEEL probe: read-only snapshot, deleted after reading', resources: types };
   const answer = await send(G(version, `${ADMIN}/configurationSnapshots/createSnapshot`), 'POST', body);
   if (answer.status >= 200 && answer.status < 300 && answer.json?.id) {
     room.left -= 1;

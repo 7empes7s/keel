@@ -10804,7 +10804,18 @@ item that needs it stays untouched.
   later import from `/opt/keel-live` does not leave them absent and switch those workloads off.
 - Needs: PR #689 merged and deployed (`test -f /opt/keel-live/docs/release/qualifications/workload-reads-teams-org-policies-live-acceptance.json`).
   If the file is missing, wait for the deploy.
-- Status: todo
+- Status: done
+- Result: done (2026-10-29 22:40 UTC, keel-operator). B = **05b1e553** (includes #689). Tenant reads only; Collector. The DB was written only by Keel's own import and run.
+  1. `keel-workload-collect.mjs import --dir /opt/keel-live/docs/release/qualifications`: **exit 0**.
+     - **imported 19**, including all 9 named files: `workload-reads-teams-org-policies`, `workload-reads-teams-voice-policies`, `workload-reads-exchange-role-groups`, `workload-reads-sharepoint-site-settings` (per-site sharing), `workload-reads-sharepoint-structure`, `sharepoint-structure-writes`, `dsc-distribution-groups-writes`, `workload-writers-teams-org-policies` and `workload-writers-teams-voice-policies`. Each is `-live-acceptance.json`.
+     - **refused `[]`**.
+     - **absent**: `workload-reads-exchange-mail-flow`, `workload-reads-exchange-extended`, `workload-reads-purview-retention-dlp`, `workload-reads-purview-governance`. None of them is among the 9; they are absent from the deployed tree too, as before.
+  2. `keel-workload-collect.mjs run`: exit 0. Each of `teams-org-policies`, `teams-voice-policies`, `exchange-role-groups`, `sharepoint-site-settings` and `sharepoint-structure` read `complete` with `0 new change(s) against the approved setup`. **None disabled**, and none partial.
+  3. Ledger (`workload_ledger_evidence`):
+     - `sharepoint-structure.hub-site.add` and `.hub-site.update`: ok, read-back verified, captured 2026-10-28, **expire 2026-11-27** (30-day window).
+     - `exchange-distribution-groups.distribution-group.add` and `.update`: ok, verified, captured 2026-10-28, **expire 2026-11-27**.
+     - Site scripts and site templates have read rows only (`sharepoint-structure.site-scripts`, `.site-templates`) and **no write rows**, so those writes stay off (Q194, #667).
+  - **Note:** the four 2026-10-22 records (Teams org, Teams voice, Exchange role groups, per-site sharing) expire **2026-11-21**. A recapture before then is a separate item.
 - **Tenant:** reads only (the normal scheduled read). Nothing created, changed or granted.
 - Do, with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
   1. `node /opt/keel-live/cli/keel-workload-collect.mjs import --dir /opt/keel-live/docs/release/qualifications`.

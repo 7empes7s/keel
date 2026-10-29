@@ -10662,8 +10662,40 @@ item that needs it stays untouched.
   `accessPackageCatalog` (v1.0 `/identityGovernance/entitlementManagement/catalogs`, create + update; the catalog's resources,
   roles and access packages are never written). Both are in `engine/restore/identityObjectOperations.mjs`.
 - Needs: none beyond a deployed build B on master (the writers have been there since wave 2). Run after Q207 and Q208.
-- Status: todo
-- Result:
+- Status: blocked: captures wait on PR #699; catalog create #700
+- Result: in part; captures blocked (2026-10-29 22:35 UTC, keel-operator). **Policy update, catalog update and policy create all wrote live and read back as in S. Capture refuses all three: these types have no FIXTURE_GUIDANCE yet, so they're treated as "by reference" (PR #699). The catalog create is refused by a Keel guard (#700).**
+  - B = **05b1e553**.
+  - Credentials: Restorer for writes, Collector for reads and the backup. Global admin not used; nothing granted. The Restorer token holds Policy.ReadWrite.ApplicationConfiguration and EntitlementManagement.ReadWrite.All.
+  - Self-approved: requester Gmail, approver Entra.
+  - Never applied to anything: appliesTo stayed empty. Tenant default policy not touched. The catalog stayed empty.
+  - Before: 0 app management policies; catalogs `KEEL-RT-20260908 Finance Systems` and `General`; **no KEEL-RT-228 objects**.
+  - Fixtures:
+    - `KEEL-RT-228-catalog` (b849c85f…): created 201 as specified.
+    - `KEEL-RT-228-credpolicy` (8a8a0dc3…): created 201. The item's body answered 400 `Property  has an invalid value.` 3 times (v1.0 with and without `keyCredentials`, and beta). It was accepted once `"state":"enabled"` was added to the passwordLifetime restriction; otherwise as specified.
+  - Step 1: S = `18541be6`, exit 3 (incomplete only on todoSettings 500). Both fixtures are in S with the fields above.
+  - Step 2, update: maxLifetime P90D→P180D and description → `KEEL-RT drifted` (204 each, read back).
+    - Dry run `a6c6e1cd` listed only `restrictions` and `description`. Approval **715663ab**.
+    - Enforce exit 0; both `update succeeded`. Read back P90D and `KEEL-RT test fixture`.
+  - Step 3, create:
+    - Both deleted (204). The policy appears in deleted items as a `tokenIssuancePolicy` holding its definition; purged (204), as live-gate-plan says.
+    - Dry run `1200a6a0` (both) is **status refused**: `unclassified-content-effect: accessPackageCatalog changes isExternallyVisible, which may affect retention, holds or sharing — refused until a content-effect rule classifies it` (**#700**).
+    - Policy alone: dry run `e443ff7a`, approval **6df4b0a8**. Enforce exit 0, `create succeeded`, **new id 9560960e…**, as in S, appliesTo empty. Follow-up: "which apps the policy is assigned to" is not in the backup.
+    - **Catalog create: blocked (#700)**, not recreated.
+  - Step 4: dry run `60cd3616` from S:
+    - Policy **0 planned writes**.
+    - Catalog: the create is planned and refused again (#700).
+  - Step 5:
+    - Recreated policy deleted and purged (204; 404 after).
+    - Deleted items for both policy ids: 404.
+    - No KEEL-RT-228 catalog.
+  - Captures:
+    - `entraLive.mjs capture` (with the id as `--fixture`) answers `appManagementPolicy has no name of its own: pass --allow-by-reference…`.
+    - With `--allow-by-reference`: `refusing appManagementPolicy …: no principal reference; no role reference`. The catalog gives the same.
+    - Cause: no `FIXTURE_GUIDANCE` entry, so `guidanceFor()` falls back to by-reference.
+    - **PR #699** adds `named-object` entries. A trial capture from that branch (DB read only, discarded) captured all three.
+  - Waiting on: #699 merged and deployed. Then capture the 3 records from restores `a6c6e1cd` (policy and catalog update) and `e443ff7a` (policy create) at the deployed build, and commit to `claude/live-evidence-q228`.
+    - Catalog create waits on #700 and a new create round.
+  - **Left in the tenant: nothing.**
 - **Test tenant only.** Same hard rules, capture tooling and Restorer/Collector split as Q111. Self-approve under the 2026-10-14
   standing authorization and log every approval id. Restorer for writes, Collector for reads; global admin not used. The Restorer's
   manifest holds Policy.ReadWrite.ApplicationConfiguration and EntitlementManagement.ReadWrite.All; check the token before saying one

@@ -19,6 +19,8 @@ export const ENTRA_WRITE_PATHS = Object.freeze({
   homeRealmDiscoveryPolicy: '/policies/homeRealmDiscoveryPolicies',
   permissionGrantPolicy: '/policies/permissionGrantPolicies',
   oauth2PermissionGrant: '/oauth2PermissionGrants',
+  // Restore gaps, batch 21 (beta).
+  servicePrincipalCreationPolicy: '/policies/servicePrincipalCreationPolicies',
 });
 
 export default Object.entries(ENTRA_WRITE_PATHS).flatMap(([resourceType, path]) => ENTRA_WRITE_OPERATIONS.map((operation) => ({

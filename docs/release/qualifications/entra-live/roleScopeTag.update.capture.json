@@ -1,0 +1,29 @@
+{
+  "restoreRef": "f8ea064e-1261-8126-8bc7-389600a279a4",
+  "entry": {
+    "naturalKey": "roleScopeTag:1",
+    "resourceType": "roleScopeTag",
+    "operation": "update",
+    "targetId": "1",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-29T22:41:33.743Z",
+    "priorState": {
+      "id": "1",
+      "isBuiltIn": false,
+      "description": "KEEL-RT drifted",
+      "displayName": "KEEL-RT-229-scope-tag"
+    },
+    "intendedState": {
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-229-scope-tag"
+    },
+    "postState": {
+      "id": "1",
+      "isBuiltIn": false,
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-229-scope-tag",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/roleScopeTags/$entity"
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "restoreRef": "f78c3f8f-db7e-830c-a11e-8ad5a9d55075",
+  "entry": {
+    "naturalKey": "assignmentFilter:6c4aaa88-cb5f-870a-82a3-1652d4e88b9d",
+    "resourceType": "assignmentFilter",
+    "operation": "create",
+    "targetId": "b3953d32-6e84-8589-9249-4df6a1b10dab",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-29T22:50:33.040Z",
+    "priorState": null,
+    "intendedState": {
+      "rule": "(device.deviceName -startsWith \"KEELRT-\")",
+      "platform": "windows10AndLater",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-229-filter",
+      "roleScopeTags": [
+        "0"
+      ],
+      "evaluationMode": "checkinTimeEvaluation",
+      "assignmentFilterManagementType": "devices"
+    },
+    "postState": {
+      "id": "b3953d32-6e84-8589-9249-4df6a1b10dab",
+      "rule": "(device.deviceName -startsWith \"KEELRT-\")",
+      "payloads": [],
+      "platform": "windows10AndLater",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-229-filter",
+      "roleScopeTags": [
+        "0"
+      ],
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/assignmentFilters/$entity",
+      "evaluationMode": "checkinTimeEvaluation",
+      "createdDateTime": "2026-10-29T22:50:33.1528758Z",
+      "lastModifiedDateTime": "2026-10-29T22:50:33.1528758Z",
+      "assignmentFilterManagementType": "devices"
+    }
+  }
+}

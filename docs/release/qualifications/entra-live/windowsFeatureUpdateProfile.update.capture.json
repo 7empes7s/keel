@@ -1,0 +1,68 @@
+{
+  "restoreRef": "df583769-14f0-817d-86af-663249c77e04",
+  "entry": {
+    "naturalKey": "windowsFeatureUpdateProfile:91f67eaf-10d4-8bff-8d86-5e911f1a649d",
+    "resourceType": "windowsFeatureUpdateProfile",
+    "operation": "update",
+    "targetId": "91f67eaf-10d4-8bff-8d86-5e911f1a649d",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-29T22:45:17.092Z",
+    "priorState": {
+      "id": "91f67eaf-10d4-8bff-8d86-5e911f1a649d",
+      "description": "KEEL-RT drifted",
+      "displayName": "KEEL-RT-229-feature",
+      "createdDateTime": "2026-10-29T22:33:40.6990323Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "rolloutSettings": {
+        "offerIntervalInDays": null,
+        "offerEndDateTimeInUTC": null,
+        "offerStartDateTimeInUTC": null
+      },
+      "endOfSupportDate": "2027-10-12T00:00:00Z",
+      "featureUpdateVersion": "Windows 11, version 24H2",
+      "lastModifiedDateTime": "2026-10-29T22:38:15.7072348Z",
+      "deployableContentDisplayName": null,
+      "installFeatureUpdatesOptional": false,
+      "installLatestWindows10OnWindows11IneligibleDevice": false
+    },
+    "intendedState": {
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-229-feature",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "rolloutSettings": {
+        "offerIntervalInDays": null,
+        "offerEndDateTimeInUTC": null,
+        "offerStartDateTimeInUTC": null
+      },
+      "featureUpdateVersion": "Windows 11, version 24H2",
+      "installFeatureUpdatesOptional": false,
+      "installLatestWindows10OnWindows11IneligibleDevice": false
+    },
+    "postState": {
+      "id": "91f67eaf-10d4-8bff-8d86-5e911f1a649d",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-229-feature",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/windowsFeatureUpdateProfiles/$entity",
+      "createdDateTime": "2026-10-29T22:33:40.6990323Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "rolloutSettings": {
+        "offerIntervalInDays": null,
+        "offerEndDateTimeInUTC": null,
+        "offerStartDateTimeInUTC": null
+      },
+      "endOfSupportDate": "2027-10-12T00:00:00Z",
+      "featureUpdateVersion": "Windows 11, version 24H2",
+      "lastModifiedDateTime": "2026-10-29T22:45:17.2127049Z",
+      "deployableContentDisplayName": "Windows 11, version 24H2",
+      "installFeatureUpdatesOptional": false,
+      "installLatestWindows10OnWindows11IneligibleDevice": false
+    }
+  }
+}

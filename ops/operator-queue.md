@@ -9989,3 +9989,17 @@ item that needs it stays untouched.
   - d1 reads 404. s1 is still there with its one assignment.
   - Step 7 (assignments changed after the choice is refused). Then cleanup.
 - **Report:** as in Q213, plus the todoSettings read status in the backup (still a 500 or not).
+
+### Q221: Rerun Q220 (live undo of an assigned created policy: delete it, and skip it) after PR #678, without the PIM consent
+- Drafted by the "Stop unread settings blocking undo deletes" thread (2026-10-29). Q220 was refused at step 5 because
+  `privilegedAccessGroupResource` answered 403. PR #678 adds the catalogue flag `refersOnlyTo: ['group']` on that kind: an unread
+  PIM for Groups resource now blocks only group deletes, not a `deviceConfiguration` delete. Any other unread kind still blocks.
+- Needs: #678 merged and deployed (`grep -q refersOnlyTo /opt/keel-live/tools/tenant-probe/catalog.d/last-leftovers.mjs`).
+  Do **not** wait for the `PrivilegedAccess.Read.AzureADGroup` consent: this check is meant to run while that read still answers 403.
+  If the consent has already been given and the read now succeeds, run it anyway and say so in the Result.
+- Status: waiting for #678 deploy
+- Do: Q220 exactly as written (same rules, same `KEEL-RT-213-*` fixtures recreated from scratch, test tenant only, assign only to
+  the empty `KEEL-RT-213-group`, self-approve and log every approval id). At step 5 the plan with
+  `--delete-assigned …-delete --skip-assigned …-skip` must persist as `completed`. If any `refused <key>: <reason>` line prints,
+  quote it and stop. Then do Q213 steps 5–8 and the cleanup.
+- **Report:** as in Q220, plus the read status of `privilegedAccessGroupResource` and `todoSettings` in the step 1 backup (403 / 500 / read).

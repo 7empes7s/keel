@@ -10687,3 +10687,145 @@ item that needs it stays untouched.
 - **Report:** B; per workload the capture and verify exit codes, proven / not proven ops (with the exact error for any not proven),
   `needsManualRevert`, and the new `observedAt` (expiry = observedAt + 30 days); the step 2 check; the evidence branch and commit;
   the import lines; the `KEEL-RT-capture-*` policies created; anything left changed in the tenant (expected: nothing but those policies).
+
+### Q235: Recapture the 4 app consent records before they expire on 2026-11-14 (oauth2PermissionGrant, permissionGrantPolicy; new restores)
+- Drafted by the "Recapture expiring Entra and Intune records" thread (2026-10-29). PR #690 landed 41 live records. A record's
+  `observedAt` is the restore journal's time (`entraLive.mjs`: `observedAt: log.entry.recordedAt`), so re-capturing an old restore
+  does not renew it: **each recapture needs a new restore.** These four pass the 30-day window (`LIVE_EVIDENCE_MAX_AGE_MS`) only until
+  **2026-11-14 10:25 UTC**: `oauth2PermissionGrant.create`/`.update` (Q67 + Q78), `permissionGrantPolicy.create` (Q73) and `.update` (Q79).
+- Needs: nothing. Run it at the deployed commit B (`git -C /opt/keel-live rev-parse HEAD`). **Do this before Q229–Q234 if they are not
+  started; it has the earliest deadline.**
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and Restorer/Collector split as Q67. Self-approve under the 2026-10-14 standing
+  authorization and log every approval id. Restorer for writes; global admin not used; no permission added (Q26: Restorer holds
+  Policy.ReadWrite.PermissionGrant and Directory.ReadWrite.All). **Never grant admin consent**, never add a credential, never put the
+  consent policy in any authorization policy setting. No CA, no break-glass, not Marouane's account.
+- **Fixtures** (write down that none with the `KEEL-RT-235` / `keel-rt-235` prefix existed before):
+  - app consent policy, id `keel-rt-235-consent`, display name `KEEL-RT-235-consent`, one include (permissionType delegated,
+    classification low), referenced by nothing;
+  - app registration `KEEL-RT-235-app` (single tenant, no redirect URI, no credentials, no requested permissions) and its service principal;
+  - one delegated grant: consentType `Principal`, client `KEEL-RT-235-app`'s service principal, principal one existing `keel-rt-`
+    fixture user (for example `keel-rt-20260908-ben`), resource Microsoft Graph, scope `openid` only (the Q67 fixture exception: no data access).
+- Do, from your own checkout at B (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print it).
+  Use only the `live-gate-plan.mjs` steps for these two types.
+  1. Create the fixtures, then take snapshot S. Check S holds the policy with 1 include and the grant with scope `openid`.
+  2. **Update round:** consent policy: add include (delegated, medium), then remove low, so medium is the only include (as Q79);
+     grant: scope `openid` → `openid profile`. One restore from S selecting both, approve, `--enforce`, capture each `update`
+     (grant: `--allow-by-reference`, `--fixture` = its natural key as journaled). Expect the policy back to exactly `[(delegated, low)]`
+     and the grant back to `openid`.
+  3. **Create round:** delete the grant and the policy. One restore from S, approve, enforce, capture each `create`. Expect both back as in S.
+  4. **Re-run check:** dry run from S. Expect 0 planned writes for both.
+  5. Cleanup: delete the grant, `keel-rt-235-consent`, and `KEEL-RT-235-app` with its service principal (purge from deleted items).
+     Report anything left.
+  6. Commit the 4 records and their `.capture.json` (and any capture log) under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-q235`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). Push. No PR.
+     Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the four `live evidence` lines.
+- **Report:** B; per type and operation: promoted / refused (exact message); the new `observedAt` of each record; the step 4 count;
+  approval ids; the evidence branch and commit; anything left in the tenant. A writer bug: file an `operator-report` issue.
+
+### Q236: Recapture 19 Intune script and policy records before they expire on 2026-11-21 (new restores)
+- Drafted by the "Recapture expiring Entra and Intune records" thread (2026-10-29). As Q235: a new restore is needed for each record.
+  These were observed on 2026-10-22 and lapse between **2026-11-21 11:14 and 22:49 UTC**:
+  `deviceManagementScript` c+u, `deviceHealthScript` c+u, `deviceShellScript` u, `deviceComplianceScript` u (Q113/Q132),
+  `deviceCustomAttributeShellScript` c+u (Q114/Q162), `groupPolicyConfiguration` c+u (Q114/Q142), `deviceManagementCompliancePolicy` c+u
+  (Q120/Q156), `deviceManagementReusablePolicySetting` c+u (Q135/Q138), `policySet` c+u (Q116/Q140), `intuneBrandingProfile` c+u
+  (Q123/Q148), `windowsManagedAppProtection` u (Q127). The create rounds also capture creates for the update-only kinds; commit those too.
+- Needs: nothing. Run it at the deployed commit B, after Q235.
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules and capture tooling as Q113 and Q129. Self-approve restores **and content effects**
+  (`runs-on-devices`) under the 2026-10-14 standing authorization; log every approval id. Restorer for writes (it holds
+  DeviceManagementScripts.ReadWrite.All, DeviceManagementConfiguration, ServiceConfig, Apps and RBAC ReadWrite: check the token
+  before saying one is missing); global admin not used. If Graph answers 403 or a licence error, report blocked with Graph's exact
+  message; grant nothing. No CA, no break-glass, not Marouane's account. No tenant-wide setting is changed.
+- **Never assign any fixture** (no group, user, device, "All users" or "All devices").
+- **Fixtures** (write down that none with the `KEEL-RT-236` prefix existed before; bodies are harmless and nothing runs them):
+  - PowerShell script `KEEL-RT-236-script` (`Write-Output 'KEEL-RT'`, run as system); macOS shell script `KEEL-RT-236-shell`
+    (`echo KEEL-RT`); remediation `KEEL-RT-236-remediation` (detection and fix both `exit 0`); custom compliance script
+    `KEEL-RT-236-compliance-script` (`return @{}`), used by no policy;
+  - macOS custom attribute script `KEEL-RT-236-attribute` (attribute `KEEL-RT236`, string, `echo KEEL-RT`, run as system);
+  - administrative template `KEEL-RT-236-admx` (Edge home page URL = `https://example.com` enabled, plus one built-in setting Disabled);
+  - Linux settings catalog compliance policy `KEEL-RT-236-compliance` (`linux_deviceencryption_required_true`, block after 0 h only);
+  - firewall reusable settings group `KEEL-RT-236-addresses` (keyword, autoresolve false, 203.0.113.10), used by no policy;
+  - policy set `KEEL-RT-236-set` holding one new unassigned device configuration profile `KEEL-RT-236-profile`;
+  - Company Portal branding profile `KEEL-RT-236-branding` (organization `KEEL-RT IT`, colour #1B2A4A, a help desk name and email, no logos);
+  - Windows app protection policy `KEEL-RT-236-win-mam` (Microsoft Edge `com.microsoft.edge`, printing blocked, no wipe settings).
+- Do, from your own checkout at B, with `KEEL_QUALIFICATION_HMAC_KEY` set. Use the `live-gate-plan.mjs` steps for these 11 types.
+  1. Create the fixtures, then take snapshot S. **Backup check:** each type's read outcome; script payloads hold their bodies; the
+     reusable group holds `settingInstance` with 203.0.113.10; the policy set lists its profile.
+  2. **Update round:** change each fixture's description to `KEEL-RT drifted`; also the shell script body to `echo drifted`, the
+     admx home page to `https://example.org`, the reusable group address to 203.0.113.20, the branding organization name to
+     `KEEL-RT drifted`, and Edge printing allowed in the app protection policy. One restore from S selecting all fixtures, approve,
+     enforce, capture each `update`. Expect each read back equal to S.
+  3. **Create round:** delete every fixture except `KEEL-RT-236-profile`. One restore from S, approve (content effects too), enforce,
+     capture each `create`. Expect each back as in S, the policy set with its profile, nothing assigned.
+  4. **Re-run check:** dry run from S. Expect 0 planned writes.
+  5. Cleanup: delete every `KEEL-RT-236-*` fixture. Report anything left.
+  6. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on `claude/live-evidence-q236`,
+     branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). Push. No PR. Run `operations.mjs --live-evidence`
+     on that directory and report the `live evidence` lines.
+- **Report:** B; the step 1 backup check; per type and operation: promoted / refused (exact message) / skipped / blocked; new
+  `observedAt` per record; approval ids; the step 4 count; the evidence branch and commit; anything left. A writer bug: file an
+  `operator-report` issue and keep going with the other kinds.
+
+### Q237: Recapture 11 Intune category, enrollment, tunnel and Exchange scope records before they expire on 2026-11-21 (new restores)
+- Drafted by the "Recapture expiring Entra and Intune records" thread (2026-10-29). As Q235: a new restore is needed for each record.
+  Observed on 2026-10-22, lapse between **2026-11-21 07:58 and 16:17 UTC**: `deviceCategory` c+u and `managedDeviceCleanupRule` u (Q109),
+  `appleUserInitiatedEnrollmentProfile` c+u, `managedEBookCategory` c+u, `microsoftTunnelConfiguration` c+u (Q122/Q139),
+  `exchangeCustomAppScope` c (Q123), `mobileAppCategory` u (Q139).
+- Needs: nothing. Run it at the deployed commit B, after Q235 (it may run before Q236; both share the 2026-11-21 deadline).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules and capture tooling as Q109, Q122 and Q123. Self-approve under the 2026-10-14 standing
+  authorization; log every approval id. Restorer for writes; global admin not used; grant nothing; no CA, no break-glass, not
+  Marouane's account. Never assign any fixture. Never upload an Apple certificate or token.
+- **Fixtures** (write down that none with the `KEEL-RT-237` prefix existed before):
+  - device category `KEEL-RT-237-category`; app category `KEEL-RT-237-apps` (no app); e-book category `KEEL-RT-237-books` (no book);
+  - Microsoft Tunnel server configuration `KEEL-RT-237-tunnel` (network `10.99.0.0/24`, DNS `10.99.0.1`, port 443, route `10.98.0.0/16`), used by no site;
+  - Apple user enrollment profile `KEEL-RT-237-apple-enroll` as in Q122 (skip and report if Intune refuses it);
+  - Exchange app access scope `KEEL-RT-237-app-scope` (RecipientScope, filter `PrimarySmtpAddress -like 'keel-rt-scope-none*'`), used by no role assignment;
+  - device cleanup rule: **the tenant-wide macOS rule from Q109** (0 managed devices). Write down its current value first and put it back
+    right after (2026-10-22 approval). If no rule can be made, report and skip it.
+- Do, from your own checkout at B, with `KEEL_QUALIFICATION_HMAC_KEY` set. Use the `live-gate-plan.mjs` steps for these 7 types.
+  1. Create the fixtures (cleanup rule: 270 days), then take snapshot S. Report each type's read outcome.
+  2. **Update round:** rename or re-describe each fixture (`KEEL-RT drifted` description; tunnel DNS `10.99.0.2`; cleanup rule 180 days).
+     One restore from S selecting all, approve, enforce, capture each `update`. Expect each read back equal to S.
+  3. **Create round:** delete the three categories, the tunnel configuration, the Apple profile and the Exchange scope. One restore
+     from S, approve, enforce, capture each `create`. Expect each back as in S.
+  4. **Re-run check:** dry run from S. Expect 0 planned writes.
+  5. Cleanup: delete every `KEEL-RT-237-*` fixture; put the cleanup rule back to the value from before step 1. Report anything left.
+  6. Commit the records and `.capture.json` files on `claude/live-evidence-q237`, branched from `origin/master` (secret scan and
+     `pseudonymize.mjs check` first). Push. No PR. Run `operations.mjs --live-evidence` on that directory and report the lines.
+- **Report:** B; per type and operation: promoted / refused (exact message) / skipped; new `observedAt` per record; approval ids;
+  the step 4 count; the cleanup rule before and after; the evidence branch and commit; anything left.
+
+### Q238: Recapture 7 Entra tenant setting and Intune app records before they expire on 2026-11-27 (new restores)
+- Drafted by the "Recapture expiring Entra and Intune records" thread (2026-10-29). As Q235: a new restore is needed for each record.
+  Observed on 2026-10-28, lapse **2026-11-27 07:47–11:48 UTC**: `accessReviewPolicy` u, `multiTenantOrganizationIdentitySyncPolicyTemplate` u,
+  `multiTenantOrganizationPartnerConfigurationTemplate` u (Q110), `b2bManagementPolicy` u (Q111), `mobileApp` c+u, `mobileAppCategory` c (Q209).
+- Needs: nothing. Run it at the deployed commit B, after Q235–Q237. Start it no later than 2026-11-20 so the cloud PR lands in time.
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules and capture tooling as Q110, Q111 and Q209. Self-approve; log every approval id. Restorer for
+  writes; grant nothing. Tenant-wide settings follow the 2026-10-22 approval: **write down every value before you drift it and put it
+  back right after.** **Never change `inboundTrust`** or any trust, federation, certificate or sign-in field. Never assign an app,
+  never upload a package.
+- **Fixtures:**
+  - tenant settings (no object): access review policy `isGroupOwnerManagementEnabled`; multitenant organization sync template
+    `userSyncInbound.isSyncAllowed`; multitenant organization partner template `automaticUserConsentSettings.inboundAllowed`;
+    guest domain restriction (b2bManagementPolicy) as Q111 (if none exists, add blocked domain `keel-rt-blocked.example`, remove it at the end);
+  - app category `KEEL-RT-238-cat`; web link `KEEL-RT-238-app-web` (https://example.com/) in `KEEL-RT-238-cat`.
+- Do, from your own checkout at B, with `KEEL_QUALIFICATION_HMAC_KEY` set. Use the `live-gate-plan.mjs` steps for these 6 types.
+  1. Write down the four settings, create the app fixtures, then take snapshot S.
+  2. **Update round:** flip each of the three booleans; add blocked domain `keel-rt-drift.example` to the guest domain list; rename
+     the web link `KEEL-RT-238-app-web-drift`. One restore from S, approve, enforce, capture each `update`. Expect each read back
+     equal to S (so the settings are back to their noted values).
+  3. **Create round:** delete the web link and the category. One restore from S, approve, enforce, capture `mobileApp` create
+     (`--fixture KEEL-RT-238-app-web`) and `mobileAppCategory` create. Expect both back as in S, the link in its category.
+  4. **Re-run check:** dry run from S. Expect 0 planned writes.
+  5. Cleanup: delete `KEEL-RT-238-*`; check the four settings equal the values from step 1 (put back any that do not). Report them.
+  6. Commit the records and `.capture.json` files on `claude/live-evidence-q238`, branched from `origin/master` (secret scan and
+     `pseudonymize.mjs check` first). Push. No PR. Run `operations.mjs --live-evidence` on that directory and report the lines.
+- **Report:** B; the four settings before and after; per type and operation: promoted / refused (exact message); new `observedAt`;
+  approval ids; the step 4 count; the evidence branch and commit; anything left.

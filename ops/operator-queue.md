@@ -10973,7 +10973,21 @@ item that needs it stays untouched.
   assigned-scripts, category-update, compliance-create, policy-set, q209, rerun-after-create, reusable-settings, w2-entra.
   Every check except the runner signature passed in the cloud; only you hold `KEEL_QUALIFICATION_HMAC_KEY`.
 - Needs: /opt/keel-live at or after 05b1e55. Run it at the deployed commit B (`git -C /opt/keel-live rev-parse HEAD`).
-- Status: todo
+- Status: done
+- Result: done (2026-10-29 23:00 UTC, keel-operator). B = **53cbe462** (the checkout matches /opt/keel-live). No tenant access.
+  1. `operations.mjs --live-evidence docs/release/qualifications/entra-live`: exit 0. 102 records, all `-> live-qualified`, 0 failures, 0 `runner signature mismatch`.
+     - **All 41 #690 files print `live evidence <name>.json: fixture-tested -> live-qualified`**, no exceptions: accessReviewPolicy.update, appleUserInitiatedEnrollmentProfile.{create,update}, b2bManagementPolicy.update, deviceCategory.{create,update}, deviceComplianceScript.update, deviceCustomAttributeShellScript.{create,update}, deviceHealthScript.{create,update}, deviceManagementCompliancePolicy.{create,update}, deviceManagementReusablePolicySetting.{create,update}, deviceManagementScript.{create,update}, deviceShellScript.update, exchangeCustomAppScope.create, groupPolicyConfiguration.{create,update}, intuneBrandingProfile.{create,update}, managedDeviceCleanupRule.update, managedEBookCategory.{create,update}, microsoftTunnelConfiguration.{create,update}, mobileApp.{create,update}, mobileAppCategory.{create,update}, multiTenantOrganizationIdentitySyncPolicyTemplate.update, multiTenantOrganizationPartnerConfigurationTemplate.update, oauth2PermissionGrant.{create,update}, permissionGrantPolicy.{create,update}, policySet.{create,update}, windowsManagedAppProtection.update.
+  2. **Portal view: not reachable.** `GET http://127.0.0.1:3600/` answers 401 (Cloudflare Access, no token on the host); not bypassed.
+     - **Offline count instead** (same `--live-evidence` run on entra-live/):
+       - before #690 (first parent 3138aa0c): 57 live-qualified;
+       - at the #690 merge (05b1e553): 98, so **+41 exactly**;
+       - at 53cbe462: 102 (+4 from later PRs: engageCommunity.update, externalDomainFederation.update, permissionGrantPreApprovalPolicy.{create,update}).
+  - Lapse dates, from observedAt:
+    - 2026-10-15 (oauth2PermissionGrant.{create,update}, permissionGrantPolicy.{create,update}): lapse **2026-11-14** (Q235).
+    - 2026-10-22 (30 Intune records): lapse **2026-11-21**.
+    - 2026-10-28 (7: accessReviewPolicy.update, b2bManagementPolicy.update, mobileApp.{create,update}, mobileAppCategory.create, and the two MTO templates): lapse **2026-11-27**.
+    - mobileAppCategory.update is dated 10-22 while its create is 10-28.
+  - No signature failures, so no issue or recapture item was needed.
 - **Tenant:** none. Reads committed files only.
 - Do, from your clone at B, with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print it):
   1. `node tools/qualification/operations.mjs --live-evidence docs/release/qualifications/entra-live`. Report the line for each

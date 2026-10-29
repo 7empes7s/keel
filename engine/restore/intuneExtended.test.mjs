@@ -137,6 +137,10 @@ test('issue #703: only a read with no type is taken as the collection type; anot
   assert.match(recordPostStateRefusal(untyped, { '@odata.type': '#microsoft.graph.kindA' }, {}), /reads back as an unnamed kind, not kindA/);
   assert.throws(() => defineRecord({ resourceType: 'kind', version: 'v1.0', collection: '/x', collectionNamesType: true, operations: ['update'] }),
     /picked by subtype/);
+  assert.throws(() => defineRecord({
+    resourceType: 'kind', version: 'v1.0', collectionFor: () => '/x', collectionNamesType: true, operations: ['update'],
+    writeVia: async () => ({ ok: true }), readVia: async () => ({ ok: true, body: {} }),
+  }), /picked by subtype/);
 });
 
 test('protection subtypes without a write route, and targeted configurations listed with them, are manual', async () => {

@@ -10366,7 +10366,19 @@ item that needs it stays untouched.
 - Drafted by the "Hide Viva Engage community ids in evidence" thread (2026-10-29 13:35 UTC). PR #685 (merge 7e10beda) pseudonymizes
   Engage community ids and lets `capture --fixture` take the fixture name. The Q219 records in commit 50304c0f hold the raw id 5 times.
 - Needs: /opt/keel-live at 7e10beda or later (`grep -q ENGAGE_TOKEN /opt/keel-live/tools/qualification/pseudonymize.mjs`).
-- Status: todo
+- Status: done (PR #691)
+- Result: done, PR open (2026-10-29 21:55 UTC, keel-operator, build **844bbe18**). No tenant writes; capture read the Keel DB only.
+  1. Discarded the held records: worktree removed and local branch `claude/live-evidence-restore-gaps-20` (50304c0f) deleted. It was never on origin, and no branch contains 50304c0f now.
+  2. Recaptured from restore `232a820a` on a fresh branch from origin/master (3138aa0c):
+     - Command: `capture --fixture KEEL-RT-community --allow-tenant-setting --target-config /etc/keel/engage-writer.json --build 844bbe18`
+     - Exit 0, `captured engageCommunity update`. **The fixture name works**, so no natural-key retry was needed.
+  3. Checks:
+     - `pseudonymize.mjs check` on both files: exit 0, "every id is a pseudonym".
+     - `grep -c eyJfdHlwZSI6Ikdyb3VwIiwiaWQiOiI` finds 1 hit in the record and 4 in the capture log. All decode to 20-digit numbers starting with 8 (pseudonyms); the raw community number is absent.
+     - Secret and domain scan: 0 hits. Raw tenant, group and owner GUIDs: 0.
+  4. `operations.mjs --live-evidence`: `live evidence engageCommunity.update.json: fixture-tested -> live-qualified`.
+     - Commit eb2a0f0a on `claude/live-evidence-restore-gaps-20`.
+     - **PR #691** (https://github.com/7empes7s/keel/pull/691). The automerge label is added only after CI is green and the independent review passes.
 - Do (no tenant writes; capture reads the Keel database only):
   1. **Discard the held records:** drop commit 50304c0f and local branch `claude/live-evidence-restore-gaps-20` (never push it).
      Report that it is gone.

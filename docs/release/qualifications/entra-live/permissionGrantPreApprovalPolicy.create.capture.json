@@ -1,0 +1,56 @@
+{
+  "restoreRef": "678b74a6-6a6f-8501-8b70-e589844786f5",
+  "entry": {
+    "naturalKey": "permissionGrantPreApprovalPolicy:58a56d16-e1e2-8808-8616-8d4201c3e9f4",
+    "resourceType": "permissionGrantPreApprovalPolicy",
+    "operation": "create",
+    "targetId": "c997e9df-99f6-88e0-bb67-22812bbd6857",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-29T22:06:45.349Z",
+    "priorState": null,
+    "intendedState": {
+      "conditions": [
+        {
+          "scopeType": "chat",
+          "permissions": {
+            "@odata.type": "#microsoft.graph.enumeratedPreApprovedPermissions",
+            "permissionIds": [
+              "2390d1e8-2e6d-857e-b617-afeb6b444df8"
+            ],
+            "permissionKind": "enumerated",
+            "permissionType": "application",
+            "resourceApplicationId": "4b223ddd-b050-8d93-bf81-b49a0e5dddae"
+          },
+          "sensitivityLabels": {
+            "labelKind": "all",
+            "@odata.type": "#microsoft.graph.allScopeSensitivityLabels"
+          }
+        }
+      ]
+    },
+    "postState": {
+      "id": "c997e9df-99f6-88e0-bb67-22812bbd6857",
+      "conditions": [
+        {
+          "scopeType": "chat",
+          "permissions": {
+            "@odata.type": "#microsoft.graph.enumeratedPreApprovedPermissions",
+            "permissionIds": [
+              "2390d1e8-2e6d-857e-b617-afeb6b444df8"
+            ],
+            "permissionKind": "enumerated",
+            "permissionType": "application",
+            "resourceApplicationId": "4b223ddd-b050-8d93-bf81-b49a0e5dddae"
+          },
+          "sensitivityLabels": {
+            "labelKind": "all",
+            "@odata.type": "#microsoft.graph.allScopeSensitivityLabels"
+          }
+        }
+      ],
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#policies/permissionGrantPreApprovalPolicies/$entity",
+      "deletedDateTime": null
+    }
+  }
+}

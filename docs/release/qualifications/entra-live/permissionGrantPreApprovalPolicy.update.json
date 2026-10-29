@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "permissionGrantPreApprovalPolicy",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "05b1e553c9eee5b64c6f5e8f1a28b5a5b0143dc7",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-29T22:03:32.345Z",
+  "restoreRef": "038f94a1-f851-8d6a-9479-2fa006aed889",
+  "naturalKey": "permissionGrantPreApprovalPolicy:58a56d16-e1e2-8808-8616-8d4201c3e9f4",
+  "fixtureKind": "tenant-setting",
+  "captureSha256": "eeb9f57f714ec55a5501ec46a7be2604027b2015c7341996d492bd70570ebf79",
+  "proofRef": "docs/release/qualifications/entra-live/permissionGrantPreApprovalPolicy.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "81abf77d2eae314b8310910f394843ba52fd94bd3a6a728a32df46af55d674f5"
+    }
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "restoreRef": "038f94a1-f851-8d6a-9479-2fa006aed889",
+  "entry": {
+    "naturalKey": "permissionGrantPreApprovalPolicy:58a56d16-e1e2-8808-8616-8d4201c3e9f4",
+    "resourceType": "permissionGrantPreApprovalPolicy",
+    "operation": "update",
+    "targetId": "58a56d16-e1e2-8808-8616-8d4201c3e9f4",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-29T22:03:32.345Z",
+    "priorState": {
+      "id": "58a56d16-e1e2-8808-8616-8d4201c3e9f4",
+      "conditions": [
+        {
+          "scopeType": "team",
+          "permissions": {
+            "@odata.type": "#microsoft.graph.enumeratedPreApprovedPermissions",
+            "permissionIds": [
+              "2390d1e8-2e6d-857e-b617-afeb6b444df8"
+            ],
+            "permissionKind": "enumerated",
+            "permissionType": "application",
+            "resourceApplicationId": "4b223ddd-b050-8d93-bf81-b49a0e5dddae"
+          },
+          "sensitivityLabels": {
+            "labelKind": "all",
+            "@odata.type": "#microsoft.graph.allScopeSensitivityLabels"
+          }
+        }
+      ],
+      "deletedDateTime": null
+    },
+    "intendedState": {
+      "conditions": [
+        {
+          "scopeType": "chat",
+          "permissions": {
+            "@odata.type": "#microsoft.graph.enumeratedPreApprovedPermissions",
+            "permissionIds": [
+              "2390d1e8-2e6d-857e-b617-afeb6b444df8"
+            ],
+            "permissionKind": "enumerated",
+            "permissionType": "application",
+            "resourceApplicationId": "4b223ddd-b050-8d93-bf81-b49a0e5dddae"
+          },
+          "sensitivityLabels": {
+            "labelKind": "all",
+            "@odata.type": "#microsoft.graph.allScopeSensitivityLabels"
+          }
+        }
+      ]
+    },
+    "postState": {
+      "id": "58a56d16-e1e2-8808-8616-8d4201c3e9f4",
+      "conditions": [
+        {
+          "scopeType": "chat",
+          "permissions": {
+            "@odata.type": "#microsoft.graph.enumeratedPreApprovedPermissions",
+            "permissionIds": [
+              "2390d1e8-2e6d-857e-b617-afeb6b444df8"
+            ],
+            "permissionKind": "enumerated",
+            "permissionType": "application",
+            "resourceApplicationId": "4b223ddd-b050-8d93-bf81-b49a0e5dddae"
+          },
+          "sensitivityLabels": {
+            "labelKind": "all",
+            "@odata.type": "#microsoft.graph.allScopeSensitivityLabels"
+          }
+        }
+      ],
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#policies/permissionGrantPreApprovalPolicies/$entity",
+      "deletedDateTime": null
+    }
+  }
+}

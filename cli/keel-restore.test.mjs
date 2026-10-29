@@ -983,6 +983,34 @@ function runArtifactPromotion(artifactId, dependencies, errors = []) {
   assert.deepEqual(noMode.state.writes, []);
 }
 
+// The preview checks its guards against the tenant the restore writes to, the
+// same tenant the enforce run uses, not the collector's source tenant. Without a
+// Restorer config (a portal preview) it falls back to the collector's tenant.
+{
+  const previewTenantFor = async (targetConfig) => {
+    const fixture = restoreFakes({ planWaves: () => ({ waves: [['group:Finance']], patches: [] }) });
+    const tenants = [];
+    fixture.dependencies.previewApplyPlan = async ({ targetTenant }) => { tenants.push(targetTenant); return []; };
+    await runRestore({
+      snapshotId: 'source-snapshot',
+      selection: ['group:Finance'],
+      collectorConfig: { tenantId: 'source-tenant', clientId: 'collector-client' },
+      targetConfig,
+      dbUrl: testDbUrl,
+      logger: { log() {} },
+      mode: 'dry-run',
+      previewOnly: true,
+      dependencies: fixture.dependencies,
+    });
+    assert.deepEqual(fixture.state.writes, [], 'a preview writes nothing');
+    return tenants;
+  };
+  assert.deepEqual(await previewTenantFor({ tenantId: 'target-tenant', clientId: 'restorer-client' }), ['target-tenant'],
+    'the preview must use the target tenant, as the enforce run does');
+  assert.deepEqual(await previewTenantFor(undefined), ['source-tenant'],
+    'a preview without a Restorer config falls back to the collector tenant');
+}
+
 console.log('keel-restore.test.mjs — all assertions passed');
 
 // Issue #466: the helpers the forward restore and the compensation share.

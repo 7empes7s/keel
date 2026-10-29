@@ -491,7 +491,12 @@ export function sameJsonStrings(left, right) {
   return left.length === right.length && left.every((entry, index) => sameValue(parsedOrRaw(entry), parsedOrRaw(right[index])));
 }
 
-/** The records, one per type this module writes through recordWriter. */
+/**
+ * The records, one per type this module writes through recordWriter. A record
+ * marked tenantWide is one setting for the whole tenant (it cannot carry a
+ * KEEL-RT- name): on the test tenant it is written only with the tenant-wide
+ * option (recordWriter.mjs#tenantWideRecordProblem).
+ */
 export const IDENTITY_RECORDS = Object.freeze({
   servicePrincipal: defineRecord({
     resourceType: 'servicePrincipal', version: 'v1.0', collection: '/servicePrincipals', operations: ['update', 'delete'],
@@ -509,7 +514,7 @@ export const IDENTITY_RECORDS = Object.freeze({
     permission: 'LifecycleWorkflows.ReadWrite.All', docs: v1('identitygovernance-lifecycleworkflowscontainer-post-customtaskextensions'),
   }),
   lifecycleManagementSettings: defineRecord({
-    resourceType: 'lifecycleManagementSettings', version: 'v1.0', collection: '/identityGovernance/lifecycleWorkflows/settings',
+    resourceType: 'lifecycleManagementSettings', tenantWide: true, version: 'v1.0', collection: '/identityGovernance/lifecycleWorkflows/settings',
     singleton: true, operations: ['update'], permission: 'LifecycleWorkflows.ReadWrite.All', docs: v1('identitygovernance-lifecyclemanagementsettings-update'),
   }),
   attributeSet: defineRecord({
@@ -528,7 +533,7 @@ export const IDENTITY_RECORDS = Object.freeze({
     permission: 'EntitlementManagement.ReadWrite.All', docs: v1('entitlementmanagement-post-catalogs'),
   }),
   entitlementManagementSettings: defineRecord({
-    resourceType: 'entitlementManagementSettings', version: 'v1.0', collection: '/identityGovernance/entitlementManagement/settings',
+    resourceType: 'entitlementManagementSettings', tenantWide: true, version: 'v1.0', collection: '/identityGovernance/entitlementManagement/settings',
     singleton: true, operations: ['update'], permission: 'EntitlementManagement.ReadWrite.All', docs: v1('entitlementmanagementsettings-update'),
   }),
   appManagementPolicy: defineRecord({
@@ -536,7 +541,7 @@ export const IDENTITY_RECORDS = Object.freeze({
     operations: ['create', 'update'], excluded: ['appliesTo'], permission: 'Policy.ReadWrite.ApplicationConfiguration', docs: v1('appmanagementpolicy-post'),
   }),
   multiTenantOrganization: defineRecord({
-    resourceType: 'multiTenantOrganization', version: 'v1.0', collection: '/tenantRelationships/multiTenantOrganization',
+    resourceType: 'multiTenantOrganization', tenantWide: true, version: 'v1.0', collection: '/tenantRelationships/multiTenantOrganization',
     singleton: true, operations: ['update'], writable: ['displayName', 'description'],
     permission: 'MultiTenantOrganization.ReadWrite.All', docs: v1('multitenantorganization-update'),
   }),
@@ -544,30 +549,30 @@ export const IDENTITY_RECORDS = Object.freeze({
   // tenant. Each is only updated in place, and only its settings are written
   // (its name and description are Microsoft's).
   externalIdentitiesPolicy: defineRecord({
-    resourceType: 'externalIdentitiesPolicy', version: 'beta', collection: '/policies/externalIdentitiesPolicy',
+    resourceType: 'externalIdentitiesPolicy', tenantWide: true, version: 'beta', collection: '/policies/externalIdentitiesPolicy',
     singleton: true, operations: ['update'], writable: ['allowExternalIdentitiesToLeave', 'allowDeletedIdentitiesDataRemoval'],
     permission: 'Policy.ReadWrite.ExternalIdentities', docs: beta('externalidentitiespolicy-update'),
   }),
   accessReviewPolicy: defineRecord({
-    resourceType: 'accessReviewPolicy', version: 'beta', collection: '/policies/accessReviewPolicy',
+    resourceType: 'accessReviewPolicy', tenantWide: true, version: 'beta', collection: '/policies/accessReviewPolicy',
     singleton: true, operations: ['update'], writable: ['isGroupOwnerManagementEnabled'],
     permission: 'Policy.ReadWrite.AccessReview', docs: beta('accessreviewpolicy-update'),
   }),
   directoryRoleAccessReviewPolicy: defineRecord({
-    resourceType: 'directoryRoleAccessReviewPolicy', version: 'beta', collection: '/policies/directoryRoleAccessReviewPolicy',
+    resourceType: 'directoryRoleAccessReviewPolicy', tenantWide: true, version: 'beta', collection: '/policies/directoryRoleAccessReviewPolicy',
     singleton: true, operations: ['update'], writable: ['settings'],
     permission: 'RoleManagement.ReadWrite.Directory', docs: beta('directoryroleaccessreviewpolicy-update'),
   }),
   // The multitenant organization templates only shape the settings a tenant
   // gets when it joins later; partners already in place keep their own.
   multiTenantOrganizationIdentitySyncPolicyTemplate: defineRecord({
-    resourceType: 'multiTenantOrganizationIdentitySyncPolicyTemplate', version: 'v1.0',
+    resourceType: 'multiTenantOrganizationIdentitySyncPolicyTemplate', tenantWide: true, version: 'v1.0',
     collection: '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization',
     singleton: true, operations: ['update'], writable: ['templateApplicationLevel', 'userSyncInbound'],
     permission: 'Policy.ReadWrite.CrossTenantAccess', docs: v1('multitenantorganizationidentitysyncpolicytemplate-update'),
   }),
   multiTenantOrganizationPartnerConfigurationTemplate: defineRecord({
-    resourceType: 'multiTenantOrganizationPartnerConfigurationTemplate', version: 'v1.0',
+    resourceType: 'multiTenantOrganizationPartnerConfigurationTemplate', tenantWide: true, version: 'v1.0',
     collection: '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration',
     singleton: true, operations: ['update'], writable: PARTNER_TEMPLATE_WRITABLE_FIELDS,
     refusal: partnerTemplateRefusal, afterWrite: partnerTemplateAfterWrite,
@@ -578,7 +583,7 @@ export const IDENTITY_RECORDS = Object.freeze({
   // strings. Only the definition is written, in place: the tenant keeps one
   // such policy, and its name and default flag are left as they are.
   b2bManagementPolicy: defineRecord({
-    resourceType: 'b2bManagementPolicy', version: 'beta', collection: '/policies/b2bManagementPolicies',
+    resourceType: 'b2bManagementPolicy', tenantWide: true, version: 'beta', collection: '/policies/b2bManagementPolicies',
     operations: ['update'], writable: ['definition'], sameField: (field, left, right) => (field === 'definition' ? sameJsonStrings(left, right) : null),
     permission: 'Policy.ReadWrite.B2BManagementPolicy', docs: beta('b2bmanagementpolicy-update'),
   }),
@@ -617,7 +622,7 @@ export const IDENTITY_RECORDS = Object.freeze({
   // storage. The five sharing fields stay with the SharePoint workload, which
   // reviews their content effects, so this record never sends them.
   sharepointSettings: defineRecord({
-    resourceType: 'sharepointSettings', version: 'v1.0', collection: '/admin/sharepoint/settings',
+    resourceType: 'sharepointSettings', tenantWide: true, version: 'v1.0', collection: '/admin/sharepoint/settings',
     singleton: true, operations: ['update'], writable: SHAREPOINT_SETTINGS_WRITABLE_FIELDS, refusal: sharepointAccessRefusal,
     permission: 'SharePointTenantSettings.ReadWrite.All', docs: v1('sharepointsettings-update'),
   }),
@@ -625,9 +630,6 @@ export const IDENTITY_RECORDS = Object.freeze({
   // since PR #604, each one object per tenant and updated in place. A backup
   // that loosens access is withheld (adminCenterLooseningRefusal). To Do
   // settings wait for their read to work (GET /beta/admin/todo answers 500).
-  // Each is tenant-wide: on the test tenant it is written only with the
-  // tenant-wide option, which no restore run sets yet, so a person's approval
-  // comes first (recordWriter.mjs#tenantWideRecordProblem).
   formsSettings: defineRecord({
     resourceType: 'formsSettings', tenantWide: true, version: 'beta', collection: '/admin/forms',
     singleton: true, operations: ['update'], writable: ['settings'], refusal: adminCenterLooseningRefusal, sameField: sameBackedUpMembers,

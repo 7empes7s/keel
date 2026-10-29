@@ -1013,3 +1013,66 @@ console.log('keel-restore.test.mjs — all assertions passed');
   assert.deepEqual(marked, ['adminReportSettings', 'appsAndServicesSettings', 'formsSettings', 'microsoft365AppsInstallationOptions', 'pronounsSettings', 'todoSettings']);
   assert.ok(CATALOG.filter((entry) => entry.holdsNoReferences === true).every((entry) => entry.singleton === true), 'only one-per-tenant settings');
 }
+
+// Tenant-wide records (recordWriter.mjs#tenantWideRecordProblem): a snapshot dry run
+// made with --allow-tenant-wide-test-writes passes the option to every wave, on the
+// test tenant only; a promotion takes it from its artifact, never from argv.
+{
+  const { tenantRefFor } = await import('../engine/store/tenantRef.mjs');
+  const testTenant = tenantRefFor('target-tenant');
+  const optionsOf = (fixture) => {
+    const seen = [];
+    const wrapped = fixture.dependencies.applyWave;
+    fixture.dependencies.applyWave = async (...args) => { seen.push(args[3].allowTenantWide); return wrapped(...args); };
+    return seen;
+  };
+
+  const onTest = selectionFakes();
+  onTest.dependencies.testTenantRefs = [testTenant];
+  const dryOptions = optionsOf(onTest);
+  assert.equal(await runSelectionCli(['conditionalAccessPolicy:Protect-Admins'], onTest.dependencies, ['--allow-tenant-wide-test-writes']), 0,
+    JSON.stringify(onTest.state.waveResults));
+  assert.ok(dryOptions.length > 0);
+  assert.ok(dryOptions.every((value) => value === true), 'every wave of the dry run gets the option');
+
+  const without = selectionFakes();
+  without.dependencies.testTenantRefs = [testTenant];
+  const withoutOptions = optionsOf(without);
+  assert.equal(await runSelectionCli(['conditionalAccessPolicy:Protect-Admins'], without.dependencies), 0);
+  assert.ok(withoutOptions.every((value) => value === false), 'off unless asked for');
+
+  // Off the test tenant the option is refused before anything is planned.
+  const customer = selectionFakes();
+  const customerOptions = optionsOf(customer);
+  const errors = [];
+  const refused = await runCli({
+    argv: ['node', 'keel-restore.mjs', '--snapshot-id', 'source-snapshot', '--select', 'group:Admins',
+      '--target-config', '/fixtures/restorer.json', '--collector-config', '/fixtures/collector.json', '--allow-tenant-wide-test-writes'],
+    readFile: readFixture, dbUrl: testDbUrl, dependencies: customer.dependencies, logger: { log() {}, error: (line) => errors.push(String(line)) },
+  });
+  assert.equal(refused, 1);
+  assert.equal(customerOptions.length, 0);
+  assert.match(errors.join('\n'), /tenant-wide option is allowed on the test tenant only/);
+
+  // A promotion uses the option its artifact recorded.
+  for (const recorded of [true, false, undefined]) {
+    const fixture = restoreFakes();
+    const original = fixture.dependencies.getDryRunArtifactById;
+    fixture.dependencies.getDryRunArtifactById = async (...args) => ({ ...(await original(...args)), allowTenantWide: recorded });
+    const promoted = optionsOf(fixture);
+    assert.equal(await runFixture(fixture.dependencies), 0, JSON.stringify(fixture.state.waveResults));
+    assert.ok(promoted.length > 0);
+    assert.ok(promoted.every((value) => value === (recorded === true)), `artifact option ${recorded}`);
+  }
+
+  // A promotion never takes it from argv.
+  const fixture = restoreFakes();
+  const promotionErrors = [];
+  const fromArgv = await runCli({
+    argv: [...artifactArgv, '--allow-tenant-wide-test-writes'], readFile: readFixture, dbUrl: testDbUrl, dependencies: fixture.dependencies,
+    logger: { log() {}, error: (line) => promotionErrors.push(String(line)) },
+  });
+  assert.equal(fromArgv, 1);
+  assert.equal(fixture.state.writes.length, 0);
+  assert.match(promotionErrors.join('\n'), /a promotion takes it from its artifact/);
+}

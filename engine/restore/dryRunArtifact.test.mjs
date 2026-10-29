@@ -62,6 +62,13 @@ test('manual-restore plan digest is unchanged from pre-task-55 artifacts', () =>
   assert.equal(computePlanDigest({ ...fields, automationContext: null }), legacy);
 });
 
+// The tenant-wide option is bound only when set, so every other plan keeps its digest.
+{
+  assert.equal(computePlanDigest({ ...basePlan, allowTenantWide: false }), computePlanDigest(basePlan));
+  assert.equal(computePlanDigest({ ...basePlan, allowTenantWide: 'true' }), computePlanDigest(basePlan));
+  assert.notEqual(computePlanDigest({ ...basePlan, allowTenantWide: true }), computePlanDigest(basePlan));
+}
+
 // --- computeCurrentStateFingerprint: the target's current shape, restricted to the closure ---
 
 const targetResources = [
@@ -204,6 +211,10 @@ try {
   assert.deepEqual(created.selection, fields.selection);
   assert.deepEqual(created.results, fields.results);
   assert.equal(created.automationContext, null);
+  assert.equal(created.allowTenantWide, false, 'the tenant-wide option is off unless the dry run set it');
+  const tenantWide = await createDryRunArtifact(client, { ...fields, id: 'aaaaaaaa-0000-4000-8000-000000000003', allowTenantWide: true });
+  assert.equal(tenantWide.allowTenantWide, true);
+  assert.equal((await getDryRunArtifact(client, { id: tenantWide.id, tenantRef })).allowTenantWide, true);
 
   const fetched = await getDryRunArtifact(client, { id: fields.id, tenantRef });
   assert.deepEqual(fetched, created);

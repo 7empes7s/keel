@@ -12,6 +12,9 @@
 // --plan restores everything the plan covers; --snapshot-id + --select restores the
 // dependency closure of exactly the selected natural keys (portal-design §4.1 — the
 // closure is recomputed here from the snapshot, never trusted from the caller).
+// On the test tenant an Entra or Intune tenant setting (a record marked tenantWide)
+// is refused unless the --snapshot-id dry run is made with --allow-tenant-wide-test-writes;
+// the option is test tenant only, bound into the artifact, and its promotion uses it.
 //
 // node keel-restore.mjs --snapshot-id <id> --select <key> --incident <incidentId> ... restores under an
 // incident (roadmap task-71): the snapshot must be a qualified recovery point for that
@@ -79,6 +82,7 @@ import { GraphReader } from '../tools/tenant-probe/graph.mjs';
 import { CATALOG } from '../tools/tenant-probe/catalog.mjs';
 import { collectM1 } from '../engine/collect/entraAdapter.mjs';
 import { tenantRefFor } from '../engine/store/tenantRef.mjs';
+import { TEST_TENANT_REFS } from '../engine/restore/workloads/fixtureGuard.mjs';
 import { canonicalizeAll } from '../engine/cir/canonicalize.mjs';
 import { connect, getResourceVersions, getReferences } from '../engine/store/db.mjs';
 import { planWaves, planDeletionWaves, phaseOneResources } from '../engine/restore/wavePlanner.mjs';
@@ -326,6 +330,12 @@ export async function runRestore({
   targetConfigPath,
   mode,
   acceptDegradation,
+  // The tenant-wide option of a snapshot/selection dry run (--allow-tenant-wide-test-writes):
+  // on the test tenant a record marked tenantWide (an Entra or Intune tenant setting)
+  // is planned only with it (recordWriter.mjs#tenantWideRecordProblem). It is test
+  // tenant only, bound into the artifact's digest, and a promotion takes it from the
+  // artifact, never from the caller.
+  allowTenantWide = false,
   // Plan task 8: the ONLY way to reach an enforce run from a snapshot/selection scope.
   // artifactId promotes a previously-created, completed dry-run artifact — its own
   // frozen snapshot, selection and target config paths are what get restored, never
@@ -415,6 +425,8 @@ export async function runRestore({
     credentialPaths: credentialPathsFn = credentialPaths,
     workloadScope: workloadScopeFn = defaultWorkloadScope,
     sleep = (ms) => new Promise((done) => { setTimeout(done, ms); }),
+    // The test tenant list the tenant-wide option is checked against (tests inject theirs).
+    testTenantRefs = TEST_TENANT_REFS,
     loadSnapshotBrandingAssets: loadSnapshotBrandingAssetsFn = loadSnapshotBrandingAssets,
     readLiveBrandingAssets: readLiveBrandingAssetsFn = readLiveBrandingAssets,
     applyBrandingAssetUploads: applyBrandingAssetUploadsFn = applyBrandingAssetUploads,
@@ -508,6 +520,12 @@ export async function runRestore({
   }
   if (artifactId !== undefined && mode !== 'enforce') {
     throw new Error('artifactId may only be used with mode "enforce"');
+  }
+  if (allowTenantWide === true && (artifactId !== undefined || snapshotId === undefined || planId !== undefined)) {
+    throw new Error('the tenant-wide option is for a snapshot/selection dry run only; a promotion takes it from its artifact');
+  }
+  if (allowTenantWide === true && (typeof targetConfig?.tenantId !== 'string' || !testTenantRefs.includes(tenantRefFor(targetConfig.tenantId)))) {
+    throw new Error('the tenant-wide option is allowed on the test tenant only; nothing was planned');
   }
   if (persistArtifactId !== undefined) {
     if (mode === 'enforce') throw new Error('persistArtifactId may only be used for a dry run, never an enforce run');
@@ -619,6 +637,7 @@ export async function runRestore({
       }
       sourceSnapshot = artifact.snapshotId;
       selection = artifact.selection;
+      allowTenantWide = artifact.allowTenantWide === true;
       reconciliationResources = artifact.reconciliationResources ?? undefined;
       // Task 55: an automation-planned artifact re-resolves its recorded policy
       // identities from the live rows below; an artifact without automation context
@@ -1157,6 +1176,7 @@ export async function runRestore({
         contentEffects: contentEffects.effects,
         incidentRecovery: incidentDigest,
         complianceFix: fixPlan,
+        allowTenantWide,
       });
       const freshFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys, relationshipFingerprint);
       const validation = validateArtifactForExecutionFn(artifact, {
@@ -1225,6 +1245,7 @@ export async function runRestore({
         lockoutGate,
         approvedContentEffects,
         trustSkippedLocations,
+        allowTenantWide,
       });
       logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
       logFailures(logger, result.failed);
@@ -1325,6 +1346,7 @@ export async function runRestore({
           signInPathGate: { reader: targetReader, protectedPrincipalIds },
           observedCoverage,
           lockoutGate,
+          allowTenantWide,
         });
         logger.log(`  applied ${result.applied.length}, skipped ${result.skipped.length}, failed ${result.failed.length}`);
         logFailures(logger, result.failed);
@@ -1443,6 +1465,7 @@ export async function runRestore({
         contentEffects: contentEffects.effects,
         incidentRecovery: incidentDigest,
         complianceFix: fixPlan,
+        allowTenantWide,
       });
       const currentStateFingerprint = computeCurrentStateFingerprintFn(targetResources, closureKeys, relationshipFingerprint);
 
@@ -1470,6 +1493,7 @@ export async function runRestore({
         contentEffects: contentEffects.effects,
         incidentRecovery,
         complianceFix: fixPlan,
+        allowTenantWide,
       });
       createdArtifactId = persistArtifactId;
       logger.log(`persisted dry-run artifact ${persistArtifactId} (status: ${status})`);
@@ -2251,6 +2275,7 @@ export async function main({
     requestedBy,
     readFile,
     acceptDegradation: opts['accept-degradation'],
+    allowTenantWide: opts['allow-tenant-wide-test-writes'] === true,
     dbUrl,
     dependencies,
     logger,

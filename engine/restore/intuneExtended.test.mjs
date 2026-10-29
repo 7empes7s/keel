@@ -17,7 +17,8 @@ import { EXPANSION_INVENTORY } from '../coverage/qualification.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
 import { classifyContentEffects } from '../safety/contentEffects.mjs';
 
-const FAST = { readAfterWriteOptions: { attempts: 1, delayMs: 0 } };
+// A customer tenant: tenant-wide records are written there without the tenant-wide option.
+const FAST = { readAfterWriteOptions: { attempts: 1, delayMs: 0 }, tenantRef: 'sha256:customer0000000' };
 const GUARD = { breakGlassUserIds: ['break-glass-1'], keelAppIds: [], caPolicies: [] };
 const COMPLETE = (type) => ({ [type]: { outcome: 'complete' } });
 

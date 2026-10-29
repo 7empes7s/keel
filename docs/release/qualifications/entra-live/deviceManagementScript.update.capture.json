@@ -1,0 +1,56 @@
+{
+  "restoreRef": "4039cc72-570b-8948-9282-f18977da2d95",
+  "entry": {
+    "naturalKey": "deviceManagementScript:c7322699-27f1-8ea9-9bba-1e094a306e4a",
+    "resourceType": "deviceManagementScript",
+    "operation": "update",
+    "targetId": "c7322699-27f1-8ea9-9bba-1e094a306e4a",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T17:19:47.816Z",
+    "priorState": {
+      "id": "c7322699-27f1-8ea9-9bba-1e094a306e4a",
+      "fileName": "keel-rt-149.ps1",
+      "runAs32Bit": false,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-149-script",
+      "runAsAccount": "system",
+      "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceManagementScripts/$entity",
+      "createdDateTime": "2026-10-22T17:14:27.1845707Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-10-22T17:14:27.1845707Z",
+      "enforceSignatureCheck": false
+    },
+    "intendedState": {
+      "fileName": "keel-rt-149.ps1",
+      "runAs32Bit": false,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-149-script",
+      "runAsAccount": "system",
+      "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "enforceSignatureCheck": false
+    },
+    "postState": {
+      "id": "c7322699-27f1-8ea9-9bba-1e094a306e4a",
+      "fileName": "keel-rt-149.ps1",
+      "runAs32Bit": false,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-149-script",
+      "runAsAccount": "system",
+      "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceManagementScripts/$entity",
+      "createdDateTime": "2026-10-22T17:14:27.1845707Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-10-22T17:14:27.1845707Z",
+      "enforceSignatureCheck": false
+    }
+  }
+}

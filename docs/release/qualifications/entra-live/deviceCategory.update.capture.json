@@ -1,0 +1,27 @@
+{
+  "restoreRef": "b871dfea-9b8e-8740-b6e8-8a0381943703",
+  "entry": {
+    "naturalKey": "deviceCategory:83d3e4b2-c91f-8ee6-9221-50df003c52dd",
+    "resourceType": "deviceCategory",
+    "operation": "update",
+    "targetId": "83d3e4b2-c91f-8ee6-9221-50df003c52dd",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T08:06:42.869Z",
+    "priorState": {
+      "id": "83d3e4b2-c91f-8ee6-9221-50df003c52dd",
+      "description": "KEEL drift",
+      "displayName": "KEEL-RT-148-category"
+    },
+    "intendedState": {
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-148-category"
+    },
+    "postState": {
+      "id": "83d3e4b2-c91f-8ee6-9221-50df003c52dd",
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-148-category",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCategories/$entity"
+    }
+  }
+}

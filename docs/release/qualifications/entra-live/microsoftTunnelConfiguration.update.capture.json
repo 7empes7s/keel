@@ -1,0 +1,88 @@
+{
+  "restoreRef": "8de90bea-a0ba-8a12-a5b0-a98004dbde5d",
+  "entry": {
+    "naturalKey": "microsoftTunnelConfiguration:31044949-dd8e-839f-9c53-b348f743f7f8",
+    "resourceType": "microsoftTunnelConfiguration",
+    "operation": "update",
+    "targetId": "31044949-dd8e-839f-9c53-b348f743f7f8",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T08:57:06.044Z",
+    "priorState": {
+      "id": "31044949-dd8e-839f-9c53-b348f743f7f8",
+      "network": "10.99.0.0/24",
+      "splitDNS": [],
+      "dnsServers": [
+        "10.99.0.2"
+      ],
+      "listenPort": 8443,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-tunnel",
+      "ipv6Network": null,
+      "routeExcludes": [],
+      "routeIncludes": [
+        "10.98.0.0/16"
+      ],
+      "routesExclude": [],
+      "routesInclude": [
+        "10.98.0.0/16"
+      ],
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "advancedSettings": [],
+      "lastUpdateDateTime": "2026-10-22T08:52:27.3416615Z",
+      "defaultDomainSuffix": "",
+      "disableUdpConnections": false
+    },
+    "intendedState": {
+      "network": "10.99.0.0/24",
+      "splitDNS": [],
+      "dnsServers": [
+        "10.99.0.1"
+      ],
+      "listenPort": 443,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-tunnel",
+      "ipv6Network": null,
+      "routeExcludes": [],
+      "routeIncludes": [
+        "10.98.0.0/16"
+      ],
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "advancedSettings": [],
+      "defaultDomainSuffix": "",
+      "disableUdpConnections": false
+    },
+    "postState": {
+      "id": "31044949-dd8e-839f-9c53-b348f743f7f8",
+      "network": "10.99.0.0/24",
+      "splitDNS": [],
+      "dnsServers": [
+        "10.99.0.1"
+      ],
+      "listenPort": 443,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-tunnel",
+      "ipv6Network": null,
+      "routeExcludes": [],
+      "routeIncludes": [
+        "10.98.0.0/16"
+      ],
+      "routesExclude": [],
+      "routesInclude": [
+        "10.98.0.0/16"
+      ],
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/microsoftTunnelConfigurations/$entity",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "advancedSettings": [],
+      "lastUpdateDateTime": "2026-10-22T08:57:06.1664983Z",
+      "defaultDomainSuffix": "",
+      "disableUdpConnections": false
+    }
+  }
+}

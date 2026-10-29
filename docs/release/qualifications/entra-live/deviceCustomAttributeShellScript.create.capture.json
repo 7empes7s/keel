@@ -1,0 +1,41 @@
+{
+  "restoreRef": "e22599b6-1f04-8eb7-a453-82cc44a2f416",
+  "entry": {
+    "naturalKey": "deviceCustomAttributeShellScript:602369fe-a07c-891d-80aa-03d412a1074c",
+    "resourceType": "deviceCustomAttributeShellScript",
+    "operation": "create",
+    "targetId": "78e24ecc-368d-8194-8e39-465293867ffd",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T11:57:32.899Z",
+    "priorState": null,
+    "intendedState": {
+      "fileName": "keel-rt-attr.sh",
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-attribute",
+      "runAsAccount": "system",
+      "scriptContent": "ZWNobyBLRUVMLVJU",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "customAttributeName": null,
+      "customAttributeType": "string"
+    },
+    "postState": {
+      "id": "78e24ecc-368d-8194-8e39-465293867ffd",
+      "fileName": "keel-rt-attr.sh",
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-attribute",
+      "runAsAccount": "system",
+      "scriptContent": "ZWNobyBLRUVMLVJU",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceCustomAttributeShellScripts/$entity",
+      "createdDateTime": "2026-10-22T11:57:32.9845691Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "customAttributeName": null,
+      "customAttributeType": "string",
+      "lastModifiedDateTime": "2026-10-22T11:57:32.9845691Z"
+    }
+  }
+}

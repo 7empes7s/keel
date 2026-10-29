@@ -1,0 +1,41 @@
+{
+  "restoreRef": "70bc0535-6464-8b6d-b0ab-bfa8c3755eed",
+  "entry": {
+    "naturalKey": "deviceManagementScript:bedb567e-b529-8dbd-82dc-0aedc8021e21",
+    "resourceType": "deviceManagementScript",
+    "operation": "create",
+    "targetId": "ae3ebed4-3dd4-89ae-810e-97cd826b16dd",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T17:53:30.852Z",
+    "priorState": null,
+    "intendedState": {
+      "fileName": "keel-rt-152.ps1",
+      "runAs32Bit": false,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-152-script",
+      "runAsAccount": "system",
+      "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "enforceSignatureCheck": false
+    },
+    "postState": {
+      "id": "ae3ebed4-3dd4-89ae-810e-97cd826b16dd",
+      "fileName": "keel-rt-152.ps1",
+      "runAs32Bit": false,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-152-script",
+      "runAsAccount": "system",
+      "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceManagementScripts/$entity",
+      "createdDateTime": "2026-10-22T17:53:30.9588796Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-10-22T17:53:30.9588796Z",
+      "enforceSignatureCheck": false
+    }
+  }
+}

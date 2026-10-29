@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "deviceManagementCompliancePolicy",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "0450b0fb95029721c987bde90c8fd34fc852199d",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-22T17:31:49.109Z",
+  "restoreRef": "6edd5b49-d193-8730-8011-a0d36f4646b7",
+  "naturalKey": "deviceManagementCompliancePolicy:ac8c1231-ec32-8e02-b632-155883567b1c",
+  "fixtureKind": "named-object",
+  "captureSha256": "ae4ab540a9de7d97a7a6c89f164fad9bcae23c1fe17e8216a04004a858d06bf1",
+  "proofRef": "docs/release/qualifications/entra-live/deviceManagementCompliancePolicy.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "b98dd09149a899b1c65c89731367b435e8e475b4fb008dee26ff1050bc30f4db"
+    }
+  }
+}

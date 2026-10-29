@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "multiTenantOrganizationIdentitySyncPolicyTemplate",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "76e1c71268db6eb687765869f0637c589edeecd1",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-28T07:47:51.406Z",
+  "restoreRef": "5a74a140-88d6-8bc9-9a65-a83fd6466381",
+  "naturalKey": "multiTenantOrganizationIdentitySyncPolicyTemplate:multiTenantOrganizationIdentitySyncPolicyTemplate",
+  "fixtureKind": "tenant-setting",
+  "captureSha256": "478b76ecaa28c8beadaba35878dc4f0f1c5afbe636a35519f6477da4e91a9e35",
+  "proofRef": "docs/release/qualifications/entra-live/multiTenantOrganizationIdentitySyncPolicyTemplate.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "d5e2287f48676bd4378effdfc3d1ff91f07f25c7986008f73a99fcce54ff8ba7"
+    }
+  }
+}

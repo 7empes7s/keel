@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "appleUserInitiatedEnrollmentProfile",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "471cb9b056ea75ee83bdc7c1f25ac31e59f2a3e9",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-22T08:57:05.022Z",
+  "restoreRef": "8de90bea-a0ba-8a12-a5b0-a98004dbde5d",
+  "naturalKey": "appleUserInitiatedEnrollmentProfile:ec980ea2-ede1-85df-a094-bcaa5386b5e0",
+  "fixtureKind": "named-object",
+  "captureSha256": "a07fe06341266a7ac7ff71a1c0011a20f486fb8cc85c9de7e181ed760caab58b",
+  "proofRef": "docs/release/qualifications/entra-live/appleUserInitiatedEnrollmentProfile.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "a0e2fb5e56a218e090148d02c0359c49d84bf6afc44f16de03d8c8852a29f3ac"
+    }
+  }
+}

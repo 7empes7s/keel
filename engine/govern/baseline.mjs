@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { canonicalize } from '../cir/canonicalHash.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
+import { isServerError } from '../../tools/tenant-probe/graph.mjs';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from './evidence.mjs';
@@ -21,6 +22,29 @@ function isCompletedSource(snapshot, { tenantRef }) {
     && isRecord(snapshot.coverage_digest);
 }
 
+const CRITICALITY = new Map(DESCRIPTORS.map(({ type, criticality }) => [type, criticality]));
+
+/**
+ * Issue #666 follow-up (owner's decision, 2026-10-29): a minor (tier3) kind
+ * that nothing could be read of because Microsoft kept answering 500, 502 or
+ * 504 does not block a baseline. It is left out of the baseline's scope and
+ * listed there (`leftOut`), and a later backup that cannot read it either does
+ * not show its baseline settings as removed. Tier1 and tier2 kinds, refusals
+ * (403), partial reads and every other failure still block.
+ */
+export function leftOutForServiceError(type, coverage) {
+  return isRecord(coverage)
+    && coverage.outcome === 'failed'
+    && isServerError(coverage.httpStatus)
+    && CRITICALITY.get(type) === 'tier3';
+}
+
+/** The kinds a snapshot's baseline leaves out for a Microsoft service error, sorted. */
+export function serviceErrorLeftOut(coverageDigest) {
+  const digest = isRecord(coverageDigest) ? coverageDigest : {};
+  return Object.keys(digest).filter((type) => leftOutForServiceError(type, digest[type])).sort();
+}
+
 /**
  * A baseline represents the whole estate, so a source is safe only when every
  * descriptor explicitly reports a successful collection. A completed snapshot
@@ -39,7 +63,8 @@ export function isEligibleBaselineSource(snapshot, { tenantRef }) {
     // Governance could ever seed a baseline. captureFromSnapshot still leaves
     // the type out of the baseline's scope.
     return isRecord(coverage)
-      && (coverage.outcome === 'complete' || coverage.outcome === 'complete-empty' || coverage.outcome === 'unavailable');
+      && (coverage.outcome === 'complete' || coverage.outcome === 'complete-empty' || coverage.outcome === 'unavailable'
+        || leftOutForServiceError(type, coverage));
   });
 }
 
@@ -213,12 +238,15 @@ export function captureFromSnapshot(snapshot) {
     .filter((type) => isRecord(digest[type])
       && (digest[type].outcome === 'complete' || digest[type].outcome === 'complete-empty'))
     .sort();
+  const leftOut = serviceErrorLeftOut(digest)
+    .map((type) => ({ type, reason: 'microsoft-service-error', httpStatus: digest[type].httpStatus }));
   return {
     capturedAt: snapshot.completed_at,
     scope: {
       startedAt: new Date(snapshot.started_at).toISOString(),
       completedAt: new Date(snapshot.completed_at).toISOString(),
       types,
+      ...(leftOut.length ? { leftOut } : {}),
     },
   };
 }

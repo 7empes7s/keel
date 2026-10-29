@@ -310,6 +310,44 @@ test('issue #705: an unreadable offline wipe period counts as shorter', () => {
   assert.deepEqual(effects.map((e) => e.field), ['periodOfflineBeforeWipeIsEnforced']);
 });
 
+// ------------------------------------- Windows app protection offline wipe period
+
+const winProtection = Object.freeze({
+  '@odata.type': '#microsoft.graph.windowsManagedAppProtection', displayName: 'KEEL-RT-win-mam', description: 'Fixture',
+  printBlocked: true, allowedOutboundClipboardSharingLevel: 'none', periodOfflineBeforeWipeIsEnforced: 'P90D',
+});
+const winUpdate = (before, after, name) => update('windowsManagedAppProtection', { ...winProtection, ...before }, { ...winProtection, ...after }, `windowsManagedAppProtection:${name}`);
+
+test('a Windows app protection restore that shortens or adds the offline wipe period needs the irreversible approval', () => {
+  const { effects, refusals } = classifyContentEffects([
+    winUpdate({}, { periodOfflineBeforeWipeIsEnforced: 'P1D' }, 'shorter'),
+    winUpdate({ periodOfflineBeforeWipeIsEnforced: null }, { periodOfflineBeforeWipeIsEnforced: 'P30D' }, 'new'),
+    winUpdate({ periodOfflineBeforeWipeIsEnforced: 'P0D' }, { periodOfflineBeforeWipeIsEnforced: 'PT12H' }, 'was-off'),
+    { ...create('windowsManagedAppProtection', winProtection, 'windowsManagedAppProtection:created'), newAssignments: ['group:KEEL-RT-Users'] },
+  ]);
+  assert.deepEqual(refusals, []);
+  assert.deepEqual(shape(effects), [
+    { naturalKey: 'windowsManagedAppProtection:created', field: 'periodOfflineBeforeWipeIsEnforced', effect: 'irreversible', before: null, after: 'P90D' },
+    { naturalKey: 'windowsManagedAppProtection:new', field: 'periodOfflineBeforeWipeIsEnforced', effect: 'irreversible', before: null, after: 'P30D' },
+    { naturalKey: 'windowsManagedAppProtection:shorter', field: 'periodOfflineBeforeWipeIsEnforced', effect: 'irreversible', before: 'P90D', after: 'P1D' },
+    { naturalKey: 'windowsManagedAppProtection:was-off', field: 'periodOfflineBeforeWipeIsEnforced', effect: 'irreversible', before: 'P0D', after: 'PT12H' },
+  ]);
+});
+
+test('a Windows app protection offline wipe period that is off, longer or the same value written differently is no effect', () => {
+  const { effects, refusals } = classifyContentEffects([
+    winUpdate({}, { periodOfflineBeforeWipeIsEnforced: 'P0D' }, 'off'),
+    winUpdate({ periodOfflineBeforeWipeIsEnforced: 'P30D' }, {}, 'longer'),
+    winUpdate({}, { periodOfflineBeforeWipeIsEnforced: 'PT2160H' }, 'same'),
+    winUpdate({ periodOfflineBeforeWipeIsEnforced: 'PT2160H' }, {}, 'same-reversed'),
+    { ...create('windowsManagedAppProtection', { ...winProtection, periodOfflineBeforeWipeIsEnforced: 'P0D' }, 'windowsManagedAppProtection:created-off'),
+      newAssignments: ['group:KEEL-RT-Users'] },
+    { ...create('windowsManagedAppProtection', winProtection, 'windowsManagedAppProtection:unassigned'), newAssignments: [] },
+  ]);
+  assert.deepEqual(refusals, []);
+  assert.deepEqual(effects, []);
+});
+
 test('a compliance policy that wipes or retires noncompliant devices is irreversible and needs the separate approval', async (t) => {
   const created = classifyContentEffects([create('deviceCompliancePolicy', complianceWith('block', 'wipe'))]);
   assert.deepEqual(created.refusals, []);

@@ -56,7 +56,8 @@ import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { appGroupOf, appHasPackage, appKindName, appKindWords } from './intuneAppKinds.mjs';
 import {
-  applyRecordWrite, defineRecord, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue, undoesCreate,
+  applyRecordWrite, defineRecord, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue, trustFieldStep,
+  undoesCreate, withoutTrustFields,
 } from './recordWriter.mjs';
 
 export const INTUNE_OPERATIONS_CONTRACT_VERSION = 1;
@@ -252,7 +253,13 @@ export function intuneWriteBody(resourceType, payload, verb) {
   }
   if (entry.settings) body.settings = settingsBody(payload?.settings);
   if (entry.scheduledActions && verb === 'create') body.scheduledActionsForRule = scheduledActionsBody(payload?.scheduledActionsForRule);
-  return body;
+  // A trust, certificate or sign-in field is never sent (intuneTrustFieldStep lists it for a person).
+  return withoutTrustFields(resourceType, body);
+}
+
+/** The manual step for a policy's trust, certificate or sign-in fields the write leaves out, or null. */
+export function intuneTrustFieldStep(resourceType, desired, live, verb) {
+  return trustFieldStep(resourceType, desired, live, verb, { excluded: intuneRecordFor(resourceType)?.excluded ?? [] });
 }
 
 /** Nulls (and empty values Graph leaves out) read the same as an absent field. */

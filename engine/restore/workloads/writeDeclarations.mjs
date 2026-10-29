@@ -60,6 +60,8 @@ export const CROSS_TENANT_TRUST_FIELDS = Object.freeze([
  * from other domains and tenants without a consent prompt, so a difference is listed for
  * an administrator to check and apply by hand. declare() and defineRecord() refuse them,
  * and any other field whose name says it carries trust, a certificate or a sign-in endpoint.
+ * Writers that send the whole payload (records with no `writable` list, the Intune policy
+ * body) drop them from the body itself (recordWriter.mjs withoutTrustFields).
  */
 export const TRUST_FIELDS = Object.freeze({
   exchangeInboundConnector: Object.freeze([
@@ -90,7 +92,9 @@ export const TRUST_FIELDS = Object.freeze({
   // The guest invitation allow and block lists: which outside domains guests may come from.
   b2bManagementPolicy: Object.freeze(['definition']),
 });
-export const TRUST_FIELD_PATTERN = /certificate|trust|tlssender|tlsdomain|tlssettings|signin|issuer|metadataexchange/i;
+// `signin` names a sign-in endpoint or setting, not a device's failed sign-in count or its
+// sign-in options page (Intune passcodeSignInFailureCountBeforeWipe, settingsBlockSignInOptionsPage).
+export const TRUST_FIELD_PATTERN = /certificate|trust|tlssender|tlsdomain|tlssettings|signin(?!failurecount|optionspage)|issuer|metadataexchange/i;
 
 /** Whether a restore must never write this field of this resource type. */
 export function isTrustField(resourceType, field) {

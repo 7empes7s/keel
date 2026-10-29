@@ -10743,8 +10743,68 @@ item that needs it stays untouched.
     has never been checked live: check it in step 1.
 - Needs: /opt/keel-live at the #688 merge or later
   (`grep -q "targetedManagedAppConfiguration: {" /opt/keel-live/tools/qualification/live-gate-plan.mjs`).
-- Status: todo
-- Result:
+- Status: done in part (9 promoted; #703 #704 #705)
+- Result: done in part (2026-10-29 23:10 UTC, keel-operator). **9 operations promoted:** assignmentFilter, roleScopeTag, windowsFeatureUpdateProfile and targetedManagedAppConfiguration (create and update), plus mobileAppConfiguration (update).
+  - **4 kinds skipped:** the fixture could not be created (Autopilot, notification template, quality update, driver update).
+  - **3 operator-report bugs:** #703, #704, #705.
+  - B = **05b1e553**.
+  - Credentials: Restorer for writes, Collector for reads and the backup. Global admin not used; nothing granted. The token holds DeviceManagementConfiguration/ServiceConfig/Apps/RBAC ReadWrite.
+  - Self-approved: requester Gmail, approver Entra. No content-effect approvals were needed (0 content effects).
+  - **Nothing assigned at any point**. The Default scope tag was not touched; CA, break-glass and tenant-wide settings untouched.
+  - Before: no KEEL-RT-229 objects. Existing non-fixtures (Default tag, 2 app policies, 1 device app config) were left alone.
+  - **Step 0, Autopilot:**
+    - `GET beta /deviceManagement/windowsAutopilotSettings` → 404 `UnknownError`, empty message (request-id 18416380-e35e-4b9e-ae6b-13e6d8c10110).
+    - One POST with the full body → **400 BadRequest**, `"Message": "An error has occurred - Operation ID (for customer support): 00000000-0000-0000-0000-000000000000 - Activity ID: bc5926ee-cd46-4123-9d5e-b0f63e891b95 - Url: https://proxy.msub06.manage.microsoft.com/DeviceEnrollmentFE/StatelessDeviceEnrollmentFEService/deviceManagement/windowsAutopilotDeploymentProfiles?api-version=5025-11-25"`, CustomApiErrorPhrase "", ErrorSourceService "".
+    - request-id = client-request-id = bc5926ee-cd46-4123-9d5e-b0f63e891b95; date 2026-10-29 22:33:07 GMT. **Skipped.**
+  - **Step 0, notification template:**
+    - v1.0 POST → 400 BadRequest "An error has occurred" (StatelessNotificationFEService, api-version 2023-12-04, request-id 989f6e7a-93b5-4e85-ac2a-3087e79601d8).
+    - The one beta retry → the same 400 (api-version 5018-07-01, request-id 93e043fd-5053-441e-9ce6-463e42c5c8c9). **Skipped.**
+  - **Driver and quality update profiles:** POST → **403 Forbidden** "An error has occurred" from `Updates/SoftwareUpdateService` (driver request-id 61cfcdbf-9646-4b79-a58e-df89878d4e21; quality with release 2026-10-13, request-id aeab881b-9a22-40af-9ad2-6b3de1492e65). Likely a missing Windows update licence. **Skipped (blocked).**
+  - Fixtures created:
+    - filter (windows10AndLater, `KEELRT-` rule)
+    - scope tag (id 1)
+    - feature profile (Windows 11, version 24H2)
+    - iOS app protection `KEEL-RT-229-ios-mam` (PIN required; Outlook added through `/targetApps`, 204)
+    - app config `KEEL-RT-229-app-config` (FocusedInbox=false; Outlook)
+    - iOS store app `KEEL-RT-229-ios-app` (Outlook; `minimumSupportedOperatingSystem` v14_0, because v16_0 doesn't exist on v1.0)
+    - device app config `KEEL-RT-229-device-config` (KEELRT=1)
+  - Step 1: S = `76a393be`, exit 3 (incomplete only on todoSettings 500).
+    - **All 11 types read**: complete, or complete-empty where no fixture exists.
+    - **S holds `apps` = Outlook** (`com.microsoft.office.outlook`) for both the app protection and the app config. Notification template: none to check.
+    - Note: the app config is also stored a second time as a `managedAppPolicy` (same id, without apps). Only its own type was selected.
+  - Step 2, update:
+    - Every drift read back.
+    - Dry run `140cc080` listed only the drifted fields. Approval **90e735d6**. Enforce **exit 1**:
+      - the scope tag and app config updates succeeded;
+      - **the app protection PIN was written** (reads true) but marked `uncertain: post-state: the object reads back as an unnamed kind, not iosManagedAppProtection`. The typed read-back carries no `@odata.type` (**#703**).
+    - Retry: dry run `759d445c`, approval **7fc64cc3**, exit 0. Filter rule, feature description and device config value were written.
+    - All 6 read back as in S.
+    - Captured the update for: scope tag and app config (from 140cc080); filter, feature and device config (from 759d445c).
+    - **managedAppPolicy update not captured** (#703; the retry's entry is a field-less no-op).
+  - Step 3, create: the 6 policies deleted (the iOS app kept).
+    - Dry run `7ef354bc` **failed**:
+      - **device app config**: `cannot resolve reference at "settings[0].appConfigKeyValue" (symbol roleScopeTag:1): not-found-in-target`. The collector took the value "1" as the scope tag with id 1 (**#704**; a restore could rewrite the value, so it was left out).
+      - **app protection**: `unclassified-content-effect: managedAppPolicy changes periodOfflineBeforeWipeIsEnforced, allowedOutboundClipboardSharingLevel, which may affect retention, holds or sharing — refused until a content-effect rule classifies it` (**#705**).
+    - The other 4: dry run `16afa715`, approval **5faed333**, exit 0. All `create succeeded` with new ids: tag 2, filter cf0e7c11, feature ba90a1b3, app config A_4912b6b1.
+    - Read back as in S; the app config has Outlook; nothing assigned.
+    - Captured with the natural key: `--fixture <name>` answers `not-exercised` for a create (no prior state to name it).
+  - Step 4: dry run `3e7bc087` (the 4 recreated kinds) planned **0 writes**; the closure adds `roleScopeTag:0` with no change.
+  - Step 5: every KEEL-RT-229 object deleted, including the iOS app. Lists checked after: 0 left.
+  - Step 6:
+    - `pseudonymize.mjs check` passes on all 18 files. Secret scan 0 hits; no raw fixture ids.
+    - Commit **77a6b497** on `claude/live-evidence-q229` (pushed, no PR).
+    - `live evidence` lines, each `fixture-tested -> live-qualified`: assignmentFilter create/update, roleScopeTag create/update, windowsFeatureUpdateProfile create/update, targetedManagedAppConfiguration create/update, mobileAppConfiguration update.
+  - Per kind:
+
+    | Kind | Create | Update |
+    |---|---|---|
+    | assignmentFilter, roleScopeTag, windowsFeatureUpdateProfile, targetedManagedAppConfiguration | promoted | promoted |
+    | mobileAppConfiguration | blocked (#704) | promoted |
+    | managedAppPolicy | refused (#705) | blocked (#703) |
+    | windowsAutopilotDeploymentProfile, notificationMessageTemplate | skipped (400) | skipped (400) |
+    | windowsQualityUpdateProfile, windowsDriverUpdateProfile | skipped (403) | skipped (403) |
+
+  - **Left in the tenant: nothing.**
 - **Test tenant only.** Same hard rules, capture tooling and Restorer/Collector split as Q129. Self-approve under the 2026-10-14
   standing authorization and log every approval id (content effects included). Restorer for writes, Collector for reads; global
   admin not used. The Restorer holds DeviceManagementConfiguration, ServiceConfig, Apps and RBAC ReadWrite (Q129 step 0): check the

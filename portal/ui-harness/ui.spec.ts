@@ -2516,11 +2516,13 @@ test("Setup · Connections lists each Keel app by group, problems first, with wa
     /Keel Settings Restorer is waiting for an administrator to approve it: restores cannot run yet\./,
   ]);
   await expect(panel.locator(".su-pp-alert").first()).toHaveAttribute("data-tone", "urgent");
-  // Optional apps: the one waiting for approval sorts above the one not set up.
+  // Optional apps: the one waiting for approval sorts above the ones not set up.
   const optional = panel.locator(".su-cn-group", { has: page.getByRole("heading", { name: /^Optional apps/ }) });
-  await expect(optional.locator(".su-cn-name")).toHaveText(["Keel Settings Restorer", "Keel Content Reader"]);
+  await expect(optional.locator(".su-cn-name")).toHaveText(["Keel Settings Restorer", "Keel Content Reader", "Keel Engage Writer"]);
   await expect(optional.locator(".su-cn-row").first().locator(".su-cn-main .badge")).toHaveText("Waiting for approval");
   await expect(optional.locator(".su-cn-row").nth(1).locator(".su-cn-main .badge")).toHaveText("Not set up");
+  // Issue #681: the Engage writer is its own small app, not set up yet on this host.
+  await expect(optional.locator(".su-cn-row").nth(2).locator(".su-cn-main .badge")).toHaveText("Not set up");
   await expect(panel.locator(".su-cn-group").nth(2)).toContainText("None yet.");
 
   // A row with something missing is open; the difference is highlighted and comes first.
@@ -2556,6 +2558,12 @@ test("Setup · Connections on a working host: a certificate ending soon is amber
   await expect(panel.getByRole("table")).toHaveCount(0);
   await restorer.getByRole("button", { name: "Show permissions" }).click();
   await expect(restorer.locator('tbody tr[data-status="extra"]')).toContainText("Channel.Create");
+  // Issue #681: the Engage writer works with its one permission.
+  const engage = panel.locator(".su-cn-row", { hasText: "Keel Engage Writer" });
+  await expect(engage.locator(".su-cn-main .badge")).toHaveText("Working");
+  await engage.getByRole("button", { name: "Show permissions" }).click();
+  await expect(engage.locator("tbody tr")).toHaveCount(1);
+  await expect(engage.locator("tbody tr")).toContainText("Change Viva Engage communities");
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
 

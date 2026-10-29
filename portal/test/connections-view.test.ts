@@ -108,3 +108,20 @@ test("grants kept from an earlier check are marked as such, never as a fresh rea
   assert.equal(grantsFromEarlierCheck(seen("2026-10-01T09:38:00Z"), NOW), true);
   assert.equal(grantsFromEarlierCheck(connection({ observed: null }), NOW), false);
 });
+
+test("the Engage writer (issue #681): switched off between restores is fine, its grants come from its own catalogue entry", () => {
+  const engage = (fields: Partial<Connection>) => connection({
+    role: "engage-writer", name: "Keel Engage Writer", required: false,
+    wanted: { permissions: ["Community.ReadWrite.All"], roles: [] }, ...fields,
+  });
+  assert.equal(connectionStatus(engage({ state: "switched-off" }), NOW).problem, false);
+  const missing = engage({
+    state: "missing-permission",
+    observed: { at: "2026-10-02T09:38:00Z", displayName: null, enabled: true, grantedPermissions: [], missingPermissions: ["Community.ReadWrite.All"], extraPermissions: [], missingRoles: [] },
+  });
+  assert.deepEqual(connectionAlerts([missing], NOW).map((alert) => alert.text), [
+    "Keel Engage Writer is missing 1 permission: Viva Engage community restores may be incomplete.",
+  ]);
+  const rows = grantRows(missing, CATALOG);
+  assert.deepEqual(rows.map((row) => [row.name, row.status, row.words]), [["Community.ReadWrite.All", "missing", "Change Viva Engage communities"]]);
+});

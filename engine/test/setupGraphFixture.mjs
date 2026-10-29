@@ -11,6 +11,7 @@ export const COLLECTOR_APP_ID = '11111111-1111-4111-8111-111111111111';
 export const RESTORER_APP_ID = '22222222-2222-4222-8222-222222222222';
 export const OPERATOR_ID = '33333333-3333-4333-8333-333333333333';
 export const CONTENT_READER_APP_ID = '44444444-4444-4444-8444-444444444444';
+export const ENGAGE_WRITER_APP_ID = '55555555-5555-4555-8555-555555555555';
 export const PRIVILEGED_ROLE_ADMIN = 'e8611ab8-c189-46e8-94e1-60213ab1f814';
 
 const COLLECTOR_SCOPES = ['User.Read.All', 'Group.Read.All', 'RoleManagement.Read.Directory', 'Policy.Read.All',
@@ -24,7 +25,7 @@ export const CONTENT_READER_SCOPES = ['Mail.Read', 'Calendars.Read', 'Contacts.R
   'MailboxFolder.Read.All', 'MailboxItem.Read.All', 'Files.Read.All', 'Sites.Read.All', 'Group.Read.All', 'Team.ReadBasic.All',
   'Channel.ReadBasic.All', 'ChannelSettings.Read.All', 'ChannelMember.Read.All', 'TeamsTab.Read.All',
   'TeamsAppInstallation.ReadForTeam.All', 'Tasks.Read.All'];
-const ALL_SCOPES = [...new Set([...COLLECTOR_SCOPES, ...RESTORER_SCOPES, ...CONTENT_SCOPES, ...CONTENT_READER_SCOPES, 'MailboxSettings.ReadWrite', 'Directory.ReadWrite.All', 'Channel.Create'])];
+const ALL_SCOPES = [...new Set([...COLLECTOR_SCOPES, ...RESTORER_SCOPES, ...CONTENT_SCOPES, ...CONTENT_READER_SCOPES, 'MailboxSettings.ReadWrite', 'Directory.ReadWrite.All', 'Channel.Create', 'Community.ReadWrite.All'])];
 
 const guid = (seed) => {
   const h = createHash('sha256').update(seed).digest('hex');
@@ -50,6 +51,8 @@ export function fixtureTenant({
   contentReader = false,
   // Or: a content reader registered for all its permissions, holding these grants.
   contentReaderScopes = null,
+  // An Engage writer registered for Community.ReadWrite.All, holding these grants (issue #681).
+  engageWriterScopes = null,
   // Directory roles the apps hold: { collector: [{ roleDefinitionId, directoryScopeId }] }.
   appDirectoryRoles = {},
 } = {}) {
@@ -74,8 +77,9 @@ export function fixtureTenant({
   }
   if (contentReader) register(CONTENT_READER_APP_ID, 'KEEL Content Reader', CONTENT_SCOPES, ['Mail.Read']);
   else if (contentReaderScopes) register(CONTENT_READER_APP_ID, 'KEEL Content Reader', CONTENT_READER_SCOPES, contentReaderScopes);
+  if (engageWriterScopes) register(ENGAGE_WRITER_APP_ID, 'KEEL-RT-engage-writer', ['Community.ReadWrite.All'], engageWriterScopes);
   const collectorSp = sps.get(COLLECTOR_APP_ID).id;
-  const appIdOf = { collector: COLLECTOR_APP_ID, restorer: RESTORER_APP_ID, 'content-reader': CONTENT_READER_APP_ID };
+  const appIdOf = { collector: COLLECTOR_APP_ID, restorer: RESTORER_APP_ID, 'content-reader': CONTENT_READER_APP_ID, 'engage-writer': ENGAGE_WRITER_APP_ID };
   const held = Object.entries(appDirectoryRoles).flatMap(([identity, roles]) => roles.map((role) => ({
     principalId: sps.get(appIdOf[identity]).id, roleDefinitionId: role.roleDefinitionId, directoryScopeId: role.directoryScopeId ?? '/' })));
   const state = {

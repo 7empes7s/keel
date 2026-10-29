@@ -185,6 +185,7 @@ const STOPS: Record<string, string> = {
   "settings-reader": "settings backups stop",
   "content-reader": "mail, file and Teams backups stop",
   "settings-restorer": "restores stop",
+  "engage-writer": "Viva Engage community restores stop",
 };
 
 const ENTRA = "https://entra.microsoft.com/#view";

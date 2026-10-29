@@ -60,7 +60,7 @@ const DAY = 86_400_000;
 const EXPIRY_DAYS = 30;
 
 // Apps Keel switches on only for an approved restore (DESIGN 3.2).
-const RESTORER_ROLES = new Set(["settings-restorer", "content-restorer"]);
+const RESTORER_ROLES = new Set(["settings-restorer", "content-restorer", "engage-writer"]);
 
 export interface ConnectionStatus {
   label: string;
@@ -105,6 +105,7 @@ const FEATURE: Record<string, string> = {
   "settings-reader": "settings backups",
   "content-reader": "mail, file and Teams backups",
   "settings-restorer": "restores",
+  "engage-writer": "Viva Engage community restores",
 };
 const feature = (connection: Connection) => FEATURE[connection.role] ?? "the features that use it";
 
@@ -197,6 +198,7 @@ const CATALOG_IDENTITY: Record<string, string> = {
   "settings-reader": "collector",
   "content-reader": "content-reader",
   "settings-restorer": "restorer",
+  "engage-writer": "engage-writer",
 };
 
 /**

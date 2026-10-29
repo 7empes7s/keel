@@ -1421,7 +1421,7 @@ const setupPermissions = (observed: SetupPermissions["observed"]): SetupPermissi
   apis: Object.fromEntries(Object.entries(PERMISSION_APIS).map(([key, api]) => [key, api.label])),
   observed,
 });
-const catalogFor = (identity: "collector" | "restorer" | "content-reader", keep: (entry: PermissionEntry) => boolean = () => true): PermissionGrant[] =>
+const catalogFor = (identity: "collector" | "restorer" | "content-reader" | "engage-writer", keep: (entry: PermissionEntry) => boolean = () => true): PermissionGrant[] =>
   (KEEL_PERMISSIONS as unknown as PermissionEntry[]).filter((entry) => entry.identity === identity && keep(entry)).map((entry) => ({ api: entry.api, name: entry.name }));
 // Connections (/api/setup `connections`): one row per Keel app, as the engine records it.
 const CONTENT_SCOPES = ["Files.Read.All", "Mail.Read", "Sites.Read.All", "Team.ReadBasic.All", "Tasks.Read.All"];
@@ -1442,6 +1442,7 @@ const connection = (role: string, name: string, purpose: string, required: boole
 const READER_PURPOSE = "Backs up your Microsoft 365 settings. Read only.";
 const CONTENT_PURPOSE = "Backs up mail, files, Teams and Planner. Read only.";
 const RESTORER_PURPOSE = "Puts settings back when you approve a restore.";
+const ENGAGE_PURPOSE = "Puts Viva Engage communities back when you approve a restore. Holds one permission only.";
 // Backup reader: everything it needs, the optional audit search not yet, and one grant
 // Keel never uses. Restore writer: waiting on consent for the three setup permissions
 // (already on its list), and Exchange Online's permission not on its list at all.
@@ -1483,6 +1484,7 @@ const SETUP: SetupState = {
     connection("settings-restorer", "Keel Settings Restorer", RESTORER_PURPOSE, false, "waiting-for-consent", {
       appId: WRITER_APP.appId, expires: "2027-03-01T00:00:00Z", wanted: RESTORE_SCOPES, missing: RESTORE_SCOPES, roles: ["Privileged Role Administrator"], missingRoles: null,
     }),
+    connection("engage-writer", "Keel Engage Writer", ENGAGE_PURPOSE, false, "not-created", { observed: false }),
   ],
   scopes: [
     {
@@ -1518,6 +1520,7 @@ const SETUP_CHECKED: SetupState = {
       collector: { granted: catalogFor("collector"), requested: catalogFor("collector") },
       restorer: { granted: [...catalogFor("restorer"), { api: "graph", name: "Channel.Create" }], requested: catalogFor("restorer") },
       "content-reader": { granted: catalogFor("content-reader"), requested: catalogFor("content-reader"), app: CONTENT_APP },
+      "engage-writer": { granted: catalogFor("engage-writer"), requested: catalogFor("engage-writer") },
     },
   }),
   tenantId: SETUP_TENANT_ID,
@@ -1537,6 +1540,9 @@ const SETUP_CHECKED: SetupState = {
     }),
     connection("settings-restorer", "Keel Settings Restorer", RESTORER_PURPOSE, false, "switched-off", {
       appId: null, expires: "2027-04-01T00:00:00Z", wanted: RESTORE_SCOPES, granted: RESTORE_SCOPES, extra: ["Channel.Create"], enabled: false,
+    }),
+    connection("engage-writer", "Keel Engage Writer", ENGAGE_PURPOSE, false, "working", {
+      appId: "e4a6e000-0000-4000-8000-0000000000e4", expires: "2027-04-01T00:00:00Z", wanted: ["Community.ReadWrite.All"], granted: ["Community.ReadWrite.All"],
     }),
   ],
   scopes: [

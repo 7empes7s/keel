@@ -13,7 +13,7 @@ import { schemaSql } from '../store/loadSchema.mjs';
 import { createGraphSetupHost } from './graphHost.mjs';
 import { CONNECTION_APPS, certificateExpiry, deriveConnection, loadConnections, syncConnections } from './connections.mjs';
 import {
-  COLLECTOR_APP_ID, CONTENT_READER_APP_ID, CONTENT_READER_SCOPES, RESTORER_APP_ID, TENANT_ID, fakeGetToken, fixtureTenant,
+  COLLECTOR_APP_ID, CONTENT_READER_APP_ID, CONTENT_READER_SCOPES, ENGAGE_WRITER_APP_ID, RESTORER_APP_ID, TENANT_ID, fakeGetToken, fixtureTenant,
   installFixtureGraph, writesIn,
 } from '../test/setupGraphFixture.mjs';
 
@@ -26,12 +26,13 @@ const EXPIRY = {
   '/etc/keel/content.crt': null,
 };
 
-function host({ contentReader = true } = {}) {
+function host({ contentReader = true, engageWriter = false } = {}) {
   return createGraphSetupHost({
     tenantRef, tenantId: TENANT_ID,
     collector: { config: config(COLLECTOR_APP_ID, 'collector'), credentialRef: 'file:/etc/keel/tenant.json' },
     restorer: { config: config(RESTORER_APP_ID, 'restorer'), credentialRef: 'file:/etc/keel/restorer.json' },
     contentReader: contentReader ? { config: config(CONTENT_READER_APP_ID, 'content'), credentialRef: 'file:/etc/keel/content-reader.json' } : null,
+    engageWriter: engageWriter ? { config: config(ENGAGE_WRITER_APP_ID, 'engage'), credentialRef: 'file:/etc/keel/engage-writer.json' } : null,
     build: 'fixture-build-1', getToken: fakeGetToken(), killSwitchPath: join(tmpdir(), 'keel-connections-no-kill-switch'),
     readCertificateExpiry: (path) => EXPIRY[path] ?? null,
   });
@@ -113,7 +114,7 @@ test('setup host: the content reader is observed only, and must be its own app',
   assert.throws(build({ config: config(COLLECTOR_APP_ID, 'content'), credentialRef: 'file:/x' }), /its own app registration/);
 });
 
-test('sync: the three apps are recorded with state and certificate expiry, and only changes write events', async (t) => {
+test('sync: the apps are recorded with state and certificate expiry, and only changes write events', async (t) => {
   const client = await database(t);
   const tenant = fixtureTenant({ contentReaderScopes: CONTENT_READER_SCOPES.filter((scope) => scope !== 'Tasks.Read.All') });
   t.after(installFixtureGraph(tenant));
@@ -123,6 +124,7 @@ test('sync: the three apps are recorded with state and certificate expiry, and o
   assert.deepEqual(writesIn(tenant), [], 'recording connections never writes to the tenant');
   let connections = await loadConnections(client, { tenantRef, now: NOW });
   assert.deepEqual(connections.map((c) => c.role), CONNECTION_APPS.map((app) => app.role), 'required first, in a fixed order');
+  assert.equal(byRole(connections)['engage-writer'].state, 'not-created', 'no Engage writer file: shown as not set up');
   let view = byRole(connections);
   assert.equal(view['settings-reader'].state, 'working');
   assert.equal(view['settings-reader'].required, true);
@@ -140,12 +142,13 @@ test('sync: the three apps are recorded with state and certificate expiry, and o
     ['settings-reader', 'recorded', 'keel:setup-check'],
     ['content-reader', 'recorded', 'keel:setup-check'],
     ['settings-restorer', 'recorded', 'keel:setup-check'],
+    ['engage-writer', 'recorded', 'keel:setup-check'],
   ]);
 
   // The same tenant read again changes nothing: no new event.
   composed = host();
   await syncConnections(client, { tenantRef, apps: composed.apps, readers: composed.readers, now: new Date(NOW.getTime() + 60_000) });
-  assert.equal((await events(client)).length, 3);
+  assert.equal((await events(client)).length, 4);
   view = byRole(await loadConnections(client, { tenantRef }));
   assert.equal(view['settings-reader'].observed.at, new Date(NOW.getTime() + 60_000).toISOString(), 'the observation time still moves');
 
@@ -156,7 +159,7 @@ test('sync: the three apps are recorded with state and certificate expiry, and o
     appRoleId: graphSp.appRoles.find((role) => role.value === 'Tasks.Read.All').id });
   composed = host();
   await syncConnections(client, { tenantRef, apps: composed.apps, readers: composed.readers, now: new Date(NOW.getTime() + 2 * 60_000) });
-  const changed = (await events(client)).slice(3);
+  const changed = (await events(client)).slice(4);
   assert.deepEqual(changed.map((e) => [e.role, e.action]), [['content-reader', 'state-changed']]);
   assert.equal(changed[0].before.state, 'missing-permission');
   assert.equal(changed[0].after.state, 'working');
@@ -167,7 +170,7 @@ test('sync: the three apps are recorded with state and certificate expiry, and o
   await syncConnections(client, { tenantRef, apps: composed.apps, readers: null, now: new Date(NOW.getTime() + 3 * 60_000) });
   const failing = { ...composed.readers, listApplications: async () => { throw new Error('graph down'); } };
   await syncConnections(client, { tenantRef, apps: composed.apps, readers: failing, now: new Date(NOW.getTime() + 3 * 60_000) });
-  assert.equal((await events(client)).length, 4);
+  assert.equal((await events(client)).length, 5);
   assert.equal(byRole(await loadConnections(client, { tenantRef }))['content-reader'].state, 'working');
 
   // The service principal is switched off in Entra.
@@ -207,4 +210,48 @@ test('sync: without a content-reader file it is not created, and a first look wi
   assert.equal(view['settings-restorer'].state, 'needs-reconnect');
   assert.equal(view['content-reader'].state, 'not-created');
   assert.equal(view['content-reader'].appId, null);
+});
+
+test('setup host: the Engage writer is observed only, and must be its own app (issue #681)', () => {
+  const composed = host({ engageWriter: true });
+  assert.equal(composed.apps['engage-writer'].appId, ENGAGE_WRITER_APP_ID);
+  assert.equal(host().apps['engage-writer'], null);
+  assert.deepEqual(Object.keys(composed.credentials).sort(), ['collector', 'restorer'], 'setup never writes as or for the Engage writer');
+  const build = (engageWriter) => () => createGraphSetupHost({
+    tenantRef, tenantId: TENANT_ID,
+    collector: { config: config(COLLECTOR_APP_ID, 'collector'), credentialRef: 'file:/c' },
+    restorer: { config: config(RESTORER_APP_ID, 'restorer'), credentialRef: 'file:/r' },
+    contentReader: { config: config(CONTENT_READER_APP_ID, 'content'), credentialRef: 'file:/x' },
+    engageWriter, build: 'b', getToken: fakeGetToken(),
+  });
+  for (const appId of [COLLECTOR_APP_ID, RESTORER_APP_ID, CONTENT_READER_APP_ID]) {
+    assert.throws(build({ config: config(appId, 'engage'), credentialRef: 'file:/e' }), /Engage writer must be its own app registration/);
+  }
+});
+
+test('sync: the Engage writer is listed last, working with its one permission, and an extra one is shown (issue #681)', async (t) => {
+  const client = await database(t);
+  const tenant = fixtureTenant({ contentReaderScopes: CONTENT_READER_SCOPES, engageWriterScopes: ['Community.ReadWrite.All'] });
+  t.after(installFixtureGraph(tenant));
+  let composed = host({ engageWriter: true });
+  await syncConnections(client, { tenantRef, apps: composed.apps, readers: composed.readers, now: NOW });
+  assert.deepEqual(writesIn(tenant), [], 'recording connections never writes to the tenant');
+  const connections = await loadConnections(client, { tenantRef, now: NOW });
+  assert.deepEqual(connections.map((c) => c.role), CONNECTION_APPS.map((app) => app.role));
+  assert.equal(connections.at(-1).role, 'engage-writer');
+  let engage = byRole(connections)['engage-writer'];
+  assert.equal(engage.name, 'Keel Engage Writer');
+  assert.equal(engage.state, 'working');
+  assert.equal(engage.appId, ENGAGE_WRITER_APP_ID);
+  assert.deepEqual(engage.wanted, { permissions: ['Community.ReadWrite.All'], roles: [] });
+  assert.deepEqual(engage.observed.extraPermissions, []);
+
+  // The app also holds another permission: still working, and the extra one is named.
+  const engageSp = tenant.sps.get(ENGAGE_WRITER_APP_ID).id;
+  tenant.grants.get(engageSp).push({ id: 'grant-extra', principalId: engageSp, resourceId: tenant.graphSp.id,
+    appRoleId: tenant.graphSp.appRoles.find((role) => role.value === 'Group.ReadWrite.All').id });
+  composed = host({ engageWriter: true });
+  await syncConnections(client, { tenantRef, apps: composed.apps, readers: composed.readers, now: new Date(NOW.getTime() + 60_000) });
+  engage = byRole(await loadConnections(client, { tenantRef, now: NOW }))['engage-writer'];
+  assert.deepEqual(engage.observed.extraPermissions, ['Group.ReadWrite.All']);
 });

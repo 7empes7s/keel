@@ -290,9 +290,30 @@ function* scopeReferenceValues(type, obj) {
   }
 }
 
+// Issue #704: the known-symbol walk matches any string equal to a collected
+// id. Scope tag ids are small integers ("0", "1"), so an app configuration
+// value "1" became a reference to scope tag 1, and a restore could then fail
+// or rewrite the value to the new tag's id. Two guards:
+//  - fields that hold text an admin typed are never reference candidates;
+//  - an all-digit id counts only under a field named like an id
+//    (roleScopeTagIds, ...Id, ...Ids), never under a setting value.
+const FREE_TEXT_FIELDS = new Set([
+  'displayName', 'description', 'appConfigKey', 'appConfigKeyValue',
+]);
+const ID_FIELD = /(^|[a-z])Ids?$|^ids?$/;
+const DIGITS = /^\d+$/;
+
+function lastField(path) {
+  return path.split('.').pop().replace(/\[\d+\]/g, '');
+}
+
 function* referenceValues(node, idToSymbol, path = '') {
-  yield* walkGuids(node, path);
-  yield* walkKnownSymbolValues(node, idToSymbol, path);
+  for (const value of [...walkGuids(node, path), ...walkKnownSymbolValues(node, idToSymbol, path)]) {
+    const field = lastField(value.path);
+    if (FREE_TEXT_FIELDS.has(field)) continue;
+    if (DIGITS.test(value.guid) && !ID_FIELD.test(field)) continue;
+    yield value;
+  }
 }
 
 function* walkKnownSymbolValues(node, idToSymbol, path) {

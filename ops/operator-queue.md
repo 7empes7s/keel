@@ -10556,8 +10556,13 @@ item that needs it stays untouched.
   `conditionalAccessPolicy` restore-soft-deleted (11-11 11:15), update (11-12 21:29), create (11-13 13:02). Finish by **2026-11-08**.
   (`conditionalAccessPolicy` delete lapses 11-15; it needs a fixture with no exclusions and is queued separately if Marouane agrees.)
 - Needs: Q244 done or blocked. Run at the deployed commit B, from your own checkout at B.
-- Status: todo
-- Result:
+- Status: blocked: waiting on Marouane (second GA session for lockout steps)
+- Result: blocked, not started (2026-10-29 23:47 UTC, keel-operator). B = 53cbe462. Nothing written in the tenant.
+  - Break-glass: `keel-breakglass.mjs report` → overall **ready** (`every-account-ready`).
+  - **Waiting on Marouane.** Every lockout-sensitive step in the checklist (165/166 roleDefinition, 174/175 authenticationStrengthPolicy, 182–184 conditionalAccessPolicy) has the precondition "Marouane keeps a second, separate Global Administrator session signed in to the test tenant for the whole step, and is reachable to undo the change by hand." keel-operator can't check that, and this item doesn't waive it.
+    - To run it: reply "go Q245" (or "go Q245, Q247, Q249") when you're signed in as a second GA and reachable.
+    - Or say the precondition is waived for these fixtures: the CA policy is report-only and never on, the role is assigned to nobody, and the strength is used by no policy.
+  - Marked blocked so Q246 can run (Q246 soft-deletes and restores carla; Q245 will check carla is back before it starts).
 - **Test tenant only.** Same rules as Q244 and the lockout rules of Q45/Q48. **Before each step**, `node cli/keel-breakglass.mjs
   report --config "$COLLECTOR"` must read ready; if not, stop and report blocked. Lockout steps run one at a time, never in a
   shared restore. Self-approve; log every approval id. Never target, assign, drift or sign in as marouane.defili.

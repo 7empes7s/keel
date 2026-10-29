@@ -351,6 +351,18 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: 'pronounsSettings', drift: 'switch isEnabledInOrganization to the other value; write the original down first',
     note: 'Set the original value back right after the run.',
   },
+  // Graph allows only letters and digits in these names, so the fixtures start
+  // KEELRT (no hyphen). Neither can ever be deleted: reuse the same two.
+  attributeSet: {
+    kind: 'named-object', fixture: 'custom security attribute set KEELRTSet (description Fixture)',
+    select: 'KEELRTSet', drift: 'change its description: the restore puts it back',
+    note: 'Update only. An attribute set can never be deleted: create it once and reuse it. Never change its maximum number of attributes.',
+  },
+  customSecurityAttributeDefinition: {
+    kind: 'named-object', fixture: 'custom security attribute KEELRTAttr (String, single value, description Fixture) in the set KEELRTSet, assigned to nobody',
+    select: 'KEELRTSet_KEELRTAttr', drift: 'change its description: the restore puts it back',
+    note: 'Update only. An attribute can never be deleted, only deactivated: create it once and reuse it. Never assign it to a user or app.',
+  },
   engageCommunity: {
     kind: 'named-object', fixture: `private Viva Engage community ${FIXTURE_PREFIX}-community (description Fixture), owned by a test user`,
     select: `${FIXTURE_PREFIX}-community`, drift: 'change its description: the restore puts it back; never make it public',

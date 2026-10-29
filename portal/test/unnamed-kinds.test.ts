@@ -74,6 +74,7 @@ const OWN_FIELD_FIXTURES: Record<string, { payload: Record<string, unknown>; nam
   depOnboardingSetting: { payload: { tokenName: "Contoso DEP" }, name: "Contoso DEP" },
   enterpriseCodeSigningCertificate: { payload: { subjectName: "CN=Contoso Code Signing" }, name: "CN=Contoso Code Signing" },
   profileCardProperty: { payload: { directoryPropertyName: "customAttribute1" }, name: "customAttribute1" },
+  attributeSet: { payload: { id: "Engineering", description: "Engineering attributes" }, name: "Engineering" },
 };
 const NAMED_BY_OWN_FIELD = new Set<string>([...Object.keys(OWN_NAME_FIELDS), ...RELATIONSHIP_KINDS]);
 

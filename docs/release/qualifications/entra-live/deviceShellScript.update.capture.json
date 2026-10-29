@@ -1,0 +1,59 @@
+{
+  "restoreRef": "d4a21575-5699-8be2-b7f5-c658fc9610f6",
+  "entry": {
+    "naturalKey": "deviceShellScript:b8eacdeb-7dfd-84ae-9f9a-f4d8e35b57ca",
+    "resourceType": "deviceShellScript",
+    "operation": "update",
+    "targetId": "b8eacdeb-7dfd-84ae-9f9a-f4d8e35b57ca",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T11:14:19.299Z",
+    "priorState": {
+      "id": "b8eacdeb-7dfd-84ae-9f9a-f4d8e35b57ca",
+      "fileName": "keel-rt-shell.sh",
+      "retryCount": 0,
+      "description": "drift",
+      "displayName": "KEEL-RT-shell",
+      "runAsAccount": "system",
+      "scriptContent": "ZWNobyBkcmlmdGVk",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceShellScripts/$entity",
+      "createdDateTime": "2026-10-22T09:50:37.7138576Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "executionFrequency": "PT0S",
+      "lastModifiedDateTime": "2026-10-22T10:28:48.8862388Z",
+      "blockExecutionNotifications": true
+    },
+    "intendedState": {
+      "fileName": "keel-rt-shell.sh",
+      "retryCount": 0,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-shell",
+      "runAsAccount": "system",
+      "scriptContent": "ZWNobyBLRUVMLVJU",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "executionFrequency": "PT0S",
+      "blockExecutionNotifications": true
+    },
+    "postState": {
+      "id": "b8eacdeb-7dfd-84ae-9f9a-f4d8e35b57ca",
+      "fileName": "keel-rt-shell.sh",
+      "retryCount": 0,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-shell",
+      "runAsAccount": "system",
+      "scriptContent": "ZWNobyBLRUVMLVJU",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceShellScripts/$entity",
+      "createdDateTime": "2026-10-22T09:50:37.7138576Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "executionFrequency": "PT0S",
+      "lastModifiedDateTime": "2026-10-22T11:14:19.4649709Z",
+      "blockExecutionNotifications": true
+    }
+  }
+}

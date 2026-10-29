@@ -1,0 +1,52 @@
+{
+  "restoreRef": "b702b87b-a7b4-8c92-a647-bf5c0b3da070",
+  "entry": {
+    "naturalKey": "permissionGrantPolicy:KEEL-RT-W2-consent",
+    "resourceType": "permissionGrantPolicy",
+    "operation": "create",
+    "targetId": "keel-rt-w2-consent",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-15T13:37:57.379Z",
+    "priorState": null,
+    "intendedState": {
+      "id": "keel-rt-w2-consent",
+      "excludes": [],
+      "includes": [
+        {
+          "id": "7006c658-b677-8504-a9db-d66ccc7480c3",
+          "permissions": [
+            "all"
+          ],
+          "permissionType": "delegated",
+          "resourceApplication": "any",
+          "clientApplicationIds": [
+            "all"
+          ],
+          "permissionClassification": "low",
+          "clientApplicationTenantIds": [
+            "all"
+          ],
+          "clientApplicationPublisherIds": [
+            "all"
+          ],
+          "clientApplicationsFromVerifiedPublisherOnly": false
+        }
+      ],
+      "description": "KEEL-RT-W2 fixture (Q73/Q75); not referenced by any authorization policy",
+      "displayName": "KEEL-RT-W2-consent",
+      "excludes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-w2-consent')/excludes",
+      "includes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-w2-consent')/includes"
+    },
+    "postState": {
+      "id": "keel-rt-w2-consent",
+      "excludes": [],
+      "includes": [],
+      "description": "KEEL-RT-W2 fixture (Q73/Q75); not referenced by any authorization policy",
+      "displayName": "KEEL-RT-W2-consent",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies/$entity",
+      "excludes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-w2-consent')/excludes",
+      "includes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-w2-consent')/includes"
+    }
+  }
+}

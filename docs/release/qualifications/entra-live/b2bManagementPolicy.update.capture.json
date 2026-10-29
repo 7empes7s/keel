@@ -1,0 +1,36 @@
+{
+  "restoreRef": "dbfbd9ae-499c-8c21-badb-a7408aef4fd6",
+  "entry": {
+    "naturalKey": "b2bManagementPolicy:31afd379-985c-8b9e-9ede-712ec7727f74",
+    "resourceType": "b2bManagementPolicy",
+    "operation": "update",
+    "targetId": "31afd379-985c-8b9e-9ede-712ec7727f74",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-28T08:01:57.098Z",
+    "priorState": {
+      "id": "31afd379-985c-8b9e-9ede-712ec7727f74",
+      "definition": [
+        "{\"B2BManagementPolicy\":{\"InvitationsAllowedAndBlockedDomainsPolicy\":{\"BlockedDomains\":[\"keel-rt-blocked.example\"]},\"AutoRedeemPolicy\":{\"AdminConsentedForUsersIntoTenantIds\":[],\"NoAADConsentForUsersFromTenantsIds\":[]}}}"
+      ],
+      "displayName": "B2BManagementPolicy",
+      "deletedDateTime": null,
+      "isOrganizationDefault": true
+    },
+    "intendedState": {
+      "definition": [
+        "{\"B2BManagementPolicy\":{\"InvitationsAllowedAndBlockedDomainsPolicy\":{\"BlockedDomains\":[]},\"AutoRedeemPolicy\":{\"AdminConsentedForUsersIntoTenantIds\":[],\"NoAADConsentForUsersFromTenantsIds\":[]}}}"
+      ]
+    },
+    "postState": {
+      "id": "31afd379-985c-8b9e-9ede-712ec7727f74",
+      "definition": [
+        "{\"B2BManagementPolicy\":{\"InvitationsAllowedAndBlockedDomainsPolicy\":{\"BlockedDomains\":[]},\"AutoRedeemPolicy\":{\"AdminConsentedForUsersIntoTenantIds\":[],\"NoAADConsentForUsersFromTenantsIds\":[]}}}"
+      ],
+      "displayName": "B2BManagementPolicy",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#policies/b2bManagementPolicies/$entity",
+      "deletedDateTime": null,
+      "isOrganizationDefault": true
+    }
+  }
+}

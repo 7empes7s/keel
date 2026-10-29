@@ -1,0 +1,50 @@
+{
+  "restoreRef": "48e91572-fff2-8811-bd96-4ccb17ad39e6",
+  "entry": {
+    "naturalKey": "appleUserInitiatedEnrollmentProfile:e571b678-1add-837c-98c9-65b2939b5cd0",
+    "resourceType": "appleUserInitiatedEnrollmentProfile",
+    "operation": "create",
+    "targetId": "ec980ea2-ede1-85df-a094-bcaa5386b5e0",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T08:49:05.770Z",
+    "priorState": null,
+    "intendedState": {
+      "platform": "iOS",
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-apple-enroll",
+      "defaultEnrollmentType": "device",
+      "availableEnrollmentTypeOptions": [
+        {
+          "ownerType": "company",
+          "enrollmentType": "device"
+        },
+        {
+          "ownerType": "personal",
+          "enrollmentType": "accountDrivenUserEnrollment"
+        }
+      ]
+    },
+    "postState": {
+      "id": "ec980ea2-ede1-85df-a094-bcaa5386b5e0",
+      "platform": "iOS",
+      "priority": 0,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-apple-enroll",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/appleUserInitiatedEnrollmentProfiles/$entity",
+      "createdDateTime": "2026-10-22T08:49:05.846624Z",
+      "lastModifiedDateTime": "2026-10-22T08:49:05Z",
+      "defaultEnrollmentType": "device",
+      "availableEnrollmentTypeOptions": [
+        {
+          "ownerType": "company",
+          "enrollmentType": "device"
+        },
+        {
+          "ownerType": "personal",
+          "enrollmentType": "accountDrivenUserEnrollment"
+        }
+      ]
+    }
+  }
+}

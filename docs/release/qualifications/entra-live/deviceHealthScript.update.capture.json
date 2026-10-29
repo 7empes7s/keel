@@ -1,0 +1,75 @@
+{
+  "restoreRef": "57e4a5ba-4d39-8c71-8192-b7cc3abe6e52",
+  "entry": {
+    "naturalKey": "deviceHealthScript:ca95eb8e-8636-8925-ac17-e95d3847d5c7",
+    "resourceType": "deviceHealthScript",
+    "operation": "update",
+    "targetId": "ca95eb8e-8636-8925-ac17-e95d3847d5c7",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T17:58:31.629Z",
+    "priorState": {
+      "id": "ca95eb8e-8636-8925-ac17-e95d3847d5c7",
+      "version": "1",
+      "publisher": "KEEL",
+      "runAs32Bit": false,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-152-remediation",
+      "runAsAccount": "system",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceHealthScripts/$entity",
+      "isGlobalScript": false,
+      "createdDateTime": "2026-10-22T17:37:38.892349Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-10-22T17:37:38.892349Z",
+      "enforceSignatureCheck": false,
+      "detectionScriptContent": "ZXhpdCAw",
+      "deviceHealthScriptType": "deviceHealthScript",
+      "highestAvailableVersion": null,
+      "remediationScriptContent": "ZXhpdCAw",
+      "detectionScriptParameters": [],
+      "remediationScriptParameters": []
+    },
+    "intendedState": {
+      "version": "1",
+      "publisher": "KEEL",
+      "runAs32Bit": false,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-152-remediation",
+      "runAsAccount": "system",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "enforceSignatureCheck": false,
+      "detectionScriptContent": "ZXhpdCAw",
+      "deviceHealthScriptType": "deviceHealthScript",
+      "remediationScriptContent": "ZXhpdCAw",
+      "detectionScriptParameters": [],
+      "remediationScriptParameters": []
+    },
+    "postState": {
+      "id": "ca95eb8e-8636-8925-ac17-e95d3847d5c7",
+      "version": "1",
+      "publisher": "KEEL",
+      "runAs32Bit": false,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-152-remediation",
+      "runAsAccount": "system",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceHealthScripts/$entity",
+      "isGlobalScript": false,
+      "createdDateTime": "2026-10-22T17:37:38.892349Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-10-22T17:37:38.892349Z",
+      "enforceSignatureCheck": false,
+      "detectionScriptContent": "ZXhpdCAw",
+      "deviceHealthScriptType": "deviceHealthScript",
+      "highestAvailableVersion": null,
+      "remediationScriptContent": "ZXhpdCAw",
+      "detectionScriptParameters": [],
+      "remediationScriptParameters": []
+    }
+  }
+}

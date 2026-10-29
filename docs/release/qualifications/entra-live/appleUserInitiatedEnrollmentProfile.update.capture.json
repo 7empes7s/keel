@@ -1,0 +1,68 @@
+{
+  "restoreRef": "8de90bea-a0ba-8a12-a5b0-a98004dbde5d",
+  "entry": {
+    "naturalKey": "appleUserInitiatedEnrollmentProfile:ec980ea2-ede1-85df-a094-bcaa5386b5e0",
+    "resourceType": "appleUserInitiatedEnrollmentProfile",
+    "operation": "update",
+    "targetId": "ec980ea2-ede1-85df-a094-bcaa5386b5e0",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T08:57:05.022Z",
+    "priorState": {
+      "id": "ec980ea2-ede1-85df-a094-bcaa5386b5e0",
+      "platform": "iOS",
+      "priority": 0,
+      "description": "drift",
+      "displayName": "KEEL-RT-apple-enroll",
+      "createdDateTime": "2026-10-22T08:49:05.846624Z",
+      "lastModifiedDateTime": "2026-10-22T08:52:27Z",
+      "defaultEnrollmentType": "accountDrivenUserEnrollment",
+      "availableEnrollmentTypeOptions": [
+        {
+          "ownerType": "company",
+          "enrollmentType": "device"
+        },
+        {
+          "ownerType": "personal",
+          "enrollmentType": "accountDrivenUserEnrollment"
+        }
+      ]
+    },
+    "intendedState": {
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-apple-enroll",
+      "defaultEnrollmentType": "device",
+      "availableEnrollmentTypeOptions": [
+        {
+          "ownerType": "company",
+          "enrollmentType": "device"
+        },
+        {
+          "ownerType": "personal",
+          "enrollmentType": "accountDrivenUserEnrollment"
+        }
+      ]
+    },
+    "postState": {
+      "id": "ec980ea2-ede1-85df-a094-bcaa5386b5e0",
+      "platform": "iOS",
+      "priority": 0,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-apple-enroll",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/appleUserInitiatedEnrollmentProfiles/$entity",
+      "createdDateTime": "2026-10-22T08:49:05.846624Z",
+      "lastModifiedDateTime": "2026-10-22T08:57:05Z",
+      "defaultEnrollmentType": "device",
+      "availableEnrollmentTypeOptions": [
+        {
+          "ownerType": "company",
+          "enrollmentType": "device"
+        },
+        {
+          "ownerType": "personal",
+          "enrollmentType": "accountDrivenUserEnrollment"
+        }
+      ]
+    }
+  }
+}

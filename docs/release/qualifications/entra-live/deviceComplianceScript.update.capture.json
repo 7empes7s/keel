@@ -1,0 +1,62 @@
+{
+  "restoreRef": "d4a21575-5699-8be2-b7f5-c658fc9610f6",
+  "entry": {
+    "naturalKey": "deviceComplianceScript:43a6397d-b42f-818c-9bf8-7d03d3346a84",
+    "resourceType": "deviceComplianceScript",
+    "operation": "update",
+    "targetId": "43a6397d-b42f-818c-9bf8-7d03d3346a84",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T11:14:19.294Z",
+    "priorState": {
+      "id": "43a6397d-b42f-818c-9bf8-7d03d3346a84",
+      "version": "1",
+      "platform": "windows10",
+      "publisher": "KEEL",
+      "runAs32Bit": false,
+      "description": "drift",
+      "displayName": "KEEL-RT-compliance-script",
+      "runAsAccount": "system",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceComplianceScripts/$entity",
+      "createdDateTime": "2026-10-22T09:50:38.7754504Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-10-22T10:28:51.3997542Z",
+      "enforceSignatureCheck": false,
+      "detectionScriptContent": "cmV0dXJuIEB7fQ=="
+    },
+    "intendedState": {
+      "version": "1",
+      "platform": "windows10",
+      "publisher": "KEEL",
+      "runAs32Bit": false,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-compliance-script",
+      "runAsAccount": "system",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "enforceSignatureCheck": false,
+      "detectionScriptContent": "cmV0dXJuIEB7fQ=="
+    },
+    "postState": {
+      "id": "43a6397d-b42f-818c-9bf8-7d03d3346a84",
+      "version": "1",
+      "platform": "windows10",
+      "publisher": "KEEL",
+      "runAs32Bit": false,
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-compliance-script",
+      "runAsAccount": "system",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceComplianceScripts/$entity",
+      "createdDateTime": "2026-10-22T09:50:38.7754504Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "lastModifiedDateTime": "2026-10-22T11:14:19.422424Z",
+      "enforceSignatureCheck": false,
+      "detectionScriptContent": "cmV0dXJuIEB7fQ=="
+    }
+  }
+}

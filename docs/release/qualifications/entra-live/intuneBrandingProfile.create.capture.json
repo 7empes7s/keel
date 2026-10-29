@@ -1,0 +1,101 @@
+{
+  "restoreRef": "b259ecf6-2a56-8c8c-b687-8c3e2375d7b5",
+  "entry": {
+    "naturalKey": "intuneBrandingProfile:19350c62-64b0-8a65-96bb-bf6276d7a6e6",
+    "resourceType": "intuneBrandingProfile",
+    "operation": "create",
+    "targetId": "af9bfc22-49c5-8c1e-ab40-02f1b3116bd7",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T18:22:24.640Z",
+    "priorState": null,
+    "intendedState": {
+      "showLogo": false,
+      "privacyUrl": null,
+      "themeColor": {
+        "b": 74,
+        "g": 42,
+        "r": 27
+      },
+      "displayName": "KEEL-RT-IT",
+      "profileName": "KEEL-RT-branding",
+      "contactITName": "KEEL-RT help desk",
+      "contactITNotes": null,
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "showOfficeWebApps": false,
+      "profileDescription": "KEEL restore fixture",
+      "contactITPhoneNumber": null,
+      "customPrivacyMessage": null,
+      "onlineSupportSiteUrl": null,
+      "contactITEmailAddress": "keel-rt-helpdesk@example.com",
+      "onlineSupportSiteName": null,
+      "disableClientTelemetry": false,
+      "enrollmentAvailability": "availableWithPrompts",
+      "isFactoryResetDisabled": false,
+      "isRemoveDeviceDisabled": false,
+      "showAzureADEnterpriseApps": false,
+      "showDisplayNameNextToLogo": false,
+      "customCanSeePrivacyMessage": null,
+      "companyPortalBlockedActions": [
+        {
+          "action": "remove",
+          "platform": "windows10AndLater",
+          "ownerType": "company"
+        }
+      ],
+      "customCantSeePrivacyMessage": null,
+      "showConfigurationManagerApps": false,
+      "disableDeviceCategorySelection": false
+    },
+    "postState": {
+      "id": "af9bfc22-49c5-8c1e-ab40-02f1b3116bd7",
+      "showLogo": false,
+      "privacyUrl": null,
+      "themeColor": {
+        "b": 74,
+        "g": 42,
+        "r": 27
+      },
+      "displayName": "KEEL-RT-IT",
+      "profileName": "KEEL-RT-branding",
+      "contactITName": "KEEL-RT help desk",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/intuneBrandingProfiles/$entity",
+      "contactITNotes": null,
+      "themeColorLogo": null,
+      "createdDateTime": "2026-10-22T18:22:24.7207406Z",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "isDefaultProfile": false,
+      "showOfficeWebApps": false,
+      "profileDescription": "KEEL restore fixture",
+      "lightBackgroundLogo": null,
+      "contactITPhoneNumber": null,
+      "customPrivacyMessage": null,
+      "lastModifiedDateTime": "2026-10-22T18:22:24Z",
+      "onlineSupportSiteUrl": null,
+      "contactITEmailAddress": "keel-rt-helpdesk@example.com",
+      "onlineSupportSiteName": null,
+      "disableClientTelemetry": false,
+      "enrollmentAvailability": "availableWithPrompts",
+      "isFactoryResetDisabled": false,
+      "isRemoveDeviceDisabled": false,
+      "showAzureADEnterpriseApps": false,
+      "showDisplayNameNextToLogo": false,
+      "customCanSeePrivacyMessage": null,
+      "landingPageCustomizedImage": null,
+      "companyPortalBlockedActions": [
+        {
+          "action": "remove",
+          "platform": "windows10AndLater",
+          "ownerType": "company"
+        }
+      ],
+      "customCantSeePrivacyMessage": null,
+      "showConfigurationManagerApps": false,
+      "disableDeviceCategorySelection": false
+    }
+  }
+}

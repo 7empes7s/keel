@@ -1,0 +1,35 @@
+{
+  "restoreRef": "740294a8-49d8-8252-97e4-02576c68d5db",
+  "entry": {
+    "naturalKey": "policySet:8f90ffef-69b4-88ce-b727-3a71d0d739ef",
+    "resourceType": "policySet",
+    "operation": "create",
+    "targetId": "f6c328ff-b49b-8a06-9c1d-a7a4d970ca30",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T18:08:04.253Z",
+    "priorState": null,
+    "intendedState": {
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-set",
+      "roleScopeTags": [
+        "0"
+      ],
+      "guidedDeploymentTags": []
+    },
+    "postState": {
+      "id": "f6c328ff-b49b-8a06-9c1d-a7a4d970ca30",
+      "status": "notAssigned",
+      "errorCode": "noError",
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-set",
+      "roleScopeTags": [
+        "0"
+      ],
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceAppManagement/policySets/$entity",
+      "createdDateTime": "2026-10-22T18:08:04.3151918Z",
+      "guidedDeploymentTags": [],
+      "lastModifiedDateTime": "2026-10-22T18:08:04Z"
+    }
+  }
+}

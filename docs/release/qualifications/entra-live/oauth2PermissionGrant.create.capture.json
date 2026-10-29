@@ -1,0 +1,30 @@
+{
+  "restoreRef": "850c8ef1-cb48-8759-b81d-07d8a3435e5f",
+  "entry": {
+    "naturalKey": "oauth2PermissionGrant:SW1XHIIh44O84u65-O-nd5RgNnxsqFiEuzf8YbpswCJ5WcvCDg19h7p-s_8FPjS_",
+    "resourceType": "oauth2PermissionGrant",
+    "operation": "create",
+    "targetId": "SW1XHIIh44O84u65-O-nd5RgNnxsqFiEuzf8YbpswCJ5WcvCDg19h7p-s_8FPjS_",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-15T10:25:14.033Z",
+    "priorState": null,
+    "intendedState": {
+      "id": "SW1XHIIh44O84u65-O-nd5RgNnxsqFiEuzf8YbpswCJ5WcvCDg19h7p-s_8FPjS_",
+      "scope": "openid",
+      "clientId": "1c576d49-2182-83e3-bce2-eeb9f8efa777",
+      "resourceId": "7c366094-a86c-8458-bb37-fc61ba6cc022",
+      "consentType": "Principal",
+      "principalId": "c2cb5979-0d0e-877d-ba7e-b3ff053e34bf"
+    },
+    "postState": {
+      "id": "SW1XHIIh44O84u65-O-nd5RgNnxsqFiEuzf8YbpswCJ5WcvCDg19h7p-s_8FPjS_",
+      "scope": "openid",
+      "clientId": "1c576d49-2182-83e3-bce2-eeb9f8efa777",
+      "resourceId": "7c366094-a86c-8458-bb37-fc61ba6cc022",
+      "consentType": "Principal",
+      "principalId": "c2cb5979-0d0e-877d-ba7e-b3ff053e34bf",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#oauth2PermissionGrants/$entity"
+    }
+  }
+}

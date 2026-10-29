@@ -1,0 +1,23 @@
+{
+  "restoreRef": "b3e8fb3f-b493-868f-8cca-533e3306e96b",
+  "entry": {
+    "naturalKey": "deviceCategory:d093772f-a081-8a0d-bbca-b6fc5922037c",
+    "resourceType": "deviceCategory",
+    "operation": "create",
+    "targetId": "83d3e4b2-c91f-8ee6-9221-50df003c52dd",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-22T07:58:18.792Z",
+    "priorState": null,
+    "intendedState": {
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-148-category"
+    },
+    "postState": {
+      "id": "83d3e4b2-c91f-8ee6-9221-50df003c52dd",
+      "description": "KEEL restore fixture",
+      "displayName": "KEEL-RT-148-category",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCategories/$entity"
+    }
+  }
+}

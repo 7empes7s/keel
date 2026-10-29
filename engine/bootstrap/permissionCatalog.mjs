@@ -175,7 +175,6 @@ export const KEEL_PERMISSIONS = Object.freeze([
   write('Policy.ReadWrite.Authorization', 'entra', 'Policies', 'Change what users may do', 'Restore user and guest permissions'),
   write('Policy.ReadWrite.CrossTenantAccess', 'entra', 'Policies', 'Change cross-tenant access', 'Restore access with other tenants'),
   write('Policy.ReadWrite.ExternalIdentities', 'entra', 'Policies', 'Change guest settings', 'Restore external collaboration settings'),
-  write('Policy.ReadWrite.B2BManagementPolicy', 'entra', 'Policies', 'Change guest invite rules', 'Restore who may invite guests'),
   write('Policy.ReadWrite.PermissionGrant', 'entra', 'Policies', 'Change app consent rules', 'Restore what users may consent to'),
   write('Policy.ReadWrite.ConsentRequest', 'entra', 'Policies', 'Change admin consent requests', 'Restore the consent request workflow'),
   write('Policy.ReadWrite.ApplicationConfiguration', 'entra', 'Policies', 'Change app sign-in policies', 'Restore token and app management policies'),

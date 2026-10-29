@@ -46,8 +46,9 @@ const TEAMS_DOCS = 'https://learn.microsoft.com/en-us/powershell/module/teams';
  * senders, certificates, hosts, partners or federated organizations the tenant trusts.
  * A tampered or stale backup could make a connector trust another certificate or IP
  * range, treat outside mail as internal, send mail through another host, let a sender
- * range skip spam filtering, or open Teams chat to other organizations, so a difference
- * is listed for an administrator to check and apply by hand. declare() refuses them,
+ * range skip spam filtering, open Teams chat to other organizations, or let guests in
+ * from other domains and tenants without a consent prompt, so a difference is listed for
+ * an administrator to check and apply by hand. declare() and defineRecord() refuse them,
  * and any other field whose name says it carries trust, a certificate or a sign-in endpoint.
  */
 export const TRUST_FIELDS = Object.freeze({
@@ -67,6 +68,16 @@ export const TRUST_FIELDS = Object.freeze({
   teamsFederationConfiguration: Object.freeze([
     'AllowFederatedUsers', 'AllowedDomains', 'AllowedDomainsAsAList', 'BlockedDomains', 'SharedSipAddressSpace', 'TreatDiscoveredPartnersAsUnverified',
   ]),
+  // Entra ID record writers (recordWriter.mjs defineRecord) are held to the same rule.
+  // Cross-tenant access for tenants that join the multitenant organization: whether
+  // their MFA and device claims are accepted, whether invitations from and to them
+  // skip the consent prompt, and which of their users and apps may collaborate.
+  multiTenantOrganizationPartnerConfigurationTemplate: Object.freeze([
+    'inboundTrust', 'automaticUserConsentSettings',
+    'b2bCollaborationInbound', 'b2bCollaborationOutbound', 'b2bDirectConnectInbound', 'b2bDirectConnectOutbound',
+  ]),
+  // The guest invitation allow and block lists: which outside domains guests may come from.
+  b2bManagementPolicy: Object.freeze(['definition']),
 });
 export const TRUST_FIELD_PATTERN = /certificate|trust|tlssender|tlsdomain|tlssettings|signin|issuer|metadataexchange/i;
 

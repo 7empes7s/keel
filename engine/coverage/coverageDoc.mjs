@@ -464,10 +464,9 @@ export const TYPE_GUIDE = Object.freeze({
   externalIdentitiesPolicy: auto('External user leave settings', {
     keeps: 'Puts back whether external users can leave your organization themselves, and whether their data is removed when they do.',
   }),
-  b2bManagementPolicy: auto('Guest invitation domain restrictions', {
-    keeps: 'Puts back the list of domains guests may, or may not, be invited from.',
-    todo: 'If the restriction was removed completely, set the domains again in the Entra admin center, under External collaboration settings.',
-  }),
+  b2bManagementPolicy: manual('Guest invitation domain restrictions', KEEL,
+    'KEEL backs up the list of domains guests may, or may not, be invited from, and shows when it changes. A restore never changes who can be invited.',
+    'Set the domains again in the Entra admin center, under External Identities, External collaboration settings, Collaboration restrictions.'),
   servicePrincipalCreationPolicy: auto('App creation policies', {
     keeps: 'Recreates custom app creation policies and puts their name and description back, with their include and exclude conditions, and removes conditions added since the backup.',
     todo: 'Microsoft\'s built-in policies cannot be changed by anyone. There is no admin center page for these policies.',
@@ -488,8 +487,8 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'Tenants that already joined keep their own settings; change those per organization.',
   }),
   multiTenantOrganizationPartnerConfigurationTemplate: auto('Multitenant organization access template', {
-    keeps: 'Puts back the cross-tenant access settings a tenant gets when it joins your multitenant organization.',
-    todo: 'Tenants that already joined keep their own settings; change those per organization.',
+    keeps: 'Puts back when the template applies to tenants that join your multitenant organization.',
+    todo: 'Which partner users and apps get in, automatic consent, and trust in partner MFA and devices are never changed by a restore: set them by hand. Tenants that already joined keep their own settings.',
   }),
   identityUserFlowAttribute: manual('User flow attributes', NOT_BUILT,
     'KEEL backs up the custom attributes but does not restore them yet. The built-in attributes are set by Microsoft.',

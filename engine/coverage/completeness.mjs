@@ -261,7 +261,7 @@ export const COMPLETENESS = Object.freeze({
   accessReviewPolicy: {},
   directoryRoleAccessReviewPolicy: {},
   multiTenantOrganizationIdentitySyncPolicyTemplate: {},
-  multiTenantOrganizationPartnerConfigurationTemplate: {},
+  multiTenantOrganizationPartnerConfigurationTemplate: { missing: [part('Its cross-tenant access settings (trust in partner sign-ins, automatic consent, who may cross)', 'not-written')] },
   identityUserFlowAttribute: { whole: 'not-written', missing: [part('Built-in attributes', 'microsoft-managed')] },
   authenticationEventListener: { whole: 'not-written' },
   externalDomainFederation: { missing: [part('Its domains', 'not-written')] },

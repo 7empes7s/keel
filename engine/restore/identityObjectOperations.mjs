@@ -36,6 +36,7 @@ import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './ro
 import {
   applyRecordWrite, defineRecord, graphFailure, isNotFound, outcomeDetail, readUntil, recordLedger, sameValue, stripGraph,
 } from './recordWriter.mjs';
+import { TRUST_FIELDS } from './workloads/writeDeclarations.mjs';
 import {
   USER_WRITABLE_FIELDS, assignLicenseBody, isSyncedUser, licencePlan, userPostStateRefusal, userReadPath,
 } from './userOperations.mjs';
@@ -231,30 +232,41 @@ async function appScopeGuard(io, { payload, targetId, before, fields }) {
 // ------------------------------------------------ multitenant org template
 
 /**
- * The partner configuration template settings a restore may write. Inbound
- * trust (whether this tenant accepts a partner's MFA and device claims) is
- * never written: a wrong value changes how partner users pass Conditional
- * Access, so a difference is reported for a person to change by hand.
+ * The partner configuration template settings a restore may write: only when
+ * the template applies. Its cross-tenant access settings (TRUST_FIELDS in
+ * workloads/writeDeclarations.mjs) are never written: inbound trust (whether
+ * a partner's MFA and device claims are accepted), automatic consent (whether
+ * invitations skip the consent prompt) and the B2B collaboration and direct
+ * connect lists (which partner users and apps get in, and where ours may go).
+ * A wrong value changes who from another tenant reaches this one, so a
+ * difference is reported for a person to change by hand.
  */
-export const PARTNER_TEMPLATE_WRITABLE_FIELDS = Object.freeze([
-  'templateApplicationLevel', 'automaticUserConsentSettings',
-  'b2bCollaborationInbound', 'b2bCollaborationOutbound', 'b2bDirectConnectInbound', 'b2bDirectConnectOutbound',
-]);
+export const PARTNER_TEMPLATE_WRITABLE_FIELDS = Object.freeze(['templateApplicationLevel']);
+const PARTNER_TEMPLATE_TRUST_FIELDS = TRUST_FIELDS.multiTenantOrganizationPartnerConfigurationTemplate;
 
-const INBOUND_TRUST_STEP = 'Inbound trust (accepting a partner tenant\'s MFA, compliant device or hybrid joined device claims) differs from the backup. A restore never changes it: review it in Entra admin center > External Identities > Cross-tenant access settings, and change it by hand if needed.';
+const crossTenantStep = (fields) => `The cross-tenant access settings of the multitenant organization template (${fields.join(', ')}) differ from the backup. `
+  + 'They decide whether partner tenants\' MFA and device claims are accepted, whether invitations skip the consent prompt, and which users and apps may cross. '
+  + 'A restore never changes them: review them with Microsoft Graph (/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration), and change them by hand if needed.';
 
-const inboundTrustDiffers = (resource) => resource.live?.payload
-  && resource.payload?.inboundTrust !== undefined
-  && !sameValue(resource.payload.inboundTrust, resource.live.payload.inboundTrust);
+const partnerTemplateTrustDiffers = (resource) => (resource.live?.payload
+  ? PARTNER_TEMPLATE_TRUST_FIELDS.filter((field) => resource.payload?.[field] !== undefined && !sameValue(resource.payload[field], resource.live.payload[field]))
+  : []);
+
+const partnerTemplateStep = (fields) => ({
+  kind: 'manual-setting', requirement: 'crossTenantAccess', fields, description: crossTenantStep(fields),
+});
 
 function partnerTemplateRefusal(resource, verb) {
-  if (verb !== 'update' || !inboundTrustDiffers(resource)) return null;
+  if (verb !== 'update') return null;
+  const differs = partnerTemplateTrustDiffers(resource);
+  if (differs.length === 0) return null;
   if (!PARTNER_TEMPLATE_WRITABLE_FIELDS.every((field) => sameValue(resource.payload[field], resource.live.payload[field]))) return null;
-  return { outcome: 'skipped', reason: `manual: ${INBOUND_TRUST_STEP}` };
+  return { outcome: 'skipped', reason: `manual: ${crossTenantStep(differs)}`, completion: partnerTemplateStep(differs) };
 }
 
 function partnerTemplateAfterWrite(_io, { resource }) {
-  return { completion: inboundTrustDiffers(resource) ? [{ kind: 'enforcement', requirement: 'inboundTrust', description: INBOUND_TRUST_STEP }] : [] };
+  const differs = partnerTemplateTrustDiffers(resource);
+  return { completion: differs.length ? [partnerTemplateStep(differs)] : [] };
 }
 
 // ---------------------------------------------- SharePoint tenant settings
@@ -512,20 +524,6 @@ const beta = (page) => `${DOCS}/${page}?view=graph-rest-beta`;
 
 const FEDERATIONS = '/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation';
 
-const parsedOrRaw = (entry) => {
-  try {
-    return JSON.parse(entry);
-  } catch {
-    return entry;
-  }
-};
-
-/** Two lists of JSON strings are the same when each entry parses to the same value (Graph may change the spacing). */
-export function sameJsonStrings(left, right) {
-  if (!Array.isArray(left) || !Array.isArray(right)) return sameValue(left, right);
-  return left.length === right.length && left.every((entry, index) => sameValue(parsedOrRaw(entry), parsedOrRaw(right[index])));
-}
-
 /** The records, one per type this module writes through recordWriter. */
 export const IDENTITY_RECORDS = Object.freeze({
   servicePrincipal: defineRecord({
@@ -608,15 +606,9 @@ export const IDENTITY_RECORDS = Object.freeze({
     refusal: partnerTemplateRefusal, afterWrite: partnerTemplateAfterWrite,
     permission: 'Policy.ReadWrite.CrossTenantAccess', docs: v1('multitenantorganizationpartnerconfigurationtemplate-update'),
   }),
-  // Restore gaps, batch 3: guest and app consent settings.
-  // The guest invitation domain lists live in `definition`, a list of JSON
-  // strings. Only the definition is written, in place: the tenant keeps one
-  // such policy, and its name and default flag are left as they are.
-  b2bManagementPolicy: defineRecord({
-    resourceType: 'b2bManagementPolicy', version: 'beta', collection: '/policies/b2bManagementPolicies',
-    operations: ['update'], writable: ['definition'], sameField: (field, left, right) => (field === 'definition' ? sameJsonStrings(left, right) : null),
-    permission: 'Policy.ReadWrite.B2BManagementPolicy', docs: beta('b2bmanagementpolicy-update'),
-  }),
+  // Restore gaps, batch 3: guest and app consent settings. The guest
+  // invitation domain lists (b2bManagementPolicy) are never written: they are
+  // trust fields (TRUST_FIELDS in workloads/writeDeclarations.mjs).
   // A pre-approval policy does nothing until it is assigned to an app's
   // service principal; that assignment is not backed up, so it stays a step.
   permissionGrantPreApprovalPolicy: defineRecord({

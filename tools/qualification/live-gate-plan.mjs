@@ -465,17 +465,11 @@ export const FIXTURE_GUIDANCE = Object.freeze({
   },
   multiTenantOrganizationPartnerConfigurationTemplate: {
     kind: 'tenant-setting', fixture: 'the multitenant organization cross-tenant access template', select: 'multiTenantOrganizationPartnerConfigurationTemplate',
-    drift: 'switch automaticUserConsentSettings.inboundAllowed to the other value; never change inboundTrust; write the original down first',
+    drift: 'switch templateApplicationLevel between newPartners and none; never change inboundTrust, automaticUserConsentSettings or the b2b* settings (a restore never writes them); write the original down first',
     note: 'It only applies to tenants that join a multitenant organization later; existing partner settings are not touched.',
   },
   // Restore gaps, batch 3: guest and app consent settings. None touches
   // Conditional Access or any account.
-  b2bManagementPolicy: {
-    kind: 'tenant-setting', fixture: 'the tenant guest invitation domain restriction (the one b2bManagementPolicy)',
-    select: 'the policy id KEEL shows for b2bManagementPolicy',
-    drift: `add keel-rt-blocked.example to BlockedDomains (or remove it if the backup holds it); write the original definition down first`,
-    note: 'Only the definition is written. If the tenant has no policy, set one blocked domain keel-rt-blocked.example in the admin center first. Never block or allow a real domain.',
-  },
   // Restore gaps, batch 21: an app creation policy and a Defender role.
   servicePrincipalCreationPolicy: {
     kind: 'named-object', fixture: `custom app creation policy ${FIXTURE_PREFIX}-app-creation whose include conditions are copies of the built-in policy's (so it allows what the tenant allows today) and no exclude`,

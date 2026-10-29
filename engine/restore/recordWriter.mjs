@@ -76,6 +76,7 @@ import { followUpSteps } from './bestEffortRecreate.mjs';
 import { TEST_TENANT_REFS, fixtureProblem } from './workloads/fixtureGuard.mjs';
 import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './rollbackJournal.mjs';
 import { ENGAGE_RESOURCE_TYPES } from './engageWriter.mjs';
+import { isTrustField } from './workloads/writeDeclarations.mjs';
 
 export const RECORD_WRITER_CONTRACT_VERSION = 1;
 
@@ -106,6 +107,9 @@ export function defineRecord(spec) {
   if (spec.singleton && (spec.operations ?? []).some((verb) => verb !== 'update')) {
     throw new TypeError(`${spec.resourceType}: a singleton is only ever updated`);
   }
+  // CLAUDE.md restore-writer rule: trust, federation, certificate and sign-in fields are never written.
+  const trust = [...(spec.writable ?? []), ...(spec.createOnly ?? [])].filter((field) => isTrustField(spec.resourceType, field));
+  if (trust.length) throw new TypeError(`${spec.resourceType}: declares trust, certificate or sign-in fields a restore never writes: ${trust.join(', ')}`);
   return Object.freeze({
     updateMethod: 'PATCH',
     odataType: 'drop',

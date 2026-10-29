@@ -39,7 +39,6 @@ export default [
   { resourceType: 'directoryRoleAccessReviewPolicy', operation: 'update', path: '/policies/directoryRoleAccessReviewPolicy', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'multiTenantOrganizationIdentitySyncPolicyTemplate', operation: 'update', path: '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   // Restore gaps, batch 3: guest and app consent settings.
-  { resourceType: 'b2bManagementPolicy', operation: 'update', path: '/policies/b2bManagementPolicies', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'permissionGrantPreApprovalPolicy', operation: 'create', path: '/policies/permissionGrantPreApprovalPolicies', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'permissionGrantPreApprovalPolicy', operation: 'update', path: '/policies/permissionGrantPreApprovalPolicies', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'externalDomainFederation', operation: 'update', path: '/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },

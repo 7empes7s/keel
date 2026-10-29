@@ -8,8 +8,10 @@ import { test } from 'node:test';
 
 import {
   APP_SCOPE_ASSIGNMENT_READS, FEDERATION_SIGN_IN_FIELDS, IDENTITY_BEST_EFFORT, IDENTITY_NEEDS_REVIEW, IDENTITY_RECORDS, MICROSOFT_OWNER_TENANTS, applyIdentityEdges, applyIdentityObjectWrite,
-  buildIdentityObjectLedger, identityObjectOperations, planIdentityEdges, sameJsonStrings, userCreateBody,
+  buildIdentityObjectLedger, identityObjectOperations, planIdentityEdges, userCreateBody,
 } from './identityObjectOperations.mjs';
+import { defineRecord } from './recordWriter.mjs';
+import { TRUST_FIELDS, isTrustField } from './workloads/writeDeclarations.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
 
 const FAST = { readAfterWriteOptions: { attempts: 1, delayMs: 0 } };
@@ -296,9 +298,9 @@ test('restore gaps batch 2: Entra ID tenant singletons write only their settings
       { id: 'template', templateApplicationLevel: 'newPartners', userSyncInbound: { isSyncAllowed: false } },
       { userSyncInbound: { isSyncAllowed: true } }],
     ['multiTenantOrganizationPartnerConfigurationTemplate', 'v1.0', `${MTO}/multiTenantOrganizationPartnerConfiguration`,
-      { id: 'template', templateApplicationLevel: 'newPartners', inboundTrust: { isMfaAccepted: true }, automaticUserConsentSettings: { inboundAllowed: true, outboundAllowed: false } },
       { id: 'template', templateApplicationLevel: 'newPartners', inboundTrust: { isMfaAccepted: true }, automaticUserConsentSettings: { inboundAllowed: false, outboundAllowed: false } },
-      { automaticUserConsentSettings: { inboundAllowed: true, outboundAllowed: false } }],
+      { id: 'template', templateApplicationLevel: 'none', inboundTrust: { isMfaAccepted: true }, automaticUserConsentSettings: { inboundAllowed: false, outboundAllowed: false } },
+      { templateApplicationLevel: 'newPartners' }],
   ];
   for (const [type, version, path, desired, live, patched] of cases) {
     assert.equal(IDENTITY_RECORDS[type].singleton, true, type);
@@ -315,36 +317,72 @@ test('restore gaps batch 2: Entra ID tenant singletons write only their settings
   }
 });
 
-test('restore gaps batch 2: the partner configuration template never writes inbound trust', async () => {
+test('restore gaps batch 2: the partner configuration template never writes its cross-tenant access settings', async () => {
   const type = 'multiTenantOrganizationPartnerConfigurationTemplate';
   const path = '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration';
-  const consent = (inboundAllowed) => ({ inboundAllowed, outboundAllowed: false });
-  const trust = (isMfaAccepted) => ({ isMfaAccepted, isCompliantDeviceAccepted: false, isHybridAzureADJoinedDeviceAccepted: false });
-  const template = (isMfaAccepted, inboundAllowed) => ({ id: 'template', templateApplicationLevel: 'newPartners', inboundTrust: trust(isMfaAccepted), automaticUserConsentSettings: consent(inboundAllowed) });
-  assert.equal(IDENTITY_RECORDS[type].writable.includes('inboundTrust'), false);
+  const access = (accessType) => ({ usersAndGroups: { accessType, targets: [{ target: 'AllUsers', targetType: 'user' }] }, applications: { accessType, targets: [{ target: 'AllApplications', targetType: 'application' }] } });
+  // A tenant that trusts its partners: claims accepted, no consent prompt, everyone allowed both ways.
+  const open = {
+    inboundTrust: { isMfaAccepted: true, isCompliantDeviceAccepted: true, isHybridAzureADJoinedDeviceAccepted: true },
+    automaticUserConsentSettings: { inboundAllowed: true, outboundAllowed: true },
+    b2bCollaborationInbound: access('allowed'), b2bCollaborationOutbound: access('allowed'),
+    b2bDirectConnectInbound: access('allowed'), b2bDirectConnectOutbound: access('allowed'),
+  };
+  const closed = {
+    inboundTrust: { isMfaAccepted: false, isCompliantDeviceAccepted: false, isHybridAzureADJoinedDeviceAccepted: false },
+    automaticUserConsentSettings: { inboundAllowed: false, outboundAllowed: false },
+    b2bCollaborationInbound: access('blocked'), b2bCollaborationOutbound: access('blocked'),
+    b2bDirectConnectInbound: access('blocked'), b2bDirectConnectOutbound: access('blocked'),
+  };
+  const trustFields = Object.keys(open);
+  assert.deepEqual([...TRUST_FIELDS[type]].sort(), [...trustFields].sort());
+  assert.deepEqual(IDENTITY_RECORDS[type].writable, ['templateApplicationLevel']);
+  for (const field of trustFields) assert.equal(isTrustField(type, field), true, field);
+  const template = (level, settings) => ({ id: 'template', templateApplicationLevel: level, ...settings });
   const run = async (desired, live) => {
     const graph = idoFakeGraph({ seed: { [path]: live } });
     const result = await applyIdentityObjectWrite(graph, { naturalKey: type, resourceType: type, payload: desired, references: [], live: { state: 'present', payload: live } }, 'update', FAST);
     return { result, writes: graph.calls.filter((call) => call.method !== 'GET' && call.method !== undefined) };
   };
 
-  // Only inbound trust differs: nothing is written, and the step says to change it by hand.
-  let { result, writes } = await run(template(true, false), template(false, false));
-  assert.equal(writes.length, 0, 'no write when only inbound trust differs');
-  assert.match(result.skipped?.reason ?? '', /^manual: Inbound trust .* never changes it/);
+  // A backup that opens every cross-tenant setting: nothing is written, and the step names every field.
+  let { result, writes } = await run(template('newPartners', open), template('newPartners', closed));
+  assert.equal(writes.length, 0, 'no write when only cross-tenant settings differ');
+  assert.match(result.skipped?.reason ?? '', /^manual: The cross-tenant access settings .* A restore never changes them/);
+  assert.equal(result.skipped.completion.requirement, 'crossTenantAccess');
+  assert.deepEqual([...result.skipped.completion.fields].sort(), [...trustFields].sort());
 
-  // Inbound trust and another setting differ: only the other setting is sent, and inbound trust is a step.
-  ({ result, writes } = await run(template(true, true), template(false, false)));
-  assert.equal(result.failed, undefined, result.failed?.error);
-  assert.equal(writes.length, 1);
-  assert.deepEqual(writes[0].body, { automaticUserConsentSettings: consent(true) });
-  assert.deepEqual(result.applied.completion.map((step) => step.requirement), ['inboundTrust']);
+  // Each field on its own is withheld too, in either direction.
+  for (const field of trustFields) {
+    for (const [want, now] of [[open, closed], [closed, open]]) {
+      ({ result, writes } = await run(template('newPartners', { ...now, [field]: want[field] }), template('newPartners', now)));
+      assert.equal(writes.length, 0, field);
+      assert.deepEqual(result.skipped?.completion?.fields, [field]);
+    }
+  }
 
-  // Inbound trust is the same: the write goes ahead with no extra step.
-  ({ result, writes } = await run(template(false, true), template(false, false)));
+  // When the template applies differs too, only that is sent; the cross-tenant settings stay a step.
+  ({ result, writes } = await run(template('newPartners', open), template('none', closed)));
   assert.equal(result.failed, undefined, result.failed?.error);
-  assert.deepEqual(writes.map((call) => call.body), [{ automaticUserConsentSettings: consent(true) }]);
+  assert.deepEqual(writes.map((call) => call.body), [{ templateApplicationLevel: 'newPartners' }]);
+  assert.deepEqual(result.applied.completion.map((step) => step.requirement), ['crossTenantAccess']);
+  assert.deepEqual([...result.applied.completion[0].fields].sort(), [...trustFields].sort());
+
+  // The cross-tenant settings are the same: the write goes ahead with no extra step.
+  ({ result, writes } = await run(template('newPartners', closed), template('none', closed)));
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(writes.map((call) => call.body), [{ templateApplicationLevel: 'newPartners' }]);
   assert.equal(result.applied.completion, undefined);
+});
+
+test('the trust-field rule holds for record writers: a record that declares a trust field throws at load', () => {
+  assert.throws(() => defineRecord({ resourceType: 'multiTenantOrganizationPartnerConfigurationTemplate', singleton: true, operations: ['update'], writable: ['templateApplicationLevel', 'automaticUserConsentSettings'] }),
+    /declares trust, certificate or sign-in fields a restore never writes: automaticUserConsentSettings/);
+  assert.throws(() => defineRecord({ resourceType: 'b2bManagementPolicy', operations: ['update'], writable: ['definition'] }), /definition/);
+  assert.throws(() => defineRecord({ resourceType: 'anyType', operations: ['create'], writable: ['displayName'], createOnly: ['signingCertificate'] }), /signingCertificate/);
+  for (const record of Object.values(IDENTITY_RECORDS)) {
+    assert.deepEqual((record.writable ?? []).filter((field) => isTrustField(record.resourceType, field)), [], record.resourceType);
+  }
 });
 
 test('restore gaps batch 2: a tenant singleton already equal to the backup is not written', async () => {
@@ -378,30 +416,16 @@ const preApprovalCondition = (scopeType) => ({
 });
 const FEDERATIONS = '/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation';
 
-test('restore gaps batch 3: the guest domain restriction writes only its definition, in place, and reads back', async () => {
-  const live = { id: 'b2b-1', displayName: 'B2B policy', isOrganizationDefault: true, definition: b2bDefinition([]) };
-  const desired = { ...live, displayName: 'Renamed', isOrganizationDefault: false, definition: b2bDefinition(['keel-rt-blocked.example']) };
-  const graph = idoFakeGraph({ seed: { [`${B2B}/b2b-1`]: live } });
-  const result = await applyIdentityObjectWrite(graph, { naturalKey: 'b2b-1', resourceType: 'b2bManagementPolicy', payload: desired, references: [], live: { state: 'present', targetId: 'b2b-1', payload: live } }, 'update', FAST);
-  assert.equal(result.failed, undefined, result.failed?.error);
-  const writes = graph.calls.filter((call) => call.method === 'PATCH');
-  assert.equal(writes.length, 1);
-  assert.equal(writes[0].version, 'beta');
-  assert.equal(writes[0].path, `${B2B}/b2b-1`);
-  assert.deepEqual(writes[0].body, { definition: desired.definition }, 'never its name or default flag');
-});
-
-test('restore gaps batch 3: a definition Graph returns with other spacing is not written again', async () => {
-  const backup = b2bDefinition(['keel-rt-blocked.example']);
-  const spaced = [JSON.stringify(JSON.parse(backup[0]), null, 2)];
-  assert.equal(sameJsonStrings(backup, spaced), true);
-  assert.equal(sameJsonStrings(backup, b2bDefinition([])), false);
-  assert.equal(sameJsonStrings(['not json'], ['not json']), true, 'text that is not JSON is compared as text');
-  const live = { id: 'b2b-1', displayName: 'B2B policy', definition: spaced };
-  const graph = idoFakeGraph({ seed: { [`${B2B}/b2b-1`]: live } });
-  const result = await applyIdentityObjectWrite(graph, { naturalKey: 'b2b-1', resourceType: 'b2bManagementPolicy', payload: { ...live, definition: backup }, references: [], live: { state: 'present', targetId: 'b2b-1', payload: live } }, 'update', FAST);
-  assert.equal(result.failed, undefined, result.failed?.error);
-  assert.equal(graph.calls.filter((call) => call.method === 'PATCH').length, 0);
+test('restore gaps batch 3: the guest invitation domain lists are never written', async () => {
+  assert.equal(IDENTITY_RECORDS.b2bManagementPolicy, undefined);
+  assert.equal(isTrustField('b2bManagementPolicy', 'definition'), true);
+  const live = { id: 'b2b-1', displayName: 'B2B policy', isOrganizationDefault: true, definition: b2bDefinition(['keel-rt-blocked.example']) };
+  for (const definition of [b2bDefinition([]), b2bDefinition(['keel-rt-blocked.example', 'keel-rt-other.example'])]) {
+    const graph = idoFakeGraph({ seed: { [`${B2B}/b2b-1`]: live } });
+    const result = await applyIdentityObjectWrite(graph, { naturalKey: 'b2b-1', resourceType: 'b2bManagementPolicy', payload: { ...live, definition }, references: [], live: { state: 'present', targetId: 'b2b-1', payload: live } }, 'update', FAST);
+    assert.equal(result.applied, undefined);
+    assert.equal(graph.calls.filter((call) => call.method !== 'GET' && call.method !== undefined).length, 0);
+  }
 });
 
 test('restore gaps batch 3: a deleted guest domain restriction or federation is never recreated', async () => {

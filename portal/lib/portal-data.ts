@@ -22,6 +22,7 @@ import {
   listLatestOpenDrift,
 } from "../../engine/store/governance.mjs";
 import { connect } from "@/lib/db";
+import { evidenceChainCache } from "@/lib/evidence-chain-cache";
 import { OPEN_DRIFT_PREDICATE, RECORDED_CHANGE_PREDICATE } from "../../engine/store/openDrift.mjs";
 import { captureApprovalScope, scopePredicate } from "../../engine/authz/entityScope.mjs";
 import { routeApproval } from "../../engine/govern/approvals.mjs";
@@ -1428,6 +1429,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     })) as UnknownRecord | null;
     const evidenceRaw = (await getEvidenceIntegrity(client, {
       tenantRef: ref,
+      chainCache: evidenceChainCache,
     })) as { ok: boolean; chainLength: number };
     const generatedAt = new Date();
     // Open changes in every service: the approved-setup changes (Entra ID and Intune)

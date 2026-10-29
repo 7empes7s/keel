@@ -706,7 +706,7 @@ await assert.rejects(
   assert.ok(errors.some((error) => error.includes('requires --artifact')));
 }
 
-function artifactPromotionFakes(artifacts, { targetHasAdminsGroup = false } = {}) {
+function artifactPromotionFakes(artifacts, { targetHasAdminsGroup = false, verb = 'create' } = {}) {
   const state = { writes: [], clientEnds: 0 };
   const client = {
     query: async (sql) => {
@@ -760,7 +760,14 @@ function artifactPromotionFakes(artifacts, { targetHasAdminsGroup = false } = {}
       getReferences: async () => [],
       planWaves: () => ({ waves: [['group:Admins']], patches: [] }),
       buildReconciliationPlan: async (_reader, resources) => ({
-        resources: resources.map((resource) => ({ ...resource, verb: 'create' })),
+        resources: resources.map((resource) => ({
+          ...resource, verb,
+          // Issue #683: a live Admins group, for the plans that update it or leave it alone.
+          ...(verb === 'create' ? {} : {
+            targetId: 'target-admins-id',
+            live: { state: 'present', targetId: 'target-admins-id', payload: { displayName: 'Admins (renamed)', mailNickname: 'admins' } },
+          }),
+        })),
       }),
       getToken: async () => ({ accessToken: 'fake-token' }),
       GraphReader: FakeReader,
@@ -917,6 +924,49 @@ function runArtifactPromotion(artifactId, dependencies, errors = []) {
   );
   assert.equal(promotion.state.writes.length, 0, 'a stale artifact must never write');
   assert.ok(errors.some((error) => error.includes('target has changed since the dry run')));
+}
+
+// Issue #683 (Q219): the dry run left a group alone, then a change landed on it
+// (Viva Engage copied a community's description onto its group) that the
+// fingerprint did not see. The promotion plans an update the approved plan never
+// listed, so it refuses before any write and asks for a new dry run.
+{
+  const artifacts = new Map();
+  const artifactId = '44444444-0000-4000-8000-000000000004';
+  assert.equal(await runDryRunArtifact(artifactId, artifactPromotionFakes(artifacts, { verb: 'noop' }).dependencies), 0);
+  assert.deepEqual(artifacts.get(artifactId).plannedVerbs, [{ naturalKey: 'group:Admins', verb: 'noop' }]);
+  const promotion = artifactPromotionFakes(artifacts, { verb: 'update' });
+  const errors = [];
+  assert.equal(await runArtifactPromotion(artifactId, promotion.dependencies, errors), 1);
+  assert.deepEqual(promotion.state.writes, [], 'a write the approved plan did not list is never sent');
+  assert.ok(errors.some((error) => error.includes('would write what the approved plan did not list: group:Admins update (dry run: noop)')
+    && error.includes('a new dry run and approval are required')), errors.join('\n'));
+}
+
+// Writing less than planned is allowed: the dry run planned an update the target
+// no longer needs, so the promotion runs and writes nothing.
+{
+  const artifacts = new Map();
+  const artifactId = '55555555-0000-4000-8000-000000000005';
+  assert.equal(await runDryRunArtifact(artifactId, artifactPromotionFakes(artifacts, { verb: 'update' }).dependencies), 0);
+  const promotion = artifactPromotionFakes(artifacts, { verb: 'noop' });
+  const errors = [];
+  assert.equal(await runArtifactPromotion(artifactId, promotion.dependencies, errors), 0, errors.join('\n'));
+  assert.deepEqual(promotion.state.writes, []);
+}
+
+// An artifact persisted before planned verbs were kept has nothing to compare
+// against, so any write needs a new dry run.
+{
+  const artifacts = new Map();
+  const artifactId = '66666666-0000-4000-8000-000000000006';
+  assert.equal(await runDryRunArtifact(artifactId, artifactPromotionFakes(artifacts).dependencies), 0);
+  artifacts.get(artifactId).plannedVerbs = null;
+  const promotion = artifactPromotionFakes(artifacts);
+  const errors = [];
+  assert.equal(await runArtifactPromotion(artifactId, promotion.dependencies, errors), 1);
+  assert.deepEqual(promotion.state.writes, []);
+  assert.ok(errors.some((error) => error.includes('predates planned writes being recorded: group:Admins create (dry run: not recorded)')), errors.join('\n'));
 }
 
 // Dependent-impact refusals in a preview or dry run are reported, not thrown: the

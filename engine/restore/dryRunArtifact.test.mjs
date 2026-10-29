@@ -6,6 +6,8 @@ import {
   computePlanDigest,
   createDryRunArtifact,
   getDryRunArtifact,
+  plannedVerbsOf,
+  unplannedWrites,
   validateArtifactForApproval,
   validateArtifactForExecution,
 } from './dryRunArtifact.mjs';
@@ -204,6 +206,7 @@ try {
   assert.deepEqual(created.selection, fields.selection);
   assert.deepEqual(created.results, fields.results);
   assert.equal(created.automationContext, null);
+  assert.equal(created.plannedVerbs, null, 'an artifact stored without planned verbs reads back as not recorded');
 
   const fetched = await getDryRunArtifact(client, { id: fields.id, tenantRef });
   assert.deepEqual(fetched, created);
@@ -243,6 +246,11 @@ try {
     null,
     'an artifact is never visible outside its own tenant',
   );
+  // Issue #683: the planned verbs are stored and read back as written.
+  const plannedVerbs = [{ naturalKey: 'group:Admins', verb: 'noop' }];
+  const withVerbs = await createDryRunArtifact(client, { ...fields, id: 'aaaaaaaa-0000-4000-8000-000000000683', plannedVerbs });
+  assert.deepEqual(withVerbs.plannedVerbs, plannedVerbs);
+  assert.deepEqual((await getDryRunArtifact(client, { id: withVerbs.id, tenantRef })).plannedVerbs, plannedVerbs);
   await assert.rejects(
     createDryRunArtifact(client, { ...fields, id: 'aaaaaaaa-0000-4000-8000-000000000002', status: 'bogus' }),
     /invalid dry-run artifact status/,
@@ -253,3 +261,60 @@ try {
 }
 
 console.log('dryRunArtifact.test.mjs — all assertions passed');
+
+// --- Issue #683: execution writes only what the approved dry run planned ---
+
+test('plannedVerbsOf lists each resource with its verb, sorted, an absent verb as create', () => {
+  assert.deepEqual(plannedVerbsOf([
+    { naturalKey: 'group:B', verb: 'noop' },
+    { naturalKey: 'engageCommunity:A', verb: 'update' },
+    { naturalKey: 'group:C' },
+  ]), [
+    { naturalKey: 'engageCommunity:A', verb: 'update' },
+    { naturalKey: 'group:B', verb: 'noop' },
+    { naturalKey: 'group:C', verb: 'create' },
+  ]);
+});
+
+test('unplannedWrites lists a write the plan left alone or planned with another verb', () => {
+  const planned = [
+    { naturalKey: 'engageCommunity:keel-rt-community', verb: 'update' },
+    { naturalKey: 'group:keel-rt-community', verb: 'noop' },
+    { naturalKey: 'group:Old', verb: 'update' },
+    { naturalKey: 'group:Gone', verb: 'restore-soft-deleted' },
+  ];
+  const fresh = [
+    { naturalKey: 'engageCommunity:keel-rt-community', verb: 'update' },
+    { naturalKey: 'group:keel-rt-community', verb: 'update' },
+    { naturalKey: 'group:Old', verb: 'noop' },
+    { naturalKey: 'group:Gone', verb: 'create' },
+  ];
+  assert.deepEqual(unplannedWrites(planned, fresh), [
+    { naturalKey: 'group:keel-rt-community', planned: 'noop', now: 'update' },
+    { naturalKey: 'group:Gone', planned: 'restore-soft-deleted', now: 'create' },
+  ]);
+  assert.deepEqual(unplannedWrites(planned, planned), [], 'the same plan has no unplanned write');
+});
+
+test('unplannedWrites lists every write when the artifact recorded no planned verbs', () => {
+  assert.deepEqual(unplannedWrites(null, [
+    { naturalKey: 'group:A', verb: 'update' },
+    { naturalKey: 'group:B', verb: 'noop' },
+  ]), [{ naturalKey: 'group:A', planned: null, now: 'update' }]);
+});
+
+test('validateArtifactForExecution refuses a write the approved plan did not list', () => {
+  const artifact = {
+    status: 'completed', digest: 'd', currentStateFingerprint: 'f',
+    plannedVerbs: [{ naturalKey: 'group:keel-rt-community', verb: 'noop' }],
+  };
+  const fresh = [{ naturalKey: 'group:keel-rt-community', verb: 'update' }];
+  const refused = validateArtifactForExecution(artifact, { digest: 'd', currentStateFingerprint: 'f', plannedVerbs: fresh });
+  assert.equal(refused.ok, false);
+  assert.match(refused.reason, /would write what the approved plan did not list: group:keel-rt-community update \(dry run: noop\) — a new dry run and approval are required/);
+  assert.deepEqual(validateArtifactForExecution(artifact, { digest: 'd', currentStateFingerprint: 'f', plannedVerbs: artifact.plannedVerbs }), { ok: true });
+  assert.deepEqual(validateArtifactForExecution(artifact, { digest: 'd', currentStateFingerprint: 'f' }), { ok: true },
+    'a caller that does not plan per resource (compensation, Conditional Access turn-on) is not compared');
+  const old = validateArtifactForExecution({ ...artifact, plannedVerbs: null }, { digest: 'd', currentStateFingerprint: 'f', plannedVerbs: fresh });
+  assert.match(old.reason, /predates planned writes being recorded: group:keel-rt-community update \(dry run: not recorded\)/);
+});

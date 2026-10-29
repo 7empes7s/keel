@@ -365,7 +365,7 @@ export const FIXTURE_PAYLOADS = Object.freeze({
   accessReviewPolicy: { isGroupOwnerManagementEnabled: true },
   directoryRoleAccessReviewPolicy: { settings: { mailNotificationsEnabled: true, reminderNotificationsEnabled: true, justificationRequiredOnApproval: true, defaultDecisionEnabled: false, defaultDecision: 'None', instanceDurationInDays: 14, recommendationsEnabled: true } },
   multiTenantOrganizationIdentitySyncPolicyTemplate: { templateApplicationLevel: 'newPartners', userSyncInbound: { isSyncAllowed: true } },
-  multiTenantOrganizationPartnerConfigurationTemplate: { templateApplicationLevel: 'newPartners', automaticUserConsentSettings: { inboundAllowed: true, outboundAllowed: true } },
+  multiTenantOrganizationPartnerConfigurationTemplate: { templateApplicationLevel: 'newPartners' },
   // Restore gaps, batch 3: guest and app consent settings.
   permissionGrantPreApprovalPolicy: { conditions: [{ scopeType: 'chat', sensitivityLabels: { '@odata.type': '#microsoft.graph.allScopeSensitivityLabels', labelKind: 'all' }, permissions: { '@odata.type': '#microsoft.graph.enumeratedPreApprovedPermissions', permissionKind: 'enumerated', permissionType: 'application', resourceApplicationId: '00000003-0000-0000-c000-000000000000', permissionIds: ['00000000-0000-0000-0000-000000000001'] } }] },
   externalDomainFederation: { displayName: 'Fixture federation', issuerUri: 'https://keel-rt-fed.example/issuer', passiveSignInUri: 'https://keel-rt-fed.example/sso', preferredAuthenticationProtocol: 'saml', signingCertificate: 'MIIFixture' },

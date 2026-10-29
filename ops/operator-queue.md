@@ -10342,7 +10342,7 @@ item that needs it stays untouched.
   Viva Engage community restores and their undo in as the app in `/etc/keel/engage-writer.json` (Q225's `KEEL-RT-engage-writer`).
   Every other write still uses the Restorer. Setup → Connections gets a fourth app, "Keel Engage Writer".
 - Needs: /opt/keel-live at 76e71e25 or later (`test -f /opt/keel-live/engine/store/schema.d/81-engage-writer-connection.sql`).
-- Status: open
+- Status: todo
 - Do (read-only, no tenant writes):
   1. Confirm the live database has the widened check: `access_connection_role_check` lists `engage-writer`.
      If not, apply the schema the usual way (`node engine/store/loadSchema.mjs | psql`) and report it.
@@ -10358,7 +10358,7 @@ item that needs it stays untouched.
 - Drafted by the "Hide Viva Engage community ids in evidence" thread (2026-10-29 13:35 UTC). PR #685 (merge 7e10beda) pseudonymizes
   Engage community ids and lets `capture --fixture` take the fixture name. The Q219 records in commit 50304c0f hold the raw id 5 times.
 - Needs: /opt/keel-live at 7e10beda or later (`grep -q ENGAGE_TOKEN /opt/keel-live/tools/qualification/pseudonymize.mjs`).
-- Status: open
+- Status: todo
 - Do (no tenant writes; capture reads the Keel database only):
   1. **Discard the held records:** drop commit 50304c0f and local branch `claude/live-evidence-restore-gaps-20` (never push it).
      Report that it is gone.

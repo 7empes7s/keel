@@ -10095,3 +10095,46 @@ item that needs it stays untouched.
      missing, set `Status: blocked: waiting on consent`, name exactly which roles on which app, and stop. Grant nothing.
 - **Expected:** every listed role held in both the assignments and the token; step 3 answers 200 three times (0 or more items).
 - **Report:** steps 1–3 as above; then go on to Q222, Q221, Q219 (community part only) and Q183, in that order.
+
+### Q224: Why Viva Engage answers the Keel Restorer with an HTML 400: retry, header-size probe, role list (read-only, #681)
+- Drafted by the "Fix Viva Engage restores failing as Restorer" thread (2026-10-29 11:40 UTC). Q219 is blocked at step 0 (#681):
+  every `/employeeExperience/communities` call as the Restorer answers 400 with the HTML body
+  `<h1>400 Bad request</h1> Your browser sent an invalid request.` That body is HAProxy's stock 400 page, which it sends when a
+  request's headers are larger than its buffer. Working theory: Graph forwards the app token to the Engage backend, and the
+  Restorer's token (64 roles, ~5.3 kB) is over that proxy's limit while the Collector's (56 roles, ~4.5 kB) is under it.
+  The other theory is consent that has not reached Engage yet. This item tells them apart and measures the margin.
+- Needs: none. Run it before going back to Q219.
+- Status: todo
+- **Reads only** (GETs). No tenant write, no grant, no consent, no app registration change. Global admin not used.
+  Never print a token or a secret: report sizes, counts, role names, statuses and request-ids only.
+- Do, at the deployed build:
+  1. **Retry:** as the Restorer (fresh token), `GET /v1.0/employeeExperience/communities?$top=1` three times, 30 s apart.
+     Report status, whether the body is HTML or JSON, and the request-id. If all three answer 200, stop here, set this item
+     done, and go back to Q219 (community part).
+  2. **Minimal request:** the same GET as the Restorer with only the `Authorization` header (no Accept-Language, no custom
+     User-Agent). Report status and body type. Then the same GET with `Authorization` only, as the Collector.
+  3. **Header-size probe, Collector:** the same GET as the Collector with a `User-Agent` of `keel-probe-` followed by `x`
+     repeated to a total of 500, 1000, 1500, 2000, 3000 and 4000 bytes (one call each, 5 s apart). Report status and body type
+     per size. If any size answers the HTML 400, report the smallest failing size and the largest passing one.
+  4. **Sizes:** the length in bytes of the Restorer's and the Collector's access tokens (the JWT string, not its contents).
+  5. **Role list:** the 64 Microsoft Graph role names in the Restorer's token, sorted. Mark each one that is **not** in this list
+     of roles Keel's restore code declares (engine/bootstrap/permissionCatalog.mjs): AdministrativeUnit.ReadWrite.All,
+     Application.ReadWrite.All, Community.ReadWrite.All, CustomSecAttributeDefinition.ReadWrite.All,
+     DelegatedPermissionGrant.ReadWrite.All, DeviceManagementApps.ReadWrite.All, DeviceManagementConfiguration.ReadWrite.All,
+     DeviceManagementManagedDevices.ReadWrite.All, DeviceManagementRBAC.ReadWrite.All, DeviceManagementScripts.ReadWrite.All,
+     DeviceManagementServiceConfig.ReadWrite.All, Directory.ReadWrite.All, Domain.ReadWrite.All, EntitlementManagement.ReadWrite.All,
+     Group.ReadWrite.All, GroupSettings.ReadWrite.All, LifecycleWorkflows.ReadWrite.All, MailboxSettings.ReadWrite,
+     MultiTenantOrganization.ReadWrite.All, OrgSettings-AppsAndServices.ReadWrite.All, OrgSettings-Forms.ReadWrite.All,
+     OrgSettings-Microsoft365Install.ReadWrite.All, OrganizationalBranding.ReadWrite.All, PeopleSettings.ReadWrite.All,
+     Policy.ReadWrite.AccessReview, Policy.ReadWrite.ApplicationConfiguration, Policy.ReadWrite.AuthenticationFlows,
+     Policy.ReadWrite.AuthenticationMethod, Policy.ReadWrite.Authorization, Policy.ReadWrite.B2BManagementPolicy,
+     Policy.ReadWrite.ConditionalAccess, Policy.ReadWrite.ConsentRequest, Policy.ReadWrite.CrossTenantAccess,
+     Policy.ReadWrite.ExternalIdentities, Policy.ReadWrite.PermissionGrant, Policy.ReadWrite.SecurityDefaults,
+     ReportSettings.ReadWrite.All, RoleEligibilitySchedule.ReadWrite.Directory, RoleManagement.ReadWrite.Directory,
+     RoleManagement.ReadWrite.Exchange, RoleManagementPolicy.ReadWrite.Directory, SharePointTenantSettings.ReadWrite.All,
+     Sites.FullControl.All, TeamMember.ReadWrite.All, TeamSettings.ReadWrite.All, User.ReadWrite.All.
+     For each marked role, say if a `.ReadWrite.` role of the same family is also held (so it is redundant), and if you know which
+     queue item or tool added it.
+- **Expected:** step 1 still 400 (if 200, the cause was consent delay and #681 can close); step 2 still 400 for the Restorer and
+  200 for the Collector; step 3 fails from some size, which would confirm a header-size limit and give the Collector's margin.
+- **Report:** steps 1–5 as above. Then, if step 1 was 200, go on to Q219 (community part); otherwise leave Q219 blocked.

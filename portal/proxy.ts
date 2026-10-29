@@ -117,6 +117,12 @@ export function proxy(request: NextRequest): Promise<NextResponse> {
   return authenticate(request);
 }
 
+// Every request is checked except the build's static files and the app icon.
+// Those are the same public bundles for every visitor (content-hashed JS and CSS,
+// no data), and Cloudflare Access still guards them at the edge. Skipping them saves
+// a token check and a database lookup on each of the ~50 files a page load fetches.
+// Only these exact prefixes are skipped: /_next/image, /_next/data and every page
+// and API route stay checked.
 export const config = {
-  matcher: ["/:path*"],
+  matcher: ["/((?!_next/static/|icon\\.svg$).*)"],
 };

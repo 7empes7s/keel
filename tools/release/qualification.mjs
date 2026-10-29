@@ -23,6 +23,7 @@ import { SITE_GRANTS_LIVE_GATE, validateSiteGrantsLiveSubject } from '../qualifi
 import { SITE_PERMISSIONS_LIVE_GATE, validateSitePermissionsLiveSubject } from '../qualification/sharepointSitePermissionsAcceptance.mjs';
 import { STRUCTURE_WRITES_LIVE_GATE, validateStructureWritesLiveSubject } from '../qualification/sharepointStructureWritesAcceptance.mjs';
 import { DSC_WRITES_LIVE_GATE, validateDscWritesLiveSubject } from '../qualification/dscDistributionGroupsAcceptance.mjs';
+import { ROLE_WRITES_LIVE_GATE, validateRoleWritesLiveSubject } from '../qualification/exchangeRoleDefinitionsAcceptance.mjs';
 import { TEAMS_LIVE_GATE, validateTeamsLiveSubject } from '../qualification/teamsAcceptance.mjs';
 import { EXCHANGE_LIVE_GATE, validateExchangeLiveSubject } from '../qualification/exchangeAcceptance.mjs';
 import { ONEDRIVE_PURVIEW_LIVE_GATE, validateOneDrivePurviewLiveSubject } from '../qualification/onedrivePurviewAcceptance.mjs';
@@ -748,6 +749,9 @@ const GATE_VALIDATORS = {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
   // Distribution list writes through Microsoft365DSC (the keel-dsc profile); needs both proofs.
   [DSC_WRITES_LIVE_GATE]: (evidence, context) => validateDscWritesLiveSubject(evidence, {
+    ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
+  // Custom Exchange admin roles recreated through Exchange Online PowerShell; needs both proofs.
+  [ROLE_WRITES_LIVE_GATE]: (evidence, context) => validateRoleWritesLiveSubject(evidence, {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
   // Task-121: Teams live acceptance; needs both proofs and a verified task-120 record.
   [TEAMS_LIVE_GATE]: (evidence, context) => validateTeamsLiveSubject(evidence, {

@@ -53,6 +53,9 @@
 //   exchange-distribution-groups [--target <list name or Guid> ...] (distribution lists and
 //                              mail-enabled security groups, through Microsoft365DSC in the
 //                              keel-dsc image; settings, and a list that is gone)
+//   exchange-role-definitions  --collection <Graph backup id> [--target <role name> ...] (custom
+//                              Exchange admin roles that are gone, through Exchange Online
+//                              PowerShell: New-ManagementRole from the parent, then trim its entries)
 //   mail flow, Exchange settings, Teams org-wide and voice policies, Purview retention,
 //   DLP and labels: [--target <key> ...]. A key is `<kind>:<Guid>` for rules, connectors
 //   and policies; `<kind>:<Name>` is accepted too and resolves to the one object of that

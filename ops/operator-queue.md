@@ -11163,3 +11163,34 @@ item that needs it stays untouched.
      f. Re-run check: dry run again: 0 changes, no manual lines for the role. Promote the step d artifact again: `stale`, no write.
 - **Report:** B; steps 1 to 4 with exit codes; `enabledCmdletsHonoured`; the step 4b record; approval ids; the evidence branch and
   commit; what is left in the tenant (the capture role and `KEEL-RT-240-role` stay; neither has holders).
+
+### Q241: Measure where the portal's time goes (read-only, no tenant)
+- Drafted by the "Speed up the portal" thread (2026-10-29). The portal feels slow. This item collects live timings so the fix
+  targets the real cause and the before/after numbers are real. **Read-only: no tenant calls, no writes to the database, no
+  service restarts, no config changes.** Never print the database URL, a password, a token or a tenant id.
+- Needs: nothing.
+- Status: todo
+- Result:
+- Do, on Mulinux, against the deployed build (report the commit `/opt/keel-live` is at):
+  1. **How the portal runs:** `systemctl cat keel-portal | grep -E 'ExecStart|Environment='` (redact any secret value),
+     `systemctl show keel-portal -p MemoryCurrent -p NRestarts`, `uptime`, `free -m`, `nproc`.
+  2. **Request timings from real use (last 7 days):** from Caddy's access log for keel.techinsiderbytes.com (journal or log
+     file, wherever it is), per path with the query string removed and ids collapsed to `:id`: count, p50, p95 and max of the
+     response `duration`, top 25 by p95 and top 10 by total time. Keep `/_next/static/*` as one row. If Caddy keeps no access log
+     for the site, say so (do not turn one on) and report whatever `journalctl -u keel-portal --since -7d` shows about timings.
+  3. **Data sizes:** `psql "$KEEL_DB_URL" -c "SELECT relname, n_live_tup, pg_size_pretty(pg_total_relation_size(relid)) AS size FROM pg_stat_user_tables ORDER BY pg_total_relation_size(relid) DESC LIMIT 25"`
+     and `psql "$KEEL_DB_URL" -c "SELECT count(*), pg_size_pretty(sum(pg_column_size(subject))::bigint) FROM evidence"`.
+  4. **The Overview's audit check alone:** in your own checkout at the deployed commit (never `/opt/keel`), with `KEEL_DB_URL`
+     from `/etc/keel/db.env` exported (not printed), run three times:
+     ```bash
+     cd <checkout>/engine && node --input-type=module -e '
+     import pg from "pg"; import { verifyChain } from "./govern/evidence.mjs";
+     const c = new pg.Client({ connectionString: process.env.KEEL_DB_URL }); await c.connect();
+     const { rows } = await c.query("SELECT tenant_ref, record_count FROM evidence_head");
+     for (const r of rows) { const t = performance.now(); const res = await verifyChain(c, { tenantRef: r.tenant_ref });
+       console.log("records", r.record_count, "ok", res.ok, "ms", Math.round(performance.now() - t)); }
+     await c.end();'
+     ```
+  5. **Slow queries:** only if the `pg_stat_statements` extension is already installed (do not install it): the top 15 by
+     `total_exec_time` with `calls`, `mean_exec_time` and the first 120 characters of `query`.
+- **Report:** steps 1 to 5 verbatim (tables are fine), each exit code, and the deployed commit.

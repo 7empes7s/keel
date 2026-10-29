@@ -100,10 +100,13 @@ export function withoutNamedLocationTrust(body, resource) {
   return Object.fromEntries(Object.entries(body).filter(([field]) => field === kept || !NAMED_LOCATION_TRUST_FIELDS.includes(field)));
 }
 
-/** Adds the named locations a restore skipped on trust (above) to `keys`, for the waves after it. */
+/**
+ * Adds the named locations a restore skipped on trust (above) to `keys`, for
+ * the waves after it. A completion may be one step or a list of steps (#695).
+ */
 export function recordTrustSkippedLocations(keys, skipped) {
   for (const entry of skipped ?? []) {
-    if ((entry.completion ?? []).some((step) => step?.requirement === 'namedLocationTrust')) keys.add(entry.naturalKey);
+    if ([entry.completion ?? []].flat().some((step) => step?.requirement === 'namedLocationTrust')) keys.add(entry.naturalKey);
   }
   return keys;
 }

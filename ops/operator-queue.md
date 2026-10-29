@@ -9660,8 +9660,35 @@ item that needs it stays untouched.
   `git merge-base --is-ancestor 1fd1cc5d B && grep -q 'conditions\\.permissions\\.permissionIds' tools/tenant-probe/references.mjs`.
 - **A fresh snapshot is required.** References are stored per snapshot, so Q111's S (`569a4390`) still holds the null symbol and
   still refuses. Take the snapshot at B, after creating the fixture.
-- Status: todo
-- Result:
+- Status: done (update and create promoted)
+- Result: done (2026-10-29 22:30 UTC, keel-operator). **Update and create both promoted; #641 is fixed live.**
+  - B = **844bbe18** (includes 1fd1cc5d; `conditions\.permissions\.permissionIds` in references.mjs).
+  - Credentials: Restorer for writes, Collector for reads and the backup. Global admin not used; nothing granted.
+  - Never assigned to any service principal.
+  - Self-approved under the 2026-10-14 authorization: requester Gmail, approver Entra.
+  - Before: **0** pre-approval policies.
+  - Fixture 2eec6c0a…: one condition, scopeType `chat`, all sensitivity labels, Graph application permission ChatMessage.Read.Chat (9398c3de…, an RSC permission). Created 201.
+  - Step 1: S = `fac14b9c`, exit 3 (incomplete only on todoSettings 500). The policy is in S.
+    - Reference `conditions[0].permissions.permissionIds[0]` → **`global:9398c3de-3f6b-4958-90f3-5098714ff50c`**.
+    - Reference `resourceApplicationId` → `object:00000003…`.
+  - Step 2, update: drifted scopeType chat→team (204, read back).
+    - Dry run `b5259498` listed only `fields conditions`. Approval **87d17b4d**.
+    - Enforce exit 0, journal `update succeeded`. Read back `chat`, equal to S.
+    - Captured; **promoted**.
+  - Step 3, create: deleted (204; 0 policies left).
+    - Dry run `f0287a34` planned the create.
+      - Follow-up: "Which app it is assigned to is stored separately and is not in the backup yet". This note is generic: the fixture was never assigned.
+    - Approval **81aec973**. Enforce exit 0, journal `create succeeded`. **New id 8922fa5b…** holds the same condition (chat, all labels, the same permission id).
+    - "completion: 3 item(s) open". Left unassigned. Captured; **promoted**.
+  - Step 4: dry run `a223f5c4` from S matched the new id with **0 planned writes**.
+  - Step 5: recreated policy deleted (204). 0 pre-approval policies left.
+  - Step 6:
+    - Checks: `pseudonymize.mjs check` passes on all 4 files; secret scan 0 hits; no raw fixture or tenant ids.
+    - `live evidence permissionGrantPreApprovalPolicy.create.json: fixture-tested -> live-qualified`
+    - `live evidence permissionGrantPreApprovalPolicy.update.json: fixture-tested -> live-qualified`
+    - Commit **7b81d235** on `claude/live-evidence-q208` (pushed, no PR).
+  - Note: `--fixture` needs the policy id here: it has no name, and its key is the id.
+  - **Left in the tenant: nothing.**
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q111. Self-approve under the 2026-10-14
   standing authorization and log every approval id. Restorer for writes, Collector for reads; global admin not used; grant nothing
   (the Restorer holds Policy.ReadWrite.PermissionGrant). Never assign the policy to any service principal.

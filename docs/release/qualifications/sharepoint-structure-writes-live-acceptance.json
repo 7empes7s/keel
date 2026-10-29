@@ -1,0 +1,239 @@
+{
+  "contractVersion": 1,
+  "gate": "sharepoint-structure-writes-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "39129d8a16fe13c6b9460a24334fb88bb8556f54",
+  "operation": "sharepoint-structure.writer-qualification",
+  "credentialMode": "collector-read+restorer-write",
+  "observedAt": "2026-10-28T22:01:08.388Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "site": "https://ta036f59837f.sharepoint.com/sites/KEEL-RT-20261004",
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "PnP.PowerShell",
+      "moduleVersion": "3.4.1"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c",
+      "restorer": "app:ca9a6fdf-3bb8-8f0e-a784-b9693d88edcf"
+    },
+    "grants": {
+      "restorer": {
+        "permissions": [
+          "Sites.FullControl.All"
+        ],
+        "roles": []
+      }
+    },
+    "refusals": {
+      "remove": {
+        "cmdlet": "Remove-PnPSiteScript",
+        "refused": true,
+        "sent": false,
+        "reason": "Remove-PnPSiteScript is not a SharePoint structure write KEEL runs"
+      },
+      "undeclaredParameter": {
+        "cmdlet": "Set-PnPSiteScript",
+        "parameter": "Version",
+        "refused": true,
+        "sent": false,
+        "reason": "Set-PnPSiteScript does not take Version from KEEL"
+      }
+    },
+    "writes": [
+      {
+        "operationId": "sharepoint-structure.site-script.add",
+        "version": "3.4.1",
+        "synthetic": false,
+        "fixture": "KEEL-RT-capture-6646418f",
+        "ok": false,
+        "readBackVerified": false,
+        "capturedAt": "2026-10-28T22:00:53.712Z",
+        "error": "Add-PnPSiteScript failed: Add-PnPSiteScript: This site script has no actions."
+      },
+      {
+        "operationId": "sharepoint-structure.hub-site.update",
+        "version": "3.4.1",
+        "synthetic": false,
+        "fixture": "KEEL-RT-20261004",
+        "ok": true,
+        "readBackVerified": true,
+        "capturedAt": "2026-10-28T22:01:01.350Z",
+        "error": null,
+        "putBack": true,
+        "restoredToOriginal": true
+      },
+      {
+        "operationId": "sharepoint-structure.hub-site.add",
+        "version": "3.4.1",
+        "synthetic": false,
+        "fixture": "KEEL-RT-structure-hub",
+        "ok": true,
+        "readBackVerified": true,
+        "capturedAt": "2026-10-28T22:01:06.567Z",
+        "error": null
+      },
+      {
+        "operationId": "sharepoint-structure.site-template.update",
+        "version": "3.4.1",
+        "synthetic": false,
+        "fixture": "https://ta036f59837f.sharepoint.com/sites/KEEL-RT-20261004",
+        "ok": false,
+        "readBackVerified": false,
+        "capturedAt": "2026-10-28T22:01:08.388Z",
+        "error": "Invoke-PnPSiteTemplate failed: Invoke-PnPSiteTemplate: Template is not valid",
+        "putBack": true,
+        "elements": [
+          "ContentType",
+          "ContentTypes",
+          "CurrentNavigation",
+          "GlobalNavigation",
+          "ListInstance",
+          "Lists",
+          "Navigation",
+          "NavigationNode",
+          "Preferences",
+          "Provisioning",
+          "ProvisioningTemplate",
+          "SiteFields",
+          "StructuralNavigation",
+          "Templates"
+        ],
+        "added": {
+          "lists": [
+            "lists/keel-rt-capture-8718a39a"
+          ],
+          "siteColumns": [
+            "a25893e1-df1c-814d-bdbe-3ae3429d577d"
+          ],
+          "contentTypes": [
+            "0x0100b2b4a4baf529bb7ac1f22b1b53ffc642"
+          ]
+        }
+      }
+    ],
+    "skipped": [
+      {
+        "operationId": "sharepoint-structure.site-script.update",
+        "reason": "the capture script was not added"
+      },
+      {
+        "operationId": "sharepoint-structure.site-design.add",
+        "reason": "the capture script was not added"
+      },
+      {
+        "operationId": "sharepoint-structure.site-design.update",
+        "reason": "the capture script was not added"
+      }
+    ],
+    "created": [
+      {
+        "kind": "hubSite",
+        "name": "KEEL-RT-structure-hub"
+      }
+    ],
+    "requests": [
+      {
+        "credential": "collector",
+        "read": "sharepoint-structure",
+        "families": [
+          "hubSite",
+          "siteDesign",
+          "siteScript",
+          "siteTemplate"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Add-PnPSiteScript",
+        "parameters": {
+          "Title": "KEEL-RT-capture-6646418f",
+          "Description": "KEEL capture 2026-10-28T22:00:28.829Z",
+          "Content": "{\"$schema\":\"https://developer.microsoft.com/json-schemas/sp/site-design-script-actions.schema.json\",\"actions\":[],\"bindata\":{},\"version\":1}"
+        },
+        "outcome": "failed",
+        "error": {
+          "code": "CMDLET_ERROR",
+          "errorId": "PnP.PowerShell.Commands.AddSiteScript"
+        }
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-PnPHubSite",
+        "parameters": {
+          "Identity": "https://ta036f59837f.sharepoint.com/sites/KEEL-RT-20261004",
+          "Description": "KEEL capture 2026-10-28T22:00:28.829Z"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "sharepoint-structure",
+        "families": [
+          "hubSite"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-PnPHubSite",
+        "parameters": {
+          "Identity": "https://ta036f59837f.sharepoint.com/sites/KEEL-RT-20261004",
+          "Description": ""
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "sharepoint-structure",
+        "families": [
+          "hubSite"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Register-PnPHubSite",
+        "parameters": {
+          "Site": "https://ta036f59837f.sharepoint.com/sites/KEEL-RT-structure-hub"
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "sharepoint-structure",
+        "families": [
+          "hubSite"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Invoke-PnPSiteTemplate",
+        "parameters": {
+          "Url": "https://ta036f59837f.sharepoint.com/sites/KEEL-RT-20261004",
+          "TemplateGzipSha256": "3694b0739fffcb6b51a09df028bc7dd7b8c745a507b959d4f2152dabe57ea5ed"
+        },
+        "outcome": "failed",
+        "error": {
+          "code": "CMDLET_ERROR",
+          "errorId": "PnP.PowerShell.Commands.Provisioning.Site.InvokeSiteTemplate"
+        }
+      }
+    ],
+    "captureLogSha256": "20af616d6c1347cd30392caa3e1890babaa89de9b0861cd90f2ea8ce427fa073"
+  },
+  "proof": {
+    "artifact": {
+      "path": "sharepoint-structure-writes-live-acceptance.capture.json",
+      "sha256": "20af616d6c1347cd30392caa3e1890babaa89de9b0861cd90f2ea8ce427fa073"
+    },
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "39c38ee4da6cf9c947c5ba9a2e17b84d349d22e9386b1e01a5de4e02b6643ca4"
+    }
+  }
+}

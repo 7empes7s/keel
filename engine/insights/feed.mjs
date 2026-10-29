@@ -12,20 +12,22 @@
  *
  * Each row carries the kind of object in words, the object's name, the person or app who
  * made it (code-named when "Hide people's names" is on), the service, the priority and
- * when. groupChangeFeed groups rows by type, service, priority, person or day; it is pure
- * and free of Node built-ins, so the portal's client code can use it too.
+ * when. groupChangeFeed (feedGroups.mjs) groups rows by type, service, priority, person or
+ * day.
  *
  * A drift or service row names a person only when exactly one account's audit record
  * names the same object, with a matching operation, between the backup before and the
  * backup that found it. Otherwise the person is not known.
  */
 import { objectNameSql } from '../cir/objectName.mjs';
+import { DRIFT_ACTED_ON_PREDICATE, DRIFT_IGNORED_PREDICATE } from '../store/openDrift.mjs';
 import { displayActor } from './people.mjs';
 import { holdsGuid, lookupNames } from './names.mjs';
-import { PRIORITIES, SERVICES, typeInfo } from './taxonomy.mjs';
+import { typeInfo } from './taxonomy.mjs';
+
+export { FEED_GROUPINGS, feedGroupOf, groupChangeFeed } from './feedGroups.mjs';
 
 export const FEED_SOURCES = Object.freeze(['drift', 'service', 'audit']);
-export const FEED_GROUPINGS = Object.freeze(['day', 'type', 'service', 'priority', 'person']);
 export const DEFAULT_FEED_DAYS = 30;
 export const MAX_FEED_DAYS = 90;
 export const DEFAULT_FEED_LIMIT = 500;
@@ -47,6 +49,21 @@ const usable = (value) => {
   const name = text(value);
   return name && !holdsGuid(name) ? name : null;
 };
+
+// Email addresses, and the account part of a OneDrive address, as code names.
+const ADDRESSES = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
+const ONEDRIVE = /(\/personal\/)([A-Za-z0-9._-]+)/gi;
+
+/**
+ * Text as shown while names are hidden: every email address, and the account in a
+ * OneDrive address, becomes the person's code name. Unchanged when `namer` is null. Pure.
+ */
+export function hidePeopleText(text, namer) {
+  if (typeof text !== 'string' || typeof namer !== 'function') return text;
+  return text
+    .replace(ADDRESSES, (address) => namer(address.toLowerCase()))
+    .replace(ONEDRIVE, (_match, prefix, account) => `${prefix}${namer(account.toLowerCase())}`);
+}
 
 /** The name a service read lists a resource under, never an object id. Pure. */
 export function serviceObjectName(resourceKey, fields) {
@@ -84,42 +101,58 @@ function row({ id, source, occurredAt, type, service = null, blastRadius = null,
   };
 }
 
-const DRIFT_NAME_SQL = `coalesce(${objectNameSql('d.after_payload', 'd.resource_type')}, ${objectNameSql('d.before_payload', 'd.resource_type')})`;
+const DRIFT_NAME_SQL = `coalesce(${objectNameSql('r.after_payload', 'r.resource_type')}, ${objectNameSql('r.before_payload', 'r.resource_type')})`;
 
-// A difference from the approved setup, at the first backup that found it. The person is
-// every account whose audit record names the object between the backup before that one
-// and the end of that one, with an operation that fits the change (any for a link).
+// A difference from the approved setup, at the first backup that found it. Detection keeps
+// one row per open difference (store/governance.mjs reuseDrift) and writes a new one only
+// once the earlier row was acted on, so a row is a repeat, and hidden, only when the newest
+// earlier row for its key holds the same difference and nothing acted on it (or it is ignored
+// now). The same change made again after a roll back is listed again.
+// The person is every account whose audit record names the object (for a link, either end)
+// between the backup before that one and the end of that one, with an operation that fits
+// the change (any for a link).
+const OBJECT_IDS_SQL = `(ARRAY(SELECT lower(m[1]) FROM regexp_matches(CASE WHEN r.natural_key LIKE 'edge:%' THEN r.natural_key ELSE '' END,
+     '([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', 'gi') AS m)
+   || lower(coalesce(r.after_payload->>'id', r.before_payload->>'id')))`;
+
 const DRIFT_SQL = `
-  SELECT d.id, d.natural_key, d.resource_type, d.change_type, d.blast_radius, d.detected_at,
-         ${DRIFT_NAME_SQL} AS name, who.actors
-    FROM drift d
-    JOIN snapshot s ON s.id = d.observed_snapshot
+  SELECT r.id, r.natural_key, r.resource_type, r.change_type, r.blast_radius, r.detected_at,
+         ${DRIFT_NAME_SQL} AS name, coalesce(r.after_payload->>'id', r.before_payload->>'id') AS object_id, who.actors
+    FROM drift r
+    JOIN snapshot s ON s.id = r.observed_snapshot
+    LEFT JOIN LATERAL (
+      SELECT d.change_type, d.after_hash, ${DRIFT_ACTED_ON_PREDICATE} AS acted_on, ${DRIFT_IGNORED_PREDICATE} AS ignored
+        FROM drift d
+       WHERE d.tenant_ref = r.tenant_ref AND d.baseline_id = r.baseline_id AND d.natural_key = r.natural_key
+         AND (d.detected_at < r.detected_at OR (d.detected_at = r.detected_at AND d.id < r.id))
+       ORDER BY d.detected_at DESC, d.id DESC
+       LIMIT 1
+    ) prev ON true
     LEFT JOIN LATERAL (
       SELECT array_agg(DISTINCT a.actor_kind || ':' || lower(a.actor_id)) AS actors
         FROM audit_change_fact a
        WHERE a.tenant_ref = $1
-         AND lower(a.target_id) = lower(coalesce(d.after_payload->>'id', d.before_payload->>'id'))
-         AND a.occurred_at <= coalesce(s.completed_at, d.detected_at)
+         AND lower(a.target_id) = ANY (${OBJECT_IDS_SQL})
+         AND a.occurred_at <= coalesce(s.completed_at, r.detected_at)
          AND a.occurred_at > coalesce(
                (SELECT max(p.started_at) FROM snapshot p WHERE p.tenant_ref = $1 AND p.status = 'complete' AND p.started_at < s.started_at),
                s.started_at - interval '30 days')
-         AND (d.natural_key LIKE 'edge:%'
-              OR a.operation = CASE d.change_type WHEN 'added' THEN 'create' WHEN 'removed' THEN 'delete' ELSE 'update' END)
+         AND (r.natural_key LIKE 'edge:%'
+              OR a.operation = CASE r.change_type WHEN 'added' THEN 'create' WHEN 'removed' THEN 'delete' ELSE 'update' END)
     ) who ON true
-   WHERE d.tenant_ref = $1 AND d.detected_at >= $2 AND d.detected_at <= $3
-     AND NOT EXISTS (
-       SELECT 1 FROM drift e
-        WHERE e.tenant_ref = d.tenant_ref AND e.baseline_id = d.baseline_id AND e.natural_key = d.natural_key
-          AND e.change_type = d.change_type AND e.after_hash IS NOT DISTINCT FROM d.after_hash
-          AND (e.detected_at < d.detected_at OR (e.detected_at = d.detected_at AND e.id < d.id)))
-   ORDER BY d.detected_at DESC, d.id
+   WHERE r.tenant_ref = $1 AND r.detected_at >= $2 AND r.detected_at <= $3
+     AND NOT (prev.change_type IS NOT NULL AND prev.change_type = r.change_type
+              AND prev.after_hash IS NOT DISTINCT FROM r.after_hash
+              AND (NOT prev.acted_on OR prev.ignored))
+   ORDER BY r.detected_at DESC, r.id
    LIMIT $4`;
 
 const SERVICE_FIELDS_SQL = (alias) => `jsonb_build_object(${SERVICE_NAME_FIELDS.map((field) => `'${field}', ${alias}.fields->'${field}'`).join(', ')})`;
 
 const SERVICE_SQL = `
   SELECT d.id, d.workload, d.resource_key, d.change_type, d.blast_radius, c.observed_to,
-         ${SERVICE_FIELDS_SQL('cur')} AS current_names, ${SERVICE_FIELDS_SQL('prev')} AS previous_names
+         CASE WHEN cur.collection_id IS NOT NULL THEN ${SERVICE_FIELDS_SQL('cur')} END AS current_names,
+         CASE WHEN prev.collection_id IS NOT NULL THEN ${SERVICE_FIELDS_SQL('prev')} END AS previous_names
     FROM workload_drift d
     JOIN workload_collection c ON c.id = d.collection_id
     LEFT JOIN workload_observation cur ON cur.collection_id = d.collection_id AND cur.resource_key = d.resource_key
@@ -181,6 +214,17 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
     const found = names.get(actor.id);
     return displayActor({ kind: actor.kind, id: actor.id, name: found?.status !== 'unknown' ? found?.name ?? null : null }, namer);
   };
+  // While names are hidden, a person the change is about is code-named the same way as a
+  // person who made one (by their object id), and addresses in keys and names are too.
+  const shown = (type, objectId, object) => {
+    if (typeof namer !== 'function') return object;
+    const id = typeof objectId === 'string' && objectId ? objectId.toLowerCase() : null;
+    return {
+      ...object,
+      key: hidePeopleText(object.key, namer),
+      name: type === 'user' && id ? namer(id) : hidePeopleText(object.name, namer),
+    };
+  };
   // Only one account can be named; several, or none, leave it unknown.
   const onlyActor = (keys) => (Array.isArray(keys) && keys.length === 1 ? person(actorFrom(keys[0])) : null);
 
@@ -191,7 +235,7 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
       occurredAt: entry.detected_at,
       type: String(entry.resource_type),
       blastRadius: entry.blast_radius,
-      object: { key: String(entry.natural_key), name: usable(entry.name), status: entry.change_type === 'removed' ? 'deleted' : 'found' },
+      object: shown(String(entry.resource_type), entry.object_id, { key: String(entry.natural_key), name: usable(entry.name), status: entry.change_type === 'removed' ? 'deleted' : 'found' }),
       change: String(entry.change_type),
       person: onlyActor(entry.actors),
     })),
@@ -201,11 +245,11 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
       occurredAt: entry.observed_to,
       type: String(entry.workload),
       blastRadius: entry.blast_radius,
-      object: {
+      object: shown(String(entry.workload), null, {
         key: `${entry.workload}:${entry.resource_key}`,
         name: serviceObjectName(String(entry.resource_key), entry.change_type === 'removed' ? entry.previous_names : entry.current_names ?? entry.previous_names),
         status: entry.change_type === 'removed' ? 'deleted' : 'found',
-      },
+      }),
       change: String(entry.change_type),
     })),
     ...audit.map((entry) => {
@@ -218,7 +262,7 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
         occurredAt: entry.occurred_at,
         type: known ? target.type : String(entry.target_type),
         service: AUDIT_SERVICE[eventId.slice(0, eventId.indexOf(':'))] ?? null,
-        object: { key: String(entry.target_id), name: known ? target.name : null, status: known ? target.status : 'unknown' },
+        object: shown(known ? target.type : null, String(entry.target_id), { key: String(entry.target_id), name: known ? target.name : null, status: known ? target.status : 'unknown' }),
         change: OPERATION_CHANGE[entry.operation] ?? 'modified',
         activity: text(entry.activity),
         person: person({ kind: String(entry.actor_kind), id: String(entry.actor_id).toLowerCase() }),
@@ -226,56 +270,4 @@ export async function loadChangeFeed(client, { tenantRef, now = new Date(), days
     }),
   ].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || a.id.localeCompare(b.id));
   return { since: since.toISOString(), until: until.toISOString(), rows: rows.slice(0, cap), truncated: rows.length > cap };
-}
-
-const PRIORITY_LABELS = Object.freeze({ critical: 'Critical', high: 'High', normal: 'Normal', low: 'Low' });
-const serviceRank = (service) => (service && SERVICES.includes(service) ? SERVICES.indexOf(service) : SERVICES.length);
-const priorityRank = (priority) => (PRIORITIES.includes(priority) ? PRIORITIES.indexOf(priority) : PRIORITIES.length);
-// The most urgent priority a group holds.
-const worstRank = (group) => {
-  const index = PRIORITIES.findIndex((priority) => group.priorities[priority] > 0);
-  return index === -1 ? PRIORITIES.length : index;
-};
-
-/** The group one row falls in, for one grouping. Pure. */
-export function feedGroupOf(entry, by) {
-  switch (by) {
-    case 'type': return { key: entry.type, label: entry.typeName };
-    case 'service': return entry.service ? { key: entry.service, label: entry.service } : { key: 'other', label: 'Other' };
-    case 'priority': return { key: entry.priority, label: PRIORITY_LABELS[entry.priority] ?? 'Normal' };
-    case 'person': {
-      if (!entry.person) return { key: 'unknown', label: 'Not known' };
-      const fallback = entry.person.kind === 'servicePrincipal' ? 'Unnamed app' : 'Unnamed person';
-      return { key: `${entry.person.kind}:${entry.person.id}`, label: entry.person.name ?? fallback };
-    }
-    case 'day': return { key: entry.day, label: entry.day };
-    default: throw new RangeError(`unknown grouping: ${by}`);
-  }
-}
-
-/**
- * Rows in groups, each with its count and how many rows of each priority it holds. Days
- * run newest first; types by their most urgent row, then service, then name; services in the usual
- * service order; priorities most urgent first; people by how many changes they made,
- * with "Not known" last. Rows keep their order inside a group. Pure.
- */
-export function groupChangeFeed(rows, by = 'day') {
-  if (!FEED_GROUPINGS.includes(by)) throw new RangeError(`unknown grouping: ${by}`);
-  const groups = new Map();
-  for (const entry of rows) {
-    const { key, label } = feedGroupOf(entry, by);
-    if (!groups.has(key)) groups.set(key, { key, label, count: 0, priorities: Object.fromEntries(PRIORITIES.map((priority) => [priority, 0])), rows: [], first: entry });
-    const group = groups.get(key);
-    group.count += 1;
-    if (entry.priority in group.priorities) group.priorities[entry.priority] += 1;
-    group.rows.push(entry);
-  }
-  const order = {
-    day: (a, b) => b.key.localeCompare(a.key),
-    type: (a, b) => worstRank(a) - worstRank(b) || serviceRank(a.first.service) - serviceRank(b.first.service) || a.label.localeCompare(b.label),
-    service: (a, b) => serviceRank(a.first.service) - serviceRank(b.first.service),
-    priority: (a, b) => priorityRank(a.key) - priorityRank(b.key),
-    person: (a, b) => (a.key === 'unknown') - (b.key === 'unknown') || b.count - a.count || a.label.localeCompare(b.label),
-  }[by];
-  return [...groups.values()].sort(order).map(({ first, ...group }) => group);
 }

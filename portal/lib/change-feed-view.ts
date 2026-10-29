@@ -1,7 +1,7 @@
 // The change feed (insights track, IN-FEED) as the portal shows it: every change, drift
 // and audit event as one row (engine/insights/feed.mjs), grouped by day, type, service,
 // priority or person. Pure, so server pages, the API and client lists share it.
-import { FEED_GROUPINGS, groupChangeFeed } from "../../engine/insights/feed.mjs";
+import { FEED_GROUPINGS, groupChangeFeed } from "../../engine/insights/feedGroups.mjs";
 import { csvLine } from "@/lib/csv";
 
 export type FeedSource = "drift" | "service" | "audit";

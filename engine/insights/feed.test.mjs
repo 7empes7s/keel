@@ -4,7 +4,7 @@ import { after, before, test } from 'node:test';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 import { anonymityNamer } from './anonymity.mjs';
-import { FEED_GROUPINGS, feedGroupOf, groupChangeFeed, loadChangeFeed, serviceObjectName } from './feed.mjs';
+import { FEED_GROUPINGS, feedGroupOf, groupChangeFeed, hidePeopleText, loadChangeFeed, serviceObjectName } from './feed.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
 let client;
@@ -41,11 +41,11 @@ async function snapshot(tenantRef, startedAt, resources = []) {
 }
 
 async function drift(tenantRef, baselineId, snapshotId, { key, type, change, after: afterPayload, before: beforePayload = null, hash = 'h2', radius = 'scoped', at }) {
-  await client.query(
+  return client.query(
     `INSERT INTO drift (tenant_ref, baseline_id, observed_snapshot, natural_key, resource_type, change_type, before_hash, after_hash, before_payload, after_payload, blast_radius, detected_at)
-     VALUES ($1, $2, $3, $4, $5, $6, 'h1', $7, $8, $9, $10, $11)`,
+     VALUES ($1, $2, $3, $4, $5, $6, 'h1', $7, $8, $9, $10, $11) RETURNING id`,
     [tenantRef, baselineId, snapshotId, key, type, change, hash, beforePayload, afterPayload, radius, at],
-  );
+  ).then((result) => result.rows[0].id);
 }
 
 async function audit(tenantRef, id, at, { target, targetType, operation, actor, kind = 'user', activity = null }) {
@@ -227,4 +227,41 @@ test('pure helpers: unknown grouping, unnamed people, service names', () => {
   assert.equal(serviceObjectName('tenant', null), 'Sharing settings');
   assert.equal(serviceObjectName('site:abc', { webUrl: 'https://contoso.sharepoint.com/sites/hr' }), 'contoso.sharepoint.com/sites/hr');
   assert.equal(serviceObjectName(`policy:${POLICY}`, {}), null);
+});
+
+test('the same change made again after a roll back is listed again; a link change names who changed either end', async () => {
+  const tenant = 'rollback-tenant';
+  const { rows: [baseline] } = await client.query("INSERT INTO baseline (tenant_ref, set_at, set_by) VALUES ($1, $2, 'ops@contoso.test') RETURNING id", [tenant, hoursAgo(100)]);
+  const first = await snapshot(tenant, hoursAgo(60), [...people, caPolicy('disabled')]);
+  const second = await snapshot(tenant, hoursAgo(40), [...people, caPolicy('enabled')]);
+  const third = await snapshot(tenant, hoursAgo(20), [...people, caPolicy('disabled')]);
+  const off = { key: `conditionalAccessPolicy:${POLICY}`, type: 'conditionalAccessPolicy', change: 'modified', before: caPolicy('enabled')[2], after: caPolicy('disabled')[2] };
+  const rolledBack = await drift(tenant, baseline.id, first, { ...off, at: hoursAgo(59) });
+  await client.query("INSERT INTO disposition (drift_id, action, actor, reason) VALUES ($1, 'rollback', 'ops@contoso.test', 'not meant')", [rolledBack]);
+  await drift(tenant, baseline.id, third, { ...off, at: hoursAgo(19) });
+  // Bob added Ada to Finance: the link's key holds both ends' ids.
+  await drift(tenant, baseline.id, second, { key: `edge:groupMember:${GROUP}:${ADA}`, type: 'groupMember', change: 'added', after: { groupId: GROUP, memberId: ADA }, at: hoursAgo(39) });
+  await audit(tenant, 'entra:m1:0', hoursAgo(45), { target: GROUP, targetType: 'Group', operation: 'update', actor: BOB, activity: 'Add member to group' });
+  const { rows } = await loadChangeFeed(client, { tenantRef: tenant, now: NOW });
+  const policy = rows.filter((entry) => entry.source === 'drift' && entry.type === 'conditionalAccessPolicy');
+  assert.deepEqual(policy.map((entry) => entry.occurredAt), [hoursAgo(19).toISOString(), hoursAgo(59).toISOString()]);
+  const link = rows.find((entry) => entry.source === 'drift' && entry.type === 'groupMember');
+  assert.equal(link.person?.name, 'Bob Builder');
+});
+
+test('with names hidden, people a change is about and addresses in keys are code-named too', async () => {
+  const tenant = 'people-tenant';
+  const { rows: [baseline] } = await client.query("INSERT INTO baseline (tenant_ref, set_at, set_by) VALUES ($1, $2, 'ops@contoso.test') RETURNING id", [tenant, hoursAgo(100)]);
+  const snap = await snapshot(tenant, hoursAgo(10), people);
+  await drift(tenant, baseline.id, snap, { key: 'user:ada@contoso.test', type: 'user', change: 'modified', before: { id: ADA, displayName: 'Ada Admin' }, after: { id: ADA, displayName: 'Ada Admin', jobTitle: 'CEO' }, at: hoursAgo(9) });
+  await audit(tenant, 'entra:u1:0', hoursAgo(12), { target: ADA, targetType: 'User', operation: 'update', actor: BOB, activity: 'Update user' });
+  const namer = anonymityNamer({ enabled: true, salt: 'test-salt' });
+  const { rows } = await loadChangeFeed(client, { tenantRef: tenant, now: NOW, namer });
+  const text = JSON.stringify(rows);
+  assert.ok(!text.includes('Ada Admin') && !text.includes('ada@contoso.test') && !text.includes('Bob Builder'), text);
+  const code = namer(ADA);
+  assert.ok(rows.every((entry) => entry.object.name === code));
+  assert.equal(rows.find((entry) => entry.source === 'drift').object.key, `user:${namer('ada@contoso.test')}`);
+  assert.equal(hidePeopleText('https://contoso-my.sharepoint.com/personal/ada_contoso_com', namer), `https://contoso-my.sharepoint.com/personal/${namer('ada_contoso_com')}`);
+  assert.equal(hidePeopleText('mail for ada@contoso.test', null), 'mail for ada@contoso.test');
 });

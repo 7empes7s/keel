@@ -17,7 +17,8 @@
  *  0. offline: asks the write transport for Remove-PnPSiteScript and for an undeclared
  *     parameter; both must be refused before anything is sent;
  *  1. collector: reads hub sites, designs, scripts and the --site template;
- *  2. restorer: Add-PnPSiteScript KEEL-RT-capture-<random> (no actions), read back;
+ *  2. restorer: Add-PnPSiteScript KEEL-RT-capture-<random> (one createSPList of a KEEL-RT-
+ *     list; it is never applied), read back;
  *     Set-PnPSiteScript on it (its description), read back;
  *  3. restorer: Add-PnPSiteDesign KEEL-RT-capture-<random> using that script, not
  *     default, read back; Set-PnPSiteDesign on it (its description), read back;
@@ -61,7 +62,19 @@ import { pinnedModuleVersions } from './workloadWritesLive.mjs';
 
 const sha256Hex = (text) => createHash('sha256').update(text).digest('hex');
 const lc = (value) => String(value ?? '').toLowerCase();
-const EMPTY_SCRIPT = '{"$schema":"https://developer.microsoft.com/json-schemas/sp/site-design-script-actions.schema.json","actions":[],"bindata":{},"version":1}';
+/**
+ * The capture script: one createSPList of a KEEL-RT- list, since SharePoint refuses a site
+ * script with no actions. It only runs when a design using it is applied, and the capture
+ * never applies one.
+ */
+export function captureScript(title) {
+  return JSON.stringify({
+    $schema: 'https://developer.microsoft.com/json-schemas/sp/site-design-script-actions.schema.json',
+    actions: [{ verb: 'createSPList', listName: title, templateType: 100, subactions: [{ verb: 'setDescription', description: 'KEEL live proof fixture; safe to delete' }] }],
+    bindata: {},
+    version: 1,
+  });
+}
 const ZERO_GUID = '00000000-0000-0000-0000-000000000000';
 
 function siteProblems({ site, hubSite }) {
@@ -82,7 +95,7 @@ export function structureWritesCapturePlan({ site, hubSite = null }) {
     { step: 0, credential: 'none', refused: 'Remove-PnPSiteScript (KEEL never deletes; refused before sending)' },
     { step: 0, credential: 'none', refused: 'Set-PnPSiteScript -Version (an undeclared parameter; refused before sending)' },
     { step: 1, credential: 'collector', read: `hub sites, site designs, site scripts and the template of ${site}` },
-    { step: 2, credential: 'restorer', cmdlet: 'Add-PnPSiteScript', parameters: { Title: `${STRUCTURE_CAPTURE_PREFIX}<random>`, Description: '<marker>', Content: '<no actions>' }, operationId: SITE_SCRIPT_ADD },
+    { step: 2, credential: 'restorer', cmdlet: 'Add-PnPSiteScript', parameters: { Title: `${STRUCTURE_CAPTURE_PREFIX}<random>`, Description: '<marker>', Content: `<one createSPList of a ${STRUCTURE_CAPTURE_PREFIX} list>` }, operationId: SITE_SCRIPT_ADD },
     { step: 2, credential: 'restorer', cmdlet: 'Set-PnPSiteScript', parameters: { Identity: '<that script>', Description: '<marker 2>' }, operationId: SITE_SCRIPT_UPDATE },
     { step: 3, credential: 'restorer', cmdlet: 'Add-PnPSiteDesign', parameters: { Title: `${STRUCTURE_CAPTURE_PREFIX}<random>`, WebTemplate: 'TeamSite', SiteScriptIds: ['<that script>'], IsDefault: false }, operationId: SITE_DESIGN_ADD },
     { step: 3, credential: 'restorer', cmdlet: 'Set-PnPSiteDesign', parameters: { Identity: '<that design>', Description: '<marker 2>' }, operationId: SITE_DESIGN_UPDATE },
@@ -224,7 +237,7 @@ export async function captureStructureWrites({
     // 2. A site script, added and changed.
     const scriptTitle = `${STRUCTURE_CAPTURE_PREFIX}${suffix()}`;
     const scriptAdd = base(SITE_SCRIPT_ADD, scriptTitle);
-    const scriptFields = { Title: scriptTitle, Description: marker, Content: EMPTY_SCRIPT };
+    const scriptFields = { Title: scriptTitle, Description: marker, Content: captureScript(scriptTitle) };
     let script = null;
     if (await sent(scriptAdd, 'Add-PnPSiteScript', scriptFields)) {
       created.push({ kind: 'siteScript', name: scriptTitle });

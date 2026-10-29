@@ -21,7 +21,7 @@ import { after, test } from 'node:test';
 import { workloadWriteQualification } from '../coverage/qualification.mjs';
 import { SHAREPOINT_STRUCTURE_WRITE_OPERATIONS } from '../restore/workloads/sharepointStructureWrites.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
-import { HOST, SITE, fakeTenant, initialState } from '../test/fakePnpStructure.mjs';
+import { HOST, SITE, fakeTenant, initialState, templateProblem } from '../test/fakePnpStructure.mjs';
 import { signEvidence, verifyEvidence } from '../../tools/release/qualification.mjs';
 import { writeAcceptanceFiles } from '../../tools/qualification/sharepointLive.mjs';
 import { STRUCTURE_WRITES_LIVE_GATE, STRUCTURE_WRITES_RECORD_FILE } from '../../tools/qualification/sharepointStructureWritesAcceptance.mjs';
@@ -68,11 +68,16 @@ test('a capture writes only KEEL-RT fixtures, reads each write back, puts change
   for (const write of live.writes.filter((item) => item.cmdlet.startsWith('Add-'))) assert.match(write.parameters.Title, /^KEEL-RT-capture-/);
   assert.equal(live.writes.find((item) => item.cmdlet === 'Add-PnPSiteDesign').parameters.IsDefault, false);
   assert.equal(live.writes.find((item) => item.cmdlet === 'Register-PnPHubSite').parameters.Site, HUB_SITE);
+  // SharePoint refuses a site script with no actions: the capture script has one harmless KEEL-RT- list.
+  const scriptAdd = live.writes.find((item) => item.cmdlet === 'Add-PnPSiteScript');
+  assert.deepEqual(JSON.parse(scriptAdd.parameters.Content).actions.map((action) => `${action.verb}:${action.listName}`), [`createSPList:${scriptAdd.parameters.Title}`]);
   // The first template adds one list, column and content type and a link; it carries no content or permissions.
   const [added, putBack] = live.writes.filter((item) => item.cmdlet === 'Invoke-PnPSiteTemplate');
   assert.equal((added.xml.match(/<pnp:ListInstance\b/g) ?? []).length, 1);
   assert.doesNotMatch(added.xml, /DataRows|Security|PropertyBag|Webhook|CustomAction|Features|WebSettings/);
   assert.doesNotMatch(putBack.xml, /ListInstance|<Field\b|<pnp:ContentType\b/);
+  assert.equal(templateProblem(added.xml), null, 'the template passes the checks PnP refused (issue #667)');
+  assert.equal(templateProblem(putBack.xml), null);
   // The hub description and the navigation are as they were; the fixtures stay.
   const site = live.state.sites[SITE.toLowerCase()];
   assert.deepEqual(site.nav, before.sites[SITE.toLowerCase()].nav);

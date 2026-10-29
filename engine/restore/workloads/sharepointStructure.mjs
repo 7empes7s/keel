@@ -120,6 +120,15 @@ export function readsBackAs(field, read, written) {
   return same(read, written);
 }
 
+/** True when a site script's JSON has no actions, which SharePoint refuses ("This site script has no actions"). */
+export function scriptHasNoActions(content) {
+  if (typeof content !== 'string' || !content) return false;
+  let parsed;
+  try { parsed = JSON.parse(content); } catch { return false; }
+  return !Array.isArray(parsed?.actions) || parsed.actions.length === 0;
+}
+const NO_ACTIONS_REASON = 'its script has no actions, and SharePoint refuses a site script with no actions; an administrator restores it';
+
 /** True when the cmdlet transport can carry the value: a scalar, or a list of strings. */
 function sendable(value) {
   if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) return true;
@@ -204,6 +213,9 @@ export const TEMPLATE_ELEMENTS = Object.freeze([
 export const STRIPPED_ELEMENTS = Object.freeze([
   'DataRows', 'Security', 'Webhooks', 'UserCustomActions', 'PropertyBagEntries', 'DataSource', 'IRMSettings', 'DocumentTemplate',
 ]);
+// A fixed section order (the schema itself takes them in any order), so the template
+// KEEL sends does not depend on how the backup happened to order them.
+const SECTION_ORDER = Object.freeze(['Navigation', 'SiteFields', 'ContentTypes', 'Lists']);
 const element = (name) => new RegExp(`<pnp:${name}\\b[^>]*?(?:\\/>|>[\\s\\S]*?<\\/pnp:${name}>)`, 'g');
 
 /** The PnP element names in `xml` that a restore template may not carry. */
@@ -244,7 +256,7 @@ export function backedUpTemplate(fields) {
  * Builds the template KEEL applies: only the named site columns, content types and lists
  * of the backed-up template (each as it was, minus content, permissions and code), and
  * its navigation when `navigation` is true, with existing navigation replaced. Sections
- * keep the backed-up order. Returns { xml, included, skipped, removed }: `skipped`
+ * come in a fixed order (Navigation, SiteFields, ContentTypes, Lists). Returns { xml, included, skipped, removed }: `skipped`
  * names what could not be sent and why.
  */
 export function buildRestoreTemplate(source, { siteColumns = [], contentTypes = [], lists = [], navigation = false }) {
@@ -271,7 +283,7 @@ export function buildRestoreTemplate(source, { siteColumns = [], contentTypes = 
       included[kind].push(key);
     }
     for (const key of wantedKeys) skipped.push({ kind, key, reason: 'it is not in the backed-up template' });
-    if (kept.length) sections.push({ at: source.indexOf(`<pnp:${sectionName}`), xml: `<pnp:${sectionName}>${kept.join('')}</pnp:${sectionName}>` });
+    if (kept.length) sections.push({ order: SECTION_ORDER.indexOf(sectionName), xml: `<pnp:${sectionName}>${kept.join('')}</pnp:${sectionName}>` });
   };
   pick('SiteFields', /<Field\b[^>]*?(?:\/>|>[\s\S]*?<\/Field>)/g, siteColumns, columnKey, 'siteColumns');
   pick('ContentTypes', element('ContentType'), contentTypes, typeKey, 'contentTypes');
@@ -285,16 +297,17 @@ export function buildRestoreTemplate(source, { siteColumns = [], contentTypes = 
       // Existing links are replaced, so the site ends up with exactly the backed-up ones.
       const replaced = whole.replace(/<pnp:StructuralNavigation\b([^>]*?)(\/?)>/g, (_tag, attributes, close) => (
         `<pnp:StructuralNavigation${attributes.replace(/\sRemoveExistingNodes="[^"]*"/g, '')} RemoveExistingNodes="true"${close}>`));
-      sections.push({ at: source.indexOf('<pnp:Navigation'), xml: replaced });
+      sections.push({ order: SECTION_ORDER.indexOf('Navigation'), xml: replaced });
       included.navigation = true;
     }
   }
-  sections.sort((a, b) => a.at - b.at);
+  sections.sort((a, b) => a.order - b.order);
   const xml = [
     '<?xml version="1.0"?>',
     `<pnp:Provisioning xmlns:pnp="${namespace}">`,
     '<pnp:Preferences Generator="KEEL restore" />',
-    '<pnp:Templates ID="KEEL-RESTORE">',
+    // ID is xs:ID, so the Templates and ProvisioningTemplate ids must differ.
+    '<pnp:Templates ID="KEEL-RESTORE-TEMPLATES">',
     '<pnp:ProvisioningTemplate ID="KEEL-RESTORE" Version="1">',
     ...sections.map((item) => item.xml),
     '</pnp:ProvisioningTemplate>',
@@ -537,6 +550,10 @@ function planObject(family, observation, context) {
       op = { kind: 'add', operationId: write.add, cmdlet: 'Register-PnPHubSite', parameters: { Site: site }, changes: [{ field: 'SiteUrl', before: null, after: site }] };
     } else {
       const changes = objectChanges(family, { observation, current: null, mapped, manual, key });
+      if (family === 'siteScript' && changes.some((change) => change.field === 'Content' && scriptHasNoActions(change.after))) {
+        manual.push({ resourceKey: key, field: 'Content', reason: NO_ACTIONS_REASON });
+        return null;
+      }
       if (!changes.some((change) => change.field === 'Title')) {
         manual.push({ resourceKey: key, field: null, reason: 'the backup holds no title for it, so KEEL cannot add it back' });
         return null;
@@ -559,6 +576,11 @@ function planObject(family, observation, context) {
     if (unknownType) {
       manual.push({ resourceKey: key, field: 'WebTemplate', before: unknownType.before, after: unknownType.after, reason: 'KEEL does not know this site type; an administrator sets it' });
       changes = changes.filter((change) => change !== unknownType);
+    }
+    const emptyScript = family === 'siteScript' && changes.find((change) => change.field === 'Content' && scriptHasNoActions(change.after));
+    if (emptyScript) {
+      manual.push({ resourceKey: key, field: 'Content', before: emptyScript.before, after: emptyScript.after, reason: NO_ACTIONS_REASON });
+      changes = changes.filter((change) => change !== emptyScript);
     }
     if (!changes.length) return current.resourceKey;
     op = {

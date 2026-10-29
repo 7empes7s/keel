@@ -23,7 +23,7 @@ const listXml = (list) => `<pnp:ListInstance Title="${esc(list.Title)}" Url="${e
   <pnp:ContentTypeBindings><pnp:ContentTypeBinding ContentTypeID="0x0101" Default="true" /></pnp:ContentTypeBindings>
   <pnp:Views><View DisplayName="All Documents" Url="Forms/AllItems.aspx"><ViewFields><FieldRef Name="LinkFilename" /></ViewFields></View></pnp:Views>
   <pnp:Fields><Field ID="{11111111-0000-4000-8000-000000000001}" Name="KeelRtStatus" StaticName="KeelRtStatus" DisplayName="Status" Type="Choice"><CHOICES><CHOICE>Open</CHOICE></CHOICES></Field></pnp:Fields>
-  <pnp:FieldRefs><pnp:FieldRef ID="22222222-0000-4000-8000-000000000002" Name="KeelRtProject" /></pnp:FieldRefs>
+  <pnp:FieldRefs><pnp:FieldRef ID="22222222-0000-4000-8000-000000000002" Name="KeelRtProject" DisplayName="Project" /></pnp:FieldRefs>
   ${list.extra ?? ''}
   <pnp:DataRows><pnp:DataRow><pnp:DataValue FieldName="Title">secret row</pnp:DataValue><pnp:Security><pnp:BreakRoleInheritance CopyRoleAssignments="false" /></pnp:Security></pnp:DataRow></pnp:DataRows>
   <pnp:Security><pnp:BreakRoleInheritance CopyRoleAssignments="false" ClearSubscopes="true"><pnp:RoleAssignment Principal="Everyone" RoleDefinition="Full Control" /></pnp:BreakRoleInheritance></pnp:Security>
@@ -52,6 +52,16 @@ export function templateXml(site, { id = 'T-1' } = {}) {
 }
 
 export const attr = (text, name) => new RegExp(`\\b${name}="([^"]*)"`).exec(text)?.[1] ?? null;
+
+// What SharePoint and PnP refuse, as the live tenant did (issue #667).
+function scriptWithoutActions(content) {
+  try { const parsed = JSON.parse(content); return !Array.isArray(parsed?.actions) || parsed.actions.length === 0; } catch { return false; }
+}
+// Part of PnP's schema check: ID is xs:ID, so the template ids must be unique in the document.
+export function templateProblem(xml) {
+  const ids = [...xml.matchAll(/<pnp:(?:Templates|ProvisioningTemplate)\b[^>]*\sID="([^"]*)"/g)].map(([, id]) => id);
+  return new Set(ids).size === ids.length ? null : 'duplicate ID';
+}
 
 /** The fake's state: what the backup sees before anything is changed. */
 export function initialState() {
@@ -94,6 +104,7 @@ export function fakeTenant(state = initialState(), { crash = [] } = {}) {
       if (cmdlet === 'Invoke-PnPSiteTemplate') {
         const xml = gunzipSync(Buffer.from(parameters.TemplateGzip, 'base64')).toString('utf8');
         writes.at(-1).xml = xml;
+        if (templateProblem(xml)) return { error: { message: 'Template is not valid', category: 'NotSpecified', errorId: 'System.Exception,PnP.PowerShell.Commands.Provisioning.Site.InvokeSiteTemplate' } };
         const site = state.sites[String(parameters.Url).toLowerCase()];
         const siteFields = /<pnp:SiteFields>([\s\S]*?)<\/pnp:SiteFields>/.exec(xml)?.[1] ?? '';
         for (const [field] of siteFields.matchAll(/<Field\b[^>]*>/g)) {
@@ -121,6 +132,9 @@ export function fakeTenant(state = initialState(), { crash = [] } = {}) {
         return [hub];
       }
       const [list, add] = cmdlet.endsWith('SiteScript') ? [state.scripts, cmdlet.startsWith('Add-')] : [state.designs, cmdlet.startsWith('Add-')];
+      if (cmdlet.endsWith('SiteScript') && Object.hasOwn(parameters, 'Content') && scriptWithoutActions(parameters.Content)) {
+        return { error: { message: 'This site script has no actions.', category: 'WriteError', errorId: 'EXCEPTION,PnP.PowerShell.Commands.SiteDesigns.AddSiteScript' } };
+      }
       if (add) {
         const body = { Id: newGuid(), Version: 1, Description: '', ...parameters };
         list.push(body);

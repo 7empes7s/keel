@@ -501,7 +501,7 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'KEEL never puts back a partner\'s sign-in addresses or signing certificate, so a changed backup cannot send guests to another sign-in page. Check those with the partner and set them in the Entra admin center, under External Identities, All identity providers. A deleted partner is set up again there too, with its domains.',
   }),
   exchangeRoleDefinition: manual('Exchange admin roles', KEEL,
-    'KEEL backs up the custom roles. Microsoft Graph cannot create them, so KEEL recreates a custom role that is gone through Exchange Online PowerShell, from its parent role, with the same entries (the Exchange admin role restore, off until its live proof passes). It never changes a role that still exists. The built-in roles are set by Microsoft.',
+    'KEEL backs up the custom roles. Microsoft offers no way to create them outside Exchange, so KEEL recreates a custom role that is gone through Exchange Online PowerShell, from its parent role, with the same entries (the Exchange admin role restore, off until its live proof passes). It never changes a role that still exists. The built-in roles are set by Microsoft.',
     'For a custom role that still exists but differs from the backup, the restore lists what differs: fix its entries with Exchange Online PowerShell. Then give recreated roles back to their role groups or apps, after a privilege review.'),
   exchangeRoleAssignment: manual('Exchange admin role assignments', NOT_BUILT,
     'KEEL backs up who holds each Exchange role and over which scope, but does not restore them yet. Admin access needs a privilege review first.',

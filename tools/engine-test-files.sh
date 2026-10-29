@@ -2,7 +2,7 @@
 # Prints the engine-side test files that CI runs in the "Run restore engine tests" step of
 # .github/workflows/portal.yml, one per line, relative to engine/ (the step's working
 # directory). Discovery is by glob over tracked files, so a new *.test.mjs under engine/,
-# cli/ or tools/ runs in CI without editing the workflow.
+# cli/, tools/ or status/ runs in CI without editing the workflow.
 #
 #   tools/engine-test-files.sh                 # list
 #   cd engine && node --test --test-concurrency=1 $(../tools/engine-test-files.sh)
@@ -24,9 +24,9 @@ EXCLUDED=(
 root="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)"
 cd "$root"
 
-files="$(git ls-files -- 'engine/*.test.mjs' 'cli/*.test.mjs' 'tools/*.test.mjs' \
+files="$(git ls-files -- 'engine/*.test.mjs' 'cli/*.test.mjs' 'tools/*.test.mjs' 'status/*.test.mjs' \
   | grep -vxF -f <(printf '%s\n' "${EXCLUDED[@]}") \
-  | sed -e 's#^engine/##' -e 's#^\(cli\|tools\)/#../\1/#')"
+  | sed -e 's#^engine/##' -e 's#^\(cli\|tools\|status\)/#../\1/#')"
 
 if [ -z "$files" ]; then
   echo "engine-test-files: discovered no test files" >&2

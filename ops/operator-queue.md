@@ -10025,6 +10025,7 @@ item that needs it stays untouched.
   guard lands (separate thread). Run only the `KEEL-RT-community` part (steps 0 to 6 for `engageCommunity` alone; select only that
   kind in the restore). Report the five as `held`.
 - Requeued by the "Resume tests after Collector and Restorer consent" thread (2026-10-29 10:58 UTC): Marouane reports admin consent granted on Keel Restorer (the 6 Q218 roles). Needs now also: **Q223 done**. The **HOLD above still stands**: run only the `KEEL-RT-community` part and report the five tenant-wide singletons as `held`. They wait for PR #677 (tenant-wide restore option `--allow-tenant-wide-test-writes`; open, not merged) and for Marouane to approve each tenant-wide artifact himself; a separate item will be queued for them.
+- Requeued by the "Fix Viva Engage restores failing as Restorer" thread (2026-10-29 11:55 UTC): Q224 confirmed the 400 is a header-size limit in Engage's front proxy that the Restorer's token (5326 bytes, 64 roles) is over. Needs now also: **Q225 done** (a small KEEL-RT app holding only `Community.ReadWrite.All`). For the community part, use `/etc/keel/engage-writer.json` everywhere this item says "as the Restorer" (step 0 fixture create and poll, and the restore's target config in step 3). Collector for reads as before. Report the target config used. The HOLD on the five tenant-wide settings still stands.
 - Status: blocked: Restorer gets HTML 400 from Viva Engage (#681); 5 settings held
 - Result: blocked (2026-10-29 11:20 UTC, root keel-operator): **step 0 cannot create KEEL-RT-community. Every Viva Engage call made as the Keel Restorer, GETs included, answers 400 UnknownError with an HTML "400 Bad request / Your browser sent an invalid request." body, while the Collector reads the same endpoint with 200. Filed #681.** Steps 1–6 not run; nothing written in the tenant.
   - B = `6fb16358` (deployed; run from a detached worktree at B). Collector `/etc/keel/tenant.json` for reads; Restorer `/etc/keel/restorer.json` for 3 POST attempts (all refused) and GETs. Global admin not used; nothing granted or changed on any app.
@@ -10246,3 +10247,29 @@ item that needs it stays untouched.
 - **Expected:** step 1 still 400 (if 200, the cause was consent delay and #681 can close); step 2 still 400 for the Restorer and
   200 for the Collector; step 3 fails from some size, which would confirm a header-size limit and give the Collector's margin.
 - **Report:** steps 1–5 as above. Then, if step 1 was 200, go on to Q219 (community part); otherwise leave Q219 blocked.
+
+### Q225: Create a small KEEL-RT app for Viva Engage writes, so Q219 can run (#681)
+- Drafted by the "Fix Viva Engage restores failing as Restorer" thread (2026-10-29 11:55 UTC). Q224 showed Engage's front proxy refuses
+  requests with large headers: the Restorer's 5326-byte token is over the limit, the Collector's 4496 is under it. A token carries every
+  role its app holds, so the Restorer can't ask for a smaller one. A test app with one role gets a small token. This app is a
+  **test fixture** for Q219; whether Keel ships a separate Engage app is a product decision taken elsewhere.
+- Needs: none. Under the 2026-10-28 rule, add the permission to the app yourself; Marouane does only the consent click.
+- Status: todo
+- Do:
+  1. **Create app registration `KEEL-RT-engage-writer`** (single tenant, no redirect URI, no secret), as for the Content Reader in Q55 B.
+     - Credential: a new self-signed RSA 2048 certificate generated on Mulinux, key at `/etc/keel/engage-writer.key` (mode 600) and cert at
+       `/etc/keel/engage-writer.crt`. Upload the public cert only as a keyCredential.
+     - Create its service principal.
+     - `requiredResourceAccess`: Microsoft Graph application permission **`Community.ReadWrite.All` only**. Add nothing else.
+     - Write `/etc/keel/engage-writer.json` (mode 600) in the same shape as `/etc/keel/restorer.json`: tenantId, the new clientId,
+       certPath and keyPath above. No secret in it.
+  2. Set `Status: blocked: waiting on consent (KEEL-RT-engage-writer)` and push. Marouane is asked in the thread to click
+     **Grant admin consent** on `KEEL-RT-engage-writer`. On each later pass, check the SP's appRoleAssignments.
+  3. Once `Community.ReadWrite.All` is held: get a fresh token with it and report its length in bytes. Then
+     `GET /v1.0/employeeExperience/communities?$top=1` three times, 30 s apart. Report status, body type (HTML or JSON) and request-id.
+  4. If step 3 answers 200: set this item done and run Q219 (community part) with `/etc/keel/engage-writer.json`.
+     If it still answers the HTML 400, set `blocked`, report it, and leave Q219 blocked.
+- **Hard rules:** no other permission on this app; no grant or consent by you; global admin not used; never print a token or key.
+  Do not change the Keel Restorer or the Collector.
+- **Report:** app object id, appId and SP id (first 8 characters), cert path and expiry, the requiredResourceAccess names,
+  steps 3–4, and anything left in the tenant.

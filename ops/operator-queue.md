@@ -11173,8 +11173,41 @@ item that needs it stays untouched.
   **2026-11-14 10:25 UTC**: `oauth2PermissionGrant.create`/`.update` (Q67 + Q78), `permissionGrantPolicy.create` (Q73) and `.update` (Q79).
 - Needs: nothing. Run it at the deployed commit B (`git -C /opt/keel-live rev-parse HEAD`). **Do this before Q229–Q234 if they are not
   started; it has the earliest deadline.**
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-29 23:45 UTC, keel-operator). **All 4 promoted with new observedAt 2026-10-29**, so they lapse 2026-11-28.
+  - B = **53cbe462**.
+  - Credentials: Restorer for writes, Collector for reads and the backup. Global admin not used; nothing granted.
+  - **No admin consent** given, no credential added, and the policy was never put in an authorization policy. No CA, no break-glass.
+  - Self-approved: requester Gmail, approver Entra.
+  - Before: no `keel-rt-235` consent policy and no `KEEL-RT-235` app.
+  - Fixtures:
+    - consent policy `keel-rt-235-consent` with one include (delegated, low). The first include POST answered 404 because of replication lag; it succeeded on retry.
+    - `KEEL-RT-235-app` (single tenant, no credentials, no permissions) and its SP.
+    - grant: Principal, client = the app's SP, principal `keel-rt-20260908-ben`, resource Microsoft Graph, scope `openid`.
+  - Step 1: S = `172ed6ed`, exit 3 (incomplete only on todoSettings 500). S holds the policy with 1 include (delegated, low) and the grant with `openid`.
+  - Step 2, update:
+    - Drift: added an include (delegated, medium), then removed low. The first remove answered 400 `PermissionGrantPolicy should contain an Includes PermissionGrantConditionSet.` (medium not replicated yet); it succeeded 15 s later, so medium was the only include. Grant scope → `openid profile`.
+    - Dry run `bd0446c3` closed to 7 resources (app, SP, Graph SP, domain, ben). The journal shows **only the 2 fixtures written**.
+    - Approval **5b96a365**. Enforce exit 0, both `update succeeded`. Read back: policy `[(delegated, low)]`, grant `openid`.
+  - Step 3, create:
+    - Grant and policy deleted (204; both read 404).
+    - Dry run `5d9c6f6e`, approval **20ce7c34**, exit 0, both `create succeeded`. Both back as in S. The grant id is the same, because Graph derives it from client, user and resource.
+  - Captures: grant with `--allow-by-reference` and its journaled key.
+
+    | record | observedAt (2026-10-29, UTC) |
+    |---|---|
+    | permissionGrantPolicy.update | 23:36:29 |
+    | oauth2PermissionGrant.update | 23:36:48 |
+    | permissionGrantPolicy.create | 23:40:38 |
+    | oauth2PermissionGrant.create | 23:40:49 |
+
+  - Step 4: dry run `983f618f` from S: 0 objects with changes, 0 skipped, 0 failed.
+    - **Caveat:** these two writers report `changes: null` in a dry run even when drifted (the step 2 dry run looked the same), so the count can't prove 0 writes (**#720**).
+  - Step 5: grant, policy and SP deleted. The app's first DELETE answered 404 (lag); it succeeded on retry. App and SP purged from deleted items (404 after). **Left in the tenant: nothing.**
+  - Step 6:
+    - Checks: `pseudonymize.mjs check` passes on 8 files; secret scan 0; no raw ids.
+    - Commit **e7cbce56** on `claude/live-evidence-q235` (pushed, no PR).
+    - Each record prints `fixture-tested -> live-qualified`: `oauth2PermissionGrant.create.json`, `oauth2PermissionGrant.update.json`, `permissionGrantPolicy.create.json`, `permissionGrantPolicy.update.json`.
 - **Test tenant only.** Same hard rules, capture tooling and Restorer/Collector split as Q67. Self-approve under the 2026-10-14 standing
   authorization and log every approval id. Restorer for writes; global admin not used; no permission added (Q26: Restorer holds
   Policy.ReadWrite.PermissionGrant and Directory.ReadWrite.All). **Never grant admin consent**, never add a credential, never put the

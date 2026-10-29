@@ -1,15 +1,15 @@
 {
-  "restoreRef": "f6ab79fc-7858-8d60-ac6b-d927b5899d5b",
+  "restoreRef": "e836c92c-5798-86f9-8dfe-2aca83983558",
   "entry": {
     "naturalKey": "groupSetting:Group.Unified",
     "resourceType": "groupSetting",
     "operation": "update",
-    "targetId": "437a16a9-944f-883d-a663-913216d2a619",
+    "targetId": "794e13e2-7d4e-86fc-a647-1eadd83b534a",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-10T21:21:52.090Z",
+    "recordedAt": "2026-10-29T23:05:27.211Z",
     "priorState": {
-      "id": "437a16a9-944f-883d-a663-913216d2a619",
+      "id": "794e13e2-7d4e-86fc-a647-1eadd83b534a",
       "values": [
         {
           "name": "NewUnifiedGroupWritebackDefault",
@@ -76,7 +76,7 @@
       "displayName": "Group.Unified"
     },
     "intendedState": {
-      "id": "437a16a9-944f-883d-a663-913216d2a619",
+      "id": "794e13e2-7d4e-86fc-a647-1eadd83b534a",
       "values": [
         {
           "name": "NewUnifiedGroupWritebackDefault",
@@ -143,7 +143,6 @@
       "displayName": "Group.Unified"
     },
     "postState": {
-      "id": "437a16a9-944f-883d-a663-913216d2a619",
       "values": [
         {
           "name": "NewUnifiedGroupWritebackDefault",
@@ -207,8 +206,7 @@
         }
       ],
       "templateId": "540c0a13-f76f-8791-9aa9-d9d9f9380f1c",
-      "displayName": "Group.Unified",
-      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#groupSettings/$entity"
+      "displayName": "Group.Unified"
     }
   }
 }

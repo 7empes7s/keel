@@ -1,5 +1,5 @@
 {
-  "restoreRef": "f6ab79fc-7858-8d60-ac6b-d927b5899d5b",
+  "restoreRef": "e836c92c-5798-86f9-8dfe-2aca83983558",
   "entry": {
     "naturalKey": "crossTenantAccessPolicyConfigurationDefault:crossTenantAccessPolicyConfigurationDefault",
     "resourceType": "crossTenantAccessPolicyConfigurationDefault",
@@ -7,11 +7,11 @@
     "targetId": "cae80a1f-30f9-8cad-893d-d0fc3c987b13",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-10T21:21:44.868Z",
+    "recordedAt": "2026-10-29T23:05:40.837Z",
     "priorState": {
       "id": "cae80a1f-30f9-8cad-893d-d0fc3c987b13",
       "inboundTrust": {
-        "isMfaAccepted": true,
+        "isMfaAccepted": false,
         "isCompliantDeviceAccepted": false,
         "isHybridAzureADJoinedDeviceAccepted": false
       },
@@ -97,7 +97,7 @@
               "targetType": "application"
             }
           ],
-          "accessType": "allowed"
+          "accessType": "blocked"
         },
         "usersAndGroups": {
           "targets": [
@@ -106,7 +106,7 @@
               "targetType": "user"
             }
           ],
-          "accessType": "allowed"
+          "accessType": "blocked"
         }
       },
       "b2bDirectConnectOutbound": {

@@ -26,8 +26,12 @@ export function startPoll(tick: () => void, intervalMs: number, env: PollEnv = {
     timer = setTimeout(() => {
       timer = null;
       last = env.now();
-      tick();
-      schedule();
+      // A tick that throws must not end the poll.
+      try {
+        tick();
+      } finally {
+        schedule();
+      }
     }, Math.max(0, last + intervalMs - env.now()));
   };
   const onVisibility = () => {

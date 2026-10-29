@@ -292,7 +292,7 @@ function matcherFor(entry, desired) {
       && (desired.consentType !== 'Principal' || String(object.principalId).toLowerCase() === String(desired.principalId).toLowerCase());
   }
   // Graph gives a created app creation policy its own id, so a re-run finds it by name.
-  if (entry.family === 'creation-policy') return (object) => object.isBuiltIn !== true && sameText(object.displayName, desired.displayName);
+  if (entry.family === 'creation-policy') return (object) => object.isBuiltIn === false && sameText(object.displayName, desired.displayName);
   return null;
 }
 

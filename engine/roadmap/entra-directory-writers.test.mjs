@@ -50,6 +50,12 @@ function directoryGraph({ readOverride = null } = {}) {
       graph.objects.set(`${path}/${request.body.id}`, created);
       return { ok: true, status: 201, body: created };
     }
+    // Graph gives a created app creation policy its own id; it is a custom one.
+    if (request.method === 'POST' && path === CREATION) {
+      const created = { ...request.body, id: `creation-${graph.objects.size + 1}`, isBuiltIn: false };
+      graph.objects.set(`${path}/${created.id}`, created);
+      return { ok: true, status: 201, body: created };
+    }
     // A condition set is added to its policy's list.
     const set = new RegExp(`^(/policies/${SETS}/[^/]+)/(includes|excludes)$`).exec(path);
     if (set && request.method === 'POST') {
@@ -541,6 +547,20 @@ test('batch 21: a drifted app creation policy gets the backup\'s conditions back
   assert.deepEqual(graph.bodies[0].body, { description: 'Fixture' });
   assert.ok(!reads.some((requested) => /\/(includes|excludes)$/.test(requested)), 'the condition sets are never read on their own (Graph expands them on the policy)');
   assert.deepEqual(graph.objects.get(`${path}/excludes`).value, []);
+});
+
+test('batch 21: a create that finds the policy by name brings its drifted conditions back to the backup\'s', async () => {
+  const graph = directoryGraph();
+  const path = `${CREATION}/policy-9`;
+  graph.objects.set(path, { id: 'policy-9', displayName: 'KEEL-RT-app-creation', description: 'Fixture', isBuiltIn: false });
+  graph.objects.set(`${path}/includes`, { value: [{ id: 'inc-9', applicationTenantIds: ['all'], applicationsFromVerifiedPublisherOnly: false }] });
+  graph.objects.set(`${path}/excludes`, { value: [{ id: 'exc-9', applicationPublisherIds: ['publisher-x'] }] });
+  // A listed policy with no built-in flag is never taken over by name.
+  graph.objects.set(`${CREATION}/policy-unmarked`, { id: 'policy-unmarked', displayName: 'KEEL-RT-app-creation' });
+  const result = await run(graph, [creationResource('create')]);
+  assert.deepEqual(result.failed, []);
+  assert.equal(result.applied[0].targetId, 'policy-9');
+  assert.deepEqual(graph.bodies.map((write) => `${write.method} ${write.path}`), [`DELETE ${path}/excludes/exc-9`]);
 });
 
 test('batch 21: a built-in or unmarked app creation policy is skipped before any write', async () => {

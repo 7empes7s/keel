@@ -678,7 +678,8 @@ export function fakeGraph() {
       // Batch 18: an app KEEL wrote reads back as written.
       if (/^\/deviceAppManagement\/mobileApps\/[^/]+$/.test(path) && !objects.has(path)) return { ok: true, status: 200, body: { id: decodeURIComponent(path.split('/').pop()) } };
       // Restore gaps batch 12: the imported ADMX files are listed before an upload.
-      if (path === '/deviceManagement/groupPolicyUploadedDefinitionFiles') {
+      // and batch 21: the Defender roles are listed before a create.
+      if (path === '/deviceManagement/groupPolicyUploadedDefinitionFiles' || path === '/roleManagement/defender/roleDefinitions') {
         const value = [...objects.entries()].filter(([key]) => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes('/')).map(([, object]) => object);
         return { ok: true, status: 200, body: { value } };
       }

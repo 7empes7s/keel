@@ -488,6 +488,25 @@ function defenderRoleRefusal(resource) {
   return null;
 }
 
+const DEFENDER_ROLES = '/roleManagement/defender/roleDefinitions';
+
+/**
+ * Graph gives a recreated Defender role a new id, so a second restore from the
+ * same backup would not know it. Before a create, a custom role with the same
+ * name is looked for: one that already holds the backup's settings means the
+ * create is done; any other one is left for a person, never duplicated.
+ */
+async function defenderRoleCreatePreflight(io, { payload, verb }) {
+  if (verb !== 'create') return null;
+  const listed = await io.retryOperation(() => io.writer.read('beta', DEFENDER_ROLES));
+  if (listed?.ok !== true) return `could not list the Defender roles to look for one made before (${outcomeDetail(listed)})`;
+  const named = (listed.body?.value ?? []).filter((role) => String(role?.displayName ?? '').toLowerCase() === String(payload.displayName ?? '').toLowerCase());
+  if (named.length === 0) return null;
+  const same = named.find((role) => role.isBuiltIn !== true && sameValue(role.description, payload.description) && sameValue(role.rolePermissions, payload.rolePermissions));
+  if (same) return { skipped: `a custom Defender role "${payload.displayName}" with the backup's permissions is already there (${same.id}), so nothing is written` };
+  return `a Defender role named "${payload.displayName}" already exists with other settings; KEEL does not make a second one, so check it by hand`;
+}
+
 const v1 = (page) => `${DOCS}/${page}?view=graph-rest-1.0`;
 const beta = (page) => `${DOCS}/${page}?view=graph-rest-beta`;
 
@@ -634,8 +653,9 @@ export const IDENTITY_RECORDS = Object.freeze({
   // Graph documents the create; the update uses the same PATCH as the other
   // role providers and is confirmed by the live proof.
   defenderRoleDefinition: defineRecord({
-    resourceType: 'defenderRoleDefinition', version: 'beta', collection: '/roleManagement/defender/roleDefinitions',
+    resourceType: 'defenderRoleDefinition', version: 'beta', collection: DEFENDER_ROLES,
     operations: ['create', 'update'], writable: ['displayName', 'description', 'rolePermissions'], refusal: defenderRoleRefusal,
+    preflight: defenderRoleCreatePreflight,
     permission: 'RoleManagement.ReadWrite.Defender', docs: beta('rbacapplication-post-roledefinitions'),
   }),
   // Restore gaps, batch 17 (tenant-wide, approved by the user on 2026-10-22).

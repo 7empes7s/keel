@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import { CONSTANT_KEY_TYPES, ID_KEY_TYPES } from '../../engine/cir/naturalKey.mjs';
 import { canonicalizeAll } from '../../engine/cir/canonicalize.mjs';
 import { dependencyClosure } from '../../engine/restore/selection.mjs';
-import { buildLiveGatePlan, restoreKeyFor, FIXTURE_PREFIX } from './live-gate-plan.mjs';
+import { buildLiveGatePlan, guidanceFor, restoreKeyFor, FIXTURE_PREFIX } from './live-gate-plan.mjs';
 
 const plan = buildLiveGatePlan();
 const selectOf = (step) => step.commands.map((command) => command.match(/--select '([^']*)'/)?.[1]).find(Boolean) ?? null;
@@ -78,4 +78,19 @@ test('an id-keyed kind is never selected by its fixture name', () => {
   assert.ok(isPlaceholder(restoreKeyFor('deviceCategory', `${FIXTURE_PREFIX}-category`)));
   const resources = canonicalizeAll([['deviceCategory', [{ id: 'cat-guid', displayName: `${FIXTURE_PREFIX}-category` }]]]);
   assert.equal(resources[0].naturalKey, 'deviceCategory:cat-guid');
+});
+
+test('Intune policies named by displayName are captured as named fixtures, not by reference', () => {
+  // Q129: with no reviewed guidance, an id-keyed kind fell back to 'by-reference'
+  // and the capture refused a windowsFeatureUpdateProfile fixture.
+  const named = ['assignmentFilter', 'roleScopeTag', 'windowsAutopilotDeploymentProfile', 'windowsFeatureUpdateProfile',
+    'windowsQualityUpdateProfile', 'windowsDriverUpdateProfile', 'notificationMessageTemplate', 'managedAppPolicy',
+    'targetedManagedAppConfiguration', 'mobileAppConfiguration'];
+  for (const resourceType of named) {
+    const guidance = guidanceFor(resourceType);
+    assert.equal(guidance.reviewed, true, resourceType);
+    assert.equal(guidance.kind, 'named-object', resourceType);
+    assert.ok(guidance.select.startsWith(`${FIXTURE_PREFIX}-`), `${resourceType}: ${guidance.select}`);
+    assert.match(guidance.fixture, /assigned to nobody|used by no|on no object/, resourceType);
+  }
 });

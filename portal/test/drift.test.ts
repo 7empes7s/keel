@@ -11,7 +11,8 @@ import { POST as disposeRoute } from "@/app/api/actions/dispose/route";
 import { POST as remediateRoute } from "@/app/api/actions/remediate/route";
 import { POST as approveRoute } from "@/app/api/approvals/[id]/approve/route";
 import { driftActionControls, remediationParams } from "@/lib/drift-actions";
-import { getDashboardData, getDriftData } from "@/lib/portal-data";
+import { menuStatuses } from "@/lib/menu-status";
+import { getDashboardData, getDriftData, getMenuStatusData } from "@/lib/portal-data";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { tenantRef } from "@/lib/runtime-config";
 import { detectWorkloadDrift } from "../../engine/govern/workloadDrift.mjs";
@@ -384,6 +385,14 @@ test("the Overview counts open service setting changes beside the approved-setup
   assert.equal(after.openDriftTotal, before.openDriftTotal + 1, "the mail flow rule change counts");
   const accessAffecting = (data: typeof after) => data.openDriftByBlastRadius.find((item) => item.blastRadius === "access-affecting")?.count ?? 0;
   assert.equal(accessAffecting(after), accessAffecting(before) + 1);
+
+  // The menu's poll reads the same figures, and only those its badges need.
+  const menu = await getMenuStatusData();
+  assert.deepEqual(Object.keys(menu).sort(), ["alerts", "coverage", "evidence", "generatedAt", "headline", "openDriftByBlastRadius", "openDriftTotal", "waiting"]);
+  const { generatedAt: _menuAt, ...menuFigures } = menu;
+  const { generatedAt: _overviewAt, ...overviewFigures } = after;
+  for (const [key, value] of Object.entries(menuFigures)) assert.deepEqual(value, overviewFigures[key as keyof typeof overviewFigures], `${key} matches the Overview`);
+  assert.deepEqual(menuStatuses(menu, 1), menuStatuses(after, 1), "the badges say what the Overview says");
 });
 
 // PR #435 follow-up: a changed Intune script reaches read views as its size and a

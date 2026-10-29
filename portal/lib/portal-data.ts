@@ -72,6 +72,7 @@ import type {
   CoverageType,
   DashboardAlert,
   DashboardData,
+  MenuStatusData,
   DashboardWaiting,
   DeclaredEndpoint,
   DiagnosisState,
@@ -1411,70 +1412,82 @@ export async function getRestoreFollowUps(): Promise<RestoreFollowUp[]> {
   return withClient(async (client) => (await listOpenCompletionWork(client, { tenantRef: ref })) as RestoreFollowUp[]);
 }
 
+// What both the Overview and the menu's badges need: the protection headline and
+// coverage counts, open changes by risk, the audit check, waiting work and the alerts.
+// The Overview adds the approver names, the 30-day trend and the compliance score.
+async function overviewCore(client: KeelClient, ref: string, generatedAt: Date) {
+  const active = (await getActiveBaseline(client, { tenantRef: ref })) as
+    | UnknownRecord
+    | null;
+  const baselines = active ? await baselinesFor(client, ref) : [];
+  const activeBaseline = active
+    ? baselines.find((candidate) => candidate.id === String(active.id)) ??
+      normalizeBaseline({ ...active, resource_count: 0 })
+    : null;
+  const lastCollectionRaw = (await getLastCollection(client, {
+    tenantRef: ref,
+  })) as UnknownRecord | null;
+  const evidenceRaw = (await getEvidenceIntegrity(client, {
+    tenantRef: ref,
+  })) as { ok: boolean; chainLength: number };
+  // Open changes in every service: the approved-setup changes (Entra ID and Intune)
+  // and the service setting changes the Changes page lists beside them.
+  const serviceChanges = await loadServiceChanges(client, { tenantRef: ref, now: generatedAt }).catch((error) => {
+    console.error("[keel-portal] overview service changes unavailable", error);
+    return [] as DriftRecord[];
+  });
+  const drift = [...await activeDriftFor(client, ref, activeBaseline?.id ?? null), ...serviceChanges];
+  const rawCoverage = await rawCoverageReport(client, ref);
+  const coverageData = await coverageFor(client, ref, rawCoverage);
+  // Task-129: the Overview sentence comes from this same report, never a constant.
+  // The workloads join the Entra ID and Intune types, as on What's protected.
+  const headline = protectionHeadline([...(rawCoverage.types as unknown[]), ...headlineEntries(coverageData.workloads)] as never) as ProtectionHeadline;
+
+  const openDriftByBlastRadius = [...new Set([
+    ...BLAST_RADIUS_ORDER,
+    ...drift.map((item) => item.blastRadius),
+  ])]
+    .map((blastRadius) => ({
+      blastRadius,
+      count: drift.filter((item) => item.blastRadius === blastRadius).length,
+    }))
+    .filter((item) => item.count > 0 || BLAST_RADIUS_ORDER.includes(item.blastRadius));
+  const lastCollection = lastCollectionRaw
+    ? {
+        completedAt: iso(lastCollectionRaw.completedAt),
+        status: String(lastCollectionRaw.status),
+      }
+    : null;
+  const coverage = withWorkloadCoverage(coverageData.summary, coverageData.workloads);
+  const evidence = {
+    ok: Boolean(evidenceRaw.ok),
+    chainLength: Number(evidenceRaw.chainLength),
+  };
+  return {
+    activeBaseline,
+    lastCollection,
+    lastCompletedCollectionAt: coverageData.snapshot?.completedAt ?? null,
+    openDriftByBlastRadius,
+    openDriftTotal: drift.length,
+    coverage,
+    evidence,
+    alerts: buildAlerts({ activeBaseline, lastCollection, coverage, evidence }),
+    headline,
+    waiting: await waitingFor(client, ref),
+  };
+}
+
 export async function getDashboardData(): Promise<DashboardData> {
   const ref = tenantRef();
   return withClient(async (client) => {
-    const active = (await getActiveBaseline(client, { tenantRef: ref })) as
-      | UnknownRecord
-      | null;
-    const baselines = await baselinesFor(client, ref);
-    const found = active
-      ? baselines.find((candidate) => candidate.id === String(active.id)) ??
-        normalizeBaseline({ ...active, resource_count: 0 })
-      : null;
-    const activeBaseline = found ? (await withApproverNames(client, [found]))[0] : null;
-    const lastCollectionRaw = (await getLastCollection(client, {
-      tenantRef: ref,
-    })) as UnknownRecord | null;
-    const evidenceRaw = (await getEvidenceIntegrity(client, {
-      tenantRef: ref,
-    })) as { ok: boolean; chainLength: number };
     const generatedAt = new Date();
-    // Open changes in every service: the approved-setup changes (Entra ID and Intune)
-    // and the service setting changes the Changes page lists beside them.
-    const serviceChanges = await loadServiceChanges(client, { tenantRef: ref, now: generatedAt }).catch((error) => {
-      console.error("[keel-portal] overview service changes unavailable", error);
-      return [] as DriftRecord[];
-    });
-    const drift = [...await activeDriftFor(client, ref, activeBaseline?.id ?? null), ...serviceChanges];
-    const rawCoverage = await rawCoverageReport(client, ref);
-    const coverageData = await coverageFor(client, ref, rawCoverage);
-    // Task-129: the Overview sentence comes from this same report, never a constant.
-    // The workloads join the Entra ID and Intune types, as on What's protected.
-    const headline = protectionHeadline([...(rawCoverage.types as unknown[]), ...headlineEntries(coverageData.workloads)] as never) as ProtectionHeadline;
-    const driftTrend = await driftTrendFor(client, ref, activeBaseline?.id ?? null, generatedAt);
-
-    const openDriftByBlastRadius = [...new Set([
-      ...BLAST_RADIUS_ORDER,
-      ...drift.map((item) => item.blastRadius),
-    ])]
-      .map((blastRadius) => ({
-        blastRadius,
-        count: drift.filter((item) => item.blastRadius === blastRadius).length,
-      }))
-      .filter((item) => item.count > 0 || BLAST_RADIUS_ORDER.includes(item.blastRadius));
-    const lastCollection = lastCollectionRaw
-      ? {
-          completedAt: iso(lastCollectionRaw.completedAt),
-          status: String(lastCollectionRaw.status),
-        }
-      : null;
-    const data: DashboardData = {
+    const core = await overviewCore(client, ref, generatedAt);
+    const activeBaseline = core.activeBaseline ? (await withApproverNames(client, [core.activeBaseline]))[0] : null;
+    return {
       generatedAt: generatedAt.toISOString(),
+      ...core,
       activeBaseline,
-      lastCollection,
-      lastCompletedCollectionAt: coverageData.snapshot?.completedAt ?? null,
-      openDriftByBlastRadius,
-      openDriftTotal: drift.length,
-      driftTrend,
-      coverage: withWorkloadCoverage(coverageData.summary, coverageData.workloads),
-      evidence: {
-        ok: Boolean(evidenceRaw.ok),
-        chainLength: Number(evidenceRaw.chainLength),
-      },
-      alerts: [],
-      headline,
-      waiting: await waitingFor(client, ref),
+      driftTrend: await driftTrendFor(client, ref, activeBaseline?.id ?? null, generatedAt),
       compliance: await complianceFindings(client, { tenantRef: ref, now: generatedAt })
         .then(({ summary }: { summary: ComplianceSummary }) => summary)
         .catch((error: unknown) => {
@@ -1482,9 +1495,18 @@ export async function getDashboardData(): Promise<DashboardData> {
           return null;
         }),
     };
+  });
+}
 
-    data.alerts = buildAlerts(data);
-    return data;
+// The menu's badges: the Overview's own figures without the parts no badge reads
+// (approver names, the 30-day trend, the compliance score), so the 60-second poll in
+// every open tab stays cheap and the badges always agree with the Overview.
+export async function getMenuStatusData(): Promise<MenuStatusData> {
+  const ref = tenantRef();
+  return withClient(async (client) => {
+    const generatedAt = new Date();
+    const { headline, coverage, openDriftByBlastRadius, openDriftTotal, evidence, waiting, alerts } = await overviewCore(client, ref, generatedAt);
+    return { generatedAt: generatedAt.toISOString(), headline, coverage, openDriftByBlastRadius, openDriftTotal, evidence, waiting, alerts };
   });
 }
 

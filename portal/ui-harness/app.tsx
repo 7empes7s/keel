@@ -170,9 +170,9 @@ const HARNESS_CALLS: { url: string; method: string; body: string | null }[] = []
 window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   HARNESS_CALLS.push({ url: url.replace(/^https?:\/\/[^/]+/, ""), method: init?.method ?? "GET", body: typeof init?.body === "string" ? init.body : null });
-  // The menu's section statuses read the Overview's data; answer at once so every
+  // The menu's section statuses read the Overview's figures; answer at once so every
   // screenshot shows them.
-  if (url.endsWith("/api/dashboard")) return json(dashboard(0));
+  if (url.endsWith("/api/menu-status") || url.endsWith("/api/dashboard")) return json(dashboard(0));
   // Settings' menu badge and the search's people and kinds of settings.
   // People: adding someone answers the new person; every change to a person succeeds.
   // Compliance: an exception is saved; the evidence export answers two records.

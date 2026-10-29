@@ -13,7 +13,7 @@ import { ShellStateProvider, useShellState } from "@/components/shell/shell-stat
 import type { MenuPrefs } from "@/lib/menu-prefs";
 import { menuStatuses, settingsStatus, type MenuStatuses } from "@/lib/menu-status";
 import type { ThemePreference } from "@/lib/theme";
-import type { DashboardData } from "@/lib/types";
+import type { MenuStatusData } from "@/lib/types";
 import { usePoll } from "@/lib/use-poll";
 
 interface ShellProps {
@@ -27,7 +27,7 @@ interface ShellProps {
 
 // The page frame, direction A ("Chart room"): a navy menu on the left on a desktop
 // (hideable), a top bar and a bottom tab bar on a phone, where All opens the same menu
-// as a sheet. Section statuses come from the Overview's data, so a closed section or a
+// as a sheet. Section statuses come from the Overview's figures (/api/menu-status), so a closed section or a
 // phone tab still says when something needs someone.
 export function AppShell(props: ShellProps) {
   return (
@@ -51,17 +51,17 @@ async function readJson<T>(url: string): Promise<T | null> {
 }
 
 function useStatuses(canRead: boolean, canUsers: boolean, pendingApprovals: number | null) {
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [dashboard, setDashboard] = useState<MenuStatusData | null>(null);
   const [settings, setSettings] = useState<SettingsInputs>({ principals: null, deliveries: null });
   const [ready, setReady] = useState(!canRead);
   const [approvals, setApprovals] = useState<{ from: number | null; count: number | null }>({ from: pendingApprovals, count: pendingApprovals });
   // A server render (navigation or refresh) brings a fresh count; it replaces the polled one.
   if (approvals.from !== pendingApprovals) setApprovals({ from: pendingApprovals, count: pendingApprovals });
 
-  async function readDashboard() {
+  async function readMenuStatus() {
     try {
-      const response = await fetch("/api/dashboard", { cache: "no-store" });
-      if (response.ok) setDashboard(await response.json() as DashboardData);
+      const response = await fetch("/api/menu-status", { cache: "no-store" });
+      if (response.ok) setDashboard(await response.json() as MenuStatusData);
     } catch {
       // Keep the last statuses.
     }
@@ -92,9 +92,9 @@ function useStatuses(canRead: boolean, canUsers: boolean, pendingApprovals: numb
     }));
   }
 
-  useEffect(() => { if (canRead) void readDashboard(); }, [canRead]);
+  useEffect(() => { if (canRead) void readMenuStatus(); }, [canRead]);
   useEffect(() => { if (canRead || canUsers) void readSettings(); }, [canRead, canUsers]);
-  usePoll(readDashboard, 60_000, canRead);
+  usePoll(readMenuStatus, 60_000, canRead);
   usePoll(readSettings, 60_000, canRead || canUsers);
   usePoll(readApprovals, 10_000, pendingApprovals !== null);
 

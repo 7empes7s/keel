@@ -46,6 +46,7 @@ export const DATA_SURFACES = {
     capability: "read",
     source: "api/dashboard/route.ts",
   },
+  menuStatusApi: { capability: "read", source: "api/menu-status/route.ts" },
   coverageApi: {
     capability: "read",
     source: "api/coverage/route.ts",

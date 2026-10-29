@@ -629,6 +629,11 @@ export interface DashboardData {
   compliance?: ComplianceSummary | null;
 }
 
+// What the menu's badges read (GET /api/menu-status): the Overview's own figures, so a
+// badge and the Overview never disagree, without the parts no badge needs.
+export type MenuStatusData = Pick<DashboardData,
+  "generatedAt" | "headline" | "coverage" | "openDriftByBlastRadius" | "openDriftTotal" | "evidence" | "waiting" | "alerts">;
+
 export interface RestoreFollowUp {
   restoreRef: string;
   pending: number;

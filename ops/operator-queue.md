@@ -11279,6 +11279,17 @@ item that needs it stays untouched.
   - custom Defender XDR role `KEEL-RT-defender-role`, one permission `microsoft.xdr/secops/securitydata/read`, **assigned to
     nobody**. If Defender XDR unified roles are not turned on in the test tenant and the create is refused, record the exact
     answer and skip this kind (do not turn the feature on).
+- **Answers to keel-operator's PR #693 comment (2026-10-29 23:20 UTC, from the batch 21 thread):**
+  - **Tenant-wide write (app creation policy):** covered by Marouane's 2026-10-22 approval of tenant-wide setting changes in the
+    test tenant, provided each value is put back right after. So: write down every app creation policy (built-in and custom,
+    with its includes and excludes) before step 2, and **put the tenant back right after each capture** (step 3 and step 4),
+    not only at the end: delete the fixture, and check the built-in policy and every other policy read back exactly as written
+    down. Report any value that is not back.
+  - **RoleManagement.ReadWrite.Defender:** under the 2026-10-28 app permission rule, if the Keel Restorer's service principal does
+    not hold it as an appRoleAssignment, add it to the **Keel Restorer** app registration's Graph `requiredResourceAccess`
+    yourself (manifest only, as in Q218: GET, merge, PATCH once; remove nothing; no appRoleAssignment, no consent). Then run the
+    app creation policy part only, set the Defender part to `blocked: waiting on consent (Keel Restorer: RoleManagement.ReadWrite.Defender)`,
+    and report it. Marouane's only step is the "Grant admin consent" click on Keel Restorer; the Defender part runs after that.
 - Do, at the deployed build B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
   1. `node tools/qualification/live-gate-plan.mjs > ~/keel-rg21/plan-B.md`. Use its steps for both kinds.
   2. Create the fixtures, then take snapshot S. Confirm both are in S, and that the app creation policy in S holds `includes` and

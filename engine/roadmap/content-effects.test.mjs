@@ -280,6 +280,31 @@ test('issue #705: copying app protection work data to more apps is externally-sh
   ]);
 });
 
+test('issue #705 review: a maximum wipe OS version that is new or lower wipes more devices; a higher one is benign', () => {
+  const { effects, refusals } = classifyContentEffects([
+    update('managedAppPolicy', iosProtection, { ...iosProtection, maximumWipeOsVersion: '17.0' }, 'managedAppPolicy:new-max'),
+    update('managedAppPolicy', { ...iosProtection, maximumWipeOsVersion: '18.0' }, { ...iosProtection, maximumWipeOsVersion: '17.2' }, 'managedAppPolicy:lower-max'),
+    update('managedAppPolicy', { ...iosProtection, maximumWipeOsVersion: '17.0' }, { ...iosProtection, maximumWipeOsVersion: '18.0' }, 'managedAppPolicy:higher-max'),
+  ]);
+  assert.deepEqual(refusals, []);
+  assert.deepEqual(shape(effects), [
+    { naturalKey: 'managedAppPolicy:lower-max', field: 'maximumWipeOsVersion', effect: 'irreversible', before: '18.0', after: '17.2' },
+    { naturalKey: 'managedAppPolicy:new-max', field: 'maximumWipeOsVersion', effect: 'irreversible', before: null, after: '17.0' },
+  ]);
+});
+
+test('issue #705 review: sending work data to more apps is externally-sharing on update, never on create', () => {
+  const { effects, refusals } = classifyContentEffects([
+    update('managedAppPolicy', { ...iosProtection, allowedOutboundDataTransferDestinations: 'managedApps' }, iosProtection, 'managedAppPolicy:transfer-wider'),
+    update('managedAppPolicy', iosProtection, { ...iosProtection, allowedOutboundDataTransferDestinations: 'none' }, 'managedAppPolicy:transfer-narrower'),
+    appPolicy({ ...iosProtection, displayName: 'KEEL-RT-ios-open', periodOfflineBeforeWipeIsEnforced: 'P0D' }, { newAssignments: ['group:KEEL-RT-Users'] }),
+  ]);
+  assert.deepEqual(refusals, []);
+  assert.deepEqual(shape(effects), [
+    { naturalKey: 'managedAppPolicy:transfer-wider', field: 'allowedOutboundDataTransferDestinations', effect: 'externally-sharing', before: 'managedApps', after: 'allApps' },
+  ]);
+});
+
 test('issue #705: an unreadable offline wipe period counts as shorter', () => {
   const { effects } = classifyContentEffects([update('managedAppPolicy', iosProtection, { ...iosProtection, periodOfflineBeforeWipeIsEnforced: 'soon' }, 'managedAppPolicy:odd')]);
   assert.deepEqual(effects.map((e) => e.field), ['periodOfflineBeforeWipeIsEnforced']);

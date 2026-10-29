@@ -143,6 +143,9 @@ const versionAbove = (left, right) => {
 };
 const hasVersion = (value) => typeof value === 'string' && value.trim().length > 0;
 const wipeVersionRises = (before, after) => hasVersion(after) && (!hasVersion(before) || versionAbove(after, before));
+// Issue #705 review: a MAXIMUM wipe version wipes devices above it, so one that
+// is new or lower wipes more.
+const wipeVersionFalls = (before, after) => hasVersion(after) && (!hasVersion(before) || versionAbove(before, after));
 
 // Issue #705: iOS and Android app protection (managedAppPolicy).
 /** An ISO 8601 duration (P90D, PT12H) in days, or null when unreadable. */
@@ -170,6 +173,8 @@ const offlineWipeTightens = (before, after) => {
 // level is judged: a new policy only ever narrows.
 const CLIPBOARD_SHARING = ['blocked', 'managedApps', 'managedAppsWithPasteIn', 'allApps'];
 const clipboardWidens = (before, after) => hasValue(before) && widens(CLIPBOARD_SHARING)(before, after);
+const DATA_TRANSFER_DESTINATIONS = ['none', 'managedApps', 'allApps'];
+const transferWidens = (before, after) => hasValue(before) && widens(DATA_TRANSFER_DESTINATIONS)(before, after);
 const increasesFromKnown = (before, after) => typeof before === 'number' && typeof after === 'number' && after > before;
 // Every action field (appActionIf..., and the threat defense remediation) set to
 // wipe. Read by name, so an action Graph adds later is judged too.
@@ -386,17 +391,25 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
     rule('appActionIfUnableToAuthenticateUser', 'irreversible', becomes('wipe')),
     rule('mobileThreatDefenseRemediationAction', 'irreversible', becomes('wipe')),
   ] },
-  // Issue #705: iOS and Android app protection, written whole by the
-  // managedAppPolicy writer (engine/restore/intuneOperations.mjs). Reviewed
-  // (every field of the v1.0 iOS and Android resources): PIN, encryption,
-  // data transfer, save-as, print, backup and the required and warning
-  // versions restrict or block, keeping the data. What removes work data from
-  // the app is a wipe: an offline period before wipe that is new or shorter, a
-  // wipe version that is new or higher, a Company Portal deferral before wipe
-  // that is new or shorter, or an action that becomes "wipe". Copying work data
-  // to more apps (clipboard level widens, or a longer exception length) lets it
-  // leave the managed apps. A restore assigns a recreated policy too (issue
-  // #461), so a create that is assigned is judged.
+  // Issue #705: app protection, written whole by the managedAppPolicy writer
+  // (engine/restore/intuneOperations.mjs), which creates the iOS and Android
+  // kinds. Reviewed (every field of the v1.0 iOS and Android resources):
+  //  - What removes work data from the app is a wipe: an offline period before
+  //    wipe that is new or shorter, a minimum wipe version that is new or
+  //    higher, a maximum wipe OS version that is new or lower, a Company Portal
+  //    deferral before wipe that is new or shorter, or an action that becomes
+  //    "wipe". Irreversible.
+  //  - The two levels that decide which apps work data may go to (send/open-in
+  //    destinations and clipboard), widened on an existing policy, plus a
+  //    longer clipboard exception, let it leave the managed apps:
+  //    externally-sharing. Not on create: a new policy only ever narrows them.
+  //  - The finer restriction toggles (save-as and storage locations, backup,
+  //    print, exempted apps and protocols, open-in filtering), PIN, encryption
+  //    and the required and warning versions are configuration, as in the
+  //    Windows review above.
+  // A restore assigns a recreated policy too (issue #461), so a create that is
+  // assigned is judged. A delete of a policy that is still assigned is refused
+  // by the writer (DELETE_POLICY), so deletes carry no effect here.
   managedAppPolicy: { reviewed: true, judgesCreates: 'when-assigned', rules: [
     rule('periodOfflineBeforeWipeIsEnforced', 'irreversible', offlineWipeTightens),
     rule('minimumWipeOsVersion', 'irreversible', wipeVersionRises),
@@ -404,8 +417,10 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
     rule('minimumWipeSdkVersion', 'irreversible', wipeVersionRises),
     rule('minimumWipePatchVersion', 'irreversible', wipeVersionRises),
     rule('minimumWipeCompanyPortalVersion', 'irreversible', wipeVersionRises),
+    rule('maximumWipeOsVersion', 'irreversible', wipeVersionFalls),
     rule('wipeAfterCompanyPortalUpdateDeferralInDays', 'irreversible', wipeThresholdTightens),
     rule('appActionIf* (actions that wipe)', 'irreversible', addsEntry, appActionsThatWipe),
+    rule('allowedOutboundDataTransferDestinations', 'externally-sharing', transferWidens),
     rule('allowedOutboundClipboardSharingLevel', 'externally-sharing', clipboardWidens),
     rule('allowedOutboundClipboardSharingExceptionLength', 'externally-sharing', increasesFromKnown),
   ] },

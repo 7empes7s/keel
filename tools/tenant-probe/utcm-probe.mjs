@@ -199,6 +199,7 @@ export async function runCheck({ send, roles, version = 'v1.0' }) {
  */
 const BAD_TYPE = /resource|type|name|invalid|not (?:valid|supported)/i;
 const LIMIT_TEXT = /quota|limit|maximum|exceed|too many/i;
+// A refused job name is not a bad type: splitting would only resend the same name.
 
 export async function createJobs({ send, version, workload, types, depth = 0, stamp, room = { left: VISIBLE_JOB_LIMIT } }) {
   if (room.left <= 0) return { jobs: [], refused: [{ types, status: null, error: `not sent: no room for another snapshot job (TCM shows at most ${VISIBLE_JOB_LIMIT})` }] };
@@ -212,7 +213,7 @@ export async function createJobs({ send, version, workload, types, depth = 0, st
     return { jobs: [{ id: answer.json.id, types, status: answer.json.status ?? null }], refused: [] };
   }
   const text = errorText(answer);
-  if (answer.status === 400 && types.length > 1 && depth < 6 && BAD_TYPE.test(text) && !LIMIT_TEXT.test(text)) {
+  if (answer.status === 400 && types.length > 1 && depth < 6 && BAD_TYPE.test(text) && !LIMIT_TEXT.test(text) && !/displayName/i.test(text)) {
     const half = Math.ceil(types.length / 2);
     const left = await createJobs({ send, version, workload, types: types.slice(0, half), depth: depth + 1, stamp, room });
     const right = await createJobs({ send, version, workload, types: types.slice(half), depth: depth + 1, stamp, room });

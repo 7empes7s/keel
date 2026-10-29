@@ -142,6 +142,15 @@ test('a refusal keeps Graph\'s validation details, which say what was wrong', as
   assert.match(result.refused[0].error, /displayName contains invalid characters/);
 });
 
+test('a refused job name is not split into more requests', async () => {
+  let posts = 0;
+  const fetchImpl = async () => { posts += 1; return { status: 400, headers: { get: () => null }, text: async () => JSON.stringify({ error: { code: 'BadRequest', message: 'One or more validation errors occurred.', details: [{ message: 'Snapshot Job displayName contains invalid characters.' }] } }) }; };
+  const send = probeTransport(async () => 'token', fetchImpl);
+  const result = await createJobs({ send, version: 'v1.0', workload: 'exchange', types: ['microsoft.exchange.place', 'microsoft.exchange.transportrule', 'microsoft.exchange.mailcontact'], stamp: '202610291111' });
+  assert.equal(posts, 1);
+  assert.equal(result.refused.length, 1);
+});
+
 test('no job is created when TCM already shows its limit of jobs, and others\' jobs are never deleted', async () => {
   const tcm = fakeTcm({ visible: VISIBLE_JOB_LIMIT });
   const send = probeTransport(async () => 'token', tcm.fetchImpl);

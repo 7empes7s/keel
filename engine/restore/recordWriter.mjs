@@ -75,6 +75,7 @@ import { refuseUnsafeDeletion } from '../safety/deletionGuard.mjs';
 import { followUpSteps } from './bestEffortRecreate.mjs';
 import { TEST_TENANT_REFS, fixtureProblem } from './workloads/fixtureGuard.mjs';
 import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './rollbackJournal.mjs';
+import { ENGAGE_RESOURCE_TYPES } from './engageWriter.mjs';
 
 export const RECORD_WRITER_CONTRACT_VERSION = 1;
 
@@ -304,7 +305,9 @@ export function writeFailure(record, naturalKey, result) {
     ?.split(',').map((scope) => scope.trim()).filter(Boolean) ?? [];
   if (named.length === 0) return graphFailure(naturalKey, result);
   const permission = named.includes(record?.permission) ? record.permission : named[0];
-  const failure = graphFailure(naturalKey, result, `missing permission: the Restorer needs ${permission} (admin consent); Graph answered `);
+  // Viva Engage writes sign in as the Engage writer (issue #681), so that app needs it.
+  const app = ENGAGE_RESOURCE_TYPES.includes(record?.resourceType) ? 'the Engage writer' : 'the Restorer';
+  const failure = graphFailure(naturalKey, result, `missing permission: ${app} needs ${permission} (admin consent); Graph answered `);
   failure.missingPermission = permission;
   return failure;
 }

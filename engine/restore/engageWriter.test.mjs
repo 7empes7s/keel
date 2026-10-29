@@ -4,6 +4,8 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import { GraphWriter } from './graphWriter.mjs';
+import { IDENTITY_RECORDS } from './identityObjectOperations.mjs';
+import { writeFailure } from './recordWriter.mjs';
 import {
   DEFAULT_ENGAGE_WRITER_CONFIG_PATH, engageWriterConfigPath, isEngageUrl, needsEngageWriter, readEngageWriterConfig,
   restoreWriterTokens,
@@ -114,4 +116,11 @@ test('GraphWriter tells its token function the URL of every request', async (t) 
     ['https://graph.microsoft.com/v1.0/employeeExperience/communities/c-1', 'Bearer token:engage'],
     ['https://graph.microsoft.com/v1.0/groups/g-1', 'Bearer token:restorer'],
   ]);
+});
+
+test('a missing-permission failure on a community names the Engage writer, not the Restorer', () => {
+  const denied = { ok: false, status: 403, body: { error: { code: 'Forbidden', message: "Missing role permissions on the request. API requires one of 'Community.ReadWrite.All'." } } };
+  const failure = writeFailure(IDENTITY_RECORDS.engageCommunity, 'community-1', denied);
+  assert.match(failure.error, /^missing permission: the Engage writer needs Community\.ReadWrite\.All \(admin consent\)/);
+  assert.equal(failure.missingPermission, 'Community.ReadWrite.All');
 });

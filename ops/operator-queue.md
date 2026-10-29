@@ -10874,3 +10874,55 @@ item that needs it stays untouched.
      `live evidence` lines.
 - **Report:** B; per kind and operation: promoted / refused (exact message) / skipped (tenant); step 2, 5 and 6 results; approval ids;
   the evidence branch, commit and PR; anything left in the tenant.
+
+### Q240: Live proof of the custom Exchange admin role restore, then one round trip (after PR #694)
+- Drafted by the "Restore Exchange roles via PowerShell" thread (2026-10-29). PR #694 adds the `exchange-role-definitions` workload
+  restore: a custom Exchange admin role that is gone is recreated with `New-ManagementRole -Parent ... -EnabledCmdlets ...`, then the
+  new role's entries are trimmed to the backup (`Set-ManagementRoleEntry -RemoveParameter`, `Remove-ManagementRoleEntry`) and read
+  back. It never changes a role that already exists. Write `exchange-role-definitions.role.add` ships off until this capture.
+- Needs: PR #694 merged and deployed (build B). The `keel-powershell` image at B (rebuild it if `ops/powershell` changed since the
+  last build: `run-cmdlet.ps1` has two new tables).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules and standing authorization as Q80; log every approval id. Restorer for writes, Collector for
+  reads; global admin not used. The roles created here have no holders: never add them to a role group, user or app.
+- **Fixtures:** the capture makes `KEEL-RT-capture-role-<random>` (a child of `Address Lists`); step 4 makes `KEEL-RT-240-role`.
+  Write down any role named `KEEL-RT-capture-role-*` or `KEEL-RT-240-*` that exists before you start.
+- Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env`:
+  1. **Plan (offline):** `node tools/qualification/exchangeRoleDefinitionsLive.mjs plan`. Expect 2 refusals, then Get-ManagementRole,
+     Get-ManagementRoleEntry, the plan step, then New-ManagementRole, Get/Set(/Remove)-ManagementRoleEntry and the read-backs.
+  2. **Capture:**
+     ```bash
+     node tools/qualification/exchangeRoleDefinitionsLive.mjs capture --confirm-live-tenant-write \
+       --tenant-ref <tenant ref> --collector-ref app:<exchange collector clientId> --restorer-ref app:<exchange restorer clientId> \
+       --collector-config /etc/keel/exchange-collector.json --restorer-config /etc/keel/exchange-restorer.json \
+       --grants <grants.json: {"restorer":{"permissions":["Exchange.ManageAsApp"],"roles":["Exchange Administrator"]}}> --build B \
+       --parent "Address Lists" \
+       --out docs/release/qualifications/exchange-role-definitions-writes-live-acceptance.json
+     node tools/qualification/pseudonymize.mjs check docs/release/qualifications/exchange-role-definitions-writes-live-acceptance.json
+     ```
+     (Use the real Exchange config paths from `/etc/keel/workload-scope.json` if they differ.) Report the exit code and `proven`,
+     `notProven`, `skipped`, `created` and **`enabledCmdletsHonoured`** verbatim (true: New-ManagementRole copied only the cmdlets
+     asked for; false: it copied all of the parent's and the writer removed the rest). If New-ManagementRole refuses `-EnabledCmdlets`
+     or `-Description`, report Exchange's exact message and stop.
+  3. **Evidence and import:** commit the record and its `.capture.json` on `claude/live-evidence-exchange-role-definitions` (from
+     `origin/master`, secret scan and the check above first). Push. No PR. Then
+     `node cli/keel-workload-collect.mjs import --dir <checkout>/docs/release/qualifications` and report the imported/refused lines, and
+     whether `exchange-role-groups.role-groups` (the read-back the write needs) is enabled in `keel-workload-collect.mjs proof`.
+  4. **Round trip** (only if step 3 imported the write and the read-back is enabled):
+     a. As the Restorer in Exchange Online PowerShell: `New-ManagementRole -Parent "Address Lists" -Name KEEL-RT-240-role`, then
+        `Set-ManagementRole KEEL-RT-240-role -Description "KEEL-RT 240 fixture"`, then keep only two read entries:
+        `Get-ManagementRoleEntry "KEEL-RT-240-role\*" | Where-Object Name -notin 'Get-AddressList','Get-GlobalAddressList' | Remove-ManagementRoleEntry -Confirm:$false`,
+        and `Set-ManagementRoleEntry "KEEL-RT-240-role\Get-AddressList" -Parameters ResultSize -RemoveParameter`.
+        Report `Get-ManagementRoleEntry "KEEL-RT-240-role\*" | Select Name,Parameters`.
+     b. Take a Graph backup S (one tier run that reads `exchangeRoleDefinition`). Report the record of `KEEL-RT-240-role` in S as
+        stored: `isBuiltIn`, `rolePermissions[0].allowedResourceActions` (all of them), and whether `inheritsPermissionsFrom` or any
+        other field names its parent. This decides how the writer finds the parent, so report it even if later steps fail.
+     c. Delete it: `Remove-ManagementRole KEEL-RT-240-role -Confirm:$false` (a KEEL-RT- fixture made in step a).
+     d. Dry run as the Collector: `node /opt/keel-live/cli/keel-restore.mjs --workload exchange-role-definitions --collection S --target KEEL-RT-240-role`.
+        Expect 1 change with parent `Address Lists`, 0 refused; report the manual lines verbatim.
+     e. Approve (someone other than the requester), then `--artifact <id> --enforce`. Expect `verified`. Check with
+        `Get-ManagementRoleEntry "KEEL-RT-240-role\*"` (Collector) that it holds exactly the step a entries and parameters.
+     f. Re-run check: dry run again: 0 changes, no manual lines for the role. Promote the step d artifact again: `stale`, no write.
+- **Report:** B; steps 1 to 4 with exit codes; `enabledCmdletsHonoured`; the step 4b record; approval ids; the evidence branch and
+  commit; what is left in the tenant (the capture role and `KEEL-RT-240-role` stay; neither has holders).

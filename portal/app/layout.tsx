@@ -16,6 +16,7 @@ import { AUTHENTICATED_EMAIL_HEADER } from "@/lib/cloudflare-access";
 import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER, principalDisplayName } from "@/lib/principal";
 import { accessInFull, accessSummary } from "@/lib/presentation";
 import { MENU_COOKIE, parseMenuPrefs } from "@/lib/menu-prefs";
+import { loadShellLookups } from "@/lib/shell-lookups";
 import { parseThemePreference, THEME_COOKIE } from "@/lib/theme";
 
 export const metadata: Metadata = {
@@ -48,29 +49,13 @@ export default async function RootLayout({
   const theme = parseThemePreference(cookieStore.get(THEME_COOKIE)?.value);
   const menuPrefs = parseMenuPrefs(cookieStore.get(MENU_COOKIE)?.value);
 
-  // Only approvers see the count, and a failed read hides the badge rather than
-  // breaking every page's chrome.
-  let pendingApprovals: number | null = null;
-  const approverScope = approvalInboxScope(requestHeaders);
-  if (approverScope) {
-    try {
-      pendingApprovals = await getPendingApprovalCount(approverScope);
-    } catch {
-      pendingApprovals = null;
-    }
-  }
-
-  // The menu shows the person's name, never their email as a name. A failed read
-  // falls back to the email-derived label rather than breaking every page's chrome.
+  // Only approvers see the count, and the menu shows the person's name, never their
+  // email as a name. Both reads run at once; a failed read hides only its own piece.
   const principalId = requestHeaders.get(PRINCIPAL_ID_HEADER);
-  let displayName: string | null = null;
-  if (principalId) {
-    try {
-      displayName = await principalDisplayName(principalId);
-    } catch {
-      displayName = null;
-    }
-  }
+  const { pendingApprovals, displayName } = await loadShellLookups(
+    { approverScope: approvalInboxScope(requestHeaders), principalId },
+    { pendingApprovalCount: getPendingApprovalCount, displayName: principalDisplayName },
+  );
 
   return (
     <html data-theme={theme === "system" ? undefined : theme} lang="en">

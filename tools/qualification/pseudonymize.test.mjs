@@ -343,3 +343,48 @@ test('the check fails on an unmasked sign-in name, OneDrive site or publisher do
   assert.throws(() => assertSafeText(raw, { rawIds: rawIdentifiers(raw), label: 'the capture log' }), /raw object id/);
   assert.doesNotThrow(() => assertSafeText(published, { rawIds: rawIdentifiers(raw), label: 'the capture log' }));
 });
+
+test('a Viva Engage community id is pseudonymized wherever it appears, and the check sees a raw one (#684)', () => {
+  const COMMUNITY = Buffer.from('{"_type":"Group","id":"474060623424"}').toString('base64').replace(/=+$/, '');
+  const record = {
+    naturalKey: `engageCommunity:${COMMUNITY}`, targetId: COMMUNITY,
+    entry: { naturalKey: `engageCommunity:${COMMUNITY}` },
+    priorState: { id: COMMUNITY, groupId: GROUP, displayName: 'KEEL-RT-community' },
+    postState: { id: COMMUNITY, groupId: GROUP, displayName: 'KEEL-RT-community' },
+    path: `/employeeExperience/communities/${COMMUNITY}/owners`,
+    padded: `${COMMUNITY}==`,
+  };
+  const raw = JSON.stringify(record);
+  assert.ok(unpseudonymizedIds(raw).includes(COMMUNITY.toLowerCase()), 'the check lists the raw community id');
+  assert.ok(rawIdentifiers(raw).includes(COMMUNITY.toLowerCase()));
+
+  const p = pseudonymizer('sha256:aaaa');
+  const safe = p.walk(record);
+  const text = JSON.stringify(safe);
+  assert.ok(!text.includes(COMMUNITY) && !text.includes('474060623424'), 'no raw community id or number is left');
+  assert.deepEqual(unpseudonymizedIds(text), []);
+  // Every copy maps to the same pseudonym, which still decodes to an Engage id with the same type.
+  const id = safe.targetId;
+  for (const value of [safe.priorState.id, safe.postState.id]) assert.equal(value, id);
+  assert.equal(safe.naturalKey, `engageCommunity:${id}`);
+  assert.equal(safe.entry.naturalKey, `engageCommunity:${id}`);
+  assert.equal(safe.path, `/employeeExperience/communities/${id}/owners`);
+  assert.match(id, /^[A-Za-z0-9]+$/);
+  const decoded = JSON.parse(Buffer.from(id, 'base64').toString('utf8'));
+  assert.equal(decoded._type, 'Group');
+  assert.match(decoded.id, /^8\d{19}$/);
+  // A padded copy maps to the same id (padded only if its encoding needs it), the mapping depends
+  // on the tenant, and a pseudonym is never mapped again.
+  assert.equal(safe.padded.replace(/=+$/, ''), id);
+  assert.notEqual(pseudonymizer('sha256:bbbb').text(COMMUNITY), id);
+  assert.equal(p.text(id), id);
+  // An id whose other text forces a `+` or `/` into the encoding, or a number past 2^53, is still replaced.
+  for (const json of ['{"_type":"???","id":"123"}', '{"_type":"Group","id":123456789012345678901}']) {
+    const token = Buffer.from(json).toString('base64').replace(/=+$/, '');
+    assert.ok(unpseudonymizedIds(token).length > 0, json);
+    assert.deepEqual(unpseudonymizedIds(p.text(token)), [], json);
+  }
+  // Other base64 JSON is left alone.
+  const other = Buffer.from('{"kind":"note"}').toString('base64');
+  assert.equal(p.text(other), other);
+});

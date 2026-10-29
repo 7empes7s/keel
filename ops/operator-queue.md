@@ -11446,3 +11446,30 @@ item that needs it stays untouched.
   `verifyChainCached` in place of `verifyChain` (one shared `const cache = new Map()`, each call wrapped in
   `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY` / `COMMIT`, three runs; the first is a full walk, the next two should
   be fast). Report the three timings and `ok` for each.
+
+### Q252: Rerun Q228's access package catalog create round now that the guard classifies isExternallyVisible (after PR #701, fixes #700)
+- Drafted by the "Allow access package catalog restores" thread (2026-10-29). In Q228 step 3 the catalog create was refused
+  (`unclassified-content-effect: accessPackageCatalog changes isExternallyVisible`, dry runs `1200a6a0` and `60cd3616`). PR #701
+  (merge `8bf599be`) makes `accessPackageCatalog` a reviewed content-effect type: restoring `isExternallyVisible` **false** is no
+  effect; making it **true** (create or update) is `externally-sharing` and needs the separate content-effect approval.
+- Needs: the deployed build B at or after `8bf599be`. Check: `git -C /opt/keel-live merge-base --is-ancestor 8bf599be HEAD`.
+  The credential policy, the catalog update and the policy create are already promoted (Q228, commit `4d9ad130`); only the
+  catalog create is left.
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q228 (log every approval
+  id). No access package, resource or user goes into the catalog. Nothing to grant (Restorer holds EntitlementManagement.ReadWrite.All).
+- Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set
+  (`live-gate-plan.mjs` section "accessPackageCatalog create"):
+  1. Write down that no `KEEL-RT-228` catalog exists. Create `KEEL-RT-228-catalog` exactly as in Q228 (description
+     `KEEL-RT test fixture`, `catalogType` `userManaged`, `state` `published`, `isExternallyVisible` false), then take snapshot S.
+  2. Delete the catalog. Restore from S selecting only it. Expect the dry run to be **not refused**, to plan one `create`, and to
+     carry **no content effects** (the restored value is false). Approve, `--enforce`, expect `create succeeded` with a new id and
+     a read back equal to S (`isExternallyVisible` false).
+     If the dry run is still refused, or lists a content effect, quote it and comment on #700.
+  3. Second dry run from S: expect 0 planned writes for the catalog.
+  4. Capture the `accessPackageCatalog.create` record (natural key as `--fixture`), run `pseudonymize.mjs check`, the secret scan
+     and `operations.mjs --live-evidence`, and commit to `claude/live-evidence-q228` (no PR).
+  5. Cleanup: delete the recreated catalog; report anything left.
+- **Report:** B; S; dry run id, its status and content effects; approval id; enforce exit code and new id; second dry run's planned
+  writes; capture result and commit; anything left in the tenant.

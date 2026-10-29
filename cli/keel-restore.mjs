@@ -105,7 +105,7 @@ import { isAdministrativeGoverned } from '../engine/restore/administrativeOperat
 import { previewApplyPlan } from '../engine/reconcile/previewApplyPlan.mjs';
 import {
   classifyDryRunStatus, computeCurrentStateFingerprint, computePlanDigest,
-  createDryRunArtifact, getDryRunArtifactById, restoreCandidates, validateArtifactForExecution,
+  createDryRunArtifact, getDryRunArtifactById, plannedVerbsOf, restoreCandidates, validateArtifactForExecution,
 } from '../engine/restore/dryRunArtifact.mjs';
 import {
   exceedsBlastRadiusCeiling, maxOperationImpact, policyConstraintVersion,
@@ -900,6 +900,9 @@ export async function runRestore({
     if (contentEffects.refusals.length > 0 && !previewOnly && mode !== 'dry-run') {
       throw new Error(`${contentEffects.refusals[0].reason} — refusing before any write`);
     }
+    // Issue #683: what this plan does to each resource. A dry run stores it and
+    // its promotion compares, so a write the reviewed plan did not list is refused.
+    const plannedVerbs = plannedVerbsOf(resources);
     const writesBeforeDeletes = resources.filter((resource) => resource.verb !== 'delete');
     const deletes = resources.filter((resource) => resource.verb === 'delete');
     const { waves, patches } = planWavesFn(writesBeforeDeletes);
@@ -1173,6 +1176,8 @@ export async function runRestore({
       const validation = validateArtifactForExecutionFn(artifact, {
         digest: freshDigest,
         currentStateFingerprint: freshFingerprint,
+        // Issue #683: the fresh plan may write only what the approved dry run planned.
+        plannedVerbs,
       });
       if (!validation.ok) throw new Error(`restore promotion refused: ${validation.reason}`);
       // Task-66: the effects just recomputed must carry a separate, current
@@ -1481,6 +1486,7 @@ export async function runRestore({
         contentEffects: contentEffects.effects,
         incidentRecovery,
         complianceFix: fixPlan,
+        plannedVerbs,
       });
       createdArtifactId = persistArtifactId;
       logger.log(`persisted dry-run artifact ${persistArtifactId} (status: ${status})`);

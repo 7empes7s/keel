@@ -211,7 +211,7 @@ export async function createDryRunArtifact(client, {
   collectorConfigPath, targetConfigPath, reconciliationResources, waves, patches, guardRefusals, results,
   currentStateFingerprint, digest, status, requestedBy, automationContext = null, relationshipOperations = null,
   recoveryMechanisms = null, contentEffects = null, compensation = null, incidentRecovery = null,
-  workloadRestore = null, conditionalAccessEnforcement = null, complianceFix = null,
+  workloadRestore = null, conditionalAccessEnforcement = null, complianceFix = null, plannedVerbs = null,
 }) {
   if (!TERMINAL_STATUSES.includes(status)) {
     throw new Error(`invalid dry-run artifact status: ${status}`);
@@ -222,8 +222,8 @@ export async function createDryRunArtifact(client, {
         collector_config_path, target_config_path, reconciliation_resources, waves, patches, guard_refusals,
         results, current_state_fingerprint, digest, status, requested_by, automation_context,
         relationship_operations, recovery_mechanisms, content_effects, compensation, incident_recovery,
-        workload_restore, conditional_access_enforcement, compliance_fix)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+        workload_restore, conditional_access_enforcement, compliance_fix, planned_verbs)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
      RETURNING *`,
     [
       // pg serializes a top-level JS array as a Postgres array literal, not JSON —
@@ -243,6 +243,7 @@ export async function createDryRunArtifact(client, {
       workloadRestore ? JSON.stringify(workloadRestore) : null,
       conditionalAccessEnforcement ? JSON.stringify(conditionalAccessEnforcement) : null,
       complianceFix ? JSON.stringify(complianceFix) : null,
+      plannedVerbs ? JSON.stringify(plannedVerbs) : null,
     ],
   );
   return normalizeArtifact(rows[0]);
@@ -302,6 +303,8 @@ function normalizeArtifact(row) {
     conditionalAccessEnforcement: row.conditional_access_enforcement ?? null,
     // Gap 6: set only on a "Make it pass" compliance fix dry run.
     complianceFix: row.compliance_fix ?? null,
+    // Issue #683: null for an artifact persisted before planned verbs were kept.
+    plannedVerbs: row.planned_verbs ?? null,
     createdAt: row.created_at,
   };
 }
@@ -329,7 +332,7 @@ export function validateArtifactForApproval(artifact) {
  * refuses to write on ANY mismatch — a changed snapshot, selection, dependency
  * closure, or target identity changes the digest; a target that drifted since the dry
  * run ran changes the fingerprint. Either one refuses the run before anything writes. */
-export function validateArtifactForExecution(artifact, { digest, currentStateFingerprint }) {
+export function validateArtifactForExecution(artifact, { digest, currentStateFingerprint, plannedVerbs }) {
   const approval = validateArtifactForApproval(artifact);
   if (!approval.ok) return approval;
   if (artifact.digest !== digest) {
@@ -338,5 +341,41 @@ export function validateArtifactForExecution(artifact, { digest, currentStateFin
   if (artifact.currentStateFingerprint !== currentStateFingerprint) {
     return { ok: false, reason: 'the target has changed since the dry run — a new dry run is required' };
   }
+  // Issue #683: a caller that plans per resource passes its fresh verbs. A write
+  // the approved plan did not list (Q219: Viva Engage copied a community's
+  // description onto its group after the dry run) is refused, never sent.
+  if (plannedVerbs !== undefined) {
+    const unplanned = unplannedWrites(artifact.plannedVerbs, plannedVerbs);
+    if (unplanned.length > 0) {
+      const listed = unplanned.map((entry) => `${entry.naturalKey} ${entry.now} (dry run: ${entry.planned ?? 'not recorded'})`).join('; ');
+      const why = artifact.plannedVerbs == null
+        ? 'the dry-run artifact predates planned writes being recorded'
+        : 'the target changed since the dry run, so this run would write what the approved plan did not list';
+      return { ok: false, reason: `${why}: ${listed} — a new dry run and approval are required`, unplanned };
+    }
+  }
   return { ok: true };
+}
+
+/** Issue #683: what the plan does to each resource, by natural key. A dry run
+ * stores it; execution plans again from a fresh read and compares. */
+export function plannedVerbsOf(resources) {
+  return (resources ?? [])
+    .map((resource) => ({ naturalKey: resource.naturalKey, verb: resource.verb ?? 'create' }))
+    .sort((a, b) => a.naturalKey.localeCompare(b.naturalKey));
+}
+
+/** Issue #683: the writes execution would make that the approved dry run did
+ * not plan: a resource it left alone (noop) that now needs a write, or one it
+ * now writes with another verb. Writing less than planned (an update the
+ * target no longer needs) is not listed. An artifact persisted before planned
+ * verbs were kept has nothing to compare, so every write is listed and the
+ * run needs a new dry run. Each entry is { naturalKey, planned, now }. */
+export function unplannedWrites(plannedVerbs, freshVerbs) {
+  const planned = Array.isArray(plannedVerbs)
+    ? new Map(plannedVerbs.map((entry) => [entry.naturalKey, entry.verb]))
+    : new Map();
+  return (freshVerbs ?? [])
+    .filter((entry) => entry.verb !== 'noop' && planned.get(entry.naturalKey) !== entry.verb)
+    .map((entry) => ({ naturalKey: entry.naturalKey, planned: planned.get(entry.naturalKey) ?? null, now: entry.verb }));
 }

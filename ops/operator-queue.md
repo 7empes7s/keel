@@ -11105,7 +11105,7 @@ item that needs it stays untouched.
     skipped. The create is in Microsoft's docs; **the PATCH is not** (docs list only Cloud PC, Intune and directory for update).
   - Not in this item: `exchangeRoleDefinition` and `defenderCustomAppScope` stay restored by hand: Graph has no write for either.
 - Needs: /opt/keel-live at the PR #693 merge or later (`grep -q defenderRoleRefusal /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
-- Status: todo (PR #693 merged 2026-10-29 21:53 UTC)
+- Status: todo
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q111. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer for writes, Collector for reads; global admin
   not used. Permissions the code declares: `Policy.ReadWrite.ApplicationConfiguration` and `RoleManagement.ReadWrite.Defender`

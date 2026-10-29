@@ -10005,3 +10005,20 @@ item that needs it stays untouched.
   `--delete-assigned …-delete --skip-assigned …-skip` must persist as `completed`. If any `refused <key>: <reason>` line prints,
   quote it and stop. Then do Q213 steps 5–8 and the cleanup.
 - **Report:** as in Q220, plus the read status of `privilegedAccessGroupResource` and `todoSettings` in the step 1 backup (403 / 500 / read).
+
+### Q222: Read-only check that a baseline can be made again while To Do settings answer 500 (after PR #679)
+- Drafted by the "Handle To Do settings read errors" thread (2026-10-29). PR #679 (merged as `6fb16358`): a minor (tier3) kind
+  whose read failed with 500/502/504 no longer blocks a baseline; it is left out (`observation_scope.leftOut`) and never drift.
+- Needs: `/opt/keel-live` at `6fb16358` or later (`grep -q leftOutForServiceError /opt/keel-live/engine/govern/baseline.mjs`).
+- Status: todo
+- **Reads only.** No tenant write, no baseline created or activated, nothing changed in KEEL's database.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a`:
+  1. `node cli/keel-collect.mjs` once (no `--tier`). Report the exit code and the `incomplete types:` line (expected: exit 3,
+     only todoSettings failed 500, unless Microsoft has fixed it).
+  2. ```
+     node --input-type=module -e "import pg from 'pg'; import { listEligibleBaselineSnapshots, captureFromSnapshot } from './engine/govern/baseline.mjs'; import { readFileSync } from 'node:fs'; const c = new pg.Client({ connectionString: process.env.KEEL_DB_URL }); await c.connect(); const { rows: [s] } = await c.query('SELECT * FROM snapshot ORDER BY started_at DESC LIMIT 1'); const list = await listEligibleBaselineSnapshots(c, { tenantRef: s.tenant_ref, limit: 5 }); console.log('newest', s.id, 'eligible:', list.some((r) => String(r.id) === String(s.id))); console.log('leftOut', JSON.stringify(captureFromSnapshot(s).scope.leftOut ?? [])); await c.end();"
+     ```
+     If the module or env names differ, adapt and report what you ran.
+- **Expected:** step 2 prints `eligible: true` for the step 1 snapshot and `leftOut [{"type":"todoSettings","reason":"microsoft-service-error","httpStatus":500}]`
+  (or `eligible: true` and `[]` if To Do read fine). The portal's "New approved setup" picker then lists that backup.
+- **Report:** both outputs verbatim, the snapshot id and the build.

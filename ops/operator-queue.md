@@ -10511,3 +10511,36 @@ item that needs it stays untouched.
 - **Note:** the four 2026-10-22 records (Teams x2, role groups, site sharing) expire 2026-11-21; say so in the Result. A
   recapture before then is a separate item.
 - **Report:** B, steps 1–3 verbatim, anything refused or off.
+
+### Q231: Recapture the four service settings read records before they expire on 2026-11-21 (read-only toward the tenant)
+- Drafted by the "Recapture four service settings records" thread (2026-10-29). Four live read records were observed on
+  2026-10-22 and pass the 30-day window (`LIVE_EVIDENCE_MAX_AGE_MS`) only until **2026-11-21**: teams-org-policies and
+  teams-voice-policies (Q141), exchange-role-groups (Q157) and sharepoint-site-settings per-site sharing (Q158). When they lapse,
+  those workloads switch to `disabled`. This item captures fresh records with the same reads and configs as those items; a cloud
+  PR then lands them on master.
+- Needs: nothing (independent of Q230). Run it at the deployed commit B (`git -C /opt/keel-live rev-parse HEAD`).
+- Status: todo
+- **Tenant:** reads only. The workloads' declared `Get-` cmdlets (`Get-Cs*` Teams reads, `Get-RoleGroup`, `Get-PnPTenantSite`)
+  with the Collector credential. No `New-`, `Set-`, `Grant-`, `Add-` or `Remove-` cmdlet. Grant, assign or create nothing.
+- Do, from your clone checked out at B, with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print it)
+  and `set -a; . /etc/keel/db.env; set +a`. Tenant ref is the one in the current records (`sha256:f7b3959300856957`).
+  1. **Captures**, each with the config its workload uses (`powershellConfigs.<teams|exchange|sharepoint>` in
+     `/etc/keel/workload-scope.json`, else `/etc/keel/tenant.json`; as Q141 step 3, Q157 step 1, Q158 step 2):
+     ```bash
+     for w in teams-org-policies teams-voice-policies exchange-role-groups sharepoint-site-settings; do
+       node tools/qualification/workloadReadsLive.mjs capture --workload "$w" --tenant-ref <tenant ref> \
+         --collector-ref app:<that config's clientId> --collector-config <that workload's config> \
+         --build "$(git -C /opt/keel-live rev-parse HEAD)" \
+         --out docs/release/qualifications/workload-reads-$w-live-acceptance.json
+     done
+     node tools/qualification/pseudonymize.mjs check docs/release/qualifications/workload-reads-{teams-org-policies,teams-voice-policies,exchange-role-groups,sharepoint-site-settings}-live-acceptance.json
+     ```
+     Report each exit code, `outcome`, `observedAt`, and `proven` / `notProven` verbatim. Expected: proven as before (Teams org 9,
+     Teams voice 13, role groups 1, site sharing 1), notProven `[]`. If the check is not exit 0, stop and file an issue; do not publish.
+  2. **Evidence:** commit the four records to a new branch `claude/live-evidence-service-settings-recapture` (from `origin/master`,
+     those four files only, checked for secrets) and push. No PR; the cloud thread lands them.
+  3. **Import** with `--dir` your clone's `docs/release/qualifications` (it holds the four new records and the others):
+     `node cli/keel-workload-collect.mjs import --dir <dir>`. Report exit code and `imported` / `refused` / `absent`.
+  4. `node cli/keel-workload-collect.mjs run` once by hand. Report outcome, n_reasons and observations for the four workloads.
+     Expected: none `disabled` (Teams may stay `partial` from unknown fields only).
+- **Report:** B; per step the result; the evidence branch and commit; the new expiry date of each record (observedAt + 30 days).

@@ -10254,7 +10254,16 @@ item that needs it stays untouched.
   role its app holds, so the Restorer can't ask for a smaller one. A test app with one role gets a small token. This app is a
   **test fixture** for Q219; whether Keel ships a separate Engage app is a product decision taken elsewhere.
 - Needs: none. Under the 2026-10-28 rule, add the permission to the app yourself; Marouane does only the consent click.
-- Status: todo
+- Status: blocked: waiting on consent (KEEL-RT-engage-writer)
+- Result (2026-10-29 12:40 UTC, keel-operator; deployed build 8987893f; credential: Keel Restorer for the app writes, Collector for reads; global admin not used):
+  - Step 1 done. Created app registration `KEEL-RT-engage-writer` (single tenant, no redirect URI, no secret):
+    app object 21daf419…, appId abbef1fd…, SP 893f8d6a….
+  - Credential: new self-signed RSA 2048 cert generated on Mulinux. Key `/etc/keel/engage-writer.key` (600), cert
+    `/etc/keel/engage-writer.crt`, expires 2027-10-29 12:37 UTC. Only the public cert was uploaded (1 keyCredential, 0 secrets).
+  - requiredResourceAccess (re-read): Microsoft Graph `Community.ReadWrite.All` (Role) only.
+  - Config `/etc/keel/engage-writer.json` (600): tenantId, clientId, certPath, keyPath. No secret.
+  - Step 2: waiting on Marouane to click **Grant admin consent** on `KEEL-RT-engage-writer`. No grant by me.
+  - Left in the tenant: the app registration and its service principal (fixture for Q219). Restorer and Collector unchanged.
 - Do:
   1. **Create app registration `KEEL-RT-engage-writer`** (single tenant, no redirect URI, no secret), as for the Content Reader in Q55 B.
      - Credential: a new self-signed RSA 2048 certificate generated on Mulinux, key at `/etc/keel/engage-writer.key` (mode 600) and cert at

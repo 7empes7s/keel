@@ -10584,3 +10584,41 @@ item that needs it stays untouched.
 - **Note on expiry:** oauth2PermissionGrant and permissionGrantPolicy records were observed 2026-10-15 and lapse on
   **2026-11-14**; the 2026-10-22 ones lapse 2026-11-21; the 2026-10-28 ones 2026-11-27. A recapture before then is a separate item.
 - **Report:** B, step 1 lines for the 41 files, step 2 counts.
+
+### Q233: Live restore proof of a custom security attribute set and attribute (update only, letters-only KEELRT fixtures, after PR #692)
+- Drafted by the "Allow letters-only test names for security attributes" thread (2026-10-29). Writers, fixture-tested only, never run
+  live: `attributeSet` (v1.0 `/directory/attributeSets`, update) and `customSecurityAttributeDefinition` (v1.0
+  `/directory/customSecurityAttributeDefinitions`, update). Both in `engine/restore/identityObjectOperations.mjs`.
+- Needs: PR #692 merged and deployed (build B at or after its merge commit). Without it the capture refuses these fixtures.
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling and Restorer/Collector split as Q111. Self-approve under the 2026-10-14
+  standing authorization and log every approval id. Restorer for writes, Collector for reads; global admin not used for the restore.
+- **Fixture name exception (this item only):** Graph forbids hyphens in attribute set ids and attribute names, so these two
+  fixtures use the letters-only prefix `KEELRT` instead of `KEEL-RT-`. PR #692 accepts it for these two kinds only.
+- **Neither object can ever be deleted** (an attribute can only be deactivated). Create exactly one of each, once, and reuse them
+  in any later run. Write down first whether they already exist; if they do, reuse them and do not create others.
+  - attribute set `KEELRTSet`: description `Fixture`, `maxAttributesPerSet` 25 (never change it afterwards);
+  - attribute `KEELRTAttr` in set `KEELRTSet`: type `String`, `isCollection` false, `isSearchable` true,
+    `usePreDefinedValuesOnly` false, status `Available`, description `Fixture`. Its id is `KEELRTSet_KEELRTAttr`.
+  - **Never assign the attribute** to any user, app or service principal.
+- **Permissions:** the Restorer needs `CustomSecAttributeDefinition.ReadWrite.All` and the Collector
+  `CustomSecAttributeDefinition.Read.All` (application). Check each token's roles first. If one is missing, add it to that app's
+  registration yourself and report "needs admin consent on <exact app name>" as blocked; grant nothing else. Creating the fixtures
+  needs the Attribute Definition Administrator role or the Restorer's write permission; use the Restorer app if your own account
+  lacks the role. If Graph answers 403 or a licence error (custom security attributes need Entra ID P1), report blocked with
+  Graph's exact message.
+- Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set. Use the `live-gate-plan.mjs`
+  steps `attributeSet:update` and `customSecurityAttributeDefinition:update`:
+  1. Create (or find) both fixtures, then take snapshot S (one tier run that reads both). Confirm both are in S with the fields
+     above, and note the natural key KEEL shows for each (expected `KEELRTSet` and `KEELRTSet_KEELRTAttr`).
+  2. **Update round:** set the set's description to `Drifted` and the attribute's description to `Drifted`. One restore from S
+     selecting both, approve, `--enforce`, capture each `update` with `--fixture` set to its natural key (no
+     `--allow-by-reference`). Expect the dry run to list only `description` for each, and each read back equal to S.
+  3. **Re-run check:** dry run from S again. Expect 0 planned writes for both.
+  4. Cleanup: none possible; leave both fixtures with description `Fixture`, attribute unassigned and `Available`. Report their state.
+  5. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on `claude/live-evidence-q233`,
+     branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). No PR. Run
+     `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B; S; whether the fixtures already existed; per type promoted / refused (exact message) / blocked; approval ids;
+  step 3 count; the evidence branch and commit; any permission added and which app needs consent.

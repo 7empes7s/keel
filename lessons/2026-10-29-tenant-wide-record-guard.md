@@ -11,3 +11,4 @@ writer only got it when someone remembered to mark a record.
 | --- | --- |
 | A tenant-wide record was gated only if its author marked it. | Every record marked `singleton` must also be `tenantWide` (`engine/restore/tenantWideRecords.test.mjs` fails otherwise). A kind that is tenant-wide for some objects only (the default branding profile) marks it with a function of the resource. |
 | The batch 17 live proofs had no way to pass the tenant-wide option to a Graph restore. | `keel-restore --snapshot-id ... --allow-tenant-wide-test-writes` (test tenant only) records the option in the dry run, binds it into the digest, and the promotion uses it. The live gate plan adds the flag for every tenant-wide record. |
+| The standing operator approval only refused the tenant-wide option on workload restores. | `standingPolicyRefusal` refuses any artifact that carries the option, workload or Graph: a person approves every tenant-wide write. |

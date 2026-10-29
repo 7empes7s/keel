@@ -1,0 +1,69 @@
+{
+  "restoreRef": "df583769-14f0-817d-86af-663249c77e04",
+  "entry": {
+    "naturalKey": "mobileAppConfiguration:8d0cb859-c712-88b0-84ce-3c8ab3a1e224",
+    "resourceType": "mobileAppConfiguration",
+    "operation": "update",
+    "targetId": "8d0cb859-c712-88b0-84ce-3c8ab3a1e224",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-29T22:45:17.199Z",
+    "priorState": {
+      "id": "8d0cb859-c712-88b0-84ce-3c8ab3a1e224",
+      "version": 2,
+      "settings": [
+        {
+          "appConfigKey": "KEELRT",
+          "appConfigKeyType": "stringType",
+          "appConfigKeyValue": "2"
+        }
+      ],
+      "@odata.type": "#microsoft.graph.iosMobileAppConfiguration",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-229-device-config",
+      "createdDateTime": "2026-10-29T22:34:37.816749Z",
+      "encodedSettingXml": null,
+      "targetedMobileApps": [
+        "eb284b71-337b-803f-8a8c-64a9b74fac84"
+      ],
+      "lastModifiedDateTime": "2026-10-29T22:38:18.0001127Z"
+    },
+    "intendedState": {
+      "settings": [
+        {
+          "appConfigKey": "KEELRT",
+          "appConfigKeyType": "stringType",
+          "appConfigKeyValue": "1"
+        }
+      ],
+      "@odata.type": "#microsoft.graph.iosMobileAppConfiguration",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-229-device-config",
+      "encodedSettingXml": null,
+      "targetedMobileApps": [
+        "eb284b71-337b-803f-8a8c-64a9b74fac84"
+      ]
+    },
+    "postState": {
+      "id": "8d0cb859-c712-88b0-84ce-3c8ab3a1e224",
+      "version": 3,
+      "settings": [
+        {
+          "appConfigKey": "KEELRT",
+          "appConfigKeyType": "stringType",
+          "appConfigKeyValue": "1"
+        }
+      ],
+      "@odata.type": "#microsoft.graph.iosMobileAppConfiguration",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-229-device-config",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceAppManagement/mobileAppConfigurations/$entity",
+      "createdDateTime": "2026-10-29T22:34:37.816749Z",
+      "encodedSettingXml": null,
+      "targetedMobileApps": [
+        "eb284b71-337b-803f-8a8c-64a9b74fac84"
+      ],
+      "lastModifiedDateTime": "2026-10-29T22:45:17.2771766Z"
+    }
+  }
+}

@@ -10392,12 +10392,12 @@ item that needs it stays untouched.
 - **Hard rules:** no tenant writes; never print a token or key; never push the old 50304c0f records.
 - **Report:** steps 1–4, the build used, the check output, and the PR link.
 
-### Q239: Recapture 11 Entra and Intune live-gate records that lapse 2026-11-09 and 11-10 (new restores; do first)
+### Q244: Recapture 11 Entra and Intune live-gate records that lapse 2026-11-09 and 11-10 (new restores; do first)
 - Drafted by the "Rerun restores for older Entra records" thread (2026-10-29). Master's `docs/release/qualifications/entra-live/`
   holds 61 live-gate records observed 2026-10-10 to 2026-10-16. They lapse 30 days later (`LIVE_EVIDENCE_MAX_AGE_MS`), from
   **2026-11-09 21:21 UTC**. `observedAt` is the restore journal's time, so **each one needs a new restore**, not a recapture.
-  Q235 covers the four consent records; Q239–Q243 cover the other 57, earliest deadline first. **These five items are placed
-  ahead of Q228–Q238 on purpose: they lapse first.** Finish Q239 by **2026-11-07** so the cloud PR lands and deploys in time.
+  Q235 covers the four consent records; Q244–Q248 cover the other 57, earliest deadline first. **These five items are placed
+  ahead of Q228–Q238 on purpose: they lapse first.** Finish Q244 by **2026-11-07** so the cloud PR lands and deploys in time.
 - This item, lapse time in brackets: `adminConsentRequestPolicy` u, `administrativeUnit` u, `crossTenantAccessPolicy` u,
   `crossTenantAccessPolicyConfigurationDefault` u, `deviceConfiguration` u, `groupSetting` u, `user` u (11-09 21:21);
   `configurationPolicy` u (11-09 21:52) and c (11-09 22:06); `group` delete (11-10 08:31); `groupSetting` delete (11-10 08:32).
@@ -10410,13 +10410,13 @@ item that needs it stays untouched.
   2026-10-22 approval: **write every value down before you change it and check it is back right after.**
 - **Never send or drift a trust field.** A restore withholds `inboundTrust` and other trust or sign-in fields by design (lesson
   2026-10-21) and lists them as a manual step, so the plan's old "inbound MFA trust" drift would prove nothing. Use the drifts below.
-- **Fixtures** (write down that none with the `KEEL-RT-239` prefix existed before; **assign none of them**):
-  administrative unit `KEEL-RT-239-unit` (no members); Windows device restriction profile `KEEL-RT-239-restrictions` (camera
-  allowed); settings catalog policy `KEEL-RT-239-settings` (one Defender setting on); fixture user `keel-rt-20260908-carla`;
-  for the delete round, security group `KEEL-RT-239-group-delete` (no members) and the tenant's `Group.Unified` setting.
+- **Fixtures** (write down that none with the `KEEL-RT-244` prefix existed before; **assign none of them**):
+  administrative unit `KEEL-RT-244-unit` (no members); Windows device restriction profile `KEEL-RT-244-restrictions` (camera
+  allowed); settings catalog policy `KEEL-RT-244-settings` (one Defender setting on); fixture user `keel-rt-20260908-carla`;
+  for the delete round, security group `KEEL-RT-244-group-delete` (no members) and the tenant's `Group.Unified` setting.
   Write down first whether `Group.Unified` exists and all its values.
 - Do, with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print it). Print the checklist at B
-  (`node tools/qualification/live-gate-plan.mjs > ~/keel-239/plan-B.md`) and use its commands for these 9 types
+  (`node tools/qualification/live-gate-plan.mjs > ~/keel-244/plan-B.md`) and use its commands for these 9 types
   (tenant settings with `--allow-tenant-setting`; `--fixture` is the full natural key as journaled).
   1. Create the fixtures; make sure `Group.Unified` exists (create it from the template with default values if not). Take snapshot S1.
   2. **Update round:** AU description `KEEL-RT drifted`; restrictions profile blocks the camera; settings policy's one setting off;
@@ -10424,74 +10424,74 @@ item that needs it stays untouched.
      `EnableGroupCreation` flipped; cross-tenant policy `allowedCloudEndpoints` + one cloud (D-148b); cross-tenant default
      `b2bCollaborationOutbound` users and groups set to blocked (never `inboundTrust`). One restore from S1 selecting all,
      approve, `--enforce`, capture each `update`. Expect each read back equal to S1.
-  3. **Create round:** delete `KEEL-RT-239-settings` and remove it from deleted items. Restore from S1, approve, enforce,
+  3. **Create round:** delete `KEEL-RT-244-settings` and remove it from deleted items. Restore from S1, approve, enforce,
      capture `configurationPolicy` create. Expect it back unassigned, setting on.
   4. **Delete round** (the checklist's delete steps, temporary baseline as Q43): remove `Group.Unified`, take snapshot S2, then
-     create `KEEL-RT-239-group-delete` and `Group.Unified` again with the values from before. Remediate both drifts, approve,
+     create `KEEL-RT-244-group-delete` and `Group.Unified` again with the values from before. Remediate both drifts, approve,
      enforce, capture `group` delete and `groupSetting` delete. Then put `Group.Unified` back exactly as written down at the
      start (or leave it absent if it was absent), and reinstate the baseline with `keel-baseline-activate.mjs --reinstate`.
   5. **Re-run check:** dry run from S1. Expect 0 planned writes for the step 2 objects.
-  6. Cleanup: delete every `KEEL-RT-239-*` fixture and purge the group; carla's department back; every tenant setting equal to
+  6. Cleanup: delete every `KEEL-RT-244-*` fixture and purge the group; carla's department back; every tenant setting equal to
      its noted value. Report each before/after.
-  7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on `claude/live-evidence-q239`,
+  7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on `claude/live-evidence-q244`,
      branched from `origin/master` (secret scan and `pseudonymize.mjs check` first). Push. No PR; the cloud thread lands them.
      Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the lines for these 11 files.
 - **Report:** B; per type and operation: promoted / failed (exact message) / blocked; the new `observedAt` of each record;
   approval ids; the step 5 count; tenant settings before and after; the evidence branch and commit; anything left.
   A writer bug: file an `operator-report` issue and keep going with the other types.
 
-### Q240: Recapture 7 lockout-sensitive records that lapse 2026-11-10 to 11-13 (custom role, authentication strength, Conditional Access; new restores)
-- Drafted by the "Rerun restores for older Entra records" thread (2026-10-29). As Q239: a new restore is needed for each record.
+### Q245: Recapture 7 lockout-sensitive records that lapse 2026-11-10 to 11-13 (custom role, authentication strength, Conditional Access; new restores)
+- Drafted by the "Rerun restores for older Entra records" thread (2026-10-29). As Q244: a new restore is needed for each record.
   Lapse: `roleDefinition` c (11-10 18:06) and u (11-10 18:19); `authenticationStrengthPolicy` c (11-10 19:44) and u (11-10 20:00);
   `conditionalAccessPolicy` restore-soft-deleted (11-11 11:15), update (11-12 21:29), create (11-13 13:02). Finish by **2026-11-08**.
   (`conditionalAccessPolicy` delete lapses 11-15; it needs a fixture with no exclusions and is queued separately if Marouane agrees.)
-- Needs: Q239 done or blocked. Run at the deployed commit B, from your own checkout at B.
+- Needs: Q244 done or blocked. Run at the deployed commit B, from your own checkout at B.
 - Status: todo
 - Result:
-- **Test tenant only.** Same rules as Q239 and the lockout rules of Q45/Q48. **Before each step**, `node cli/keel-breakglass.mjs
+- **Test tenant only.** Same rules as Q244 and the lockout rules of Q45/Q48. **Before each step**, `node cli/keel-breakglass.mjs
   report --config "$COLLECTOR"` must read ready; if not, stop and report blocked. Lockout steps run one at a time, never in a
   shared restore. Self-approve; log every approval id. Never target, assign, drift or sign in as marouane.defili.
 - **Conditional Access:** the fixture policy is **report-only and is never turned on**, not even for the snapshot (skip the
   checklist's "turn the fixture on before the snapshot" line and its turn-on step). It excludes marouane.defili and every
   registered break-glass account; check that by reading it back before every snapshot. If any step says the policy "may be ON",
   turn it off by hand at once, stop and report.
-- **Fixtures** (write down that none with the `KEEL-RT-240` prefix existed before): custom role `KEEL-RT-240-role` (only
-  `microsoft.directory/groups/basic/update`, assigned to nobody); authentication strength `KEEL-RT-240-strength` (FIDO2 only,
-  used by no policy); group `KEEL-RT-240-ca-users` holding only `keel-rt-20260908-carla`; CA policy `KEEL-RT-240-ca` (report-only,
+- **Fixtures** (write down that none with the `KEEL-RT-245` prefix existed before): custom role `KEEL-RT-245-role` (only
+  `microsoft.directory/groups/basic/update`, assigned to nobody); authentication strength `KEEL-RT-245-strength` (FIDO2 only,
+  used by no policy); group `KEEL-RT-245-ca-users` holding only `keel-rt-20260908-carla`; CA policy `KEEL-RT-245-ca` (report-only,
   block access, users = that group, all cloud apps, excluding marouane.defili and the break-glass accounts).
 - Do, with the key set, using the checklist's lockout steps for these 3 types, in this order (each its own snapshot and restore):
   1. roleDefinition **update** (description `KEEL-RT drifted`), then **create** (delete the role and purge it, restore). Capture each.
   2. authenticationStrengthPolicy **update** (description), then **create** (delete, restore). Capture each.
-  3. conditionalAccessPolicy **update**: rename to `KEEL-RT-240-ca-drifted`, restore (expect an update, renamed back, still
+  3. conditionalAccessPolicy **update**: rename to `KEEL-RT-245-ca-drifted`, restore (expect an update, renamed back, still
      report-only). Then **restore-soft-deleted**: delete the policy (soft delete), restore, expect the same id back report-only.
      Then **create**: delete it and remove it from deleted items, restore, expect a new report-only policy with the same exclusions.
      If the purge from deleted items answers 403 with the app token, skip the create, report it, and leave the policy in deleted
      items; the thread will ask Marouane for the one portal click.
-  4. Cleanup: delete every `KEEL-RT-240-*` object (CA policy, group, strength, role) and purge what can be purged. Report anything left.
-  5. Commit the records and `.capture.json` files on `claude/live-evidence-q240`, branched from `origin/master` (secret scan and
+  4. Cleanup: delete every `KEEL-RT-245-*` object (CA policy, group, strength, role) and purge what can be purged. Report anything left.
+  5. Commit the records and `.capture.json` files on `claude/live-evidence-q245`, branched from `origin/master` (secret scan and
      `pseudonymize.mjs check` first). Push. No PR. Run `operations.mjs --live-evidence` on that directory and report the lines.
 - **Report:** B; break-glass readiness before each step; per type and operation: promoted / failed (exact message) / blocked;
   new `observedAt`; approval ids; the CA policy's state at each read-back; the evidence branch and commit; anything left.
 
-### Q241: Recapture 21 Entra and Intune live-gate records that lapse 2026-11-12 and 11-13 (groups, apps, branding, partner, Intune; new restores)
-- Drafted by the "Rerun restores for older Entra records" thread (2026-10-29). As Q239: a new restore is needed for each record.
+### Q246: Recapture 21 Entra and Intune live-gate records that lapse 2026-11-12 and 11-13 (groups, apps, branding, partner, Intune; new restores)
+- Drafted by the "Rerun restores for older Entra records" thread (2026-10-29). As Q244: a new restore is needed for each record.
   Observed 2026-10-13/14, lapse **2026-11-12 11:52 to 2026-11-13 19:11 UTC**: `crossTenantAccessPolicyPartner` u and c,
   `deviceCompliancePolicy` u and c, `deviceConfiguration` c, `group` u, c and restore-soft-deleted, the four group edges
   (`group#member` edge-add/remove, `group#owner` edge-add/remove), `organizationalBrandingLocalization` u, `organizationalBranding` u,
   `organizationalBranding#file` u (fr-FR favicon), `groupLifecyclePolicy` u, `application` u, c and restore-soft-deleted,
   `servicePrincipal` c, `user` restore-soft-deleted. Finish by **2026-11-10**.
-- Needs: Q240 done or blocked (Q240 uses carla; this item soft-deletes her). Run at the deployed commit B, from your own checkout at B.
+- Needs: Q245 done or blocked (Q245 uses carla; this item soft-deletes her). Run at the deployed commit B, from your own checkout at B.
 - Status: todo
 - Result:
-- **Test tenant only.** Same rules as Q239 (tenant settings: write down, put back, check; no trust fields). Self-approve restores
+- **Test tenant only.** Same rules as Q244 (tenant settings: write down, put back, check; no trust fields). Self-approve restores
   and content effects (the lifecycle restore shortens 400 → 365 days and needs its content-effect approval, as Q48 step 31);
   log every approval id. **Assign no Intune fixture** (it avoids the group-in-the-same-wave limit from Q48 C).
-- **Fixtures** (write down that none with the `KEEL-RT-241` prefix existed before): group `KEEL-RT-241-group` (no members);
-  edge groups `KEEL-RT-241-g5`..`g8` with carla and ryan as in Q51; app registration `KEEL-RT-241-app` (no secrets, certificates
-  or permissions) and its service principal; Windows compliance policy `KEEL-RT-241-compliance`; Windows restrictions profile
-  `KEEL-RT-241-restrictions`; the partner entry for the Microsoft-owned tenant from D-148b; branding localization fr-FR with sign-in
-  text `KEEL-RT-241` and a small favicon (add fr-FR only if none exists, remove it at the end); the default branding sign-in text
-  (write it down); a group expiration policy for Selected groups holding only `KEEL-RT-241-group`, 365 days (only if the tenant
+- **Fixtures** (write down that none with the `KEEL-RT-246` prefix existed before): group `KEEL-RT-246-group` (no members);
+  edge groups `KEEL-RT-246-g5`..`g8` with carla and ryan as in Q51; app registration `KEEL-RT-246-app` (no secrets, certificates
+  or permissions) and its service principal; Windows compliance policy `KEEL-RT-246-compliance`; Windows restrictions profile
+  `KEEL-RT-246-restrictions`; the partner entry for the Microsoft-owned tenant from D-148b; branding localization fr-FR with sign-in
+  text `KEEL-RT-246` and a small favicon (add fr-FR only if none exists, remove it at the end); the default branding sign-in text
+  (write it down); a group expiration policy for Selected groups holding only `KEEL-RT-246-group`, 365 days (only if the tenant
   has none; otherwise write the existing one down and use it); fixture user `keel-rt-20260908-carla`.
 - Do, with the key set, using the checklist's commands for these types:
   1. Create the fixtures, then take snapshot S.
@@ -10505,62 +10505,62 @@ item that needs it stays untouched.
      restrictions profile and the partner entry. Restore from S, approve, enforce, capture each `create` (group, application,
      servicePrincipal, deviceCompliancePolicy, deviceConfiguration, crossTenantAccessPolicyPartner).
   5. **Re-run check:** dry run from S. Expect 0 planned writes.
-  6. Cleanup: delete and purge every `KEEL-RT-241-*` object; remove the partner entry; remove the fr-FR localization if you added
+  6. Cleanup: delete and purge every `KEEL-RT-246-*` object; remove the partner entry; remove the fr-FR localization if you added
      it; default branding text, lifecycle policy and carla as written down. Report each before/after.
-  7. Commit the records and `.capture.json` files on `claude/live-evidence-q241`, branched from `origin/master` (secret scan and
+  7. Commit the records and `.capture.json` files on `claude/live-evidence-q246`, branched from `origin/master` (secret scan and
      `pseudonymize.mjs check` first; check `securityIdentifier` and role ids are pseudonyms). Push. No PR. Run
      `operations.mjs --live-evidence` on that directory and report the lines.
 - **Report:** B; per type and operation: promoted / failed (exact message) / blocked; new `observedAt`; approval ids; the step 5
   count; tenant settings before and after; the evidence branch and commit; anything left.
 
-### Q242: Recapture 9 lockout-sensitive records that lapse 2026-11-12 and 11-13 (named locations, role assignment, PIM, authorization and authentication methods; new restores)
-- Drafted by the "Rerun restores for older Entra records" thread (2026-10-29). As Q239: a new restore is needed for each record.
+### Q247: Recapture 9 lockout-sensitive records that lapse 2026-11-12 and 11-13 (named locations, role assignment, PIM, authorization and authentication methods; new restores)
+- Drafted by the "Rerun restores for older Entra records" thread (2026-10-29). As Q244: a new restore is needed for each record.
   Lapse: `namedLocation` c (11-12 21:26), delete (11-13 09:26), u (11-13 14:19); `roleEligibilitySchedule` c,
   `unifiedRoleManagementPolicy` u and `authorizationPolicy` u (11-13 14:19); `authenticationMethodsPolicy` u (11-13 18:55);
   `roleAssignment` delete (11-13 19:12) and c (11-13 19:23). Finish by **2026-11-10**.
-- Needs: Q241 done or blocked. Run at the deployed commit B, from your own checkout at B.
+- Needs: Q246 done or blocked. Run at the deployed commit B, from your own checkout at B.
 - Status: todo
 - Result:
-- **Test tenant only.** Same rules as Q240: break-glass report ready before each step (else stop, blocked), one step at a time,
+- **Test tenant only.** Same rules as Q245: break-glass report ready before each step (else stop, blocked), one step at a time,
   self-approve, log approval ids, never marouane.defili or a break-glass account, never a built-in privileged role, scope never
   tenant-wide. Tenant settings: write down, put back, check.
 - **Named location trust is withheld by design** (lesson 2026-10-28): a restore never changes `isTrusted`, `ipRanges` or
   countries on an existing location, so drift only the display name. The fixture is **not trusted** and used by no policy.
-- **Fixtures** (write down that none with the `KEEL-RT-242` prefix existed before): administrative unit `KEEL-RT-242-unit`;
-  custom role `KEEL-RT-242-role` (only `microsoft.directory/groups/basic/update`); IP named location `KEEL-RT-242-location`
-  (203.0.113.0/24, not trusted) and, for the delete, `KEEL-RT-242-location-delete`; role assignment of `KEEL-RT-242-role` to
-  carla scoped to `KEEL-RT-242-unit`; PIM eligibility of carla for the role at that scope, ending in 30 days.
+- **Fixtures** (write down that none with the `KEEL-RT-247` prefix existed before): administrative unit `KEEL-RT-247-unit`;
+  custom role `KEEL-RT-247-role` (only `microsoft.directory/groups/basic/update`); IP named location `KEEL-RT-247-location`
+  (203.0.113.0/24, not trusted) and, for the delete, `KEEL-RT-247-location-delete`; role assignment of `KEEL-RT-247-role` to
+  carla scoped to `KEEL-RT-247-unit`; PIM eligibility of carla for the role at that scope, ending in 30 days.
 - Do, with the key set, using the checklist's lockout steps, each with its own snapshot and restore:
-  1. namedLocation **update** (rename to `KEEL-RT-242-location-drifted`; if the dry run plans a create instead of an update,
+  1. namedLocation **update** (rename to `KEEL-RT-247-location-drifted`; if the dry run plans a create instead of an update,
      report it verbatim and go on), **create** (delete it and purge, restore), **delete** (snapshot before
-     `KEEL-RT-242-location-delete` exists, then create it, remediate as Q48 G).
+     `KEEL-RT-247-location-delete` exists, then create it, remediate as Q48 G).
   2. roleAssignment **delete** (snapshot before the assignment exists, then assign, remediate), then **create** (delete the
      assignment, restore from a snapshot that holds it; capture with `--allow-by-reference`).
   3. roleEligibilitySchedule **create** (remove the eligibility, restore; `--allow-by-reference`).
-  4. unifiedRoleManagementPolicy **update**: the PIM settings of `KEEL-RT-242-role` only; turn off "require MFA on activation",
+  4. unifiedRoleManagementPolicy **update**: the PIM settings of `KEEL-RT-247-role` only; turn off "require MFA on activation",
      restore turns it back on.
   5. authorizationPolicy **update**: `allowInvitesFrom` only (write it down; content-effect approval "externally sharing").
   6. authenticationMethodsPolicy **update**: Software OATH on, restore puts it back off (as Q49). Never FIDO2 or a method the
      break-glass accounts use.
-  7. Cleanup: delete every `KEEL-RT-242-*` object, the assignment and the eligibility; `allowInvitesFrom` and the methods policy
+  7. Cleanup: delete every `KEEL-RT-247-*` object, the assignment and the eligibility; `allowInvitesFrom` and the methods policy
      equal their noted values. Report each before/after and anything left.
-  8. Commit the records and `.capture.json` files on `claude/live-evidence-q242`, branched from `origin/master` (secret scan and
+  8. Commit the records and `.capture.json` files on `claude/live-evidence-q247`, branched from `origin/master` (secret scan and
      `pseudonymize.mjs check` first; role assignment ids must be pseudonyms). Push. No PR. Run `operations.mjs --live-evidence`
      on that directory and report the lines.
 - **Report:** B; break-glass readiness before each step; per type and operation: promoted / failed (exact message) / blocked;
   new `observedAt`; approval ids; settings before and after; the evidence branch and commit; anything left.
 
-### Q243: Recapture 8 token, claims and home realm policy records that lapse 2026-11-14 (new restores; can share a sitting with Q235)
-- Drafted by the "Rerun restores for older Entra records" thread (2026-10-29). As Q239: a new restore is needed for each record.
+### Q248: Recapture 8 token, claims and home realm policy records that lapse 2026-11-14 (new restores; can share a sitting with Q235)
+- Drafted by the "Rerun restores for older Entra records" thread (2026-10-29). As Q244: a new restore is needed for each record.
   Lapse **2026-11-14 10:22 to 10:40 UTC**: `claimsMappingPolicy`, `tokenIssuancePolicy`, `tokenLifetimePolicy` c and u,
   `homeRealmDiscoveryPolicy` c and u (all from Q67/Q74). Q235 (consent records, same deadline) uses different fixtures; run them
   back to back. Finish by **2026-11-12**.
-- Needs: Q242 done or blocked. Run at the deployed commit B, from your own checkout at B.
+- Needs: Q247 done or blocked. Run at the deployed commit B, from your own checkout at B.
 - Status: todo
 - Result:
 - **Test tenant only.** Same rules and tooling as Q67. Restorer only; self-approve; log every approval id; grant nothing.
-- **Fixtures** (write down that none with the `KEEL-RT-243` prefix existed before): one each of `KEEL-RT-243-claims`,
-  `KEEL-RT-243-issuance`, `KEEL-RT-243-lifetime`, `KEEL-RT-243-hrd`, minimal valid definitions (Graph docs examples),
+- **Fixtures** (write down that none with the `KEEL-RT-248` prefix existed before): one each of `KEEL-RT-248-claims`,
+  `KEEL-RT-248-issuance`, `KEEL-RT-248-lifetime`, `KEEL-RT-248-hrd`, minimal valid definitions (Graph docs examples),
   `isOrganizationDefault` false, **assigned to no app or service principal** (so no sign-in changes).
 - Do, with the key set, using the checklist's steps for these 4 types:
   1. Create the fixtures, then take snapshot S (the three token and claims policies together; home realm discovery last and
@@ -10570,8 +10570,8 @@ item that needs it stays untouched.
   3. **Create round:** delete each policy. Restore from S, approve, enforce, capture each `create`. Expect each back equal to S,
      `isOrganizationDefault` not written.
   4. **Re-run check:** dry run from S. Expect 0 planned writes per type.
-  5. Cleanup: delete every `KEEL-RT-243-*` policy. Report anything left.
-  6. Commit the records and `.capture.json` files on `claude/live-evidence-q243`, branched from `origin/master` (secret scan and
+  5. Cleanup: delete every `KEEL-RT-248-*` policy. Report anything left.
+  6. Commit the records and `.capture.json` files on `claude/live-evidence-q248`, branched from `origin/master` (secret scan and
      `pseudonymize.mjs check` first). Push. No PR. Run `operations.mjs --live-evidence` on that directory and report the lines.
 - **Report:** B; per type and operation: promoted / failed (exact message) / blocked; new `observedAt`; approval ids; the step 4
   counts; the evidence branch and commit; anything left.

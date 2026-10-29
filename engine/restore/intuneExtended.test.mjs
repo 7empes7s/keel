@@ -1420,6 +1420,26 @@ test('a Windows app protection update that adds or raises a wipe needs the conte
     payload: { ...windowsProtection, minimumWipeOsVersion: '10.0.22000' }, live: null, newAssignments: [] }]), { effects: [], refusals: [] });
 });
 
+test('a Windows app protection maximum wipe OS version that is new or lower needs the content approval; a higher one does not', () => {
+  const live = { ...windowsProtection, maximumWipeOsVersion: '10.0.26000' };
+  const judge = (verb, payload, extra) => classifyContentEffects([{ naturalKey: 'windowsManagedAppProtection:KEEL-RT-win-mam', resourceType: 'windowsManagedAppProtection',
+    verb, payload, ...extra }]);
+  const update = (before, after) => judge('update', after, { live: { state: 'present', payload: before } });
+  // A higher maximum wipes fewer devices: no effect.
+  assert.deepEqual(update(live, { ...live, maximumWipeOsVersion: '10.0.27000' }), { effects: [], refusals: [] });
+  const lower = update(live, { ...live, maximumWipeOsVersion: '10.0.22000' });
+  assert.deepEqual(lower.effects.map((effect) => [effect.field, effect.effect, effect.before, effect.after]), [
+    ['maximumWipeOsVersion', 'irreversible', '10.0.26000', '10.0.22000'],
+  ]);
+  assert.deepEqual(lower.refusals, []);
+  const added = update({ ...live, maximumWipeOsVersion: null }, live);
+  assert.deepEqual(added.effects.map((effect) => [effect.field, effect.effect]), [['maximumWipeOsVersion', 'irreversible']]);
+  // An assigned create with a maximum is judged; an unassigned one reaches no one.
+  const create = (newAssignments) => judge('create', live, { live: null, newAssignments });
+  assert.deepEqual(create(['group:KEEL-RT-Users']).effects.map((effect) => [effect.field, effect.effect]), [['maximumWipeOsVersion', 'irreversible']]);
+  assert.deepEqual(create([]), { effects: [], refusals: [] });
+});
+
 const profile = Object.freeze({
   id: 'prov-src', displayName: 'KEEL-RT-ios-prov', description: 'Fixture', payloadFileName: 'keel-rt.mobileprovision', payload: 'PHBsaXN0Lz4=',
   expirationDateTime: '2099-01-01T00:00:00Z', roleScopeTagIds: ['0'], version: 1, createdDateTime: 'x', lastModifiedDateTime: 'x',

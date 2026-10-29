@@ -11289,3 +11289,14 @@ item that needs it stays untouched.
 - No capture and no evidence branch: this only confirms the fix (the federation update record is already on
   `claude/live-evidence-q207`).
 - **Report:** B; step 3 exit code, artifact id, planned writes and the exact completion text; anything left in the tenant.
+
+### Q251: After PR #706 deploys, measure the portal again (read-only, no tenant)
+- Drafted by the "Speed up the portal" thread (2026-10-29). PR #706 makes the Overview check the audit record
+  incrementally. This gives the after numbers for Q241's before numbers. Same read-only rules as Q241.
+- Needs: Q241 done; PR #706 merged and deployed. **Quick (about 5 minutes): fine to take between other items.**
+- Status: todo
+- Result:
+- Do: report the deployed commit, then repeat Q241 step 2 for the time since the deploy (same table shape), and step 4 with
+  `verifyChainCached` in place of `verifyChain` (one shared `const cache = new Map()`, each call wrapped in
+  `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY` / `COMMIT`, three runs; the first is a full walk, the next two should
+  be fast). Report the three timings and `ok` for each.

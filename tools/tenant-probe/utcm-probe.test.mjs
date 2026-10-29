@@ -266,3 +266,51 @@ test('types not sent for lack of room are not counted as refused by TCM', () => 
   assert.deepEqual(result.typesNotSent, ['microsoft.teams.vdipolicy']);
   assert.ok(!result.typesEmpty.includes('microsoft.teams.vdipolicy'));
 });
+
+/** A fake TCM that refuses named types the way the live service does, and hands out fresh job ids. */
+function namingTcm({ unsupported = [], visible = 0 } = {}) {
+  const calls = [];
+  let n = 0;
+  const live = new Set();
+  const reply = (status, json) => ({ status, headers: { get: () => null }, text: async () => (json === undefined ? '' : JSON.stringify(json)) });
+  const fetchImpl = async (url, init) => {
+    const sent = init.body ? JSON.parse(init.body) : undefined;
+    calls.push({ url, method: init.method, body: sent });
+    const path = new URL(url).pathname;
+    if (init.method === 'POST') {
+      const bad = sent.resources.filter((type) => unsupported.includes(type));
+      if (bad.length) return reply(400, { error: { code: 'BadRequest', message: 'One or more validation errors occurred.', details: bad.map((type) => ({ message: `ResourceType '${type}' is not supported.` })) } });
+      if (live.size + visible >= 12) return reply(400, { error: { code: 'BadRequest', message: 'Too many jobs.' } });
+      const id = `${String(++n).padStart(8, '0')}-0000-4000-8000-000000000000`;
+      live.add(id);
+      return reply(200, { id, status: 'notStarted' });
+    }
+    if (init.method === 'DELETE') { live.delete(path.split('/').pop()); return reply(204); }
+    if (path.endsWith('/configurationSnapshotJobs')) return reply(200, { value: Array.from({ length: visible + live.size }, (_, i) => ({ id: `j${i}` })) });
+    const job = path.match(/configurationSnapshotJobs\/([0-9a-f-]{36})$/)?.[1];
+    if (job) return reply(200, { id: job, status: 'succeeded', errorDetails: [] });
+    return reply(404, { error: { code: 'NotFound' } });
+  };
+  return { calls, fetchImpl, live };
+}
+
+test('a type TCM names as not supported is refused alone and the rest goes again as one job', async () => {
+  const types = ['microsoft.exchange.transportrule', 'microsoft.exchange.addresslist', 'microsoft.exchange.sharedmailbox', 'microsoft.exchange.globaladdresslist'];
+  const tcm = namingTcm({ unsupported: ['microsoft.exchange.addresslist', 'microsoft.exchange.globaladdresslist'] });
+  const send = probeTransport(async () => 'token', tcm.fetchImpl);
+  const result = await createJobs({ send, version: 'v1.0', workload: 'exchange', types, stamp: '202610291111' });
+  assert.deepEqual(result.refused.map((refusal) => refusal.types), [['microsoft.exchange.addresslist', 'microsoft.exchange.globaladdresslist']]);
+  assert.deepEqual(result.jobs.map((job) => job.types), [['microsoft.exchange.transportrule', 'microsoft.exchange.sharedmailbox']]);
+  assert.equal(tcm.calls.filter((call) => call.method === 'POST').length, 2);
+});
+
+test('each workload\'s jobs are deleted before the next workload, so later workloads still get a slot', async () => {
+  const tcm = namingTcm({ visible: 11 });
+  const send = probeTransport(async () => 'token', tcm.fetchImpl);
+  const report = await runSnapshots({ send, workloads: ['entra', 'intune'], sleep: async () => {}, now: () => 0, saveRaw: () => {}, stamp: '202610291111' });
+  assert.ok(report.workloads.every((workload) => !workload.skipped && workload.jobs.length === 1), JSON.stringify(report.workloads));
+  assert.deepEqual(report.deleted, [204, 204]);
+  assert.equal(tcm.live.size, 0);
+  // Jobs that were already there are never deleted.
+  assert.equal(tcm.calls.filter((call) => call.method === 'DELETE').length, 2);
+});

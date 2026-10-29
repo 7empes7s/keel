@@ -213,6 +213,17 @@ export async function createJobs({ send, version, workload, types, depth = 0, st
     return { jobs: [{ id: answer.json.id, types, status: answer.json.status ?? null }], refused: [] };
   }
   const text = errorText(answer);
+  // TCM names each type it does not take ("ResourceType 'x' is not supported."): refuse just
+  // those and send the rest again as one job, so splitting does not spend the job slots.
+  const unsupported = new Set([...text.matchAll(/ResourceType '([^']+)' is not supported/gi)].map((match) => match[1].toLowerCase()));
+  const named = types.filter((type) => unsupported.has(type.toLowerCase()));
+  if (answer.status === 400 && named.length > 0) {
+    const refused = [{ types: named, ...outcome(answer) }];
+    const rest = types.filter((type) => !unsupported.has(type.toLowerCase()));
+    if (rest.length === 0) return { jobs: [], refused };
+    const retried = await createJobs({ send, version, workload, types: rest, depth: depth + 1, stamp, room });
+    return { jobs: retried.jobs, refused: [...refused, ...retried.refused] };
+  }
   if (answer.status === 400 && types.length > 1 && depth < 6 && BAD_TYPE.test(text) && !LIMIT_TEXT.test(text) && !/displayName/i.test(text)) {
     const half = Math.ceil(types.length / 2);
     const left = await createJobs({ send, version, workload, types: types.slice(0, half), depth: depth + 1, stamp, room });
@@ -295,23 +306,17 @@ export async function runSnapshots({
   }
   const room = { left: VISIBLE_JOB_LIMIT - report.visibleJobsBefore };
   try {
-    for (const workload of workloads) await snapshotWorkload({ send, version, workload, room, maxWaitMs, sleep, now, saveRaw, stamp, report });
+    for (const workload of workloads) await snapshotWorkload({ send, version, workload, room, maxWaitMs, sleep, now, saveRaw, stamp, report, keepJobs });
   } catch (error) {
     report.stopped = `stopped early: ${mask(String(error?.message ?? error))}`;
   } finally {
-    if (!keepJobs) {
-      for (const id of send.created) {
-        let answer;
-        try { answer = await send(G(version, `${ADMIN}/configurationSnapshotJobs/${id}`), 'DELETE'); } catch (error) { answer = { status: `error: ${mask(String(error?.message ?? error))}` }; }
-        (answer.status === 204 || answer.status === 200 ? report.deleted : report.notDeleted).push(answer.status);
-      }
-    }
+    if (!keepJobs) await deleteCreated({ send, version, report });
   }
   report.findings = findings(report);
   return report;
 }
 
-async function snapshotWorkload({ send, version, workload, room, maxWaitMs, sleep, now, saveRaw, stamp, report }) {
+async function snapshotWorkload({ send, version, workload, room, maxWaitMs, sleep, now, saveRaw, stamp, report, keepJobs }) {
   {
     const types = typesFor(workload);
     const entry = { workload, requested: types.length, jobs: [], refused: [] };
@@ -340,6 +345,25 @@ async function snapshotWorkload({ send, version, workload, room, maxWaitMs, slee
         }
       }
       entry.jobs.push(record);
+    }
+    // Free this workload's slots for the next one (TCM shows at most 12 jobs at once).
+    if (!keepJobs) await deleteCreated({ send, version, report, room });
+  }
+}
+
+/** Deletes the jobs this run created and has not deleted yet; each one deleted frees a slot. */
+async function deleteCreated({ send, version, report, room }) {
+  for (const id of [...send.created]) {
+    if (send.deleted?.has(id)) continue;
+    let answer;
+    try { answer = await send(G(version, `${ADMIN}/configurationSnapshotJobs/${id}`), 'DELETE'); } catch (error) { answer = { status: `error: ${mask(String(error?.message ?? error))}` }; }
+    if (answer.status === 204 || answer.status === 200) {
+      report.deleted.push(answer.status);
+      (send.deleted ??= new Set()).add(id);
+      if (room) room.left += 1;
+    } else {
+      report.notDeleted.push(answer.status);
+      (send.deleted ??= new Set()).add(id);
     }
   }
 }

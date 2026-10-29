@@ -214,6 +214,32 @@ test('a group restored from deleted items converges although it reads back expir
   }
 });
 
+test('a Microsoft 365 group update converges although Graph adds exchangeResourceUrls and sharepointResourceUrls (#683)', async () => {
+  const unifiedGroup = (written) => groupReadBack('community-group-id', {
+    displayName: 'KEEL-RT-community', mailNickname: 'KEEL-RT-community', groupTypes: ['Unified'],
+    mailEnabled: true, securityEnabled: false, visibility: 'Public',
+    exchangeResourceUrls: ['https://outlook.office365.com/owa/?path=/group/KEEL-RT-community@example.test/mail'],
+    sharepointResourceUrls: ['https://example.sharepoint.com/sites/KEEL-RT-community'],
+    ...written,
+  });
+  const writer = graphLikeWriter();
+  writer.objects.set('/groups/community-group-id', unifiedGroup({ description: 'drifted by Engage' }));
+  const desired = {
+    ...groupSnapshot, id: 'community-group-id', displayName: 'KEEL-RT-community', mailNickname: 'KEEL-RT-community',
+    groupTypes: ['Unified'], mailEnabled: true, securityEnabled: false, visibility: 'Public', description: 'baseline',
+  };
+  const journal = fakeJournal();
+  const result = await apply(writer, [{
+    ...group, naturalKey: 'group:keel-rt-community', payload: desired, verb: 'update', targetId: 'community-group-id',
+  }], journal);
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(result.applied, [{ naturalKey: 'group:keel-rt-community', targetId: 'community-group-id' }]);
+  assert.deepEqual(journal.outcomes.map((o) => o.outcome), ['succeeded']);
+  const patch = writer.calls.find((c) => c.method === 'PATCH');
+  assert.equal(patch.body.description, 'baseline');
+  for (const field of ['exchangeResourceUrls', 'sharepointResourceUrls']) assert.equal(Object.hasOwn(patch.body, field), false, field);
+});
+
 test('a written value that reads back different still fails verification', async (t) => {
   await t.test('group create', async () => {
     const writer = graphLikeWriter({ tamper: (object) => ({ ...object, displayName: 'renamed by someone else' }) });

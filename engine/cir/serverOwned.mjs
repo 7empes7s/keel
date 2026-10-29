@@ -68,6 +68,8 @@ SERVER_OWNED.set('group', new Set([
   'onPremisesProvisioningErrors', 'onPremisesSamAccountName', 'onPremisesSecurityIdentifier',
   'onPremisesSyncEnabled', 'proxyAddresses', 'resourceBehaviorOptions', 'resourceProvisioningOptions',
   'securityIdentifier', 'serviceProvisioningErrors', 'theme',
+  // Issue #683: Graph fills these in for Microsoft 365 (Unified) groups.
+  'exchangeResourceUrls', 'sharepointResourceUrls',
   // Roadmap task-150: written only through assignLicense, add-only.
   'assignedLicenses',
 ]));

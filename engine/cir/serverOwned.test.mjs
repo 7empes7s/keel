@@ -38,6 +38,7 @@ for (const field of [
   'onPremisesProvisioningErrors', 'onPremisesSamAccountName', 'onPremisesSecurityIdentifier',
   'onPremisesSyncEnabled', 'proxyAddresses', 'resourceBehaviorOptions', 'resourceProvisioningOptions',
   'securityIdentifier', 'serviceProvisioningErrors', 'theme',
+  'exchangeResourceUrls', 'sharepointResourceUrls',
 ]) {
   assert.equal(fieldClass(field, 'group'), 'serverOwned', `expected ${field} to be serverOwned`);
 }

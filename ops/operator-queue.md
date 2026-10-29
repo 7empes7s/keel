@@ -10342,7 +10342,15 @@ item that needs it stays untouched.
   Viva Engage community restores and their undo in as the app in `/etc/keel/engage-writer.json` (Q225's `KEEL-RT-engage-writer`).
   Every other write still uses the Restorer. Setup → Connections gets a fourth app, "Keel Engage Writer".
 - Needs: /opt/keel-live at 76e71e25 or later (`test -f /opt/keel-live/engine/store/schema.d/81-engage-writer-connection.sql`).
-- Status: todo
+- Status: done
+- Result: done (2026-10-29 21:45 UTC, keel-operator, build checked **844bbe18**; includes 76e71e25). Read-only; no tenant or DB writes; no credential used beyond the DB read.
+  1. `access_connection_role_check` lists `engage-writer` (plus control, settings-reader, admin-role-reader, content-reader, power-platform-reader, settings-restorer, content-restorer, delegated, svc-*). No schema load needed.
+  2. **The Setup page can't be loaded from Mulinux.** `GET http://127.0.0.1:3600/api/setup` answers 401: the portal requires the Cloudflare Access login even locally, as in Q150.
+     - I didn't call the page's code directly, because loading it runs `syncConnections`, which writes `access_connection` rows.
+     - Stored rows for the tenant: content-reader working (00c7eb61), settings-reader not-checked (87aa77c4), settings-restorer working (12f8942f), all last updated 2026-10-23 14:17. **No `engage-writer` row yet.**
+     - Inference: nobody has opened Setup since the deploy. The row is created at the next Setup load. Consent on KEEL-RT-engage-writer (abbef1fd) was granted at 12:53, so `working` is expected. Someone signed in should open Setup → Connections once to confirm.
+  3. keel-portal and keel-worker logs since 12:57 (38 and 99 lines): no `access_connection`, CHECK-constraint or "violates" errors.
+  - The restore-log line was already confirmed in Q219: `Viva Engage writes: signed in as the Engage writer`, in every dry run and enforce.
 - Do (read-only, no tenant writes):
   1. Confirm the live database has the widened check: `access_connection_role_check` lists `engage-writer`.
      If not, apply the schema the usual way (`node engine/store/loadSchema.mjs | psql`) and report it.

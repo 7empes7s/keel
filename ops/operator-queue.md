@@ -10479,3 +10479,27 @@ item that needs it stays untouched.
 - **Report:** B; step 0 for both (exact Graph answers); the step 1 backup check; per type and operation: promoted / refused (exact
   message) / skipped (fixture could not be created) / blocked; approval ids; the step 4 count; the evidence branch and commit;
   anything left in the tenant. Any writer bug: file an `operator-report` issue and keep going with the other kinds.
+
+### Q230: Re-import the service settings records from the deployed tree and confirm those backups stay on (read-only, after PR #689)
+- Drafted by the "Land stranded service settings evidence" thread (2026-10-29). PR #689 puts on master the 9 record files that
+  were only on evidence branches: Teams org and voice policy reads (Q141), Exchange role groups read (Q157), per-site SharePoint
+  sharing read (Q158), SharePoint structure reads (Q216), SharePoint structure hub writes (Q194) and the Microsoft365DSC
+  distribution list writes (Q203). Each was imported from your clone before; this checks the deployed tree carries them, so a
+  later import from `/opt/keel-live` does not leave them absent and switch those workloads off.
+- Needs: PR #689 merged and deployed (`test -f /opt/keel-live/docs/release/qualifications/workload-reads-teams-org-policies-live-acceptance.json`).
+  If the file is missing, wait for the deploy.
+- Status: todo
+- **Tenant:** reads only (the normal scheduled read). Nothing created, changed or granted.
+- Do, with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. `node /opt/keel-live/cli/keel-workload-collect.mjs import --dir /opt/keel-live/docs/release/qualifications`.
+     Report exit code and the imported / refused / absent lines. Expected: the 9 files above imported, refused `[]`, and none of
+     them in absent.
+  2. `node /opt/keel-live/cli/keel-workload-collect.mjs run` once. Report outcome and reasons for teams-org-policies,
+     teams-voice-policies, exchange-role-groups, sharepoint-site-settings and sharepoint-structure. Expected: none `disabled`
+     (Teams may stay `partial` from unknown fields only, as in Q141).
+  3. From the DB: the ledger rows for `sharepoint-structure-writes` hub-site.add and hub-site.update, and
+     `exchange-distribution-groups.distribution-group.add` and `.update`: ok and their expiry. Site script and site template
+     writes must stay off (Q194, #667).
+- **Note:** the four 2026-10-22 records (Teams x2, role groups, site sharing) expire 2026-11-21; say so in the Result. A
+  recapture before then is a separate item.
+- **Report:** B, steps 1–3 verbatim, anything refused or off.

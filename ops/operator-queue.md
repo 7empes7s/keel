@@ -10255,7 +10255,25 @@ item that needs it stays untouched.
   role its app holds, so the Restorer can't ask for a smaller one. A test app with one role gets a small token. This app is a
   **test fixture** for Q219; whether Keel ships a separate Engage app is a product decision taken elsewhere.
 - Needs: none. Under the 2026-10-28 rule, add the permission to the app yourself; Marouane does only the consent click.
-- Status: open (Marouane granted admin consent on KEEL-RT-engage-writer at 2026-10-29 12:53 UTC; run steps 3–4, then Q219)
+- Status: done
+- Result: done (2026-10-29 12:55 UTC, keel-operator; deployed build 8987893f; credential: Keel Restorer for the app writes in step 1, Collector for reads, engage-writer for step 3; global admin not used):
+  - Step 1. Created the app registration `KEEL-RT-engage-writer` (single tenant, no redirect URI, no secret).
+    - IDs: app object 21daf419…, appId abbef1fd…, SP 893f8d6a….
+    - Credential: a new self-signed RSA 2048 cert generated on Mulinux.
+      - Key `/etc/keel/engage-writer.key` (600); cert `/etc/keel/engage-writer.crt`, expires 2027-10-29 12:37 UTC.
+      - Only the public cert was uploaded (1 keyCredential, 0 secrets).
+    - requiredResourceAccess (re-read): Microsoft Graph `Community.ReadWrite.All` (Role) only.
+    - Config `/etc/keel/engage-writer.json` (600): tenantId, clientId, certPath, keyPath. No secret.
+  - Step 2. Marouane granted consent (12:53 UTC). The SP's appRoleAssignments hold Community.ReadWrite.All (35d59e32…) on Microsoft Graph. No grant by me.
+  - Step 3. A fresh token is **2162 bytes** and its roles are `["Community.ReadWrite.All"]`.
+    `GET /v1.0/employeeExperience/communities?$top=1`, 30 s apart:
+    - 12:53:18: 200, JSON, request-id b3825eeb-9eea-40b7-8733-162da11b45c2
+    - 12:53:48: 200, JSON, request-id c1233420-a192-4a08-9dad-97288111783f
+    - 12:54:19: 200, JSON, request-id 71f32eff-8326-4451-83e8-b571da132628
+  - Step 4. The answer is 200, so this item is done. Q219 (community part) runs next. Its step 3 needs the build at 76e71e25 (PR #682) or later.
+    That build is CI-green on master but not yet deployed (live is 8987893f).
+  - Left in the tenant: the app registration and its SP (a fixture for Q219). The Restorer and the Collector are unchanged.
+  - Evidence: `/tmp/claude-0/-opt-rc-keel-operator/62af8e74-249f-42ca-bec9-e08a62e73fbe/scratchpad/q225/out.txt`.
 - Result (2026-10-29 12:40 UTC, keel-operator; deployed build 8987893f; credential: Keel Restorer for the app writes, Collector for reads; global admin not used):
   - Step 1 done. Created app registration `KEEL-RT-engage-writer` (single tenant, no redirect URI, no secret):
     app object 21daf419…, appId abbef1fd…, SP 893f8d6a….

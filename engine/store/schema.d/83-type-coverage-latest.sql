@@ -37,10 +37,12 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
-DROP TRIGGER IF EXISTS type_coverage_latest_keep_newest ON type_coverage_latest;
-CREATE TRIGGER type_coverage_latest_keep_newest
+CREATE OR REPLACE TRIGGER type_coverage_latest_keep_newest
   BEFORE INSERT ON type_coverage_latest
   FOR EACH ROW EXECUTE FUNCTION type_coverage_latest_keep_newest();
+
+-- Triggers use CREATE OR REPLACE (not drop then create) so re-applying the
+-- schema never leaves a moment where a finishing backup goes unrecorded.
 
 -- Recomputes one (tenant, type) from snapshot, walking complete backups newest
 -- first (snapshot_complete_time_idx) and stopping at the first mention.
@@ -63,7 +65,17 @@ CREATE OR REPLACE FUNCTION snapshot_type_coverage_sync() RETURNS trigger
 LANGUAGE plpgsql AS $$
 DECLARE
   stale record;
+  tenant text;
 BEGIN
+  -- One writer per tenant at a time, so a recompute (delete or update of the
+  -- newest backup) and a concurrent newer backup cannot lose each other's row.
+  -- Locks are taken in a fixed order when a row moves between tenants.
+  FOR tenant IN SELECT DISTINCT t FROM unnest(ARRAY[
+      CASE WHEN TG_OP <> 'INSERT' THEN OLD.tenant_ref END,
+      CASE WHEN TG_OP <> 'DELETE' THEN NEW.tenant_ref END]) t
+    WHERE t IS NOT NULL ORDER BY t LOOP
+    PERFORM pg_advisory_xact_lock(hashtextextended('type-coverage-latest:' || tenant || ':' || current_schema(), 0));
+  END LOOP;
   -- Rows that pointed at the old version of this snapshot may no longer hold
   -- (deleted, no longer complete, digest or times changed): recompute them.
   -- An AFTER trigger already sees the new row, so the recompute includes it.
@@ -85,8 +97,7 @@ BEGIN
   END IF;
   RETURN NULL;
 END $$;
-DROP TRIGGER IF EXISTS snapshot_type_coverage_sync ON snapshot;
-CREATE TRIGGER snapshot_type_coverage_sync
+CREATE OR REPLACE TRIGGER snapshot_type_coverage_sync
   AFTER INSERT OR DELETE OR UPDATE OF id, tenant_ref, status, started_at, completed_at, coverage_digest ON snapshot
   FOR EACH ROW EXECUTE FUNCTION snapshot_type_coverage_sync();
 
@@ -96,8 +107,7 @@ BEGIN
   DELETE FROM type_coverage_latest;
   RETURN NULL;
 END $$;
-DROP TRIGGER IF EXISTS snapshot_type_coverage_truncate ON snapshot;
-CREATE TRIGGER snapshot_type_coverage_truncate
+CREATE OR REPLACE TRIGGER snapshot_type_coverage_truncate
   AFTER TRUNCATE ON snapshot
   FOR EACH STATEMENT EXECUTE FUNCTION snapshot_type_coverage_truncate();
 

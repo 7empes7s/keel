@@ -192,6 +192,28 @@ test('a recovery dump re-inserting rows the triggers already made keeps the newe
   assert.equal((await assertMatchesFullScan())[0].snapshot_id, newest);
 });
 
+test('a newer backup finishing while the newest one is being deleted is not lost', async () => {
+  await snapshot({ hour: 1, digest: { user: ok(1) } });
+  const newest = await snapshot({ hour: 2, digest: { user: ok(2) } });
+  const other = await database.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM snapshot WHERE id = $1', [newest]);
+    // A second session writes a newer backup while the delete is uncommitted.
+    const writing = other.query(
+      `INSERT INTO snapshot (tenant_ref, started_at, completed_at, status, coverage_digest)
+       VALUES ('tenant-a', $1, $2, 'complete', $3) RETURNING id`,
+      [at(2.9), at(3), { user: ok(3) }],
+    );
+    await new Promise((resolve) => { setTimeout(resolve, 200); });
+    await client.query('COMMIT');
+    const { rows: [{ id }] } = await writing;
+    assert.equal((await assertMatchesFullScan())[0].snapshot_id, id);
+  } finally {
+    await other.end();
+  }
+});
+
 test('reading latest coverage does not grow with the number of backups', async () => {
   // 2,000 hourly backups of 200 types; most hourly runs read only tier-1 types.
   // Written newest first in one statement: oldest first would make the trigger
@@ -207,14 +229,19 @@ test('reading latest coverage does not grow with the number of backups', async (
   await client.query('ANALYZE');
   const rows = await assertMatchesFullScan();
   assert.equal(rows.length, 200);
-  const timings = [];
-  for (let run = 0; run < 5; run += 1) {
-    const started = process.hrtime.bigint();
-    await client.query(FROM_TABLE, ['tenant-a']);
-    timings.push(Number(process.hrtime.bigint() - started) / 1e6);
-  }
-  timings.sort((a, b) => a - b);
-  // The full scan takes ~200 ms here; the table read takes ~2 ms. 50 ms leaves
-  // room for a slow runner while still failing if the scan comes back.
-  assert.ok(timings[2] < 50, `median ${timings[2].toFixed(1)} ms`);
+  const median = async (sql) => {
+    const timings = [];
+    for (let run = 0; run < 5; run += 1) {
+      const started = process.hrtime.bigint();
+      await client.query(sql, ['tenant-a']);
+      timings.push(Number(process.hrtime.bigint() - started) / 1e6);
+    }
+    return timings.sort((x, y) => x - y)[2];
+  };
+  const fullScan = await median(FULL_SCAN);
+  const table = await median(FROM_TABLE);
+  // Locally the full scan takes ~190 ms and the table read ~2 ms. Comparing the
+  // two on the same runner keeps a slow machine from failing the test, while a
+  // return of the scan (ratio near 1) still fails it.
+  assert.ok(table * 10 < fullScan, `table ${table.toFixed(1)} ms vs full scan ${fullScan.toFixed(1)} ms`);
 });

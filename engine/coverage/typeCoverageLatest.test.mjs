@@ -179,7 +179,8 @@ test('truncating snapshots empties the table; re-applying the schema fills an em
 test('a recovery dump re-inserting rows the triggers already made keeps the newest and does not fail', async () => {
   await snapshot({ hour: 1, digest: { user: ok(1) } });
   const newest = await snapshot({ hour: 2, digest: { user: ok(2) } });
-  const { rows } = await client.query('SELECT * FROM type_coverage_latest');
+  const { rows } = await client.query(`SELECT * FROM type_coverage_latest WHERE tenant_ref = 'tenant-a' AND snapshot_id IS NOT NULL`);
+  assert.deepEqual(rows.map((row) => row.resource_type), ['user']);
   const older = (await client.query(`SELECT id, started_at, completed_at FROM snapshot WHERE id <> $1`, [newest])).rows[0];
   // The same rows again (a dump's COPY block), plus an older candidate.
   for (const row of [...rows, { ...rows[0], snapshot_id: older.id, started_at: older.started_at, completed_at: older.completed_at, coverage_entry: ok(1) }]) {

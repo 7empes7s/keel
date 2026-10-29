@@ -23,10 +23,11 @@ export const TYPE_COVERAGE_CTES = `
   latest_type_coverage AS (
     -- One row per type, kept current by triggers on snapshot
     -- (store/schema.d/83-type-coverage-latest.sql), so this no longer reads
-    -- every backup's digest.
-    SELECT resource_type, coverage_entry, snapshot_id, started_at, completed_at
-    FROM type_coverage_latest
-    WHERE tenant_ref = $1
+    -- every backup's digest. The join skips rows whose snapshot is gone.
+    SELECT t.resource_type, t.coverage_entry, t.snapshot_id, t.started_at, t.completed_at
+    FROM type_coverage_latest t
+    JOIN snapshot s ON s.id = t.snapshot_id
+    WHERE t.tenant_ref = $1
   )`;
 
 /**

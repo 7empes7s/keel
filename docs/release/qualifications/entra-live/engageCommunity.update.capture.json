@@ -1,0 +1,32 @@
+{
+  "restoreRef": "e8505b4b-61ba-849d-bef5-8d141bc0053e",
+  "entry": {
+    "naturalKey": "engageCommunity:eyJfdHlwZSI6Ikdyb3VwIiwiaWQiOiI4OTI4NDcyMzgyNTc4MDg1MjU4MSJ9",
+    "resourceType": "engageCommunity",
+    "operation": "update",
+    "targetId": "eyJfdHlwZSI6Ikdyb3VwIiwiaWQiOiI4OTI4NDcyMzgyNTc4MDg1MjU4MSJ9",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-29T13:08:27.755Z",
+    "priorState": {
+      "id": "eyJfdHlwZSI6Ikdyb3VwIiwiaWQiOiI4OTI4NDcyMzgyNTc4MDg1MjU4MSJ9",
+      "groupId": "3aa49cce-9e4f-83eb-93e0-65403c3e65cd",
+      "privacy": "private",
+      "description": "Drifted",
+      "displayName": "KEEL-RT-community"
+    },
+    "intendedState": {
+      "privacy": "private",
+      "description": "Fixture",
+      "displayName": "KEEL-RT-community"
+    },
+    "postState": {
+      "id": "eyJfdHlwZSI6Ikdyb3VwIiwiaWQiOiI4OTI4NDcyMzgyNTc4MDg1MjU4MSJ9",
+      "groupId": "3aa49cce-9e4f-83eb-93e0-65403c3e65cd",
+      "privacy": "private",
+      "description": "Fixture",
+      "displayName": "KEEL-RT-community",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#employeeExperience/communities/$entity"
+    }
+  }
+}

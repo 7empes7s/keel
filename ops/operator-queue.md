@@ -13614,3 +13614,48 @@ item that needs it stays untouched.
   no `skipped` reads. If any unknown field or unproven read remains, report it verbatim (field names only); that is the next fix.
 - **Report:** B; capture exit codes, outcome, proven/notProven; evidence branch and commit; import counts; the run outcome,
   fieldCounts and unknownFields per workload; proof status; anything left in the tenant (expected: nothing).
+
+### Q292: Live proof that an older endpoint security policy lists under Defender (test tenant, one KEEL-RT- intent made and removed, after PR #828), about 15 minutes
+- Drafted by the "Map older Defender policies to their area" thread (2026-10-30). Code: PR #828 files an older endpoint security
+  policy (`deviceManagementIntent`) under Defender by its template's `templateSubtype`, looked up when rows are read from the newest
+  stored copy of the template (`engine/insights/templateAreas.mjs`); nothing is written onto the stored policy. Q283 found 0 intents,
+  so a fixture is needed.
+- Needs: /opt/keel-live at the #828 merge or later (`test -f /opt/keel-live/engine/insights/templateAreas.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** test tenant only. Restorer credential for the create and the delete (`DeviceManagementConfiguration.ReadWrite.All`;
+  if it answers 403, queue the permission on the **KEEL Restorer** app yourself per the app-permissions rule and report it), Collector
+  for reads. Create one intent named `KEEL-RT-Old-Endpoint-Security`, **unassigned**, with the template's default settings (send no
+  settings). Assign nothing, grant nothing, global admin not used. Delete it at the end.
+- Do, from `/opt/keel-live` with `set -a; . /etc/keel/db.env; set +a` and tenantRef as in Q174:
+  1. **Pick a template** (Collector): `GET beta /deviceManagement/templates?$select=id,displayName,isDeprecated,templateSubtype`.
+     Take the first with `isDeprecated` false and `templateSubtype` in `endpointDetectionReponse`, `attackSurfaceReduction`,
+     `diskEncryption` (in that order of preference). Report its subtype and displayName (id is fine too: it is a Microsoft constant).
+  2. **Create** (Restorer): `POST beta /deviceManagement/templates/{id}/createInstance` with body
+     `{"displayName":"KEEL-RT-Old-Endpoint-Security","description":"Keel test fixture (Q292), unassigned"}`. Report the status code
+     and the new intent's `templateId` (must equal the template id). A 400/403 is a result: report code and message and stop.
+  3. **Collect:** `node cli/keel-collect.mjs --tier tier3` (reads the templates), then `node cli/keel-collect.mjs --tier tier2`
+     (reads the intents, and holds no templates: this is the case the read-time lookup is for). Report both exit codes and snapshot ids.
+  4. **Check** (Keel's database only):
+     ```js
+     import pg from 'pg';
+     import { answerQuestion } from './engine/query/execute.mjs';
+     import { templateFamilySql } from './engine/insights/templateAreas.mjs';
+     import { settingKind, typeInfo } from './engine/insights/taxonomy.mjs';
+     const c = new pg.Client(process.env.KEEL_DB_URL); await c.connect();
+     const { rows } = await c.query(`SELECT DISTINCT ON (rv.natural_key) rv.natural_key, rv.resource_type, s.id AS snapshot,
+         ${templateFamilySql({ typeExpr: 'rv.resource_type', payloads: ['rv.payload'], tenantExpr: 's.tenant_ref' })} AS family,
+         (rv.payload ? 'templateSubtype') AS stored_subtype
+       FROM resource_version rv JOIN snapshot s ON s.id = rv.snapshot_id
+      WHERE s.tenant_ref = $1 AND rv.resource_type = 'deviceManagementIntent' AND rv.natural_key LIKE 'deviceManagementIntent:KEEL-RT-%'
+      ORDER BY rv.natural_key, s.started_at DESC`, [tenantRef]);
+     for (const r of rows) { const kind = settingKind(r.resource_type, r.family); console.log(JSON.stringify({ ...r, kind, service: typeInfo(kind).service })); }
+     const cov = await answerQuestion(c, { tenantRef, scope: { central: true, entities: [] }, request: { intent: 'coverage', params: {} } });
+     console.log(JSON.stringify(cov.records.filter((r) => /Intent$/.test(r.resourceType) || r.resourceType === 'deviceManagementIntent').map((r) => [r.resourceType, r.outcome, r.count])));
+     await c.end();
+     ```
+  5. **Remove** (Restorer): `DELETE beta /deviceManagement/intents/{new id}`; report the status code, then `GET` it (expect 404).
+- **Pass if:** step 4 shows the fixture with `family` = the template's subtype, `kind` `defenderEndpointSecurityIntent`, service
+  `Defender`, `stored_subtype` false, from the tier2 snapshot; coverage lists `defenderEndpointSecurityIntent` with count 1.
+- **Report:** B; the template picked; status codes of create and delete; both collect exit codes and snapshot ids; the step 4
+  output verbatim; anything left in the tenant (expected: nothing).

@@ -13720,8 +13720,11 @@ item that needs it stays untouched.
   each of the 8 privileged roles and whether each holder has a start and end date. If they agree, a follow-up PR lets Keel check 7.5
   (permanent active assignments); today it reads "could not check" because Keel does not trust its start dates yet.
 - Needs: /opt/keel-live at the #831 merge or later (`test -f /opt/keel-live/tools/scubagear-pim-check.mjs`).
-- Status: todo
-- Result:
+- Status: blocked: tool bug (Accept-Language), needs a fix PR
+- Result: blocked, tool bug (2026-10-30 22:42 UTC, keel-operator). Build **B = 4808d30a**. GET only, Collector `/etc/keel/tenant.json`; nothing written; global admin not used.
+  - `node tools/scubagear-pim-check.mjs --config /etc/keel/tenant.json`: exit **2**, output verbatim: `scubagear-pim-check: /v1.0/roleManagement/directory/roleAssignmentSchedules: HTTP 400`. No JSON printed.
+  - Cause (checked by hand, one GET each): Node's `fetch` sends `Accept-Language: *` by default, and the PIM endpoint answers **400** `UnknownError` / `CultureNotFoundException: "* is an invalid culture identifier"`. The same GET with `accept-language: en-US` answers **200**. Same quirk as the PIM reads earlier today. Not a permission problem.
+  - **For the thread:** send an explicit `accept-language: en-US` header on every request in `tools/scubagear-pim-check.mjs` (and check whether the beta `roleAssignmentScheduleInstances` read needs it too), then set this item back to todo.
 - **Tenant:** GET only, Collector credential from `/etc/keel/tenant.json` (`RoleManagement.Read.Directory`, already held: the role
   backup uses it). The tool refuses anything but GET and refuses a next-page link off graph.microsoft.com. Grant, assign, activate,
   create or change nothing. No PIM change of any kind.

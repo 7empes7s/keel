@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/page-header";
 import { Verdict } from "@/components/verdict";
 import { setupStatus, setupVerdict, type ServiceReadKind } from "@/lib/baselines-view";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
-import { getBaselinesData, getCoverageData, getDriftData } from "@/lib/portal-data";
+import { getBaselinesData, getBaselineTypeCounts, getCoverageData, getDriftData } from "@/lib/portal-data";
 import {
   getRecentJobs,
   getSnapshotOptions,
@@ -17,7 +17,7 @@ import {
   type SnapshotOption,
 } from "@/lib/portal-jobs";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
-import { getServiceChanges } from "@/lib/service-changes";
+import { getServiceChanges, getServiceReadCounts } from "@/lib/service-changes";
 import type { BaselinesData, DriftRecord } from "@/lib/types";
 
 const BASELINE_JOB_KINDS = ["baseline-create", "baseline-activate"];
@@ -55,17 +55,19 @@ export default async function BaselinesPage() {
   // Exchange, SharePoint and OneDrive, Teams, Purview and Power Platform settings are
   // tenant-wide service reads, compared with the previous backup, so only a central
   // administrator sees them (as on the Changes page).
-  const [items, coverage, serviceChanges] = await Promise.all([
+  const active = data.baselines.find((baseline) => baseline.active) ?? null;
+  const [items, coverage, serviceChanges, held, readCounts] = await Promise.all([
     getDriftData(access.scope).then((drift) => drift.items as DriftRecord[], () => null),
     getCoverageData().catch(() => null),
     access.scope.central ? getServiceChanges().catch(() => [] as DriftRecord[]) : Promise.resolve([] as DriftRecord[]),
+    active ? getBaselineTypeCounts(active.id, access.scope).catch(() => null) : Promise.resolve(null),
+    access.scope.central ? getServiceReadCounts().catch(() => ({} as Record<string, number>)) : Promise.resolve({} as Record<string, number>),
   ]);
   const backedUp = (coverage?.types ?? []).filter((type) => type.reportStatus === "covered").map((type) => type.type);
   const serviceReads: ServiceReadKind[] = access.scope.central
-    ? (coverage?.workloads ?? []).map((kind) => ({ type: kind.type, read: kind.reportStatus === "covered" }))
+    ? (coverage?.workloads ?? []).map((kind) => ({ type: kind.type, read: kind.reportStatus === "covered", itemCount: readCounts[kind.type] ?? null }))
     : [];
 
-  const active = data.baselines.find((baseline) => baseline.active) ?? null;
   const verdict = setupVerdict(active, items, data.generatedAt);
   const jobsActive = jobs.some((job) => job.status === "queued" || job.status === "running");
 
@@ -84,7 +86,7 @@ export default async function BaselinesPage() {
         tone={verdict.tone}
       />
       <div data-layer="explanation">
-        <ApprovedSetup backedUp={backedUp} baselines={data.baselines} canBaseline={canBaseline} items={items} now={data.generatedAt} serviceChanges={serviceChanges} serviceReads={serviceReads} sources={snapshots} />
+        <ApprovedSetup backedUp={backedUp} baselines={data.baselines} canBaseline={canBaseline} held={held} items={items} now={data.generatedAt} serviceChanges={serviceChanges} serviceReads={serviceReads} sources={snapshots} />
         <RecentWork jobs={jobs} now={data.generatedAt} />
         <JobRefresher active={jobsActive} />
       </div>

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { plainLabel, quickComparisons, serviceSummaries, setupStatus, setupVerdict } from "@/lib/baselines-view";
+import { kindMatch, matchScore, overallScore, plainLabel, quickComparisons, serviceSummaries, setupStatus, setupVerdict } from "@/lib/baselines-view";
 import type { BaselineRecord } from "@/lib/types";
 
 const NOW = "2026-10-02T09:40:00Z";
@@ -48,6 +48,44 @@ test("every service shows: service reads are measured against the previous backu
   assert.deepEqual(by.get("Purview")!.notCovered, ["purview-labels"]);
   // A service read is never listed as missing from the approved setup.
   assert.ok(summaries.every((summary) => summary.basis === "previous-backup" || !summary.notCovered.some((type) => type.includes("-"))));
+});
+
+test("a kind's match counts each changed, removed or added setting once", () => {
+  // Approved setup holds 10: 2 changed and 1 removed no longer match; 1 added is extra.
+  assert.deepEqual(kindMatch(10, { added: 1, modified: 2, removed: 1 }, "approved-setup"), { matching: 7, judged: 11 });
+  // A service read found 10 now: 1 added and 2 changed do not match; 1 removed is missing.
+  assert.deepEqual(kindMatch(10, { added: 1, modified: 2, removed: 1 }, "previous-backup"), { matching: 7, judged: 11 });
+  // Never below zero.
+  assert.deepEqual(kindMatch(1, { added: 0, modified: 3, removed: 0 }, "approved-setup"), { matching: 0, judged: 1 });
+  // Rounded down, so one change left never reads 100%.
+  assert.equal(matchScore({ matching: 999, judged: 1000 }).percent, 99);
+  assert.equal(matchScore({ matching: 0, judged: 0 }).percent, null);
+});
+
+test("each service and the whole tenant get a match percentage of settings", () => {
+  const summaries = serviceSummaries(active, [
+    { resourceType: "conditionalAccessPolicy", blastRadius: "tenant-lockout", changeType: "modified" },
+    { resourceType: "deviceConfiguration", blastRadius: "cosmetic", changeType: "added" },
+    { resourceType: "exchange-mail-flow", blastRadius: "access-affecting", changeType: "removed", serviceRead: { workload: "exchange-mail-flow", resourceKey: "transport-rule:Forward", collectionId: "c2", previousCollectionId: "c1", previousReadAt: null, comparedWith: "approved", alertId: null, alertState: null, undo: { possible: true, reason: null } } },
+  ], ["namedLocation"], [
+    { type: "exchange-mail-flow", read: true, itemCount: 9 },
+    { type: "teams-org-policies", read: true, itemCount: null },
+    { type: "purview-labels", read: false, itemCount: 4 },
+  ], { conditionalAccessPolicy: 4, group: 16, deviceConfiguration: 5, namedLocation: 99 });
+  const by = new Map(summaries.map((summary) => [summary.service.name, summary]));
+  // Entra ID: 4 sign-in rules + 16 groups held, 1 rule changed. Named locations are not covered: left out.
+  assert.deepEqual(by.get("Entra ID")!.score, { passed: 19, evaluated: 20, excepted: 0, percent: 95 });
+  // Intune: 5 held, 1 added that the setup does not hold.
+  assert.deepEqual(by.get("Intune")!.score, { passed: 5, evaluated: 6, excepted: 0, percent: 83 });
+  // Exchange: 9 read now, 1 removed since.
+  assert.deepEqual(by.get("Exchange Online")!.score, { passed: 9, evaluated: 10, excepted: 0, percent: 90 });
+  // A read with no count, and one not read, get no score.
+  assert.equal(by.get("Teams")!.score, null);
+  assert.equal(by.get("Purview")!.score, null);
+  assert.deepEqual(overallScore(summaries), { passed: 33, evaluated: 36, excepted: 0, percent: 91 });
+  // Without the counts, no service is scored.
+  assert.ok(serviceSummaries(active, [], []).every((summary) => summary.score === null));
+  assert.equal(overallScore(serviceSummaries(active, [], [])), null);
 });
 
 test("the status and verdict say how the tenant stands, in words", () => {

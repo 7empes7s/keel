@@ -7,7 +7,7 @@ import { schemaSql } from "../../engine/store/loadSchema.mjs";
 import { createIsolatedTestDatabase } from "../../engine/test/dbTestHelper.mjs";
 import { typeService, plainKind } from "@/lib/baselines-view";
 import { changesVerdict } from "@/lib/changes-view";
-import { loadServiceChanges } from "@/lib/service-changes";
+import { loadServiceChanges, loadServiceReadCounts } from "@/lib/service-changes";
 import { serviceChangeFrom, serviceChangeName, serviceUndo } from "@/lib/service-changes-view";
 import type { DriftRecord } from "@/lib/types";
 
@@ -204,5 +204,35 @@ test("the Changes verdict counts service setting changes apart from approved-set
       const items = Array.from({ length: waiting }, (_, index) => serviceRow({ id: `id-${index}` }));
       assert.ok(changesVerdict(items, baseline, NOW).text.split(/\s+/).length <= 25);
     }
+  }
+});
+
+test("the read counts give each service the settings its newest read found", async () => {
+  const database = await createIsolatedTestDatabase(import.meta.url);
+  const client = await database.connect();
+  try {
+    await client.query(schemaSql());
+    assert.deepEqual(await loadServiceReadCounts(client, TENANT), {});
+    const stored = (tenantRef: string, at: string, sites: ReturnType<typeof site>[]) => recordSharePointRun(client, { tenantRef, result: run(at, sites) });
+    await stored(TENANT, "2026-10-13T02:00:00.000Z", [site(FINANCE, "Finance", []), site(ARCHIVE, "Archive", [])]);
+    // Only the newest read counts: Archive is gone from it.
+    await stored(TENANT, "2026-10-14T02:00:00.000Z", [site(FINANCE, "Finance", [])]);
+    await stored("other-tenant", "2026-10-14T02:00:00.000Z", [site(FINANCE, "Elsewhere", []), site(ARCHIVE, "Other", [])]);
+    const counts = await loadServiceReadCounts(client, TENANT);
+    const { rows } = await client.query(
+      `SELECT count(*)::int AS n FROM workload_observation o JOIN workload_collection c ON c.id = o.collection_id
+        WHERE c.tenant_ref = $1 AND c.observed_to = '2026-10-14T02:00:00.000Z'`, [TENANT],
+    );
+    assert.deepEqual(Object.keys(counts), ["sharepoint-site-settings"]);
+    assert.equal(counts["sharepoint-site-settings"], rows[0].n);
+    assert.ok(rows[0].n >= 1);
+    const { rows: older } = await client.query(
+      `SELECT count(*)::int AS n FROM workload_observation o JOIN workload_collection c ON c.id = o.collection_id
+        WHERE c.tenant_ref = $1 AND c.observed_to = '2026-10-13T02:00:00.000Z'`, [TENANT],
+    );
+    assert.ok(older[0].n > rows[0].n, "the newer read holds fewer settings");
+  } finally {
+    await client.end();
+    await database.cleanup();
   }
 });

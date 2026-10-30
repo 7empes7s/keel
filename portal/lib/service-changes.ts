@@ -91,6 +91,32 @@ async function undoChoices(client: KeelClient, tenant: string, rows: Record<stri
   return found;
 }
 
+/** How many settings each service's latest read found (its observations), by workload.
+ * The base of the match percentage for services compared read to read. */
+export async function loadServiceReadCounts(client: KeelClient, tenant: string): Promise<Record<string, number>> {
+  const { rows } = await client.query(
+    `WITH latest AS (
+       SELECT DISTINCT ON (workload) id, workload FROM workload_collection
+        WHERE tenant_ref = $1
+        ORDER BY workload, created_at DESC, id DESC
+     )
+     SELECT latest.workload, count(o.*)::int AS count
+       FROM latest LEFT JOIN workload_observation o ON o.collection_id = latest.id
+      GROUP BY latest.workload`,
+    [tenant],
+  );
+  return Object.fromEntries(rows.map((row) => [String(row.workload), Number(row.count ?? 0)]));
+}
+
+export async function getServiceReadCounts(): Promise<Record<string, number>> {
+  const client = (await connect(databaseUrl())) as KeelClient;
+  try {
+    return await loadServiceReadCounts(client, tenantRef());
+  } finally {
+    await client.end();
+  }
+}
+
 export async function getServiceChanges(now: Date = new Date()): Promise<DriftRecord[]> {
   const client = (await connect(databaseUrl())) as KeelClient;
   try {

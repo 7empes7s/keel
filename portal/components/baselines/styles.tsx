@@ -66,6 +66,14 @@ const CSS = `
 .bl-service[data-tone="fine"] { border-top-color: var(--fine); }
 .bl-service-head { display: flex; align-items: center; gap: var(--space-sm); }
 .bl-service-head > .icon { color: var(--text-soft); }
+.bl-service-head > .score-ring { margin-left: auto; }
+.bl-score { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-md) var(--space-lg); padding: var(--space-md) var(--space-lg); border-left-width: 4px; }
+.bl-score[data-tone="fine"] { border-left-color: var(--fine); }
+.bl-score[data-tone="soon"] { border-left-color: var(--check-soon); }
+.bl-score[data-tone="urgent"] { border-left-color: var(--urgent); }
+.bl-score-words { display: grid; flex: 1 1 16rem; gap: var(--space-2xs); min-width: 0; }
+.bl-score-words h3 { margin: 0; font-size: 1.125rem; font-weight: 650; }
+.bl-score-words p { margin: 0; }
 .bl-service-name { display: grid; min-width: 0; line-height: 1.3; }
 .bl-service-name b { font-weight: 650; }
 .bl-service-name small { overflow: hidden; color: var(--text-soft); font-size: 0.8125rem; text-overflow: ellipsis; white-space: nowrap; }

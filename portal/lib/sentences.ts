@@ -76,6 +76,8 @@ export function refLabel(ref: EngineRef | null | undefined, fallback = "someone"
 const SYSTEM_ACTORS: Record<string, string> = {
   scheduler: "Keel's scheduler",
   "policy-automation": "Keel's policy automation",
+  // A restore approved as it was made, because restore approvals are off for its services.
+  "restore-approval-setting": "Keel (restore approvals are off)",
 };
 
 const EMAIL = /^[^\s@]+@[^\s@]+$/;

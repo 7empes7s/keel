@@ -61,22 +61,25 @@ is verified as granted to the KEEL Restorer.
 
 ### Safety rules
 
-- **Group expiration can delete groups.** A restore may only make expiry less
-  aggressive: a longer lifetime, fewer groups covered (`All` → `Selected` →
-  `None`), and no renewal notice address removed (groups without an owner
-  send their renewal notice only to those addresses; adding one is fine,
-  compared without case and split on `;`). A shorter lifetime, wider
-  coverage, a removed address, an unknown value, or a lifetime that is not a
-  positive number on either side is skipped with a `manual:` reason and
-  nothing is sent.
-  Gap D3: a shorter lifetime on its own is also a retention-reducing content
-  effect. A promotion whose content effects carry the separate high-impact
-  approval (a second person) writes it. Without that approval it is skipped
-  with a completion item: the target lifetime and the portal path (Microsoft
-  Entra admin center > Groups > All groups > Expiration > Group lifetime (in
-  days)). A dry run reports the item as pending approval instead of refusing,
-  so it can still be promoted once approved. Wider coverage or a removed
-  address is never approvable.
+- **Group expiration can delete groups.** A longer lifetime, fewer groups
+  covered (`All` → `Selected` → `None`) and an added renewal notice address
+  are always written. Three directions make expiry more aggressive: a
+  shorter lifetime, wider coverage, and a removed renewal notice address
+  (groups without an owner send their renewal notice only to those
+  addresses; compared without case and split on `;`). Each is a
+  retention-reducing content effect of its own field. The customer's restore
+  approval setting decides: on (the default), a second person approves it in
+  Approvals; off for Entra, it is written with the restore. A promotion
+  writes the policy only when every such change in it was approved (one
+  approval never unlocks another). Without that it is skipped with a
+  completion item: the target value and the portal path under Microsoft
+  Entra admin center > Groups > All groups > Expiration (Group lifetime (in
+  days), Enable expiration for these Microsoft 365 groups, or Email contact
+  for groups with no owners); several waiting changes share one item. A dry
+  run reports the item as pending approval instead of refusing, so it can
+  still be promoted once approved. An unknown scope value, or a lifetime that
+  is not a positive number on either side, is never written, whatever is
+  approved.
 - **Device registration is never written.** These settings decide who may
   register and join devices, who becomes a local admin on joined devices, and
   whether joining needs MFA. A wrong write could block admins from joining

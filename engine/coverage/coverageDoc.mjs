@@ -75,8 +75,8 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'The header logo is uploaded by hand, and a language that was added or removed is added or removed by hand.',
   }),
   groupLifecyclePolicy: auto('Group expiration policy', {
-    keeps: 'Puts the policy back only when that makes group expiry less aggressive.',
-    todo: 'A shorter lifetime, more groups covered or a removed notice address could expire and delete groups, so KEEL leaves that change to a person. A missing policy, and the list of groups it covers, are set by hand.',
+    keeps: 'Puts the policy back. A shorter lifetime, more groups covered or a dropped notice address waits for approval first.',
+    todo: 'A missing policy, and the list of groups it covers, are set by hand. A change that could expire and delete groups waits until a second person approves it in Approvals, unless restore approvals are off for Entra.',
   }),
   administrativeUnit: auto('Administrative units', {
     keeps: 'Puts the name and description back.',
@@ -695,7 +695,7 @@ export const WORKLOAD_GUIDE = Object.freeze({
   'exchange-mailbox-settings': Object.freeze({ name: 'Exchange mailbox settings',
     todo: 'Settings KEEL does not restore are changed by hand in the Exchange admin center using the backup.' }),
   'onedrive-site-settings': Object.freeze({ name: 'OneDrive settings',
-    todo: 'KEEL does not restore OneDrive settings. Change them by hand in the SharePoint admin center using the backup.' }),
+    todo: 'KEEL puts back a OneDrive\'s own sharing settings, default link type and permission, and guest and link expiry. A setting the backup shows following the tenant\'s OneDrive default is not pinned on the site. A locked site is never changed or unlocked. The owner, storage quota, sensitivity label and conditional access setting are changed by hand in the SharePoint admin center using the backup. Wider sharing needs a second approver.' }),
   'purview-labels': Object.freeze({ name: 'Purview sensitivity labels',
     todo: 'KEEL only restores label names and tooltips, and adds labels back to a publishing policy. It never weakens a label or unpublishes one: those changes, and new labels, are made by hand in the Purview portal.' }),
   'exchange-mail-flow': Object.freeze({ name: 'Exchange mail flow and protection',

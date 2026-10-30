@@ -21,6 +21,9 @@ import { can, capabilityScope } from '../authz/can.mjs';
 import { capabilityForJobKind } from '../authz/jobCapabilities.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { classifyApprovalActions, requiredApprovalsFor, standingPolicyRefusal } from './approvalPolicy.mjs';
+import {
+  RESTORE_APPROVALS_OFF_BASIS, RESTORE_APPROVALS_OFF_DECIDER, effectsNeedApproval, restoreNeedsApproval,
+} from './restoreApprovalSettings.mjs';
 
 export const APPROVAL_REQUEST_EVIDENCE_KIND = 'approval-request';
 export const APPROVAL_DECISION_EVIDENCE_KIND = 'approval-decision';
@@ -224,7 +227,99 @@ export async function requestApproval(client, {
     },
     actor: requestedBy,
   });
+  if (action === 'restore' && artifact && requiredApprovals === 1) {
+    const approved = await approveIfRestoreApprovalsOff(client, { tenantRef, request, artifact });
+    if (approved) return approved;
+  }
   return request;
+}
+
+/**
+ * The customer's restore approval setting (restoreApprovalSettings.mjs): when every
+ * service a restore writes to has restore approvals off, and so does every content
+ * effect it carries, the request is approved as it is made. Nobody is named as its
+ * approver: decided_by is Keel's setting marker and the basis is kept on the request
+ * and in the evidence with the services. Anything Keel cannot read or place, a dry run
+ * that cannot be promoted, or a two-person rule leaves the request waiting for a person.
+ * Execution-time checks (lockout gate, preservation locks, trust fields, the fresh
+ * digest and fingerprint) are untouched. Returns the approved row, or null.
+ */
+async function approveIfRestoreApprovalsOff(client, { tenantRef, request, artifact }) {
+  if (!validateArtifactForApproval(artifact).ok) return null;
+  const jobParams = restoreJobParams(artifact);
+  let decided;
+  let need;
+  await client.query('BEGIN');
+  let committed = false;
+  try {
+    const locked = await lockRequest(client, request.id);
+    if (!locked || locked.status !== 'pending') return null;
+    // Read the setting inside the transaction, holding its rows, so a service turned
+    // back on at the same moment is never missed.
+    await client.query('SELECT 1 FROM restore_approval_setting WHERE tenant_ref = $1 FOR SHARE', [artifact.tenantRef]);
+    need = await restoreNeedsApproval(client, { artifact });
+    if (need.required) return null;
+    if ((artifact.contentEffects ?? []).length > 0) {
+      const effects = await effectsNeedApproval(client, { tenantRef: artifact.tenantRef, effects: artifact.contentEffects });
+      if (effects.required) return null;
+    }
+    const reason = `Restore approvals are off for ${need.services.join(', ')}`;
+    const job = locked.executor === 'cli' ? null : await enqueue(client, {
+      kind: 'restore',
+      params: jobParams,
+      requestedBy: locked.requested_by,
+      idempotencyKey: `approval:${locked.id}`,
+      priority: APPROVED_JOB_PRIORITY,
+    });
+    if (job && !jobMatchesApproval(job, { kind: 'restore', requestedBy: locked.requested_by, params: jobParams })) return null;
+    const { rows } = await client.query(
+      `UPDATE approval_request
+       SET status = 'approved', decided_by = $2, decided_at = now(), standing_policy = $3, reason = $4
+       WHERE id = $1
+       RETURNING *`,
+      [locked.id, RESTORE_APPROVALS_OFF_DECIDER, RESTORE_APPROVALS_OFF_BASIS, reason],
+    );
+    decided = { request: rows[0], job };
+    await client.query('COMMIT');
+    committed = true;
+  } catch {
+    // Anything that goes wrong before the commit leaves the request waiting for a person.
+    return null;
+  } finally {
+    if (!committed) await client.query('ROLLBACK');
+  }
+  // After the commit, as a person's approval is recorded (approveRequest).
+  await appendEvidence(client, {
+    tenantRef,
+    kind: APPROVAL_DECISION_EVIDENCE_KIND,
+    subject: {
+      requestId: decided.request.id,
+      action: decided.request.action,
+      decision: 'approved',
+      executor: decided.request.executor,
+      jobId: decided.job?.id ?? null,
+      basis: RESTORE_APPROVALS_OFF_BASIS,
+      services: need.services,
+      settingTenantRef: artifact.tenantRef,
+    },
+    actor: RESTORE_APPROVALS_OFF_DECIDER,
+  });
+  return Object.assign(decided.request, { approvalSkippedFor: need.services });
+}
+
+/** The restore job an approved dry run mints: its scope comes from the artifact alone. */
+function restoreJobParams(artifact) {
+  return {
+    mode: 'enforce',
+    artifactId: artifact.id,
+    snapshotId: artifact.snapshotId,
+    selection: artifact.selection,
+    closureKeys: artifact.closureKeys,
+    targetTenantId: artifact.targetTenantId,
+    collectorConfigPath: artifact.collectorConfigPath,
+    targetConfigPath: artifact.targetConfigPath,
+    reconciliationResources: artifact.reconciliationResources,
+  };
 }
 
 async function restoreArtifact(client, { tenantRef, action, params }) {
@@ -462,17 +557,7 @@ export async function approveRequest(client, {
       // copied values and invokes the artifact-only CLI path; carrying this
       // artifact-derived scope on the job makes its audit record explicit while the
       // persisted artifact remains the sole execution authority.
-      jobParams = {
-        mode: 'enforce',
-        artifactId: artifact.id,
-        snapshotId: artifact.snapshotId,
-        selection: artifact.selection,
-        closureKeys: artifact.closureKeys,
-        targetTenantId: artifact.targetTenantId,
-        collectorConfigPath: artifact.collectorConfigPath,
-        targetConfigPath: artifact.targetConfigPath,
-        reconciliationResources: artifact.reconciliationResources,
-      };
+      jobParams = restoreJobParams(artifact);
     }
 
     // A request made before its change was found to hold the same content is refused

@@ -785,10 +785,11 @@ test("restore lists every service in one list, each kind with its status", async
   await expect(group("Purview").locator(".restore-workload")).toContainText("Not backed up yet");
   await expect(group("Purview").locator(".restore-chip")).toHaveText("Nothing to put back yet");
   await expect(group("Power Platform").locator(".restore-workload")).toContainText("Not switched on for this tenant yet");
-  // Kept but not put back by KEEL: says so, and where a person makes the change.
-  const onedrive = group("SharePoint and OneDrive").locator(".restore-workload", { hasText: "OneDrive settings" });
-  await expect(onedrive.locator(".restore-chip")).toHaveText("By hand only");
-  await expect(onedrive).toContainText("SharePoint admin center");
+  // Backed up, but not put back from this page: says so, and where a person makes the change.
+  const sharepoint = group("SharePoint and OneDrive").locator(".restore-workload", { hasText: "SharePoint settings" });
+  await expect(sharepoint.locator(".restore-chip")).toHaveText("Not from this page yet");
+  await expect(sharepoint).toContainText("SharePoint admin center");
+  await expect(group("SharePoint and OneDrive").locator(".restore-workload", { hasText: "OneDrive settings" }).locator(".restore-chip")).toHaveText("Can be put back here");
   // A service with nothing backed up at all still shows, and says so.
   await expect(group("Defender").locator(".sel-group-head .sel-group-count")).toHaveText("Nothing in this backup");
   // No stored code on the screen outside Technical details.
@@ -808,7 +809,7 @@ for (const theme of ["dark", "light"] as const) {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await open(page, "/restore", theme);
     // Only kinds KEEL can put back from the page get the button.
-    await expect(page.locator(".restore-workload", { hasText: "OneDrive settings" }).getByRole("button", { name: "Choose what to put back" })).toHaveCount(0);
+    await expect(page.locator(".restore-workload", { hasText: "OneDrive settings" }).getByRole("button", { name: "Choose what to put back" })).toHaveCount(1);
     await expect(page.locator(".restore-workload", { hasText: "SharePoint settings" }).getByRole("button", { name: "Choose what to put back" })).toHaveCount(0);
     await page.locator(".restore-workload", { hasText: "Exchange mail flow and protection" }).getByRole("button", { name: "Choose what to put back" }).click();
     const panel = page.locator(".workload-restore");

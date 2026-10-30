@@ -273,6 +273,14 @@ $AllowedPnP = @{
     'Get-PnPTenantSite' = @('Identity')
 }
 
+# OneDrive site settings restore (engine/restore/workloads/writeDeclarations.mjs,
+# onedrive.site-settings.update, which holds the same list). Sharing settings of one named
+# personal site only: -Identity must be a /personal/ site on the tenant's -my host (checked
+# below). Never the owner, lock state, quota, sensitivity label or conditional access.
+$AllowedOneDriveWrites = @{
+    'Set-PnPTenantSite' = @('AnonymousLinkExpirationInDays', 'DefaultLinkPermission', 'DefaultSharingLinkType', 'ExternalUserExpirationInDays', 'Identity', 'OverrideTenantAnonymousLinkExpirationPolicy', 'OverrideTenantExternalUserExpirationPolicy', 'SharingAllowedDomainList', 'SharingBlockedDomainList', 'SharingCapability', 'SharingDomainRestrictionMode')
+}
+
 # SharePoint structure (engine/collect/workloads/sharepointStructure.mjs). Hub sites, site
 # designs and site scripts are read on the admin site; a site template is read on the one
 # site the job names. Reads only. -Url never reaches the cmdlet: it names the site to
@@ -386,6 +394,7 @@ elseif ($AllowedPurviewRetentionDlp.ContainsKey($name) -and $module -eq 'Exchang
 elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnP[$name] }
 elseif ($AllowedPnPStructure.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnPStructure[$name] }
 elseif ($AllowedPnPStructureWrites.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnPStructureWrites[$name] }
+elseif ($AllowedOneDriveWrites.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedOneDriveWrites[$name] }
 elseif ($AllowedTeamsPolicy.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsPolicy[$name] }
 elseif ($AllowedTeamsExtended.ContainsKey($name) -and $module -eq 'MicrosoftTeams') { $session = 'teams'; $permitted = $AllowedTeamsExtended[$name] }
 elseif ($AllowedPurviewExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewExtended[$name] }
@@ -423,6 +432,15 @@ try {
     Out-Failure -Message "could not read the connection settings: $($_.Exception.Message)" -Category 'ConnectionError' -ErrorId 'ConnectFailed'
 }
 
+# A OneDrive settings write names one personal site on this tenant's -my host, never a path inside it.
+if ($name -eq 'Set-PnPTenantSite') {
+    $adminHost = ([System.Uri][string]$config.sharePointAdminUrl).Host
+    $myHost = $adminHost -replace '-admin\.sharepoint\.com$', '-my.sharepoint.com'
+    $siteId = [string]$params['Identity']
+    if ($myHost -eq $adminHost -or $siteId -notmatch ('^https://' + [regex]::Escape($myHost) + '/personal/[A-Za-z0-9_.-]+/?\z')) {
+        Out-Failure -Message "Set-PnPTenantSite takes one OneDrive personal site on this tenant, not $siteId" -ErrorId 'SiteNotAllowed'
+    }
+}
 # A template is read (or applied) on its own site; everything else in the PnP session on the admin site.
 $pnpUrl = $config.sharePointAdminUrl
 if ($name -eq 'Get-PnPSiteTemplate') {

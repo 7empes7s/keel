@@ -40,6 +40,9 @@ import { readExchangeRoleGroups } from '../../engine/collect/workloads/exchangeR
 import {
   EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD, EXCHANGE_RECIPIENTS_WORKLOAD, readExchangeDistributionGroups, readExchangeRecipients,
 } from '../../engine/collect/workloads/exchangeRecipients.mjs';
+import {
+  TEAMS_COLLABORATION_WORKLOAD, TEAMS_MEETING_SETTINGS_WORKLOAD, readTeamsCollaboration, readTeamsMeetingSettings,
+} from '../../engine/collect/workloads/teamsCollaboration.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
 import { pseudonymizeCapture } from './pseudonymize.mjs';
@@ -69,6 +72,7 @@ export const WORKLOAD_READERS = Object.freeze({
   ...WRITTEN_READERS, [SHAREPOINT_WORKLOAD]: readSharePointSiteSharing, 'exchange-role-groups': readExchangeRoleGroups,
   [EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD]: readExchangeDistributionGroups, [EXCHANGE_RECIPIENTS_WORKLOAD]: readExchangeRecipients,
   [SHAREPOINT_STRUCTURE_WORKLOAD]: readSharePointStructure,
+  [TEAMS_COLLABORATION_WORKLOAD]: readTeamsCollaboration, [TEAMS_MEETING_SETTINGS_WORKLOAD]: readTeamsMeetingSettings,
 });
 
 /**

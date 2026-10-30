@@ -12,8 +12,8 @@ export default Object.freeze({
     { key: 'teams', name: 'Teams and members', types: ['teams-settings'], match: /^teams(settings|team|channel|member|owner|template)/ },
     { key: 'apps', name: 'Custom apps', types: ['teamsCatalogApp'], match: /catalogapp|customapp/ },
     { key: 'roles', name: 'Admin roles', types: [], match: /role/ },
-    { key: 'org', name: 'Organization policies', types: ['teams-org-policies'], match: /orgpolic|external|guest|federation|apppermission|appsetup|messaging|chat|update|channelpolic/ },
-    { key: 'calling', name: 'Calling and meetings', types: ['teams-voice-policies'], match: /voice|calling|call|meeting|liveevent|events|webinar|townhall|emergency|dialplan|phone/ },
+    { key: 'org', name: 'Organization policies', types: ['teams-org-policies', 'teams-collaboration-policies'], match: /orgpolic|collaboration|external|guest|federation|apppermission|appsetup|messaging|chat|update|channelpolic/ },
+    { key: 'calling', name: 'Calling and meetings', types: ['teams-voice-policies', 'teams-meeting-settings'], match: /voice|calling|call|meeting|liveevent|events|webinar|townhall|emergency|dialplan|phone/ },
     { key: 'tenant', name: 'Tenant settings', types: [], match: /setting|config|tenant/ },
   ]),
   entries: Object.freeze({
@@ -33,6 +33,17 @@ export default Object.freeze({
       name: 'Teams calling, voice or live event policy',
       priority: 'normal',
       reason: 'Changes calling and meeting features for the users it applies to.',
+    },
+    // Read with Get-CsExternalAccessPolicy, Get-CsTeamsChannelsPolicy and the others (teamsCollaboration.mjs).
+    'teams-collaboration-policies': {
+      name: 'Teams external access, channel or files policy',
+      priority: 'high',
+      reason: 'Decides who outside the organization users can chat with and who can share channels and files.',
+    },
+    'teams-meeting-settings': {
+      name: 'Teams meeting setting, encryption or recording policy',
+      priority: 'high',
+      reason: 'Decides whether anonymous people can join meetings, and whether calls are encrypted or recorded.',
     },
   }),
 });

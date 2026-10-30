@@ -30,6 +30,9 @@ import { collectRetentionDlp, recordRetentionDlpRun } from './purviewRetentionDl
 import { SHAREPOINT_WORKLOAD, collectSharePointSites, recordSharePointRun } from './sharepoint.mjs';
 import { SHAREPOINT_STRUCTURE_WORKLOAD, collectSharePointStructure, recordSharePointStructureRun } from './sharepointStructure.mjs';
 import { collectTeams, recordTeamsRun } from './teams.mjs';
+import {
+  collectTeamsCollaboration, collectTeamsMeetingSettings, recordTeamsCollaborationRun, recordTeamsMeetingSettingsRun,
+} from './teamsCollaboration.mjs';
 import { collectTeamsExtended, recordTeamsExtendedRun } from './teamsExtended.mjs';
 import { collectTeamsPolicies, recordTeamsPolicyRun } from './teamsPolicies.mjs';
 
@@ -89,4 +92,9 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   // teamsPolicies.mjs
   { workload: 'teams-org-policies', powershellFamily: 'teams', record: recordTeamsPolicyRun,
     collect: (client, { base, powershell }) => collectTeamsPolicies(client, { ...base, powershell }) },
+  // teamsCollaboration.mjs: collaboration policies, then meeting settings.
+  { workload: 'teams-collaboration-policies', powershellFamily: 'teams', record: recordTeamsCollaborationRun,
+    collect: (client, { base, powershell }) => collectTeamsCollaboration(client, { ...base, powershell }) },
+  { workload: 'teams-meeting-settings', powershellFamily: 'teams', record: recordTeamsMeetingSettingsRun,
+    collect: (client, { base, powershell }) => collectTeamsMeetingSettings(client, { ...base, powershell }) },
 ]);

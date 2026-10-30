@@ -48,7 +48,7 @@ export const WORKLOADS = Object.freeze([
   'exchange-role-groups',
   'exchange-distribution-groups', 'exchange-recipients',
   'sharepoint-structure',
-  'teams-voice-policies', 'purview-governance',
+  'teams-voice-policies', 'teams-collaboration-policies', 'teams-meeting-settings', 'purview-governance',
   'power-platform-settings',
 ]);
 export const WORKLOAD_STATES = Object.freeze(['refused', 'disabled', 'fixture-tested', 'pending-prerequisite', 'live-qualified']);
@@ -419,6 +419,30 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
   ].map(([id, resource, name, paging, options]) => ({
     id, workload: 'teams-voice-policies', resource,
     operation: cmdlet(name, 'MicrosoftTeams', options),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: [], roles: ['Teams Administrator'] },
+    paging, throttle: 'module-managed', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/teams/${name.toLowerCase()}`),
+  })),
+  // Teams collaboration policies and meeting settings (gap audit section D), in the
+  // MicrosoftTeams session. engine/collect/workloads/teamsCollaboration.mjs holds the
+  // fields and identities.
+  ...[
+    ['teams.external-access-policies', 'teams-collaboration-policies', 'Teams external access policies', 'Get-CsExternalAccessPolicy', 'cmdlet-unbounded'],
+    ['teams.channels-policies', 'teams-collaboration-policies', 'Teams private and shared channel policies', 'Get-CsTeamsChannelsPolicy', 'cmdlet-unbounded'],
+    ['teams.files-policies', 'teams-collaboration-policies', 'Teams files policies', 'Get-CsTeamsFilesPolicy', 'cmdlet-unbounded'],
+    ['teams.template-permission-policies', 'teams-collaboration-policies', 'Teams team template policies', 'Get-CsTeamsTemplatePermissionPolicy', 'cmdlet-unbounded'],
+    ['teams.shifts-policies', 'teams-collaboration-policies', 'Teams Shifts policies', 'Get-CsTeamsShiftsPolicy', 'cmdlet-unbounded'],
+    ['teams.upgrade-policies', 'teams-collaboration-policies', 'Teams upgrade (coexistence) policies', 'Get-CsTeamsUpgradePolicy', 'cmdlet-unbounded'],
+    ['teams.upgrade-configuration', 'teams-collaboration-policies', 'Teams upgrade configuration', 'Get-CsTeamsUpgradeConfiguration', 'none'],
+    ['teams.acs-federation-configuration', 'teams-collaboration-policies', 'Teams federation with Azure Communication Services', 'Get-CsTeamsAcsFederationConfiguration', 'none'],
+    ['teams.enhanced-encryption-policies', 'teams-meeting-settings', 'Teams end-to-end encryption policies', 'Get-CsTeamsEnhancedEncryptionPolicy', 'cmdlet-unbounded'],
+    ['teams.compliance-recording-policies', 'teams-meeting-settings', 'Teams compliance recording policies', 'Get-CsTeamsComplianceRecordingPolicy', 'cmdlet-unbounded'],
+    ['teams.meeting-template-permission-policies', 'teams-meeting-settings', 'Teams meeting template policies', 'Get-CsTeamsMeetingTemplatePermissionPolicy', 'cmdlet-unbounded'],
+    ['teams.meeting-configuration', 'teams-meeting-settings', 'Teams meeting configuration', 'Get-CsTeamsMeetingConfiguration', 'none'],
+  ].map(([id, workload, resource, name, paging]) => ({
+    id, workload, resource,
+    operation: cmdlet(name, 'MicrosoftTeams'),
     auth: { application: true, delegated: true },
     rbac: { permissions: [], roles: ['Teams Administrator'] },
     paging, throttle: 'module-managed', consistency: 'eventual',

@@ -994,6 +994,36 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 
 **You do:** The policies assigned to users and groups, and settings KEEL does not restore, are changed by hand in the Teams admin center using the backup. A deleted named policy is recreated assigned to nobody. A live event video provider's API token is never backed up: enter it again.
 
+### Teams external access, channel, files, template, Shifts and upgrade policies
+
+**Backed up:**
+
+- Teams external access policies
+- Teams private and shared channel policies
+- Teams files policies
+- Teams team template policies
+- Teams Shifts policies
+- Teams upgrade (coexistence) policies
+- Teams upgrade configuration
+- Teams federation with Azure Communication Services
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. A changed or deleted policy, and the ACS federation and upgrade settings, are put back by hand in the Teams admin center using the backup. Which users a policy is assigned to is kept with the Teams voice policy backup.
+
+### Teams meeting configuration, encryption and compliance recording
+
+**Backed up:**
+
+- Teams end-to-end encryption policies
+- Teams compliance recording policies
+- Teams meeting template policies
+- Teams meeting configuration
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. The meeting configuration, end-to-end encryption, compliance recording and meeting template policies are put back by hand in the Teams admin center using the backup. A compliance recording policy names its recording bot's app, which must still exist.
+
 ### Purview retention labels, auto-labeling and eDiscovery
 
 **Backed up:**

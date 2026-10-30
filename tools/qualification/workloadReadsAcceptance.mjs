@@ -11,6 +11,9 @@ import { EXCHANGE_ROLE_GROUPS_MODULE, FAMILIES as EXCHANGE_ROLE_GROUPS } from '.
 import { FAMILIES as MAIL_FLOW } from '../../engine/collect/workloads/mailFlow.mjs';
 import { FAMILIES as PURVIEW_EXTENDED } from '../../engine/collect/workloads/purviewExtended.mjs';
 import { FAMILIES as RETENTION_DLP } from '../../engine/collect/workloads/purviewRetentionDlp.mjs';
+import {
+  COLLABORATION_FAMILIES, MEETING_SETTINGS_FAMILIES, TEAMS_COLLABORATION_MODULE, TEAMS_COLLABORATION_WORKLOAD, TEAMS_MEETING_SETTINGS_WORKLOAD,
+} from '../../engine/collect/workloads/teamsCollaboration.mjs';
 import { FAMILIES as TEAMS_EXTENDED } from '../../engine/collect/workloads/teamsExtended.mjs';
 import { FAMILIES as TEAMS_POLICIES } from '../../engine/collect/workloads/teamsPolicies.mjs';
 import { SHAREPOINT_WORKLOAD, SITE_SHARING_FAMILIES, SITE_SHARING_MODULE } from '../../engine/collect/workloads/sharepoint.mjs';
@@ -37,6 +40,8 @@ export const READ_FAMILIES = Object.freeze({
   [EXCHANGE_RECIPIENTS_WORKLOAD]: RECIPIENT_FAMILIES,
   'teams-org-policies': TEAMS_POLICIES,
   'teams-voice-policies': TEAMS_EXTENDED,
+  [TEAMS_COLLABORATION_WORKLOAD]: COLLABORATION_FAMILIES,
+  [TEAMS_MEETING_SETTINGS_WORKLOAD]: MEETING_SETTINGS_FAMILIES,
   'purview-retention-dlp': RETENTION_DLP,
   'purview-governance': PURVIEW_EXTENDED,
   // Not a written workload: only its per-site sharing read runs through PowerShell.
@@ -49,6 +54,7 @@ export const READ_FAMILIES = Object.freeze({
 const READ_ONLY_MODULES = Object.freeze({
   [SHAREPOINT_WORKLOAD]: SITE_SHARING_MODULE, 'exchange-role-groups': EXCHANGE_ROLE_GROUPS_MODULE,
   [EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD]: EXCHANGE_RECIPIENTS_MODULE, [EXCHANGE_RECIPIENTS_WORKLOAD]: EXCHANGE_RECIPIENTS_MODULE,
+  [TEAMS_COLLABORATION_WORKLOAD]: TEAMS_COLLABORATION_MODULE, [TEAMS_MEETING_SETTINGS_WORKLOAD]: TEAMS_COLLABORATION_MODULE,
   [SHAREPOINT_STRUCTURE_WORKLOAD]: SHAREPOINT_STRUCTURE_MODULE,
 });
 

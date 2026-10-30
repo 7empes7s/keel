@@ -247,6 +247,16 @@ export const CONCEPT_WORDS = Object.freeze([
     kinds: ['teams-voice-policies'],
   },
   {
+    pattern: /\b(?:external access polic(?:y|ies)|private channels?|shared channels?|channels? polic(?:y|ies)|files? polic(?:y|ies)|team templates?|shifts|teams upgrade|coexistence mode|azure communication services|acs federation)\b/i,
+    label: 'Teams external access, channel, files, template, Shifts and upgrade policies',
+    kinds: ['teams-collaboration-policies'],
+  },
+  {
+    pattern: /\b(?:anonymous (?:join|users?)|meeting (?:configuration|settings?|templates?)|end-to-end encryption|enhanced encryption|compliance recording|meeting invit(?:e|ation)s?|quality of service|qos)\b/i,
+    label: 'Teams meeting settings, encryption and compliance recording',
+    kinds: ['teams-meeting-settings'],
+  },
+  {
     pattern: /\b(?:microsoft tunnel|tunnel gateway|vpn)\b/i,
     label: 'Microsoft Tunnel settings',
     kinds: ['microsoftTunnelConfiguration', 'microsoftTunnelHealthThreshold'],

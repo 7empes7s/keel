@@ -236,6 +236,8 @@ export const WORKLOAD_LABELS: Record<string, string> = {
   "teams-settings": "Teams settings",
   "teams-org-policies": "Teams policies",
   "teams-voice-policies": "Teams voice policies",
+  "teams-collaboration-policies": "Teams external access, channel and files policies",
+  "teams-meeting-settings": "Teams meeting settings, encryption and recording",
   teams: "Teams",
   "purview-labels": "Sensitivity labels",
   "purview-governance": "Purview governance",

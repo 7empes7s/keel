@@ -11851,8 +11851,44 @@ item that needs it stays untouched.
   - Autopilot needs Microsoft Entra ID P1 and Intune; a 404 on the settings singleton suggests the tenant's Autopilot service was
     never set up.
 - Needs: nothing (no code change). Run at the deployed commit B (`git -C /opt/keel-live rev-parse HEAD`).
-- Status: todo
-- Result:
+- Status: done (investigation; licence missing; #746)
+- Result: done (investigation), nothing promoted (2026-10-30 02:40 UTC, keel-operator).
+  - **Quality and driver profiles: blocked, missing licence.**
+  - **Notification template: the tenant accepts it; Keel's writer can't restore it (#746).**
+  - **Autopilot: the service isn't set up.**
+  - B = **4e1142e3**. Collector for reads, Restorer for writes. Global admin not used; nothing granted or attested; nothing assigned.
+  1. Reads:
+     - `/subscribedSkus`:
+       - `FLOW_FREE` Enabled 10000/10, no matching plans;
+       - **`DEVELOPERPACK_E5`** Enabled 25/25: INTUNE_P2 Success, INTUNE_O365 PendingActivation, **INTUNE_A Success**, AAD_PREMIUM_P2 Success, **AAD_PREMIUM Success**;
+       - `POWERAPPS_DEV` Enabled 10000/3, no matching plans.
+     - Onboarding: `{"hasValidWindowsLicense":false,"areDataProcessorServiceForWindowsFeaturesEnabled":false}`.
+     - `windowsAutopilotSettings`: **404** `UnknownError`, empty message (request-id 97694731-6e0d-4d2a-9f72-ff4dc56982c0). `windowsAutopilotDeploymentProfiles?$top=1`: 200, `[]`.
+     - **Verdict:**
+       - **No qualifying Windows licence**: no WIN10_PRO_ENT_SUB, WIN10_VDA_E3/E5, WIN10_ENT_A3/A5, WINBIZ or WINDOWSUPDATEFORBUSINESS_DEPLOYMENTSERVICE plan. The Microsoft 365 E5 *Developer* pack carries no Windows Enterprise rights.
+       - Entra ID P1 (AAD_PREMIUM) is present; Intune (INTUNE_A) is present.
+  2. Quality and driver profiles: **blocked: missing licence**. `hasValidWindowsLicense` left **false** (not attested, not changed); no POST retried.
+  3. Notification template:
+     - **a)** v1.0 with `brandingOptions` `includeCompanyLogo`, no defaultLocale and no roleScopeTagIds: **200** (request-id b2ebb904-97a8-462d-ade2-d059a81d1d0f), id 9e42464f…; b and c not needed.
+       - The en-us message POST answered 200, and Graph then set `defaultLocale` to `en-us`.
+       - So the earlier 400s came from the body (`brandingOptions` none, or `defaultLocale` sent first), not the tenant.
+     - S = `a6f6af4e` holds the template with its en-us message.
+     - **Update:** subject drifted to `KEEL-RT drifted`.
+       - Dry runs `743dec05` and `a6d96aab` listed `fields: []`.
+       - Both enforces (approvals c5891048 and 1745a859) answered `restore promotion refused: the target has changed since the dry run — a new dry run is required`. The localized message's `lastModifiedDateTime` is reset on every GET (02:30:43, 02:31:04, 02:31:24), so the fingerprint never matches.
+     - **Create:** template deleted. Dry run `dc5547bd`, approval **8525f9eb**. Enforce exit 1: the writer sent `defaultLocale: "en-us"` before any message existed, and Graph answered **400 BadRequest "An error has occurred"** (Activity ID a01339fd-ca31-4e86-bc69-134178d32f3f). Journal `create | failed`.
+     - Both filed as **#746** (operator-report).
+  4. Autopilot: nothing written. Inference: the 404 on the settings singleton means the tenant's Windows Autopilot service was never initialised. Autopilot needs Windows device enrolment plus Entra ID P1 and Intune (both present).
+  5. No records to commit, so no evidence branch.
+  - Cleanup: template deleted (0 KEEL-RT-253 templates); no quality or driver profile was ever created. **Left in the tenant: nothing.**
+  - Per kind:
+
+    | kind | create | update |
+    |---|---|---|
+    | windowsQualityUpdateProfile | blocked (licence) | blocked (licence) |
+    | windowsDriverUpdateProfile | blocked (licence) | blocked (licence) |
+    | notificationMessageTemplate | failed (#746) | refused (#746) |
+    | windowsAutopilotDeploymentProfile | skipped (tenant service not set up) | skipped (tenant service not set up) |
 - **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q229 (log every approval id).
   Never assign any fixture; never put the notification template on a compliance policy. Grant nothing. Global admin not used.
 - **One tenant-wide setting may change (step 2), under the 2026-10-22 approval, and only if the tenant really owns a qualifying

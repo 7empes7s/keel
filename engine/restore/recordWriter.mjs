@@ -684,7 +684,7 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   if (record.preflight && writer) {
     const reason = await record.preflight(io, { resource, payload, verb, targetId, ctx });
     // A preflight may also find the write already done another way: { skipped }.
-    if (reason?.skipped) return refusalEntry(naturalKey, { outcome: 'skipped', reason: reason.skipped });
+    if (reason?.skipped) return refusalEntry(naturalKey, { outcome: 'skipped', reason: reason.skipped, ...(reason.completion ? { completion: reason.completion } : {}) });
     if (reason) return { failed: { naturalKey, error: `dependency: ${reason}; nothing was written` } };
   }
   if (verb === 'update' && record.updateGuard && writer && fields.length > 0) {

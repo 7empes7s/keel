@@ -56,6 +56,7 @@ import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { appGroupOf, appHasPackage, appKindName, appKindWords } from './intuneAppKinds.mjs';
 import { trustSettingIds } from './workloads/writeDeclarations.mjs';
+import { groupPolicyTrustSettings, namedTrustSkip, trustOmaUris } from './namedTrustSettings.mjs';
 import {
   applyRecordWrite, defineRecord, holdsNestedTrust, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue, trustFieldStep,
   undoesCreate, wholeReplaceTrustRefusal, withoutTrustFields,
@@ -221,6 +222,25 @@ export function trustSettingRefusal(resource, verb) {
   };
 }
 
+/**
+ * CLAUDE.md restore-writer rule for custom (OMA-URI) profiles: a trust,
+ * certificate or sign-in setting is named by its omaUri value, not a key, so
+ * the key-based trust check misses it. The custom settings are written as one
+ * list, so leaving one out would delete it from the tenant: the whole write is
+ * a manual step when the backup holds one, or (on update) the live profile does.
+ * Returns null or the skipped outcome.
+ */
+export function omaTrustRefusal(resource, verb) {
+  const uris = new Set(trustOmaUris(resource?.payload));
+  if (verb === 'update') for (const uri of trustOmaUris(resource?.live?.payload)) uris.add(uri);
+  // Without the live profile nothing shows its custom settings hold no trust setting the list would remove.
+  if (uris.size === 0 && verb === 'update' && Array.isArray(resource?.payload?.omaSettings) && !resource?.live?.payload) {
+    return namedTrustSkip([], () => 'the live profile was not read, so nothing shows its custom settings hold no trust, certificate or sign-in setting the restore would remove; restore the profile by hand in the Intune admin center');
+  }
+  if (uris.size === 0) return null;
+  return namedTrustSkip(uris, (names) => `this profile holds custom settings for trust, certificates or sign-in (${names}); a restore never writes them, and the custom settings are written as one list, so restore the profile by hand in the Intune admin center`);
+}
+
 // ------------------------------------------------------------------- bodies
 
 /** Every @odata annotation except @odata.type, at every depth. */
@@ -369,6 +389,8 @@ export function intuneWriteRefusal(resource, verb) {
   }
   const trust = trustSettingRefusal(resource, verb);
   if (trust) return trust;
+  const oma = omaTrustRefusal(resource, verb);
+  if (oma) return oma;
   if (entry.odataTypeRequired && typeof payload['@odata.type'] !== 'string') {
     return { outcome: 'failed', reason: 'the backup does not record which kind of policy this is (@odata.type), and Graph needs it to write one' };
   }
@@ -1197,7 +1219,38 @@ function groupPolicyRefusal(resource, verb) {
       return manual('a value in this backup does not say which field of its setting it fills');
     }
   }
-  return null;
+  const backup = groupPolicyTrustSettings(settings);
+  if (backup.unknown.length > 0) {
+    return manual(`this backup does not say what ${backup.unknown.length === 1 ? 'the setting' : 'the settings'} ${backup.unknown.join(', ')} ${backup.unknown.length === 1 ? 'is' : 'are'}, so ${backup.unknown.length === 1 ? 'it' : 'they'} cannot be checked for trust, certificate or sign-in settings`);
+  }
+  const live = verb === 'update' ? groupPolicyTrustSettings(resource.live?.payload?.definitionValues).trust : [];
+  return groupPolicyTrustRefusal([...backup.trust, ...live]);
+}
+
+/**
+ * CLAUDE.md restore-writer rule for administrative templates: a setting is
+ * named by a GUID definition id, so only its display name and category say it
+ * is a trust, certificate or sign-in setting. A restore puts the template's
+ * settings back as a set (a live setting not in the backup is removed), so the
+ * whole template is a manual step when the backup or the live template holds one.
+ */
+function groupPolicyTrustRefusal(names) {
+  if (names.length === 0) return null;
+  return namedTrustSkip(names, (list) => `this template holds trust, certificate or sign-in settings (${list}); a restore never writes them, and the template's settings are written as one set, so restore it by hand in the Intune admin center`);
+}
+
+/** On update, the live template's own settings are read: one that is a trust setting makes the write manual. */
+async function groupPolicyLiveTrust(io, { verb, targetId }) {
+  if (verb !== 'update' || !targetId) return null;
+  const read = await readGroupPolicySettings(io, targetId);
+  if (read.error) return `${read.error}, so they could not be checked for trust, certificate or sign-in settings`;
+  const refusal = groupPolicyTrustRefusal(groupPolicyTrustSettings(read.settings).trust);
+  return refusal ? { skipped: refusal.reason, completion: refusal.completion } : null;
+}
+
+/** The template's preflights, one after another; the first that finds something stops them. */
+async function groupPolicyPreflight(io, step) {
+  return (await groupPolicyDefinitionsExist(io, step)) ?? groupPolicyLiveTrust(io, step);
 }
 
 /** Every setting a template uses must exist in the target (an imported ADMX file is put back first). */
@@ -1683,7 +1736,7 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   groupPolicyConfiguration: defineRecord({
     resourceType: 'groupPolicyConfiguration', version: 'beta', collection: '/deviceManagement/groupPolicyConfigurations', operations: ['create', 'update'],
     excluded: ['definitionValues', 'assignments', 'policyConfigurationIngestionType'],
-    refusal: groupPolicyRefusal, preflight: groupPolicyDefinitionsExist, afterWrite: inOrder(groupPolicySettingsAfterWrite, assignmentsAfterWrite),
+    refusal: groupPolicyRefusal, preflight: groupPolicyPreflight, afterWrite: inOrder(groupPolicySettingsAfterWrite, assignmentsAfterWrite),
     assignmentType: '#microsoft.graph.groupPolicyConfigurationAssignment', permission: 'DeviceManagementConfiguration.ReadWrite.All',
   }),
   // Restore gaps, batch 6. An app category is only a name; Microsoft's

@@ -13159,3 +13159,47 @@ item that needs it stays untouched.
   5. `node cli/keel-workload-collect.mjs proof`: confirm both workloads' proven reads are listed as current.
 - **Report:** B; capture exit codes and proven/notProven; evidence branch and commit; import counts; the run table; per-family
   statuses and unknown fields; anything left in the tenant (expected: nothing, reads only).
+
+### Q281: Live read check of the Defender email protection reads, then turn them on (read-only toward the tenant, after PR #805), about 15 minutes
+- Drafted by the "Back up missing Defender email protection settings" thread (2026-10-30). Code: PR #805. One new read-only
+  workload, shipped `disabled` until a live read record is imported: `defender-email-protection`. Its reads are
+  Get-TenantAllowBlockListItems (`-ListType Sender`, `Url`, `FileHash`, `IP`, and `Url -ListSubType AdvancedDelivery`),
+  Get-TenantAllowBlockListSpoofItems, Get-PhishSimOverridePolicy, Get-ExoPhishSimOverrideRule, Get-SecOpsOverridePolicy,
+  Get-ExoSecOpsOverrideRule, Get-ReportSubmissionPolicy, Get-ReportSubmissionRule and Get-ArcConfig, plus two licensed
+  families (Get-ATPBuiltInProtectionRule; Get-TeamsProtectionPolicy and Get-TeamsProtectionRule) that report "not licensed"
+  rather than fail without Defender for Office 365. The declared fields come from Microsoft's documentation, not from a live answer.
+- Also in #805: four Graph kinds read on every backup with no gate (attack simulation payloads, login pages, landing pages,
+  end-user notifications, `source eq 'tenant'` only).
+- Needs: /opt/keel-live at the #805 merge or later (`test -f /opt/keel-live/engine/collect/workloads/defenderEmail.mjs`).
+  `run-cmdlet.ps1` has a new table (`$AllowedDefenderEmail`); as in Q266 the scripts are mounted from the checkout, so no
+  image rebuild is expected.
+- Status: todo
+- Result:
+- **Tenant:** reads only, Collector credential (Exchange Administrator, already held). No `New-`, `Set-`, `Add-` or `Remove-`
+  cmdlet. Grant, assign or create nothing.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Capture** with the Exchange config the workloads use (`powershellConfigs.exchange` in
+     `/etc/keel/workload-scope.json`, else `/etc/keel/tenant.json`), as in Q266 step 1:
+     ```bash
+     w=defender-email-protection
+     node tools/qualification/workloadReadsLive.mjs capture --workload "$w" --tenant-ref <tenant ref> \
+       --collector-ref app:<that config's clientId> --collector-config <that config> \
+       --build "$(git -C /opt/keel-live rev-parse HEAD)" \
+       --out "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+     node tools/qualification/pseudonymize.mjs check "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+     ```
+     Report each exit code, `outcome`, `proven` and `notProven` verbatim. If the pseudonymize check is not exit 0, stop and file an issue.
+  2. **Evidence:** commit the record to `claude/live-evidence-defender-email-protection` (from `origin/master`, that file only,
+     checked for secrets) and push. No PR.
+  3. **Import** with `--dir` a checkout holding this record and the other read records (as Q266 step 3):
+     `node cli/keel-workload-collect.mjs import --dir <dir>`. Report exit code and `imported` / `refused` / `absent`.
+  4. `node cli/keel-workload-collect.mjs run` once by hand. Report the per-workload table (outcome, n_reasons, observations) and,
+     for `defender-email-protection`, its per-family `discovery.families` statuses (say which licensed families answered or
+     reported not licensed), `fieldCounts`, **`unknownFields`** verbatim (field names only, never values) and how many entries
+     had no usable identity. Unknown fields are expected on the first run; the thread trims them in a follow-up PR.
+  5. `node cli/keel-workload-collect.mjs proof`: confirm the workload's reads are listed as current.
+  6. After the next scheduled backup, report the read status and item counts of `attackSimulationPayload`,
+     `attackSimulationLoginPage`, `attackSimulationLandingPage` and `attackSimulationNotification` (counts only).
+- **Report:** B; capture exit code and proven/notProven; evidence branch and commit; import counts; the run table; family
+  statuses and unknown fields; the four Graph kinds' status and counts; anything left in the tenant (expected: nothing, reads only).

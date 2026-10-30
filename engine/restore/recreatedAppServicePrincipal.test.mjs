@@ -146,3 +146,44 @@ test('a recreated app that changed since is still planned as an update', async (
   assert.equal(byKey.get(app.naturalKey).verb, 'update');
   assert.equal(byKey.get(servicePrincipal.naturalKey).verb, 'noop');
 });
+
+// A later real change to a recreated app (a rename) writes the app again. The
+// body carries the backup's identifierUris, so it must name the live appId:
+// writing api://<old appId> would put back a URI Entra no longer holds.
+test('an update of a recreated app writes the live appId in its identifier URIs, never the backup\'s', async () => {
+  const reader = bothRecreatedReader({ displayName: 'Renamed' });
+  const { resources } = await buildReconciliationPlan(reader, [backupApp, backupSp], { sameTenant: true, createdTargetIds: bothCreated });
+  const update = resources.find((resource) => resource.naturalKey === app.naturalKey);
+  assert.equal(update.verb, 'update');
+  const graph = fakeGraph();
+  graph.objects.set(`/applications/${NEW_OBJECT_ID}`, { ...update.live.payload });
+  const bodies = [];
+  const write = graph.write.bind(graph);
+  graph.write = async (version, path, request) => {
+    bodies.push({ method: request.method, path, body: request.body });
+    return write(version, path, request);
+  };
+  const result = await applyWave(graph, governor, [update], {
+    targetTenant: 'fixture', mode: 'enforce', existingTargetIds: new Map([[app.naturalKey, NEW_OBJECT_ID]]),
+    appliedIds: recordLiveIdentifiers(new Map(), resources),
+  });
+  assert.deepEqual(result.failed, []);
+  const patch = bodies.find((entry) => entry.method === 'PATCH' && entry.path === `/applications/${NEW_OBJECT_ID}`);
+  assert.ok(patch, 'the app is updated');
+  assert.equal(patch.body.displayName, 'KEEL-RT-recreated-app');
+  assert.deepEqual(patch.body.identifierUris, [`api://${NEW_APP_ID}`]);
+  assert.ok(!JSON.stringify(patch.body).toLowerCase().includes(OLD_APP_ID), 'the backup appId is not written');
+  assert.deepEqual(graph.objects.get(`/applications/${NEW_OBJECT_ID}`).identifierUris, [`api://${NEW_APP_ID}`]);
+});
+
+test('a dry run of that update plans the rename alone, not the identifier URIs', async () => {
+  const { resources } = await buildReconciliationPlan(bothRecreatedReader({ displayName: 'Renamed' }), [backupApp, backupSp], { sameTenant: true, createdTargetIds: bothCreated });
+  const update = resources.find((resource) => resource.naturalKey === app.naturalKey);
+  const result = await applyWave(fakeGraph(), governor, [update], {
+    targetTenant: 'fixture', mode: 'dry-run', existingTargetIds: new Map([[app.naturalKey, NEW_OBJECT_ID]]),
+    appliedIds: recordLiveIdentifiers(new Map(), resources),
+  });
+  assert.deepEqual(result.failed, []);
+  // Only the rename is a change: the identifier URIs already hold the live appId.
+  assert.deepEqual(result.applied.map((entry) => entry.changes), [{ fields: ['displayName'] }]);
+});

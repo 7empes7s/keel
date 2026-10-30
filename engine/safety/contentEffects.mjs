@@ -36,9 +36,10 @@ import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
 import { effectsNeedApproval, getRestoreApprovalSettings } from '../govern/restoreApprovalSettings.mjs';
+import { pimRuleWeakenings } from '../restore/adminRoleOperations.mjs';
 import { SCRIPT_BODY_FIELDS, scriptFingerprint, scriptText } from './scriptBodies.mjs';
 
-export const CONTENT_EFFECTS = Object.freeze(['retention-reducing', 'hold-releasing', 'externally-sharing', 'irreversible', 'runs-on-devices']);
+export const CONTENT_EFFECTS = Object.freeze(['retention-reducing', 'hold-releasing', 'externally-sharing', 'irreversible', 'runs-on-devices', 'weakens-protection', 'acts-on-accounts']);
 export const CONTENT_EFFECT_APPROVAL_EVIDENCE_KIND = 'content-effect-approval';
 
 const NOT_BACKED_UP = 'KEEL backs up configuration, not content: content deleted or disclosed while this setting is in effect is not recoverable by KEEL, and restoring the previous setting later does not bring it back.';
@@ -52,6 +53,11 @@ const DISCLOSURES = Object.freeze({
   'runs-on-devices': 'This puts the backup\'s script text back. Intune then runs it on every device the script is assigned to, '
     + 'with administrator rights, the next time each device checks in. If the backup was changed after it was taken, that changed code runs. '
     + `Read the script before approving. A script can delete or send out data on those devices. ${NOT_BACKED_UP}`,
+  // Restore approvals: settings a restore used to write in the stricter direction only.
+  'weakens-protection': 'This puts back a security, sign-in or access setting that is less strict than the one in place now, '
+    + `so more people, devices or apps can reach the organisation's data, or fewer checks apply. ${NOT_BACKED_UP}`,
+  'acts-on-accounts': 'This turns on a rule or workflow that acts by itself on people\'s accounts, mail or devices: it can block access, '
+    + `or run tasks that change, disable or delete accounts. ${NOT_BACKED_UP}`,
 });
 
 export function disclosureFor(effect) {
@@ -466,6 +472,113 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
   }])),
 });
 
+/**
+ * Restore approvals: the settings a restore used to write in one direction only.
+ * A backup that loosens one of these, or turns on something that acts by itself,
+ * was always left for a person. It is now an effect like the ones above: the
+ * customer's restore approval setting decides whether a second person approves it
+ * first, and the writer sends it only when the promotion checked that approval (or
+ * the setting is off). Judged on every type, reviewed or not, and only in the
+ * direction the writer used to refuse. Each `when` mirrors that writer's old test.
+ * The lockout gate, preservation locks and the trust-field rule are not here: they
+ * hold whatever this says.
+ */
+const isValue = (loose) => (value) => (typeof loose === 'string' ? String(value ?? '').toLowerCase() === loose : value === loose);
+// Admin center settings: the backup holds the loose value and live does not (fails closed when live lacks it).
+const loosensTo = (loose) => (before, after) => isValue(loose)(after) && !isValue(loose)(before);
+// SharePoint settings: whenever live holds the field (null included), exactly as the writer tests it.
+const loosensFromKnown = (loose) => (before, after) => after === loose && before !== undefined && before !== loose;
+const turnsOn = (before, after) => after === true && before !== true;
+const turnsTrueToFalse = (before, after) => after === false && before === true;
+const turnsFalseToTrue = (before, after) => after === true && before === false;
+
+export const PROTECTION_EFFECT_RULES = Object.freeze({
+  // Entra: SharePoint tenant settings (identityObjectOperations, sharepointAccessRefusal).
+  sharepointSettings: { rules: [
+    rule('isLegacyAuthProtocolsEnabled', 'weakens-protection', loosensFromKnown(true)),
+    rule('isUnmanagedSyncAppForTenantRestricted', 'weakens-protection', loosensFromKnown(false)),
+    rule('isRequireAcceptingUserToMatchInvitedUserEnabled', 'weakens-protection', loosensFromKnown(false)),
+  ] },
+  // Microsoft 365 admin center settings (identityObjectOperations, adminCenterLooseningRefusal).
+  formsSettings: { rules: [
+    rule('settings.isExternalSendFormEnabled', 'externally-sharing', loosensTo(true)),
+    rule('settings.isExternalShareCollaborationEnabled', 'externally-sharing', loosensTo(true)),
+    rule('settings.isExternalShareResultEnabled', 'externally-sharing', loosensTo(true)),
+    rule('settings.isExternalShareTemplateEnabled', 'externally-sharing', loosensTo(true)),
+    rule('settings.isInOrgFormsPhishingScanEnabled', 'weakens-protection', loosensTo(false)),
+  ] },
+  appsAndServicesSettings: { rules: [
+    rule('settings.isOfficeStoreEnabled', 'weakens-protection', loosensTo(true)),
+  ] },
+  adminReportSettings: { rules: [
+    rule('displayConcealedNames', 'weakens-protection', loosensTo(false)),
+  ] },
+  engageCommunity: { rules: [
+    rule('privacy', 'externally-sharing', loosensTo('public')),
+  ] },
+  // Lifecycle workflows are created off, and an update never turned one on.
+  lifecycleWorkflow: { judgesCreates: true, rules: [
+    rule('isEnabled', 'acts-on-accounts', turnsOn),
+    rule('isSchedulingEnabled', 'acts-on-accounts', turnsOn),
+  ] },
+  // PIM role settings: each reviewed rule the backup would weaken (adminRoleOperations, ruleWeakening).
+  unifiedRoleManagementPolicy: { rules: [], effects: (before, after) => pimRuleWeakenings(after, before)
+    .map(({ ruleId, before: from, after: to }) => ({ field: `rules[${ruleId}]`, effect: 'weakens-protection', before: from, after: to })) },
+  // Intune tenant switches (intuneOperations).
+  onPremisesConditionalAccessSettings: { rules: [
+    rule('enabled', 'acts-on-accounts', turnsOn),
+  ] },
+  deviceManagementSettings: { rules: [
+    rule('settings.secureByDefault', 'weakens-protection', turnsTrueToFalse),
+  ] },
+  hardwareConfiguration: { rules: [
+    rule('perDevicePasswordDisabled', 'weakens-protection', turnsFalseToTrue),
+  ] },
+});
+
+/**
+ * The protection effects of one planned write ({ naturalKey, resourceType, verb,
+ * payload, live }), each with its disclosure. Empty for a type with no rules.
+ */
+export function protectionEffects(resource) {
+  const { naturalKey, resourceType, verb } = resource;
+  const spec = PROTECTION_EFFECT_RULES[resourceType];
+  if (!spec || !verb || verb === 'noop' || verb === 'delete') return [];
+  const before = resource.live?.state === undefined || resource.live?.state === 'present' || resource.live?.state === 'soft-deleted'
+    ? (resource.live?.payload ?? null) : null;
+  const after = resource.payload ?? null;
+  if (!after || (!before && !spec.judgesCreates)) return [];
+  const found = [];
+  for (const entry of spec.rules) {
+    const b = entry.read(before ?? {});
+    const a = entry.read(after);
+    if (JSON.stringify(b ?? null) === JSON.stringify(a ?? null) || !entry.when(b, a)) continue;
+    found.push({ field: entry.field, effect: entry.effect, before: b ?? null, after: a ?? null });
+  }
+  if (spec.effects && before) found.push(...spec.effects(before, after));
+  return found.map((item) => ({ naturalKey, resourceType, ...item, disclosure: disclosureFor(item.effect) }));
+}
+
+/** True when `approved` (effects whose approval the promotion checked) holds exactly this effect. */
+export function effectApproved(effect, approved = []) {
+  return (approved ?? []).some((entry) => entry?.effect === effect.effect && entry.naturalKey === effect.naturalKey
+    && entry.field === effect.field && canonical(entry.before) === canonical(effect.before) && canonical(entry.after) === canonical(effect.after));
+}
+
+/**
+ * Whether a writer that found a loose direction may send it: in a dry run (which
+ * only simulates), or when the write has protection effects and every one of them
+ * was approved. Fails closed: a loose direction with no effect to approve is held.
+ */
+export function protectionChangeApproved(resource, verb, { mode = 'enforce', approvedContentEffects = [] } = {}) {
+  if (mode === 'dry-run') return true;
+  const effects = protectionEffects({ ...resource, verb });
+  return effects.length > 0 && effects.every((effect) => effectApproved(effect, approvedContentEffects));
+}
+
+/** The words a refusal adds when a loose direction waits for its approval. */
+export const PROTECTION_APPROVAL_STEP = 'a second person approves it as a high-impact change in Approvals (or an admin turns restore approvals off for this service), then the restore runs again';
+
 // A changed leaf whose NAME suggests content consequences, on a type with no
 // review, is refused until classified.
 const DANGEROUS_FIELD = /retention|hold|preserv|shar(e|ing)|guest|external|invite|wipe|purge|anonymous|public/i;
@@ -528,6 +641,7 @@ export function classifyContentEffects(resources) {
       continue;
     }
 
+    effects.push(...protectionEffects(resource));
     const review = CONTENT_EFFECT_RULES[resourceType];
     if (review?.reviewed) {
       if (verb === 'delete' && review.onDelete) {
@@ -559,7 +673,10 @@ export function classifyContentEffects(resources) {
     }
 
     // Unreviewed type: any changed content-bearing field refuses until classified.
-    const changed = changedLeaves(before ?? {}, after ?? {}).filter((path) => DANGEROUS_FIELD.test(path.split('.').pop()));
+    // A field a protection rule reviews is judged by that rule, not by its name.
+    const reviewedHere = new Set((PROTECTION_EFFECT_RULES[resourceType]?.rules ?? []).map((entry) => entry.field));
+    const changed = changedLeaves(before ?? {}, after ?? {})
+      .filter((path) => DANGEROUS_FIELD.test(path.split('.').pop()) && !reviewedHere.has(path));
     if (changed.length > 0) {
       refusals.push({
         naturalKey,

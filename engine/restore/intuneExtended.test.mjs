@@ -15,7 +15,7 @@ import {
 import { changedRecordFields, defineRecord, eachFieldReader, recordPostStateRefusal } from './recordWriter.mjs';
 import { EXPANSION_INVENTORY } from '../coverage/qualification.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
-import { classifyContentEffects } from '../safety/contentEffects.mjs';
+import { classifyContentEffects, protectionEffects } from '../safety/contentEffects.mjs';
 
 const FAST = { readAfterWriteOptions: { attempts: 1, delayMs: 0 } };
 const GUARD = { breakGlassUserIds: ['break-glass-1'], keelAppIds: [], caPolicies: [] };
@@ -1341,13 +1341,13 @@ test('a BIOS configuration is updated in place, never its settings file, and is 
   assert.match(create.failed.error, /unsupported operation/);
 });
 
-test('a restore never turns per-device BIOS passwords off', async () => {
+test('a restore turns per-device BIOS passwords off only once that is approved', async () => {
   const path = '/deviceManagement/hardwareConfigurations/hw-1';
   const graph = idoFakeGraph({ seed: { [path]: bios } });
   const result = await applyIntuneExtendedWrite(graph, resourceOf('hardwareConfiguration', { ...bios, perDevicePasswordDisabled: true, description: 'Old' }, {
     live: { state: 'present', targetId: 'hw-1', payload: bios },
   }), 'update', FAST);
-  assert.match(result.skipped.reason, /never weakens BIOS passwords/);
+  assert.match(result.skipped.reason, /weakens BIOS passwords, so a second person approves it/);
   assert.equal(writesOf(graph).length, 0);
 });
 
@@ -2139,7 +2139,7 @@ test('a record read field by field merges each answer, and stops at the first fa
   assert.equal((await eachFieldReader(writer, ['a']).write()).ok, true, 'writes go to the writer');
 });
 
-test('a restore never marks devices with no compliance policy compliant', async () => {
+test('a restore marks devices with no compliance policy compliant only once approved', async () => {
   const cases = [
     [{ ...deviceManagement, settings: { ...deviceManagement.settings, secureByDefault: false } }, deviceManagement, /no compliance policy as compliant/],
   ];
@@ -2175,7 +2175,7 @@ test('a Microsoft Tunnel health limit is updated in place, only its two limits',
   assert.match(create.failed.error, /unsupported operation/);
 });
 
-test('Exchange on-premises access settings are updated in place and never turned on', async () => {
+test('Exchange on-premises access settings are updated in place and turned on only once approved', async () => {
   const path = '/deviceManagement/conditionalAccessSettings';
   const backup = { id: 'settings', enabled: false, includedGroups: [], excludedGroups: [], overrideDefaultRule: false };
   const live = { ...backup, overrideDefaultRule: true };
@@ -2190,7 +2190,7 @@ test('Exchange on-premises access settings are updated in place and never turned
 
   const on = idoFakeGraph({ seed: { [path]: backup } });
   const refused = await applyIntuneExtendedWrite(on, resourceOf('onPremisesConditionalAccessSettings', { ...backup, enabled: true }, { live: { state: 'present', payload: backup } }), 'update', FAST);
-  assert.match(refused.skipped.reason, /never turns it on/);
+  assert.match(refused.skipped.reason, /could block mail on devices that are not managed, so a second person approves it/);
   assert.equal(writesOf(on).length, 0);
 
   // Already on: a restore that keeps it on may change its groups; turning it off is written.
@@ -2208,4 +2208,29 @@ test('a field left out of the post-state read is only allowed when afterWrite ch
   assert.match(recordPostStateRefusal(checked, { name: 'a', children: [1] }, { name: 'b' }), /name did not read back/);
   const plain = defineRecord({ resourceType: 'x', operations: ['create'] });
   assert.match(recordPostStateRefusal(plain, { name: 'a', children: [1] }, { name: 'a' }), /children did not read back/);
+});
+
+// Restore approvals: the Intune switches a restore used to write one way only.
+test('restore approvals: BIOS passwords off, on-premises access on and secure by default off are written once approved', async () => {
+  const conditional = { id: 'settings', enabled: false, includedGroups: [], excludedGroups: [], overrideDefaultRule: false };
+  const cases = [
+    ['hardwareConfiguration', '/deviceManagement/hardwareConfigurations/hw-1', bios, { ...bios, perDevicePasswordDisabled: true }, 'hw-1', 'weakens-protection'],
+    ['onPremisesConditionalAccessSettings', '/deviceManagement/conditionalAccessSettings', conditional, { ...conditional, enabled: true }, undefined, 'acts-on-accounts'],
+    ['deviceManagementSettings', '/deviceManagement', deviceManagement, { ...deviceManagement, settings: { ...deviceManagement.settings, secureByDefault: false } }, undefined, 'weakens-protection'],
+  ];
+  for (const [type, path, live, backup, targetId, effect] of cases) {
+    const resource = resourceOf(type, backup, { live: { state: 'present', ...(targetId ? { targetId } : {}), payload: live } });
+    const effects = protectionEffects({ ...resource, verb: 'update' });
+    assert.deepEqual(effects.map((item) => item.effect), [effect], type);
+    assert.deepEqual(classifyContentEffects([{ ...resource, verb: 'update' }]).effects.map((item) => item.effect), [effect], `${type}: listed in the dry run`);
+    // An approval of something else does not count.
+    const other = idoFakeGraph({ seed: { [path]: structuredClone(live) } });
+    const held = await applyIntuneExtendedWrite(other, resource, 'update', { ...FAST, approvedContentEffects: [{ ...effects[0], after: 'other' }] });
+    assert.match(held.skipped?.reason ?? '', /second person approves it/, type);
+    assert.equal(writesOf(other).length, 0, type);
+    const graph = idoFakeGraph({ seed: { [path]: structuredClone(live) } });
+    const result = await applyIntuneExtendedWrite(graph, resource, 'update', { ...FAST, approvedContentEffects: effects });
+    assert.equal(result.failed ?? result.skipped, undefined, `${type}: ${JSON.stringify(result)}`);
+    assert.equal(writesOf(graph).length, 1, type);
+  }
 });

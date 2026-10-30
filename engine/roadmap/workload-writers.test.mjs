@@ -232,7 +232,8 @@ for (const workload of Object.keys(WORKLOADS)) {
     assert.ok(['complete', 'partial'].includes(source.outcome));
 
     // Drift the first written field of every object. Putting back a value that would
-    // weaken mail protection (here: a spam action KEEL cannot rank) is listed, not written.
+    // weaken mail protection (here: a spam action KEEL cannot rank) is written too, as a
+    // high-impact change that waits for its approval (restore approvals).
     const drifted = [];
     const weakening = [];
     for (const [id, write] of Object.entries(WKLD_WRITE_OPERATIONS)) {
@@ -246,9 +247,9 @@ for (const workload of Object.keys(WORKLOADS)) {
     }
     const { plan, artifact } = await planned(client, tenantRef, workload, { source, live });
     assert.deepEqual(plan.refusals, []);
-    assert.equal(plan.manual.filter((entry) => entry.weakensProtection === true).length, weakening.length, 'each weakening change is listed for an administrator');
+    assert.equal(plan.contentEffects.filter((effect) => effect.effect === 'weakens-protection').length, weakening.length, 'each weakening change waits for its approval');
     const updates = plan.operations.filter((op) => op.kind === 'update');
-    assert.equal(updates.length, drifted.length, 'one update per drifted object');
+    assert.equal(updates.length, drifted.length + weakening.length, 'one update per drifted object');
     assert.ok(updates.every((op) => op.changes.length === 1 && op.changes[0].after.startsWith('KEEL-RT-')));
     assert.ok(updates.every((op) => Object.keys(op.parameters).every((name) => name === 'Identity' || WKLD_WRITE_OPERATIONS[op.operationId].fields.includes(name))));
     if (plan.contentEffects.length) await approveEffects(client, tenantRef, artifact, plan);

@@ -37,6 +37,7 @@ import {
   applyRecordWrite, defineRecord, graphFailure, isNotFound, outcomeDetail, readUntil, recordLedger, sameValue, stripGraph,
 } from './recordWriter.mjs';
 import { TRUST_FIELDS } from './workloads/writeDeclarations.mjs';
+import { PROTECTION_APPROVAL_STEP, effectApproved, protectionChangeApproved, protectionEffects } from '../safety/contentEffects.mjs';
 import {
   USER_WRITABLE_FIELDS, assignLicenseBody, isSyncedUser, licencePlan, userPostStateRefusal, userReadPath,
 } from './userOperations.mjs';
@@ -296,22 +297,24 @@ const SHAREPOINT_LOOSENING = Object.freeze([
   ['isRequireAcceptingUserToMatchInvitedUserEnabled', false, 'lets a guest invitation be accepted by another account'],
 ]);
 
-function sharepointAccessRefusal(resource, verb) {
+function sharepointAccessRefusal(resource, verb, ctx = {}) {
   if (verb !== 'update') return null;
   const want = resource.payload ?? {};
   const now = resource.live?.payload ?? {};
   const loosened = SHAREPOINT_LOOSENING.filter(([field, loose]) => want[field] === loose && now[field] !== undefined && now[field] !== loose);
   if (loosened.length === 0) return null;
+  // Restore approvals: written once the 'weakens-protection' effect is approved, or approvals are off.
+  if (protectionChangeApproved(resource, verb, ctx)) return null;
   const fields = loosened.map(([field]) => field);
   return {
     outcome: 'skipped',
-    reason: `manual: the backup ${loosened.map(([, , text]) => text).join(', and ')}; a restore never loosens who can reach files, so set it by hand if that is wanted`,
+    reason: `manual: the backup ${loosened.map(([, , text]) => text).join(', and ')}; that loosens who can reach files, so ${PROTECTION_APPROVAL_STEP}, or set it by hand`,
     completion: Object.freeze({
       kind: 'manual-setting',
       requirement: 'sharepointAccessSettings',
       fields: Object.freeze(fields),
       portalPath: SHAREPOINT_PORTAL_PATH,
-      description: `Decide whether ${fields.join(', ')} should be as in the backup, then set them in the ${SHAREPOINT_PORTAL_PATH}. The other SharePoint settings in the backup were not written either: restore again after that.`,
+      description: `Decide whether ${fields.join(', ')} should be as in the backup. Either have a second person approve the change in Approvals and restore again, or set them in the ${SHAREPOINT_PORTAL_PATH}. The other SharePoint settings in the backup were not written either: restore again after that.`,
     }),
   };
 }
@@ -373,7 +376,7 @@ const fieldAt = (payload, path) => path.split('.').reduce((value, key) => (value
 const sameLoose = (value, loose) => (typeof loose === 'string' ? String(value ?? '').toLowerCase() === loose : value === loose);
 
 /** The loosening refusal of one admin center settings record, or null. */
-export function adminCenterLooseningRefusal(resource, verb) {
+export function adminCenterLooseningRefusal(resource, verb, ctx = {}) {
   const spec = ADMIN_CENTER_LOOSENING[resource?.resourceType];
   if (!spec || verb !== 'update') return null;
   const want = resource.payload ?? {};
@@ -382,16 +385,18 @@ export function adminCenterLooseningRefusal(resource, verb) {
   // value cannot be shown to be what the tenant has now, so it is withheld.
   const loosened = spec.rules.filter(([path, loose]) => sameLoose(fieldAt(want, path), loose) && !sameLoose(fieldAt(now, path), loose));
   if (loosened.length === 0) return null;
+  // Restore approvals: written once each loosening effect is approved, or approvals are off.
+  if (protectionChangeApproved(resource, verb, ctx)) return null;
   const fields = loosened.map(([path]) => path);
   return {
     outcome: 'skipped',
-    reason: `manual: the backup ${loosened.map(([, , text]) => text).join(', and ')}; a restore never loosens this, so set it by hand if that is wanted`,
+    reason: `manual: the backup ${loosened.map(([, , text]) => text).join(', and ')}; that loosens this setting, so ${PROTECTION_APPROVAL_STEP}, or set it by hand`,
     completion: Object.freeze({
       kind: 'manual-setting',
       requirement: `${resource.resourceType}Loosening`,
       fields: Object.freeze(fields),
       portalPath: spec.portalPath,
-      description: `Decide whether ${fields.join(', ')} should be as in the backup, then set it in ${spec.portalPath}. The other values in this backup were not written either: restore again after that.`,
+      description: `Decide whether ${fields.join(', ')} should be as in the backup. Either have a second person approve the change in Approvals and restore again, or set it in ${spec.portalPath}. The other values in this backup were not written either: restore again after that.`,
     }),
   };
 }
@@ -426,38 +431,73 @@ function workflowBody(body, { verb, payload }) {
 
 const WORKFLOW_VERSIONED = ['category', 'executionConditions', 'tasks'];
 
-async function workflowAfterWrite(io, { payload, verb, targetId, live, before }) {
+/**
+ * Restore approvals: the switches (isEnabled, isSchedulingEnabled) whose
+ * 'acts-on-accounts' effect the promotion approved, or that the customer's
+ * setting waived. The write body never turns a workflow on; these are turned on
+ * after it, and read back.
+ */
+function approvedWorkflowSwitches(resource, verb, ctx = {}) {
+  if (ctx.mode === 'dry-run') return new Set();
+  return new Set(protectionEffects({ ...resource, verb })
+    .filter((effect) => effectApproved(effect, ctx.approvedContentEffects)).map((effect) => effect.field));
+}
+
+async function workflowAfterWrite(io, { resource, payload, verb, targetId, live, before, ctx }) {
+  const path = `/identityGovernance/lifecycleWorkflows/workflows/${encodeURIComponent(targetId)}`;
+  const approvedOn = approvedWorkflowSwitches(resource, verb, ctx);
+  const changes = {};
+  // Tasks, conditions and category change only through a new version, written
+  // first, so an approved turn-on never runs the old tasks.
+  const stale = verb === 'create' || !before ? [] : WORKFLOW_VERSIONED.filter((field) => !sameValue(
+    field === 'tasks' ? workflowTasks(payload?.tasks) : payload?.[field],
+    field === 'tasks' ? workflowTasks(live?.tasks) : live?.[field],
+  ));
+  if (stale.length > 0) {
+    const workflow = {
+      category: payload.category, displayName: payload.displayName, description: payload.description ?? null,
+      isEnabled: live?.isEnabled === true && payload.isEnabled !== false,
+      isSchedulingEnabled: live?.isSchedulingEnabled === true && payload.isSchedulingEnabled !== false,
+      executionConditions: payload.executionConditions, tasks: workflowTasks(payload.tasks),
+    };
+    const result = await io.retryOperation(() => io.writer.write('v1.0', `${path}/createNewVersion`, { method: 'POST', body: { workflow } }));
+    if (!result.ok) return { error: `writing a new version of the workflow (${stale.join(', ')}) failed: ${outcomeDetail(result)}` };
+    const check = await readUntil(io, 'v1.0', `${path}?$expand=tasks`, (r) => isNotFound(r)
+      || (r?.ok === true && !sameValue(workflowTasks(r.body?.tasks), workflow.tasks)), io.readOptions);
+    if (check?.ok !== true || !sameValue(workflowTasks(check.body?.tasks), workflow.tasks)
+      || !sameValue(check.body?.executionConditions, workflow.executionConditions)) {
+      return { error: 'post-state: the new workflow version did not read back as written' };
+    }
+    live = check.body;
+    changes.newVersion = stale;
+  }
+  // Restore approvals: a switch the backup has on is turned on only when its
+  // 'acts-on-accounts' effect was approved, or the customer's setting waived it.
+  const turnOn = ['isEnabled', 'isSchedulingEnabled'].filter((field) => approvedOn.has(field) && payload?.[field] === true && live?.[field] !== true);
+  if (turnOn.length > 0) {
+    const body = Object.fromEntries(turnOn.map((field) => [field, true]));
+    const result = await io.retryOperation(() => io.writer.write('v1.0', path, { method: 'PATCH', body }));
+    if (!result.ok) return { error: `turning the workflow on (${turnOn.join(', ')}) failed: ${outcomeDetail(result)}` };
+    const check = await readUntil(io, 'v1.0', `${path}?$expand=tasks`, (r) => isNotFound(r)
+      || (r?.ok === true && turnOn.some((field) => r.body?.[field] !== true)), io.readOptions);
+    if (check?.ok !== true || turnOn.some((field) => check.body?.[field] !== true)) {
+      return { error: 'post-state: the workflow did not read back as turned on' };
+    }
+    live = check.body;
+    changes.turnedOn = turnOn;
+  }
   const completion = [];
   for (const field of ['isEnabled', 'isSchedulingEnabled']) {
     if (payload?.[field] === true && live?.[field] !== true) {
       completion.push({
         kind: 'enforcement', requirement: field,
-        description: `The workflow is ${field === 'isEnabled' ? 'off' : 'not scheduled'} in the target and ${field === 'isEnabled' ? 'on' : 'scheduled'} in the backup. A restore never turns a workflow on: review its scope and tasks, then turn it on in Entra admin center > Identity governance > Lifecycle workflows.`,
+        description: `The workflow is ${field === 'isEnabled' ? 'off' : 'not scheduled'} in the target and ${field === 'isEnabled' ? 'on' : 'scheduled'} in the backup. `
+          + `Turning it on runs its tasks on people's accounts, so ${PROTECTION_APPROVAL_STEP}. Or review its scope and tasks, then turn it on in Entra admin center > Identity governance > Lifecycle workflows.`,
       });
     }
   }
-  if (verb === 'create' || !before) return { completion };
-  const stale = WORKFLOW_VERSIONED.filter((field) => !sameValue(
-    field === 'tasks' ? workflowTasks(payload?.tasks) : payload?.[field],
-    field === 'tasks' ? workflowTasks(live?.tasks) : live?.[field],
-  ));
-  if (stale.length === 0) return { completion };
-  const path = `/identityGovernance/lifecycleWorkflows/workflows/${encodeURIComponent(targetId)}`;
-  const workflow = {
-    category: payload.category, displayName: payload.displayName, description: payload.description ?? null,
-    isEnabled: live?.isEnabled === true && payload.isEnabled !== false,
-    isSchedulingEnabled: live?.isSchedulingEnabled === true && payload.isSchedulingEnabled !== false,
-    executionConditions: payload.executionConditions, tasks: workflowTasks(payload.tasks),
-  };
-  const result = await io.retryOperation(() => io.writer.write('v1.0', `${path}/createNewVersion`, { method: 'POST', body: { workflow } }));
-  if (!result.ok) return { error: `writing a new version of the workflow (${stale.join(', ')}) failed: ${outcomeDetail(result)}` };
-  const check = await readUntil(io, 'v1.0', `${path}?$expand=tasks`, (r) => isNotFound(r)
-    || (r?.ok === true && !sameValue(workflowTasks(r.body?.tasks), workflow.tasks)), io.readOptions);
-  if (check?.ok !== true || !sameValue(workflowTasks(check.body?.tasks), workflow.tasks)
-    || !sameValue(check.body?.executionConditions, workflow.executionConditions)) {
-    return { error: 'post-state: the new workflow version did not read back as written' };
-  }
-  return { completion, live: check.body, changes: { newVersion: stale } };
+  const changed = Object.keys(changes).length > 0;
+  return { completion, ...(changed ? { live, changes } : {}) };
 }
 
 /** Allowed values of a custom security attribute: added or (de)activated, never removed (Graph cannot). */

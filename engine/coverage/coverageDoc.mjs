@@ -134,7 +134,7 @@ export const TYPE_GUIDE = Object.freeze({
     'Use the backup to see who held which role until when, then assign it again in Privileged Identity Management.'),
   unifiedRoleManagementPolicy: auto('Admin role activation settings', {
     keeps: 'Puts activation rules back: how long a role lasts, what activation needs, and who approves.',
-    todo: 'A restore that would weaken protection is not written: KEEL lists it for a person to decide. Approvers must still exist.',
+    todo: 'A restore that would weaken protection waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID. Approvers must still exist.',
   }),
   unifiedRoleManagementPolicyAssignment: manual('Role-to-settings links', MS,
     'Entra links exactly one settings policy to each role itself. Nobody writes the link.',
@@ -150,7 +150,7 @@ export const TYPE_GUIDE = Object.freeze({
     'Recreate them by hand in Entra ID Governance using the backup.'),
   lifecycleWorkflow: auto('Lifecycle workflows', {
     keeps: 'Recreates workflows with their tasks and puts their settings back. A recreated workflow is always off.',
-    todo: 'A restore never turns a workflow on. Check who it applies to, then turn it on in Entra ID Governance.',
+    todo: 'Turning a workflow on runs its tasks on people\'s accounts, so a restore turns it on only after a second person approves it in Approvals, unless you turned restore approvals off for Entra ID. Check who it applies to before approving.',
   }),
   lifecycleWorkflowCustomTaskExtension: auto('Lifecycle workflow extensions', {
     keeps: 'Recreates extensions and puts their settings back.',
@@ -414,7 +414,7 @@ export const TYPE_GUIDE = Object.freeze({
     'Use the backup for the server and settings. Download the connector from the Intune admin center and install it on that server again.'),
   onPremisesConditionalAccessSettings: auto('Exchange on-premises access settings', {
     keeps: 'Puts back whether Exchange on-premises access control is on and which groups it covers or leaves out.',
-    todo: 'A restore never turns it on, because that could block mail on devices that are not managed: turn it on by hand in the Intune admin center, under Tenant administration, Connectors and tokens, Exchange on-premises access.',
+    todo: 'Turning it on could block mail on devices that are not managed, so a restore turns it on only after a second person approves it in Approvals, unless you turned restore approvals off for Intune.',
   }),
   mobileAppCategory: auto('App categories', {
     keeps: 'Recreates your own categories and puts their names back. The built-in categories come with every tenant and are never changed.',
@@ -521,7 +521,7 @@ export const TYPE_GUIDE = Object.freeze({
     'Recreate each scope by hand from the backup, before the assignments that use it. There is no admin center page for it.'),
   deviceManagementSettings: auto('Intune tenant settings', {
     keeps: 'Puts back the compliance settings, such as how devices with no compliance policy are marked and how long a device may go without checking in. The device cleanup window is put back with the device cleanup rules.',
-    todo: 'A restore never marks devices with no compliance policy as compliant: change that by hand in the Intune admin center, under Endpoint security, Device compliance, Compliance settings. The Company Portal contact details are put back with the default branding profile.',
+    todo: 'Marking devices with no compliance policy as compliant waits for a second person to approve it in Approvals, unless you turned restore approvals off for Intune. The Company Portal contact details are put back with the default branding profile.',
   }),
   androidDeviceOwnerEnrollmentProfile: auto('Android Enterprise enrollment profiles', {
     keeps: 'Recreates profiles and puts back their name, description, device name template and Wi-Fi network; the enrollment mode is set when a profile is recreated. A profile on a secured Wi-Fi network is recreated by hand, because the Wi-Fi password is not backed up.',
@@ -584,7 +584,7 @@ export const TYPE_GUIDE = Object.freeze({
   }),
   sharepointSettings: auto('SharePoint and OneDrive tenant settings', {
     keeps: 'Puts back the tenant-wide SharePoint and OneDrive settings, such as site creation, sync app limits, idle session sign-out, Loop and storage limits. The sharing settings are put back by the SharePoint service backup.',
-    todo: 'A restore never turns legacy authentication on, lets devices outside the domain sync, or lets a guest invitation be accepted by another account: when the backup does, nothing is written and you set those by hand in the SharePoint admin center, under Policies, Access control.',
+    todo: 'Turning legacy authentication on, letting devices outside the domain sync, or letting a guest invitation be accepted by another account waits for a second person to approve it in Approvals, unless you turned restore approvals off for SharePoint.',
   }),
   itemInsightsSettings: manual('Item insights setting', NOT_BUILT,
     'KEEL backs up whether people cards and search show the documents a person worked on, and the group it is turned off for, but does not restore it yet.',
@@ -601,7 +601,7 @@ export const TYPE_GUIDE = Object.freeze({
   // Remaining kinds, batch 8.
   hardwareConfiguration: auto('BIOS configurations', {
     keeps: 'Puts back each BIOS configuration\'s name, description, scope tags and whether every device gets its own BIOS password.',
-    todo: 'The settings file is not backed up, because it can hold the BIOS password: a deleted configuration is created again in the Intune admin center, under Devices, Windows, Configuration, BIOS configurations and other settings, with the file from your own copy. KEEL never turns per-device BIOS passwords off; do that there by hand if it is wanted.',
+    todo: 'The settings file is not backed up, because it can hold the BIOS password: a deleted configuration is created again in the Intune admin center, under Devices, Windows, Configuration, BIOS configurations and other settings, with the file from your own copy. Turning per-device BIOS passwords off waits for a second person to approve it in Approvals, unless you turned restore approvals off for Intune.',
   }),
   certificateBasedApplicationConfiguration: manual('App certificate authority trust', NOT_BUILT,
     'KEEL backs up which apps have a certificate authority trust list, but not the authorities on it, and does not restore it yet.',
@@ -645,7 +645,7 @@ export const TYPE_GUIDE = Object.freeze({
   // Remaining kinds, batch 9: read once the Collector holds the read permission.
   formsSettings: auto('Microsoft Forms settings', {
     keeps: 'Puts back the tenant-wide Forms settings, such as sharing forms outside the organisation, phishing scans and Bing image search. The forms and their answers are not backed up.',
-    todo: 'A restore never widens sharing outside the organisation or turns the phishing scan off: when the backup does, nothing is written and you set it by hand in the Microsoft 365 admin center, under Settings, Org settings, Microsoft Forms.',
+    todo: 'Widening sharing outside the organisation or turning the phishing scan off waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID.',
   }),
   todoSettings: manual('Microsoft To Do settings', NOT_BUILT,
     'KEEL backs up whether To Do lists can be shared with or joined by people outside the organisation, and push notifications, but does not restore them yet.',
@@ -655,11 +655,11 @@ export const TYPE_GUIDE = Object.freeze({
   }),
   appsAndServicesSettings: auto('User owned apps and services', {
     keeps: 'Puts back whether people can use the Office Store and start app trials.',
-    todo: 'A restore never turns the Office Store on: when the backup does, nothing is written and you set it by hand in the Microsoft 365 admin center, under Settings, Org settings, User owned apps and services.',
+    todo: 'Turning the Office Store on waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID.',
   }),
   adminReportSettings: auto('Usage report privacy', {
     keeps: 'Puts back whether usage reports hide real user, group and site names.',
-    todo: 'A restore never shows real names again: when the backup does, nothing is written and you set it by hand in the Microsoft 365 admin center, under Settings, Org settings, Reports.',
+    todo: 'Showing real names again waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID.',
   }),
   profileCardProperty: manual('Profile card fields', NOT_BUILT,
     'KEEL backs up the extra directory fields shown on profile cards and their labels, but does not restore them yet.',
@@ -675,7 +675,7 @@ export const TYPE_GUIDE = Object.freeze({
     'Upload the app package again in the Teams admin center, under Teams apps, Manage apps, from your own copy, then check its details against the backup.'),
   engageCommunity: auto('Viva Engage communities', {
     keeps: 'Puts back the name, description and privacy of a community that still exists. Its posts, files and members are not backed up.',
-    todo: 'A deleted community is created again by hand in Viva Engage with the same name, description and privacy from the backup, then its owners and members. A restore never makes a private community public: set that by hand if it is wanted.',
+    todo: 'A deleted community is created again by hand in Viva Engage with the same name, description and privacy from the backup, then its owners and members. Making a private community public waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID.',
   }),
 });
 

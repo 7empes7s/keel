@@ -59,7 +59,7 @@ const DISCLOSURES = Object.freeze({
   'acts-on-accounts': 'This turns on a rule or workflow that acts by itself on people\'s accounts, mail or devices: it can block access, '
     + `or run tasks that change, disable or delete accounts. ${NOT_BACKED_UP}`,
   'blocks-sign-in': 'This turns off sign-in for an app. The app, and every person, service or automation that uses it, '
-    + 'stops working until someone turns it back on. Check nobody relies on the app now before approving.',
+    + `stops working until someone turns it back on. Check nobody relies on the app now before approving. ${NOT_BACKED_UP}`,
 });
 
 export function disclosureFor(effect) {

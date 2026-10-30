@@ -13,7 +13,7 @@ import { test } from 'node:test';
 import { applyWave } from './applyEngine.mjs';
 import { planCompensation } from './compensation.mjs';
 import { IDENTITY_RECORDS } from './identityObjectOperations.mjs';
-import { INTUNE_EXTENDED_RECORDS, INTUNE_RECORDS, applyIntuneExtendedWrite, intuneTrustFieldStep, intuneWriteBody } from './intuneOperations.mjs';
+import { INTUNE_EXTENDED_RECORDS, INTUNE_RECORDS, applyIntuneExtendedWrite, intuneJournalState, intuneTrustFieldStep, intuneWriteBody } from './intuneOperations.mjs';
 import { applyRecordWrite, changedRecordFields, defineRecord, recordTrustFieldStep, recordWriteBody, trustFieldStep } from './recordWriter.mjs';
 import { isTrustField } from './workloads/writeDeclarations.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
@@ -232,4 +232,16 @@ test('an undo of that update reverts only what was written, never the trust fiel
   });
   assert.deepEqual(plan.conflicts, []);
   assert.deepEqual(plan.operations.map((op) => op.revertedFields), [['description']]);
+});
+
+test('the journal keeps a trust field live holds even when the backup has none, and changes no other field', () => {
+  const kind = { '@odata.type': '#microsoft.graph.windows10EndpointProtectionConfiguration' };
+  const live = { ...kind, description: 'Live', firewallCertificateRevocationListCheckMethod: 'none' };
+  assert.deepEqual(intuneJournalState('deviceConfiguration', { ...kind, description: 'Backup' }, live),
+    { ...kind, description: 'Backup', firewallCertificateRevocationListCheckMethod: 'none' });
+  // A trust field only the backup holds is left out on an update too: live does not get it.
+  assert.deepEqual(intuneJournalState('deviceConfiguration', { ...kind, description: 'Backup', firewallCertificateRevocationListCheckMethod: 'attempt' }, { ...kind, description: 'Live' }),
+    { ...kind, description: 'Backup' });
+  const plain = { ...kind, description: 'Backup' };
+  assert.equal(intuneJournalState('deviceConfiguration', plain, { ...kind, description: 'Live' }), plain);
 });

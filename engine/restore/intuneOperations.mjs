@@ -59,6 +59,7 @@ import {
   applyRecordWrite, defineRecord, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue, trustFieldStep,
   undoesCreate, withoutTrustFields,
 } from './recordWriter.mjs';
+import { isTrustField } from './workloads/writeDeclarations.mjs';
 
 export const INTUNE_OPERATIONS_CONTRACT_VERSION = 1;
 
@@ -265,11 +266,12 @@ export function intuneWriteBody(resourceType, payload, verb) {
  */
 export function intuneJournalState(resourceType, desired, live) {
   const state = withoutTrustFields(resourceType, desired);
-  if (state === desired || !live || typeof live !== 'object') return state;
+  if (!live || typeof live !== 'object') return state;
+  // Every trust field live holds stays as it is, whether or not the backup has it.
+  const liveTrust = Object.keys(live).filter((key) => key !== '@odata.type' && isTrustField(resourceType, key));
+  if (state === desired && liveTrust.length === 0) return state;
   const kept = { ...state };
-  for (const key of Object.keys(desired)) {
-    if (!(key in state) && key in live) kept[key] = live[key];
-  }
+  for (const key of liveTrust) kept[key] = live[key];
   return kept;
 }
 

@@ -328,13 +328,15 @@ test('a minor kind Microsoft kept failing on is left out of a new baseline, and 
   const baselineId = await seedFromSnapshot(client, { tenantRef, snapshotId: source, setBy: 'fixture', label: 'Golden' });
   let [entry] = await baselineCompliance(client, { tenantRef, now: new Date(now) });
   assert.equal(entry.id, baselineId);
-  assert.deepEqual(entry.capture.leftOut, [{ type: 'todoSettings', reason: 'microsoft-service-error' }]);
+  assert.deepEqual(entry.capture.leftOut, [{ type: 'todoSettings', reason: 'microsoft-service-error', readLater: false }]);
   assert.equal(entry.capture.types.includes('todoSettings'), false);
 
   // Microsoft answers again: the baseline holds no To Do settings, so they are not "added".
   await snapshot(client, tenantRef, new Date(now - 2 * DAY), [['conditionalAccessPolicy:Block legacy auth', policy], ['todoSettings:todoSettings', todo]]);
   [entry] = await baselineCompliance(client, { tenantRef, now: new Date(now) });
   assert.equal(entry.changesSinceCapture.total, 0, JSON.stringify(entry.changesSinceCapture));
+  assert.deepEqual(entry.capture.leftOut, [{ type: 'todoSettings', reason: 'microsoft-service-error', readLater: true }],
+    'a later backup read it, so a new version would add it');
 
   // A baseline that holds To Do settings: a later backup Microsoft failed on does not remove them.
   const held = await snapshot(client, tenantRef, new Date(now - DAY), [['conditionalAccessPolicy:Block legacy auth', policy], ['todoSettings:todoSettings', todo]]);
@@ -349,6 +351,50 @@ test('a minor kind Microsoft kept failing on is left out of a new baseline, and 
     const blocked = await snapshot(client, tenantRef, new Date(now - DAY / 4), [], outcomes);
     await assert.rejects(seedFromSnapshot(client, { tenantRef, snapshotId: blocked, setBy: 'fixture', label: 'No' }), /not an eligible whole-estate baseline source/);
   }
+});
+
+test('every kind a baseline left out is listed with its reason, and marked once a later backup read it (baselines gap 3)', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenant();
+  const now = Date.now();
+  const policy = { id: 'cap1', displayName: 'Block legacy auth', state: 'enabled', templateId: null };
+  // A recovery drill seeds from a backup with gaps: no licence, a refusal, a partial
+  // read, a fault on an important kind, and a kind the backup did not read at all
+  // (Keel started backing it up after this backup).
+  const source = await snapshot(client, tenantRef, new Date(now - 3 * DAY), [['conditionalAccessPolicy:Block legacy auth', policy]], {
+    lifecycleWorkflow: 'unavailable',
+    todoSettings: { outcome: 'failed', httpStatus: 403 },
+    formsSettings: 'partial',
+    lifecyclePolicy: { outcome: 'failed', httpStatus: 502 },
+  });
+  await client.query("UPDATE snapshot SET coverage_digest = coverage_digest - 'groupLifecyclePolicy' WHERE id = $1", [source]);
+  await seedFromSnapshot(client, { tenantRef, snapshotId: source, setBy: 'fixture', label: 'Drill', scoped: true });
+
+  let [entry] = await baselineCompliance(client, { tenantRef, now: new Date(now) });
+  const reasons = Object.fromEntries(entry.capture.leftOut.map((item) => [item.type, item.reason]));
+  assert.deepEqual(reasons, {
+    formsSettings: 'partial',
+    groupLifecyclePolicy: 'not-read',
+    lifecyclePolicy: 'microsoft-service-error',
+    lifecycleWorkflow: 'no-licence',
+    todoSettings: 'refused',
+  });
+  assert.equal(entry.capture.leftOut.some((item) => item.readLater), false, 'no backup is newer than the source');
+  assert.equal(entry.capture.leftOut.some((item) => entry.capture.types.includes(item.type)), false);
+
+  // A later whole-estate backup reads everything but lifecycle workflows (still no licence).
+  await snapshot(client, tenantRef, new Date(now - DAY), [['conditionalAccessPolicy:Block legacy auth', policy]], { lifecycleWorkflow: 'unavailable' });
+  [entry] = await baselineCompliance(client, { tenantRef, now: new Date(now) });
+  const later = Object.fromEntries(entry.capture.leftOut.map((item) => [item.type, item.readLater]));
+  assert.deepEqual(later, {
+    formsSettings: true, groupLifecyclePolicy: true, lifecyclePolicy: true, lifecycleWorkflow: false, todoSettings: true,
+  });
+
+  // A whole-estate baseline from that backup leaves out only the unlicensed kind.
+  const full = (await client.query("SELECT id::text AS id FROM snapshot WHERE tenant_ref = $1 ORDER BY completed_at DESC LIMIT 1", [tenantRef])).rows[0].id;
+  await seedFromSnapshot(client, { tenantRef, snapshotId: full, setBy: 'fixture', label: 'Full' });
+  const fresh = (await baselineCompliance(client, { tenantRef, now: new Date(now) })).find((item) => item.label === 'Full');
+  assert.deepEqual(fresh.capture.leftOut, [{ type: 'lifecycleWorkflow', reason: 'no-licence', readLater: false }]);
 });
 
 test('mutation check: findings link only to records resting on the same collection', async (t) => {

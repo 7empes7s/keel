@@ -3268,6 +3268,20 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(score.getByRole("img", { name: /^Overall: \d+% match\. [\d,]+ of [\d,]+ settings match\.$/ })).toBeVisible();
     await expect(score).toContainText(/\d+% of settings match the approved setup/);
     await expect(score).toContainText(/settings? differs?/);
+    // Baselines gap 3: every setting type the setup left out, with why, grouped by service, and
+    // "Capture new version" beside the list because a later backup read some of them.
+    const leftOut = current.locator(".bl-leftout");
+    await expect(leftOut.locator(".bl-leftout-head")).toContainText("6 can be added");
+    await expect(leftOut.locator(".bl-leftout-summary")).toContainText("10 setting types are not in this setup");
+    await expect(leftOut.locator(".bl-leftout-action").getByRole("button", { name: "Capture new version" })).toBeEnabled();
+    await expect(current.getByRole("button", { name: "Capture new version" })).toHaveCount(1);
+    await expect(leftOut.locator("li:visible")).toHaveCount(8);
+    await expect(leftOut.locator(".bl-leftout-group h4:visible").first()).toHaveText("Entra ID");
+    await expect(leftOut.locator("li", { hasText: "No licence" }).first()).toContainText("Not read since");
+    await expect(leftOut.locator("li[data-can-add]").first()).toContainText("Read since: can be added");
+    await leftOut.getByText("Show 2 more").click();
+    await expect(leftOut.locator("li:visible")).toHaveCount(10);
+    expectPlainText(await leftOut.innerText());
     const entra = page.locator(".bl-service", { hasText: "Entra ID" });
     await expect(entra).toContainText(/Changed\s*3\s*types/);
     // Each service has its own ring.

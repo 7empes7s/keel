@@ -204,10 +204,15 @@ export const FIXTURE_BACKUPS = Object.freeze({
   'teams-voice-policies': [
     teams('liveEventsPolicy', 'Global', { AllowBroadcastScheduling: true, BroadcastRecordingMode: 'AlwaysEnabled' }),
   ],
-  'sharepoint-site-settings': [
+  // Get-PnPTenant as Keel stores it: enum values by name.
+  'sharepoint-tenant': [
     {
-      id: 'tenant', sharingCapability: 'existingExternalUserSharingOnly', sharingDomainRestrictionMode: 'none',
-      sharingAllowedDomainList: [], sharingBlockedDomainList: [], isResharingByExternalUsersEnabled: false,
+      kind: 'tenantSettings', identity: 'tenant', id: 'tenant-settings:tenant',
+      SharingCapability: 'ExternalUserAndGuestSharing', OneDriveSharingCapability: 'ExistingExternalUserSharingOnly',
+      SharingDomainRestrictionMode: 'AllowList', SharingAllowedDomainList: 'keel-rt-partner.example', SharingBlockedDomainList: '',
+      DefaultSharingLinkType: 'Direct', DefaultLinkPermission: 'Edit',
+      FileAnonymousLinkType: 'View', FolderAnonymousLinkType: 'Edit', RequireAnonymousLinksExpireInDays: 14,
+      EmailAttestationRequired: true, EmailAttestationReAuthDays: 30,
     },
   ],
   'power-platform-settings': [
@@ -267,8 +272,14 @@ export const FIXTURE_EXPECTED = Object.freeze({
   'MS.SECURITYSUITE.7.3v1': 'fail', // it does not track clicks
   'MS.SECURITYSUITE.8.1v1': 'fail', // the connection filter has an IP allow list
   'MS.SECURITYSUITE.8.2v1': 'pass', // the safe list is off
-  'MS.SHAREPOINT.1.1v1': 'pass', // SharePoint sharing is limited to existing guests
-  'MS.SHAREPOINT.1.3v1': 'fail', // external sharing is on, with no domain list
+  'MS.SHAREPOINT.1.1v1': 'fail', // SharePoint sharing allows Anyone links
+  'MS.SHAREPOINT.1.2v1': 'pass', // OneDrive sharing is limited to existing guests
+  'MS.SHAREPOINT.1.3v1': 'pass', // sharing is limited to an allowed domain list
+  'MS.SHAREPOINT.2.1v1': 'pass', // new links go to specific people
+  'MS.SHAREPOINT.2.2v1': 'fail', // new links let people edit
+  'MS.SHAREPOINT.3.1v1': 'pass', // Anyone links expire after 14 days
+  'MS.SHAREPOINT.3.2v1': 'fail', // Anyone links to folders let people edit
+  'MS.SHAREPOINT.3.3v2': 'pass', // guests with a code sign in again every 30 days
   'MS.TEAMS.1.1v1': 'fail', // a named meeting policy lets outside people request control
   'MS.TEAMS.1.2v2': 'pass',
   'MS.TEAMS.1.3v1': 'pass', // the Global policy admits only people in the company, and dial-in users wait

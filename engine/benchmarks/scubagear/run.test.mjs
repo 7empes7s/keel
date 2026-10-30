@@ -110,7 +110,7 @@ test('every rule of every product is a control, and each gets an answer on the f
   // Every rule Keel can check has a worked-out answer, and gets exactly it.
   const checked = Object.fromEntries(Object.entries(verdicts).filter(([, verdict]) => verdict !== 'unknown'));
   assert.deepEqual(checked, { ...FIXTURE_EXPECTED });
-  assert.equal(Object.keys(checked).length, 64);
+  assert.equal(Object.keys(checked).length, 70);
 });
 
 test('a rule Keel cannot check says why, and is never a pass', () => {
@@ -125,11 +125,10 @@ test('a rule Keel cannot check says why, and is never a pass', () => {
   assert.equal(reason('MS.SECURITYSUITE.2.1v1'), 'scubagear:needs-setting:SecuritySuite,Defender');
   assert.equal(reason('MS.SECURITYSUITE.3.1v1'), 'scubagear:field-not-read:dlp_compliance_policies.Enabled');
   assert.equal(reason('MS.SECURITYSUITE.6.1v1'), 'scubagear:field-not-read:hosted_content_filter_policies.RecommendedPolicyType');
-  assert.equal(reason('MS.SHAREPOINT.1.2v1'), 'scubagear:field-not-read:SPO_tenant.ODBSharingCapability');
   assert.equal(reason('MS.TEAMS.5.1v2'), 'scubagear:not-read:tenant_app_settings');
   assert.equal(reason('MS.POWERPLATFORM.1.1v1'), 'scubagear:not-read:environment_creation');
   const unchecked = scuba().filter((control) => control.unchecked);
-  assert.equal(unchecked.length, 45);
+  assert.equal(unchecked.length, 39);
   for (const control of unchecked) assert.deepEqual(control.requiredObservations, []);
 });
 
@@ -289,14 +288,45 @@ test('Power Platform rules are could not check when no default environment is li
   assert.equal(result.reason, 'scubagear:incomplete:environment_list');
 });
 
-test('SharePoint sharing settings become the admin API\'s numbers, and a setting not read is could not check', () => {
-  const tenant = (fields) => ({ ...FIXTURE_BACKUPS, 'sharepoint-site-settings': [{ ...FIXTURE_BACKUPS['sharepoint-site-settings'][0], ...fields }] });
-  assert.equal(run(id('MS.SHAREPOINT.1.1v1'), tenant({ sharingCapability: 'externalUserAndGuestSharing' })).verdict, 'fail');
-  assert.equal(run(id('MS.SHAREPOINT.1.1v1'), tenant({ sharingCapability: 'disabled' })).verdict, 'pass');
-  assert.equal(run(id('MS.SHAREPOINT.1.3v1'), tenant({ sharingDomainRestrictionMode: 'allowList', sharingAllowedDomainList: ['KEEL-RT-partner.example'] })).verdict, 'pass');
-  const unread = run(id('MS.SHAREPOINT.1.1v1'), tenant({ sharingCapability: null }));
-  assert.equal(unread.verdict, 'unknown');
-  assert.equal(unread.reason, 'scubagear:incomplete:SPO_tenant');
+test('SharePoint rules read the Get-PnPTenant backup as the admin API\'s numbers', () => {
+  const tenant = (fields) => ({ ...FIXTURE_BACKUPS, 'sharepoint-tenant': [{ ...FIXTURE_BACKUPS['sharepoint-tenant'][0], ...fields }] });
+  // Every rule needs the tenant object, and nothing else.
+  for (const control of scuba().filter((entry) => entry.controlId.startsWith('scubagear.MS.SHAREPOINT.'))) {
+    assert.deepEqual(control.requiredObservations.map(({ resourceType, parts }) => ({ resourceType, parts })),
+      [{ resourceType: 'sharepoint-tenant', parts: ['tenantSettings'] }], control.controlId);
+  }
+  assert.equal(run(id('MS.SHAREPOINT.1.1v1'), tenant({ SharingCapability: 'Disabled' })).verdict, 'pass');
+  assert.equal(run(id('MS.SHAREPOINT.1.2v1'), tenant({ OneDriveSharingCapability: 'ExternalUserSharingOnly' })).verdict, 'fail');
+  assert.equal(run(id('MS.SHAREPOINT.1.3v1'), tenant({ SharingDomainRestrictionMode: 'BlockList' })).verdict, 'fail');
+  assert.equal(run(id('MS.SHAREPOINT.2.1v1'), tenant({ DefaultSharingLinkType: 'AnonymousAccess' })).verdict, 'fail');
+  assert.equal(run(id('MS.SHAREPOINT.2.2v1'), tenant({ DefaultLinkPermission: 'View' })).verdict, 'pass');
+  assert.equal(run(id('MS.SHAREPOINT.3.1v1'), tenant({ RequireAnonymousLinksExpireInDays: 0 })).verdict, 'fail');
+  assert.equal(run(id('MS.SHAREPOINT.3.2v1'), tenant({ FolderAnonymousLinkType: 'View' })).verdict, 'pass');
+  assert.equal(run(id('MS.SHAREPOINT.3.3v2'), tenant({ EmailAttestationReAuthDays: 60 })).verdict, 'fail');
+  assert.equal(run(id('MS.SHAREPOINT.3.3v2'), tenant({ EmailAttestationRequired: false })).verdict, 'fail');
+  // With Anyone links off, the Anyone link rules have nothing to judge: never a fail.
+  assert.notEqual(run(id('MS.SHAREPOINT.3.1v1'), tenant({ SharingCapability: 'ExistingExternalUserSharingOnly', RequireAnonymousLinksExpireInDays: 0 })).verdict, 'fail');
+});
+
+test('a SharePoint setting the backup does not carry, or carries in an unknown shape, is could not check', () => {
+  const tenant = (fields) => ({ ...FIXTURE_BACKUPS, 'sharepoint-tenant': [{ ...FIXTURE_BACKUPS['sharepoint-tenant'][0], ...fields }] });
+  const cases = [
+    { OneDriveSharingCapability: undefined }, // not in the answer
+    { DefaultSharingLinkType: null },
+    { SharingCapability: 7 }, // an enum number the reader had no name for
+    { SharingCapability: 'Anyone' }, // a name SharePoint does not use
+    { RequireAnonymousLinksExpireInDays: '14' },
+    { EmailAttestationRequired: 'true' },
+  ];
+  for (const fields of cases) {
+    const result = run(id('MS.SHAREPOINT.1.1v1'), tenant(fields));
+    assert.equal(result.verdict, 'unknown', JSON.stringify(fields));
+    assert.equal(result.reason, 'scubagear:incomplete:SPO_tenant');
+  }
+  // No tenant object at all (only the narrower families were read).
+  const none = run(id('MS.SHAREPOINT.2.1v1'), { ...FIXTURE_BACKUPS, 'sharepoint-tenant': [{ kind: 'browserIdleSignout', identity: 'tenant', id: 'idle-sign-out:tenant', Enabled: true }] });
+  assert.equal(none.verdict, 'unknown');
+  assert.equal(none.reason, 'scubagear:incomplete:SPO_tenant');
 });
 
 test('a rule that needs another product\'s backup is could not check without it', () => {

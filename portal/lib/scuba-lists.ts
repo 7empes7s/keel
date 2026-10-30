@@ -104,7 +104,8 @@ export function guardedScubaListUpdate(deps: GuardDeps = {}) {
         verdict = null;
       }
     }
-    const view = await viewFrom(client as KeelClient, tenant);
-    return Response.json({ changed, list: view.lists.find((entry) => entry.list === list), verdict, reason }, { status: 200, headers: NO_STORE });
+    // The list is saved whatever happens next: a failed read-back answers without it.
+    const saved = await viewFrom(client as KeelClient, tenant).then((view) => view.lists.find((entry) => entry.list === list) ?? null).catch(() => null);
+    return Response.json({ changed, list: saved, verdict, reason }, { status: 200, headers: NO_STORE });
   }, deps);
 }

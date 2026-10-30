@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from "react";
 
 import { DetailsSheet } from "@/components/baselines/details-sheet";
@@ -85,6 +86,7 @@ function ListRow({ list, now }: { list: ScubaList; now: string }) {
 /** Edit the lists: one box per list, entries as chips, saved together. */
 export function ScubaListsSheet({ view, onDone, onClose }: { view: ScubaListsView; onDone: () => void; onClose: () => void }) {
   const [drafts, setDrafts] = useState<Record<ScubaListName, string[]>>(() => Object.fromEntries(view.lists.map((list) => [list.list, [...list.entries]])) as Record<ScubaListName, string[]>);
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const changed = view.lists.filter((list) => drafts[list.list].join("\n") !== list.entries.join("\n"));
@@ -105,7 +107,10 @@ export function ScubaListsSheet({ view, onDone, onClose }: { view: ScubaListsVie
         if (!response.ok) {
           const body = (await response.json().catch(() => ({}))) as { detail?: string };
           const name = SCUBA_LIST_INFO[list.list].label;
-          setError(response.status === 403 ? "You need the configuration permission to change these lists." : body.detail ? `${name} not saved: ${body.detail}.` : `${name} not saved. Try again in a moment.`);
+          const problem = response.status === 403 ? "You need the configuration permission to change these lists." : body.detail ? `${name} not saved: ${body.detail}.` : `${name} not saved. Try again in a moment.`;
+          // Lists saved before this one stay saved: say so, and show them.
+          setError(results.length ? `${problem} ${results.map((line) => line.split(":")[0]).join(" and ")} saved.` : problem);
+          if (results.length) router.refresh();
           return;
         }
         const body = (await response.json()) as { verdict: string | null; reason: string | null };

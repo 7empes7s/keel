@@ -183,6 +183,7 @@ export async function setScubaConfigList(client, { tenantRef, list, entries, act
        DO UPDATE SET entries = EXCLUDED.entries, updated_by = EXCLUDED.updated_by, updated_at = now()`,
     [tenantRef, list, JSON.stringify(clean), actor],
   );
-  const after = (await getScubaConfigLists(client, { tenantRef })).lists.find((entry) => entry.list === list);
-  return { changed: true, list: after, added, removed };
+  // Answer from what was written: no read after the write that could fail and make a
+  // saved list look unsaved.
+  return { changed: true, list: { ...before, entries: clean, updatedBy: actor, updatedAt: new Date() }, added, removed };
 }

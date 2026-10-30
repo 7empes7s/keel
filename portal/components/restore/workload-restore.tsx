@@ -7,6 +7,7 @@ import { ContentEffectsPanel, type ContentEffect } from "@/components/content-ef
 import { RestorePoint } from "@/components/restore/restore-point";
 import { RestoreStepper } from "@/components/restore-selection";
 import { RecordCompare, RecordField, RecordGroup, TechnicalDetails, type RecordValue } from "@/components/technical-details";
+import { restoreSentNotice, type RestoreSentNotice } from "@/lib/restore-sent";
 import { postAction } from "@/lib/action-client";
 import { fieldWords, valueWords } from "@/lib/changes-view";
 import { SettingRows } from "@/components/change-comparison";
@@ -173,6 +174,7 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [step, setStep] = useState<Step>("select");
+  const [allStarted, setAllStarted] = useState(false);
   // One run per dry run: one for a policy workload, one per chosen mailbox or team.
   const [runs, setRuns] = useState<Run[]>([]);
   const [justification, setJustification] = useState("");
@@ -297,6 +299,7 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
     setBusy(true);
     setError(null);
     let sent = 0;
+    const notices: RestoreSentNotice[] = [];
     try {
       for (const [index, run] of sendable.entries()) {
         // A retry after a partial failure skips the ones already sent.
@@ -307,12 +310,20 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
           sendable.length === 1 ? idempotencyKey : `${idempotencyKey}:${index}`,
         );
         if (!payload.approvalRequest) throw new Error("no approval");
+        notices.push(restoreSentNotice(payload.approvalRequest));
         sentIds.current.add(run.artifactId);
         sent += 1;
       }
       setIdempotencyKey(crypto.randomUUID());
       setStep("track");
-      toast({ tone: "info", title: sent === 1 ? "Sent to approvers" : `${sent} restores sent to approvers`, detail: "Nothing changes until one of them approves.", href: "/approvals", hrefLabel: "Open approvals" });
+      const started = notices.filter((notice) => notice.started).length;
+      setAllStarted(notices.length > 0 && started === notices.length);
+      if (notices.length > 0 && started === notices.length) {
+        const notice = notices[0];
+        toast({ tone: "success", title: started === 1 ? notice.title : `${started} restores started`, detail: notice.detail, href: notice.href, hrefLabel: notice.hrefLabel });
+      } else {
+        toast({ tone: "info", title: sent === 1 ? "Sent to approvers" : `${sent} restores sent to approvers`, detail: started ? `${started} started without an approver because restore approvals are off. Nothing else changes until an approver approves.` : "Nothing changes until one of them approves.", href: "/approvals", hrefLabel: "Open approvals" });
+      }
     } catch {
       setError(sent
         ? `KEEL sent ${sent} of ${sendable.length} for approval and could not send the rest. Try again in a minute.`
@@ -327,6 +338,7 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
     setRuns([]);
     sentIds.current = new Set();
     setJustification("");
+    setAllStarted(false);
     setStep("select");
   }
 
@@ -339,6 +351,7 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
   const title = step === "select" ? "Step 1 of 4: choose what to put back."
     : step === "dry-run" ? "Step 2 of 4: KEEL is checking what would change. Nothing is written."
     : step === "review" ? (reviewOk ? "Step 3 of 4: review what will change, then send it for approval." : "Step 3 of 4: the check found problems, so nothing can be put back from it.")
+    : allStarted ? "Step 4 of 4: approved without an approver, because restore approvals are off for this service."
     : "Step 4 of 4: sent to approvers. Nothing changes until one of them approves.";
   const perItem = PER_ITEM_WORKLOADS.includes(workload);
   const unit = workload === "teams-settings" ? "team" : workload === "exchange-mailbox-settings" ? "mailbox" : "setting";
@@ -491,9 +504,15 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
         <div className="wizard-track">
           <ol className="track-timeline">
             <li className="track-done">Check finished</li>
-            <li className="track-done">Approval requested</li>
-            <li className="track-current">Another person reviews this same plan</li>
-            <li>KEEL reads the tenant again, writes, then reads it back</li>
+            {allStarted ? (
+              <li className="track-done">No approver needed: restore approvals are off for this service</li>
+            ) : (
+              <>
+                <li className="track-done">Approval requested</li>
+                <li className="track-current">Another person reviews this same plan</li>
+              </>
+            )}
+            <li className={allStarted ? "track-current" : undefined}>KEEL reads the tenant again, writes, then reads it back</li>
           </ol>
           <p className="selection-scope">If a setting changed since this check, KEEL stops and asks for a new check instead of writing over it.</p>
           <div className="form-actions">

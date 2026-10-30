@@ -90,3 +90,90 @@ export async function effectsNeedApproval(client, { tenantRef, effects, settings
   const off = new Set(current.filter((entry) => !entry.approvalRequired).map((entry) => entry.service));
   return { required: services.some((service) => !off.has(service)), services, waived: services.filter((service) => off.has(service)) };
 }
+
+// The restore's own approval (approvals.mjs#requestApproval). When every service a
+// restore writes to has restore approvals off, the request is approved as it is made,
+// under this basis, and nobody has to approve it. The basis is kept on the request
+// (standing_policy) and in the approval-decision evidence, next to the services.
+export const RESTORE_APPROVALS_OFF_BASIS = 'restore-approvals-off';
+// Who the request's decided_by names: Keel itself, never a person, so a person's
+// approval is never claimed. Not a principal id (those are UUIDs), so it can never be
+// the requester either.
+export const RESTORE_APPROVALS_OFF_DECIDER = 'restore-approval-setting';
+
+// The service each workload restore (restore/workloads/dispatch.mjs) writes to. A
+// workload missing here waits for an approver; a test keeps the two lists equal.
+export const WORKLOAD_RESTORE_SERVICES = Object.freeze({
+  'sharepoint-site-settings': 'SharePoint',
+  'sharepoint-site-grants': 'SharePoint',
+  'sharepoint-site-permissions': 'SharePoint',
+  'sharepoint-structure': 'SharePoint',
+  'exchange-mailbox-settings': 'Exchange',
+  'exchange-mail-flow': 'Exchange',
+  'exchange-extended': 'Exchange',
+  'exchange-distribution-groups': 'Exchange',
+  'exchange-role-definitions': 'Exchange',
+  'teams-settings': 'Teams',
+  'teams-org-policies': 'Teams',
+  'teams-voice-policies': 'Teams',
+  'purview-labels': 'Purview',
+  'purview-retention-dlp': 'Purview',
+  'purview-governance': 'Purview',
+});
+
+const WORKLOAD_PATH_PREFIX = 'workload:';
+
+/**
+ * The services a restore's dry run writes to, or null when Keel cannot place every
+ * object in one (then the restore waits for an approver). Turning a Conditional
+ * Access policy on is always null: it can lock people out, so a person approves it.
+ */
+export async function restoreArtifactServices(client, artifact) {
+  if (!artifact || artifact.conditionalAccessEnforcement) return null;
+  const workload = artifact.workloadRestore?.workload
+    ?? (String(artifact.collectorConfigPath ?? '').startsWith(WORKLOAD_PATH_PREFIX)
+      ? String(artifact.collectorConfigPath).slice(WORKLOAD_PATH_PREFIX.length)
+      : null);
+  if (workload !== null) {
+    const service = Object.hasOwn(WORKLOAD_RESTORE_SERVICES, workload) ? WORKLOAD_RESTORE_SERVICES[workload] : null;
+    return service ? [service] : null;
+  }
+  const keys = [...new Set(artifact.closureKeys ?? [])];
+  if (keys.length === 0) return null;
+  const types = new Map();
+  for (const resource of artifact.reconciliationResources ?? []) {
+    if (typeof resource?.naturalKey === 'string' && typeof resource?.resourceType === 'string') {
+      types.set(resource.naturalKey, resource.resourceType);
+    }
+  }
+  if (artifact.snapshotId) {
+    const { rows } = await client.query(
+      'SELECT natural_key, resource_type FROM resource_version WHERE snapshot_id = $1 AND natural_key = ANY($2::text[])',
+      [artifact.snapshotId, keys],
+    );
+    for (const row of rows) if (!types.has(row.natural_key)) types.set(row.natural_key, row.resource_type);
+  }
+  const services = new Set();
+  for (const key of keys) {
+    const service = types.has(key) ? serviceForResourceType(types.get(key)) : null;
+    if (!service) return null;
+    services.add(service);
+  }
+  return RESTORE_APPROVAL_SERVICES.filter((service) => services.has(service));
+}
+
+/**
+ * Whether a restore still needs a person to approve it under the tenant's setting.
+ * It does unless every service it writes to has restore approvals off. The setting
+ * follows the dry run's tenant (its source), as content-effect approvals do.
+ * Returns { required, services }.
+ */
+export async function restoreNeedsApproval(client, { artifact }) {
+  const services = await restoreArtifactServices(client, artifact);
+  if (!services?.length || typeof artifact.tenantRef !== 'string' || artifact.tenantRef.length === 0) {
+    return { required: true, services: services ?? [] };
+  }
+  const settings = await getRestoreApprovalSettings(client, { tenantRef: artifact.tenantRef });
+  const off = new Set(settings.filter((entry) => !entry.approvalRequired).map((entry) => entry.service));
+  return { required: services.some((service) => !off.has(service)), services };
+}

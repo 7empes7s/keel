@@ -1,0 +1,64 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-reads-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "6caae1c0e351c33c8158da9399da976bf76e7324",
+  "operation": "workload-reads",
+  "credentialMode": "collector-only",
+  "observedAt": "2026-10-30T11:46:29.673Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "exchange-distribution-groups",
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "moduleVersion": "3.10.1"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c"
+    },
+    "outcome": "complete",
+    "reads": [
+      {
+        "operationId": "exchange-distribution-groups.distribution-groups",
+        "family": "distributionGroup",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T11:46:29.673Z",
+        "ok": true,
+        "status": "read",
+        "objects": 6,
+        "error": null
+      },
+      {
+        "operationId": "exchange-distribution-groups.dynamic-distribution-groups",
+        "family": "dynamicDistributionGroup",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T11:46:29.673Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "exchange-distribution-groups.microsoft-365-groups",
+        "family": "microsoft365Group",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T11:46:29.673Z",
+        "ok": true,
+        "status": "read",
+        "objects": 13,
+        "error": null
+      }
+    ]
+  },
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "1e212e9b2b3b3b3657f4e94af804d73cda2f9e7e416b46dbcde83a6f3146b588"
+    }
+  }
+}

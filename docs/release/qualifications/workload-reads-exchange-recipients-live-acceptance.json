@@ -1,0 +1,108 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-reads-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "6caae1c0e351c33c8158da9399da976bf76e7324",
+  "operation": "workload-reads",
+  "credentialMode": "collector-only",
+  "observedAt": "2026-10-30T11:48:55.239Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "exchange-recipients",
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "moduleVersion": "3.10.1"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c"
+    },
+    "outcome": "complete",
+    "reads": [
+      {
+        "operationId": "exchange-recipients.shared-mailboxes",
+        "family": "sharedMailbox",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T11:48:55.239Z",
+        "ok": true,
+        "status": "read",
+        "objects": 7,
+        "error": null
+      },
+      {
+        "operationId": "exchange-recipients.room-mailboxes",
+        "family": "roomMailbox",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T11:48:55.239Z",
+        "ok": true,
+        "status": "read",
+        "objects": 11,
+        "error": null
+      },
+      {
+        "operationId": "exchange-recipients.equipment-mailboxes",
+        "family": "equipmentMailbox",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T11:48:55.239Z",
+        "ok": true,
+        "status": "read",
+        "objects": 2,
+        "error": null
+      },
+      {
+        "operationId": "exchange-recipients.mail-contacts",
+        "family": "mailContact",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T11:48:55.239Z",
+        "ok": true,
+        "status": "read",
+        "objects": 2,
+        "error": null
+      },
+      {
+        "operationId": "exchange-recipients.mailbox-permissions",
+        "family": "mailboxPermission",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T11:48:55.239Z",
+        "ok": true,
+        "status": "read",
+        "objects": 20,
+        "error": null
+      },
+      {
+        "operationId": "exchange-recipients.send-as",
+        "family": "sendAs",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T11:48:55.239Z",
+        "ok": true,
+        "status": "read",
+        "objects": 12,
+        "error": null
+      },
+      {
+        "operationId": "exchange-recipients.calendar-processing",
+        "family": "calendarProcessing",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T11:48:55.239Z",
+        "ok": true,
+        "status": "read",
+        "objects": 13,
+        "error": null
+      }
+    ]
+  },
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "c12ff30de6219ab3d1a7eaa12907e9b23d9464a62d599285875d6ffb07eb707b"
+    }
+  }
+}

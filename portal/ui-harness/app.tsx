@@ -2675,11 +2675,15 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       // services as service reads with their changes since the previous backup.
       const isRead = (type: string) => Object.hasOwn(WORKLOAD_LABELS, type);
       const backedUp = COVERAGE.types.filter((type) => !isRead(type.type) && type.reportStatus === "covered").map((type) => type.type);
-      const serviceReads = COVERAGE.types.filter((type) => isRead(type.type)).map((type) => ({ type: type.type, read: type.reportStatus === "covered" }));
+      const serviceReads = COVERAGE.types.filter((type) => isRead(type.type)).map((type) => ({ type: type.type, read: type.reportStatus === "covered", itemCount: 40,
+        open: SERVICE_CHANGES.filter((item) => item.resourceType === type.type)
+          .reduce((tally, item) => ({ ...tally, [item.changeType]: tally[item.changeType] + 1 }), { added: 0, modified: 0, removed: 0 }) }));
+      // The 4,812 settings the setup holds, per kind (adds up to its resourceCount).
+      const held = { conditionalAccessPolicy: 24, group: 640, namedLocation: 8, roleAssignment: 140, user: 3900, application: 100 };
       return <>{header("Baselines", "Approved setup", "How the tenant should look. Keel compares the tenant with it after every backup and lists what changed.", undefined, setupStatus(BASELINES[0], DRIFT_DECIDED))}
       <Verdict action={{ label: "Review changes", href: "/drift" }} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation">
-        <ApprovedSetup backedUp={backedUp} baselines={BASELINES} canBaseline items={DRIFT_DECIDED} now={now} serviceChanges={SERVICE_CHANGES} serviceReads={serviceReads} sources={CAPTURE_SOURCES} />
+        <ApprovedSetup backedUp={backedUp} baselines={BASELINES} canBaseline held={held} items={DRIFT_DECIDED} now={now} serviceChanges={SERVICE_CHANGES} serviceReads={serviceReads} sources={CAPTURE_SOURCES} />
         <RecentWork jobs={jobs.filter((item) => item.kind.startsWith("baseline"))} now={now} />
       </div></>;
     }

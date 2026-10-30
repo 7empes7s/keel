@@ -2911,8 +2911,15 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(current).toContainText("Post-migration golden state");
     await expect(current).toContainText("4,812 settings in 6 kinds");
     await expect(current.getByRole("link", { name: "Compare with the latest backup" })).toHaveAttribute("href", /compare\?from=0b5e0000-0000-4000-8000-0000000000c8&to=0b5e0000-0000-4000-8000-0000000000d6/);
+    // The overall match: settings that match the approved setup out of every setting judged.
+    const score = page.locator(".bl-score");
+    await expect(score.getByRole("img", { name: /^Overall: \d+% match\. [\d,]+ of [\d,]+ settings match\.$/ })).toBeVisible();
+    await expect(score).toContainText(/\d+% of settings match the approved setup/);
+    await expect(score).toContainText(/settings? differs?/);
     const entra = page.locator(".bl-service", { hasText: "Entra ID" });
     await expect(entra).toContainText(/Changed\s*3\s*kinds/);
+    // Each service has its own ring.
+    await expect(entra.getByRole("img", { name: /^Entra ID: \d+% match\./ })).toBeVisible();
     // A service with changes links to them, filtered to that service.
     await expect(entra).toHaveAttribute("href", /drift\?service=/);
     await entra.click();

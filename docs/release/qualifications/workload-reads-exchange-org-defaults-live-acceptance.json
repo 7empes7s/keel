@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "c8de6069c8133cbff636d6f2392758cfce83dbc3",
+  "build": "34bf9f726af806aec5bdc717d0406c67ec782d3f",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-10-30T17:38:28.249Z",
+  "observedAt": "2026-10-30T21:38:47.311Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -25,7 +25,18 @@
         "family": "transportConfig",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-10-30T17:38:28.249Z",
+        "capturedAt": "2026-10-30T21:38:47.311Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "exchange-org-defaults.organization-config",
+        "family": "organizationConfig",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T21:38:47.311Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -36,7 +47,7 @@
         "family": "emailAddressPolicy",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-10-30T17:38:28.249Z",
+        "capturedAt": "2026-10-30T21:38:47.311Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -47,7 +58,7 @@
         "family": "casMailboxPlan",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-10-30T17:38:28.249Z",
+        "capturedAt": "2026-10-30T21:38:47.311Z",
         "ok": true,
         "status": "read",
         "objects": 4,
@@ -58,7 +69,7 @@
         "family": "mailboxPlan",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-10-30T17:38:28.249Z",
+        "capturedAt": "2026-10-30T21:38:47.311Z",
         "ok": true,
         "status": "read",
         "objects": 4,
@@ -69,7 +80,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "6c30b10387fa27129f6c2fe96811e1f48a825344cab0d43c5dbb5b41e7973044"
+      "signature": "2b6df831477c08560305295b359f36b2778d5b751fcf0626dac3dec67aa10063"
     }
   }
 }

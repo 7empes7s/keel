@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "c8de6069c8133cbff636d6f2392758cfce83dbc3",
+  "build": "34bf9f726af806aec5bdc717d0406c67ec782d3f",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-10-30T17:38:13.732Z",
+  "observedAt": "2026-10-30T21:38:30.738Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -18,14 +18,14 @@
     "credentials": {
       "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c"
     },
-    "outcome": "partial",
+    "outcome": "complete",
     "reads": [
       {
         "operationId": "exchange-org-access.authentication-policies",
         "family": "authenticationPolicy",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-10-30T17:38:13.732Z",
+        "capturedAt": "2026-10-30T21:38:30.738Z",
         "ok": true,
         "status": "read",
         "objects": 0,
@@ -36,7 +36,7 @@
         "family": "sharingPolicy",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-10-30T17:38:13.732Z",
+        "capturedAt": "2026-10-30T21:38:30.738Z",
         "ok": true,
         "status": "read",
         "objects": 3,
@@ -47,7 +47,7 @@
         "family": "organizationRelationship",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-10-30T17:38:13.732Z",
+        "capturedAt": "2026-10-30T21:38:30.738Z",
         "ok": true,
         "status": "read",
         "objects": 0,
@@ -58,7 +58,7 @@
         "family": "intraOrganizationConnector",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-10-30T17:38:13.732Z",
+        "capturedAt": "2026-10-30T21:38:30.738Z",
         "ok": true,
         "status": "read",
         "objects": 0,
@@ -69,7 +69,7 @@
         "family": "owaMailboxPolicy",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-10-30T17:38:13.732Z",
+        "capturedAt": "2026-10-30T21:38:30.738Z",
         "ok": true,
         "status": "read",
         "objects": 2,
@@ -80,7 +80,7 @@
         "family": "roleAssignmentPolicy",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-10-30T17:38:13.732Z",
+        "capturedAt": "2026-10-30T21:38:30.738Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -91,18 +91,18 @@
         "family": "applicationAccessPolicy",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-10-30T17:38:13.732Z",
-        "ok": false,
-        "status": "failed",
+        "capturedAt": "2026-10-30T21:38:30.738Z",
+        "ok": true,
+        "status": "read",
         "objects": 0,
-        "error": "CMDLET_ERROR:[],Write-ErrorMessage"
+        "error": null
       },
       {
         "operationId": "exchange-org-access.external-in-outlook",
         "family": "externalInOutlook",
         "version": "3.10.1",
         "synthetic": false,
-        "capturedAt": "2026-10-30T17:38:13.732Z",
+        "capturedAt": "2026-10-30T21:38:30.738Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -113,7 +113,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "234e1ad68d37c731a93f196dff0dbce91c618e668fa620d0db3d6df0c52b264a"
+      "signature": "267f8ebe4fccec7196cd124986e62880d69c8c64cdd66092d0403fd406137c8f"
     }
   }
 }

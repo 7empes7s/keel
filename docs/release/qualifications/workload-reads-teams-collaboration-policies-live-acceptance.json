@@ -1,0 +1,119 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-reads-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "34af446e934526745ac105acaef613ac28e2fbe3",
+  "operation": "workload-reads",
+  "credentialMode": "collector-only",
+  "observedAt": "2026-10-30T18:38:42.465Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "teams-collaboration-policies",
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "MicrosoftTeams",
+      "moduleVersion": "7.9.0"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c"
+    },
+    "outcome": "partial",
+    "reads": [
+      {
+        "operationId": "teams.external-access-policies",
+        "family": "externalAccessPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T18:38:42.465Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "teams.channels-policies",
+        "family": "channelsPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T18:38:42.465Z",
+        "ok": true,
+        "status": "read",
+        "objects": 2,
+        "error": null
+      },
+      {
+        "operationId": "teams.files-policies",
+        "family": "filesPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T18:38:42.465Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "teams.template-permission-policies",
+        "family": "templatePermissionPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T18:38:42.465Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "teams.shifts-policies",
+        "family": "shiftsPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T18:38:42.465Z",
+        "ok": true,
+        "status": "read",
+        "objects": 2,
+        "error": null
+      },
+      {
+        "operationId": "teams.upgrade-policies",
+        "family": "upgradePolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T18:38:42.465Z",
+        "ok": true,
+        "status": "read",
+        "objects": 11,
+        "error": null
+      },
+      {
+        "operationId": "teams.upgrade-configuration",
+        "family": "upgradeConfiguration",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T18:38:42.465Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "teams.acs-federation-configuration",
+        "family": "acsFederationConfiguration",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T18:38:42.465Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      }
+    ]
+  },
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "053fafab90f4937a0d3dc2752be68a912366bef345628d7949e5d91b7be4d7e5"
+    }
+  }
+}

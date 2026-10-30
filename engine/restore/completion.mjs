@@ -36,13 +36,14 @@ import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
 import { followUpSteps } from './bestEffortRecreate.mjs';
 
-export const COMPLETION_KINDS = Object.freeze(['credential', 'certificate', 'consent', 'integration', 'service-validation', 'enforcement']);
+export const COMPLETION_KINDS = Object.freeze(['credential', 'certificate', 'consent', 'integration', 'service-validation', 'enforcement', 'manual-setting']);
 export const COMPLETION_EVIDENCE_TYPES = Object.freeze(['ticket', 'link', 'log-reference', 'attestation']);
 export const COMPLETION_EVIDENCE_KIND = 'recovery-completion';
 const EVIDENCE_FIELDS = new Set(['type', 'reference', 'note', 'observedAt']);
-const CONFIGURATION_KINDS = new Set(['credential', 'certificate', 'consent', 'integration', 'enforcement']);
+const CONFIGURATION_KINDS = new Set(['credential', 'certificate', 'consent', 'integration', 'enforcement', 'manual-setting']);
 
 const item = (kind, requirement, description) => Object.freeze({ kind, requirement, description });
+const nonEmpty = (text) => typeof text === 'string' && text.trim().length > 0;
 
 /**
  * What a recovered object of each type still needs, beyond its configuration.
@@ -114,8 +115,12 @@ export const CONDITIONAL_ACCESS_STATE_UNCONFIRMED_ITEM = item(
 export function completionItemsFor({ resourceType, mechanism, enforcementPending = false, stateUnconfirmed = false, payload = undefined, decision = undefined, followUp = undefined, steps = [] }) {
   if (stateUnconfirmed) return [CONDITIONAL_ACCESS_STATE_UNCONFIRMED_ITEM];
   // Issue #546: a writer's own steps for a person (assignments the backup did
-  // not read) are open items whatever the mechanism, after the mechanism's own.
-  const own = (steps ?? []).filter((step) => COMPLETION_KINDS.includes(step?.kind) && step.kind !== 'enforcement')
+  // not read, a setting a restore never writes such as a trust field) are open
+  // items whatever the mechanism, after the mechanism's own. A step without a
+  // requirement or words cannot be stored or acted on, so it is left out.
+  const own = (steps ?? [])
+    .filter((step) => COMPLETION_KINDS.includes(step?.kind) && step.kind !== 'enforcement')
+    .filter((step) => nonEmpty(step.requirement) && nonEmpty(step.description))
     .map((step) => item(step.kind, step.requirement, step.description));
   return [...mechanismItems({ resourceType, mechanism, enforcementPending, payload, decision, followUp }), ...own];
 }

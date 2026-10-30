@@ -300,3 +300,79 @@ test('issue #546: an enforced run opens a writer\'s assignments step as an owned
   assert.equal(assignments[0].naturalKey, 'group:finance-approvers');
   assert.equal(assignments[0].state, 'pending');
 });
+
+test('a manual setting step is an open item: it keeps the restore at configuration-restored until evidence closes it', async (t) => {
+  const client = await schemaClient(t);
+  const operator = await principal(client, 'op7@contoso.example', 'restorer');
+  const step = { kind: 'manual-setting', requirement: 'trustFields', fields: ['inboundTrust'], description: 'Check inboundTrust in the admin center and set it by hand: KEEL-RT fixture step' };
+  for (const mechanism of ['none', 'update-existing', 'soft-delete-restore']) {
+    const items = completionItemsFor({ resourceType: 'crossTenantAccessPolicyConfigurationPartner', mechanism, steps: [step] });
+    assert.ok(items.some((entry) => entry.kind === 'manual-setting' && entry.requirement === 'trustFields' && entry.description === step.description), mechanism);
+  }
+  // A step without a requirement or words cannot be stored (both columns are NOT NULL) or acted on.
+  assert.deepEqual(completionItemsFor({ resourceType: 'x', mechanism: 'none', steps: [{ kind: 'manual-setting', requirement: 'r' }, { kind: 'manual-setting', description: 'd' }, { kind: 'manual-setting', requirement: 'r', description: '  ' }] }), []);
+
+  const restoreRef = nextRef();
+  const items = await emitCompletionItems(client, {
+    tenantRef: TENANT, restoreRef, owner: operator.id,
+    applied: [{ naturalKey: 'crossTenantAccessPolicyConfigurationPartner:KEEL-RT', resourceType: 'crossTenantAccessPolicyConfigurationPartner', mechanism: 'update-existing', steps: [step] }],
+  });
+  assert.deepEqual(items.map((entry) => [entry.kind, entry.requirement, entry.state]), [['manual-setting', 'trustFields', 'pending']], 'the database accepts the kind');
+  assert.equal(resourceCompletionState(items), 'configuration-restored', 'a setting still to set by hand is configuration work');
+  const again = await emitCompletionItems(client, {
+    tenantRef: TENANT, restoreRef, owner: operator.id,
+    applied: [{ naturalKey: 'crossTenantAccessPolicyConfigurationPartner:KEEL-RT', resourceType: 'crossTenantAccessPolicyConfigurationPartner', mechanism: 'update-existing', steps: [step] }],
+  });
+  assert.deepEqual(again, [], 'a re-run does not open the step twice');
+  await completeItem(client, { tenantRef: TENANT, itemId: items[0].id, actorId: operator.id, evidence: evidence('CHG-trust') });
+  const summary = summarizeCompletion(await listCompletionItems(client, { tenantRef: TENANT, restoreRef }));
+  assert.equal(summary[0].state, 'verified-complete');
+});
+
+test('an enforced run opens a writer\'s manual setting step as an owned item on that object', async (t) => {
+  const client = await schemaClient(t);
+  const operator = await principal(client, 'op8@contoso.example', 'restorer');
+  const snapshotId = await createSnapshot(client, { tenantRef: TENANT });
+  await insertResourceVersion(client, {
+    snapshotId,
+    resource: {
+      naturalKey: 'group:finance-approvers', resourceType: 'group', payload: finance, payloadHash: canonicalHash(finance, 'group'),
+      criticality: 'tier1', blastRadius: 'access-affecting', fidelity: 'full', provenance: { adapter: 'test' },
+    },
+  });
+  await completeSnapshot(client, { id: snapshotId, status: 'complete', coverageDigest: {} });
+  // The writers put the trust step on an applied entry as one object
+  // (recordWriter trustFieldStep); a step of another kind is not stored.
+  const step = Object.freeze({ kind: 'manual-setting', requirement: 'trustFields', fields: ['inboundTrust'], description: 'A restore never writes trust settings: KEEL-RT fixture step' });
+  const { applyWave } = await import('../restore/applyEngine.mjs');
+  const withStep = async (...args) => {
+    const result = await applyWave(...args);
+    for (const entry of result.applied) entry.completion = step;
+    return result;
+  };
+  const graph = fakeGraph();
+  const artifactId = nextRef();
+  const logs = [];
+  const logger = { log: (line) => logs.push(line), error: (line) => logs.push(String(line)) };
+  const dependencies = () => ({ ...cliDependencies(graph), applyWave: withStep });
+  await runRestore({
+    snapshotId, selection: ['group:finance-approvers'], mode: 'dry-run', persistArtifactId: artifactId, requestedBy: operator.id,
+    collectorConfig: JSON.parse(configs.get('/fixtures/collector.json')), targetConfig: JSON.parse(configs.get('/fixtures/restorer.json')),
+    collectorConfigPath: '/fixtures/collector.json', targetConfigPath: '/fixtures/restorer.json',
+    readFile, dbUrl: database.url, dependencies: dependencies(), logger,
+  });
+  assert.ok(logs.some((line) => line === `completion step: group:finance-approvers — ${step.description}`), 'the dry run lists the step');
+  assert.deepEqual(await listCompletionItems(client, { tenantRef: TENANT, restoreRef: artifactId }), [], 'a dry run opens nothing');
+
+  const result = await runRestore({ artifactId, mode: 'enforce', readFile, dbUrl: database.url, dependencies: dependencies(), logger });
+  assert.deepEqual(result.results.failed, []);
+  const items = await listCompletionItems(client, { tenantRef: TENANT, restoreRef: artifactId });
+  const manual = items.filter((entry) => entry.kind === 'manual-setting');
+  assert.equal(manual.length, 1);
+  assert.equal(manual[0].requirement, 'trustFields');
+  assert.equal(manual[0].description, step.description);
+  assert.equal(manual[0].naturalKey, 'group:finance-approvers');
+  assert.equal(manual[0].owner, operator.id);
+  assert.equal(manual[0].state, 'pending');
+  assert.equal(summarizeCompletion(items)[0].state, 'configuration-restored');
+});

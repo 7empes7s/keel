@@ -88,3 +88,19 @@ test("issue #546: a dry run shows each step left for a person on its object, one
   assert.match(html, /name of deviceCustomAttributeShellScript:KEEL-RT-attribute<\/strong>: Assignments not restored/);
   assert.match(html, /Set inbound trust by hand/);
 });
+
+test("a manual setting step shows as an open item with its own icon and an evidence form", () => {
+  const manual: CompletionResource = {
+    naturalKey: "crossTenantAccessPolicyConfigurationPartner:KEEL-RT",
+    label: "KEEL-RT partner",
+    resourceType: "crossTenantAccessPolicyConfigurationPartner",
+    mechanism: "update-existing",
+    state: "configuration-restored",
+    items: [{ id: "m1", kind: "manual-setting", requirement: "trustFields", description: "Check inboundTrust in the admin center", owner: "op", state: "pending", evidence: [], closedAt: null, reopenCount: 0 }],
+  };
+  const html = renderToStaticMarkup(createElement(CompletionChecklist, { resources: [manual], canComplete: true }));
+  assert.match(html, /Manual setting|manual setting/);
+  assert.match(html, /Check inboundTrust in the admin center/);
+  assert.match(html, /1 needs evidence/);
+  assert.match(html, /Add evidence/);
+});

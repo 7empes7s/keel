@@ -1384,9 +1384,12 @@ export async function runRestore({
       // incomplete configuration) become named completion items.
       const followUpByKey = new Map(results.applied.filter((entry) => Array.isArray(entry.followUp)).map((entry) => [entry.naturalKey, entry.followUp]));
       // Issue #546: assignments the backup did not read stay a step for a
-      // person after the run, whatever way the object came back (or none).
+      // person after the run, whatever way the object came back (or none). So
+      // does a setting the writer never sends (kind 'manual-setting', such as
+      // a trust or sign-in field left out of the write).
       const stepsByKey = new Map(results.applied
-        .map((entry) => [entry.naturalKey, [entry.completion ?? []].flat().filter((step) => step?.requirement === 'assignments')])
+        .map((entry) => [entry.naturalKey, [entry.completion ?? []].flat()
+          .filter((step) => step?.requirement === 'assignments' || step?.kind === 'manual-setting')])
         .filter(([, steps]) => steps.length > 0));
       const recovered = results.applied
         .map((entry) => byKey.get(entry.naturalKey))

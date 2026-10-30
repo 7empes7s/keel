@@ -121,7 +121,7 @@ test('an enforced run opens the step as a follow-up item whatever the recovery m
   const recreated = completionItemsFor({ resourceType: 'deviceCompliancePolicy', mechanism: 'recreate', steps: [step] });
   assert.ok(recreated.some((item) => item.requirement === 'newObjectId'));
   assert.ok(recreated.some((item) => item.requirement === 'assignments'));
-  // A step of another kind (a manual setting) is listed by the run, not opened as an item.
-  assert.deepEqual(completionItemsFor({ resourceType: 'x', mechanism: 'none', steps: [{ kind: 'manual-setting', requirement: 'r', description: 'd' }] }), []);
+  // A step of an unknown kind is listed by the run, not opened as an item.
+  assert.deepEqual(completionItemsFor({ resourceType: 'x', mechanism: 'none', steps: [{ kind: 'follow-up', requirement: 'r', description: 'd' }] }), []);
   assert.deepEqual(completionItemsFor({ resourceType: 'x', mechanism: 'none' }), []);
 });

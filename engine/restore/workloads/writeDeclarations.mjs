@@ -101,6 +101,40 @@ export function isTrustField(resourceType, field) {
   return (TRUST_FIELDS[resourceType] ?? []).includes(field) || TRUST_FIELD_PATTERN.test(field);
 }
 
+/**
+ * Settings catalog policies (and their reusable settings groups) hold every
+ * setting under the same keys and name it by its settingDefinitionId value, so a
+ * check on key names never sees a trusted root certificate or a single sign-on
+ * setting. A definition id is a trust setting when it names trust, a certificate
+ * or sign-in (TRUST_FIELD_PATTERN), federation, single sign-on (Windows, Edge,
+ * Office, the Apple extensible SSO payload) or a certificate payload (PKCS, SCEP,
+ * PFX, Apple root, PEM and ACME payloads).
+ */
+export const TRUST_SETTING_PATTERN = new RegExp(
+  `${TRUST_FIELD_PATTERN.source}|federat|singlesignon|extensiblesso|pkcs|scep|pfx|com\\.apple\\.security\\.(?:root|pem|acme)`,
+  'i',
+);
+
+/**
+ * The trust setting definition ids anywhere in a payload (top-level, in each
+ * setting and in every child instance), sorted and without repeats.
+ */
+export function trustSettingIds(payload) {
+  const found = new Set();
+  const walk = (node) => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (!node || typeof node !== 'object') return;
+    const id = node.settingDefinitionId;
+    if (typeof id === 'string' && TRUST_SETTING_PATTERN.test(id)) found.add(id);
+    Object.values(node).forEach(walk);
+  };
+  walk(payload);
+  return [...found].sort();
+}
+
 const entries = {};
 function declare(plane, docs, { id, workload, family, resourceType, readBack, method, identity = 'guid', fixedIdentity, fields }) {
   const trust = fields.filter((field) => isTrustField(resourceType, field));

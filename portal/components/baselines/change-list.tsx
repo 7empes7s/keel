@@ -122,7 +122,8 @@ function OpenedRecord({ item }: { item: DriftRecord }) {
       <RecordField copy={false} label="Service" value={item.serviceRead.workload} />
       <RecordField label="Service read ID" value={item.serviceRead.collectionId} />
       <RecordField copy={false} label="Compared with" value={item.serviceRead.comparedWith === "approved" ? "The approved setup" : "The read before it"} />
-      <RecordField label={item.serviceRead.comparedWith === "approved" ? "Read holding the approved value" : "Compared with read"} value={item.serviceRead.previousCollectionId} />
+      <RecordField label="Compared with read" value={item.serviceRead.previousCollectionId} />
+      <RecordField label="Undo puts back from read" value={item.serviceRead.undoFrom.collectionId} />
       <RecordField label="Alert ID" value={item.serviceRead.alertId} />
       <RecordField copy={false} label="Seen at" value={item.detectedAt} />
     </>

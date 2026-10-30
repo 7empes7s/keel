@@ -488,6 +488,10 @@ export interface ServiceRead {
   // (nothing to put back); `approved` is false only when the service has no approved setup
   // at all and undo falls back to previousCollectionId.
   undoFrom: { collectionId: string | null; readAt: string | null; approved: boolean };
+  // True when the change's "before" values are the active approved setup's (what an undo
+  // puts back), compared with the newest read; false when they are the values stored
+  // when the change was found (no approved value to compare with).
+  beforeIsApproved: boolean;
   // What the read was compared with: the service's approved setup, or (older changes)
   // the read before it.
   comparedWith: "approved" | "previous";

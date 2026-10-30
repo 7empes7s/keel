@@ -62,6 +62,25 @@ function blastRadius(item, rules) {
   return item.fields.every((field) => rules.cosmetic.has(field.path)) ? 'cosmetic' : 'access-affecting';
 }
 
+/**
+ * The differences between one resource's approved value and a read of it, as drift
+ * compares them (the workload's volatile fields left out): [{ path, kind, before, after }],
+ * before being the approved value. The Changes page shows these, so the details match
+ * what an undo from the approved setup puts back even after a new baseline repointed it.
+ * Null for a workload drift does not track or when either side is missing.
+ */
+export function approvedDifferences(workload, approved, current) {
+  const rules = DRIFT_WORKLOADS[workload];
+  if (!rules || !approved || !current) return null;
+  const strip = (value) => Object.fromEntries(Object.entries(value ?? {}).filter(([key]) => !rules.volatile.has(key)));
+  const side = (row) => new Map([[workload, {
+    collectionId: null, outcome: 'complete', at: null,
+    observations: [{ resourceKey: 'resource', fields: strip(row.fields), fieldCoverage: strip(row.fieldCoverage) }],
+  }]]);
+  const group = compareWorkloads(side(approved), side(current)).groups.find((entry) => entry.workload === workload);
+  return group?.items?.[0]?.fields ?? [];
+}
+
 async function loadSide(client, run, rules) {
   const { rows } = await client.query(
     'SELECT resource_key, fields, field_coverage FROM workload_observation WHERE collection_id = $1',

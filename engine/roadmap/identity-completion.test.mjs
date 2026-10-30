@@ -22,6 +22,8 @@ import { createSnapshot, completeSnapshot, insertResourceVersion } from '../stor
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { fakeGraph } from '../../tools/qualification/operations.mjs';
 import { runRestore } from '../../cli/keel-restore.mjs';
+import { namedLocationTrustRefusal } from '../restore/namedLocationTrust.mjs';
+import { groupLifetimeCompletionItem } from '../restore/tenantPolicyOperations.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 
 const database = await createIsolatedTestDatabase(import.meta.url);
@@ -375,4 +377,81 @@ test('an enforced run opens a writer\'s manual setting step as an owned item on 
   assert.equal(manual[0].owner, operator.id);
   assert.equal(manual[0].state, 'pending');
   assert.equal(summarizeCompletion(items)[0].state, 'configuration-restored');
+});
+
+test('an enforced run opens a skipped object\'s manual setting steps as owned items, and nothing else for it', async (t) => {
+  const client = await schemaClient(t);
+  const operator = await principal(client, 'op9@contoso.example', 'restorer');
+  const snapshotId = await createSnapshot(client, { tenantRef: TENANT });
+  await insertResourceVersion(client, {
+    snapshotId,
+    resource: {
+      naturalKey: 'group:finance-approvers', resourceType: 'group', payload: finance, payloadHash: canonicalHash(finance, 'group'),
+      criticality: 'tier1', blastRadius: 'access-affecting', fidelity: 'full', provenance: { adapter: 'test' },
+    },
+  });
+  await completeSnapshot(client, { id: snapshotId, status: 'complete', coverageDigest: {} });
+  // A dry run with a skip is refused and cannot be promoted, so an enforced
+  // run skips only what its clean dry run could not refuse yet: a shorter group
+  // lifetime nobody approved is 'pending-approval' in the dry run and skipped
+  // with its step when enforced. The wrapper skips the same way, enforce only.
+  // A refusal puts its step on the skipped entry as one object (tenant policy
+  // path) or a list (identity path). Only manual-setting steps become items; a
+  // skip without a step opens nothing.
+  const trustStep = Object.freeze({ kind: 'manual-setting', requirement: 'namedLocationTrust', fields: ['ipRanges'], description: 'A restore never changes which networks Conditional Access trusts: KEEL-RT fixture step' });
+  const otherStep = Object.freeze({ kind: 'follow-up', requirement: 'other', description: 'not a manual setting' });
+  const skipAs = (completion) => async (...args) => {
+    const result = await applyWave(...args);
+    if (args[3]?.mode !== 'enforce') return result;
+    const moved = result.applied.map((entry) => ({ naturalKey: entry.naturalKey, reason: `manual: ${trustStep.description}`, ...(completion ? { completion } : {}) }));
+    return { ...result, applied: [], skipped: [...result.skipped, ...moved] };
+  };
+  const { applyWave } = await import('../restore/applyEngine.mjs');
+  const logs = [];
+  const logger = { log: (line) => logs.push(line), error: (line) => logs.push(String(line)) };
+  const plan = async (completion) => {
+    const artifactId = nextRef();
+    const graph = fakeGraph();
+    const dependencies = { ...cliDependencies(graph), applyWave: skipAs(completion) };
+    await runRestore({
+      snapshotId, selection: ['group:finance-approvers'], mode: 'dry-run', persistArtifactId: artifactId, requestedBy: operator.id,
+      collectorConfig: JSON.parse(configs.get('/fixtures/collector.json')), targetConfig: JSON.parse(configs.get('/fixtures/restorer.json')),
+      collectorConfigPath: '/fixtures/collector.json', targetConfigPath: '/fixtures/restorer.json',
+      readFile, dbUrl: database.url, dependencies, logger,
+    });
+    return { artifactId, dependencies };
+  };
+
+  for (const completion of [[trustStep, otherStep], trustStep]) {
+    const { artifactId, dependencies } = await plan(completion);
+    assert.deepEqual(await listCompletionItems(client, { tenantRef: TENANT, restoreRef: artifactId }), [], 'a dry run opens nothing');
+    const result = await runRestore({ artifactId, mode: 'enforce', readFile, dbUrl: database.url, dependencies, logger });
+    assert.deepEqual(result.results.failed, []);
+    assert.deepEqual(result.results.applied, []);
+    assert.equal(result.results.skipped.length, 1);
+    const items = await listCompletionItems(client, { tenantRef: TENANT, restoreRef: artifactId });
+    assert.deepEqual(items.map((entry) => [entry.naturalKey, entry.mechanism, entry.kind, entry.requirement, entry.state]),
+      [['group:finance-approvers', 'skipped', 'manual-setting', 'namedLocationTrust', 'pending']], 'only the manual setting step, and no recreate or validation items');
+    assert.equal(items[0].description, trustStep.description);
+    assert.equal(items[0].owner, operator.id);
+    assert.equal(items[0].resourceType, 'group');
+    assert.equal(summarizeCompletion(items)[0].state, 'configuration-restored');
+  }
+
+  const { artifactId, dependencies } = await plan(undefined);
+  await runRestore({ artifactId, mode: 'enforce', readFile, dbUrl: database.url, dependencies, logger });
+  assert.deepEqual(await listCompletionItems(client, { tenantRef: TENANT, restoreRef: artifactId }), [], 'a skip without a step opens nothing');
+});
+
+test('a refusal\'s manual step becomes one item for a skipped object', () => {
+  const resource = { naturalKey: 'namedLocation:KEEL-RT office', resourceType: 'namedLocation', payload: { '@odata.type': '#microsoft.graph.ipNamedLocation', displayName: 'KEEL-RT office', isTrusted: true, ipRanges: [] } };
+  const refusal = namedLocationTrustRefusal(resource, 'create');
+  assert.ok(refusal);
+  const items = completionItemsFor({ resourceType: 'namedLocation', mechanism: 'skipped', steps: refusal.completion });
+  assert.deepEqual(items.map((entry) => [entry.kind, entry.requirement]), [['manual-setting', 'namedLocationTrust']]);
+  assert.equal(items[0].description, refusal.completion[0].description);
+  // The tenant policy path gives one step object, not a list.
+  const lifetime = groupLifetimeCompletionItem({ from: 180, to: 30 });
+  assert.deepEqual(completionItemsFor({ resourceType: 'groupLifecyclePolicy', mechanism: 'skipped', steps: [lifetime] })
+    .map((entry) => [entry.kind, entry.requirement]), [['manual-setting', 'groupLifetimeInDays']]);
 });

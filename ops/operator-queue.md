@@ -11804,8 +11804,18 @@ item that needs it stays untouched.
 - Needs: the deployed build B at or after `8bf599be`. Check: `git -C /opt/keel-live merge-base --is-ancestor 8bf599be HEAD`.
   The credential policy, the catalog update and the policy create are already promoted (Q228, commit `4d9ad130`); only the
   catalog create is left.
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-30 02:20 UTC, keel-operator). **#700 is fixed live: accessPackageCatalog create promoted.**
+  - B = **4e1142e3** (includes 8bf599be).
+  - Credentials: Restorer for writes, Collector for reads. Global admin not used; nothing granted. Catalog empty throughout. Self-approved: requester Gmail, approver Entra.
+  1. Before: no KEEL-RT-228 catalog. Created `KEEL-RT-228-catalog` (fc3c3b78…) as in Q228. S = `3410b992` (shared with Q254/Q255) holds it with `isExternallyVisible` false.
+  2. Deleted (204). Dry run `294afd95`: **status completed (not refused)**, one create, **content effects `[]`**.
+     - Approval **cf926273**. Enforce exit 0, `create succeeded`, **new id 986b21b7…**.
+     - Read back as in S: userManaged, published, `isExternallyVisible` false.
+  3. Second dry run `2a0e5352`: 0 field changes, 0 failed.
+  4. Capture ok; `pseudonymize.mjs check` passes; scan 0; no raw ids. `live evidence accessPackageCatalog.create.json: fixture-tested -> live-qualified` (observedAt 2026-10-30 02:12:26 UTC).
+     - Commit **ec4fae07** on `claude/live-evidence-q228`. The branch was rebased onto current master: it still held `b2bManagementPolicy.update.json`, which master dropped in 22eee59f, and that record crashes `--live-evidence` at B (`UnregisteredCapabilityError: b2bManagementPolicy update`). Q228's earlier commit was already on master, so the branch now carries only this one. Pushed, no PR.
+  5. Recreated catalog deleted (204); 0 KEEL-RT-228 catalogs. **Left in the tenant: nothing.**
 - **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q228 (log every approval
   id). No access package, resource or user goes into the catalog. Nothing to grant (Restorer holds EntitlementManagement.ReadWrite.All).
 - Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set
@@ -11896,8 +11906,19 @@ item that needs it stays untouched.
   - Wider clipboard or data-transfer levels are `externally-sharing`, on update only.
 - Needs: the deployed build B at or after `e552b30c`. Check: `git -C /opt/keel-live merge-base --is-ancestor e552b30c HEAD`.
   Only the app protection create is in scope here. Its update stays blocked on #703, which is a separate fix, so don't run it.
-- Status: todo
-- Result:
+- Status: blocked: #703 (create fails post-state; policy recreated without apps)
+- Result: blocked on **#703** (2026-10-30 02:20 UTC, keel-operator). **#705's guard fix works; the create still fails the post-state check.**
+  - B = **4e1142e3** (includes e552b30c).
+  - Credentials: Restorer for writes, Collector for reads. Global admin not used; nothing granted; never assigned. Self-approved.
+  1. Before: no KEEL-RT-254 objects.
+  2. Fixtures: `KEEL-RT-254-ios-app` (Outlook, v14_0, f80361dc…) and `KEEL-RT-254-ios-mam` (PIN required, Outlook through `/targetApps` 204, T_9a6a3ff2…).
+  3. S = `3410b992`: the policy holds `apps` = `com.microsoft.office.outlook`.
+  4. Policy deleted (204). Dry run `947cde3a`: **status completed (not refused)**, one create, **content effects `[]`**.
+     - Approval **e033cdf5**. Enforce **exit 1**: `post-state: the object reads back as an unnamed kind, not iosManagedAppProtection`; journal `create | uncertain`.
+     - The policy **was created** (T_2cded20c…, PIN required, 0 assignments) but **with no apps**: the run stopped before attaching Outlook.
+     - **#703** (comment added: the create path is affected too).
+  5–6. Second dry run and capture not done: the entry is `uncertain`, so nothing can be captured or promoted.
+  7. Cleanup: recreated policy and iOS app deleted. 0 KEEL-RT-254 objects. **Left in the tenant: nothing.**
 - **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q229 (log every approval
   id). Never assign the policy. Grant nothing. Global admin not used.
 - Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
@@ -11934,8 +11955,22 @@ item that needs it stays untouched.
   a reference only under an id field (`roleScopeTagIds`, `roleScopeTags`, `...Id`, `...Ids`).
 - Needs: the deployed build B at or after `98c20b1`. Check: `git -C /opt/keel-live merge-base --is-ancestor 98c20b1 HEAD`.
   Only the managed devices app configuration create is in scope. Its update is already promoted (Q229).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-30 02:20 UTC, keel-operator). **#704 is fixed live: mobileAppConfiguration create promoted, and the value "3" restored unchanged.**
+  - B = **4e1142e3** (includes 98c20b1).
+  - Credentials: Restorer for writes, Collector for reads. Global admin not used; nothing granted; nothing assigned. Default tag not touched. Self-approved.
+  1. Before: no KEEL-RT-255 objects; scope tags: Default (0) only.
+  2. Fixtures:
+     - scope tag `KEEL-RT-255-scope-tag`, **id 3**, so the value used is `"3"`;
+     - `KEEL-RT-255-ios-app` (408ebc40…);
+     - `KEEL-RT-255-device-config` (57e0465c…), setting `KEELRT` (string) = `3`.
+  3. S = `3410b992`: the app config's references are only `targetedMobileApps[0] → mobileApp:KEEL-RT-255-ios-app`. **No reference at `settings[0].appConfigKeyValue`.**
+  4. App config deleted. Dry run `11413690`: completed, one create, no unresolved reference.
+     - Approval **99303f87**. Enforce exit 0, `create succeeded`, **new id ae0cb26d…**.
+     - Read back: value **`"3"`** (unchanged), targets `KEEL-RT-255-ios-app`, 0 assignments.
+  5. Second dry run `543a6fbc`: 0 field changes, 0 failed.
+  6. Capture ok; `pseudonymize.mjs check` passes; scan 0; no raw ids. `live evidence mobileAppConfiguration.create.json: fixture-tested -> live-qualified` (observedAt 2026-10-30 02:15:16 UTC). Commit **9a75ef0d** on `claude/live-evidence-q255` (pushed, no PR).
+  7. Cleanup: app config, iOS app and scope tag 3 deleted. Scope tags: Default only. **Left in the tenant: nothing.**
 - **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q229 (log every approval
   id). Never assign any fixture. Grant nothing. Global admin not used. Never touch the built-in Default scope tag.
 - Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:

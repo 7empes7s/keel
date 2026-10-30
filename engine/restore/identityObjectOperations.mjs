@@ -721,8 +721,8 @@ export const IDENTITY_RECORDS = Object.freeze({
   // Approval-held kinds, batch 2 (restore/approvalHeld.mjs): who holds an Exchange
   // admin role, written only once its "changes admin access" effects are approved
   // (or approvals are off for the service). The user, group or app is matched in
-  // the target (remapsReferences); the role and app scope by id, or as the ones
-  // this restore just recreated. Graph has no update of an assignment. A delete is
+  // the target (remapsReferences); the role and app scope are written by id, so
+  // into another tenant only a role with the same id is found (else it fails). Graph has no update of an assignment. A delete is
   // only the undo of an assignment this restore created.
   exchangeRoleAssignment: defineRecord({
     resourceType: 'exchangeRoleAssignment', version: 'beta', collection: EXCHANGE_ROLE_ASSIGNMENTS,
@@ -730,8 +730,9 @@ export const IDENTITY_RECORDS = Object.freeze({
     refusal: withApprovalGate(exchangeAssignmentRefusal),
     preflight: createdOnce({
       version: 'beta', path: EXCHANGE_ROLE_ASSIGNMENTS, label: 'Exchange role assignment',
-      matches: (row, payload) => sameText(row?.principalId, payload.principalId) && sameText(row?.roleDefinitionId, payload.roleDefinitionId),
-      same: (row, payload) => EXCHANGE_ASSIGNMENT_FIELDS.every((field) => sameText(row?.[field] ?? '/', payload[field] ?? '/')),
+      // The same principal may hold the same role over another scope: a separate assignment.
+      matches: (row, payload) => EXCHANGE_ASSIGNMENT_FIELDS.every((field) => sameText(row?.[field] ?? '/', payload[field] ?? '/')),
+      same: () => true,
     }),
     permission: 'RoleManagement.ReadWrite.Exchange', docs: beta('rbacapplication-post-roleassignments'),
   }),

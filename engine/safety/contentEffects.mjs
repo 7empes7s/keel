@@ -284,6 +284,9 @@ const named = (value, names) => {
   return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, named(child, names)]));
 };
 const namedAccessValue = (field) => (payload, resource) => {
+  // An Intune assignment's role is set on create only, and a live read does not
+  // hold it: an update never changes it (the writer checks the live role instead).
+  if (field === 'roleDefinition' && (resource?.live?.state === 'present' || resource?.live?.state === 'soft-deleted')) return null;
   const value = withoutNulls(payload?.[field]);
   if (value === null || value === undefined) return null;
   const shown = named(value, referenceNames(resource, field));

@@ -125,6 +125,7 @@ function completionResources() {
     completionItem("ci-2", "integration", "newObjectId", "A new object id was assigned: update every external system that referenced the old id"),
     completionItem("ci-3", "service-validation", "signIn", "Confirm a real sign-in or token request succeeds for the application"),
   ];
+  const skippedItems = [completionItem("ci-5", "manual-setting", "isTrusted", "Mark this location as trusted again in the Entra admin center")];
   const groupItems = [completionItem("ci-4", "integration", "newObjectId", "A new object id was assigned: update every external system that referenced the old id")];
   const stateOf = (items: { kind: string; state: string }[]) => {
     const open = items.filter((entry) => entry.state !== "verified");
@@ -134,6 +135,8 @@ function completionResources() {
   return [
     { naturalKey: "application:Payroll connector", resourceType: "application", mechanism: "recreate", state: stateOf(appItems), items: appItems },
     { naturalKey: "group:Finance approvers", resourceType: "group", mechanism: "recreate", state: stateOf(groupItems), items: groupItems },
+    // Skipped by the restore (nothing written): its only item is the step to do by hand.
+    { naturalKey: "namedLocation:KEEL-RT-Head office", resourceType: "namedLocation", mechanism: "skipped", state: stateOf(skippedItems), items: skippedItems },
   ];
 }
 const HARNESS_PEOPLE = [

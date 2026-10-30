@@ -1408,6 +1408,21 @@ export async function runRestore({
           ...(followUpByKey.has(resource.naturalKey) ? { followUp: followUpByKey.get(resource.naturalKey) } : {}),
           ...(stepsByKey.has(resource.naturalKey) ? { steps: stepsByKey.get(resource.naturalKey) } : {}),
         }));
+      // A skipped object's manual steps (a trusted named location, a federation
+      // sign-in page, a shorter group lifetime nobody approved) are open items
+      // too, so they outlive the job output. Nothing was written, so the object
+      // opens only those steps, under the mechanism 'skipped'.
+      const appliedKeys = new Set(results.applied.map((entry) => entry.naturalKey));
+      for (const entry of results.skipped) {
+        if (appliedKeys.has(entry.naturalKey)) continue;
+        const steps = [entry.completion ?? []].flat().filter((step) => step?.kind === 'manual-setting');
+        if (steps.length === 0) continue;
+        recovered.push({
+          naturalKey: entry.naturalKey,
+          resourceType: byKey.get(entry.naturalKey)?.resourceType ?? String(entry.naturalKey).split(':')[0],
+          mechanism: 'skipped', steps,
+        });
+      }
       if (recovered.length > 0) {
         completionItems = await emitCompletionItemsFn(client, {
           tenantRef: artifact.tenantRef,
@@ -1415,7 +1430,7 @@ export async function runRestore({
           owner: artifact.requestedBy ?? null,
           applied: recovered,
         });
-        logger.log(`completion: ${completionItems.length} item(s) open for recovered objects`);
+        logger.log(`completion: ${completionItems.length} item(s) open for recovered or skipped objects`);
       }
     }
 

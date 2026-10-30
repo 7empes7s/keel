@@ -43,12 +43,14 @@ $Allowed = @{
 
 # Task-106: Purview label configuration runs in the Security & Compliance session
 # (Connect-IPPSSession). Only label DEFINITIONS and publishing policies: no cmdlet
-# here reads a labeled item or label usage. Writes take display text and AddLabels.
+# here reads a labeled item or label usage. Writes take display text, AddLabels and
+# RemoveLabels. KEEL sends RemoveLabels only from the label policy restore, after its
+# high-impact approval was checked (engine/collect/workloads/purview.mjs, purviewUnpublishCmdlet).
 $AllowedPurview = @{
     'Get-Label'       = @()
     'Get-LabelPolicy' = @()
     'Set-Label'       = @('Identity', 'DisplayName', 'Tooltip', 'Comment')
-    'Set-LabelPolicy' = @('Identity', 'AddLabels')
+    'Set-LabelPolicy' = @('Identity', 'AddLabels', 'RemoveLabels')
 }
 
 # Issue #153: organization-wide mail flow and protection settings, read in the

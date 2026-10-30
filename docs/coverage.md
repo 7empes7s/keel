@@ -757,8 +757,9 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 
 - Put back: Sensitivity label definitions (switched on only after the restore of mailbox client access settings is proven)
 - Put back: Sensitivity label publishing policies (switched on only after the restore of mailbox client access settings is proven)
+- Remove labels the backup did not publish from: Sensitivity label publishing policies (switched on only after the restore of sensitivity label publishing policies is proven)
 
-**You do:** KEEL only restores label names and tooltips, and adds labels back to a publishing policy. It never weakens a label or unpublishes one: those changes, and new labels, are made by hand in the Purview portal.
+**You do:** KEEL restores label names and tooltips, and which labels a publishing policy publishes: it adds labels back, and removes labels the backup did not publish. Removing a label needs a second approver while restore approvals are on. KEEL never weakens a label itself: those changes, and new labels, are made by hand in the Purview portal.
 
 ### Exchange mail flow and protection
 

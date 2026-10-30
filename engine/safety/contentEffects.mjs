@@ -492,6 +492,12 @@ const turnsOn = (before, after) => after === true && before !== true;
 const turnsTrueToFalse = (before, after) => after === false && before === true;
 const turnsFalseToTrue = (before, after) => after === true && before === false;
 
+// A label policy's Labels, as a list of names.
+function labelList(value) {
+  if (Array.isArray(value)) return value.map(String);
+  return value === null || value === undefined || value === '' ? [] : [String(value)];
+}
+
 export const PROTECTION_EFFECT_RULES = Object.freeze({
   // Entra: SharePoint tenant settings (identityObjectOperations, sharepointAccessRefusal).
   sharepointSettings: { rules: [
@@ -534,6 +540,13 @@ export const PROTECTION_EFFECT_RULES = Object.freeze({
   hardwareConfiguration: { rules: [
     rule('perDevicePasswordDisabled', 'weakens-protection', turnsFalseToTrue),
   ] },
+  // Purview label policies (restore/workloads/purview.mjs): a label the backup's policy
+  // did not publish is removed (unpublished), so people can no longer apply it.
+  purviewLabelPolicy: { rules: [], effects: (before, after) => {
+    const kept = new Set(labelList(after.Labels).map((name) => name.toLowerCase()));
+    const removed = labelList(before.Labels).filter((name) => !kept.has(name.toLowerCase()));
+    return removed.length ? [{ field: 'Labels', effect: 'weakens-protection', before: labelList(before.Labels), after: labelList(after.Labels) }] : [];
+  } },
 });
 
 /**

@@ -53,3 +53,20 @@ test('the template kind has its name and group', () => {
   assert.equal(info.service, 'Intune');
   assert.equal(info.category, 'configuration');
 });
+
+test('an older policy points at its template as a Microsoft constant, collected or not', async () => {
+  const { canonicalizeAll, CONTEXT_EXCLUDED_TYPES } = await import('../cir/canonicalize.mjs');
+  const template = '0f2b5d70-d4e9-4156-8c16-1397eb6c54a5';
+  const intent = { id: '11111111-1111-4111-8111-111111111111', displayName: 'KEEL-RT-edr', templateId: template };
+  const referenceOf = (collected) => canonicalizeAll(collected)
+    .find((row) => row.resourceType === 'deviceManagementIntent').references.find((ref) => ref.field === 'templateId');
+  const alone = referenceOf([['deviceManagementIntent', [intent]]]);
+  const withTemplates = referenceOf([
+    ['deviceManagementIntent', [intent]],
+    [TEMPLATE, [{ id: template, displayName: 'Endpoint detection and response', templateSubtype: 'endpointDetectionReponse' }]],
+  ]);
+  assert.deepEqual(withTemplates, alone, 'reading the templates never turns the reference into a tenant object');
+  assert.equal(withTemplates.klass, 'globalConstant');
+  assert.equal(withTemplates.symbol, `global:${template}`);
+  assert.ok(CONTEXT_EXCLUDED_TYPES.has(TEMPLATE), 'template ids are never stored as tenant identity');
+});

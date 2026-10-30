@@ -373,8 +373,9 @@ test('the policy batch runner drives the subset through applyWave and prints the
   // 24 before remaining kinds batch 4 added 7 Entra ID tenant settings (manual, no writer),
   // 31 before remaining kinds batch 7 added the attack simulations and their automations,
   // 33 before batch 8 added sign-in identifiers, lifecycle policies and default cross-tenant sharing,
-  // 36 before batch 9 added Defender custom detection rules.
-  assert.equal(report.policyLedger.families.length, 37);
+  // 36 before batch 9 added Defender custom detection rules,
+  // 37 before the attack simulation payloads, login pages, landing pages and notifications.
+  assert.equal(report.policyLedger.families.length, 41);
 
   const lines = [];
   const out = { log: (line) => lines.push(line), error: (line) => lines.push(`ERR ${line}`) };

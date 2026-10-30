@@ -68,6 +68,9 @@ export const ID_KEY_TYPES = new Set([
   // Remaining kinds, batch 7: Microsoft 365 settings. A connection's id is the
   // name its admin chose; simulation names are unmeasured.
   'externalConnection', 'simulationAutomation', 'attackSimulation',
+  // The tenant's own attack simulation content: names are unmeasured, and Microsoft's
+  // built-in items (not backed up) share names across tenants.
+  'attackSimulationPayload', 'attackSimulationLoginPage', 'attackSimulationLandingPage', 'attackSimulationNotification',
   // Remaining kinds, batch 8: the last readable kinds, keyed by id (names are
   // unmeasured; a schema extension's id is the name its app chose).
   'hardwareConfiguration', 'certificateBasedApplicationConfiguration', 'signInIdentifier', 'verifiedIdProfile',

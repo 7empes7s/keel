@@ -187,6 +187,10 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   externalConnection: at(M365, 'Copilot', 'Connectors'),
   simulationAutomation: at(DEFENDER, 'Email and collaboration', 'Attack simulation training', 'Automations'),
   attackSimulation: at(DEFENDER, 'Email and collaboration', 'Attack simulation training', 'Simulations'),
+  attackSimulationPayload: at(DEFENDER, 'Email and collaboration', 'Attack simulation training', 'Content library', 'Payloads'),
+  attackSimulationLoginPage: at(DEFENDER, 'Email and collaboration', 'Attack simulation training', 'Content library', 'Login pages'),
+  attackSimulationLandingPage: at(DEFENDER, 'Email and collaboration', 'Attack simulation training', 'Content library', 'Landing pages'),
+  attackSimulationNotification: at(DEFENDER, 'Email and collaboration', 'Attack simulation training', 'Content library', 'End user notifications'),
   // Remaining kinds, batch 8: the last readable kinds.
   hardwareConfiguration: at(INTUNE, 'Devices', 'Windows', 'Configuration', 'BIOS configurations and other settings'),
   certificateBasedApplicationConfiguration: 'Microsoft Graph: /directory/certificateAuthorities/certificateBasedApplicationConfigurations (beta, no admin center page)',

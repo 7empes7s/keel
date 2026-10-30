@@ -27,6 +27,7 @@ import {
 import { main as pseudonymizeCheck } from '../../tools/qualification/pseudonymize.mjs';
 import { readModule } from '../../tools/qualification/workloadReadsAcceptance.mjs';
 import { WORKLOAD_DESCRIPTORS, buildWorkloadLedger } from '../collect/workloadContract.mjs';
+import { defenderEmailActivation } from '../collect/workloads/defenderEmail.mjs';
 import { exchangeExtendedActivation } from '../collect/workloads/exchangeExtended.mjs';
 import { exchangeDistributionGroupsActivation, exchangeRecipientsActivation } from '../collect/workloads/exchangeRecipients.mjs';
 import { exchangeOrgAccessActivation, exchangeOrgDefaultsActivation } from '../collect/workloads/exchangeOrgPolicies.mjs';
@@ -66,10 +67,11 @@ const ACTIVATION = {
   // SharePoint's per-site sharing read: the rest of the SharePoint read never waits for it.
   'sharepoint-site-settings': siteSharingActivation,
   'sharepoint-structure': sharePointStructureActivation,
+  'defender-email-protection': defenderEmailActivation,
 };
 const TABLES = {
   MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended', 'AllowedTeamsVoiceNetwork'],
-  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedExchangeRecipients', 'AllowedExchangeOrgPolicies', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
+  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedExchangeRecipients', 'AllowedExchangeOrgPolicies', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended', 'AllowedDefenderEmail'],
   'PnP.PowerShell': ['AllowedPnP', 'AllowedPnPStructure'],
 };
 // The run-cmdlet.ps1 allowlists, cmdlet names with digits included (Get-AtpPolicyForO365).

@@ -15,6 +15,7 @@
  * - record(client, { tenantRef, result }) stores a run that failed before collect
  *   could record one.
  */
+import { collectDefenderEmail, recordDefenderEmailRun } from './defenderEmail.mjs';
 import { collectExchange, recordExchangeRun } from './exchange.mjs';
 import { collectExchangeExtended, recordExchangeExtendedRun } from './exchangeExtended.mjs';
 import {
@@ -40,6 +41,9 @@ import {
 } from './teamsVoiceNetwork.mjs';
 
 export const WORKLOAD_COLLECTORS = Object.freeze([
+  // defenderEmail.mjs
+  { workload: 'defender-email-protection', powershellFamily: 'exchange', record: recordDefenderEmailRun,
+    collect: (client, { base, powershell }) => collectDefenderEmail(client, { ...base, powershell }) },
   // exchange.mjs
   { workload: 'exchange-mailbox-settings', powershellFamily: 'exchange', record: recordExchangeRun,
     collect: (client, { base, transport, powershell, scope, sleep }) => collectExchange(client, {

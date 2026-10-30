@@ -14,7 +14,10 @@
  *  - the Exchange and Defender settings mail flow does not read (READ-EXO);
  *  - Teams calling, voice and live event policies and policy assignments, and Purview
  *    retention labels, adaptive scopes, auto-labeling and eDiscovery cases and holds
- *    (Wave 1 READ-TEAMS-PV).
+ *    (Wave 1 READ-TEAMS-PV);
+ *  - the Defender for Office 365 settings neither Exchange read covers: the Tenant
+ *    Allow/Block List, advanced delivery, Built-in and Teams protection, report
+ *    submission and ARC (gap audit 2026-10-30, section B).
  * Each entry records, per read operation:
  *  - the Graph endpoint or cmdlet;
  *  - its version;
@@ -52,6 +55,7 @@ export const WORKLOADS = Object.freeze([
   'teams-voice-policies', 'purview-governance',
   'teams-voice-network', 'teams-device-policies',
   'power-platform-settings',
+  'defender-email-protection',
 ]);
 export const WORKLOAD_STATES = Object.freeze(['refused', 'disabled', 'fixture-tested', 'pending-prerequisite', 'live-qualified']);
 export const GRAPH_VERSIONS = Object.freeze(['v1.0', 'beta']);
@@ -78,6 +82,9 @@ const CONTENT_SEGMENTS = new Set([
 // rule or configuration about content (Get-SafeAttachmentPolicy) is configuration.
 const CONTENT_NOUN = /(File|ListItem|FolderItem|Folder|Message(?!ing)|Attachment|ComplianceSearch|MailboxExport|SearchResult|Page)/;
 const CONFIGURATION_NOUN = /(Policy|Rule|Configuration|Config|Settings)$/;
+// Cmdlets whose noun looks like content but names tenant configuration: the Tenant
+// Allow/Block List entries are senders, URLs and file hashes an admin allowed or blocked.
+const CONFIGURATION_CMDLETS = new Set(['Get-TenantAllowBlockListItems']);
 const AUTHZ_FAILURE = /\b(401|403)\b|forbidden|access (is )?denied|insufficient privileges|unauthori[sz]ed|not authorized|does not have permission/i;
 
 // Tenant setup a read needs that is neither a permission nor a role (rbac.setup).
@@ -346,6 +353,41 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
     source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
   })),
+  // Defender email protection (gap audit 2026-10-30, section B), in the Exchange Online
+  // session. The Allow/Block List entries are read one list at a time with a fixed
+  // -ListType (and -ListSubType for the phishing simulation URLs). The Built-in and Teams
+  // protection reads need Microsoft Defender for Office 365;
+  // engine/collect/workloads/defenderEmail.mjs treats them as optional.
+  ...[
+    ['defender-email-protection.allow-block-senders', 'Tenant Allow/Block List: senders', 'Get-TenantAllowBlockListItems',
+      { parameters: ['-ListType'], probeName: 'Get-TenantAllowBlockListItems -ListType Sender' }],
+    ['defender-email-protection.allow-block-urls', 'Tenant Allow/Block List: URLs', 'Get-TenantAllowBlockListItems',
+      { parameters: ['-ListType'], probeName: 'Get-TenantAllowBlockListItems -ListType Url' }],
+    ['defender-email-protection.allow-block-file-hashes', 'Tenant Allow/Block List: files', 'Get-TenantAllowBlockListItems',
+      { parameters: ['-ListType'], probeName: 'Get-TenantAllowBlockListItems -ListType FileHash' }],
+    ['defender-email-protection.allow-block-ips', 'Tenant Allow/Block List: IP addresses', 'Get-TenantAllowBlockListItems',
+      { parameters: ['-ListType'], probeName: 'Get-TenantAllowBlockListItems -ListType IP' }],
+    ['defender-email-protection.allow-block-spoofed-senders', 'Tenant Allow/Block List: spoofed senders', 'Get-TenantAllowBlockListSpoofItems'],
+    ['defender-email-protection.phish-sim-override-policies', 'Advanced delivery: phishing simulation policy', 'Get-PhishSimOverridePolicy'],
+    ['defender-email-protection.phish-sim-override-rules', 'Advanced delivery: phishing simulation senders', 'Get-ExoPhishSimOverrideRule'],
+    ['defender-email-protection.phish-sim-urls', 'Advanced delivery: phishing simulation URLs', 'Get-TenantAllowBlockListItems',
+      { parameters: ['-ListType', '-ListSubType'], probeName: 'Get-TenantAllowBlockListItems -ListType Url -ListSubType AdvancedDelivery' }],
+    ['defender-email-protection.secops-override-policies', 'Advanced delivery: security operations mailbox policy', 'Get-SecOpsOverridePolicy'],
+    ['defender-email-protection.secops-override-rules', 'Advanced delivery: security operations mailboxes', 'Get-ExoSecOpsOverrideRule'],
+    ['defender-email-protection.built-in-protection-rules', 'Built-in protection exceptions', 'Get-ATPBuiltInProtectionRule'],
+    ['defender-email-protection.teams-protection-policies', 'Teams protection policy', 'Get-TeamsProtectionPolicy'],
+    ['defender-email-protection.teams-protection-rules', 'Teams protection exceptions', 'Get-TeamsProtectionPolicyRule'],
+    ['defender-email-protection.report-submission-policies', 'Reported message settings', 'Get-ReportSubmissionPolicy'],
+    ['defender-email-protection.report-submission-rules', 'Reported message mailbox', 'Get-ReportSubmissionRule'],
+    ['defender-email-protection.arc-trusted-sealers', 'Trusted ARC sealers', 'Get-ArcConfig'],
+  ].map(([id, resource, name, options]) => ({
+    id, workload: 'defender-email-protection', resource,
+    operation: cmdlet(name, 'ExchangeOnlineManagement', options),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
+  })),
   // Exchange admin role groups, in the Exchange Online session with no parameters.
   // engine/collect/workloads/exchangeRoleGroups.mjs holds the fields and identity.
   {
@@ -589,7 +631,7 @@ export function scopeProblems(operation, { identity = null } = {}) {
   } else if (operation?.kind === 'cmdlet') {
     const [verb, noun = ''] = String(operation.cmdlet ?? '').split('-');
     if (verb !== 'Get') problems.push(`${operation.cmdlet} is not a read cmdlet`);
-    if (CONTENT_NOUN.test(noun) && !CONFIGURATION_NOUN.test(noun) && !contentReader) problems.push(`${operation.cmdlet} reads content, not configuration`);
+    if (CONTENT_NOUN.test(noun) && !CONFIGURATION_NOUN.test(noun) && !CONFIGURATION_CMDLETS.has(operation.cmdlet) && !contentReader) problems.push(`${operation.cmdlet} reads content, not configuration`);
   } else {
     problems.push('operation must be a Graph endpoint, an admin REST endpoint or a cmdlet');
   }

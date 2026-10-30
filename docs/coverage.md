@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 45 are full, 125 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 98 at least in part; the other 79 are restored by hand from the backup.
+KEEL tracks 181 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 45 are full, 129 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 98 at least in part; the other 83 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -242,6 +242,10 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Guest SAML or WS-Fed sign-in | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Attack simulation automations | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Attack simulations | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Attack simulation payloads | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Attack simulation login pages | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Attack simulation landing pages | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
+| Attack simulation notification emails | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Sign-in identifiers | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Lifecycle policies | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Default cross-tenant sharing settings | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
@@ -323,8 +327,20 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *Not brought back:* each run of the automation (stored separately and not in the backup yet).
   - *You do:* Recreate the automation in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Automations, from the backup.
 - **Attack simulations** (not built yet). KEEL backs up each simulation's settings and targets but not its results, and does not restore it yet.
-  - *Not brought back:* the payload, landing page and login page the simulation uses (stored separately and not in the backup yet).
+  - *Not brought back:* its results: who clicked, reported or entered a password (no tool can write it).
   - *You do:* Launch the simulation again in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Simulations, with the same technique, payload and targets from the backup.
+- **Attack simulation payloads** (not built yet). KEEL backs up the payloads your organisation made (sender, subject, message and technique), not Microsoft's built-in ones, but does not restore them yet.
+  - *Not brought back:* built-in payloads from Microsoft (set by Microsoft).
+  - *You do:* Recreate the payload in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, Payloads, from the backup.
+- **Attack simulation login pages** (not built yet). KEEL backs up the login pages your organisation made, not Microsoft's built-in ones, but does not restore them yet.
+  - *Not brought back:* built-in login pages from Microsoft (set by Microsoft).
+  - *You do:* Recreate the login page in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, Login pages, from the backup.
+- **Attack simulation landing pages** (not built yet). KEEL backs up the landing pages your organisation made, not Microsoft's built-in ones, but does not restore them yet.
+  - *Not brought back:* built-in landing pages from Microsoft (set by Microsoft).
+  - *You do:* Recreate the landing page in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, Landing pages, from the backup.
+- **Attack simulation notification emails** (not built yet). KEEL backs up the training and reminder emails your organisation made, not Microsoft's built-in ones, but does not restore them yet.
+  - *Not brought back:* built-in notifications from Microsoft (set by Microsoft).
+  - *You do:* Recreate the notification in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, End user notifications, from the backup.
 - **Sign-in identifiers** (not built yet). KEEL backs up which identifiers people can sign in with (email, user name, custom user name) and whether each is on, but does not restore them yet.
   - *You do:* Turn the same identifiers on or off in the Entra admin center, under External Identities, from the backup.
 - **Lifecycle policies** (not built yet). KEEL backs up each lifecycle policy's scope, grace period and action (such as disabling accounts that stopped signing in), but not its rules or past versions, and does not restore it yet.
@@ -1095,3 +1111,28 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 **KEEL can restore:** nothing yet.
 
 **You do:** KEEL does not restore these yet. Change them by hand in the Power Platform admin center or the Fabric admin portal using the backup.
+
+### Defender email protection: allow and block lists, advanced delivery, Built-in and Teams protection, reported messages and ARC
+
+**Backed up:**
+
+- Tenant Allow/Block List: senders
+- Tenant Allow/Block List: URLs
+- Tenant Allow/Block List: files
+- Tenant Allow/Block List: IP addresses
+- Tenant Allow/Block List: spoofed senders
+- Advanced delivery: phishing simulation policy
+- Advanced delivery: phishing simulation senders
+- Advanced delivery: phishing simulation URLs
+- Advanced delivery: security operations mailbox policy
+- Advanced delivery: security operations mailboxes
+- Built-in protection exceptions
+- Teams protection policy
+- Teams protection exceptions
+- Reported message settings
+- Reported message mailbox
+- Trusted ARC sealers
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. A deleted or changed allow or block entry, spoofed sender, advanced delivery override, protection exception, reported message setting or trusted ARC sealer is put back by hand in the Microsoft Defender portal using the backup. Built-in protection and Teams protection are backed up only when the tenant has Defender for Office 365.

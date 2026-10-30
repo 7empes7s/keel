@@ -3,6 +3,7 @@
  * declared reads, and the record validator. Kept apart from workloadReadsLive.mjs so
  * tools/release/qualification.mjs can register the gate without an import cycle.
  */
+import { DEFENDER_EMAIL_MODULE, DEFENDER_EMAIL_WORKLOAD, FAMILIES as DEFENDER_EMAIL } from '../../engine/collect/workloads/defenderEmail.mjs';
 import { FAMILIES as EXCHANGE_EXTENDED } from '../../engine/collect/workloads/exchangeExtended.mjs';
 import {
   DISTRIBUTION_GROUP_FAMILIES, EXCHANGE_DISTRIBUTION_GROUPS_WORKLOAD, EXCHANGE_RECIPIENTS_MODULE, EXCHANGE_RECIPIENTS_WORKLOAD, RECIPIENT_FAMILIES,
@@ -53,6 +54,8 @@ export const READ_FAMILIES = Object.freeze({
   [SHAREPOINT_WORKLOAD]: SITE_SHARING_FAMILIES,
   // Read only; its site templates need the sites a capture names (--site).
   [SHAREPOINT_STRUCTURE_WORKLOAD]: SHAREPOINT_STRUCTURE,
+  // Read only: the Defender email protection settings.
+  [DEFENDER_EMAIL_WORKLOAD]: DEFENDER_EMAIL,
 });
 
 // Read-only workloads name their module here; a written workload's comes from its writes.
@@ -62,6 +65,7 @@ const READ_ONLY_MODULES = Object.freeze({
   [SHAREPOINT_STRUCTURE_WORKLOAD]: SHAREPOINT_STRUCTURE_MODULE,
   [TEAMS_VOICE_NETWORK_WORKLOAD]: TEAMS_VOICE_NETWORK_MODULE, [TEAMS_DEVICE_POLICIES_WORKLOAD]: TEAMS_VOICE_NETWORK_MODULE,
   [EXCHANGE_ORG_ACCESS_WORKLOAD]: EXCHANGE_ORG_POLICIES_MODULE, [EXCHANGE_ORG_DEFAULTS_WORKLOAD]: EXCHANGE_ORG_POLICIES_MODULE,
+  [DEFENDER_EMAIL_WORKLOAD]: DEFENDER_EMAIL_MODULE,
 });
 
 /** The PowerShell module a workload's read capture runs in. */

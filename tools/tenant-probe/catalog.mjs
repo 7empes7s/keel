@@ -43,6 +43,7 @@ import entraTenantSettings from './catalog.d/entra-tenant-settings.mjs';
 import otherRoleProviders from './catalog.d/other-role-providers.mjs';
 import intuneLeftovers from './catalog.d/intune-leftovers.mjs';
 import m365Settings from './catalog.d/m365-settings.mjs';
+import attackSimulationContent from './catalog.d/attack-simulation-content.mjs';
 import lastLeftovers from './catalog.d/last-leftovers.mjs';
 import adminCenterSettings from './catalog.d/admin-center-settings.mjs';
 
@@ -63,6 +64,7 @@ export const CATALOG = [
   ...otherRoleProviders,
   ...intuneLeftovers,
   ...m365Settings,
+  ...attackSimulationContent,
   ...lastLeftovers,
   ...adminCenterSettings,
 ];

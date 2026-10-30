@@ -300,7 +300,12 @@ export const COMPLETENESS = Object.freeze({
   itemInsightsSettings: { whole: 'not-written' },
   externalConnection: { whole: 'not-written', missing: [part('The connection schema and the items pushed into it', 'other-route')] },
   simulationAutomation: { whole: 'not-written', missing: [part('Each run of the automation', 'other-route')] },
-  attackSimulation: { whole: 'not-written', missing: [part('The payload, landing page and login page the simulation uses', 'other-route')] },
+  // The payloads, login and landing pages it uses are backed up as their own kinds.
+  attackSimulation: { whole: 'not-written', missing: [part('Its results: who clicked, reported or entered a password', 'read-only')] },
+  attackSimulationPayload: { whole: 'not-written', missing: [part('Built-in payloads from Microsoft', 'microsoft-managed')] },
+  attackSimulationLoginPage: { whole: 'not-written', missing: [part('Built-in login pages from Microsoft', 'microsoft-managed')] },
+  attackSimulationLandingPage: { whole: 'not-written', missing: [part('Built-in landing pages from Microsoft', 'microsoft-managed')] },
+  attackSimulationNotification: { whole: 'not-written', missing: [part('Built-in notifications from Microsoft', 'microsoft-managed')] },
   // Remaining kinds, batch 8.
   sharepointSettings: {},
   hardwareConfiguration: { missing: [part('The BIOS settings file, which can hold the BIOS password', 'secret', always), part('A deleted configuration', 'not-written')] },

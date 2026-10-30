@@ -598,6 +598,18 @@ export const TYPE_GUIDE = Object.freeze({
   attackSimulation: manual('Attack simulations', NOT_BUILT,
     'KEEL backs up each simulation\'s settings and targets but not its results, and does not restore it yet.',
     'Launch the simulation again in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Simulations, with the same technique, payload and targets from the backup.'),
+  attackSimulationPayload: manual('Attack simulation payloads', NOT_BUILT,
+    'KEEL backs up the payloads your organisation made (sender, subject, message and technique), not Microsoft\'s built-in ones, but does not restore them yet.',
+    'Recreate the payload in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, Payloads, from the backup.'),
+  attackSimulationLoginPage: manual('Attack simulation login pages', NOT_BUILT,
+    'KEEL backs up the login pages your organisation made, not Microsoft\'s built-in ones, but does not restore them yet.',
+    'Recreate the login page in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, Login pages, from the backup.'),
+  attackSimulationLandingPage: manual('Attack simulation landing pages', NOT_BUILT,
+    'KEEL backs up the landing pages your organisation made, not Microsoft\'s built-in ones, but does not restore them yet.',
+    'Recreate the landing page in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, Landing pages, from the backup.'),
+  attackSimulationNotification: manual('Attack simulation notification emails', NOT_BUILT,
+    'KEEL backs up the training and reminder emails your organisation made, not Microsoft\'s built-in ones, but does not restore them yet.',
+    'Recreate the notification in the Microsoft Defender portal, under Email and collaboration, Attack simulation training, Content library, End user notifications, from the backup.'),
   // Remaining kinds, batch 8.
   hardwareConfiguration: auto('BIOS configurations', {
     keeps: 'Puts back each BIOS configuration\'s name, description, scope tags and whether every device gets its own BIOS password.',
@@ -726,6 +738,8 @@ export const WORKLOAD_GUIDE = Object.freeze({
     todo: 'KEEL does not restore these yet. IP phone, update, mobility, VDI, feedback and workload policies are changed back by hand in the Teams admin center using the backup.' }),
   'purview-governance': Object.freeze({ name: 'Purview retention labels, auto-labeling and eDiscovery',
     todo: 'KEEL restores only a retention label\'s text and duration; a shorter duration needs a second approver while restore approvals are on. Deleted labels, auto-labeling and eDiscovery cases are recreated by hand in the Purview portal using the backup. eDiscovery cases are backed up as their settings and holds, never their searches or evidence. Auto-labeling and eDiscovery (Premium) are backed up only when the tenant\'s licence includes them.' }),
+  'defender-email-protection': Object.freeze({ name: 'Defender email protection: allow and block lists, advanced delivery, Built-in and Teams protection, reported messages and ARC',
+    todo: 'KEEL does not restore these yet. A deleted or changed allow or block entry, spoofed sender, advanced delivery override, protection exception, reported message setting or trusted ARC sealer is put back by hand in the Microsoft Defender portal using the backup. Built-in protection and Teams protection are backed up only when the tenant has Defender for Office 365.' }),
   'power-platform-settings': Object.freeze({ name: 'Power Platform and Power BI settings',
     todo: 'KEEL does not restore these yet. Change them by hand in the Power Platform admin center or the Fabric admin portal using the backup.' }),
 });

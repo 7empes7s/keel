@@ -70,6 +70,7 @@ export const WORKLOAD_ORDER: readonly string[] = [
   "teams-settings", "teams-org-policies", "teams-voice-policies", "teams-voice-network", "teams-device-policies",
   "power-platform-settings",
   "purview-labels", "purview-governance", "purview-retention-dlp",
+  "defender-email-protection",
 ];
 
 /** Sort key for a kind inside its service; kinds not in the list go last. */

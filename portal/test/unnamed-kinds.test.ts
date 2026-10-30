@@ -45,7 +45,8 @@ const NAMED_BY_FIELD = new Set([
   "androidForWorkEnrollmentProfile", "appleUserInitiatedEnrollmentProfile", "deviceManagementDerivedCredentialSettings",
   "microsoftTunnelConfiguration", "iosLobAppProvisioningConfiguration", "managedEBook", "managedEBookCategory",
   "cartToClassAssociation", "windowsManagedAppProtection", "userExperienceAnalyticsBaseline", "externalConnection",
-  "simulationAutomation", "attackSimulation", "hardwareConfiguration", "certificateBasedApplicationConfiguration",
+  "simulationAutomation", "attackSimulation", "attackSimulationPayload", "attackSimulationLoginPage",
+  "attackSimulationLandingPage", "attackSimulationNotification", "hardwareConfiguration", "certificateBasedApplicationConfiguration",
   "verifiedIdProfile", "externalOriginResourceConnector", "roleManagementCustomExtension", "securityZone",
   "defenderDetectionRule", "teamsCatalogApp", "engageCommunity",
 ]);

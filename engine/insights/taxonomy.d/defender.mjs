@@ -11,8 +11,8 @@ export default Object.freeze({
   // not mapped yet (see placeUnmapped in ../taxonomy.mjs).
   categories: Object.freeze([
     { key: 'roles', name: 'Admin roles', types: ['defenderRoleDefinition', 'defenderRoleAssignment', 'defenderCustomAppScope'], match: /role|scope/ },
-    { key: 'threat', name: 'Threat policies and rules', types: ['defenderDetectionRule'], match: /foroffice|polic|rule|detection|indicator|alert|antivirus|firewall/ },
-    { key: 'simulation', name: 'Attack simulation', types: ['attackSimulation', 'simulationAutomation'], match: /simulation|training|payload/ },
+    { key: 'threat', name: 'Threat policies and rules', types: ['defender-email-protection', 'defenderDetectionRule'], match: /foroffice|emailprotection|allowblock|polic|rule|detection|indicator|alert|antivirus|firewall/ },
+    { key: 'simulation', name: 'Attack simulation', types: ['attackSimulation', 'simulationAutomation', 'attackSimulationPayload', 'attackSimulationLoginPage', 'attackSimulationLandingPage', 'attackSimulationNotification'], match: /simulation|training|payload/ },
     { key: 'exposure', name: 'Exposure management', types: ['securityZone'], match: /exposure|zone|vulnerab/ },
     { key: 'tenant', name: 'Tenant settings', types: [], match: /setting|config|tenant/ },
   ]),
@@ -23,9 +23,20 @@ export default Object.freeze({
     // Remaining kinds, batch 7.
     simulationAutomation: { name: 'Attack simulation automation' },
     attackSimulation: { name: 'Attack simulation' },
+    // The tenant's own attack simulation content (gap audit 2026-10-30, section B).
+    attackSimulationPayload: { name: 'Attack simulation payload' },
+    attackSimulationLoginPage: { name: 'Attack simulation login page' },
+    attackSimulationLandingPage: { name: 'Attack simulation landing page' },
+    attackSimulationNotification: { name: 'Attack simulation notification email' },
     // Remaining kinds, batch 8.
     securityZone: { name: 'Exposure management zone' },
     // Remaining kinds, batch 9.
     defenderDetectionRule: { name: 'Custom detection rule' },
+    // Read with the Exchange Online Defender cmdlets (a workload, so it sets its own priority).
+    'defender-email-protection': {
+      name: 'Defender email protection setting',
+      priority: 'high',
+      reason: 'An allow entry, a filter bypass or a protection exception lets mail through that would otherwise be blocked.',
+    },
   }),
 });

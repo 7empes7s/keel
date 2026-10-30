@@ -202,9 +202,14 @@ export const CONCEPT_WORDS = Object.freeze([
     kinds: ['exchange-mail-flow', 'exchange-extended'],
   },
   {
+    pattern: /\b(?:(?:tenant )?allow\/?block list|allow list|block list|blocked senders?|allowed senders?|spoofed senders?|advanced delivery|secops mailbox(?:es)?|built-in protection|teams protection|zero-hour (?:auto )?purge|zap|report(?:ed)? (?:message|submission)s?|user reported|arc sealers?|trusted arc)\b/i,
+    label: 'Defender email protection: allow and block lists, advanced delivery, Built-in and Teams protection, reported messages and ARC',
+    kinds: ['defender-email-protection'],
+  },
+  {
     pattern: /\b(?:attack simulations?|phishing simulations?|simulated phishing|security awareness training)\b/i,
-    label: 'attack simulations and their automations',
-    kinds: ['attackSimulation', 'simulationAutomation'],
+    label: 'attack simulations, their automations, and the payloads, login and landing pages and notifications they use',
+    kinds: ['attackSimulation', 'simulationAutomation', 'attackSimulationPayload', 'attackSimulationLoginPage', 'attackSimulationLandingPage', 'attackSimulationNotification'],
   },
   {
     pattern: /\b(?:dlp|data loss prevention|data leak(?:age)? prevention)\b/i,

@@ -233,6 +233,7 @@ export const WORKLOAD_LABELS: Record<string, string> = {
   "exchange-recipients": "Shared mailboxes, rooms, contacts and mailbox access",
   "exchange-org-access": "Exchange sharing and client access",
   "exchange-org-defaults": "Exchange transport and new mailbox defaults",
+  "defender-email-protection": "Defender email protection",
   "exchange-mail": "Mail, calendars and contacts",
   "group-conversations": "Group conversations",
   "teams-settings": "Teams settings",

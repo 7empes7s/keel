@@ -114,7 +114,8 @@ export const COMPLETENESS = Object.freeze({
   groupSetting: { missing: [part('Settings on a single group', 'other-route'), part('A deleted tenant-wide setting', 'not-written')] },
   organizationalBranding: { missing: [part('Header logo', 'binary-route'), part('Content customization files', 'not-written')] },
   organizationalBrandingLocalization: { missing: [part('Header logo of each language', 'binary-route'), part('Adding or removing a language', 'not-written')] },
-  groupLifecyclePolicy: { missing: [part('The list of groups a selected-groups policy covers', 'other-route'), part('A change that makes expiry more aggressive', 'not-written')] },
+  // Restore approvals: a change that makes expiry more aggressive is written once approved.
+  groupLifecyclePolicy: { missing: [part('The list of groups a selected-groups policy covers', 'other-route')] },
   administrativeUnit: { missing: [part('Members and admins scoped to the unit', 'other-route'), part('Dynamic membership rules and a deleted unit', 'not-written')] },
 
   // ---- users, groups, apps and admin roles

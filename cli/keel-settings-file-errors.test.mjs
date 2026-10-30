@@ -6,7 +6,7 @@ import { strict as assert } from 'node:assert';
 import { execFile } from 'node:child_process';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { after, test } from 'node:test';
@@ -20,8 +20,12 @@ import { main as policyScenario } from './keel-policy-scenario.mjs';
 import { main as recoveryMetrics } from './keel-recovery-metrics.mjs';
 import { main as schedulesHost } from './keel-schedules-host.mjs';
 import { main as valueReport } from './keel-value-report.mjs';
+import { main as apiDrift } from '../tools/qualification/apiDrift.mjs';
+import { configuredTenantRef } from '../tools/release/qualification.mjs';
+import { validateDrillPlan } from '../tools/rehearsal/qualification.mjs';
 
 const CLI = dirname(fileURLToPath(import.meta.url));
+const TOOLS = join(CLI, '..', 'tools');
 const dir = mkdtempSync(join(tmpdir(), 'keel-settings-files-'));
 after(() => rmSync(dir, { recursive: true, force: true }));
 const tenant = join(dir, 'tenant.json');
@@ -76,6 +80,15 @@ test('a bundle export or import names the broken content reader file', () => {
     plain('content backup reader settings', broken, 'it is not valid JSON'));
 });
 
+test('operator tools name the broken or missing settings file', async () => {
+  await assert.rejects(apiDrift({ argv: ['node', 'x', '--config', broken], logger: quiet }),
+    plain('collector settings', broken, 'it is not valid JSON'));
+  assert.throws(() => validateDrillPlan({ manifest: {}, collectorConfigPath: tenant, restorerConfigPath: missing }),
+    plain('restorer settings', missing, 'the file is missing'));
+  // The release gate only asks which tenant it runs for; an unreadable file still means "none".
+  assert.equal(configuredTenantRef(broken), null);
+});
+
 // These scripts run on import, so they are started the way the job runner starts them.
 const run = promisify(execFile);
 for (const [script, args] of [
@@ -101,7 +114,7 @@ for (const [script, args] of [
 // on the command line (fixtures, proposals, evidence) may still be parsed directly.
 test('no command parses a settings file with a bare JSON.parse', () => {
   const allowed = new Set([
-    "keel-bootstrap.mjs: JSON.parse(readFileSync(flags.get('--fixture')",
+    'keel-bootstrap.mjs: JSON.parse(readFileSync(opts.fixture',
     'keel-discover.mjs: JSON.parse(readFile(commandsPath)',
     'keel-policy-scenario.mjs: JSON.parse(readFile(proposalPath',
     'keel-policy-scenario.mjs: JSON.parse(readFile(whatIfPath',
@@ -113,6 +126,76 @@ test('no command parses a settings file with a bare JSON.parse', () => {
   for (const file of readdirSync(CLI).filter((name) => name.endsWith('.mjs') && !name.endsWith('.test.mjs'))) {
     for (const [match] of readFileSync(join(CLI, file), 'utf8').matchAll(/JSON\.parse\(readFile(?:Sync)?\([^,)]*\)?/g)) {
       found.push(`${file}: ${match}`);
+    }
+  }
+  assert.deepEqual(found.filter((entry) => !allowed.has(entry)), []);
+});
+
+// The same rule for the operator tools under tools/: every /etc/keel settings file goes
+// through readConfigFile. Only input files (named on the command line, or evidence,
+// fixtures and documentation read from a folder) may still be parsed directly.
+test('no operator tool parses a settings file with a bare JSON.parse', () => {
+  const allowed = new Set([
+    'coverage-fixtures/fixtures.mjs: JSON.parse(readFileSync(MANIFEST',
+    'qualification/apiDrift.mjs: JSON.parse(readFile(sourcesPath',
+    "qualification/benchmarkLicense.mjs: JSON.parse(readFileSync(new URL('../../docs/roadmap/benchmark-content/nist-sp800-53-rev5-pin.json'",
+    'qualification/benchmarkLicense.mjs: JSON.parse(readFileSync(process.argv[2]',
+    'qualification/conditionalAccess.mjs: JSON.parse(readFile(file',
+    'qualification/dynamicGroups.mjs: JSON.parse(readFile(file',
+    'qualification/entraLive.mjs: JSON.parse(readFileSync(join(dir',
+    'qualification/exchangeAcceptance.mjs: JSON.parse(readFileSync(join(evidenceDir ?? process.cwd()',
+    'qualification/exchangeLive.mjs: JSON.parse(readFile(teamsPath)',
+    'qualification/exchangeLive.mjs: JSON.parse(readFile(options.grants)',
+    'qualification/exchangeLive.mjs: JSON.parse(readFile(options.docs)',
+    'qualification/liveRecords.mjs: JSON.parse(readFileSync(path',
+    'qualification/onedrivePurviewAcceptance.mjs: JSON.parse(readFileSync(join(evidenceDir ?? process.cwd()',
+    'qualification/onedrivePurviewLive.mjs: JSON.parse(readFile(join(dir',
+    'qualification/onedrivePurviewLive.mjs: JSON.parse(readFile(exchangePath)',
+    'qualification/onedrivePurviewLive.mjs: JSON.parse(readFile(options.grants)',
+    'qualification/onedrivePurviewLive.mjs: JSON.parse(readFile(options.docs)',
+    // The Sentinel and ServiceNow adapter configs are files a person names on the command line, not /etc/keel files.
+    'qualification/sentinel.mjs: JSON.parse(readFileSync(configPath',
+    'qualification/sentinelLive.mjs: JSON.parse(readFile(options.roles)',
+    'qualification/sentinelLive.mjs: JSON.parse(readFile(options.docs)',
+    'qualification/servicenow.mjs: JSON.parse(readFileSync(configPath',
+    'qualification/servicenowLive.mjs: JSON.parse(readFile(options.config)',
+    'qualification/servicenowLive.mjs: JSON.parse(readFile(options.testUsers)',
+    'qualification/servicenowLive.mjs: JSON.parse(readFile(options.recordTemplate)',
+    'qualification/servicenowLive.mjs: JSON.parse(readFile(options.docs)',
+    'qualification/sharepointLive.mjs: JSON.parse(readFile(options.grants)',
+    'qualification/sharepointLive.mjs: JSON.parse(readFile(options.docs)',
+    'qualification/sharepointSiteGrantsLive.mjs: JSON.parse(readFile(options.grants)',
+    'qualification/sharepointSiteGrantsLive.mjs: JSON.parse(readFile(options.docs)',
+    'qualification/sharepointSitePermissionsLive.mjs: JSON.parse(readFile(options.grants)',
+    'qualification/sharepointSitePermissionsLive.mjs: JSON.parse(readFile(options.docs)',
+    'qualification/sharepointStructureWritesLive.mjs: JSON.parse(readFile(options.grants)',
+    'qualification/teamsAcceptance.mjs: JSON.parse(readFileSync(join(evidenceDir ?? process.cwd()',
+    'qualification/teamsLive.mjs: JSON.parse(readFile(sharePointPath)',
+    'qualification/teamsLive.mjs: JSON.parse(readFile(options.grants)',
+    'qualification/teamsLive.mjs: JSON.parse(readFile(options.docs)',
+    'qualification/workloadWritesLive.mjs: JSON.parse(readFile(options.grants)',
+    'qualification/workloads.mjs: JSON.parse(readFile(options.grants)',
+    // The drill manifest (--manifest); the two settings files go through readSettings.
+    'rehearsal/qualification.mjs: JSON.parse(readFileSync(path',
+    'release/acceptanceLedger.mjs: JSON.parse(readFileSync(join(dir',
+    'release/acceptanceLedger.mjs: JSON.parse(readFileSync(path',
+    'release/acceptanceLedger.mjs: JSON.parse(readFileSync(fixturePath',
+    'release/qualification.mjs: JSON.parse(readFileSync(pinPath',
+    'release/qualification.mjs: JSON.parse(readFileSync(resolve(evidenceDir',
+    'release/qualification.mjs: JSON.parse(readFileSync(evidencePath',
+    'release/qualification.mjs: JSON.parse(readFileSync(path',
+    'tenant-probe/delegated-probe.mjs: JSON.parse(readFileSync(file',
+  ]);
+  const scripts = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.name === 'node_modules') return [];
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return scripts(path);
+    return entry.name.endsWith('.mjs') && !entry.name.endsWith('.test.mjs') ? [path] : [];
+  });
+  const found = [];
+  for (const file of scripts(TOOLS)) {
+    for (const [match] of readFileSync(file, 'utf8').matchAll(/JSON\.parse\(readFile(?:Sync)?\([^,)]*\)?/g)) {
+      found.push(`${relative(TOOLS, file).split(sep).join('/')}: ${match}`);
     }
   }
   assert.deepEqual(found.filter((entry) => !allowed.has(entry)), []);

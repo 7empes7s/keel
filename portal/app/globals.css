@@ -6580,7 +6580,7 @@ section.wizard-panel {
 }
 
 @media (min-width: 62rem) {
-  .section-tabs:not([data-section="inbox"]) {
+  .section-tabs:not([data-section="inbox"]):not(.changes-views) {
     display: none;
   }
 }
@@ -8905,6 +8905,7 @@ section.wizard-panel {
 }
 .person-avatar[data-initials]::before { content: attr(data-initials); }
 .person-avatar[data-system] { background: var(--neutral-bg); color: var(--neutral); }
+.person-avatar[data-pseudonym] { background: var(--readonly-bg); color: var(--readonly); }
 .person-avatar .icon { width: 0.75rem; height: 0.75rem; }
 
 /* The shared list surface: no browser bullets or numbers, a 12 px card with 1 px
@@ -10640,6 +10641,8 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
 .al-kind[data-tone="low"] { background: var(--low-risk-bg); color: var(--low-risk); }
 .al-row-name { display: grid; min-width: 0; line-height: 1.3; }
 .al-row-name small { color: var(--text-soft); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.al-row-title { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2xs) var(--space-xs); min-width: 0; }
+.al-seen { color: var(--text-soft); font-size: 0.8125rem; }
 .al-row-link { justify-self: start; border-radius: 2px; color: var(--text); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
 .al-row-link:hover { text-decoration: underline; text-underline-offset: 0.2em; }
 .al-row-mid { display: grid; justify-items: start; gap: var(--space-2xs); min-width: 0; }
@@ -11680,7 +11683,7 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 .ak-sort:hover .icon, .ak-sort[data-active] .icon { opacity: 1; }
 .ak-sort[data-active] { color: var(--text); }
 .ak-sort:focus-visible { outline: none; box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
-.ak-fields { font-family: var(--font-mono, ui-monospace, monospace); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.ak-fields { font-size: 0.8125rem; overflow-wrap: anywhere; }
 .ak-none { color: var(--text-soft); font-size: 0.8125rem; }
 .ak-service { display: inline-flex; align-items: center; gap: var(--space-2xs); }
 .ak-service .icon { width: 1rem; height: 1rem; }
@@ -11695,6 +11698,25 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 }
 .ak-sum-label .badge { white-space: normal; text-align: left; }
 .ak-sum-card li { grid-template-columns: minmax(0, 1.7fr) minmax(1.5rem, 0.8fr) auto; }
+
+/* "Hide people's names" (Track A3): the strip on pages that name people, and the
+   setting card on People. Existing tokens only. */
+.anon-note { display: flex; gap: var(--space-sm); align-items: flex-start; margin: 0 0 var(--space-md); padding: var(--space-sm) var(--space-md); border: 1px solid color-mix(in oklab, var(--readonly) 38%, var(--line)); border-radius: var(--radius-md); background: var(--readonly-bg); color: var(--text); }
+.anon-note p { margin: 0; line-height: 1.5; }
+.anon-note .badge { margin-right: var(--space-xs); vertical-align: 1px; }
+.anon-note-icon { display: inline-grid; flex: none; place-items: center; width: 1.5rem; height: 1.5rem; color: var(--readonly); }
+.anon-note-icon .icon { width: 1rem; height: 1rem; }
+.anon-card { display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-sm) var(--space-md); align-items: center; margin: 0 0 var(--space-md); padding: var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.anon-card[data-on] { border-color: color-mix(in oklab, var(--readonly) 45%, var(--line)); background: var(--readonly-bg); }
+.anon-card h2 { display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-sm); align-items: center; margin: 0; font-size: 1rem; }
+.anon-card p { margin: var(--space-xs) 0 0; color: var(--text-soft); line-height: 1.5; }
+.anon-card .anon-card-icon { display: inline-grid; place-items: center; width: 2.25rem; height: 2.25rem; border-radius: var(--radius-pill); background: var(--surface-muted); color: var(--readonly); }
+.anon-card .anon-card-icon .icon { width: 1.125rem; height: 1.125rem; }
+.anon-card-error { grid-column: 1 / -1; margin: 0; color: var(--urgent); }
+@media (max-width: 640px) {
+  .anon-card { grid-template-columns: auto 1fr; }
+  .anon-card > .btn { grid-column: 1 / -1; justify-self: start; }
+}
 
 /* Integrations (settings restyle): destinations as grouped rows like the list kit, with
    the counts and actions in the side panel. Tokens only; `.ig-` prefix. */
@@ -11729,4 +11751,77 @@ button.su-service:focus-visible { outline: none; box-shadow: var(--focus-ring); 
 @media (max-width: 720px) {
   .ig-row { grid-template-columns: auto minmax(0, 1fr); gap: var(--space-xs) var(--space-sm); }
   .ig-row-mid, .ig-row-acts { grid-column: 2; justify-content: start; }
+}
+
+/* An object by name and kind (components/ui/object-label.tsx): the name carries the
+   weight, the kind reads softer, an unnamed object reads in italics. */
+.object-label { min-width: 0; overflow-wrap: anywhere; }
+.object-label-type { color: var(--text-soft); font-weight: 400; }
+.object-label-name[data-unnamed] { font-style: italic; }
+
+/* Undo of a created policy that is assigned now: delete it with its assignments, or skip it. */
+.undo-choices-why { margin: 0; color: var(--text-soft); font-size: 0.875rem; max-width: 72ch; }
+
+.undo-choice {
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  border-left: 3px solid var(--partial);
+  background: var(--surface-muted);
+  font-size: 0.875rem;
+}
+
+.undo-choice[data-choice="delete"] { border-left-color: var(--failed); }
+.undo-choice[data-choice="skip"] { border-left-color: var(--line-strong); }
+
+.undo-choice-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs) var(--space-sm); }
+.undo-choice-reach { color: var(--text-soft); }
+
+.undo-choice-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xs);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.undo-choice-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 2px var(--space-xs);
+  min-height: 2.75rem;
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.undo-choice-option input { margin-top: 3px; }
+.undo-choice-label { font-weight: 650; }
+.undo-choice-effect { grid-column: 2; color: var(--text-soft); }
+.undo-choice-option[data-option="delete"]:has(input:checked) { border-color: var(--failed); background: var(--failed-bg); }
+.undo-choice-option[data-option="skip"]:has(input:checked) { border-color: var(--line-strong); }
+.undo-choice-option:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.undo-choice-made { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); margin: 0; color: var(--text-soft); }
+
+.undo-choices-apply {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  border-left: 3px solid var(--partial);
+  background: var(--partial-bg);
+}
+
+.undo-choices-apply p { margin: 0; }
+.undo-choices-apply .btn { min-height: 2.75rem; }
+
+@media (max-width: 640px) {
+  .undo-choice-options { grid-template-columns: minmax(0, 1fr); }
 }

@@ -1,6 +1,8 @@
 import { strict as assert } from 'node:assert';
 import { applyWave } from '../engine/restore/applyEngine.mjs';
 import { planWaves } from '../engine/restore/wavePlanner.mjs';
+import { applyIdentityObjectWrite } from '../engine/restore/identityObjectOperations.mjs';
+import { idoFakeGraph } from '../engine/test/idoFakeGraph.mjs';
 import { incompleteReadDeleteRefusals, runCli, runRestore, unreadTypesOf } from './keel-restore.mjs';
 
 const testDbUrl = process.env.KEEL_DB_TEST_URL;
@@ -14,8 +16,8 @@ assert.ok(testDbUrl, 'KEEL_DB_TEST_URL must be set for restore CLI tests');
 // artifactPromotionFakes tests below) — so restoreFakes() supplies an already-
 // completed fake artifact and stubs validateArtifactForExecution, letting these
 // fixtures promote directly via --artifact instead of re-deriving one through a real
-// dry run (which cannot itself observe real target ids for not-yet-created
-// resources and so can never reach 'completed' for a create-then-reference scope).
+// dry run (which plans not-yet-created resources with placeholder ids,
+// engine/restore/plannedIds.mjs, and so never observes their real target ids).
 const FIXTURE_ARTIFACT_ID = '99999999-0000-4000-8000-000000000099';
 const artifactArgv = [
   'node', 'keel-restore.mjs',
@@ -144,7 +146,8 @@ function restoreFakes({
   class FakeReader {
     async collect(version, path) {
       assert.equal(version, 'v1.0');
-      if (path === '/identity/conditionalAccess/policies' || path.startsWith('/roleManagement/directory/roleAssignments')
+      if (path === '/identity/conditionalAccess/policies' || path === '/identity/conditionalAccess/namedLocations'
+        || path.startsWith('/roleManagement/directory/roleAssignments')
         || path.startsWith('/groups?') || path.startsWith('/directory/deletedItems/microsoft.graph.group')
         // Task-152: deleted Conditional Access policies are looked up too.
         || path === '/identity/conditionalAccess/deletedItems/policies') {
@@ -279,6 +282,35 @@ async function runFixture(dependencies, { logger = { log() {}, error() {} } } = 
   assert.equal(fixture.state.clientEnds, 1);
 }
 
+// Issue #695: a guest federation whose sign-in field differs from the backup is
+// skipped with a manual step. The run records that skip and carries on, instead
+// of crashing on its completion step before anything is saved.
+{
+  const live = {
+    '@odata.type': '#microsoft.graph.samlOrWsFedExternalDomainFederation', id: 'fed-1', displayName: 'KEEL-RT-fed',
+    passiveSignInUri: 'https://keel-rt-fed.example/sso', preferredAuthenticationProtocol: 'saml',
+  };
+  const federation = await applyIdentityObjectWrite(idoFakeGraph(), {
+    naturalKey: 'externalDomainFederation:KEEL-RT-fed', resourceType: 'externalDomainFederation',
+    payload: { ...live, passiveSignInUri: 'https://keel-rt-other.example/sso' }, references: [],
+    live: { state: 'present', targetId: 'fed-1', payload: live },
+  }, 'update', { mode: 'dry-run', readAfterWriteOptions: { attempts: 1, delayMs: 0 } });
+  assert.ok(federation.skipped, 'the federation is skipped with a manual step');
+  let waveCount = 0;
+  const fixture = restoreFakes({
+    applyWave: async (...args) => {
+      waveCount += 1;
+      const result = await applyWave(...args);
+      return waveCount === 1 ? { ...result, skipped: [...result.skipped, federation.skipped] } : result;
+    },
+  });
+  const lines = [];
+  const exitCode = await runFixture(fixture.dependencies, { logger: { log: (line) => lines.push(line), error: (line) => lines.push(line) } });
+  assert.equal(exitCode, 0, lines.join('\n'));
+  assert.equal(fixture.state.waveCalls.length, 2, 'the waves after the skip still run');
+  assert.ok(lines.some((line) => /completion step: externalDomainFederation:KEEL-RT-fed — .*passiveSignInUri/.test(line)), lines.join('\n'));
+}
+
 // A failed wave stops the run before later waves can write, returns a non-zero
 // CLI outcome, and still closes the test-database client.
 {
@@ -352,7 +384,7 @@ function selectionResources() {
   };
 }
 
-function selectionFakes({ resourceSet = selectionResources() } = {}) {
+function selectionFakes({ resourceSet = selectionResources(), targetHasAdmins = true } = {}) {
   const state = { connectUrls: [], clientEnds: 0, dbQueries: 0, waveCalls: [], waveResults: [] };
   const client = {
     query: async (sql) => {
@@ -373,7 +405,8 @@ function selectionFakes({ resourceSet = selectionResources() } = {}) {
   class FakeReader {
     async collect(version, path) {
       assert.equal(version, 'v1.0');
-      if (path === '/identity/conditionalAccess/policies' || path.startsWith('/roleManagement/directory/roleAssignments')
+      if (path === '/identity/conditionalAccess/policies' || path === '/identity/conditionalAccess/namedLocations'
+        || path.startsWith('/roleManagement/directory/roleAssignments')
         || path.startsWith('/groups?') || path.startsWith('/directory/deletedItems/microsoft.graph.group')
         // Task-152: deleted Conditional Access policies are looked up too.
         || path === '/identity/conditionalAccess/deletedItems/policies') {
@@ -413,7 +446,7 @@ function selectionFakes({ resourceSet = selectionResources() } = {}) {
       canonicalizeAll: () => [
         // group:Admins already exists in the target, so the dry-run can resolve the
         // policy's reference without run provenance from a real write.
-        { naturalKey: 'group:Admins', resourceType: 'group', sourceId: 'target-admins-id', payload: { displayName: 'Admins' } },
+        ...(targetHasAdmins ? [{ naturalKey: 'group:Admins', resourceType: 'group', sourceId: 'target-admins-id', payload: { displayName: 'Admins' } }] : []),
         { naturalKey: 'roleAssignment:GlobalAdministrator:break-glass', resourceType: 'roleAssignment', sourceId: 'target-break-glass-role-id', payload: { principalId: 'break-glass-id' } },
       ],
       GraphWriter: FakeWriter,
@@ -465,6 +498,22 @@ function runSelectionCli(selection, dependencies, extraArgv = []) {
   assert.ok(!applied.includes('group:Unrelated'), 'an unselected, unreferenced resource is never touched');
   assert.equal(fixture.state.dbQueries, 0, 'the selection path loads no plan row');
   assert.equal(fixture.state.clientEnds, 1);
+}
+
+// Issue #726 follow-up: when the dependency is missing from the target, the dry
+// run plans its create and the policy that names it plans against a placeholder
+// id, instead of failing on a reference no dry run can know.
+{
+  const fixture = selectionFakes({ targetHasAdmins: false });
+  const exitCode = await runSelectionCli(['conditionalAccessPolicy:Protect-Admins'], fixture.dependencies);
+  assert.equal(exitCode, 0, JSON.stringify(fixture.state.waveResults));
+  assert.deepEqual(fixture.state.waveCalls, [['group:Admins'], ['conditionalAccessPolicy:Protect-Admins']]);
+  assert.deepEqual(fixture.state.waveResults.flatMap((r) => r.failed), []);
+  assert.deepEqual(
+    fixture.state.waveResults.flatMap((r) => r.applied.map((a) => [a.naturalKey, a.targetId])),
+    [['group:Admins', null], ['conditionalAccessPolicy:Protect-Admins', null]],
+    'both creates are reported, with no target id and no placeholder',
+  );
 }
 
 // A selected key the snapshot does not contain fails loudly — restoring something the
@@ -704,7 +753,7 @@ await assert.rejects(
   assert.ok(errors.some((error) => error.includes('requires --artifact')));
 }
 
-function artifactPromotionFakes(artifacts, { targetHasAdminsGroup = false } = {}) {
+function artifactPromotionFakes(artifacts, { targetHasAdminsGroup = false, verb = 'create' } = {}) {
   const state = { writes: [], clientEnds: 0 };
   const client = {
     query: async (sql) => {
@@ -758,7 +807,14 @@ function artifactPromotionFakes(artifacts, { targetHasAdminsGroup = false } = {}
       getReferences: async () => [],
       planWaves: () => ({ waves: [['group:Admins']], patches: [] }),
       buildReconciliationPlan: async (_reader, resources) => ({
-        resources: resources.map((resource) => ({ ...resource, verb: 'create' })),
+        resources: resources.map((resource) => ({
+          ...resource, verb,
+          // Issue #683: a live Admins group, for the plans that update it or leave it alone.
+          ...(verb === 'create' ? {} : {
+            targetId: 'target-admins-id',
+            live: { state: 'present', targetId: 'target-admins-id', payload: { displayName: 'Admins (renamed)', mailNickname: 'admins' } },
+          }),
+        })),
       }),
       getToken: async () => ({ accessToken: 'fake-token' }),
       GraphReader: FakeReader,
@@ -917,6 +973,49 @@ function runArtifactPromotion(artifactId, dependencies, errors = []) {
   assert.ok(errors.some((error) => error.includes('target has changed since the dry run')));
 }
 
+// Issue #683 (Q219): the dry run left a group alone, then a change landed on it
+// (Viva Engage copied a community's description onto its group) that the
+// fingerprint did not see. The promotion plans an update the approved plan never
+// listed, so it refuses before any write and asks for a new dry run.
+{
+  const artifacts = new Map();
+  const artifactId = '44444444-0000-4000-8000-000000000004';
+  assert.equal(await runDryRunArtifact(artifactId, artifactPromotionFakes(artifacts, { verb: 'noop' }).dependencies), 0);
+  assert.deepEqual(artifacts.get(artifactId).plannedVerbs, [{ naturalKey: 'group:Admins', verb: 'noop' }]);
+  const promotion = artifactPromotionFakes(artifacts, { verb: 'update' });
+  const errors = [];
+  assert.equal(await runArtifactPromotion(artifactId, promotion.dependencies, errors), 1);
+  assert.deepEqual(promotion.state.writes, [], 'a write the approved plan did not list is never sent');
+  assert.ok(errors.some((error) => error.includes('would write what the approved plan did not list: group:Admins update (dry run: noop)')
+    && error.includes('a new dry run and approval are required')), errors.join('\n'));
+}
+
+// Writing less than planned is allowed: the dry run planned an update the target
+// no longer needs, so the promotion runs and writes nothing.
+{
+  const artifacts = new Map();
+  const artifactId = '55555555-0000-4000-8000-000000000005';
+  assert.equal(await runDryRunArtifact(artifactId, artifactPromotionFakes(artifacts, { verb: 'update' }).dependencies), 0);
+  const promotion = artifactPromotionFakes(artifacts, { verb: 'noop' });
+  const errors = [];
+  assert.equal(await runArtifactPromotion(artifactId, promotion.dependencies, errors), 0, errors.join('\n'));
+  assert.deepEqual(promotion.state.writes, []);
+}
+
+// An artifact persisted before planned verbs were kept has nothing to compare
+// against, so any write needs a new dry run.
+{
+  const artifacts = new Map();
+  const artifactId = '66666666-0000-4000-8000-000000000006';
+  assert.equal(await runDryRunArtifact(artifactId, artifactPromotionFakes(artifacts).dependencies), 0);
+  artifacts.get(artifactId).plannedVerbs = null;
+  const promotion = artifactPromotionFakes(artifacts);
+  const errors = [];
+  assert.equal(await runArtifactPromotion(artifactId, promotion.dependencies, errors), 1);
+  assert.deepEqual(promotion.state.writes, []);
+  assert.ok(errors.some((error) => error.includes('predates planned writes being recorded: group:Admins create (dry run: not recorded)')), errors.join('\n'));
+}
+
 // Dependent-impact refusals in a preview or dry run are reported, not thrown: the
 // operator sees the full plan with the delete refused, a persisted dry run would
 // classify as refused (so the artifact gate blocks promotion), and nothing is
@@ -981,6 +1080,34 @@ function runArtifactPromotion(artifactId, dependencies, errors = []) {
   assert.deepEqual(noMode.state.writes, []);
 }
 
+// The preview checks its guards against the tenant the restore writes to, the
+// same tenant the enforce run uses, not the collector's source tenant. Without a
+// Restorer config (a portal preview) it falls back to the collector's tenant.
+{
+  const previewTenantFor = async (targetConfig) => {
+    const fixture = restoreFakes({ planWaves: () => ({ waves: [['group:Finance']], patches: [] }) });
+    const tenants = [];
+    fixture.dependencies.previewApplyPlan = async ({ targetTenant }) => { tenants.push(targetTenant); return []; };
+    await runRestore({
+      snapshotId: 'source-snapshot',
+      selection: ['group:Finance'],
+      collectorConfig: { tenantId: 'source-tenant', clientId: 'collector-client' },
+      targetConfig,
+      dbUrl: testDbUrl,
+      logger: { log() {} },
+      mode: 'dry-run',
+      previewOnly: true,
+      dependencies: fixture.dependencies,
+    });
+    assert.deepEqual(fixture.state.writes, [], 'a preview writes nothing');
+    return tenants;
+  };
+  assert.deepEqual(await previewTenantFor({ tenantId: 'target-tenant', clientId: 'restorer-client' }), ['target-tenant'],
+    'the preview must use the target tenant, as the enforce run does');
+  assert.deepEqual(await previewTenantFor(undefined), ['source-tenant'],
+    'a preview without a Restorer config falls back to the collector tenant');
+}
+
 console.log('keel-restore.test.mjs — all assertions passed');
 
 // Issue #466: the helpers the forward restore and the compensation share.
@@ -993,4 +1120,46 @@ console.log('keel-restore.test.mjs — all assertions passed');
   const refusals = incompleteReadDeleteRefusals(['vppToken'], planned);
   assert.deepEqual(refusals.map((refusal) => refusal.naturalKey), ['group:A'], 'only deletes are refused, once each');
   assert.match(refusals[0].reason, /^blocked-incomplete-read: deleting group:A .* vppToken could not be read$/);
+}
+
+// Issue #666: To Do settings answering 500 blocked every undo delete in the tenant.
+// A kind that holds no reference to another object cannot hide one, so it blocks
+// nothing; any other unread kind still blocks, and is the only one named.
+{
+  const planned = [{ naturalKey: 'deviceConfiguration:KEEL-RT-213-delete', verb: 'delete' }];
+  assert.deepEqual(incompleteReadDeleteRefusals(['todoSettings'], planned), [], 'To Do settings hold no reference');
+  assert.deepEqual(incompleteReadDeleteRefusals(['formsSettings', 'pronounsSettings', 'adminReportSettings'], planned), []);
+  const mixed = incompleteReadDeleteRefusals(['todoSettings', 'vppToken'], planned);
+  assert.equal(mixed.length, 1);
+  assert.match(mixed[0].reason, /, but vppToken could not be read$/, 'only the kind that could hold a reference is named');
+  // Kinds that can point at other objects are never marked.
+  const { CATALOG } = await import('../tools/tenant-probe/catalog.mjs');
+  const marked = CATALOG.filter((entry) => entry.holdsNoReferences === true).map((entry) => entry.type).sort();
+  assert.deepEqual(marked, ['adminReportSettings', 'appsAndServicesSettings', 'formsSettings', 'microsoft365AppsInstallationOptions', 'pronounsSettings', 'todoSettings']);
+  assert.ok(CATALOG.filter((entry) => entry.holdsNoReferences === true).every((entry) => entry.singleton === true), 'only one-per-tenant settings');
+}
+
+// Q220: an unread PIM for Groups resource (Collector 403) blocked the undo
+// delete of a created Intune policy. A kind that names only groups cannot hide
+// a reference to a policy, so it blocks only group deletes; any kind without
+// such a flag, and a delete of unknown kind, still blocks.
+{
+  const policy = { naturalKey: 'deviceConfiguration:KEEL-RT-220-delete', resourceType: 'deviceConfiguration', verb: 'delete' };
+  const group = { naturalKey: 'group:KEEL-RT-220-group', verb: 'delete' };
+  const unknown = { naturalKey: 'no-kind-here', verb: 'delete' };
+  assert.deepEqual(incompleteReadDeleteRefusals(['privilegedAccessGroupResource'], [policy]), [], 'a group-only kind cannot hide a reference to a policy');
+  assert.deepEqual(incompleteReadDeleteRefusals(['privilegedAccessGroupResource'], [policy, group, unknown]).map((refusal) => refusal.naturalKey),
+    ['group:KEEL-RT-220-group', 'no-kind-here'], 'a group delete, and a delete of unknown kind, still need the read');
+  const mixed = incompleteReadDeleteRefusals(['privilegedAccessGroupResource', 'todoSettings', 'vppToken'], [policy, group]);
+  assert.match(mixed.find((refusal) => refusal.naturalKey === policy.naturalKey).reason, /, but vppToken could not be read$/, 'only the kinds that could point at the policy are named');
+  assert.match(mixed.find((refusal) => refusal.naturalKey === group.naturalKey).reason, /, but privilegedAccessGroupResource, vppToken could not be read$/);
+  // Every flag names kinds Keel knows, and is set only where the object's fields are known.
+  const { CATALOG } = await import('../tools/tenant-probe/catalog.mjs');
+  const types = new Set(CATALOG.map((entry) => entry.type));
+  const flagged = CATALOG.filter((entry) => entry.refersOnlyTo !== undefined);
+  assert.deepEqual(flagged.map((entry) => entry.type), ['privilegedAccessGroupResource']);
+  for (const entry of flagged) {
+    assert.ok(Array.isArray(entry.refersOnlyTo) && entry.refersOnlyTo.length > 0 && entry.refersOnlyTo.every((type) => types.has(type)), `${entry.type} refersOnlyTo names known kinds`);
+    assert.notEqual(entry.holdsNoReferences, true, `${entry.type} sets one flag, not both`);
+  }
 }

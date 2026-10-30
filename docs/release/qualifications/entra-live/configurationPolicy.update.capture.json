@@ -1,16 +1,16 @@
 {
-  "restoreRef": "bbcfa4da-ff51-833c-aace-ef02fd4f67d1",
+  "restoreRef": "e836c92c-5798-86f9-8dfe-2aca83983558",
   "entry": {
-    "naturalKey": "configurationPolicy:KEEL-RT-148-settings",
+    "naturalKey": "configurationPolicy:KEEL-RT-244-settings",
     "resourceType": "configurationPolicy",
     "operation": "update",
-    "targetId": "3c6559dc-36a0-8ef7-8685-5c1a817473ec",
+    "targetId": "9b11360d-19ec-8a37-8b36-8579e7283b0a",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-10T21:52:38.753Z",
+    "recordedAt": "2026-10-29T23:05:48.296Z",
     "priorState": {
-      "id": "3c6559dc-36a0-8ef7-8685-5c1a817473ec",
-      "name": "KEEL-RT-148-settings",
+      "id": "9b11360d-19ec-8a37-8b36-8579e7283b0a",
+      "name": "KEEL-RT-244-settings",
       "settings": [
         {
           "id": "0",
@@ -28,11 +28,11 @@
         }
       ],
       "platforms": "windows10",
-      "description": "KEEL #148 fixture",
+      "description": "KEEL-RT test fixture",
       "settingCount": 1,
       "technologies": "mdm",
       "creationSource": null,
-      "createdDateTime": "2026-10-10T20:19:06.9384565Z",
+      "createdDateTime": "2026-10-29T22:57:02.1365051Z",
       "roleScopeTagIds": [
         "0"
       ],
@@ -43,12 +43,12 @@
         "templateDisplayName": null,
         "templateDisplayVersion": null
       },
-      "lastModifiedDateTime": "2026-10-10T21:46:38.8588297Z",
-      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/configurationPolicies('3c6559dc-36a0-8ef7-8685-5c1a817473ec')/settings"
+      "lastModifiedDateTime": "2026-10-29T23:01:24.7355977Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/configurationPolicies('9b11360d-19ec-8a37-8b36-8579e7283b0a')/settings"
     },
     "intendedState": {
-      "id": "3c6559dc-36a0-8ef7-8685-5c1a817473ec",
-      "name": "KEEL-RT-148-settings",
+      "id": "9b11360d-19ec-8a37-8b36-8579e7283b0a",
+      "name": "KEEL-RT-244-settings",
       "settings": [
         {
           "id": "0",
@@ -66,11 +66,11 @@
         }
       ],
       "platforms": "windows10",
-      "description": "KEEL #148 fixture",
+      "description": "KEEL-RT test fixture",
       "settingCount": 1,
       "technologies": "mdm",
       "creationSource": null,
-      "createdDateTime": "2026-10-10T20:19:06.9384565Z",
+      "createdDateTime": "2026-10-29T22:57:02.1365051Z",
       "roleScopeTagIds": [
         "0"
       ],
@@ -81,12 +81,12 @@
         "templateDisplayName": null,
         "templateDisplayVersion": null
       },
-      "lastModifiedDateTime": "2026-10-10T21:46:00.7765922Z",
-      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/configurationPolicies('3c6559dc-36a0-8ef7-8685-5c1a817473ec')/settings"
+      "lastModifiedDateTime": "2026-10-29T22:57:02.1365051Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/configurationPolicies('9b11360d-19ec-8a37-8b36-8579e7283b0a')/settings"
     },
     "postState": {
-      "id": "3c6559dc-36a0-8ef7-8685-5c1a817473ec",
-      "name": "KEEL-RT-148-settings",
+      "id": "9b11360d-19ec-8a37-8b36-8579e7283b0a",
+      "name": "KEEL-RT-244-settings",
       "settings": [
         {
           "id": "0",
@@ -104,12 +104,12 @@
         }
       ],
       "platforms": "windows10",
-      "description": "KEEL #148 fixture",
+      "description": "KEEL-RT test fixture",
       "settingCount": 1,
       "technologies": "mdm",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/configurationPolicies(settings())/$entity",
       "creationSource": null,
-      "createdDateTime": "2026-10-10T20:19:06.9384565Z",
+      "createdDateTime": "2026-10-29T22:57:02.1365051Z",
       "roleScopeTagIds": [
         "0"
       ],
@@ -120,8 +120,8 @@
         "templateDisplayName": null,
         "templateDisplayVersion": null
       },
-      "lastModifiedDateTime": "2026-10-10T21:52:38.9962721Z",
-      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/configurationPolicies('3c6559dc-36a0-8ef7-8685-5c1a817473ec')/settings"
+      "lastModifiedDateTime": "2026-10-29T23:05:48.4282794Z",
+      "settings@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/configurationPolicies('9b11360d-19ec-8a37-8b36-8579e7283b0a')/settings"
     }
   }
 }

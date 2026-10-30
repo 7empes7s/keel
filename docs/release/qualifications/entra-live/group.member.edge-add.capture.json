@@ -1,20 +1,20 @@
 {
-  "restoreRef": "8b94baf5-58a7-8aa5-8600-34d0cb4a324e",
+  "restoreRef": "08221958-265f-8e43-b34a-dc0d5c2d3936",
   "entry": {
-    "naturalKey": "edge:group:KEEL-RT-Q51-g5|member|add|user:keel-rt-20260908-carla@techinsiderbytes.com",
+    "naturalKey": "edge:group:KEEL-RT-246-g5|member|add|user:keel-rt-u3f32611d4ab3@t42987720ee3.example",
     "resourceType": "group",
     "operation": "edge-add",
-    "targetId": "2842f879-c015-8486-88fa-465310f0d372",
+    "targetId": "96cfc3aa-c91c-877c-84e4-9f5a98014e46",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-14T19:11:41.144Z",
+    "recordedAt": "2026-10-29T23:59:47.655Z",
     "priorState": {
       "kind": "relationship-edge",
       "family": "member",
       "present": false,
       "targetId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
-      "parentTargetId": "2842f879-c015-8486-88fa-465310f0d372",
-      "parentNaturalKey": "group:KEEL-RT-Q51-g5"
+      "parentTargetId": "96cfc3aa-c91c-877c-84e4-9f5a98014e46",
+      "parentNaturalKey": "group:KEEL-RT-246-g5"
     },
     "intendedState": null,
     "postState": {

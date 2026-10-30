@@ -15,7 +15,7 @@ import { registeredWorkloads } from './prerequisites.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { assertTokenFree } from '../../tools/tenant-probe/auth.mjs';
 
-// Today's three apps and the DESIGN 3.2 role each becomes. Listed in the order the
+// Today's four apps and the DESIGN 3.2 role each becomes. Listed in the order the
 // portal shows them: required first.
 export const CONNECTION_APPS = Object.freeze([
   Object.freeze({ role: 'settings-reader', identity: 'collector', name: 'Keel Settings Reader', required: true,
@@ -24,6 +24,10 @@ export const CONNECTION_APPS = Object.freeze([
     purpose: 'Backs up mail, files, Teams and Planner. Read only.' }),
   Object.freeze({ role: 'settings-restorer', identity: 'restorer', name: 'Keel Settings Restorer', required: false,
     purpose: 'Puts settings back when you approve a restore.' }),
+  // Issue #681: Viva Engage refuses the Settings Restorer's sign-in once it holds many
+  // permissions, so community restores use this small app of its own.
+  Object.freeze({ role: 'engage-writer', identity: 'engage-writer', name: 'Keel Engage Writer', required: false,
+    purpose: 'Puts Viva Engage communities back when you approve a restore. Holds one permission only.' }),
 ]);
 
 export const CONNECTION_STATES = Object.freeze(['not-checked', 'not-created', 'waiting-for-consent', 'working',
@@ -152,7 +156,7 @@ async function plannedObservation({ tenantRef, readers, identities, now }) {
 
 /**
  * Records each Keel app's connection for the tenant. `apps` maps an identity
- * (collector, content-reader, restorer) to { appId, credentialRef, credentialExpiresAt }
+ * (collector, content-reader, restorer, engage-writer) to { appId, credentialRef, credentialExpiresAt }
  * or null when the host has no credential for it. `readers` are the setup host's
  * read adapters, or null when the tenant cannot be read. Writes an access_event only
  * when something changed. Runs in its own transaction on `client`.

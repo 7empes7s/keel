@@ -202,6 +202,33 @@ assert.deepEqual(historyCounts, {
 });
 assert.deepEqual(await getResourceCounts(client, { tenantRef: 'sha256:status-uncollected' }), { byType: [], asOf: null });
 
+// The portal passes a chain cache: a repeat check hashes only records added since the
+// last one, and a changed old record is still caught.
+const chainTenant = 'sha256:status-cached-chain';
+for (const step of [1, 2, 3]) {
+  await appendEvidence(superuser, { tenantRef: chainTenant, kind: 'test.step', subject: { step }, actor: 'status-test', eventSink: () => {} });
+}
+const chainCache = new Map();
+const walkStarts = [];
+const walkSpy = { query: (text, values) => {
+  if (typeof text === 'string' && text.includes('FROM evidence') && text.includes('ORDER BY seq') && !text.includes('xmin') && values?.length === 2) walkStarts.push(values[1]);
+  return client.query(text, values);
+} };
+assert.deepEqual(await getEvidenceIntegrity(walkSpy, { tenantRef: chainTenant, chainCache }), { ok: true, chainLength: 3 });
+await appendEvidence(superuser, { tenantRef: chainTenant, kind: 'test.step', subject: { step: 4 }, actor: 'status-test', eventSink: () => {} });
+assert.deepEqual(await getEvidenceIntegrity(walkSpy, { tenantRef: chainTenant, chainCache }), { ok: true, chainLength: 4 });
+assert.equal(walkStarts.length, 2, 'one walk per check');
+assert.equal(walkStarts[0], null, 'the first check walks the whole chain');
+const { rows: [verifiedTip] } = await client.query('SELECT max(seq)::text AS seq FROM evidence WHERE tenant_ref = $1 AND seq < (SELECT max(seq) FROM evidence WHERE tenant_ref = $1)', [chainTenant]);
+assert.equal(String(walkStarts[1]), verifiedTip.seq, 'a repeat check starts after the verified records');
+await superuser.query(
+  `UPDATE evidence SET subject = '{"step": 99}'::jsonb
+   WHERE seq = (SELECT min(seq) FROM evidence WHERE tenant_ref = $1)`,
+  [chainTenant],
+);
+assert.equal((await getEvidenceIntegrity(client, { tenantRef: chainTenant, chainCache })).ok, false, 'a changed old record fails the cached check');
+assert.equal(chainCache.has(chainTenant), false, 'a broken result is never cached');
+
 } finally {
   await client?.end();
   await superuser?.end();

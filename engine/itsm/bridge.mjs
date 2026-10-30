@@ -47,7 +47,7 @@ import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
 import {
-  ApprovalClosedError, ApprovalExpiredError, ApprovalInvalidatedError, ApprovalPlanChangedError, ApprovalScopeError,
+  ApprovalClosedError, ApprovalExpiredError, ApprovalInvalidatedError, ApprovalJobConflictError, ApprovalPlanChangedError, ApprovalScopeError,
   PromotionRefusedError, SelfApprovalError, approvalPlanDigest, approveRequest, rejectRequest, supersedeRequest,
 } from '../govern/approvals.mjs';
 import { getChangeIntent } from '../policy/changeIntent.mjs';
@@ -421,6 +421,7 @@ function normalizeEvent(event) {
  *   refused-invalidated   the request's ownership or requester grant changed (task-90)
  *   refused-expired       the request expired or was superseded
  *   refused-promotion     a restore's dry run cannot be promoted
+ *   refused-job-conflict  the request's job key is held by a job it did not mint
  *   ignored-status        a status that is not a decision
  *   not-decidable         the record mirrors an emergency change decided in KEEL
  *   unknown-record        no record with this reference
@@ -539,6 +540,7 @@ export async function receiveCallback(client, { tenantRef, adapter, event }) {
     if (error instanceof ApprovalInvalidatedError) return finish('refused-invalidated', { reason: error.reason });
     if (error instanceof ApprovalExpiredError) return finish('refused-expired');
     if (error instanceof PromotionRefusedError) return finish('refused-promotion', { reason: error.message });
+    if (error instanceof ApprovalJobConflictError) return finish('refused-job-conflict', { reason: error.message });
     throw error; // left 'applying': a redelivery resumes it
   }
   const request = await getRequest(client, record.approval_request_id);

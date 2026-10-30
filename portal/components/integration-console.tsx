@@ -271,8 +271,8 @@ function AddDestinationSheet({ busy, busyAction, errorRow, onClose, onSave }: {
             <label className="filter-field"><span>Address</span><input autoComplete="off" name="url" placeholder="https://hooks.contoso.com/keel" required type="url" /></label>
             <Segmented label="Sign-in" onChange={setAuth} options={AUTH_OPTIONS} value={auth} />
             {auth !== "none" ? <>
-              <label className="filter-field"><span>Name of the stored secret (never the secret itself)</span><input autoComplete="off" name="credentialRef" placeholder="env:KEEL_WEBHOOK_TOKEN" required /></label>
-              <p className="field-help">The name of a setting on the Keel server that holds the secret, written as env:NAME. Keel keeps the name only.</p>
+              <label className="filter-field"><span>Name of the stored secret (never the secret itself)</span><input autoComplete="off" name="credentialRef" placeholder="env:KEEL_INTEGRATION_SIEM_TOKEN" required /></label>
+              <p className="field-help">The name of a setting on the Keel server that holds the secret, written as env:KEEL_INTEGRATION_NAME. Keel keeps the name only.</p>
             </> : null}
           </>}
         </div>

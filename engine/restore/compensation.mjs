@@ -268,7 +268,51 @@ export function planCompensation({ restoreRef, entries, current }) {
     manual,
     notApplied,
     reconciled,
+    choices: [],
   };
+}
+
+export const UNDO_CHOICES = Object.freeze(['delete', 'skip']);
+
+/**
+ * The undo of a policy this restore created, when the policy is assigned now:
+ * deleting it would take its settings off every device or user it applies to,
+ * so the person planning the undo chooses (decided 2026-10-28):
+ *  - 'delete': remove its assignments, then delete it. The plan binds the
+ *    exact assignments read now, so a policy assigned differently by the time
+ *    the undo runs changes the plan digest and is refused, never deleted;
+ *  - 'skip': leave the policy and its assignments as they are.
+ * Until a choice is made the policy is held out of the plan's operations and
+ * listed in `choices` with choice null.
+ *
+ * @param assigned  Map naturalKey -> { ids, targets } of the delete-undos
+ *                  whose policy is assigned now (undoAssignedPolicy.mjs reads it).
+ * @param choices   { [naturalKey]: 'delete' | 'skip' } from the person.
+ */
+export function applyUndoChoices(plan, { assigned = new Map(), choices = {} } = {}) {
+  const operations = [];
+  const entries = [];
+  for (const op of plan.operations) {
+    const found = op.verb === 'delete' && op.undoes === 'create' ? assigned.get(op.naturalKey) : undefined;
+    if (!found) {
+      operations.push(op);
+      continue;
+    }
+    const picked = Object.hasOwn(choices ?? {}, op.naturalKey) ? choices[op.naturalKey] : null;
+    const choice = UNDO_CHOICES.includes(picked) ? picked : null;
+    const ids = [...found.ids].sort();
+    entries.push({
+      naturalKey: op.naturalKey, resourceType: op.resourceType, targetId: op.targetId,
+      assignmentCount: ids.length, assignmentIds: ids, targets: found.targets ?? [], choice,
+    });
+    if (choice === 'delete') operations.push({ ...op, removeAssignments: { ids } });
+  }
+  return { ...plan, operations, choices: entries };
+}
+
+/** The choices recorded in a stored plan, as applyUndoChoices takes them. */
+export function undoChoicesOf(plan) {
+  return Object.fromEntries((plan?.choices ?? []).filter((entry) => UNDO_CHOICES.includes(entry?.choice)).map((entry) => [entry.naturalKey, entry.choice]));
 }
 
 /** The part of a compensation plan an approval binds: folded into the plan
@@ -279,9 +323,14 @@ export function compensationDigestInput(plan) {
     operations: plan.operations.map((op) => ({
       naturalKey: op.naturalKey, resourceType: op.resourceType, verb: op.verb, targetId: op.targetId,
       payload: op.payload, compensates: op.compensates, revertedFields: op.revertedFields ?? null,
+      // Only when chosen, so a plan without a choice keeps the digest it had.
+      ...(op.removeAssignments ? { removeAssignments: op.removeAssignments.ids } : {}),
     })),
     conflicts: plan.conflicts.map((c) => ({ naturalKey: c.naturalKey, reason: c.reason })),
     irrecoverable: plan.irrecoverable.map((i) => ({ naturalKey: i.naturalKey, effect: i.effect, field: i.field })),
     manual: plan.manual.map((m) => m.naturalKey),
+    ...(plan.choices?.length ? {
+      choices: plan.choices.map((c) => ({ naturalKey: c.naturalKey, choice: c.choice, assignmentIds: c.assignmentIds, targets: c.targets })),
+    } : {}),
   };
 }

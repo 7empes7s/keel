@@ -12,7 +12,8 @@
  * stops using cannot linger as "needed".
  *
  * The content reader (the third app, which reads mail, files and Teams content) is
- * listed too, against its prerequisite in bootstrap/prerequisites.mjs. So are the admin
+ * listed too, against its prerequisite in bootstrap/prerequisites.mjs, and so is the
+ * Engage writer (the fourth, which only restores Viva Engage communities). So are the admin
  * roles each app needs (type 'admin-role'): Microsoft's admin consent never assigns a
  * role, so the table shows them beside the permissions with their own fix link.
  */
@@ -44,7 +45,7 @@ export const PERMISSION_SERVICES = Object.freeze([
   Object.freeze({ key: 'teams', label: 'Teams' }),
   Object.freeze({ key: 'planner', label: 'Planner and To Do' }),
   Object.freeze({ key: 'purview', label: 'Purview and security' }),
-  Object.freeze({ key: 'other', label: 'Rooms, printers and search' }),
+  Object.freeze({ key: 'other', label: 'Other Microsoft 365 services' }),
   Object.freeze({ key: 'reports', label: 'Audit logs, health and reports' }),
 ]);
 
@@ -76,6 +77,7 @@ const entry = (identity, api, name, service, kind, words, usedFor, need = 'requi
 const read = (name, service, kind, words, usedFor, need) => entry('collector', 'graph', name, service, kind, words, usedFor, need);
 const write = (name, service, kind, words, usedFor, need) => entry('restorer', 'graph', name, service, kind, words, usedFor, need);
 const content = (name, service, kind, words, usedFor, need) => entry('content-reader', 'graph', name, service, kind, words, usedFor, need);
+const engage = (name, service, kind, words, usedFor, need) => entry('engage-writer', 'graph', name, service, kind, words, usedFor, need);
 // An Entra directory role ('directory', matched on its template id) or an Intune role
 // ('intune', matched on its name).
 const role = (identity, api, name, service, words, usedFor) => Object.freeze({
@@ -92,6 +94,7 @@ export const KEEL_PERMISSIONS = Object.freeze([
   role('collector', 'directory', 'Compliance Administrator', 'purview', 'Compliance admin role', 'Back up retention, data loss prevention, label and eDiscovery settings'),
   read('User.Read.All', 'entra', 'Users', 'Read every user', 'Back up users and spot changes to them'),
   read('OrgContact.Read.All', 'entra', 'Users', 'Read organisation contacts', 'Back up external contacts in the directory'),
+  read('PeopleSettings.Read.All', 'entra', 'Users', 'Read profile card settings', 'Back up profile card fields, pronouns and item insights'),
   read('Group.Read.All', 'entra', 'Groups', 'Read groups', 'Back up groups and their settings'),
   read('GroupMember.Read.All', 'entra', 'Memberships', 'Read group members', 'Back up who is in each group and team'),
   read('RoleManagement.Read.Directory', 'entra', 'Roles', 'Read admin roles', 'Back up admin roles and who holds them'),
@@ -112,6 +115,7 @@ export const KEEL_PERMISSIONS = Object.freeze([
   read('AccessReview.Read.All', 'governance', 'Policies', 'Read access reviews', 'Back up access reviews'),
   read('EntitlementManagement.Read.All', 'governance', 'Policies', 'Read access packages', 'Back up access packages and catalogs'),
   read('LifecycleWorkflows.Read.All', 'governance', 'Policies', 'Read joiner and leaver workflows', 'Back up lifecycle workflows'),
+  read('PrivilegedAccess.Read.AzureADGroup', 'governance', 'Policies', 'Read groups under Privileged Identity Management', 'Back up which groups need approval or activation before someone joins them'),
   read('Agreement.Read.All', 'governance', 'Policies', 'Read terms of use', 'Back up terms of use'),
   read('DeviceManagementRBAC.Read.All', 'intune', 'Roles', 'Read Intune roles', 'Back up Intune roles and scope tags'),
   read('DeviceManagementManagedDevices.Read.All', 'intune', 'Devices', 'Read managed devices', 'Back up device categories and device settings'),
@@ -125,19 +129,27 @@ export const KEEL_PERMISSIONS = Object.freeze([
   read('Sites.FullControl.All', 'sharepoint', 'Settings', 'Full control of sites', 'Read which apps can reach each site; Microsoft offers no read-only permission for this'),
   read('SharePointTenantSettings.Read.All', 'sharepoint', 'Settings', 'Read SharePoint settings', 'Back up tenant-wide sharing and site settings'),
   read('TeamMember.Read.All', 'teams', 'Memberships', 'Read team members', 'Back up team owners and members'),
+  read('AppCatalog.Read.All', 'teams', 'Apps', 'Read the Teams app catalogue', 'Back up the Teams apps your organisation uploaded'),
   read('Team.ReadBasic.All', 'teams', 'Settings', 'List teams', 'Find every team'),
   read('TeamSettings.Read.All', 'teams', 'Settings', 'Read team settings', 'Back up each team\'s settings'),
   read('TeamworkTag.Read.All', 'teams', 'Settings', 'Read team tags', 'Back up tags in each team'),
+  read('OrgSettings-Todo.Read.All', 'planner', 'Settings', 'Read To Do settings', 'Back up whether To Do lists can be shared outside the organisation'),
   read('InformationProtectionPolicy.Read.All', 'purview', 'Policies', 'Read sensitivity labels', 'Back up sensitivity labels'),
+  read('CustomDetection.Read.All', 'purview', 'Policies', 'Read custom detection rules', 'Back up Defender custom detection rules'),
   read('SecurityEvents.Read.All', 'purview', 'Settings', 'Read security settings', 'Back up security settings'),
   read('IdentityRiskEvent.Read.All', 'purview', 'Settings', 'Read risky sign-in detections', 'Back up Identity Protection settings'),
+  read('Community.Read.All', 'other', 'Groups', 'Read Viva Engage communities', 'Back up Viva Engage communities'),
+  read('OrgSettings-Microsoft365Install.Read.All', 'other', 'Apps', 'Read Microsoft 365 Apps install options', 'Back up which Office apps people can install themselves'),
+  read('OrgSettings-AppsAndServices.Read.All', 'other', 'Apps', 'Read Office Store and trial settings', 'Back up whether people can use the Office Store and start trials'),
   read('Place.Read.All', 'other', 'Settings', 'Read rooms and buildings', 'Back up room lists'),
   read('Printer.Read.All', 'other', 'Settings', 'Read printers', 'Back up Universal Print settings'),
   read('ExternalConnection.Read.All', 'other', 'Settings', 'Read search connectors', 'Back up Microsoft Search connectors'),
+  read('OrgSettings-Forms.Read.All', 'other', 'Settings', 'Read Microsoft Forms settings', 'Back up tenant-wide Forms settings'),
   read('AuditLog.Read.All', 'reports', 'Settings', 'Read Entra audit and sign-in logs', 'Show who changed an Entra ID or Intune setting'),
   read('AuditLogsQuery.Read.All', 'reports', 'Settings', 'Search the Purview audit log', 'Show who changed Exchange, SharePoint and Teams settings (coming soon)', 'optional'),
   read('ServiceHealth.Read.All', 'reports', 'Settings', 'Read service health', 'Explain failures caused by a Microsoft outage'),
   read('Reports.Read.All', 'reports', 'Settings', 'Read usage reports', 'Show usage next to your settings'),
+  read('ReportSettings.Read.All', 'reports', 'Settings', 'Read the report privacy setting', 'Back up whether usage reports show real names'),
 
   // ---- Restore writer (restorer): changes settings, only after someone approves.
   role('restorer', 'directory', 'Exchange Administrator', 'exchange', 'Exchange admin role', 'Restore Exchange and email protection settings'),
@@ -153,6 +165,7 @@ export const KEEL_PERMISSIONS = Object.freeze([
   write('RoleEligibilitySchedule.ReadWrite.Directory', 'entra', 'Roles', 'Change who can activate a role', 'Restore role eligibility'),
   write('RoleManagementPolicy.ReadWrite.Directory', 'entra', 'Roles', 'Change role activation rules', 'Restore role activation settings'),
   write('RoleManagement.ReadWrite.Exchange', 'entra', 'Roles', 'Change Exchange app role scopes', 'Restore Exchange role scopes'),
+  write('RoleManagement.ReadWrite.Defender', 'entra', 'Roles', 'Change Defender admin roles', 'Restore custom Defender roles'),
   write('Application.ReadWrite.All', 'entra', 'Apps', 'Change app registrations', 'Restore apps and enterprise apps'),
   write('DelegatedPermissionGrant.ReadWrite.All', 'entra', 'Apps', 'Change user consents to apps', 'Restore app consents'),
   write('Policy.ReadWrite.ConditionalAccess', 'entra', 'Policies', 'Change sign-in rules', 'Restore Conditional Access policies and named locations'),
@@ -162,7 +175,6 @@ export const KEEL_PERMISSIONS = Object.freeze([
   write('Policy.ReadWrite.Authorization', 'entra', 'Policies', 'Change what users may do', 'Restore user and guest permissions'),
   write('Policy.ReadWrite.CrossTenantAccess', 'entra', 'Policies', 'Change cross-tenant access', 'Restore access with other tenants'),
   write('Policy.ReadWrite.ExternalIdentities', 'entra', 'Policies', 'Change guest settings', 'Restore external collaboration settings'),
-  write('Policy.ReadWrite.B2BManagementPolicy', 'entra', 'Policies', 'Change guest invite rules', 'Restore who may invite guests'),
   write('Policy.ReadWrite.PermissionGrant', 'entra', 'Policies', 'Change app consent rules', 'Restore what users may consent to'),
   write('Policy.ReadWrite.ConsentRequest', 'entra', 'Policies', 'Change admin consent requests', 'Restore the consent request workflow'),
   write('Policy.ReadWrite.ApplicationConfiguration', 'entra', 'Policies', 'Change app sign-in policies', 'Restore token and app management policies'),
@@ -184,6 +196,11 @@ export const KEEL_PERMISSIONS = Object.freeze([
   write('Sites.FullControl.All', 'sharepoint', 'Settings', 'Full control of sites', 'Restore site settings and which apps can reach a site'),
   entry('restorer', 'sharepoint', 'Sites.FullControl.All', 'sharepoint', 'Settings', 'Full control of sites (SharePoint)', 'Restore site groups and sharing through SharePoint'),
   write('SharePointTenantSettings.ReadWrite.All', 'sharepoint', 'Settings', 'Change SharePoint settings', 'Restore tenant-wide sharing settings'),
+  write('PeopleSettings.ReadWrite.All', 'entra', 'Users', 'Change profile card settings', 'Restore the pronouns setting'),
+  write('ReportSettings.ReadWrite.All', 'reports', 'Settings', 'Change the report privacy setting', 'Restore whether usage reports hide real names'),
+  write('OrgSettings-Forms.ReadWrite.All', 'other', 'Settings', 'Change Microsoft Forms settings', 'Restore tenant-wide Forms settings'),
+  write('OrgSettings-Microsoft365Install.ReadWrite.All', 'other', 'Apps', 'Change Microsoft 365 Apps install options', 'Restore which Office apps people can install themselves'),
+  write('OrgSettings-AppsAndServices.ReadWrite.All', 'other', 'Apps', 'Change Office Store and trial settings', 'Restore whether people can start app trials'),
   write('TeamMember.ReadWrite.All', 'teams', 'Memberships', 'Change team members', 'Restore team owners and members'),
   write('TeamSettings.ReadWrite.All', 'teams', 'Settings', 'Change team settings', 'Restore each team\'s settings'),
 
@@ -206,6 +223,11 @@ export const KEEL_PERMISSIONS = Object.freeze([
   content('ChannelSettings.Read.All', 'teams', 'Settings', 'Read channel settings', 'Back up each channel\'s settings'),
   content('ChannelMessage.Read.All', 'teams', 'Content', 'Read channel messages', 'Back up Teams channel messages (coming soon: Microsoft must approve this permission for Keel first)', 'optional'),
   content('Tasks.Read.All', 'planner', 'Content', 'Read tasks', 'Back up Planner plans and tasks'),
+
+  // ---- Engage writer (issue #681): Viva Engage community restores only. Viva Engage
+  // refuses the restore writer's sign-in once it holds many permissions, so this small
+  // app holds this one permission and nothing else.
+  engage('Community.ReadWrite.All', 'other', 'Groups', 'Change Viva Engage communities', 'Restore the name, description and privacy of Viva Engage communities'),
 ]);
 
 export function permissionsFor(identity) {

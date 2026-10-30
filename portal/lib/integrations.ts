@@ -116,7 +116,7 @@ export function guardedIntegrationRegister(deps: GuardDeps = {}) {
         });
         return Response.json({ destination }, { status: 201, headers: NO_STORE });
       } catch (error) {
-        if (error instanceof Error && /credential reference/.test(error.message)) {
+        if (error instanceof Error && /credential reference|webhook destination config|cef destination config/.test(error.message)) {
           return Response.json({ error: error.message }, { status: 400, headers: NO_STORE });
         }
         throw error;

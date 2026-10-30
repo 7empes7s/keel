@@ -85,8 +85,8 @@ const REGISTERED = Object.freeze({
   directoryRoleAccessReviewPolicy: ['update'],
   multiTenantOrganizationIdentitySyncPolicyTemplate: ['update'],
   multiTenantOrganizationPartnerConfigurationTemplate: ['update'],
-  // Restore gaps, batch 3: guest and app consent settings.
-  b2bManagementPolicy: ['update'],
+  // Restore gaps, batch 3: guest and app consent settings. The guest
+  // invitation domain lists (b2bManagementPolicy) are trust fields, never written.
   permissionGrantPreApprovalPolicy: ['create', 'update'],
   externalDomainFederation: ['update'],
   // Wave 2 IDO: Intune app protection and configuration, filters, scope tags,
@@ -126,6 +126,8 @@ const REGISTERED = Object.freeze({
   // Restore gaps, batch 9.
   intuneBrandingProfile: ['create', 'update'],
   exchangeCustomAppScope: ['create', 'update'],
+  // Restore gaps, batch 21.
+  defenderRoleDefinition: ['create', 'update'],
   // Restore gaps, batch 10.
   userExperienceAnalyticsBaseline: ['create', 'update'],
   cartToClassAssociation: ['create', 'update'],
@@ -139,11 +141,21 @@ const REGISTERED = Object.freeze({
   microsoftTunnelHealthThreshold: ['update'],
   onPremisesConditionalAccessSettings: ['update'],
   sharepointSettings: ['update'],
+  // Restore gaps, batch 20: admin center org settings and Viva Engage communities.
+  formsSettings: ['update'],
+  microsoft365AppsInstallationOptions: ['update'],
+  appsAndServicesSettings: ['update'],
+  adminReportSettings: ['update'],
+  pronounsSettings: ['update'],
+  engageCommunity: ['update'],
   // Restore gaps, batch 12.
   windowsManagedAppProtection: ['create', 'update'],
   iosLobAppProvisioningConfiguration: ['create', 'update'],
   // Restore gaps, batch 13.
-  mobileAppRelationship: ['create', 'update'],
+  // Its delete is only the undo of a link a restore created.
+  mobileAppRelationship: ['create', 'update', 'delete'],
+  // Restore gaps, batch 18.
+  mobileApp: ['create', 'update'],
   // Wave 2 ENTRA: directory policies and delegated consents.
   tokenLifetimePolicy: ['create', 'update'],
   tokenIssuancePolicy: ['create', 'update'],
@@ -482,9 +494,10 @@ test('applyPatches refuses an unsupported operation before any writer call', asy
 // ---------------------------------------------------------------------------
 
 test('namedLocation create: real writer.write POST, verified by re-read hash match', async () => {
-  const desired = { displayName: 'HQ Trusted Range', isTrusted: true, countriesAndRegions: ['US'] };
+  // Untrusted: a restore never creates a trusted location (namedLocationTrust.test.mjs).
+  const desired = { displayName: 'HQ Range', isTrusted: false, countriesAndRegions: ['US'] };
   const writer = fakeWriter({ writeBody: { id: 'nl-new-1' } });
-  const resource = { naturalKey: 'namedLocation:HQ Trusted Range', resourceType: 'namedLocation', payload: desired, references: [] };
+  const resource = { naturalKey: 'namedLocation:HQ Range', resourceType: 'namedLocation', payload: desired, references: [] };
   const result = await applyWave(writer, governor(), [resource], { targetTenant: 'target', mode: 'enforce' });
   assert.equal(result.failed.length, 0, JSON.stringify(result.failed));
   assert.equal(result.applied.length, 1);
@@ -495,16 +508,21 @@ test('namedLocation create: real writer.write POST, verified by re-read hash mat
 });
 
 test('namedLocation update: real writer.write PATCH, verified by re-read hash match', async () => {
+  // A rename: what the location trusts matches live, and is never sent
+  // (namedLocationTrust.test.mjs).
   const desired = { displayName: 'HQ Trusted Range', isTrusted: true };
   const writer = fakeWriter({ readBody: { ...desired, id: 'nl-1' } });
-  const resource = { naturalKey: 'namedLocation:HQ', resourceType: 'namedLocation', targetId: 'nl-1', payload: desired, verb: 'update', references: [] };
+  const resource = {
+    naturalKey: 'namedLocation:HQ', resourceType: 'namedLocation', targetId: 'nl-1', payload: desired, verb: 'update', references: [],
+    live: { state: 'present', targetId: 'nl-1', payload: { id: 'nl-1', displayName: 'HQ', isTrusted: true } },
+  };
   const result = await applyWave(writer, governor(), [resource], { targetTenant: 'target', mode: 'enforce' });
   assert.equal(result.failed.length, 0, JSON.stringify(result.failed));
   assert.equal(result.applied.length, 1);
   const writeCall = writer.calls.find((c) => c.kind === 'write');
   assert.equal(writeCall.path, '/identity/conditionalAccess/namedLocations/nl-1');
   assert.equal(writeCall.opts.method, 'PATCH');
-  assert.deepEqual(writeCall.opts.body, desired);
+  assert.deepEqual(writeCall.opts.body, { displayName: 'HQ Trusted Range' });
 });
 
 test('namedLocation delete: real writer.write DELETE, verified absent by re-read', async () => {

@@ -74,6 +74,9 @@ export const ID_KEY_TYPES = new Set([
   'externalOriginResourceConnector', 'lifecyclePolicy', 'roleManagementCustomExtension', 'privilegedAccessGroupResource',
   'crossTenantM365Capability', 'entitlementManagementRoleAssignment', 'deviceTemplate', 'securityZone', 'sharedEmailDomain',
   'schemaExtension',
+  // Remaining kinds, batch 9: lists that only lacked a read permission, keyed by
+  // id (names are unmeasured; two communities or rules can share a name).
+  'defenderDetectionRule', 'teamsCatalogApp', 'engageCommunity',
 ]);
 
 // Tenant singletons: exactly one object per tenant, so the type name is the
@@ -100,6 +103,9 @@ export const CONSTANT_KEY_TYPES = new Set([
   'deviceManagementSettings', 'androidForWorkSettings', 'symantecCodeSigningCertificate',
   // Remaining kinds, batch 7: Microsoft 365 tenant singletons.
   'sharepointSettings', 'itemInsightsSettings',
+  // Remaining kinds, batch 9: Microsoft 365 admin center org settings.
+  'formsSettings', 'todoSettings', 'microsoft365AppsInstallationOptions', 'appsAndServicesSettings',
+  'adminReportSettings', 'pronounsSettings',
 ]);
 
 const PARTNER_KEY_TYPES = new Set(['crossTenantAccessPolicyPartner', 'crossTenantIdentitySyncPolicyPartner']);

@@ -110,11 +110,13 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     isServiceDefault: false,
     inboundTrust: { isMfaAccepted: true, isCompliantDeviceAccepted: false, isHybridAzureADJoinedDeviceAccepted: false },
     b2bCollaborationInbound: { usersAndGroups: { accessType: 'allowed', targets: [{ target: 'AllUsers', targetType: 'user' }] } },
+    tenantRestrictions: { usersAndGroups: { accessType: 'blocked', targets: [{ target: 'AllUsers', targetType: 'user' }] } },
   },
   crossTenantAccessPolicyPartner: {
     tenantId: 'fixture-partner-tenant',
     inboundTrust: { isMfaAccepted: true, isCompliantDeviceAccepted: false, isHybridAzureADJoinedDeviceAccepted: false },
     b2bCollaborationInbound: { usersAndGroups: { accessType: 'allowed', targets: [{ target: 'AllUsers', targetType: 'user' }] } },
+    tenantRestrictions: { usersAndGroups: { accessType: 'blocked', targets: [{ target: 'AllUsers', targetType: 'user' }] } },
   },
   adminConsentRequestPolicy: {
     isEnabled: true, notifyReviewers: true, remindersEnabled: true, requestDurationInDays: 30,
@@ -296,6 +298,11 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     type: 'RecipientScope', displayName: 'Fixture app scope',
     customAttributes: { Exclusive: false, RecipientFilter: "PrimarySmtpAddress -like 'keel-rt-fixture*'" },
   },
+  // Restore gaps, batch 21: a custom Defender XDR role with one read permission.
+  defenderRoleDefinition: {
+    displayName: 'Fixture Defender role', description: 'Fixture', isBuiltIn: false,
+    rolePermissions: [{ allowedResourceActions: ['microsoft.xdr/secops/securitydata/read'] }],
+  },
   // Restore gaps, batch 10.
   userExperienceAnalyticsBaseline: { displayName: 'Fixture baseline', isBuiltIn: false },
   cartToClassAssociation: { displayName: 'Fixture cart', description: 'Fixture', deviceIds: [], classroomIds: [] },
@@ -331,14 +338,35 @@ export const FIXTURE_PAYLOADS = Object.freeze({
   microsoftTunnelHealthThreshold: { healthyThreshold: 70, unhealthyThreshold: 90 },
   onPremisesConditionalAccessSettings: { enabled: false, includedGroups: [], excludedGroups: [], overrideDefaultRule: false },
   sharepointSettings: { isLoopEnabled: true, idleSessionSignOut: { isEnabled: false, warnAfterInSeconds: 0, signOutAfterInSeconds: 0 }, siteCreationDefaultStorageLimitInMB: 26214400 },
+  // Restore gaps, batch 20: admin center org settings and a Viva Engage community.
+  formsSettings: {
+    settings: {
+      isBingImageSearchEnabled: true, isExternalSendFormEnabled: false, isExternalShareCollaborationEnabled: false,
+      isExternalShareResultEnabled: false, isExternalShareTemplateEnabled: false, isInOrgFormsPhishingScanEnabled: true,
+      isRecordIdentityByDefaultEnabled: true,
+    },
+  },
+  microsoft365AppsInstallationOptions: {
+    updateChannel: 'current',
+    appsForWindows: { isMicrosoft365AppsEnabled: true, isProjectEnabled: true, isSkypeForBusinessEnabled: false, isVisioEnabled: true },
+    appsForMac: { isMicrosoft365AppsEnabled: true, isSkypeForBusinessEnabled: false },
+  },
+  appsAndServicesSettings: { settings: { isOfficeStoreEnabled: false, isAppAndServicesTrialEnabled: true } },
+  adminReportSettings: { displayConcealedNames: true },
+  pronounsSettings: { isEnabledInOrganization: true },
+  engageCommunity: { id: 'fixture-community', displayName: 'Fixture community', description: 'Fixture', privacy: 'private', groupId: 'fixture-group' },
+  // Restore gaps, batch 18: a web link app, the kind recreated in full.
+  mobileApp: {
+    '@odata.type': '#microsoft.graph.webApp', displayName: 'Fixture web link', description: 'Fixture', publisher: 'Fixture',
+    appUrl: 'https://example.com/', useManagedBrowser: false, isFeatured: false, roleScopeTagIds: ['0'],
+  },
   // Restore gaps, batch 2: Entra ID tenant singletons.
   externalIdentitiesPolicy: { allowExternalIdentitiesToLeave: true, allowDeletedIdentitiesDataRemoval: false },
   accessReviewPolicy: { isGroupOwnerManagementEnabled: true },
   directoryRoleAccessReviewPolicy: { settings: { mailNotificationsEnabled: true, reminderNotificationsEnabled: true, justificationRequiredOnApproval: true, defaultDecisionEnabled: false, defaultDecision: 'None', instanceDurationInDays: 14, recommendationsEnabled: true } },
   multiTenantOrganizationIdentitySyncPolicyTemplate: { templateApplicationLevel: 'newPartners', userSyncInbound: { isSyncAllowed: true } },
-  multiTenantOrganizationPartnerConfigurationTemplate: { templateApplicationLevel: 'newPartners', automaticUserConsentSettings: { inboundAllowed: true, outboundAllowed: true } },
+  multiTenantOrganizationPartnerConfigurationTemplate: { templateApplicationLevel: 'newPartners' },
   // Restore gaps, batch 3: guest and app consent settings.
-  b2bManagementPolicy: { displayName: 'B2B management policy', definition: ['{"B2BManagementPolicy":{"InvitationsAllowedAndBlockedDomainsPolicy":{"BlockedDomains":["keel-rt-blocked.example"]}}}'], isOrganizationDefault: true },
   permissionGrantPreApprovalPolicy: { conditions: [{ scopeType: 'chat', sensitivityLabels: { '@odata.type': '#microsoft.graph.allScopeSensitivityLabels', labelKind: 'all' }, permissions: { '@odata.type': '#microsoft.graph.enumeratedPreApprovedPermissions', permissionKind: 'enumerated', permissionType: 'application', resourceApplicationId: '00000003-0000-0000-c000-000000000000', permissionIds: ['00000000-0000-0000-0000-000000000001'] } }] },
   externalDomainFederation: { displayName: 'Fixture federation', issuerUri: 'https://keel-rt-fed.example/issuer', passiveSignInUri: 'https://keel-rt-fed.example/sso', preferredAuthenticationProtocol: 'saml', signingCertificate: 'MIIFixture' },
 });
@@ -358,9 +386,9 @@ const FIXTURE_DRIFT = Object.freeze({
   }),
   identitySecurityDefaultsEnforcementPolicy: () => ({ isEnabled: true }),
   crossTenantAccessPolicy: () => ({ allowedCloudEndpoints: ['microsoftonline.us'] }),
-  // Inbound trust is never written, so the cross-tenant settings drift B2B collaboration.
-  crossTenantAccessPolicyConfigurationDefault: (payload) => ({ b2bCollaborationInbound: { usersAndGroups: { ...payload.b2bCollaborationInbound.usersAndGroups, accessType: 'blocked' } } }),
-  crossTenantAccessPolicyPartner: (payload) => ({ b2bCollaborationInbound: { usersAndGroups: { ...payload.b2bCollaborationInbound.usersAndGroups, accessType: 'blocked' } } }),
+  // Inbound trust, consent and the B2B lists are never written, so the cross-tenant settings drift tenant restrictions.
+  crossTenantAccessPolicyConfigurationDefault: (payload) => ({ tenantRestrictions: { usersAndGroups: { ...payload.tenantRestrictions.usersAndGroups, accessType: 'allowed' } } }),
+  crossTenantAccessPolicyPartner: (payload) => ({ tenantRestrictions: { usersAndGroups: { ...payload.tenantRestrictions.usersAndGroups, accessType: 'allowed' } } }),
   adminConsentRequestPolicy: () => ({ isEnabled: false }),
   // Issue #156: the restore reverts defaced text, a shortened group lifetime
   // (a longer one is restored; a shorter one would be refused) and an enabled
@@ -398,14 +426,20 @@ const FIXTURE_DRIFT = Object.freeze({
   microsoftTunnelHealthThreshold: () => ({ healthyThreshold: 60 }),
   onPremisesConditionalAccessSettings: () => ({ overrideDefaultRule: true }),
   sharepointSettings: () => ({ isLoopEnabled: false }),
+  // Restore gaps, batch 20: each drifts one setting its restore puts back (never a loosening one).
+  formsSettings: (payload) => ({ settings: { ...payload.settings, isBingImageSearchEnabled: false } }),
+  microsoft365AppsInstallationOptions: () => ({ updateChannel: 'monthlyEnterprise' }),
+  appsAndServicesSettings: (payload) => ({ settings: { ...payload.settings, isAppAndServicesTrialEnabled: false } }),
+  adminReportSettings: () => ({ displayConcealedNames: false }),
+  pronounsSettings: () => ({ isEnabledInOrganization: false }),
+  engageCommunity: () => ({ description: 'Drifted' }),
   // Restore gaps, batch 2: each singleton drifts one writable setting.
   externalIdentitiesPolicy: () => ({ allowExternalIdentitiesToLeave: false }),
   accessReviewPolicy: () => ({ isGroupOwnerManagementEnabled: false }),
   directoryRoleAccessReviewPolicy: (payload) => ({ settings: { ...payload.settings, instanceDurationInDays: 3 } }),
   multiTenantOrganizationIdentitySyncPolicyTemplate: () => ({ userSyncInbound: { isSyncAllowed: false } }),
-  multiTenantOrganizationPartnerConfigurationTemplate: () => ({ automaticUserConsentSettings: { inboundAllowed: false, outboundAllowed: false } }),
+  multiTenantOrganizationPartnerConfigurationTemplate: () => ({ templateApplicationLevel: 'none' }),
   // Restore gaps, batch 3: each drifts the setting its restore puts back.
-  b2bManagementPolicy: () => ({ definition: ['{"B2BManagementPolicy":{"InvitationsAllowedAndBlockedDomainsPolicy":{"BlockedDomains":[]}}}'] }),
   permissionGrantPreApprovalPolicy: (payload) => ({ conditions: payload.conditions.map((condition) => ({ ...condition, scopeType: 'group' })) }),
   // A federation's sign-in endpoints are never restored, so its name drifts.
   externalDomainFederation: () => ({ displayName: 'Fixture federation (drifted)' }),
@@ -540,6 +574,19 @@ export function fakeGraph() {
         objects.set(base, { value: kept });
         return { ok: true, status: 204, body: null };
       }
+      // Issue #642: an app's links are set whole through the app's updateRelationships.
+      const linksOf = /^\/deviceAppManagement\/mobileApps\/([^/]+)\/updateRelationships$/.exec(path);
+      if (linksOf && method === 'POST') {
+        const appId = decodeURIComponent(linksOf[1]);
+        for (const [key, object] of [...objects.entries()]) {
+          if (key.startsWith('/deviceAppManagement/mobileAppRelationships/') && object.sourceId === appId && object.targetType !== 'parent') objects.delete(key);
+        }
+        for (const link of body.relationships ?? []) {
+          const id = `${link.targetId}_${appId}`;
+          objects.set(`/deviceAppManagement/mobileAppRelationships/${id}`, { ...link, id, sourceId: appId, targetType: 'child' });
+        }
+        return { ok: true, status: 204, body: null };
+      }
       const actions = /^(\/deviceManagement\/deviceCompliancePolicies\/[^/]+)\/scheduleActionsForRules$/.exec(path);
       if (actions && method === 'POST') {
         if (!objects.has(actions[1])) return { ok: false, status: 404, body: { error: { code: 'ResourceNotFound' } } };
@@ -626,9 +673,11 @@ export function fakeGraph() {
           .map(([, object]) => object);
         return { ok: true, status: 200, body: { value } };
       }
-      if (/^\/deviceAppManagement\/mobileApps\/[^/]+$/.test(path)) return { ok: true, status: 200, body: { id: decodeURIComponent(path.split('/').pop()) } };
+      // Batch 18: an app KEEL wrote reads back as written.
+      if (/^\/deviceAppManagement\/mobileApps\/[^/]+$/.test(path) && !objects.has(path)) return { ok: true, status: 200, body: { id: decodeURIComponent(path.split('/').pop()) } };
       // Restore gaps batch 12: the imported ADMX files are listed before an upload.
-      if (path === '/deviceManagement/groupPolicyUploadedDefinitionFiles') {
+      // and batch 21: the Defender roles are listed before a create.
+      if (path === '/deviceManagement/groupPolicyUploadedDefinitionFiles' || path === '/roleManagement/defender/roleDefinitions') {
         const value = [...objects.entries()].filter(([key]) => key.startsWith(`${path}/`) && !key.slice(path.length + 1).includes('/')).map(([, object]) => object);
         return { ok: true, status: 200, body: { value } };
       }
@@ -656,6 +705,9 @@ export function fakeGraph() {
 }
 
 const governor = { async acquire() {}, observeRetryAfter() {} };
+
+// Types whose delete is only the undo of a create a restore made (an app's link).
+const UNDO_ONLY_DELETES = new Set(['mobileAppRelationship']);
 
 function fixtureFor(resourceType, operation, graph) {
   const collection = graphPathFor(resourceType);
@@ -686,7 +738,9 @@ function fixtureFor(resourceType, operation, graph) {
   }
   if (operation === 'delete') {
     graph.objects.set(objectPath, { ...payload, id: existingId });
-    return { ...base, verb: 'delete', payload: null, targetId: existingId, live: { targetId: existingId, payload: { ...payload, id: existingId } } };
+    // A type deleted only as the undo of a create is driven as that undo.
+    const undo = UNDO_ONLY_DELETES.has(resourceType) ? { undoes: 'create', compensates: ['fixture-entry'] } : {};
+    return { ...base, verb: 'delete', payload: null, targetId: existingId, live: { targetId: existingId, payload: { ...payload, id: existingId } }, ...undo };
   }
   if (operation === 'restore-soft-deleted') {
     // Roadmap task-152: a deleted Conditional Access policy comes back in the

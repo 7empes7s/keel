@@ -128,7 +128,7 @@ test('the policy family ledger lists every policy type; the remainder stays rese
       'appManagementPolicy', 'multiTenantOrganization', 'externalIdentitiesPolicy',
       'multiTenantOrganizationIdentitySyncPolicyTemplate', 'multiTenantOrganizationPartnerConfigurationTemplate',
       // Restore gaps batch 3.
-      'b2bManagementPolicy', 'permissionGrantPreApprovalPolicy', 'externalDomainFederation',
+      'permissionGrantPreApprovalPolicy', 'externalDomainFederation',
     ].includes(family.resourceType)) {
       assert.equal(family.status, 'qualified-subset', family.resourceType);
       assert.ok(family.supportedOperations.length > 0, family.resourceType);
@@ -372,8 +372,9 @@ test('the policy batch runner drives the subset through applyWave and prints the
   // 23 before the per-partner cross-tenant sync settings,
   // 24 before remaining kinds batch 4 added 7 Entra ID tenant settings (manual, no writer),
   // 31 before remaining kinds batch 7 added the attack simulations and their automations,
-  // 33 before batch 8 added sign-in identifiers, lifecycle policies and default cross-tenant sharing.
-  assert.equal(report.policyLedger.families.length, 36);
+  // 33 before batch 8 added sign-in identifiers, lifecycle policies and default cross-tenant sharing,
+  // 36 before batch 9 added Defender custom detection rules.
+  assert.equal(report.policyLedger.families.length, 37);
 
   const lines = [];
   const out = { log: (line) => lines.push(line), error: (line) => lines.push(`ERR ${line}`) };

@@ -28,6 +28,7 @@ import { collectPurview, recordPurviewRun } from './purview.mjs';
 import { collectPurviewExtended, recordPurviewExtendedRun } from './purviewExtended.mjs';
 import { collectRetentionDlp, recordRetentionDlpRun } from './purviewRetentionDlp.mjs';
 import { SHAREPOINT_WORKLOAD, collectSharePointSites, recordSharePointRun } from './sharepoint.mjs';
+import { SHAREPOINT_STRUCTURE_WORKLOAD, collectSharePointStructure, recordSharePointStructureRun } from './sharepointStructure.mjs';
 import { collectTeams, recordTeamsRun } from './teams.mjs';
 import { collectTeamsExtended, recordTeamsExtendedRun } from './teamsExtended.mjs';
 import { collectTeamsPolicies, recordTeamsPolicyRun } from './teamsPolicies.mjs';
@@ -74,6 +75,10 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
       ...base, sleep, transport, tenantHost: scope.sharepointHost,
       // Only its own PnP config can connect; the Graph tenant config has no certificate.
       powershell: scope.powershellConfigs?.sharepoint ? powershell : null }) },
+  // sharepointStructure.mjs: templates only for the sites the scope file names.
+  { workload: SHAREPOINT_STRUCTURE_WORKLOAD, powershellFamily: 'sharepoint', record: recordSharePointStructureRun,
+    collect: (client, { base, powershell, scope }) => collectSharePointStructure(client, {
+      ...base, powershell, sites: scope.sharepointStructureSites ?? [], tenantHost: scope.sharepointHost ?? null }) },
   // teams.mjs
   { workload: 'teams-settings', powershellFamily: null, record: recordTeamsRun,
     collect: (client, { base, transport, config, sleep }) => collectTeams(client, {

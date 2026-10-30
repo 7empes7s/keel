@@ -1,4 +1,5 @@
 import { verifyAnchoredChain } from "../../engine/govern/anchor.mjs";
+import { evidenceChainCache } from "@/lib/evidence-chain-cache";
 import { guarded, InvalidActionRequest, type GuardDeps } from "@/lib/action";
 
 const NO_STORE = { "cache-control": "no-store" };
@@ -60,9 +61,14 @@ export function guardedEvidenceList(deps: GuardDeps = {}) {
   }, deps);
 }
 
+// Security audit run 2, finding 10: the Activity page checks the chain on every load, so
+// it uses the shared cache (lib/evidence-chain-cache.ts) and hashes only new records.
+const chainCache = evidenceChainCache;
+
 export function guardedEvidenceVerify(deps: GuardDeps = {},
-  anchorOptions: (tenantRef: string) => Promise<Record<string, unknown>> = async () => ({})) {
+  anchorOptions: (tenantRef: string) => Promise<Record<string, unknown>> = async () => ({}),
+  cache: Map<string, unknown> = chainCache) {
   return guarded({ action: "evidence:verify", capability: "read" }, async ({ client, tenantRef }) => {
-    return Response.json(await verifyAnchoredChain(client, { ...await anchorOptions(tenantRef), tenantRef, authorize: async () => true }), { headers: NO_STORE });
+    return Response.json(await verifyAnchoredChain(client, { ...await anchorOptions(tenantRef), tenantRef, chainCache: cache, authorize: async () => true }), { headers: NO_STORE });
   }, deps);
 }

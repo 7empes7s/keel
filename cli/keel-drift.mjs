@@ -20,8 +20,10 @@ import {
 import { getActiveBaseline, listOpenDrift, markSameContentDrift, recordDrift } from '../engine/store/governance.mjs';
 import { diffSnapshots } from '../engine/govern/diffSnapshots.mjs';
 import { isSuppressed } from '../engine/govern/disposition.mjs';
+import { IGNORE_STILL_COUNTS_SQL } from '../engine/store/openDrift.mjs';
 import { syncDriftAlerts } from '../engine/notify/alerts.mjs';
 import { runComplianceChecks } from '../engine/benchmarks/runChecks.mjs';
+import { parseCliArgs } from './args.mjs';
 
 function usage() {
   console.log(`usage:
@@ -30,9 +32,21 @@ function usage() {
   keel-drift.mjs show <driftId> [--db-url $KEEL_DB_URL]`);
 }
 
+const ARGS = {
+  name: 'keel-drift',
+  strings: ['config', 'db-url', 'snapshot-id', 'tenant-ref'],
+  booleans: ['help'],
+  short: { h: 'help' },
+  positionals: 2,
+};
+let parsed;
+function cliArgs() {
+  parsed ??= parseCliArgs(process.argv.slice(2), ARGS);
+  return parsed;
+}
+
 function arg(name, fallback) {
-  const index = process.argv.indexOf(`--${name}`);
-  return index > -1 ? process.argv[index + 1] : fallback;
+  return cliArgs().values[name] ?? fallback;
 }
 
 function tenantRefFor(config) {
@@ -67,7 +81,8 @@ async function activeIgnoreDispositions(client, tenantRef) {
      JOIN drift d ON d.id = p.drift_id
      WHERE d.tenant_ref = $1
        AND p.action = 'ignore'
-       AND p.expires_at > now()`,
+       AND p.expires_at > now()
+       AND ${IGNORE_STILL_COUNTS_SQL}`,
     [tenantRef],
   );
   return rows.map((row) => ({
@@ -188,7 +203,12 @@ async function detect() {
     // Only types read in full are compared on both sides (issue #447): a failed
     // type has no rows and a partial type has only some, so neither can show
     // as removed or added.
-    const covered = (rows) => (coveredTypes ? rows.filter((row) => coveredTypes.includes(row.resource_type)) : rows);
+    // Issue #666: a kind the baseline left out (Microsoft kept failing on it when
+    // it was captured) holds nothing in the baseline. Its items are not "added"
+    // when Microsoft answers again: an added drift would plan their deletion.
+    const leftOut = new Set((baseline.observation_scope?.leftOut ?? []).map((item) => item?.type).filter(Boolean));
+    const covered = (rows) => rows.filter((row) => !leftOut.has(row.resource_type)
+      && (!coveredTypes || coveredTypes.includes(row.resource_type)));
     const drift = diffSnapshots(covered(before), covered(after));
     const beforeByNaturalKey = new Map(before.map((row) => [row.natural_key, row]));
     const afterByNaturalKey = new Map(after.map((row) => [row.natural_key, row]));
@@ -271,12 +291,12 @@ async function show(driftId) {
 }
 
 async function main() {
-  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  if (arg('help')) {
     usage();
     return;
   }
 
-  const [command, driftId] = process.argv.slice(2);
+  const [command, driftId] = cliArgs().positionals;
   if (command === 'detect') return detect();
   if (command === 'list') return list();
   if (command === 'show') return show(driftId);

@@ -34,6 +34,8 @@ const M365 = 'Microsoft 365 admin center';
 const EXCHANGE = 'Exchange admin center';
 const DEFENDER = 'Microsoft Defender portal';
 const SHAREPOINT = 'SharePoint admin center';
+const TEAMS = 'Teams admin center';
+const ENGAGE = 'Viva Engage';
 const at = (center, ...steps) => [center, ...steps].join(' > ');
 
 /**
@@ -84,7 +86,7 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   externalDomainFederation: at(ENTRA, 'External Identities', 'All identity providers'),
   // These have no page in the admin center; Microsoft Graph or PowerShell is
   // the only way to manage them.
-  servicePrincipalCreationPolicy: 'Microsoft Graph: /policies/servicePrincipalCreationPolicies (beta, no admin center page)',
+  servicePrincipalCreationPolicy: 'Microsoft Graph: /policies/servicePrincipalCreationPolicies (beta, signed in with an admin role; no admin center page)',
   permissionGrantPreApprovalPolicy: 'Microsoft Graph: /policies/permissionGrantPreApprovalPolicies (beta, no admin center page)',
   directoryRoleAccessReviewPolicy: 'Microsoft Graph: /policies/directoryRoleAccessReviewPolicy (beta, no admin center page)',
   multiTenantOrganizationIdentitySyncPolicyTemplate: 'Microsoft Graph: /policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization (no admin center page)',
@@ -96,7 +98,7 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   exchangeCustomAppScope: 'Exchange Online PowerShell: New-ManagementScope (no admin center page)',
   defenderRoleDefinition: at(DEFENDER, 'System', 'Permissions', 'Microsoft Defender XDR', 'Roles'),
   defenderRoleAssignment: at(DEFENDER, 'System', 'Permissions', 'Microsoft Defender XDR', 'Roles', '<role>', 'Assignments'),
-  defenderCustomAppScope: 'Microsoft Graph: /roleManagement/defender/customAppScopes (beta, no admin center page)',
+  defenderCustomAppScope: 'Microsoft Graph lists them at /roleManagement/defender/customAppScopes (beta) but cannot write them; no admin center page',
   synchronizationJob: at(ENTRA, 'Enterprise apps', '<app>', 'Provisioning'),
   // sign-in and security policies
   authenticationStrengthPolicy: at(ENTRA, 'Protection', 'Conditional Access', 'Authentication strengths'),
@@ -200,6 +202,17 @@ export const ADMIN_CENTER_PATHS = Object.freeze({
   securityZone: at(DEFENDER, 'Exposure management', 'Settings', 'Zones'),
   sharedEmailDomain: 'Microsoft Graph: /directory/sharedEmailDomains (beta, no admin center page)',
   schemaExtension: 'Microsoft Graph: /schemaExtensions (no admin center page)',
+  // Remaining kinds, batch 9: settings that only lacked a read permission.
+  formsSettings: at(M365, 'Settings', 'Org settings', 'Microsoft Forms'),
+  todoSettings: at(M365, 'Settings', 'Org settings', 'Microsoft To Do'),
+  microsoft365AppsInstallationOptions: at(M365, 'Settings', 'Org settings', 'Microsoft 365 installation options'),
+  appsAndServicesSettings: at(M365, 'Settings', 'Org settings', 'User owned apps and services'),
+  adminReportSettings: at(M365, 'Settings', 'Org settings', 'Reports'),
+  profileCardProperty: 'Microsoft Graph: /admin/people/profileCardProperties (PowerShell, no admin center page)',
+  pronounsSettings: at(M365, 'Settings', 'Org settings', 'Pronouns'),
+  defenderDetectionRule: at(DEFENDER, 'Investigation and response', 'Hunting', 'Custom detection rules'),
+  teamsCatalogApp: at(TEAMS, 'Teams apps', 'Manage apps'),
+  engageCommunity: at(ENGAGE, 'Communities'),
 });
 
 export function adminCenterPathFor(resourceType) {

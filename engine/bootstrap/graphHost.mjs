@@ -346,7 +346,7 @@ export function readersFor(observe) {
  * credential references, and nothing secret is held beyond the in-memory token.
  */
 export function createGraphSetupHost({
-  tenantRef, tenantId, collector, restorer, contentReader = null, operatorPrincipalId = null, build,
+  tenantRef, tenantId, collector, restorer, contentReader = null, engageWriter = null, operatorPrincipalId = null, build,
   qualificationMode = 'live-qualified', operations = {},
   getToken = defaultGetToken, killSwitchPath = AUTOMATION_KILL_SWITCH_PATH,
   reader = (getAccessToken) => new GraphReader(getAccessToken),
@@ -379,12 +379,18 @@ export function createGraphSetupHost({
   if (readerAppId !== null && (typeof readerAppId !== 'string' || !readerAppId || Object.values(bindings).includes(readerAppId))) {
     throw new TypeError('setup host: the content reader must be its own app registration');
   }
-  const tableOnly = readerAppId ? { 'content-reader': readerAppId } : {};
+  // The Engage writer (optional, issue #681): the same, for Viva Engage restores.
+  const engageAppId = engageWriter?.config?.clientId ?? null;
+  if (engageAppId !== null && (typeof engageAppId !== 'string' || !engageAppId || [...Object.values(bindings), readerAppId].includes(engageAppId))) {
+    throw new TypeError('setup host: the Engage writer must be its own app registration');
+  }
+  const tableOnly = { ...(readerAppId ? { 'content-reader': readerAppId } : {}), ...(engageAppId ? { 'engage-writer': engageAppId } : {}) };
   // Connections: each app's id, credential reference and certificate expiry (read once
   // here from the host's certificate file). No certificate or key path leaves the host.
   const appFor = (part) => (part?.config?.clientId ? Object.freeze({ appId: part.config.clientId,
     credentialRef: part.credentialRef ?? null, credentialExpiresAt: readCertificateExpiry(part.config.certPath) }) : null);
-  const apps = Object.freeze({ collector: appFor(collector), restorer: appFor(restorer), 'content-reader': appFor(contentReader) });
+  const apps = Object.freeze({ collector: appFor(collector), restorer: appFor(restorer), 'content-reader': appFor(contentReader),
+    'engage-writer': appFor(engageWriter) });
   const collectorToken = tokenSource(collector.config, getToken);
   const restorerToken = tokenSource(restorer.config, getToken);
   // A fresh reader per observation: nothing is cached between looks.

@@ -11,5 +11,5 @@ END
 $$;
 
 GRANT USAGE ON SCHEMA public TO keel_status;
-GRANT SELECT ON snapshot, resource_version, baseline, drift, disposition, evidence, evidence_head
+GRANT SELECT ON snapshot, resource_version, baseline, drift, disposition, evidence, evidence_head, type_coverage_latest
   TO keel_status;

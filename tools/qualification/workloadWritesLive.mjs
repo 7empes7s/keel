@@ -64,17 +64,20 @@ import { readRetentionDlp } from '../../engine/collect/workloads/purviewRetentio
 import { readTeamsExtended } from '../../engine/collect/workloads/teamsExtended.mjs';
 import { readTeamsPolicies } from '../../engine/collect/workloads/teamsPolicies.mjs';
 import { CmdletError } from '../../engine/powershell/jobQueue.mjs';
-import { workloadTarget, workloadWriteCmdlet, writeFamilies } from '../../engine/restore/workloads/cmdletSettings.mjs';
+import {
+  isPolicyStillDeploying, isSavedButNotDeployed, workloadTarget, workloadWriteCmdlet, writeFamilies,
+} from '../../engine/restore/workloads/cmdletSettings.mjs';
 import { TENANT_WIDE_OPTION, onTestTenant } from '../../engine/restore/workloads/fixtureGuard.mjs';
 import { WKLD_WRITE_OPERATIONS } from '../../engine/restore/workloads/writeDeclarations.mjs';
 import { tenantRefFor } from '../../engine/store/tenantRef.mjs';
 import { QUALIFICATION_CONTRACT_VERSION, signEvidence, verifyEvidence } from '../release/qualification.mjs';
 import { pseudonymizeCapture } from './pseudonymize.mjs';
 import {
-  CAPTURE_CREATE_PREFIX, WORKLOAD_WRITES_CREDENTIAL_MODE, WORKLOAD_WRITES_LIVE_GATE, WORKLOAD_WRITES_LIVE_OPERATION,
+  CAPTURE_CREATE_PREFIX, PUT_BACK_RETRIES, WORKLOAD_WRITES_CREDENTIAL_MODE, WORKLOAD_WRITES_LIVE_GATE, WORKLOAD_WRITES_LIVE_OPERATION,
   WORKLOAD_WRITES_TRANSPORT, WRITTEN_WORKLOADS, TENANT_WIDE_WRITES, chooseCaptureChange, fixtureNameOf, identityNamesFixture, isFixtureName, provenWrites, sameValue,
   workloadWritesRecordFile,
 } from './workloadWritesAcceptance.mjs';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 /** Each written workload's own read-only collector. */
 export const WORKLOAD_READERS = Object.freeze({
@@ -175,6 +178,9 @@ export async function captureWorkloadWrites({
   workload, collector, restorer, read = WORKLOAD_READERS[workload], directoryTenantId, configs = {}, tenantRef, build,
   credentials, grants, moduleVersion, includeCreates = true, allowTenantWide = false, testTenantRefs, now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
   readBackAttempts = 5, readBackDelayMs = 2000, suffix = () => randomBytes(4).toString('hex'),
+  // A Purview policy refuses its put-back while the capture's own write is still deploying
+  // (Q260: about an hour when deployment times out), so the put-back waits, up to 90 minutes.
+  deployWaitAttempts = PUT_BACK_RETRIES, deployWaitDelayMs = 5 * 60 * 1000,
 }) {
   knownWorkload(workload);
   const { module } = WRITTEN_WORKLOADS[workload];
@@ -276,7 +282,7 @@ export async function captureWorkloadWrites({
   if (exchangeSession) organization.tenantIdSource = Object.values(organization).every((item) => item.tenantId === tenant) ? 'organization' : 'config';
 
   // 1. Every written family, once.
-  const timing = { sleep, attempts: readBackAttempts, delayMs: readBackDelayMs };
+  const timing = { sleep, attempts: readBackAttempts, delayMs: readBackDelayMs, deployWait: { attempts: deployWaitAttempts, delayMs: deployWaitDelayMs } };
   const stamp = now().toISOString();
   const marker = `KEEL capture ${stamp}`;
   const writes = [];
@@ -436,9 +442,11 @@ async function captureUpdate({ write, capture, change, key, readFamily, writeCmd
     try {
       await writeCmdlet(write.method, { ...identity, [change.field]: change.after });
     } catch (error) {
-      // A cmdlet error is a definite answer; anything else may have applied.
-      if (error instanceof CmdletError && error.detail.code === 'CMDLET_ERROR') { capture.error = `${write.method} failed: ${error.message}`; return; }
-      capture.error = `${write.method} had no answer (${error.message}); it may have applied`;
+      // A cmdlet error is a definite answer, except Purview's "saved, but deploying failed",
+      // whose value lands (Q260): the read-back decides. Anything else may have applied.
+      const cmdletError = error instanceof CmdletError && error.detail.code === 'CMDLET_ERROR';
+      if (cmdletError && !isSavedButNotDeployed(error.detail)) { capture.error = `${write.method} failed: ${error.message}`; return; }
+      if (!cmdletError) capture.error = `${write.method} had no answer (${error.message}); it may have applied`;
     }
     state.written = true;
     const seen = await readUntil(readEntry, (entry) => sameValue(entry?.fields?.[change.field], change.after), timing);
@@ -448,12 +456,7 @@ async function captureUpdate({ write, capture, change, key, readFamily, writeCmd
   }
   if (!state.written) return;
   // Always put the original back once a write may have applied, whatever the read-back said.
-  let revertError = null;
-  try {
-    await writeCmdlet(write.method, { ...identity, [change.field]: putBack });
-  } catch (error) {
-    revertError = error;
-  }
+  const revertError = await putBackWaitingForDeployment(() => writeCmdlet(write.method, { ...identity, [change.field]: putBack }), timing);
   const restored = await readUntil(readEntry, (entry) => sameValue(entry?.fields?.[change.field], capture.before), timing);
   capture.restoredToOriginal = restored.matched;
   capture.final = restored.found?.fields?.[change.field] ?? null;
@@ -461,6 +464,26 @@ async function captureUpdate({ write, capture, change, key, readFamily, writeCmd
   if (!restored.matched) {
     const why = revertError?.message ?? restored.error?.message ?? null;
     capture.error = `PUTTING THE SETTING BACK FAILED${why ? ` (${why})` : ''}: set ${change.field} on ${capture.fixture} to ${JSON.stringify(capture.before)} by hand`;
+  }
+}
+
+/**
+ * Sends the put-back. While Purview is still deploying the write it refuses another change
+ * to that policy, so the put-back is sent again after a wait, a bounded number of times;
+ * "saved, but deploying failed" counts as sent (the read-back decides). Returns the error
+ * that stopped it, or null.
+ */
+async function putBackWaitingForDeployment(send, { sleep, deployWait }) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await send();
+      return null;
+    } catch (error) {
+      const cmdletError = error instanceof CmdletError && error.detail.code === 'CMDLET_ERROR';
+      if (cmdletError && isSavedButNotDeployed(error.detail)) return null;
+      if (!cmdletError || !isPolicyStillDeploying(error.detail) || attempt >= deployWait.attempts) return error;
+      await sleep(deployWait.delayMs);
+    }
   }
 }
 
@@ -561,11 +584,14 @@ export async function main(argv = process.argv.slice(2), {
   }
   const build = options.build ?? env.KEEL_QUALIFICATION_BUILD;
   if (!build) throw new Error('capture needs --build (or KEEL_QUALIFICATION_BUILD): the build this capture qualifies');
-  const configOf = (path) => {
-    const { tenantId, organization } = JSON.parse(readFile(path));
+  const configOf = (path, what) => {
+    const { tenantId, organization } = readConfigFile(path, { readFile, what });
     return { tenantId, organization };
   };
-  const configs = { collector: configOf(options.collectorConfig), restorer: configOf(options.restorerConfig) };
+  const configs = {
+    collector: configOf(options.collectorConfig, 'collector settings'),
+    restorer: configOf(options.restorerConfig, 'restorer settings'),
+  };
   if (typeof configs.collector.tenantId !== 'string' || options.tenantRef !== tenantRefFor(configs.collector.tenantId)) {
     throw new Error('--tenant-ref is not the tenant the collector config names; nothing was sent');
   }

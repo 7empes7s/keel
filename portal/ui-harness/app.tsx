@@ -7,6 +7,9 @@ import { KitPage } from "./kit";
 import { EMPTY_PREFS } from "@/lib/menu-prefs";
 import { Toaster } from "@/components/toaster";
 import { PageHeader } from "@/components/page-header";
+import { ChangeFeed } from "@/components/baselines/change-feed";
+import { ChangesViews } from "@/components/baselines/changes-views";
+import type { ChangeFeedData, FeedRow } from "@/lib/change-feed-view";
 import { JobTable } from "@/components/job-table";
 import { JobRefresher } from "@/components/job-refresher";
 import { PageSkeleton } from "@/components/ui/skeleton";
@@ -51,7 +54,11 @@ import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { CompliancePage, ExportEvidence } from "@/components/compliance/compliance-page";
 import { complianceCounts, complianceStatus } from "@/lib/compliance-view";
 import { accessSummary } from "@/lib/presentation";
-import { EMPTY_REFERENCES, type RowReferences } from "@/lib/sentences";
+import { EMPTY_REFERENCES, type EngineRef, type RowReferences } from "@/lib/sentences";
+import { type AnonymitySetting } from "@/lib/anonymity";
+import { AnonymityNote } from "@/components/anonymity-note";
+import { AnonymitySettingCard } from "@/components/people/anonymity-setting";
+import { displayActor, displayPerson } from "../../engine/insights/people.mjs";
 import { integrationAlerts, integrationsPageVerdict, integrationsStatus } from "@/lib/integrations-view";
 import { IntegrationsBody } from "@/components/integrations-body";
 import type { ServiceNowStatus } from "@/lib/servicenow";
@@ -99,6 +106,8 @@ const DEPENDS: Record<string, string[]> = {
 let jobPolls = 0;
 // The setting the last "Make it pass" asked for: a mail policy setting is named after a #.
 let fixTarget = "";
+// The undo of r11: the choice sent for its assigned policy, when one was.
+let undoChoicesSent: Record<string, string> | null = null;
 let contentEffectsApproved = false;
 let lastClosure: string[] = [];
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -116,6 +125,7 @@ function completionResources() {
     completionItem("ci-2", "integration", "newObjectId", "A new object id was assigned: update every external system that referenced the old id"),
     completionItem("ci-3", "service-validation", "signIn", "Confirm a real sign-in or token request succeeds for the application"),
   ];
+  const skippedItems = [completionItem("ci-5", "manual-setting", "isTrusted", "Mark this location as trusted again in the Entra admin center")];
   const groupItems = [completionItem("ci-4", "integration", "newObjectId", "A new object id was assigned: update every external system that referenced the old id")];
   const stateOf = (items: { kind: string; state: string }[]) => {
     const open = items.filter((entry) => entry.state !== "verified");
@@ -125,6 +135,8 @@ function completionResources() {
   return [
     { naturalKey: "application:Payroll connector", resourceType: "application", mechanism: "recreate", state: stateOf(appItems), items: appItems },
     { naturalKey: "group:Finance approvers", resourceType: "group", mechanism: "recreate", state: stateOf(groupItems), items: groupItems },
+    // Skipped by the restore (nothing written): its only item is the step to do by hand.
+    { naturalKey: "namedLocation:KEEL-RT-Head office", resourceType: "namedLocation", mechanism: "skipped", state: stateOf(skippedItems), items: skippedItems },
   ];
 }
 const HARNESS_PEOPLE = [
@@ -244,6 +256,13 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.includes("/api/actions/restore/dry-run/f1c00000")) return json({ artifact: { id: "f1c00000-0000-4000-8000-000000000001", status: "completed", guardRefusals: [], complianceFix: { naturalKey: "namedLocation:Branch offices", field: "includeUnknownCountriesAndRegions", from: true, to: false } } });
   if (url.includes("/api/actions/restore/dry-run/wd000000")) return json({ artifact: WORKLOAD_ARTIFACT });
   if (url.includes("/api/actions/restore/dry-run/mb000000")) return json({ artifact: mailboxArtifact(url.slice(-1)) });
+  // The undo of r11: a policy that restore created is assigned now, so it waits for a choice.
+  if (url.endsWith("/api/actions/restore/compensate") && String(init?.body ?? "").includes(ASSIGNED_UNDO_RESTORE)) {
+    undoChoicesSent = (JSON.parse(String(init?.body)) as { undoChoices?: Record<string, string> }).undoChoices ?? null;
+    return json({ job: { id: "job-undo-r11" }, artifactId: undoChoicesSent ? "c0de0000-0000-4000-8000-000000000012" : "c0de0000-0000-4000-8000-000000000011" }, 202);
+  }
+  if (url.includes("/api/actions/restore/dry-run/c0de0000-0000-4000-8000-000000000011")) return json({ artifact: assignedUndoArtifact("c0de0000-0000-4000-8000-000000000011", null) });
+  if (url.includes("/api/actions/restore/dry-run/c0de0000-0000-4000-8000-000000000012")) return json({ artifact: assignedUndoArtifact("c0de0000-0000-4000-8000-000000000012", undoChoicesSent) });
   // Task-70: the undo plan of failed restore r10.
   if (url.endsWith("/api/actions/restore/compensate")) return json({ job: { id: "job-undo-r10" }, artifactId: "c0de0000-0000-4000-8000-000000000010" }, 202);
   if (url.includes("/api/actions/restore/dry-run/c0de0000")) return json({ artifact: COMPENSATION_ARTIFACT });
@@ -341,7 +360,68 @@ const COMPENSATION_ARTIFACT = {
   },
 };
 
+const ASSIGNED_UNDO_RESTORE = "7f3c0000-0000-4000-8000-000000000011";
+const ASSIGNED_POLICY = "deviceConfiguration:KEEL-RT-Windows baseline";
+const ASSIGNED_PROFILE = "windowsFeatureUpdateProfile:KEEL-RT-Feature updates";
+
+/** The undo plan of r11, before and after the choice for each assigned policy. */
+function assignedUndoArtifact(id: string, choices: Record<string, string> | null) {
+  const policies = [
+    { naturalKey: ASSIGNED_POLICY, resourceType: "deviceConfiguration", targetId: "c0a10000-0000-4000-8000-0000000000d1",
+      assignmentIds: ["c0a1_all", "c0a1_g1"], targets: [{ kind: "all-devices" }, { kind: "group", groupId: "6f1e0000-0000-4000-8000-0000000000f1" }] },
+    { naturalKey: ASSIGNED_PROFILE, resourceType: "windowsFeatureUpdateProfile", targetId: "c0a10000-0000-4000-8000-0000000000d2",
+      assignmentIds: ["c0a2_g2"], targets: [{ kind: "group", groupId: "6f1e0000-0000-4000-8000-0000000000f2" }] },
+  ];
+  const choiceOf = (key: string) => (choices?.[key] === "delete" || choices?.[key] === "skip" ? choices[key] : null);
+  return {
+    id,
+    status: "completed",
+    guardRefusals: [],
+    contentEffects: [],
+    compensation: {
+      compensates: ASSIGNED_UNDO_RESTORE,
+      atomic: false,
+      statement: COMPENSATION_ARTIFACT.compensation.statement,
+      operations: [
+        { naturalKey: "group:Finance", resourceType: "group", verb: "update", undoes: "update", revertedFields: ["description"] },
+        ...policies.filter((policy) => choiceOf(policy.naturalKey) === "delete").map((policy) => ({
+          naturalKey: policy.naturalKey, resourceType: policy.resourceType, verb: "delete", undoes: "create", removeAssignments: { ids: policy.assignmentIds },
+        })),
+      ],
+      conflicts: [],
+      irrecoverable: [],
+      manual: [],
+      notApplied: [],
+      choices: policies.map((policy) => ({ ...policy, assignmentCount: policy.assignmentIds.length, choice: choiceOf(policy.naturalKey) })),
+    },
+  };
+}
+
 const now = "2026-10-02T09:40:00Z";
+
+// Changes > Every change (IN-FEED): rows from backups, service reads and the audit log.
+const feedRow = (id: string, occurredAt: string, rest: Partial<FeedRow>): FeedRow => ({
+  id, source: "audit", occurredAt, day: occurredAt.slice(0, 10), type: "group", typeName: "Group", service: "Entra", priority: "normal",
+  priorityReason: null, object: { key: `group:${id}`, name: null, status: "found" }, change: "modified", activity: null, person: null, ...rest,
+});
+const FEED_ADA = { kind: "user" as const, id: "a0a00000-0000-4000-8000-0000000000a1", name: "Amara Okafor" };
+const FEED_SAM = { kind: "user" as const, id: "b0b00000-0000-4000-8000-0000000000b2", name: "Sam Lee" };
+const FEED_APP = { kind: "servicePrincipal" as const, id: "c0c00000-0000-4000-8000-0000000000c3", name: "KEEL Restorer" };
+const CHANGE_FEED: ChangeFeedData = {
+  generatedAt: "2026-10-02T09:40:00Z", since: "2026-09-02T09:40:00Z", until: "2026-10-02T09:40:00Z", truncated: false,
+  rows: [
+    feedRow("drift:f1", "2026-10-02T08:20:00Z", { source: "drift", type: "conditionalAccessPolicy", typeName: "Conditional Access policy", priority: "critical", object: { key: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", status: "found" }, person: FEED_ADA }),
+    feedRow("audit:entra:f2:0", "2026-10-02T08:05:00Z", { type: "conditionalAccessPolicy", typeName: "Conditional Access policy", priority: "critical", object: { key: "ca-1", name: "Block legacy auth", status: "found" }, activity: "Update conditional access policy", person: FEED_ADA }),
+    feedRow("service:f3", "2026-10-02T07:00:00Z", { source: "service", type: "sharepoint-tenant-settings", typeName: "SharePoint sharing settings", service: "SharePoint", priority: "high", object: { key: "sharepoint-tenant-settings:tenant", name: "Sharing settings", status: "found" } }),
+    feedRow("audit:entra:f4:0", "2026-10-02T06:40:00Z", { object: { key: "g-1", name: "Finance", status: "found" }, activity: "Add member to group", person: FEED_SAM }),
+    feedRow("audit:entra:f5:0", "2026-10-01T16:10:00Z", { object: { key: "g-2", name: "Helpdesk admins", status: "found" }, activity: "Update group", person: FEED_APP }),
+    feedRow("drift:f6", "2026-10-01T09:00:00Z", { source: "drift", type: "group", change: "removed", object: { key: "group:Old project team", name: "Old project team", status: "deleted" } }),
+    feedRow("audit:intune:f7:0", "2026-10-01T08:30:00Z", { type: "deviceCompliancePolicy", typeName: "Device compliance policy", service: "Intune", priority: "high", object: { key: "dc-1", name: "Windows laptops must be encrypted", status: "found" }, activity: "Patch DeviceCompliancePolicy", person: FEED_SAM }),
+    feedRow("service:f8", "2026-09-30T22:00:00Z", { source: "service", type: "exchange-mail-flow", typeName: "Mail flow rule", service: "Exchange", change: "added", object: { key: "exchange-mail-flow:rule:Forward to partner", name: "Forward to partner", status: "found" } }),
+    feedRow("audit:intune:f9:0", "2026-09-30T14:00:00Z", { type: "DeviceConfiguration", typeName: "Device configuration", service: "Intune", change: "removed", object: { key: "dead0000-0000-4000-8000-000000000009", name: null, status: "unknown" }, activity: "Delete DeviceConfiguration", person: FEED_SAM }),
+    feedRow("drift:f10", "2026-09-29T09:00:00Z", { source: "drift", type: "namedLocation", typeName: "Named location", priority: "low", change: "added", object: { key: "namedLocation:Branch offices", name: "Branch offices", status: "found" } }),
+  ],
+};
 const DRIFT = [
   { id: "dr1", naturalKey: "conditionalAccessPolicy:Block legacy auth", resourceType: "conditionalAccessPolicy", changeType: "modified", blastRadius: "tenant-lockout", detectedAt: "2026-10-02T09:12:00Z",
     before: { displayName: "Block legacy auth", state: "enabled", conditions: { clientAppTypes: ["exchangeActiveSync", "other"], users: { includeUsers: ["All"], excludeGroups: ["Break-glass admins"] } }, grantControls: { operator: "OR", builtInControls: ["block"] } },
@@ -638,10 +718,10 @@ const INTENT_CHANGES: IntentCandidate[] = [{
 const CHANNELS = [
   { id: "c4e10000-0000-4000-8000-0000000000c1", kind: "webhook", config: { url: "https://hooks.contoso.com/keel" }, enabled: true, created_at: "2026-09-01T08:00:00Z" },
   { id: "c4e10000-0000-4000-8000-0000000000c2", kind: "email", config: { to: "secops@contoso.com", from: "keel@contoso.com" }, enabled: true, created_at: "2026-09-01T08:05:00Z" },
-  { id: "c4e10000-0000-4000-8000-0000000000c3", kind: "pagerduty", config: { routingKeyRef: "env:KEEL_PAGERDUTY_KEY", region: "eu" }, enabled: true, created_at: "2026-09-02T08:00:00Z" },
-  { id: "c4e10000-0000-4000-8000-0000000000c4", kind: "slack", config: { endpointRef: "env:KEEL_SLACK_WEBHOOK" }, enabled: true, created_at: "2026-09-03T08:00:00Z" },
+  { id: "c4e10000-0000-4000-8000-0000000000c3", kind: "pagerduty", config: { routingKeyRef: "env:KEEL_INTEGRATION_PAGERDUTY_KEY", region: "eu" }, enabled: true, created_at: "2026-09-02T08:00:00Z" },
+  { id: "c4e10000-0000-4000-8000-0000000000c4", kind: "slack", config: { endpointRef: "env:KEEL_INTEGRATION_SLACK_WEBHOOK" }, enabled: true, created_at: "2026-09-03T08:00:00Z" },
   // Turned off three days ago; its history is kept.
-  { id: "c4e10000-0000-4000-8000-0000000000c5", kind: "teams", config: { endpointRef: "env:KEEL_TEAMS_WEBHOOK" }, enabled: false, created_at: "2026-08-20T08:00:00Z" },
+  { id: "c4e10000-0000-4000-8000-0000000000c5", kind: "teams", config: { endpointRef: "env:KEEL_INTEGRATION_TEAMS_WEBHOOK" }, enabled: false, created_at: "2026-08-20T08:00:00Z" },
 ];
 const SIGN_IN_ALERT = { alertId: "a1e70000-0000-4000-8000-000000000001", resourceKey: "conditionalAccessPolicy:Block legacy auth", control: "baseline", condition: "drift", occurrence: 1 };
 const DEVICE_ALERT = { alertId: "a1e70000-0000-4000-8000-000000000002", resourceKey: "deviceConfiguration:Corporate laptops", control: "baseline", condition: "drift", occurrence: 1 };
@@ -685,7 +765,7 @@ const SERVICENOW_ON: ServiceNowStatus = {
     instanceHost: "contoso.service-now.com", table: "u_keel_gated_change",
     fields: { state: "u_gate", approver: "u_gate_owner.email", planVersion: "u_plan_rev", planDigest: "u_plan_hash", keelRequest: "u_keel_ref", keelDecision: "u_keel_outcome" },
     approvedValues: ["gate_passed"], rejectedValues: ["gate_blocked", "gate_withdrawn"],
-    tokenRef: "env:KEEL_SERVICENOW_TOKEN", callbacks: "signed", callbackSecretRef: "env:KEEL_SERVICENOW_CALLBACK_SECRET",
+    tokenRef: "env:KEEL_INTEGRATION_SERVICENOW_TOKEN", callbacks: "signed", callbackSecretRef: "env:KEEL_INTEGRATION_SERVICENOW_CALLBACK_SECRET",
   },
   mirror: { records: 12, waiting: 2, pendingUpdates: 1, heldBack: 1, conflicts: 0 },
   heldBack: [{ eventId: "keel:decision:5e9c0000-0000-4000-8000-000000000097", kind: "decision", externalRef: "9d3f0000000040008000000000000097", attempts: 1, reason: "rejected by adapter", lastError: "ServiceNow PATCH returned HTTP 403", createdAt: now }],
@@ -925,6 +1005,70 @@ const MANY_COMPLIANCE: ComplianceData = {
       { detailCounts: { checked: 70, failing: 0 } }),
   ],
 };
+// The live test tenant's compliance results on 2026-10-27 (keelops K8 and K11): nine
+// controls, five failing. The legacy sign-in rule lists both rules that block old
+// clients, failing lines first; the other names stand in for masked ones.
+const ENTRA_EVIDENCE = (resourceType: string) => evidenceWindow(resourceType, "2026-10-02T09:00:00Z", "2026-10-02T09:12:00Z", "0b5e0000-0000-4000-8000-0000000000d6");
+const entraFinding = (id: string, controlId: string, title: string, resourceType: string, verdict: ComplianceFinding["verdict"], details: ComplianceFinding["details"], extra: Partial<ComplianceFinding> = {}): ComplianceFinding => ({
+  id: `e7a10000-0000-4000-8000-0000000000${id}`, controlId, title, severity: "high", framework: "keel-custom", edition: "2026.1", profile: "baseline", evaluatorVersion: 2,
+  verdict, reason: null, details, evaluatedAt: "2026-10-02T09:20:00Z", evidenceSeq: "4200", exceptionState: "none", exposed: verdict === "fail", exception: null,
+  evidence: [ENTRA_EVIDENCE(resourceType)],
+  links: { backup: { state: "linked", linked: [ENTRA_EVIDENCE(resourceType)], mismatched: [] }, change: { state: "none", linked: [], mismatched: [] }, restorePlan: { state: "none", linked: [], mismatched: [] } },
+  ...extra,
+});
+const legacyLines = (reportOnly: string, scoped: string) => [
+  { subject: reportOnly, setting: "state", value: "enabledForReportingButNotEnforced", expected: "enabled", ok: false },
+  { subject: scoped, setting: "includeUsers", value: "Only some", expected: "All", ok: false },
+  { subject: reportOnly, setting: "includeUsers", value: "All", expected: "All", ok: true },
+  { subject: reportOnly, setting: "includeApplications", value: "All", expected: "All", ok: true },
+  { subject: reportOnly, setting: "clientAppTypes", value: ["exchangeActiveSync", "other"], expected: ["exchangeActiveSync", "other"], ok: true },
+  { subject: scoped, setting: "state", value: "enabled", expected: "enabled", ok: true },
+  { subject: scoped, setting: "includeApplications", value: "All", expected: "All", ok: true },
+  { subject: scoped, setting: "clientAppTypes", value: ["exchangeActiveSync", "other"], expected: ["exchangeActiveSync", "other"], ok: true },
+];
+const mailLines = (policies: string[], settings: [string, unknown, unknown][], failing: (policy: number, setting: number) => boolean) => {
+  const lines = policies.flatMap((subject, p) => settings.map(([setting, good, bad], s) => ({ subject, setting, value: failing(p, s) ? bad : good, expected: good, ok: !failing(p, s) })));
+  return [...lines.filter((line) => !line.ok), ...lines.filter((line) => line.ok)];
+};
+const MAIL_POLICIES = ["Default", "KEEL-RT-Finance inbound", "KEEL-RT-Sales inbound", "KEEL-RT-Executives", "KEEL-RT-Contractors", "KEEL-RT-Shared mailboxes"];
+const liveCompliance = (legacy: ComplianceFinding["details"]): ComplianceData => ({
+  ...COMPLIANCE,
+  summary: { controls: 9, exposed: 5, excepted: 0, expiredExceptions: 0, incompleteExceptions: 0, notConfigured: 0, passing: 4, unknown: 0, notApplicable: 0 },
+  findings: [
+    entraFinding("b1", "keel-custom.conditional-access.block-legacy", "Legacy authentication is blocked", "conditionalAccessPolicy", "fail", legacy, { detailCounts: { checked: 8, failing: 2 } }),
+    entraFinding("b2", "keel-custom.role-assignment.admin-count-at-most", "Global Administrator assignment count stays at or below a set limit", "roleAssignment", "fail",
+      [{ subject: "Global Administrator", setting: "assignmentCount", value: 6, expected: { atMost: 5 }, ok: false }], { evaluatorVersion: 1, detailCounts: { checked: 1, failing: 1 } }),
+    entraFinding("b3", "keel-custom.group.role-assignable-not-synced", "Role-assignable groups are not synchronized from on-premises AD", "group", "pass",
+      [{ subject: "KEEL-RT-Helpdesk admins", setting: "onPremisesSyncEnabled", value: false, expected: false, ok: true }], { evaluatorVersion: 1, detailCounts: { checked: 1, failing: 0 } }),
+    entraFinding("b4", "keel-custom.named-location.no-untrusted-all-countries", "No named location marks unknown-country traffic as trusted", "namedLocation", "pass", [
+      { subject: "KEEL-RT-Head office", setting: "includeUnknownCountriesAndRegions", value: false, expected: false, ok: true },
+      { subject: "KEEL-RT-Branch offices", setting: "includeUnknownCountriesAndRegions", value: false, expected: false, ok: true },
+    ], { evaluatorVersion: 1, detailCounts: { checked: 2, failing: 0 } }),
+    mailFinding("b5", "keel-custom.defender-email.safe-links-email", "fail",
+      mailLines(MAIL_POLICIES, [["EnableSafeLinksForEmail", true, false], ["ScanUrls", true, false], ["AllowClickThrough", false, true]], (p, s) => s === 2 && p < 5), { detailCounts: { checked: 18, failing: 5 } }),
+    mailFinding("b6", "keel-custom.defender-email.anti-phish-spoof-protection", "pass",
+      mailLines(MAIL_POLICIES.slice(0, 4), [["EnableSpoofIntelligence", true, false], ["HonorDmarcPolicy", true, false], ["EnableUnauthenticatedSender", true, false]], () => false), { detailCounts: { checked: 12, failing: 0 } }),
+    mailFinding("b7", "keel-custom.defender-email.anti-spam-no-allowed-domains", "fail", [
+      { subject: "KEEL-RT-Finance inbound", setting: "AllowedSenderDomains", value: ["contoso-partner.example", "invoices.example"], expected: [], ok: false },
+      { subject: "KEEL-RT-Sales inbound", setting: "AllowedSenderDomains", value: ["crm-mail.example"], expected: [], ok: false },
+      { subject: "Default", setting: "AllowedSenderDomains", value: [], expected: [], ok: true },
+    ], { detailCounts: { checked: 3, failing: 2 } }),
+    mailFinding("b8", "keel-custom.defender-email.anti-spam-phish-quarantined", "fail",
+      mailLines(MAIL_POLICIES.slice(0, 3), [["PhishSpamAction", "Quarantine", "MoveToJmf"], ["HighConfidencePhishAction", "Quarantine", "MoveToJmf"], ["PhishZapEnabled", true, false]], (p, s) => (p === 0 && s < 2) || (p === 1 && s !== 1) ), { detailCounts: { checked: 9, failing: 4 } }),
+    mailFinding("b9", "keel-custom.defender-email.malware-file-filter", "pass",
+      mailLines(MAIL_POLICIES.slice(0, 5), [["EnableFileFilter", true, false], ["ZapEnabled", true, false]], () => false), { detailCounts: { checked: 10, failing: 0 } }),
+  ],
+});
+const LIVE_COMPLIANCE = liveCompliance(legacyLines("Block legacy sign-in (report-only pilot)", "KEEL-RT-20260908 Block Legacy Authentication"));
+// Two sign-in rules with the same name (#588): each keeps its own lines, numbered.
+const SAME_NAME_COMPLIANCE = liveCompliance(legacyLines("KEEL-RT-Block legacy sign-in (1 of 2)", "KEEL-RT-Block legacy sign-in (2 of 2)"));
+// Results stored before the counts existed (#573): a full list of 50 lines says "or more".
+const OLD_FULL_COMPLIANCE: ComplianceData = { ...LIVE_COMPLIANCE, findings: LIVE_COMPLIANCE.findings.map((finding) => finding.id.endsWith("b5")
+  ? { ...finding, detailCounts: null, details: [
+    ...Array.from({ length: 8 }, (_, index) => ({ subject: `KEEL-RT-Policy ${String(index).padStart(2, "0")}`, setting: "AllowClickThrough", value: true, expected: false, ok: false })),
+    ...Array.from({ length: 42 }, (_, index) => ({ subject: `KEEL-RT-Policy ${String(index).padStart(2, "0")}`, setting: index % 2 ? "ScanUrls" : "EnableSafeLinksForEmail", value: true, expected: true, ok: true })),
+  ] }
+  : finding) };
 const PLAN_REF = { kind: "dry-run", id: "7f3c0000-0000-4000-8000-000000000011", name: null, readable: true, status: "completed", undo: false, resources: 12, snapshotAt: "2026-10-02T09:12:00Z", dryRunJobId: "a3" };
 const TWO_PERSON_REQUEST = "a9e10000-0000-4000-8000-000000000101";
 
@@ -1101,6 +1245,71 @@ const APPROVAL_HISTORY: ApprovalRequestRecord[] = [
     references: { ...EMPTY_REFERENCES, people: { requested_by: AMARA }, baseline: { kind: "baseline", id: BASELINES[1].id, name: "Stricter sign-in", readable: true } } },
 ];
 
+// "Hide people's names" on (Track A3): the same fixtures passed through the engine's
+// displayPerson / displayActor, with a stand-in namer (the engine's uses a keyed hash).
+const HARNESS_NAMER = (key: string) => {
+  let hash = 7;
+  for (const letter of key) hash = (hash * 31 + letter.charCodeAt(0)) >>> 0;
+  const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return `Person ${[0, 1, 2, 3].map((index) => letters[(hash >>> (index * 5)) % letters.length]).join("")}`;
+};
+const ANONYMITY_ON: AnonymitySetting = { enabled: true, changedAt: "2026-10-01T08:00:00Z", changedBy: displayPerson(MAROUANE, HARNESS_NAMER) };
+const hidePerson = <T,>(ref: T): T => displayPerson(ref, HARNESS_NAMER) as T;
+function hidePeople<T extends { references?: RowReferences; signoffs?: EngineRef[] }>(row: T): T {
+  const people = row.references ? Object.fromEntries(Object.entries(row.references.people).map(([field, ref]) => [field, hidePerson(ref)])) : undefined;
+  return { ...row, ...(row.references ? { references: { ...row.references, people } } : {}), ...(row.signoffs ? { signoffs: row.signoffs.map(hidePerson) } : {}) };
+}
+const hideActors = <T extends { attribution?: DriftRecord["attribution"] }>(item: T): T => (item.attribution
+  ? { ...item, attribution: { ...item.attribution, actors: item.attribution.actors.map((actor) => displayActor(actor, HARNESS_NAMER)) } }
+  : item);
+
+// "Hide people's names" on the pages that read people themselves (alerts, emergency
+// changes, rules, schedules, notifications, compliance, setup): the fixtures as the
+// server sends them then, each person by code name and without an email. Functions,
+// since some fixtures are declared further down.
+const codeName = (key: string) => HARNESS_NAMER(key.trim().toLowerCase());
+const hiddenAlerts = (): AlertItem[] => INBOX_ALERTS.map((alert) => ({
+  ...alert,
+  owner: alert.owner ? { ...alert.owner, name: codeName(alert.owner.name), pseudonym: true } : null,
+  acknowledgedByName: alert.acknowledgedByName ? codeName(alert.acknowledgedByName) : null,
+  history: alert.history.map((entry) => ({ ...entry, actorName: entry.actorName ? codeName(entry.actorName) : null })),
+}));
+const hiddenIntents = (): ChangeIntentsData => ({
+  intents: INTENTS.map((intent) => ({ ...intent, owner: hidePerson(intent.owner), approver: hidePerson(intent.approver), revokedBy: intent.revokedBy ? hidePerson(intent.revokedBy) : null })),
+  changes: INTENT_CHANGES,
+  people: [PERSON_AMARA, PERSON_ONCALL].map((person) => ({ id: person.id, name: String(hidePerson(person).name) })),
+  generatedAt: now,
+});
+const hiddenRunAs = (policy: Policy): Policy => ({
+  ...policy,
+  created_by: policy.created_by.includes("@") ? codeName(policy.created_by) : policy.created_by,
+  ...(policy.run_as_principal ? { run_as_principal: hidePerson(policy.run_as_principal) } : {}),
+});
+const hiddenPreview = (): ActivationPreview => ({ ...ACTIVATION_PREVIEW, runAs: { ...ACTIVATION_PREVIEW.runAs, name: codeName(ACTIVATION_PREVIEW.runAs.email ?? ""), email: null } });
+const hiddenForecasts = () => SCHEDULE_FORECASTS.map((forecast) => (forecast.acknowledgement?.acknowledgedByName
+  ? { ...forecast, acknowledgement: { ...forecast.acknowledgement, acknowledgedByName: codeName(forecast.acknowledgement.acknowledgedByName) } }
+  : forecast));
+const hiddenEscalations = () => ESCALATION_RULES.map((rule) => ({
+  ...rule, owner_name: String(hidePerson({ id: rule.owner_principal_id, email: rule.owner_email, name: rule.owner_name, readable: true }).name), owner_email: null,
+}));
+const hiddenCompliance = (): ComplianceData => ({
+  ...COMPLIANCE,
+  findings: COMPLIANCE.findings.map((finding) => (finding.exception ? {
+    ...finding,
+    exception: {
+      ...finding.exception,
+      owner: null,
+      ownerRef: finding.exception.owner ? { kind: "person", id: finding.exception.ownerRef?.id ?? "", name: codeName(finding.exception.owner), href: null, pseudonym: true } : null,
+      grantedByRef: finding.exception.grantedByRef ? { ...finding.exception.grantedByRef, name: codeName(finding.exception.grantedByRef.name), pseudonym: true } : null,
+    },
+  } : finding)),
+});
+const hiddenSetup = (): SetupState => ({
+  ...SETUP,
+  scopes: SETUP.scopes.map((scope) => (scope.run?.approvedByName ? { ...scope, run: { ...scope.run, approvedByName: codeName(scope.run.approvedByName) } } : scope)),
+});
+const ANONYMOUS_NOTE = <AnonymityNote setting={ANONYMITY_ON} />;
+
 const header = (section: NavSection, title: string, description: string, marker?: string, status?: { tone: "urgent" | "soon" | "low" | "fine"; label: string }, parents?: { href: string; label: string }[]) =>
   <PageHeader description={description} generatedAt={now} marker={marker} parents={parents} section={section} status={status} title={title} />;
 
@@ -1242,7 +1451,7 @@ const setupPermissions = (observed: SetupPermissions["observed"]): SetupPermissi
   apis: Object.fromEntries(Object.entries(PERMISSION_APIS).map(([key, api]) => [key, api.label])),
   observed,
 });
-const catalogFor = (identity: "collector" | "restorer" | "content-reader", keep: (entry: PermissionEntry) => boolean = () => true): PermissionGrant[] =>
+const catalogFor = (identity: "collector" | "restorer" | "content-reader" | "engage-writer", keep: (entry: PermissionEntry) => boolean = () => true): PermissionGrant[] =>
   (KEEL_PERMISSIONS as unknown as PermissionEntry[]).filter((entry) => entry.identity === identity && keep(entry)).map((entry) => ({ api: entry.api, name: entry.name }));
 // Connections (/api/setup `connections`): one row per Keel app, as the engine records it.
 const CONTENT_SCOPES = ["Files.Read.All", "Mail.Read", "Sites.Read.All", "Team.ReadBasic.All", "Tasks.Read.All"];
@@ -1263,6 +1472,7 @@ const connection = (role: string, name: string, purpose: string, required: boole
 const READER_PURPOSE = "Backs up your Microsoft 365 settings. Read only.";
 const CONTENT_PURPOSE = "Backs up mail, files, Teams and Planner. Read only.";
 const RESTORER_PURPOSE = "Puts settings back when you approve a restore.";
+const ENGAGE_PURPOSE = "Puts Viva Engage communities back when you approve a restore. Holds one permission only.";
 // Backup reader: everything it needs, the optional audit search not yet, and one grant
 // Keel never uses. Restore writer: waiting on consent for the three setup permissions
 // (already on its list), and Exchange Online's permission not on its list at all.
@@ -1304,6 +1514,7 @@ const SETUP: SetupState = {
     connection("settings-restorer", "Keel Settings Restorer", RESTORER_PURPOSE, false, "waiting-for-consent", {
       appId: WRITER_APP.appId, expires: "2027-03-01T00:00:00Z", wanted: RESTORE_SCOPES, missing: RESTORE_SCOPES, roles: ["Privileged Role Administrator"], missingRoles: null,
     }),
+    connection("engage-writer", "Keel Engage Writer", ENGAGE_PURPOSE, false, "not-created", { observed: false }),
   ],
   scopes: [
     {
@@ -1339,6 +1550,7 @@ const SETUP_CHECKED: SetupState = {
       collector: { granted: catalogFor("collector"), requested: catalogFor("collector") },
       restorer: { granted: [...catalogFor("restorer"), { api: "graph", name: "Channel.Create" }], requested: catalogFor("restorer") },
       "content-reader": { granted: catalogFor("content-reader"), requested: catalogFor("content-reader"), app: CONTENT_APP },
+      "engage-writer": { granted: catalogFor("engage-writer"), requested: catalogFor("engage-writer") },
     },
   }),
   tenantId: SETUP_TENANT_ID,
@@ -1358,6 +1570,9 @@ const SETUP_CHECKED: SetupState = {
     }),
     connection("settings-restorer", "Keel Settings Restorer", RESTORER_PURPOSE, false, "switched-off", {
       appId: null, expires: "2027-04-01T00:00:00Z", wanted: RESTORE_SCOPES, granted: RESTORE_SCOPES, extra: ["Channel.Create"], enabled: false,
+    }),
+    connection("engage-writer", "Keel Engage Writer", ENGAGE_PURPOSE, false, "working", {
+      appId: "e4a6e000-0000-4000-8000-0000000000e4", expires: "2027-04-01T00:00:00Z", wanted: ["Community.ReadWrite.All"], granted: ["Community.ReadWrite.All"],
     }),
   ],
   scopes: [
@@ -1390,6 +1605,7 @@ const alertEntry = (id: string, occurrence: number, fromState: AlertItem["state"
 const INBOX_ALERTS: AlertItem[] = [
   {
     id: "a1e70000-0000-4000-8000-000000000001", resourceKey: "conditionalAccessPolicy:Block legacy auth", name: "Block legacy auth", control: "baseline", condition: "drift",
+    object: { status: "found", deletedSince: null, lastSeenAt: "2026-10-02T03:00:00Z", objectId: "ca000000-0000-4000-8000-0000000000f2" },
     state: "reopened", conditionActive: true, severity: "critical", occurrence: 2, firstOpenedAt: "2026-09-30T08:00:00Z",
     occurrenceStartedAt: "2026-10-02T08:10:00Z", lastFiringAt: "2026-10-02T09:10:00Z", ackDeadlineAt: "2026-10-02T09:10:00Z",
     acknowledgedAt: null, acknowledgedByName: null, owner: { id: "8c1e0000-0000-4000-8000-0000000000a1", name: "Marouane" },
@@ -1405,6 +1621,7 @@ const INBOX_ALERTS: AlertItem[] = [
   },
   {
     id: "a1e70000-0000-4000-8000-000000000002", resourceKey: "group:Finance", name: "Finance", control: "baseline", condition: "drift",
+    object: { status: "deleted", deletedSince: "2026-10-02T03:00:00Z", lastSeenAt: "2026-10-01T03:00:00Z", objectId: "0f1a0000-0000-4000-8000-0000000000f1" },
     state: "open", conditionActive: true, severity: "warning", occurrence: 1, firstOpenedAt: "2026-10-02T09:30:00Z",
     occurrenceStartedAt: "2026-10-02T09:30:00Z", lastFiringAt: "2026-10-02T09:30:00Z", ackDeadlineAt: null,
     acknowledgedAt: null, acknowledgedByName: null, owner: null, escalated: false, escalationError: "escalation-failed-no-recipient",
@@ -1805,6 +2022,50 @@ const ASK_MANY: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], sc
     { resourceType: "roleAssignment", changeType: "added", impact: "tenant-lockout", count: 6 },
   ],
   records: ASK_MANY_RECORDS,
+} };
+
+// A month-long question shaped like the live answer of 2026-10-27 (keelops K12): 1,887
+// matches, the newest 1,000 listed, the first days before Keel's history, and every modified
+// row naming the settings it changed (#579 drops the ones with nothing changed).
+const ASK_MONTH_KINDS: [string, string, string, string, string[] | null][] = [
+  ["roleAssignmentSchedule", "Privileged Role Administrator for KEEL-RT-Admin", "added", "tenant-lockout", null],
+  ["roleAssignmentSchedule", "Security Reader for KEEL-RT-Analyst", "modified", "tenant-lockout", ["scheduleInfo.expiration.endDateTime"]],
+  ["user", "KEEL-RT-Guest reviewer", "modified", "access-affecting", ["accountEnabled", "department"]],
+  ["group", "KEEL-RT-Finance approvers", "modified", "access-affecting", ["membershipRule"]],
+  ["conditionalAccessPolicy", "KEEL-RT-20260908 Block Legacy Authentication", "modified", "tenant-lockout", ["conditions.users.includeGroups"]],
+  ["deviceCompliancePolicy", "KEEL-RT-Windows baseline", "modified", "access-affecting", ["passwordMinimumLength"]],
+  ["namedLocation", "KEEL-RT-Branch offices", "removed", "access-affecting", null],
+  ["teams-org-policies", "KEEL-RT-Meetings for guests", "modified", "cosmetic", ["AllowAnonymousUsersToJoinMeeting"]],
+];
+const ASK_MONTH_RECORDS = Array.from({ length: 1000 }, (_, index) => {
+  const [resourceType, name, changeType, impact, fields] = ASK_MONTH_KINDS[index % ASK_MONTH_KINDS.length];
+  const at = new Date(Date.parse("2026-10-02T06:00:00.000Z") - index * 3600_000 * 0.6);
+  at.setUTCMinutes(0, 0, 0);
+  const id = `a5c20000-0000-4000-8000-${String(index).padStart(12, "0")}`;
+  return {
+    kind: "change" as const, id, resourceType, naturalKey: `${resourceType}:${name} ${index + 1}`, name: `${name} ${index + 1}`, changeType, impact,
+    decision: null, seenAt: at.toISOString(), fields,
+    window: { from: new Date(at.getTime() - 3600_000).toISOString(), to: at.toISOString() },
+    source: { kind: "change" as const, id, href: "/drift", collectionId: null },
+  };
+});
+const ASK_MONTH: AskData = { generatedAt: now, entities: ["FINANCE", "SALES"], scope: { central: true, entities: [] }, answer: {
+  ...ASK_BASE, scope: { central: true, entities: [] }, status: "partial", intent: "changes", question: "What changed in the last month?",
+  plan: { intent: "changes", params: { entity: null, from: "2026-09-02T00:00:00.000Z", to: now, resourceType: null, resourceTypes: null, name: null, changeType: null, limit: 1000 } },
+  window: { from: "2026-09-02T00:00:00.000Z", to: now }, known: { from: "2026-09-05T14:09:06.825Z", to: "2026-10-02T06:00:00.000Z" },
+  gaps: [{ from: "2026-09-02T00:00:00.000Z", to: "2026-09-05T14:09:06.825Z", reason: "before-history" }, { from: "2026-10-02T06:00:00.000Z", to: now, reason: "not-compared-yet" }],
+  total: 1887, shown: 1000, truncated: true, sentence: "1887 matching changes found up to 2026-10-02T06:00:00.000Z. Part of this period is not known yet, so this may not be everything. Showing the newest 1000.",
+  summary: [
+    { resourceType: "roleAssignmentSchedule", changeType: "added", impact: "tenant-lockout", count: 812 },
+    { resourceType: "roleAssignmentSchedule", changeType: "modified", impact: "tenant-lockout", count: 455 },
+    { resourceType: "user", changeType: "modified", impact: "access-affecting", count: 104 },
+    { resourceType: "group", changeType: "modified", impact: "access-affecting", count: 196 },
+    { resourceType: "conditionalAccessPolicy", changeType: "modified", impact: "tenant-lockout", count: 61 },
+    { resourceType: "deviceCompliancePolicy", changeType: "modified", impact: "access-affecting", count: 133 },
+    { resourceType: "namedLocation", changeType: "removed", impact: "access-affecting", count: 4 },
+    { resourceType: "teams-org-policies", changeType: "modified", impact: "cosmetic", count: 122 },
+  ],
+  records: ASK_MONTH_RECORDS,
 } };
 
 function askPage(data: AskData) {
@@ -2222,6 +2483,13 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/kit/many": return <KitPage many />;
     // Waiting work matches the Alerts and Incidents fixtures (3 open alerts, 1 open incident).
     case "/": return <DashboardView data={{ ...dashboard(posture), compliance: posture === 2 ? { ...COMPLIANCE.summary, exposed: 0, notConfigured: 0, passing: 3 } : COMPLIANCE.summary, waiting: posture === 0 ? { openAlerts: 3, openIncidents: 1, restoreFollowUps: 0 } : { openAlerts: 0, openIncidents: 0, restoreFollowUps: 0 } }} pendingApprovals={posture === 2 ? 0 : 2} />;
+    case "/activity/anonymous": {
+      const all = activityJobs(jobs).map(hidePeople);
+      return <>{header("Audit log", "Activity", "Everything Keel did and who decided what, newest first.", undefined, activityStatus(activityCounts(all, now)))}
+        <ActivityPage canBackup entries={EVIDENCE} integrity={{ ok: true, status: "verified", anchoredThroughSeq: "18200", unanchoredRecords: 4 }} jobs={all}
+          names={{ "group:5d1c0000-0000-4000-8000-0000000000f1": { name: "Finance approvers", resourceType: "group" } }} nextBefore="18170" notice={<AnonymityNote setting={ANONYMITY_ON} />} now={now} people={Object.fromEntries(Object.entries(ACTIVITY_PEOPLE).map(([actor, ref]) => [actor, hidePerson(ref)]))} />
+      </>;
+    }
     case "/activity": case "/activity/viewer": {
       const all = activityJobs(jobs);
       const viewer = path === "/activity/viewer";
@@ -2245,6 +2513,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
           </div>
         </div></>;
     }
+    case "/schedules/anonymous": {
+      const forecasts = hiddenForecasts();
+      return <>{header("Backup", "Schedules", "When Keel backs up and tidies up, and how hard each backup works Microsoft.", undefined, schedulesStatus(scheduleCounts(SCHEDULES, forecasts)))}
+        {ANONYMOUS_NOTE}
+        <SchedulesPage canEdit canRun deferrals={SCHEDULE_DEFERRALS} forecasts={forecasts} now={now} schedules={SCHEDULES} timeZone="Europe/Paris" /></>;
+    }
     case "/schedules":
     case "/schedules/viewer": {
       const viewer = path === "/schedules/viewer";
@@ -2263,10 +2537,27 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/ask": return askPage(ASK_ANSWERED);
     case "/ask/unknown": return askPage(ASK_UNKNOWN);
     case "/ask/many": return askPage(ASK_MANY);
+    case "/ask/month": return askPage(ASK_MONTH);
     case "/readiness": return readinessPage(READINESS);
     case "/readiness/ready": return readinessPage(READINESS_READY);
     case "/readiness/empty": return readinessPage(READINESS_EMPTY);
     case "/readiness/viewer": return readinessPage(READINESS, { canConfigure: false, canRespond: false });
+    case "/drift/feed": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
+      <ChangesViews current="feed" />
+      <div data-layer="explanation"><ChangeFeed feed={CHANGE_FEED} period="30" /></div></>;
+    case "/drift/feed-empty": return <>{header("Baselines", "Changes", "Every change Keel found in the tenant, from backups, service reads and the Microsoft audit log, grouped the way you choose.")}
+      <ChangesViews current="feed" />
+      <div data-layer="explanation"><ChangeFeed feed={{ ...CHANGE_FEED, rows: [] }} period="7" /></div></>;
+    case "/drift/anonymous": {
+      const items = DRIFT_DECIDED.map(hideActors);
+      const verdict = changesVerdict(items, BASELINES[0].setAt, now);
+      return <>{header("Baselines", "Changes", "What changed in the tenant since the approved setup. Accept what was meant to happen, undo what was not.", undefined, setupStatus(BASELINES[0], items))}
+        <Verdict text={verdict.text} tone={verdict.tone} />
+        <AnonymityNote setting={ANONYMITY_ON} />
+        <div data-layer="explanation">
+          <ChangeList baseline={BASELINES[0]} capabilities={["read", "dispose-accept", "remediate", "restore", "approve"]} items={items} now={now} summary={DRIFT_SUMMARY} />
+        </div></>;
+    }
     case "/drift":
     case "/drift/services": {
       // The visual baseline is the plain Changes page; /drift/services adds service setting changes.
@@ -2285,11 +2576,14 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
     case "/jobs/a4": { const detail = { ...jobs.find((item) => item.id === "a4")!, progress: tierProgress("failed") }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/r9": { const detail = { ...jobs.find((item) => item.id === "a3")!, id: "r9", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, result: { applied: 2, skipped: 0 }, references: refs("marouanedefili@gmail.com", { plan: PLAN_REF }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/r10": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r10", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000010", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000010" } }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
+    case "/jobs/r11": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r11", kind: "restore", params: { artifactId: "7f3c0000-0000-4000-8000-000000000011", mode: "enforce" }, error: "Graph 400: the update to Finance was rejected", references: refs("marouanedefili@gmail.com", { plan: { ...PLAN_REF, id: "7f3c0000-0000-4000-8000-000000000011" } }) }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     // Item 5 (#548 review): a workload restore dry run that stopped on a settings file the server lacks.
     case "/jobs/r13": { const detail = { ...jobs.find((item) => item.id === "a4")!, id: "r13", kind: "restore", params: { workloadRestore: { workload: "exchange-mail-flow", collectionId: "c0110000-0000-4000-8000-000000000013", targets: ["organization"] }, artifactId: "7f3c0000-0000-4000-8000-000000000013" }, error: SETTINGS_FILE_ERROR }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/jobs/a3": { const detail = { ...jobs.find((item) => item.id === "a3")!, result: { applied: 5, skipped: 0 } }; return <>{header("Audit log", "Job", "What this job did and how it ended.", undefined, undefined, [{ href: "/activity", label: "Activity" }])}<JobPageBody capabilities={["restore", "approve"]} job={detail} now={now} /></>; }
     case "/approvals": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
       <ApprovalInbox awaitingContentEffects={[APPROVAL_AWAITING_EFFECTS]} history={APPROVAL_HISTORY} now={now} pending={APPROVALS_PENDING} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
+    case "/approvals/anonymous": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "urgent", label: "4 waiting" })}
+      <ApprovalInbox notice={<AnonymityNote setting={ANONYMITY_ON} />} awaitingContentEffects={[hidePeople(APPROVAL_AWAITING_EFFECTS)]} history={APPROVAL_HISTORY.map(hidePeople)} now={now} pending={APPROVALS_PENDING.map(hidePeople)} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/cli-restore": return <>{header("Inbox", "Approvals", "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.", undefined, { tone: "soon", label: "1 waiting" })}
       <ApprovalInbox history={[]} now={now} pending={[
         { id: "a9e10000-0000-4000-8000-000000000145", action: "restore", params: { artifactId: CLI_PLAN_REF.id }, requestedBy: "8c1e0000-0000-4000-8000-0000000000b2", justification: "Put group expiry back to the approved setup", status: "pending", decidedBy: null, decidedAt: null, reason: null, createdAt: now, expiresAt: "2026-10-03T09:40:00Z", executor: "cli", requiredApprovals: 1, signoffs: [],
@@ -2298,6 +2592,9 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       ]} viewerId="8c1e0000-0000-4000-8000-0000000000a1" /></>;
     case "/approvals/content-effects": return <>{header("Inbox", "Changes to kept or shared content", "A restore that shortens how long content is kept, releases a hold, widens sharing or deletes content needs its own approval.", undefined, { tone: "soon", label: "Waiting for you" }, [{ href: "/approvals", label: "Approvals" }])}
       <ContentEffectsReviewHarness /></>;
+    case "/notifications/anonymous": return <>{header("Settings", "Notifications", "Where Keel sends alerts, who gets which alerts, and what was sent.", undefined, { tone: "urgent", label: "Slack is failing" })}
+      {ANONYMOUS_NOTE}
+      <NotificationsPage canConfiguration channels={CHANNELS} deliveries={DELIVERIES} escalationRules={hiddenEscalations()} now={now} subscriptions={SUBSCRIPTIONS} /></>;
     case "/notifications": return <>{header("Settings", "Notifications", "Where Keel sends alerts, who gets which alerts, and what was sent.", undefined, { tone: "urgent", label: "Slack is failing" })}
       <NotificationsPage canConfiguration channels={CHANNELS} deliveries={DELIVERIES} escalationRules={ESCALATION_RULES} now={now} people={PEOPLE_CHOICES} subscriptions={SUBSCRIPTIONS} /></>;
     case "/notifications/viewer": return <>{header("Settings", "Notifications", "Where Keel sends alerts, who gets which alerts, and what was sent.")}
@@ -2329,6 +2626,12 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <BaselinesStyles />
         <CreateWizard completedSnapshotsExist disabled={false} snapshots={CAPTURE_SOURCES} today={toDay(new Date(now))} />
       </div></>;
+    case "/benchmarks/anonymous": {
+      const data = hiddenCompliance();
+      return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(data.findings))} title="Compliance" />
+      {ANONYMOUS_NOTE}
+      <CompliancePage canCheck canConfigure canRestore data={data} now={now} /></>;
+    }
     case "/benchmarks": case "/benchmarks/viewer": {
       // The viewer variant holds read only: no exception controls and no Check now.
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(COMPLIANCE.findings))} title="Compliance" />
@@ -2349,11 +2652,25 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(MANY_COMPLIANCE.findings))} title="Compliance" />
       <CompliancePage canCheck canConfigure canRestore data={MANY_COMPLIANCE} now={now} /></>;
     }
+    case "/benchmarks/live": case "/benchmarks/same-name": case "/benchmarks/old-full": {
+      // Shaped like the live results of 2026-10-27; same-name and old-full are their two edge cases.
+      const data = path === "/benchmarks/live" ? LIVE_COMPLIANCE : path === "/benchmarks/same-name" ? SAME_NAME_COMPLIANCE : OLD_FULL_COMPLIANCE;
+      return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts(data.findings))} title="Compliance" />
+      <CompliancePage canCheck canConfigure canRestore data={data} now={now} /></>;
+    }
     case "/benchmarks/empty": case "/benchmarks/empty-viewer": {
       // Nothing checked yet and the storage location not known: each empty state has its button.
       const empty: ComplianceData = { ...COMPLIANCE, findings: [], storage: { configured: false, provider: null, region: null, boundary: null, immutability: "unknown", generatedAt: null, certifies: null, source: null } };
       return <><PageHeader actions={<ExportEvidence />} description="Which security controls pass on this tenant, what each result rests on, and where backups are kept." generatedAt={now} section="Baselines" status={complianceStatus(complianceCounts([]))} title="Compliance" />
       <CompliancePage canCheck={path === "/benchmarks/empty"} canConfigure={false} data={empty} now={now} /></>;
+    }
+    case "/principals/anonymity": case "/principals/anonymity-off": {
+      const on = path === "/principals/anonymity";
+      return <>
+        <PageHeader actions={<a className="btn" href="#/principals?new=1"><Icon name="plus" />Add person</a>} description="Who can use Keel and what each person can do." generatedAt={now} section="Settings" status={peopleStatus(peopleCounts(PEOPLE_PAGE, now))} title="People" />
+        <AnonymitySettingCard canChange now={now} setting={on ? ANONYMITY_ON : { enabled: false, changedAt: null, changedBy: null }} />
+        <PeoplePage canRoles canUsers now={now} people={PEOPLE_PAGE} />
+      </>;
     }
     case "/principals": case "/principals/viewer": {
       // A viewer here holds users but not roles: they see everyone and can disable, not grant.
@@ -2363,11 +2680,23 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <PeoplePage canRoles={rolesToo} canUsers now={now} people={PEOPLE_PAGE} />
       </>;
     }
+    case "/alerts/anonymous": {
+      const alerts = hiddenAlerts();
+      return <>{header("Inbox", "Alerts", "Changes that need someone, who owns each one, and when it is due.", undefined, alertsStatus(alertCounts(alerts, now)))}
+        {ANONYMOUS_NOTE}
+        <AlertsPage alerts={alerts} canMute canRespond now={now} /></>;
+    }
     case "/alerts":
     case "/alerts/viewer": {
       const viewer = path === "/alerts/viewer";
       return <>{header("Inbox", "Alerts", "Changes that need someone, who owns each one, and when it is due.", undefined, alertsStatus(alertCounts(INBOX_ALERTS, now)))}
         <AlertsPage alerts={INBOX_ALERTS} canMute={!viewer} canRespond={!viewer} now={now} /></>;
+    }
+    case "/setup/anonymous": {
+      const state = hiddenSetup();
+      return <><PageHeader actions={<CheckAgain />} description="Connect Keel to your Microsoft tenant: what is in place, what waits on you, and when the first backup can run." generatedAt={now} section="Settings" status={setupPageStatus(state)} title="Setup" />
+        {ANONYMOUS_NOTE}
+        <SetupBody canBackup canStart services={serviceStatuses([], now)} state={state} /></>;
     }
     case "/setup":
     case "/setup/checked": {
@@ -2375,6 +2704,14 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <><PageHeader actions={<CheckAgain />} description="Connect Keel to your Microsoft tenant: what is in place, what waits on you, and when the first backup can run." generatedAt={now} section="Settings" status={setupPageStatus(state)} title="Setup" />
         <SetupBody canBackup canStart services={serviceStatuses(path === "/setup" ? [] : COVERAGE.types, now)} state={state} /></>;
     }
+    case "/emergency-changes/anonymous": {
+      const data = hiddenIntents();
+      const verdict = changeIntentsVerdict(data.intents, now);
+      const alerts = intentAlerts(data);
+      return <>{header("Automation center", "Emergency changes", "Changes made outside the baseline on purpose, approved for a limited time.", undefined, intentsStatus(data.intents))}
+      <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ec-attention" } : null} text={verdict.text} tone={verdict.tone} />
+      {ANONYMOUS_NOTE}
+      <div data-layer="explanation"><EmergencyChangesView data={data} /></div></>; }
     case "/emergency-changes": case "/emergency-changes/none": {
       const data: ChangeIntentsData = path === "/emergency-changes"
         ? { intents: INTENTS, changes: INTENT_CHANGES, people: [{ id: PERSON_AMARA.id, name: PERSON_AMARA.name }, { id: PERSON_ONCALL.id, name: PERSON_ONCALL.name }], generatedAt: now }
@@ -2384,6 +2721,22 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
       return <>{header("Automation center", "Emergency changes", "Changes made outside the baseline on purpose, approved for a limited time.", undefined, intentsStatus(data.intents))}
       <Verdict action={alerts.some((alert) => alert.tone !== "low") ? { label: "See what to fix", href: "#ec-attention" } : null} text={verdict.text} tone={verdict.tone} />
       <div data-layer="explanation"><EmergencyChangesView data={data} /></div></>; }
+    case "/policies/p2/anonymous": {
+      const policy = hiddenRunAs(OFF_POLICY);
+      const state = RULE_STATES[ruleState(policy)];
+      return <>{header("Automation center", policy.name, `${RULE_KINDS[ruleKind(policy)].label}: what it watches, who it acts as, and what it did.`, undefined, { tone: state.tone === "neutral" ? "low" : state.tone, label: state.label }, [{ href: "/policies", label: "Policies" }])}
+        {ANONYMOUS_NOTE}
+        <PolicyPage actions={[]} canEdit halted={false} initialPreview={hiddenPreview()} now={now} policy={policy} />
+      </>;
+    }
+    case "/policies/anonymous": {
+      const policies = POLICIES.map(hiddenRunAs);
+      return <>
+        <PageHeader actions={<a className="btn" href="#/policies?new=1"><Icon name="plus" />New rule</a>} description="What Keel does on its own when something changes, and who it acts as." generatedAt={now} section="Automation center" status={rulesStatus(ruleCounts(policies), false)} title="Automatic rules" />
+        {ANONYMOUS_NOTE}
+        <PoliciesPage canEdit halted={false} now={now} policies={policies} />
+      </>;
+    }
     case "/policies/p1": case "/policies/p2": case "/policies/p3": {
       const policy = path === "/policies/p1" ? POLICY : path === "/policies/p2" ? OFF_POLICY : PAUSED_POLICY;
       const state = RULE_STATES[ruleState(policy)];

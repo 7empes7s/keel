@@ -314,7 +314,9 @@ test('a read-only principal cannot acknowledge or resolve, in the engine or the 
         const still = (await db.query('SELECT state FROM alert WHERE id = $1', [alert.id])).rows[0].state;
         assert.equal(still, 'open');
         const denied = (await db.query("SELECT count(*)::int AS n FROM evidence WHERE kind = 'action-attempt' AND subject->>'action' = 'alert-respond' AND subject->>'decision' = 'denied'")).rows[0].n;
-        assert.equal(denied, 2, 'the guard records each refused attempt');
+        // Security audit run 2, finding 10: the same person refused for the same action and
+        // reason within a minute is one record; the repeat is counted on the next one.
+        assert.equal(denied, 1, 'the guard records the first refused attempt of its kind');
 
         assert.equal((await post(ids.operator, ['dispose-accept'], { alertId: alert.id, action: 'acknowledge' })).status, 200);
         assert.equal((await post(ids.operator, ['dispose-accept'], { alertId: alert.id, action: 'acknowledge' })).status, 409);

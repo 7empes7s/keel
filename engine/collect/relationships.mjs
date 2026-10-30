@@ -72,6 +72,15 @@ const ASSIGNMENT_KINDS = {
 // a filter change is a modification of the same edge, not a lost and a new
 // one. An unrecognized target type is kept with kind 'unknown' — never
 // dropped — and an item with no target at all is malformed.
+// Every @odata annotation except @odata.type, which /assign needs back.
+function withoutOtherAnnotations(value) {
+  if (Array.isArray(value)) return value.map(withoutOtherAnnotations);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !(key.includes('@odata.') && key !== '@odata.type'))
+    .map(([key, child]) => [key, withoutOtherAnnotations(child)]));
+}
+
 function assignmentProject(item) {
   const target = item?.target;
   if (!target || typeof target !== 'object') return null;
@@ -96,6 +105,10 @@ function assignmentProject(item) {
       // other assignment's edge stays exactly as before.
       ...(item.runSchedule && typeof item.runSchedule === 'object' ? { runSchedule: item.runSchedule } : {}),
       ...(typeof item.runRemediationScript === 'boolean' ? { runRemediationScript: item.runRemediationScript } : {}),
+      // Restore gaps batch 18: an app assignment's settings (notifications,
+      // delivery and restart options) are kept whole, so a restore can write
+      // them back. settingsDigest still names them for change detection.
+      ...(item.settings && typeof item.settings === 'object' ? { settings: withoutOtherAnnotations(item.settings) } : {}),
     },
   };
 }

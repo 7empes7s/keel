@@ -1,6 +1,7 @@
 import type { AlertItem } from "@/components/ui/alert-list";
 import type { StatTile } from "@/components/ui/stat-tiles";
 import { plainKind, typeService } from "@/lib/baselines-view";
+import { fieldWords } from "@/lib/changes-view";
 import { namedSubject } from "@/lib/job-names";
 import { displayEnum, formatTimestamp, resourceTypeLabel } from "@/lib/presentation";
 
@@ -544,9 +545,9 @@ export function recordTime(record: AnswerRecord): string {
   return (record.kind === "change" ? record.seenAt : null) ?? record.window.to ?? "";
 }
 
-/** The settings a change touched, in words: "accountEnabled, department and 3 more". */
+/** The settings a change touched, in words: "Account enabled, Department and more". */
 export function recordFields(record: AnswerRecord): string {
   if (record.kind !== "change" || !record.fields?.length) return "";
-  const list = record.fields.join(", ");
+  const list = record.fields.map(fieldWords).join(", ");
   return record.moreFields ? `${list} and more` : list;
 }

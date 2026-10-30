@@ -8,6 +8,8 @@ import { PageHeader } from "@/components/page-header";
 import { ALERT_MUTE_CAPABILITY, ALERT_RESPOND_CAPABILITY } from "@/lib/alerts";
 import { alertCounts, alertsStatus, type AlertInboxData } from "@/lib/alerts-view";
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
+import { AnonymityNote } from "@/components/anonymity-note";
+import { getAnonymitySetting } from "@/lib/anonymity";
 
 const DESCRIPTION = "Changes that need someone, who owns each one, and when it is due.";
 
@@ -27,6 +29,7 @@ export default async function AlertsPage() {
   }
   return <>
     <PageHeader description={DESCRIPTION} generatedAt={data.generatedAt} section="Inbox" status={alertsStatus(alertCounts(data.alerts, data.generatedAt))} title="Alerts" />
+    <AnonymityNote setting={await getAnonymitySetting()} />
     <AlertsBody
       alerts={data.alerts}
       canMute={access.capabilities.includes(ALERT_MUTE_CAPABILITY)}

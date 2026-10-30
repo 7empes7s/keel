@@ -3,6 +3,7 @@ import { naturalKeyFor } from '../cir/naturalKey.mjs';
 import { SOFT_DELETABLE, buildLiveIndex } from './liveState.mjs';
 import { selectRecoveryMechanism } from '../restore/recoveryMechanism.mjs';
 import { decideVerb } from './verb.mjs';
+import { withLiveAppId } from './liveAppId.mjs';
 import { licencePlan } from '../restore/userOperations.mjs';
 import { adoptableLiveObject } from '../restore/directoryPolicyOperations.mjs';
 
@@ -121,11 +122,11 @@ function adoptByUniqueName(liveIndex, resource, plannedKeys, adoptedKeys) {
  * fresh (liveState.mjs), so a hash stored under older rules (a field classified
  * server-owned since) would make identical content look different and plan an update
  * that writes nothing (cir/canonicalHash.mjs sameContent). The stored hash is used only
- * when the payload cannot be hashed. */
-function desiredHash(resource) {
+ * when the payload cannot be hashed. `current` is the live object it is compared with. */
+function desiredHash(resource, current = null) {
   if (resource.payload == null) return resource.payloadHash;
   try {
-    return canonicalHash(resource.payload, resource.resourceType);
+    return canonicalHash(withLiveAppId(resource.payload, resource.resourceType, current), resource.resourceType);
   } catch (error) {
     if (typeof resource.payloadHash === 'string') return resource.payloadHash;
     throw error;
@@ -156,7 +157,8 @@ export async function buildReconciliationPlan(reader, resources, {
 
   for (const resource of resources) {
     let current = liveIndex.get(resource.naturalKey) ?? null;
-    const desired = resource.payload === null ? null : { payloadHash: desiredHash(resource) };
+    const desiredFor = (live) => (resource.payload === null ? null : { payloadHash: desiredHash(resource, live) });
+    const desired = desiredFor(current);
     const live = current?.state === 'present' ? { payloadHash: current.payloadHash } : null;
     let decision = licenceDecision(resource, current, decideVerb({
       desired,
@@ -184,7 +186,7 @@ export async function buildReconciliationPlan(reader, resources, {
       const adopted = adoptByUniqueName(liveIndex, resource, plannedKeys, adoptedKeys);
       if (adopted) {
         current = adopted;
-        decision = decideVerb({ desired, live: { payloadHash: adopted.payloadHash }, softDeleted: false });
+        decision = decideVerb({ desired: desiredFor(adopted), live: { payloadHash: adopted.payloadHash }, softDeleted: false });
         decision = { ...decision, reason: `adopts live ${adopted.targetId}, created by an earlier restore of this backup: ${decision.reason}` };
       }
     }

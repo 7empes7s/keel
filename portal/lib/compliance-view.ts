@@ -1,5 +1,5 @@
 import type { IconName } from "@/components/shell/icons";
-import { typeService } from "@/lib/baselines-view";
+import { plainKind, typeService } from "@/lib/baselines-view";
 import { changeName } from "@/lib/changes-view";
 import type { RiskTone } from "@/lib/menu-status";
 import { ago, formatTimestamp } from "@/lib/presentation";
@@ -41,6 +41,14 @@ export function captureScope(capture: BaselineCapture | undefined): string {
   if (!capture || capture.basis === "unknown" || !capture.capturedAt) return "What it covered is not recorded.";
   const from = capture.basis === "legacy-resource-versions" ? "Read from the backups its resources came from" : "From one complete backup";
   return `${from}, covering ${plural(capture.types.length, "configuration type")}.`;
+}
+
+/** The kinds a baseline left out because Microsoft kept failing to answer, in words; null when none. */
+export function leftOutWords(capture: BaselineCapture | undefined): string | null {
+  const names = [...new Set((capture?.leftOut ?? []).map((item) => plainKind(item.type)))].sort();
+  if (!names.length) return null;
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  return `${list} ${names.length === 1 ? "is" : "are"} not in this setup: Microsoft kept answering with an error when its backup was taken, so changes to ${names.length === 1 ? "it" : "them"} are not checked. Capture a new version once Microsoft answers again.`;
 }
 
 export function captureAge(capture: BaselineCapture | undefined, now: string): string {
@@ -666,7 +674,7 @@ export function orderFindings(findings: ComplianceFinding[]): ComplianceFinding[
 export function ownerPerson(finding: ComplianceFinding): EngineRef | null {
   const exception = finding.exception;
   if (!exception?.owner && !exception?.ownerRef) return null;
-  if (exception.ownerRef) return { kind: "person", id: exception.ownerRef.id, name: exception.ownerRef.name, readable: true, email: exception.owner ?? undefined } as EngineRef;
+  if (exception.ownerRef) return { kind: "person", id: exception.ownerRef.id, name: exception.ownerRef.name, readable: true, email: exception.owner ?? undefined, pseudonym: exception.ownerRef.pseudonym } as EngineRef;
   return { kind: "person", id: "", name: exception.owner ?? "", readable: true } as EngineRef;
 }
 

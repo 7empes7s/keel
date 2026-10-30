@@ -223,7 +223,7 @@ operator decision (OAuth app and credentials in `/etc/keel/servicenow.env`, outs
 
    Write the KEEL adapter config for it (the `itsm_adapter_config.config` shape from
    `docs/roadmap/servicenow.md`), with `credential.tokenRef` and `callback.secretRef` as
-   `env:` references. Check it offline:
+   `env:KEEL_INTEGRATION_*` references (test users keep any `env:` name). Check it offline:
    `node tools/qualification/servicenow.mjs check --config servicenow-config.json`.
 2. **The relay.**
    - A table `u_keel_callback_relay` with string fields `u_record`, `u_signature` and

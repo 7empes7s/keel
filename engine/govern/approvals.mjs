@@ -10,7 +10,8 @@
 // attempted against a stale request marks it 'expired' and is refused, so an
 // approval can never be granted against stale parameters.
 
-import { enqueue } from '../jobs/queue.mjs';
+import { isDeepStrictEqual } from 'node:util';
+import { APPROVED_JOB_PRIORITY, enqueue } from '../jobs/queue.mjs';
 import { appendEvidence } from './evidence.mjs';
 import { refuseSameContentDriftIds } from '../store/openDrift.mjs';
 import { canonicalDigest, getDryRunArtifact, validateArtifactForApproval } from '../restore/dryRunArtifact.mjs';
@@ -94,6 +95,10 @@ export class StandingPolicyRefusedError extends Error {}
 // Task 96: the decision named a plan that is no longer the request's plan. Nothing is
 // decided; the request stays as it was.
 export class ApprovalPlanChangedError extends Error {}
+// The job key `approval:<request id>` already belongs to a job this approval did not mint
+// (another kind of job, another requester, or other params). Approving fails closed: the
+// request stays pending and no foreign job is reported as the approved one.
+export class ApprovalJobConflictError extends Error {}
 
 /** Task 96: the digest of the plan a request asks to approve: its action and its
  * immutable params (for a restore, the dry-run artifact reference). An external mirror
@@ -378,6 +383,15 @@ async function closeIfExpired(client, request) {
 // pending, no job is minted, and `{ request, job: null, signoffs, requiredApprovals }`
 // comes back. The second, different approver's approval decides it. `testTenantRefs`
 // replaces the committed test-tenant list in tests only; the portal never passes it.
+// A pending request has never minted a job (the mint commits with the approval), so any
+// job already found under its key must be the one this approval just inserted: same
+// kind, same requester, same params. Anything else was planted under the key.
+function jobMatchesApproval(job, { kind, requestedBy, params }) {
+  return job.kind === kind
+    && String(job.requested_by) === String(requestedBy)
+    && isDeepStrictEqual(job.params, JSON.parse(JSON.stringify(params ?? {})));
+}
+
 /** @param {any} client
  * @param {{ tenantRef: string, id: string, decidedBy: string, enforceScope?: boolean, approverScope?: any, expectedPlanDigest?: string | null, standingPolicy?: string | null, testTenantRefs?: readonly string[] }} options
  */
@@ -497,7 +511,11 @@ export async function approveRequest(client, {
       params: jobParams,
       requestedBy: request.requested_by,
       idempotencyKey: `approval:${request.id}`,
+      priority: APPROVED_JOB_PRIORITY,
     });
+    if (job && !jobMatchesApproval(job, { kind: request.action, requestedBy: request.requested_by, params: jobParams })) {
+      throw new ApprovalJobConflictError(`job key for approval request ${id} is held by another job`);
+    }
     const { rows } = await client.query(
       `UPDATE approval_request
        SET status = 'approved', decided_by = $2, decided_at = now(), standing_policy = $3
@@ -593,9 +611,11 @@ export async function rejectRequest(client, {
 
 /**
  * Gap B11: who carries out the restore that promotes this dry-run artifact. An
- * artifact a worker job planned (the portal's dry run or undo plan) is carried out by
- * the worker, as before; an artifact planned with the CLI is carried out with the CLI,
- * so approving it mints no worker job. A promotion job (mode 'enforce', minted by an
+ * artifact a worker job planned (the portal's dry run, workload dry run, undo plan or
+ * compliance fix) is carried out by the worker; an artifact planned with the CLI is
+ * carried out with the CLI, so approving it mints no worker job. Keep the keys below in
+ * step with the dry-run branches of the restore job in cli/keel-worker.mjs: a dry run
+ * the query misses is filed as CLI-run, and approving it queues nothing. A promotion job (mode 'enforce', minted by an
  * earlier approval) is not a dry run and never counts.
  */
 export async function restoreExecutorForArtifact(client, { artifactId }) {
@@ -604,7 +624,7 @@ export async function restoreExecutorForArtifact(client, { artifactId }) {
       WHERE kind = 'restore'
         AND params->>'artifactId' = $1
         AND NOT (params ? 'mode')
-        AND (params ? 'snapshotId' OR params ? 'compensates' OR params ? 'complianceFix')
+        AND (params ? 'snapshotId' OR params ? 'compensates' OR params ? 'complianceFix' OR params ? 'workloadRestore')
       LIMIT 1`,
     [artifactId],
   );

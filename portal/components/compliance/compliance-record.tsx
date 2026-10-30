@@ -57,7 +57,7 @@ export function FindingRecordFields({ finding }: { finding: ComplianceFinding })
       {finding.exception ? (
         <>
           <RecordField label="Exception ID" value={finding.exception.id} />
-          <RecordField copy={false} label="Exception" value={`state ${finding.exceptionState} · owner ${finding.exception.owner ?? "none"} · granted by ${finding.exception.grantedBy ?? "unknown"} at ${finding.exception.grantedAt ?? "unknown"} · expires ${finding.exception.expiresAt ?? "never set"}`} />
+          <RecordField copy={false} label="Exception" value={`state ${finding.exceptionState} · owner ${finding.exception.owner ?? finding.exception.ownerRef?.name ?? "none"} · granted by ${finding.exception.grantedBy ?? "unknown"} at ${finding.exception.grantedAt ?? "unknown"} · expires ${finding.exception.expiresAt ?? "never set"}`} />
         </>
       ) : null}
     </>

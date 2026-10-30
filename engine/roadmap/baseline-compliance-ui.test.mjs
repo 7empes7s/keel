@@ -64,9 +64,10 @@ async function person(client, email, role) {
 }
 
 /** A whole-estate snapshot (every collector complete) holding the given resources. */
-async function snapshot(client, tenantRef, completedAt, resources = []) {
+async function snapshot(client, tenantRef, completedAt, resources = [], outcomes = {}) {
   const startedAt = new Date(new Date(completedAt).getTime() - 10 * 60_000);
-  const digest = Object.fromEntries(DESCRIPTORS.map(({ type }) => [type, { outcome: 'complete', itemCount: 0 }]));
+  // An outcome is a word, or { outcome, httpStatus } for a failed read.
+  const digest = Object.fromEntries(DESCRIPTORS.map(({ type }) => [type, { ...(typeof outcomes[type] === 'object' ? outcomes[type] : { outcome: outcomes[type] ?? 'complete' }), itemCount: 0 }]));
   const { rows } = await client.query(
     `INSERT INTO snapshot (tenant_ref, status, started_at, completed_at, coverage_digest)
      VALUES ($1, 'complete', $2, $3, $4) RETURNING id::text AS id`,
@@ -284,6 +285,70 @@ test('a cosmetic-only change is zero drift; a real change is one', async (t) => 
   assert.equal(entry.changesSinceCapture.comparedSnapshotId, changed);
   assert.equal(entry.changesSinceCapture.modified, 1);
   assert.equal(entry.changesSinceCapture.total, 1);
+});
+
+test('a type the newest collection could not read for lack of a licence is not counted as removed (#646)', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenant();
+  const now = Date.now();
+  const policy = { id: 'cap1', displayName: 'Block legacy auth', state: 'enabled', templateId: null };
+  const workflow = { id: 'wf1', displayName: 'KEEL-RT- joiner', category: 'joiner' };
+  const source = await snapshot(client, tenantRef, new Date(now - 3 * DAY), [
+    ['conditionalAccessPolicy:Block legacy auth', policy],
+    ['lifecycleWorkflow:KEEL-RT- joiner', workflow],
+  ]);
+  const baselineId = await seedFromSnapshot(client, { tenantRef, snapshotId: source, setBy: 'fixture', label: 'Golden' });
+
+  // The licence lapsed: the newest collection could not read lifecycle workflows at all.
+  const lapsed = await snapshot(client, tenantRef, new Date(now - DAY), [['conditionalAccessPolicy:Block legacy auth', policy]],
+    { lifecycleWorkflow: 'unavailable' });
+  const [entry] = await baselineCompliance(client, { tenantRef, now: new Date(now) });
+  assert.equal(entry.id, baselineId);
+  assert.equal(entry.changesSinceCapture.comparedSnapshotId, lapsed);
+  assert.equal(entry.changesSinceCapture.removed, 0, 'an unread type is not a removal');
+  assert.equal(entry.changesSinceCapture.total, 0);
+
+  // A type that was read and came back empty is still a removal.
+  await snapshot(client, tenantRef, new Date(now - DAY / 2), [['conditionalAccessPolicy:Block legacy auth', policy]]);
+  const [after] = await baselineCompliance(client, { tenantRef, now: new Date(now) });
+  assert.equal(after.changesSinceCapture.removed, 1);
+});
+
+test('a minor kind Microsoft kept failing on is left out of a new baseline, and never counted as removed or added (#666)', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = tenant();
+  const now = Date.now();
+  const policy = { id: 'cap1', displayName: 'Block legacy auth', state: 'enabled', templateId: null };
+  const todo = { isExternalJoinEnabled: false, isExternalShareEnabled: false, isPushNotificationEnabled: true };
+  const fault = { outcome: 'failed', httpStatus: 500 };
+
+  // To Do settings answered 500 on every try: the backup can still seed a baseline.
+  const source = await snapshot(client, tenantRef, new Date(now - 3 * DAY), [['conditionalAccessPolicy:Block legacy auth', policy]],
+    { todoSettings: fault });
+  const baselineId = await seedFromSnapshot(client, { tenantRef, snapshotId: source, setBy: 'fixture', label: 'Golden' });
+  let [entry] = await baselineCompliance(client, { tenantRef, now: new Date(now) });
+  assert.equal(entry.id, baselineId);
+  assert.deepEqual(entry.capture.leftOut, [{ type: 'todoSettings', reason: 'microsoft-service-error' }]);
+  assert.equal(entry.capture.types.includes('todoSettings'), false);
+
+  // Microsoft answers again: the baseline holds no To Do settings, so they are not "added".
+  await snapshot(client, tenantRef, new Date(now - 2 * DAY), [['conditionalAccessPolicy:Block legacy auth', policy], ['todoSettings:todoSettings', todo]]);
+  [entry] = await baselineCompliance(client, { tenantRef, now: new Date(now) });
+  assert.equal(entry.changesSinceCapture.total, 0, JSON.stringify(entry.changesSinceCapture));
+
+  // A baseline that holds To Do settings: a later backup Microsoft failed on does not remove them.
+  const held = await snapshot(client, tenantRef, new Date(now - DAY), [['conditionalAccessPolicy:Block legacy auth', policy], ['todoSettings:todoSettings', todo]]);
+  await seedFromSnapshot(client, { tenantRef, snapshotId: held, setBy: 'fixture', label: 'Golden 2' });
+  await snapshot(client, tenantRef, new Date(now - DAY / 2), [['conditionalAccessPolicy:Block legacy auth', policy]], { todoSettings: fault });
+  const second = (await baselineCompliance(client, { tenantRef, now: new Date(now) })).find((item) => item.label === 'Golden 2');
+  assert.equal(second.changesSinceCapture.removed, 0, 'an unread kind is not a removal');
+  assert.deepEqual(second.capture.leftOut, []);
+
+  // A refusal (403) or a fault on an important kind still blocks a baseline.
+  for (const outcomes of [{ todoSettings: { outcome: 'failed', httpStatus: 403 } }, { conditionalAccessPolicy: fault }]) {
+    const blocked = await snapshot(client, tenantRef, new Date(now - DAY / 4), [], outcomes);
+    await assert.rejects(seedFromSnapshot(client, { tenantRef, snapshotId: blocked, setBy: 'fixture', label: 'No' }), /not an eligible whole-estate baseline source/);
+  }
 });
 
 test('mutation check: findings link only to records resting on the same collection', async (t) => {
@@ -512,8 +577,9 @@ test('portal: Compliance and Baselines render the readers in words; a viewer can
       }
 
       // Grant an exception: a viewer is refused; an admin's is saved; a past end is refused.
+      const jsonHeaders = (headers) => { const h = new Headers(headers); h.set('content-type', 'application/json'); return h; };
       const grant = (headers, body) => grantException(new Request('http://keel.test/api/actions/compliance/exception', {
-        method: 'POST', headers, body: JSON.stringify(body),
+        method: 'POST', headers: jsonHeaders(headers), body: JSON.stringify(body),
       }));
       const evaluationId = ${JSON.stringify(evaluation.id)};
       const future = new Date(Date.now() + 30 * 86400000).toISOString();
@@ -540,7 +606,7 @@ test('portal: Compliance and Baselines render the readers in words; a viewer can
 
       // The action route refuses the viewer before anything is queued.
       const response = await POST(new Request('http://keel.test/api/actions/baseline', {
-        method: 'POST', headers: viewerHeaders,
+        method: 'POST', headers: jsonHeaders(viewerHeaders),
         body: JSON.stringify({ snapshotId: ${JSON.stringify(laterSnapshot)}, supersedesBaselineId: ${JSON.stringify(baselineId)} }),
       }));
       assert.equal(response.status, 403);

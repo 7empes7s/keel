@@ -7,23 +7,23 @@
   "resourceType": "crossTenantAccessPolicyPartner",
   "operation": "create",
   "fieldProjectionContractVersion": 1,
-  "build": "2b9d310751a663e41a1b24c2febdc5756968814b",
+  "build": "cc350ab5b615716c3220e922ffd17a3dcf067fc9",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-10-13T13:23:36.168Z",
-  "restoreRef": "d5513312-2b4b-8330-94a4-042d3407d459",
+  "observedAt": "2026-10-30T00:14:58.500Z",
+  "restoreRef": "bf94a888-c413-8c6c-b0d5-b66fb7c1dc06",
   "naturalKey": "crossTenantAccessPolicyPartner:efc83404-0842-8940-959a-c048aa123c26",
   "fixtureKind": "tenant-setting",
-  "captureSha256": "24ef23d6f120637dde9aa53af2d69d09659211ac75af0bb67e38e5a86a59ddbf",
+  "captureSha256": "f52376d0d8e7940c3fbac9a6e1f54f0af29a085901945ca0c4db214c46a4a26f",
   "proofRef": "docs/release/qualifications/entra-live/crossTenantAccessPolicyPartner.create.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "04ff0a18db147ce9ba2606e794f33f9818be543ef21b2decd40d9e5c6ffcff3a"
+      "signature": "0f4448e18a3e3839ef43a658cb767d3e3bfe89990d4ced681e649c8bc6440b1b"
     }
   }
 }

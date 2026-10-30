@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "microsoftTunnelConfiguration",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "05a930b58a82583d276fff1fedf6cc9dca1563e9",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-30T01:21:26.293Z",
+  "restoreRef": "b6477c1c-2be3-880c-a9cd-8282692018fb",
+  "naturalKey": "microsoftTunnelConfiguration:ddb535f8-f85c-8575-a7a6-658ff024332d",
+  "fixtureKind": "named-object",
+  "captureSha256": "159407b62193501a52c57d520a1432a84eeee17d313a3fb09ead6b32c62a7e07",
+  "proofRef": "docs/release/qualifications/entra-live/microsoftTunnelConfiguration.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "ea323ebf116742d7443af1a755b14189d2480c6908104f7e7795f20dc6e55781"
+    }
+  }
+}

@@ -17,7 +17,7 @@ export type CompletionState = "configuration-restored" | "service-validation-pen
 
 export interface CompletionItem {
   id: string;
-  kind: "credential" | "certificate" | "consent" | "integration" | "service-validation" | "enforcement";
+  kind: "credential" | "certificate" | "consent" | "integration" | "service-validation" | "enforcement" | "manual-setting";
   requirement: string;
   description: string;
   owner: string | null;
@@ -48,6 +48,7 @@ const STATE_TONES: Record<CompletionState, BadgeTone> = {
 
 const KIND_ICONS: Record<CompletionItem["kind"], IconName> = {
   credential: "settings", certificate: "page", consent: "check", integration: "link", "service-validation": "check-circle", enforcement: "play",
+  "manual-setting": "settings",
 };
 
 const STATE_LABELS: Record<CompletionState, string> = {
@@ -58,6 +59,21 @@ const STATE_LABELS: Record<CompletionState, string> = {
 
 export function completionStateLabel(state: CompletionState): string {
   return STATE_LABELS[state] ?? state;
+}
+
+// A restore that skipped an object (mechanism 'skipped') wrote nothing to it: its
+// open items are the steps to do by hand. Its badge says so, never "restored".
+export function completionBadge(resource: Pick<CompletionResource, "mechanism" | "state">): { label: string; tone: BadgeTone; key: string } {
+  if (resource.mechanism === "skipped") {
+    return resource.state === "verified-complete"
+      ? { label: "Set by hand, verified", tone: "fine", key: "skipped-verified" }
+      : { label: "Not restored: set it by hand", tone: "soon", key: "skipped" };
+  }
+  return { label: completionStateLabel(resource.state), tone: STATE_TONES[resource.state] ?? "neutral", key: resource.state };
+}
+
+function mechanismNote(mechanism: string): string {
+  return mechanism === "skipped" ? "KEEL wrote nothing to it" : words(mechanism);
 }
 
 interface ChecklistProps {
@@ -82,138 +98,141 @@ export function CompletionChecklist({ resources, canComplete, busyItem = null, o
         {open ? <Badge tone="soon">{`${open} ${open === 1 ? "needs" : "need"} evidence`}</Badge> : null}
         <Badge tone={open ? "neutral" : "fine"}>{`${current.length - open} of ${current.length} verified`}</Badge>
       </p>
-      {resources.map((resource) => (
-        <section className={`completion-resource completion-${resource.state}`} key={resource.naturalKey}>
-          <header className="completion-resource-head">
-            <strong className="resource-name">{resource.label ?? namedResource(resource.naturalKey, {}, resource.resourceType)}</strong>
-            <Badge className={`completion-badge-${resource.state}`} tone={STATE_TONES[resource.state] ?? "neutral"}>{completionStateLabel(resource.state)}</Badge>
-            <small className="completion-mechanism">{words(resource.mechanism)}</small>
-          </header>
-          <ul className="completion-items">
-            {resource.items.map((item) => {
-              const evidence = item.evidence[item.evidence.length - 1];
-              const replaced = item.state === "pending" && Boolean(item.replacedBy);
-              const formOpen = openItem === item.id || busyItem === item.id;
-              return (
-                <li className={`completion-item completion-item-${item.state}`} data-tone={item.state === "verified" ? "fine" : "soon"} key={item.id}>
-                  <span aria-hidden="true" className="completion-kind"><Icon name={KIND_ICONS[item.kind] ?? "info"} /></span>
-                  <div className="completion-item-text">
-                    <strong>{words(item.kind)}</strong>
-                    <span>{item.description}</span>
-                    {item.state === "verified" && evidence ? (
-                      <small className="completion-evidence">
-                        Evidence: {evidence.type} {evidence.reference}
-                        {item.closedAt ? ` · ${formatTimestamp(item.closedAt)}` : null}
-                      </small>
-                    ) : null}
-                    {replaced ? (
-                      <small className="completion-evidence">
-                        A later restore of this item opened the same step, so this one no longer counts as waiting. You can still close it here.
-                      </small>
-                    ) : null}
-                    {item.kind === "enforcement" && item.state === "pending" && !replaced ? (
-                      <small className="completion-evidence completion-next-step">
-                        Next: ask for the enforcement step. A second person approves it, and KEEL closes this once the policy reads back as on.
-                      </small>
-                    ) : null}
-                  </div>
-                  <Badge tone={item.state === "verified" ? "fine" : replaced ? "neutral" : "soon"}>
-                    {item.state === "verified" ? "Verified" : replaced ? "Replaced" : "Needs evidence"}
-                  </Badge>
-                  <span className="completion-act">
-                    {canComplete ? (
-                      item.state === "pending" ? (
-                        item.kind === "enforcement" || formOpen ? null : (
-                          <button className="btn btn-secondary btn-sm" disabled={busyItem !== null} onClick={() => setOpenItem(item.id)} type="button">
-                            Add evidence
+      {resources.map((resource) => {
+        const badge = completionBadge(resource);
+        return (
+          <section className={`completion-resource completion-${resource.state}`} key={resource.naturalKey}>
+            <header className="completion-resource-head">
+              <strong className="resource-name">{resource.label ?? namedResource(resource.naturalKey, {}, resource.resourceType)}</strong>
+              <Badge className={`completion-badge-${badge.key}`} tone={badge.tone}>{badge.label}</Badge>
+              <small className="completion-mechanism">{mechanismNote(resource.mechanism)}</small>
+            </header>
+            <ul className="completion-items">
+              {resource.items.map((item) => {
+                const evidence = item.evidence[item.evidence.length - 1];
+                const replaced = item.state === "pending" && Boolean(item.replacedBy);
+                const formOpen = openItem === item.id || busyItem === item.id;
+                return (
+                  <li className={`completion-item completion-item-${item.state}`} data-tone={item.state === "verified" ? "fine" : "soon"} key={item.id}>
+                    <span aria-hidden="true" className="completion-kind"><Icon name={KIND_ICONS[item.kind] ?? "info"} /></span>
+                    <div className="completion-item-text">
+                      <strong>{words(item.kind)}</strong>
+                      <span>{item.description}</span>
+                      {item.state === "verified" && evidence ? (
+                        <small className="completion-evidence">
+                          Evidence: {evidence.type} {evidence.reference}
+                          {item.closedAt ? ` · ${formatTimestamp(item.closedAt)}` : null}
+                        </small>
+                      ) : null}
+                      {replaced ? (
+                        <small className="completion-evidence">
+                          A later restore of this item opened the same step, so this one no longer counts as waiting. You can still close it here.
+                        </small>
+                      ) : null}
+                      {item.kind === "enforcement" && item.state === "pending" && !replaced ? (
+                        <small className="completion-evidence completion-next-step">
+                          Next: ask for the enforcement step. A second person approves it, and KEEL closes this once the policy reads back as on.
+                        </small>
+                      ) : null}
+                    </div>
+                    <Badge tone={item.state === "verified" ? "fine" : replaced ? "neutral" : "soon"}>
+                      {item.state === "verified" ? "Verified" : replaced ? "Replaced" : "Needs evidence"}
+                    </Badge>
+                    <span className="completion-act">
+                      {canComplete ? (
+                        item.state === "pending" ? (
+                          item.kind === "enforcement" || formOpen ? null : (
+                            <button className="btn btn-secondary btn-sm" disabled={busyItem !== null} onClick={() => setOpenItem(item.id)} type="button">
+                              Add evidence
+                            </button>
+                          )
+                        ) : (
+                          <button
+                            aria-busy={busyItem === item.id || undefined}
+                            className="btn btn-secondary btn-sm"
+                            disabled={busyItem !== null}
+                            onClick={() => onReopen?.(item)}
+                            type="button"
+                          >
+                            Reopen
                           </button>
                         )
-                      ) : (
-                        <button
-                          aria-busy={busyItem === item.id || undefined}
-                          className="btn btn-secondary btn-sm"
-                          disabled={busyItem !== null}
-                          onClick={() => onReopen?.(item)}
-                          type="button"
-                        >
-                          Reopen
+                      ) : null}
+                    </span>
+                    {canComplete && item.state === "pending" && item.kind !== "enforcement" && formOpen ? (
+                      <form
+                        className="completion-form"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          const data = new FormData(event.currentTarget);
+                          onComplete?.(item, String(data.get("reference") ?? ""), String(data.get("type") ?? "ticket"));
+                        }}
+                      >
+                        <div className="completion-field">
+                          <label htmlFor={`type-${item.id}`}>Evidence type</label>
+                          <select className="completion-control" defaultValue="ticket" id={`type-${item.id}`} name="type">
+                            <option value="ticket">Ticket</option>
+                            <option value="link">Link</option>
+                            <option value="log-reference">Log reference</option>
+                            <option value="attestation">Attestation</option>
+                          </select>
+                        </div>
+                        <div className="completion-field">
+                          <label htmlFor={`reference-${item.id}`}>Evidence reference</label>
+                          <input
+                            aria-describedby={`reference-hint-${item.id}`}
+                            autoComplete="off"
+                            autoFocus
+                            className="completion-control"
+                            id={`reference-${item.id}`}
+                            name="reference"
+                            placeholder="CHG-5120 or a link"
+                            required
+                          />
+                        </div>
+                        <button aria-busy={busyItem === item.id || undefined} className="btn btn-primary btn-sm" disabled={busyItem !== null} type="submit">
+                          Mark verified
                         </button>
-                      )
+                        <button className="btn btn-sm" disabled={busyItem !== null} onClick={() => setOpenItem(null)} type="button">Cancel</button>
+                        {/* Stays visible while typing: the moment a credential could be pasted. */}
+                        <small className="completion-hint" id={`reference-hint-${item.id}`}>
+                          Where the proof lives. Never the secret itself.
+                        </small>
+                      </form>
                     ) : null}
-                  </span>
-                  {canComplete && item.state === "pending" && item.kind !== "enforcement" && formOpen ? (
-                    <form
-                      className="completion-form"
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        const data = new FormData(event.currentTarget);
-                        onComplete?.(item, String(data.get("reference") ?? ""), String(data.get("type") ?? "ticket"));
-                      }}
-                    >
-                      <div className="completion-field">
-                        <label htmlFor={`type-${item.id}`}>Evidence type</label>
-                        <select className="completion-control" defaultValue="ticket" id={`type-${item.id}`} name="type">
-                          <option value="ticket">Ticket</option>
-                          <option value="link">Link</option>
-                          <option value="log-reference">Log reference</option>
-                          <option value="attestation">Attestation</option>
-                        </select>
-                      </div>
-                      <div className="completion-field">
-                        <label htmlFor={`reference-${item.id}`}>Evidence reference</label>
-                        <input
-                          aria-describedby={`reference-hint-${item.id}`}
-                          autoComplete="off"
-                          autoFocus
-                          className="completion-control"
-                          id={`reference-${item.id}`}
-                          name="reference"
-                          placeholder="CHG-5120 or a link"
-                          required
-                        />
-                      </div>
-                      <button aria-busy={busyItem === item.id || undefined} className="btn btn-primary btn-sm" disabled={busyItem !== null} type="submit">
-                        Mark verified
-                      </button>
-                      <button className="btn btn-sm" disabled={busyItem !== null} onClick={() => setOpenItem(null)} type="button">Cancel</button>
-                      {/* Stays visible while typing: the moment a credential could be pasted. */}
-                      <small className="completion-hint" id={`reference-hint-${item.id}`}>
-                        Where the proof lives. Never the secret itself.
-                      </small>
-                    </form>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-          <TechnicalDetails summary="Technical details for this resource">
-            <RecordField label="Stored key" value={resource.naturalKey} />
-            <RecordField copy={false} label="Type" value={resource.resourceType} />
-            <RecordField copy={false} label="Recovery mechanism" value={resource.mechanism} />
-            <RecordField copy={false} label="Completion state" value={resource.state} />
-            {resource.items.map((item) => (
-              <RecordGroup key={item.id} note={`${item.kind}, ${item.state}`} title={item.requirement}>
-                <RecordField label="Step ID" value={item.id} />
-                <RecordField copy={false} label="Kind" value={item.kind} />
-                <RecordField copy={false} label="Requirement" value={item.requirement} />
-                <RecordField copy={false} label="State" value={item.state} />
-                <RecordField label="Owner" value={item.owner} />
-                <RecordField copy={false} label="Closed" value={item.closedAt} />
-                <RecordField copy={false} label="Times reopened" value={item.reopenCount} />
-                {item.replacedBy ? <RecordField label="Replaced by restore" value={item.replacedBy} /> : null}
-                {item.evidence.map((evidence, index) => (
-                  <RecordField
-                    key={`${evidence.type}:${evidence.reference}:${index}`}
-                    label={`Evidence (${evidence.type})`}
-                    usage={[evidence.recordedBy ? `recorded by ${evidence.recordedBy}` : null, evidence.recordedAt ? `at ${evidence.recordedAt}` : null].filter(Boolean).join(" ") || undefined}
-                    value={evidence.reference}
-                  />
-                ))}
-              </RecordGroup>
-            ))}
-          </TechnicalDetails>
-        </section>
-      ))}
+                  </li>
+                );
+              })}
+            </ul>
+            <TechnicalDetails summary="Technical details for this resource">
+              <RecordField label="Stored key" value={resource.naturalKey} />
+              <RecordField copy={false} label="Type" value={resource.resourceType} />
+              <RecordField copy={false} label="Recovery mechanism" value={resource.mechanism} />
+              <RecordField copy={false} label="Completion state" value={resource.mechanism === "skipped" ? badge.label : resource.state} />
+              {resource.items.map((item) => (
+                <RecordGroup key={item.id} note={`${item.kind}, ${item.state}`} title={item.requirement}>
+                  <RecordField label="Step ID" value={item.id} />
+                  <RecordField copy={false} label="Kind" value={item.kind} />
+                  <RecordField copy={false} label="Requirement" value={item.requirement} />
+                  <RecordField copy={false} label="State" value={item.state} />
+                  <RecordField label="Owner" value={item.owner} />
+                  <RecordField copy={false} label="Closed" value={item.closedAt} />
+                  <RecordField copy={false} label="Times reopened" value={item.reopenCount} />
+                  {item.replacedBy ? <RecordField label="Replaced by restore" value={item.replacedBy} /> : null}
+                  {item.evidence.map((evidence, index) => (
+                    <RecordField
+                      key={`${evidence.type}:${evidence.reference}:${index}`}
+                      label={`Evidence (${evidence.type})`}
+                      usage={[evidence.recordedBy ? `recorded by ${evidence.recordedBy}` : null, evidence.recordedAt ? `at ${evidence.recordedAt}` : null].filter(Boolean).join(" ") || undefined}
+                      value={evidence.reference}
+                    />
+                  ))}
+                </RecordGroup>
+              ))}
+            </TechnicalDetails>
+          </section>
+        );
+      })}
     </div>
   );
 }

@@ -26,6 +26,8 @@
  * docs/coverage.md. Pure: no clock, no tenant, no network.
  */
 
+import { appGroupOf } from '../restore/intuneAppKinds.mjs';
+
 export const COMPLETENESS_CONTRACT_VERSION = 1;
 export const COVERAGE_STATES = Object.freeze(['full', 'incomplete', 'microsoft-managed', 'not-readable']);
 export const MISSING_REASONS = Object.freeze(['secret', 'read-only', 'binary-route', 'other-route', 'microsoft-managed', 'not-written']);
@@ -81,12 +83,19 @@ function secretSettings(payload) {
 // Wave 2 ENTRA: a part the backup may already hold (a later read can add it).
 const heldUnless = (fields) => (payload) => (fields.every((field) => Array.isArray(payload?.[field])) ? [] : always(payload));
 const builtInGrantPolicy = (payload) => (/^microsoft-/i.test(String(payload?.id ?? '')) ? always(payload) : []);
+// Restore gaps batch 21: an object the backup does not mark as custom (isBuiltIn false) is not written.
+const builtInFlag = (payload) => (payload?.isBuiltIn !== false ? always(payload) : []);
 const organizationDefault = (payload) => (payload?.isOrganizationDefault === true ? always(payload) : []);
 // Token lifetime, token issuance, claims mapping and home realm discovery policies.
 const STS_POLICY_MISSING = Object.freeze([
   part('Which apps the policy is assigned to', 'other-route'),
   part('Being the organization default (KEEL recreates it as an ordinary policy)', 'not-written', organizationDefault),
 ]);
+
+// Restore gaps batch 18: Intune apps by kind.
+const packagedApp = (payload) => (appGroupOf(payload) === 'packaged'
+  ? [Object.freeze({ name: payload?.fileName ?? nameOf(payload), expires: null })] : []);
+const syncedApp = (payload) => (appGroupOf(payload) === 'synced' ? always(payload) : []);
 
 const synced = (payload) => (payload?.onPremisesSyncEnabled === true ? always(payload) : []);
 
@@ -191,7 +200,11 @@ export const COMPLETENESS = Object.freeze({
   windowsAutopilotDeploymentProfile: { missing: [part('The registered device hardware it applies to', 'other-route')] },
   deviceManagementIntent: { whole: 'not-written', missing: [part('The baseline\'s settings', 'other-route')] },
   managedDevice: { managed: true },
-  mobileApp: { whole: 'not-written', missing: [part('The app package', 'binary-route')] },
+  // Restore gaps batch 18: the parts depend on the kind of app (intuneAppKinds.mjs).
+  mobileApp: { missing: [
+    part('The app package (the installer file), which must be uploaded before the app is assigned', 'binary-route', packagedApp),
+    part('An app synced from Apple Business Manager, managed Google Play or Microsoft, which is synced again there', 'not-written', syncedApp),
+  ] },
   managedAppPolicy: { missing: [part('Windows Information Protection policies', 'not-written')] },
   targetedManagedAppConfiguration: {},
   mobileAppConfiguration: {},
@@ -242,20 +255,22 @@ export const COMPLETENESS = Object.freeze({
   // Remaining kinds, batch 4.
   externalIdentitiesPolicy: {},
   b2bManagementPolicy: {},
-  servicePrincipalCreationPolicy: { whole: 'not-written', missing: [part('Its include and exclude conditions', 'other-route')] },
+  // Q256: Graph refuses app writes without a directory role, so none is written.
+  servicePrincipalCreationPolicy: { whole: 'not-written', missing: [part('A built-in app creation policy', 'microsoft-managed', builtInFlag)] },
   permissionGrantPreApprovalPolicy: { missing: [part('Which app it is assigned to', 'other-route')] },
   accessReviewPolicy: {},
   directoryRoleAccessReviewPolicy: {},
   multiTenantOrganizationIdentitySyncPolicyTemplate: {},
-  multiTenantOrganizationPartnerConfigurationTemplate: {},
+  multiTenantOrganizationPartnerConfigurationTemplate: { missing: [part('Its cross-tenant access settings (trust in partner sign-ins, automatic consent, who may cross)', 'not-written')] },
   identityUserFlowAttribute: { whole: 'not-written', missing: [part('Built-in attributes', 'microsoft-managed')] },
   authenticationEventListener: { whole: 'not-written' },
-  externalDomainFederation: { missing: [part('Its domains', 'other-route')] },
+  externalDomainFederation: { missing: [part('Its domains', 'not-written')] },
   // Remaining kinds, batch 5.
   exchangeRoleDefinition: { whole: 'not-written', missing: [part('Built-in roles', 'microsoft-managed')] },
   exchangeRoleAssignment: { whole: 'not-written' },
   exchangeCustomAppScope: { missing: [part('The app role assignments that use it', 'other-route')] },
-  defenderRoleDefinition: { whole: 'not-written' },
+  // Restore gaps batch 21: custom roles written; built-in ones are Microsoft's.
+  defenderRoleDefinition: { missing: [part('A built-in Defender role', 'microsoft-managed', builtInFlag)] },
   defenderRoleAssignment: { whole: 'not-written' },
   defenderCustomAppScope: { whole: 'not-written' },
   // Remaining kinds, batch 6.
@@ -300,6 +315,17 @@ export const COMPLETENESS = Object.freeze({
   securityZone: { whole: 'not-written', missing: [part('The environments in the zone', 'other-route')] },
   sharedEmailDomain: { whole: 'not-written' },
   schemaExtension: { whole: 'not-written', missing: [part('Extensions owned by apps in other tenants', 'microsoft-managed')] },
+  // Remaining kinds, batch 9: read once the Collector holds the read permission.
+  formsSettings: { missing: [part('Sharing outside the organisation widened or the phishing scan turned off', 'not-written')] },
+  todoSettings: { whole: 'not-written' },
+  microsoft365AppsInstallationOptions: {},
+  appsAndServicesSettings: { missing: [part('The Office Store turned on', 'not-written')] },
+  adminReportSettings: { missing: [part('Real names shown in usage reports again', 'not-written')] },
+  profileCardProperty: { whole: 'not-written' },
+  pronounsSettings: {},
+  defenderDetectionRule: { whole: 'not-written', missing: [part('Past runs and the alerts a rule raised', 'other-route')] },
+  teamsCatalogApp: { whole: 'not-written', missing: [part('The app package', 'other-route')] },
+  engageCommunity: { missing: [part('A deleted community', 'not-written'), part('A private community made public', 'not-written'), part('Posts, files and members of the community', 'other-route')] },
 });
 
 const RECORD_FIELDS = new Set(['managed', 'unreadable', 'whole', 'missing']);

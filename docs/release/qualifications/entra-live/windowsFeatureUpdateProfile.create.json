@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "windowsFeatureUpdateProfile",
+  "operation": "create",
+  "fieldProjectionContractVersion": 1,
+  "build": "53cbe4622e37eae6d11799414f10ff8dc62fae58",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-29T22:50:33.041Z",
+  "restoreRef": "f78c3f8f-db7e-830c-a11e-8ad5a9d55075",
+  "naturalKey": "windowsFeatureUpdateProfile:91f67eaf-10d4-8bff-8d86-5e911f1a649d",
+  "fixtureKind": "named-object",
+  "captureSha256": "80ef1e9099b33892d756685f7cc253ba6f2c5950903e662f80177ee2d8cd5314",
+  "proofRef": "docs/release/qualifications/entra-live/windowsFeatureUpdateProfile.create.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "11fcb68dce412b237e5fed9bffa60017b99ff6511a00b4c64611d3a91cc1548d"
+    }
+  }
+}

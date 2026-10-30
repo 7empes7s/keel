@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { ObjectSteps, PendingSteps, objectSteps } from "@/components/pending-steps";
-import { CompletionChecklist, completionStateLabel, type CompletionResource } from "@/components/recovery-completion";
+import { CompletionChecklist, completionBadge, completionStateLabel, type CompletionResource } from "@/components/recovery-completion";
 
 const resource = (state: CompletionResource["state"]): CompletionResource => ({
   naturalKey: "application:Payroll connector",
@@ -21,6 +21,27 @@ test("states have plain-language labels", () => {
   assert.equal(completionStateLabel("configuration-restored"), "Configuration restored");
   assert.equal(completionStateLabel("service-validation-pending"), "Service validation pending");
   assert.equal(completionStateLabel("verified-complete"), "Verified complete");
+});
+
+test("a skipped object never reads as restored: it says to set it by hand", () => {
+  const skipped: CompletionResource = {
+    naturalKey: "namedLocation:KEEL-RT-Head office",
+    resourceType: "namedLocation",
+    mechanism: "skipped",
+    state: "configuration-restored",
+    items: [
+      { id: "s1", kind: "manual-setting", requirement: "isTrusted", description: "Mark this location as trusted again", owner: "op", state: "pending", evidence: [], closedAt: null, reopenCount: 0 },
+    ],
+  };
+  const html = renderToStaticMarkup(createElement(CompletionChecklist, { resources: [skipped], canComplete: true }));
+  assert.doesNotMatch(html, /Configuration restored|restored in full/);
+  assert.match(html, /completion-badge-skipped/);
+  assert.match(html, /Not restored: set it by hand/);
+  assert.match(html, /KEEL wrote nothing to it/);
+  assert.match(html, /Add evidence/);
+  assert.deepEqual(completionBadge({ mechanism: "skipped", state: "verified-complete" }), { label: "Set by hand, verified", tone: "fine", key: "skipped-verified" });
+  // Every other mechanism keeps the state's own label.
+  assert.equal(completionBadge({ mechanism: "recreate", state: "configuration-restored" }).label, "Configuration restored");
 });
 
 test("a restorer sees Add evidence for open items and Reopen for verified ones; the form waits for the click", () => {
@@ -87,4 +108,20 @@ test("issue #546: a dry run shows each step left for a person on its object, one
   assert.match(html, /2 steps are left for a person/);
   assert.match(html, /name of deviceCustomAttributeShellScript:KEEL-RT-attribute<\/strong>: Assignments not restored/);
   assert.match(html, /Set inbound trust by hand/);
+});
+
+test("a manual setting step shows as an open item with its own icon and an evidence form", () => {
+  const manual: CompletionResource = {
+    naturalKey: "crossTenantAccessPolicyConfigurationPartner:KEEL-RT",
+    label: "KEEL-RT partner",
+    resourceType: "crossTenantAccessPolicyConfigurationPartner",
+    mechanism: "update-existing",
+    state: "configuration-restored",
+    items: [{ id: "m1", kind: "manual-setting", requirement: "trustFields", description: "Check inboundTrust in the admin center", owner: "op", state: "pending", evidence: [], closedAt: null, reopenCount: 0 }],
+  };
+  const html = renderToStaticMarkup(createElement(CompletionChecklist, { resources: [manual], canComplete: true }));
+  assert.match(html, /Manual setting|manual setting/);
+  assert.match(html, /Check inboundTrust in the admin center/);
+  assert.match(html, /1 needs evidence/);
+  assert.match(html, /Add evidence/);
 });

@@ -33,11 +33,11 @@ import { FAMILIES as TEAMS_EXTENDED_FAMILIES, readTeamsExtended, recordTeamsExte
 import { FAMILIES as TEAMS_POLICY_FAMILIES, readTeamsPolicies, recordTeamsPolicyRun } from '../collect/workloads/teamsPolicies.mjs';
 import {
   BENIGN_FIELDS, WORKLOAD_EFFECT_RULES, WorkloadWriteScopeError, createWorkloadSettingsArtifact, executeWorkloadSettingsRestore,
-  loadWorkloadSource, planWorkloadSettingsRestore, restoreReadFamilies, unreviewedWrittenFields, weakensMailProtection, workloadWriteCmdlet, writeCmdletParameters, writeFamilies,
+  loadWorkloadSource, planWorkloadSettingsRestore, resolveNamedTargets, restoreReadFamilies, unreviewedWrittenFields, weakensMailProtection, workloadWriteCmdlet, writeCmdletParameters, writeFamilies,
 } from '../restore/workloads/cmdletSettings.mjs';
 import { WORKLOAD_RESTORES } from '../restore/workloads/dispatch.mjs';
 import { fixtureProblem, isFixtureName } from '../restore/workloads/fixtureGuard.mjs';
-import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
+import { TRUST_FIELDS, WKLD_WRITE_OPERATIONS, isTrustField } from '../restore/workloads/writeDeclarations.mjs';
 import { approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
@@ -325,6 +325,67 @@ test('mail flow: a deleted rule is not re-created, a new one is never deleted, S
   assert.match(second.plan.manual.find((item) => item.field === 'SentTo').reason, /structured/);
 });
 
+// Q161: rules, connectors and policies are keyed by Guid, so `--target transport-rule:<name>`
+// matched nothing and planned 0 changes without saying why.
+test('mail flow: a target by name plans the same change as its Guid key; a shared name refuses and lists the Guid keys', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const live = fakeTenant('exchange-mail-flow');
+  const rule = live.state['Get-TransportRule'][0];
+  rule.Name = 'KEEL-RT-svc-change';
+  rule.Mode = 'Audit';
+  const source = await recordSource(client, tenantRef, 'exchange-mail-flow', live);
+  rule.Mode = 'Enforce';
+  const key = `transport-rule:${rule.Guid.toLowerCase()}`;
+
+  const byName = await planned(client, tenantRef, 'exchange-mail-flow', { source, live, targets: ['transport-rule:keel-rt-SVC-change'] });
+  const byGuid = await planned(client, tenantRef, 'exchange-mail-flow', { source, live, targets: [key] });
+  assert.deepEqual(byName.plan.targets, [key]);
+  assert.deepEqual(byName.plan.operations.map((op) => [op.cmdlet, op.parameters]), [['Set-TransportRule', { Identity: rule.Guid, Mode: 'Audit' }]]);
+  assert.deepEqual(byName.plan.operations, byGuid.plan.operations);
+  assert.equal(byName.plan.digest, byGuid.plan.digest);
+
+  // A name nothing has is still listed as found nowhere, never silently dropped.
+  const missing = await planned(client, tenantRef, 'exchange-mail-flow', { source, live, targets: ['transport-rule:KEEL-RT-absent'] });
+  assert.deepEqual(missing.plan.operations, []);
+  assert.deepEqual(missing.plan.manual.map((item) => [item.resourceKey, item.reason]), [['transport-rule:keel-rt-absent', 'neither the source nor the live read has this object']]);
+
+  // Two rules with that name (one renamed into it since the backup, say): refused, each Guid key named.
+  const twin = fixture('exchange-mail-flow', 'transportRule');
+  twin.Name = 'KEEL-RT-svc-change';
+  live.state['Get-TransportRule'].push(twin);
+  const read = await readFor('exchange-mail-flow')({ powershell: live.powershell });
+  assert.throws(
+    () => planWorkloadSettingsRestore({ workload: 'exchange-mail-flow', source, live: read, tenantId: TENANT, tenantRef, targets: ['transport-rule:KEEL-RT-svc-change'] }),
+    (error) => /names 2 objects; these are keyed by Guid/.test(error.message)
+      && error.message.includes(`--target ${key}`) && error.message.includes(`--target transport-rule:${twin.Guid.toLowerCase()}`),
+  );
+});
+
+test('every Guid-keyed workload resolves a target by name to the Guid key of that kind only', async (t) => {
+  const client = await schemaClient(t);
+  for (const workload of Object.keys(WORKLOADS).filter((name) => WORKLOADS[name].keyed === 'guid')) {
+    const tenantRef = nextTenant();
+    const live = fakeTenant(workload);
+    const source = await recordSource(client, tenantRef, workload, live);
+    const named = source.observations.filter((item) => typeof item.fields?.Name === 'string');
+    assert.ok(named.length > 0, `${workload} has named objects`);
+    for (const observation of named) {
+      const prefix = observation.resourceKey.slice(0, observation.resourceKey.indexOf(':'));
+      assert.deepEqual(resolveNamedTargets([`${prefix}:${observation.fields.Name}`], source.observations), [observation.resourceKey], `${workload} ${prefix}`);
+    }
+  }
+  // The kind is part of the match: a name under another kind's prefix resolves to nothing.
+  const observations = [{ resourceKey: 'transport-rule:00000000-0000-4000-8000-000000000001', fields: { Name: 'KEEL-RT-x' } }];
+  assert.deepEqual(resolveNamedTargets(['inbound-connector:KEEL-RT-x'], observations), ['inbound-connector:keel-rt-x']);
+  // An empty name never matches an object whose Name was not read.
+  assert.deepEqual(resolveNamedTargets(['transport-rule:'], [{ resourceKey: 'transport-rule:00000000-0000-4000-8000-000000000002', fields: {} }]), ['transport-rule:']);
+  // Non-Guid keys (domains, Teams policies) are matched as written, as before.
+  const domains = [{ resourceKey: 'accepted-domain:contoso.com', fields: { Name: 'Contoso' } }];
+  assert.deepEqual(resolveNamedTargets(['accepted-domain:Contoso'], domains), ['accepted-domain:contoso']);
+  assert.deepEqual(resolveNamedTargets(['accepted-domain:contoso.com'], domains), ['accepted-domain:contoso.com']);
+});
+
 test('mail flow: a rule that would delete or copy mail is a content effect held for a separate approval', async (t) => {
   const client = await schemaClient(t);
   const tenantRef = nextTenant();
@@ -530,6 +591,51 @@ test('a write with no answer that did not apply is failed once and never resent'
   assert.equal(live.state['Get-AddressList'][0].DisplayName, 'renamed');
 });
 
+test('Purview: a retention policy saved while its deployment fails is read back; one still deploying fails with a plain reason', async (t) => {
+  // Q260, live: on a policy whose deployment times out, Set-RetentionCompliancePolicy saves the
+  // value and then throws PolicyDeploymentException; while that change deploys, the next Set is
+  // refused with PolicyLockConflictException.
+  const client = await schemaClient(t);
+  const restoreWith = async (error, applies) => {
+    const tenantRef = nextTenant();
+    const live = fakeTenant('purview-retention-dlp');
+    const source = await recordSource(client, tenantRef, 'purview-retention-dlp', live);
+    const policy = live.state['Get-RetentionCompliancePolicy'][0];
+    const original = policy.Comment;
+    policy.Comment = 'changed';
+    const { artifact } = await planned(client, tenantRef, 'purview-retention-dlp', { source, live });
+    const tenant = fakeTenant('purview-retention-dlp', {
+      state: live.state,
+      hooks: {
+        cmdlet({ cmdlet, parameters, state }) {
+          if (cmdlet !== 'Set-RetentionCompliancePolicy') return null;
+          if (applies) state['Get-RetentionCompliancePolicy'].find((body) => body.Guid === parameters.Identity).Comment = parameters.Comment;
+          return { error };
+        },
+      },
+    });
+    const result = await execute(client, tenantRef, 'purview-retention-dlp', artifact, tenant);
+    return { result, tenant, policy, original };
+  };
+
+  const saved = await restoreWith({ message: "|Microsoft.Exchange.Management.UnifiedPolicy.PolicyDeploymentException|Policy 'x' failed to be deployed. To fix this issue, please retry the policy operation after some time.", category: 'ConnectionError', errorId: '[],Write-ErrorMessage' }, true);
+  assert.deepEqual(saved.result.operations.map((op) => [op.outcome, op.writes]), [['verified', 1]]);
+  assert.match(saved.result.operations[0].reasons[0], /saved the change but reported that deploying the policy failed.*re-read shows it applied, so it was not resent/);
+  assert.equal(saved.tenant.writes.length, 1);
+  assert.equal(saved.policy.Comment, saved.original);
+
+  const deploying = await restoreWith({ message: "|Microsoft.Exchange.Management.UnifiedPolicy.PolicyLockConflictException|Previous changes to the policy 'x' are being deployed. Once deployed, additional actions can be performed.", category: 'InvalidOperation', errorId: '[],Write-ErrorMessage' }, false);
+  assert.deepEqual(deploying.result.operations.map((op) => [op.outcome, op.writes]), [['failed', 1]]);
+  assert.match(deploying.result.operations[0].reasons[0], /still deploying an earlier change to this policy.*run the restore again/);
+  assert.equal(deploying.tenant.writes.length, 1);
+  assert.equal(deploying.policy.Comment, 'changed');
+
+  // Saved-but-not-deployed that did not land is not reported as restored.
+  const notLanded = await restoreWith({ message: "|Microsoft.Exchange.Management.UnifiedPolicy.PolicyDeploymentException|Policy 'x' failed to be deployed.", category: 'ConnectionError', errorId: '[],Write-ErrorMessage' }, false);
+  assert.deepEqual(notLanded.result.operations.map((op) => [op.outcome, op.writes]), [['failed', 1]]);
+  assert.match(notLanded.result.operations[0].reasons[0], /re-read does not show it; it was not resent/);
+});
+
 test('a rule whose policy was not read, or a read stopped at its limit, plans nothing', async (t) => {
   const client = await schemaClient(t);
   const tenantRef = nextTenant();
@@ -565,6 +671,134 @@ test('each write re-reads first: a policy gone after the plan makes its rule sta
   const result = await execute(client, tenantRef, 'purview-retention-dlp', artifact, live);
   assert.deepEqual(result.operations.map((op) => op.outcome), ['stale']);
   assert.deepEqual(live.writes, []);
+});
+
+test('mail flow: connector trust, certificate and sender-IP fields are listed for an administrator, never written', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const live = fakeTenant('exchange-mail-flow');
+  // The backup holds trust values an attacker or a stale copy could plant.
+  const inbound = live.state['Get-InboundConnector'][0];
+  const outbound = live.state['Get-OutboundConnector'][0];
+  Object.assign(inbound, {
+    TlsSenderCertificateName: '*.attacker.example', RestrictDomainsToCertificate: true, TreatMessagesAsInternal: true,
+    TrustedOrganizations: ['attacker.example'], SenderIPAddresses: ['203.0.113.0/24'], RestrictDomainsToIPAddresses: true, EFSkipIPs: ['203.0.113.9'], RequireTls: false,
+    EFSkipLastIP: true, EFSkipMailGateway: ['203.0.113.10'], EFUsers: ['ceo@contoso.test'], SenderDomains: ['*'], ConnectorType: 'OnPremises',
+  });
+  Object.assign(outbound, { TlsSettings: 'EncryptionOnly', TlsDomain: '*.attacker.example', SmartHosts: ['relay.attacker.example'], ConnectorType: 'OnPremises' });
+  const source = await recordSource(client, tenantRef, 'exchange-mail-flow', live);
+  // Live has moved on (a partner certificate rotation, a removed range), and one harmless field drifted too.
+  Object.assign(inbound, {
+    TlsSenderCertificateName: 'mail.partner.example', RestrictDomainsToCertificate: false, TreatMessagesAsInternal: false,
+    TrustedOrganizations: [], SenderIPAddresses: ['198.51.100.10'], RestrictDomainsToIPAddresses: false, EFSkipIPs: [], RequireTls: true,
+    EFSkipLastIP: false, EFSkipMailGateway: [], EFUsers: [], SenderDomains: ['partner.example'], ConnectorType: 'Partner',
+    Comment: 'changed by an administrator',
+  });
+  Object.assign(outbound, { TlsSettings: 'DomainValidation', TlsDomain: 'mail.partner.example', SmartHosts: ['relay.partner.example'], ConnectorType: 'Partner' });
+
+  const { plan, artifact } = await planned(client, tenantRef, 'exchange-mail-flow', { source, live });
+  const trustEntries = (key) => plan.manual.filter((item) => item.resourceKey === key && item.trust === true).map((item) => item.field).sort();
+  assert.deepEqual(trustEntries(`inbound-connector:${inbound.Guid}`), [...TRUST_FIELDS.exchangeInboundConnector].sort());
+  assert.deepEqual(trustEntries(`outbound-connector:${outbound.Guid}`), [...TRUST_FIELDS.exchangeOutboundConnector].sort());
+  assert.ok(plan.manual.filter((item) => item.trust).every((item) => /never changes it/.test(item.reason) && /Exchange admin center/.test(item.reason)));
+  // Only the harmless field is written.
+  assert.deepEqual(plan.operations.map((op) => [op.cmdlet, op.parameters]), [['Set-InboundConnector', { Identity: inbound.Guid, Comment: 'KEEL-RT-Comment' }]]);
+
+  const result = await execute(client, tenantRef, 'exchange-mail-flow', artifact, live);
+  assert.equal(result.outcome, 'verified', JSON.stringify(result.operations));
+  assert.deepEqual(live.writes.map((write) => Object.keys(write.parameters).sort()), [['Comment', 'Identity']]);
+  assert.equal(inbound.TlsSenderCertificateName, 'mail.partner.example');
+  assert.equal(inbound.TreatMessagesAsInternal, false);
+  assert.equal(outbound.TlsDomain, 'mail.partner.example');
+  assert.deepEqual(outbound.SmartHosts, ['relay.partner.example']);
+  assert.deepEqual(inbound.SenderDomains, ['partner.example']);
+  assert.equal(inbound.EFSkipLastIP, false);
+  assert.equal(inbound.ConnectorType, 'Partner');
+  assert.equal(outbound.ConnectorType, 'Partner');
+
+  // An altered plan cannot send them either: the engine refuses before a job is built,
+  // and the container allowlist (run-cmdlet.ps1) does not carry them.
+  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-InboundConnector', parameters: { Identity: inbound.Guid, TlsSenderCertificateName: '*.attacker.example' } }), /does not take TlsSenderCertificateName/);
+  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-OutboundConnector', parameters: { Identity: outbound.Guid, TlsDomain: '*.attacker.example' } }), /does not take TlsDomain/);
+  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-OutboundConnector', parameters: { Identity: outbound.Guid, SmartHosts: ['relay.attacker.example'] } }), /does not take SmartHosts/);
+  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-InboundConnector', parameters: { Identity: inbound.Guid, EFSkipLastIP: true } }), /does not take EFSkipLastIP/);
+  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-InboundConnector', parameters: { Identity: inbound.Guid, SenderDomains: ['*'] } }), /does not take SenderDomains/);
+  await assert.rejects(workloadWriteCmdlet({ cmdlet: 'Set-OutboundConnector', parameters: { Identity: outbound.Guid, ConnectorType: 'OnPremises' } }), /does not take ConnectorType/);
+  const shipped = allowlist(WRITE_TABLES.exo);
+  for (const field of TRUST_FIELDS.exchangeInboundConnector) assert.ok(!shipped['Set-InboundConnector'].includes(field), field);
+  for (const field of TRUST_FIELDS.exchangeOutboundConnector) assert.ok(!shipped['Set-OutboundConnector'].includes(field), field);
+});
+
+// Trust fields outside connectors: the backup plants a value that would widen trust,
+// live holds another, and one harmless field drifted too.
+const TRUST_CASES = [
+  {
+    name: 'connection filter: allowed sender IP ranges and the safe list',
+    workload: 'exchange-extended', getter: 'Get-HostedConnectionFilterPolicy', cmdlet: 'Set-HostedConnectionFilterPolicy', resourceType: 'exchangeConnectionFilterPolicy',
+    planted: { IPAllowList: ['203.0.113.0/24'], EnableSafeList: true },
+    current: { IPAllowList: [], EnableSafeList: false },
+    harmless: ['AdminDisplayName', 'changed by an administrator'],
+    where: /Microsoft Defender portal .*Connection filter policy/,
+    altered: { IPAllowList: ['203.0.113.0/24'] },
+  },
+  {
+    name: 'Teams federation: federated organizations, allowed and blocked domains, SIP space and discovered partners',
+    workload: 'teams-org-policies', getter: 'Get-CsTenantFederationConfiguration', cmdlet: 'Set-CsTenantFederationConfiguration', resourceType: 'teamsFederationConfiguration',
+    planted: {
+      AllowFederatedUsers: true, AllowedDomains: { AllowedDomain: [{ Domain: 'attacker.example' }] }, BlockedDomains: [], SharedSipAddressSpace: true, TreatDiscoveredPartnersAsUnverified: false,
+    },
+    current: {
+      AllowFederatedUsers: false, AllowedDomains: { AllowedDomain: [{ Domain: 'partner.example' }] }, BlockedDomains: [{ Domain: 'blocked.example' }], SharedSipAddressSpace: false, TreatDiscoveredPartnersAsUnverified: true,
+    },
+    harmless: ['BlockAllSubdomains', true],
+    where: /Teams admin center > Users > External access/,
+    altered: { AllowFederatedUsers: true },
+  },
+];
+for (const c of TRUST_CASES) {
+  test(`${c.name} are listed for an administrator, never written`, async (t) => {
+    const client = await schemaClient(t);
+    const tenantRef = nextTenant();
+    const live = fakeTenant(c.workload);
+    const [body] = live.state[c.getter];
+    Object.assign(body, c.planted);
+    const source = await recordSource(client, tenantRef, c.workload, live);
+    Object.assign(body, c.current, { [c.harmless[0]]: c.harmless[1] });
+
+    const { plan, artifact } = await planned(client, tenantRef, c.workload, { source, live });
+    const trust = plan.manual.filter((item) => item.trust === true);
+    assert.deepEqual(trust.map((item) => item.field).sort(), Object.keys(c.planted).sort());
+    assert.ok(Object.keys(c.planted).every((field) => TRUST_FIELDS[c.resourceType].includes(field)));
+    for (const item of trust) {
+      assert.match(item.reason, /never changes it/);
+      assert.match(item.reason, c.where);
+      assert.deepEqual(item.after, c.planted[item.field]);
+    }
+    // Only the harmless field is written.
+    const sent = plan.operations.filter((op) => op.cmdlet === c.cmdlet);
+    assert.deepEqual(sent.map((op) => Object.keys(op.parameters).sort()), [['Identity', c.harmless[0]].sort()]);
+    if (plan.contentEffects.length) await approveEffects(client, tenantRef, artifact, plan);
+
+    const result = await execute(client, tenantRef, c.workload, artifact, live);
+    assert.equal(result.outcome, 'verified', JSON.stringify(result.operations));
+    assert.ok(live.writes.every((write) => Object.keys(write.parameters).every((name) => !TRUST_FIELDS[c.resourceType].includes(name))));
+    for (const [field, value] of Object.entries(c.current)) assert.deepEqual(body[field], value, field);
+
+    // An altered plan cannot send them, and the container allowlist does not carry them.
+    const [field] = Object.keys(c.altered);
+    await assert.rejects(workloadWriteCmdlet({ cmdlet: c.cmdlet, parameters: { Identity: body.Guid ?? body.Identity, ...c.altered } }), new RegExp(`does not take ${field}`));
+    const shipped = { ...allowlist(WRITE_TABLES.exo), ...allowlist(WRITE_TABLES.teams) };
+    for (const name of TRUST_FIELDS[c.resourceType]) assert.ok(!shipped[c.cmdlet].includes(name), name);
+  });
+}
+
+test('no write declares a trust, certificate or sign-in field', () => {
+  for (const [id, write] of Object.entries(WKLD_WRITE_OPERATIONS)) {
+    assert.deepEqual(write.fields.filter((field) => isTrustField(write.resourceType, field)), [], id);
+  }
+  // The name check bites on fields no list names yet.
+  assert.ok(['TlsSenderCertificateName', 'SigningCertificate', 'TrustedOrganizations', 'PassiveSignInUri', 'IssuerUri'].every((field) => isTrustField('anything', field)));
+  assert.ok(!isTrustField('exchangeTransportRule', 'RouteMessageOutboundRequireTls'));
 });
 
 // ------------------------------------------------------------ declarations

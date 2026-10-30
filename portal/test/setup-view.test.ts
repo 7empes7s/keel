@@ -97,6 +97,7 @@ const catalog = (observed: SetupPermissions["observed"]): SetupPermissions => ({
 const restorerNames = KEEL_PERMISSIONS.filter((entry) => entry.identity === "restorer");
 const collectorNames = KEEL_PERMISSIONS.filter((entry) => entry.identity === "collector" && entry.need === "required");
 const readerNames = KEEL_PERMISSIONS.filter((entry) => entry.identity === "content-reader" && entry.need === "required" && entry.type !== "admin-role");
+const engageNames = KEEL_PERMISSIONS.filter((entry) => entry.identity === "engage-writer");
 const grant = (entry: { api: string; name: string }) => ({ api: entry.api, name: entry.name });
 
 test("permission rows: granted, missing, optional and held-but-unused, grouped by app then service, most urgent first", () => {
@@ -107,6 +108,7 @@ test("permission rows: granted, missing, optional and held-but-unused, grouped b
       collector: { granted: collectorNames.map(grant), requested: collectorNames.map(grant) },
       restorer: { granted: [...heldRestorer, { api: "graph", name: "Channel.Create" }, { api: "graph", name: "Team.ReadBasic.All" }], requested: heldRestorer },
       "content-reader": { granted: readerNames.map(grant), requested: readerNames.map(grant) },
+      "engage-writer": { granted: engageNames.map(grant), requested: engageNames.map(grant) },
     },
   };
   const rows = permissionRows(state([scope([step({ progress: "done" })])], { permissions: catalog(observed) }));
@@ -119,7 +121,10 @@ test("permission rows: granted, missing, optional and held-but-unused, grouped b
   assert.equal(missing.name, "Policy.ReadWrite.ConditionalAccess");
   assert.equal(missing.requested, false, "not on the app's list, so consent alone cannot grant it");
   // Grouping and order: the app with something missing first, services in their order, unused last.
-  assert.deepEqual([...new Set(rows.map((row) => row.identity))], ["restorer", "collector", "content-reader"]);
+  assert.deepEqual([...new Set(rows.map((row) => row.identity))], ["restorer", "collector", "content-reader", "engage-writer"]);
+  assert.deepEqual(rows.filter((row) => row.identity === "engage-writer").map((row) => [row.name, row.status]), [["Community.ReadWrite.All", "granted"]],
+    "the Engage writer holds one permission (issue #681)");
+  assert.ok(!rows.some((row) => row.identity === "restorer" && row.name === "Community.ReadWrite.All"), "the restore writer no longer asks for it");
   const restorer = rows.filter((row) => row.identity === "restorer");
   assert.equal(restorer[0].service, "entra");
   assert.deepEqual(restorer.slice(-2).map((row) => [row.status, row.name]), [["unused", "Channel.Create"], ["unused", "Team.ReadBasic.All"]]);
@@ -142,7 +147,7 @@ test("without a fresh look only what setup saw is known; the rest is not checked
   assert.equal(byName("TeamSettings.ReadWrite.All").status, "not-checked");
   assert.equal(byName("Channel.Create").status, "unused");
   assert.ok(rows.filter((row) => row.identity === "collector").every((row) => row.status === "not-checked"));
-  assert.deepEqual([...new Set(rows.map((row) => row.identity))], ["restorer", "collector", "content-reader"]);
+  assert.deepEqual([...new Set(rows.map((row) => row.identity))], ["restorer", "collector", "content-reader", "engage-writer"]);
   assert.equal(byName("Group.ReadWrite.All").requested, null);
   // An API whose names could not be read is not checked, never missing.
   const partial = permissionRows(state([scope([consent])], { permissions: catalog({ complete: false, byIdentity: { restorer: { granted: [], requested: [] } } }) }));
@@ -159,6 +164,7 @@ test("consent and Entra links need the ids; the missing sentence says what stops
   assert.equal(apiPermissionsLink(null), null);
   assert.equal(missingSentence("restorer", [{} as never, {} as never]), "The restore writer app is missing 2 permissions. Restores that need them stop until an admin approves them.");
   assert.equal(missingSentence("collector", [{} as never]), "The backup reader app is missing 1 permission. Backups that need it stay incomplete until an admin approves it.");
+  assert.equal(missingSentence("engage-writer", [{} as never]), "The Viva Engage writer app is missing 1 permission. Viva Engage community restores stop until an admin approves it.");
 });
 
 test("the table holds more apps and delegated permissions: a new app is listed after the known ones", () => {
@@ -169,7 +175,7 @@ test("the table holds more apps and delegated permissions: a new app is listed a
   const row = rows.find((candidate) => candidate.identity === "planner-reader")!;
   assert.equal(row.type, "delegated");
   assert.equal(row.status, "missing");
-  assert.deepEqual([...new Set(rows.map((candidate) => candidate.identity))], ["restorer", "planner-reader", "collector", "content-reader"], "apps with something missing first, known apps before new ones");
+  assert.deepEqual([...new Set(rows.map((candidate) => candidate.identity))], ["restorer", "planner-reader", "collector", "content-reader", "engage-writer"], "apps with something missing first, known apps before new ones");
   assert.equal(missingSentence("planner-reader", [row]), "The planner reader app is missing 1 permission. What needs it stops until an admin approves it.");
 });
 

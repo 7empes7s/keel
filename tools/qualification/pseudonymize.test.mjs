@@ -4,7 +4,7 @@ import { test } from 'node:test';
 
 import { LiveGateRefusal, assertSafeText } from './entraLive.mjs';
 import {
-  cloudSidToGuid, guidToCloudSid, main, pseudonymizeCapture, pseudonymizer, rawIdentifiers, roleAssignmentIdGuids, unpseudonymizedIds,
+  claimsLogins, cloudSidToGuid, guidToCloudSid, main, pseudonymizeCapture, pseudonymizer, rawIdentifiers, roleAssignmentIdGuids, unpseudonymizedClaimsLogins, unpseudonymizedIds,
 } from './pseudonymize.mjs';
 
 const TENANT = '73b6beef-0000-4000-8000-000000000001';
@@ -27,12 +27,13 @@ test('ids and tenant hosts become stable, well-formed pseudonyms that depend on 
   assert.equal(a.text('https://contoso-my.sharepoint.com/personal/x'), `https://${host}-my.sharepoint.com/personal/x`);
   assert.equal(a.text('contoso.sharepoint.com'), `${host}.sharepoint.com`);
   assert.equal(a.text('contoso-admin.sharepoint.com'), `${host}-admin.sharepoint.com`);
-  assert.equal(a.text('bg1@contoso.onmicrosoft.com'), `bg1@${host}.onmicrosoft.com`);
+  // The user part of a sign-in name is a pseudonym too; an onmicrosoft domain keeps the host mapping.
+  assert.match(a.text('bg1@contoso.onmicrosoft.com'), new RegExp(`^u[0-9a-f]{12}@${host}\\.onmicrosoft\\.com$`));
   // Ids after a URL escape and outside SharePoint/onmicrosoft hosts.
   assert.equal(a.text(`/sites/contoso.sharepoint.com%2C${TENANT}`), `/sites/${host}.sharepoint.com%2C${a.guid(TENANT)}`);
   assert.equal(a.text('https://learn.microsoft.com/graph'), 'https://learn.microsoft.com/graph');
   // A %XX escape before the host stays intact and maps like the unescaped form.
-  assert.equal(a.text('keel-rt-a%40contoso.onmicrosoft.com'), `keel-rt-a%40${host}.onmicrosoft.com`);
+  assert.match(a.text('keel-rt-a%40contoso.onmicrosoft.com'), new RegExp(`^keel-rt-u[0-9a-f]{12}%40${host}\\.onmicrosoft\\.com$`));
   assert.equal(decodeURIComponent(a.text(encodeURIComponent('keel-rt-a@contoso.onmicrosoft.com'))), a.text('keel-rt-a@contoso.onmicrosoft.com'));
   // An opaque base64 id holding GUIDs (a Teams membership id) is rewritten inside, in both alphabets.
   const raw = `0##${TENANT}##${APP}`;
@@ -167,6 +168,8 @@ test('the check tells pseudonyms from raw ids without the tenant, SIDs included 
   assert.match(published, /S-1-12-1-/);
   assert.deepEqual(unpseudonymizedIds(published), []);
   assert.deepEqual(unpseudonymizedIds(ONPREM_SID), [ONPREM_SID.toLowerCase()], 'an on-premises SID cannot be told apart');
+  assert.deepEqual(unpseudonymizedIds('/api/actions/restore/dry-run/00000000-0000-4000-8000-000000000000'), [], 'an all-zero placeholder is no id');
+  assert.equal(unpseudonymizedIds('00000000-0000-4000-8000-0000000000f1').length, 1, 'only all zeros is a placeholder');
 
   const files = { 'raw.json': rawCapture, 'published.json': published };
   const lines = [];
@@ -203,4 +206,185 @@ test('a deleted role assignment id with a longer suffix, a scoped id and a dashl
   const sha = createHash('sha256').update('x').digest('hex');
   assert.deepEqual(rawIdentifiers(sha), []);
   assert.equal(a.text(sha), sha);
+});
+
+// A SharePoint claims login as the site permissions gate captures it (Q80): a KEEL-RT- test
+// user on the tenant's real mail domain. Made-up domain here.
+const CLAIMS = 'i:0#.f|membership|keel-rt-20260908-diego@fabrikam-mail.com';
+
+test('a SharePoint claims login loses its user part and mail domain, and stays a test user', () => {
+  const a = pseudonymizer('sha256:aaaa');
+  const out = a.text(CLAIMS);
+  assert.match(out, /^i:0#\.f\|membership\|keel-rt-u[0-9a-f]{12}@t[0-9a-f]{11}\.example$/);
+  assert.ok(!/diego|fabrikam/i.test(out), out);
+  // Stable within a run and across case, different per tenant.
+  assert.equal(a.text(CLAIMS.toUpperCase().replace('I:0#.F|MEMBERSHIP|', 'i:0#.f|membership|')), out);
+  assert.notEqual(pseudonymizer('sha256:bbbb').text(CLAIMS), out);
+  // Every field and log line that carries it maps the same way, so equality checks still hold.
+  const walked = a.walk({ fixture: { member: CLAIMS }, operations: [{ subject: CLAIMS, principal: { loginName: CLAIMS } }] });
+  assert.equal(walked.operations[0].subject, walked.fixture.member);
+  assert.equal(walked.operations[0].principal.loginName, out);
+  // The URL-escaped form in a REST path maps to the escaped form of the same pseudonym.
+  const path = `/_api/web/siteusers/getbyloginname('${encodeURIComponent(CLAIMS)}')`;
+  assert.equal(decodeURIComponent(a.text(path)), `/_api/web/siteusers/getbyloginname('${out}')`);
+  // A user outside the test prefix gets no prefix; an onmicrosoft domain keeps its tenant host mapping.
+  assert.match(a.text('i:0#.f|membership|alice@fabrikam-mail.com'), /\|membership\|u[0-9a-f]{12}@t[0-9a-f]{11}\.example$/);
+  assert.equal(a.text('i:0#.f|membership|keel-rt-x@contoso.onmicrosoft.com').split('@')[1], `${a.host('contoso')}.onmicrosoft.com`);
+  // A guest's user part holds its home mail address; it is replaced too, raw and escaped alike.
+  const guest = 'i:0#.f|membership|alice_gmail.com#ext#@contoso.onmicrosoft.com';
+  const guestOut = a.text(guest);
+  assert.match(guestOut, /\|membership\|u[0-9a-f]{12}@t[0-9a-f]{11}\.onmicrosoft\.com$/);
+  assert.equal(decodeURIComponent(a.text(encodeURIComponent(guest))), guestOut);
+  assert.deepEqual(unpseudonymizedClaimsLogins(guest), [guest.slice(6).toLowerCase()]);
+  // A group claim holds a GUID and is mapped by the GUID rule only.
+  assert.equal(a.text(`c:0o.c|federateddirectoryclaimprovider|${GROUP}`), `c:0o.c|federateddirectoryclaimprovider|${a.guid(GROUP)}`);
+});
+
+test('the check fails on an unmasked claims login and passes the pseudonymized one', () => {
+  const raw = JSON.stringify({ fixture: { member: CLAIMS }, path: encodeURIComponent(CLAIMS) });
+  assert.deepEqual(claimsLogins(raw), ['|membership|keel-rt-20260908-diego@fabrikam-mail.com', '%7cmembership%7ckeel-rt-20260908-diego%40fabrikam-mail.com']);
+  assert.equal(unpseudonymizedIds(raw).length, 2);
+  // Only the domain or only the user part masked is still a leak.
+  assert.equal(unpseudonymizedClaimsLogins('i:0#.f|membership|keel-rt-u0123456789ab@fabrikam-mail.com').length, 1);
+  assert.equal(unpseudonymizedClaimsLogins('i:0#.f|membership|keel-rt-diego@t0123456789a.example').length, 1);
+
+  const published = JSON.stringify(pseudonymizer('sha256:aaaa').walk(JSON.parse(raw)));
+  assert.deepEqual(unpseudonymizedIds(published), []);
+  const files = { 'raw.json': raw, 'published.json': published };
+  const lines = [];
+  const options = { read: (file) => files[file], log: (line) => lines.push(line) };
+  assert.equal(main(['check', 'published.json'], options), 0);
+  assert.equal(main(['check', 'raw.json'], options), 1);
+  assert.match(lines.at(-1), /raw\.json: 2 id\(s\) that are not pseudonyms: \|membership\|keel-rt-20260908-diego@fabrikam-mail\.com/);
+  // The capture guard refuses a log that still holds the raw login.
+  assert.throws(() => assertSafeText(raw, { rawIds: rawIdentifiers(raw), label: 'the capture log' }), /raw object id/);
+  assert.doesNotThrow(() => assertSafeText(published, { rawIds: rawIdentifiers(raw), label: 'the capture log' }));
+});
+
+// Plain sign-in names and mail addresses as the Entra, Exchange and OneDrive gates capture them:
+// KEEL-RT- test users on the tenant's real mail domain. Made-up domain here.
+const UPN = 'keel-rt-20260908-carla@fabrikam-mail.com';
+
+test('a sign-in name or mail address loses its user part and mail domain, and stays a test user', () => {
+  const a = pseudonymizer('sha256:aaaa');
+  const out = a.text(UPN);
+  assert.match(out, /^keel-rt-u[0-9a-f]{12}@t[0-9a-f]{11}\.example$/);
+  assert.ok(!/carla|fabrikam/i.test(out), out);
+  assert.equal(a.text(UPN.toUpperCase()).toLowerCase(), out);
+  assert.notEqual(pseudonymizer('sha256:bbbb').text(UPN), out);
+  // The same person reads the same as a claims login, in a URL path, in a natural key and in an error.
+  assert.equal(a.text(`i:0#.f|membership|${UPN}`), `i:0#.f|membership|${out}`);
+  assert.equal(a.text(`/users/${encodeURIComponent(UPN)}/mailboxSettings`), `/users/${encodeURIComponent(out)}/mailboxSettings`);
+  assert.equal(a.text(`user:${UPN}`), `user:${out}`);
+  assert.equal(a.text(`group:KEEL-RT-g|member|add|user:${UPN}`), `group:KEEL-RT-g|member|add|user:${out}`);
+  assert.equal(a.text(`object '${UPN}' couldn't be found`), `object '${out}' couldn't be found`);
+  assert.equal(a.text(`%2F${encodeURIComponent(UPN)}`), `%2F${encodeURIComponent(out)}`);
+  // A soft-deleted user's name is its object id glued to the old name: the id maps as an id.
+  const deleted = a.text(`${GROUP.replace(/-/g, '')}${UPN}`);
+  assert.equal(deleted, `${a.guid(GROUP).replace(/-/g, '')}${out}`);
+  // A person outside the test prefix gets no prefix.
+  assert.match(a.text('alice@fabrikam-mail.com'), /^u[0-9a-f]{12}@t[0-9a-f]{11}\.example$/);
+  // Graph annotations and reserved test domains are not addresses of the tenant.
+  for (const kept of ['includeTargets@odata.context', 'value@odata.nextLink', 'item@microsoft.graph.conflictBehavior', 'fixture.user@fixture.example', 'ana@contoso.test', 'amara@example.com']) {
+    assert.equal(a.text(kept), kept);
+  }
+  // A OneDrive personal site is named after its owner and maps whole, keeping the test prefix.
+  const site = a.text('https://contoso-my.sharepoint.com/personal/keel-rt-20260908-carla_fabrikam-mail_com/Documents');
+  assert.match(site, new RegExp(`^https://${a.host('contoso')}-my\\.sharepoint\\.com/personal/keel-rt-u[0-9a-f]{12}_t[0-9a-f]{11}_example/Documents$`));
+  assert.equal(a.text('/personal/keel-rt-absent-e1d58554f108'), '/personal/keel-rt-absent-e1d58554f108');
+  // A publisher domain maps like an address's domain.
+  const app = a.walk({ publisherDomain: 'fabrikam-mail.com', other: 'fabrikam-mail.com' });
+  assert.equal(app.publisherDomain, out.split('@')[1]);
+  assert.equal(a.walk({ publisherDomain: 'contoso.onmicrosoft.com' }).publisherDomain, `${a.host('contoso')}.onmicrosoft.com`);
+  // A guest's name maps whole, its home address included, in every form.
+  const guest = 'alice_fabrikam-mail.com#EXT#@contoso.onmicrosoft.com';
+  const guestOut = a.text(guest);
+  assert.match(guestOut, new RegExp(`^u[0-9a-f]{12}@${a.host('contoso')}\\.onmicrosoft\\.com$`));
+  assert.equal(a.text(encodeURIComponent(guest)), encodeURIComponent(guestOut));
+  assert.equal(a.text(`i:0#.f|membership|${guest.toLowerCase()}`), `i:0#.f|membership|${guestOut}`);
+  assert.match(a.text('/personal/alice_fabrikam-mail_com%23ext%23_contoso_onmicrosoft_com'), /^\/personal\/u[0-9a-f]{12}_t[0-9a-f]{11}_example$/);
+  // A colliding OneDrive name gets digits appended.
+  assert.match(a.text('/personal/keel-rt-carla_fabrikam-mail_com1/Documents'), /^\/personal\/keel-rt-u[0-9a-f]{12}_t[0-9a-f]{11}_example\/Documents$/);
+  // A ' inside a name belongs to it; a quote before a name does not.
+  assert.match(a.text("o'brien@fabrikam-mail.com"), /^u[0-9a-f]{12}@t[0-9a-f]{11}\.example$/);
+  // A long run of quotes stays fast.
+  const started = Date.now();
+  a.text("a'".repeat(20000));
+  assert.ok(Date.now() - started < 500, 'linear in the input');
+  // Pseudonymizing twice changes nothing.
+  assert.equal(a.text(out), out);
+  const name = site.split('/personal/')[1];
+  assert.equal(a.text(`/personal/${name}`), `/personal/${name}`);
+});
+
+test('the check fails on an unmasked sign-in name, OneDrive site or publisher domain and passes the pseudonymized ones', () => {
+  const raw = JSON.stringify({
+    userPrincipalName: UPN, path: `/users/${encodeURIComponent(UPN)}`, claims: `i:0#.f|membership|${UPN}`,
+    site: 'https://contoso-my.sharepoint.com/personal/keel-rt-20260908-carla_fabrikam-mail_com', publisherDomain: 'fabrikam-mail.com',
+    context: 'x@odata.context', fixture: 'fixture.user@fixture.example',
+  });
+  const found = unpseudonymizedIds(raw);
+  assert.deepEqual(found.sort(), [
+    '"publisherdomain":"fabrikam-mail.com"', '/personal/keel-rt-20260908-carla_fabrikam-mail_com', UPN,
+    `${encodeURIComponent(UPN)}`.toLowerCase(), `|membership|${UPN}`,
+  ].sort());
+  const published = JSON.stringify(pseudonymizer('sha256:aaaa').walk(JSON.parse(raw)));
+  assert.deepEqual(unpseudonymizedIds(published), []);
+  assert.ok(!/carla|fabrikam/i.test(published), published);
+  // Guests, colliding OneDrive names and a publisher domain inside a JSON string are listed too.
+  assert.equal(unpseudonymizedIds('alice_fabrikam-mail.com#EXT#@t0123456789a.onmicrosoft.com').length, 1);
+  assert.equal(unpseudonymizedIds('/users/alice_fabrikam-mail.com%23EXT%23%40t0123456789a.onmicrosoft.com').length, 1);
+  assert.equal(unpseudonymizedIds('/personal/alice_fabrikam-mail_com1').length, 1);
+  assert.equal(unpseudonymizedIds(JSON.stringify({ outcomeDetail: JSON.stringify({ publisherDomain: 'fabrikam-mail.com' }) })).length, 1);
+  // Only the domain or only the user part masked is still a leak.
+  assert.equal(unpseudonymizedIds('keel-rt-u0123456789ab@fabrikam-mail.com').length, 1);
+  assert.equal(unpseudonymizedIds('keel-rt-carla@t0123456789a.onmicrosoft.com').length, 1);
+  // The capture guard refuses a log that still holds the raw name.
+  assert.throws(() => assertSafeText(raw, { rawIds: rawIdentifiers(raw), label: 'the capture log' }), /raw object id/);
+  assert.doesNotThrow(() => assertSafeText(published, { rawIds: rawIdentifiers(raw), label: 'the capture log' }));
+});
+
+test('a Viva Engage community id is pseudonymized wherever it appears, and the check sees a raw one (#684)', () => {
+  const COMMUNITY = Buffer.from('{"_type":"Group","id":"474060623424"}').toString('base64').replace(/=+$/, '');
+  const record = {
+    naturalKey: `engageCommunity:${COMMUNITY}`, targetId: COMMUNITY,
+    entry: { naturalKey: `engageCommunity:${COMMUNITY}` },
+    priorState: { id: COMMUNITY, groupId: GROUP, displayName: 'KEEL-RT-community' },
+    postState: { id: COMMUNITY, groupId: GROUP, displayName: 'KEEL-RT-community' },
+    path: `/employeeExperience/communities/${COMMUNITY}/owners`,
+    padded: `${COMMUNITY}==`,
+  };
+  const raw = JSON.stringify(record);
+  assert.ok(unpseudonymizedIds(raw).includes(COMMUNITY.toLowerCase()), 'the check lists the raw community id');
+  assert.ok(rawIdentifiers(raw).includes(COMMUNITY.toLowerCase()));
+
+  const p = pseudonymizer('sha256:aaaa');
+  const safe = p.walk(record);
+  const text = JSON.stringify(safe);
+  assert.ok(!text.includes(COMMUNITY) && !text.includes('474060623424'), 'no raw community id or number is left');
+  assert.deepEqual(unpseudonymizedIds(text), []);
+  // Every copy maps to the same pseudonym, which still decodes to an Engage id with the same type.
+  const id = safe.targetId;
+  for (const value of [safe.priorState.id, safe.postState.id]) assert.equal(value, id);
+  assert.equal(safe.naturalKey, `engageCommunity:${id}`);
+  assert.equal(safe.entry.naturalKey, `engageCommunity:${id}`);
+  assert.equal(safe.path, `/employeeExperience/communities/${id}/owners`);
+  assert.match(id, /^[A-Za-z0-9]+$/);
+  const decoded = JSON.parse(Buffer.from(id, 'base64').toString('utf8'));
+  assert.equal(decoded._type, 'Group');
+  assert.match(decoded.id, /^8\d{19}$/);
+  // A padded copy maps to the same id (padded only if its encoding needs it), the mapping depends
+  // on the tenant, and a pseudonym is never mapped again.
+  assert.equal(safe.padded.replace(/=+$/, ''), id);
+  assert.notEqual(pseudonymizer('sha256:bbbb').text(COMMUNITY), id);
+  assert.equal(p.text(id), id);
+  // An id whose other text forces a `+` or `/` into the encoding, or a number past 2^53, is still replaced.
+  for (const json of ['{"_type":"???","id":"123"}', '{"_type":"Group","id":123456789012345678901}']) {
+    const token = Buffer.from(json).toString('base64').replace(/=+$/, '');
+    assert.ok(unpseudonymizedIds(token).length > 0, json);
+    assert.deepEqual(unpseudonymizedIds(p.text(token)), [], json);
+  }
+  // Other base64 JSON is left alone.
+  const other = Buffer.from('{"kind":"note"}').toString('base64');
+  assert.equal(p.text(other), other);
 });

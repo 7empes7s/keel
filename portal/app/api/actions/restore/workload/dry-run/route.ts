@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 
-import { enqueue } from "../../../../../../../engine/jobs/queue.mjs";
+import { enqueue, PORTAL_QUEUED_JOBS_PER_PRINCIPAL, QueueFullError, queuedJobCount } from "../../../../../../../engine/jobs/queue.mjs";
 
 import {
   guarded,
-  IDEMPOTENCY_KEY_HEADER,
+  callerIdempotencyKey,
   InvalidActionRequest,
   normalizeJob,
   readActionParams,
@@ -55,7 +55,7 @@ export const POST = guarded(
     }
 
     const unique = [...new Set(targets as string[])];
-    const idempotencyKey = request.headers.get(IDEMPOTENCY_KEY_HEADER) ?? undefined;
+    const idempotencyKey = callerIdempotencyKey(request, principalId, "restore-workload-dry-run");
     const runs: { target: string | null; job: unknown; artifactId: string }[] = [];
     const start = async (target: string | null, workloadRestore: Record<string, unknown>, index: number) => {
       const artifactId = randomUUID();
@@ -66,6 +66,7 @@ export const POST = guarded(
         // One key per run, so a retried request finds the same jobs again.
         idempotencyKey: idempotencyKey === undefined ? undefined : index === 0 ? idempotencyKey : `${idempotencyKey}:${index}`,
         notBefore: undefined,
+        maxQueuedForRequester: PORTAL_QUEUED_JOBS_PER_PRINCIPAL,
       })) as Record<string, unknown>;
       const persisted = (job.params as Record<string, unknown> | undefined)?.artifactId;
       runs.push({ target, job: normalizeJob(job), artifactId: typeof persisted === "string" ? persisted : artifactId });
@@ -76,6 +77,15 @@ export const POST = guarded(
       if (!items) throw new InvalidActionRequest("choose mailboxes or teams from this backup");
       if (items.length === 0) throw new InvalidActionRequest("the organization-wide settings are put back together with a mailbox; choose a mailbox too");
       if (items.length > MAX_PER_ITEM) throw new InvalidActionRequest(`choose at most ${MAX_PER_ITEM} at a time`);
+      // Security audit run 2, finding 11: a request that would pass the person's queue cap
+      // part way through queues nothing, rather than some of the runs. A retry whose first
+      // run already exists is a replay and gets its runs back.
+      const replay = idempotencyKey !== undefined && (await client.query(
+        "SELECT 1 FROM job WHERE kind = 'restore' AND idempotency_key = $1", [idempotencyKey],
+      )).rows.length > 0;
+      if (!replay && (await queuedJobCount(client, { requestedBy: principalId })) + items.length > PORTAL_QUEUED_JOBS_PER_PRINCIPAL) {
+        throw new QueueFullError(PORTAL_QUEUED_JOBS_PER_PRINCIPAL);
+      }
       const organization = unique.includes("organization");
       for (const [index, item] of items.entries()) {
         const withOrganization = organization && index === 0;

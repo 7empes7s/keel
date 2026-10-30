@@ -26,6 +26,7 @@ import { pathToFileURL } from 'node:url';
 
 import { assertTokenFree, getToken } from './auth.mjs';
 import { redactSecrets } from './graph.mjs';
+import { readConfigFile } from '../../engine/config/configFile.mjs';
 
 const PP = 'https://service.powerapps.com/';
 const FLOW = 'https://service.flow.microsoft.com/';
@@ -410,7 +411,7 @@ async function main(argv) {
     console.error('delegated-probe: --out is required');
     return 2;
   }
-  const config = JSON.parse(readFileSync(configPath, 'utf8'));
+  const config = readConfigFile(configPath, { readFile: readFileSync, what: 'collector settings' });
   const cmdletRows = (argValue(argv, '--cmdlets') ?? '').split(',').filter(Boolean)
     .flatMap((file) => [JSON.parse(readFileSync(file, 'utf8'))].flat());
   const maxEnvironments = Number(argValue(argv, '--max-environments') ?? 3);

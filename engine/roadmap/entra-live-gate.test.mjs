@@ -64,8 +64,8 @@ function fixtureRestore(step, {
   const restoreRef = '0f0e0d0c-0b0a-4908-8706-050403020100';
   const edge = step.resourceType.includes('#');
   const family = edge ? step.resourceType.split('#')[1] : null;
-  const key = naturalKey ?? (/\s|</.test(step.select) ? `fixture-key-${step.resourceType}` : step.select);
-  const name = displayName ?? (step.fixtureKind === 'named-object' ? `${key}` : null);
+  const key = naturalKey ?? (step.key.startsWith('<') ? `${step.resourceType.split('#')[0]}:fixture-key` : step.key);
+  const name = displayName ?? (step.fixtureKind !== 'named-object' ? null : step.key.startsWith('<') && !naturalKey ? step.select : key.slice(key.indexOf(':') + 1));
   // The object's own name, in every field its kind is named by (issue #478).
   const named = (value) => (value ? { displayName: value, ...Object.fromEntries(nameFieldsFor(step.resourceType).map((field) => [field, value])) } : {});
   const targetId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
@@ -494,6 +494,36 @@ test('an app relationship is a fixture only when both of its apps are (#478)', (
   assert.equal(namesFixture('groupPolicyUploadedDefinitionFile', { fileName: 'windowsupdate.admx', displayName: 'KEEL-RT-admx' }), false);
 });
 
+test('an attribute set or custom security attribute also accepts the letters-only KEELRT prefix', async () => {
+  // Graph forbids hyphens in these names, so KEEL-RT- can never be used for them.
+  assert.equal(namesFixture('attributeSet', { id: 'KEELRTSet' }), true);
+  assert.equal(namesFixture('attributeSet', { id: 'KEELRT20261029', description: 'Fixture' }), true);
+  assert.equal(namesFixture('attributeSet', { id: 'Engineering' }), false);
+  // Anchored: the prefix must start the name.
+  assert.equal(namesFixture('attributeSet', { id: 'ProdKEELRTSet' }), false);
+  assert.equal(namesFixture('customSecurityAttributeDefinition', { attributeSet: 'KEELRTSet', name: 'KEELRTAttr' }), true);
+  assert.equal(namesFixture('customSecurityAttributeDefinition', { attributeSet: 'KEELRTSet', name: 'CostCenter' }), false);
+  // Every other kind still needs the hyphenated prefix.
+  assert.equal(namesFixture('group', { displayName: 'KEELRTGroup' }), false);
+  assert.equal(namesFixture('group', { displayName: 'KEEL-RT-group' }), true);
+
+  const { steps } = buildLiveGatePlan();
+  const setStep = steps.find((step) => step.id === 'attributeSet:update');
+  const attrStep = steps.find((step) => step.id === 'customSecurityAttributeDefinition:update');
+  assert.equal(setStep.fixtureKind, 'named-object');
+  assert.equal(attrStep.fixtureKind, 'named-object');
+  assert.ok(!setStep.commands.at(-1).includes('--allow-by-reference'));
+  assert.equal((await capture(setStep, { naturalKey: 'KEELRTSet', displayName: 'KEELRTSet' })).status, 'captured');
+  await assert.rejects(capture(setStep, { naturalKey: 'Engineering', displayName: 'Engineering' }), /not a disposable/);
+  assert.equal((await capture(attrStep, { naturalKey: 'KEELRTSet_KEELRTAttr', displayName: 'KEELRTAttr' })).status, 'captured');
+  // An attribute is a fixture only inside a fixture set: its key (<set>_<name>) decides, whatever its name.
+  await assert.rejects(capture(attrStep, { naturalKey: 'Engineering_KEELRTAttr', displayName: 'KEELRTAttr' }), /not a disposable/);
+  await assert.rejects(capture(attrStep, { naturalKey: 'KEELRTSet_CostCenter', displayName: 'CostCenter' }), /not a disposable/);
+  // A group named KEELRT is still refused.
+  const group = steps.find((step) => step.id === 'group:update');
+  await assert.rejects(capture(group, { naturalKey: 'KEELRTGroup', displayName: 'KEELRTGroup' }), /not a disposable/);
+});
+
 test('a delegated consent grant is checked by its client app and user, not a role (#295)', async () => {
   const step = buildLiveGatePlan().steps.find((candidate) => candidate.id === 'oauth2PermissionGrant:update');
   assert.equal(step.fixtureKind, 'by-reference');
@@ -662,7 +692,7 @@ test('a target config that is not valid JSON is refused without echoing it', asy
     connectFn: async () => ({ end: async () => {} }), readFile: () => '{"clientSecret": "fixture-secret-value", broken',
   });
   assert.equal(code, 1);
-  assert.equal(errors.join('\n'), 'the target config is not valid JSON');
+  assert.equal(errors.join('\n'), "Keel can't read the restorer settings file (/fixture.json): it is not valid JSON. Fix the file on the Keel server, then try again.");
 });
 
 test('a failed live write is never promoted, and its demotion must be applied in code', async () => {
@@ -874,4 +904,44 @@ test('the three Entra writes the test tenant cannot run are recorded as tenant l
     assert.equal(row.claim, 'fixture-tested', `${type} update claim is not lowered or raised`);
     assert.equal(row.live.result, 'failed');
   }
+});
+
+test('issue #642: a bare fixture name captures the object of the kind named, and no other', async () => {
+  const { steps } = buildLiveGatePlan();
+  const app = steps.find((step) => step.id === 'mobileApp:update');
+  const restore = fixtureRestore(app, { naturalKey: 'mobileApp:KEEL-RT-148-app-web', displayName: 'KEEL-RT-148-app-web' });
+  const run = (fixture, resourceType = app.resourceType) => captureLive({
+    client: {}, restoreRef: restore.restoreRef, resourceType, operation: 'update', fixture,
+    targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, testTenantRefs: TEST_REFS,
+    getArtifact: restore.getArtifact, getJournal: restore.getJournal, getSnapshot: restore.getSnapshot,
+  });
+  assert.equal((await run('mobileApp:KEEL-RT-148-app-web')).status, 'captured');
+  assert.equal((await run('KEEL-RT-148-app-web')).status, 'captured');
+  assert.equal((await run('KEEL-RT-148-app-win32')).status, 'not-exercised');
+});
+
+test('issue #684: a community keyed by its id is captured by its fixture name too, unless two share it', async () => {
+  const { steps } = buildLiveGatePlan();
+  const community = steps.find((step) => step.id === 'engageCommunity:update');
+  const communityId = Buffer.from('{"_type":"Group","id":"474060623424"}').toString('base64').replace(/=+$/, '');
+  const restore = fixtureRestore(community, { naturalKey: `engageCommunity:${communityId}`, displayName: 'KEEL-RT-community' });
+  const journal = await restore.getJournal({}, { restoreRef: restore.restoreRef });
+  const run = (fixture, entries = journal) => captureLive({
+    client: {}, restoreRef: restore.restoreRef, resourceType: 'engageCommunity', operation: 'update', fixture,
+    targetConfig: { tenantId: FIXTURE_TENANT_ID }, build: BUILD, hmacKey: HMAC_KEY, testTenantRefs: TEST_REFS,
+    getArtifact: restore.getArtifact, getJournal: async () => entries, getSnapshot: restore.getSnapshot,
+  });
+  for (const fixture of [`engageCommunity:${communityId}`, communityId, 'KEEL-RT-community']) {
+    const result = await run(fixture);
+    assert.equal(result.status, 'captured', fixture);
+    assert.ok(!result.captureLog.includes(communityId), `${fixture}: the community id is pseudonymized`);
+    assert.deepEqual(unpseudonymizedIds(result.captureLog), [], fixture);
+  }
+  assert.equal((await run('KEEL-RT-other-community')).status, 'not-exercised');
+  // A name only in the intended or post-write state does not name the write.
+  const renamed = [{ ...journal[0], priorState: { id: communityId, displayName: 'Finance', name: 'Finance' }, postState: { displayName: 'KEEL-RT-community' } }];
+  assert.equal((await run('KEEL-RT-community', renamed)).status, 'not-exercised');
+  // Two communities of that name: the id is needed.
+  const twin = { ...journal[0], naturalKey: 'engageCommunity:other-id', targetId: 'other-id' };
+  await assert.rejects(run('KEEL-RT-community', [...journal, twin]), /2 engageCommunity objects named KEEL-RT-community: pass the natural key/);
 });

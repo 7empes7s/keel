@@ -18,6 +18,8 @@
 //    acknowledgement needs the current configuration grant.
 // 4. Scheduling stays UTC. The business-hours view converts upcoming UTC runs to a
 //    time zone for display only and never feeds back into next_due_at.
+import { readNamer } from '../insights/anonymity.mjs';
+import { displayPerson } from '../insights/people.mjs';
 import { can } from '../authz/can.mjs';
 import { graphRequestObservation } from '../telemetry/events.mjs';
 import { MINIMUM_INTERVAL_MS, nextDueAt, validateSchedule } from './cadence.mjs';
@@ -378,10 +380,14 @@ export async function loadScheduleForecasts(client, principal, { tenantRef, now 
   });
   const people = [...new Set(forecasts.map((forecast) => forecast.acknowledgement?.acknowledgedBy).filter((id) => UUID.test(id ?? '')))];
   const { rows: names } = people.length
-    ? await client.query("SELECT id::text AS id, COALESCE(NULLIF(display_name, ''), email) AS name FROM principal WHERE id = ANY($1::uuid[])", [people])
+    ? await client.query("SELECT id::text AS id, NULLIF(display_name, '') AS name, email, system_kind FROM principal WHERE id = ANY($1::uuid[])", [people])
     : { rows: [] };
-  // The person's name when Keel knows one, else their sign-in address.
-  const nameById = new Map(names.map((row) => [row.id, row.name]));
+  // The person's name when Keel knows one, else their sign-in address; a code name
+  // while "Hide people's names" is on.
+  const namer = names.length ? await readNamer(client) : null;
+  const nameById = new Map(names.map((row) => [row.id, displayPerson({
+    kind: 'person', id: row.id, name: row.name ?? row.email, email: row.email, readable: true, system: row.system_kind != null,
+  }, namer).name]));
   for (const forecast of forecasts) {
     if (forecast.acknowledgement) {
       forecast.acknowledgement = { ...forecast.acknowledgement, acknowledgedByName: nameById.get(forecast.acknowledgement.acknowledgedBy) ?? null };

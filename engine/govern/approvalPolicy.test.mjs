@@ -50,6 +50,21 @@ assert.deepEqual(
   ['delete'],
 );
 assert.deepEqual(
+  classifyApprovalActions({ action: 'restore', artifact: { closureKeys: keys(1), relationshipOperations: [{ parentNaturalKey: 'group:x', family: 'member', action: 'remove', targetId: 'u' }] } }),
+  ['delete'],
+  'removing a member or owner is a delete for the two-person rule (security audit run 2, finding 7)',
+);
+assert.deepEqual(
+  classifyApprovalActions({ action: 'restore', artifact: { closureKeys: keys(1), relationshipOperations: [{ parentNaturalKey: 'group:x', family: 'member', action: 'add', targetId: 'u' }] } }),
+  [],
+  'adding a member is not a delete',
+);
+assert.deepEqual(
+  classifyApprovalActions({ action: 'restore', artifact: { closureKeys: keys(1), waves: [[{ naturalKey: 'x', payload: { action: 'remove' } }]] } }),
+  [],
+  'a payload field named action is not an edge removal',
+);
+assert.deepEqual(
   classifyApprovalActions({ action: 'restore', artifact: { closureKeys: keys(1), contentEffects: [{ effect: 'retention-reducing' }, { effect: 'hold-releasing' }, { effect: 'externally-sharing' }] } }),
   ['retention-shortening', 'legal-hold-release'],
 );

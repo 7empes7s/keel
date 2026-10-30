@@ -39,7 +39,6 @@ export default [
   { resourceType: 'directoryRoleAccessReviewPolicy', operation: 'update', path: '/policies/directoryRoleAccessReviewPolicy', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'multiTenantOrganizationIdentitySyncPolicyTemplate', operation: 'update', path: '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   // Restore gaps, batch 3: guest and app consent settings.
-  { resourceType: 'b2bManagementPolicy', operation: 'update', path: '/policies/b2bManagementPolicies', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'permissionGrantPreApprovalPolicy', operation: 'create', path: '/policies/permissionGrantPreApprovalPolicies', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'permissionGrantPreApprovalPolicy', operation: 'update', path: '/policies/permissionGrantPreApprovalPolicies', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   { resourceType: 'externalDomainFederation', operation: 'update', path: '/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
@@ -116,6 +115,9 @@ export default [
   { resourceType: 'intuneBrandingProfile', operation: 'update', path: '/deviceManagement/intuneBrandingProfiles', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   { resourceType: 'exchangeCustomAppScope', operation: 'create', path: '/roleManagement/exchange/customAppScopes', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
   { resourceType: 'exchangeCustomAppScope', operation: 'update', path: '/roleManagement/exchange/customAppScopes', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  // Restore gaps, batch 21: custom Defender XDR roles.
+  { resourceType: 'defenderRoleDefinition', operation: 'create', path: '/roleManagement/defender/roleDefinitions', handler: IDENTITY, idOutcome: 'server-assigned', proofRef: IDENTITY_PROOF },
+  { resourceType: 'defenderRoleDefinition', operation: 'update', path: '/roleManagement/defender/roleDefinitions', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   // Restore gaps, batch 10: Endpoint analytics baselines, classroom carts and Android enrollment profiles.
   { resourceType: 'userExperienceAnalyticsBaseline', operation: 'create', path: '/deviceManagement/userExperienceAnalyticsBaselines', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
   { resourceType: 'userExperienceAnalyticsBaseline', operation: 'update', path: '/deviceManagement/userExperienceAnalyticsBaselines', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
@@ -133,14 +135,26 @@ export default [
   { resourceType: 'microsoftTunnelHealthThreshold', operation: 'update', path: '/deviceManagement/microsoftTunnelHealthThresholds', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   { resourceType: 'onPremisesConditionalAccessSettings', operation: 'update', path: '/deviceManagement/conditionalAccessSettings', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   { resourceType: 'sharepointSettings', operation: 'update', path: '/admin/sharepoint/settings', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  // Restore gaps, batch 20: Microsoft 365 admin center org settings and Viva Engage communities, updated in place.
+  { resourceType: 'formsSettings', operation: 'update', path: '/admin/forms', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  { resourceType: 'microsoft365AppsInstallationOptions', operation: 'update', path: '/admin/microsoft365Apps/installationOptions', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  { resourceType: 'appsAndServicesSettings', operation: 'update', path: '/admin/appsAndServices', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  { resourceType: 'adminReportSettings', operation: 'update', path: '/admin/reportSettings', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  { resourceType: 'pronounsSettings', operation: 'update', path: '/admin/people/pronouns', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
+  { resourceType: 'engageCommunity', operation: 'update', path: '/employeeExperience/communities', handler: IDENTITY, idOutcome: 'preserved', proofRef: IDENTITY_PROOF },
   // Restore gaps, batch 12: Windows app protection policies and iOS app provisioning profiles.
   { resourceType: 'windowsManagedAppProtection', operation: 'create', path: '/deviceAppManagement/windowsManagedAppProtections', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
   { resourceType: 'windowsManagedAppProtection', operation: 'update', path: '/deviceAppManagement/windowsManagedAppProtections', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   { resourceType: 'iosLobAppProvisioningConfiguration', operation: 'create', path: '/deviceAppManagement/iosLobAppProvisioningConfigurations', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
   { resourceType: 'iosLobAppProvisioningConfiguration', operation: 'update', path: '/deviceAppManagement/iosLobAppProvisioningConfigurations', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   // Restore gaps, batch 13: app dependencies and supersedence.
-  { resourceType: 'mobileAppRelationship', operation: 'create', path: '/deviceAppManagement/mobileAppRelationships', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
-  { resourceType: 'mobileAppRelationship', operation: 'update', path: '/deviceAppManagement/mobileAppRelationships', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  { resourceType: 'mobileAppRelationship', operation: 'create', path: '/deviceAppManagement/mobileApps/{appId}/updateRelationships', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'mobileAppRelationship', operation: 'update', path: '/deviceAppManagement/mobileApps/{appId}/updateRelationships', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
+  // Only the undo of a link a restore created (the record refuses any other delete).
+  { resourceType: 'mobileAppRelationship', operation: 'delete', path: '/deviceAppManagement/mobileApps/{appId}/updateRelationships', handler: INTUNE, idOutcome: 'terminal', proofRef: INTUNE_PROOF },
+  // Restore gaps, batch 18: Intune apps (a Win32 or line-of-business app without its package).
+  { resourceType: 'mobileApp', operation: 'create', path: '/deviceAppManagement/mobileApps', handler: INTUNE, idOutcome: 'server-assigned', proofRef: INTUNE_PROOF },
+  { resourceType: 'mobileApp', operation: 'update', path: '/deviceAppManagement/mobileApps', handler: INTUNE, idOutcome: 'preserved', proofRef: INTUNE_PROOF },
   // Add-only identity edges: an edge is never removed, so edge-remove is not registered.
   { resourceType: 'application#appOwner', operation: 'edge-add', path: '/applications/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },
   { resourceType: 'servicePrincipal#servicePrincipalOwner', operation: 'edge-add', path: '/servicePrincipals/{id}/owners/$ref', handler: EDGES, idOutcome: 'edge', proofRef: IDENTITY_PROOF },

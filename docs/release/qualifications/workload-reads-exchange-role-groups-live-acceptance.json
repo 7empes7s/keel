@@ -1,0 +1,42 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-reads-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "05a930b58a82583d276fff1fedf6cc9dca1563e9",
+  "operation": "workload-reads",
+  "credentialMode": "collector-only",
+  "observedAt": "2026-10-30T01:30:25.384Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "exchange-role-groups",
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "ExchangeOnlineManagement",
+      "moduleVersion": "3.10.1"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c"
+    },
+    "outcome": "complete",
+    "reads": [
+      {
+        "operationId": "exchange-role-groups.role-groups",
+        "family": "roleGroup",
+        "version": "3.10.1",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T01:30:25.384Z",
+        "ok": true,
+        "status": "read",
+        "objects": 39,
+        "error": null
+      }
+    ]
+  },
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "b8ef247ddc94efa0f0e34f825dff8958bf77c7e613efe2b8c17f225e458850d7"
+    }
+  }
+}

@@ -18,6 +18,7 @@ import { USABLE_OUTCOMES, WAITING_ALERT_STATES, getApprovedSetup, loadApprovedSi
 import { BLAST_SEVERITY, applyConditionEvent } from '../notify/alerts.mjs';
 import { WORKLOAD_COLLECTORS } from '../collect/workloads/registry.mjs';
 import { SHAREPOINT_WORKLOAD } from '../collect/workloads/sharepoint.mjs';
+import { SHAREPOINT_STRUCTURE_WORKLOAD, TEMPLATE_STORAGE_FIELDS } from '../collect/workloads/sharepointStructure.mjs';
 
 // Fields that move on their own, without a setting changing: the time Microsoft last
 // saved the object and its version tag.
@@ -38,6 +39,12 @@ export const DRIFT_WORKLOADS = Object.freeze({
     // A change limited to these fields renames a site; anything else (app grants,
     // tenant sharing settings) changes who can reach what.
     cosmetic: new Set(['displayName', 'name', 'webUrl', 'hostname', 'createdDateTime']),
+  },
+  // A site template is kept whole for a restore but compared through its summaries
+  // (lists, columns, content types, navigation): the XML moves with every PnP version.
+  [SHAREPOINT_STRUCTURE_WORKLOAD]: {
+    volatile: new Set([...MOVES_ON_ITS_OWN, ...TEMPLATE_STORAGE_FIELDS]),
+    cosmetic: new Set([...NAMES, 'Title', 'title', 'PreviewImageUrl', 'PreviewImageAltText', 'LogoUrl']),
   },
 });
 

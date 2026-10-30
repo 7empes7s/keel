@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "oauth2PermissionGrant",
+  "operation": "create",
+  "fieldProjectionContractVersion": 1,
+  "build": "4b880d3453c1e0904ed0f6c5e091759e5a4c4c29",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-29T23:40:49.427Z",
+  "restoreRef": "c1d6eb8a-477c-87da-9352-874e3ae82f50",
+  "naturalKey": "oauth2PermissionGrant:H3gFLbixv4aVBF_dxYpCd5RgNnxsqFiEuzf8YbpswCJ5WcvCDg19h7p-s_8FPjS_",
+  "fixtureKind": "by-reference",
+  "captureSha256": "7cdfe3527a343b7756e24f2fc35e0cbe7f75f5bce7f25a783d112cbd062ea22f",
+  "proofRef": "docs/release/qualifications/entra-live/oauth2PermissionGrant.create.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "485b3b82f8bcb9c6bb670525ef1a45726d74648247a3d15e90c176481196ac1a"
+    }
+  }
+}

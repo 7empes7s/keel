@@ -4,6 +4,7 @@ import type { RiskTone } from "@/lib/menu-status";
 import type { PrincipalView } from "@/lib/principals";
 import { personAccess } from "@/lib/presentation";
 import { type EngineRef, personLabel } from "@/lib/sentences";
+import { csvLine } from "@/lib/csv";
 
 // People (portal audit, one design): the words of the page. Who can use Keel, the
 // roles each person holds and since when, and what each can do. Pure functions,
@@ -279,10 +280,6 @@ export function addRoleDetail(role: Role, chosen: PrincipalView[], now: string):
   return parts.join(" ");
 }
 
-function csvCell(value: string): string {
-  return /[",\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
-}
-
 /** The access review export: one line per role grant, people without a role on one line. */
 export function accessReviewCsv(people: PrincipalView[], now: string): string {
   const lines = [["Name", "Email", "State", "Role", "Where", "From", "Until", "Granted by", "Why"].join(",")];
@@ -290,12 +287,12 @@ export function accessReviewCsv(people: PrincipalView[], now: string): string {
     const state = PERSON_STATES[personState(person, now)].label;
     const grants = person.role_grants.length ? person.role_grants : [null];
     for (const grant of grants) {
-      lines.push([
+      lines.push(csvLine([
         personName(person), person.email, state,
         grant ? roleLabel(grant.role) : "", grant ? (grantEntity(grant) ? entityWords(grantEntity(grant) as string) : "Everywhere") : "",
         grant ? grant.active_from.slice(0, 10) : "", grant?.active_until ? grant.active_until.slice(0, 10) : "",
         grant ? grantedByName(grant, people) ?? "" : "", grant?.reason ?? "",
-      ].map(csvCell).join(","));
+      ]));
     }
   }
   return `${lines.join("\n")}\n`;

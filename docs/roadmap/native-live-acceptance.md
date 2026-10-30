@@ -58,6 +58,10 @@ A record is a qualification evidence record (contract version 1) with:
   `KEEL_QUALIFICATION_HMAC_KEY` and never in git.
 - `proof.artifact`: the raw captured Graph exchanges, cut down to ids, names
   and `deletedDateTime`.
+- The repository is public, so the record and the artifact name the fixture by
+  its pseudonym (`tools/qualification/pseudonymize.mjs`, keyed on `tenantRef`),
+  never its real object id. The capture tool writes nothing while either file
+  still holds an id that is not a pseudonym.
 
 **The runner signature and the artifact are both required for this gate.** The
 verifier recomputes the artifact digest and checks that it equals the signed

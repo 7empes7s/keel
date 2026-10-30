@@ -47,6 +47,7 @@ export const WORKLOADS = Object.freeze([
   'exchange-extended',
   'exchange-role-groups',
   'exchange-distribution-groups', 'exchange-recipients',
+  'sharepoint-structure',
   'teams-voice-policies', 'purview-governance',
   'power-platform-settings',
 ]);
@@ -379,6 +380,24 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] },
     paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
     source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
+  })),
+  // SharePoint structure through PnP: hub sites, site designs and scripts on the admin site,
+  // and each named site's PnP template (structure only, handlers fixed in run-cmdlet.ps1).
+  // engine/collect/workloads/sharepointStructure.mjs holds the fields and identities.
+  ...[
+    ['hub-sites', 'SharePoint hub sites', 'Get-PnPHubSite', {}],
+    ['site-designs', 'SharePoint site designs', 'Get-PnPSiteDesign', {}],
+    ['site-scripts', 'SharePoint site scripts', 'Get-PnPSiteScript', {}],
+    // The probe runs on the admin site with one handler; the collector names each site.
+    ['site-templates', 'SharePoint site structure: lists, libraries, columns, content types and navigation', 'Get-PnPSiteTemplate',
+      { probeName: 'Get-PnPSiteTemplate -Handlers Fields' }],
+  ].map(([key, resource, name, options]) => ({
+    id: `sharepoint-structure.${key}`, workload: 'sharepoint-structure', resource,
+    operation: cmdlet(name, 'PnP.PowerShell', options),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Sites.FullControl.All'], roles: ['SharePoint Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'sharepoint-429-retry-after', consistency: 'eventual',
+    source: Object.freeze({ url: `https://pnp.github.io/powershell/cmdlets/${name}.html`, retrievedAt: null }),
   })),
   // Wave 1 READ-TEAMS-PV: Teams calling, voice and live event policies, and the
   // policies assigned to users and groups, in the MicrosoftTeams session.

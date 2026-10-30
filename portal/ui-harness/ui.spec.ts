@@ -14,6 +14,8 @@ const PAGES = [
   { name: "schedules-viewer", hash: "/schedules/viewer" },
   { name: "drift", hash: "/drift" },
   { name: "drift-services", hash: "/drift/services" },
+  { name: "drift-feed", hash: "/drift/feed" },
+  { name: "drift-feed-empty", hash: "/drift/feed-empty" },
   { name: "restore", hash: "/restore" },
   { name: "incidents", hash: "/incidents" },
   { name: "incidents-closed", hash: "/incidents?incident=1c1d0000-0000-4000-8000-000000000070" },
@@ -53,6 +55,14 @@ const PAGES = [
   { name: "emergency-changes", hash: "/emergency-changes" },
   { name: "compare", hash: "/compare" },
   { name: "compare-tenants", hash: "/compare/tenants" },
+  { name: "activity-names-hidden", hash: "/activity/anonymous" },
+  { name: "approvals-names-hidden", hash: "/approvals/anonymous" },
+  { name: "drift-names-hidden", hash: "/drift/anonymous" },
+  { name: "principals-names-hidden", hash: "/principals/anonymity" },
+  { name: "principals-names-shown", hash: "/principals/anonymity-off" },
+  { name: "alerts-names-hidden", hash: "/alerts/anonymous" },
+  { name: "policies-names-hidden", hash: "/policies/anonymous" },
+  { name: "benchmarks-names-hidden", hash: "/benchmarks/anonymous" },
   { name: "sites", hash: "/sites" },
   { name: "site", hash: "/sites/contoso.sharepoint.com%2C5e170000-0000-4000-8000-000000000001%2C5e170000-0000-4000-8000-000000000002" },
 ];
@@ -1287,6 +1297,11 @@ test("restore completion closes an item with a reference and refuses a pasted se
   await integration.getByLabel("Evidence reference").fill("CHG-5121");
   await integration.getByRole("button", { name: "Mark verified" }).click();
   await expect(app.locator(".completion-badge-service-validation-pending")).toHaveText("Service validation pending");
+  // A skipped object had nothing written: it never reads as restored.
+  const skipped = page.locator(".completion-resource").filter({ hasText: "KEEL-RT-Head office" });
+  await expect(skipped.locator(".completion-badge-skipped")).toHaveText("Not restored: set it by hand");
+  await expect(skipped.locator(".completion-mechanism")).toHaveText("KEEL wrote nothing to it");
+  await expect(skipped).not.toContainText("Configuration restored");
 });
 
 // Task-73 and the Resilience redesign: what needs the reader comes first as alerts that
@@ -1993,14 +2008,14 @@ const RECORD_IDS: Record<string, string[]> = {
   "incidents-closed": ["1c1d0000-0000-4000-8000-000000000070", "d2110000-0000-4000-8000-000000000070"],
   benchmarks: ["e7a10000-0000-4000-8000-0000000000e1", "e7c10000-0000-4000-8000-0000000000c1", "d7100000-0000-4000-8000-0000000000d1", "d7100000-0000-4000-8000-0000000000d2", "7f3c0000-0000-4000-8000-000000000011", "0b5e0000-0000-4000-8000-0000000000d6", "/opt/backups/keel-recovery-manifest.json"],
   notifications: ["c4e10000-0000-4000-8000-0000000000c1", "c4e10000-0000-4000-8000-0000000000c2", "c4e10000-0000-4000-8000-0000000000c3", "d0e10000-0000-4000-8000-0000000000d1", "d0e10000-0000-4000-8000-0000000000d3"],
-  integrations: ["de570000-0000-4000-8000-0000000000e1", "keel:decision:5e9c0000-0000-4000-8000-000000000097", "9d3f0000000040008000000000000097", "u_keel_gated_change", "u_gate_owner.email", "env:KEEL_SERVICENOW_TOKEN", "gate_passed", "gate_withdrawn", "HTTP 403"],
+  integrations: ["de570000-0000-4000-8000-0000000000e1", "keel:decision:5e9c0000-0000-4000-8000-000000000097", "9d3f0000000040008000000000000097", "u_keel_gated_change", "u_gate_owner.email", "env:KEEL_INTEGRATION_SERVICENOW_TOKEN", "gate_passed", "gate_withdrawn", "HTTP 403"],
   "integrations-servicenow-off": ["states-rejected", "field-approver", "u_keel_gated_change"],
   protect: ["engine/restore/updatePath.test.mjs", "docs/release/qualification/ca-update.json", "0b5e0000-0000-4000-8000-0000000000d5", "authenticationMethodsPolicy", "Authorization_RequestDenied"],
   schedules: ["5c4e0000-0000-4000-8000-000000000001", "5c4e0000-0000-4000-8000-000000000005", "5c4e0000-0000-4000-8000-000000000009", "0 0 * * 1", "a11c0000-0000-4000-8000-0000000000a1", "throttle-heavy", "overlap (acknowledged)", "d71f0000-0000-4000-8000-0000000000d7"],
   setup: ["5e7a" + "0b".repeat(30), "step-1a2b3c4d5e6f7a82", "plan-9f8e7d6c5b4a3921"],
   "setup-checked": ["5e7a" + "0c".repeat(30), "step-4a2b3c4d5e6f7a81", "plan-8e7d6c5b4a392110"],
   "emergency-changes": ["c1a70000-0000-4000-8000-000000000093", "c1a70000-0000-4000-8000-000000000094", "c1a70000-0000-4000-8000-000000000095", "9d".repeat(32), "conditionalAccessPolicy:Block legacy auth", "8c1e0000-0000-4000-8000-0000000000a2", "d9300000-0000-4000-8000-000000000001", "d9300000-0000-4000-8000-000000000002", "CHG0031337", "state: \"enabled\" -> \"enabledForReportingButNotEnforced\""],
-  alerts: ["a1e70000-0000-4000-8000-000000000001", "conditionalAccessPolicy:Block legacy auth", "group:Finance", "user:bg1@contoso.onmicrosoft.com", "5e170000-0000-4000-8000-000000000001", "escalation-failed-no-recipient", "namedLocation:Head office"],
+  alerts: ["0f1a0000-0000-4000-8000-0000000000f1", "a1e70000-0000-4000-8000-000000000001", "conditionalAccessPolicy:Block legacy auth", "group:Finance", "user:bg1@contoso.onmicrosoft.com", "5e170000-0000-4000-8000-000000000001", "escalation-failed-no-recipient", "namedLocation:Head office"],
   activity: ["a4", "y1", "18205", "18200", "marouanedefili@gmail.com", "sam.ortiz@contoso.example", "Graph 429: throttled after 5 retries", "GET /api/evidence/verify"],
   "job-restore-completion": ["7f3c0000-0000-4000-8000-000000000011"],
   "job-restore-undo": ["7f3c0000-0000-4000-8000-000000000010"],
@@ -2372,6 +2387,69 @@ test("the undo plan fits a phone without sideways scrolling", async ({ page }) =
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
 
+// Undo of a restore that created an Intune policy which is assigned now: the person
+// chooses, for each such policy, to delete it with its assignments or to skip it.
+// The choice re-plans the undo, and only then can it go for approval.
+test("an undo of a created policy that is assigned now asks to delete or skip it before approval", async ({ page }) => {
+  await open(page, "/jobs/r11");
+  await page.getByRole("button", { name: "Plan undo" }).click();
+  await expect(page.locator(".compensation-status")).toHaveText("Waiting for your choice", { timeout: 15_000 });
+  const choices = page.locator(".undo-choices");
+  await expect(choices.getByRole("heading")).toHaveText("2Assigned now: choose delete or skip");
+  const baseline = choices.locator(".undo-choice").filter({ hasText: "KEEL-RT-Windows baseline" });
+  await expect(baseline.locator(".badge")).toHaveText("Assigned · 2");
+  await expect(baseline.locator(".undo-choice-reach")).toHaveText("All devices, 1 group");
+  await expect(baseline.getByText("Removes its 2 assignments, then deletes the policy. Devices and people it applies to lose its settings.")).toBeVisible();
+  // Nothing can be sent for approval while a choice is open.
+  await expect(page.getByRole("button", { name: "Request approval to undo" })).toHaveCount(0);
+  const update = page.getByRole("button", { name: "Update the undo plan" });
+  await expect(update).toBeDisabled();
+  await expect(page.locator(".undo-choices-apply")).toContainText("Choose delete or skip for 2 more policies.");
+  expectPlainText(await textOutside(page, "main#main-content", '[data-layer="record"]'));
+
+  await baseline.getByRole("radio", { name: /^Delete it/ }).check();
+  const profile = choices.locator(".undo-choice").filter({ hasText: "KEEL-RT-Feature updates" });
+  await profile.getByRole("radio", { name: /^Skip it/ }).check();
+  await expect(update).toBeEnabled();
+  await update.click();
+
+  await expect(page.locator(".compensation-status")).toHaveText("Ready for approval", { timeout: 15_000 });
+  await expect(choices.getByRole("heading")).toHaveText("2Assigned now: your choice");
+  await expect(baseline.getByRole("radio", { name: /^Delete it/ })).toBeChecked();
+  await expect(profile.getByRole("radio", { name: /^Skip it/ })).toBeChecked();
+  const undone = page.locator(".compensation-section").filter({ hasText: "Will be undone" });
+  await expect(undone.locator(".compensation-item").filter({ hasText: "KEEL-RT-Windows baseline" })).toContainText("Remove its 2 assignments, then delete the policy this restore created");
+  await expect(undone).not.toContainText("KEEL-RT-Feature updates");
+  // The record keeps the exact assignments the approval binds.
+  const records = (await page.locator('.compensation-panel [data-layer="record"]').allTextContents()).join("\n");
+  expect(records).toContain("delete · assignments c0a1_all, c0a1_g1");
+  expect(records).toContain("skip · assignments c0a2_g2");
+
+  await page.getByLabel("Why undo this restore?").fill("Wrong snapshot restored");
+  await page.getByRole("button", { name: "Request approval to undo" }).click();
+  await expect(page.locator(".compensation-requested")).toBeVisible();
+});
+
+for (const theme of ["dark", "light"] as const) {
+  test(`a11y · undo with an assigned policy · ${theme}`, async ({ page }) => {
+    await open(page, "/jobs/r11", theme);
+    await page.getByRole("button", { name: "Plan undo" }).click();
+    await expect(page.locator(".undo-choices")).toBeVisible({ timeout: 15_000 });
+    await page.locator(".undo-choice").first().getByRole("radio", { name: /^Delete it/ }).check();
+    const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    const summary = results.violations.map((violation) => ({ rule: violation.id, targets: violation.nodes.slice(0, 5).map((node) => node.target.join(" ")) }));
+    expect(summary, JSON.stringify(summary, null, 2)).toEqual([]);
+  });
+}
+
+test("the delete-or-skip choice fits a phone without sideways scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "/jobs/r11", "light");
+  await page.getByRole("button", { name: "Plan undo" }).click();
+  await expect(page.locator(".undo-choices")).toBeVisible({ timeout: 15_000 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
 // Setup (portal audit, pick A): a step is done only when Keel has seen it in the tenant,
 // so the page offers no way to tick one off; continuing re-checks the tenant through
 // the guarded route. The step waiting on you is open first, with its Microsoft page.
@@ -2445,11 +2523,13 @@ test("Setup · Connections lists each Keel app by group, problems first, with wa
     /Keel Settings Restorer is waiting for an administrator to approve it: restores cannot run yet\./,
   ]);
   await expect(panel.locator(".su-pp-alert").first()).toHaveAttribute("data-tone", "urgent");
-  // Optional apps: the one waiting for approval sorts above the one not set up.
+  // Optional apps: the one waiting for approval sorts above the ones not set up.
   const optional = panel.locator(".su-cn-group", { has: page.getByRole("heading", { name: /^Optional apps/ }) });
-  await expect(optional.locator(".su-cn-name")).toHaveText(["Keel Settings Restorer", "Keel Content Reader"]);
+  await expect(optional.locator(".su-cn-name")).toHaveText(["Keel Settings Restorer", "Keel Content Reader", "Keel Engage Writer"]);
   await expect(optional.locator(".su-cn-row").first().locator(".su-cn-main .badge")).toHaveText("Waiting for approval");
   await expect(optional.locator(".su-cn-row").nth(1).locator(".su-cn-main .badge")).toHaveText("Not set up");
+  // Issue #681: the Engage writer is its own small app, not set up yet on this host.
+  await expect(optional.locator(".su-cn-row").nth(2).locator(".su-cn-main .badge")).toHaveText("Not set up");
   await expect(panel.locator(".su-cn-group").nth(2)).toContainText("None yet.");
 
   // A row with something missing is open; the difference is highlighted and comes first.
@@ -2485,6 +2565,12 @@ test("Setup · Connections on a working host: a certificate ending soon is amber
   await expect(panel.getByRole("table")).toHaveCount(0);
   await restorer.getByRole("button", { name: "Show permissions" }).click();
   await expect(restorer.locator('tbody tr[data-status="extra"]')).toContainText("Channel.Create");
+  // Issue #681: the Engage writer works with its one permission.
+  const engage = panel.locator(".su-cn-row", { hasText: "Keel Engage Writer" });
+  await expect(engage.locator(".su-cn-main .badge")).toHaveText("Working");
+  await engage.getByRole("button", { name: "Show permissions" }).click();
+  await expect(engage.locator("tbody tr")).toHaveCount(1);
+  await expect(engage.locator("tbody tr")).toContainText("Change Viva Engage communities");
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
 });
 
@@ -2582,8 +2668,10 @@ test("Setup · missing permissions come first with a consent link, and the table
   const exchange = missing.filter({ hasText: "Exchange.ManageAsApp" });
   await expect(exchange.locator(".su-ptable-api")).toHaveText("Exchange Online");
   await expect(exchange.getByRole("link", { name: /Add in Entra ID/ })).toBeVisible();
-  // The app with the most missing is listed first.
-  await expect(panel.locator(".su-ptable-app")).toHaveText([/Restore writer app/, /Backup reader app/]);
+  // The app with the most missing is listed first. The table is paged: the
+  // restore writer's rows can fill the first page, so the order of both apps is
+  // checked below with only the missing rows shown.
+  await expect(panel.locator(".su-ptable-app").first()).toHaveText(/Restore writer app/);
 
   // Tiles of one kind add up (OR); the app picker and Find narrow (AND).
   const tile = (name: string) => panel.locator(".su-pp-tile", { hasText: name });
@@ -2601,6 +2689,7 @@ test("Setup · missing permissions come first with a consent link, and the table
   await expect(tile("Missing").locator("b")).toHaveText("5");
   await tile("Missing").click();
   await expect(panel.locator(".su-ptable-row")).toHaveCount(5);
+  await expect(panel.locator(".su-ptable-app")).toHaveText([/Restore writer app/, /Backup reader app/]);
   await expect(tile("Not used by Keel").locator("small")).toHaveText("+1 if added");
   await tile("Not used by Keel").click();
   await expect(panel.locator(".su-ptable-row")).toHaveCount(6);
@@ -3624,6 +3713,68 @@ test("ask cites its records, states unknown periods first, and fits a phone", as
   await expect(page.locator(".ask-answer")).not.toContainText("Nothing matched");
 });
 
+// A month-long answer shaped like the live one (keelops K12): every changed row names
+// its settings in words, never Microsoft's field names, and none says "Not recorded".
+test("ask month answer names changed settings in words and lists no empty changed rows", async ({ page }) => {
+  for (const [width, theme] of [[1440, "dark"], [390, "light"]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/ask/month", theme);
+    const answer = page.locator(".ask-answer");
+    await expect(answer.locator('.ui-tile[data-tile="found"] .ui-tile-value')).toHaveText("1,887");
+    await expect(answer.locator(".ui-alert").first()).toContainText("Not known from 2 Sept 2026");
+    const rows = answer.locator("tr.ask-record");
+    await expect(rows).toHaveCount(25);
+    await expect(rows.first().locator(".ak-fields")).toHaveText("Account enabled, Department");
+    await expect(answer.locator(".pg-table")).not.toContainText("Not recorded");
+    for (const raw of ["accountEnabled", "scheduleInfo", "membershipRule"]) await expect(answer.locator(".pg-table")).not.toContainText(raw);
+    expect(await rows.first().locator(".ak-fields").evaluate((el) => getComputedStyle(el).fontFamily)).not.toMatch(/mono/i);
+    // Group and admin role rows sit on later pages: find them and read their settings too.
+    await answer.getByLabel("Find").fill("Finance approvers");
+    await expect(rows.first().locator(".ak-fields")).toHaveText("Membership rule");
+    await answer.getByLabel("Find").fill("Security Reader");
+    await expect(rows.first().locator(".ak-fields")).toHaveText("Schedule info › expiration › end date time");
+    await expect(answer.locator(".pg-table")).not.toContainText("scheduleInfo");
+    await answer.getByLabel("Find").fill("");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  }
+});
+
+// The legacy sign-in control as it reads live (keelops K11): failing lines first, then
+// "Only some users"; two rules with the same name each keep their own numbered lines (#588).
+test("Compliance · legacy sign-in lists each rule it read, failing first, and numbers same-name rules", async ({ page }) => {
+  for (const [width, theme] of [[1440, "dark"], [390, "light"]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/benchmarks/live?open=e7a10000-0000-4000-8000-0000000000b1", theme);
+    let sheet = page.getByRole("dialog", { name: "Old sign-in methods are blocked" });
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("2 settings");
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("6 meet the standard");
+    await expect(sheet.getByRole("switch", { name: /Show every setting/ })).toContainText("8 in all");
+    const failing = sheet.locator('.cp-misses tbody tr[data-ok="false"]');
+    await expect(failing).toHaveCount(2);
+    await expect(failing.nth(0)).toContainText("Report-only");
+    await expect(failing.nth(1)).toContainText("Only some users");
+    await sheet.getByRole("switch", { name: /Show every setting/ }).click();
+    await expect(sheet.locator(".cp-misses tbody tr")).toHaveCount(8);
+    await expect(sheet.locator('.cp-misses tbody tr[data-ok="true"]').first()).toContainText("All users");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+
+    await open(page, "/benchmarks/same-name?open=e7a10000-0000-4000-8000-0000000000b1", theme);
+    sheet = page.getByRole("dialog", { name: "Old sign-in methods are blocked" });
+    const rows = sheet.locator('.cp-misses tbody tr[data-ok="false"]');
+    await expect(rows.nth(0)).toContainText("KEEL-RT-Block legacy sign-in (1 of 2)");
+    await expect(rows.nth(1)).toContainText("KEEL-RT-Block legacy sign-in (2 of 2)");
+    const axe = await new AxeBuilder({ page }).include(".bl-sheet").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+    expect(axe.violations.map((violation) => violation.id)).toEqual([]);
+
+    // A result stored before the counts existed, with a full list of 50 lines: "or more".
+    await open(page, "/benchmarks/old-full?open=e7a10000-0000-4000-8000-0000000000b5", theme);
+    sheet = page.getByRole("dialog", { name: "Links in email are checked when clicked" });
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("8 settings");
+    await expect(sheet.locator("#cp-checks-heading")).toContainText("42 or more meet the standard");
+    await expect(sheet.getByRole("switch", { name: /Show every setting/ })).toContainText("50 or more in all");
+  }
+});
+
 // A broad answer: understood filters as badges, words not understood said plainly, a
 // summary of every match, then one table with filter tiles, grouping, sorting and pages.
 test("ask summarises every match, says what it did not understand, and pages a grouped table", async ({ page }) => {
@@ -4006,6 +4157,62 @@ test("Alerts · tiles, groups, panel, bulk acknowledge, resolve with a reason, m
   const resolved = (await calls()).filter((call) => call.url === "/api/actions/alerts").map((call) => JSON.parse(call.body ?? "{}")).at(-1);
   expect(resolved).toEqual({ alertId: "a1e70000-0000-4000-8000-000000000005", action: "resolve", note: "Planned test, checked with the service desk" });
 });
+
+// Redesign A2 (IN-NAMES): every object on Alerts reads as a name and a kind, a deleted
+// one says since when, and no id shows anywhere outside Technical details: not in the
+// text, not in a tooltip, not in an accessible name. Phone and desktop, both themes.
+const ANY_GUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+async function idsOutsideRecord(page: Page): Promise<string[]> {
+  return page.locator("body").evaluate((body, source) => {
+    const guid = new RegExp(source, "i");
+    const found: string[] = [];
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const parent = node.parentElement;
+      if (!parent || parent.closest('[data-layer="record"], script, style') || !parent.checkVisibility()) continue;
+      if (guid.test(node.textContent ?? "")) found.push(`text: ${node.textContent}`);
+    }
+    for (const element of body.querySelectorAll<HTMLElement>("[title], [aria-label], [alt]")) {
+      if (element.closest('[data-layer="record"]')) continue;
+      for (const name of ["title", "aria-label", "alt"]) {
+        const value = element.getAttribute(name);
+        if (value && guid.test(value)) found.push(`${name}: ${value}`);
+      }
+    }
+    return found;
+  }, ANY_GUID.source);
+}
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [390, 1440]) {
+    test(`Alerts · names, not ids · ${width} · ${theme}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 1000 });
+      await open(page, "/alerts", theme);
+      const finance = page.locator(".sel-row", { hasText: "Finance (group)" });
+      await expect(finance.locator(".object-label-name")).toHaveText("Finance");
+      await expect(finance.locator(".object-label-type")).toHaveText(" (group)");
+      await expect(finance.locator(".object-label-gone")).toHaveText("Deleted since 2 Oct 2026");
+      await expect(page.locator(".sel-row .object-label-gone")).toHaveCount(1);
+      expect(await idsOutsideRecord(page)).toEqual([]);
+
+      await open(page, "/alerts?open=a1e70000-0000-4000-8000-000000000002", theme);
+      const sheet = page.getByRole("dialog", { name: "Finance (group)" });
+      const about = sheet.locator(".al-facts > div", { hasText: "About" });
+      await expect(about).toContainText("Finance (group)");
+      await expect(about.locator(".object-label-gone")).toHaveText("Deleted since 2 Oct 2026");
+      await expect(about).toContainText("Last in a backup");
+      expect(await idsOutsideRecord(page)).toEqual([]);
+      // The object's id is kept, under Technical details only.
+      const record = sheet.locator('[data-layer="record"]');
+      await record.locator("summary").click();
+      await expect(record).toContainText("No. Deleted since 2 Oct 2026");
+      const objectId = record.getByText("0f1a0000-0000-4000-8000-0000000000f1", { exact: true });
+      await expect(objectId).toBeHidden();
+      await record.getByText(/^Show support details/).click();
+      await expect(objectId).toBeVisible();
+    });
+  }
+}
 
 test("Alerts · a viewer sees the alerts, no amber action and no controls", async ({ page }) => {
   await open(page, "/alerts/viewer");
@@ -4566,4 +4773,114 @@ test("Compliance · measure against a known standard, write your own check, remo
   await page.setViewportSize({ width: 375, height: 800 });
   await expect(page.locator(".cp-known")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+});
+
+// "Hide people's names" (Track A3): with the setting on, no real name, email or initials
+// of a person reach Changes, Activity or Approvals: not in the text, not in hover titles,
+// not in avatars and not inside Technical details. Code names show instead, and each
+// page says names are hidden.
+// Every person the fixtures name, by name or address. Shared mailboxes a channel sends to
+// (secops@contoso.com on Notifications) are destinations, not people, and stay.
+const REAL_PEOPLE = /Amara|Okafor|Sam Ortiz|Ortiz|Lee Chen|Marouane|Defili|marouanedefili|Dana Reyes|On-call engineer|Ops Team|Policy service account|svc-policy|\bops@contoso|@contoso\.example|@gmail\.com/i;
+for (const { hash, label } of [
+  { hash: "/drift/anonymous", label: "Changes" },
+  { hash: "/activity/anonymous", label: "Activity" },
+  { hash: "/approvals/anonymous", label: "Approvals" },
+  { hash: "/alerts/anonymous", label: "Alerts" },
+  { hash: "/emergency-changes/anonymous", label: "Emergency changes" },
+  { hash: "/policies/anonymous", label: "Automatic rules" },
+  { hash: "/policies/p2/anonymous", label: "One automatic rule and its turn-on check" },
+  { hash: "/schedules/anonymous", label: "Schedules" },
+  { hash: "/notifications/anonymous", label: "Notifications" },
+  { hash: "/benchmarks/anonymous", label: "Compliance" },
+  { hash: "/setup/anonymous", label: "Setup" },
+]) {
+  test(`names hidden · ${label} shows code names and no real name anywhere`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await open(page, hash, "light");
+    // Open every collapsed part (Technical details, row panels) so hidden text is scanned too.
+    await page.evaluate(() => { for (const details of document.querySelectorAll("details")) details.open = true; });
+    await expect(page.locator('[data-anonymity="on"]')).toBeVisible();
+    await expect(page.locator('[data-anonymity="on"]')).toContainText("Names hidden");
+    const seen = await page.evaluate(() => {
+      const main = document.querySelector("main#main-content")!;
+      const attributes = [...main.querySelectorAll("*")].flatMap((element) => ["title", "aria-label", "data-initials", "href"].map((name) => element.getAttribute(name) ?? ""));
+      return { text: main.textContent ?? "", attributes: attributes.filter(Boolean).join("\n") };
+    });
+    expect(seen.text).toMatch(/Person [A-HJ-NP-Z2-9]{4}/);
+    expect(seen.text.match(REAL_PEOPLE)?.[0] ?? null).toBeNull();
+    expect(seen.attributes.match(REAL_PEOPLE)?.[0] ?? null).toBeNull();
+  });
+}
+
+test("names hidden · a code-named person has a hidden-name avatar and no email on hover", async ({ page }) => {
+  await open(page, "/approvals/anonymous", "dark");
+  const person = page.locator("main .person").filter({ hasText: /Person [A-HJ-NP-Z2-9]{4}/ }).first();
+  await expect(person.locator(".person-avatar[data-pseudonym]")).toHaveCount(1);
+  await expect(person).toHaveAttribute("title", /code name/);
+});
+
+test("names hidden · People shows the setting, its state and who changed it", async ({ page }) => {
+  for (const theme of ["light", "dark"] as const) {
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      await open(page, "/principals/anonymity", theme);
+      const card = page.getByRole("region", { name: "Hide people's names" });
+      await expect(card).toContainText("On");
+      await expect(card).toContainText(/Last changed by Person [A-HJ-NP-Z2-9]{4}/);
+      await expect(card.getByRole("button", { name: "Show names" })).toBeVisible();
+      // Fits a phone without sideways scrolling.
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    }
+  }
+  await open(page, "/principals/anonymity-off", "light");
+  const off = page.getByRole("region", { name: "Hide people's names" });
+  await expect(off).toContainText("Off");
+  await expect(off.getByRole("button", { name: "Hide names" })).toBeVisible();
+  // Showing names again asks first, and says the change is recorded.
+  await open(page, "/principals/anonymity", "light");
+  await page.getByRole("region", { name: "Hide people's names" }).getByRole("button", { name: "Show names" }).click();
+  await expect(page.getByRole("dialog", { name: "Show people's names again?" })).toContainText("audit record");
+});
+
+// Insights A4 (IN-FEED): Changes > Every change groups every change the way the reader
+// picks, the priority tiles add up, and no row shows an id.
+test("every change: grouping, priority tiles that add up, names instead of ids", async ({ page }) => {
+  for (const width of [390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await open(page, "/drift/feed", width === 390 ? "light" : "dark");
+    await expect(page.getByRole("link", { name: "Every change" })).toHaveAttribute("aria-current", "page");
+    const list = page.locator('[aria-label="Every change"]').first();
+    await expect(page.getByText("10 changes, 2 critical: look at those first.")).toBeVisible();
+    // By day by default, newest first.
+    await expect(page.locator(".sel-group-name, .sel-group-label").first()).toContainText("Today");
+    for (const label of ["Type", "Service", "Priority", "Who"]) {
+      await page.getByRole("radio", { name: label, exact: true }).click();
+      await expect(page).toHaveURL(new RegExp(`group=${label === "Who" ? "person" : label.toLowerCase()}`));
+    }
+    await expect(page.getByText("Sam Lee").first()).toBeVisible();
+    await expect(page.getByText("Not known").first()).toBeVisible();
+    await page.getByRole("radio", { name: "Day", exact: true }).click();
+    // Critical, then High as well: they add up.
+    await page.locator(".cf-tile", { hasText: "Critical" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Showing" })).toContainText("Showing 2 of 10 changes");
+    await page.locator(".cf-tile", { hasText: "High" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Showing" })).toContainText("Showing 4 of 10 changes");
+    await page.getByRole("button", { name: "Clear all" }).click();
+    const text = await page.locator("main").evaluate((main) => {
+      const copy = main.cloneNode(true) as HTMLElement;
+      copy.querySelectorAll("details, .technical-details").forEach((node) => node.remove());
+      return copy.innerText;
+    });
+    expect(text).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
+    expect(text).toContain("Unnamed device configuration");
+    await expect(list).toBeVisible();
+    await page.screenshot({ path: `test-results/every-change-${width}.png`, fullPage: true });
+  }
+});
+
+test("every change: an empty period says so, with no dead end", async ({ page }) => {
+  await open(page, "/drift/feed-empty");
+  await expect(page.getByRole("heading", { name: "No changes in the last 7 days" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open changes" })).toBeVisible();
 });

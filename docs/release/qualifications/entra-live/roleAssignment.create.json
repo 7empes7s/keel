@@ -7,7 +7,7 @@
   "resourceType": "roleAssignment",
   "operation": "create",
   "fieldProjectionContractVersion": 1,
-  "build": "050a1ab6d50e67f32a657f155f16334832dd2fbf",
+  "build": "e86afa9865da72964ce74567394eb41c3caf263a",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
@@ -16,14 +16,14 @@
   "readBackVerified": true,
   "observedAt": "2026-10-14T19:23:26.852Z",
   "restoreRef": "af3ac17a-a446-8df1-9c27-1592db50ff97",
-  "naturalKey": "roleAssignment:roleDefinition:e0ea2e3c-9394-86d2-b2e0-53a31ffc7a7d@user:keel-rt-20260908-carla@techinsiderbytes.com@/administrativeUnits/436aadd5-e1ac-8fe0-8252-db72b43f1a05",
+  "naturalKey": "roleAssignment:roleDefinition:e0ea2e3c-9394-86d2-b2e0-53a31ffc7a7d@user:keel-rt-u3f32611d4ab3@t42987720ee3.example@/administrativeUnits/436aadd5-e1ac-8fe0-8252-db72b43f1a05",
   "fixtureKind": "by-reference",
-  "captureSha256": "6aa8cf0c84be0ede0462f1b676d5d956ed4143e0e42a1a14f6b5ad761c598c20",
+  "captureSha256": "eab9cbd389468cfd55920364530104fbc2c250b5ef15e58dbf660700e28b66dd",
   "proofRef": "docs/release/qualifications/entra-live/roleAssignment.create.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "55cbf1781ff8153550202ab5eca77bbe71ac98bc85ff160ecda325c33f619502"
+      "signature": "ec5efc166fddfb0e8ca682ea6539ad6a38b598cf7f0dbb45b592b774041d0456"
     }
   }
 }

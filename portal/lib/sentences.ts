@@ -4,6 +4,7 @@
 // references the engine resolved. One module, so every page says the same thing the
 // same way. Raw codes and ids never appear in these strings; they live in the record.
 import { ago, displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel, words } from "@/lib/presentation";
+import { WORKLOAD_LABELS, workloadLabel } from "@/lib/compare-view";
 import { holdsObjectId, jobIncompleteTypes, type NamedKeys, namedResource } from "@/lib/job-names";
 
 export interface EngineRef {
@@ -13,6 +14,8 @@ export interface EngineRef {
   readable: boolean;
   email?: string | null;
   system?: boolean;
+  // "Hide people's names" is on: name is a stable code name (engine/insights/people.mjs).
+  pseudonym?: boolean;
 }
 
 export interface PlanRef extends EngineRef {
@@ -23,6 +26,10 @@ export interface PlanRef extends EngineRef {
   dryRunJobId?: string | null;
   // Q45: content effects that need their own approval, whichever surface planned it.
   contentEffects?: number;
+  // A restore of another Microsoft 365 service: its workload ("exchange-mail-flow").
+  workload?: string | null;
+  // A "Make it pass" fix for a failing compliance check.
+  complianceFix?: boolean;
 }
 
 export interface ChangeRef extends EngineRef {
@@ -102,9 +109,46 @@ function when(value: string | null | undefined): string {
   return value ? formatTimestamp(value) : "an unknown time";
 }
 
+// The Microsoft service each workload sits under, by the start of its code.
+const WORKLOAD_SERVICES: [string, string][] = [
+  ["exchange", "Exchange"], ["teams", "Teams"], ["purview", "Purview"], ["sharepoint", "SharePoint"],
+  ["onedrive", "OneDrive"], ["power-platform", "Power Platform"],
+];
+
+// Restores the Restore page does not list as a backup of their own.
+const RESTORE_ONLY_LABELS: Record<string, string> = {
+  "sharepoint-site-permissions": "SharePoint site permissions",
+  "sharepoint-site-grants": "SharePoint site app access",
+};
+
+/** "Exchange mail flow", "Purview sensitivity labels": a workload as its service and what it covers. */
+export function workloadSubject(workload: string): string {
+  const label = RESTORE_ONLY_LABELS[workload] ?? workloadLabel(workload);
+  const service = WORKLOAD_SERVICES.find(([prefix]) => workload === prefix || workload.startsWith(`${prefix}-`))?.[1];
+  if (!service || label.toLowerCase().startsWith(service.toLowerCase())) return label;
+  return `${service} ${label[0].toLowerCase()}${label.slice(1)}`;
+}
+
 function planPhrase(plan: PlanRef | null | undefined): string {
   if (!plan || !plan.readable) return "a dry run that is no longer readable";
+  if (plan.complianceFix) return `a fix for a failing compliance check (${plural(plan.resources ?? 0, "setting")})`;
+  if (plan.workload) return `${workloadSubject(plan.workload)} (${plural(plan.resources ?? 0, "setting")}) from the backup of ${when(plan.snapshotAt)}`;
   return `${plural(plan.resources ?? 0, "resource")} from the snapshot of ${when(plan.snapshotAt)}`;
+}
+
+/** A dry run of another Microsoft 365 service's restore, named by its service and what was chosen. */
+function workloadDryRunName(request: Record<string, unknown>): string {
+  const workload = typeof request.workload === "string" && request.workload ? request.workload : null;
+  if (!workload) return "Dry run of a restore of another Microsoft 365 service";
+  const subject = workloadSubject(workload);
+  if (typeof request.mailbox === "string") {
+    const organization = request.includeOrganization === true ? " and the organization-wide settings" : "";
+    return `Dry run of a restore of ${subject} for one mailbox${organization}`;
+  }
+  if (typeof request.teamId === "string") return `Dry run of a restore of ${subject} for one team`;
+  if (typeof request.site === "string" || typeof request.siteId === "string") return `Dry run of a restore of ${subject} for one site`;
+  const targets = Array.isArray(request.targets) ? request.targets.length : 0;
+  return targets > 0 ? `Dry run of a restore of ${subject} (${plural(targets, "chosen setting")})` : `Dry run of a restore of ${subject}`;
 }
 
 /** "2 Oct 2026, 09:12": the backup's moment without the zone word of a full timestamp. */
@@ -121,6 +165,25 @@ function changesPhrase(changes: (ChangeRef | undefined)[]): string {
   if (named?.name) return `${count}, including ${named.name}`;
   const first = known.find((change) => change.readable && change.naturalKey && !holdsObjectId(change.naturalKey));
   return first?.naturalKey ? `${count}, including ${resourceLabel(first.naturalKey)}` : count;
+}
+
+// A service setting change by its setting's name and service, never by an id.
+function serviceChangePhrase(params: Record<string, unknown>): string {
+  const key = typeof params.resourceKey === "string" && !holdsObjectId(params.resourceKey) ? resourceLabel(params.resourceKey) : null;
+  const service = typeof params.workload === "string" ? WORKLOAD_LABELS[params.workload] ?? null : null;
+  const verb = params.changeType === "added" ? "new" : params.changeType === "removed" ? "removed" : "changed";
+  if (key) return `the ${verb} setting ${key}${service ? ` in ${service}` : ""}`;
+  return service ? `a ${verb} ${service} setting` : "a service setting change";
+}
+
+// Audit run 2, finding 3: an accept or ignore a second person approves, as what it does:
+// "Accept into the approved setup: 1 change, including …".
+function decisionPhrase(params: Record<string, unknown>, refs: RowReferences): string {
+  const what = typeof params.serviceChangeId === "string" ? serviceChangePhrase(params) : changesPhrase(refs.changes);
+  if (params.action === "ignore") {
+    return typeof params.expiresAt === "string" ? `Ignore until ${formatTimestamp(params.expiresAt)}: ${what}` : `Ignore: ${what}`;
+  }
+  return `Accept into the approved setup: ${what}`;
 }
 
 function tierPhrase(tier: unknown): string {
@@ -149,11 +212,21 @@ export function jobName(job: JobLike): string {
     case "backup": return `Backup of ${tierPhrase(params.tier)}`;
     case "restore": {
       if (typeof params.compensates === "string") return `Dry run of an undo of the restore of ${planPhrase(refs.undoes)}`;
-      if (params.mode === "enforce") return refs.plan?.undo ? "Undo of a restore" : `Restore of ${planPhrase(refs.plan)}`;
+      if (params.mode === "enforce") {
+        if (refs.plan?.undo) return "Undo of a restore";
+        if (refs.plan?.readable && refs.plan.complianceFix) return `Fix for a failing compliance check (${plural(refs.plan.resources ?? 0, "setting")})`;
+        return `Restore of ${planPhrase(refs.plan)}`;
+      }
+      if (params.workloadRestore && typeof params.workloadRestore === "object") return workloadDryRunName(params.workloadRestore as Record<string, unknown>);
+      if (params.complianceFix && typeof params.complianceFix === "object") {
+        const key = (params.complianceFix as { naturalKey?: unknown }).naturalKey;
+        return typeof key === "string" && key ? `Dry run of a fix for a failing compliance check on ${namedResource(key)}` : "Dry run of a fix for a failing compliance check";
+      }
       const selected = Array.isArray(params.selection) ? params.selection.length : 0;
       return `Dry run of a restore of ${plural(selected, "selected resource")} from the snapshot of ${when(refs.snapshot?.readable ? refs.snapshot.takenAt : null)}`;
     }
     case "remediate": return `Roll back of ${changesPhrase(refs.changes)}`;
+    case "dispose": return decisionPhrase(params, refs);
     case "baseline-create": return typeof params.label === "string" && params.label ? `New approved setup “${params.label}”` : "New approved setup";
     case "baseline-activate": return refs.baseline?.readable && refs.baseline.name
       ? `Switch to approved setup “${refs.baseline.name}”`
@@ -204,6 +277,10 @@ export function approvalSentence(request: RequestLike): string {
   switch (request.action) {
     case "restore":
       if (refs.plan?.readable && refs.plan.undo) return `Undo a restore of ${plural(refs.plan.resources ?? 0, "setting")}`;
+      if (refs.plan?.readable && refs.plan.complianceFix) return `Fix a failing compliance check (${plural(refs.plan.resources ?? 0, "setting")})`;
+      if (refs.plan?.readable && refs.plan.workload) {
+        return `Restore ${workloadSubject(refs.plan.workload)} (${plural(refs.plan.resources ?? 0, "setting")}) from the backup of ${backupMoment(refs.plan.snapshotAt)}`;
+      }
       return refs.plan?.readable
         ? `Restore ${plural(refs.plan.resources ?? 0, "setting")} from the backup of ${backupMoment(refs.plan.snapshotAt)}`
         : "Restore from a preview that is no longer readable";
@@ -212,6 +289,7 @@ export function approvalSentence(request: RequestLike): string {
         ? `Switch to the approved setup “${refs.baseline.name}”`
         : "Switch to an approved setup that is no longer readable";
     case "remediate": return `Undo ${changesPhrase(refs.changes)}`;
+    case "dispose": return decisionPhrase((request.params ?? {}) as Record<string, unknown>, refs);
     default: return displayEnum("jobKind", request.action);
   }
 }
@@ -277,6 +355,9 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
     case "benchmark-evaluation": return typeof subject.verdict === "string"
       ? `A control check ${subject.verdict === "pass" ? "passed" : subject.verdict === "fail" ? "failed" : "could not decide"}`
       : "A control check ran";
+    case "people-anonymity": return subject.enabled === true
+      ? `${actorName} turned on "Hide people's names"`
+      : `${actorName} turned off "Hide people's names", so names show again`;
     case "benchmark-exception": return `${actorName} ${subject.action === "revoke" || subject.revokedAt ? "withdrew" : "granted"} an exception to a control`;
     default: return `${actorName}: ${displayEnum("eventKind", entry.kind).toLowerCase()}`;
   }

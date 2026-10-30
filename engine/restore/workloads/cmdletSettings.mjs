@@ -46,7 +46,7 @@ import { CmdletError, runCmdlet } from '../../powershell/jobQueue.mjs';
 import { assertContentEffectApproval, disclosureFor, isPreservationLockFailure } from '../../safety/contentEffects.mjs';
 import { createDryRunArtifact, getDryRunArtifact, validateArtifactForApproval } from '../dryRunArtifact.mjs';
 import { TEST_TENANT_REFS, fixtureProblem } from './fixtureGuard.mjs';
-import { MANUAL_FAMILIES, WKLD_WRITE_OPERATIONS } from './writeDeclarations.mjs';
+import { MANUAL_FAMILIES, WKLD_WRITE_OPERATIONS, isTrustField } from './writeDeclarations.mjs';
 
 export const WORKLOAD_SETTINGS_EVIDENCE_KIND = 'workload-restore';
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -151,15 +151,13 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
   ],
   // A connector routes mail through the hosts it names; each of these sends more mail there.
   exchangeOutboundConnector: [
-    rule('SmartHosts', SHARING, addsEntry),
     rule('Enabled', SHARING, disabledToEnabled),
     rule('RecipientDomains', SHARING, changes),
     rule('IsTransportRuleScoped', SHARING, enabledToDisabled),
     rule('UseMXRecord', SHARING, enabledToDisabled),
     rule('RouteAllMessagesViaOnPremises', SHARING, changes),
     rule('AllAcceptedDomains', SHARING, changes),
-    rule('TlsSettings', SHARING, changes),
-    rule('TlsDomain', SHARING, changes),
+    // SmartHosts, TlsSettings and TlsDomain are never written (TRUST_FIELDS), so they need no rule.
   ],
   // Mail protection that flags more mail sends it to junk or quarantine, or rejects it;
   // quarantine is purged when its retention ends. Each switch turned on, each action
@@ -206,7 +204,7 @@ export const WORKLOAD_EFFECT_RULES = Object.freeze({
     rule('AllowUserDeleteChat', IRREVERSIBLE, disabledToEnabled),
   ],
   teamsFederationConfiguration: [
-    rule('AllowFederatedUsers', SHARING, disabledToEnabled),
+    // AllowFederatedUsers and the domain lists are never written (TRUST_FIELDS), so they need no rule.
     rule('AllowTeamsConsumer', SHARING, disabledToEnabled),
     rule('AllowTeamsConsumerInbound', SHARING, disabledToEnabled),
     rule('RestrictTeamsConsumerToExternalUserProfiles', SHARING, enabledToDisabled),
@@ -303,7 +301,6 @@ export const WORKLOAD_OBJECT_EFFECTS = Object.freeze({
 // Written fields whose names look content-bearing but are not, and why.
 export const BENIGN_FIELDS = Object.freeze({
   RecipientLimitExternalPerHour: 'a sending rate limit; it never deletes or discloses mail',
-  SharedSipAddressSpace: 'hybrid SIP routing between Teams and on-premises; not who sees content',
   ExternalLocationLookupMode: 'emergency address lookup for remote workers',
   ExternalAccessPrefix: 'the digit dialled for an outside line',
   RetentionDurationDisplayHint: 'the unit the portal shows a retention duration in',
@@ -415,6 +412,21 @@ export class WorkloadWriteScopeError extends Error {
     super(message);
     this.name = 'WorkloadWriteScopeError';
   }
+}
+
+/**
+ * Purview saved the change but reports that deploying the policy to its locations failed
+ * (PolicyDeploymentException). The value lands all the same (operator queue Q260: every
+ * Set-RetentionCompliancePolicy on a policy whose deployment times out errors after saving),
+ * so the outcome is read back, never assumed and never resent.
+ */
+export function isSavedButNotDeployed(detail) {
+  return /PolicyDeploymentException/.test(`${detail?.message ?? ''} ${detail?.errorId ?? ''}`);
+}
+
+/** Purview refuses a change while an earlier one to the same policy is still deploying (Q260). */
+export function isPolicyStillDeploying(detail) {
+  return /PolicyLockConflictException|Previous changes to the policy .* are being deployed/s.test(`${detail?.message ?? ''} ${detail?.errorId ?? ''}`);
 }
 
 /** Runs one declared write cmdlet through the bounded job transport; anything else is refused unsent. */
@@ -580,6 +592,21 @@ export function weakensMailProtection(resourceType, field, before, after) {
   return typeof test === 'function' && test(before ?? null, after ?? null) === true;
 }
 
+// What each type's trust fields decide, and where an administrator sets them.
+const CONNECTOR_TRUST = ['which senders, certificates, partners or relay hosts the connector trusts', 'the Exchange admin center > Mail flow > Connectors'];
+const TRUST_WHERE = Object.freeze({
+  exchangeInboundConnector: CONNECTOR_TRUST,
+  exchangeOutboundConnector: CONNECTOR_TRUST,
+  exchangeConnectionFilterPolicy: ['which sender IP ranges skip spam filtering',
+    'the Microsoft Defender portal > Email & collaboration > Policies & rules > Threat policies > Anti-spam > Connection filter policy'],
+  teamsFederationConfiguration: ['which outside organizations and domains Teams users can chat and meet with',
+    'the Teams admin center > Users > External access'],
+});
+const trustReason = (resourceType) => {
+  const [what, where] = TRUST_WHERE[resourceType] ?? ['who or what the service trusts', 'the admin center'];
+  return `this decides ${what}; a restore never changes it, so a changed backup cannot make it trust someone else. `
+    + `An administrator confirms the value and sets it in ${where}`;
+};
 const WEAKENING_REASON = 'this would weaken mail protection; KEEL only writes the stricter direction, so an administrator decides and applies it';
 
 /** The changes for one present object, and the manual entries it adds. */
@@ -598,6 +625,10 @@ function planFields(write, { observation, current, manual }) {
       continue;
     }
     if (same(before, after)) continue;
+    if (isTrustField(write.resourceType, field)) {
+      manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: trustReason(write.resourceType), trust: true });
+      continue;
+    }
     if (!writable.has(field)) {
       manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: field === 'State' || field === 'Enabled'
         ? 'turning this on or off is a separate Enable-/Disable- step an administrator takes'
@@ -634,6 +665,38 @@ function createFields(write, observation, manual) {
 }
 
 /**
+ * Turns each `--target` into the resource key it names. Most objects (rules,
+ * connectors, policies) are keyed by Guid, so a target written with the object's name
+ * (`transport-rule:KEEL-RT-x`) would match nothing and quietly plan no change. When a
+ * target is not a key, it is matched case-insensitively on Name against the source and
+ * the live read, within the same kind of object (the part before the colon): one Guid
+ * found replaces it; two or more refuse the plan, naming each Guid key. A target that
+ * matches nothing is kept, so the plan lists it as found nowhere.
+ */
+export function resolveNamedTargets(targets, observations = [], liveResources = []) {
+  const items = [...observations, ...liveResources];
+  const known = new Set(items.map((item) => item.resourceKey));
+  const resolved = [];
+  for (const raw of targets ?? []) {
+    const target = String(raw).toLowerCase();
+    const colon = target.indexOf(':');
+    const name = target.slice(colon + 1);
+    if (known.has(target) || colon <= 0 || !name) { resolved.push(target); continue; }
+    const prefix = target.slice(0, colon + 1);
+    const matches = [...new Set(items
+      .filter((item) => String(item.resourceKey).startsWith(prefix)
+        && GUID_RE.test(String(item.resourceKey).slice(prefix.length))
+        && String(item.fields?.Name ?? '').toLowerCase() === name)
+      .map((item) => item.resourceKey))].sort();
+    if (matches.length > 1) {
+      throw new Error(`${raw} names ${matches.length} objects; these are keyed by Guid, so name one of them: ${matches.map((key) => `--target ${key}`).join(', ')}`);
+    }
+    resolved.push(matches[0] ?? target);
+  }
+  return [...new Set(resolved)];
+}
+
+/**
  * Builds the frozen plan. `source` is a recorded collection of `workload`
  * (loadWorkloadSource); `live` is the workload's read run now. `targets` names
  * resource keys to restore; empty means every object of a written family in the source.
@@ -652,7 +715,7 @@ export function planWorkloadSettingsRestore({
   const manualOnly = MANUAL_FAMILIES[workload] ?? {};
   if (Object.keys(families).length === 0) throw new Error(`KEEL declares no write for ${workload}`);
   const observations = source.observations ?? [];
-  const named = [...new Set((targets ?? []).map((key) => String(key).toLowerCase()))];
+  const named = resolveNamedTargets(targets, observations, live?.resources ?? []);
   const keys = named.length
     ? named
     : [...new Set([
@@ -930,8 +993,19 @@ async function runOperation(op, context) {
   try {
     await workloadWriteCmdlet({ cmdlet: op.cmdlet, parameters: op.parameters }, context.powershell);
   } catch (error) {
+    if (error instanceof CmdletError && error.detail.code === 'CMDLET_ERROR' && isSavedButNotDeployed(error.detail)) {
+      await verify(op, context, { ambiguous: true, cause: 'Microsoft saved the change but reported that deploying the policy failed' });
+      return;
+    }
     if (error instanceof CmdletError && error.detail.code === 'CMDLET_ERROR') {
       const failed = structuredFailure(error);
+      if (isPolicyStillDeploying(error.detail)) {
+        await context.settle(op, {
+          outcome: 'failed', writes: 1, attempts: 1,
+          reasons: ['Microsoft is still deploying an earlier change to this policy and refused this one; run the restore again once that finishes'], error: failed.error,
+        });
+        return;
+      }
       if (isPreservationLockFailure({ error: error.detail })) {
         await context.settle(op, { outcome: 'refused', writes: 1, attempts: 1, reasons: ['the platform refused the change because of a preservation lock; KEEL never retries or works around it'], error: failed.error });
         return;

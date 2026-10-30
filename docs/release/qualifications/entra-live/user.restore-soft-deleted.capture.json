@@ -1,20 +1,20 @@
 {
-  "restoreRef": "aabeac39-e68d-8728-a0cd-69d3b0796364",
+  "restoreRef": "6dba1dd8-38e1-8ff1-b4f7-23efac8abb41",
   "entry": {
-    "naturalKey": "user:keel-rt-20260908-carla@techinsiderbytes.com",
+    "naturalKey": "user:keel-rt-u3f32611d4ab3@t42987720ee3.example",
     "resourceType": "user",
     "operation": "restore-soft-deleted",
     "targetId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-13T12:24:38.138Z",
+    "recordedAt": "2026-10-30T00:08:42.728Z",
     "priorState": {
       "id": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
       "userType": "Member",
       "displayName": "KEEL-RT-20260908 Carla Nguyen",
       "accountEnabled": true,
-      "deletedDateTime": "2026-10-13T11:56:08Z",
-      "userPrincipalName": "a0fcb2f8b0c38a889b94319165913d40keel-rt-20260908-carla@techinsiderbytes.com",
+      "deletedDateTime": "2026-10-30T00:05:35Z",
+      "userPrincipalName": "a0fcb2f8b0c38a889b94319165913d40keel-rt-u3f32611d4ab3@t42987720ee3.example",
       "onPremisesImmutableId": null,
       "onPremisesSyncEnabled": null
     },
@@ -42,7 +42,7 @@
       "createdDateTime": "2026-09-08T12:07:06Z",
       "assignedLicenses": [],
       "preferredLanguage": null,
-      "userPrincipalName": "keel-rt-20260908-carla@techinsiderbytes.com",
+      "userPrincipalName": "keel-rt-u3f32611d4ab3@t42987720ee3.example",
       "onPremisesImmutableId": null,
       "onPremisesSyncEnabled": null,
       "licenseAssignmentStates": []

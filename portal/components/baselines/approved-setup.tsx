@@ -9,7 +9,7 @@ import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
   coverageWords, kindsWords, serviceSummaries, setupName, versionState, type ServiceReadKind, type ServiceSummary,
 } from "@/lib/baselines-view";
-import { captureScope, changesSentence, resnapshotSource } from "@/lib/compliance-view";
+import { captureScope, changesSentence, leftOutWords, resnapshotSource } from "@/lib/compliance-view";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import type { BaselineRecord, DriftRecord } from "@/lib/types";
 
@@ -44,6 +44,7 @@ function CurrentSetup({ active, canBaseline, latest, now, sources }: {
   const captured = active.capture?.capturedAt ?? null;
   const compare = compareHref(active, latest);
   const source = resnapshotSource(active, sources);
+  const leftOut = leftOutWords(active.capture);
   return (
     <section aria-labelledby="bl-current-heading" className="bl-card bl-current">
       <div className="bl-current-head">
@@ -60,6 +61,9 @@ function CurrentSetup({ active, canBaseline, latest, now, sources }: {
         <Fact label="Approved by" note={`On ${formatTimestamp(active.setAt)}`} value={active.setByRef?.name ?? "an unknown account"} />
         <Fact label="Version" note={active.version && active.version > 1 ? "Earlier versions are kept below." : "The first version of this setup."} value={String(active.version ?? 1)} />
       </dl>
+      {leftOut ? (
+        <p className="bl-help" role="note"><RiskChip tone="soon">Left out</RiskChip> {leftOut}</p>
+      ) : null}
       <div className="bl-actions">
         {compare ? (
           <Link className="btn" href={compare}><Icon name="page" />Compare with the latest backup</Link>

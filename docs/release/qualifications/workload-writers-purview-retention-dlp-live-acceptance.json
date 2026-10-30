@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-writers-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "0683b638291c74ff768e51c5a53b8354c184faca",
+  "build": "05a930b58a82583d276fff1fedf6cc9dca1563e9",
   "operation": "workload.writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-16T19:38:23.004Z",
+  "observedAt": "2026-10-30T00:58:54.209Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -191,14 +191,14 @@
         "identity": "c0c4a4b2-0f76-8af3-9722-e4973cda3e36",
         "field": "Comment",
         "type": "text",
-        "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-10-16T19:35:23.566Z",
+        "before": "KEEL capture 2026-10-16T21:01:51.878Z",
+        "target": "KEEL capture 2026-10-30T00:54:40.354Z",
         "final": null,
         "contentEffects": [],
         "ok": false,
         "readBackVerified": false,
         "restoredToOriginal": false,
-        "capturedAt": "2026-10-16T19:36:16.985Z",
+        "capturedAt": "2026-10-30T00:56:34.679Z",
         "error": "Set-RetentionCompliancePolicy failed: Set-RetentionCompliancePolicy: |Microsoft.Exchange.Management.UnifiedPolicy.PolicyDeploymentException|Policy 'c0c4a4b2-0f76-8af3-9722-e4973cda3e36' failed to be deployed. To fix this issue, please retry the policy operation after some time. If the issue persists, please contact Microsoft support."
       },
       {
@@ -213,13 +213,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-10-16T19:35:23.566Z",
+        "target": "KEEL capture 2026-10-30T00:54:40.354Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-16T19:37:12.355Z",
+        "capturedAt": "2026-10-30T00:57:43.826Z",
         "error": null
       },
       {
@@ -234,13 +234,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-10-16T19:35:23.566Z",
+        "target": "KEEL capture 2026-10-30T00:54:40.354Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-16T19:37:52.854Z",
+        "capturedAt": "2026-10-30T00:58:31.626Z",
         "error": null
       },
       {
@@ -255,13 +255,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-10-16T19:35:23.566Z",
+        "target": "KEEL capture 2026-10-30T00:54:40.354Z",
         "final": null,
         "contentEffects": [],
         "ok": false,
         "readBackVerified": false,
         "restoredToOriginal": false,
-        "capturedAt": "2026-10-16T19:38:23.004Z",
+        "capturedAt": "2026-10-30T00:58:54.209Z",
         "error": "Set-DlpComplianceRule failed: Set-DlpComplianceRule: A server side error has occurred because of which the operation could not be completed. Please try again after some time. If the problem still persists, please reach out to MS support."
       }
     ],
@@ -292,7 +292,7 @@
         "cmdlet": "Set-RetentionCompliancePolicy",
         "parameters": {
           "Identity": "c0c4a4b2-0f76-8af3-9722-e4973cda3e36",
-          "Comment": "KEEL capture 2026-10-16T19:35:23.566Z"
+          "Comment": "KEEL capture 2026-10-30T00:54:40.354Z"
         },
         "outcome": "failed",
         "error": {
@@ -313,7 +313,7 @@
         "cmdlet": "Set-RetentionComplianceRule",
         "parameters": {
           "Identity": "aa46a155-417d-82d9-a9c5-2b6f87a92f19",
-          "Comment": "KEEL capture 2026-10-16T19:35:23.566Z"
+          "Comment": "KEEL capture 2026-10-30T00:54:40.354Z"
         },
         "outcome": "ok"
       },
@@ -355,7 +355,7 @@
         "cmdlet": "Set-DlpCompliancePolicy",
         "parameters": {
           "Identity": "354c44d0-ef37-8b93-93c6-8fe44477774b",
-          "Comment": "KEEL capture 2026-10-16T19:35:23.566Z"
+          "Comment": "KEEL capture 2026-10-30T00:54:40.354Z"
         },
         "outcome": "ok"
       },
@@ -397,7 +397,7 @@
         "cmdlet": "Set-DlpComplianceRule",
         "parameters": {
           "Identity": "be6496aa-1d2c-8787-b3df-90c2c0848fce",
-          "Comment": "KEEL capture 2026-10-16T19:35:23.566Z"
+          "Comment": "KEEL capture 2026-10-30T00:54:40.354Z"
         },
         "outcome": "failed",
         "error": {
@@ -406,16 +406,16 @@
         }
       }
     ],
-    "captureLogSha256": "19b705d8f4a28b7f2cecbef9da02f8b6479b9b4878792fc1a228dedb6072bd89"
+    "captureLogSha256": "8a9ca0186956049e56d9c51eeb55ae9ecf8ecae3d1bf37026f6330091ea73513"
   },
   "proof": {
     "artifact": {
       "path": "workload-writers-purview-retention-dlp-live-acceptance.capture.json",
-      "sha256": "19b705d8f4a28b7f2cecbef9da02f8b6479b9b4878792fc1a228dedb6072bd89"
+      "sha256": "8a9ca0186956049e56d9c51eeb55ae9ecf8ecae3d1bf37026f6330091ea73513"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "65480572069f50dc7de1783f71d3d1c2d8200762bfda229a6a0b42cc63f0bff8"
+      "signature": "0b9e71bef9d5b0b7cd729b02bcd968f938230892f4282f0e50e062bc14ca9db2"
     }
   }
 }

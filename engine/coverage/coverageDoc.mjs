@@ -38,14 +38,15 @@ const STATE_WORDS = Object.freeze({
   full: 'Full', incomplete: 'Incomplete', 'microsoft-managed': 'Microsoft-managed', 'not-readable': 'Not readable',
 });
 
-const auto = (name, { keeps, todo = null } = {}) => Object.freeze({ decision: 'automated', name, keeps, todo });
+const auto = (name, { keeps, todo = null, words = null } = {}) => Object.freeze({ decision: 'automated', name, keeps, todo, words });
 const manual = (name, limit, why, todo) => Object.freeze({ decision: 'manual', name, limit, why, todo });
 
 /**
  * One entry per configuration type. `limit` says whose limit makes a manual type
  * manual: MS (Microsoft offers no way for any tool to do it) or KEEL (a safety or
  * scope choice KEEL made). `keeps` is what an automated restore covers; `todo` is
- * what is left to the reader.
+ * what is left to the reader; `words` replaces how the table names one
+ * operation when the type does less than the usual words say.
  */
 export const TYPE_GUIDE = Object.freeze({
   // ---- tenant settings
@@ -227,12 +228,12 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Puts the list of allowed Microsoft clouds back.',
   }),
   crossTenantAccessPolicyConfigurationDefault: auto('Cross-tenant access defaults', {
-    keeps: 'Puts the default guest collaboration and direct connect settings back.',
-    todo: 'Inbound trust (accepting another tenant\'s MFA and device claims) is never changed by a restore. If it differs from the backup, change it by hand in Cross-tenant access settings.',
+    keeps: 'Puts the default tenant restrictions and guest sign-in order back.',
+    todo: 'Inbound trust (accepting another tenant\'s MFA and device claims), automatic consent and the guest collaboration and direct connect lists are never changed by a restore. If they differ from the backup, change them by hand in Cross-tenant access settings.',
   }),
   crossTenantAccessPolicyPartner: auto('Cross-tenant access per organization', {
-    keeps: 'Recreates partner organization settings and puts their settings back.',
-    todo: 'A partner tenant that no longer exists cannot be added. Removing extra partners is done by hand. Inbound trust is never changed by a restore; change it by hand if it differs.',
+    keeps: 'Recreates partner organization entries and puts their tenant restrictions back.',
+    todo: 'A partner tenant that no longer exists cannot be added. Removing extra partners is done by hand. Inbound trust, automatic consent and the guest collaboration and direct connect lists are never changed by a restore; change them by hand if they differ.',
   }),
   deviceRegistrationPolicy: manual('Device join and registration settings', KEEL,
     'These settings decide who may join devices and whether joining needs MFA. A wrong write could stop admins joining devices or quietly drop the MFA requirement, so KEEL only backs them up.',
@@ -321,9 +322,10 @@ export const TYPE_GUIDE = Object.freeze({
   managedDevice: manual('Enrolled devices', MS,
     'A device record is created by the device when it enrolls. It is state, not configuration.',
     'Nothing to restore. Devices enroll again on their own once enrollment settings are back.'),
-  mobileApp: manual('Apps', KEEL,
-    'App packages are content, not configuration, and KEEL does not back them up.',
-    'Add the apps again in the Intune admin center from their store or package, using the backup as the list.'),
+  mobileApp: auto('Apps', {
+    keeps: 'Adds store apps, web links, Microsoft 365 Apps, Edge and WinGet apps again with their settings and who they are assigned to, and puts changed settings back. Win32 and line-of-business apps come back with their install commands, detection rules and other settings, unassigned. Each app is put back in its app categories.',
+    todo: 'Microsoft never returns an app\'s package (the installer file): upload it again for each recreated Win32 or line-of-business app, then assign it as the restore lists. Intune does not let such an app be changed until its package is uploaded, so a restore lists a step for it instead. Apps from Apple Business Manager or managed Google Play are synced again there; KEEL then puts back who they are assigned to. An uninstall assignment is never written: it removes the app and its data from devices. A category that is no longer in Intune is listed as a step: restore it first. Dependencies and supersedence are restored on their own.',
+  }),
   managedAppPolicy: auto('App protection policies', {
     keeps: 'Puts the settings of iOS and Android app protection policies back, recreates them with the apps they protect, and removes an unassigned policy added since the backup.',
     todo: 'A backup taken before the protected apps were read cannot recreate a policy; take a new backup. Windows Information Protection policies are restored by hand. Windows app protection policies are restored on their own.',
@@ -462,13 +464,12 @@ export const TYPE_GUIDE = Object.freeze({
   externalIdentitiesPolicy: auto('External user leave settings', {
     keeps: 'Puts back whether external users can leave your organization themselves, and whether their data is removed when they do.',
   }),
-  b2bManagementPolicy: auto('Guest invitation domain restrictions', {
-    keeps: 'Puts back the list of domains guests may, or may not, be invited from.',
-    todo: 'If the restriction was removed completely, set the domains again in the Entra admin center, under External collaboration settings.',
-  }),
-  servicePrincipalCreationPolicy: manual('App creation policies', NOT_BUILT,
-    'KEEL backs up each policy\'s name and settings but not yet its include and exclude conditions.',
-    'Recreate the policy with PowerShell from the backup, then add its conditions again. There is no admin center page for it.'),
+  b2bManagementPolicy: manual('Guest invitation domain restrictions', KEEL,
+    'KEEL backs up the list of domains guests may, or may not, be invited from, and shows when it changes. A restore never changes who can be invited.',
+    'Set the domains again in the Entra admin center, under External Identities, External collaboration settings, Collaboration restrictions.'),
+  servicePrincipalCreationPolicy: manual('App creation policies', MS,
+    'KEEL backs up each policy with its include and exclude conditions, but Microsoft only lets a signed-in admin change these policies, not an app like KEEL.',
+    'Recreate a custom policy and its conditions with PowerShell from the backup, signed in as an Entra admin. There is no admin center page for it. Built-in policies are Microsoft\'s and cannot be changed.'),
   permissionGrantPreApprovalPolicy: auto('App permission pre-approval policies', {
     keeps: 'Puts back which app permissions are pre-approved, and where (chats, teams or the whole organization).',
     todo: 'A policy only works once it is assigned to its app. Assign a recreated policy to the app again with PowerShell.',
@@ -485,8 +486,8 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'Tenants that already joined keep their own settings; change those per organization.',
   }),
   multiTenantOrganizationPartnerConfigurationTemplate: auto('Multitenant organization access template', {
-    keeps: 'Puts back the cross-tenant access settings a tenant gets when it joins your multitenant organization.',
-    todo: 'Tenants that already joined keep their own settings; change those per organization.',
+    keeps: 'Puts back when the template applies to tenants that join your multitenant organization.',
+    todo: 'Which partner users and apps get in, automatic consent, and trust in partner MFA and devices are never changed by a restore: set them by hand. Tenants that already joined keep their own settings.',
   }),
   identityUserFlowAttribute: manual('User flow attributes', NOT_BUILT,
     'KEEL backs up the custom attributes but does not restore them yet. The built-in attributes are set by Microsoft.',
@@ -499,7 +500,7 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'KEEL never puts back a partner\'s sign-in addresses or signing certificate, so a changed backup cannot send guests to another sign-in page. Check those with the partner and set them in the Entra admin center, under External Identities, All identity providers. A deleted partner is set up again there too, with its domains.',
   }),
   exchangeRoleDefinition: manual('Exchange admin roles', NOT_BUILT,
-    'KEEL backs up the custom roles but does not restore them yet. The built-in roles are set by Microsoft.',
+    'KEEL backs up the custom roles but does not restore them yet: the Microsoft interface KEEL uses can list Exchange roles but not create or change them, so this needs Exchange Online PowerShell. The built-in roles are set by Microsoft.',
     'Recreate each custom role with Exchange Online PowerShell from the backup, from the same parent role, before the role groups or apps that use it.'),
   exchangeRoleAssignment: manual('Exchange admin role assignments', NOT_BUILT,
     'KEEL backs up who holds each Exchange role and over which scope, but does not restore them yet. Admin access needs a privilege review first.',
@@ -508,15 +509,16 @@ export const TYPE_GUIDE = Object.freeze({
     keeps: 'Recreates scopes and puts back their name and which mailboxes they cover (the recipient filter).',
     todo: 'An app role assignment points to its scope by id and is not restored: point the assignment at a recreated scope again with Exchange Online PowerShell.',
   }),
-  defenderRoleDefinition: manual('Defender admin roles', NOT_BUILT,
-    'KEEL backs these up but does not restore them yet.',
-    'Recreate each role in the Microsoft Defender portal, under System, Permissions, Microsoft Defender XDR, Roles, from the backup.'),
+  defenderRoleDefinition: auto('Defender admin roles', {
+    keeps: 'Recreates custom Defender roles and puts back their name, description and permissions.',
+    todo: 'Who holds each role is not restored: add the assignments again in the Microsoft Defender portal, under System, Permissions, Microsoft Defender XDR, Roles, after a privilege review.',
+  }),
   defenderRoleAssignment: manual('Defender admin role assignments', NOT_BUILT,
     'KEEL backs up who holds each Defender role and for which data sources, but does not restore them yet. Admin access needs a privilege review first.',
     'Check the backup with the person who approves admin access, then add the assignments again in the Microsoft Defender portal, under the role, Assignments.'),
-  defenderCustomAppScope: manual('Defender app access scopes', NOT_BUILT,
-    'KEEL backs these up but does not restore them yet.',
-    'Recreate each scope with PowerShell from the backup, before the assignments that use it. There is no admin center page for it.'),
+  defenderCustomAppScope: manual('Defender app access scopes', MS,
+    'KEEL backs these up, but Microsoft offers no way for a tool to create or change them.',
+    'Recreate each scope by hand from the backup, before the assignments that use it. There is no admin center page for it.'),
   deviceManagementSettings: auto('Intune tenant settings', {
     keeps: 'Puts back the compliance settings, such as how devices with no compliance policy are marked and how long a device may go without checking in. The device cleanup window is put back with the device cleanup rules.',
     todo: 'A restore never marks devices with no compliance policy as compliant: change that by hand in the Intune admin center, under Endpoint security, Device compliance, Compliance settings. The Company Portal contact details are put back with the default branding profile.',
@@ -551,8 +553,9 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'Who a profile is assigned to is put back only when it is picked for a restore, from backups taken after assignments were read. An expired file, or one that expires before the profile in Intune now, is never uploaded: renew it with Apple and upload it in the Intune admin center, under Apps, iOS/iPadOS, App provisioning profiles. A backup taken before the profile file was read is refused; take a new backup.',
   }),
   mobileAppRelationship: auto('App dependencies and supersedence', {
-    keeps: 'Puts back which app depends on or replaces which, and how (install automatically or detect; update or replace), when both apps are in Intune.',
-    todo: 'Apps are not backed up, so add a deleted app again by hand first: a link to a missing app is not written. Setting an app to replace another uninstalls the older app on devices, so that needs the separate content approval.',
+    keeps: 'Puts back which app depends on or replaces which, and how (install automatically or detect; update or replace), when both apps are in Intune, including apps the same restore added again. Undoing a restore takes out a link it added.',
+    words: { delete: 'take out a link a restore added, when that restore is undone' },
+    todo: 'An app KEEL cannot add again (a synced app) is added by hand first: a link to a missing app is not written. Intune links only Win32 apps, so a link to any other kind of app is a step for a person. Setting an app to replace another uninstalls the older app on devices, so that needs the separate content approval.',
   }),
   managedEBook: manual('Managed e-books', NOT_BUILT,
     'KEEL backs up each book\'s details but not yet who it is assigned to, and does not restore it yet.',
@@ -639,6 +642,41 @@ export const TYPE_GUIDE = Object.freeze({
   schemaExtension: manual('Schema extensions', NOT_BUILT,
     'KEEL backs up the schema extensions this tenant\'s own apps defined, but not the values stored in them on users and groups, and does not restore them yet.',
     'Create the extension again with PowerShell, with the same id, owner app and properties from the backup.'),
+  // Remaining kinds, batch 9: read once the Collector holds the read permission.
+  formsSettings: auto('Microsoft Forms settings', {
+    keeps: 'Puts back the tenant-wide Forms settings, such as sharing forms outside the organisation, phishing scans and Bing image search. The forms and their answers are not backed up.',
+    todo: 'A restore never widens sharing outside the organisation or turns the phishing scan off: when the backup does, nothing is written and you set it by hand in the Microsoft 365 admin center, under Settings, Org settings, Microsoft Forms.',
+  }),
+  todoSettings: manual('Microsoft To Do settings', NOT_BUILT,
+    'KEEL backs up whether To Do lists can be shared with or joined by people outside the organisation, and push notifications, but does not restore them yet.',
+    'Set the same values in the Microsoft 365 admin center, under Settings, Org settings, Microsoft To Do, from the backup.'),
+  microsoft365AppsInstallationOptions: auto('Microsoft 365 Apps installation options', {
+    keeps: 'Puts back which Microsoft 365 apps people can install themselves on Windows and Mac, and the update channel.',
+  }),
+  appsAndServicesSettings: auto('User owned apps and services', {
+    keeps: 'Puts back whether people can use the Office Store and start app trials.',
+    todo: 'A restore never turns the Office Store on: when the backup does, nothing is written and you set it by hand in the Microsoft 365 admin center, under Settings, Org settings, User owned apps and services.',
+  }),
+  adminReportSettings: auto('Usage report privacy', {
+    keeps: 'Puts back whether usage reports hide real user, group and site names.',
+    todo: 'A restore never shows real names again: when the backup does, nothing is written and you set it by hand in the Microsoft 365 admin center, under Settings, Org settings, Reports.',
+  }),
+  profileCardProperty: manual('Profile card fields', NOT_BUILT,
+    'KEEL backs up the extra directory fields shown on profile cards and their labels, but does not restore them yet.',
+    'Add the same fields again with PowerShell (New-MgAdminPeopleProfileCardProperty) from the backup.'),
+  pronounsSettings: auto('Pronouns setting', {
+    keeps: 'Puts back whether people can add pronouns to their profile.',
+  }),
+  defenderDetectionRule: manual('Defender custom detection rules', NOT_BUILT,
+    'KEEL backs up each custom detection rule: its hunting query, schedule, alert details and response actions. It does not restore them yet.',
+    'Create the rule again in the Microsoft Defender portal, under Hunting, Custom detection rules, from the backup. Leave it off until you have checked its response actions, because a rule can isolate devices or disable users.'),
+  teamsCatalogApp: manual('Teams custom apps', NOT_BUILT,
+    'KEEL backs up each app your organisation uploaded to Teams, with its versions and publishing state, but not the app package, which Microsoft does not give out. It does not restore them yet.',
+    'Upload the app package again in the Teams admin center, under Teams apps, Manage apps, from your own copy, then check its details against the backup.'),
+  engageCommunity: auto('Viva Engage communities', {
+    keeps: 'Puts back the name, description and privacy of a community that still exists. Its posts, files and members are not backed up.',
+    todo: 'A deleted community is created again by hand in Viva Engage with the same name, description and privacy from the backup, then its owners and members. A restore never makes a private community public: set that by hand if it is wanted.',
+  }),
 });
 
 const FAMILY_HEADINGS = Object.freeze({
@@ -671,9 +709,11 @@ export const WORKLOAD_GUIDE = Object.freeze({
   'exchange-role-groups': Object.freeze({ name: 'Exchange admin role groups',
     todo: 'KEEL does not restore role groups. A deleted group, its roles and its members are put back by hand in the Exchange admin center using the backup. Microsoft\'s built-in groups cannot be deleted, only their members changed.' }),
   'exchange-distribution-groups': Object.freeze({ name: 'Exchange distribution lists and Microsoft 365 group mail settings',
-    todo: 'KEEL does not restore distribution lists yet. A deleted list and its settings are put back by hand in the Exchange admin center using the backup. Members are kept with the Entra group backup.' }),
+    todo: 'KEEL puts back a distribution list\'s settings and adds back a deleted list. Its owners, moderators and who may send to it are listed for you to set by hand in the Exchange admin center using the backup. Dynamic distribution lists and Microsoft 365 group mail settings are put back by hand. Members are kept with the Entra group backup.' }),
   'exchange-recipients': Object.freeze({ name: 'Shared, room and equipment mailboxes, contacts and mailbox access',
     todo: 'KEEL does not restore these yet. A deleted shared, room or equipment mailbox, a contact, Full Access, Send As and Send on behalf rights, and room booking rules are put back by hand in the Exchange admin center using the backup. Mail in the mailboxes comes back from the content backup.' }),
+  'sharepoint-structure': Object.freeze({ name: 'SharePoint site structure',
+    todo: 'KEEL adds back what a named site is missing (lists, libraries, site columns and content types) and puts its navigation back, but never changes or deletes an existing list, column or content type: those differences are listed for you to apply by hand. A re-added list comes back empty; its files and items come back from the content backup. Permissions, webhooks, custom actions, features and site settings are put back by hand. A site script or design comes back with a new id; who may use a design, and who may join a hub, are granted again by hand. Site templates are backed up only for the sites named in the backup scope. The term store is backed up separately.' }),
   'teams-voice-policies': Object.freeze({ name: 'Teams calling, voice and live event policies',
     todo: 'The policies assigned to users and groups, and settings KEEL does not restore, are changed by hand in the Teams admin center using the backup. A deleted named policy is recreated assigned to nobody. A live event video provider\'s API token is never backed up: enter it again.' }),
   'purview-governance': Object.freeze({ name: 'Purview retention labels, auto-labeling and eDiscovery',
@@ -743,7 +783,7 @@ function typeRow(ledgerType, entry, { cadence, edges }) {
   if (ledgerType.decision === 'automated') {
     const supported = ledgerType.operations.filter((row) => row.decision === 'supported');
     const typeEdges = ledgerType.resourceType === 'group' ? edges.filter((row) => row.decision === 'supported') : [];
-    const words = supported.map((row) => OPERATION_WORDS[row.operation]);
+    const words = supported.map((row) => entry.words?.[row.operation] ?? OPERATION_WORDS[row.operation]);
     if (typeEdges.length > 0) words.push('add and remove members and owners');
     restore = `Yes: ${words.join('; ')}`;
     proof = proofText([...supported, ...typeEdges]);
@@ -814,7 +854,7 @@ function workloadSection(guide) {
     '- Teams: teams, channels (standard, private and shared), channel members, tabs and apps. Channel files are covered through the team site in SharePoint.',
     '- Planner and group conversations: plans, buckets and tasks with their details; conversations, threads, posts and attachments.',
     '',
-    'Teams chat and channel messages are not backed up: Microsoft must first approve the Teams export API for your tenant.',
+    'Teams chat and channel messages are not backed up: Microsoft must first approve the Teams export API for your tenant. Once they are, KEEL can restore a channel\'s messages into a new channel, "<name> (restored <date>)", with their original authors and times, through Microsoft\'s message import API. Reactions, cards and live @mentions are not brought back (a mention stays as bold text).',
     '',
     'A content scope can narrow the content backup to mailboxes, OneDrives, sites and groups whose names start with a set prefix. Teams has no name filter and is always read in full. The KEEL test tenant uses this to back up only its test content.',
     '',

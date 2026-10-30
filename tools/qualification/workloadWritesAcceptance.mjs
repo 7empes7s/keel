@@ -28,6 +28,12 @@ export const WORKLOAD_FIXTURE_PREFIX = 'KEEL-RT-';
 // The text fields a capture writes, in order of preference.
 export const CAPTURE_TEXT_FIELDS = Object.freeze(['Comments', 'Comment', 'Description', 'AdminDisplayName', 'Notes']);
 // A policy re-created by an add capture is named this, plus a random suffix.
+/**
+ * How many times a refused put-back may be sent again: a Purview policy refuses changes while
+ * the capture's own write deploys, about an hour when deployment times out (Q260). The capture
+ * waits 5 minutes between tries, so 18 covers 90 minutes.
+ */
+export const PUT_BACK_RETRIES = 18;
 export const CAPTURE_CREATE_PREFIX = `${WORKLOAD_FIXTURE_PREFIX}capture-`;
 
 /**
@@ -327,13 +333,28 @@ export function validateWorkloadWritesLiveSubject(evidence, context = {}) {
     seen.add(capture?.operationId);
     failures.push(...structuralProblems(capture, { workload, moduleVersion, observedAt, tenantWide: subject.tenantWide === true }));
   }
-  // Every write sent belongs to a capture: one request per add, a write and its put-back per update.
+  // Every write sent belongs to a capture: one request per add; per update one write and
+  // its put-back, which may be resent (at most PUT_BACK_RETRIES times) while the service
+  // refuses it, with at most one put-back answered ok.
   const used = new Map();
+  const room = (capture, request) => {
+    const count = used.get(capture) ?? { write: 0, putBack: 0, putBackOk: 0 };
+    if (capture.kind === 'add') return count.write < 1;
+    const value = request.parameters[capture.field];
+    if (!sameValue(value, capture.before) || sameValue(value, capture.target)) return count.write < 1;
+    return count.putBack < 1 + PUT_BACK_RETRIES && (request.outcome !== 'ok' || count.putBackOk < 1);
+  };
   for (const request of Array.isArray(subject.requests) ? subject.requests : []) {
     if (request?.read !== undefined && request?.cmdlet === undefined) continue;
-    const capture = writes.find((item) => requestFits(item, request) && (used.get(item) ?? 0) < (item.kind === 'add' ? 1 : 2));
-    if (!capture) failures.push(`${request?.cmdlet ?? 'a cmdlet'} on ${request?.parameters?.Identity ?? 'an unnamed object'}: no capture accounts for this write`);
-    else used.set(capture, (used.get(capture) ?? 0) + 1);
+    const capture = writes.find((item) => requestFits(item, request) && room(item, request));
+    if (!capture) { failures.push(`${request?.cmdlet ?? 'a cmdlet'} on ${request?.parameters?.Identity ?? 'an unnamed object'}: no capture accounts for this write`); continue; }
+    const count = used.get(capture) ?? { write: 0, putBack: 0, putBackOk: 0 };
+    const value = request.parameters[capture.field];
+    if (capture.kind === 'update' && sameValue(value, capture.before) && !sameValue(value, capture.target)) {
+      count.putBack += 1;
+      if (request.outcome === 'ok') count.putBackOk += 1;
+    } else count.write += 1;
+    used.set(capture, count);
   }
   if (provenWrites(subject).length === 0) failures.push('no write was captured, read back and put back: the record proves nothing');
   return failures;

@@ -7,23 +7,23 @@
   "resourceType": "roleAssignment",
   "operation": "delete",
   "fieldProjectionContractVersion": 1,
-  "build": "e86afa9865da72964ce74567394eb41c3caf263a",
+  "build": "1d8bd1025c27e4ebaf0c8389a0199ae3a81c2d64",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": "absent",
   "readBackVerified": true,
-  "observedAt": "2026-10-14T19:12:37.691Z",
-  "restoreRef": "5c0d23af-02c5-8ca5-9f68-97379da498ac",
-  "naturalKey": "roleAssignment:roleDefinition:e0ea2e3c-9394-86d2-b2e0-53a31ffc7a7d@user:keel-rt-u9e7a73851437@t42987720ee3.example@/administrativeUnits/436aadd5-e1ac-8fe0-8252-db72b43f1a05",
+  "observedAt": "2026-10-30T09:39:39.096Z",
+  "restoreRef": "08ea873b-9175-8c39-bc0f-37f2bd8daebd",
+  "naturalKey": "roleAssignment:roleDefinition:8fe792ad-0b48-8d53-877a-3ac0f7ae29dd@user:keel-rt-u3f32611d4ab3@t42987720ee3.example@/administrativeUnits/9f600f79-ae8d-8201-840e-6616d1ad62c9",
   "fixtureKind": "by-reference",
-  "captureSha256": "e36a75987d1d4e2d294198f539642b16ea209bc483e52df36e7feb01a9603561",
+  "captureSha256": "f447da7fa4d381e267de001370cb403f7af9067cac6ca2437e3675b2a34654f6",
   "proofRef": "docs/release/qualifications/entra-live/roleAssignment.delete.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "06e4b34ef8d43a4608fc67b51a91a376b3a37ffce4a1d6978d7ad72329dbd891"
+      "signature": "6f03434c38286f16d9f25a1b2ab7e38d84812e8c560d52ff086c1f2ed894d57d"
     }
   }
 }

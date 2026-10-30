@@ -1,16 +1,16 @@
 {
-  "restoreRef": "e14d38a3-e1be-8093-8960-3f6c473dfd6e",
+  "restoreRef": "e376cf7c-b162-86d4-a218-8183bc92ff3d",
   "entry": {
-    "naturalKey": "namedLocation:KEEL-RT-148-location",
+    "naturalKey": "namedLocation:KEEL-RT-247-location",
     "resourceType": "namedLocation",
     "operation": "create",
-    "targetId": "71873ca1-f74d-8ae9-a95b-2f98bc5d78f2",
+    "targetId": "a35df60b-f9f8-8bb5-b265-931748dbdeb3",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-13T21:26:34.640Z",
+    "recordedAt": "2026-10-30T09:58:32.631Z",
     "priorState": null,
     "intendedState": {
-      "id": "3625a91e-68c8-88a3-8b4d-989d146324d2",
+      "id": "c9db4c38-ebe7-8493-8b9b-f2c7c6359f3e",
       "ipRanges": [
         {
           "@odata.type": "#microsoft.graph.iPv4CidrRange",
@@ -19,13 +19,13 @@
       ],
       "isTrusted": false,
       "@odata.type": "#microsoft.graph.ipNamedLocation",
-      "displayName": "KEEL-RT-148-location",
-      "createdDateTime": "2026-10-13T14:39:32.2306668Z",
+      "displayName": "KEEL-RT-247-location",
+      "createdDateTime": "2026-10-30T09:18:45.1106128Z",
       "deletedDateTime": null,
-      "modifiedDateTime": "2026-10-13T14:39:32.2306668Z"
+      "modifiedDateTime": "2026-10-30T09:48:59.7164038Z"
     },
     "postState": {
-      "id": "71873ca1-f74d-8ae9-a95b-2f98bc5d78f2",
+      "id": "a35df60b-f9f8-8bb5-b265-931748dbdeb3",
       "ipRanges": [
         {
           "@odata.type": "#microsoft.graph.iPv4CidrRange",
@@ -34,11 +34,11 @@
       ],
       "isTrusted": false,
       "@odata.type": "#microsoft.graph.ipNamedLocation",
-      "displayName": "KEEL-RT-148-location",
+      "displayName": "KEEL-RT-247-location",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#identity/conditionalAccess/namedLocations/$entity",
-      "createdDateTime": "2026-10-13T21:26:34.8813022Z",
+      "createdDateTime": "2026-10-30T09:58:32.822455Z",
       "deletedDateTime": null,
-      "modifiedDateTime": "2026-10-13T21:26:34.8813022Z"
+      "modifiedDateTime": "2026-10-30T09:58:32.822455Z"
     }
   }
 }

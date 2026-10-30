@@ -1,15 +1,15 @@
 {
-  "restoreRef": "84d37011-7331-8505-9bae-ee220d8057db",
+  "restoreRef": "feb0d19e-d993-8619-9a2a-364a244731a5",
   "entry": {
-    "naturalKey": "unifiedRoleManagementPolicy:DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_d59ba3a5-e551-85d9-aa2f-4d4f066b76cd",
+    "naturalKey": "unifiedRoleManagementPolicy:DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_8fe792ad-0b48-8d53-877a-3ac0f7ae29dd",
     "resourceType": "unifiedRoleManagementPolicy",
     "operation": "update",
-    "targetId": "DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_d59ba3a5-e551-85d9-aa2f-4d4f066b76cd",
+    "targetId": "DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_8fe792ad-0b48-8d53-877a-3ac0f7ae29dd",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-14T14:19:31.699Z",
+    "recordedAt": "2026-10-30T10:19:38.034Z",
     "priorState": {
-      "id": "DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_d59ba3a5-e551-85d9-aa2f-4d4f066b76cd",
+      "id": "DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_8fe792ad-0b48-8d53-877a-3ac0f7ae29dd",
       "rules": [
         {
           "id": "Enablement_Admin_Eligibility",
@@ -317,12 +317,12 @@
         "id": null,
         "displayName": "Keel Restorer"
       },
-      "rules@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/roleManagementPolicies('DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_d59ba3a5-e551-85d9-aa2f-4d4f066b76cd')/rules",
-      "lastModifiedDateTime": "2026-10-14T12:29:27.273Z",
+      "rules@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/roleManagementPolicies('DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_8fe792ad-0b48-8d53-877a-3ac0f7ae29dd')/rules",
+      "lastModifiedDateTime": "2026-10-30T10:16:54.023Z",
       "isOrganizationDefault": false
     },
     "intendedState": {
-      "id": "DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_d59ba3a5-e551-85d9-aa2f-4d4f066b76cd",
+      "id": "DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_8fe792ad-0b48-8d53-877a-3ac0f7ae29dd",
       "rules": [
         {
           "id": "Enablement_Admin_Eligibility",
@@ -631,12 +631,12 @@
         "id": null,
         "displayName": "Keel Restorer"
       },
-      "rules@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/roleManagementPolicies('DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_d59ba3a5-e551-85d9-aa2f-4d4f066b76cd')/rules",
-      "lastModifiedDateTime": "2026-10-14T12:27:23.657Z",
+      "rules@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/roleManagementPolicies('DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_8fe792ad-0b48-8d53-877a-3ac0f7ae29dd')/rules",
+      "lastModifiedDateTime": "2026-10-30T09:41:25.213Z",
       "isOrganizationDefault": false
     },
     "postState": {
-      "id": "DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_d59ba3a5-e551-85d9-aa2f-4d4f066b76cd",
+      "id": "DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_8fe792ad-0b48-8d53-877a-3ac0f7ae29dd",
       "rules": [
         {
           "id": "Enablement_Admin_Eligibility",
@@ -946,8 +946,8 @@
         "id": null,
         "displayName": "Keel Restorer"
       },
-      "rules@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/roleManagementPolicies('DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_d59ba3a5-e551-85d9-aa2f-4d4f066b76cd')/rules",
-      "lastModifiedDateTime": "2026-10-14T14:19:32.093Z",
+      "rules@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/roleManagementPolicies('DirectoryRole_dc25faa0-fbfe-8104-958d-41b90a49f5d8_8fe792ad-0b48-8d53-877a-3ac0f7ae29dd')/rules",
+      "lastModifiedDateTime": "2026-10-30T10:19:38.397Z",
       "isOrganizationDefault": false
     }
   }

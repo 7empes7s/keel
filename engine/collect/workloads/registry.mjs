@@ -20,6 +20,9 @@ import { collectExchangeExtended, recordExchangeExtendedRun } from './exchangeEx
 import {
   collectExchangeDistributionGroups, collectExchangeRecipients, recordExchangeDistributionGroupsRun, recordExchangeRecipientsRun,
 } from './exchangeRecipients.mjs';
+import {
+  collectExchangeOrgAccess, collectExchangeOrgDefaults, recordExchangeOrgAccessRun, recordExchangeOrgDefaultsRun,
+} from './exchangeOrgPolicies.mjs';
 import { collectExchangeRoleGroups, recordExchangeRoleGroupsRun } from './exchangeRoleGroups.mjs';
 import { collectMailFlow, recordMailFlowRun } from './mailFlow.mjs';
 import { collectOneDrive, recordOneDriveRun } from './onedrive.mjs';
@@ -46,6 +49,11 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
     collect: (client, { base, powershell }) => collectExchangeDistributionGroups(client, { ...base, powershell }) },
   { workload: 'exchange-recipients', powershellFamily: 'exchange', record: recordExchangeRecipientsRun,
     collect: (client, { base, powershell }) => collectExchangeRecipients(client, { ...base, powershell }) },
+  // exchangeOrgPolicies.mjs: sharing and client access, then transport and new mailbox defaults.
+  { workload: 'exchange-org-access', powershellFamily: 'exchange', record: recordExchangeOrgAccessRun,
+    collect: (client, { base, powershell }) => collectExchangeOrgAccess(client, { ...base, powershell }) },
+  { workload: 'exchange-org-defaults', powershellFamily: 'exchange', record: recordExchangeOrgDefaultsRun,
+    collect: (client, { base, powershell }) => collectExchangeOrgDefaults(client, { ...base, powershell }) },
   // exchangeRoleGroups.mjs
   { workload: 'exchange-role-groups', powershellFamily: 'exchange', record: recordExchangeRoleGroupsRun,
     collect: (client, { base, powershell }) => collectExchangeRoleGroups(client, { ...base, powershell }) },

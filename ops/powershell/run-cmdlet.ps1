@@ -21,6 +21,7 @@
   engine/roadmap/onedrive-purview.test.mjs, engine/roadmap/exchange-mail-flow.test.mjs,
   engine/roadmap/teams-org-policies.test.mjs, engine/roadmap/exchange-extended.test.mjs,
   engine/roadmap/exchange-role-groups.test.mjs, engine/roadmap/exchange-recipients.test.mjs,
+  engine/roadmap/exchange-org-policies.test.mjs,
   engine/roadmap/purview-retention-dlp.test.mjs and engine/roadmap/workload-writers.test.mjs
   (which play this contract); it has not
   been run against a tenant.
@@ -138,6 +139,24 @@ $AllowedExchangeRecipients = @{
     'Get-MailboxPermission'        = @('Identity')
     'Get-RecipientPermission'      = @('ResultSize')
     'Get-CalendarProcessing'       = @('Identity')
+}
+
+# Exchange organisation policies (engine/collect/workloads/exchangeOrgPolicies.mjs): sharing and
+# client access, then transport and new mailbox defaults, in the Exchange Online session.
+# Reads only, none with parameters.
+$AllowedExchangeOrgPolicies = @{
+    'Get-AuthenticationPolicy'       = @()
+    'Get-SharingPolicy'              = @()
+    'Get-OrganizationRelationship'   = @()
+    'Get-IntraOrganizationConnector' = @()
+    'Get-OwaMailboxPolicy'           = @()
+    'Get-RoleAssignmentPolicy'       = @()
+    'Get-ApplicationAccessPolicy'    = @()
+    'Get-ExternalInOutlook'          = @()
+    'Get-TransportConfig'            = @()
+    'Get-EmailAddressPolicy'         = @()
+    'Get-CASMailboxPlan'             = @()
+    'Get-MailboxPlan'                = @()
 }
 
 # Custom Exchange admin role restore (engine/restore/workloads/exchangeRoleDeclarations.mjs),
@@ -387,6 +406,7 @@ elseif ($AllowedMailFlow.ContainsKey($name) -and $module -eq 'ExchangeOnlineMana
 elseif ($AllowedExchangeExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeExtended[$name] }
 elseif ($AllowedExchangeRoleGroups.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRoleGroups[$name] }
 elseif ($AllowedExchangeRecipients.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRecipients[$name] }
+elseif ($AllowedExchangeOrgPolicies.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeOrgPolicies[$name] }
 elseif ($AllowedExchangeRoleReads.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRoleReads[$name] }
 elseif ($AllowedExchangeRoleWrites.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRoleWrites[$name] }
 elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurview[$name] }

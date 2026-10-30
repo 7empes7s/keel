@@ -29,6 +29,7 @@ import { readModule } from '../../tools/qualification/workloadReadsAcceptance.mj
 import { WORKLOAD_DESCRIPTORS, buildWorkloadLedger } from '../collect/workloadContract.mjs';
 import { exchangeExtendedActivation } from '../collect/workloads/exchangeExtended.mjs';
 import { exchangeDistributionGroupsActivation, exchangeRecipientsActivation } from '../collect/workloads/exchangeRecipients.mjs';
+import { exchangeOrgAccessActivation, exchangeOrgDefaultsActivation } from '../collect/workloads/exchangeOrgPolicies.mjs';
 import { exchangeRoleGroupsActivation } from '../collect/workloads/exchangeRoleGroups.mjs';
 import { mailFlowActivation } from '../collect/workloads/mailFlow.mjs';
 import { siteSharingActivation } from '../collect/workloads/sharepoint.mjs';
@@ -53,6 +54,8 @@ const ACTIVATION = {
   'exchange-role-groups': exchangeRoleGroupsActivation,
   'exchange-distribution-groups': exchangeDistributionGroupsActivation,
   'exchange-recipients': exchangeRecipientsActivation,
+  'exchange-org-access': exchangeOrgAccessActivation,
+  'exchange-org-defaults': exchangeOrgDefaultsActivation,
   'teams-org-policies': teamsPolicyActivation,
   'teams-voice-policies': teamsExtendedActivation,
   'purview-retention-dlp': retentionDlpActivation,
@@ -62,7 +65,7 @@ const ACTIVATION = {
   'sharepoint-structure': sharePointStructureActivation,
 };
 const TABLES = {
-  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedExchangeRecipients', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
+  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedExchangeRecipients', 'AllowedExchangeOrgPolicies', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
   MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended'],
   'PnP.PowerShell': ['AllowedPnP', 'AllowedPnPStructure'],
 };

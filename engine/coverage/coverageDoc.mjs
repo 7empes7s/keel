@@ -320,7 +320,7 @@ export const TYPE_GUIDE = Object.freeze({
     'This older format is preview-only and replaced by the settings catalog, and its settings are stored separately and not backed up.',
     'Rebuild the baseline in the settings catalog. KEEL restores settings catalog policies.'),
   deviceManagementTemplate: manual('Endpoint security templates', MS,
-    'Microsoft publishes these templates. They are the same in every tenant. KEEL will read them only to show which area an older endpoint security policy covers, once a live read check passes.',
+    'Microsoft publishes these templates. They are the same in every tenant. KEEL reads them only to show which area an older endpoint security policy covers.',
     'Nothing to restore.'),
   managedDevice: manual('Enrolled devices', MS,
     'A device record is created by the device when it enrolls. It is state, not configuration.',

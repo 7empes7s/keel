@@ -175,6 +175,8 @@ export const DATA_SURFACES = {
   comparePage: { capability: "read", source: "compare/page.tsx" },
   // The settings one Activity row changed, before and after. Tenant-wide readers only.
   activityChangesApi: { capability: "read", source: "api/activity/changes/route.ts" },
+  // The change feed: every change, drift and audit event as one row. Tenant-wide readers only.
+  changeFeedApi: { capability: "read", source: "api/changes/feed/route.ts" },
   // Site permissions audit, gap 2: each SharePoint site's stored permissions. Tenant-wide readers only.
   sitesPage: { capability: "read", source: "sites/page.tsx" },
   sitePage: { capability: "read", source: "sites/[id]/page.tsx" },

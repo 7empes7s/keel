@@ -72,6 +72,15 @@ const FIXTURE_RUNNER = 'keel-fixture-runner';
 const RUNNERS = Object.freeze({ [LIVE_RUNNER]: { synthetic: false }, [FIXTURE_RUNNER]: { synthetic: true } });
 // Anchored: a fixture's own name starts with the prefix.
 const DISPOSABLE = /^(?:KEEL-RT-|keel-rehearsal-)/i;
+/**
+ * Graph allows only letters and digits in an attribute set id and a custom
+ * security attribute name, so their fixtures start KEELRT instead. Only these
+ * kinds accept it; every other kind still needs the hyphenated prefix.
+ */
+const LETTERS_ONLY_DISPOSABLE = /^KEELRT/i;
+const LETTERS_ONLY_KINDS = new Set(['attributeSet', 'customSecurityAttributeDefinition']);
+const isDisposableName = (resourceType, text) => DISPOSABLE.test(text)
+  || (LETTERS_ONLY_KINDS.has(resourceType) && LETTERS_ONLY_DISPOSABLE.test(text));
 const NAME_FIELDS = Object.freeze(['displayName', 'name', 'mailNickname', 'userPrincipalName']);
 /**
  * Kinds whose own name is in another field (issue #478). Only these fields count
@@ -83,6 +92,9 @@ const OWN_NAME_FIELDS = Object.freeze({
   intuneBrandingProfile: Object.freeze(['profileName']),
   groupPolicyUploadedDefinitionFile: Object.freeze(['fileName']),
   mobileAppRelationship: Object.freeze(['sourceDisplayName', 'targetDisplayName']),
+  // An attribute set is named by its id. An attribute is named by its name, and
+  // its set is checked by its key (looksDisposable).
+  attributeSet: Object.freeze(['id']),
 });
 
 /** The fields a kind's own name is read from when its fixture is checked. */
@@ -166,6 +178,14 @@ function isCapturedWrite(entry, { resourceType, operation, fixture, enforcement 
   return resourceType === 'organizationalBranding' && isDefaultBrandingLanguage(entry) && DEFAULT_BRANDING_FIXTURES.includes(fixture);
 }
 
+/** Whether a journal entry is the write asked for, named by its fixture name rather than its key. */
+function isNamedWrite(entry, { resourceType, operation, fixture, enforcement }) {
+  const identity = journalIdentity(entry, { enforcement });
+  const prior = entry.priorState;
+  if (identity.key !== resourceType || identity.operation !== operation || !prior || typeof prior !== 'object') return false;
+  return nameFieldsFor(resourceType).some((field) => prior[field] === fixture);
+}
+
 const namesOf = (state) => (state && typeof state === 'object'
   ? NAME_FIELDS.map((field) => state[field]).filter((value) => typeof value === 'string')
   : []);
@@ -176,7 +196,7 @@ const namesOf = (state) => (state && typeof state === 'object'
  */
 export function namesFixture(resourceType, state) {
   if (!state || typeof state !== 'object') return false;
-  const disposable = (field) => typeof state[field] === 'string' && DISPOSABLE.test(state[field]);
+  const disposable = (field) => typeof state[field] === 'string' && isDisposableName(resourceType, state[field]);
   const own = OWN_NAME_FIELDS[resourceType];
   return own ? own.every(disposable) : NAME_FIELDS.some(disposable);
 }
@@ -188,7 +208,14 @@ export function namesFixture(resourceType, state) {
  */
 function looksDisposable(entry, snapshotPayload) {
   const own = edgeParent(entry.naturalKey)?.name ?? String(entry.naturalKey ?? '');
-  if (DISPOSABLE.test(own)) return true;
+  if (entry.resourceType === 'customSecurityAttributeDefinition') {
+    // Its key is its id, <set>_<name> (a set id has no underscore). An attribute is
+    // a fixture only inside a fixture set, so both parts must be fixtures.
+    const id = own.replace(/^customSecurityAttributeDefinition:/, '');
+    const cut = id.indexOf('_');
+    return cut > 0 && isDisposableName(entry.resourceType, id.slice(0, cut)) && isDisposableName(entry.resourceType, id.slice(cut + 1));
+  }
+  if (isDisposableName(entry.resourceType, own)) return true;
   return namesFixture(entry.resourceType, entry.priorState ?? snapshotPayload ?? null);
 }
 
@@ -373,8 +400,18 @@ export async function captureLive({
   }
 
   const guidance = guidanceFor(resourceType);
-  const entries = (await getJournal(client, { restoreRef }))
-    .filter((entry) => isCapturedWrite(entry, { resourceType, operation, fixture, enforcement }));
+  const journal = await getJournal(client, { restoreRef });
+  let entries = journal.filter((entry) => isCapturedWrite(entry, { resourceType, operation, fixture, enforcement }));
+  // Issue #684: a kind keyed by id (a Viva Engage community) can be named by its fixture name,
+  // read from the prior state's own name fields. Two objects of that name need the id.
+  if (entries.length === 0 && !enforcement) {
+    const named = journal.filter((entry) => isNamedWrite(entry, { resourceType, operation, fixture, enforcement }));
+    const keys = [...new Set(named.map((entry) => entry.naturalKey))];
+    if (keys.length > 1) {
+      throw new LiveGateRefusal(`restore ${restoreRef} wrote ${keys.length} ${resourceType} objects named ${fixture}: pass the natural key KEEL shows for the one to capture as --fixture`);
+    }
+    entries = named;
+  }
   if (entries.length === 0) {
     return { status: 'not-exercised', record: null, captureLog: null, reason: `restore ${restoreRef} made no ${resourceType} ${operation} write for ${fixture}${await brandingFileHint(client, { restoreRef, resourceType, getJournal })}` };
   }

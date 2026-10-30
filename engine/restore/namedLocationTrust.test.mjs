@@ -6,8 +6,10 @@ import { test } from 'node:test';
 import { applyWave } from './applyEngine.mjs';
 import { ThrottleGovernor } from './throttleGovernor.mjs';
 import {
-  namedLocationTrustChanges, namedLocationTrustKept, namedLocationTrustRefusal, withoutNamedLocationTrust,
+  namedLocationTrustChanges, namedLocationTrustKept, namedLocationTrustRefusal, recordTrustSkippedLocations,
+  skippedLocationPolicyRefusal, withoutNamedLocationTrust,
 } from './namedLocationTrust.mjs';
+import { previewApplyPlan } from '../reconcile/previewApplyPlan.mjs';
 import { compareSignInPaths, NAMED_LOCATIONS_PATH, snapshotSignInPath } from '../safety/signInPathGate.mjs';
 
 const IP = '#microsoft.graph.ipNamedLocation';
@@ -206,4 +208,96 @@ test('namedLocationTrustKept: unchanged trust, a new untrusted location, and the
   const fix = { field: 'includeUnknownCountriesAndRegions', to: false };
   assert.equal(namedLocationTrustKept({ ...liveOffice, includeUnknownCountriesAndRegions: true }, liveOffice, fix), true);
   assert.equal(namedLocationTrustKept({ ...liveOffice, includeUnknownCountriesAndRegions: true }, { ...liveOffice, isTrusted: true }, fix), false);
+});
+
+// Review of PR #629: a policy that names a location the trust gate skipped had
+// nothing to point at and failed the run on its reference.
+const trustedBranch = { '@odata.type': IP, displayName: 'KEEL-RT-Trusted', isTrusted: true, ipRanges: [range('0.0.0.0/1')] };
+const policyNaming = (location) => ({
+  naturalKey: 'conditionalAccessPolicy:KEEL-RT-Block outside', resourceType: 'conditionalAccessPolicy', verb: 'create',
+  payload: {
+    displayName: 'KEEL-RT-Block outside', state: 'disabled',
+    conditions: { users: { includeUsers: ['None'] }, applications: { includeApplications: ['None'] }, locations: { includeLocations: ['src-loc-9'] } },
+    grantControls: { operator: 'OR', builtInControls: ['block'] },
+  },
+  references: [{ field: 'conditions.locations.includeLocations[0]', symbol: `namedLocation:${location}` }],
+});
+
+test('a policy naming a location skipped on trust is skipped with a step in the next wave, and nothing is written', async () => {
+  for (const mode of ['dry-run', 'enforce']) {
+    const graph = tenant();
+    const first = await run(graph, [create(trustedBranch)], mode);
+    const skippedKeys = recordTrustSkippedLocations(new Set(), first.skipped);
+    assert.deepEqual([...skippedKeys], ['namedLocation:KEEL-RT-Trusted'], mode);
+    const second = await applyWave(graph.writer, governor(), [policyNaming('KEEL-RT-Trusted')], {
+      targetTenant: 'target', mode, trustSkippedLocations: skippedKeys,
+      signInPathGate: { reader: graph.reader, protectedPrincipalIds: [BREAK_GLASS] },
+    });
+    assert.equal(graph.writes.length, 0, mode);
+    assert.deepEqual(second.failed, [], mode);
+    assert.deepEqual(second.applied, [], mode);
+    assert.equal(second.skipped.length, 1, mode);
+    const [skip] = second.skipped;
+    assert.equal(skip.naturalKey, 'conditionalAccessPolicy:KEEL-RT-Block outside');
+    assert.match(skip.reason, /^manual: The Conditional Access policy "KEEL-RT-Block outside" uses the named location "KEEL-RT-Trusted"/);
+    assert.equal(skip.completion[0].kind, 'manual-setting');
+    assert.equal(skip.completion[0].requirement, 'skippedNamedLocation');
+    assert.deepEqual(skip.completion[0].locations, ['namedLocation:KEEL-RT-Trusted']);
+    assert.equal(recordTrustSkippedLocations(new Set(), second.skipped).size, 0, 'the skipped policy is not taken for a location');
+  }
+});
+
+test('the dry-run preview reports the policy as skipped, not failed', async () => {
+  const graph = tenant();
+  const location = create(trustedBranch);
+  const policy = policyNaming('KEEL-RT-Trusted');
+  const refusals = await previewApplyPlan({
+    resources: [location, policy], waves: [[location.naturalKey], [policy.naturalKey]], deletionWaves: [], patches: [],
+    existingTargetIds: new Map(), deletionGuardOptions: { breakGlassUserIds: [], keelAppIds: [], caPolicies: [] },
+    signInPathGate: { reader: graph.reader, protectedPrincipalIds: [BREAK_GLASS] }, targetTenant: 'target',
+  });
+  assert.deepEqual(refusals.map((entry) => entry.naturalKey), [location.naturalKey, policy.naturalKey]);
+  assert.match(refusals[1].reason, /^manual: .*did not create because the backup marks it as trusted/);
+});
+
+test('skippedLocationPolicyRefusal: only a policy, only an unresolved skipped location, never a delete', () => {
+  const skippedKeys = new Set(['namedLocation:KEEL-RT-Trusted']);
+  const gone = { resolves: () => false, othersResolve: () => true };
+  const policy = policyNaming('KEEL-RT-Trusted');
+  const check = (resource, verb = 'create', keys = skippedKeys, how = gone) => skippedLocationPolicyRefusal(resource, verb, keys, resource.references, how);
+  assert.ok(check(policy));
+  assert.ok(check({ ...policy, verb: 'update' }, 'update'));
+  assert.equal(check(policy, 'create', skippedKeys, { ...gone, resolves: () => true }), null, 'the location exists in the target: written as usual');
+  assert.equal(check(policy, 'delete'), null);
+  assert.equal(check(policy, 'create', new Set()), null);
+  assert.equal(check(policyNaming('KEEL-RT-Other')), null, 'another location fails on its reference as before');
+  assert.equal(check({ ...policy, resourceType: 'group' }), null);
+});
+
+test('a policy that also names a missing group still fails on that group: the skip hides nothing', async () => {
+  const graph = tenant();
+  const policy = policyNaming('KEEL-RT-Trusted');
+  policy.payload.conditions.users = { includeGroups: ['src-group-1'] };
+  policy.references.push({ field: 'conditions.users.includeGroups[0]', symbol: 'group:KEEL-RT-Missing' });
+  const result = await applyWave(graph.writer, governor(), [policy], {
+    targetTenant: 'target', mode: 'dry-run', trustSkippedLocations: new Set(['namedLocation:KEEL-RT-Trusted']),
+    signInPathGate: { reader: graph.reader, protectedPrincipalIds: [BREAK_GLASS] },
+  });
+  assert.equal(graph.writes.length, 0);
+  assert.deepEqual(result.skipped, []);
+  assert.equal(result.failed.length, 1);
+  assert.match(result.failed[0].error, /cannot resolve reference/, 'it fails on its references, exactly as before this gate');
+});
+
+test('recordTrustSkippedLocations reads a single completion step as well as a list (#695)', () => {
+  const trust = { kind: 'manual-setting', requirement: 'namedLocationTrust' };
+  const other = { kind: 'manual-setting', requirement: 'externalDomainFederationSignIn' };
+  const keys = recordTrustSkippedLocations(new Set(), [
+    { naturalKey: 'namedLocation:KEEL-RT-List', completion: [trust] },
+    { naturalKey: 'namedLocation:KEEL-RT-One', completion: trust },
+    { naturalKey: 'externalDomainFederation:KEEL-RT-fed', completion: other },
+    { naturalKey: 'externalDomainFederation:KEEL-RT-fed-list', completion: [other] },
+    { naturalKey: 'group:KEEL-RT-none' },
+  ]);
+  assert.deepEqual([...keys], ['namedLocation:KEEL-RT-List', 'namedLocation:KEEL-RT-One']);
 });

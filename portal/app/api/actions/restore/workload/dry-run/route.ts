@@ -4,7 +4,7 @@ import { enqueue, PORTAL_QUEUED_JOBS_PER_PRINCIPAL, QueueFullError, queuedJobCou
 
 import {
   guarded,
-  IDEMPOTENCY_KEY_HEADER,
+  callerIdempotencyKey,
   InvalidActionRequest,
   normalizeJob,
   readActionParams,
@@ -55,7 +55,7 @@ export const POST = guarded(
     }
 
     const unique = [...new Set(targets as string[])];
-    const idempotencyKey = request.headers.get(IDEMPOTENCY_KEY_HEADER) ?? undefined;
+    const idempotencyKey = callerIdempotencyKey(request, principalId, "restore-workload-dry-run");
     const runs: { target: string | null; job: unknown; artifactId: string }[] = [];
     const start = async (target: string | null, workloadRestore: Record<string, unknown>, index: number) => {
       const artifactId = randomUUID();

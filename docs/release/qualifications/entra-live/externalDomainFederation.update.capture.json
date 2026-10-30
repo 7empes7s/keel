@@ -1,0 +1,47 @@
+{
+  "restoreRef": "71b6d7cc-1e46-8309-aea9-b5dbb7c2e3cc",
+  "entry": {
+    "naturalKey": "externalDomainFederation:34d2a4d2-8172-8144-8d1a-1429d4b3ce15",
+    "resourceType": "externalDomainFederation",
+    "operation": "update",
+    "targetId": "34d2a4d2-8172-8144-8d1a-1429d4b3ce15",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-29T21:55:07.397Z",
+    "priorState": {
+      "id": "34d2a4d2-8172-8144-8d1a-1429d4b3ce15",
+      "domains": [
+        {
+          "id": "keel-rt-fed.example"
+        }
+      ],
+      "issuerUri": "https://keel-rt-fed.example/issuer",
+      "displayName": "KEEL-RT-148-fed-drifted",
+      "passiveSignInUri": "https://keel-rt-fed.example/sso",
+      "signingCertificate": "MIIDHTCCAgWgAwIBAgIUWAE3/bdx3qAIhu2jimiXd/QnvMowDQYJKoZIhvcNAQELBQAwHjEcMBoGA1UEAwwTa2VlbC1ydC1mZWQuZXhhbXBsZTAeFw0yNjEwMjkyMTM5NTNaFw0yNjExMjgyMTM5NTNaMB4xHDAaBgNVBAMME2tlZWwtcnQtZmVkLmV4YW1wbGUwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDP6iyTRRPpGUpyq5NnPJ9NkVC/RpKCL+MMkw/da8Lh7dV8TueaIvV+Z/b+O97ahN0+kYhnBZ9MzNAchvv0LLrw21qNFmXc1W6zfMNGqsMx4IOAPd83W6zCzZfh1S3MWhJwTtIvejzPtQi5DCEtBrDZ5f2GSKNhfLZhfIq5dp1kGNsnVl99SmhZLVxDrAp7x2JJzdhAlcTS/enjQBqP65jiklXyr7sDjmp7aqVF9PPrQ9V2gqG4MDj4CMrcAT2KFvlch7fnrww2oLutq/A8MENpE+740vuFPHWknG2hV4HOJQZHKb3lho2aUSasx+OC3PBjp2Y/vP7v1C9J0sDGpFHDAgMBAAGjUzBRMB0GA1UdDgQWBBRtn1uPKDr4Hi2byLS6dhqOAAdziDAfBgNVHSMEGDAWgBRtn1uPKDr4Hi2byLS6dhqOAAdziDAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQC1CyP2ztN2D1W2L1mOwQoDUFyTY+Qi2bVl0WYZpMBqISNNKTmriF7Q5ZsRhxzeJqNnXErsfJh+VWa90ZVfnqH5LAGX2MMyPIOpZChJJ3Zspy4EwhbxzlCcCS1fxkvSsj8/D1HFJR5VC/T+q/VUOn8F/Xq4h+AYSAqpdGbtqLWgnnfEKwiWJdzbIobxIwHphTQXkcTugkBLMeBLVSboARgUlKX1qcZ0E6vK9cqw0kCWBBEjRjkCTHLTjmjkICbXSF3kxpidRFpgNCIvI+S+XzVXSqWJ8ulkJBbl50Dc0540Nvqopq2EMQu/pXXUbJCd3mY6NV8lJ+obT9Oq2Zp4a3SZ",
+      "metadataExchangeUri": null,
+      "domains@odata.context": "https://graph.microsoft.com/v1.0/$metadata#directory/federationConfigurations('34d2a4d2-8172-8144-8d1a-1429d4b3ce15')/microsoft.graph.samlOrWsFedExternalDomainFederation/domains",
+      "preferredAuthenticationProtocol": "saml"
+    },
+    "intendedState": {
+      "displayName": "KEEL-RT-148-fed",
+      "preferredAuthenticationProtocol": "saml"
+    },
+    "postState": {
+      "id": "34d2a4d2-8172-8144-8d1a-1429d4b3ce15",
+      "domains": [
+        {
+          "id": "keel-rt-fed.example"
+        }
+      ],
+      "issuerUri": "https://keel-rt-fed.example/issuer",
+      "displayName": "KEEL-RT-148-fed",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#directory/federationConfigurations/microsoft.graph.samlOrWsFedExternalDomainFederation/$entity",
+      "passiveSignInUri": "https://keel-rt-fed.example/sso",
+      "signingCertificate": "MIIDHTCCAgWgAwIBAgIUWAE3/bdx3qAIhu2jimiXd/QnvMowDQYJKoZIhvcNAQELBQAwHjEcMBoGA1UEAwwTa2VlbC1ydC1mZWQuZXhhbXBsZTAeFw0yNjEwMjkyMTM5NTNaFw0yNjExMjgyMTM5NTNaMB4xHDAaBgNVBAMME2tlZWwtcnQtZmVkLmV4YW1wbGUwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDP6iyTRRPpGUpyq5NnPJ9NkVC/RpKCL+MMkw/da8Lh7dV8TueaIvV+Z/b+O97ahN0+kYhnBZ9MzNAchvv0LLrw21qNFmXc1W6zfMNGqsMx4IOAPd83W6zCzZfh1S3MWhJwTtIvejzPtQi5DCEtBrDZ5f2GSKNhfLZhfIq5dp1kGNsnVl99SmhZLVxDrAp7x2JJzdhAlcTS/enjQBqP65jiklXyr7sDjmp7aqVF9PPrQ9V2gqG4MDj4CMrcAT2KFvlch7fnrww2oLutq/A8MENpE+740vuFPHWknG2hV4HOJQZHKb3lho2aUSasx+OC3PBjp2Y/vP7v1C9J0sDGpFHDAgMBAAGjUzBRMB0GA1UdDgQWBBRtn1uPKDr4Hi2byLS6dhqOAAdziDAfBgNVHSMEGDAWgBRtn1uPKDr4Hi2byLS6dhqOAAdziDAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQC1CyP2ztN2D1W2L1mOwQoDUFyTY+Qi2bVl0WYZpMBqISNNKTmriF7Q5ZsRhxzeJqNnXErsfJh+VWa90ZVfnqH5LAGX2MMyPIOpZChJJ3Zspy4EwhbxzlCcCS1fxkvSsj8/D1HFJR5VC/T+q/VUOn8F/Xq4h+AYSAqpdGbtqLWgnnfEKwiWJdzbIobxIwHphTQXkcTugkBLMeBLVSboARgUlKX1qcZ0E6vK9cqw0kCWBBEjRjkCTHLTjmjkICbXSF3kxpidRFpgNCIvI+S+XzVXSqWJ8ulkJBbl50Dc0540Nvqopq2EMQu/pXXUbJCd3mY6NV8lJ+obT9Oq2Zp4a3SZ",
+      "metadataExchangeUri": null,
+      "domains@odata.context": "https://graph.microsoft.com/v1.0/$metadata#directory/federationConfigurations('34d2a4d2-8172-8144-8d1a-1429d4b3ce15')/microsoft.graph.samlOrWsFedExternalDomainFederation/domains",
+      "preferredAuthenticationProtocol": "saml"
+    }
+  }
+}

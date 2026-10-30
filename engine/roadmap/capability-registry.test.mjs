@@ -85,8 +85,8 @@ const REGISTERED = Object.freeze({
   directoryRoleAccessReviewPolicy: ['update'],
   multiTenantOrganizationIdentitySyncPolicyTemplate: ['update'],
   multiTenantOrganizationPartnerConfigurationTemplate: ['update'],
-  // Restore gaps, batch 3: guest and app consent settings.
-  b2bManagementPolicy: ['update'],
+  // Restore gaps, batch 3: guest and app consent settings. The guest
+  // invitation domain lists (b2bManagementPolicy) are trust fields, never written.
   permissionGrantPreApprovalPolicy: ['create', 'update'],
   externalDomainFederation: ['update'],
   // Wave 2 IDO: Intune app protection and configuration, filters, scope tags,
@@ -126,6 +126,8 @@ const REGISTERED = Object.freeze({
   // Restore gaps, batch 9.
   intuneBrandingProfile: ['create', 'update'],
   exchangeCustomAppScope: ['create', 'update'],
+  // Restore gaps, batch 21.
+  defenderRoleDefinition: ['create', 'update'],
   // Restore gaps, batch 10.
   userExperienceAnalyticsBaseline: ['create', 'update'],
   cartToClassAssociation: ['create', 'update'],
@@ -139,6 +141,13 @@ const REGISTERED = Object.freeze({
   microsoftTunnelHealthThreshold: ['update'],
   onPremisesConditionalAccessSettings: ['update'],
   sharepointSettings: ['update'],
+  // Restore gaps, batch 20: admin center org settings and Viva Engage communities.
+  formsSettings: ['update'],
+  microsoft365AppsInstallationOptions: ['update'],
+  appsAndServicesSettings: ['update'],
+  adminReportSettings: ['update'],
+  pronounsSettings: ['update'],
+  engageCommunity: ['update'],
   // Restore gaps, batch 12.
   windowsManagedAppProtection: ['create', 'update'],
   iosLobAppProvisioningConfiguration: ['create', 'update'],

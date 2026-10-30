@@ -43,7 +43,10 @@ export default [
     select: 'id,displayName,description,authenticationConfiguration,clientConfiguration,customAttributes,resourceType,type',
     note: 'The Logic App it calls is picked again by hand.' },
   // Groups brought under Privileged Identity Management for Groups.
-  { type: 'privilegedAccessGroupResource', path: '/identityGovernance/privilegedAccess/group/resources', version: 'beta',
+  // `refersOnlyTo`: the object names one group and nothing else, so an unread
+  // copy can hide a reference only to a group (cli/keel-restore.mjs
+  // incompleteReadDeleteRefusals).
+  { type: 'privilegedAccessGroupResource', path: '/identityGovernance/privilegedAccess/group/resources', version: 'beta', refersOnlyTo: ['group'],
     criticality: 'tier3', blastRadius: 'access-affecting',
     note: 'Only the group id; the group is rebuilt first.' },
   // Default calendar sharing, mail tips and room booking with other tenants.

@@ -1,0 +1,174 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-reads-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "05a930b58a82583d276fff1fedf6cc9dca1563e9",
+  "operation": "workload-reads",
+  "credentialMode": "collector-only",
+  "observedAt": "2026-10-30T01:30:18.952Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "teams-voice-policies",
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "MicrosoftTeams",
+      "moduleVersion": "7.9.0"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c"
+    },
+    "outcome": "complete",
+    "reads": [
+      {
+        "operationId": "teams.calling-policies",
+        "family": "callingPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T01:30:18.952Z",
+        "ok": true,
+        "status": "read",
+        "objects": 8,
+        "error": null
+      },
+      {
+        "operationId": "teams.voice-routing-policies",
+        "family": "voiceRoutingPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T01:30:18.952Z",
+        "ok": true,
+        "status": "read",
+        "objects": 4,
+        "error": null
+      },
+      {
+        "operationId": "teams.dial-plans",
+        "family": "dialPlan",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T01:30:18.952Z",
+        "ok": true,
+        "status": "read",
+        "objects": 4,
+        "error": null
+      },
+      {
+        "operationId": "teams.emergency-calling-policies",
+        "family": "emergencyCallingPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T01:30:18.952Z",
+        "ok": true,
+        "status": "read",
+        "objects": 4,
+        "error": null
+      },
+      {
+        "operationId": "teams.emergency-call-routing-policies",
+        "family": "emergencyCallRoutingPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T01:30:18.952Z",
+        "ok": true,
+        "status": "read",
+        "objects": 4,
+        "error": null
+      },
+      {
+        "operationId": "teams.call-park-policies",
+        "family": "callParkPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T01:30:18.952Z",
+        "ok": true,
+        "status": "read",
+        "objects": 4,
+        "error": null
+      },
+      {
+        "operationId": "teams.caller-id-policies",
+        "family": "callerIdPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T01:30:18.952Z",
+        "ok": true,
+        "status": "read",
+        "objects": 4,
+        "error": null
+      },
+      {
+        "operationId": "teams.voicemail-policies",
+        "family": "voicemailPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T01:30:18.952Z",
+        "ok": true,
+        "status": "read",
+        "objects": 7,
+        "error": null
+      },
+      {
+        "operationId": "teams.live-events-policies",
+        "family": "liveEventsPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T01:30:18.952Z",
+        "ok": true,
+        "status": "read",
+        "objects": 5,
+        "error": null
+      },
+      {
+        "operationId": "teams.events-policies",
+        "family": "eventsPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T01:30:18.952Z",
+        "ok": true,
+        "status": "read",
+        "objects": 4,
+        "error": null
+      },
+      {
+        "operationId": "teams.live-events-configuration",
+        "family": "liveEventsConfiguration",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T01:30:18.952Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "teams.user-policy-assignments",
+        "family": "userPolicyAssignment",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T01:30:18.952Z",
+        "ok": true,
+        "status": "read",
+        "objects": 108,
+        "error": null
+      },
+      {
+        "operationId": "teams.group-policy-assignments",
+        "family": "groupPolicyAssignment",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T01:30:18.952Z",
+        "ok": true,
+        "status": "read",
+        "objects": 0,
+        "error": null
+      }
+    ]
+  },
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "b04eef0952654aee1694e74a0a394df6de7a1fb0317a042202e5eca81d51aa4c"
+    }
+  }
+}

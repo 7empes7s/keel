@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-writers-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "95ba5a0414559a3a3815dcec07226957aa081392",
+  "build": "05a930b58a82583d276fff1fedf6cc9dca1563e9",
   "operation": "workload.writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-16T09:17:58.108Z",
+  "observedAt": "2026-10-30T00:52:17.254Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -192,13 +192,13 @@
         "field": "AdminDisplayName",
         "type": "text",
         "before": "",
-        "target": "KEEL capture 2026-10-16T09:16:17.294Z",
+        "target": "KEEL capture 2026-10-30T00:50:38.045Z",
         "final": "",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-16T09:17:41.761Z",
+        "capturedAt": "2026-10-30T00:52:01.158Z",
         "error": null
       },
       {
@@ -219,7 +219,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-16T09:17:58.108Z",
+        "capturedAt": "2026-10-30T00:52:17.254Z",
         "error": null
       }
     ],
@@ -365,7 +365,7 @@
         "cmdlet": "Set-HostedConnectionFilterPolicy",
         "parameters": {
           "Identity": "c6135c63-11cd-8c29-a38c-fdb17514ea53",
-          "AdminDisplayName": "KEEL capture 2026-10-16T09:16:17.294Z"
+          "AdminDisplayName": "KEEL capture 2026-10-30T00:50:38.045Z"
         },
         "outcome": "ok"
       },
@@ -437,16 +437,16 @@
         "outcome": "ok"
       }
     ],
-    "captureLogSha256": "c45e4731516fd8c5c31b8c355b42946e21dada1ea694fe5bf94272a384ef2ca6"
+    "captureLogSha256": "01538480e7386951caae12142deaff2e78dd4f986cdc15d875dbe74abdf8d834"
   },
   "proof": {
     "artifact": {
       "path": "workload-writers-exchange-extended-live-acceptance.capture.json",
-      "sha256": "c45e4731516fd8c5c31b8c355b42946e21dada1ea694fe5bf94272a384ef2ca6"
+      "sha256": "01538480e7386951caae12142deaff2e78dd4f986cdc15d875dbe74abdf8d834"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "23782a21d2b11ca1295dfc2c156b84f90130143c5db78cacc34a2a45e5722906"
+      "signature": "15fd142328886949ec4c3684eb6abe3b4f468422ad8e570d22ea7b644716075d"
     }
   }
 }

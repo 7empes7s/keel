@@ -402,10 +402,19 @@ export const APP_NAMES: Record<string, string> = {
   collector: "Backup reader app",
   restorer: "Restore writer app",
   "content-reader": "Content reader app",
+  "engage-writer": "Viva Engage writer app",
 };
 
 export function appName(identity: string): string {
   return APP_NAMES[identity] ?? `${identity.charAt(0).toUpperCase()}${identity.slice(1).replace(/-/g, " ")} app`;
+}
+
+// Names that start with a product name keep their capitals inside a sentence.
+const PROPER_NAMES = new Set(["engage-writer"]);
+
+/** The app's name as it reads inside a sentence: "the backup reader app", "the Viva Engage writer app". */
+export function appNameInSentence(identity: string): string {
+  return PROPER_NAMES.has(identity) ? appName(identity) : appName(identity).toLowerCase();
 }
 
 export interface PermissionRow {
@@ -428,7 +437,7 @@ export interface PermissionRow {
   requested: boolean | null;
 }
 
-const KNOWN_APPS: readonly string[] = ["collector", "restorer", "content-reader"];
+const KNOWN_APPS: readonly string[] = ["collector", "restorer", "content-reader", "engage-writer"];
 const ROLE_APIS = new Set(["directory", "intune"]);
 
 /** Every app the catalogue names: the known ones in order, then any new one as listed. */
@@ -571,8 +580,8 @@ export function missingWords(missing: PermissionRow[]): string {
 export function missingSentence(identity: string, missing: PermissionRow[]): string {
   const count = missing.length;
   const it = count === 1 ? "it" : "them";
-  const what = identity === "collector" ? `Backups that need ${it} stay incomplete` : identity === "restorer" ? `Restores that need ${it} stop` : identity === "content-reader" ? `Content backups that need ${it} stay incomplete` : `What needs ${it} stops`;
+  const what = identity === "collector" ? `Backups that need ${it} stay incomplete` : identity === "restorer" ? `Restores that need ${it} stop` : identity === "content-reader" ? `Content backups that need ${it} stay incomplete` : identity === "engage-writer" ? `Viva Engage community restores stop` : `What needs ${it} stops`;
   const roles = missing.some((row) => row.type === "admin-role");
   const fix = roles && missing.every((row) => row.type === "admin-role") ? "assigns" : "approves";
-  return `The ${appName(identity).toLowerCase()} is missing ${missingWords(missing)}. ${what} until an admin ${fix} ${it}.`;
+  return `The ${appNameInSentence(identity)} is missing ${missingWords(missing)}. ${what} until an admin ${fix} ${it}.`;
 }

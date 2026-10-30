@@ -213,6 +213,9 @@ export function naturalKey(type, obj) {
       return obj.id;
     case 'subscribedSku':
       return obj.skuPartNumber ?? obj.id;
+    // A profile card field is named by the directory field it shows.
+    case 'profileCardProperty':
+      return obj.directoryPropertyName ?? obj.id;
     case 'roleDefinition':
     case 'directoryRole':
       return obj.roleTemplateId ?? obj.templateId ?? obj.displayName ?? obj.id;

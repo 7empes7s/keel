@@ -1,5 +1,6 @@
 import {
   ApprovalClosedError,
+  ApprovalJobConflictError,
   ApprovalExpiredError,
   ApprovalNotFoundError,
   ApprovalReasonRequiredError,
@@ -47,6 +48,26 @@ import { isJsonContentType } from "@/lib/same-origin";
 // recorded in the evidence chain.
 
 export const IDEMPOTENCY_KEY_HEADER = "idempotency-key";
+
+// A caller's idempotency key is only ever stored inside its own namespace,
+// `client:<principal>:<route>:<raw key>`. Server-minted keys (such as
+// `approval:<request id>`) live outside it, so a caller can never pre-claim one and
+// make an approved job resolve to a job of their own. Two callers, or two routes, with
+// the same raw key also no longer collide. This covers every server-minted prefix,
+// including `schedule:<id>:<due>` and `install-run:<tenant>:<tier>:<day>`.
+export const MAX_IDEMPOTENCY_KEY_LENGTH = 200;
+export function callerIdempotencyKey(
+  request: Request,
+  principalId: string,
+  route: string,
+): string | undefined {
+  const raw = request.headers.get(IDEMPOTENCY_KEY_HEADER);
+  if (raw === null || raw.length === 0) return undefined;
+  if (raw.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
+    throw new InvalidActionRequest(`the idempotency key must be at most ${MAX_IDEMPOTENCY_KEY_LENGTH} characters`);
+  }
+  return `client:${principalId}:${route}:${raw}`;
+}
 export const ATTEMPT_EVIDENCE_KIND = "action-attempt";
 
 const NO_STORE = { "cache-control": "no-store" } as const;
@@ -517,7 +538,7 @@ export function guardedAction(
         kind: spec.jobKind,
         params: spec.acceptsParams === false ? {} : params,
         requestedBy: principalId,
-        idempotencyKey: request.headers.get(IDEMPOTENCY_KEY_HEADER) ?? undefined,
+        idempotencyKey: callerIdempotencyKey(request, principalId, spec.action),
         notBefore: undefined,
         maxQueuedForRequester: PORTAL_QUEUED_JOBS_PER_PRINCIPAL,
       })) as Record<string, unknown>;
@@ -879,6 +900,8 @@ export function guardedApprovalDecision(
           // incomplete, refused, or failed fails closed the same way a closed or
           // expired request does — a conflict, not a mint.
           || error instanceof PromotionRefusedError
+          // Security audit: the approval's job key is held by a job it did not mint.
+          || error instanceof ApprovalJobConflictError
         ) {
           return Response.json(
             { error: "conflict" },

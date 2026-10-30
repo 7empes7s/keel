@@ -38,6 +38,7 @@ import {
 } from './capabilities.mjs';
 import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 import { SHAREPOINT_STRUCTURE_WRITE_OPERATIONS } from '../restore/workloads/sharepointStructureWrites.mjs';
+import { DSC_WRITE_OPERATIONS } from '../restore/workloads/dscDeclarations.mjs';
 
 export const LEDGER_CONTRACT_VERSION = 1;
 // Coverage plan v3: no type is left 'unknown'. A type with no writer is
@@ -120,8 +121,8 @@ export const TYPE_DECISIONS = Object.freeze({
   }),
   authorizationPolicy: automated('authorizationpolicy', 'task-149: update of guest, consent and default user permission settings, only behind the break-glass lockout gate'),
   crossTenantAccessPolicy: automated('crosstenantaccesspolicy', 'task-149: update of allowedCloudEndpoints'),
-  crossTenantAccessPolicyConfigurationDefault: automated('crosstenantaccesspolicyconfigurationdefault', 'task-149: update of the default B2B, direct connect and inbound trust settings'),
-  crossTenantAccessPolicyPartner: automated('crosstenantaccesspolicyconfigurationpartner', 'task-149: create and update; delete is not registered'),
+  crossTenantAccessPolicyConfigurationDefault: automated('crosstenantaccesspolicyconfigurationdefault', 'task-149: update of the default tenant restrictions and redemption order; inbound trust, automatic consent, B2B collaboration and direct connect are a manual step'),
+  crossTenantAccessPolicyPartner: automated('crosstenantaccesspolicyconfigurationpartner', 'task-149: create and update of tenant restrictions; inbound trust, automatic consent, B2B collaboration and direct connect are a manual step; delete is not registered'),
   permissionGrantPolicy: automated('permissiongrantpolicy', 'Wave 2 ENTRA subset: create and update of custom app consent policies, with their include and exclude rules when the backup holds them (missing ones added, extra ones removed); built-in microsoft-* policies are skipped; delete is not registered'),
   adminConsentRequestPolicy: automated('adminconsentrequestpolicy', 'task-149: update (PUT) of the whole policy'),
   // Issue #156.
@@ -219,23 +220,23 @@ export const TYPE_DECISIONS = Object.freeze({
   deviceCustomAttributeShellScript: automated('intune-devices-devicecustomattributeshellscript', 'restore gaps batch 5: create and update of the script and its settings through Graph beta; a backup without the script body is refused; batch 15: who it runs on is assigned again through /assign', { view: 'graph-rest-beta' }),
   // Remaining kinds, batch 4: Entra ID tenant settings, backed up read-only; restore gaps batch 2 writes the singletons.
   externalIdentitiesPolicy: automated('externalidentitiespolicy', 'restore gaps batch 2: update in place through Graph beta of whether external users can leave and whether their data is removed', { view: 'graph-rest-beta' }),
-  b2bManagementPolicy: automated('b2bmanagementpolicy', 'restore gaps batch 3: update in place through Graph beta of the guest invitation domain lists (the definition); a deleted policy is set again by hand', { view: 'graph-rest-beta' }),
-  servicePrincipalCreationPolicy: manual('no writer yet; beta only, and the include and exclude conditions are read per policy'),
+  b2bManagementPolicy: manual('the guest invitation domain lists decide which outside domains guests may come from, so a restore never writes them (trust-field rule); a difference is set by hand'),
+  servicePrincipalCreationPolicy: manual('Graph lets only Entra directory roles read or write app creation policies: an app holding every policy permission gets 403 (Q256), and KEEL does not give its restore app a directory role for this; a difference is set by hand'),
   permissionGrantPreApprovalPolicy: automated('permissiongrantpreapprovalpolicy', 'restore gaps batch 3: create and update through Graph beta of the pre-approved conditions; which app it is assigned to is not backed up yet', { view: 'graph-rest-beta' }),
   accessReviewPolicy: automated('accessreviewpolicy', 'restore gaps batch 2: update in place through Graph beta of whether group owners manage access reviews', { view: 'graph-rest-beta' }),
   directoryRoleAccessReviewPolicy: automated('directoryroleaccessreviewpolicy', 'restore gaps batch 2: update in place through Graph beta of the default settings of admin role access reviews', { view: 'graph-rest-beta' }),
   multiTenantOrganizationIdentitySyncPolicyTemplate: automated('multitenantorganizationidentitysyncpolicytemplate', 'restore gaps batch 2: update in place; the template only affects tenants that join later'),
-  multiTenantOrganizationPartnerConfigurationTemplate: automated('multitenantorganizationpartnerconfigurationtemplate', 'restore gaps batch 2: update in place; the template only affects tenants that join later'),
+  multiTenantOrganizationPartnerConfigurationTemplate: automated('multitenantorganizationpartnerconfigurationtemplate', 'restore gaps batch 2: update in place of when the template applies; the template only affects tenants that join later; its cross-tenant access settings (inbound trust, automatic consent, B2B collaboration and direct connect) are a manual step'),
   identityUserFlowAttribute: manual('no writer yet; built-in attributes are Microsoft-managed'),
   authenticationEventListener: manual('no writer yet; it points to a custom authentication extension, which is not restored yet'),
   externalDomainFederation: automated('samlorwsfedexternaldomainfederation', 'restore gaps batch 3: update in place of the federation name and protocol; its sign-in addresses and signing certificate are a manual step, and its domains are backed up but not written, so a deleted federation is set up again by hand'),
   // Remaining kinds, batch 5: Exchange and Defender admin roles, backed up read-only; no writer is built yet.
-  exchangeRoleDefinition: manual('no writer yet; beta only, and built-in roles are Microsoft-managed'),
+  exchangeRoleDefinition: manual('Graph has no write for Exchange roles (only list and get); a writer needs Exchange Online PowerShell (New-ManagementRole), and built-in roles are Microsoft-managed'),
   exchangeRoleAssignment: manual('Exchange admin access needs a privilege review before it is granted again'),
   exchangeCustomAppScope: automated('customappscope', 'restore gaps batch 9: create and update of the name and recipient filter through Graph beta; the app role assignments that use it are not written', { view: 'graph-rest-beta' }),
-  defenderRoleDefinition: manual('no writer yet; beta only'),
+  defenderRoleDefinition: automated('unifiedroledefinition', 'restore gaps batch 21: create and update through Graph beta of custom Defender roles (name, description and permissions); built-in roles are skipped; who holds the role is restored by hand', { view: 'graph-rest-beta' }),
   defenderRoleAssignment: manual('Defender admin access needs a privilege review before it is granted again'),
-  defenderCustomAppScope: manual('no writer yet; beta only'),
+  defenderCustomAppScope: manual('Graph has no write for Defender app access scopes (list only; create, update and delete are Exchange only)'),
   // Remaining kinds, batch 6: Intune leftovers, backed up read-only; no writer is built yet.
   deviceManagementSettings: automated('intune-shared-devicemanagement', 'restore gaps batch 17: update in place through Graph beta of the compliance settings; devices with no compliance policy are never turned compliant; the device cleanup window is the device cleanup rules', { view: 'graph-rest-beta' }),
   androidDeviceOwnerEnrollmentProfile: automated('intune-androidforwork-androiddeviceownerenrollmentprofile', 'restore gaps batch 10: create and update of the profile through Graph beta; the enrollment token, QR code and Wi-Fi password are not backed up, so a profile on a secured Wi-Fi network is recreated by hand', { view: 'graph-rest-beta' }),
@@ -275,6 +276,17 @@ export const TYPE_DECISIONS = Object.freeze({
   securityZone: manual('no writer yet; beta only'),
   sharedEmailDomain: manual('no writer yet; beta only'),
   schemaExtension: manual('no writer yet; only extensions owned by this tenant\'s apps are read'),
+  // Remaining kinds, batch 9: read once the Collector holds the read permission; no writer is built yet.
+  formsSettings: automated('forms', 'restore gaps batch 20: update in place of the Forms settings through Graph beta; a backup that widens sharing outside the organisation or turns the phishing scan off is withheld for a person', { view: 'graph-rest-beta' }),
+  todoSettings: manual('no writer yet; beta only'),
+  microsoft365AppsInstallationOptions: automated('m365appsinstallationoptions', 'restore gaps batch 20: update in place of the update channel and the apps people can install'),
+  appsAndServicesSettings: automated('adminappsandservices', 'restore gaps batch 20: update in place through Graph beta; a backup that turns the Office Store on is withheld for a person', { view: 'graph-rest-beta' }),
+  adminReportSettings: automated('adminreportsettings', 'restore gaps batch 20: update in place; a backup that shows real names in usage reports again is withheld for a person'),
+  profileCardProperty: manual('no writer yet'),
+  pronounsSettings: automated('pronounssettings', 'restore gaps batch 20: update in place'),
+  defenderDetectionRule: manual('no writer yet; beta only; a rule can run response actions, so it is rebuilt turned off'),
+  teamsCatalogApp: manual('Graph does not return the app package; it is uploaded again from your own copy'),
+  engageCommunity: automated('community', 'restore gaps batch 20: update in place of the name, description and privacy; a private community is never made public, and a deleted community is set up by hand (a create makes a Microsoft 365 group and needs owners)'),
 });
 
 // Why a retried operation can never double-apply — each names the mechanism in
@@ -703,11 +715,18 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
   // SharePoint structure: hub sites, site designs and scripts, and named sites' lists,
   // columns, content types and navigation (restore/workloads/sharepointStructureWrites.mjs).
   ...SHAREPOINT_STRUCTURE_WRITE_OPERATIONS,
+  // Distribution lists through Microsoft365DSC (the keel-dsc profile): settings of a list
+  // that exists, and a list that no longer does (restore/workloads/dscDistributionGroups.mjs).
+  ...DSC_WRITE_OPERATIONS,
 });
 
-/** The version a write runs under now: its Graph version, or its module's version. */
+/**
+ * The version a write runs under now: its Graph version, or its module's version. A
+ * module pinned in code (Microsoft365DSC: the container refuses any other version) is
+ * taken from the code, so a stored proof stops counting the moment the pin moves.
+ */
 function writeVersion(declared, runtime) {
-  if (declared.kind === 'cmdlet') return runtime?.modules?.[declared.module] ?? null;
+  if (declared.kind === 'cmdlet') return declared.pinnedVersion ?? runtime?.modules?.[declared.module] ?? null;
   return declared.version;
 }
 
@@ -928,9 +947,9 @@ export const EXPANSION_INVENTORY = Object.freeze({
   crossTenantAccessPolicy: subset('policy', 'PATCH /policies/crossTenantAccessPolicy', 'Policy.ReadWrite.CrossTenantAccess',
     'update of allowedCloudEndpoints is fixture-tested; the default and partner settings are their own types'),
   crossTenantAccessPolicyConfigurationDefault: subset('policy', 'PATCH /policies/crossTenantAccessPolicy/default', 'Policy.ReadWrite.CrossTenantAccess',
-    'update of the default B2B collaboration, direct connect, inbound trust, consent and tenant restriction settings is fixture-tested'),
+    'update of the default tenant restriction and redemption order settings is fixture-tested; inbound trust, consent and the B2B lists are never written'),
   crossTenantAccessPolicyPartner: subset('policy', 'POST /policies/crossTenantAccessPolicy/partners; PATCH /policies/crossTenantAccessPolicy/partners/{tenantId}', 'Policy.ReadWrite.CrossTenantAccess',
-    'create and update are fixture-tested and keyed by the partner tenantId; Graph refuses a tenantId that does not exist; delete is refused'),
+    'create and update of tenant restrictions are fixture-tested and keyed by the partner tenantId; inbound trust, consent and the B2B lists are never written; Graph refuses a tenantId that does not exist; delete is refused'),
   permissionGrantPolicy: subset('policy', 'POST /policies/permissionGrantPolicies; PATCH /policies/permissionGrantPolicies/{id}; POST .../{id}/includes|excludes', 'Policy.ReadWrite.PermissionGrant',
     'create and update of custom policies are fixture-tested; include and exclude rules are made to match the backup when it holds them (missing ones added, extra ones removed) and the whole rule sets are read back; built-in microsoft-* policies are skipped; delete is refused'),
   adminConsentRequestPolicy: subset('policy', 'PUT /policies/adminConsentRequestPolicy', 'Policy.ReadWrite.ConsentRequest',
@@ -1085,10 +1104,10 @@ export const EXPANSION_INVENTORY = Object.freeze({
   // Remaining kinds, batch 4: Entra ID tenant settings, backed up read-only; manual until a writer is built.
   externalIdentitiesPolicy: subset('policy', 'PATCH /policies/externalIdentitiesPolicy (beta)', 'Policy.ReadWrite.ExternalIdentities',
     'update in place is fixture-tested; only the two leave settings are written'),
-  b2bManagementPolicy: subset('policy', 'PATCH /policies/b2bManagementPolicies/{id} (beta)', 'Policy.ReadWrite.B2BManagementPolicy',
-    'update in place of the definition is fixture-tested; a deleted policy is not recreated'),
-  servicePrincipalCreationPolicy: byHand('policy', 'POST /policies/servicePrincipalCreationPolicies (beta)', 'Policy.ReadWrite.ApplicationConfiguration',
-    'backed up; the include and exclude conditions are read per policy'),
+  b2bManagementPolicy: byHand('policy', 'PATCH /policies/b2bManagementPolicies/{id} (beta)', 'Policy.ReadWrite.B2BManagementPolicy',
+    'backed up; the guest invitation domain lists are trust fields, so a restore never writes them'),
+  servicePrincipalCreationPolicy: byHand('policy', 'POST /policies/servicePrincipalCreationPolicies (beta): refused to application permissions, needs a directory role', 'none (directory role only)',
+    'backed up (the Collector reads it through Global Reader); Graph answers 403 to an app without a directory role (Q256)'),
   permissionGrantPreApprovalPolicy: subset('policy', 'POST /policies/permissionGrantPreApprovalPolicies (beta)', 'Policy.ReadWrite.PermissionGrant',
     'create and update of the conditions are fixture-tested; the assignment to an app is not backed up'),
   accessReviewPolicy: subset('identity-application', 'PATCH /policies/accessReviewPolicy (beta)', 'Policy.ReadWrite.AccessReview',
@@ -1098,7 +1117,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
   multiTenantOrganizationIdentitySyncPolicyTemplate: subset('policy', 'PATCH /policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization', 'Policy.ReadWrite.CrossTenantAccess',
     'update in place is fixture-tested; it only affects tenants that join later'),
   multiTenantOrganizationPartnerConfigurationTemplate: subset('policy', 'PATCH /policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration', 'Policy.ReadWrite.CrossTenantAccess',
-    'update in place is fixture-tested; it only affects tenants that join later'),
+    'update in place of when the template applies is fixture-tested; its cross-tenant access settings are never written; it only affects tenants that join later'),
   identityUserFlowAttribute: byHand('identity-application', 'POST /identity/userFlowAttributes', 'IdentityUserFlow.ReadWrite.All',
     'backed up; built-in attributes are listed beside custom ones'),
   authenticationEventListener: byHand('identity-application', 'POST /identity/authenticationEventListeners', 'EventListener.ReadWrite.All',
@@ -1107,17 +1126,17 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'update in place is fixture-tested; its domains are backed up but not written, so a deleted federation is not recreated'),
   // Remaining kinds, batch 5: Exchange and Defender admin roles, backed up read-only; manual until a writer is built.
   exchangeRoleDefinition: byHand('identity-application', 'New-ManagementRole (Exchange Online PowerShell)', 'Exchange Organization Management role',
-    'backed up; built-in roles are listed beside custom ones'),
+    'backed up; Graph lists Exchange roles but cannot write them; built-in roles are listed beside custom ones'),
   exchangeRoleAssignment: byHand('identity-application', 'POST /roleManagement/exchange/roleAssignments (beta)', 'RoleManagement.ReadWrite.Exchange',
     'backed up; a privilege review comes before any grant'),
   exchangeCustomAppScope: subset('identity-application', 'POST /roleManagement/exchange/customAppScopes (beta); PATCH .../{id} (beta)', 'RoleManagement.ReadWrite.Exchange',
     'create and update are fixture-tested; the app role assignments that use it are not written'),
-  defenderRoleDefinition: byHand('identity-application', 'POST /roleManagement/defender/roleDefinitions (beta)', 'RoleManagement.ReadWrite.Defender',
-    'backed up; no writer yet'),
+  defenderRoleDefinition: subset('identity-application', 'POST /roleManagement/defender/roleDefinitions (beta); PATCH .../{id} (beta)', 'RoleManagement.ReadWrite.Defender',
+    'create and update of custom roles are fixture-tested; built-in roles are skipped; assignments are not written'),
   defenderRoleAssignment: byHand('identity-application', 'POST /roleManagement/defender/roleAssignments (beta)', 'RoleManagement.ReadWrite.Defender',
     'backed up; a privilege review comes before any grant'),
-  defenderCustomAppScope: byHand('identity-application', 'POST /roleManagement/defender/customAppScopes (beta)', 'RoleManagement.ReadWrite.Defender',
-    'backed up; no writer yet'),
+  defenderCustomAppScope: byHand('identity-application', 'none: Graph lists Defender app access scopes but has no create, update or delete for them', 'RoleManagement.ReadWrite.Defender',
+    'backed up; Graph cannot write Defender scopes'),
   // Remaining kinds, batch 6: Intune leftovers, backed up read-only; manual until a writer is built.
   deviceManagementSettings: subset('device-management', 'PATCH /deviceManagement (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
     'update in place of settings is fixture-tested; never loosens compliance'),
@@ -1193,6 +1212,27 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'backed up; Microsoft provisions the domain'),
   schemaExtension: byHand('administrative-configuration', 'POST /schemaExtensions', 'Application.ReadWrite.All',
     'backed up for this tenant\'s apps only; no writer yet'),
+  // Remaining kinds, batch 9: read once the Collector holds the read permission; manual until a writer is built.
+  formsSettings: subset('administrative-configuration', 'PATCH /admin/forms (beta)', 'OrgSettings-Forms.ReadWrite.All',
+    'update in place is fixture-tested; a backup that widens sharing or turns the phishing scan off is withheld'),
+  todoSettings: byHand('administrative-configuration', 'PATCH /admin/todo (beta)', 'OrgSettings-Todo.ReadWrite.All',
+    'backed up; no writer yet'),
+  microsoft365AppsInstallationOptions: subset('administrative-configuration', 'PATCH /admin/microsoft365Apps/installationOptions', 'OrgSettings-Microsoft365Install.ReadWrite.All',
+    'update in place is fixture-tested'),
+  appsAndServicesSettings: subset('administrative-configuration', 'PATCH /admin/appsAndServices (beta)', 'OrgSettings-AppsAndServices.ReadWrite.All',
+    'update in place is fixture-tested; a backup that turns the Office Store on is withheld'),
+  adminReportSettings: subset('administrative-configuration', 'PATCH /admin/reportSettings', 'ReportSettings.ReadWrite.All',
+    'update in place is fixture-tested; a backup that shows real names again is withheld'),
+  profileCardProperty: byHand('administrative-configuration', 'POST /admin/people/profileCardProperties', 'PeopleSettings.ReadWrite.All',
+    'backed up; no writer yet'),
+  pronounsSettings: subset('administrative-configuration', 'PATCH /admin/people/pronouns', 'PeopleSettings.ReadWrite.All',
+    'update in place is fixture-tested'),
+  defenderDetectionRule: byHand('policy', 'POST /security/rules/detectionRules (beta)', 'CustomDetection.ReadWrite.All',
+    'backed up; no writer yet; a rebuilt rule starts turned off'),
+  teamsCatalogApp: byHand('identity-application', 'POST /appCatalogs/teamsApps', 'AppCatalog.ReadWrite.All',
+    'backed up without the app package, which Graph does not return'),
+  engageCommunity: subset('administrative-configuration', 'PATCH /employeeExperience/communities/{id}', 'Community.ReadWrite.All',
+    'update in place of the name, description and privacy is fixture-tested; a deleted community is set up by hand'),
 });
 
 const INVENTORY_FIELDS = new Set(['batch', 'status', 'api', 'permission', 'reason']);
@@ -1344,6 +1384,39 @@ export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
   schemaExtension: Object.freeze([
     lost('configuration', 'extension definition', 'no writer yet; created again by hand with the same id, owner app and properties'),
     lost('relationship', 'values stored on users and groups', 'the values live on each object, not in the definition, and are not restored'),
+  ]),
+  // Remaining kinds, batch 9.
+  formsSettings: Object.freeze([
+    lost('configuration', 'loosened sharing', 'a backup that widens sharing outside the organisation or turns the phishing scan off is withheld for a person'),
+  ]),
+  todoSettings: Object.freeze([
+    lost('configuration', 'To Do settings', 'no writer yet; set by hand from the backup'),
+  ]),
+  microsoft365AppsInstallationOptions: Object.freeze([
+    lost('configuration', 'apps already installed', 'the setting decides what people may install from the portal; apps already on devices are not changed'),
+  ]),
+  appsAndServicesSettings: Object.freeze([
+    lost('configuration', 'Office Store turned on', 'a backup that turns the Office Store on is withheld for a person'),
+  ]),
+  adminReportSettings: Object.freeze([
+    lost('configuration', 'real names shown again', 'a backup that shows real names in usage reports again is withheld for a person'),
+  ]),
+  pronounsSettings: Object.freeze([
+    lost('configuration', 'pronouns people entered', 'each person\'s pronouns live on their own profile and are not backed up'),
+  ]),
+  profileCardProperty: Object.freeze([
+    lost('configuration', 'profile card field', 'no writer yet; added again by hand from the backup'),
+  ]),
+  defenderDetectionRule: Object.freeze([
+    lost('configuration', 'detection rule', 'no writer yet; rebuilt by hand from the backup and left off until its response actions are checked'),
+  ]),
+  teamsCatalogApp: Object.freeze([
+    lost('configuration', 'app package', 'Graph does not return the package; it is uploaded again from your own copy'),
+  ]),
+  engageCommunity: Object.freeze([
+    lost('configuration', 'deleted community', 'only updated in place; a deleted community is recreated by hand from the backup'),
+    lost('configuration', 'made public', 'a backup that makes a private community public is withheld for a person'),
+    lost('relationship', 'groupId', 'each community has a Microsoft 365 group behind it; it is never changed, and a deleted community and its group are set up again by hand'),
   ]),
 });
 

@@ -405,3 +405,34 @@ test('the worker runs a compensation only as a dry run, from the restore id alon
   // Executing the undo is an ordinary promotion of the compensation artifact.
   assert.deepEqual(JOB_HANDLERS.restore.argsFor({ artifactId: 'undo-id', mode: 'enforce' }), ['--artifact', 'undo-id', '--enforce']);
 });
+
+test('issue #666: an unread kind that holds no references never blocks undoing a create; another one does, and the CLI says why', async (t) => {
+  const client = await schemaClient(t);
+  const graph = fakeGraph();
+  const snapshotId = await seedGroups(client, [{ ...board, mailNickname: 'keel-rt-666', displayName: 'KEEL-RT-666' }]);
+  const forwardId = crypto.randomUUID();
+  await forwardDryRun(snapshotId, graph, forwardId, ['group:keel-rt-666']);
+  await promote(forwardId, graph);
+  const journal = await listJournal(client, { restoreRef: forwardId });
+  assert.deepEqual(journal.map((item) => [item.naturalKey, item.operation, item.outcome]), [['group:keel-rt-666', 'create', 'succeeded']]);
+
+  const undo = async (unread) => {
+    const deps = cliDependencies(graph);
+    deps.collectM1 = async () => Object.defineProperty([], 'unread', { value: unread.map((type) => ({ type, error: 'HTTP 500' })), enumerable: false });
+    const lines = [];
+    const id = crypto.randomUUID();
+    const dry = await runRestore({
+      readFile, dbUrl: database.url, dependencies: deps, logger: { log: (line) => lines.push(line), error() {} },
+      compensateArtifactId: forwardId, mode: 'dry-run', persistArtifactId: id, requestedBy: 'requester',
+    });
+    return { dry, lines };
+  };
+
+  const todo = await undo(['todoSettings']);
+  assert.deepEqual(todo.dry.compensation.operations.map((op) => [op.naturalKey, op.verb]), [['group:keel-rt-666', 'delete']]);
+  assert.equal(todo.dry.status, 'completed', JSON.stringify(todo.dry.results.skipped));
+
+  const other = await undo(['todoSettings', 'vppToken']);
+  assert.equal(other.dry.status, 'refused');
+  assert.ok(other.lines.some((line) => line === 'refused group:keel-rt-666: blocked-incomplete-read: deleting group:keel-rt-666 needs a full read of the target, but vppToken could not be read'), other.lines.join('\n'));
+});

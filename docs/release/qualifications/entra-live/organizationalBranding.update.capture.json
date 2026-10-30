@@ -1,20 +1,21 @@
 {
-  "restoreRef": "84d37011-7331-8505-9bae-ee220d8057db",
+  "restoreRef": "08221958-265f-8e43-b34a-dc0d5c2d3936",
   "entry": {
-    "naturalKey": "organizationalBrandingLocalization:0",
-    "resourceType": "organizationalBrandingLocalization",
+    "naturalKey": "organizationalBranding:organizationalBranding",
+    "resourceType": "organizationalBranding",
     "operation": "update",
     "targetId": "0",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-14T14:19:30.799Z",
+    "recordedAt": "2026-10-29T23:59:29.621Z",
     "priorState": {
       "id": "0",
       "cdnList": [
         "aadcdn.msftauthimages.net",
         "aadcdn.msauthimages.net"
       ],
-      "signInPageText": "KEEL-RT-148 drift",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#organization('dc25faa0-fbfe-8104-958d-41b90a49f5d8')/branding/$entity",
+      "signInPageText": "KEEL-RT-246 default drifted",
       "backgroundColor": "",
       "usernameHintText": "",
       "faviconRelativeUrl": null,
@@ -60,7 +61,8 @@
         "aadcdn.msftauthimages.net",
         "aadcdn.msauthimages.net"
       ],
-      "signInPageText": "KEEL-RT-148 default",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#organization('dc25faa0-fbfe-8104-958d-41b90a49f5d8')/branding/$entity",
+      "signInPageText": "KEEL-RT-246 default",
       "backgroundColor": "",
       "usernameHintText": "",
       "faviconRelativeUrl": null,
@@ -106,9 +108,8 @@
         "aadcdn.msftauthimages.net",
         "aadcdn.msauthimages.net"
       ],
-      "@odata.type": "#microsoft.graph.organizationalBrandingProperties",
-      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#organization('dc25faa0-fbfe-8104-958d-41b90a49f5d8')/branding/localizations/$entity",
-      "signInPageText": "KEEL-RT-148 default",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#organization('dc25faa0-fbfe-8104-958d-41b90a49f5d8')/branding/$entity",
+      "signInPageText": "KEEL-RT-246 default",
       "backgroundColor": "",
       "usernameHintText": "",
       "faviconRelativeUrl": null,

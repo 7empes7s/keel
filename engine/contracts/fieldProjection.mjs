@@ -94,6 +94,7 @@ registerFieldProjection('group', {
     'onPremisesProvisioningErrors', 'onPremisesSamAccountName', 'onPremisesSecurityIdentifier',
     'proxyAddresses', 'resourceBehaviorOptions', 'resourceProvisioningOptions',
     'securityIdentifier', 'serviceProvisioningErrors', 'theme',
+    'exchangeResourceUrls', 'sharepointResourceUrls',
   ],
   // On-prem AD correlation identifiers (SIDs, SAM/NetBIOS/domain names) are
   // sensitive infrastructure detail, never export material.

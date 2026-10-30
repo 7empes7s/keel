@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { canonicalize } from '../cir/canonicalHash.mjs';
 import { DESCRIPTORS } from '../collect/descriptors.mjs';
+import { isServerError } from '../../tools/tenant-probe/graph.mjs';
 import { can } from '../authz/can.mjs';
 import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from './evidence.mjs';
@@ -11,26 +12,59 @@ function isRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** A finished snapshot of this tenant with a recorded coverage digest. */
+function isCompletedSource(snapshot, { tenantRef }) {
+  return Boolean(snapshot)
+    && snapshot.tenant_ref === tenantRef
+    && snapshot.status === 'complete'
+    && snapshot.completed_at !== null
+    && snapshot.completed_at !== undefined
+    && isRecord(snapshot.coverage_digest);
+}
+
+const CRITICALITY = new Map(DESCRIPTORS.map(({ type, criticality }) => [type, criticality]));
+
+/**
+ * Issue #666 follow-up (owner's decision, 2026-10-29): a minor (tier3) kind
+ * that nothing could be read of because Microsoft kept answering 500, 502 or
+ * 504 does not block a baseline. It is left out of the baseline's scope and
+ * listed there (`leftOut`), and a later backup that cannot read it either does
+ * not show its baseline settings as removed. Tier1 and tier2 kinds, refusals
+ * (403), partial reads and every other failure still block.
+ */
+export function leftOutForServiceError(type, coverage) {
+  return isRecord(coverage)
+    && coverage.outcome === 'failed'
+    && isServerError(coverage.httpStatus)
+    && CRITICALITY.get(type) === 'tier3';
+}
+
+/** The kinds a snapshot's baseline leaves out for a Microsoft service error, sorted. */
+export function serviceErrorLeftOut(coverageDigest) {
+  const digest = isRecord(coverageDigest) ? coverageDigest : {};
+  return Object.keys(digest).filter((type) => leftOutForServiceError(type, digest[type])).sort();
+}
+
 /**
  * A baseline represents the whole estate, so a source is safe only when every
  * descriptor explicitly reports a successful collection. A completed snapshot
  * alone proves only that collection finished; it does not prove its coverage.
  */
 export function isEligibleBaselineSource(snapshot, { tenantRef }) {
-  if (!snapshot
-    || snapshot.tenant_ref !== tenantRef
-    || snapshot.status !== 'complete'
-    || snapshot.completed_at === null
-    || snapshot.completed_at === undefined
-    || !isRecord(snapshot.coverage_digest)) {
-    return false;
-  }
+  if (!isCompletedSource(snapshot, { tenantRef })) return false;
 
   return DESCRIPTORS.every(({ type }) => {
     const coverage = snapshot.coverage_digest[type];
     // A completed empty read is a strict coverage success, exactly like a
     // non-empty one; partial, failed and not-requested never qualify.
-    return isRecord(coverage) && (coverage.outcome === 'complete' || coverage.outcome === 'complete-empty');
+    // Unavailable (the tenant has no licence or feature for the type, #309)
+    // is not a gap either: nothing of that type can exist on the tenant.
+    // Issue #646: without this, no snapshot of a tenant without Entra ID
+    // Governance could ever seed a baseline. captureFromSnapshot still leaves
+    // the type out of the baseline's scope.
+    return isRecord(coverage)
+      && (coverage.outcome === 'complete' || coverage.outcome === 'complete-empty' || coverage.outcome === 'unavailable'
+        || leftOutForServiceError(type, coverage));
   });
 }
 
@@ -204,17 +238,20 @@ export function captureFromSnapshot(snapshot) {
     .filter((type) => isRecord(digest[type])
       && (digest[type].outcome === 'complete' || digest[type].outcome === 'complete-empty'))
     .sort();
+  const leftOut = serviceErrorLeftOut(digest)
+    .map((type) => ({ type, reason: 'microsoft-service-error', httpStatus: digest[type].httpStatus }));
   return {
     capturedAt: snapshot.completed_at,
     scope: {
       startedAt: new Date(snapshot.started_at).toISOString(),
       completedAt: new Date(snapshot.completed_at).toISOString(),
       types,
+      ...(leftOut.length ? { leftOut } : {}),
     },
   };
 }
 
-async function lockEligibleSnapshot(client, { tenantRef, snapshotId }) {
+async function lockEligibleSnapshot(client, { tenantRef, snapshotId, scoped = false }) {
   const { rows: snapshotRows } = await client.query(
     `SELECT id, tenant_ref, status, started_at, completed_at, coverage_digest
      FROM snapshot
@@ -223,18 +260,29 @@ async function lockEligibleSnapshot(client, { tenantRef, snapshotId }) {
     [snapshotId],
   );
   const snapshot = snapshotRows[0];
-  if (!isEligibleBaselineSource(snapshot, { tenantRef })) {
+  if (scoped) {
+    if (!isCompletedSource(snapshot, { tenantRef })) {
+      throw new Error(`snapshot is not a completed baseline source: ${snapshotId}`);
+    }
+  } else if (!isEligibleBaselineSource(snapshot, { tenantRef })) {
     throw new Error(`snapshot is not an eligible whole-estate baseline source: ${snapshotId}`);
   }
   return snapshot;
 }
 
+/**
+ * `scoped: true` is for the bounded recovery drill only (issue #663): it seeds
+ * from a finished snapshot even when some types could not be read. The
+ * baseline's captured scope (captureFromSnapshot) then names only the types
+ * read in full, so it never claims the whole estate. Every other caller keeps
+ * the whole-estate rule.
+ */
 export async function seedFromSnapshot(client, {
-  tenantRef, snapshotId, setBy, label, description,
+  tenantRef, snapshotId, setBy, label, description, scoped = false,
 }) {
   await client.query('BEGIN');
   try {
-    const snapshot = await lockEligibleSnapshot(client, { tenantRef, snapshotId });
+    const snapshot = await lockEligibleSnapshot(client, { tenantRef, snapshotId, scoped });
     const capture = captureFromSnapshot(snapshot);
 
     await client.query(

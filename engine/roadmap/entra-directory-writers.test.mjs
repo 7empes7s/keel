@@ -29,6 +29,7 @@ import { buildReconciliationPlan } from '../reconcile/reconciliationPlan.mjs';
 const governor = { async acquire() {}, observeRetryAfter() {} };
 const STS_TYPES = ['tokenLifetimePolicy', 'tokenIssuancePolicy', 'claimsMappingPolicy', 'homeRealmDiscoveryPolicy'];
 const WRITER_TYPES = [...STS_TYPES, 'permissionGrantPolicy', 'oauth2PermissionGrant'];
+const SETS = 'permissionGrantPolicies';
 
 /**
  * fakeGraph plus: a collection read lists the objects under it (with the
@@ -49,7 +50,7 @@ function directoryGraph({ readOverride = null } = {}) {
       return { ok: true, status: 201, body: created };
     }
     // A condition set is added to its policy's list.
-    const set = /^(\/policies\/permissionGrantPolicies\/[^/]+)\/(includes|excludes)$/.exec(path);
+    const set = new RegExp(`^(/policies/${SETS}/[^/]+)/(includes|excludes)$`).exec(path);
     if (set && request.method === 'POST') {
       if (!graph.objects.has(set[1])) return { ok: false, status: 404, body: null };
       const listPath = `${set[1]}/${set[2]}`;
@@ -59,7 +60,7 @@ function directoryGraph({ readOverride = null } = {}) {
       return { ok: true, status: 201, body: created };
     }
     // A condition set is removed from its policy's list by its id.
-    const member = /^(\/policies\/permissionGrantPolicies\/[^/]+\/(?:includes|excludes))\/([^/]+)$/.exec(path);
+    const member = new RegExp(`^(/policies/${SETS}/[^/]+/(?:includes|excludes))/([^/]+)$`).exec(path);
     if (member && request.method === 'DELETE') {
       const list = graph.objects.get(member[1])?.value ?? [];
       const id = decodeURIComponent(member[2]);
@@ -85,7 +86,7 @@ function directoryGraph({ readOverride = null } = {}) {
         .filter((object) => !clientId || object.clientId === clientId);
       result = { ok: true, status: 200, body: { value } };
     } else {
-      const set = /^\/policies\/permissionGrantPolicies\/[^/]+\/(includes|excludes)$/.exec(path);
+      const set = new RegExp(`^/policies/${SETS}/[^/]+/(includes|excludes)$`).exec(path);
       result = set && !graph.objects.has(path) && graph.objects.has(path.replace(/\/(includes|excludes)$/, ''))
         ? { ok: true, status: 200, body: { value: [] } }
         : await read(version, requested);
@@ -483,6 +484,18 @@ test('a built-in app consent policy is skipped before any write', async () => {
   assert.equal(graph.bodies.length, 0);
 });
 
+// --------------------------------------------- app creation policies (Q256)
+
+test('Q256: an app creation policy is never written, because Graph refuses it to an app without a directory role', async () => {
+  assert.equal(Object.hasOwn(DIRECTORY_POLICY_RECORDS, 'servicePrincipalCreationPolicy'), false);
+  assert.equal(Object.hasOwn(ENTRA_WRITE_PATHS, 'servicePrincipalCreationPolicy'), false);
+  for (const operation of ENTRA_WRITE_OPERATIONS) {
+    assert.equal(isSupportedClaim(capabilityFor('servicePrincipalCreationPolicy', operation).claim), false, operation);
+  }
+  assert.equal(qualificationFor('servicePrincipalCreationPolicy').decision, 'manual');
+  assert.match(TYPE_DECISIONS.servicePrincipalCreationPolicy.reason, /directory role/);
+});
+
 // ------------------------------------------------------- delegated consents
 
 const consent = (extra = {}) => ({
@@ -522,6 +535,38 @@ test('a consent the backup cannot drive fails before any write', async () => {
   const noScope = await run(graph, [consentResource('create', consent({ scope: ' ' }))]);
   assert.match(noScope.failed[0].error, /grants no scope/);
   assert.equal(graph.bodies.length, 0);
+});
+
+test('issue #720: a dry run lists the consent fields it would change, and none once live matches', async () => {
+  const graph = directoryGraph();
+  graph.objects.set('/oauth2PermissionGrants/live-grant', { id: 'live-grant', clientId: 'sp-client', consentType: 'AllPrincipals', principalId: null, resourceId: 'sp-graph', scope: 'User.Read' });
+  const resource = consentResource('create');
+  const planned = await run(graph, [resource], { mode: 'dry-run' });
+  assert.deepEqual(planned.failed, []);
+  assert.deepEqual(planned.applied[0].changes, { fields: ['scope'] });
+  assert.equal(graph.bodies.length, 0);
+
+  const written = await run(graph, [resource]);
+  assert.deepEqual(written.applied[0].changes, { fields: ['scope'] });
+  const again = await run(graph, [resource], { mode: 'dry-run' });
+  assert.deepEqual(again.applied[0].changes, { fields: [] }, 'a consent that already matches plans no field');
+});
+
+test('issue #720: a dry run of an app consent policy names its changed fields and rule sets', async () => {
+  const graph = directoryGraph();
+  graph.objects.set(POLICY, { id: 'keel-rt-low-risk', displayName: 'KEEL-RT low risk', description: 'drifted' });
+  graph.objects.set(`${POLICY}/includes`, { value: [{ ...mediumInclude, id: 'drifted' }] });
+  graph.objects.set(`${POLICY}/excludes`, { value: [] });
+  const resource = grantResource('update', grantPolicy(), { targetId: 'keel-rt-low-risk', live: { state: 'present', targetId: 'keel-rt-low-risk', payload: graph.objects.get(POLICY) } });
+  const planned = await run(graph, [resource], { mode: 'dry-run' });
+  assert.deepEqual(planned.failed, []);
+  assert.deepEqual(planned.applied[0].changes, { fields: ['description', 'includes'], rules: { includes: { added: 1, removed: 1 } } });
+  assert.equal(graph.bodies.length, 0);
+
+  await run(graph, [resource]);
+  const settled = { ...resource, live: { state: 'present', targetId: 'keel-rt-low-risk', payload: graph.objects.get(POLICY) } };
+  const again = await run(graph, [settled], { mode: 'dry-run' });
+  assert.deepEqual(again.applied[0].changes, { fields: [] });
 });
 
 // ------------------------------------------------------- best-effort recreate

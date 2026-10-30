@@ -1,0 +1,29 @@
+{
+  "contractVersion": 1,
+  "kind": "entra-live-write-capture",
+  "gate": "entra-live-acceptance",
+  "issue": 148,
+  "tenantRef": "sha256:f7b3959300856957",
+  "resourceType": "managedEBookCategory",
+  "operation": "update",
+  "fieldProjectionContractVersion": 1,
+  "build": "05a930b58a82583d276fff1fedf6cc9dca1563e9",
+  "synthetic": false,
+  "evidenceLevel": "live-qualified",
+  "ok": true,
+  "outcome": "succeeded",
+  "outcomeDetail": null,
+  "readBackVerified": true,
+  "observedAt": "2026-10-30T01:21:24.119Z",
+  "restoreRef": "b6477c1c-2be3-880c-a9cd-8282692018fb",
+  "naturalKey": "managedEBookCategory:d7f6845b-4f92-8eb8-b9c8-e4cfbbfdf9c3",
+  "fixtureKind": "named-object",
+  "captureSha256": "f4f3e0d823c92c0c3880f1645269e90c70a6329df70a709e0193cd788bb1d238",
+  "proofRef": "docs/release/qualifications/entra-live/managedEBookCategory.update.json",
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "1dee476357d0bf8048ff3f89460741b646cc282c739a29ef6ef0a1bf4fbce0ba"
+    }
+  }
+}

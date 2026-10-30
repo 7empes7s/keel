@@ -8,8 +8,10 @@ import { test } from 'node:test';
 
 import {
   APP_SCOPE_ASSIGNMENT_READS, FEDERATION_SIGN_IN_FIELDS, IDENTITY_BEST_EFFORT, IDENTITY_NEEDS_REVIEW, IDENTITY_RECORDS, MICROSOFT_OWNER_TENANTS, applyIdentityEdges, applyIdentityObjectWrite,
-  buildIdentityObjectLedger, identityObjectOperations, planIdentityEdges, sameJsonStrings, userCreateBody,
+  buildIdentityObjectLedger, identityObjectOperations, planIdentityEdges, userCreateBody,
 } from './identityObjectOperations.mjs';
+import { defineRecord } from './recordWriter.mjs';
+import { TRUST_FIELDS, isTrustField } from './workloads/writeDeclarations.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
 
 const FAST = { readAfterWriteOptions: { attempts: 1, delayMs: 0 } };
@@ -296,9 +298,9 @@ test('restore gaps batch 2: Entra ID tenant singletons write only their settings
       { id: 'template', templateApplicationLevel: 'newPartners', userSyncInbound: { isSyncAllowed: false } },
       { userSyncInbound: { isSyncAllowed: true } }],
     ['multiTenantOrganizationPartnerConfigurationTemplate', 'v1.0', `${MTO}/multiTenantOrganizationPartnerConfiguration`,
-      { id: 'template', templateApplicationLevel: 'newPartners', inboundTrust: { isMfaAccepted: true }, automaticUserConsentSettings: { inboundAllowed: true, outboundAllowed: false } },
       { id: 'template', templateApplicationLevel: 'newPartners', inboundTrust: { isMfaAccepted: true }, automaticUserConsentSettings: { inboundAllowed: false, outboundAllowed: false } },
-      { automaticUserConsentSettings: { inboundAllowed: true, outboundAllowed: false } }],
+      { id: 'template', templateApplicationLevel: 'none', inboundTrust: { isMfaAccepted: true }, automaticUserConsentSettings: { inboundAllowed: false, outboundAllowed: false } },
+      { templateApplicationLevel: 'newPartners' }],
   ];
   for (const [type, version, path, desired, live, patched] of cases) {
     assert.equal(IDENTITY_RECORDS[type].singleton, true, type);
@@ -315,36 +317,72 @@ test('restore gaps batch 2: Entra ID tenant singletons write only their settings
   }
 });
 
-test('restore gaps batch 2: the partner configuration template never writes inbound trust', async () => {
+test('restore gaps batch 2: the partner configuration template never writes its cross-tenant access settings', async () => {
   const type = 'multiTenantOrganizationPartnerConfigurationTemplate';
   const path = '/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration';
-  const consent = (inboundAllowed) => ({ inboundAllowed, outboundAllowed: false });
-  const trust = (isMfaAccepted) => ({ isMfaAccepted, isCompliantDeviceAccepted: false, isHybridAzureADJoinedDeviceAccepted: false });
-  const template = (isMfaAccepted, inboundAllowed) => ({ id: 'template', templateApplicationLevel: 'newPartners', inboundTrust: trust(isMfaAccepted), automaticUserConsentSettings: consent(inboundAllowed) });
-  assert.equal(IDENTITY_RECORDS[type].writable.includes('inboundTrust'), false);
+  const access = (accessType) => ({ usersAndGroups: { accessType, targets: [{ target: 'AllUsers', targetType: 'user' }] }, applications: { accessType, targets: [{ target: 'AllApplications', targetType: 'application' }] } });
+  // A tenant that trusts its partners: claims accepted, no consent prompt, everyone allowed both ways.
+  const open = {
+    inboundTrust: { isMfaAccepted: true, isCompliantDeviceAccepted: true, isHybridAzureADJoinedDeviceAccepted: true },
+    automaticUserConsentSettings: { inboundAllowed: true, outboundAllowed: true },
+    b2bCollaborationInbound: access('allowed'), b2bCollaborationOutbound: access('allowed'),
+    b2bDirectConnectInbound: access('allowed'), b2bDirectConnectOutbound: access('allowed'),
+  };
+  const closed = {
+    inboundTrust: { isMfaAccepted: false, isCompliantDeviceAccepted: false, isHybridAzureADJoinedDeviceAccepted: false },
+    automaticUserConsentSettings: { inboundAllowed: false, outboundAllowed: false },
+    b2bCollaborationInbound: access('blocked'), b2bCollaborationOutbound: access('blocked'),
+    b2bDirectConnectInbound: access('blocked'), b2bDirectConnectOutbound: access('blocked'),
+  };
+  const trustFields = Object.keys(open);
+  assert.deepEqual([...TRUST_FIELDS[type]].sort(), [...trustFields].sort());
+  assert.deepEqual(IDENTITY_RECORDS[type].writable, ['templateApplicationLevel']);
+  for (const field of trustFields) assert.equal(isTrustField(type, field), true, field);
+  const template = (level, settings) => ({ id: 'template', templateApplicationLevel: level, ...settings });
   const run = async (desired, live) => {
     const graph = idoFakeGraph({ seed: { [path]: live } });
     const result = await applyIdentityObjectWrite(graph, { naturalKey: type, resourceType: type, payload: desired, references: [], live: { state: 'present', payload: live } }, 'update', FAST);
     return { result, writes: graph.calls.filter((call) => call.method !== 'GET' && call.method !== undefined) };
   };
 
-  // Only inbound trust differs: nothing is written, and the step says to change it by hand.
-  let { result, writes } = await run(template(true, false), template(false, false));
-  assert.equal(writes.length, 0, 'no write when only inbound trust differs');
-  assert.match(result.skipped?.reason ?? '', /^manual: Inbound trust .* never changes it/);
+  // A backup that opens every cross-tenant setting: nothing is written, and the step names every field.
+  let { result, writes } = await run(template('newPartners', open), template('newPartners', closed));
+  assert.equal(writes.length, 0, 'no write when only cross-tenant settings differ');
+  assert.match(result.skipped?.reason ?? '', /^manual: The cross-tenant access settings .* A restore never changes them/);
+  assert.equal(result.skipped.completion.requirement, 'crossTenantAccess');
+  assert.deepEqual([...result.skipped.completion.fields].sort(), [...trustFields].sort());
 
-  // Inbound trust and another setting differ: only the other setting is sent, and inbound trust is a step.
-  ({ result, writes } = await run(template(true, true), template(false, false)));
-  assert.equal(result.failed, undefined, result.failed?.error);
-  assert.equal(writes.length, 1);
-  assert.deepEqual(writes[0].body, { automaticUserConsentSettings: consent(true) });
-  assert.deepEqual(result.applied.completion.map((step) => step.requirement), ['inboundTrust']);
+  // Each field on its own is withheld too, in either direction.
+  for (const field of trustFields) {
+    for (const [want, now] of [[open, closed], [closed, open]]) {
+      ({ result, writes } = await run(template('newPartners', { ...now, [field]: want[field] }), template('newPartners', now)));
+      assert.equal(writes.length, 0, field);
+      assert.deepEqual(result.skipped?.completion?.fields, [field]);
+    }
+  }
 
-  // Inbound trust is the same: the write goes ahead with no extra step.
-  ({ result, writes } = await run(template(false, true), template(false, false)));
+  // When the template applies differs too, only that is sent; the cross-tenant settings stay a step.
+  ({ result, writes } = await run(template('newPartners', open), template('none', closed)));
   assert.equal(result.failed, undefined, result.failed?.error);
-  assert.deepEqual(writes.map((call) => call.body), [{ automaticUserConsentSettings: consent(true) }]);
+  assert.deepEqual(writes.map((call) => call.body), [{ templateApplicationLevel: 'newPartners' }]);
+  assert.deepEqual(result.applied.completion.map((step) => step.requirement), ['crossTenantAccess']);
+  assert.deepEqual([...result.applied.completion[0].fields].sort(), [...trustFields].sort());
+
+  // The cross-tenant settings are the same: the write goes ahead with no extra step.
+  ({ result, writes } = await run(template('newPartners', closed), template('none', closed)));
+  assert.equal(result.failed, undefined, result.failed?.error);
+  assert.deepEqual(writes.map((call) => call.body), [{ templateApplicationLevel: 'newPartners' }]);
   assert.equal(result.applied.completion, undefined);
+});
+
+test('the trust-field rule holds for record writers: a record that declares a trust field throws at load', () => {
+  assert.throws(() => defineRecord({ resourceType: 'multiTenantOrganizationPartnerConfigurationTemplate', singleton: true, operations: ['update'], writable: ['templateApplicationLevel', 'automaticUserConsentSettings'] }),
+    /declares trust, certificate or sign-in fields a restore never writes: automaticUserConsentSettings/);
+  assert.throws(() => defineRecord({ resourceType: 'b2bManagementPolicy', operations: ['update'], writable: ['definition'] }), /definition/);
+  assert.throws(() => defineRecord({ resourceType: 'anyType', operations: ['create'], writable: ['displayName'], createOnly: ['signingCertificate'] }), /signingCertificate/);
+  for (const record of Object.values(IDENTITY_RECORDS)) {
+    assert.deepEqual((record.writable ?? []).filter((field) => isTrustField(record.resourceType, field)), [], record.resourceType);
+  }
 });
 
 test('restore gaps batch 2: a tenant singleton already equal to the backup is not written', async () => {
@@ -378,30 +416,16 @@ const preApprovalCondition = (scopeType) => ({
 });
 const FEDERATIONS = '/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation';
 
-test('restore gaps batch 3: the guest domain restriction writes only its definition, in place, and reads back', async () => {
-  const live = { id: 'b2b-1', displayName: 'B2B policy', isOrganizationDefault: true, definition: b2bDefinition([]) };
-  const desired = { ...live, displayName: 'Renamed', isOrganizationDefault: false, definition: b2bDefinition(['keel-rt-blocked.example']) };
-  const graph = idoFakeGraph({ seed: { [`${B2B}/b2b-1`]: live } });
-  const result = await applyIdentityObjectWrite(graph, { naturalKey: 'b2b-1', resourceType: 'b2bManagementPolicy', payload: desired, references: [], live: { state: 'present', targetId: 'b2b-1', payload: live } }, 'update', FAST);
-  assert.equal(result.failed, undefined, result.failed?.error);
-  const writes = graph.calls.filter((call) => call.method === 'PATCH');
-  assert.equal(writes.length, 1);
-  assert.equal(writes[0].version, 'beta');
-  assert.equal(writes[0].path, `${B2B}/b2b-1`);
-  assert.deepEqual(writes[0].body, { definition: desired.definition }, 'never its name or default flag');
-});
-
-test('restore gaps batch 3: a definition Graph returns with other spacing is not written again', async () => {
-  const backup = b2bDefinition(['keel-rt-blocked.example']);
-  const spaced = [JSON.stringify(JSON.parse(backup[0]), null, 2)];
-  assert.equal(sameJsonStrings(backup, spaced), true);
-  assert.equal(sameJsonStrings(backup, b2bDefinition([])), false);
-  assert.equal(sameJsonStrings(['not json'], ['not json']), true, 'text that is not JSON is compared as text');
-  const live = { id: 'b2b-1', displayName: 'B2B policy', definition: spaced };
-  const graph = idoFakeGraph({ seed: { [`${B2B}/b2b-1`]: live } });
-  const result = await applyIdentityObjectWrite(graph, { naturalKey: 'b2b-1', resourceType: 'b2bManagementPolicy', payload: { ...live, definition: backup }, references: [], live: { state: 'present', targetId: 'b2b-1', payload: live } }, 'update', FAST);
-  assert.equal(result.failed, undefined, result.failed?.error);
-  assert.equal(graph.calls.filter((call) => call.method === 'PATCH').length, 0);
+test('restore gaps batch 3: the guest invitation domain lists are never written', async () => {
+  assert.equal(IDENTITY_RECORDS.b2bManagementPolicy, undefined);
+  assert.equal(isTrustField('b2bManagementPolicy', 'definition'), true);
+  const live = { id: 'b2b-1', displayName: 'B2B policy', isOrganizationDefault: true, definition: b2bDefinition(['keel-rt-blocked.example']) };
+  for (const definition of [b2bDefinition([]), b2bDefinition(['keel-rt-blocked.example', 'keel-rt-other.example'])]) {
+    const graph = idoFakeGraph({ seed: { [`${B2B}/b2b-1`]: live } });
+    const result = await applyIdentityObjectWrite(graph, { naturalKey: 'b2b-1', resourceType: 'b2bManagementPolicy', payload: { ...live, definition }, references: [], live: { state: 'present', targetId: 'b2b-1', payload: live } }, 'update', FAST);
+    assert.equal(result.applied, undefined);
+    assert.equal(graph.calls.filter((call) => call.method !== 'GET' && call.method !== undefined).length, 0);
+  }
 });
 
 test('restore gaps batch 3: a deleted guest domain restriction or federation is never recreated', async () => {
@@ -496,9 +520,9 @@ test('an Exchange app access scope an app role assignment uses never has its fil
     const { result, writes } = await run(broader, { mode });
     assert.equal(result.applied, undefined, `${mode}: the filter is withheld`);
     assert.match(result.skipped?.reason ?? '', /^manual: .*used by 1 app role assignment/);
-    assert.deepEqual(result.skipped.completion, {
+    assert.deepEqual(result.skipped.completion, [{
       kind: 'manual-setting', requirement: 'exchangeAppScopeFilter', fields: ['customAttributes'], description: result.skipped.reason.replace(/^manual: /, ''),
-    });
+    }]);
     assert.equal(writes.length, 0, `${mode}: nothing is written`);
   }
   // A name change alone still writes.
@@ -562,7 +586,7 @@ test('the app scope guard fails closed when the beta assignment list pages unsta
   // live 3,3,3,1,3,0,... pattern): the filter is still held back.
   const missed = await run({ reads: [[...others(4), others(1)[0]]] });
   assert.match(missed.result.skipped?.reason ?? '', /^manual: It could not be confirmed that no app role assignment uses this app access scope \(a read of the app role assignments repeated rows \(4 distinct of 5\)/);
-  assert.equal(missed.result.skipped.completion.requirement, 'exchangeAppScopeFilter');
+  assert.deepEqual(missed.result.skipped.completion.map((step) => step.requirement), ['exchangeAppScopeFilter']);
   assert.equal(missed.patches.length, 0);
 
   // Reads without repeats that disagree are doubted too, even when none names the scope.
@@ -625,7 +649,8 @@ test('a guest federation restore never writes its sign-in endpoints or signing c
       const { result, writes } = await run({ ...live, [field]: value }, mode);
       assert.equal(result.applied, undefined, `${field} (${mode}) is withheld`);
       assert.match(result.skipped?.reason ?? '', new RegExp(`^manual: .*${field}`), `${field} (${mode})`);
-      assert.deepEqual(result.skipped.completion.fields, [field]);
+      // #695: a list of steps, like every other completion, so a run can read it.
+      assert.deepEqual(result.skipped.completion.map((step) => [step.requirement, step.fields]), [['externalDomainFederationSignIn', [field]]]);
       assert.equal(writes.length, 0, `${field} (${mode}): nothing is written`);
     }
     // The name differs too: only the name is written, the sign-in field is a step.
@@ -768,4 +793,326 @@ test('restore gaps batch 17: a SharePoint restore never loosens who can reach fi
   const result = await applyIdentityObjectWrite(graph, { naturalKey: 'sharepointSettings', resourceType: 'sharepointSettings', payload: sharepoint, references: [], live: { state: 'present', payload: loose } }, 'update', FAST);
   assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
   assert.deepEqual(graph.calls.find((call) => call.method === 'PATCH').body, { isLegacyAuthProtocolsEnabled: false });
+});
+
+// ------------------------------------------- restore gaps, batch 20: admin center org settings
+
+const FORMS = Object.freeze({
+  settings: {
+    isBingImageSearchEnabled: true, isExternalSendFormEnabled: false, isExternalShareCollaborationEnabled: false,
+    isExternalShareResultEnabled: false, isExternalShareTemplateEnabled: false, isInOrgFormsPhishingScanEnabled: true,
+    isRecordIdentityByDefaultEnabled: true,
+  },
+});
+
+// These settings are tenant-wide: a customer tenant writes them, the test
+// tenant only with the tenant-wide option (tested below).
+const CUSTOMER = Object.freeze({ ...FAST, tenantRef: 'sha256:customer0000000' });
+const singletonWrite = (graph, resourceType, payload, live, ctx = CUSTOMER) => applyIdentityObjectWrite(graph,
+  { naturalKey: resourceType, resourceType, payload, references: [], live: { state: 'present', payload: live } }, 'update', ctx);
+const writesOf = (graph) => graph.calls.filter((call) => call.method !== 'GET' && call.method !== undefined);
+
+test('restore gaps batch 20: each admin center setting is one object updated in place on its own route', () => {
+  const expected = {
+    formsSettings: ['beta', '/admin/forms', ['settings'], 'OrgSettings-Forms.ReadWrite.All'],
+    microsoft365AppsInstallationOptions: ['v1.0', '/admin/microsoft365Apps/installationOptions', ['updateChannel', 'appsForWindows', 'appsForMac'], 'OrgSettings-Microsoft365Install.ReadWrite.All'],
+    appsAndServicesSettings: ['beta', '/admin/appsAndServices', ['settings'], 'OrgSettings-AppsAndServices.ReadWrite.All'],
+    adminReportSettings: ['v1.0', '/admin/reportSettings', ['displayConcealedNames'], 'ReportSettings.ReadWrite.All'],
+    pronounsSettings: ['v1.0', '/admin/people/pronouns', ['isEnabledInOrganization'], 'PeopleSettings.ReadWrite.All'],
+  };
+  for (const [type, [version, collection, writable, permission]] of Object.entries(expected)) {
+    const record = IDENTITY_RECORDS[type];
+    assert.equal(record.singleton, true, type);
+    assert.deepEqual(record.operations, ['update'], type);
+    assert.deepEqual({ version: record.version, collection: record.collection, writable: [...record.writable], permission: record.permission },
+      { version, collection, writable, permission }, type);
+  }
+  const community = IDENTITY_RECORDS.engageCommunity;
+  assert.equal(community.singleton, false);
+  assert.deepEqual(community.operations, ['update'], 'a community is never created or deleted');
+  assert.deepEqual([...community.writable], ['displayName', 'description', 'privacy']);
+});
+
+test('restore gaps batch 20: Forms settings are written back as one settings object', async () => {
+  const path = '/admin/forms';
+  const live = { settings: { ...FORMS.settings, isBingImageSearchEnabled: false } };
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await singletonWrite(graph, 'formsSettings', { '@odata.context': 'x', ...FORMS }, live);
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  const writes = writesOf(graph);
+  assert.equal(writes.length, 1);
+  assert.deepEqual([writes[0].method, writes[0].version, writes[0].path], ['PATCH', 'beta', path]);
+  assert.deepEqual(writes[0].body, { settings: FORMS.settings }, 'the whole settings object, no annotation');
+  assert.deepEqual(result.applied.changes.fields, ['settings']);
+});
+
+test('restore gaps batch 20: a Forms restore never widens sharing outside the organisation or turns the phishing scan off', async () => {
+  const path = '/admin/forms';
+  for (const [field, loose] of [['isExternalSendFormEnabled', true], ['isExternalShareCollaborationEnabled', true],
+    ['isExternalShareResultEnabled', true], ['isExternalShareTemplateEnabled', true], ['isInOrgFormsPhishingScanEnabled', false]]) {
+    const graph = idoFakeGraph({ seed: { [path]: FORMS } });
+    const backup = { settings: { ...FORMS.settings, [field]: loose, isBingImageSearchEnabled: false } };
+    const result = await singletonWrite(graph, 'formsSettings', backup, FORMS);
+    assert.match(result.skipped?.reason ?? '', /never loosens/, field);
+    assert.deepEqual(result.skipped.completion.fields, [`settings.${field}`], field);
+    assert.match(result.skipped.completion.portalPath, /Microsoft Forms/);
+    assert.equal(writesOf(graph).length, 0, field);
+  }
+  // Tightening is written: the backup turns external sending off again.
+  const loose = { settings: { ...FORMS.settings, isExternalSendFormEnabled: true } };
+  const graph = idoFakeGraph({ seed: { [path]: loose } });
+  const result = await singletonWrite(graph, 'formsSettings', FORMS, loose);
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.deepEqual(writesOf(graph)[0].body, { settings: FORMS.settings });
+});
+
+test('restore gaps batch 20: install options, apps and services, report privacy and pronouns send only what changed', async () => {
+  const cases = [
+    ['microsoft365AppsInstallationOptions', '/admin/microsoft365Apps/installationOptions', 'v1.0',
+      { updateChannel: 'current', appsForWindows: { isMicrosoft365AppsEnabled: true, isVisioEnabled: true }, appsForMac: { isMicrosoft365AppsEnabled: true } },
+      { updateChannel: 'semiAnnual', appsForWindows: { isMicrosoft365AppsEnabled: true, isVisioEnabled: false }, appsForMac: { isMicrosoft365AppsEnabled: true } },
+      { updateChannel: 'current', appsForWindows: { isMicrosoft365AppsEnabled: true, isVisioEnabled: true } }],
+    ['appsAndServicesSettings', '/admin/appsAndServices', 'beta',
+      { settings: { isOfficeStoreEnabled: false, isAppAndServicesTrialEnabled: true } },
+      { settings: { isOfficeStoreEnabled: false, isAppAndServicesTrialEnabled: false } },
+      { settings: { isOfficeStoreEnabled: false, isAppAndServicesTrialEnabled: true } }],
+    ['adminReportSettings', '/admin/reportSettings', 'v1.0', { displayConcealedNames: true }, { displayConcealedNames: false }, { displayConcealedNames: true }],
+    ['pronounsSettings', '/admin/people/pronouns', 'v1.0', { isEnabledInOrganization: false }, { isEnabledInOrganization: true }, { isEnabledInOrganization: false }],
+  ];
+  for (const [type, path, version, backup, live, body] of cases) {
+    const graph = idoFakeGraph({ seed: { [path]: live } });
+    const result = await singletonWrite(graph, type, backup, live);
+    assert.equal(result.failed ?? result.skipped, undefined, `${type}: ${JSON.stringify(result)}`);
+    const writes = writesOf(graph);
+    assert.equal(writes.length, 1, type);
+    assert.deepEqual([writes[0].method, writes[0].version, writes[0].path], ['PATCH', version, path], type);
+    assert.deepEqual(writes[0].body, body, type);
+  }
+});
+
+test('restore gaps batch 20: a restore never turns the Office Store on or shows real names in reports again', async () => {
+  const store = { settings: { isOfficeStoreEnabled: false, isAppAndServicesTrialEnabled: true } };
+  let graph = idoFakeGraph({ seed: { '/admin/appsAndServices': store } });
+  let result = await singletonWrite(graph, 'appsAndServicesSettings', { settings: { isOfficeStoreEnabled: true, isAppAndServicesTrialEnabled: false } }, store);
+  assert.match(result.skipped?.reason ?? '', /Office Store add-ins; a restore never loosens/);
+  assert.deepEqual(result.skipped.completion.fields, ['settings.isOfficeStoreEnabled']);
+  assert.equal(writesOf(graph).length, 0, 'withheld whole: the trial setting is not written either');
+
+  graph = idoFakeGraph({ seed: { '/admin/reportSettings': { displayConcealedNames: true } } });
+  result = await singletonWrite(graph, 'adminReportSettings', { displayConcealedNames: false }, { displayConcealedNames: true });
+  assert.match(result.skipped?.reason ?? '', /real user, group and site names/);
+  assert.equal(writesOf(graph).length, 0);
+});
+
+test('restore gaps batch 20: a dry run plans the changed field and writes nothing', async () => {
+  const path = '/admin/people/pronouns';
+  const graph = idoFakeGraph({ seed: { [path]: { isEnabledInOrganization: true } } });
+  const result = await applyIdentityObjectWrite(graph, {
+    naturalKey: 'pronounsSettings', resourceType: 'pronounsSettings', payload: { isEnabledInOrganization: false }, references: [],
+    live: { state: 'present', payload: { isEnabledInOrganization: true } },
+  }, 'update', { ...CUSTOMER, mode: 'dry-run' });
+  assert.deepEqual(result.applied.changes.fields, ['isEnabledInOrganization']);
+  assert.equal(writesOf(graph).length, 0);
+});
+
+// Review of PR #673: these five are tenant-wide, so on the test tenant they pass
+// the same gate as the workload writers' tenant-wide objects (fixtureGuard.mjs).
+const TENANT_WIDE_CASES = Object.freeze([
+  ['formsSettings', '/admin/forms', FORMS, { settings: { ...FORMS.settings, isBingImageSearchEnabled: false } }],
+  ['microsoft365AppsInstallationOptions', '/admin/microsoft365Apps/installationOptions',
+    { updateChannel: 'current', appsForWindows: { isVisioEnabled: true } }, { updateChannel: 'current', appsForWindows: { isVisioEnabled: false } }],
+  ['appsAndServicesSettings', '/admin/appsAndServices',
+    { settings: { isOfficeStoreEnabled: false, isAppAndServicesTrialEnabled: true } }, { settings: { isOfficeStoreEnabled: false, isAppAndServicesTrialEnabled: false } }],
+  ['adminReportSettings', '/admin/reportSettings', { displayConcealedNames: true }, { displayConcealedNames: false }],
+  ['pronounsSettings', '/admin/people/pronouns', { isEnabledInOrganization: false }, { isEnabledInOrganization: true }],
+]);
+const TEST_TENANT = Object.freeze({ ...FAST, tenantRef: 'sha256:keeltesttenant0', testTenantRefs: ['sha256:keeltesttenant0'] });
+
+test('restore gaps batch 20: the five admin center settings are marked tenant-wide, and only they are', () => {
+  const marked = Object.values(IDENTITY_RECORDS).filter((record) => record.tenantWide).map((record) => record.resourceType).sort();
+  assert.deepEqual(marked, ['adminReportSettings', 'appsAndServicesSettings', 'formsSettings', 'microsoft365AppsInstallationOptions', 'pronounsSettings']);
+  assert.equal(IDENTITY_RECORDS.engageCommunity.tenantWide, false, 'a community is one object, not a tenant setting');
+});
+
+test('restore gaps batch 20: on the test tenant a tenant-wide setting is refused without the tenant-wide option, in the dry run and the write', async () => {
+  for (const [type, path, backup, live] of TENANT_WIDE_CASES) {
+    for (const mode of ['dry-run', 'enforce']) {
+      const graph = idoFakeGraph({ seed: { [path]: live } });
+      const result = await singletonWrite(graph, type, backup, live, { ...TEST_TENANT, mode });
+      assert.equal(result.applied, undefined, `${type} ${mode}: ${JSON.stringify(result)}`);
+      assert.match(result.skipped?.reason ?? '', /tenant-wide and needs a dry run made with --allow-tenant-wide-test-writes/, `${type} ${mode}`);
+      assert.match(result.skipped.reason, new RegExp(type));
+      assert.equal(graph.calls.length, 0, `${type} ${mode}: nothing is read or written`);
+    }
+  }
+});
+
+test('restore gaps batch 20: on the test tenant the tenant-wide option lets the setting be written', async () => {
+  for (const [type, path, backup, live] of TENANT_WIDE_CASES) {
+    const graph = idoFakeGraph({ seed: { [path]: live } });
+    const result = await singletonWrite(graph, type, backup, live, { ...TEST_TENANT, allowTenantWide: true });
+    assert.equal(result.failed ?? result.skipped, undefined, `${type}: ${JSON.stringify(result)}`);
+    assert.equal(writesOf(graph).length, 1, type);
+    // Only exactly true opens it.
+    const other = idoFakeGraph({ seed: { [path]: live } });
+    const refused = await singletonWrite(other, type, backup, live, { ...TEST_TENANT, allowTenantWide: 'true' });
+    assert.match(refused.skipped?.reason ?? '', /tenant-wide/, type);
+    assert.equal(writesOf(other).length, 0, type);
+  }
+});
+
+test('restore gaps batch 20: a tenant-wide setting is not written when the target tenant is not known', async () => {
+  for (const [type, path, backup, live] of TENANT_WIDE_CASES) {
+    for (const tenantRef of [undefined, null, '']) {
+      const graph = idoFakeGraph({ seed: { [path]: live } });
+      const result = await singletonWrite(graph, type, backup, live, { ...FAST, tenantRef, allowTenantWide: true });
+      assert.match(result.skipped?.reason ?? '', /tenant-wide setting and the target tenant is not known/, `${type} ${tenantRef}`);
+      assert.equal(writesOf(graph).length, 0, type);
+    }
+  }
+});
+
+test('restore gaps batch 20: a tenant-wide setting that already matches is not refused on the test tenant', async () => {
+  for (const [type, path, backup] of TENANT_WIDE_CASES) {
+    const graph = idoFakeGraph({ seed: { [path]: backup } });
+    const result = await singletonWrite(graph, type, backup, backup, TEST_TENANT);
+    assert.equal(result.failed ?? result.skipped, undefined, `${type}: ${JSON.stringify(result)}`);
+    assert.deepEqual(result.applied.changes.fields, [], type);
+    assert.equal(writesOf(graph).length, 0, type);
+  }
+});
+
+test('restore gaps batch 20: the loosening refusal still comes first on the test tenant', async () => {
+  const graph = idoFakeGraph({ seed: { '/admin/reportSettings': { displayConcealedNames: true } } });
+  const result = await singletonWrite(graph, 'adminReportSettings', { displayConcealedNames: false }, { displayConcealedNames: true },
+    { ...TEST_TENANT, allowTenantWide: true });
+  assert.match(result.skipped?.reason ?? '', /never loosens/);
+  assert.equal(writesOf(graph).length, 0);
+});
+
+test('restore gaps batch 20: a Viva Engage community is updated in place and never made public', async () => {
+  const collection = '/employeeExperience/communities';
+  const backup = { id: 'community-1', displayName: 'KEEL-RT-community', description: 'Fixture', privacy: 'private', groupId: 'group-1' };
+  const drifted = { ...backup, description: 'Drifted' };
+  let graph = idoFakeGraph({ seed: { [`${collection}/community-1`]: drifted } });
+  let result = await applyIdentityObjectWrite(graph, {
+    naturalKey: 'community-1', resourceType: 'engageCommunity', payload: backup, references: [],
+    live: { state: 'present', targetId: 'community-1', payload: drifted },
+  }, 'update', FAST);
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  const writes = writesOf(graph);
+  assert.equal(writes.length, 1);
+  assert.deepEqual([writes[0].method, writes[0].version, writes[0].path], ['PATCH', 'v1.0', `${collection}/community-1`]);
+  assert.deepEqual(writes[0].body, { description: 'Fixture' }, 'the group behind it is never sent');
+
+  const live = { ...backup, privacy: 'private' };
+  graph = idoFakeGraph({ seed: { [`${collection}/community-1`]: live } });
+  result = await applyIdentityObjectWrite(graph, {
+    naturalKey: 'community-1', resourceType: 'engageCommunity', payload: { ...backup, privacy: 'Public', description: 'Other' }, references: [],
+    live: { state: 'present', targetId: 'community-1', payload: live },
+  }, 'update', FAST);
+  assert.match(result.skipped?.reason ?? '', /makes the community public/);
+  assert.equal(writesOf(graph).length, 0);
+
+  for (const verb of ['create', 'delete']) {
+    result = await applyIdentityObjectWrite(idoFakeGraph(), { naturalKey: 'community-1', resourceType: 'engageCommunity', payload: backup, references: [] }, verb, FAST);
+    assert.match(result.failed?.error ?? '', /unsupported operation/, verb);
+  }
+});
+
+test('restore gaps batch 20: the loosening guard fails closed when live does not hold the field', async () => {
+  for (const live of [{}, { settings: null }, { settings: { isBingImageSearchEnabled: true } }]) {
+    const graph = idoFakeGraph({ seed: { '/admin/forms': live } });
+    const backup = { settings: { ...FORMS.settings, isExternalShareResultEnabled: true } };
+    const result = await singletonWrite(graph, 'formsSettings', backup, live);
+    assert.match(result.skipped?.reason ?? '', /never loosens/, JSON.stringify(live));
+    assert.equal(writesOf(graph).length, 0);
+  }
+  const graph = idoFakeGraph({ seed: { '/employeeExperience/communities/c-1': { id: 'c-1', displayName: 'X' } } });
+  const result = await applyIdentityObjectWrite(graph, {
+    naturalKey: 'c-1', resourceType: 'engageCommunity', payload: { id: 'c-1', displayName: 'X', privacy: 'public' }, references: [],
+    live: { state: 'present', targetId: 'c-1', payload: { id: 'c-1', displayName: 'X' } },
+  }, 'update', FAST);
+  assert.match(result.skipped?.reason ?? '', /makes the community public/);
+});
+
+test('restore gaps batch 20: a settings member Graph added after the backup is not a difference', async () => {
+  const path = '/admin/forms';
+  const live = { settings: { ...FORMS.settings, isNewerBetaSetting: true } };
+  let graph = idoFakeGraph({ seed: { [path]: live } });
+  let result = await singletonWrite(graph, 'formsSettings', FORMS, live);
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.equal(writesOf(graph).length, 0, 'nothing changed, so nothing is written');
+
+  // A real change is written and reads back, although live keeps the newer member.
+  const drifted = { settings: { ...live.settings, isBingImageSearchEnabled: false } };
+  graph = idoFakeGraph({ seed: { [path]: drifted } });
+  result = await singletonWrite(graph, 'formsSettings', FORMS, drifted);
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.deepEqual(writesOf(graph)[0].body, { settings: FORMS.settings });
+});
+
+// ------------------------------------------------- restore gaps, batch 21
+
+const DEFENDER_ROLES = '/roleManagement/defender/roleDefinitions';
+// The provider object, so its role list reads as empty rather than missing.
+const DEFENDER = { '/roleManagement/defender': {} };
+const defenderRole = (extra = {}) => ({
+  id: 'role-src', displayName: 'KEEL-RT-defender-role', description: 'Reads security data', isBuiltIn: false, isEnabled: true,
+  rolePermissions: [{ allowedResourceActions: ['microsoft.xdr/secops/securitydata/read'] }], ...extra,
+});
+
+test('restore gaps batch 21: a custom Defender role is recreated with its permissions and updated in place', async () => {
+  const backup = defenderRole();
+  const graph = idoFakeGraph({ seed: DEFENDER });
+  const created = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload: backup, references: [] }, 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.equal(post.version, 'beta');
+  assert.equal(post.path, DEFENDER_ROLES);
+  assert.deepEqual(post.body, { displayName: 'KEEL-RT-defender-role', description: 'Reads security data', rolePermissions: backup.rolePermissions });
+
+  const drifted = defenderRole({ id: 'role-1', description: 'Changed', rolePermissions: [{ allowedResourceActions: ['microsoft.xdr/secops/securitydata/read', 'microsoft.xdr/secops/securitydata/manage'] }] });
+  const second = idoFakeGraph({ seed: { ...DEFENDER, [`${DEFENDER_ROLES}/role-1`]: drifted } });
+  const updated = await applyIdentityObjectWrite(second, {
+    naturalKey: 'role-1', resourceType: 'defenderRoleDefinition', payload: { ...backup, id: 'role-1' }, references: [],
+    live: { state: 'present', targetId: 'role-1', payload: drifted },
+  }, 'update', FAST);
+  assert.equal(updated.failed, undefined, updated.failed?.error);
+  const patch = second.calls.find((call) => call.method === 'PATCH');
+  assert.equal(patch.path, `${DEFENDER_ROLES}/role-1`);
+  assert.deepEqual(patch.body, { description: 'Reads security data', rolePermissions: backup.rolePermissions }, 'the wider permission is taken away');
+});
+
+test('restore gaps batch 21: a built-in or unmarked Defender role, or one with no permissions, is never written', async () => {
+  for (const [payload, expect] of [
+    [defenderRole({ isBuiltIn: true, displayName: 'Security Reader' }), /^manual: "Security Reader" is a built-in Defender role/],
+    [defenderRole({ isBuiltIn: undefined }), /does not say whether this Defender role is built in/],
+  ]) {
+    const graph = idoFakeGraph({ seed: DEFENDER });
+    const result = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload, references: [] }, 'create', FAST);
+    assert.match(result.skipped?.reason ?? '', expect);
+    assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
+  }
+  const graph = idoFakeGraph({ seed: DEFENDER });
+  const empty = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload: defenderRole({ rolePermissions: [] }), references: [] }, 'create', FAST);
+  assert.match(empty.failed?.error ?? '', /has no permissions/);
+  assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
+});
+
+test('restore gaps batch 21: a second create of a Defender role finds the first by name and never makes a twin', async () => {
+  const backup = defenderRole();
+  const graph = idoFakeGraph({ seed: DEFENDER });
+  const first = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload: backup, references: [] }, 'create', FAST);
+  assert.equal(first.failed, undefined, first.failed?.error);
+  const posts = () => graph.calls.filter((call) => call.method === 'POST').length;
+  assert.equal(posts(), 1);
+
+  const again = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload: backup, references: [] }, 'create', FAST);
+  assert.match(again.skipped?.reason ?? '', /already there/);
+  assert.equal(posts(), 1, 'the re-run writes nothing');
+
+  const other = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload: defenderRole({ description: 'Other' }), references: [] }, 'create', FAST);
+  assert.match(other.failed?.error ?? '', /already exists with other settings/);
+  assert.equal(posts(), 1, 'a role with the same name and other settings is never duplicated');
 });

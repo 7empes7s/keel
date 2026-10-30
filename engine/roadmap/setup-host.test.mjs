@@ -17,7 +17,7 @@ import { approveBootstrapPlan, executeBootstrap } from '../bootstrap/execute.mjs
 import { loadSetupState } from '../bootstrap/onboarding.mjs';
 import { createGraphSetupHost, parseSetupOperations } from '../bootstrap/graphHost.mjs';
 import {
-  COLLECTOR_APP_ID, CONTENT_READER_APP_ID, OPERATOR_ID, RESTORER_APP_ID, TENANT_ID, fakeGetToken, fixtureTenant, installFixtureGraph, writesIn,
+  COLLECTOR_APP_ID, CONTENT_READER_APP_ID, ENGAGE_WRITER_APP_ID, OPERATOR_ID, RESTORER_APP_ID, TENANT_ID, fakeGetToken, fixtureTenant, installFixtureGraph, writesIn,
 } from '../test/setupGraphFixture.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 
@@ -333,9 +333,10 @@ test('portal: the deployment host from /etc/keel-style files checks and complete
   const files = {
     tenant: join(directory, 'tenant.json'), collector: join(directory, 'tenant-target.json'),
     restorer: join(directory, 'restorer.json'), setup: join(directory, 'setup.json'),
-    reader: join(directory, 'content-reader.json'),
+    reader: join(directory, 'content-reader.json'), engage: join(directory, 'engage-writer.json'),
   };
   writeFileSync(files.reader, JSON.stringify({ tenantId: TENANT_ID, clientId: CONTENT_READER_APP_ID, certPath: '/etc/keel/reader.crt', keyPath: '/etc/keel/reader.key' }));
+  writeFileSync(files.engage, JSON.stringify({ tenantId: TENANT_ID, clientId: ENGAGE_WRITER_APP_ID, certPath: '/etc/keel/engage.crt', keyPath: '/etc/keel/engage.key' }));
   // A real certificate for the Collector, so Connections can read its expiry.
   const collectorCert = join(directory, 'collector.crt');
   const made = spawnSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(directory, 'collector.key'),
@@ -355,11 +356,11 @@ test('portal: the deployment host from /etc/keel-style files checks and complete
     const { guardedSetup } = require('./lib/action.ts');
     const { guardedSetupState } = require('./lib/setup.ts');
     const { PRINCIPAL_ID_HEADER, CAPABILITIES_HEADER } = require('./lib/principal.ts');
-    const tenant = fixture.fixtureTenant({ intuneAssigned: false, contentReader: true });
+    const tenant = fixture.fixtureTenant({ intuneAssigned: false, contentReader: true, engageWriterScopes: ['Community.ReadWrite.All'] });
     fixture.installFixtureGraph(tenant);
     const files = JSON.parse(process.env.FIXTURE_FILES);
     const owner = process.env.FIXTURE_OWNER;
-    const env = { ...process.env, KEEL_COLLECTOR_CONFIG_PATH: files.collector, KEEL_RESTORER_CONFIG_PATH: files.restorer, KEEL_SETUP_CONFIG_PATH: files.setup, KEEL_CONTENT_READER_PATH: files.reader };
+    const env = { ...process.env, KEEL_COLLECTOR_CONFIG_PATH: files.collector, KEEL_RESTORER_CONFIG_PATH: files.restorer, KEEL_SETUP_CONFIG_PATH: files.setup, KEEL_CONTENT_READER_PATH: files.reader, KEEL_ENGAGE_WRITER_CONFIG_PATH: files.engage };
     const host = () => composeSetupHost(env, { getToken: fixture.fakeGetToken(), killSwitchPath: process.env.FIXTURE_NO_KILL_SWITCH });
     const headers = new Headers({ 'content-type': 'application/json', [PRINCIPAL_ID_HEADER]: owner, [CAPABILITIES_HEADER]: 'configuration approve' });
     const post = (body) => guardedSetup({ host })(new Request('http://localhost/api/actions/setup', { method: 'POST', headers, body: JSON.stringify(body) }));
@@ -385,9 +386,14 @@ test('portal: the deployment host from /etc/keel-style files checks and complete
         assert.equal(read.steps.find(s => s.kind === 'registration').progress, 'done');
         assert.equal(read.steps.find(s => s.kind === 'workload-rbac').progress, 'waiting-for-you');
 
-        // Connections: the three apps, each with its state and certificate expiry.
+        // Connections: the four apps, each with its state and certificate expiry.
         const apps = Object.fromEntries(view.connections.map(c => [c.role, c]));
-        assert.deepEqual(view.connections.map(c => c.role), ['settings-reader', 'content-reader', 'settings-restorer']);
+        assert.deepEqual(view.connections.map(c => c.role), ['settings-reader', 'content-reader', 'settings-restorer', 'engage-writer']);
+        // The Engage writer (issue #681): its app id from its file, working with its one permission.
+        assert.equal(apps['engage-writer'].state, 'working');
+        assert.equal(apps['engage-writer'].appId, fixture.ENGAGE_WRITER_APP_ID);
+        assert.deepEqual(apps['engage-writer'].observed.grantedPermissions, ['Community.ReadWrite.All']);
+        assert.equal(view.permissions.observed.byIdentity['engage-writer'].app.appId, fixture.ENGAGE_WRITER_APP_ID);
         assert.equal(apps['settings-reader'].state, 'missing-permission', 'the Intune role is not assigned');
         assert.deepEqual(apps['settings-reader'].observed.missingRoles, ['Read Only Operator']);
         assert.ok(apps['settings-reader'].credentialExpiresInDays >= 89 && apps['settings-reader'].credentialExpiresInDays <= 90);
@@ -398,7 +404,7 @@ test('portal: the deployment host from /etc/keel-style files checks and complete
         assert.equal(apps['settings-restorer'].state, 'working');
         assert.doesNotMatch(JSON.stringify(view.connections), /\.crt|\.key|\.json/, 'no credential path reaches the page');
         const { rows: recorded } = await db.query("SELECT action FROM access_event ORDER BY id");
-        assert.deepEqual(recorded.map(r => r.action), ['recorded', 'recorded', 'recorded']);
+        assert.deepEqual(recorded.map(r => r.action), ['recorded', 'recorded', 'recorded', 'recorded']);
 
         // Read setup with Intune pauses on the Intune role; Entra-only completes.
         let response = await post({ scope: 'read' });

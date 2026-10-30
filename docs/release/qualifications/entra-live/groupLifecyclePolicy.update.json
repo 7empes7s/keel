@@ -7,23 +7,23 @@
   "resourceType": "groupLifecyclePolicy",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "e86afa9865da72964ce74567394eb41c3caf263a",
+  "build": "e552b30c0162fed7e889f65ca927f0f4a70241e4",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-10-14T13:17:31.699Z",
-  "restoreRef": "38863090-3c90-8558-ad90-ae4229d75f13",
-  "naturalKey": "groupLifecyclePolicy:d2d8b3c9-4c24-8802-8339-62280318617e",
+  "observedAt": "2026-10-29T23:59:29.230Z",
+  "restoreRef": "08221958-265f-8e43-b34a-dc0d5c2d3936",
+  "naturalKey": "groupLifecyclePolicy:d27da5c9-86c1-8a84-9b71-0fc72372b340",
   "fixtureKind": "tenant-setting",
-  "captureSha256": "51c7547d328eda21d4e05dd3b923acb4e7401b1598f06ff69955f5e026027eee",
+  "captureSha256": "2f5ad66f7540ffd8e36635258018a9b2dca21feb01e8aaba78a40993ec95494c",
   "proofRef": "docs/release/qualifications/entra-live/groupLifecyclePolicy.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "6ec80d45c1416e1eb3167dd616107cf7147106845da364098f4acad97f76a240"
+      "signature": "1a56561227d700e3dc5c91e38682b8d94a0cdaf8dcaa7254e5940b8a67988f18"
     }
   }
 }

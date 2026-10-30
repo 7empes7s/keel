@@ -53,6 +53,8 @@ export function retryAfterFor(status, headers, now = Date.now()) {
 }
 
 export class GraphWriter {
+  // getAccessToken(url) is told the request URL, so one writer can sign in as a
+  // different app for some endpoints (Viva Engage: restore/engageWriter.mjs).
   constructor(getAccessToken, { clock = () => Date.now() } = {}) {
     this.getAccessToken = getAccessToken;
     this.clock = clock;
@@ -69,7 +71,7 @@ export class GraphWriter {
     if (!isGraphUrl(url)) throw new Error(`refused write to non-Graph host: ${url}`);
     const res = await fetch(url, {
       method,
-      headers: { ...withAcceptLanguage(headers), Authorization: `Bearer ${await this.getAccessToken()}`, 'Content-Type': 'application/json' },
+      headers: { ...withAcceptLanguage(headers), Authorization: `Bearer ${await this.getAccessToken(url)}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     const responseBody = await res.json().catch(() => null);
@@ -90,7 +92,7 @@ export class GraphWriter {
     if (typeof contentType !== 'string' || contentType.length === 0) throw new TypeError('putStream needs a Content-Type');
     const res = await fetch(url, {
       method: 'PUT',
-      headers: { ...withAcceptLanguage(headers), Authorization: `Bearer ${await this.getAccessToken()}`, 'Content-Type': contentType },
+      headers: { ...withAcceptLanguage(headers), Authorization: `Bearer ${await this.getAccessToken(url)}`, 'Content-Type': contentType },
       body,
     });
     const responseBody = await res.json().catch(() => null);
@@ -103,7 +105,7 @@ export class GraphWriter {
     const url = this.url(version, path);
     if (!isGraphUrl(url)) throw new Error(`refused read from non-Graph host: ${url}`);
     const res = await fetch(url, {
-      headers: { ...withAcceptLanguage(headers), Authorization: `Bearer ${await this.getAccessToken()}` },
+      headers: { ...withAcceptLanguage(headers), Authorization: `Bearer ${await this.getAccessToken(url)}` },
     });
     const body = await res.json().catch(() => null);
     const result = { ok: res.ok, status: res.status, body };
@@ -122,7 +124,7 @@ export class GraphWriter {
     if (!isGraphUrl(url)) throw new Error(`refused write to non-Graph host: ${url}`);
     const res = await fetch(url, {
       method: 'POST',
-      headers: { ...withAcceptLanguage(), Authorization: `Bearer ${await this.getAccessToken()}`, 'Content-Type': 'application/json' },
+      headers: { ...withAcceptLanguage(), Authorization: `Bearer ${await this.getAccessToken(url)}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ requests: requests.map((r) => ({ id: r.id, method: r.method, url: r.url, body: r.body })) }),
     });
     const body = await res.json().catch(() => null);
@@ -163,7 +165,7 @@ export class GraphWriter {
     const url = this.url('beta', '/identity/conditionalAccess/evaluate');
     const res = await fetch(url, {
       method: 'POST',
-      headers: { ...withAcceptLanguage(), Authorization: `Bearer ${await this.getAccessToken()}`, 'Content-Type': 'application/json' },
+      headers: { ...withAcceptLanguage(), Authorization: `Bearer ${await this.getAccessToken(url)}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ signInIdentity, signInContext, signInConditions, appliedPoliciesOnly }),
     });
     const body = await res.json();

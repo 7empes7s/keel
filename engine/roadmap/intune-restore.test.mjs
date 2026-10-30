@@ -346,12 +346,19 @@ test('mutation: a policy holding a password, key, certificate or encrypted setti
   const cases = [
     ['deviceConfiguration', { ...restrictions, '@odata.type': '#microsoft.graph.windows10CustomConfiguration', omaSettings: [{ '@odata.type': '#microsoft.graph.omaSettingString', omaUri: './Vendor/MSFT/x', isEncrypted: true, value: '****' }] }],
     ['deviceConfiguration', { ...restrictions, '@odata.type': '#microsoft.graph.windows10CustomConfiguration', omaSettings: [{ omaUri: './Vendor/MSFT/y', secretReferenceValueId: 'ref-1', value: null }] }],
+    // A trusted root certificate is named only by its OMA-URI (the trust-field rule).
+    ['deviceConfiguration', { ...restrictions, '@odata.type': '#microsoft.graph.windows10CustomConfiguration', omaSettings: [{ '@odata.type': '#microsoft.graph.omaSettingBase64', omaUri: './Device/Vendor/MSFT/RootCATrustedCertificates/Root/0123/EncodedCertificate', value: 'MIIB' }] }],
     ['deviceConfiguration', { ...restrictions, '@odata.type': '#microsoft.graph.windows10GeneralConfiguration', enterpriseCloudPrintOAuthClientSecret: null }],
     ['deviceConfiguration', { ...restrictions, '@odata.type': '#microsoft.graph.iosWiFiConfiguration', ssid: 'Office', preSharedKey: null }],
     ['deviceConfiguration', { ...restrictions, '@odata.type': '#microsoft.graph.windows81TrustedRootCertificate', trustedRootCertificate: null }],
     ['configurationPolicy', {
       ...catalogPolicy,
       settings: [{ id: '0', settingInstance: { '@odata.type': '#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance', settingDefinitionId: 'vpn_key', simpleSettingValue: { '@odata.type': '#microsoft.graph.deviceManagementConfigurationSecretSettingValue', valueState: 'encryptedValueToken', value: null } } }],
+    }],
+    // A trusted root certificate is named only by its definition id (the trust-field rule).
+    ['configurationPolicy', {
+      ...catalogPolicy,
+      settings: [{ id: '0', settingInstance: { '@odata.type': '#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance', settingDefinitionId: 'device_vendor_msft_rootcatrustedcertificates_root_{certhash}_encodedcertificate', simpleSettingValue: { '@odata.type': '#microsoft.graph.deviceManagementConfigurationStringSettingValue', value: 'MIIB' } } }],
     }],
   ];
   for (const [resourceType, payload] of cases) {
@@ -361,6 +368,8 @@ test('mutation: a policy holding a password, key, certificate or encrypted setti
       const outcome = await run(graph, [resource]);
       assert.equal(outcome.skipped.length, 1, `${payload['@odata.type'] ?? resourceType} ${verb} is skipped`);
       assert.match(outcome.skipped[0].reason, /^manual: /);
+      // A trust setting named by its OMA-URI stays open as a manual completion item.
+      if (JSON.stringify(payload).includes('RootCATrustedCertificates')) assert.equal(outcome.skipped[0].completion?.[0]?.requirement, 'trustFields');
       assert.deepEqual(graph.bodies, [], 'nothing is written as a blank');
     }
   }
@@ -436,6 +445,32 @@ test('a device configuration update PATCHes the changed fields with its kind, an
   assert.deepEqual(outcome.failed, []);
   assert.deepEqual(graph.bodies[0].body, { '@odata.type': '#microsoft.graph.windows10GeneralConfiguration', cameraBlocked: true });
   assert.deepEqual(outcome.applied[0].changes.fields, ['cameraBlocked']);
+});
+
+test('a device configuration restore never sends a trust or certificate field; a difference is a step for a person', async () => {
+  // CLAUDE.md restore writers: the policy body is the whole payload, so the rule is checked on the body itself.
+  const backup = { ...restrictions, firewallCertificateRevocationListCheckMethod: 'attempt' };
+  const graph = recordingGraph();
+  const outcome = await run(graph, [plannedUpdate(graph, 'deviceConfiguration', backup, { ...backup, cameraBlocked: false, firewallCertificateRevocationListCheckMethod: 'none' })]);
+  assert.deepEqual(outcome.failed, []);
+  assert.deepEqual(graph.bodies[0].body, { '@odata.type': '#microsoft.graph.windows10GeneralConfiguration', cameraBlocked: true });
+  assert.deepEqual(outcome.applied[0].changes.fields, ['cameraBlocked']);
+  assert.deepEqual(outcome.applied[0].completion.map((step) => [step.requirement, step.fields]), [['trustFields', ['firewallCertificateRevocationListCheckMethod']]]);
+
+  // Only the certificate setting differs: nothing is written, and the step is listed, dry run included.
+  for (const mode of ['dry-run', 'enforce']) {
+    const quiet = recordingGraph();
+    const only = await run(quiet, [plannedUpdate(quiet, 'deviceConfiguration', backup, { ...backup, firewallCertificateRevocationListCheckMethod: 'none' })], { mode });
+    assert.deepEqual(only.failed, [], mode);
+    assert.deepEqual(quiet.bodies, [], `${mode}: nothing is written`);
+    assert.deepEqual(only.applied[0].completion[0].fields, ['firewallCertificateRevocationListCheckMethod'], mode);
+  }
+
+  const created = recordingGraph();
+  const made = await run(created, [plannedCreate('deviceConfiguration', { ...backup, displayName: 'KEEL-RT-Restrictions' })]);
+  assert.deepEqual(made.failed, []);
+  assert.ok(!('firewallCertificateRevocationListCheckMethod' in created.bodies[0].body), 'a create leaves it out too');
+  assert.deepEqual(made.applied[0].completion[0].fields, ['firewallCertificateRevocationListCheckMethod']);
 });
 
 test('a write that does not read back as written fails with the field named', async (t) => {

@@ -1,18 +1,18 @@
 {
-  "restoreRef": "f6ab79fc-7858-8d60-ac6b-d927b5899d5b",
+  "restoreRef": "e836c92c-5798-86f9-8dfe-2aca83983558",
   "entry": {
-    "naturalKey": "administrativeUnit:KEEL-RT-148-unit",
+    "naturalKey": "administrativeUnit:KEEL-RT-244-unit",
     "resourceType": "administrativeUnit",
     "operation": "update",
-    "targetId": "fc27b938-e25c-8e6c-af65-04c1382ebf4c",
+    "targetId": "09e6b638-e4ac-898b-a2a9-86a636d9e64b",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-10T21:21:31.548Z",
+    "recordedAt": "2026-10-29T23:05:27.205Z",
     "priorState": {
-      "id": "fc27b938-e25c-8e6c-af65-04c1382ebf4c",
+      "id": "09e6b638-e4ac-898b-a2a9-86a636d9e64b",
       "visibility": null,
-      "description": "KEEL #148 fixture DRIFTED",
-      "displayName": "KEEL-RT-148-unit",
+      "description": "KEEL-RT drifted",
+      "displayName": "KEEL-RT-244-unit",
       "membershipRule": null,
       "membershipType": null,
       "deletedDateTime": null,
@@ -20,10 +20,10 @@
       "membershipRuleProcessingState": null
     },
     "intendedState": {
-      "id": "fc27b938-e25c-8e6c-af65-04c1382ebf4c",
+      "id": "09e6b638-e4ac-898b-a2a9-86a636d9e64b",
       "visibility": null,
-      "description": "KEEL #148 live gate fixture",
-      "displayName": "KEEL-RT-148-unit",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-244-unit",
       "membershipRule": null,
       "membershipType": null,
       "deletedDateTime": null,
@@ -31,10 +31,8 @@
       "membershipRuleProcessingState": null
     },
     "postState": {
-      "id": "fc27b938-e25c-8e6c-af65-04c1382ebf4c",
-      "description": "KEEL #148 live gate fixture",
-      "displayName": "KEEL-RT-148-unit",
-      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#directory/administrativeUnits/$entity"
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-244-unit"
     }
   }
 }

@@ -77,8 +77,8 @@ node tools/tenant-probe/delegated-probe.mjs run --config /etc/keel/tenant.json -
 `utcm-probe.mjs` checks whether Microsoft's Tenant Configuration Management snapshots
 (`/admin/configurationManagement`, Graph v1.0) can read, on our licence and quota, the
 settings KEEL does not read itself. `check` only reads (the app's role, the TCM service
-principal and its grants, visible jobs). `run` creates one `KEEL-RT-utcm-probe-*` snapshot
-job per workload, waits, downloads it, and deletes only the jobs it created; it never writes
+principal and its grants, visible jobs). `run` creates one `KEEL RT <workload> <stamp>` snapshot
+job per workload (TCM allows only letters, digits and spaces, 8 to 32 characters), waits, downloads it, and deletes only the jobs it created; it never writes
 tenant configuration. `utcm-types.mjs` lists the 270 TCM types and what KEEL already reads
 for each. Raw snapshots go to `<out>/raw/` (mode 600, never committed); the report is masked.
 

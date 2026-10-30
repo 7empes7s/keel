@@ -36,6 +36,7 @@ import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './ro
 import {
   applyRecordWrite, defineRecord, graphFailure, isNotFound, outcomeDetail, readUntil, recordLedger, sameValue, stripGraph,
 } from './recordWriter.mjs';
+import { TRUST_FIELDS } from './workloads/writeDeclarations.mjs';
 import {
   USER_WRITABLE_FIELDS, assignLicenseBody, isSyncedUser, licencePlan, userPostStateRefusal, userReadPath,
 } from './userOperations.mjs';
@@ -116,7 +117,7 @@ function federationRefusal(resource, verb) {
   if (live && !FEDERATION_WRITABLE_FIELDS.every((field) => sameValue(resource.payload[field], live[field]))) return null;
   return {
     outcome: 'skipped', reason: `manual: ${federationSignInStep(differs)}`,
-    completion: { kind: 'manual-setting', requirement: 'externalDomainFederationSignIn', fields: differs, description: federationSignInStep(differs) },
+    completion: [{ kind: 'manual-setting', requirement: 'externalDomainFederationSignIn', fields: differs, description: federationSignInStep(differs) }],
   };
 }
 
@@ -224,37 +225,48 @@ async function appScopeGuard(io, { payload, targetId, before, fields }) {
   const description = appScopeStep(detail);
   return {
     reason: `manual: ${description}`,
-    completion: { kind: 'manual-setting', requirement: 'exchangeAppScopeFilter', fields: ['customAttributes'], description },
+    completion: [{ kind: 'manual-setting', requirement: 'exchangeAppScopeFilter', fields: ['customAttributes'], description }],
   };
 }
 
 // ------------------------------------------------ multitenant org template
 
 /**
- * The partner configuration template settings a restore may write. Inbound
- * trust (whether this tenant accepts a partner's MFA and device claims) is
- * never written: a wrong value changes how partner users pass Conditional
- * Access, so a difference is reported for a person to change by hand.
+ * The partner configuration template settings a restore may write: only when
+ * the template applies. Its cross-tenant access settings (TRUST_FIELDS in
+ * workloads/writeDeclarations.mjs) are never written: inbound trust (whether
+ * a partner's MFA and device claims are accepted), automatic consent (whether
+ * invitations skip the consent prompt) and the B2B collaboration and direct
+ * connect lists (which partner users and apps get in, and where ours may go).
+ * A wrong value changes who from another tenant reaches this one, so a
+ * difference is reported for a person to change by hand.
  */
-export const PARTNER_TEMPLATE_WRITABLE_FIELDS = Object.freeze([
-  'templateApplicationLevel', 'automaticUserConsentSettings',
-  'b2bCollaborationInbound', 'b2bCollaborationOutbound', 'b2bDirectConnectInbound', 'b2bDirectConnectOutbound',
-]);
+export const PARTNER_TEMPLATE_WRITABLE_FIELDS = Object.freeze(['templateApplicationLevel']);
+const PARTNER_TEMPLATE_TRUST_FIELDS = TRUST_FIELDS.multiTenantOrganizationPartnerConfigurationTemplate;
 
-const INBOUND_TRUST_STEP = 'Inbound trust (accepting a partner tenant\'s MFA, compliant device or hybrid joined device claims) differs from the backup. A restore never changes it: review it in Entra admin center > External Identities > Cross-tenant access settings, and change it by hand if needed.';
+const crossTenantStep = (fields) => `The cross-tenant access settings of the multitenant organization template (${fields.join(', ')}) differ from the backup. `
+  + 'They decide whether partner tenants\' MFA and device claims are accepted, whether invitations skip the consent prompt, and which users and apps may cross. '
+  + 'A restore never changes them: review them with Microsoft Graph (/policies/crossTenantAccessPolicy/templates/multiTenantOrganizationPartnerConfiguration), and change them by hand if needed.';
 
-const inboundTrustDiffers = (resource) => resource.live?.payload
-  && resource.payload?.inboundTrust !== undefined
-  && !sameValue(resource.payload.inboundTrust, resource.live.payload.inboundTrust);
+const partnerTemplateTrustDiffers = (resource) => (resource.live?.payload
+  ? PARTNER_TEMPLATE_TRUST_FIELDS.filter((field) => resource.payload?.[field] !== undefined && !sameValue(resource.payload[field], resource.live.payload[field]))
+  : []);
+
+const partnerTemplateStep = (fields) => ({
+  kind: 'manual-setting', requirement: 'crossTenantAccess', fields, description: crossTenantStep(fields),
+});
 
 function partnerTemplateRefusal(resource, verb) {
-  if (verb !== 'update' || !inboundTrustDiffers(resource)) return null;
+  if (verb !== 'update') return null;
+  const differs = partnerTemplateTrustDiffers(resource);
+  if (differs.length === 0) return null;
   if (!PARTNER_TEMPLATE_WRITABLE_FIELDS.every((field) => sameValue(resource.payload[field], resource.live.payload[field]))) return null;
-  return { outcome: 'skipped', reason: `manual: ${INBOUND_TRUST_STEP}` };
+  return { outcome: 'skipped', reason: `manual: ${crossTenantStep(differs)}`, completion: partnerTemplateStep(differs) };
 }
 
 function partnerTemplateAfterWrite(_io, { resource }) {
-  return { completion: inboundTrustDiffers(resource) ? [{ kind: 'enforcement', requirement: 'inboundTrust', description: INBOUND_TRUST_STEP }] : [] };
+  const differs = partnerTemplateTrustDiffers(resource);
+  return { completion: differs.length ? [partnerTemplateStep(differs)] : [] };
 }
 
 // ---------------------------------------------- SharePoint tenant settings
@@ -300,6 +312,86 @@ function sharepointAccessRefusal(resource, verb) {
       fields: Object.freeze(fields),
       portalPath: SHAREPOINT_PORTAL_PATH,
       description: `Decide whether ${fields.join(', ')} should be as in the backup, then set them in the ${SHAREPOINT_PORTAL_PATH}. The other SharePoint settings in the backup were not written either: restore again after that.`,
+    }),
+  };
+}
+
+// ------------------------------------- Microsoft 365 admin center settings
+
+/**
+ * Restore of the admin center settings backed up since PR #604. Each rule is
+ * [field path, the value that loosens it, what that value does]. A backup that
+ * moves a field to its loosening value while live holds another one is
+ * withheld whole for a person, as for the SharePoint settings: a restore never
+ * widens who outside the organisation can reach forms and answers, never adds
+ * the Office Store, never shows real names in usage reports again and never
+ * makes a private community public.
+ */
+const ADMIN_CENTER_LOOSENING = Object.freeze({
+  formsSettings: Object.freeze({
+    portalPath: 'Microsoft 365 admin center > Settings > Org settings > Microsoft Forms',
+    rules: Object.freeze([
+      ['settings.isExternalSendFormEnabled', true, 'lets people send forms to people outside the organisation'],
+      ['settings.isExternalShareCollaborationEnabled', true, 'lets people outside the organisation edit forms'],
+      ['settings.isExternalShareResultEnabled', true, 'lets people share form answers outside the organisation'],
+      ['settings.isExternalShareTemplateEnabled', true, 'lets people share forms as templates outside the organisation'],
+      ['settings.isInOrgFormsPhishingScanEnabled', false, 'turns the phishing scan of forms off'],
+    ]),
+  }),
+  appsAndServicesSettings: Object.freeze({
+    portalPath: 'Microsoft 365 admin center > Settings > Org settings > User owned apps and services',
+    rules: Object.freeze([
+      ['settings.isOfficeStoreEnabled', true, 'lets people add Office Store add-ins'],
+    ]),
+  }),
+  adminReportSettings: Object.freeze({
+    portalPath: 'Microsoft 365 admin center > Settings > Org settings > Reports',
+    rules: Object.freeze([
+      ['displayConcealedNames', false, 'shows real user, group and site names in usage reports'],
+    ]),
+  }),
+  engageCommunity: Object.freeze({
+    portalPath: 'Viva Engage > the community > Settings',
+    rules: Object.freeze([
+      ['privacy', 'public', 'makes the community public, so everyone in the organisation can read it'],
+    ]),
+  }),
+});
+
+/**
+ * A nested settings object reads the same when every member the backup holds
+ * matches; a member Graph added after the backup (a newer beta property) is
+ * not a difference, and is not checked on the read-back either.
+ */
+export function sameBackedUpMembers(_field, desired, live) {
+  const plain = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+  if (!plain(desired) || !plain(live)) return null;
+  return Object.keys(desired).every((key) => sameValue(desired[key], live[key]));
+}
+
+const fieldAt = (payload, path) => path.split('.').reduce((value, key) => (value && typeof value === 'object' ? value[key] : undefined), payload);
+const sameLoose = (value, loose) => (typeof loose === 'string' ? String(value ?? '').toLowerCase() === loose : value === loose);
+
+/** The loosening refusal of one admin center settings record, or null. */
+export function adminCenterLooseningRefusal(resource, verb) {
+  const spec = ADMIN_CENTER_LOOSENING[resource?.resourceType];
+  if (!spec || verb !== 'update') return null;
+  const want = resource.payload ?? {};
+  const now = resource.live?.payload ?? {};
+  // Fails closed: when live does not hold the field, the backup's loosening
+  // value cannot be shown to be what the tenant has now, so it is withheld.
+  const loosened = spec.rules.filter(([path, loose]) => sameLoose(fieldAt(want, path), loose) && !sameLoose(fieldAt(now, path), loose));
+  if (loosened.length === 0) return null;
+  const fields = loosened.map(([path]) => path);
+  return {
+    outcome: 'skipped',
+    reason: `manual: the backup ${loosened.map(([, , text]) => text).join(', and ')}; a restore never loosens this, so set it by hand if that is wanted`,
+    completion: Object.freeze({
+      kind: 'manual-setting',
+      requirement: `${resource.resourceType}Loosening`,
+      fields: Object.freeze(fields),
+      portalPath: spec.portalPath,
+      description: `Decide whether ${fields.join(', ')} should be as in the backup, then set it in ${spec.portalPath}. The other values in this backup were not written either: restore again after that.`,
     }),
   };
 }
@@ -392,24 +484,45 @@ async function allowedValuesAfterWrite(io, { payload, verb, targetId, live }) {
   return { changes: { allowedValues: written } };
 }
 
+/** A Defender role is written only when the backup says it is a custom role with at least one permission. */
+function defenderRoleRefusal(resource) {
+  const payload = resource.payload ?? {};
+  if (payload.isBuiltIn !== false) {
+    return {
+      outcome: 'skipped',
+      reason: payload.isBuiltIn === true
+        ? `manual: "${payload.displayName ?? payload.id}" is a built-in Defender role: Microsoft manages it and nobody can change it`
+        : 'manual: the backup does not say whether this Defender role is built in, so KEEL does not write it',
+    };
+  }
+  const actions = (payload.rolePermissions ?? []).flatMap((permission) => permission?.allowedResourceActions ?? []);
+  if (actions.length === 0) return { outcome: 'failed', reason: 'defenderRoleDefinition: the backed-up role has no permissions, so it cannot be written' };
+  return null;
+}
+
+const DEFENDER_ROLES = '/roleManagement/defender/roleDefinitions';
+
+/**
+ * Graph gives a recreated Defender role a new id, so a second restore from the
+ * same backup would not know it. Before a create, a custom role with the same
+ * name is looked for: one that already holds the backup's settings means the
+ * create is done; any other one is left for a person, never duplicated.
+ */
+async function defenderRoleCreatePreflight(io, { payload, verb }) {
+  if (verb !== 'create') return null;
+  const listed = await io.retryOperation(() => io.writer.read('beta', DEFENDER_ROLES));
+  if (listed?.ok !== true) return `could not list the Defender roles to look for one made before (${outcomeDetail(listed)})`;
+  const named = (listed.body?.value ?? []).filter((role) => String(role?.displayName ?? '').toLowerCase() === String(payload.displayName ?? '').toLowerCase());
+  if (named.length === 0) return null;
+  const same = named.find((role) => role.isBuiltIn !== true && sameValue(role.description, payload.description) && sameValue(role.rolePermissions, payload.rolePermissions));
+  if (same) return { skipped: `a custom Defender role "${payload.displayName}" with the backup's permissions is already there (${same.id}), so nothing is written` };
+  return `a Defender role named "${payload.displayName}" already exists with other settings; KEEL does not make a second one, so check it by hand`;
+}
+
 const v1 = (page) => `${DOCS}/${page}?view=graph-rest-1.0`;
 const beta = (page) => `${DOCS}/${page}?view=graph-rest-beta`;
 
 const FEDERATIONS = '/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation';
-
-const parsedOrRaw = (entry) => {
-  try {
-    return JSON.parse(entry);
-  } catch {
-    return entry;
-  }
-};
-
-/** Two lists of JSON strings are the same when each entry parses to the same value (Graph may change the spacing). */
-export function sameJsonStrings(left, right) {
-  if (!Array.isArray(left) || !Array.isArray(right)) return sameValue(left, right);
-  return left.length === right.length && left.every((entry, index) => sameValue(parsedOrRaw(entry), parsedOrRaw(right[index])));
-}
 
 /** The records, one per type this module writes through recordWriter. */
 export const IDENTITY_RECORDS = Object.freeze({
@@ -493,15 +606,9 @@ export const IDENTITY_RECORDS = Object.freeze({
     refusal: partnerTemplateRefusal, afterWrite: partnerTemplateAfterWrite,
     permission: 'Policy.ReadWrite.CrossTenantAccess', docs: v1('multitenantorganizationpartnerconfigurationtemplate-update'),
   }),
-  // Restore gaps, batch 3: guest and app consent settings.
-  // The guest invitation domain lists live in `definition`, a list of JSON
-  // strings. Only the definition is written, in place: the tenant keeps one
-  // such policy, and its name and default flag are left as they are.
-  b2bManagementPolicy: defineRecord({
-    resourceType: 'b2bManagementPolicy', version: 'beta', collection: '/policies/b2bManagementPolicies',
-    operations: ['update'], writable: ['definition'], sameField: (field, left, right) => (field === 'definition' ? sameJsonStrings(left, right) : null),
-    permission: 'Policy.ReadWrite.B2BManagementPolicy', docs: beta('b2bmanagementpolicy-update'),
-  }),
+  // Restore gaps, batch 3: guest and app consent settings. The guest
+  // invitation domain lists (b2bManagementPolicy) are never written: they are
+  // trust fields (TRUST_FIELDS in workloads/writeDeclarations.mjs).
   // A pre-approval policy does nothing until it is assigned to an app's
   // service principal; that assignment is not backed up, so it stays a step.
   permissionGrantPreApprovalPolicy: defineRecord({
@@ -531,6 +638,18 @@ export const IDENTITY_RECORDS = Object.freeze({
     updateGuard: appScopeGuard,
     permission: 'RoleManagement.ReadWrite.Exchange', docs: beta('customappscope-update'),
   }),
+  // Restore gaps, batch 21. A custom Microsoft Defender XDR role: its name,
+  // description and permissions. Microsoft's own roles (isBuiltIn true, or
+  // no flag at all) are never written. Who holds the role is a separate kind
+  // (defenderRoleAssignment), restored by hand after a privilege review.
+  // Graph documents the create; the update uses the same PATCH as the other
+  // role providers and is confirmed by the live proof.
+  defenderRoleDefinition: defineRecord({
+    resourceType: 'defenderRoleDefinition', version: 'beta', collection: DEFENDER_ROLES,
+    operations: ['create', 'update'], writable: ['displayName', 'description', 'rolePermissions'], refusal: defenderRoleRefusal,
+    preflight: defenderRoleCreatePreflight,
+    permission: 'RoleManagement.ReadWrite.Defender', docs: beta('rbacapplication-post-roledefinitions'),
+  }),
   // Restore gaps, batch 17 (tenant-wide, approved by the user on 2026-10-22).
   // The SharePoint tenant settings other than sharing: sync app limits, idle
   // session sign-out, site creation, Loop, legacy authentication and default
@@ -540,6 +659,47 @@ export const IDENTITY_RECORDS = Object.freeze({
     resourceType: 'sharepointSettings', version: 'v1.0', collection: '/admin/sharepoint/settings',
     singleton: true, operations: ['update'], writable: SHAREPOINT_SETTINGS_WRITABLE_FIELDS, refusal: sharepointAccessRefusal,
     permission: 'SharePointTenantSettings.ReadWrite.All', docs: v1('sharepointsettings-update'),
+  }),
+  // Restore gaps, batch 20: Microsoft 365 admin center org settings backed up
+  // since PR #604, each one object per tenant and updated in place. A backup
+  // that loosens access is withheld (adminCenterLooseningRefusal). To Do
+  // settings wait for their read to work (GET /beta/admin/todo answers 500).
+  // Each is tenant-wide: on the test tenant it is written only with the
+  // tenant-wide option, which no restore run sets yet, so a person's approval
+  // comes first (recordWriter.mjs#tenantWideRecordProblem).
+  formsSettings: defineRecord({
+    resourceType: 'formsSettings', tenantWide: true, version: 'beta', collection: '/admin/forms',
+    singleton: true, operations: ['update'], writable: ['settings'], refusal: adminCenterLooseningRefusal, sameField: sameBackedUpMembers,
+    permission: 'OrgSettings-Forms.ReadWrite.All', docs: beta('adminforms-update'),
+  }),
+  microsoft365AppsInstallationOptions: defineRecord({
+    resourceType: 'microsoft365AppsInstallationOptions', tenantWide: true, version: 'v1.0', collection: '/admin/microsoft365Apps/installationOptions',
+    singleton: true, operations: ['update'], writable: ['updateChannel', 'appsForWindows', 'appsForMac'], sameField: sameBackedUpMembers,
+    permission: 'OrgSettings-Microsoft365Install.ReadWrite.All', docs: v1('m365appsinstallationoptions-update'),
+  }),
+  appsAndServicesSettings: defineRecord({
+    resourceType: 'appsAndServicesSettings', tenantWide: true, version: 'beta', collection: '/admin/appsAndServices',
+    singleton: true, operations: ['update'], writable: ['settings'], refusal: adminCenterLooseningRefusal, sameField: sameBackedUpMembers,
+    permission: 'OrgSettings-AppsAndServices.ReadWrite.All', docs: beta('adminappsandservices-update'),
+  }),
+  adminReportSettings: defineRecord({
+    resourceType: 'adminReportSettings', tenantWide: true, version: 'v1.0', collection: '/admin/reportSettings',
+    singleton: true, operations: ['update'], writable: ['displayConcealedNames'], refusal: adminCenterLooseningRefusal,
+    permission: 'ReportSettings.ReadWrite.All', docs: v1('adminreportsettings-update'),
+  }),
+  pronounsSettings: defineRecord({
+    resourceType: 'pronounsSettings', tenantWide: true, version: 'v1.0', collection: '/admin/people/pronouns',
+    singleton: true, operations: ['update'], writable: ['isEnabledInOrganization'],
+    permission: 'PeopleSettings.ReadWrite.All', docs: v1('pronounssettings-update'),
+  }),
+  // A Viva Engage community is only updated in place: its name, description
+  // and privacy. A create makes a Microsoft 365 group behind it and needs
+  // owners, so a deleted community is still set up by hand. A private
+  // community is never made public.
+  engageCommunity: defineRecord({
+    resourceType: 'engageCommunity', version: 'v1.0', collection: '/employeeExperience/communities',
+    operations: ['update'], writable: ['displayName', 'description', 'privacy'], refusal: adminCenterLooseningRefusal,
+    permission: 'Community.ReadWrite.All', docs: v1('community-update'),
   }),
 });
 

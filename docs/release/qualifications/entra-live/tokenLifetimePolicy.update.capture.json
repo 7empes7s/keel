@@ -1,37 +1,37 @@
 {
-  "restoreRef": "5eae4f2c-d9ef-82a5-9113-c2bd36f32520",
+  "restoreRef": "e4176fac-b702-8771-be59-6ec884076ae5",
   "entry": {
-    "naturalKey": "tokenLifetimePolicy:8618759b-f3dc-8759-b75d-1a92d2dfb9d5",
+    "naturalKey": "tokenLifetimePolicy:563fb372-00ca-8419-96b3-892ab6c5e481",
     "resourceType": "tokenLifetimePolicy",
     "operation": "update",
-    "targetId": "8618759b-f3dc-8759-b75d-1a92d2dfb9d5",
+    "targetId": "563fb372-00ca-8419-96b3-892ab6c5e481",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-15T10:30:34.456Z",
+    "recordedAt": "2026-10-30T00:38:03.719Z",
     "priorState": {
-      "id": "8618759b-f3dc-8759-b75d-1a92d2dfb9d5",
+      "id": "563fb372-00ca-8419-96b3-892ab6c5e481",
       "definition": [
-        "{\"TokenLifetimePolicy\":{\"Version\":1,\"AccessTokenLifetime\":\"4:00:00\"}}"
+        "{\"TokenLifetimePolicy\":{\"Version\":1,\"AccessTokenLifetime\":\"8:00:00\"}}"
       ],
-      "displayName": "KEEL-RT-W2-tokenLifetimePolicy-drift",
+      "displayName": "KEEL-RT-248-lifetime-drifted",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "intendedState": {
-      "id": "8618759b-f3dc-8759-b75d-1a92d2dfb9d5",
+      "id": "563fb372-00ca-8419-96b3-892ab6c5e481",
       "definition": [
         "{\"TokenLifetimePolicy\":{\"Version\":1,\"AccessTokenLifetime\":\"8:00:00\"}}"
       ],
-      "displayName": "KEEL-RT-W2-tokenLifetimePolicy",
+      "displayName": "KEEL-RT-248-lifetime",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "postState": {
-      "id": "8618759b-f3dc-8759-b75d-1a92d2dfb9d5",
+      "id": "563fb372-00ca-8419-96b3-892ab6c5e481",
       "definition": [
         "{\"TokenLifetimePolicy\":{\"Version\":1,\"AccessTokenLifetime\":\"8:00:00\"}}"
       ],
-      "displayName": "KEEL-RT-W2-tokenLifetimePolicy",
+      "displayName": "KEEL-RT-248-lifetime",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/tokenLifetimePolicies/$entity",
       "deletedDateTime": null,
       "isOrganizationDefault": false

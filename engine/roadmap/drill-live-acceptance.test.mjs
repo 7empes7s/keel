@@ -117,6 +117,7 @@ function liveDrill(tenant) {
     client,
     clock: tenant.clock,
     log: () => {},
+    cleanupRetry: { delayMs: 1 },
   });
 }
 

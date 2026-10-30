@@ -78,6 +78,9 @@ export const CONTEXT_EXCLUDED_TYPES = new Set(['directoryRoleTemplate', 'directo
 const VOCABULARY_ID_TYPES = new Set([
   'organizationalBrandingLocalization',
   'attributeSet', 'customSecurityAttributeDefinition', 'b2xIdentityUserFlow',
+  // Remaining kinds, batch 9: a profile card field's id is a directory field
+  // name such as "Alias" or "customAttribute1".
+  'profileCardProperty',
 ]);
 
 function idKey(obj, type) {
@@ -287,9 +290,31 @@ function* scopeReferenceValues(type, obj) {
   }
 }
 
+// Issue #704: the known-symbol walk matches any string equal to a collected
+// id. Scope tag ids are small integers ("0", "1"), so an app configuration
+// value "1" became a reference to scope tag 1, and a restore could then fail
+// or rewrite the value to the new tag's id. Two guards:
+//  - fields that hold text an admin typed are never reference candidates;
+//  - an all-digit id counts only under a field named like an id
+//    (...Id, ...Ids, roleScopeTagIds) or a scope tag list (roleScopeTags,
+//    used by assignment filters and policy sets), never under a setting value.
+const FREE_TEXT_FIELDS = new Set([
+  'displayName', 'description', 'appConfigKey', 'appConfigKeyValue',
+]);
+const ID_FIELD = /(^|[a-z])(Ids?|ScopeTags)$|^ids?$/;
+const DIGITS = /^\d+$/;
+
+function lastField(path) {
+  return path.split('.').pop().replace(/\[\d+\]/g, '');
+}
+
 function* referenceValues(node, idToSymbol, path = '') {
-  yield* walkGuids(node, path);
-  yield* walkKnownSymbolValues(node, idToSymbol, path);
+  for (const value of [...walkGuids(node, path), ...walkKnownSymbolValues(node, idToSymbol, path)]) {
+    const field = lastField(value.path);
+    if (FREE_TEXT_FIELDS.has(field)) continue;
+    if (DIGITS.test(value.guid) && !ID_FIELD.test(field)) continue;
+    yield value;
+  }
 }
 
 function* walkKnownSymbolValues(node, idToSymbol, path) {

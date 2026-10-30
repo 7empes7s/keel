@@ -99,3 +99,40 @@ export function withoutNamedLocationTrust(body, resource) {
   const kept = resource.complianceFix?.field;
   return Object.fromEntries(Object.entries(body).filter(([field]) => field === kept || !NAMED_LOCATION_TRUST_FIELDS.includes(field)));
 }
+
+/**
+ * Adds the named locations a restore skipped on trust (above) to `keys`, for
+ * the waves after it. A completion may be one step or a list of steps (#695).
+ */
+export function recordTrustSkippedLocations(keys, skipped) {
+  for (const entry of skipped ?? []) {
+    if ([entry.completion ?? []].flat().some((step) => step?.requirement === 'namedLocationTrust')) keys.add(entry.naturalKey);
+  }
+  return keys;
+}
+
+/**
+ * A Conditional Access policy that names a location this run skipped on trust,
+ * and that the target does not have, cannot be written: its reference has
+ * nothing to point at. It is skipped with a step to restore it again once the
+ * location is set by hand, instead of failing the run. A reference that still
+ * resolves (the location exists in the target) is written as usual, and a
+ * policy with any other unresolved reference still fails on it, so the skip
+ * never hides a second problem.
+ */
+export function skippedLocationPolicyRefusal(resource, verb, trustSkippedLocations, references, { resolves, othersResolve }) {
+  if (resource?.resourceType !== 'conditionalAccessPolicy' || verb === 'delete') return null;
+  if (!trustSkippedLocations || trustSkippedLocations.size === 0) return null;
+  const isMissing = (ref) => !ref?.identifier && trustSkippedLocations.has(ref?.symbol) && !resolves(ref.symbol);
+  const missing = [...new Set((references ?? []).filter(isMissing).map((ref) => ref.symbol))];
+  if (missing.length === 0) return null;
+  if (!othersResolve((references ?? []).filter((ref) => !isMissing(ref)))) return null;
+  const policy = resource.payload?.displayName ?? resource.naturalKey;
+  const names = missing.map((symbol) => `"${symbol.replace(/^namedLocation:/, '')}"`).join(', ');
+  const description = `The Conditional Access policy "${policy}" uses the named location ${names}, which this restore did not create because `
+    + `the backup marks it as trusted. Create the location by hand in ${PORTAL_PATH} after checking its ranges, then restore this policy again.`;
+  return {
+    reason: `manual: ${description}`,
+    completion: [{ kind: 'manual-setting', requirement: 'skippedNamedLocation', locations: missing, portalPath: PORTAL_PATH, description }],
+  };
+}

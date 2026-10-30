@@ -1,0 +1,230 @@
+{
+  "requests": [
+    {
+      "credential": "collector",
+      "resource": "EXODistributionGroup",
+      "methods": [
+        "Get"
+      ],
+      "name": "6fcefee1-c106-824a-a24b-9d98904c6937",
+      "outcome": "ok",
+      "at": "2026-10-28T23:42:18.335Z",
+      "missing": [
+        "RejectMessagesFromSendersOrMembers",
+        "ReportToManagerEnabled",
+        "ReportToOriginatorEnabled",
+        "MailTip"
+      ]
+    },
+    {
+      "credential": "collector",
+      "resource": "EXODistributionGroup",
+      "methods": [
+        "Get"
+      ],
+      "name": "b08675df-7adb-8c7b-ad25-b92bd618cfd2",
+      "outcome": "ok",
+      "at": "2026-10-28T23:42:30.163Z",
+      "missing": [
+        "RejectMessagesFromSendersOrMembers",
+        "ReportToManagerEnabled",
+        "ReportToOriginatorEnabled",
+        "MailTip"
+      ]
+    },
+    {
+      "credential": "collector",
+      "resource": "EXODistributionGroup",
+      "methods": [
+        "Get"
+      ],
+      "name": "KEEL-RT-capture-719ee1fe",
+      "outcome": "ok",
+      "at": "2026-10-28T23:42:41.277Z",
+      "missing": [
+        "RejectMessagesFromSendersOrMembers",
+        "ReportToManagerEnabled",
+        "ReportToOriginatorEnabled",
+        "MailTip"
+      ]
+    },
+    {
+      "credential": "restorer",
+      "resource": "EXODistributionGroup",
+      "methods": [
+        "Set"
+      ],
+      "name": "KEEL-RT-capture-719ee1fe",
+      "ensure": "Present",
+      "fields": [
+        "Alias",
+        "DisplayName",
+        "Ensure",
+        "HiddenFromAddressListsEnabled",
+        "Identity",
+        "MemberDepartRestriction",
+        "MemberJoinRestriction",
+        "ModerationEnabled",
+        "Name",
+        "RequireSenderAuthenticationEnabled",
+        "SendModerationNotifications",
+        "SendOofMessageToOriginatorEnabled",
+        "Type"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-28T23:42:52.401Z"
+    },
+    {
+      "credential": "collector",
+      "resource": "EXODistributionGroup",
+      "methods": [
+        "Get"
+      ],
+      "name": "KEEL-RT-capture-719ee1fe",
+      "outcome": "ok",
+      "at": "2026-10-28T23:43:06.038Z",
+      "missing": [
+        "RejectMessagesFromSendersOrMembers",
+        "ReportToManagerEnabled",
+        "ReportToOriginatorEnabled",
+        "MailTip"
+      ]
+    },
+    {
+      "credential": "restorer",
+      "resource": "EXODistributionGroup",
+      "methods": [
+        "Set"
+      ],
+      "name": "KEEL-RT-capture-seed",
+      "ensure": "Present",
+      "fields": [
+        "DisplayName",
+        "Ensure",
+        "HiddenFromAddressListsEnabled",
+        "Identity",
+        "MemberDepartRestriction",
+        "MemberJoinRestriction",
+        "ModerationEnabled",
+        "Name",
+        "RequireSenderAuthenticationEnabled",
+        "SendModerationNotifications",
+        "SendOofMessageToOriginatorEnabled"
+      ],
+      "outcome": "ok",
+      "at": "2026-10-28T23:43:17.382Z"
+    },
+    {
+      "credential": "collector",
+      "resource": "EXODistributionGroup",
+      "methods": [
+        "Get"
+      ],
+      "name": "6fcefee1-c106-824a-a24b-9d98904c6937",
+      "outcome": "ok",
+      "at": "2026-10-28T23:43:29.388Z",
+      "missing": [
+        "RejectMessagesFromSendersOrMembers",
+        "ReportToManagerEnabled",
+        "ReportToOriginatorEnabled",
+        "MailTip"
+      ]
+    }
+  ],
+  "values": {
+    "created": {
+      "Identity": "KEEL-RT-capture-719ee1fe",
+      "Name": "KEEL-RT-capture-719ee1fe",
+      "Ensure": "Present",
+      "DisplayName": "KEEL-RT-capture-719ee1fe",
+      "Alias": "KEEL-RT-capture-719ee1fe",
+      "PrimarySmtpAddress": "keel-rt-u827db4c10c89@ta036f59837f.onmicrosoft.com",
+      "Type": "Distribution",
+      "HiddenFromAddressListsEnabled": true,
+      "MemberJoinRestriction": "Closed",
+      "MemberDepartRestriction": "Closed",
+      "RequireSenderAuthenticationEnabled": true,
+      "ModerationEnabled": false,
+      "SendModerationNotifications": "Never",
+      "SendOofMessageToOriginatorEnabled": false,
+      "ManagedBy": [],
+      "ModeratedBy": [],
+      "GrantSendOnBehalfTo": [],
+      "EmailAddresses": [
+        "SMTP:keel-rt-u827db4c10c89@ta036f59837f.onmicrosoft.com"
+      ],
+      "AcceptMessagesOnlyFromSendersOrMembers": [],
+      "Members": [],
+      "BypassModerationFromSendersOrMembers": [],
+      "BypassNestedModerationEnabled": false
+    },
+    "seeded": {
+      "Identity": "KEEL-RT-capture-seed",
+      "Name": "KEEL-RT-capture-seed",
+      "Ensure": "Present",
+      "DisplayName": "KEEL-RT-capture-seed",
+      "Alias": "KEEL-RT-capture-seed",
+      "PrimarySmtpAddress": "keel-rt-u59125b8c5d40@ta036f59837f.onmicrosoft.com",
+      "Type": "Distribution",
+      "HiddenFromAddressListsEnabled": true,
+      "MemberJoinRestriction": "Closed",
+      "MemberDepartRestriction": "Open",
+      "RequireSenderAuthenticationEnabled": true,
+      "ModerationEnabled": true,
+      "SendModerationNotifications": "Always",
+      "SendOofMessageToOriginatorEnabled": false,
+      "ManagedBy": [
+        "keel-rt-u3a6a77968dbb@t42987720ee3.example"
+      ],
+      "ModeratedBy": [
+        "keel-rt-u3a6a77968dbb@t42987720ee3.example"
+      ],
+      "GrantSendOnBehalfTo": [],
+      "EmailAddresses": [
+        "SMTP:keel-rt-u59125b8c5d40@ta036f59837f.onmicrosoft.com"
+      ],
+      "AcceptMessagesOnlyFromSendersOrMembers": [],
+      "Members": [
+        "keel-rt-capture-member@example.invalid"
+      ],
+      "BypassModerationFromSendersOrMembers": [
+        "keel-rt-capture-member@example.invalid"
+      ],
+      "BypassNestedModerationEnabled": true
+    },
+    "updated": {
+      "Identity": "KEEL-RT-capture-seed",
+      "Name": "KEEL-RT-capture-seed",
+      "Ensure": "Present",
+      "DisplayName": "KEEL-RT-capture-seed updated 719ee1fe",
+      "Alias": "KEEL-RT-capture-seed",
+      "PrimarySmtpAddress": "keel-rt-u59125b8c5d40@ta036f59837f.onmicrosoft.com",
+      "Type": "Distribution",
+      "HiddenFromAddressListsEnabled": true,
+      "MemberJoinRestriction": "ApprovalRequired",
+      "MemberDepartRestriction": "Open",
+      "RequireSenderAuthenticationEnabled": true,
+      "ModerationEnabled": true,
+      "SendModerationNotifications": "Always",
+      "SendOofMessageToOriginatorEnabled": true,
+      "ManagedBy": [
+        "keel-rt-u3a6a77968dbb@t42987720ee3.example"
+      ],
+      "ModeratedBy": [
+        "keel-rt-u3a6a77968dbb@t42987720ee3.example"
+      ],
+      "GrantSendOnBehalfTo": [],
+      "EmailAddresses": [
+        "SMTP:keel-rt-u59125b8c5d40@ta036f59837f.onmicrosoft.com"
+      ],
+      "AcceptMessagesOnlyFromSendersOrMembers": [],
+      "Members": [
+        "keel-rt-capture-member@example.invalid"
+      ],
+      "BypassModerationFromSendersOrMembers": [
+        "keel-rt-capture-member@example.invalid"
+      ],
+      "BypassNestedModerationEnabled": true
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "restoreRef": "20fce489-750b-8702-b181-a0e782c90137",
+  "entry": {
+    "naturalKey": "deviceCategory:1dc8506b-e0f0-851b-93c3-58cc7bcf8913",
+    "resourceType": "deviceCategory",
+    "operation": "create",
+    "targetId": "556d9795-7f72-888e-84c0-980cb17f0c1a",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-30T01:25:20.526Z",
+    "priorState": null,
+    "intendedState": {
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-237-category"
+    },
+    "postState": {
+      "id": "556d9795-7f72-888e-84c0-980cb17f0c1a",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-237-category",
+      "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#deviceManagement/deviceCategories/$entity"
+    }
+  }
+}

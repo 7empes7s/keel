@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "drill-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "fb1493ea6a54d48fca03429409a35991a6386871",
+  "build": "da3f9d7fa47d89f082a63897d4a6b2494881cbd5",
   "operation": "recovery-drill.bounded-same-tenant",
   "credentialMode": "collector-restorer-separate",
-  "observedAt": "2026-10-07T11:07:59.543Z",
+  "observedAt": "2026-10-28T22:46:48.119Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -26,7 +26,7 @@
     },
     "testObject": {
       "resourceType": "group",
-      "naturalKey": "group:keel-rehearsal-2026-10-07T11-06-54-685Z"
+      "naturalKey": "group:keel-rehearsal-2026-10-28T22-43-24-373Z"
     },
     "drillRecord": {
       "mode": "live",
@@ -42,24 +42,24 @@
         "residuals": [],
         "verifiedAbsent": [
           {
-            "objectId": "948c5427-47dd-4a0c-b141-4922b0d0a087",
-            "naturalKey": "group:keel-rehearsal-2026-10-07T11-06-54-685Z"
+            "objectId": "9e194a2d-5c3c-86b6-b881-7047509ca5d0",
+            "naturalKey": "group:keel-rehearsal-2026-10-28T22-43-24-373Z"
           }
         ]
       },
       "objects": [
-        "group:keel-rehearsal-2026-10-07T11-06-54-685Z"
+        "group:keel-rehearsal-2026-10-28T22-43-24-373Z"
       ],
       "outcome": "passed",
-      "elapsedMs": 64039,
-      "startedAt": "2026-10-07T11:06:55.329Z",
+      "elapsedMs": 176781,
+      "startedAt": "2026-10-28T22:43:24.983Z",
       "tenantRef": "sha256:f7b3959300856957",
-      "finishedAt": "2026-10-07T11:07:59.368Z",
+      "finishedAt": "2026-10-28T22:46:21.764Z",
       "elapsedSource": "observed-clock",
       "createdObjects": [
         {
-          "objectId": "948c5427-47dd-4a0c-b141-4922b0d0a087",
-          "naturalKey": "group:keel-rehearsal-2026-10-07T11-06-54-685Z"
+          "objectId": "9e194a2d-5c3c-86b6-b881-7047509ca5d0",
+          "naturalKey": "group:keel-rehearsal-2026-10-28T22-43-24-373Z"
         }
       ],
       "manifestVersion": 1,
@@ -72,25 +72,25 @@
       "readOnly": true,
       "writersDisabled": true,
       "tenantRef": "sha256:f7b3959300856957",
-      "buildRevision": "fb1493ea6a54d48fca03429409a35991a6386871",
+      "buildRevision": "da3f9d7fa47d89f082a63897d4a6b2494881cbd5",
       "checkpoint": {
-        "headSeq": 4656,
-        "headHash": "267fbacd5e3f9e5b06810ed057eda7ab1fc8aac2f6f2eb83578b586884d853a2",
-        "recordCount": 4656
+        "headSeq": 353111,
+        "headHash": "a381789606eabd0ae930b73072bedc70e68dc5e09843f1a1a97c5dab854149ab",
+        "recordCount": 353111
       },
       "recoveryComplete": true,
       "incomplete": [],
-      "completedAt": "2026-10-07T11:06:44.897Z"
+      "completedAt": "2026-10-28T22:43:12.368Z"
     }
   },
   "proof": {
     "artifact": {
       "path": "drill-live-acceptance.capture.json",
-      "sha256": "0b73624005f4988a9ddb1535540ceedb7099502a1d7925172c8967ca7435c100"
+      "sha256": "ef5e3889869cbb2e282b9a305a601bed1bc219b2c592c83f4b330ff64dbdaffc"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "55c7261de63c62aa54703a1e8a6d0cfc6c7cc58179474a6adf324c27264f94bc"
+      "signature": "30076465cc825018f1f825797458405cfca8905bd7e4ff082817a417d27a5963"
     }
   }
 }

@@ -19,7 +19,7 @@ import { DESCRIPTORS } from '../collect/descriptors.mjs';
 import { buildCoverageReport } from '../coverage/report.mjs';
 import { readCoverageOutcome, readOutcome, readOutcomeDetail } from '../coverage/snapshots.mjs';
 import { readObservation } from '../contracts/observation.mjs';
-import { isEligibleBaselineSource } from '../govern/baseline.mjs';
+import { captureFromSnapshot, isEligibleBaselineSource } from '../govern/baseline.mjs';
 import { main as collectMain, runCollect } from '../../cli/keel-collect.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
@@ -60,10 +60,12 @@ test('GraphReader: a second-page failure keeps page-one items, code and status, 
       json: async () => ({ error: { code: 'Error_InternalServer', message: `backend failed; echoed Authorization: Bearer ${JWT}` } }),
     };
   };
-  const reader = new GraphReader(async () => 'fixture-token');
+  const reader = new GraphReader(async () => 'fixture-token', { serverErrorDelayMs: 0 });
   const result = await reader.collect('v1.0', '/groups');
 
-  assert.equal(requested.length, 2, 'the walk attempted page two');
+  // Page one, then page two tried three times: a 500 is retried twice before it counts.
+  assert.equal(requested.length, 4, 'the walk attempted page two, and retried its 500');
+  assert.equal(result.error.tries, 3);
   // Mutation pin (2): the first page is partial evidence, never a completion.
   assert.deepEqual(result.items, [{ id: 'g1' }], 'first-page items survive the second-page failure');
   assert.equal(result.pages, 1);
@@ -209,7 +211,7 @@ test('adapter digest: a thrown exception carrying a token is redacted before the
   assert.equal(collected.some(([type]) => type === 'group' || type === 'user'), false);
 });
 
-test('baseline eligibility: complete-empty qualifies as a strict success, partial and failed never do', () => {
+test('baseline eligibility: complete-empty and unavailable qualify, partial and failed never do', () => {
   const tenantRef = 'sha256:baseline-eligibility';
   const digestWith = (outcomeFor) => Object.fromEntries(
     DESCRIPTORS.map(({ type }) => [type, { outcome: outcomeFor(type), itemCount: 0 }]),
@@ -229,6 +231,37 @@ test('baseline eligibility: complete-empty qualifies as a strict success, partia
   assert.equal(isEligibleBaselineSource(snapshot(digestWith((type) => (type === 'group' ? 'failed' : 'complete'))), { tenantRef }), false);
   assert.equal(isEligibleBaselineSource(snapshot(digestWith((type) => (type === 'group' ? 'not-requested' : 'complete'))), { tenantRef }), false,
     'a tier-filtered snapshot is not a whole-estate source');
+  // Issue #646: a type the tenant has no licence for is not a gap, and the
+  // baseline's captured scope leaves it out.
+  const unlicensed = snapshot(digestWith((type) => (type === 'lifecycleWorkflow' ? 'unavailable' : 'complete')),
+    { started_at: '2026-09-18T10:00:00Z' });
+  assert.equal(isEligibleBaselineSource(unlicensed, { tenantRef }), true, 'an unavailable type does not block a baseline');
+  assert.equal(captureFromSnapshot(unlicensed).scope.types.includes('lifecycleWorkflow'), false,
+    'an unavailable type is not part of what the baseline captured');
+  assert.equal(isEligibleBaselineSource(snapshot(digestWith((type) => (type === 'lifecycleWorkflow' ? 'failed' : 'complete'))), { tenantRef }), false,
+    'a failed read of the same type still blocks it');
+  // Issue #666 (owner's decision): a minor kind nothing could be read of because
+  // Microsoft kept answering 500/502/504 is left out of the baseline, and listed.
+  const withEntry = (type, entry) => ({ ...digestWith(() => 'complete'), [type]: { itemCount: null, ...entry } });
+  for (const httpStatus of [500, 502, 504]) {
+    const faulty = snapshot(withEntry('todoSettings', { outcome: 'failed', httpStatus }), { started_at: '2026-09-18T10:00:00Z' });
+    assert.equal(isEligibleBaselineSource(faulty, { tenantRef }), true, String(httpStatus));
+    const { scope } = captureFromSnapshot(faulty);
+    assert.equal(scope.types.includes('todoSettings'), false);
+    assert.deepEqual(scope.leftOut, [{ type: 'todoSettings', reason: 'microsoft-service-error', httpStatus }]);
+  }
+  assert.equal(captureFromSnapshot(snapshot(digestWith(() => 'complete'), { started_at: '2026-09-18T10:00:00Z' })).scope.leftOut, undefined,
+    'a full read leaves nothing out');
+  for (const [type, entry, why] of [
+    ['todoSettings', { outcome: 'failed', httpStatus: 403 }, 'a refusal is not a Microsoft fault'],
+    ['todoSettings', { outcome: 'failed', httpStatus: 503 }, 'throttling is not a Microsoft fault'],
+    ['todoSettings', { outcome: 'failed', httpStatus: null }, 'an unknown failure still blocks'],
+    ['todoSettings', { outcome: 'partial', httpStatus: 500, itemCount: 1 }, 'a partial read still blocks'],
+    ['lifecycleWorkflow', { outcome: 'failed', httpStatus: 500 }, 'a tier2 kind still blocks'],
+    ['conditionalAccessPolicy', { outcome: 'failed', httpStatus: 500 }, 'a tier1 kind still blocks'],
+  ]) {
+    assert.equal(isEligibleBaselineSource(snapshot(withEntry(type, entry)), { tenantRef }), false, why);
+  }
   const missing = digestWith(() => 'complete');
   delete missing[DESCRIPTORS[0].type];
   assert.equal(isEligibleBaselineSource(snapshot(missing), { tenantRef }), false, 'an unrecorded type never qualifies');

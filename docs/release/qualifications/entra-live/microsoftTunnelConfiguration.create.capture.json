@@ -1,0 +1,62 @@
+{
+  "restoreRef": "20fce489-750b-8702-b181-a0e782c90137",
+  "entry": {
+    "naturalKey": "microsoftTunnelConfiguration:ddb535f8-f85c-8575-a7a6-658ff024332d",
+    "resourceType": "microsoftTunnelConfiguration",
+    "operation": "create",
+    "targetId": "1330ad6e-0d51-86ce-bf88-b7e8553dfd57",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-30T01:25:32.424Z",
+    "priorState": null,
+    "intendedState": {
+      "network": "10.99.0.0/24",
+      "splitDNS": [],
+      "dnsServers": [
+        "10.99.0.1"
+      ],
+      "listenPort": 443,
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-237-tunnel",
+      "ipv6Network": null,
+      "routeExcludes": [],
+      "routeIncludes": [
+        "10.98.0.0/16"
+      ],
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "advancedSettings": [],
+      "defaultDomainSuffix": "",
+      "disableUdpConnections": false
+    },
+    "postState": {
+      "id": "1330ad6e-0d51-86ce-bf88-b7e8553dfd57",
+      "network": "10.99.0.0/24",
+      "splitDNS": [],
+      "dnsServers": [
+        "10.99.0.1"
+      ],
+      "listenPort": 443,
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-237-tunnel",
+      "ipv6Network": null,
+      "routeExcludes": [],
+      "routeIncludes": [
+        "10.98.0.0/16"
+      ],
+      "routesExclude": [],
+      "routesInclude": [
+        "10.98.0.0/16"
+      ],
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/microsoftTunnelConfigurations/$entity",
+      "roleScopeTagIds": [
+        "0"
+      ],
+      "advancedSettings": [],
+      "lastUpdateDateTime": "2026-10-30T01:25:32.5412146Z",
+      "defaultDomainSuffix": "",
+      "disableUdpConnections": false
+    }
+  }
+}

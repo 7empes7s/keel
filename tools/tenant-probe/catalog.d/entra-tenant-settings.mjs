@@ -19,7 +19,7 @@ export default [
     note: 'The allow or block list of guest domains is a JSON string in definition.' },
   // Who may create service principals for which apps.
   { type: 'servicePrincipalCreationPolicy', path: '/policies/servicePrincipalCreationPolicies', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting',
-    note: 'The include and exclude conditions are separate collections, read per policy and not backed up yet.' },
+    note: 'Graph expands the include and exclude conditions on every read (and refuses $expand, Q111), so the backup holds them.' },
   // Pre-approved app permissions (for example Teams resource-specific consent).
   { type: 'permissionGrantPreApprovalPolicy', path: '/policies/permissionGrantPreApprovalPolicies', version: 'beta', criticality: 'tier2', blastRadius: 'access-affecting' },
   // Access review settings: whether group owners can manage reviews of their groups.

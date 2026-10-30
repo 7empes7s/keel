@@ -43,9 +43,10 @@ import {
   TEAMS_WRITE_OPERATIONS, createTeamsRestoreArtifact, executeTeamsRestore, loadTeamsSource, planTeamsRestore, readLiveTeam,
 } from './teams.mjs';
 import { PURVIEW_WRITE_OPERATIONS, createPurviewRestoreArtifact, executePurviewRestore, planPurviewRestore } from './purview.mjs';
-import { workloadSettingsRestore } from './cmdletSettings.mjs';
 import { SHAREPOINT_STRUCTURE_WORKLOAD } from '../../collect/workloads/sharepointStructure.mjs';
 import { sharePointStructureRestore } from './sharepointStructure.mjs';
+import { DISTRIBUTION_GROUPS_WORKLOAD, distributionGroupRestore } from './dscDistributionGroups.mjs';
+import { loadWorkloadSource, workloadSettingsRestore } from './cmdletSettings.mjs';
 
 export const WORKLOAD_CONFIG_PREFIX = 'workload:';
 
@@ -183,6 +184,9 @@ export const WORKLOAD_RESTORES = Object.freeze({
   // SharePoint structure through PnP: hub sites, site designs and scripts, and named
   // sites' missing lists, columns, content types and navigation (sharepointStructure.mjs).
   [SHAREPOINT_STRUCTURE_WORKLOAD]: sharePointStructureRestore(),
+  // Distribution lists and mail-enabled security groups, through Microsoft365DSC in the
+  // keel-dsc profile (dscDistributionGroups.mjs): settings, and a list that is gone.
+  [DISTRIBUTION_GROUPS_WORKLOAD]: distributionGroupRestore({ load: loadWorkloadSource }),
 });
 
 /** The table entry for a workload name, or a usage error naming the ones that exist. */

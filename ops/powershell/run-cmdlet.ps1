@@ -26,6 +26,7 @@
   been run against a tenant.
 #>
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'keel-json.ps1')
 $ProgressPreference = 'SilentlyContinue'
 $WarningPreference = 'SilentlyContinue'
 
@@ -199,6 +200,12 @@ $AllowedPurviewWrites = @{
     'Set-RetentionComplianceRule'   = @('Identity', 'Comment', 'ContentMatchQuery', 'ExpirationDateOption', 'RetentionComplianceAction', 'RetentionDuration', 'RetentionDurationDisplayHint')
 }
 
+# Writes that ask for confirmation. An app-only session cannot answer the prompt, and
+# Set-DlpComplianceRule then fails with a generic "server side error" (operator queue
+# Q260: 3 of 3 without -Confirm:$false, 2 of 2 with it). Only -Confirm:$false is added;
+# the job still cannot pass Confirm itself.
+$NoConfirmPrompt = @('Set-DlpComplianceRule')
+
 $AllowedTeamsWrites = @{
     'New-CsCallingLineIdentity'                = @('Identity', 'BlockIncomingPstnCallerID', 'CallingIDSubstitute', 'CompanyName', 'Description', 'EnableUserOverride', 'ResourceAccount', 'ServiceNumber')
     'New-CsOnlineVoicemailPolicy'              = @('Identity', 'Description', 'EnableEditingCallAnswerRulesSetting', 'EnableTranscription', 'EnableTranscriptionProfanityMasking', 'EnableTranscriptionTranslation', 'PrimarySystemPromptLanguage', 'SecondarySystemPromptLanguage')
@@ -300,8 +307,10 @@ function Out-Envelope {
     param([hashtable]$Envelope, [int]$Code)
     # Depth 16: below that, ConvertTo-Json flattens deeper nested settings (DLP
     # sensitive information type groups, say) to type-name strings. Shallower answers
-    # serialize the same at either depth.
-    [Console]::Out.WriteLine((ConvertTo-Json -InputObject $Envelope -Depth 16 -Compress))
+    # serialize the same at either depth. When ConvertTo-Json throws (unloaded PnP
+    # collections, #638; non-string dictionary keys in Purview answers, Q179),
+    # ConvertTo-KeelJson writes a plain copy instead (keel-json.ps1).
+    [Console]::Out.WriteLine((ConvertTo-KeelJson -Value $Envelope -Depth 16))
     exit $Code
 }
 
@@ -357,6 +366,8 @@ if ($null -ne $job['parameters']) {
         $params[$key] = $value
     }
 }
+
+if ($NoConfirmPrompt -contains $name) { $params['Confirm'] = $false }
 
 $tenantConfigPath = if ($job['tenantConfigPath']) { [string]$job['tenantConfigPath'] } else { '/etc/keel/tenant.json' }
 try {

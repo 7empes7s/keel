@@ -13,7 +13,7 @@ import { applyFilters, pickedTiles, tileCounts, toggleTile, type FilterTile } fr
 import { byText, pageGroups, sortRows } from "@/lib/paging";
 import {
   PERMISSION_STATUS_LABELS, PERMISSION_STATUS_ORDER, PERMISSION_STATUS_TONES,
-  apiPermissionsLink, appFor, appName, consentLink, missingSentence, permissionApps, permissionCounts, permissionRows, roleLink,
+  apiPermissionsLink, appFor, appName, appNameInSentence, consentLink, missingSentence, permissionApps, permissionCounts, permissionRows, roleLink,
   type PermissionRow, type PermissionStatus, type SetupState,
 } from "@/lib/setup-view";
 import { toast } from "@/lib/toast";
@@ -41,7 +41,7 @@ const STATUS_HINTS: Record<PermissionStatus, string> = {
 
 const NOUN = { one: "permission or role", many: "permissions and roles" };
 
-const APP_ICONS: Record<string, IconName> = { collector: "backup", restorer: "restore", "content-reader": "inbox" };
+const APP_ICONS: Record<string, IconName> = { collector: "backup", restorer: "restore", "content-reader": "inbox", "engage-writer": "restore" };
 const PREFIX = "perm-";
 
 interface Group {
@@ -169,7 +169,7 @@ export function PermissionsPanel({ state }: { state: SetupState }) {
               ) : null}
               {roles.length ? (
                 <p>
-                  Approving permissions never assigns an admin role. A Privileged Role Administrator assigns {roles.length === 1 ? "the role" : "each role"} to {entry.info?.displayName ?? `the ${appName(entry.identity).toLowerCase()}`}: {roles.map((row) => row.name).join(", ")}.
+                  Approving permissions never assigns an admin role. A Privileged Role Administrator assigns {roles.length === 1 ? "the role" : "each role"} to {entry.info?.displayName ?? `the ${appNameInSentence(entry.identity)}`}: {roles.map((row) => row.name).join(", ")}.
                 </p>
               ) : null}
               <div className="su-pp-alert-actions">

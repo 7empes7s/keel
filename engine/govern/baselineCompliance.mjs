@@ -21,7 +21,7 @@ import { retentionClaimFor } from '../storage/qualification.mjs';
 import { OPEN_DRIFT_PREDICATE } from '../store/openDrift.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
 import { diffSnapshots } from './diffSnapshots.mjs';
-import { isEligibleBaselineSource } from './baseline.mjs';
+import { isEligibleBaselineSource, serviceErrorLeftOut } from './baseline.mjs';
 
 function iso(value) {
   if (value === null || value === undefined) return null;
@@ -50,6 +50,7 @@ function captureOf(baseline, legacyWindow, now) {
       sourceSnapshotId: baseline.source_snapshot_id ? String(baseline.source_snapshot_id) : null,
       window: scope ? { startedAt: scope.startedAt ?? null, completedAt: scope.completedAt ?? null } : null,
       types: Array.isArray(scope?.types) ? [...scope.types] : [],
+      leftOut: Array.isArray(scope?.leftOut) ? scope.leftOut.filter((item) => typeof item?.type === 'string').map((item) => ({ type: item.type, reason: String(item.reason ?? 'unknown') })) : [],
     };
   }
   if (legacyWindow?.completed_at) {
@@ -60,9 +61,10 @@ function captureOf(baseline, legacyWindow, now) {
       sourceSnapshotId: null,
       window: { startedAt: iso(legacyWindow.started_at), completedAt: iso(legacyWindow.completed_at) },
       types: [...(legacyWindow.types ?? [])].sort(),
+      leftOut: [],
     };
   }
-  return { basis: 'unknown', capturedAt: null, ageMs: null, sourceSnapshotId: null, window: null, types: [] };
+  return { basis: 'unknown', capturedAt: null, ageMs: null, sourceSnapshotId: null, window: null, types: [], leftOut: [] };
 }
 
 /**
@@ -71,10 +73,20 @@ function captureOf(baseline, legacyWindow, now) {
  * fields Microsoft sets itself (or key order) hashes identically, so it is zero drift.
  * Two hash versions are never compared directly: the result is "not comparable".
  */
-function changesSince(baselineRows, latest) {
+function changesSince(baselineRows, latest, leftOut = new Set()) {
   if (!latest) return { state: 'no-collection', comparedSnapshotId: null, comparedAt: null, added: 0, modified: 0, removed: 0, total: 0 };
   try {
-    const drift = diffSnapshots(baselineRows, latest.rows);
+    // A type the newest collection could not read because the tenant has no
+    // licence for it (issue #646), or a minor kind Microsoft kept failing on
+    // (#666), was not observed: it is neither removed nor kept.
+    const unavailable = latest.unavailableTypes ?? new Set();
+    const compared = unavailable.size
+      ? baselineRows.filter((row) => !unavailable.has(row.resource_type))
+      : baselineRows;
+    // A kind the baseline left out (#666) holds nothing in it, so a later read of
+    // it is not "added".
+    const latestRows = leftOut.size ? latest.rows.filter((row) => !leftOut.has(row.resource_type)) : latest.rows;
+    const drift = diffSnapshots(compared, latestRows);
     const count = (type) => drift.filter((entry) => entry.changeType === type).length;
     return {
       state: 'compared',
@@ -137,7 +149,13 @@ async function latestEligibleSnapshot(client, tenantRef) {
      FROM resource_version WHERE snapshot_id = $1`,
     [snapshot.id],
   );
-  return { id: String(snapshot.id), completedAt: iso(snapshot.completed_at), rows: versions };
+  const unavailableTypes = new Set([
+    ...Object.entries(snapshot.coverage_digest ?? {})
+      .filter(([, coverage]) => coverage?.outcome === 'unavailable')
+      .map(([type]) => type),
+    ...serviceErrorLeftOut(snapshot.coverage_digest),
+  ]);
+  return { id: String(snapshot.id), completedAt: iso(snapshot.completed_at), rows: versions, unavailableTypes };
 }
 
 /** Every baseline of the tenant, newest first, with capture, scope, version chain and changes since capture. */
@@ -192,7 +210,7 @@ export async function baselineCompliance(client, { tenantRef, now = new Date() }
       supersededById: successor.get(String(baseline.id)) ?? null,
       supersededAt: iso(baseline.superseded_at),
       capture: captureOf(baseline, legacyWindow, now),
-      changesSinceCapture: changesSince(rows, latest),
+      changesSinceCapture: changesSince(rows, latest, new Set((baseline.observation_scope?.leftOut ?? []).map((item) => item?.type))),
     };
   });
 }

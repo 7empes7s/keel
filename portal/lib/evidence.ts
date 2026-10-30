@@ -1,4 +1,5 @@
 import { verifyAnchoredChain } from "../../engine/govern/anchor.mjs";
+import { evidenceChainCache } from "@/lib/evidence-chain-cache";
 import { guarded, InvalidActionRequest, type GuardDeps } from "@/lib/action";
 
 const NO_STORE = { "cache-control": "no-store" };
@@ -60,10 +61,9 @@ export function guardedEvidenceList(deps: GuardDeps = {}) {
   }, deps);
 }
 
-// Security audit run 2, finding 10: the Activity page checks the chain on every load.
-// Kept for the life of the portal process, so a load hashes only the records added since
-// the last check, with a full walk at most every few minutes (engine CHAIN_FULL_VERIFY_MS).
-const chainCache = new Map<string, unknown>();
+// Security audit run 2, finding 10: the Activity page checks the chain on every load, so
+// it uses the shared cache (lib/evidence-chain-cache.ts) and hashes only new records.
+const chainCache = evidenceChainCache;
 
 export function guardedEvidenceVerify(deps: GuardDeps = {},
   anchorOptions: (tenantRef: string) => Promise<Record<string, unknown>> = async () => ({}),

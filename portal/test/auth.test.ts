@@ -20,7 +20,8 @@ import {
   type ResolvedIdentity,
   type SignInHints,
 } from "@/lib/principal";
-import { createAccessMiddleware } from "@/proxy";
+import { DatabaseBusyError } from "@/lib/db";
+import { BUSY_MESSAGE, createAccessMiddleware } from "@/proxy";
 
 const issuer = "https://keel-test.cloudflareaccess.com";
 const audience = "keel-test-audience";
@@ -261,6 +262,60 @@ test("a valid Access JWT for an unregistered email is refused", async () => {
   assert.equal(response.headers.get("cache-control"), "no-store");
   assert.equal(response.headers.get("x-middleware-next"), null);
   assert.deepEqual(await response.json(), { error: "forbidden" });
+});
+
+function middlewareResolvingWith(resolve: () => Promise<ResolvedIdentity>) {
+  const address = jwksServer.address();
+  assert(address && typeof address !== "string");
+  return createAccessMiddleware(
+    () => ({ audience, issuer, jwksUrl: new URL(`http://127.0.0.1:${address.port}/cdn-cgi/access/certs`) }),
+    resolve,
+  );
+}
+
+test("a full database pool during the sign-in check answers an API call with 503 busy JSON", async () => {
+  const busyMiddleware = middlewareResolvingWith(async () => {
+    throw new DatabaseBusyError(new Error("timeout exceeded when trying to connect"));
+  });
+
+  const response = await busyMiddleware(request("/api/drift", await accessToken()));
+
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(response.headers.get("retry-after"), "5");
+  // Fails closed: the request never reaches the route.
+  assert.equal(response.headers.get("x-middleware-next"), null);
+  assert.equal(response.headers.get(`x-middleware-request-${PRINCIPAL_ID_HEADER}`), null);
+  assert.deepEqual(await response.json(), { error: "busy", message: BUSY_MESSAGE });
+});
+
+test("a full database pool during the sign-in check shows a busy page for a page request", async () => {
+  const busyMiddleware = middlewareResolvingWith(async () => {
+    throw new DatabaseBusyError(new Error("timeout exceeded when trying to connect"));
+  });
+
+  const response = await busyMiddleware(request("/changes", await accessToken()));
+
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.match(response.headers.get("content-type") ?? "", /^text\/html/);
+  assert.equal(response.headers.get("x-middleware-next"), null);
+  const html = await response.text();
+  assert.match(html, /Keel is busy, try again in a moment\./);
+  assert.match(html, /Try again/);
+});
+
+test("any other sign-in check failure is still a plain 403", async () => {
+  const brokenMiddleware = middlewareResolvingWith(async () => {
+    throw new Error("relation \"principals\" does not exist");
+  });
+
+  for (const path of ["/api/drift", "/changes"]) {
+    const response = await brokenMiddleware(request(path, await accessToken()));
+    assert.equal(response.status, 403);
+    assert.equal(response.headers.get("x-middleware-next"), null);
+    assert.deepEqual(await response.json(), { error: "forbidden" });
+  }
 });
 
 test("GET /api/health is reachable without a token and returns the literal body", async () => {

@@ -1,0 +1,31 @@
+{
+  "restoreRef": "20fce489-750b-8702-b181-a0e782c90137",
+  "entry": {
+    "naturalKey": "exchangeCustomAppScope:de1c98b0-cbf3-8c87-81fa-253a42315834",
+    "resourceType": "exchangeCustomAppScope",
+    "operation": "create",
+    "targetId": "d4e5b89e-dc62-8249-9579-2e9e6fb0c8ef",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-30T01:25:20.527Z",
+    "priorState": null,
+    "intendedState": {
+      "type": "RecipientScope",
+      "displayName": "KEEL-RT-237-app-scope",
+      "customAttributes": {
+        "Exclusive": false,
+        "RecipientFilter": "PrimarySmtpAddress -like 'keel-rt-scope-none*'"
+      }
+    },
+    "postState": {
+      "id": "d4e5b89e-dc62-8249-9579-2e9e6fb0c8ef",
+      "type": "RecipientScope",
+      "displayName": "KEEL-RT-237-app-scope",
+      "@odata.context": "https://graph.microsoft.com/beta/$metadata#roleManagement/exchange/customAppScopes/$entity",
+      "customAttributes": {
+        "Exclusive": false,
+        "RecipientFilter": "PrimarySmtpAddress -like 'keel-rt-scope-none*'"
+      }
+    }
+  }
+}

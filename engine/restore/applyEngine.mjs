@@ -5,7 +5,7 @@ import { canonicalHash, canonicalize } from '../cir/canonicalHash.mjs';
 import { createBodyProjection, immutableDrift, namedValueDrift, verificationView, writableProjection } from '../reconcile/writableProjection.mjs';
 import { verbCapability } from '../reconcile/verb.mjs';
 import { deletedItemRestorePath } from '../reconcile/liveState.mjs';
-import { withLiveAppId } from '../reconcile/liveAppId.mjs';
+import { holdOwnAppIdUris, withAppId, withDeletedAppId, withLiveAppId } from '../reconcile/liveAppId.mjs';
 import { graphPathFor } from '../coverage/capabilities.mjs';
 import {
   ALTERNATE_IDENTIFIERS, CREATE_EXCLUDED_FIELDS, remappingFor, withExplicitReferences,
@@ -854,6 +854,10 @@ export async function applyWave(writer, governor, wave, {
         failed.push({ naturalKey: resource.naturalKey, error: remapRefusal });
         return;
       }
+      // A deleted app an earlier restore recreated comes back with the appId
+      // Entra gave it, never the backup's: its own URIs (`api://<appId>`) are
+      // written with that appId.
+      desired = withDeletedAppId(desired, resource.resourceType, resource.live);
 
       // Task-152 review: Microsoft restores a deleted policy in the state it was
       // deleted in. One that comes back on is a lockout question before anything
@@ -1191,8 +1195,13 @@ export async function applyWave(writer, governor, wave, {
     // annotations, a group's securityIdentifier/assignedLicenses/onPremises*):
     // the raw snapshot payload is never posted, Graph refuses it with 400.
     // The same body is what verification below compares against.
-    const createBody = policyCreate ? policyCreate.body
+    const fullCreateBody = policyCreate ? policyCreate.body
       : withoutFields(createBodyProjection(payload, resource.resourceType), createExcluded ?? []);
+    // An application's identifierUris that name the backup's appId wait for the
+    // appId Entra assigns: the create leaves them out, and a PATCH right after
+    // writes them with the new appId.
+    const { body: createBody, held: heldUris } = holdOwnAppIdUris(fullCreateBody, resource.resourceType, payload?.appId);
+    const ownUris = (createdAppId) => [...(createBody.identifierUris ?? []), ...withAppId(heldUris, payload?.appId, createdAppId)];
 
     // Wave 2 RST: a create this run already sent is never sent again. One whose
     // object reads back as the body it wrote counts as applied; anything else
@@ -1201,7 +1210,9 @@ export async function applyWave(writer, governor, wave, {
       const existing = prior.targetId ? await retryOperation(() => writer.read('v1.0', `${path}/${prior.targetId}`)) : null;
       if (existing && existing.ok !== false) {
         const body = existing.body ?? existing;
-        const desiredView = verificationView(createBody, resource.resourceType);
+        // A resumed app counts as created only once its own URIs were written too.
+        const expected = heldUris.length > 0 ? { ...createBody, identifierUris: ownUris(body.appId) } : createBody;
+        const desiredView = verificationView(expected, resource.resourceType);
         const createdLive = onlyFields(verificationView(forVerification(body, resource), resource.resourceType), desiredView);
         if (residualDiff(desiredView, createdLive, resource.resourceType).length === 0) {
           const identifiers = createdIdentifiers(resource.resourceType, body, body);
@@ -1284,7 +1295,27 @@ export async function applyWave(writer, governor, wave, {
       failed.push({ naturalKey: resource.naturalKey, error: `created ${resource.resourceType} ${targetId} did not read back the identifiers its create returned` });
       return;
     }
-    await noteOutcome(rollbackClient, journal, 'succeeded', { targetId, postState: reRead?.body ?? reRead });
+    let postState = reRead?.body ?? reRead;
+    if (heldUris.length > 0) {
+      const identifierUris = ownUris(identifiers?.appId);
+      const appPath = `${path}/${targetId}`;
+      const uriResult = await writeAfterCreate(writer, 'v1.0', appPath, { method: 'PATCH', body: { identifierUris } }, { retryOperation, ...readAfterWriteOptions });
+      const sameUris = (r) => isDeepStrictEqual([...(r?.body?.identifierUris ?? [])].sort(), [...identifierUris].sort());
+      const uriReRead = uriResult.ok
+        ? await readAfterWrite(writer, 'v1.0', appPath, (r) => isNotFound(r) || (r?.ok === true && !sameUris(r)), { retryOperation, ...readAfterWriteOptions })
+        : null;
+      if (!uriResult.ok || uriReRead?.ok === false || !sameUris({ body: uriReRead?.body ?? uriReRead })) {
+        const why = !uriResult.ok ? outcomeDetail(uriResult) : 'they did not read back';
+        await noteOutcome(rollbackClient, journal, 'uncertain', { targetId, postState, detail: `created; Application ID URIs with the new appId not written: ${why}` });
+        failed.push({
+          ...(!uriResult.ok ? graphFailure(resource.naturalKey, uriResult) : { naturalKey: resource.naturalKey }),
+          error: `created ${resource.resourceType} ${targetId}, but its Application ID URIs (${identifierUris.join(', ')}) were not written: ${why}`,
+        });
+        return;
+      }
+      postState = uriReRead?.body ?? uriReRead;
+    }
+    await noteOutcome(rollbackClient, journal, 'succeeded', { targetId, postState });
     const entry = identifiers ? { naturalKey: resource.naturalKey, targetId, identifiers } : { naturalKey: resource.naturalKey, targetId };
     if (policyCreate?.unknown.length > 0) entry.unwrittenFields = policyCreate.unknown;
     applied.push(entry);

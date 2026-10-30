@@ -1013,7 +1013,7 @@ export async function applyWave(writer, governor, wave, {
       }
 
       if (mode === 'dry-run') {
-        applied.push({ naturalKey: resource.naturalKey, targetId, changes: plannedUpdateChanges(resource, payload, normalisedDesired) });
+        applied.push({ naturalKey: resource.naturalKey, targetId, changes: plannedUpdateChanges(resource, desired, payload, normalisedDesired) });
         return;
       }
 
@@ -2015,22 +2015,31 @@ function withoutPath(value, [head, ...rest]) {
 }
 
 /**
- * Issue #720: what a dry run of a plain update would change. `fields` names
- * each field of the PATCH body whose value differs from live (every one when
- * live was not read); an empty list means the update writes nothing. A
- * directory setting also names each of its `values` that changes.
+ * Issue #720: what a dry run of a plain update would change, worked out the
+ * way the enforce run decides to write. `fields` names each field of the PATCH
+ * body whose value differs from live (every one when live was not read). A
+ * difference only in a field the PATCH does not send still makes the enforce
+ * run write, so that field is listed instead. An empty list means nothing is
+ * written. A group also lists the licences it would add (`addLicences`), and a
+ * directory setting names each of its `values` that changes.
  */
-function plannedUpdateChanges(resource, payload, normalisedDesired) {
+function plannedUpdateChanges(resource, desired, payload, normalisedDesired) {
   const sent = Object.keys(payload ?? {}).filter((field) => field !== '@odata.type');
   const live = resource.live?.payload ?? null;
   if (!live) return { fields: sent };
   const liveView = verificationView(forVerification(live, resource), resource.resourceType);
-  const differ = new Set(residualDiff(normalisedDesired, liveView, resource.resourceType).map((path) => path.split('.')[0]));
-  const fields = sent.filter((field) => differ.has(field));
-  if (resource.resourceType === 'groupSetting' && fields.includes('values')) {
-    return { fields, values: namedValueDrift(resource.payload?.values, live.values).changed };
+  const differ = [...new Set(residualDiff(normalisedDesired, liveView, resource.resourceType).map((path) => path.split('.')[0]))];
+  const sentDiffer = sent.filter((field) => differ.includes(field));
+  const fields = sentDiffer.length > 0 ? sentDiffer : differ;
+  const changes = { fields };
+  if (resource.resourceType === 'group') {
+    const add = licencePlan(desired, live, { resourceType: 'group' }).add;
+    if (add.length > 0) changes.addLicences = add.map((licence) => licence.skuId);
   }
-  return { fields };
+  if (resource.resourceType === 'groupSetting' && fields.includes('values')) {
+    changes.values = namedValueDrift(desired?.values, live.values).changed;
+  }
+  return changes;
 }
 
 function residualDiff(desired, live, resourceType) {

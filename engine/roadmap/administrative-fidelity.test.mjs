@@ -310,6 +310,10 @@ test('issue #720: a dry run lists the unit fields and setting values it would ch
   assert.deepEqual(unit.applied[0].changes, { fields: ['description'] });
   const unitSettled = await run(units, [planned(units, 'administrativeUnit', 'update', financeUnit, financeUnit)], { mode: 'dry-run' });
   assert.deepEqual(unitSettled.applied[0].changes, { fields: [] }, 'a unit that already matches plans no field');
+  // A difference in a field the snapshot lacks still makes the enforce run write, so it is listed.
+  const { description: _description, ...nameOnly } = financeUnit;
+  const liveOnly = await run(units, [planned(units, 'administrativeUnit', 'update', nameOnly, financeUnit)], { mode: 'dry-run' });
+  assert.deepEqual(liveOnly.applied[0].changes, { fields: ['description'] });
 
   const settings = recordingGraph();
   const settingLive = setValues(unifiedSetting, { EnableGroupCreation: 'true' });

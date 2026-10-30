@@ -283,6 +283,18 @@ test('a group update without a live read checks the licences first and sends non
   assert.ok(!graph.bodies.some((write) => write.path.endsWith('/assignLicense')));
 });
 
+test('issue #720: a dry run of a group whose only difference is a missing licence lists the licence to add', async () => {
+  const graph = recordingGraph();
+  const desired = { id: 'g-1', displayName: 'Finance', mailNickname: 'finance', mailEnabled: false, securityEnabled: true, groupTypes: [], assignedLicenses: [{ skuId: E3, disabledPlans: [] }] };
+  const live = { ...desired, assignedLicenses: [] };
+  graph.objects.set('/groups/g-1', live);
+  const resource = { naturalKey: 'group:finance', resourceType: 'group', verb: 'update', payload: desired, references: [], targetId: 'g-1', live: { state: 'present', targetId: 'g-1', payload: live } };
+  const result = await run(graph, [resource], { mode: 'dry-run' });
+  assert.deepEqual(result.failed, []);
+  assert.deepEqual(result.applied[0].changes, { fields: [], addLicences: [E3] });
+  assert.equal(graph.bodies.length, 0);
+});
+
 function readerFor(collections) {
   return {
     async collect(_version, path) {

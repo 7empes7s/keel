@@ -158,7 +158,7 @@ async function mailCommand(argv, { config, tenantRef, client, store, readFile, e
   }
   const gate = await authorizeContentRestore(client, {
     actor: arg(argv, 'actor'), approvalId, runId: request ? mailRestoreRunId(request) : null, tenantRef, ...(canFn ? { canFn } : {}),
-    policyActions: request ? mailPolicyActions(request) : [],
+    policyActions: request ? mailPolicyActions(request) : [], workload: 'mail',
   });
   const restorerPath = arg(argv, 'restorer', DEFAULT_RESTORER_PATH);
   if (!exists(restorerPath)) {

@@ -6,6 +6,7 @@
 import { ago, displayEnum, formatTimestamp, resourceLabel, resourceTypeLabel, words } from "@/lib/presentation";
 import { WORKLOAD_LABELS, workloadLabel } from "@/lib/compare-view";
 import { holdsObjectId, jobIncompleteTypes, type NamedKeys, namedResource } from "@/lib/job-names";
+import { RESTORE_APPROVAL_RULE_INFO, isRestoreApprovalRule } from "@/lib/restore-approval-rules";
 import { serviceFor } from "@/lib/services";
 
 export interface EngineRef {
@@ -359,6 +360,12 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
       ? `A control check ${subject.verdict === "pass" ? "passed" : subject.verdict === "fail" ? "failed" : "could not decide"}`
       : "A control check ran";
     case "restore-approval-setting": {
+      if (isRestoreApprovalRule(subject.rule)) {
+        const kind = RESTORE_APPROVAL_RULE_INFO[subject.rule].phrase;
+        return subject.approvalRequired === false
+          ? `${actorName} turned off restore approvals for ${kind}, so they no longer wait for a person`
+          : `${actorName} turned on restore approvals for ${kind}`;
+      }
       const service = typeof subject.service === "string" ? serviceFor(subject.service).name : "a service";
       return subject.approvalRequired === false
         ? `${actorName} turned off restore approvals for ${service}, so its high-impact restore changes no longer wait for a second person`

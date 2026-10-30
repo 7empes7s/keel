@@ -205,6 +205,7 @@ export async function filesCommand(argv, ctx) {
   }
   const gate = await authorizeContentRestore(client, {
     actor: arg(argv, 'actor'), approvalId, runId: request ? restoreRunKey(request) : null, tenantRef, ...(canFn ? { canFn } : {}),
+    workload: request ? workloadOf(request) : null,
   });
   const transport = await restorerTransport(argv, request, ctx);
   const result = await engineCall(request, { tenantRef, testTenantRefs })({

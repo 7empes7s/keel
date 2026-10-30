@@ -43,7 +43,6 @@ export default async function ApprovalsPage() {
           status={status}
           title={TITLE}
         />
-        <RestoreApprovalSettingsCard canChange={canChangeApprovals} now={data.generatedAt} settings={restoreApprovals} />
         <ApprovalInbox
           awaitingContentEffects={data.awaitingContentEffects}
           history={data.history}
@@ -52,6 +51,8 @@ export default async function ApprovalsPage() {
           pending={data.pending}
           viewerId={viewerId}
         />
+        {/* Settings after what waits for a decision: pending work comes first. */}
+        <RestoreApprovalSettingsCard canChange={canChangeApprovals} now={data.generatedAt} settings={restoreApprovals} />
       </>
     );
   } catch {

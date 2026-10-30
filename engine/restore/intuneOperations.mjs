@@ -55,6 +55,7 @@ import { classifyWriteOutcome } from './rollbackJournal.mjs';
 import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { appGroupOf, appHasPackage, appKindName, appKindWords } from './intuneAppKinds.mjs';
+import { trustSettingIds } from './workloads/writeDeclarations.mjs';
 import {
   applyRecordWrite, defineRecord, holdsNestedTrust, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue, trustFieldStep,
   undoesCreate, withoutTrustFields,
@@ -197,6 +198,25 @@ export function credentialSubtype(payload) {
   return subtype && CREDENTIAL_SUBTYPE.test(subtype) ? subtype : null;
 }
 
+/**
+ * CLAUDE.md restore-writer rule for settings catalog policies, compliance
+ * policies and reusable settings groups: a trust, certificate or sign-in
+ * setting is named by its settingDefinitionId value, not a key, so the
+ * key-based trust check misses it. These are written whole (PUT), so leaving
+ * the setting out would delete it from the tenant: the whole write is a manual
+ * step when the backup holds one, or (on update) the live policy does.
+ * Returns null or the skipped outcome.
+ */
+export function trustSettingRefusal(resource, verb) {
+  const ids = new Set(trustSettingIds(resource?.payload));
+  if (verb === 'update') for (const id of trustSettingIds(resource?.live?.payload)) ids.add(id);
+  if (ids.size === 0) return null;
+  return {
+    outcome: 'skipped',
+    reason: `manual: this policy holds trust, certificate or sign-in settings (${[...ids].sort().join(', ')}); a restore never writes them, and the policy is written whole, so restore it by hand in the Intune admin center`,
+  };
+}
+
 // ------------------------------------------------------------------- bodies
 
 /** Every @odata annotation except @odata.type, at every depth. */
@@ -329,6 +349,8 @@ export function intuneWriteRefusal(resource, verb) {
       reason: `manual: the policy holds values Graph never returns (passwords, keys, certificates or encrypted settings) at ${secrets.join(', ')}; restore it by hand so they are never written as blanks`,
     };
   }
+  const trust = trustSettingRefusal(resource, verb);
+  if (trust) return trust;
   if (entry.odataTypeRequired && typeof payload['@odata.type'] !== 'string') {
     return { outcome: 'failed', reason: 'the backup does not record which kind of policy this is (@odata.type), and Graph needs it to write one' };
   }
@@ -1307,6 +1329,8 @@ function compliancePolicyRefusal(resource, verb) {
   if (secrets.length > 0) {
     return { outcome: 'skipped', reason: `manual: the policy holds values Graph never returns at ${secrets.join(', ')}; restore it by hand so they are never written as blanks` };
   }
+  const trust = trustSettingRefusal(resource, verb);
+  if (trust) return trust;
   const newBackup = 'take a new backup, then restore';
   if (!Array.isArray(payload.settings)) return { outcome: 'failed', reason: `the backup does not hold this compliance policy's settings; writing it would empty the policy, so ${newBackup}` };
   const count = payload.settingCount;
@@ -2322,6 +2346,8 @@ async function appAfterWrite(io, step) {
  */
 export function reusableSettingRefusal(resource, verb) {
   if (verb === 'delete') return null;
+  const trust = trustSettingRefusal(resource, verb);
+  if (trust) return trust;
   const payload = resource.payload ?? {};
   const instance = payload.settingInstance;
   if (!instance || typeof instance !== 'object' || Array.isArray(instance)) {

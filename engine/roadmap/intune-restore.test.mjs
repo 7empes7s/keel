@@ -353,6 +353,11 @@ test('mutation: a policy holding a password, key, certificate or encrypted setti
       ...catalogPolicy,
       settings: [{ id: '0', settingInstance: { '@odata.type': '#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance', settingDefinitionId: 'vpn_key', simpleSettingValue: { '@odata.type': '#microsoft.graph.deviceManagementConfigurationSecretSettingValue', valueState: 'encryptedValueToken', value: null } } }],
     }],
+    // A trusted root certificate is named only by its definition id (the trust-field rule).
+    ['configurationPolicy', {
+      ...catalogPolicy,
+      settings: [{ id: '0', settingInstance: { '@odata.type': '#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance', settingDefinitionId: 'device_vendor_msft_rootcatrustedcertificates_root_{certhash}_encodedcertificate', simpleSettingValue: { '@odata.type': '#microsoft.graph.deviceManagementConfigurationStringSettingValue', value: 'MIIB' } } }],
+    }],
   ];
   for (const [resourceType, payload] of cases) {
     for (const verb of ['create', 'update']) {

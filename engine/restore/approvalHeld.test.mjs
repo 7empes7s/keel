@@ -6,7 +6,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { typeInfo } from '../insights/taxonomy.mjs';
+import { SERVICES, typeInfo } from '../insights/taxonomy.mjs';
 import { APPROVAL_HELD_FIELDS, CONTENT_EFFECTS, CONTENT_EFFECT_RULES, classifyContentEffects } from '../safety/contentEffects.mjs';
 import { APPROVAL_HELD_KINDS, approvalHeldRefusal, unapprovedAccessEffects } from './approvalHeld.mjs';
 import { IDENTITY_RECORDS } from './identityObjectOperations.mjs';
@@ -17,24 +17,34 @@ const RECORDS = { ...IDENTITY_RECORDS, ...INTUNE_EXTENDED_RECORDS };
 
 // One payload per kind that differs from its live state in every access field.
 // A role keeps a permission either way, so its own refusal lets it reach the gate.
-const value = (field, side) => (field === 'rolePermissions'
-  ? [{ resourceActions: [{ allowedResourceActions: [`Microsoft.Intune_${side}_Read`] }] }]
-  : { kept: side });
+const value = (field, side) => {
+  if (field === 'rolePermissions') return [{ resourceActions: [{ allowedResourceActions: [`Microsoft.Intune_${side}_Read`] }] }];
+  // Batch 2: an Intune assignment names its role, and an Exchange one its principal by path.
+  if (field === 'roleDefinition') return { id: `role-${side}` };
+  if (field === 'principalId') return `/Users/${side === 'before' ? 'b' : 'a'}0000000-0000-0000-0000-000000000000`;
+  return { kept: side };
+};
 const before = (field) => ({ [field]: value(field, 'before') });
 const after = (field) => ({ [field]: value(field, 'after') });
+// An update drifts the fields an update sends; one set only on create (an Intune
+// assignment's role, an approval policy's kind) is the same on both sides.
+const updatedFields = (resourceType) => APPROVAL_HELD_FIELDS[resourceType].filter((field) => !RECORDS[resourceType].createOnly.includes(field));
 const changed = (resourceType) => {
-  const fields = APPROVAL_HELD_FIELDS[resourceType];
+  const same = APPROVAL_HELD_FIELDS[resourceType].filter((field) => !updatedFields(resourceType).includes(field));
   return {
     naturalKey: `${resourceType}:fixture`, resourceType, references: [],
-    payload: Object.assign({ isBuiltIn: false }, ...fields.map(after)),
-    live: { state: 'present', payload: Object.assign({ isBuiltIn: false }, ...fields.map(before)) },
+    payload: Object.assign({ isBuiltIn: false }, ...same.map(after), ...updatedFields(resourceType).map(after)),
+    live: { state: 'present', payload: Object.assign({ isBuiltIn: false }, ...same.map(after), ...updatedFields(resourceType).map(before)) },
   };
 };
 
-test('approval-held kinds: the three kinds of the first batch, each in a service the restore approval setting knows', () => {
-  assert.deepEqual([...APPROVAL_HELD_KINDS].sort(), ['deviceManagementRoleDefinition', 'deviceRegistrationPolicy', 'tenantAppManagementPolicy']);
+test('approval-held kinds: the kinds of batches 1 and 2, each in a service the restore approval setting knows', () => {
+  assert.deepEqual([...APPROVAL_HELD_KINDS].sort(), [
+    'defenderRoleAssignment', 'deviceManagementRoleAssignment', 'deviceManagementRoleDefinition', 'deviceRegistrationPolicy',
+    'exchangeRoleAssignment', 'operationApprovalPolicy', 'tenantAppManagementPolicy',
+  ]);
   assert.ok(CONTENT_EFFECTS.includes('access-changing'));
-  for (const kind of APPROVAL_HELD_KINDS) assert.ok(['Entra', 'Intune'].includes(typeInfo(kind).service), kind);
+  for (const kind of APPROVAL_HELD_KINDS) assert.ok(SERVICES.includes(typeInfo(kind).service), kind);
 });
 
 test('approval-held kinds: each has a reviewed rule per access field, all "access-changing", and a writer that sends those fields', () => {
@@ -45,12 +55,12 @@ test('approval-held kinds: each has a reviewed rule per access field, all "acces
     assert.ok(review.rules.every((rule) => rule.effect === 'access-changing'), kind);
     const record = RECORDS[kind];
     assert.ok(record, `${kind} has a record`);
-    for (const field of APPROVAL_HELD_FIELDS[kind]) assert.ok(record.writable.includes(field), `${kind} writes ${field}`);
+    // A field set only when the object is made (an Intune assignment's role) is sent on create.
+    for (const field of APPROVAL_HELD_FIELDS[kind]) assert.ok(record.writable.includes(field) || record.createOnly.includes(field), `${kind} writes ${field}`);
     for (const verb of record.operations) assert.ok(writerFor(kind, verb), `${kind} ${verb} has a registered writer`);
-    // A delete is only the undo of a role this restore created (intuneRoleRefusal).
+    // A delete is only the undo of an object this restore created.
     if (record.operations.includes('delete')) {
-      assert.equal(kind, 'deviceManagementRoleDefinition');
-      assert.match(record.refusal({ ...changed(kind), payload: null }, 'delete', { mode: 'enforce' })?.reason ?? '', /deletes only an Intune role it created itself/);
+      assert.match(record.refusal({ ...changed(kind), payload: null }, 'delete', { mode: 'enforce' })?.reason ?? '', /deletes only an? .* it created itself/, kind);
       assert.equal(record.refusal({ ...changed(kind), undoes: 'create', compensates: ['entry-1'] }, 'delete', { mode: 'enforce' }), null);
     }
   }
@@ -60,7 +70,7 @@ test('approval-held kinds: every writer refuses an enforce write whose access ef
   for (const kind of APPROVAL_HELD_KINDS) {
     const resource = changed(kind);
     const effects = classifyContentEffects([{ ...resource, verb: 'update' }]).effects;
-    assert.deepEqual(effects.map((effect) => effect.field), [...APPROVAL_HELD_FIELDS[kind]].sort(), kind);
+    assert.deepEqual(effects.map((effect) => effect.field), [...updatedFields(kind)].sort(), kind);
     // The record's own refusal runs the gate (built-in and trust checks come first).
     const refused = RECORDS[kind].refusal(resource, 'update', { mode: 'enforce' });
     assert.equal(refused?.outcome, 'skipped', kind);

@@ -265,9 +265,16 @@ function buildResource(type, obj, key, index, idToSymbol, context, lineage) {
 // the unit as a path ("/administrativeUnits/{id}"), not a bare id, so the GUID
 // walk never sees it. The id inside is a reference like any other, resolved
 // through the unit's natural key; `prefix` tells the writer to put the target
-// id back into the same path. Only the eligibility's scope is read this way.
-const SCOPE_REFERENCE_FIELDS = new Map([['roleEligibilitySchedule', ['directoryScopeId']]]);
-const ADMINISTRATIVE_UNIT_SCOPE = /^\/administrativeUnits\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+// id back into the same path. Only the fields listed here are read this way.
+// Approval-held kinds, batch 2: an Exchange role assignment names its principal
+// the same way ("/Users/{id}", "/Groups/{id}", "/ServicePrincipals/{id}"), so a
+// restore can find that user, group or app in the target by its natural key.
+// A role group ("/RoleGroups/{id}") is not a directory object and stays as it is.
+const SCOPE_REFERENCE_FIELDS = new Map([
+  ['roleEligibilitySchedule', ['directoryScopeId']],
+  ['exchangeRoleAssignment', ['principalId', 'directoryScopeId', 'appScopeId']],
+]);
+const SCOPE_PATH = /^(\/(?:administrativeUnits|users|groups|servicePrincipals)\/)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 export const ADMINISTRATIVE_UNIT_SCOPE_PREFIX = '/administrativeUnits/';
 
 /**
@@ -280,13 +287,13 @@ export const ADMINISTRATIVE_UNIT_SCOPE_PREFIX = '/administrativeUnits/';
 export function scopeReferencePrefix(type, field, payload) {
   if (!(SCOPE_REFERENCE_FIELDS.get(type) ?? []).includes(field)) return null;
   const value = payload?.[field];
-  return typeof value === 'string' && ADMINISTRATIVE_UNIT_SCOPE.test(value) ? ADMINISTRATIVE_UNIT_SCOPE_PREFIX : null;
+  return typeof value === 'string' ? (SCOPE_PATH.exec(value)?.[1] ?? null) : null;
 }
 
 function* scopeReferenceValues(type, obj) {
   for (const field of SCOPE_REFERENCE_FIELDS.get(type) ?? []) {
-    const match = typeof obj?.[field] === 'string' ? ADMINISTRATIVE_UNIT_SCOPE.exec(obj[field]) : null;
-    if (match) yield { path: field, guid: match[1].toLowerCase(), prefix: ADMINISTRATIVE_UNIT_SCOPE_PREFIX };
+    const match = typeof obj?.[field] === 'string' ? SCOPE_PATH.exec(obj[field]) : null;
+    if (match) yield { path: field, guid: match[2].toLowerCase(), prefix: match[1] };
   }
 }
 

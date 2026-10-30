@@ -309,7 +309,7 @@ export function trustFieldStep(resourceType, payload, live, verb, { excluded = [
   }
   if (fields.length === 0 && held.length === 0) return null;
   const parts = [];
-  if (fields.length) parts.push(`Check ${fields.join(', ')} in the admin center and set the backup's value by hand if it is still wanted.`);
+  if (fields.length) parts.push(`Check ${fields.join(', ')} in the admin center and set the backup's value by hand if it is still wanted (one the backup does not hold is left as it is).`);
   if (held.length) parts.push(`${held.join(', ')} ${held.length === 1 ? 'holds' : 'hold'} a trust setting, so ${held.length === 1 ? 'it was' : 'they were'} not restored either: set the backup's other values there by hand.`);
   return Object.freeze({
     kind: 'manual-setting', requirement: 'trustFields', fields: Object.freeze([...fields, ...held.filter((key) => !fields.includes(key))]),

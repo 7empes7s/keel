@@ -12,7 +12,7 @@ import { buildReconciliationPlan } from '../reconcile/reconciliationPlan.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { applyWave, recordLiveIdentifiers } from './applyEngine.mjs';
 
-const OLD_APP_ID = '11111111-1111-4111-8111-111111111111';
+const OLD_APP_ID = 'aaaaaaaa-1111-4111-8111-11111111abcd';
 const NEW_APP_ID = '22222222-2222-4222-8222-222222222222';
 const OLD_OBJECT_ID = '33333333-3333-4333-8333-333333333333';
 const NEW_OBJECT_ID = '44444444-4444-4444-8444-444444444444';
@@ -125,7 +125,7 @@ function bothRecreatedReader(appChanges = {}) {
 }
 
 const backupApp = { ...app, payload: { ...appPayload, identifierUris: [`api://${OLD_APP_ID}`] } };
-const backupSp = { ...servicePrincipal, payload: { ...servicePrincipal.payload, servicePrincipalNames: [OLD_APP_ID.toUpperCase(), `api://${OLD_APP_ID}`] } };
+const backupSp = { ...servicePrincipal, payload: { ...servicePrincipal.payload, servicePrincipalNames: [OLD_APP_ID.toUpperCase(), `api://${OLD_APP_ID.slice(0, 9).toUpperCase()}${OLD_APP_ID.slice(9)}`] } };
 const bothCreated = new Map([
   [app.naturalKey, { resourceType: 'application', targetIds: [NEW_OBJECT_ID], unknownIdCreates: 0 }],
   [servicePrincipal.naturalKey, { resourceType: 'servicePrincipal', targetIds: [NEW_SP_ID], unknownIdCreates: 0 }],

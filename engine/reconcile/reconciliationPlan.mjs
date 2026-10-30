@@ -125,11 +125,11 @@ function adoptByUniqueName(liveIndex, resource, plannedKeys, adoptedKeys) {
  * object's appId. Any other difference still plans an update. */
 const APP_ID_TYPES = new Set(['application', 'servicePrincipal']);
 
-function replaceInStrings(value, from, to) {
-  if (typeof value === 'string') return value.split(from).join(to);
-  if (Array.isArray(value)) return value.map((item) => replaceInStrings(item, from, to));
+function replaceInStrings(value, pattern, to) {
+  if (typeof value === 'string') return value.replace(pattern, to);
+  if (Array.isArray(value)) return value.map((item) => replaceInStrings(item, pattern, to));
   if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceInStrings(item, from, to)]));
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceInStrings(item, pattern, to)]));
   }
   return value;
 }
@@ -141,8 +141,9 @@ function comparedPayload(resource, current) {
   const live = current.payload?.appId;
   if (typeof backup !== 'string' || typeof live !== 'string' || backup.length === 0 || live.length === 0) return payload;
   if (backup.toLowerCase() === live.toLowerCase()) return payload;
-  // GUIDs are written in either case; both spellings of the backup's are replaced.
-  return replaceInStrings(replaceInStrings(payload, backup, live), backup.toLowerCase(), live);
+  // A GUID may be written in any case, so the match ignores case.
+  const pattern = new RegExp(backup.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+  return replaceInStrings(payload, pattern, () => live);
 }
 
 /** The backup's hash under the current field rules. The live side is always hashed

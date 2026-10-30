@@ -111,6 +111,24 @@ const expiresSooner = shorterBy(expiryDays);
 // An audience that names anyone beyond the invited people in the organization.
 const widensAudience = (before, after) => !same(before, after) && /everyone|external|guest|anonym|public/i.test(String(after ?? ''));
 const rule = (field, effect, when) => Object.freeze({ field, effect, when });
+// A move up an ordered scale, narrowest first; a value off the scale cannot be judged, so it counts.
+const widensOn = (order) => (before, after) => {
+  if (same(before, after)) return false;
+  const rank = (value) => order.findIndex((item) => item.toLowerCase() === String(value ?? '').toLowerCase());
+  return rank(before) < 0 || rank(after) < 0 || rank(after) > rank(before);
+};
+// SharePoint and OneDrive keep a domain list as one text of domains, split by spaces.
+const domainsOf = (value) => (Array.isArray(value) ? value : String(value ?? '').split(/[\s,;]+/)).map((item) => String(item).trim().toLowerCase()).filter(Boolean);
+const addsDomain = (before, after) => domainsOf(after).some((item) => !domainsOf(before).includes(item));
+const removesDomain = (before, after) => addsDomain(after, before);
+// A link or guest expiry in days: 0 (or less) never expires. Longer, or unreadable, counts.
+const expiresLater = (before, after) => {
+  if (same(before, after)) return false;
+  const read = (value) => { const number = Number(value); return Number.isFinite(number) ? (number <= 0 ? Infinity : number) : null; };
+  const b = read(before);
+  const a = read(after);
+  return b === null || a === null || a > b;
+};
 const SHARING = 'externally-sharing';
 const RETENTION = 'retention-reducing';
 const HOLD = 'hold-releasing';
@@ -125,6 +143,20 @@ const whileSet = (field, test) => (before, after, { to }) => test(before, after)
  * safety/contentEffects.mjs. Declared from Microsoft's documentation, not measured.
  */
 export const WORKLOAD_EFFECT_RULES = Object.freeze({
+  // One OneDrive site's sharing: anything that lets more people, or people outside, reach
+  // its files, or keeps their access longer, discloses content.
+  onedriveSiteSettings: [
+    rule('SharingCapability', SHARING, widensOn(['Disabled', 'ExistingExternalUserSharingOnly', 'ExternalUserSharingOnly', 'ExternalUserAndGuestSharing'])),
+    rule('SharingDomainRestrictionMode', SHARING, widensOn(['AllowList', 'BlockList', 'None'])),
+    rule('SharingAllowedDomainList', SHARING, addsDomain),
+    rule('SharingBlockedDomainList', SHARING, removesDomain),
+    rule('DefaultSharingLinkType', SHARING, widensOn(['Direct', 'Internal', 'AnonymousAccess'])),
+    rule('DefaultLinkPermission', SHARING, widensOn(['View', 'Edit'])),
+    rule('OverrideTenantExternalUserExpirationPolicy', SHARING, changes),
+    rule('ExternalUserExpirationInDays', SHARING, expiresLater),
+    rule('OverrideTenantAnonymousLinkExpirationPolicy', SHARING, changes),
+    rule('AnonymousLinkExpirationInDays', SHARING, expiresLater),
+  ],
   // Mail that a rule deletes, or copies, reports or sends to someone new, is lost or
   // disclosed. Every other change to a rule that carries such an action is judged by
   // the object rule below.
@@ -473,7 +505,9 @@ export async function loadWorkloadSource(client, { tenantRef, collectionId, work
 }
 
 const fingerprint = (entry) => sha256({ fields: entry.fields, fieldCoverage: entry.fieldCoverage, lock: entry.lock ?? null });
-const isLocked = (entry) => entry?.lock === 'locked' || lockState(entry?.fields) === 'locked';
+// A OneDrive (SharePoint) site lock: read-only or no access. KEEL never changes or unlocks a locked site.
+const siteLocked = (fields) => typeof fields?.LockState === 'string' && !/^unlock$/i.test(fields.LockState);
+const isLocked = (entry) => entry?.lock === 'locked' || lockState(entry?.fields) === 'locked' || siteLocked(entry?.fields);
 /** The family read failed or was not available, so nothing in it is known now. */
 function familyGap(live, family) {
   const gap = [...(live?.failures ?? []), ...(live?.unavailable ?? [])].find((item) => item.family === family) ?? null;
@@ -507,6 +541,12 @@ const TENANT_WIDE_FAMILIES = new Set(['activeSyncSettings', 'globalQuarantineSet
  */
 export function workloadTarget(write, family, entry) {
   const fields = entry?.fields ?? {};
+  // A OneDrive site belongs to one person: named by its owner and its personal address.
+  if (write.identity === 'url') {
+    const address = String(fields.url ?? entry?.url ?? '');
+    const person = /\/personal\/([^/]+)/i.exec(address)?.[1] ?? null;
+    return { tenantWide: false, names: [fields.Owner, person].filter((name) => typeof name === 'string' && name) };
+  }
   const identity = String(fields.Identity ?? entry?.identity ?? '');
   // Exchange and Purview objects are named by their Name, whether the cmdlet takes their Guid or that Name.
   const exchange = ['guid', 'object-name', 'fixed'].includes(write.identity);
@@ -532,6 +572,7 @@ function identityParameters(write, observation) {
   if (write.identity === 'object-name') return { Identity: observation.fields.Name };
   if (write.identity === 'fixed') return { Identity: write.fixedIdentity };
   if (write.identity === 'name') return { Identity: String(observation.fields.Identity).replace(/^tag:/i, '') };
+  if (write.identity === 'url') return { Identity: observation.fields?.url ?? observation.url };
   return { Identity: observation.fields.Identity };
 }
 
@@ -648,6 +689,12 @@ function planFields(write, { observation, current, manual }) {
       continue;
     }
     if (same(before, after)) continue;
+    // A value the site took from the tenant default is not the site's own: writing it would
+    // pin today's default on the site (OneDrive, onedrive.mjs inheritance).
+    if (observation.fieldCoverage[field]?.inheritance === 'inherited') {
+      manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: 'the backup shows the tenant default here, not a value of the site\'s own; KEEL does not pin it on the site, and the tenant default is changed in the SharePoint admin center' });
+      continue;
+    }
     if (isTrustField(write.resourceType, field)) {
       manual.push({ resourceKey: observation.resourceKey, field, before, after, reason: trustReason(write.resourceType), trust: true });
       continue;
@@ -779,7 +826,9 @@ export function planWorkloadSettingsRestore({
     }
     liveFingerprints[key] = current ? fingerprint(current) : 'absent';
     if (current && (isLocked(current) || parentLock(live, current) === 'locked')) {
-      refusals.push({ naturalKey: `${workload}:${key}`, reason: `preservation-locked: ${key} or its policy is under a platform preservation lock; KEEL never changes it` });
+      refusals.push({ naturalKey: `${workload}:${key}`, reason: siteLocked(current.fields)
+        ? `site-locked: ${key} is locked (LockState ${current.fields.LockState}); KEEL never changes or unlocks it`
+        : `preservation-locked: ${key} or its policy is under a platform preservation lock; KEEL never changes it` });
       continue;
     }
     if (current && parentLock(live, current) === 'unknown') {
@@ -946,7 +995,7 @@ export async function executeWorkloadSettingsRestore(client, {
       continue;
     }
     if (entry && (isLocked(entry) || parent === 'locked')) {
-      await settle(op, { outcome: 'refused', reasons: ['the object or its policy now reports a preservation lock; KEEL never changes it'] });
+      await settle(op, { outcome: 'refused', reasons: [siteLocked(entry.fields) ? 'the site is now locked; KEEL never changes or unlocks it' : 'the object or its policy now reports a preservation lock; KEEL never changes it'] });
       continue;
     }
     // The fixture guard again, on what is about to be written: the object read now, or

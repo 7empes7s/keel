@@ -350,9 +350,10 @@ test('an inherited setting is distinguished from an explicit value when OneDrive
   assert.equal(own.change, 'value');
   assert.equal(own.siteChange, true);
 
-  // Every change is manual: no OneDrive write is declared.
-  assert.ok(Object.values(WORKLOAD_WRITE_OPERATIONS).every((write) => write.workload !== 'onedrive-site-settings'));
-  assert.ok([expiry, moved, own].every((change) => change.restore === 'manual'));
+  // Only a site's own value of a written setting is put back by KEEL; the tenant default is never pinned.
+  assert.deepEqual(Object.values(WORKLOAD_WRITE_OPERATIONS).filter((write) => write.workload === 'onedrive-site-settings').map((write) => write.method), ['Set-PnPTenantSite']);
+  assert.deepEqual([expiry, moved, own].map((change) => change.restore), ['manual', 'manual', 'keel']);
+  assert.match(expiry.reason, /tenant default/);
 
   // A legacy observation recorded without inheritance reads as undetermined, never explicit.
   const legacy = structuredClone(baseline);

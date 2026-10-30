@@ -59,7 +59,8 @@ function statements(code) {
   let current = null;
   let depth = 0;
   for (const line of code.split('\n')) {
-    const startsStatement = depth === 0 && /^[A-Za-z_]/.test(line) && !/^else\b/.test(line);
+    // `else` and a body's `if {` on its own line continue the statement above.
+    const startsStatement = depth === 0 && /^[A-Za-z_]/.test(line) && !/^(else|if)\b/.test(line);
     if (startsStatement) {
       if (current) out.push(current);
       current = line;
@@ -125,6 +126,7 @@ export function parseRegoFile(source, { file = 'rego' } = {}) {
     }
     const head = /^(?:default\s+)?([A-Za-z_][A-Za-z0-9_]*)/.exec(statement);
     const name = head[1];
+    if (KEYWORDS.has(name)) throw new Error(`${file}: a statement starts with the keyword '${name}'`);
     const withoutStrings = statement.replace(STRING_REF, ' ');
     const identifiers = new Set();
     const qualified = new Set();

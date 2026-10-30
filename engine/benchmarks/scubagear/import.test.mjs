@@ -185,6 +185,21 @@ test('a rule reads the keys of the helpers it calls, through imports and object.
   assert.deepEqual([...rules.get('MS.TEST.2.1v1').criticalities], ['Should/Not-Implemented']);
 });
 
+test('a body whose `if {` starts its own line still belongs to its rule', () => {
+  const rules = regoRuleInputs([{ file: 'p.rego', source: [
+    'package p',
+    'tests contains {',
+    '    "PolicyId": "MS.TEST.3.1v1",',
+    '    "Criticality": "Shall"',
+    '}',
+    'if {',
+    '    some x in input.split_body_key',
+    '}',
+  ].join('\n') }]);
+  assert.deepEqual([...rules.get('MS.TEST.3.1v1').inputs], ['split_body_key']);
+  assert.throws(() => parseRegoFile('package p\nsome := 1\n'), /starts with the keyword/);
+});
+
 test('a rule that reads the whole input document is refused, not under-reported', () => {
   assert.throws(() => parseRegoFile('package p\nAll := input\n'), /other than by a named key/);
   assert.throws(() => parseRegoFile('package p\nKeys := object.keys(input)\n'), /other than by a named key/);

@@ -35,6 +35,7 @@ import { FAMILIES as POWER_PLATFORM } from '../../collect/workloads/powerPlatfor
 import { FAMILIES as TEAMS } from '../../collect/workloads/teamsPolicies.mjs';
 import { FAMILIES as TEAMS_EXTENDED } from '../../collect/workloads/teamsExtended.mjs';
 import { SENSITIVE_MASK } from '../registry.mjs';
+import { DEFAULT_SCUBA_CONFIG } from './config.mjs';
 
 export class CouldNotBuild extends Error {
   constructor(key, why) {
@@ -358,8 +359,9 @@ const SCUBA_CONFIG_FIELDS = Object.freeze([
 ]);
 
 export const ADAPTERS = Object.freeze({
-  // Run settings. Keel passes no exclusions (ScubaGear's own default) and a commercial cloud.
-  scuba_config: Object.freeze({ setting: true, fields: SCUBA_CONFIG_FIELDS, build: () => ({ M365Environment: 'commercial', Aad: {}, Exo: {} }) }),
+  // Run settings: the tenant's lists (config.mjs) on a commercial cloud. Without them,
+  // ScubaGear's own default: no exclusions.
+  scuba_config: Object.freeze({ setting: true, fields: SCUBA_CONFIG_FIELDS, build: (facts, run) => structuredClone(run?.config ?? DEFAULT_SCUBA_CONFIG) }),
   module_version: Object.freeze({ setting: true, fields: [], build: (facts, run) => run.version }),
 
   // Entra ID

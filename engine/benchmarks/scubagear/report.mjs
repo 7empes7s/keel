@@ -4,6 +4,7 @@
  * to this output, so the report can never drift from the pinned rules or Keel's reads.
  * Regenerate it with: node tools/scubagear-rules.mjs report --write
  */
+import { listForRule, SCUBA_LISTS } from './config.mjs';
 import { PRODUCT_ORDER, RULE_STATES } from './import.mjs';
 
 export const STATE_LABELS = Object.freeze({
@@ -13,6 +14,7 @@ export const STATE_LABELS = Object.freeze({
   manual: 'Check by hand: CISA has no automated check',
 });
 const SHORT = Object.freeze({ ready: '🟢 Ready', partial: '🟡 Partly read', 'missing-input': '🔴 Could not check', manual: '⚪ Check by hand' });
+const LIST_WORDS = Object.freeze({ 'sensitive-users': 'Sensitive users', 'partner-domains': 'Partner domains' });
 const byId = (left, right) => left.id.localeCompare(right.id, 'en', { numeric: true });
 const cell = (text) => String(text).replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim();
 
@@ -26,7 +28,7 @@ export function outcomeWords(reason) {
     const [key, fields] = [rest.slice(0, rest.lastIndexOf('.')), rest.slice(rest.lastIndexOf('.') + 1)];
     return `Keel's read of \`${key}\` does not keep ${fields.split(',').map((field) => `\`${field}\``).join(', ')}.`;
   }
-  if (kind === 'needs-setting') return 'It needs a list the tenant gives in ScubaGear\'s config (sensitive users or partner domains), which Keel has no place for yet.';
+  if (kind === 'needs-setting') return 'It needs a list from ScubaGear\'s config that Keel has no place for yet.';
   return code;
 }
 
@@ -86,6 +88,12 @@ export function renderCoverageMarkdown(imported, coverage, outcomes = null) {
     for (const { rule, reason } of outcomes.filter((outcome) => outcome.reason).sort((left, right) => byId(left.rule, right.rule))) {
       push(`| ${rule.id} | ${cell(outcomeWords(reason))} |`);
     }
+    const listed = outcomes.filter((outcome) => !outcome.reason && listForRule(outcome.rule.id)).sort((left, right) => byId(left.rule, right.rule));
+    if (listed.length) {
+      push('', '## Runs once the tenant sets its list', '', 'These rules read a list only the tenant can give (ScubaGear\'s config file). The tenant sets it on the Compliance page; until then the rule shows as "could not check".', '',
+        '| Rule | List |', '|---|---|');
+      for (const { rule } of listed) push(`| ${rule.id} | ${LIST_WORDS[listForRule(rule.id)]} |`);
+    }
   }
   push(
     '',
@@ -95,6 +103,7 @@ export function renderCoverageMarkdown(imported, coverage, outcomes = null) {
     `- Rules whose NIST mapping is in the baseline but has no row in CISA's CSV: ${imported.nistNotInCsv.join(', ') || 'none'}.`,
     `- Rules where CISA's CSV and the baseline disagree (the baseline is used): ${imported.nistDiffers.map((d) => `${d.id} (baseline ${d.markdown.join(', ')}; CSV ${d.csv.join(', ')})`).join('; ') || 'none'}.`,
     '- Inputs are found by reading the Rego statically, following helper rules; a rule may be listed as reading an input on a branch it does not always take.',
+    `- ScubaGear config: the tenant's lists (${Object.values(SCUBA_LISTS).map((spec) => `\`SecuritySuite.${spec.policyId}.${spec.key}\``).join(', ')}) and its registered emergency accounts, as \`CapExclusions.Users\` of every sign-in rule that allows it and \`RoleExclusions.Users\` of MS.AAD.7.4v1 (engine/benchmarks/scubagear/config.mjs).`,
     '- Run settings (ScubaGear config, module version, tenant id) and run status (licence flags derived from Keel\'s own reads) are supplied by Keel and are not listed as inputs above.',
     '',
   );

@@ -55,6 +55,12 @@ function defaultOf(defaultValue) {
     ?? scalar(defaultValue.value);
 }
 
+/** The one option a value definition allows, or null when it allows none or several. */
+function onlyAllowed(definition) {
+  const options = Array.isArray(definition?.allowedOptions) ? definition.allowedOptions : [];
+  return options.length === 1 ? scalar(options[0]?.itemId) : null;
+}
+
 const asList = (value) => (Array.isArray(value) ? value : value && typeof value === 'object' ? [value] : []);
 
 /**
@@ -71,7 +77,9 @@ export function templateSettings(instance, out = []) {
   const children = [];
   for (const key of valueKeys) {
     for (const value of asList(instance[key])) {
-      const found = defaultOf(value.defaultValue);
+      // The default is Microsoft's value. Without one, a recommended (or required)
+      // definition that allows exactly one option names it instead.
+      const found = defaultOf(value.defaultValue) ?? onlyAllowed(value.recommendedValueDefinition) ?? onlyAllowed(value.requiredValueDefinition);
       if (found !== null) expected.push(found);
       children.push(...asList(value.children), ...asList(value.defaultValue?.children));
     }
@@ -200,19 +208,22 @@ export async function recordBaselineTemplateRead(client, { tenantRef, read, read
   );
   await client.query(
     `DELETE FROM intune_baseline_template_read
-      WHERE tenant_ref = $1 AND id NOT IN (
-        SELECT id FROM intune_baseline_template_read WHERE tenant_ref = $1 ORDER BY read_at DESC, id DESC LIMIT ${READS_KEPT})`,
+      WHERE tenant_ref = $1
+        AND id NOT IN (SELECT id FROM intune_baseline_template_read WHERE tenant_ref = $1 ORDER BY read_at DESC, id DESC LIMIT ${READS_KEPT})
+        -- The newest read that is not a failure stays, so failed reads never empty the page.
+        AND id IS DISTINCT FROM (SELECT id FROM intune_baseline_template_read WHERE tenant_ref = $1 AND outcome <> 'failed' ORDER BY read_at DESC, id DESC LIMIT 1)`,
     [tenantRef],
   );
   return row.id;
 }
 
-/** True when no complete template read is newer than `maxAgeMs`. */
+/** True when no complete or partial template read is newer than `maxAgeMs`. A partial
+ *  read counts, so a template that always fails is retried once a day, not every backup. */
 export async function templatesDue(client, { tenantRef, now = new Date(), maxAgeMs = TEMPLATE_READ_MAX_AGE_MS }) {
   assertTenantRef(tenantRef);
   const { rows } = await client.query(
     `SELECT 1 FROM intune_baseline_template_read
-      WHERE tenant_ref = $1 AND outcome IN ('complete', 'complete-empty') AND read_at > $2 LIMIT 1`,
+      WHERE tenant_ref = $1 AND outcome IN ('complete', 'complete-empty', 'partial') AND read_at > $2 LIMIT 1`,
     [tenantRef, new Date(now.getTime() - maxAgeMs)],
   );
   return rows.length === 0;
@@ -294,15 +305,17 @@ export function matchBaselines(templates, policies) {
  */
 export async function intuneBaselineResults(client, { tenantRef, now = new Date() }) {
   assertTenantRef(tenantRef);
-  const { rows: reads } = await client.query(
-    `SELECT id::text AS id, read_at, outcome, error, failures, templates
-       FROM intune_baseline_template_read
-      WHERE tenant_ref = $1 AND read_at <= $2
-      ORDER BY read_at DESC, id DESC`,
+  // The newest read (for a failure to say), and the newest usable one with its templates.
+  const { rows: [newest = null] } = await client.query(
+    `SELECT read_at, outcome, error FROM intune_baseline_template_read
+      WHERE tenant_ref = $1 AND read_at <= $2 ORDER BY read_at DESC, id DESC LIMIT 1`,
     [tenantRef, now],
   );
-  const usable = reads.find((read) => read.outcome !== 'failed') ?? null;
-  const newest = reads[0] ?? null;
+  const { rows: [usable = null] } = await client.query(
+    `SELECT read_at, outcome, error, failures, templates FROM intune_baseline_template_read
+      WHERE tenant_ref = $1 AND read_at <= $2 AND outcome <> 'failed' ORDER BY read_at DESC, id DESC LIMIT 1`,
+    [tenantRef, now],
+  );
   const { rows: snapshots } = await client.query(
     `SELECT id, tenant_ref, started_at, completed_at, coverage_digest
        FROM snapshot

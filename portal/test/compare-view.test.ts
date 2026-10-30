@@ -7,7 +7,7 @@ import { compareSettings } from "../../engine/govern/compare.mjs";
 import { CompareView } from "@/components/compare-view";
 import { NAV_MAP, visibleNavLinks } from "@/components/nav-links";
 import {
-  compareInputFrom, compareValueWords, compareVerdict, containerWords, defaultInput, labelTenants, notComparedReasons,
+  compareInputFrom, compareValueWords, compareVerdict, containerWords, defaultInput, groupKind, labelTenants, notComparedReasons, settingsByKind,
   type CompareData, type CompareResult, type SettingsSection,
 } from "@/lib/compare-view";
 
@@ -118,4 +118,37 @@ test("whole added and removed objects are one line with a badge, settings folded
   assert.doesNotMatch(html, /not there/i);
   assert.match(html, /Not in that backup/);
   assert.doesNotMatch(html, /First side read in full/);
+});
+
+test("endpoint security policies are listed under Defender, by area, not as Intune settings catalog policies", () => {
+  const policy = (name: string, family: string | null, description = "") => row(`configurationPolicy:${name}`, {
+    name, description, platforms: "windows10", technologies: "mdm", ...(family ? { templateReference: { templateFamily: family } } : {}),
+  }, `${name}${description}`);
+  const section = compareSettings(
+    { rows: [policy("KEEL-RT-AV", "endpointSecurityAntivirus"), policy("KEEL-RT-Wifi", null), policy("KEEL-RT-Same", null)], coverage: null },
+    { rows: [policy("KEEL-RT-AV", "endpointSecurityAntivirus", "now"), policy("KEEL-RT-Wifi", null, "now"), policy("KEEL-RT-FW", "endpointSecurityFirewall"), policy("KEEL-RT-Same", null)], coverage: null },
+  ) as SettingsSection;
+  assert.equal(section.groups.length, 1, "the engine keeps one group per stored type");
+
+  const groups = settingsByKind(section.groups);
+  assert.deepEqual(groups.map((group) => [groupKind(group), group.resourceType, group.added, group.removed, group.changed, group.unchanged, group.total, group.items.map((item) => item.name)]), [
+    ["configurationPolicy", "configurationPolicy", 0, 0, 1, 1, 1, ["KEEL-RT-Wifi"]],
+    ["defenderEndpointSecurityPolicy", "configurationPolicy", 1, 0, 1, 0, 2, ["KEEL-RT-AV", "KEEL-RT-FW"]],
+  ]);
+  // A type with no endpoint security policy among its items stays as it is.
+  const plain = settingsByKind([{ ...section.groups[0], items: section.groups[0].items.filter((item) => !item.templateFamily) }]);
+  assert.equal(plain.length, 1);
+  assert.equal(plain[0].kind, undefined);
+  // Only endpoint security policies: no empty Intune group is left behind.
+  assert.deepEqual(settingsByKind([{ ...section.groups[0], changed: 1, added: 1, items: section.groups[0].items.filter((item) => item.templateFamily) }]).map(groupKind), ["defenderEndpointSecurityPolicy"]);
+
+  const data: CompareData = { generatedAt: "2026-10-03T00:00:00.000Z", tenants: TENANTS, input: { from: ID(1), to: ID(2) }, result: result(section), problem: null };
+  const html = renderToStaticMarkup(createElement(CompareView, { data }));
+  // Each policy sits under its own service's heading.
+  const blocks = html.split(/<h3 class="bl-service-heading">/).slice(1).map((block) => block.slice(0, block.indexOf("</h3>")).replace(/<[^>]+>/g, "") + "|" + block);
+  const serviceOf = (name: string) => blocks.find((block) => block.includes(name))?.split("|")[0];
+  assert.equal(serviceOf("KEEL-RT-AV"), "Defender");
+  assert.equal(serviceOf("KEEL-RT-FW"), "Defender");
+  assert.equal(serviceOf("KEEL-RT-Wifi"), "Intune");
+  assert.match(html, /Endpoint security policy/);
 });

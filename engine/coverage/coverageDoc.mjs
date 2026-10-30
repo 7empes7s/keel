@@ -741,6 +741,8 @@ export const WORKLOAD_GUIDE = Object.freeze({
     todo: 'KEEL restores only a retention label\'s text and duration; a shorter duration needs a second approver while restore approvals are on. Deleted labels, auto-labeling and eDiscovery cases are recreated by hand in the Purview portal using the backup. eDiscovery cases are backed up as their settings and holds, never their searches or evidence. Auto-labeling and eDiscovery (Premium) are backed up only when the tenant\'s licence includes them.' }),
   'power-platform-settings': Object.freeze({ name: 'Power Platform and Power BI settings',
     todo: 'KEEL does not restore these yet. Change them by hand in the Power Platform admin center or the Fabric admin portal using the backup.' }),
+  'defender-endpoint-indicators': Object.freeze({ name: 'Defender for Endpoint indicators',
+    todo: 'KEEL does not restore these yet. Add a deleted file, certificate, IP address, domain or URL indicator back by hand in the Microsoft Defender portal, under Settings, Endpoints, Indicators, with the action, scope and expiry from the backup.' }),
 });
 
 const OPERATION_WORDS = Object.freeze({

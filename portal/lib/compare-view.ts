@@ -262,6 +262,7 @@ export const WORKLOAD_LABELS: Record<string, string> = {
   "onedrive-site-settings": "OneDrive settings",
   onedrive: "OneDrive files",
   "power-platform-settings": "Power Platform settings",
+  "defender-endpoint-indicators": "Defender for Endpoint indicators",
   planner: "Planner plans",
 };
 

@@ -119,6 +119,8 @@ export const WORKLOAD_RESOURCE_TYPES = Object.freeze([
   'exchangeExtended',
   // READ-PP: Power Platform environments, DLP policies, connectors and Power BI tenant settings (read-only for now).
   'powerPlatformSettings',
+  // READ-MDE-IOC: Defender for Endpoint indicators (read-only for now).
+  'defenderEndpointIndicators',
 ]);
 
 function assertNoWorkloadTypes(resources) {

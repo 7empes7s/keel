@@ -15,6 +15,7 @@
  * - record(client, { tenantRef, result }) stores a run that failed before collect
  *   could record one.
  */
+import { DEFENDER_INDICATORS_WORKLOAD, collectDefenderIndicators, defenderIndicatorsTransportFor, recordDefenderIndicatorsRun } from './defenderIndicators.mjs';
 import { collectExchange, recordExchangeRun } from './exchange.mjs';
 import { collectExchangeExtended, recordExchangeExtendedRun } from './exchangeExtended.mjs';
 import {
@@ -43,6 +44,9 @@ import {
 } from './teamsVoiceNetwork.mjs';
 
 export const WORKLOAD_COLLECTORS = Object.freeze([
+  // defenderIndicators.mjs: its own Defender for Endpoint API transport, not the Graph one.
+  { workload: DEFENDER_INDICATORS_WORKLOAD, powershellFamily: null, record: recordDefenderIndicatorsRun,
+    collect: (client, { base, config, sleep }) => collectDefenderIndicators(client, { ...base, sleep, transport: defenderIndicatorsTransportFor(config) }) },
   // exchange.mjs
   { workload: 'exchange-mailbox-settings', powershellFamily: 'exchange', record: recordExchangeRun,
     collect: (client, { base, transport, powershell, scope, sleep }) => collectExchange(client, {

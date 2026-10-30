@@ -1135,3 +1135,13 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 **KEEL can restore:** nothing yet.
 
 **You do:** KEEL does not restore these yet. Change them by hand in the Power Platform admin center or the Fabric admin portal using the backup.
+
+### Defender for Endpoint indicators
+
+**Backed up:**
+
+- Defender for Endpoint indicators
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. Add a deleted file, certificate, IP address, domain or URL indicator back by hand in the Microsoft Defender portal, under Settings, Endpoints, Indicators, with the action, scope and expiry from the backup.

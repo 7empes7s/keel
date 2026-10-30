@@ -65,6 +65,12 @@ KEEL_QUALIFICATION_HMAC_KEY=... node tools/qualification/workloadReadsLive.mjs c
 
 A refused read is recorded as `HTTP <status>` and is not proof; only that family stays off.
 
+`--workload defender-endpoint-indicators` works the same way: one GET of
+`https://api.security.microsoft.com/api/indicators?$top=10000` through
+`readOnlyDefenderIndicatorsTransport`, with a token for the legacy audience
+`https://api.securitycenter.microsoft.com/`. The collector needs the WindowsDefenderATP
+application permission `Ti.Read.All`; without it the read answers 403 and the ledger names that step.
+
 Exit codes: `capture` 0 when the record verifies, 1 when it does not, 2 on a refused
 argument (nothing sent). The proof lapses after 30 days, like the other workload proof;
 `keel-workload-collect.mjs proof` lists when.

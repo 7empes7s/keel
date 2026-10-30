@@ -20,6 +20,13 @@ const collected = [
       { appConfigKey: '0', appConfigKeyType: 'integerType', appConfigKeyValue: '0' },
     ],
   }]],
+  ['assignmentFilter', [{
+    id: '55555555-5555-4555-8555-555555555555', displayName: 'KEEL-RT-704-filter', platform: 'iOS',
+    rule: '(device.osVersion -eq "1")', roleScopeTags: ['1'], payloads: [],
+  }]],
+  ['policySet', [{
+    id: '66666666-6666-4666-8666-666666666666', displayName: 'KEEL-RT-704-set', roleScopeTags: ['1'], guidedDeploymentTags: [],
+  }]],
   ['configurationPolicy', [{
     id: '44444444-4444-4444-8444-444444444444', name: 'KEEL-RT-704-policy', roleScopeTagIds: ['0'],
     settings: [{ settingInstance: { simpleSettingValue: { value: '1' } } }],
@@ -43,9 +50,19 @@ test('a settings catalog value equal to a scope tag id is not a reference', () =
 
 test('roleScopeTagIds still reference the scope tags', () => {
   const resources = canonicalizeAll(collected);
-  const tagKey = byType(resources, 'roleScopeTag') && resources.find((r) => r.sourceId === '1').naturalKey;
+  const tagKey = resources.find((r) => r.resourceType === 'roleScopeTag' && r.sourceId === '1').naturalKey;
   const config = byType(resources, 'mobileAppConfiguration');
   const ref = config.references.find((r) => r.field === 'roleScopeTagIds[0]');
   assert.ok(ref, 'roleScopeTagIds[0] is a reference');
   assert.equal(ref.symbol, tagKey);
+});
+
+test('roleScopeTags on assignment filters and policy sets still reference the scope tag', () => {
+  const resources = canonicalizeAll(collected);
+  const tagKey = resources.find((r) => r.resourceType === 'roleScopeTag' && r.sourceId === '1').naturalKey;
+  for (const type of ['assignmentFilter', 'policySet']) {
+    const ref = byType(resources, type).references.find((r) => r.field === 'roleScopeTags[0]');
+    assert.ok(ref, `${type} roleScopeTags[0] is a reference`);
+    assert.equal(ref.symbol, tagKey);
+  }
 });

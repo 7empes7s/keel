@@ -296,11 +296,12 @@ function* scopeReferenceValues(type, obj) {
 // or rewrite the value to the new tag's id. Two guards:
 //  - fields that hold text an admin typed are never reference candidates;
 //  - an all-digit id counts only under a field named like an id
-//    (roleScopeTagIds, ...Id, ...Ids), never under a setting value.
+//    (...Id, ...Ids, roleScopeTagIds) or a scope tag list (roleScopeTags,
+//    used by assignment filters and policy sets), never under a setting value.
 const FREE_TEXT_FIELDS = new Set([
   'displayName', 'description', 'appConfigKey', 'appConfigKeyValue',
 ]);
-const ID_FIELD = /(^|[a-z])Ids?$|^ids?$/;
+const ID_FIELD = /(^|[a-z])(Ids?|ScopeTags)$|^ids?$/;
 const DIGITS = /^\d+$/;
 
 function lastField(path) {

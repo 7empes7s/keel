@@ -7,7 +7,7 @@ import { workloadChoices } from "../../engine/restore/workloads/restoreChoices.m
 import { connect } from "@/lib/db";
 import { PAGE_RESTORE_WORKLOADS } from "@/lib/restore-workloads-view";
 import { databaseUrl, tenantRef } from "@/lib/runtime-config";
-import { serviceChangeFrom, type UndoChoice } from "@/lib/service-changes-view";
+import { serviceChangeFrom, undoSource, type UndoChoice } from "@/lib/service-changes-view";
 import type { DriftRecord } from "@/lib/types";
 
 interface KeelClient {
@@ -38,10 +38,12 @@ export async function loadServiceChanges(
     `SELECT * FROM (
        SELECT DISTINCT ON (d.workload, d.resource_key)
               d.id, d.workload, d.resource_key, d.change_type, d.fields, d.blast_radius, d.collection_id, d.previous_collection_id, d.compared_with,
-              c.observed_to, pc.observed_to AS previous_observed_to, cur.fields - $5::text[] AS current_fields, prev.fields - $5::text[] AS previous_fields, a.id AS alert_id, a.state AS alert_state
+              c.observed_to, pc.observed_to AS previous_observed_to, ap.collection_id AS approved_collection_id, apc.observed_to AS approved_observed_to, cur.fields - $5::text[] AS current_fields, prev.fields - $5::text[] AS previous_fields, a.id AS alert_id, a.state AS alert_state
          FROM workload_drift d
          JOIN workload_collection c ON c.id = d.collection_id
          LEFT JOIN workload_collection pc ON pc.id = d.previous_collection_id
+         LEFT JOIN workload_approved ap ON ap.tenant_ref = d.tenant_ref AND ap.workload = d.workload AND ap.resource_key = d.resource_key
+         LEFT JOIN workload_collection apc ON apc.id = ap.collection_id
          LEFT JOIN workload_observation cur ON cur.collection_id = d.collection_id AND cur.resource_key = d.resource_key
          LEFT JOIN workload_observation prev ON prev.collection_id = d.previous_collection_id AND prev.resource_key = d.resource_key
          LEFT JOIN alert a ON a.tenant_ref = d.tenant_ref AND a.resource_key = d.workload || ':' || d.resource_key
@@ -60,7 +62,8 @@ export async function loadServiceChanges(
 interface ChoiceGroup { restorable: boolean; reason: string | null; items: { key: string; restorable: boolean; reason: string | null }[] }
 
 /** For each change Keel might undo: what the Restore page offers for its resource from
- * the read that holds the earlier value, told what the newest read shows (so a removed
+ * the read undo restores from (undoSource: the active approved setup's read, so a baseline
+ * captured after the change wins over the value stored with it), told what the newest read shows (so a removed
  * setting reads as deleted). Each read is loaded once. */
 async function undoChoices(client: KeelClient, tenant: string, rows: Record<string, unknown>[]): Promise<Map<string, UndoChoice | null>> {
   const reads = new Map<string, Promise<unknown[] | null>>();
@@ -77,7 +80,7 @@ async function undoChoices(client: KeelClient, tenant: string, rows: Record<stri
     const workload = String(row.workload);
     if (!PAGE_RESTORE_WORKLOADS.includes(workload) || row.change_type === "added") continue;
     try {
-      const before = await observations(workload, String(row.previous_collection_id));
+      const before = await observations(workload, undoSource(row).collectionId);
       if (!before) { found.set(String(row.id), null); continue; }
       const now = await observations(workload, String(row.collection_id));
       const groups = workloadChoices(workload, before, now as null) as ChoiceGroup[];

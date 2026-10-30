@@ -78,9 +78,24 @@ export function serviceUndo({ workload, resourceKey, changeType }: { workload: s
   return { possible: true, reason: null };
 }
 
+/** The read an undo restores from: the one the active approved setup points at for this
+ * resource (workload_approved.collection_id), which a new baseline version or an accepted
+ * change moves, so undo puts back today's approved value rather than the one stored with
+ * an older change. A resource with no approved row (a change recorded before the service
+ * had an approved setup) falls back to the read the change was compared with. */
+export function undoSource(row: Record<string, unknown>): { collectionId: string; readAt: string | null; approved: boolean } {
+  const approved = row.approved_collection_id ? String(row.approved_collection_id) : null;
+  const at = approved ? row.approved_observed_to : row.previous_observed_to;
+  return {
+    collectionId: approved ?? String(row.previous_collection_id),
+    readAt: at ? new Date(at as string | Date).toISOString() : null,
+    approved: approved !== null,
+  };
+}
+
 /** One stored workload_drift row, joined with its resource's fields and its alert, as a
  * row of the Changes list. `choice` is what the restore offers for its resource from
- * the read that holds the earlier value. */
+ * the read undo restores from (undoSource). */
 export function serviceChangeFrom(row: Record<string, unknown>, choice: UndoChoice | null = null): DriftRecord {
   const workload = String(row.workload);
   const resourceKey = String(row.resource_key);
@@ -107,6 +122,7 @@ export function serviceChangeFrom(row: Record<string, unknown>, choice: UndoChoi
       collectionId: String(row.collection_id),
       previousCollectionId: String(row.previous_collection_id),
       previousReadAt: row.previous_observed_to ? new Date(row.previous_observed_to as string | Date).toISOString() : null,
+      undoFrom: undoSource(row),
       comparedWith: row.compared_with === "approved" ? "approved" : "previous",
       alertId: row.alert_id ? String(row.alert_id) : null,
       alertState: row.alert_state ? String(row.alert_state) : null,

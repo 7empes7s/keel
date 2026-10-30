@@ -213,6 +213,64 @@ test('a named location a Conditional Access policy still uses is refused', async
   assert.match(result.skipped[0].reason, /the sign-in path still uses this object after the delete \(Block outside the office\)/);
 });
 
+// Issue #774: the list read lags behind a verified delete. Graph can still list
+// a deleted named location for a few seconds after its own read answers 404.
+function laggingReader(store, stale) {
+  const reader = readerFor(store);
+  return {
+    ...reader,
+    async collect(version, path) {
+      const result = await reader.collect(version, path);
+      if (path !== LOCATION_PATH || !Array.isArray(result.items)) return result;
+      const missing = stale.filter((item) => !store[LOCATION_PATH].has(item.id));
+      return { items: [...result.items, ...missing.map((item) => structuredClone(item))] };
+    },
+  };
+}
+
+test('a verified named location delete passes the sign-in path gate while the list still shows it', async () => {
+  const store = tenant();
+  const deleted = store[LOCATION_PATH].get('loc-old');
+  const writer = writerFor(store);
+  const result = await applyWave(writer, governor, [planned(store, 'namedLocation', LOCATION_PATH, 'loc-old')], {
+    targetTenant: 'fixture', mode: 'enforce',
+    deletionGuardOptions: { breakGlassUserIds: [BG1, BG2], keelAppIds: [], caPolicies: [...store[CA_PATH].values()] },
+    lockoutGate: breakGlassLockoutGate({ accounts, inventory: readinessInventory(store), now: NOW }),
+    signInPathGate: { reader: laggingReader(store, [deleted]), protectedPrincipalIds: [BG1, BG2] },
+  });
+  assert.deepEqual(writer.deletes, [`${LOCATION_PATH}/loc-old`]);
+  assert.deepEqual([result.skipped, result.failed], [[], []]);
+  assert.deepEqual(result.applied, [{ naturalKey: 'namedLocation:Closed branch', targetId: 'loc-old' }]);
+});
+
+test('a lagging list still fails the gate when another named location changed in the same wave', async () => {
+  const store = tenant();
+  const deleted = store[LOCATION_PATH].get('loc-old');
+  const writer = writerFor(store);
+  const reader = laggingReader(store, [deleted]);
+  const lagging = {
+    ...reader,
+    async collect(version, path) {
+      const result = await reader.collect(version, path);
+      // Someone else marks the office trusted between the two reads.
+      if (path === LOCATION_PATH && writer.deletes.length > 0) {
+        return { items: result.items.map((item) => (item.id === 'loc-office' ? { ...item, isTrusted: true } : item)) };
+      }
+      return result;
+    },
+  };
+  const result = await applyWave(writer, governor, [planned(store, 'namedLocation', LOCATION_PATH, 'loc-old')], {
+    targetTenant: 'fixture', mode: 'enforce',
+    deletionGuardOptions: { breakGlassUserIds: [BG1, BG2], keelAppIds: [], caPolicies: [...store[CA_PATH].values()] },
+    lockoutGate: breakGlassLockoutGate({ accounts, inventory: readinessInventory(store), now: NOW }),
+    signInPathGate: { reader: lagging, protectedPrincipalIds: [BG1, BG2] },
+  });
+  assert.deepEqual(writer.deletes, [`${LOCATION_PATH}/loc-old`]);
+  assert.equal(result.failed.length, 1, JSON.stringify(result.failed));
+  assert.equal(result.failed[0].naturalKey, 'sign-in-path-gate');
+  assert.deepEqual(result.failed[0].changed, ['namedLocations']);
+});
+
 test('lockout: deleting a break-glass account\'s Global Administrator assignment is refused, nothing is sent', async () => {
   const store = tenant();
   const { result, writer } = await run(store, planned(store, 'roleAssignment', ROLE_PATH, 'ra-bg1'));

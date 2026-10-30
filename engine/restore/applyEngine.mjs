@@ -1379,12 +1379,16 @@ export async function applyWave(writer, governor, wave, {
       .filter((entry) => namedLocationTrustKept(signInPath.itemOf(entry.targetId), after.itemOf(entry.targetId),
         writtenLocationKeys.get(entry.naturalKey)))
       .map((entry) => entry.targetId);
+    // Issue #774: a lockout delete that verified (its own read answered 404 or
+    // soft-deleted) is left out of the read after the wave too. A Graph list
+    // can still return a deleted object for a few seconds, so the list alone
+    // would count the verified delete as an unexpected change.
     const leftOutAfter = [...restoredPolicies, ...writtenLocations];
-    const signInPathAfter = leftOutAfter.length ? await after.without(leftOutAfter) : after.snapshot;
+    const leftOutOfAfter = [...lockoutDeletesVerified, ...leftOutAfter];
+    const signInPathAfter = leftOutOfAfter.length ? await after.without(leftOutOfAfter) : after.snapshot;
     // Gap register D1: an allowed lockout delete that verified is the one
     // change expected; everything else must read as before.
-    const leftOut = [...lockoutDeletesVerified, ...leftOutAfter];
-    const expected = leftOut.length ? await signInPath.without(leftOut) : signInPathBefore;
+    const expected = leftOutOfAfter.length ? await signInPath.without(leftOutOfAfter) : signInPathBefore;
     const gate = compareSignInPaths(expected, signInPathAfter, { intendedSections: [...intendedSignInSections] });
     if (!gate.allowed) {
       failed.push({ naturalKey: 'sign-in-path-gate', error: gate.reason, changed: gate.changed });

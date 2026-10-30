@@ -480,7 +480,6 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
   // MicrosoftTeams session. engine/collect/workloads/teamsVoiceNetwork.mjs holds the
   // fields and identities. Auto attendants and call queues are paged 100 at a time.
   ...[
-    ['teams-voice-network.pstn-usages', 'teams-voice-network', 'Teams PSTN usages', 'Get-CsOnlinePstnUsages', 'none'],
     ['teams-voice-network.voice-routes', 'teams-voice-network', 'Teams voice routes', 'Get-CsOnlineVoiceRoute', 'cmdlet-unbounded'],
     ['teams-voice-network.pstn-gateways', 'teams-voice-network', 'Teams Direct Routing gateways (SBCs)', 'Get-CsOnlinePSTNGateway', 'cmdlet-unbounded'],
     ['teams-voice-network.translation-rules', 'teams-voice-network', 'Teams number translation rules', 'Get-CsTeamsTranslationRule', 'cmdlet-unbounded'],

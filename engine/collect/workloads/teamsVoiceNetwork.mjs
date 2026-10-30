@@ -6,7 +6,7 @@
  * Two read-only workloads in the MicrosoftTeams session, so each lands in its own group
  * on the portal's lists (insights/taxonomy.d/teams.mjs):
  *  - `teams-voice-network` ("Calling and meetings"), in three parts:
- *    - voice routing: PSTN usages, voice routes, Direct Routing gateways (SBCs), number
+ *    - voice routing: voice routes, Direct Routing gateways (SBCs), number
  *      translation rules and unassigned number treatments;
  *    - network: network regions, sites, subnets, trusted IP addresses and network
  *      roaming policies (location-based routing and emergency addresses hang off these);
@@ -63,14 +63,18 @@ const family = (spec) => Object.freeze({ ...spec, fields: Object.freeze(spec.fie
  * Voice routing, network and call flows. Fields are from Microsoft's cmdlet
  * documentation; the live read check lists any the tenant's answer does not carry.
  * `required` families always answer in a working tenant (each policy list has its
- * Global policy; PSTN usages and dial-in settings are tenant singletons).
+ * Global policy; dial-in settings are a tenant singleton).
+ *
+ * No PSTN usages family: Get-CsOnlinePstnUsages is not exposed in the app-only
+ * MicrosoftTeams session (CommandNotFound in the Q279 live check). The usages are still
+ * backed up where they are used: on each voice route (OnlinePstnUsages here) and each
+ * voice routing policy (teamsExtended.mjs).
+ *
+ * Description is not declared where the live answer did not carry it (audio
+ * conferencing, VDI and feedback policies, Q279).
  */
 export const VOICE_NETWORK_FAMILIES = Object.freeze({
   // Voice routing.
-  pstnUsage: family({
-    operation: 'teams-voice-network.pstn-usages', cmdlet: 'Get-CsOnlinePstnUsages', prefix: 'pstn-usages', identity: singleton, required: true,
-    fields: ['Identity', 'Usage'],
-  }),
   voiceRoute: family({
     operation: 'teams-voice-network.voice-routes', cmdlet: 'Get-CsOnlineVoiceRoute', prefix: 'voice-route', identity: byName,
     fields: ['Identity', 'Name', 'Description', 'Priority', 'NumberPattern', 'OnlinePstnUsages', 'OnlinePstnGatewayList', 'BridgeSourcePhoneNumber'],
@@ -144,7 +148,7 @@ export const VOICE_NETWORK_FAMILIES = Object.freeze({
   }),
   audioConferencingPolicy: family({
     operation: 'teams-voice-network.audio-conferencing-policies', cmdlet: 'Get-CsTeamsAudioConferencingPolicy', prefix: 'audio-conferencing-policy', identity: policy, required: true,
-    fields: ['Identity', 'Description', 'AllowTollFreeDialin', 'MeetingInvitePhoneNumbers'],
+    fields: ['Identity', 'AllowTollFreeDialin', 'MeetingInvitePhoneNumbers'],
   }),
   callHoldPolicy: family({
     operation: 'teams-voice-network.call-hold-policies', cmdlet: 'Get-CsTeamsCallHoldPolicy', prefix: 'call-hold-policy', identity: policy, required: true,
@@ -168,12 +172,12 @@ export const DEVICE_POLICY_FAMILIES = Object.freeze({
   }),
   vdiPolicy: family({
     operation: 'teams-device-policies.vdi-policies', cmdlet: 'Get-CsTeamsVdiPolicy', prefix: 'vdi-policy', identity: policy, required: true,
-    fields: ['Identity', 'Description', 'DisableCallsAndMeetings', 'DisableAudioVideoInCallsAndMeetings', 'VDI2Optimization'],
+    fields: ['Identity', 'DisableCallsAndMeetings', 'DisableAudioVideoInCallsAndMeetings', 'VDI2Optimization'],
   }),
   feedbackPolicy: family({
     operation: 'teams-device-policies.feedback-policies', cmdlet: 'Get-CsTeamsFeedbackPolicy', prefix: 'feedback-policy', identity: policy, required: true,
     fields: [
-      'Identity', 'Description', 'UserInitiatedMode', 'ReceiveSurveysMode', 'AllowScreenshotCollection', 'AllowEmailCollection',
+      'Identity', 'UserInitiatedMode', 'ReceiveSurveysMode', 'AllowScreenshotCollection', 'AllowEmailCollection',
       'AllowLogCollection', 'EnableFeatureSuggestions',
     ],
   }),

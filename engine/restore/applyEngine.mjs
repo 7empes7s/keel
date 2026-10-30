@@ -2019,9 +2019,10 @@ function withoutPath(value, [head, ...rest]) {
  * way the enforce run decides to write. `fields` names each field of the PATCH
  * body whose value differs from live (every one when live was not read). A
  * difference only in a field the PATCH does not send still makes the enforce
- * run write, so that field is listed instead. An empty list means nothing is
- * written. A group also lists the licences it would add (`addLicences`), and a
- * directory setting names each of its `values` that changes.
+ * run write, so that field is listed instead. A group also lists the licences
+ * it would add (`addLicences`); nothing is written when `fields` is empty and
+ * there is no `addLicences`. A directory setting names each of its `values`
+ * that changes.
  */
 function plannedUpdateChanges(resource, desired, payload, normalisedDesired) {
   const sent = Object.keys(payload ?? {}).filter((field) => field !== '@odata.type');

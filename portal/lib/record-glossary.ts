@@ -184,7 +184,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Service read ID": support("Read reference", ID),
   "Compared with read": support("Earlier read reference", ID),
   "Compared with": fact("Compared with", "What Keel compared the newest read with: the approved setup, or the read before it."),
-  "Read holding the approved value": support("Read holding the approved value", ID),
+  "Undo puts back from read": support("Read an undo puts back from", ID),
   "SharePoint read": support("SharePoint read reference", ID),
   "Step ID": support("Step reference", ID),
   "Worker ID": support("Worker reference", "Which Keel worker ran the task, for support."),
@@ -363,6 +363,7 @@ export const RECORD_GLOSSARY: Readonly<Record<string, FieldInfo>> = {
   "Set by": fact("Set by", "Who set this."),
   "Capture basis": fact("Made from", "What the approved setup was captured from."),
   "Types captured": fact("Types included", "The kinds of setting the approved setup holds."),
+  "Service reads captured": fact("Service reads included", "The service reads the approved setup holds, with each one's setting count and read time."),
   "Snapshot completed at": fact("Backup finished", "When the source backup finished."),
   "Settings captured": count("Settings included", "How many settings the approved setup holds."),
 

@@ -53,7 +53,7 @@ export default async function BaselinesPage() {
   // The per-service summary is a convenience on top of the page: if the changes or the
   // backup inventory cannot be read, the page still shows the approved setup.
   // Exchange, SharePoint and OneDrive, Teams, Purview and Power Platform settings are
-  // tenant-wide service reads, compared with the previous backup, so only a central
+  // tenant-wide service reads, compared with the approved setup, so only a central
   // administrator sees them (as on the Changes page).
   const active = data.baselines.find((baseline) => baseline.active) ?? null;
   const [items, coverage, serviceChanges, held, readTotals] = await Promise.all([
@@ -70,6 +70,18 @@ export default async function BaselinesPage() {
       open: readTotals ? readTotals.open[kind.type] ?? { added: 0, modified: 0, removed: 0 } : null }))
     : [];
 
+  // Service settings are tenant-wide, so an entity-scoped reader does not see what the
+  // approved setup holds of them either.
+  if (!access.scope.central) {
+    data = {
+      ...data,
+      baselines: data.baselines.map((baseline) => ({
+        ...baseline,
+        serviceSettingCount: undefined,
+        capture: baseline.capture ? { ...baseline.capture, services: undefined, servicesNotRead: undefined } : baseline.capture,
+      })),
+    };
+  }
   const verdict = setupVerdict(active, items, data.generatedAt);
   const jobsActive = jobs.some((job) => job.status === "queued" || job.status === "running");
 

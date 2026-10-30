@@ -12,8 +12,9 @@ export default Object.freeze({
     { key: 'teams', name: 'Teams and members', types: ['teams-settings'], match: /^teams(settings|team|channel|member|owner|template)/ },
     { key: 'apps', name: 'Custom apps', types: ['teamsCatalogApp'], match: /catalogapp|customapp/ },
     { key: 'roles', name: 'Admin roles', types: [], match: /role/ },
-    { key: 'org', name: 'Organization policies', types: ['teams-org-policies'], match: /orgpolic|external|guest|federation|apppermission|appsetup|messaging|chat|update|channelpolic/ },
-    { key: 'calling', name: 'Calling and meetings', types: ['teams-voice-policies'], match: /voice|calling|call|meeting|liveevent|events|webinar|townhall|emergency|dialplan|phone/ },
+    { key: 'org', name: 'Organization policies', types: ['teams-org-policies', 'teams-collaboration-policies'], match: /orgpolic|collaboration|external|guest|federation|apppermission|appsetup|messaging|chat|channelpolic/ },
+    { key: 'calling', name: 'Calling and meetings', types: ['teams-meeting-settings', 'teams-voice-policies', 'teams-voice-network'], match: /voice|calling|call|meeting|liveevent|events|webinar|townhall|emergency|dialplan|phonenumber|pstn|network|attendant|conferencing/ },
+    { key: 'devices', name: 'Devices and clients', types: ['teams-device-policies'], match: /device|ipphone|phone|mobility|vdi|feedback|workload|update/ },
     { key: 'tenant', name: 'Tenant settings', types: [], match: /setting|config|tenant/ },
   ]),
   entries: Object.freeze({
@@ -33,6 +34,27 @@ export default Object.freeze({
       name: 'Teams calling, voice or live event policy',
       priority: 'normal',
       reason: 'Changes calling and meeting features for the users it applies to.',
+    },
+    // Read with Get-CsExternalAccessPolicy, Get-CsTeamsChannelsPolicy and the others (teamsCollaboration.mjs).
+    'teams-collaboration-policies': {
+      name: 'Teams external access, channel or files policy',
+      priority: 'high',
+      reason: 'Decides who outside the organization users can chat with and who can share channels and files.',
+    },
+    'teams-meeting-settings': {
+      name: 'Teams meeting setting, encryption or recording policy',
+      priority: 'high',
+      reason: 'Decides whether anonymous people can join meetings, and whether calls are encrypted or recorded.',
+    },
+    'teams-voice-network': {
+      name: 'Teams voice route, network site, auto attendant or call queue',
+      priority: 'high',
+      reason: 'Decides where phone calls go, including emergency calls, and who answers the company\'s numbers.',
+    },
+    'teams-device-policies': {
+      name: 'Teams device or client policy',
+      priority: 'normal',
+      reason: 'Changes how Teams phones, mobile and virtual desktop clients behave and update.',
     },
   }),
 });

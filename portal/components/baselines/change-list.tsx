@@ -21,7 +21,7 @@ import { SemanticDiff } from "@/components/semantic-diff";
 import { Icon } from "@/components/shell/icons";
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import {
-  changedBy, decisionWords, impactTone, impactWords, itemService, kindLine, plainKind, setupName, typeService, whyItMatters, type Decision,
+  changedBy, decisionWords, impactTone, impactWords, itemKindName, itemService, kindLine, plainKind, setupName, typeService, whyItMatters, type Decision,
 } from "@/lib/baselines-view";
 import { alertCall, alertCallWords } from "@/lib/alert-calls";
 import { changeLabel, changeName, isWaiting, respondDetail, respondResult, REVIEW_WORDS, reviewState } from "@/lib/changes-view";
@@ -37,7 +37,7 @@ import { typeName } from "@/lib/protect-view";
 import { byRisk, byText, byTime } from "@/lib/paging";
 import { orderGroups, smartOrder } from "@/lib/selection";
 import { serviceFor, serviceOrder } from "@/lib/services";
-import { kindParts } from "@/lib/type-groups";
+import { itemKind, kindParts } from "@/lib/type-groups";
 import { toast } from "@/lib/toast";
 import type { BaselineRecord, DriftRecord, SemanticSummary } from "@/lib/types";
 import { readList, useViewState } from "@/lib/use-view-state";
@@ -69,7 +69,7 @@ const SORTS: ListSort<DriftRecord>[] = [
   { key: "risk", label: "Risk", desc: true, compare: (a, b) => byRisk(toneOf(a), toneOf(b)) },
   { key: "name", label: "Name", compare: (a, b) => byText(changeName(a), changeName(b)) },
 ];
-const changeText = (item: DriftRecord) => `${changeName(item)} ${plainKind(item.resourceType)} ${typeName(item.resourceType)} ${changedBy(item) ?? ""}`.toLowerCase();
+const changeText = (item: DriftRecord) => `${changeName(item)} ${itemKindName(item)} ${plainKind(item.resourceType)} ${typeName(item.resourceType)} ${changedBy(item) ?? ""}`.toLowerCase();
 
 const GROUPINGS: Grouping<DriftRecord>[] = [
   {
@@ -80,7 +80,7 @@ const GROUPINGS: Grouping<DriftRecord>[] = [
       const service = serviceFor(code);
       return { label: service.name, icon: service.icon, about: service.about };
     }).map((group) => {
-      const parts = kindParts(group.items, (item) => item.resourceType, group.key);
+      const parts = kindParts(group.items, itemKind, group.key);
       return { ...group, items: parts.flatMap((part) => part.items), parts };
     }),
   },
@@ -92,7 +92,7 @@ const GROUPINGS: Grouping<DriftRecord>[] = [
   },
   {
     key: "kind", label: "Kind",
-    groupsOf: (items) => groupBy(items, (item) => item.resourceType, (type, list) => ({
+    groupsOf: (items) => groupBy(items, itemKind, (type, list) => ({
       label: plainKind(type), icon: typeService(type).icon, about: `${typeService(type).name} · ${list.length === 1 ? "1 change" : `${list.length} changes`}`,
     })),
   },
@@ -122,7 +122,8 @@ function OpenedRecord({ item }: { item: DriftRecord }) {
       <RecordField copy={false} label="Service" value={item.serviceRead.workload} />
       <RecordField label="Service read ID" value={item.serviceRead.collectionId} />
       <RecordField copy={false} label="Compared with" value={item.serviceRead.comparedWith === "approved" ? "The approved setup" : "The read before it"} />
-      <RecordField label={item.serviceRead.comparedWith === "approved" ? "Read holding the approved value" : "Compared with read"} value={item.serviceRead.previousCollectionId} />
+      <RecordField label="Compared with read" value={item.serviceRead.previousCollectionId} />
+      <RecordField label="Undo puts back from read" value={item.serviceRead.undoFrom.collectionId} />
       <RecordField label="Alert ID" value={item.serviceRead.alertId} />
       <RecordField copy={false} label="Seen at" value={item.detectedAt} />
     </>
@@ -174,7 +175,7 @@ export function ChangeList({
   // Filters other than the tiles: each one narrows (AND).
   const others = useMemo(() => [
     ...(service ? [(item: DriftRecord) => itemService(item).code === service] : []),
-    ...(kind ? [(item: DriftRecord) => item.resourceType === kind] : []),
+    ...(kind ? [(item: DriftRecord) => itemKind(item) === kind] : []),
     ...(query ? [(item: DriftRecord) => changeText(item).includes(query)] : []),
   ], [service, kind, query]);
   const shown = useMemo(() => applyFilters(open, tiles, pickedKey ? pickedKey.split(",") : [], others), [open, tiles, pickedKey, others]);
@@ -450,21 +451,21 @@ export function ChangeList({
       ) : null}
 
 
-      {undoingItem?.serviceRead ? (
+      {undoingItem?.serviceRead?.undoFrom.collectionId ? (
         <DetailsSheet
           kicker={<><RiskChip tone={toneOf(undoingItem)}>{impactWords(undoingItem.blastRadius)}</RiskChip><span>{changeName(undoingItem)}</span></>}
           onClose={() => setUndoing(null)}
           title="Undo this change"
           wide
         >
-          <p className="bl-help">Keel puts back the {undoingItem.serviceRead.comparedWith === "approved" ? "approved value" : "value from before the change"}, from the read of {backupPointWords(undoingItem.serviceRead.previousReadAt ?? null)}. It checks what would change first and writes nothing until someone else approves. The next read then matches and settles this change.</p>
+          <p className="bl-help">Keel puts back the {undoingItem.serviceRead.undoFrom.approved ? "approved value" : "value from before the change"}, from the read of {backupPointWords(undoingItem.serviceRead.undoFrom.readAt)}. It checks what would change first and writes nothing until someone else approves. The next read then matches and settles this change.</p>
           <WorkloadRestore
             canApprove={canApprove}
             canRestore={canRestore}
             name={workloadLabel(undoingItem.serviceRead.workload)}
             now={now}
             onClose={() => setUndoing(null)}
-            start={{ collectionId: undoingItem.serviceRead.previousCollectionId, targets: [undoingItem.serviceRead.resourceKey] }}
+            start={{ collectionId: undoingItem.serviceRead.undoFrom.collectionId ?? "", targets: [undoingItem.serviceRead.resourceKey] }}
             workload={undoingItem.serviceRead.workload}
           />
         </DetailsSheet>

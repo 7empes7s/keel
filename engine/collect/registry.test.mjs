@@ -18,7 +18,10 @@ const WIDENED_TYPES = [
   'accessReviewScheduleDefinition', 'deviceConfiguration', 'deviceCompliancePolicy',
   'configurationPolicy', 'deviceManagementRoleDefinition', 'mobileApp',
 ];
-const ENABLED_TYPES = CATALOG.map((entry) => entry.type);
+// A catalogue entry with `liveGate` is declared but not collected until a live
+// read of it passes (collect/liveGate.test.mjs).
+const COLLECTED = CATALOG.filter((entry) => !entry.liveGate);
+const ENABLED_TYPES = COLLECTED.map((entry) => entry.type);
 
 // --- regression guard: the original six M1 types are still enabled, first, in order ---
 assert.deepEqual(
@@ -44,16 +47,16 @@ assert.deepEqual(
 assert.deepEqual([...M1_TYPES].sort(), [...ENABLED_TYPES].sort(), 'M1_TYPES matches the same enabled set');
 
 assert.ok(CATALOG.length >= 62, 'the catalogue never shrinks below the 62 types of issue #156');
-assert.equal(list().length, CATALOG.length);
+assert.equal(list().length, COLLECTED.length);
 assert.deepEqual(list().map((d) => d.type).sort(), [...ENABLED_TYPES].sort(), 'registry-vs-catalogue diff is empty');
-for (const entry of CATALOG) {
+for (const entry of COLLECTED) {
   assert.equal(get(entry.type).descriptor.type, entry.type);
   assert.equal(typeof get(entry.type).adapter.collect, 'function');
 }
 
 // --- the registry knows every catalog type -----------------------------------
-assert.equal(ALL_DESCRIPTORS.length, CATALOG.length, 'one descriptor per catalog entry');
-for (const entry of CATALOG) {
+assert.equal(ALL_DESCRIPTORS.length, COLLECTED.length, 'one descriptor per collected catalog entry');
+for (const entry of COLLECTED) {
   const d = ALL_DESCRIPTORS.find((x) => x.type === entry.type);
   assert.ok(d, `catalog type ${entry.type} has a descriptor`);
   // criticality / blastRadius come from the catalog — one source of truth.

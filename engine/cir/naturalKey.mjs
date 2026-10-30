@@ -18,7 +18,7 @@ export const ID_KEY_TYPES = new Set([
   'accessPackage', 'connectedOrganization', 'deviceEnrollmentConfiguration',
   'deviceCategory', 'managedDevice', 'managedAppPolicy',
   'targetedManagedAppConfiguration', 'mobileAppConfiguration', 'termsAndConditions',
-  'windowsAutopilotDeploymentProfile', 'deviceManagementIntent', 'contact',
+  'windowsAutopilotDeploymentProfile', 'deviceManagementIntent', 'deviceManagementTemplate', 'contact',
   // Issue #156. A branding localization's id is its language (for example
   // fr-FR), the same in every tenant. A group expiration policy's id is the
   // only identity it has: it carries no name.
@@ -77,6 +77,9 @@ export const ID_KEY_TYPES = new Set([
   // Remaining kinds, batch 9: lists that only lacked a read permission, keyed by
   // id (names are unmeasured; two communities or rules can share a name).
   'defenderDetectionRule', 'teamsCatalogApp', 'engageCommunity',
+  // Defender XDR beyond email: a sensor and a Secure Score control are keyed by id
+  // (a control's id is its stable name, such as "AdminMFAV2").
+  'defenderIdentitySensor', 'secureScoreControlProfile',
 ]);
 
 // Tenant singletons: exactly one object per tenant, so the type name is the

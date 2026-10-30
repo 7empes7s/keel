@@ -67,7 +67,9 @@ function build(field) {
     const placed = placements(categories);
     for (const [type, entry] of Object.entries(file[field] ?? {})) {
       if (taxonomy[type]) throw new Error(`taxonomy: ${type} is mapped by both ${taxonomy[type].service} and ${service}`);
-      const fallback = catalog.has(type) ? catalogPriority(catalog.get(type)) : null;
+      // A subkind ranks like the catalogued type it is a part of.
+      const source = entry.of ?? type;
+      const fallback = catalog.has(source) ? catalogPriority(catalog.get(source)) : null;
       taxonomy[type] = Object.freeze({
         type,
         name: entry.name,
@@ -88,6 +90,59 @@ export const TAXONOMY = build('entries');
  * catalogue and workload reads one for one. */
 export const EDGE_TAXONOMY = build('edges');
 
+/** Parts of a catalogued type that lists file under another service, by a field of each
+ * object: Intune settings catalog policies made from an Endpoint security template
+ * (antivirus, firewall…) are Defender settings. Kept apart from TAXONOMY, which maps the
+ * catalogue one for one; the object is still stored and restored under its own type. */
+export const SUBKIND_TAXONOMY = build('subkinds');
+
+const SUBKINDS = SERVICE_FILES.flatMap((file) => Object.entries(file.subkinds ?? {}).map(([kind, entry]) => ({ kind, ...entry })));
+
+/**
+ * The kind a list files one stored object under: its subkind when the object's template
+ * family is one a subkind claims, else its stored type. `templateFamily` is the
+ * object's templateReference.templateFamily (null when it has none).
+ * @param {string} type @param {string | null | undefined} templateFamily
+ */
+export function settingKind(type, templateFamily) {
+  if (!templateFamily) return type;
+  const sub = SUBKINDS.find((entry) => entry.of === type && Object.hasOwn(entry.families, templateFamily));
+  return sub ? sub.kind : type;
+}
+
+/**
+ * Which stored objects a subkind holds, by the field that tells them apart: for each
+ * stored type, each template family and the subkind it files under. Fixed by the
+ * taxonomy, so a query can take it as a bind parameter.
+ * @returns {Record<string, Record<string, string>>}
+ */
+export function subkindFamilies() {
+  const map = {};
+  for (const { kind, of, families } of SUBKINDS) {
+    map[of] ??= {};
+    for (const family of Object.keys(families)) map[of][family] = kind;
+  }
+  return map;
+}
+
+/** The stored type a kind is read from: a subkind's `of`, else the kind itself. */
+export function storedTypeOf(kind) {
+  return SUBKINDS.find((entry) => entry.kind === kind)?.of ?? kind;
+}
+
+/** The plain name of the area a subkind object covers ("Antivirus"), or null. */
+export function settingArea(type, templateFamily) {
+  if (!templateFamily) return null;
+  const sub = SUBKINDS.find((entry) => entry.of === type && Object.hasOwn(entry.families, templateFamily));
+  return sub ? sub.families[templateFamily] : null;
+}
+
+/** The template family a stored object carries (templateReference.templateFamily), or null. */
+export function templateFamilyOf(payload) {
+  const family = payload && typeof payload === 'object' ? payload.templateReference?.templateFamily : null;
+  return typeof family === 'string' && family ? family : null;
+}
+
 const words = (code) => String(code).replace(/[-_]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().trim();
 
 /**
@@ -97,7 +152,7 @@ const words = (code) => String(code).replace(/[-_]+/g, ' ').replace(/([a-z0-9])(
  */
 /** @param {string} type @param {string | null} [service] the service the row is filed under, if known */
 export function typeInfo(type, service = null) {
-  const entry = TAXONOMY[type] ?? EDGE_TAXONOMY[type];
+  const entry = TAXONOMY[type] ?? EDGE_TAXONOMY[type] ?? SUBKIND_TAXONOMY[type];
   if (entry) return { ...entry, known: true };
   const name = words(type);
   const placed = placeUnmapped(type, service);

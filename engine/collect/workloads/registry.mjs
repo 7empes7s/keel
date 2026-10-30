@@ -15,6 +15,7 @@
  * - record(client, { tenantRef, result }) stores a run that failed before collect
  *   could record one.
  */
+import { DEFENDER_INDICATORS_WORKLOAD, collectDefenderIndicators, defenderIndicatorsTransportFor, recordDefenderIndicatorsRun } from './defenderIndicators.mjs';
 import { collectExchange, recordExchangeRun } from './exchange.mjs';
 import { collectExchangeExtended, recordExchangeExtendedRun } from './exchangeExtended.mjs';
 import {
@@ -33,10 +34,19 @@ import { collectRetentionDlp, recordRetentionDlpRun } from './purviewRetentionDl
 import { SHAREPOINT_WORKLOAD, collectSharePointSites, recordSharePointRun } from './sharepoint.mjs';
 import { SHAREPOINT_STRUCTURE_WORKLOAD, collectSharePointStructure, recordSharePointStructureRun } from './sharepointStructure.mjs';
 import { collectTeams, recordTeamsRun } from './teams.mjs';
+import {
+  collectTeamsCollaboration, collectTeamsMeetingSettings, recordTeamsCollaborationRun, recordTeamsMeetingSettingsRun,
+} from './teamsCollaboration.mjs';
 import { collectTeamsExtended, recordTeamsExtendedRun } from './teamsExtended.mjs';
 import { collectTeamsPolicies, recordTeamsPolicyRun } from './teamsPolicies.mjs';
+import {
+  collectTeamsDevicePolicies, collectTeamsVoiceNetwork, recordTeamsDevicePoliciesRun, recordTeamsVoiceNetworkRun,
+} from './teamsVoiceNetwork.mjs';
 
 export const WORKLOAD_COLLECTORS = Object.freeze([
+  // defenderIndicators.mjs: its own Defender for Endpoint API transport, not the Graph one.
+  { workload: DEFENDER_INDICATORS_WORKLOAD, powershellFamily: null, record: recordDefenderIndicatorsRun,
+    collect: (client, { base, config, sleep }) => collectDefenderIndicators(client, { ...base, sleep, transport: defenderIndicatorsTransportFor(config) }) },
   // exchange.mjs
   { workload: 'exchange-mailbox-settings', powershellFamily: 'exchange', record: recordExchangeRun,
     collect: (client, { base, transport, powershell, scope, sleep }) => collectExchange(client, {
@@ -97,4 +107,14 @@ export const WORKLOAD_COLLECTORS = Object.freeze([
   // teamsPolicies.mjs
   { workload: 'teams-org-policies', powershellFamily: 'teams', record: recordTeamsPolicyRun,
     collect: (client, { base, powershell }) => collectTeamsPolicies(client, { ...base, powershell }) },
+  // teamsVoiceNetwork.mjs: voice routing, network and call flows, then device policies.
+  { workload: 'teams-voice-network', powershellFamily: 'teams', record: recordTeamsVoiceNetworkRun,
+    collect: (client, { base, powershell }) => collectTeamsVoiceNetwork(client, { ...base, powershell }) },
+  { workload: 'teams-device-policies', powershellFamily: 'teams', record: recordTeamsDevicePoliciesRun,
+    collect: (client, { base, powershell }) => collectTeamsDevicePolicies(client, { ...base, powershell }) },
+  // teamsCollaboration.mjs: collaboration policies, then meeting settings.
+  { workload: 'teams-collaboration-policies', powershellFamily: 'teams', record: recordTeamsCollaborationRun,
+    collect: (client, { base, powershell }) => collectTeamsCollaboration(client, { ...base, powershell }) },
+  { workload: 'teams-meeting-settings', powershellFamily: 'teams', record: recordTeamsMeetingSettingsRun,
+    collect: (client, { base, powershell }) => collectTeamsMeetingSettings(client, { ...base, powershell }) },
 ]);

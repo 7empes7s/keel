@@ -9,7 +9,7 @@ import {
   normalizeJob,
   readActionParams,
 } from "@/lib/action";
-import { pageRestorable, perItemRequests, workloadBackups } from "@/lib/restore-workload-choices";
+import { pageRestorable, perItemRequests, workloadBackup } from "@/lib/restore-workload-choices";
 import { PER_ITEM_WORKLOADS } from "@/lib/restore-workloads-view";
 
 export const dynamic = "force-dynamic";
@@ -49,8 +49,9 @@ export const POST = guarded(
     ) {
       throw new InvalidActionRequest("targets must name between 1 and 200 objects from the backup");
     }
-    const backups = await workloadBackups(client, tenantRef, workload);
-    if (!backups.some((backup) => backup.collectionId === collectionId)) {
+    // Looked up by id, so a backup older than the Restore page's list (an undo from an old
+    // approved setup's read) is accepted too.
+    if (!(await workloadBackup(client, tenantRef, workload, collectionId))) {
       throw new InvalidActionRequest("that backup is not one of this service's backups on this tenant");
     }
 

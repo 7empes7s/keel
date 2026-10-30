@@ -79,7 +79,13 @@ const graph = (resourceType) => Object.freeze({ resourceType, maxAgeMs: DAILY_TY
 const service = (resourceType, ...parts) => Object.freeze({ resourceType, parts: Object.freeze(parts), maxAgeMs: WORKLOAD_MAX_AGE_MS });
 const mailFlow = (...parts) => service(MAIL_FLOW, ...parts);
 const list = (facts, type) => facts[type] ?? [];
-const single = (facts, type) => list(facts, type).slice(0, 1);
+// A tenant-wide setting every tenant has exactly one of. An empty backup of it is not a
+// tenant with nothing set, and the rules would pass on it, so it cannot be checked.
+const single = (facts, type, key) => {
+  const found = list(facts, type);
+  if (found.length !== 1) throw new CouldNotBuild(key, `the backup holds ${found.length} ${type} objects, and every tenant has exactly one`);
+  return found;
+};
 
 // Keel's own bookkeeping on a stored service-read object, which the cmdlet never returns.
 function cmdletObject(fact) {
@@ -116,12 +122,33 @@ function privilegedRoleTemplates(facts, key) {
 }
 
 /**
+ * The eligibilities in effect at `now`. ScubaGear reads schedule instances, which hold
+ * only these; Keel backs up schedules, which also hold ones that start later or have
+ * ended. One whose dates cannot be read is not guessed at.
+ */
+function eligibleNow(facts, key, now) {
+  const at = now instanceof Date ? now.getTime() : Date.parse(now);
+  if (!Number.isFinite(at)) throw new CouldNotBuild(key, 'the check was run without a time to judge PIM eligibilities by');
+  return list(facts, 'roleEligibilitySchedule').filter((schedule) => {
+    const info = schedule.scheduleInfo ?? {};
+    const start = Date.parse(info.startDateTime);
+    const expiration = info.expiration ?? {};
+    const end = expiration.type === 'noExpiration' ? Infinity
+      : expiration.type === 'afterDateTime' ? Date.parse(expiration.endDateTime) : NaN;
+    if (schedule.status !== 'Provisioned' || !Number.isFinite(start) || Number.isNaN(end)) {
+      throw new CouldNotBuild(key, 'the backup does not say when a PIM eligibility is in effect');
+    }
+    return start <= at && at < end;
+  });
+}
+
+/**
  * Get-PrivilegedUser: every user holding a privileged role, actively (a directory role
  * member, which is a tenant-wide role assignment) or, with Entra ID P2, eligibly.
  * A role held through a group needs the group's members, which Keel does not back up,
  * so then the list cannot be built. A principal found in no backup cannot be typed.
  */
-function privilegedUsers(facts) {
+function privilegedUsers(facts, run = {}) {
   const users = new Map(list(facts, 'user').map((user) => [user.id, user]));
   const groups = new Set(list(facts, 'group').map((group) => group.id));
   const servicePrincipals = new Set(list(facts, 'servicePrincipal').map((sp) => sp.id));
@@ -129,7 +156,7 @@ function privilegedUsers(facts) {
   const roleName = new Map(roles.map((role) => [role.templateId, role.displayName]));
   const holders = [
     ...list(facts, 'roleAssignment').filter((assignment) => (assignment.directoryScopeId ?? '/') === '/'),
-    ...(premium(facts) ? list(facts, 'roleEligibilitySchedule') : []),
+    ...(premium(facts) ? eligibleNow(facts, 'privileged_users', run.now) : []),
   ].filter((assignment) => roleName.has(assignment.roleDefinitionId));
   const out = {};
   for (const holder of holders) {
@@ -233,7 +260,7 @@ function appManagementPolicies(facts) {
 }
 
 function authenticationMethod(facts) {
-  return single(facts, 'authenticationMethodsPolicy').map((policy) => {
+  return single(facts, 'authenticationMethodsPolicy', 'authentication_method').map((policy) => {
     const { authenticationMethodConfigurations: configurations, ...rest } = policy;
     if (!Array.isArray(configurations)) throw new CouldNotBuild('authentication_method', 'the backup holds no sign-in method settings');
     return {
@@ -357,6 +384,16 @@ const SCUBA_CONFIG_FIELDS = Object.freeze([
   'SecuritySuite', 'Defender', 'OutputPath', 'OutPath', 'OutRegoFileName', 'OutputRegoFileName',
 ]);
 
+// Every tenant has the Default remote domain (*); a read without it is not a tenant
+// with no remote domains.
+function remoteDomains(facts) {
+  const domains = ofKind(facts, 'remoteDomain');
+  if (!domains.some((domain) => domain.DomainName === '*')) {
+    throw new CouldNotBuild('remote_domains', 'the backup holds no Default remote domain (*), which every tenant has');
+  }
+  return domains;
+}
+
 export const ADAPTERS = Object.freeze({
   // Run settings. Keel passes no exclusions (ScubaGear's own default) and a commercial cloud.
   scuba_config: Object.freeze({ setting: true, fields: SCUBA_CONFIG_FIELDS, build: () => ({ M365Environment: 'commercial', Aad: {}, Exo: {} }) }),
@@ -369,7 +406,7 @@ export const ADAPTERS = Object.freeze({
     lacks: ['AgentIdRiskLevels', 'IncludeAgentIdServicePrincipals', 'ExcludeAgentIdServicePrincipals'],
     build: (facts) => list(facts, 'conditionalAccessPolicy').map(pascal),
   }),
-  authorization_policies: Object.freeze({ reads: [graph('authorizationPolicy')], fields: 'all', build: (facts) => single(facts, 'authorizationPolicy').map(pascal) }),
+  authorization_policies: Object.freeze({ reads: [graph('authorizationPolicy')], fields: 'all', build: (facts) => single(facts, 'authorizationPolicy', 'authorization_policies').map(pascal) }),
   authentication_method: Object.freeze({ reads: [graph('authenticationMethodsPolicy')], fields: 'all', build: authenticationMethod }),
   directory_settings: Object.freeze({ reads: [graph('groupSetting')], fields: 'all', build: (facts) => list(facts, 'groupSetting').map(pascal) }),
   domain_settings: Object.freeze({ reads: [graph('domain')], fields: 'all', build: (facts) => list(facts, 'domain').map(pascal) }),
@@ -385,7 +422,7 @@ export const ADAPTERS = Object.freeze({
     })),
   }),
   default_app_management_policy: Object.freeze({
-    reads: [graph('tenantAppManagementPolicy')], fields: 'all', build: (facts) => single(facts, 'tenantAppManagementPolicy').map(pascal),
+    reads: [graph('tenantAppManagementPolicy')], fields: 'all', build: (facts) => single(facts, 'tenantAppManagementPolicy', 'default_app_management_policy').map(pascal),
   }),
   app_management_policies: Object.freeze({ reads: [graph('appManagementPolicy')], fields: 'all', build: appManagementPolicies }),
   privileged_users: Object.freeze({
@@ -404,7 +441,7 @@ export const ADAPTERS = Object.freeze({
   }),
 
   // Exchange Online
-  remote_domains: Object.freeze({ reads: [mailFlow('remoteDomain')], fields: FAMILIES.remoteDomain.fields, build: (facts) => ofKind(facts, 'remoteDomain') }),
+  remote_domains: Object.freeze({ reads: [mailFlow('remoteDomain')], fields: FAMILIES.remoteDomain.fields, build: remoteDomains }),
   accepted_domains: Object.freeze({ reads: [mailFlow('acceptedDomain')], fields: FAMILIES.acceptedDomain.fields, build: (facts) => ofKind(facts, 'acceptedDomain') }),
   dkim_config: Object.freeze({ reads: [mailFlow('dkimSigning')], fields: FAMILIES.dkimSigning.fields, build: (facts) => ofKind(facts, 'dkimSigning') }),
   transport_rule: Object.freeze({ reads: [mailFlow('transportRule')], fields: FAMILIES.transportRule.fields, build: (facts) => ofKind(facts, 'transportRule') }),

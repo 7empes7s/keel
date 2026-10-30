@@ -136,7 +136,6 @@ export const SKIPPED_PATHS = Object.freeze({
   '/deviceManagement/resourceOperations': 'not-configuration',
   '/deviceManagement/reusableSettings': 'microsoft-published',
   '/deviceManagement/settingDefinitions': 'microsoft-published',
-  '/deviceManagement/templates': 'microsoft-published',
   '/deviceManagement/troubleshootingEvents': 'not-configuration',
   '/deviceManagement/userExperienceAnalyticsAnomaly': 'not-configuration',
   '/deviceManagement/userExperienceAnalyticsAppHealthApplicationPerformance': 'not-configuration',
@@ -234,7 +233,6 @@ export const SKIPPED_PATHS = Object.freeze({
   // Binary policy bundles Purview compiles from the tenant's labels and policies
   // for client apps to download; the labels and policies are backed up themselves.
   '/security/dataSecurityAndGovernance/policyFiles': 'not-configuration',
-  '/security/secureScoreControlProfiles': 'not-configuration',
   '/security/secureScores': 'not-configuration',
   '/sites': 'not-configuration',
   '/subscriptions': 'not-configuration',

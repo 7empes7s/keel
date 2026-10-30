@@ -137,6 +137,7 @@ export const KEEL_PERMISSIONS = Object.freeze([
   read('InformationProtectionPolicy.Read.All', 'purview', 'Policies', 'Read sensitivity labels', 'Back up sensitivity labels'),
   read('CustomDetection.Read.All', 'purview', 'Policies', 'Read custom detection rules', 'Back up Defender custom detection rules'),
   read('SecurityEvents.Read.All', 'purview', 'Settings', 'Read security settings', 'Back up security settings'),
+  read('SecurityIdentitiesSensors.Read.All', 'purview', 'Settings', 'Read Defender for Identity sensors', 'Back up Defender for Identity sensors'),
   read('IdentityRiskEvent.Read.All', 'purview', 'Settings', 'Read risky sign-in detections', 'Back up Identity Protection settings'),
   read('Community.Read.All', 'other', 'Groups', 'Read Viva Engage communities', 'Back up Viva Engage communities'),
   read('OrgSettings-Microsoft365Install.Read.All', 'other', 'Apps', 'Read Microsoft 365 Apps install options', 'Back up which Office apps people can install themselves'),

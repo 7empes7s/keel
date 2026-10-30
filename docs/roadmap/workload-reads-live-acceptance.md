@@ -43,6 +43,34 @@ KEEL_QUALIFICATION_HMAC_KEY=... node cli/keel-workload-collect.mjs import
 node cli/keel-workload-collect.mjs run
 ```
 
+## Admin REST workloads (Power Platform)
+
+`--workload power-platform-settings` reads the Power Platform and Fabric admin APIs, not
+PowerShell. The capture runs `readPowerPlatform` through its own read-only transport
+(`readOnlyPowerPlatformTransport`: GETs of the declared request shapes only), with the
+collector's certificate config, the same `/etc/keel/tenant.json` the scheduled job uses.
+There is no module version: the record's `execution` is `{ "transport": "rest-read-only" }`
+and each read carries the API version its operation is declared at in
+`engine/collect/workloadContract.mjs`, which is the version the ledger checks. A record that
+names a PowerShell module, or a read at another API version, fails the gate.
+`--powershell-image` and `--site` are refused for it.
+
+```bash
+node tools/qualification/workloadReadsLive.mjs plan --workload power-platform-settings
+KEEL_QUALIFICATION_HMAC_KEY=... node tools/qualification/workloadReadsLive.mjs capture \
+  --workload power-platform-settings --tenant-ref sha256:... --collector-ref app:<collector app id> \
+  --collector-config /etc/keel/tenant.json --build "$(git -C /opt/keel-live rev-parse HEAD)" \
+  --out docs/release/qualifications/workload-reads-power-platform-settings-live-acceptance.json
+```
+
+A refused read is recorded as `HTTP <status>` and is not proof; only that family stays off.
+
+`--workload defender-endpoint-indicators` works the same way: one GET of
+`https://api.security.microsoft.com/api/indicators?$top=10000` through
+`readOnlyDefenderIndicatorsTransport`, with a token for the legacy audience
+`https://api.securitycenter.microsoft.com/`. The collector needs the WindowsDefenderATP
+application permission `Ti.Read.All`; without it the read answers 403 and the ledger names that step.
+
 Exit codes: `capture` 0 when the record verifies, 1 when it does not, 2 on a refused
 argument (nothing sent). The proof lapses after 30 days, like the other workload proof;
 `keel-workload-collect.mjs proof` lists when.

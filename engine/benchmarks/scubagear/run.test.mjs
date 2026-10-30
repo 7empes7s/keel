@@ -189,6 +189,46 @@ test('a backup that cannot answer what a role rule asks is could not check, neve
   unknown('MS.AAD.7.3v1', unsaid, 'scubagear:incomplete:privileged_users');
 });
 
+test('a PIM eligibility counts only while it is in effect, and one with unreadable dates is could not check', () => {
+  const GA = FIXTURE_BACKUPS.roleAssignment.find((assignment) => assignment.directoryScopeId === '/').roleDefinitionId;
+  const eligible = (scheduleInfo, over = {}) => ({
+    ...FIXTURE_BACKUPS,
+    roleEligibilitySchedule: [...FIXTURE_BACKUPS.roleEligibilitySchedule, { ...FIXTURE_BACKUPS.roleEligibilitySchedule[0], id: 'elig-x', roleDefinitionId: GA, scheduleInfo, ...over }],
+  });
+  const baseline = run(id('MS.AAD.7.1v1'), FIXTURE_BACKUPS).verdict;
+  // One that starts later, or has ended, is not an admin today: the verdict does not move.
+  const later = eligible({ startDateTime: '2027-01-01T00:00:00Z', expiration: { type: 'noExpiration' } });
+  assert.equal(run(id('MS.AAD.7.1v1'), later).verdict, baseline);
+  const ended = eligible({ startDateTime: '2026-01-01T00:00:00Z', expiration: { type: 'afterDateTime', endDateTime: '2026-03-01T00:00:00Z' } });
+  assert.equal(run(id('MS.AAD.7.1v1'), ended).verdict, baseline);
+  // Without readable dates or status it is not guessed at.
+  for (const unreadable of [eligible({ expiration: { type: 'noExpiration' } }), eligible({ startDateTime: '2026-01-01T00:00:00Z', expiration: { type: 'afterDuration', duration: 'P90D' } }),
+    eligible({ startDateTime: '2026-01-01T00:00:00Z', expiration: { type: 'noExpiration' } }, { status: 'PendingProvisioning' })]) {
+    const result = run(id('MS.AAD.7.1v1'), unreadable);
+    assert.deepEqual([result.verdict, result.reason], ['unknown', 'scubagear:incomplete:privileged_users']);
+  }
+});
+
+test('an empty backup of a setting every tenant has once is could not check, never a pass', () => {
+  const cases = [
+    ['authorizationPolicy', ['MS.AAD.5.1v1', 'MS.AAD.8.1v1', 'MS.AAD.8.2v1'], 'authorization_policies'],
+    ['tenantAppManagementPolicy', ['MS.AAD.5.6v1', 'MS.AAD.5.7v1'], 'default_app_management_policy'],
+    ['authenticationMethodsPolicy', ['MS.AAD.3.3v2', 'MS.AAD.3.5v2'], 'authentication_method'],
+  ];
+  for (const [type, policyIds, key] of cases) {
+    for (const backups of [{ ...FIXTURE_BACKUPS, [type]: [] }, { ...FIXTURE_BACKUPS, [type]: [...FIXTURE_BACKUPS[type], ...FIXTURE_BACKUPS[type]] }]) {
+      for (const policyId of policyIds) {
+        const result = run(id(policyId), backups);
+        assert.deepEqual([result.verdict, result.reason], ['unknown', `scubagear:incomplete:${key}`], `${type} ${policyId}`);
+      }
+    }
+  }
+  const mail = FIXTURE_BACKUPS['exchange-mail-flow'];
+  const noDefault = { ...FIXTURE_BACKUPS, 'exchange-mail-flow': mail.filter((fact) => fact.kind !== 'remoteDomain') };
+  const result = run(id('MS.EXO.1.1v2'), noDefault);
+  assert.deepEqual([result.verdict, result.reason], ['unknown', 'scubagear:incomplete:remote_domains']);
+});
+
 test('daily backups are allowed a day and a half, the others six hours', () => {
   const reads = (policyId) => Object.fromEntries(scuba().find((control) => control.controlId === id(policyId)).requiredObservations.map((read) => [read.resourceType, read.maxAgeMs]));
   assert.equal(reads('MS.AAD.7.3v1').user, 36 * HOUR);

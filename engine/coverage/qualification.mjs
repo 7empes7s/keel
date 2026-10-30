@@ -174,6 +174,7 @@ export const TYPE_DECISIONS = Object.freeze({
   deviceCategory: automated('intune-shared-devicecategory', 'restore gaps batch 1: create and update of the name and description; which devices are in a category is set at enrollment and is not restored'),
   termsAndConditions: manual('acceptance by users cannot be recreated: a recreated policy asks every user to accept again'),
   windowsAutopilotDeploymentProfile: automated('intune-enrollment-windowsautopilotdeploymentprofile', 'restore gaps batch 6: create and update of the profile through Graph beta, keeping its kind; the registered devices it applies to are not backed up, and who it is assigned to is written one assignment at a time (batch 15)', { view: 'graph-rest-beta' }),
+  deviceManagementTemplate: manual('Microsoft-published template catalogue'),
   deviceManagementIntent: manual('security baseline intents are beta-only and replaced by the settings catalog, and their settings are a separate collection that is not backed up'),
   managedDevice: manual('device state, enrolled by the device, not configuration'),
   mobileApp: automated('intune-apps-mobileapp', 'restore gaps batch 18: create and update of store, web, Microsoft 365 Apps, Edge and WinGet apps with their assignments; Win32 and line-of-business apps are recreated without their package and unassigned until it is uploaded; apps synced from Apple, Google or Microsoft are never created'),
@@ -286,6 +287,8 @@ export const TYPE_DECISIONS = Object.freeze({
   profileCardProperty: manual('no writer yet'),
   pronounsSettings: automated('pronounssettings', 'restore gaps batch 20: update in place'),
   defenderDetectionRule: manual('no writer yet; beta only; a rule can run response actions, so it is rebuilt turned off'),
+  defenderIdentitySensor: manual('no writer yet; a sensor is installed on each server, so only its settings can be put back'),
+  secureScoreControlProfile: manual('no writer yet; the state an admin set on each action is set again by hand'),
   teamsCatalogApp: manual('Graph does not return the app package; it is uploaded again from your own copy'),
   engageCommunity: automated('community', 'restore gaps batch 20: update in place of the name, description and privacy; a private community is never made public, and a deleted community is set up by hand (a create makes a Microsoft 365 group and needs owners)'),
 });
@@ -1025,6 +1028,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'create and update are fixture-tested; device hardware records are not backed up; assignments are written one at a time'),
   deviceManagementIntent: byHand('device-management', 'POST /deviceManagement/intents (beta)', 'DeviceManagementConfiguration.ReadWrite.All',
     'beta-only, replaced by the settings catalog; intent settings are not backed up'),
+  deviceManagementTemplate: byHand('device-management', null, 'none', 'Microsoft-published template catalogue; read only to tell which area an older endpoint security policy is'),
   managedDevice: byHand('device-management', null, 'none', 'device state, enrolled by the device, not configuration'),
   mobileApp: subset('device-management', 'POST /deviceAppManagement/mobileApps; PATCH .../{id}; POST .../{id}/assign', 'DeviceManagementApps.ReadWrite.All',
     'create and update are fixture-tested; a Win32 or line-of-business app comes back without its package and is assigned only once it is uploaded; synced apps are never created; categories are written through categories/$ref (beta)'),
@@ -1233,6 +1237,10 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'update in place is fixture-tested'),
   defenderDetectionRule: byHand('policy', 'POST /security/rules/detectionRules (beta)', 'CustomDetection.ReadWrite.All',
     'backed up; no writer yet; a rebuilt rule starts turned off'),
+  defenderIdentitySensor: byHand('administrative-configuration', 'PATCH /security/identities/sensors/{id}', 'SecurityIdentitiesSensors.ReadWrite.All',
+    'backed up; no writer yet; the sensor itself is installed on the server'),
+  secureScoreControlProfile: byHand('administrative-configuration', 'PATCH /security/secureScoreControlProfiles/{id}', 'SecurityEvents.ReadWrite.All',
+    'backed up; no writer yet'),
   teamsCatalogApp: byHand('identity-application', 'POST /appCatalogs/teamsApps', 'AppCatalog.ReadWrite.All',
     'backed up without the app package, which Graph does not return'),
   engageCommunity: subset('administrative-configuration', 'PATCH /employeeExperience/communities/{id}', 'Community.ReadWrite.All',
@@ -1340,6 +1348,9 @@ export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
   directorySettingTemplate: Object.freeze([
     lost('configuration', 'template catalogue', 'Microsoft-published and identical in every tenant; never written'),
   ]),
+  deviceManagementTemplate: Object.freeze([
+    lost('configuration', 'template catalogue', 'Microsoft-published and identical in every tenant; never written'),
+  ]),
   organization: Object.freeze([
     lost('configuration', 'tenant object', 'the tenant itself is never recreated or written'),
   ]),
@@ -1412,6 +1423,13 @@ export const UNRECOVERABLE_CONFIGURATION = Object.freeze({
   ]),
   defenderDetectionRule: Object.freeze([
     lost('configuration', 'detection rule', 'no writer yet; rebuilt by hand from the backup and left off until its response actions are checked'),
+  ]),
+  defenderIdentitySensor: Object.freeze([
+    lost('configuration', 'sensor settings', 'no writer yet; set again by hand from the backup'),
+    lost('relationship', 'sensor software', 'installed on each server; a removed sensor is installed again there'),
+  ]),
+  secureScoreControlProfile: Object.freeze([
+    lost('configuration', 'action state', 'no writer yet; the state and its reason are set again by hand from the backup'),
   ]),
   teamsCatalogApp: Object.freeze([
     lost('configuration', 'app package', 'Graph does not return the package; it is uploaded again from your own copy'),

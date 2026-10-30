@@ -71,9 +71,9 @@ function resultsFor(product, document) {
   return RESULTS.get(key);
 }
 
-registerPredicate(SCUBA_PREDICATE, (facts, args) => {
+registerPredicate(SCUBA_PREDICATE, (facts, args, context = {}) => {
   const byType = Array.isArray(facts) ? { [args.reads[0]]: facts } : facts;
-  const built = buildInput(args.inputs, byType, { version: args.version });
+  const built = buildInput(args.inputs, byType, { version: args.version, now: context.now });
   if (built.couldNotBuild) {
     return { verdict: 'unknown', reason: REASON(`incomplete:${built.couldNotBuild.key}`), details: [line(args, built.couldNotBuild.why, false)] };
   }

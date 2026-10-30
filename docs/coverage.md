@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 45 are full, 125 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 98 at least in part; the other 79 are restored by hand from the backup.
+KEEL tracks 180 kinds of Entra ID and Intune settings and backs up everything it can read of each one (one kind waits for a live read check first). 45 are full, 127 incomplete, 8 Microsoft-managed and 0 not readable. KEEL can restore 98 at least in part; the other 82 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -363,6 +363,8 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Profile card fields | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Pronouns setting | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Viva Engage communities | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
+| Defender for Identity sensors | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Secure Score action states | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 
 ### Details and what you do
 
@@ -420,6 +422,12 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **Viva Engage communities.** Puts back the name, description and privacy of a community that still exists. Its posts, files and members are not backed up.
   - *Not brought back:* a deleted community (in the backup, but KEEL does not write it yet); posts, files and members of the community (stored separately and not in the backup yet).
   - *You do:* A deleted community is created again by hand in Viva Engage with the same name, description and privacy from the backup, then its owners and members. Making a private community public waits for a second person to approve it in Approvals, unless you turned restore approvals off for Entra ID.
+- **Defender for Identity sensors** (not built yet). KEEL backs up which servers have a Defender for Identity sensor and each sensor's settings, such as its description, the domain controllers it covers and delayed updates. It does not restore them yet.
+  - *Not brought back:* the sensor software on each server and its health (stored separately and not in the backup yet).
+  - *You do:* Install the sensor again on any server that lost it, then set the same settings in the Microsoft Defender portal, under Settings, Identities, Sensors, from the backup.
+- **Secure Score action states** (not built yet). KEEL backs up the state an admin set on each Secure Score action, such as resolved through a third party or risk accepted, with the reason given. It does not restore them yet.
+  - *Not brought back:* microsoft's text and score for each action (set by Microsoft).
+  - *You do:* Set the same state and reason on each action in the Microsoft Defender portal, under Exposure management, Secure Score, Recommended actions, from the backup.
 
 ## Intune device management
 
@@ -434,6 +442,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Terms and conditions | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 | Windows Autopilot profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Security baselines (older format) | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
+| Endpoint security templates | Not yet (waiting for a live read check) | Microsoft-managed | Nothing to restore | None |
 | Enrolled devices | Yes (Tier 3, low impact, weekly) | Microsoft-managed | Nothing to restore | None |
 | Apps | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | App protection policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
@@ -517,6 +526,8 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **Security baselines (older format)** (KEEL choice). This older format is preview-only and replaced by the settings catalog, and its settings are stored separately and not backed up.
   - *Not brought back:* the baseline's settings (stored separately and not in the backup yet).
   - *You do:* Rebuild the baseline in the settings catalog. KEEL restores settings catalog policies.
+- **Endpoint security templates** (Microsoft limit). Microsoft publishes these templates. They are the same in every tenant. KEEL will read them only to show which area an older endpoint security policy covers, once a live read check passes.
+  - *You do:* Nothing to restore.
 - **Enrolled devices** (Microsoft limit). A device record is created by the device when it enrolls. It is state, not configuration.
   - *You do:* Nothing to restore. Devices enroll again on their own once enrollment settings are back.
 - **Apps.** Adds store apps, web links, Microsoft 365 Apps, Edge and WinGet apps again with their settings and who they are assigned to, and puts changed settings back. Win32 and line-of-business apps come back with their install commands, detection rules and other settings, unassigned. Each app is put back in its app categories.
@@ -1025,6 +1036,36 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 
 **You do:** The policies assigned to users and groups, and settings KEEL does not restore, are changed by hand in the Teams admin center using the backup. A deleted named policy is recreated assigned to nobody. A live event video provider's API token is never backed up: enter it again.
 
+### Teams external access, channel, files, template, Shifts and upgrade policies
+
+**Backed up:**
+
+- Teams external access policies
+- Teams private and shared channel policies
+- Teams files policies
+- Teams team template policies
+- Teams Shifts policies
+- Teams upgrade (coexistence) policies
+- Teams upgrade configuration
+- Teams federation with Azure Communication Services
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. A changed or deleted policy, and the ACS federation and upgrade settings, are put back by hand in the Teams admin center using the backup. Which users a policy is assigned to is kept with the Teams voice policy backup.
+
+### Teams meeting configuration, encryption and compliance recording
+
+**Backed up:**
+
+- Teams end-to-end encryption policies
+- Teams compliance recording policies
+- Teams meeting template policies
+- Teams meeting configuration
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. The meeting configuration, end-to-end encryption, compliance recording and meeting template policies are put back by hand in the Teams admin center using the backup. A compliance recording policy names its recording bot's app, which must still exist.
+
 ### Purview retention labels, auto-labeling and eDiscovery
 
 **Backed up:**
@@ -1044,6 +1085,44 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 
 **You do:** KEEL restores only a retention label's text and duration; a shorter duration needs a second approver while restore approvals are on. Deleted labels, auto-labeling and eDiscovery cases are recreated by hand in the Purview portal using the backup. eDiscovery cases are backed up as their settings and holds, never their searches or evidence. Auto-labeling and eDiscovery (Premium) are backed up only when the tenant's licence includes them.
 
+### Teams voice routing, network and call flows
+
+**Backed up:**
+
+- Teams voice routes
+- Teams Direct Routing gateways (SBCs)
+- Teams number translation rules
+- Teams unassigned number treatments
+- Teams network regions
+- Teams network sites
+- Teams network subnets
+- Teams trusted IP addresses
+- Teams network roaming policies
+- Teams auto attendants
+- Teams call queues
+- Teams audio conferencing (dial-in) settings
+- Teams audio conferencing policies
+- Teams call hold policies
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. A deleted voice route, gateway, network site, auto attendant or call queue is put back by hand in the Teams admin center using the backup. Recorded greetings and hold music are referenced by id, not kept: upload them again. Phone numbers and resource accounts are assigned again by hand.
+
+### Teams device and client policies
+
+**Backed up:**
+
+- Teams IP phone policies
+- Teams update policies
+- Teams mobility policies
+- Teams VDI policies
+- Teams feedback policies
+- Teams workload (app on devices) policies
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. IP phone, update, mobility, VDI, feedback and workload policies are changed back by hand in the Teams admin center using the backup.
+
 ### Power Platform and Power BI settings
 
 **Backed up:**
@@ -1056,3 +1135,13 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 **KEEL can restore:** nothing yet.
 
 **You do:** KEEL does not restore these yet. Change them by hand in the Power Platform admin center or the Fabric admin portal using the backup.
+
+### Defender for Endpoint indicators
+
+**Backed up:**
+
+- Defender for Endpoint indicators
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. Add a deleted file, certificate, IP address, domain or URL indicator back by hand in the Microsoft Defender portal, under Settings, Endpoints, Indicators, with the action, scope and expiry from the backup.

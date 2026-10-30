@@ -12529,8 +12529,18 @@ item that needs it stays untouched.
   **Read-only: no tenant calls, no database writes, no restarts, no config changes.** Never print the database URL, a password,
   a token or a tenant id.
 - Needs: nothing. **Quick: take it next, between other items.**
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-30 11:15 UTC, keel-operator). Read-only: no tenant calls, no writes, no restarts.
+  - **Step 1:** deployed **6caae1c0** (#770); includes `df60da27` (#765): exit **0**. keel-portal MainPID 2645727, MemoryCurrent ~801 MB, NRestarts 0, active since 10:48:43 UTC.
+  - **Step 2** (journal since 10-29 00:00, 458 lines): **45** `database pool full` lines, **all in the 09:00 hour**: 18 at 09:34, then 1 to 5 a minute until 09:53 (09:48: 2, 09:49: 5, 09:50: 3). None in other hours.
+    - First lines: 09:34:23 `database pool full: gave up waiting for a connection`, then `people name setting unavailable Error [DatabaseBusyError]: Keel's database had no free connection within 5 seconds` (cause `timeout exceeded when trying to connect`); 09:34:24; 09:34:29 (6 lines). 09:34:40: `background audit check failed Error [DatabaseBusyError]`. Just before (09:33:55, 09:34:03) the portal logged `evidence.action-attempt` + `evidence.breakglass.validated` events, from the portal process itself, not my CLIs.
+    - Starts/stops (all deploys, NRestarts 0): 03:01, 03:22, 03:38, 04:30, 05:41, 06:06, 06:37, 07:03, 08:50, **09:21**, 09:55, 10:48. Memory peaks 110–300 MB, **except the 08:50 and 09:21 runs: 1.1 GB** (the one with the pool-full lines). `DeprecationWarning: Calling client.query() when the client is already executing a query` once after each start from 08:39 on (08:39, 08:51, 09:31, 10:01, 10:48).
+  - **Step 3** (application_name `keel-portal`; ports don't work: the DB sees docker-proxy's ports): 90 samples, 11:08:49–11:12. Total: 0 (14 samples), 1 (48), 4 (24), **6 (4)**. Max 6 and never 8; idle in transaction 0; Lock waits 0.
+    - The 6-samples (11:08:58–11:09:00 and 11:09:58–11:10:00, **60 s apart**) are 4 pool connections + 2 Postgres **parallel workers** (no client port, `IPC/MessageQueueSend`). The active one runs **`loadRelationshipState`** (`engine/collect/relationships.mjs:444`: `SELECT s.id, s.parent_type, s.parent_source_id, … FROM relationship_edge_set s JOIN snapshot …`), query age 3.1 s and still running. The other 3 are idle (`delivery`, `principal … scheduler`).
+  - **Step 4:** right after: the portal held 0 connections; the only other client was `keel-worker.mjs` (pid 2645882, 2 sockets, idle). `pg_locks NOT granted`: **0**.
+  - **Step 5:** `max_connections` **100**; total connections **8**.
+  - **Step 6, my runs 09:30–09:50:** Q247 steps, all **engine CLIs run directly** (no portal HTTP): roleAssignment delete (09:31 `keel-collect` snapshot Sb, `keel-baseline-create/-activate`, 09:33 `keel-drift detect`/`list`, 09:37 `keel-remediate --enforce`, `entraLive capture`), baseline reinstate (09:40), PIM eligibility set-up (09:40), namedLocation update (09:42–09:46 `keel-collect` Sc, 09:48 `keel-restore` dry run + enforce + capture), and `keel-breakglass report` before each step. Each holds its own connection(s), not the portal's pool.
+  - **Inference (not proven):** `loadRelationshipState` reads **every** edge set of **every** complete snapshot: 599,697 sets / 267,200 edges across **585** snapshots, which is ~3 s and large memory per call, run every minute. Each snapshot adds about 1,000 sets, and I took about 15 today. While `keel-collect` and `keel-drift detect` write heavily (09:31–09:46), that query and its parallel workers likely ran longer and held pool connections, so page loads waited > 5 s. The 1.1 GB peaks fit holding ~600k rows in memory. A fix would load only the latest set per parent and family (DISTINCT ON in SQL), not every snapshot's.
 - Do, on Mulinux:
   1. Deployed commit (`git -C /opt/keel-live log --oneline -1`) and whether it includes the fix (PR #765, merge `df60da27`:
      `git -C /opt/keel-live merge-base --is-ancestor df60da27 HEAD; echo $?`), `systemctl show keel-portal -p MainPID -p MemoryCurrent -p NRestarts -p ActiveEnterTimestamp`.

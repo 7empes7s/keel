@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-writers-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "3010d22c68a8c667b13d37fff0e2686ba7520a01",
+  "build": "05a930b58a82583d276fff1fedf6cc9dca1563e9",
   "operation": "workload.writer-qualification",
   "credentialMode": "collector-read+restorer-write",
-  "observedAt": "2026-10-22T21:26:15.895Z",
+  "observedAt": "2026-10-30T00:50:30.729Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -192,13 +192,13 @@
         "field": "Comments",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-10-22T21:23:19.432Z",
+        "target": "KEEL capture 2026-10-30T00:47:35.202Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-22T21:24:44.343Z",
+        "capturedAt": "2026-10-30T00:49:06.574Z",
         "error": null
       },
       {
@@ -213,13 +213,13 @@
         "field": "Comment",
         "type": "text",
         "before": "KEEL test fixture",
-        "target": "KEEL capture 2026-10-22T21:23:19.432Z",
+        "target": "KEEL capture 2026-10-30T00:47:35.202Z",
         "final": "KEEL test fixture",
         "contentEffects": [],
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-22T21:25:21.061Z",
+        "capturedAt": "2026-10-30T00:49:25.441Z",
         "error": null
       },
       {
@@ -240,7 +240,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-22T21:25:38.105Z",
+        "capturedAt": "2026-10-30T00:49:42.650Z",
         "error": null
       },
       {
@@ -261,7 +261,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-22T21:25:54.674Z",
+        "capturedAt": "2026-10-30T00:49:58.846Z",
         "error": null
       },
       {
@@ -273,17 +273,17 @@
         "scope": "fixture",
         "fixture": "KEEL-RT-mailfix-malware",
         "identity": "46dc1ba4-53ad-8cd1-af46-a8518d96a7fa",
-        "field": "CustomNotifications",
-        "type": "switch",
-        "before": false,
-        "target": true,
-        "final": null,
+        "field": "AdminDisplayName",
+        "type": "text",
+        "before": "",
+        "target": "KEEL capture 2026-10-30T00:47:35.202Z",
+        "final": "",
         "contentEffects": [],
-        "ok": false,
-        "readBackVerified": false,
-        "restoredToOriginal": false,
-        "capturedAt": "2026-10-22T21:26:00.650Z",
-        "error": "Set-MalwareFilterPolicy failed: Set-MalwareFilterPolicy: ||CustomFromAddress: The CustomFromAddress value is not set. Custom notifications cannot be enabled without a valid CustomFromAddress."
+        "ok": true,
+        "readBackVerified": true,
+        "restoredToOriginal": true,
+        "capturedAt": "2026-10-30T00:50:14.435Z",
+        "error": null
       },
       {
         "operationId": "mailflow.safe-links-policy.update",
@@ -303,7 +303,7 @@
         "ok": true,
         "readBackVerified": true,
         "restoredToOriginal": true,
-        "capturedAt": "2026-10-22T21:26:15.895Z",
+        "capturedAt": "2026-10-30T00:50:30.729Z",
         "error": null
       }
     ],
@@ -343,7 +343,7 @@
         "cmdlet": "Set-TransportRule",
         "parameters": {
           "Identity": "bd18f9e0-3452-8983-b2a5-aec38b03cdf1",
-          "Comments": "KEEL capture 2026-10-22T21:23:19.432Z"
+          "Comments": "KEEL capture 2026-10-30T00:47:35.202Z"
         },
         "outcome": "ok"
       },
@@ -385,7 +385,7 @@
         "cmdlet": "Set-InboundConnector",
         "parameters": {
           "Identity": "56c4bf8b-a9ed-8ba4-b8ae-71ce80999342",
-          "Comment": "KEEL capture 2026-10-22T21:23:19.432Z"
+          "Comment": "KEEL capture 2026-10-30T00:47:35.202Z"
         },
         "outcome": "ok"
       },
@@ -511,13 +511,34 @@
         "cmdlet": "Set-MalwareFilterPolicy",
         "parameters": {
           "Identity": "46dc1ba4-53ad-8cd1-af46-a8518d96a7fa",
-          "CustomNotifications": true
+          "AdminDisplayName": "KEEL capture 2026-10-30T00:47:35.202Z"
         },
-        "outcome": "failed",
-        "error": {
-          "code": "CMDLET_ERROR",
-          "errorId": "[],Write-ErrorMessage"
-        }
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "exchange-mail-flow",
+        "families": [
+          "antiMalwarePolicy"
+        ],
+        "outcome": "ok"
+      },
+      {
+        "credential": "restorer",
+        "cmdlet": "Set-MalwareFilterPolicy",
+        "parameters": {
+          "Identity": "46dc1ba4-53ad-8cd1-af46-a8518d96a7fa",
+          "AdminDisplayName": ""
+        },
+        "outcome": "ok"
+      },
+      {
+        "credential": "collector",
+        "read": "exchange-mail-flow",
+        "families": [
+          "antiMalwarePolicy"
+        ],
+        "outcome": "ok"
       },
       {
         "credential": "collector",
@@ -562,16 +583,16 @@
         "outcome": "ok"
       }
     ],
-    "captureLogSha256": "dde5d2f4c1ad6e9049b78b5fc6ac892f409bfae5b1ef002199186094b73ab8d8"
+    "captureLogSha256": "56cb72385c07e1dd7c7c87ec97b481a6b590192e7768539e846bd20df330fff0"
   },
   "proof": {
     "artifact": {
       "path": "workload-writers-exchange-mail-flow-live-acceptance.capture.json",
-      "sha256": "dde5d2f4c1ad6e9049b78b5fc6ac892f409bfae5b1ef002199186094b73ab8d8"
+      "sha256": "56cb72385c07e1dd7c7c87ec97b481a6b590192e7768539e846bd20df330fff0"
     },
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "55afeccbd7b4547d5f9822a49129cb6e9b35c14119108ebb18534ed8a44180fe"
+      "signature": "c841eb56071e507efcac54a1118700c553422b359a280221f269d835f609b94e"
     }
   }
 }

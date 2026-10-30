@@ -2,10 +2,10 @@
   "contractVersion": 1,
   "gate": "workload-reads-live-acceptance",
   "tenantRef": "sha256:f7b3959300856957",
-  "build": "56d968285bde1ecaee360420278905b97f554a68",
+  "build": "05a930b58a82583d276fff1fedf6cc9dca1563e9",
   "operation": "workload-reads",
   "credentialMode": "collector-only",
-  "observedAt": "2026-10-22T09:58:19.275Z",
+  "observedAt": "2026-10-30T01:30:18.952Z",
   "evidenceLevel": "live-qualified",
   "synthetic": false,
   "subject": {
@@ -18,17 +18,17 @@
     "credentials": {
       "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c"
     },
-    "outcome": "partial",
+    "outcome": "complete",
     "reads": [
       {
         "operationId": "teams.calling-policies",
         "family": "callingPolicy",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-10-22T09:58:19.275Z",
+        "capturedAt": "2026-10-30T01:30:18.952Z",
         "ok": true,
         "status": "read",
-        "objects": 7,
+        "objects": 8,
         "error": null
       },
       {
@@ -36,10 +36,10 @@
         "family": "voiceRoutingPolicy",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-10-22T09:58:19.275Z",
+        "capturedAt": "2026-10-30T01:30:18.952Z",
         "ok": true,
         "status": "read",
-        "objects": 3,
+        "objects": 4,
         "error": null
       },
       {
@@ -47,10 +47,10 @@
         "family": "dialPlan",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-10-22T09:58:19.275Z",
+        "capturedAt": "2026-10-30T01:30:18.952Z",
         "ok": true,
         "status": "read",
-        "objects": 3,
+        "objects": 4,
         "error": null
       },
       {
@@ -58,10 +58,10 @@
         "family": "emergencyCallingPolicy",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-10-22T09:58:19.275Z",
+        "capturedAt": "2026-10-30T01:30:18.952Z",
         "ok": true,
         "status": "read",
-        "objects": 3,
+        "objects": 4,
         "error": null
       },
       {
@@ -69,10 +69,10 @@
         "family": "emergencyCallRoutingPolicy",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-10-22T09:58:19.275Z",
+        "capturedAt": "2026-10-30T01:30:18.952Z",
         "ok": true,
         "status": "read",
-        "objects": 3,
+        "objects": 4,
         "error": null
       },
       {
@@ -80,10 +80,10 @@
         "family": "callParkPolicy",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-10-22T09:58:19.275Z",
+        "capturedAt": "2026-10-30T01:30:18.952Z",
         "ok": true,
         "status": "read",
-        "objects": 3,
+        "objects": 4,
         "error": null
       },
       {
@@ -91,10 +91,10 @@
         "family": "callerIdPolicy",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-10-22T09:58:19.275Z",
+        "capturedAt": "2026-10-30T01:30:18.952Z",
         "ok": true,
         "status": "read",
-        "objects": 3,
+        "objects": 4,
         "error": null
       },
       {
@@ -102,10 +102,10 @@
         "family": "voicemailPolicy",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-10-22T09:58:19.275Z",
+        "capturedAt": "2026-10-30T01:30:18.952Z",
         "ok": true,
         "status": "read",
-        "objects": 6,
+        "objects": 7,
         "error": null
       },
       {
@@ -113,10 +113,10 @@
         "family": "liveEventsPolicy",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-10-22T09:58:19.275Z",
+        "capturedAt": "2026-10-30T01:30:18.952Z",
         "ok": true,
         "status": "read",
-        "objects": 4,
+        "objects": 5,
         "error": null
       },
       {
@@ -124,10 +124,10 @@
         "family": "eventsPolicy",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-10-22T09:58:19.275Z",
+        "capturedAt": "2026-10-30T01:30:18.952Z",
         "ok": true,
         "status": "read",
-        "objects": 3,
+        "objects": 4,
         "error": null
       },
       {
@@ -135,7 +135,7 @@
         "family": "liveEventsConfiguration",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-10-22T09:58:19.275Z",
+        "capturedAt": "2026-10-30T01:30:18.952Z",
         "ok": true,
         "status": "read",
         "objects": 1,
@@ -146,10 +146,10 @@
         "family": "userPolicyAssignment",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-10-22T09:58:19.275Z",
+        "capturedAt": "2026-10-30T01:30:18.952Z",
         "ok": true,
         "status": "read",
-        "objects": 104,
+        "objects": 108,
         "error": null
       },
       {
@@ -157,7 +157,7 @@
         "family": "groupPolicyAssignment",
         "version": "7.9.0",
         "synthetic": false,
-        "capturedAt": "2026-10-22T09:58:19.275Z",
+        "capturedAt": "2026-10-30T01:30:18.952Z",
         "ok": true,
         "status": "read",
         "objects": 0,
@@ -168,7 +168,7 @@
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "6c7de930841f88bd3c8ce1945cf85e855acede516239758f50b9c6bf787542bc"
+      "signature": "b04eef0952654aee1694e74a0a394df6de7a1fb0317a042202e5eca81d51aa4c"
     }
   }
 }

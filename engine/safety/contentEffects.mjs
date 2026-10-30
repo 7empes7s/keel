@@ -95,6 +95,19 @@ const truthy = (value) => value === true || value === 'true' || value === 'True'
 const enabledToDisabled = (before, after) => truthy(before) && !truthy(after);
 const disabledToEnabled = (before, after) => !truthy(before) && truthy(after);
 
+// Gap D3: which groups expiry covers, narrowest first, and the renewal notice
+// addresses (a ";" list, any case). Mirrors groupLifecycleReview.
+const GROUP_EXPIRY_SCOPE = ['none', 'selected', 'all'];
+const widensGroupExpiry = (before, after) => {
+  const b = GROUP_EXPIRY_SCOPE.indexOf(String(before ?? '').toLowerCase());
+  const a = GROUP_EXPIRY_SCOPE.indexOf(String(after ?? '').toLowerCase());
+  return b > -1 && a > b;
+};
+const noticeAddresses = (value) => (typeof value === 'string'
+  ? value.split(';').map((address) => address.trim().toLowerCase()).filter((address) => address.length > 0) : []);
+// A backup without the field leaves the addresses alone (the writer sends only what the backup holds).
+const dropsNoticeAddress = (before, after) => after !== undefined && noticeAddresses(before).some((address) => !noticeAddresses(after).includes(address));
+
 // Task-105: automatic reply audiences, narrowest to widest.
 const AUTOREPLY_AUDIENCE = ['none', 'contactsOnly', 'all'];
 /** Exchange timespans read as "d.hh:mm:ss" (or "hh:mm:ss"); days as a number, null when unreadable. */
@@ -373,13 +386,17 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
     rule('accountManagerPolicy.accountDeletionPolicy', 'irreversible', becomes('immediately')),
     rule('accountManagerPolicy.inactiveThresholdDays', 'retention-reducing', decreases),
   ] },
-  // Gap D3: a shorter group lifetime expires and deletes Microsoft 365 groups
-  // (and their mail, files and chats) that nobody renews in time. The restore
-  // guard refuses it unless this effect carries its separate high-impact
-  // approval (tenantPolicyOperations.mjs). Which groups are covered and the
-  // notice addresses stay plain refusals of that guard, never approvable here.
+  // Gap D3: group expiration deletes Microsoft 365 groups (and their mail,
+  // files and chats) that nobody renews in time. Three directions make that
+  // happen to more groups: a shorter lifetime, expiry that covers more groups
+  // (None < Selected < All), and a renewal notice address the restore drops
+  // (groups without an owner are then not renewed). The restore guard writes
+  // each only with its approval (tenantPolicyOperations.mjs groupLifecycleReview);
+  // a value it cannot compare is never written.
   groupLifecyclePolicy: { reviewed: true, rules: [
     rule('groupLifetimeInDays', 'retention-reducing', decreases),
+    rule('managedGroupTypes', 'retention-reducing', widensGroupExpiry),
+    rule('alternateNotificationEmails', 'retention-reducing', dropsNoticeAddress),
   ] },
   configurationPolicy: { reviewed: true, judgesCreates: true, rules: [
     rule(`settings[${CATALOG_WIPE_THRESHOLD}]`, 'irreversible', wipeThresholdTightens, catalogSetting(CATALOG_WIPE_THRESHOLD)),

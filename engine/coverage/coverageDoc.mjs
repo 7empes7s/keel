@@ -75,8 +75,8 @@ export const TYPE_GUIDE = Object.freeze({
     todo: 'The header logo is uploaded by hand, and a language that was added or removed is added or removed by hand.',
   }),
   groupLifecyclePolicy: auto('Group expiration policy', {
-    keeps: 'Puts the policy back only when that makes group expiry less aggressive.',
-    todo: 'A shorter lifetime, more groups covered or a removed notice address could expire and delete groups, so KEEL leaves that change to a person. A missing policy, and the list of groups it covers, are set by hand.',
+    keeps: 'Puts the policy back. A shorter lifetime, more groups covered or a dropped notice address waits for approval first.',
+    todo: 'A missing policy, and the list of groups it covers, are set by hand. A change that could expire and delete groups waits until a second person approves it in Approvals, unless restore approvals are off for Entra.',
   }),
   administrativeUnit: auto('Administrative units', {
     keeps: 'Puts the name and description back.',

@@ -167,38 +167,55 @@ export function brandingSendable(field, value) {
 // Issue #156: how many groups a group expiration policy covers, narrowest first.
 const MANAGED_GROUP_SCOPE = Object.freeze({ none: 0, selected: 1, all: 2 });
 
+// Where a person changes each group expiration setting by hand.
+const GROUP_EXPIRATION_PATH = 'Microsoft Entra admin center > Groups > All groups > Expiration';
+export const GROUP_LIFETIME_PORTAL_PATH = `${GROUP_EXPIRATION_PATH} > Group lifetime (in days)`;
+export const GROUP_SCOPE_PORTAL_PATH = `${GROUP_EXPIRATION_PATH} > Enable expiration for these Microsoft 365 groups`;
+export const GROUP_NOTICE_PORTAL_PATH = `${GROUP_EXPIRATION_PATH} > Email contact for groups with no owners`;
+
 /**
- * Issue #156: a group expiration restore may make expiry less aggressive, never
- * more. A shorter lifetime, or a policy that covers more groups than the live
- * one, can expire and delete Microsoft 365 groups, so that write is left to a
- * person. Returns the reason, or null when the write may proceed.
- *
- * Gap D3: a shorter lifetime alone is still refused by default, but it is also
- * a content effect (engine/safety/contentEffects.mjs), so a separate
- * high-impact approval of exactly that shortening lets it through; see
- * tenantPolicyWriteRefusal. `allowShorterLifetime` skips only that one check.
+ * Issue #156: what a group expiration restore would do that can expire and
+ * delete Microsoft 365 groups. Returns { blocked, changes }:
+ * - `blocked`: a reason the write is never made (a value that cannot be
+ *   compared or is not known), or null;
+ * - `changes`: each direction that can delete groups, one per field
+ *   ({ field, before, after, reason, completion }): a shorter lifetime, expiry
+ *   that covers more groups, or a renewal notice address the restore drops.
+ *   Each is a content effect (engine/safety/contentEffects.mjs), so the
+ *   customer's restore approval setting decides whether a second person
+ *   approves it first; see tenantPolicyWriteRefusal.
+ * A longer lifetime, a narrower scope and an added address are always written.
  */
-export function groupLifecycleGuard(desired, live, { allowShorterLifetime = false } = {}) {
+export function groupLifecycleReview(desired, live) {
   const has = (field) => Object.hasOwn(desired ?? {}, field);
+  const changes = [];
   if (has('groupLifetimeInDays')) {
     const want = desired.groupLifetimeInDays;
     const have = live?.groupLifetimeInDays;
     const positive = (value) => typeof value === 'number' && Number.isFinite(value) && value > 0;
     if (!positive(want) || !positive(have)) {
-      return `the group lifetime cannot be compared (snapshot ${want}, live ${have}), so a shorter one cannot be ruled out; change it by hand`;
+      return { blocked: `the group lifetime cannot be compared (snapshot ${want}, live ${have}), so a shorter one cannot be ruled out; change it by hand`, changes: [] };
     }
-    if (want < have && !allowShorterLifetime) {
-      return `a group lifetime of ${want} days is shorter than the live ${have} days and could expire and delete groups; it needs a separate high-impact approval, or change it by hand`;
+    if (want < have) {
+      changes.push({
+        field: 'groupLifetimeInDays', before: have, after: want,
+        reason: `a group lifetime of ${want} days is shorter than the live ${have} days and could expire and delete groups`,
+        completion: groupLifetimeCompletionItem({ from: have, to: want }),
+      });
     }
   }
   if (has('managedGroupTypes')) {
     const wantScope = MANAGED_GROUP_SCOPE[String(desired.managedGroupTypes ?? '').toLowerCase()];
     const haveScope = MANAGED_GROUP_SCOPE[String(live?.managedGroupTypes ?? '').toLowerCase()];
     if (wantScope === undefined || haveScope === undefined) {
-      return `managedGroupTypes ${desired.managedGroupTypes} (live ${live?.managedGroupTypes}) is not a known value; change it by hand`;
+      return { blocked: `managedGroupTypes ${desired.managedGroupTypes} (live ${live?.managedGroupTypes}) is not a known value; change it by hand`, changes: [] };
     }
     if (wantScope > haveScope) {
-      return `expiry would cover more groups (${desired.managedGroupTypes} instead of ${live.managedGroupTypes}) and could expire and delete groups; change it by hand`;
+      changes.push({
+        field: 'managedGroupTypes', before: live.managedGroupTypes, after: desired.managedGroupTypes,
+        reason: `expiry would cover more groups (${desired.managedGroupTypes} instead of ${live.managedGroupTypes}) and could expire and delete groups`,
+        completion: groupScopeCompletionItem({ from: live.managedGroupTypes, to: desired.managedGroupTypes }),
+      });
     }
   }
   if (has('alternateNotificationEmails')) {
@@ -208,32 +225,40 @@ export function groupLifecycleGuard(desired, live, { allowShorterLifetime = fals
     const wanted = new Set(notificationAddresses(desired.alternateNotificationEmails));
     const dropped = notificationAddresses(live?.alternateNotificationEmails).filter((address) => !wanted.has(address));
     if (dropped.length > 0) {
-      return `the restore would stop renewal notices to ${dropped.join(', ')}, so groups without an owner could expire unnoticed and be deleted; change it by hand`;
+      changes.push({
+        field: 'alternateNotificationEmails', before: live.alternateNotificationEmails, after: desired.alternateNotificationEmails,
+        reason: `the restore would stop renewal notices to ${dropped.join(', ')}, so groups without an owner could expire unnoticed and be deleted`,
+        completion: groupNoticeCompletionItem({ dropped, to: desired.alternateNotificationEmails }),
+      });
     }
   }
-  return null;
+  return { blocked: null, changes };
 }
-
-// Gap D3: where a person sets the group lifetime by hand.
-export const GROUP_LIFETIME_PORTAL_PATH = 'Microsoft Entra admin center > Groups > All groups > Expiration > Group lifetime (in days)';
 
 /**
- * Gap D3: { from, to } when the ONLY reason the guard refuses is a shorter
- * lifetime (both values readable), otherwise null. A wider scope or a dropped
- * notice address is never approvable here.
+ * The guard of the group expiration record: the reason the write is held, or
+ * null when it may proceed without an approval.
  */
-export function groupLifetimeShortening(desired, live) {
-  if (groupLifecycleGuard(desired, live) === null) return null;
-  if (groupLifecycleGuard(desired, live, { allowShorterLifetime: true }) !== null) return null;
-  return Object.freeze({ from: live.groupLifetimeInDays, to: desired.groupLifetimeInDays });
+export function groupLifecycleGuard(desired, live) {
+  const { blocked, changes } = groupLifecycleReview(desired, live);
+  if (blocked) return blocked;
+  if (changes.length === 0) return null;
+  return `${changes.map((change) => change.reason).join('; ')}; it needs a separate high-impact approval, or change it by hand`;
 }
 
-/** Gap D3: true when an approved content effect covers exactly this shortening. */
-export function groupLifetimeShorteningApproved(resource, shortening, approvedContentEffects = []) {
+/**
+ * True when an approved content effect covers exactly this change: the same
+ * policy, field and values (engine/safety/contentEffects.mjs effectApproved,
+ * not imported here because that module imports this one through
+ * adminRoleOperations).
+ */
+export function groupLifecycleChangeApproved(resource, change, approvedContentEffects = []) {
   return (approvedContentEffects ?? []).some((effect) => effect?.resourceType === 'groupLifecyclePolicy'
-    && effect.naturalKey === resource.naturalKey && effect.field === 'groupLifetimeInDays'
-    && effect.before === shortening.from && effect.after === shortening.to);
+    && effect.effect === 'retention-reducing' && effect.naturalKey === resource.naturalKey && effect.field === change.field
+    && (effect.before ?? null) === (change.before ?? null) && (effect.after ?? null) === (change.after ?? null));
 }
+
+const APPROVE_AND_PROMOTE = 'Or have a second person approve it as a high-impact change in Approvals (or turn restore approvals off for Entra) and promote the restore again.';
 
 /**
  * Gap D3: the guided step for a shorter group lifetime nobody approved: the
@@ -248,6 +273,41 @@ export function groupLifetimeCompletionItem({ from, to }) {
     description: `Set the group lifetime to ${to} days (it is ${from} days now) in the ${GROUP_LIFETIME_PORTAL_PATH}, choosing Custom. `
       + `Groups not renewed within ${to} days then expire and are deleted. Or have a second person approve the shorter lifetime `
       + 'as a high-impact change and promote the restore again.',
+  });
+}
+
+/** The guided step for expiry that would cover more groups, when nobody approved it. */
+export function groupScopeCompletionItem({ from, to }) {
+  return Object.freeze({
+    kind: 'manual-setting',
+    requirement: 'managedGroupTypes',
+    targetValue: to,
+    portalPath: GROUP_SCOPE_PORTAL_PATH,
+    description: `Set expiration to cover ${to} groups (it covers ${from} now) in the ${GROUP_SCOPE_PORTAL_PATH}. `
+      + `Groups it newly covers that nobody renews then expire and are deleted. ${APPROVE_AND_PROMOTE}`,
+  });
+}
+
+/** The guided step for renewal notice addresses the restore would drop, when nobody approved it. */
+export function groupNoticeCompletionItem({ dropped, to }) {
+  return Object.freeze({
+    kind: 'manual-setting',
+    requirement: 'alternateNotificationEmails',
+    targetValue: to,
+    portalPath: GROUP_NOTICE_PORTAL_PATH,
+    description: `Set the email contact for groups with no owners to "${to ?? ''}" in the ${GROUP_NOTICE_PORTAL_PATH}. `
+      + `${dropped.join(', ')} then stop getting renewal notices, so groups without an owner can expire unnoticed and be deleted. ${APPROVE_AND_PROMOTE}`,
+  });
+}
+
+/** One guided step for every change still waiting: the change's own step, or all of them in one. */
+function groupLifecycleCompletion(changes) {
+  if (changes.length === 1) return changes[0].completion;
+  return Object.freeze({
+    kind: 'manual-setting',
+    requirement: changes.map((change) => change.field).join(', '),
+    portalPath: GROUP_EXPIRATION_PATH,
+    description: changes.map((change) => change.completion.description.split(/(?<=\.) Or have /)[0]).join(' ') + ` ${APPROVE_AND_PROMOTE}`,
   });
 }
 
@@ -566,11 +626,12 @@ export function tenantPolicyRoute(entry, resource, { targetTenant = null } = {})
  * `lockoutGate.evaluate({ resourceType, desired })` returns
  * { allowed, reason }; see engine/safety/lockoutGate.mjs.
  *
- * Gap D3: a group expiration restore whose only problem is a shorter lifetime
- * is written when `approvedContentEffects` (the content effects whose separate
- * high-impact approval the promotion checked) holds exactly that shortening.
- * Otherwise it is skipped with a `completion` item (the value and the portal
- * path). A dry run cannot carry that approval yet: it returns
+ * Gap D3: a group expiration restore that would shorten the lifetime, cover
+ * more groups or drop a renewal notice address is written when
+ * `approvedContentEffects` (the content effects whose approval the promotion
+ * checked, or every effect when restore approvals are off for the service)
+ * holds exactly each of those changes. Otherwise it is skipped with a
+ * `completion` item (the value and the portal path). A dry run cannot carry that approval yet: it returns
  * { outcome: 'pending-approval', completion }, which applyWave reports on the
  * simulated write instead of refusing it, so the dry run stays promotable once
  * the content effect is approved.
@@ -615,10 +676,11 @@ export function tenantPolicyWriteRefusal(resource, verb, { lockoutGate = null, m
   if (entry.guard) {
     const live = resource.live?.payload ?? null;
     const reason = entry.guard(resource.payload, live);
-    const shortening = reason && resource.resourceType === 'groupLifecyclePolicy' ? groupLifetimeShortening(resource.payload, live) : null;
-    if (reason && !shortening) return refusal('skipped', `manual: ${reason}`);
-    if (shortening && !groupLifetimeShorteningApproved(resource, shortening, approvedContentEffects)) {
-      const completion = groupLifetimeCompletionItem(shortening);
+    const review = reason && resource.resourceType === 'groupLifecyclePolicy' ? groupLifecycleReview(resource.payload, live) : null;
+    if (reason && (!review || review.blocked)) return refusal('skipped', `manual: ${reason}`);
+    const waiting = review ? review.changes.filter((change) => !groupLifecycleChangeApproved(resource, change, approvedContentEffects)) : [];
+    if (waiting.length > 0) {
+      const completion = groupLifecycleCompletion(waiting);
       if (mode === 'dry-run') return Object.freeze({ outcome: 'pending-approval', reason: `manual: ${reason}`, completion });
       return Object.freeze({ ...refusal('skipped', `manual: ${reason}`), completion });
     }

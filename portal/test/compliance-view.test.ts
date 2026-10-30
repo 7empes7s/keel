@@ -96,6 +96,8 @@ test("Compliance words: plain titles, results, reasons, owners and the verdict",
   assert.equal(scuba("scubagear:check-by-hand"), "CISA lists this as a check to do by hand.");
   assert.equal(scuba("scubagear:not-read:dmarc_records"), "Keel does not back up the settings this rule reads yet.");
   assert.equal(scuba("scubagear:field-not-read:org_config.AuditDisabled"), "A setting this rule reads is not in Keel's backup yet.");
+  assert.equal(scuba("scubagear:preview-only:conditional_access_policies.AgentIdRiskLevels"),
+    "This rule reads settings Microsoft offers only in a preview, which Keel does not back up.");
   assert.equal(scuba("scubagear:incomplete:privileged_users"), "The backup cannot answer what this rule asks.");
   assert.equal(scuba("scubagear:no-result"), "Keel could not run this rule.");
   assert.equal(scuba("scubagear:needs-setting:SecuritySuite,Defender"), "This rule needs a list only you can give, such as your sensitive users or partner domains, and Keel cannot take it yet.");

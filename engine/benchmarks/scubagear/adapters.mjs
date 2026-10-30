@@ -21,6 +21,7 @@
  *    for a full Graph object, 'all';
  *  - `lacks`: fields the rules may read that Keel's read does not return (Graph v1.0
  *    leaves out beta-only fields). A rule whose code names one is "could not check".
+ *    `lacksReason` names why, when it is not just a field Keel has not added yet.
  *  - `build(facts)`: the value, or a thrown CouldNotBuild when the backup cannot answer
  *    what the rule asks (for example a role held through a group whose members Keel
  *    does not read). Then the rule reads "could not check", never a guess.
@@ -402,8 +403,14 @@ export const ADAPTERS = Object.freeze({
   // Entra ID
   conditional_access_policies: Object.freeze({
     reads: [graph('conditionalAccessPolicy')], fields: 'all',
-    // Agent conditions exist only in Graph beta; Keel reads sign-in rules through v1.0.
+    // The AI agent conditions (MS.AAD.9.1) exist only in Graph beta, and only as a preview.
+    // A live beta read of the test tenant (operator queue Q289, 2026-10-30) returned none of
+    // these fields: Microsoft leaves them out unless a policy targets agents, and the test
+    // tenant cannot get one (no Conditional Access changes). ScubaGear reads the same beta
+    // endpoint, so there is no other source. Keel does not back the preview fields up, and the
+    // rule stays "could not check" with that reason.
     lacks: ['AgentIdRiskLevels', 'IncludeAgentIdServicePrincipals', 'ExcludeAgentIdServicePrincipals'],
+    lacksReason: 'preview-only',
     build: (facts) => list(facts, 'conditionalAccessPolicy').map(pascal),
   }),
   authorization_policies: Object.freeze({ reads: [graph('authorizationPolicy')], fields: 'all', build: (facts) => single(facts, 'authorizationPolicy', 'authorization_policies').map(pascal) }),

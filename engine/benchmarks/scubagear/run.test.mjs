@@ -118,7 +118,8 @@ test('a rule Keel cannot check says why, and is never a pass', () => {
   assert.equal(reason('MS.AAD.2.2v1'), 'scubagear:check-by-hand');
   assert.equal(reason('MS.AAD.5.2v1'), 'scubagear:not-read:risky_delegated_permission_classifications');
   assert.equal(reason('MS.AAD.7.5v1'), 'scubagear:field-not-read:privileged_roles.StartDateTime');
-  assert.match(reason('MS.AAD.9.1v1'), /^scubagear:field-not-read:conditional_access_policies\.AgentIdRiskLevels,/);
+  // The AI agent conditions only Microsoft's preview returns, and only for a policy that targets agents.
+  assert.equal(reason('MS.AAD.9.1v1'), 'scubagear:preview-only:conditional_access_policies.AgentIdRiskLevels,ExcludeAgentIdServicePrincipals,IncludeAgentIdServicePrincipals');
   assert.equal(reason('MS.EXO.2.2v3'), 'scubagear:not-read:spf_records');
   assert.equal(reason('MS.EXO.13.1v1'), 'scubagear:field-not-read:org_config.AuditDisabled,Name');
   assert.equal(reason('MS.SECURITYSUITE.1.3v1'), 'scubagear:not-read:built_in_protection_rules');
@@ -141,6 +142,9 @@ test('a field-limited read flags any field the rule names that Keel does not kee
   assert.equal(staticReason(rule(['Name', 'AuditDisabled']), { adapters, sources }), 'scubagear:field-not-read:org_config.AuditDisabled');
   assert.equal(staticReason({ ...rule([]), manual: true }, { adapters, sources }), 'scubagear:check-by-hand');
   assert.equal(staticReason({ id: 'Y', inputs: ['nothing_here'], members: [] }, { adapters, sources }), 'scubagear:not-read:nothing_here');
+  // A field Microsoft offers only in a preview says so.
+  const preview = { ...adapters, org_config: { fields: 'all', lacks: ['AuditDisabled'], lacksReason: 'preview-only' } };
+  assert.equal(staticReason(rule(['Name', 'AuditDisabled']), { adapters: preview, sources }), 'scubagear:preview-only:org_config.AuditDisabled');
 });
 
 test('a missing or old backup is could not check, not a pass', () => {

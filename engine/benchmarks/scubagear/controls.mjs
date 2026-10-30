@@ -24,7 +24,7 @@
 import { createHash } from 'node:crypto';
 import { PREDICATE_UNKNOWN_PREFIX, WORKLOAD_FACT_TYPES, registerControl, registerPredicate } from '../registry.mjs';
 import { ADAPTERS, buildInput } from './adapters.mjs';
-import { configHasList, DEFAULT_SCUBA_CONFIG, listForRule } from './config.mjs';
+import { configHasList, DEFAULT_SCUBA_CONFIG, emergencyAccessLine, listForRule } from './config.mjs';
 import { importScubaGearRules, openPinnedScubaGear } from './import.mjs';
 import { SCUBA_INPUT_SOURCES } from './inputs.mjs';
 import { readBuild, scubaRules } from './opa.mjs';
@@ -95,7 +95,12 @@ registerPredicate(SCUBA_PREDICATE, (facts, args, context = {}) => {
   const own = results.filter((result) => result?.PolicyId === args.policyId);
   if (own.length !== 1) return { verdict: 'unknown', reason: REASON(own.length ? 'several-results' : 'no-result') };
   const verdict = verdictOf(own[0]);
-  return { verdict, details: [line(args, plainDetails(own[0].ReportDetails), verdict !== 'fail')] };
+  const details = [line(args, plainDetails(own[0].ReportDetails), verdict !== 'fail')];
+  // Say which emergency accounts the rule was allowed to leave out, so a pass that
+  // relied on them is never silent.
+  const leftOut = emergencyAccessLine(context?.emergencyAccess, args.policyId, built.document, verdict);
+  if (leftOut) details.push(leftOut);
+  return { verdict, details };
 });
 
 function line(args, text, ok) {

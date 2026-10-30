@@ -195,6 +195,14 @@ test('a notification template is created, then its localized messages are added 
   assert.deepEqual(created.applied.changes.localizedMessages, ['en-us', 'fr-fr']);
   const templateId = created.applied.targetId;
   const base = `/deviceManagement/notificationMessageTemplates/${templateId}`;
+  // Issue #746: Graph refuses a defaultLocale no message holds yet, so the
+  // template is created without it, its messages follow, and it is set last.
+  const createWrites = graph.calls.filter((call) => call.method !== 'GET');
+  assert.equal('defaultLocale' in createWrites[0].body, false);
+  assert.deepEqual(createWrites.map((call) => `${call.method} ${call.path.split('/').slice(-1)[0]}`),
+    ['POST notificationMessageTemplates', 'POST localizedNotificationMessages', 'POST localizedNotificationMessages', `PATCH ${templateId}`]);
+  assert.deepEqual(createWrites.at(-1).body, { defaultLocale: 'en-us' });
+  assert.equal(created.applied.changes.defaultLocale, 'en-us');
 
   // The French text changed live; an update puts it back and leaves English alone.
   const live = (await graph.read('v1.0', `${base}?$expand=localizedNotificationMessages`)).body;
@@ -202,12 +210,43 @@ test('a notification template is created, then its localized messages are added 
   await graph.write('v1.0', `${base}/localizedNotificationMessages/${french.id}`, { method: 'PATCH', body: { subject: 'Changed' } });
   const changed = (await graph.read('v1.0', `${base}?$expand=localizedNotificationMessages`)).body;
   graph.calls.length = 0;
+  // The dry run lists the message it would put back, not only the template's own fields.
+  const planned = await applyIntuneExtendedWrite(graph, resourceOf('notificationMessageTemplate', template, {
+    live: { state: 'present', targetId: templateId, payload: changed },
+  }), 'update', { ...FAST, mode: 'dry-run' });
+  assert.deepEqual(planned.applied.changes, { fields: [], localizedMessages: ['fr-fr'] });
+  assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
   const updated = await applyIntuneExtendedWrite(graph, resourceOf('notificationMessageTemplate', template, {
     live: { state: 'present', targetId: templateId, payload: changed },
   }), 'update', FAST);
   assert.equal(updated.failed, undefined, updated.failed?.error);
   const writes = graph.calls.filter((call) => call.method !== 'GET');
   assert.deepEqual(writes.map((call) => `${call.method} ${call.path.split('/').slice(-1)[0]}`), [`PATCH ${french.id}`]);
+
+  // Nothing drifted: the dry run plans nothing and the update writes nothing.
+  const same = (await graph.read('v1.0', `${base}?$expand=localizedNotificationMessages`)).body;
+  graph.calls.length = 0;
+  const idle = await applyIntuneExtendedWrite(graph, resourceOf('notificationMessageTemplate', template, {
+    live: { state: 'present', targetId: templateId, payload: same },
+  }), 'update', { ...FAST, mode: 'dry-run' });
+  assert.deepEqual(idle.applied.changes, { fields: [] });
+});
+
+test('a notification template is created where Graph refuses a defaultLocale sent before its message exists', async () => {
+  // Issue #746 (Q253): Graph answers 400 to a create that names a defaultLocale.
+  const graph = idoFakeGraph();
+  const write = graph.write.bind(graph);
+  graph.write = async (version, path, options) => (path === '/deviceManagement/notificationMessageTemplates' && 'defaultLocale' in (options.body ?? {})
+    ? { ok: false, status: 400, body: { error: { code: 'BadRequest', message: 'An error has occurred' } } }
+    : write(version, path, options));
+  const template = {
+    id: 'src-tpl', displayName: 'KEEL-RT-notice', defaultLocale: 'en-us', brandingOptions: 'includeCompanyLogo', roleScopeTagIds: ['0'],
+    localizedNotificationMessages: [{ id: 'm1', locale: 'en-us', subject: 'KEEL-RT', messageTemplate: 'KEEL-RT test', isDefault: true }],
+  };
+  const created = await applyIntuneExtendedWrite(graph, resourceOf('notificationMessageTemplate', template), 'create', FAST);
+  assert.equal(created.failed, undefined, created.failed?.error);
+  const live = (await graph.read('v1.0', `/deviceManagement/notificationMessageTemplates/${created.applied.targetId}`)).body;
+  assert.equal(live.defaultLocale, 'en-us');
 });
 
 // ------------------------------------------- restore gaps, batch 1

@@ -81,4 +81,19 @@ assert.equal(
   canonicalHash({ '@odata.etag': 'other-root-etag', nested: { '@odata.etag': 'other-nested-etag', value: 'same' } }, 'group'),
 );
 
+// Issue #746: each localized message of a notification template carries the read
+// time, so two collections of an unchanged template must hash the same.
+const template = (at, subject = 'KEEL-RT') => ({
+  displayName: 'KEEL-RT-notice', defaultLocale: 'en-us', lastModifiedDateTime: at,
+  localizedNotificationMessages: [{ locale: 'en-us', subject, messageTemplate: 'KEEL-RT test', isDefault: true, lastModifiedDateTime: at }],
+});
+assert.equal(
+  canonicalHash(template('2026-10-30T02:30:43Z'), 'notificationMessageTemplate'),
+  canonicalHash(template('2026-10-30T02:31:04Z'), 'notificationMessageTemplate'),
+);
+assert.notEqual(
+  canonicalHash(template('2026-10-30T02:30:43Z'), 'notificationMessageTemplate'),
+  canonicalHash(template('2026-10-30T02:30:43Z', 'KEEL-RT drifted'), 'notificationMessageTemplate'),
+);
+
 console.log('canonicalHash.test.mjs — all assertions passed');

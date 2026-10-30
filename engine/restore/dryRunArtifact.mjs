@@ -149,17 +149,31 @@ export function computePlanDigest({
 // read, not of the last change, so two reads of an unchanged object differ. Left in,
 // the fingerprint never matches and every update is refused. Only kinds observed live
 // to do this are listed; for the rest the field stays in, as a real change signal.
+// A field inside each item of a list is named 'list[].field' (issue #746: a
+// notification template's localized messages are stamped with the read time).
 export const READ_TIME_FIELDS = Object.freeze({
   mobileAppCategory: Object.freeze(['lastModifiedDateTime']),
   managedEBookCategory: Object.freeze(['lastModifiedDateTime']),
+  notificationMessageTemplate: Object.freeze(['lastModifiedDateTime', 'localizedNotificationMessages[].lastModifiedDateTime']),
 });
+
+function withoutField(value, path) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const [head, ...rest] = path;
+  if (rest.length === 0) {
+    const { [head]: _dropped, ...kept } = value;
+    return kept;
+  }
+  if (!head.endsWith('[]')) return value;
+  const list = head.slice(0, -2);
+  if (!Array.isArray(value[list])) return value;
+  return { ...value, [list]: value[list].map((item) => withoutField(item, rest)) };
+}
 
 function withoutReadTimeFields(payload, resourceType) {
   const fields = READ_TIME_FIELDS[resourceType];
   if (!fields || !payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
-  const rest = { ...payload };
-  for (const field of fields) delete rest[field];
-  return rest;
+  return fields.reduce((rest, field) => withoutField(rest, field.split('.')), payload);
 }
 
 /** What the target looks like right now, restricted to the resources this restore

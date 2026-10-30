@@ -103,6 +103,7 @@ import {
 import { tenantPolicyRecordFor } from '../engine/restore/tenantPolicyOperations.mjs';
 import { isAdministrativeGoverned } from '../engine/restore/administrativeOperations.mjs';
 import { previewApplyPlan } from '../engine/reconcile/previewApplyPlan.mjs';
+import { recordPlannedCreates } from '../engine/restore/plannedIds.mjs';
 import {
   classifyDryRunStatus, computeCurrentStateFingerprint, computePlanDigest,
   createDryRunArtifact, getDryRunArtifactById, plannedVerbsOf, restoreCandidates, validateArtifactForExecution,
@@ -1256,6 +1257,9 @@ export async function runRestore({
       results.failed.push(...result.failed);
       results.notRemediable.push(...(result.notRemediable ?? []));
       recordAppliedIds(appliedIds, result.applied);
+      // A dry run's planned creates get placeholder ids, so a later write that
+      // references one plans cleanly instead of failing (an enforce run records none).
+      recordPlannedCreates(appliedIds, result.applied, wave, mode);
       recordTrustSkippedLocations(trustSkippedLocations, result.skipped);
       if (result.failed.length) {
         await reportPoliciesThatMayBeOn(result.failed);

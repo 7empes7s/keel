@@ -10896,6 +10896,35 @@ item that needs it stays untouched.
 - **Report:** B; readiness; the dry run and enforce results (or the refusal verbatim); new `observedAt`; approval id; the check
   exit code; the evidence branch and commit; the fixture's lifetime.
 
+### Q274: Recapture the Conditional Access create record before it lapses on 2026-11-13 13:02 UTC (the last of Q245; do next)
+- Drafted by the "Rerun restores for older Entra records" thread (2026-10-30). This is the one step Q245 skipped (purge 403).
+  `conditionalAccessPolicy` create, observed 2026-10-14, lapses **2026-11-13 13:02 UTC**. Finish by **2026-11-11**.
+- **Marouane, 2026-10-30 15:09 UTC (relayed to the thread): "3- done"**, i.e. he permanently deleted `KEEL-RT-245-ca`
+  (`a9a7b6e3…`) from Conditional Access > Deleted policies. His go of 08:27 UTC for the lockout steps (second GA session,
+  reachable to undo) still applies; he said he stays signed in all day.
+- Needs: none. Run at the deployed commit B, from your own checkout at B.
+- Status: todo
+- **Test tenant only.** Same rules as Q245 (lockout rules of Q45/Q48). Before each step `node cli/keel-breakglass.mjs report
+  --config "$COLLECTOR"` must read ready; if not, stop and report blocked. Self-approve; log every approval id. Never target,
+  assign, drift or sign in as marouane.defili or a break-glass account.
+- **Conditional Access:** the fixture is **report-only and never turned on**, not even for the snapshot (skip the checklist's
+  turn-on lines). It excludes marouane.defili and every registered break-glass account; read it back before the snapshot to check.
+  If any step says the policy "may be ON", turn it off by hand at once, stop and report.
+- Do, with the key set:
+  0. Check that `KEEL-RT-245-ca` (`a9a7b6e3…`) is gone from `beta /identity/conditionalAccess/deletedItems/policies`. If it is
+     still there, stop and report blocked (no other step).
+  1. Fixtures (write down that none with the `KEEL-RT-274` prefix existed before): group `KEEL-RT-274-ca-users` holding only
+     `keel-rt-20260908-carla`; CA `KEEL-RT-274-ca` (report-only, block access, users = that group, all cloud apps, excluding
+     marouane.defili and the break-glass accounts). Read back, then snapshot.
+  2. **create:** delete the policy, then remove it from deleted items (`DELETE beta .../deletedItems/policies/{id}`). If that
+     purge answers 403 again, leave it there, skip, and report it (the thread will ask Marouane for the portal click). Otherwise
+     restore from the snapshot; expect a new report-only policy with the same exclusions. Read back and capture.
+  3. Cleanup: delete the restored policy (leave it in deleted items; report its id for a portal purge) and delete and purge the group.
+  4. Commit the record and `.capture.json` on `claude/live-evidence-q274`, branched from `origin/master` (secret scan and
+     `pseudonymize.mjs check` first). Push. No PR. Run `operations.mjs --live-evidence` on that directory and report the line.
+- **Report:** B; break-glass readiness before each step; promoted / failed (exact message) / blocked; new `observedAt`; approval
+  id; the CA policy's state at each read-back; the evidence branch and commit; anything left.
+
 ### Q228: Live restore proof of app credential policies and access package catalogs (wave 2, never run live)
 - Drafted by the "Finish Q207 and Q208 live proofs" thread (2026-10-29). Writers, fixture-tested only, never run live:
   `appManagementPolicy` (v1.0 `/policies/appManagementPolicies`, create + update; `appliesTo` is never written) and

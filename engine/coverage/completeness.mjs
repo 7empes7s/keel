@@ -256,7 +256,7 @@ export const COMPLETENESS = Object.freeze({
   externalIdentitiesPolicy: {},
   b2bManagementPolicy: {},
   // Q256: Graph refuses app writes without a directory role, so none is written.
-  servicePrincipalCreationPolicy: { whole: 'not-written' },
+  servicePrincipalCreationPolicy: { whole: 'not-written', missing: [part('A built-in app creation policy', 'microsoft-managed', builtInFlag)] },
   permissionGrantPreApprovalPolicy: { missing: [part('Which app it is assigned to', 'other-route')] },
   accessReviewPolicy: {},
   directoryRoleAccessReviewPolicy: {},

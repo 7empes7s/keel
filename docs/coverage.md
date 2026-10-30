@@ -307,6 +307,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **Guest invitation domain restrictions** (KEEL choice). KEEL backs up the list of domains guests may, or may not, be invited from, and shows when it changes. A restore never changes who can be invited.
   - *You do:* Set the domains again in the Entra admin center, under External Identities, External collaboration settings, Collaboration restrictions.
 - **App creation policies** (Microsoft limit). KEEL backs up each policy with its include and exclude conditions, but Microsoft only lets a signed-in admin change these policies, not an app like KEEL.
+  - *Not brought back:* a built-in app creation policy (set by Microsoft).
   - *You do:* Recreate a custom policy and its conditions with PowerShell from the backup, signed in as an Entra admin. There is no admin center page for it. Built-in policies are Microsoft's and cannot be changed.
 - **App permission pre-approval policies.** Puts back which app permissions are pre-approved, and where (chats, teams or the whole organization).
   - *Not brought back:* which app it is assigned to (stored separately and not in the backup yet).

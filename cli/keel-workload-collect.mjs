@@ -88,7 +88,9 @@ export function readOnlyGraphTransport(tokenSource, fetchImpl = globalThis.fetch
     if (method !== 'GET' || init?.body !== undefined) throw new Error(`workload collection is read-only: refused ${method} ${url}`);
     if (new URL(url).hostname !== GRAPH_HOST) throw new Error(`workload collection reads Microsoft Graph only: refused ${url}`);
     token ??= await tokenSource();
-    const response = await fetchImpl(url, { method: 'GET', headers: { authorization: `Bearer ${token}` } });
+    // Without Accept-Language, Node's fetch sends `*`, and Graph's PIM reads (roleAssignmentScheduleInstances
+    // and the like) answer 400 CultureNotFoundException. Every other Keel Graph reader sends en-US too.
+    const response = await fetchImpl(url, { method: 'GET', headers: { authorization: `Bearer ${token}`, 'accept-language': 'en-US' } });
     const text = await response.text();
     let body = null;
     try { body = text ? JSON.parse(text) : null; } catch { body = null; }

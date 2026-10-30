@@ -2209,3 +2209,60 @@ test('a field left out of the post-state read is only allowed when afterWrite ch
   const plain = defineRecord({ resourceType: 'x', operations: ['create'] });
   assert.match(recordPostStateRefusal(plain, { name: 'a', children: [1] }, { name: 'a' }), /children did not read back/);
 });
+
+// ------------------------------------------- approval-held kinds (restore/approvalHeld.mjs)
+
+const INTUNE_ROLE = Object.freeze({
+  '@odata.type': '#microsoft.graph.deviceAndAppManagementRoleDefinition', id: 'role-1', displayName: 'KEEL-RT-intune-role', description: 'Fixture', isBuiltIn: false,
+  rolePermissions: [{ resourceActions: [{ allowedResourceActions: ['Microsoft.Intune_Organization_Read'], notAllowedResourceActions: [] }] }],
+});
+
+test('approval-held kinds: a custom Intune role is created with its permissions once its access effect is approved', async () => {
+  const resource = resourceOf('deviceManagementRoleDefinition', INTUNE_ROLE);
+  let graph = idoFakeGraph();
+  let result = await applyIntuneExtendedWrite(graph, resource, 'create', FAST);
+  assert.match(result.skipped?.reason ?? '', /changes admin access \(rolePermissions\)/);
+  assert.equal(graph.calls.filter((call) => call.method !== 'GET').length, 0);
+
+  graph = idoFakeGraph();
+  result = await applyIntuneExtendedWrite(graph, resource, 'create', { ...FAST, approvedContentEffects: approvedFor(resource, 'create') });
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  const post = graph.calls.find((call) => call.method === 'POST');
+  assert.deepEqual([post.version, post.path], ['v1.0', '/deviceManagement/roleDefinitions']);
+  const { id, isBuiltIn, ...body } = INTUNE_ROLE;
+  assert.deepEqual(post.body, body, 'the kind, name, description and permissions; never the id or the built-in flag');
+});
+
+test('approval-held kinds: an Intune role update sends the changed permissions; a renamed role alone needs no approval', async () => {
+  const live = { ...INTUNE_ROLE, rolePermissions: [{ resourceActions: [{ allowedResourceActions: ['Microsoft.Intune_Organization_Read', 'Microsoft.Intune_Audit_Read'], notAllowedResourceActions: [] }] }] };
+  const resource = resourceOf('deviceManagementRoleDefinition', INTUNE_ROLE, { live: { state: 'present', targetId: 'role-1', payload: live } });
+  let graph = idoFakeGraph({ seed: { '/deviceManagement/roleDefinitions/role-1': live } });
+  let result = await applyIntuneExtendedWrite(graph, resource, 'update', { ...FAST, approvedContentEffects: approvedFor(resource, 'update') });
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  const patch = graph.calls.find((call) => call.method === 'PATCH');
+  assert.deepEqual([patch.path, Object.keys(patch.body)], ['/deviceManagement/roleDefinitions/role-1', ['@odata.type', 'rolePermissions']]);
+
+  const renamed = { ...INTUNE_ROLE, description: 'Drifted' };
+  const rename = resourceOf('deviceManagementRoleDefinition', INTUNE_ROLE, { live: { state: 'present', targetId: 'role-1', payload: renamed } });
+  assert.deepEqual(approvedFor(rename, 'update'), [], 'a name or description is not access');
+  graph = idoFakeGraph({ seed: { '/deviceManagement/roleDefinitions/role-1': renamed } });
+  result = await applyIntuneExtendedWrite(graph, rename, 'update', FAST);
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.deepEqual(graph.calls.find((call) => call.method === 'PATCH').body, { '@odata.type': INTUNE_ROLE['@odata.type'], description: 'Fixture' });
+});
+
+test('approval-held kinds: a built-in or unmarked Intune role is never written, and a role with no permission fails', async () => {
+  for (const [payload, pattern] of [
+    [{ ...INTUNE_ROLE, isBuiltIn: true, displayName: 'Help Desk Operator' }, /"Help Desk Operator" is a built-in Intune role/],
+    [{ ...INTUNE_ROLE, isBuiltIn: undefined }, /does not say whether this Intune role is built in/],
+  ]) {
+    const resource = resourceOf('deviceManagementRoleDefinition', payload);
+    const graph = idoFakeGraph();
+    const result = await applyIntuneExtendedWrite(graph, resource, 'create', { ...FAST, approvedContentEffects: approvedFor(resource, 'create') });
+    assert.match(result.skipped?.reason ?? '', pattern);
+    assert.equal(graph.calls.length, 0);
+  }
+  const empty = resourceOf('deviceManagementRoleDefinition', { ...INTUNE_ROLE, rolePermissions: [] });
+  const result = await applyIntuneExtendedWrite(idoFakeGraph(), empty, 'create', { ...FAST, approvedContentEffects: approvedFor(empty, 'create') });
+  assert.match(result.failed?.error ?? '', /has no permissions/);
+});

@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 39 are full, 131 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 98 at least in part; the other 79 are restored by hand from the backup.
+KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 41 are full, 129 incomplete, 7 Microsoft-managed and 0 not readable. KEEL can restore 101 at least in part; the other 76 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -220,7 +220,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Cross-tenant access | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Cross-tenant access defaults | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Cross-tenant access per organization | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Device join and registration settings | Yes (Tier 1, critical, every hour) | Incomplete | By hand (KEEL choice) | None |
+| Device join and registration settings | Yes (Tier 1, critical, every hour) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | External user self sign-up | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant; live test of putting settings back not possible on our test tenant (checked 2026-10-13) |
 | App consent policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Admin consent requests | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
@@ -231,7 +231,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Token lifetime policy | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Staged rollout of sign-in features | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | App credential policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Default app credential rules | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Default app credential rules | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Multitenant organization | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Cross-tenant sync per organization | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | External user leave settings | Yes (Tier 2, important, daily) | Full | Yes: put changed settings back | Tested against a simulated tenant |
@@ -267,8 +267,8 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Inbound trust (accepting another tenant's MFA and device claims), automatic consent and the guest collaboration and direct connect lists are never changed by a restore. If they differ from the backup, change them by hand in Cross-tenant access settings.
 - **Cross-tenant access per organization.** Recreates partner organization entries and puts their tenant restrictions back.
   - *You do:* A partner tenant that no longer exists cannot be added. Removing extra partners is done by hand. Inbound trust, automatic consent and the guest collaboration and direct connect lists are never changed by a restore; change them by hand if they differ.
-- **Device join and registration settings** (KEEL choice). These settings decide who may join devices and whether joining needs MFA. A wrong write could stop admins joining devices or quietly drop the MFA requirement, so KEEL only backs them up.
-  - *You do:* Compare the backup with the current settings in the Entra admin center under Devices, and change them there.
+- **Device join and registration settings.** Puts back who may join and register devices, how many devices each user may have, whether joining needs MFA, and local admin passwords.
+  - *You do:* These settings decide who may join devices, so a restore that changes them waits for a second approver while restore approvals are on for Entra ID.
 - **External user self sign-up.** Puts back whether external users may sign themselves up.
   - *You do:* The sign-up user flows themselves are restored by hand (see guest sign-up user flows).
 - **App consent policies.** Recreates custom app consent policies and puts their name and description back. When the backup holds their include and exclude rules, it puts those back and removes rules added since the backup (tested against a simulated tenant only).
@@ -296,8 +296,8 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 - **App credential policies.** Recreates the policies and puts their rules back.
   - *Not brought back:* which apps the policy is assigned to (stored separately and not in the backup yet).
   - *You do:* Which apps each policy applies to is not backed up yet, so assign the policies again by hand.
-- **Default app credential rules** (not built yet). A stricter default can stop every app from adding a secret or certificate, so KEEL will not write it without a review step, which is not built yet.
-  - *You do:* Set the default rules again in the Entra admin center using the backup.
+- **Default app credential rules.** Puts back the default rules for the secrets and certificates apps may add, and whether they are on.
+  - *You do:* A stricter rule can stop apps from adding secrets, so a restore that changes them waits for a second approver while restore approvals are on for Entra ID. Which certificate authorities a rule trusts is never put back: set that by hand. There is no admin center page for these rules.
 - **Multitenant organization.** Puts the name and description back.
   - *Not brought back:* each member tenant's acceptance (no tool can write it).
   - *You do:* Member tenants and their acceptance are set by each tenant, so add or re-invite them by hand.
@@ -434,7 +434,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Device compliance policies | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Settings catalog policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Enrollment restrictions | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
-| Intune admin roles | Yes (Tier 1, critical, every hour) | Incomplete | By hand (KEEL choice) | None |
+| Intune admin roles | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Device categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Terms and conditions | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 | Windows Autopilot profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -508,8 +508,9 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Secret settings are never returned by Microsoft, so enter them again by hand. A policy added since the backup that is still assigned is removed by hand.
 - **Enrollment restrictions** (Microsoft limit). The default restrictions exist in every tenant and cannot be created by anyone, and the order of custom ones is set by a separate action KEEL does not write.
   - *You do:* Restore by hand in the Intune admin center from the backup, which includes each restriction's assignments and order.
-- **Intune admin roles** (KEEL choice). These roles decide who can manage devices, so a change needs a person to review it. Who holds each role is backed up as Intune admin role assignments.
-  - *You do:* Review the roles in the backup and recreate them in the Intune admin center, then assign them again.
+- **Intune admin roles.** Recreates custom Intune roles and puts back their name, description and permissions.
+  - *Not brought back:* a built-in Intune role (set by Microsoft).
+  - *You do:* A change to a role's permissions waits for a second approver while restore approvals are on for Intune. Who holds each role is not restored: assign it again in the Intune admin center, under Tenant administration, Roles, after a privilege review.
 - **Device categories.** Recreates categories and puts their names and descriptions back.
   - *Not brought back:* which devices are in the category (no tool can write it).
   - *You do:* Devices are put in a category when they enroll, which no restore can redo. Devices pick it up at their next enrollment, or an admin sets it on each device.

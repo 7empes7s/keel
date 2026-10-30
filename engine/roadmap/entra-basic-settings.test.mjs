@@ -213,7 +213,7 @@ test('branding: the CDN list never reads as drift; a changed image path does, an
 
 // ------------------------------------------------------------------ decisions and capabilities
 
-test('update is registered and fixture-tested for four settings; device registration is manual with no write', () => {
+test('update is registered and fixture-tested for four settings; device registration is written only behind the restore approval', () => {
   for (const type of WRITABLE) {
     assert.equal(qualificationFor(type).decision, 'automated', type);
     const capability = capabilityFor(type, 'update');
@@ -221,24 +221,28 @@ test('update is registered and fixture-tested for four settings; device registra
     assert.equal(capability.proofRef, PROOF, type);
     assert.deepEqual(OPERATIONS.filter((operation) => isSupportedClaim(capabilityFor(type, operation).claim)), ['update'], type);
   }
-  assert.equal(qualificationFor('deviceRegistrationPolicy').decision, 'manual');
-  assert.match(TYPE_DECISIONS.deviceRegistrationPolicy.reason, /MFA/);
-  for (const operation of OPERATIONS) assert.equal(capabilityFor('deviceRegistrationPolicy', operation).claim, 'unsupported', operation);
-  assert.equal(expansionFor('deviceRegistrationPolicy').status, 'manual');
+  // Approval-held kinds (restore/approvalHeld.mjs): updated in place only, and only
+  // with an approved "changes admin access" effect.
+  assert.equal(qualificationFor('deviceRegistrationPolicy').decision, 'automated');
+  assert.match(TYPE_DECISIONS.deviceRegistrationPolicy.reason, /MFA to join/);
+  assert.match(TYPE_DECISIONS.deviceRegistrationPolicy.reason, /changes admin access/);
+  assert.deepEqual(OPERATIONS.filter((operation) => isSupportedClaim(capabilityFor('deviceRegistrationPolicy', operation).claim)), ['update']);
+  assert.equal(expansionFor('deviceRegistrationPolicy').status, 'qualified-subset');
   // Gap register M6: the files are uploaded back (branding-files.test.mjs); only the header logo is left by hand.
   assert.ok(expansionFor('organizationalBranding').unrecoverable.some((item) => /header logo/.test(item.name)));
   assert.match(TYPE_DECISIONS.organizationalBranding.reason, /uploaded back \(fixture-tested, not yet live\)/);
 });
 
-test('mutation: the device registration policy is refused by applyWave for every verb', async () => {
+test('mutation: the device registration policy is never written by applyWave without an approved access effect, for any verb', async () => {
   const live = { id: 'deviceRegistrationPolicy', multiFactorAuthConfiguration: 'notRequired' };
   for (const verb of ['update', 'create', 'delete']) {
     const graph = recordingGraph();
     const resource = { ...plannedUpdate(graph, 'deviceRegistrationPolicy', '/policies/deviceRegistrationPolicy', { ...live, multiFactorAuthConfiguration: 'required' }, live), verb };
-    const result = await run(graph, [resource]);
+    const result = await run(graph, [resource], { tenantRef: 'sha256:customer0000000' });
     assert.equal(graph.bodies.length, 0, verb);
     assert.equal(result.applied.length, 0, verb);
-    assert.match(result.failed[0].error, /not a registered write capability/, verb);
+    if (verb === 'update') assert.match(result.skipped[0].reason, /changes admin access \(multiFactorAuthConfiguration\)/, verb);
+    else assert.match(result.failed[0].error, /not a registered write capability/, verb);
   }
 });
 

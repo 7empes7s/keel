@@ -6,6 +6,8 @@
  *   - release content from a legal hold      (hold-releasing)
  *   - expose content outside its audience    (externally-sharing)
  *   - destroy content outright               (irreversible)
+ *   - change who holds admin access or who may join devices, or which
+ *     credentials apps may add               (access-changing)
  * Those effects land on CONTENT, which KEEL does not back up. Putting the
  * setting back later never recovers content that was deleted or disclosed in
  * between, and every effect carries a disclosure saying so.
@@ -37,7 +39,7 @@ import { findPrincipalById } from '../authz/principals.mjs';
 import { appendEvidence } from '../govern/evidence.mjs';
 import { SCRIPT_BODY_FIELDS, scriptFingerprint, scriptText } from './scriptBodies.mjs';
 
-export const CONTENT_EFFECTS = Object.freeze(['retention-reducing', 'hold-releasing', 'externally-sharing', 'irreversible', 'runs-on-devices']);
+export const CONTENT_EFFECTS = Object.freeze(['retention-reducing', 'hold-releasing', 'externally-sharing', 'irreversible', 'runs-on-devices', 'access-changing']);
 export const CONTENT_EFFECT_APPROVAL_EVIDENCE_KIND = 'content-effect-approval';
 
 const NOT_BACKED_UP = 'KEEL backs up configuration, not content: content deleted or disclosed while this setting is in effect is not recoverable by KEEL, and restoring the previous setting later does not bring it back.';
@@ -51,6 +53,12 @@ const DISCLOSURES = Object.freeze({
   'runs-on-devices': 'This puts the backup\'s script text back. Intune then runs it on every device the script is assigned to, '
     + 'with administrator rights, the next time each device checks in. If the backup was changed after it was taken, that changed code runs. '
     + `Read the script before approving. A script can delete or send out data on those devices. ${NOT_BACKED_UP}`,
+  // Kinds that were held back for a privilege review (APPROVAL_HELD_KINDS): putting
+  // them back changes who has admin access, who may join devices, or which secrets
+  // and certificates apps may add.
+  'access-changing': 'This puts back settings that decide who has admin access, who may join or register devices, '
+    + 'or which secrets and certificates apps may add. If the backup was changed after it was taken, that changed access is granted. '
+    + `Check the backup with the person who approves admin access. What is done with that access while it is in effect is not undone. ${NOT_BACKED_UP}`,
 });
 
 export function disclosureFor(effect) {
@@ -203,6 +211,40 @@ const scriptBody = (field) => (payload) => {
 const bodyChanges = (before, after) => after !== null && before !== after;
 // The text itself, for the people who review the restore (restore and approve holders).
 const scriptDetail = (field) => (before, after) => ({ before: scriptText(before?.[field]), after: scriptText(after?.[field]) });
+
+// Kinds that were held back for a privilege review, now written behind the
+// restore approval (access-changing). Every field of theirs that decides access
+// is listed here, and a change to any one of them is an effect: there is no
+// "safe direction" for who holds admin access. Their writers
+// (identityObjectOperations.mjs, intuneOperations.mjs) refuse an enforce write
+// whose effects were not approved (restore/approvalHeld.mjs). A custom role's
+// name and description are written too, but are not access.
+export const APPROVAL_HELD_FIELDS = Object.freeze({
+  deviceRegistrationPolicy: Object.freeze(['userDeviceQuota', 'multiFactorAuthConfiguration', 'azureADRegistration', 'azureADJoin', 'localAdminPassword']),
+  tenantAppManagementPolicy: Object.freeze(['isEnabled', 'applicationRestrictions', 'servicePrincipalRestrictions']),
+  deviceManagementRoleDefinition: Object.freeze(['rolePermissions']),
+});
+// Compared in a canonical form with nulls dropped, so a value that reads back with
+// its keys in another order, or with empty fields Graph adds, is no change.
+const withoutNulls = (value) => {
+  if (Array.isArray(value)) return value.map(withoutNulls);
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (key.includes('@odata.') && key !== '@odata.type') continue;
+    const kept = withoutNulls(child);
+    if (kept !== null && kept !== undefined) out[key] = kept;
+  }
+  return out;
+};
+const accessValue = (field) => (payload) => {
+  const value = withoutNulls(payload?.[field]);
+  if (value === null || value === undefined) return null;
+  return typeof value === 'object' ? canonical(value) : value;
+};
+const accessChanges = (before, after) => before !== after;
+const accessRules = (resourceType) => APPROVAL_HELD_FIELDS[resourceType]
+  .map((field) => rule(field, 'access-changing', accessChanges, accessValue(field)));
 
 // Restore gaps batch 18: a Win32 app's command lines are plain text; its
 // detection and requirement scripts are base64 inside its rules (each of the
@@ -452,6 +494,13 @@ export const CONTENT_EFFECT_RULES = Object.freeze({
     rule('rules (detection and requirement scripts)', 'runs-on-devices', bodyChanges, appRuleScripts, appRuleScriptDetail),
     rule('shouldUninstallOlderVersionsOfOffice', 'irreversible', disabledToEnabled),
   ] },
+  // Approval-held kinds (APPROVAL_HELD_FIELDS). A device registration policy and the
+  // default app credential rules are one object per tenant, only ever updated. A
+  // custom Intune role is judged on create too: recreating it brings its
+  // permissions back for whoever is assigned it next.
+  deviceRegistrationPolicy: { reviewed: true, rules: accessRules('deviceRegistrationPolicy') },
+  tenantAppManagementPolicy: { reviewed: true, rules: accessRules('tenantAppManagementPolicy') },
+  deviceManagementRoleDefinition: { reviewed: true, judgesCreates: true, rules: accessRules('deviceManagementRoleDefinition') },
   // PR #435 follow-up: Intune scripts and remediations. An update that changes a
   // script's text pushes that text to every device the script is assigned to, so it
   // needs the separate approval, showing the text. Which devices it is assigned to

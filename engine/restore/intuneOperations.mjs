@@ -50,7 +50,8 @@ import { isDeepStrictEqual } from 'node:util';
 
 import { projectAssignment } from '../collect/relationships.mjs';
 import { SERVER_OWNED_ALWAYS } from '../cir/serverOwned.mjs';
-import { classifyContentEffects } from '../safety/contentEffects.mjs';
+import { APPROVAL_HELD_FIELDS, classifyContentEffects } from '../safety/contentEffects.mjs';
+import { withApprovalGate } from './approvalHeld.mjs';
 import { classifyWriteOutcome } from './rollbackJournal.mjs';
 import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
@@ -1124,6 +1125,24 @@ function builtInScopeTag(resource, verb) {
   return null;
 }
 
+/** An Intune role is written only when the backup says it is a custom role with at least one permission. */
+function intuneRoleRefusal(resource) {
+  const payload = resource.payload ?? {};
+  if (payload.isBuiltIn !== false) {
+    return {
+      outcome: 'skipped',
+      reason: payload.isBuiltIn === true
+        ? `manual: "${payload.displayName ?? payload.id}" is a built-in Intune role: Microsoft manages it and nobody can change it`
+        : 'manual: the backup does not say whether this Intune role is built in, so KEEL does not write it',
+    };
+  }
+  const list = (value) => (Array.isArray(value) ? value : []);
+  const actions = list(payload.rolePermissions).flatMap((permission) => list(permission?.resourceActions)
+    .flatMap((action) => list(action?.allowedResourceActions)));
+  if (actions.length === 0) return { outcome: 'failed', reason: 'deviceManagementRoleDefinition: the backed-up role has no permissions, so it cannot be written' };
+  return null;
+}
+
 const DELETE_POLICY = { deleteGuard: unassignedDeleteGuard, beforeDelete: removeChosenAssignments };
 
 // Run results, assignments and Intune's own version bookkeeping: never part of a write body.
@@ -1699,6 +1718,16 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   roleScopeTag: defineRecord({
     resourceType: 'roleScopeTag', version: 'beta', collection: '/deviceManagement/roleScopeTags', operations: ['create', 'update'],
     excluded: ['isBuiltIn', 'assignments'], refusal: builtInScopeTag, permission: 'DeviceManagementRBAC.ReadWrite.All',
+  }),
+  // Approval-held kind (restore/approvalHeld.mjs): a custom Intune admin role, its
+  // name, description and permissions. Microsoft's own roles (isBuiltIn true, or
+  // no flag) are never written. Who holds the role (deviceManagementRoleAssignment)
+  // is not written. An enforce write is made only when its "changes admin access"
+  // effects were approved with the restore's dry run, or approvals are off for Intune.
+  deviceManagementRoleDefinition: defineRecord({
+    resourceType: 'deviceManagementRoleDefinition', version: 'v1.0', collection: '/deviceManagement/roleDefinitions', odataType: 'keep',
+    operations: ['create', 'update'], writable: ['displayName', 'description', ...APPROVAL_HELD_FIELDS.deviceManagementRoleDefinition],
+    refusal: withApprovalGate(intuneRoleRefusal), permission: 'DeviceManagementRBAC.ReadWrite.All',
   }),
   notificationMessageTemplate: defineRecord({
     resourceType: 'notificationMessageTemplate', version: 'v1.0', collection: '/deviceManagement/notificationMessageTemplates',

@@ -9828,6 +9828,9 @@ item that needs it stays untouched.
   on a Win32 app with no package: `400 "Invalid operation: app's PublishingState is not 'Published'."` (#653). On 2026-10-28 16:02 UTC
   the human operator approved uploading a harmless test package to KEEL-RT- Win32 apps, so the link parts of Q209 and all of Q210 can
   run. This item replaces both of those parts; leave Q209 and Q210 as they are.
+- Coordinator note (2026-10-30 13:45 UTC): **ready to run now; do first.** The #653 decision is made: Marouane wrote "Yes upload a test
+  package" on 2026-10-28 16:02 UTC (recorded on #653). No Operator decisions entry is needed (user rule 2026-10-27: no approval lines).
+  This item's package upload overrides the "no package uploaded" lines in Q185/Q209/Q210, for KEEL-RT-212 shells only, with the tool only.
 - The tool (PR #654): `node tools/coverage-fixtures/intuneTestPackage.mjs --app <appId> [--app <appId> ...]` (Restorer). The package
   holds only `install.cmd`, which echoes one line and exits 0. It refuses any app whose name does not start with `KEEL-RT-`, that is
   not a Win32 app, or that has an assignment. It prints `uploaded <name>: content version <n>, publishingState <state>` per app.

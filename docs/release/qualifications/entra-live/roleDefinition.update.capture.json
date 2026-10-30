@@ -1,21 +1,21 @@
 {
-  "restoreRef": "12abe3a0-16ef-8587-8969-1f5560e0627e",
+  "restoreRef": "66e01653-3480-8928-a2db-a0cb1fe185ed",
   "entry": {
-    "naturalKey": "roleDefinition:d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
+    "naturalKey": "roleDefinition:c1c5e8dc-851e-82c9-a2ed-c4460c0893a5",
     "resourceType": "roleDefinition",
     "operation": "update",
-    "targetId": "d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
+    "targetId": "c1c5e8dc-851e-82c9-a2ed-c4460c0893a5",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-11T18:19:15.614Z",
+    "recordedAt": "2026-10-30T08:47:02.820Z",
     "priorState": {
-      "id": "d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
+      "id": "c1c5e8dc-851e-82c9-a2ed-c4460c0893a5",
       "version": null,
       "isBuiltIn": false,
       "isEnabled": true,
-      "templateId": "d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
-      "description": "KEEL live gate 148 fixture role - drifted",
-      "displayName": "KEEL-RT-148-role",
+      "templateId": "c1c5e8dc-851e-82c9-a2ed-c4460c0893a5",
+      "description": "KEEL-RT drifted",
+      "displayName": "KEEL-RT-245-role",
       "resourceScopes": [
         "/"
       ],
@@ -28,16 +28,16 @@
         }
       ],
       "inheritsPermissionsFrom": [],
-      "inheritsPermissionsFrom@odata.context": "https://graph.microsoft.com/v1.0/$metadata#roleManagement/directory/roleDefinitions('d2023104-f90e-8f4e-b8b6-8a7de3a6aff8')/inheritsPermissionsFrom"
+      "inheritsPermissionsFrom@odata.context": "https://graph.microsoft.com/v1.0/$metadata#roleManagement/directory/roleDefinitions('c1c5e8dc-851e-82c9-a2ed-c4460c0893a5')/inheritsPermissionsFrom"
     },
     "intendedState": {
-      "id": "d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
+      "id": "c1c5e8dc-851e-82c9-a2ed-c4460c0893a5",
       "version": null,
       "isBuiltIn": false,
       "isEnabled": true,
-      "templateId": "d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
-      "description": "KEEL live gate 148 fixture role (group names and descriptions only)",
-      "displayName": "KEEL-RT-148-role",
+      "templateId": "c1c5e8dc-851e-82c9-a2ed-c4460c0893a5",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-245-role",
       "resourceScopes": [
         "/"
       ],
@@ -50,16 +50,16 @@
         }
       ],
       "inheritsPermissionsFrom": [],
-      "inheritsPermissionsFrom@odata.context": "https://graph.microsoft.com/v1.0/$metadata#roleManagement/directory/roleDefinitions('d2023104-f90e-8f4e-b8b6-8a7de3a6aff8')/inheritsPermissionsFrom"
+      "inheritsPermissionsFrom@odata.context": "https://graph.microsoft.com/v1.0/$metadata#roleManagement/directory/roleDefinitions('c1c5e8dc-851e-82c9-a2ed-c4460c0893a5')/inheritsPermissionsFrom"
     },
     "postState": {
-      "id": "d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
+      "id": "c1c5e8dc-851e-82c9-a2ed-c4460c0893a5",
       "version": null,
       "isBuiltIn": false,
       "isEnabled": true,
-      "templateId": "d2023104-f90e-8f4e-b8b6-8a7de3a6aff8",
-      "description": "KEEL live gate 148 fixture role (group names and descriptions only)",
-      "displayName": "KEEL-RT-148-role",
+      "templateId": "c1c5e8dc-851e-82c9-a2ed-c4460c0893a5",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-245-role",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#roleManagement/directory/roleDefinitions/$entity",
       "resourceScopes": [
         "/"
@@ -73,7 +73,7 @@
         }
       ],
       "inheritsPermissionsFrom": [],
-      "inheritsPermissionsFrom@odata.context": "https://graph.microsoft.com/v1.0/$metadata#roleManagement/directory/roleDefinitions('d2023104-f90e-8f4e-b8b6-8a7de3a6aff8')/inheritsPermissionsFrom"
+      "inheritsPermissionsFrom@odata.context": "https://graph.microsoft.com/v1.0/$metadata#roleManagement/directory/roleDefinitions('c1c5e8dc-851e-82c9-a2ed-c4460c0893a5')/inheritsPermissionsFrom"
     }
   }
 }

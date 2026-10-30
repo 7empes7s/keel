@@ -18,9 +18,11 @@
 // engine/powershell/jobQueue.mjs spawn path, which enforces the allowlists parsed from
 // ops/powershell/run-cmdlet.ps1. No tenant is touched.
 import { strict as assert } from 'node:assert';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { after, test } from 'node:test';
 
 import { DSC_WRITES_RECORD_FILE } from '../../tools/qualification/dscDistributionGroupsAcceptance.mjs';
@@ -247,6 +249,48 @@ for (const workload of Object.keys(WRITTEN_WORKLOADS)) {
 }
 
 // ------------------------------------------------------------ specific rules
+
+test('the verify command exits 1 whenever it reports not ok, and names a missing --tenant or --build', async () => {
+  const { dir } = await signedCapture('purview-retention-dlp');
+  const out = join(dir, workloadWritesRecordFile('purview-retention-dlp'));
+  const env = { ...process.env, KEEL_QUALIFICATION_HMAC_KEY: KEY };
+  delete env.KEEL_QUALIFICATION_TENANT_REF;
+  delete env.KEEL_QUALIFICATION_BUILD;
+  const QUALIFICATION_CLI = fileURLToPath(new URL('../../tools/release/qualification.mjs', import.meta.url));
+  const verify = (...extra) => spawnSync(process.execPath, [QUALIFICATION_CLI,
+    'verify', '--require-live', '--gate', WORKLOAD_WRITES_LIVE_GATE, '--evidence', out, ...extra], { encoding: 'utf8', env });
+
+  // The queue's command form: no --tenant, so the record has no expected tenant to match.
+  const noTenant = verify('--build', build);
+  const report = JSON.parse(noTenant.stdout);
+  assert.equal(report.ok, false);
+  assert.equal(noTenant.status, 1);
+  assert.ok(report.failures.includes('writer capture expected tenant/build identity required'));
+  assert.ok(report.failures.includes('no expected tenant: pass --tenant <tenant ref> (or set KEEL_QUALIFICATION_TENANT_REF)'));
+  assert.match(noTenant.stderr, /verify: NOT OK \(\d+ failures?\), exit 1/);
+
+  // The tenant from the environment counts the same as --tenant.
+  const fromEnv = spawnSync(process.execPath, [QUALIFICATION_CLI, 'verify', '--require-live', '--gate', WORKLOAD_WRITES_LIVE_GATE,
+    '--evidence', out, '--build', build], { encoding: 'utf8', env: { ...env, KEEL_QUALIFICATION_TENANT_REF: tenantRef } });
+  assert.equal(fromEnv.status, 0, fromEnv.stdout);
+
+  // Outside a git checkout with no --build, there is no build to check: exit 1, and it says so.
+  const outsideGit = spawnSync(process.execPath, [QUALIFICATION_CLI, 'verify', '--require-live', '--gate', WORKLOAD_WRITES_LIVE_GATE,
+    '--evidence', out, '--tenant', tenantRef], { encoding: 'utf8', env, cwd: dir });
+  assert.equal(outsideGit.status, 1);
+  assert.ok(JSON.parse(outsideGit.stdout).failures.includes('no expected build: pass --build <commit> (or set KEEL_QUALIFICATION_BUILD)'));
+
+  // Another build than the record's is a mismatch, still exit 1.
+  const otherBuild = verify('--tenant', tenantRef, '--build', 'another-build');
+  assert.equal(otherBuild.status, 1);
+  assert.equal(JSON.parse(otherBuild.stdout).ok, false);
+
+  // With both given, the record verifies and the command exits 0 with nothing on stderr.
+  const ok = verify('--tenant', tenantRef, '--build', build);
+  assert.deepEqual(JSON.parse(ok.stdout), { ok: true, failures: [] });
+  assert.equal(ok.status, 0);
+  assert.equal(ok.stderr, '');
+});
 
 test('the import stores the proven writes, skips absent writer records, and refuses one filed under another workload', async (t) => {
   const { evidence, dir } = await signedCapture('exchange-mail-flow');

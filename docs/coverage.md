@@ -792,7 +792,7 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: Anti-malware policies (switched on only after the restore of mailbox client access settings is proven)
 - Put back: Safe Links policies (switched on only after the restore of mailbox client access settings is proven)
 
-**You do:** Domains, anti-spam, anti-phish, malware, DKIM, Safe Links and Safe Attachments policies, a rule turned on or off, and a deleted rule or connector are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a mail flow rule other than its comment needs a second approver while restore approvals are on. Safe Links and Safe Attachments are backed up only when the tenant has Defender for Office 365.
+**You do:** Accepted and remote domains, DKIM signing, Safe Attachments policies, policy settings KEEL does not restore, a rule turned on or off, and a deleted rule, connector or policy are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a mail flow rule other than its comment needs a second approver while restore approvals are on. Safe Links and Safe Attachments are backed up only when the tenant has Defender for Office 365.
 
 ### Teams organization policies
 
@@ -901,6 +901,37 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 **KEEL can restore:** nothing yet.
 
 **You do:** KEEL does not restore role groups. A deleted group, its roles and its members are put back by hand in the Exchange admin center using the backup. Microsoft's built-in groups cannot be deleted, only their members changed.
+
+### Exchange distribution lists and Microsoft 365 group mail settings
+
+**Backed up:**
+
+- Distribution lists and mail-enabled security groups
+- Dynamic distribution lists
+- Microsoft 365 group mail settings
+
+**KEEL can restore:**
+
+- Put back: Distribution list settings
+- Add back: Distribution lists that no longer exist
+
+**You do:** KEEL puts back a distribution list's settings and adds back a deleted list. Its owners, moderators and who may send to it are listed for you to set by hand in the Exchange admin center using the backup. Dynamic distribution lists and Microsoft 365 group mail settings are put back by hand. Members are kept with the Entra group backup.
+
+### Shared, room and equipment mailboxes, contacts and mailbox access
+
+**Backed up:**
+
+- Shared mailboxes
+- Room mailboxes
+- Equipment mailboxes
+- Mail contacts
+- Full Access and other rights on shared, room and equipment mailboxes
+- Send As rights
+- Room and equipment booking rules
+
+**KEEL can restore:** nothing yet.
+
+**You do:** KEEL does not restore these yet. A deleted shared, room or equipment mailbox, a contact, Full Access, Send As and Send on behalf rights, and room booking rules are put back by hand in the Exchange admin center using the backup. Mail in the mailboxes comes back from the content backup.
 
 ### SharePoint site structure
 

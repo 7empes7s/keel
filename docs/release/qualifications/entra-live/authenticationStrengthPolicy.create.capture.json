@@ -1,42 +1,42 @@
 {
-  "restoreRef": "6b12f86c-cffb-81d1-acfd-ff7f5256506c",
+  "restoreRef": "79861b51-a2a8-8a01-8b8d-d62917c713a0",
   "entry": {
-    "naturalKey": "authenticationStrengthPolicy:KEEL-RT-148-strength",
+    "naturalKey": "authenticationStrengthPolicy:KEEL-RT-245-strength",
     "resourceType": "authenticationStrengthPolicy",
     "operation": "create",
-    "targetId": "1757be52-9656-8a7d-95d6-74e1bc48a51c",
+    "targetId": "bc4ee0fb-d753-812d-bb0e-e3373cd6216a",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-11T19:44:32.277Z",
+    "recordedAt": "2026-10-30T09:02:21.767Z",
     "priorState": null,
     "intendedState": {
-      "id": "70d44426-0125-8bc5-8fe2-00a2f7441e8e",
+      "id": "d13df281-148c-81d2-9ec4-d78e53491794",
       "policyType": "custom",
-      "description": "KEEL live gate 148 fixture strength (unused)",
-      "displayName": "KEEL-RT-148-strength",
-      "createdDateTime": "2026-10-11T19:08:37.542927Z",
-      "modifiedDateTime": "2026-10-11T19:08:37.542927Z",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-245-strength",
+      "createdDateTime": "2026-10-30T08:39:25.3041766Z",
+      "modifiedDateTime": "2026-10-30T08:39:25.3081762Z",
       "allowedCombinations": [
         "fido2"
       ],
       "requirementsSatisfied": "mfa",
       "combinationConfigurations": [],
-      "combinationConfigurations@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/authenticationStrengthPolicies('70d44426-0125-8bc5-8fe2-00a2f7441e8e')/combinationConfigurations"
+      "combinationConfigurations@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/authenticationStrengthPolicies('d13df281-148c-81d2-9ec4-d78e53491794')/combinationConfigurations"
     },
     "postState": {
-      "id": "1757be52-9656-8a7d-95d6-74e1bc48a51c",
+      "id": "bc4ee0fb-d753-812d-bb0e-e3373cd6216a",
       "policyType": "custom",
-      "description": "KEEL live gate 148 fixture strength (unused)",
-      "displayName": "KEEL-RT-148-strength",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-245-strength",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/authenticationStrengthPolicies/$entity",
-      "createdDateTime": "2026-10-11T19:44:32.4130979Z",
-      "modifiedDateTime": "2026-10-11T19:44:32.4130979Z",
+      "createdDateTime": "2026-10-30T09:02:23.2807255Z",
+      "modifiedDateTime": "2026-10-30T09:02:23.2807255Z",
       "allowedCombinations": [
         "fido2"
       ],
       "requirementsSatisfied": "mfa",
       "combinationConfigurations": [],
-      "combinationConfigurations@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/authenticationStrengthPolicies('1757be52-9656-8a7d-95d6-74e1bc48a51c')/combinationConfigurations"
+      "combinationConfigurations@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/authenticationStrengthPolicies('bc4ee0fb-d753-812d-bb0e-e3373cd6216a')/combinationConfigurations"
     }
   }
 }

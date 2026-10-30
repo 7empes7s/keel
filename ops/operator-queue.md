@@ -12244,3 +12244,26 @@ item that needs it stays untouched.
 - **Report:** module version; step 1 values; per shape in step 2 ok or the full error and timing; step 3's RetryDistribution answer,
   each status read, and the Comment write result; step 4 exit codes, proven list and the branch commit (or "skipped" and why);
   what is left changed in the tenant (expected: nothing, the retention fixture redeployed).
+
+### Q261: Live proof that a service principal restored after its app was recreated gets the new appId, and a later dry run plans nothing (after PR #740, issue #726)
+- Drafted by the "Fix service principal restore for recreated apps" thread (2026-10-30). Q246 hit the two-run case: pass 2 sent the
+  backup's old appId and Graph refused it (`NoBackingApplicationObject`). Q257 step 6 (dry run `013b1083`) planned a spurious
+  `application` update `fields: ["appId"]` and an empty `servicePrincipal` update. PR #740 (merge `571614b5`) fixes both.
+- Needs: the deployed build B at or after `571614b5`. Check: `git -C /opt/keel-live merge-base --is-ancestor 571614b5 HEAD`.
+- Status: todo
+- **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q257. Log every approval id.
+  Grant nothing, consent to nothing, add no secrets or certificates. Global admin not used.
+- Do, at B, from your own checkout (never `/opt/keel`):
+  1. Write down that no `KEEL-RT-261` object exists.
+  2. Create app registration `KEEL-RT-261-app` (single tenant, no secrets or certificates, no API permissions) and its service
+     principal. Assign it to nobody. (Retry the principal POST after ~10 s if Graph answers `NoBackingApplicationObject`, as in Q257.)
+  3. Take snapshot S. Confirm it holds `application:<appId>` and `servicePrincipal:<appId>`.
+  4. Delete and purge both.
+  5. **Pass 1:** restore from S selecting **only the app**. Dry run, approve, `--enforce`. Write down the new appId.
+  6. **Pass 2:** restore from S selecting **the service principal**. Expect the dry run to complete with the app as noop or update
+     (not create) and the principal as create. Approve, `--enforce`. Expect `servicePrincipal create succeeded`. Read the principal
+     back: its `appId` must be the **new** appId from step 5.
+  7. Run one more dry run from S selecting both. Expect **noop** for both (no `fields: ["appId"]`, no empty update). Quote what it plans.
+  8. Cleanup: delete and purge the `KEEL-RT-261` principal and app. Report anything left.
+- **Report:** B and S; each dry run id, status and planned verbs; approval ids; enforce exit codes; the new appId and the principal's
+  appId as read back; what step 7 planned; anything left in the tenant.

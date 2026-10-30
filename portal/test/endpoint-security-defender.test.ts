@@ -50,3 +50,11 @@ test("the Changes summary counts an endpoint security change under Defender", ()
   const defender = summaries.find((summary) => summary.service.code === "Defender");
   assert.equal(defender?.changed, 1);
 });
+
+test("the summary lists the endpoint security kind under Defender and keeps Intune policies in line", () => {
+  const summaries = serviceSummaries({ capture: { types: ["configurationPolicy"] } } as never, [{ ...antivirus, blastRadius: "access-affecting" }], ["configurationPolicy"]);
+  const defender = summaries.find((summary) => summary.service.code === "Defender");
+  const intune = summaries.find((summary) => summary.service.code === "Intune");
+  assert.deepEqual(defender?.changedKinds, ["defenderEndpointSecurityPolicy"]);
+  assert.deepEqual(intune?.inLine, ["configurationPolicy"]);
+});

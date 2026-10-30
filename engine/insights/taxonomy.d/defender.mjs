@@ -14,7 +14,7 @@ export default Object.freeze({
     // Antivirus, firewall, attack surface reduction and the like: set in Intune's
     // Endpoint security pages and stored as Intune settings catalog policies, but they
     // are Defender for Endpoint settings, so lists file them here (see `subkinds`).
-    { key: 'endpoint', name: 'Endpoint security', types: ['defenderEndpointSecurityPolicy'], match: /endpoint|antivirus|firewall|attacksurface|diskencryption|accountprotection|applicationcontrol/ },
+    { key: 'endpoint', name: 'Endpoint security', types: ['defenderEndpointSecurityPolicy'], match: /endpointsecurity|antivirus|firewall|attacksurface|diskencryption|accountprotection|applicationcontrol/ },
     { key: 'threat', name: 'Threat policies and rules', types: ['defenderDetectionRule'], match: /foroffice|polic|rule|detection|indicator|alert/ },
     { key: 'simulation', name: 'Attack simulation', types: ['attackSimulation', 'simulationAutomation'], match: /simulation|training|payload/ },
     { key: 'exposure', name: 'Exposure management', types: ['securityZone'], match: /exposure|zone|vulnerab/ },

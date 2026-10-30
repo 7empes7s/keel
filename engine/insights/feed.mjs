@@ -93,6 +93,8 @@ function row({ id, source, occurredAt, type, kind = type, service = null, blastR
     occurredAt: at,
     day: at.slice(0, 10),
     type,
+    // The kind the row is listed as; differs from `type` only for a subkind.
+    kind,
     typeName: info.name,
     service: info.service ?? service ?? null,
     ...priorityOf(info, blastRadius),

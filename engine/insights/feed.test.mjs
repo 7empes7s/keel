@@ -281,3 +281,14 @@ test('an endpoint security policy made in Intune is listed under Defender', asyn
   assert.deepEqual([byName['KEEL-RT-Antivirus'].type, byName['KEEL-RT-Antivirus'].service, byName['KEEL-RT-Antivirus'].typeName], ['configurationPolicy', 'Defender', 'Endpoint security policy']);
   assert.deepEqual([byName['KEEL-RT-Wi-Fi'].type, byName['KEEL-RT-Wi-Fi'].service, byName['KEEL-RT-Wi-Fi'].typeName], ['configurationPolicy', 'Intune', 'Settings catalog policy']);
 });
+
+test('grouping by type keeps endpoint security policies apart from other settings catalog policies', () => {
+  const rows = [
+    { type: 'configurationPolicy', kind: 'configurationPolicy', typeName: 'Settings catalog policy', service: 'Intune', priority: 'normal' },
+    { type: 'configurationPolicy', kind: 'defenderEndpointSecurityPolicy', typeName: 'Endpoint security policy', service: 'Defender', priority: 'normal' },
+  ];
+  assert.deepEqual(groupChangeFeed(rows, 'type').map((group) => [group.key, group.label, group.count]), [
+    ['configurationPolicy', 'Settings catalog policy', 1],
+    ['defenderEndpointSecurityPolicy', 'Endpoint security policy', 1],
+  ]);
+});

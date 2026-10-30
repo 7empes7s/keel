@@ -169,7 +169,7 @@ export function overallScore(summaries: Pick<ServiceSummary, "score">[]): Compli
  * carry `serviceRead`) join the Entra ID and Intune kinds, so every service shows. */
 export function serviceSummaries(
   baseline: Pick<BaselineRecord, "capture"> | null,
-  items: (Pick<DriftRecord, "resourceType" | "blastRadius"> & Partial<Pick<DriftRecord, "serviceRead" | "name" | "changeType">>)[],
+  items: (Pick<DriftRecord, "resourceType" | "blastRadius"> & Partial<Pick<DriftRecord, "serviceRead" | "name" | "changeType" | "templateFamily">>)[],
   backedUp: string[],
   serviceReads: ServiceReadKind[] = [],
   // Settings the approved setup holds, per kind (portal-data getBaselineTypeCounts). Without
@@ -181,7 +181,9 @@ export function serviceSummaries(
     ...items.filter((item) => item.serviceRead).map((item) => item.resourceType),
   ]);
   const captured = new Set(baseline?.capture?.types ?? []);
-  const changedTypes = new Set(items.map((item) => item.resourceType));
+  // A change to an endpoint security policy is a Defender change: it leaves the Intune
+  // settings catalog policies in line when no plain one changed.
+  const changedTypes = new Set(items.filter((item) => itemKind(item) === item.resourceType).map((item) => item.resourceType));
   const byCode = new Map<string, ServiceSummary>();
   const entry = (type: string, service: CloudService = typeService(type)) => {
     let summary = byCode.get(service.code);
@@ -197,7 +199,8 @@ export function serviceSummaries(
   for (const item of items) {
     const summary = entry(item.resourceType, itemService(item));
     summary.changed += 1;
-    if (!summary.changedKinds.includes(item.resourceType)) summary.changedKinds.push(item.resourceType);
+    const kind = itemKind(item);
+    if (!summary.changedKinds.includes(kind)) summary.changedKinds.push(kind);
     summary.tone = worstTone([summary.tone, impactTone(item.blastRadius)]) ?? summary.tone;
   }
   for (const type of new Set(backedUp)) {

@@ -145,7 +145,7 @@ export const TYPE_DECISIONS = Object.freeze({
   connectedOrganization: incomplete('its sponsors are separate collections, and its identity sources point at tenants that cannot be checked from this one'),
   // Wave 1 CAT-ENTRA: Entra governance types, backed up in full with no writer yet.
   lifecycleWorkflow: automated('identitygovernance-workflow', 'Wave 2: created switched off with its tasks, updated in place or as a new version; a restore never switches a workflow on'),
-  lifecycleWorkflowCustomTaskExtension: automated('identitygovernance-customtaskextension', 'Wave 2: create and update; the Logic App it calls is checked by hand'),
+  lifecycleWorkflowCustomTaskExtension: automated('identitygovernance-customtaskextension', 'Wave 2: update in place; which Logic App it calls and how it signs in, and a recreate, are steps for a person'),
   lifecycleManagementSettings: automated('identitygovernance-lifecyclemanagementsettings', 'Wave 2: update in place'),
   attributeSet: automated('attributeset', 'Wave 2: update only; an attribute set can never be deleted once created, so a create needs a review step'),
   customSecurityAttributeDefinition: automated('customsecurityattributedefinition', 'Wave 2: update, and allowed values added or switched off; a definition can never be deleted once created, so a create needs a review step'),
@@ -899,7 +899,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
   lifecycleWorkflow: subset('identity-application', 'POST /identityGovernance/lifecycleWorkflows/workflows; PATCH .../{id}; POST .../{id}/createNewVersion', 'LifecycleWorkflows.ReadWrite.All',
     'create (switched off) and update are fixture-tested; switching a workflow on is always left to a person'),
   lifecycleWorkflowCustomTaskExtension: subset('identity-application', 'POST /identityGovernance/lifecycleWorkflows/customTaskExtensions; PATCH .../{id}', 'LifecycleWorkflows.ReadWrite.All',
-    'create and update are fixture-tested; the Logic App it calls cannot be verified from this tenant'),
+    'update is fixture-tested; the Logic App it calls and its sign-in are never written, so a create is a step for a person'),
   lifecycleManagementSettings: subset('identity-application', 'PATCH /identityGovernance/lifecycleWorkflows/settings', 'LifecycleWorkflows.ReadWrite.All',
     'update of the tenant singleton is fixture-tested'),
   attributeSet: subset('identity-application', 'PATCH /directory/attributeSets/{id}', 'CustomSecAttributeDefinition.ReadWrite.All',

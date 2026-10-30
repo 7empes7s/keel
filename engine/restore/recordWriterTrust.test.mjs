@@ -10,7 +10,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { IDENTITY_RECORDS } from './identityObjectOperations.mjs';
+import { IDENTITY_RECORDS, applyIdentityObjectWrite } from './identityObjectOperations.mjs';
 import { INTUNE_EXTENDED_RECORDS, INTUNE_RECORDS, applyIntuneExtendedWrite, intuneTrustFieldStep, intuneWriteBody } from './intuneOperations.mjs';
 import { applyRecordWrite, changedRecordFields, defineRecord, recordTrustFieldStep, recordWriteBody, trustFieldStep } from './recordWriter.mjs';
 import { isTrustField } from './workloads/writeDeclarations.mjs';
@@ -155,5 +155,51 @@ test('a create that finds the same object already there still lists a trust fiel
     assert.equal(result.failed, undefined, result.failed?.error);
     assert.equal(graph.calls.some((call) => call.method === 'POST' || call.method === 'PATCH'), false, mode);
     assert.deepEqual(result.applied.completion?.[0]?.fields, ['trustedRootCertificate'], mode);
+  }
+});
+
+// A lifecycle workflow custom extension: the Logic App it calls and how Entra signs in to it.
+const EXTENSION = 'lifecycleWorkflowCustomTaskExtension';
+const extensionPayload = (overrides = {}) => ({
+  '@odata.type': '#microsoft.graph.identityGovernance.customTaskExtension', id: 'src-ext', displayName: 'KEEL-RT-Extension', description: 'Backup',
+  endpointConfiguration: { '@odata.type': '#microsoft.graph.logicAppTriggerEndpointConfiguration', subscriptionId: 'sub-backup', resourceGroupName: 'rg', logicAppWorkflowName: 'KEEL-RT-App' },
+  authenticationConfiguration: { '@odata.type': '#microsoft.graph.azureAdPopTokenAuthentication' },
+  ...overrides,
+});
+
+test('a custom extension\'s Logic App and sign-in settings are trust fields', () => {
+  for (const field of ['authenticationConfiguration', 'endpointConfiguration']) assert.equal(isTrustField(EXTENSION, field), true, field);
+  assert.equal(isTrustField(EXTENSION, 'description'), false);
+  assert.deepEqual(Object.keys(recordWriteBody(IDENTITY_RECORDS[EXTENSION], extensionPayload(), 'update')).sort(), ['@odata.type', 'description', 'displayName']);
+});
+
+test('a custom extension update sends only the other fields and lists the Logic App and sign-in for a person', async () => {
+  const path = `${IDENTITY_RECORDS[EXTENSION].collection}/ext-1`;
+  const live = extensionPayload({
+    id: 'ext-1', description: 'Live',
+    endpointConfiguration: { '@odata.type': '#microsoft.graph.logicAppTriggerEndpointConfiguration', subscriptionId: 'sub-live', resourceGroupName: 'rg', logicAppWorkflowName: 'KEEL-RT-App' },
+    authenticationConfiguration: { '@odata.type': '#microsoft.graph.azureAdTokenAuthentication', resourceId: 'app-live' },
+  });
+  const graph = idoFakeGraph({ seed: { [path]: live } });
+  const result = await applyIdentityObjectWrite(graph, resourceOf(EXTENSION, extensionPayload(), { live: { state: 'present', targetId: 'ext-1', payload: live } }), 'update', FAST);
+  assert.equal(result.failed, undefined, result.failed?.error);
+  const writes = graph.calls.filter((call) => call.method === 'PATCH');
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].path, path);
+  assert.deepEqual(Object.keys(writes[0].body).filter((field) => isTrustField(EXTENSION, field)), []);
+  assert.equal(writes[0].body.description, 'Backup');
+  assert.deepEqual(result.applied.completion.map((step) => [step.requirement, [...step.fields].sort()]),
+    [['trustFields', ['authenticationConfiguration', 'endpointConfiguration']]]);
+});
+
+test('a custom extension create is a step for a person, never a POST without its Logic App', async () => {
+  for (const mode of ['dry-run', 'enforce']) {
+    const graph = idoFakeGraph();
+    const result = await applyIdentityObjectWrite(graph, resourceOf(EXTENSION, extensionPayload()), 'create', { ...FAST, mode });
+    assert.equal(result.failed, undefined, `${mode}: ${result.failed?.error}`);
+    assert.equal(graph.calls.length, 0, `${mode}: nothing is called`);
+    assert.match(result.skipped.reason, /^manual: Recreate this custom extension by hand in Microsoft Entra admin center > Identity Governance > Lifecycle workflows > Custom extensions/);
+    assert.deepEqual(result.skipped.completion.map((step) => [step.kind, step.requirement, step.fields]),
+      [['manual-setting', 'trustFields', ['authenticationConfiguration', 'endpointConfiguration']]]);
   }
 });

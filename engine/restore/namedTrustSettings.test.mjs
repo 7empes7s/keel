@@ -5,6 +5,9 @@
  * setting in them. These tests drive the production refusals with fixtures
  * only; nothing here reads or writes a tenant.
  *
+ * Base64 custom values and Apple custom profile files (a property list) are
+ * decoded and read the same way.
+ *
  * Mutation check: drop the omaTrustRefusal call from intuneWriteRefusal, the
  * trust check from groupPolicyRefusal, or groupPolicyLiveTrust from the
  * template's preflight, and a test here fails.
@@ -13,7 +16,7 @@ import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
 import { applyIntuneExtendedWrite, intuneWriteRefusal, omaTrustRefusal } from './intuneOperations.mjs';
-import { groupPolicyTrustSettings, isTrustSettingName, trustOmaUris } from './namedTrustSettings.mjs';
+import { appleProfileTrust, groupPolicyTrustSettings, isTrustSettingName, trustOmaUris } from './namedTrustSettings.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
 
 const FAST = { readAfterWriteOptions: { attempts: 1, delayMs: 0 } };
@@ -81,6 +84,101 @@ test('a custom profile holding a trust OMA-URI is manual on create and update, a
   assert.equal(intuneWriteRefusal(resourceOf('deviceConfiguration', plain), 'create'), null);
   // An update without the live profile cannot show the list removes no trust setting.
   assert.match(intuneWriteRefusal(resourceOf('deviceConfiguration', plain), 'update')?.reason ?? '', /^manual: the live profile was not read/);
+});
+
+// --------------------------------------------- base64 values and Apple files
+
+const b64 = (data) => Buffer.from(data).toString('base64');
+// The shape of a DER certificate (an ASN.1 sequence with a two-byte length), not a real one.
+const DER = Buffer.from([0x30, 0x82, 0x00, 0x04, 0x30, 0x02, 0x05, 0x00]);
+const NEUTRAL = './Device/Vendor/MSFT/Policy/Config/Fixture/Value';
+const base64Setting = (value, odataType = '#microsoft.graph.omaSettingBase64') => ({ '@odata.type': odataType, displayName: 'Fixture', omaUri: NEUTRAL, fileName: 'fixture.bin', value });
+
+test('a base64 custom value is decoded: trust text or a certificate is found under an OMA-URI that does not say so', () => {
+  for (const value of [
+    b64('<EapHostConfig><TrustedRootCA>ab cd</TrustedRootCA></EapHostConfig>'),
+    b64(DER),
+    b64('-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n'),
+    // UTF-16 with a byte order mark, as Windows tools save XML.
+    b64(Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('<WLANProfile><ServerNames>x</ServerNames><TrustedRootCA>ab</TrustedRootCA></WLANProfile>', 'utf16le')])),
+  ]) assert.deepEqual(trustOmaUris(customProfile([base64Setting(value)])), [NEUTRAL], value);
+  // Graph returns a StringXml value as base64.
+  const xml = b64('<EapHostConfig><TrustedRootCA>ab</TrustedRootCA></EapHostConfig>');
+  assert.deepEqual(trustOmaUris(customProfile([base64Setting(xml, '#microsoft.graph.omaSettingStringXml')])), [NEUTRAL]);
+  // Ordinary text, binary that is not a certificate, and text that is not base64 are not trust.
+  for (const value of [b64('<Config><Volume>3</Volume></Config>'), b64(Buffer.from([0x00, 0x01, 0xfe, 0x30, 0x82])), 'not base64 at all, trust']) {
+    assert.deepEqual(trustOmaUris(customProfile([base64Setting(value)])), [], value);
+  }
+  const refusal = intuneWriteRefusal(resourceOf('deviceConfiguration', customProfile([base64Setting(b64(DER))])), 'create');
+  assert.equal(refusal?.outcome, 'skipped');
+  assert.deepEqual(refusal.completion[0].fields, [NEUTRAL]);
+});
+
+const plist = (...payloads) => `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>PayloadContent</key><array>${payloads.join('')}</array>
+  <key>PayloadDisplayName</key><string>KEEL-RT-profile</string>
+  <key>PayloadIdentifier</key><string>com.example.keel-rt</string>
+  <key>PayloadType</key><string>Configuration</string>
+  <key>PayloadUUID</key><string>0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0</string>
+  <key>PayloadVersion</key><integer>1</integer>
+</dict></plist>`;
+const payloadOf = (type, body = '') => `<dict><key>PayloadType</key><string>${type}</string>${body}<key>PayloadVersion</key><integer>1</integer></dict>`;
+const DOCK = payloadOf('com.apple.dock', '<key>autohide</key><true/><key>tilesize</key><integer>48</integer>');
+const appleProfile = (file, odataType = '#microsoft.graph.macOSCustomConfiguration', field = 'payload') => Object.freeze({
+  '@odata.type': odataType, id: 'src-mac', displayName: 'KEEL-RT-mac', description: 'Fixture', roleScopeTagIds: ['0'], payloadName: 'KEEL-RT', payloadFileName: 'keel-rt.mobileconfig', [field]: file,
+});
+
+test('an Apple custom profile file is read: trust payload types and trust content are found, ordinary ones are not', () => {
+  assert.deepEqual(appleProfileTrust(appleProfile(b64(plist(DOCK)))), { trust: [], unreadable: [] });
+  assert.deepEqual(appleProfileTrust(appleProfile(b64(plist(DOCK, payloadOf('com.apple.security.root', `<key>PayloadContent</key><data>${b64(DER)}</data>`))))), {
+    trust: ['com.apple.security.root'], unreadable: [],
+  });
+  for (const type of ['com.apple.security.pkcs12', 'com.apple.security.scep', 'com.apple.extensiblesso', 'com.apple.sso', 'com.apple.security.pem']) {
+    assert.deepEqual(appleProfileTrust(appleProfile(b64(plist(payloadOf(type))))).trust, [type], type);
+  }
+  // Trust content in a payload whose type does not say so: Wi-Fi trusted servers, or a certificate in a data block.
+  const wifi = payloadOf('com.apple.wifi.managed', '<key>EAPClientConfiguration</key><dict><key>TLSTrustedServerNames</key><array><string>radius.example</string></array></dict>');
+  assert.deepEqual(appleProfileTrust(appleProfile(b64(plist(wifi)))).trust, ['payload']);
+  const certData = payloadOf('com.example.agent', `<key>Blob</key><data>${b64(DER)}</data>`);
+  assert.deepEqual(appleProfileTrust(appleProfile(b64(plist(certData)))).trust, ['payload']);
+  // Data blocks are never read as text, so base64 that happens to spell a trust word is not trust.
+  const noisy = payloadOf('com.example.agent', '<key>Blob</key><data>trustpfxScepPkcs+AA=</data>');
+  assert.deepEqual(appleProfileTrust(appleProfile(b64(plist(noisy)))).trust, []);
+  // A signed profile wraps the XML in binary CMS.
+  const signed = Buffer.concat([Buffer.from([0x30, 0x80, 0x06, 0x09, 0x2a, 0x86, 0x48]), Buffer.from(plist(payloadOf('com.apple.security.root'))), Buffer.from([0x00, 0x00, 0xa0, 0x82])]);
+  assert.deepEqual(appleProfileTrust(appleProfile(b64(signed))).trust, ['com.apple.security.root']);
+  // A binary property list cannot be read.
+  assert.deepEqual(appleProfileTrust(appleProfile(b64(Buffer.concat([Buffer.from('bplist00'), Buffer.from([0xd1, 0x01, 0x02, 0x00])])))), { trust: [], unreadable: ['payload'] });
+  // iOS custom profiles and macOS preference files are read the same way.
+  assert.deepEqual(appleProfileTrust(appleProfile(b64(plist(payloadOf('com.apple.security.root'))), '#microsoft.graph.iosCustomConfiguration')).trust, ['com.apple.security.root']);
+  const prefs = b64('<?xml version="1.0"?><plist version="1.0"><dict><key>KerberosRealm</key><string>EXAMPLE.COM</string></dict></plist>');
+  assert.deepEqual(appleProfileTrust(appleProfile(prefs, '#microsoft.graph.macOSCustomAppConfiguration', 'configurationXml')).trust, ['configurationXml']);
+  // Other profile kinds and empty files are not read.
+  assert.deepEqual(appleProfileTrust(appleProfile(b64(plist(payloadOf('com.apple.security.root'))), '#microsoft.graph.macOSGeneralDeviceConfiguration')), { trust: [], unreadable: [] });
+  assert.deepEqual(appleProfileTrust(null), { trust: [], unreadable: [] });
+});
+
+test('an Apple custom profile holding trust content is manual on create and update, and an unreadable one is manual too', () => {
+  const trusted = appleProfile(b64(plist(DOCK, payloadOf('com.apple.security.root'))));
+  const plain = appleProfile(b64(plist(DOCK)));
+  for (const verb of ['create', 'update']) {
+    const refusal = intuneWriteRefusal(resourceOf('deviceConfiguration', trusted, verb === 'update' ? live(plain) : {}), verb);
+    assert.equal(refusal?.outcome, 'skipped', verb);
+    assert.match(refusal.reason, /^manual: this profile holds custom settings for trust, certificates or sign-in \(com\.apple\.security\.root\)/, verb);
+    assert.deepEqual(refusal.completion.map(({ kind, requirement, fields }) => ({ kind, requirement, fields })), [{ kind: 'manual-setting', requirement: 'trustFields', fields: ['com.apple.security.root'] }], verb);
+  }
+  // The file is written whole, so a backup without the trust payload would remove the live one.
+  assert.ok(intuneWriteRefusal(resourceOf('deviceConfiguration', plain, live(trusted)), 'update')?.reason.includes('com.apple.security.root'));
+  assert.match(intuneWriteRefusal(resourceOf('deviceConfiguration', plain), 'update')?.reason ?? '', /^manual: the live profile was not read/);
+  const binary = appleProfile(b64(Buffer.concat([Buffer.from('bplist00'), Buffer.from([0xd1, 0x01])])));
+  const unreadable = intuneWriteRefusal(resourceOf('deviceConfiguration', binary), 'create');
+  assert.match(unreadable?.reason ?? '', /^manual: the profile file \(payload\) could not be read/);
+  assert.deepEqual(unreadable.completion[0].fields, ['payload']);
+  // A profile with no trust content is written as before.
+  assert.equal(intuneWriteRefusal(resourceOf('deviceConfiguration', plain), 'create'), null);
+  assert.equal(intuneWriteRefusal(resourceOf('deviceConfiguration', plain, live(plain)), 'update'), null);
 });
 
 // ------------------------------------------------- administrative templates

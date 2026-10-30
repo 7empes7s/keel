@@ -1,4 +1,4 @@
-import { applyWave } from '../restore/applyEngine.mjs';
+import { applyWave, recordLiveIdentifiers } from '../restore/applyEngine.mjs';
 import { recordTrustSkippedLocations } from '../restore/namedLocationTrust.mjs';
 import { phaseOneResources } from '../restore/wavePlanner.mjs';
 import { recordPlannedCreates } from '../restore/plannedIds.mjs';
@@ -11,7 +11,7 @@ export async function previewApplyPlan({
   resources, waves, deletionWaves, patches, existingTargetIds,
   deletionGuardOptions, signInPathGate, targetTenant, lockoutGate = null,
 }) {
-  const appliedIds = new Map();
+  const appliedIds = recordLiveIdentifiers(new Map(), resources);
   const trustSkippedLocations = new Set();
   const refusals = [];
   for (const [index, keys] of [...waves, ...deletionWaves].entries()) {

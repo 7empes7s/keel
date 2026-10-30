@@ -10596,8 +10596,57 @@ item that needs it stays untouched.
   `organizationalBranding#file` u (fr-FR favicon), `groupLifecyclePolicy` u, `application` u, c and restore-soft-deleted,
   `servicePrincipal` c, `user` restore-soft-deleted. Finish by **2026-11-10**.
 - Needs: Q245 done or blocked (Q245 uses carla; this item soft-deletes her). Run at the deployed commit B, from your own checkout at B.
-- Status: todo
-- Result:
+- Status: done (21 promoted; #726)
+- Result: done (2026-10-30 00:35 UTC, keel-operator). **All 21 promoted**, with new observedAt 2026-10-29/30, so they lapse 2026-11-28/29.
+  - B = **53cbe462**.
+  - Credentials: Restorer for writes, Collector for reads and backups. Global admin not used; nothing granted. No trust field drifted. No Intune fixture assigned.
+  - Self-approved: requester Gmail, approver Entra. The content effect was approved by Gmail, because the dry run was filed as Entra.
+  - Before: no KEEL-RT-246 objects.
+  - **Tenant settings, before → after:**
+    - Default branding: **none** (`/branding` 404, 0 localizations) → none (deleted, 404).
+    - fr-FR localization: none → none.
+    - Group lifecycle policy: **none** → none (created for the run, deleted).
+    - Partner `f8cdef31` (the Microsoft-owned tenant used in Q45): absent → absent (created, deleted). Partners `62e46875` and `cdd0d515` untouched.
+    - carla: enabled, department Engineering → the same.
+  - Fixtures:
+    - `KEEL-RT-246-group` and g5–g8: g5 member carla; g6 member ryan; g7 owners carla and ryan; g8 owner ryan.
+    - App + SP; compliance (password length 8); restrictions profile; partner `f8cdef31` (all settings inherited).
+    - fr-FR localization (text `KEEL-RT-246` + a 16×16 favicon). Creating fr-FR also created the default branding (id 0); its text was set to `KEEL-RT-246 default`.
+    - Lifecycle policy: Selected, 365 days, holding the group (addGroup → true).
+  - Step 1: S = `a9d3e900`, exit 3 (incomplete only on todoSettings 500). Edges in S as planned.
+  - Step 2, update:
+    - Drifts: group description; carla removed from g5, added to g6, removed as g7 owner, added as g8 owner; app `-drifted`; compliance length 8 → 6; partner outbound users and applications blocked (users only would answer 400, as in Q244); fr-FR text and favicon; default text; lifecycle 365 → 400.
+    - Dry run `3d3f8831`: 4 edges, 1 branding file, compliance `passwordMinimumLength`. Content effect `retention-reducing` (groupLifetimeInDays 400 → 365).
+    - CE approval **4ec877ff** (Gmail) and approval **04989a00**. Enforce exit 0, and everything read back as in S.
+    - **fr-FR text:** read back as in S but had **no journal entry**; the record answered `not-exercised … it did upload branding files`. Re-drifted, then restored alone: dry run `ca5be01c`, approval **a6a2e298**, `update succeeded`, captured.
+      - Inference, not confirmed: in the combined run the text was written along with the favicon upload, so only the file was journaled.
+  - Step 3, soft-delete: group, app and carla soft-deleted.
+    - Dry run `d3adbf3e`, approval **17738136**, exit 0. All three `restore-soft-deleted succeeded`, same ids. carla enabled, department and g5 membership back.
+    - The app's SP did not come back with the app.
+  - Step 4, create: group, app and SP deleted and purged; compliance, restrictions and partner deleted.
+    - **The SP can't be recreated together with its app (#726):**
+      - Same run, dry run `dd0068fb`: `cannot resolve reference at "appId" … no appId known`.
+      - Pass 1, `c992b86a`, approval **4ac4724d**: group, application (new appId 7887ea54…), compliance, restrictions and partner created.
+      - Pass 2, `706d98eb`, approval **64e667f6**: SP **failed** with 400 `The appId '<old appId>' of the service principal does not reference a valid application object. (NoBackingApplicationObject)`.
+    - **servicePrincipal create proven separately:** SP added by hand for the new app, S3 = `dd03edb9`, SP deleted and purged. Restore `606ea5b7`, approval **1a402ada**: `create succeeded`, new id f807b947….
+    - Read back: compliance length 8; restrictions camera allowed and 0 assignments; partner settings inherited (null); group as in S.
+  - Step 5: dry run `7c139c73` from S (update set + restrictions + carla): 0 field changes, 0 edges, 0 branding uploads, 0 failed. Same caveat as #720 for the Entra writers.
+  - Step 6, cleanup:
+    - All KEEL-RT-246 groups, the app and its SP deleted **and purged** (204, then 404).
+    - Compliance and restrictions deleted. Partner `f8cdef31` removed. Lifecycle policy deleted.
+    - fr-FR: delete refused (`Cannot delete branding for locale as images or content customizations are configured.`), so the text was set to null and an empty favicon uploaded first, then deleted (204).
+    - Default branding deleted (204; `/branding` 404 again).
+    - **Left in the tenant: nothing.**
+  - Step 7:
+    - Checks: `pseudonymize.mjs check` passes on 42 files; secret scan 0; no raw ids. The two `securityIdentifier` values decode to non-fixture GUIDs (pseudonyms).
+    - Commit **f5ea8bcc** on `claude/live-evidence-q246` (pushed, no PR).
+    - All 21 print `fixture-tested -> live-qualified`. observedAt per record (UTC):
+      - 2026-10-29 23:59: application.update, crossTenantAccessPolicyPartner.update, deviceCompliancePolicy.update, group.update, groupLifecyclePolicy.update, organizationalBranding.update, and the edges group.member.edge-add, group.member.edge-remove, group.owner.edge-add.
+      - 2026-10-30 00:00: group.owner.edge-remove, organizationalBranding.file.update.
+      - 2026-10-30 00:04: organizationalBrandingLocalization.update.
+      - 2026-10-30 00:08: application, group and user restore-soft-deleted.
+      - 2026-10-30 00:14–00:15: application.create, crossTenantAccessPolicyPartner.create, deviceCompliancePolicy.create, deviceConfiguration.create, group.create.
+      - 2026-10-30 00:25: servicePrincipal.create.
 - **Test tenant only.** Same rules as Q244 (tenant settings: write down, put back, check; no trust fields). Self-approve restores
   and content effects (the lifecycle restore shortens 400 → 365 days and needs its content-effect approval, as Q48 step 31);
   log every approval id. **Assign no Intune fixture** (it avoids the group-in-the-same-wave limit from Q48 C).

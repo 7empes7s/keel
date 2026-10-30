@@ -10216,6 +10216,32 @@ button.ac-inline-link { padding: 0; border: 0; background: none; font: inherit; 
   .cp-misses tbody tr[data-ok="false"] > th, .cp-misses tbody tr[data-ok="false"] > td { background: none; box-shadow: none; }
 }
 /* Measure against a known baseline: the policies Keel's checks cover, and the gaps. */
+/* ScubaGear lists (components/compliance/scuba-lists): one row per list, a list not set
+   in amber with the rule it holds back; the editor shows entries as removable chips. */
+.cp-scuba { gap: var(--space-sm); }
+.cp-scuba-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-xs) var(--space-sm); }
+.cp-scuba-head h2 { margin: 0; }
+.cp-scuba-rows { display: grid; gap: var(--space-xs); margin: 0; padding: 0; list-style: none; }
+.cp-scuba-row { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(12rem, auto); align-items: center; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); min-width: 0; }
+.cp-scuba-row[data-tone="soon"] { border-color: color-mix(in srgb, var(--check-soon) 45%, var(--line)); }
+.cp-scuba-name, .cp-scuba-state { display: grid; gap: 2px; min-width: 0; line-height: 1.35; }
+.cp-scuba-name small, .cp-scuba-state small { color: var(--text-soft); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.cp-scuba-state { justify-items: end; text-align: right; }
+@media (max-width: 640px) {
+  .cp-scuba-row { grid-template-columns: auto minmax(0, 1fr); padding: var(--space-sm); }
+  .cp-scuba-state { grid-column: 2; justify-items: start; text-align: left; }
+}
+.cp-scuba-chips { display: flex; flex-wrap: wrap; gap: var(--space-2xs) var(--space-xs); margin: 0; padding: 0; list-style: none; }
+.cp-scuba-chip { display: inline-flex; align-items: center; gap: 0.25rem; max-width: 100%; min-height: 2rem; padding: 0.125rem 0.25rem 0.125rem 0.75rem; border: 1px solid var(--line-strong); border-radius: var(--radius-pill); background: var(--surface-muted); font-size: 0.8125rem; overflow-wrap: anywhere; }
+.cp-scuba-chip[data-readonly] { padding-right: 0.75rem; }
+.cp-scuba-chip > .icon { width: 0.875rem; height: 0.875rem; color: var(--text-soft); }
+.cp-scuba-remove { display: inline-grid; width: 1.75rem; height: 1.75rem; flex: none; place-items: center; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-soft); cursor: pointer; }
+.cp-scuba-remove .icon { width: 0.875rem; height: 0.875rem; }
+.cp-scuba-remove:hover { background: var(--urgent-bg); color: var(--urgent); }
+.cp-scuba-remove:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.cp-scuba-add { display: flex; align-items: flex-end; gap: var(--space-xs); min-width: 0; }
+.cp-scuba-add .filter-field { flex: 1; min-width: 0; }
+.cp-form legend .badge { margin-left: var(--space-xs); vertical-align: middle; }
 .cp-known { display: grid; gap: var(--space-sm); }
 .cp-known p { margin: 0; }
 .cp-known-table td, .cp-known-table th { overflow-wrap: anywhere; }

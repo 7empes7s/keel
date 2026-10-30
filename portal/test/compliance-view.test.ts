@@ -98,7 +98,8 @@ test("Compliance words: plain titles, results, reasons, owners and the verdict",
   assert.equal(scuba("scubagear:field-not-read:org_config.AuditDisabled"), "A setting this rule reads is not in Keel's backup yet.");
   assert.equal(scuba("scubagear:incomplete:privileged_users"), "The backup cannot answer what this rule asks.");
   assert.equal(scuba("scubagear:no-result"), "Keel could not run this rule.");
-  assert.equal(scuba("scubagear:needs-setting:SecuritySuite,Defender"), "This rule needs a list only you can give, such as your sensitive users or partner domains, and Keel cannot take it yet.");
+  assert.equal(scuba("scubagear:needs-setting:sensitive-users"), "This rule needs your list of sensitive users. Add it under ScubaGear lists.");
+  assert.equal(scuba("scubagear:needs-setting:unknown-list"), "This rule needs a list from ScubaGear's config that Keel cannot take yet.");
   // A rule Keel cannot check has no evidence, so it is filed under its product's service.
   const scubaRule = (profile: string) => controlService({ ...finding("e10", "scubagear.MS.X.1.1v1", "unknown", { reason: "scubagear:check-by-hand" }), framework: "cisa-scuba", profile, evidence: [] });
   assert.deepEqual(["aad", "exo", "securitysuite", "sharepoint", "teams", "powerplatform", "powerbi"].map((profile) => scubaRule(profile).name),

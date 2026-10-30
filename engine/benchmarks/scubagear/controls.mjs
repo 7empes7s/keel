@@ -24,6 +24,7 @@
 import { createHash } from 'node:crypto';
 import { PREDICATE_UNKNOWN_PREFIX, WORKLOAD_FACT_TYPES, registerControl, registerPredicate } from '../registry.mjs';
 import { ADAPTERS, buildInput } from './adapters.mjs';
+import { configHasList, DEFAULT_SCUBA_CONFIG, listForRule } from './config.mjs';
 import { importScubaGearRules, openPinnedScubaGear } from './import.mjs';
 import { SCUBA_INPUT_SOURCES } from './inputs.mjs';
 import { readBuild, scubaRules } from './opa.mjs';
@@ -32,7 +33,7 @@ import { regoRuleInputs } from './rego.mjs';
 export const SCUBA_PREDICATE = 'scuba-rego';
 export const SCUBA_FRAMEWORK = 'cisa-scuba';
 export const SCUBA_CONTROL_PREFIX = 'scubagear.';
-// ScubaGear config sections that hold per-rule lists a tenant must supply.
+// ScubaGear config sections that hold per-rule lists a tenant sets (config.mjs).
 const CONFIG_SECTIONS = Object.freeze(['SecuritySuite', 'Defender']);
 const REASON = (code) => `${PREDICATE_UNKNOWN_PREFIX}${code}`;
 const SETTING_STATES = new Set(['run-setting', 'run-status']);
@@ -72,8 +73,14 @@ function resultsFor(product, document) {
 }
 
 registerPredicate(SCUBA_PREDICATE, (facts, args, context = {}) => {
+  // The tenant's ScubaGear lists (config.mjs). A rule that needs a list the tenant has
+  // not set could only fail for the missing list, not for the tenant: could not check.
+  const config = context?.scubaConfig ?? DEFAULT_SCUBA_CONFIG;
+  if (args.needsList && !configHasList(config, args.policyId)) {
+    return { verdict: 'unknown', reason: REASON(`needs-setting:${args.needsList}`) };
+  }
   const byType = Array.isArray(facts) ? { [args.reads[0]]: facts } : facts;
-  const built = buildInput(args.inputs, byType, { version: args.version, now: context.now });
+  const built = buildInput(args.inputs, byType, { version: args.version, config, now: context?.now });
   if (built.couldNotBuild) {
     return { verdict: 'unknown', reason: REASON(`incomplete:${built.couldNotBuild.key}`), details: [line(args, built.couldNotBuild.why, false)] };
   }
@@ -126,10 +133,10 @@ export const REGO_BUILT_NAMES = Object.freeze({
 export function staticReason(rule, { adapters = ADAPTERS, sources = SCUBA_INPUT_SOURCES } = {}) {
   if (rule.manual) return REASON('check-by-hand');
   // A rule that reads its own section of ScubaGear's config (the sensitive users or the
-  // partner domains to protect) needs a list only the tenant can give, which Keel has no
-  // place for yet. Run without it, the rule fails for the missing list, not the tenant.
-  const sections = CONFIG_SECTIONS.filter((section) => rule.members.includes(section));
-  if (sections.length) return REASON(`needs-setting:${sections.join(',')}`);
+  // partner domains to protect) runs once the tenant sets its list (config.mjs); until
+  // then the predicate answers could not check. A section with no list Keel keeps is
+  // a list the tenant has no place for.
+  if (CONFIG_SECTIONS.some((section) => rule.members.includes(section)) && !listForRule(rule.id)) return REASON('needs-setting:unknown-list');
   const tenant = rule.inputs.filter((key) => !SETTING_STATES.has(sources[key]?.state));
   for (const key of tenant) {
     if (sources[key]?.state === 'not-read' || !adapters[key]) return REASON(`not-read:${key}`);
@@ -214,6 +221,7 @@ function registerScubaControls() {
           policyId: rule.id,
           version: pin.version,
           inputs: rule.inputs.filter((key) => ADAPTERS[key]),
+          ...(listForRule(rule.id) ? { needsList: listForRule(rule.id) } : {}),
           reads: reads.map((read) => read.resourceType),
         },
       },

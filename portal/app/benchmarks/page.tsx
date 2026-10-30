@@ -9,6 +9,7 @@ import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import type { ComplianceData, OwnCheckChoices } from "@/lib/types";
 import { AnonymityNote } from "@/components/anonymity-note";
 import { getAnonymitySetting } from "@/lib/anonymity";
+import { getScubaListsView } from "@/lib/scuba-lists";
 
 const DESCRIPTION = "Which security controls pass on this tenant, what each result rests on, and where backups are kept.";
 
@@ -35,6 +36,8 @@ export default async function BenchmarksPage() {
   // page still works without it.
   const canConfigure = access.capabilities.includes("configuration");
   const ownChoices: OwnCheckChoices | null = canConfigure ? await getOwnCheckChoices().catch(() => null) : null;
+  // The tenant's ScubaGear lists; the page still works without them.
+  const scubaLists = await getScubaListsView();
 
   return (
     <>
@@ -47,7 +50,7 @@ export default async function BenchmarksPage() {
         title="Compliance"
       />
       <AnonymityNote setting={await getAnonymitySetting()} />
-      <CompliancePage canCheck={access.capabilities.includes("collect")} canConfigure={canConfigure} canRestore={access.capabilities.includes("restore")} data={data} now={data.generatedAt} ownChoices={ownChoices} />
+      <CompliancePage canCheck={access.capabilities.includes("collect")} canConfigure={canConfigure} canRestore={access.capabilities.includes("restore")} data={data} now={data.generatedAt} ownChoices={ownChoices} scubaLists={scubaLists} />
     </>
   );
 }

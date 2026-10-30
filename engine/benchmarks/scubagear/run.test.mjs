@@ -122,14 +122,16 @@ test('a rule Keel cannot check says why, and is never a pass', () => {
   assert.equal(reason('MS.EXO.2.2v3'), 'scubagear:not-read:spf_records');
   assert.equal(reason('MS.EXO.13.1v1'), 'scubagear:field-not-read:org_config.AuditDisabled,Name');
   assert.equal(reason('MS.SECURITYSUITE.1.3v1'), 'scubagear:not-read:built_in_protection_rules');
-  assert.equal(reason('MS.SECURITYSUITE.2.1v1'), 'scubagear:needs-setting:SecuritySuite,Defender');
+  assert.equal(reason('MS.SECURITYSUITE.2.1v1'), 'scubagear:needs-setting:sensitive-users');
+  assert.equal(reason('MS.SECURITYSUITE.2.3v1'), 'scubagear:needs-setting:partner-domains');
   assert.equal(reason('MS.SECURITYSUITE.3.1v1'), 'scubagear:field-not-read:dlp_compliance_policies.Enabled');
   assert.equal(reason('MS.SECURITYSUITE.6.1v1'), 'scubagear:field-not-read:hosted_content_filter_policies.RecommendedPolicyType');
   assert.equal(reason('MS.SHAREPOINT.1.2v1'), 'scubagear:field-not-read:SPO_tenant.ODBSharingCapability');
   assert.equal(reason('MS.TEAMS.5.1v2'), 'scubagear:not-read:tenant_app_settings');
   assert.equal(reason('MS.POWERPLATFORM.1.1v1'), 'scubagear:not-read:environment_creation');
   const unchecked = scuba().filter((control) => control.unchecked);
-  assert.equal(unchecked.length, 45);
+  // 43 cannot run at all; the two that need a tenant's list run once it is set (config.test.mjs).
+  assert.equal(unchecked.length, 43);
   for (const control of unchecked) assert.deepEqual(control.requiredObservations, []);
 });
 

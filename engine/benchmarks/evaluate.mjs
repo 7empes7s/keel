@@ -148,7 +148,7 @@ function freezeResult({ control, verdict, reason, evidenceRefs, observationWindo
  * `control` is given only for a check that is not in the registry (a tenant's own).
  * Pure and synchronous: no DB access, no evidence write.
  */
-export function evaluateControl({ controlId, control: given = null, tenantRef, observations = {}, now = new Date() }) {
+export function evaluateControl({ controlId, control: given = null, tenantRef, observations = {}, now = new Date(), settings = {} }) {
   assertTenantRef(tenantRef);
   // A tenant's own check (ownChecks.mjs) is passed in as a control built from its row;
   // its predicate must still be an allowlisted one, which predicateFor() enforces below.
@@ -201,7 +201,9 @@ export function evaluateControl({ controlId, control: given = null, tenantRef, o
   // which objects it checked, with the value found and the value wanted (the
   // Compliance page shows them as an expected-versus-current table).
   const predicate = predicateFor(control.predicate.name);
-  const answer = predicate(factsArg, control.predicate.args, { now });
+  // The predicate's context: the evaluation time and the tenant's run settings it may
+  // need (its ScubaGear lists).
+  const answer = predicate(factsArg, control.predicate.args, { ...settings, now });
   const verdict = typeof answer === 'string' ? answer : answer?.verdict;
   if (verdict === 'unknown' && typeof answer?.reason === 'string' && answer.reason.startsWith(PREDICATE_UNKNOWN_PREFIX)) {
     return freezeResult({ control, verdict, reason: answer.reason, evidenceRefs, observationWindows, now, details: answer.details ?? null });

@@ -10,12 +10,12 @@ Generated from CISA ScubaGear 2.0.0 (commit `6e5a1a4`, public domain) by `node t
 |---|---:|---:|---:|
 | Entra ID | 34 | 28 | 6 |
 | Exchange Online | 12 | 2 | 10 |
-| Security Suite (Defender and Purview) | 24 | 11 | 13 |
+| Security Suite (Defender and Purview) | 24 | 13 | 11 |
 | SharePoint and OneDrive | 8 | 2 | 6 |
 | Teams | 14 | 11 | 3 |
 | Power Platform | 9 | 2 | 7 |
 | Power BI | 8 | 8 | 0 |
-| **All** | **109** | **64** | **45** |
+| **All** | **109** | **66** | **43** |
 
 ## Summary
 
@@ -227,8 +227,6 @@ Each of these rules shows on the Compliance page as "could not check", with its 
 | MS.POWERPLATFORM.5.1v1 | Keel does not read `environment_creation`. |
 | MS.POWERPLATFORM.6.1v1 | Keel does not read `environment_creation`. |
 | MS.SECURITYSUITE.1.3v1 | Keel does not read `built_in_protection_rules`. |
-| MS.SECURITYSUITE.2.1v1 | It needs a list the tenant gives in ScubaGear's config (sensitive users or partner domains), which Keel has no place for yet. |
-| MS.SECURITYSUITE.2.3v1 | It needs a list the tenant gives in ScubaGear's config (sensitive users or partner domains), which Keel has no place for yet. |
 | MS.SECURITYSUITE.3.1v1 | Keel's read of `dlp_compliance_policies` does not keep `Enabled`. |
 | MS.SECURITYSUITE.3.2v1 | Keel's read of `dlp_compliance_policies` does not keep `Enabled`. |
 | MS.SECURITYSUITE.3.3v1 | Keel's read of `dlp_compliance_policies` does not keep `Enabled`. |
@@ -249,10 +247,20 @@ Each of these rules shows on the Compliance page as "could not check", with its 
 | MS.TEAMS.5.2v2 | Keel does not read `tenant_app_settings`. |
 | MS.TEAMS.5.3v2 | Keel does not read `tenant_app_settings`. |
 
+## Runs once the tenant sets its list
+
+These rules read a list only the tenant can give (ScubaGear's config file). The tenant sets it on the Compliance page; until then the rule shows as "could not check".
+
+| Rule | List |
+|---|---|
+| MS.SECURITYSUITE.2.1v1 | Sensitive users |
+| MS.SECURITYSUITE.2.3v1 | Partner domains |
+
 ## Technical details
 
 - Rule ids the Rego still reports but no baseline lists (left out of the counts): MS.POWERPLATFORM.2.3v1.
 - Rules whose NIST mapping is in the baseline but has no row in CISA's CSV: MS.AAD.5.5v1, MS.AAD.5.6v1, MS.AAD.5.7v1, MS.POWERPLATFORM.6.1v1.
 - Rules where CISA's CSV and the baseline disagree (the baseline is used): MS.SECURITYSUITE.1.4v1 (baseline SI-3; CSV SI-3a); MS.SECURITYSUITE.2.4v1 (baseline AT-2b, SI-8; CSV SI-8); MS.SECURITYSUITE.3.3v1 (baseline AC-3, SC-7(10); CSV SC-7(10)).
 - Inputs are found by reading the Rego statically, following helper rules; a rule may be listed as reading an input on a branch it does not always take.
+- ScubaGear config: the tenant's lists (`SecuritySuite.MS.SECURITYSUITE.2.1v1.SensitiveUsers`, `SecuritySuite.MS.SECURITYSUITE.2.3v1.PartnerDomains`) and its registered emergency accounts, as `CapExclusions.Users` of every sign-in rule that allows it and `RoleExclusions.Users` of MS.AAD.7.4v1 (engine/benchmarks/scubagear/config.mjs).
 - Run settings (ScubaGear config, module version, tenant id) and run status (licence flags derived from Keel's own reads) are supplied by Keel and are not listed as inputs above.

@@ -12,6 +12,7 @@ import { ExceptionSheet, type Granted } from "@/components/compliance/exception-
 import { KnownStandards } from "@/components/compliance/known-standards";
 import { OwnCheckSheet } from "@/components/compliance/own-check-sheet";
 import { ScoreRing } from "@/components/compliance/score-ring";
+import { ScubaListsCard, ScubaListsSheet } from "@/components/compliance/scuba-lists";
 import { ActiveFilters, NoMatches, type ActiveFilter } from "@/components/list/active-filters";
 import { SelectableList, type Grouping, type ListGroup } from "@/components/list/selectable-list";
 import { Icon, type IconName } from "@/components/shell/icons";
@@ -37,6 +38,7 @@ import {
   grantLabel,
   immutabilitySentence,
   lastChecked,
+  neededList,
   orderFindings,
   ownStandards,
   ownerPerson,
@@ -56,7 +58,7 @@ import { addsWords, applyFilters, readPicked, tileCounts, tileParam, withoutTile
 import { ago } from "@/lib/presentation";
 import { serviceOrder } from "@/lib/services";
 import { toast } from "@/lib/toast";
-import type { ComplianceData, ComplianceFinding, OwnCheckChoices } from "@/lib/types";
+import type { ComplianceData, ComplianceFinding, OwnCheckChoices, ScubaListsView } from "@/lib/types";
 import { pushUrl } from "@/lib/url-history";
 import { useViewState } from "@/lib/use-view-state";
 
@@ -78,9 +80,11 @@ const TILES: { key: ControlResult; small: string; always: boolean }[] = [
 ];
 const RESULT_TILES: FilterTile<ComplianceFinding>[] = (Object.keys(RESULTS) as ControlResult[]).map((key) => ({ key, test: (finding: ComplianceFinding) => resultOf(finding) === key }));
 
-export function CompliancePage({ data, canConfigure, canCheck = false, canRestore = false, now = data.generatedAt, ownChoices = null }: {
+export function CompliancePage({ data, canConfigure, canCheck = false, canRestore = false, now = data.generatedAt, ownChoices = null, scubaLists = null }: {
   data: ComplianceData;
   canConfigure: boolean;
+  // The tenant's ScubaGear lists; null when they could not be read.
+  scubaLists?: ScubaListsView | null;
   // What an own check can be written on; read only for someone who may write one.
   ownChoices?: OwnCheckChoices | null;
   // Holds `collect`, the permission that runs backups: offered "Check now".
@@ -125,6 +129,7 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
   const [order, setOrder] = useState<string[]>([]);
   const step = useMemo(() => sheetStep(order, opened?.id), [order, opened?.id]);
   const writing = canConfigure && view.get("own") === "new";
+  const editingLists = canConfigure && scubaLists !== null && view.get("lists") === "edit";
   const grantIds = view.get("grant").split(",").filter(Boolean);
   const granting = canConfigure ? findings.filter((finding) => grantIds.includes(finding.id) && finding.verdict === "fail") : [];
   const failing = findings.filter((finding) => resultOf(finding) === "failing");
@@ -187,7 +192,8 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
         <span className="cp-row-acts">
           {canFixOn(finding, canRestore) ? <Link className="btn btn-sm" href={openHref(finding.id)} onClick={(event) => follow(event, openHref(finding.id))}><Icon name="check-circle" />Make it pass</Link> : null}
           {(result === "failing" || result === "not-set-up") && canGrantOn(finding, canConfigure) ? <Link className="btn btn-sm" href={grantHref([finding.id])}>{finding.exception ? "Renew exception" : "Grant exception"}</Link> : null}
-          {result === "unknown" ? <Link className="btn btn-sm" href="/protect"><Icon name="backup" />Run a backup</Link> : null}
+          {result === "unknown" && neededList(finding) ? (canConfigure && scubaLists ? <Link className="btn btn-sm" href={href({ lists: "edit", open: null, grant: null })}><Icon name="settings" />Set the list</Link> : null)
+            : result === "unknown" ? <Link className="btn btn-sm" href="/protect"><Icon name="backup" />Run a backup</Link> : null}
         </span>
       </div>
     );
@@ -225,6 +231,8 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
         ) : null}
 
         {data.standards?.length ? <KnownStandards findings={findings} follow={follow} openHref={openHref} standards={data.standards} /> : null}
+
+        {scubaLists ? <ScubaListsCard editHref={canConfigure ? href({ lists: "edit", open: null, grant: null }) : null} now={now} view={scubaLists} /> : null}
 
         <section aria-label="Results at a glance" className="cp-tiles" style={{ ["--cp-tiles" as string]: tiles.length }}>
           {tiles.map((tile) => {
@@ -331,18 +339,22 @@ export function CompliancePage({ data, canConfigure, canCheck = false, canRestor
           <RecordField copy={false} label="Check with" value="POST /api/actions/compliance/check (also runs after each backup)" />
           <RecordField copy={false} label="Write your own check with" value="POST /api/actions/compliance/own-check {standard, name, resourceType, field, operator, expected, appliesTo, severity}" />
           <RecordField copy={false} label="Remove your own check with" value="POST /api/actions/compliance/own-check/remove {checkId}" />
+          <RecordField copy={false} label="Set a ScubaGear list with" value="POST /api/actions/compliance/scuba-lists {list: sensitive-users | partner-domains, entries}" />
           {baseline ? <RecordField label="Approved setup ID" value={baseline.id} /> : null}
           {findings.map((finding) => <FindingRecordFields finding={finding} key={finding.id} />)}
           <StorageRecordFields storage={storage} />
         </TechnicalDetails>
       </div>
 
-      {opened || granting.length || writing ? <BaselinesStyles /> : null}
+      {opened || granting.length || writing || editingLists ? <BaselinesStyles /> : null}
       {opened && !granting.length ? (
         <ControlSheet canConfigure={canConfigure} canRestore={canRestore} finding={opened} grantHref={grantHref([opened.id])} now={now} onClose={() => view.set({ open: null })} onRemoved={() => { view.set({ open: null }); router.refresh(); }} onStep={(id) => view.set({ open: id })} step={step} />
       ) : null}
       {writing && !opened && !granting.length ? (
         <OwnCheckSheet choices={ownChoices} standards={ownStandards(findings)} onClose={() => view.set({ own: null })} onDone={() => { view.set({ own: null }); router.refresh(); }} />
+      ) : null}
+      {editingLists && scubaLists && !opened && !granting.length && !writing ? (
+        <ScubaListsSheet onClose={() => view.set({ lists: null })} onDone={() => { view.set({ lists: null }); router.refresh(); }} view={scubaLists} />
       ) : null}
       {granting.length ? (
         <ExceptionSheet

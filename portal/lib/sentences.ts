@@ -371,6 +371,12 @@ export function evidenceSentence(entry: EvidenceLike, actorName: string, names: 
         ? `${actorName} turned off restore approvals for ${service}, so its high-impact restore changes no longer wait for a second person`
         : `${actorName} turned on restore approvals for ${service}`;
     }
+    case "scuba-config-list": {
+      const list = subject.list === "sensitive-users" ? "sensitive users" : subject.list === "partner-domains" ? "partner domains" : "a ScubaGear list";
+      const count = typeof subject.count === "number" ? subject.count : null;
+      if (count === 0) return `${actorName} cleared the ScubaGear list of ${list}`;
+      return `${actorName} set the ScubaGear list of ${list}${count === null ? "" : ` to ${count} ${count === 1 ? "entry" : "entries"}`}`;
+    }
     case "people-anonymity": return subject.enabled === true
       ? `${actorName} turned on "Hide people's names"`
       : `${actorName} turned off "Hide people's names", so names show again`;

@@ -132,17 +132,18 @@ export const COMPLETENESS = Object.freeze({
   certificateBasedAuthConfiguration: { whole: 'not-written' },
   directoryRole: { managed: true },
   roleDefinition: {},
+  // Restore approvals: a weaker rule is written once approved.
+  unifiedRoleManagementPolicy: {},
   directoryRoleTemplate: { managed: true },
   roleAssignment: {},
   roleEligibilitySchedule: { missing: [part('Changing or removing an eligibility, and ones inherited through a group', 'not-written')] },
-  unifiedRoleManagementPolicy: { missing: [part('A change that weakens protection', 'not-written')] },
   unifiedRoleManagementPolicyAssignment: { managed: true },
   roleAssignmentSchedule: { whole: 'not-written', missing: [part('Activations people made themselves', 'read-only')] },
   accessReviewScheduleDefinition: { whole: 'not-written', missing: [part('Past reviews and their decisions', 'read-only')] },
   accessPackage: { whole: 'not-written' },
   connectedOrganization: { whole: 'not-written', missing: [part('Internal and external sponsors', 'other-route')] },
   // Wave 1 CAT-ENTRA: Entra governance.
-  lifecycleWorkflow: { missing: [part('Run history and the users each run processed', 'read-only'), part('Switching the workflow on, which a restore leaves to a person', 'not-written')] },
+  lifecycleWorkflow: { missing: [part('Run history and the users each run processed', 'read-only')] },
   lifecycleWorkflowCustomTaskExtension: { missing: [part('The Logic App it calls', 'other-route')] },
   lifecycleManagementSettings: {},
   attributeSet: { missing: [part('An attribute set that no longer exists, which needs a review before it is created', 'not-written')] },
@@ -233,8 +234,8 @@ export const COMPLETENESS = Object.freeze({
   complianceManagementPartner: { whole: 'not-written', missing: [part('The connection made from the partner console', 'other-route')] },
   remoteAssistancePartner: { whole: 'not-written', missing: [part('The onboarding made from the partner console', 'other-route')] },
   deviceManagementExchangeConnector: { whole: 'not-written', missing: [part('The connector installed on the Exchange server', 'other-route')] },
-  // Restore gaps batch 17: updated in place; a restore never turns it on.
-  onPremisesConditionalAccessSettings: { missing: [part('Turning it on', 'not-written')] },
+  // Restore approvals: turned on once approved.
+  onPremisesConditionalAccessSettings: {},
   mobileAppCategory: { missing: [part('Built-in categories', 'microsoft-managed'), part('Which apps are in the category', 'other-route')] },
   intuneBrandingProfile: { missing: [part('Logo images', 'other-route')] },
   customAuthenticationExtension: { whole: 'not-written' },
@@ -275,7 +276,7 @@ export const COMPLETENESS = Object.freeze({
   defenderCustomAppScope: { whole: 'not-written' },
   // Remaining kinds, batch 6.
   // Restore gaps batch 17: compliance settings updated in place; device cleanup is its own kind.
-  deviceManagementSettings: { missing: [part('The Company Portal brand, written as the default branding profile', 'other-route'), part('Marking devices with no compliance policy as compliant', 'not-written')] },
+  deviceManagementSettings: { missing: [part('The Company Portal brand, written as the default branding profile', 'other-route')] },
   androidDeviceOwnerEnrollmentProfile: { missing: [part('Enrollment token, QR code and Wi-Fi password', 'secret')] },
   androidForWorkEnrollmentProfile: { missing: [part('Enrollment token and QR code', 'secret')] },
   appleUserInitiatedEnrollmentProfile: { missing: [part('Its place in the priority order', 'not-written'), part('Who the profile is assigned to', 'not-written')] },
@@ -295,13 +296,13 @@ export const COMPLETENESS = Object.freeze({
   userExperienceAnalyticsBaseline: { missing: [part('Built-in baselines', 'microsoft-managed'), part('The scores taken when it was created', 'microsoft-managed')] },
   // Remaining kinds, batch 7.
   // Restore gaps batch 17: the settings other than sharing (the SharePoint workload writes those).
-  sharepointSettings: { missing: [part('Legacy authentication turned on, unmanaged sync allowed or the guest account match dropped', 'not-written')] },
   itemInsightsSettings: { whole: 'not-written' },
   externalConnection: { whole: 'not-written', missing: [part('The connection schema and the items pushed into it', 'other-route')] },
   simulationAutomation: { whole: 'not-written', missing: [part('Each run of the automation', 'other-route')] },
   attackSimulation: { whole: 'not-written', missing: [part('The payload, landing page and login page the simulation uses', 'other-route')] },
   // Remaining kinds, batch 8.
-  hardwareConfiguration: { missing: [part('The BIOS settings file, which can hold the BIOS password', 'secret', always), part('A deleted configuration, and turning per-device BIOS passwords off', 'not-written')] },
+  sharepointSettings: {},
+  hardwareConfiguration: { missing: [part('The BIOS settings file, which can hold the BIOS password', 'secret', always), part('A deleted configuration', 'not-written')] },
   certificateBasedApplicationConfiguration: { whole: 'not-written', missing: [part('The trusted certificate authorities', 'other-route')] },
   signInIdentifier: { whole: 'not-written' },
   verifiedIdProfile: { whole: 'not-written' },
@@ -316,16 +317,16 @@ export const COMPLETENESS = Object.freeze({
   sharedEmailDomain: { whole: 'not-written' },
   schemaExtension: { whole: 'not-written', missing: [part('Extensions owned by apps in other tenants', 'microsoft-managed')] },
   // Remaining kinds, batch 9: read once the Collector holds the read permission.
-  formsSettings: { missing: [part('Sharing outside the organisation widened or the phishing scan turned off', 'not-written')] },
   todoSettings: { whole: 'not-written' },
   microsoft365AppsInstallationOptions: {},
-  appsAndServicesSettings: { missing: [part('The Office Store turned on', 'not-written')] },
-  adminReportSettings: { missing: [part('Real names shown in usage reports again', 'not-written')] },
   profileCardProperty: { whole: 'not-written' },
   pronounsSettings: {},
   defenderDetectionRule: { whole: 'not-written', missing: [part('Past runs and the alerts a rule raised', 'other-route')] },
   teamsCatalogApp: { whole: 'not-written', missing: [part('The app package', 'other-route')] },
-  engageCommunity: { missing: [part('A deleted community', 'not-written'), part('A private community made public', 'not-written'), part('Posts, files and members of the community', 'other-route')] },
+  formsSettings: {},
+  appsAndServicesSettings: {},
+  adminReportSettings: {},
+  engageCommunity: { missing: [part('A deleted community', 'not-written'), part('Posts, files and members of the community', 'other-route')] },
 });
 
 const RECORD_FIELDS = new Set(['managed', 'unreadable', 'whole', 'missing']);

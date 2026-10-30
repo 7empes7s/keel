@@ -610,3 +610,28 @@ test('a benign restore with no content effect promotes without any extra approva
   assert.deepEqual(result.results.failed, []);
   assert.equal(graph.objects.get('/groups/board-id').displayName, 'Board members');
 });
+
+// Restore approvals: the directions a restore used to hold back are effects now.
+test('restore approvals: every held-back direction is an effect in a service the customer setting covers', async () => {
+  const { PROTECTION_EFFECT_RULES } = await import('../safety/contentEffects.mjs');
+  const { serviceForResourceType } = await import('../govern/restoreApprovalSettings.mjs');
+  for (const [type, spec] of Object.entries(PROTECTION_EFFECT_RULES)) {
+    assert.ok(serviceForResourceType(type), `${type} is placed in a service, so its approval setting applies`);
+    for (const entry of spec.rules) assert.ok(CONTENT_EFFECTS.includes(entry.effect), `${type}.${entry.field}`);
+  }
+  // Only the loose direction is an effect; tightening is not.
+  const loosen = classifyContentEffects([update('sharepointSettings', { isLegacyAuthProtocolsEnabled: false }, { isLegacyAuthProtocolsEnabled: true })]);
+  assert.deepEqual(loosen.effects.map((e) => `${e.field}:${e.effect}`), ['isLegacyAuthProtocolsEnabled:weakens-protection']);
+  assert.match(loosen.effects[0].disclosure, /less strict/);
+  // A live null is a value the writer would loosen too, so it is an effect to approve (review of PR #764).
+  const fromNull = classifyContentEffects([update('sharepointSettings', { isLegacyAuthProtocolsEnabled: null, isUnmanagedSyncAppForTenantRestricted: true }, { isLegacyAuthProtocolsEnabled: true, isUnmanagedSyncAppForTenantRestricted: false })]);
+  assert.deepEqual(fromNull.effects.map((e) => e.field).sort(), ['isLegacyAuthProtocolsEnabled', 'isUnmanagedSyncAppForTenantRestricted']);
+  const tighten = classifyContentEffects([update('sharepointSettings', { isLegacyAuthProtocolsEnabled: true }, { isLegacyAuthProtocolsEnabled: false })]);
+  assert.deepEqual(tighten.effects, []);
+  // A field a protection rule reviews is not refused by its name (Forms external sharing).
+  const forms = classifyContentEffects([update('formsSettings', { settings: { isExternalShareResultEnabled: false } }, { settings: { isExternalShareResultEnabled: true } })]);
+  assert.deepEqual(forms.refusals, []);
+  assert.deepEqual(forms.effects.map((e) => e.effect), ['externally-sharing']);
+  const narrowed = classifyContentEffects([update('formsSettings', { settings: { isExternalShareResultEnabled: true } }, { settings: { isExternalShareResultEnabled: false } })]);
+  assert.deepEqual([narrowed.effects, narrowed.refusals], [[], []]);
+});

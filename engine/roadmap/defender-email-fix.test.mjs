@@ -29,6 +29,7 @@ import { runComplianceChecks } from '../benchmarks/runChecks.mjs';
 import { planWorkloadComplianceFix } from '../benchmarks/workloadFix.mjs';
 import { FAMILIES, readMailFlow, recordMailFlowRun } from '../collect/workloads/mailFlow.mjs';
 import { approveRequest, requestApproval, SelfApprovalError } from '../govern/approvals.mjs';
+import { setRestoreApprovalSetting } from '../govern/restoreApprovalSettings.mjs';
 import { complianceFindings } from '../govern/baselineCompliance.mjs';
 import { getDryRunArtifactById } from '../restore/dryRunArtifact.mjs';
 import {
@@ -492,7 +493,7 @@ test('every written mail protection setting has a weakening rule, except the des
 /** The source a restore plans from: a backup read of `bodies`. */
 const backupOf = (read) => ({ collectionId: '9', outcome: 'complete', observedTo: null, observations: read.resources.map(({ resourceKey, kind, identity, fields, fieldCoverage }) => ({ resourceKey, kind, identity, fields, fieldCoverage })) });
 
-test('a restore never writes a weaker mail protection setting from a backup; it lists it for an administrator', async () => {
+test('a weaker mail protection setting from a backup is planned as a "weakens protection" change that waits for its approval', async () => {
   const { tenantId, tenantRef } = nextTenant();
   const spam = policy('antiSpamPolicy');
   const links = policy('safeLinksPolicy');
@@ -507,19 +508,62 @@ test('a restore never writes a weaker mail protection setting from a backup; it 
     antiMalwarePolicy: [{ ...malware, ZapEnabled: false, CustomNotifications: true }],
   }));
   const plan = planWorkloadSettingsRestore({ workload: MAIL, source: backupOf(backup), live, tenantId, tenantRef });
-  assert.deepEqual(plan.operations.map((op) => [op.cmdlet, op.parameters]), [
-    ['Set-MalwareFilterPolicy', { Identity: malware.Guid, CustomNotifications: true }],
-  ], 'only the change that does not weaken protection is written');
-  const weakened = plan.manual.filter((entry) => entry.weakensProtection === true).map((entry) => entry.field).sort();
+  // Restore approvals: the customer can put every setting back; the weaker ones are high-impact changes.
+  assert.deepEqual(plan.operations.map((op) => op.changes.map((change) => change.field).sort()).sort(), [
+    ['AllowClickThrough', 'ScanUrls'], ['AllowedSenderDomains', 'InlineSafetyTipsEnabled', 'PhishSpamAction'], ['CustomNotifications', 'ZapEnabled'], ['HonorDmarcPolicy'],
+  ].sort());
+  const weakened = plan.contentEffects.filter((effect) => effect.effect === 'weakens-protection').map((effect) => effect.field).sort();
   assert.deepEqual(weakened, ['AllowClickThrough', 'AllowedSenderDomains', 'HonorDmarcPolicy', 'InlineSafetyTipsEnabled', 'PhishSpamAction', 'ScanUrls', 'ZapEnabled']);
-  for (const entry of plan.manual.filter((item) => item.weakensProtection)) assert.match(entry.reason, /weaken mail protection/);
+  assert.ok(plan.contentEffects.filter((effect) => effect.effect === 'weakens-protection').every((effect) => /less strict/.test(effect.disclosure)));
+  assert.equal(plan.manual.filter((entry) => entry.weakensProtection).length, 0);
+  assert.ok(!plan.contentEffects.some((effect) => effect.field === 'CustomNotifications'), 'a harmless change is no effect');
 
-  // The stricter direction (the live tenant weaker than the backup) is written as before.
+  // The stricter direction (the live tenant weaker than the backup) has no such effect.
   const back = planWorkloadSettingsRestore({ workload: MAIL, source: backupOf(live), live: backup, tenantId, tenantRef });
-  assert.equal(back.manual.filter((entry) => entry.weakensProtection).length, 0);
+  assert.equal(back.contentEffects.filter((effect) => effect.effect === 'weakens-protection').length, 0);
   assert.deepEqual(back.operations.map((op) => op.changes.map((change) => change.field).sort()).sort(), [
     ['AllowClickThrough', 'ScanUrls'], ['AllowedSenderDomains', 'InlineSafetyTipsEnabled', 'PhishSpamAction'], ['CustomNotifications', 'ZapEnabled'], ['HonorDmarcPolicy'],
   ].sort());
+});
+
+test('restore approvals: a weaker mail protection setting is written once approved, or when Exchange approvals are off', async (t) => {
+  const client = await schemaClient(t);
+  const { tenantId, tenantRef } = nextTenant();
+  const links = policy('safeLinksPolicy', { ScanUrls: true });
+  const run = async (tenant, artifactId) => executeWorkloadSettingsRestore(client, {
+    tenantRef, artifactId, tenantId, workload: MAIL, read: readLive.bind(null, tenant), powershell: tenant.powershell, qualifications: enabled(),
+  });
+  const dryRun = async (tenant) => {
+    const backup = await readLive(fakeTenant({ safeLinksPolicy: [{ ...links, ScanUrls: false }] }));
+    const plan = planWorkloadSettingsRestore({ workload: MAIL, source: backupOf(backup), live: await readLive(tenant), tenantId, tenantRef });
+    assert.deepEqual(plan.contentEffects.map((effect) => [effect.field, effect.effect]), [['ScanUrls', 'weakens-protection']]);
+    return createWorkloadSettingsArtifact(client, { tenantRef, plan, requestedBy: await principal(client, 'requester', 'restorer') });
+  };
+
+  // Approvals on (the default) and nobody approved: nothing is written.
+  const held = fakeTenant({ safeLinksPolicy: [structuredClone(links)] });
+  const waiting = await run(held, (await dryRun(held)).id);
+  assert.equal(waiting.operations[0].outcome, 'blocked-content-effect');
+  assert.deepEqual(held.writes, []);
+
+  // A second person approves exactly that change: it is written and read back.
+  const approvedTenant = fakeTenant({ safeLinksPolicy: [structuredClone(links)] });
+  const approvedArtifact = await dryRun(approvedTenant);
+  const stored = await getDryRunArtifactById(client, { id: approvedArtifact.id });
+  await approveContentEffects(client, {
+    tenantRef, artifactId: approvedArtifact.id, approverId: await principal(client, 'effects', 'approver'),
+    effectsDigest: contentEffectsDigest(stored.workloadRestore.contentEffects), justification: 'KEEL-RT- policy',
+  });
+  const approved = await run(approvedTenant, approvedArtifact.id);
+  assert.equal(approved.operations[0].outcome, 'verified');
+  assert.equal(approvedTenant.writes.length, 1);
+
+  // The customer turned restore approvals off for Exchange: written with no second person.
+  await setRestoreApprovalSetting(client, { tenantRef, service: 'Exchange', approvalRequired: false, actor: String(await principal(client, 'admin', 'approver')) });
+  const waived = fakeTenant({ safeLinksPolicy: [structuredClone(links)] });
+  const result = await run(waived, (await dryRun(waived)).id);
+  assert.equal(result.operations[0].outcome, 'verified');
+  assert.equal(waived.writes.length, 1);
 });
 
 test('a stored plan that would weaken mail protection is refused at the write, after the live re-read', async (t) => {

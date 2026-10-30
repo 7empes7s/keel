@@ -58,7 +58,7 @@ import { serviceOrder } from "@/lib/services";
 import type { EngineRef } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
-import { usePoll } from "@/lib/use-poll";
+import { useRefreshPoll } from "@/lib/use-poll";
 import { readList, useViewState } from "@/lib/use-view-state";
 
 // Alerts (portal audit, one design): a status pill and a verdict whose one amber action
@@ -99,7 +99,7 @@ export function AlertsPage({ alerts, now, canRespond, canMute }: {
   const [note, setNote] = useState("");
 
   // Live: read the alerts again every 10 seconds while the tab is visible.
-  usePoll(() => router.refresh(), 10_000);
+  useRefreshPoll(10_000);
 
   // What this page changed, until the server's next read says where each alert stands.
   const [changed, setChanged] = useState<Record<string, AlertState>>({});

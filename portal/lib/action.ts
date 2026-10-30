@@ -313,6 +313,9 @@ export function normalizeApprovalRequest(row: Record<string, unknown>) {
     expiresAt: iso(row.expires_at),
     // Gap B11: "worker" (approval queues the job) or "cli" (an operator runs it).
     executor: row.executor === "cli" ? "cli" : "worker",
+    // Set when restore approvals are off for every service the restore writes to: the
+    // request was approved as it was made, and these are the services.
+    ...(Array.isArray(row.approvalSkippedFor) ? { approvalSkippedFor: row.approvalSkippedFor.map(String) } : {}),
   };
 }
 

@@ -1,5 +1,5 @@
 {
-  "restoreRef": "5a74a140-88d6-8bc9-9a65-a83fd6466381",
+  "restoreRef": "0f1f2990-7ca6-889d-a31e-457ff83cab1c",
   "entry": {
     "naturalKey": "multiTenantOrganizationIdentitySyncPolicyTemplate:multiTenantOrganizationIdentitySyncPolicyTemplate",
     "resourceType": "multiTenantOrganizationIdentitySyncPolicyTemplate",
@@ -7,7 +7,7 @@
     "targetId": null,
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-28T07:47:51.406Z",
+    "recordedAt": "2026-10-30T01:47:14.480Z",
     "priorState": {
       "id": "ebecb4ed-6999-849e-ba60-276f5c27ab38",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/crossTenantAccessPolicy/templates/multiTenantOrganizationIdentitySynchronization/$entity",

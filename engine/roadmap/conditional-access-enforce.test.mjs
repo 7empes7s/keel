@@ -21,6 +21,7 @@ import { canonicalHash } from '../cir/canonicalHash.mjs';
 import { capabilityFor } from '../coverage/capabilities.mjs';
 import { qualificationFor } from '../coverage/qualification.mjs';
 import { approveRequest, requestApproval, SelfApprovalError } from '../govern/approvals.mjs';
+import { RESTORE_APPROVALS_OFF_BASIS, RESTORE_APPROVALS_OFF_DECIDER } from '../govern/restoreApprovalSettings.mjs';
 import { buildReconciliationPlan } from '../reconcile/reconciliationPlan.mjs';
 import { applyWave, retryThrottledGraphOperation } from '../restore/applyEngine.mjs';
 import { grantRole } from '../authz/administration.mjs';
@@ -645,6 +646,16 @@ test('promotion requires the approval; once approved and ready it turns the poli
   await assert.rejects(approveRequest(client, { tenantRef: TENANT, id: request.id, decidedBy: restorer.id }), SelfApprovalError);
   await assert.rejects(run({ artifactId: enforcementId, mode: 'enforce' }), /needs an approved request/);
   assert.equal(graph.writes.length, writesAfterRestore, 'nothing written without the approval');
+  // Restore approvals turned off never stand in for a person here: an approval made by
+  // the setting does not turn a Conditional Access policy on.
+  const { rows: [bySetting] } = await client.query(
+    `INSERT INTO approval_request (action, params, requested_by, status, decided_by, decided_at, expires_at, executor, standing_policy)
+     VALUES ('restore', $1, $2, 'approved', $3, now(), now() + interval '1 day', 'cli', $4) RETURNING id`,
+    [{ artifactId: enforcementId }, restorer.id, RESTORE_APPROVALS_OFF_DECIDER, RESTORE_APPROVALS_OFF_BASIS],
+  );
+  await assert.rejects(run({ artifactId: enforcementId, mode: 'enforce' }), /needs an approved request/);
+  await client.query('DELETE FROM approval_request WHERE id = $1', [bySetting.id]);
+  assert.equal(graph.writes.length, writesAfterRestore, 'nothing written on the setting alone');
 
   const approved = await approveRequest(client, { tenantRef: TENANT, id: request.id, decidedBy: 'approver' });
   assert.equal(approved.request.executor, 'cli');

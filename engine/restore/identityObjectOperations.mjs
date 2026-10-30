@@ -1,9 +1,10 @@
 /**
  * Wave 2 IDO: restore of identity objects that had no writer.
  *
- *  - servicePrincipal update and delete. An update writes only the reviewed
- *    attributes below; whether the service principal is enabled is reported,
- *    never written (the same rule as a user). A delete is refused for a
+ *  - servicePrincipal update and delete. An update writes the reviewed
+ *    attributes below; whether the service principal can sign in is written
+ *    only behind restore approvals, and never turned off for KEEL's own apps, a
+ *    Microsoft application or a managed identity. A delete is refused for a
  *    Microsoft-owned service principal, a managed identity, and KEEL's own app.
  *  - application owners, service principal owners and app role grants
  *    (application permissions granted to a service principal), ADD ONLY: an
@@ -37,6 +38,7 @@ import {
   applyRecordWrite, defineRecord, graphFailure, isNotFound, outcomeDetail, readUntil, recordLedger, sameValue, stripGraph,
 } from './recordWriter.mjs';
 import { TRUST_FIELDS } from './workloads/writeDeclarations.mjs';
+import { PROTECTION_APPROVAL_STEP, effectApproved, protectionChangeApproved, protectionEffects } from '../safety/contentEffects.mjs';
 import {
   USER_WRITABLE_FIELDS, assignLicenseBody, isSyncedUser, licencePlan, userPostStateRefusal, userReadPath,
 } from './userOperations.mjs';
@@ -71,17 +73,105 @@ function servicePrincipalDeleteGuard(_io, { payload }) {
   return null;
 }
 
-function servicePrincipalRefusal(resource, verb) {
-  const payload = verb === 'delete' ? (resource.live?.payload ?? resource.payload) : resource.payload;
-  if (verb === 'update' && payload?.accountEnabled !== undefined && resource.live?.payload
-    && payload.accountEnabled !== resource.live.payload.accountEnabled
-    && SERVICE_PRINCIPAL_WRITABLE_FIELDS.every((field) => sameValue(payload[field], resource.live.payload[field]))) {
-    return {
-      outcome: 'skipped',
-      reason: `manual: the service principal is ${resource.live.payload.accountEnabled ? 'enabled' : 'disabled'} now and ${payload.accountEnabled ? 'enabled' : 'disabled'} in the backup; a restore never turns sign-in on or off, so change it by hand`,
-    };
+/**
+ * Restore approvals: whether a service principal can sign in (accountEnabled).
+ * Turning it on is a 'weakens-protection' effect (the app can reach data again),
+ * turning it off a 'blocks-sign-in' effect (the app, and everything that uses it,
+ * stops working). Either is written only once the promotion checked its approval,
+ * or the customer turned restore approvals off for Entra. The lockout checks hold
+ * whatever the approval says: a restore never turns off KEEL's own apps, a
+ * Microsoft application or a service principal that is not an application's.
+ */
+const SIGN_IN_PORTAL_PATH = 'Entra admin center > Enterprise applications > (the app) > Properties > Enabled for users to sign in';
+
+/** { want, now } when the backup and live differ in whether the service principal can sign in, else null. */
+function signInChange(resource, verb) {
+  if (verb !== 'update') return null;
+  const want = resource.payload?.accountEnabled;
+  const now = resource.live?.payload?.accountEnabled;
+  if (typeof want !== 'boolean' || typeof now !== 'boolean' || want === now) return null;
+  return { want, now };
+}
+
+/** Why a restore must never turn this service principal's sign-in off, or null. */
+function signInLockout(resource, ctx = {}) {
+  const live = resource.live?.payload ?? {};
+  const payload = resource.payload ?? {};
+  const keelAppIds = (ctx.deletionGuardOptions?.keelAppIds ?? []).map(lower).filter(Boolean);
+  const appId = lower(live.appId ?? payload.appId);
+  if (keelAppIds.length === 0) {
+    return 'KEEL cannot tell here which apps are its own, and turning off one of them would lock KEEL out, so a restore never turns sign-in off without that list';
+  }
+  if (keelAppIds.includes(appId)) return 'this is one of KEEL\'s own apps; turning its sign-in off would lock KEEL out, so a restore never does it';
+  const type = live.servicePrincipalType ?? payload.servicePrincipalType;
+  if (type !== 'Application') {
+    return type ? `this is a ${type} service principal; a restore turns sign-in off only for an application's`
+      : 'the backup does not say what kind of service principal this is; a restore turns sign-in off only for an application\'s';
+  }
+  const owner = live.appOwnerOrganizationId ?? payload.appOwnerOrganizationId;
+  if (!owner) return 'the backup does not say which organisation owns this app, so it could be a Microsoft application; a restore never turns those off';
+  if (MICROSOFT_OWNER_TENANTS.includes(lower(owner))) {
+    return 'this service principal belongs to a Microsoft application; turning it off can break Microsoft 365 services, so a restore never does it';
   }
   return null;
+}
+
+const signInWords = (enabled) => (enabled ? 'on' : 'off');
+
+/** The manual step for a sign-in change a restore did not make, with why. */
+function signInStep({ want, now }, why) {
+  return Object.freeze({
+    kind: 'manual-setting', requirement: 'servicePrincipalSignIn', fields: Object.freeze(['accountEnabled']), portalPath: SIGN_IN_PORTAL_PATH,
+    description: `Sign-in for this app is ${signInWords(now)} now and ${signInWords(want)} in the backup. ${why} To change it by hand: ${SIGN_IN_PORTAL_PATH}.`,
+  });
+}
+
+/** null when this sign-in change may be written; otherwise why it is held (lockout or approval). */
+function signInHeld(resource, verb, change, ctx = {}) {
+  if (!change.want) {
+    const lockout = signInLockout(resource, ctx);
+    if (lockout) return `Not changed: ${lockout}.`;
+  }
+  if (protectionChangeApproved(resource, verb, ctx)) return null;
+  return `Not changed yet: ${change.want ? 'turning it on lets the app reach data again' : 'turning it off stops the app and everything that uses it'}, so ${PROTECTION_APPROVAL_STEP}.`;
+}
+
+function servicePrincipalRefusal(resource, verb, ctx = {}) {
+  const change = signInChange(resource, verb);
+  if (!change) return null;
+  // Only a sign-in difference: nothing else to write, so a held change skips the whole update.
+  const onlySignIn = SERVICE_PRINCIPAL_WRITABLE_FIELDS.every((field) => sameValue(resource.payload[field], resource.live.payload[field]));
+  if (!onlySignIn) return null;
+  const held = signInHeld(resource, verb, change, ctx);
+  if (!held) return null;
+  return { outcome: 'skipped', reason: `manual: ${held}`, completion: [signInStep(change, held)] };
+}
+
+/** In a dry run: the sign-in change the write would make, or the step it would leave. */
+function servicePrincipalPlan(_io, { resource, verb, ctx }) {
+  const change = signInChange(resource, verb);
+  if (!change) return null;
+  const held = signInHeld(resource, verb, change, ctx);
+  return held ? { signInHeld: held } : { signIn: signInWords(change.want) };
+}
+
+/**
+ * After the reviewed attributes: sign-in turned on or off when that change may be
+ * written (read back), otherwise a step for a person.
+ */
+async function servicePrincipalAfterWrite(io, { resource, verb, targetId, live, ctx }) {
+  const change = signInChange({ ...resource, live: { ...resource.live, payload: live } }, verb);
+  if (!change) return {};
+  const held = signInHeld(resource, verb, change, ctx);
+  if (held) return { completion: [signInStep(change, held)] };
+  const path = `/servicePrincipals/${encodeURIComponent(targetId)}`;
+  const result = await io.retryOperation(() => io.writer.write('v1.0', path, { method: 'PATCH', body: { accountEnabled: change.want } }));
+  if (!result.ok) return { error: `turning sign-in ${signInWords(change.want)} failed: ${outcomeDetail(result)}` };
+  const check = await readUntil(io, 'v1.0', path, (r) => isNotFound(r) || (r?.ok === true && r.body?.accountEnabled !== change.want), io.readOptions);
+  if (check?.ok !== true || check.body?.accountEnabled !== change.want) {
+    return { error: `post-state: sign-in did not read back as ${signInWords(change.want)}` };
+  }
+  return { live: check.body, changes: { signIn: signInWords(change.want) } };
 }
 
 // ------------------------------------------------------ guest federation
@@ -296,22 +386,24 @@ const SHAREPOINT_LOOSENING = Object.freeze([
   ['isRequireAcceptingUserToMatchInvitedUserEnabled', false, 'lets a guest invitation be accepted by another account'],
 ]);
 
-function sharepointAccessRefusal(resource, verb) {
+function sharepointAccessRefusal(resource, verb, ctx = {}) {
   if (verb !== 'update') return null;
   const want = resource.payload ?? {};
   const now = resource.live?.payload ?? {};
   const loosened = SHAREPOINT_LOOSENING.filter(([field, loose]) => want[field] === loose && now[field] !== undefined && now[field] !== loose);
   if (loosened.length === 0) return null;
+  // Restore approvals: written once the 'weakens-protection' effect is approved, or approvals are off.
+  if (protectionChangeApproved(resource, verb, ctx)) return null;
   const fields = loosened.map(([field]) => field);
   return {
     outcome: 'skipped',
-    reason: `manual: the backup ${loosened.map(([, , text]) => text).join(', and ')}; a restore never loosens who can reach files, so set it by hand if that is wanted`,
+    reason: `manual: the backup ${loosened.map(([, , text]) => text).join(', and ')}; that loosens who can reach files, so ${PROTECTION_APPROVAL_STEP}, or set it by hand`,
     completion: Object.freeze({
       kind: 'manual-setting',
       requirement: 'sharepointAccessSettings',
       fields: Object.freeze(fields),
       portalPath: SHAREPOINT_PORTAL_PATH,
-      description: `Decide whether ${fields.join(', ')} should be as in the backup, then set them in the ${SHAREPOINT_PORTAL_PATH}. The other SharePoint settings in the backup were not written either: restore again after that.`,
+      description: `Decide whether ${fields.join(', ')} should be as in the backup. Either have a second person approve the change in Approvals and restore again, or set them in the ${SHAREPOINT_PORTAL_PATH}. The other SharePoint settings in the backup were not written either: restore again after that.`,
     }),
   };
 }
@@ -373,7 +465,7 @@ const fieldAt = (payload, path) => path.split('.').reduce((value, key) => (value
 const sameLoose = (value, loose) => (typeof loose === 'string' ? String(value ?? '').toLowerCase() === loose : value === loose);
 
 /** The loosening refusal of one admin center settings record, or null. */
-export function adminCenterLooseningRefusal(resource, verb) {
+export function adminCenterLooseningRefusal(resource, verb, ctx = {}) {
   const spec = ADMIN_CENTER_LOOSENING[resource?.resourceType];
   if (!spec || verb !== 'update') return null;
   const want = resource.payload ?? {};
@@ -382,16 +474,18 @@ export function adminCenterLooseningRefusal(resource, verb) {
   // value cannot be shown to be what the tenant has now, so it is withheld.
   const loosened = spec.rules.filter(([path, loose]) => sameLoose(fieldAt(want, path), loose) && !sameLoose(fieldAt(now, path), loose));
   if (loosened.length === 0) return null;
+  // Restore approvals: written once each loosening effect is approved, or approvals are off.
+  if (protectionChangeApproved(resource, verb, ctx)) return null;
   const fields = loosened.map(([path]) => path);
   return {
     outcome: 'skipped',
-    reason: `manual: the backup ${loosened.map(([, , text]) => text).join(', and ')}; a restore never loosens this, so set it by hand if that is wanted`,
+    reason: `manual: the backup ${loosened.map(([, , text]) => text).join(', and ')}; that loosens this setting, so ${PROTECTION_APPROVAL_STEP}, or set it by hand`,
     completion: Object.freeze({
       kind: 'manual-setting',
       requirement: `${resource.resourceType}Loosening`,
       fields: Object.freeze(fields),
       portalPath: spec.portalPath,
-      description: `Decide whether ${fields.join(', ')} should be as in the backup, then set it in ${spec.portalPath}. The other values in this backup were not written either: restore again after that.`,
+      description: `Decide whether ${fields.join(', ')} should be as in the backup. Either have a second person approve the change in Approvals and restore again, or set it in ${spec.portalPath}. The other values in this backup were not written either: restore again after that.`,
     }),
   };
 }
@@ -426,38 +520,73 @@ function workflowBody(body, { verb, payload }) {
 
 const WORKFLOW_VERSIONED = ['category', 'executionConditions', 'tasks'];
 
-async function workflowAfterWrite(io, { payload, verb, targetId, live, before }) {
+/**
+ * Restore approvals: the switches (isEnabled, isSchedulingEnabled) whose
+ * 'acts-on-accounts' effect the promotion approved, or that the customer's
+ * setting waived. The write body never turns a workflow on; these are turned on
+ * after it, and read back.
+ */
+function approvedWorkflowSwitches(resource, verb, ctx = {}) {
+  if (ctx.mode === 'dry-run') return new Set();
+  return new Set(protectionEffects({ ...resource, verb })
+    .filter((effect) => effectApproved(effect, ctx.approvedContentEffects)).map((effect) => effect.field));
+}
+
+async function workflowAfterWrite(io, { resource, payload, verb, targetId, live, before, ctx }) {
+  const path = `/identityGovernance/lifecycleWorkflows/workflows/${encodeURIComponent(targetId)}`;
+  const approvedOn = approvedWorkflowSwitches(resource, verb, ctx);
+  const changes = {};
+  // Tasks, conditions and category change only through a new version, written
+  // first, so an approved turn-on never runs the old tasks.
+  const stale = verb === 'create' || !before ? [] : WORKFLOW_VERSIONED.filter((field) => !sameValue(
+    field === 'tasks' ? workflowTasks(payload?.tasks) : payload?.[field],
+    field === 'tasks' ? workflowTasks(live?.tasks) : live?.[field],
+  ));
+  if (stale.length > 0) {
+    const workflow = {
+      category: payload.category, displayName: payload.displayName, description: payload.description ?? null,
+      isEnabled: live?.isEnabled === true && payload.isEnabled !== false,
+      isSchedulingEnabled: live?.isSchedulingEnabled === true && payload.isSchedulingEnabled !== false,
+      executionConditions: payload.executionConditions, tasks: workflowTasks(payload.tasks),
+    };
+    const result = await io.retryOperation(() => io.writer.write('v1.0', `${path}/createNewVersion`, { method: 'POST', body: { workflow } }));
+    if (!result.ok) return { error: `writing a new version of the workflow (${stale.join(', ')}) failed: ${outcomeDetail(result)}` };
+    const check = await readUntil(io, 'v1.0', `${path}?$expand=tasks`, (r) => isNotFound(r)
+      || (r?.ok === true && !sameValue(workflowTasks(r.body?.tasks), workflow.tasks)), io.readOptions);
+    if (check?.ok !== true || !sameValue(workflowTasks(check.body?.tasks), workflow.tasks)
+      || !sameValue(check.body?.executionConditions, workflow.executionConditions)) {
+      return { error: 'post-state: the new workflow version did not read back as written' };
+    }
+    live = check.body;
+    changes.newVersion = stale;
+  }
+  // Restore approvals: a switch the backup has on is turned on only when its
+  // 'acts-on-accounts' effect was approved, or the customer's setting waived it.
+  const turnOn = ['isEnabled', 'isSchedulingEnabled'].filter((field) => approvedOn.has(field) && payload?.[field] === true && live?.[field] !== true);
+  if (turnOn.length > 0) {
+    const body = Object.fromEntries(turnOn.map((field) => [field, true]));
+    const result = await io.retryOperation(() => io.writer.write('v1.0', path, { method: 'PATCH', body }));
+    if (!result.ok) return { error: `turning the workflow on (${turnOn.join(', ')}) failed: ${outcomeDetail(result)}` };
+    const check = await readUntil(io, 'v1.0', `${path}?$expand=tasks`, (r) => isNotFound(r)
+      || (r?.ok === true && turnOn.some((field) => r.body?.[field] !== true)), io.readOptions);
+    if (check?.ok !== true || turnOn.some((field) => check.body?.[field] !== true)) {
+      return { error: 'post-state: the workflow did not read back as turned on' };
+    }
+    live = check.body;
+    changes.turnedOn = turnOn;
+  }
   const completion = [];
   for (const field of ['isEnabled', 'isSchedulingEnabled']) {
     if (payload?.[field] === true && live?.[field] !== true) {
       completion.push({
         kind: 'enforcement', requirement: field,
-        description: `The workflow is ${field === 'isEnabled' ? 'off' : 'not scheduled'} in the target and ${field === 'isEnabled' ? 'on' : 'scheduled'} in the backup. A restore never turns a workflow on: review its scope and tasks, then turn it on in Entra admin center > Identity governance > Lifecycle workflows.`,
+        description: `The workflow is ${field === 'isEnabled' ? 'off' : 'not scheduled'} in the target and ${field === 'isEnabled' ? 'on' : 'scheduled'} in the backup. `
+          + `Turning it on runs its tasks on people's accounts, so ${PROTECTION_APPROVAL_STEP}. Or review its scope and tasks, then turn it on in Entra admin center > Identity governance > Lifecycle workflows.`,
       });
     }
   }
-  if (verb === 'create' || !before) return { completion };
-  const stale = WORKFLOW_VERSIONED.filter((field) => !sameValue(
-    field === 'tasks' ? workflowTasks(payload?.tasks) : payload?.[field],
-    field === 'tasks' ? workflowTasks(live?.tasks) : live?.[field],
-  ));
-  if (stale.length === 0) return { completion };
-  const path = `/identityGovernance/lifecycleWorkflows/workflows/${encodeURIComponent(targetId)}`;
-  const workflow = {
-    category: payload.category, displayName: payload.displayName, description: payload.description ?? null,
-    isEnabled: live?.isEnabled === true && payload.isEnabled !== false,
-    isSchedulingEnabled: live?.isSchedulingEnabled === true && payload.isSchedulingEnabled !== false,
-    executionConditions: payload.executionConditions, tasks: workflowTasks(payload.tasks),
-  };
-  const result = await io.retryOperation(() => io.writer.write('v1.0', `${path}/createNewVersion`, { method: 'POST', body: { workflow } }));
-  if (!result.ok) return { error: `writing a new version of the workflow (${stale.join(', ')}) failed: ${outcomeDetail(result)}` };
-  const check = await readUntil(io, 'v1.0', `${path}?$expand=tasks`, (r) => isNotFound(r)
-    || (r?.ok === true && !sameValue(workflowTasks(r.body?.tasks), workflow.tasks)), io.readOptions);
-  if (check?.ok !== true || !sameValue(workflowTasks(check.body?.tasks), workflow.tasks)
-    || !sameValue(check.body?.executionConditions, workflow.executionConditions)) {
-    return { error: 'post-state: the new workflow version did not read back as written' };
-  }
-  return { completion, live: check.body, changes: { newVersion: stale } };
+  const changed = Object.keys(changes).length > 0;
+  return { completion, ...(changed ? { live, changes } : {}) };
 }
 
 /** Allowed values of a custom security attribute: added or (de)activated, never removed (Graph cannot). */
@@ -529,6 +658,7 @@ export const IDENTITY_RECORDS = Object.freeze({
   servicePrincipal: defineRecord({
     resourceType: 'servicePrincipal', version: 'v1.0', collection: '/servicePrincipals', operations: ['update', 'delete'],
     writable: SERVICE_PRINCIPAL_WRITABLE_FIELDS, refusal: servicePrincipalRefusal, deleteGuard: servicePrincipalDeleteGuard,
+    afterWrite: servicePrincipalAfterWrite, planChanges: servicePrincipalPlan,
     permission: 'Application.ReadWrite.All', docs: v1('serviceprincipal-update'),
   }),
   lifecycleWorkflow: defineRecord({

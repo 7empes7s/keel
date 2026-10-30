@@ -47,8 +47,8 @@ test("CISA SCuBA lists every ScubaGear rule that runs, each checked by its own r
   const coverage = standardCoverage(SCUBA, findings);
   const row = (ref: string) => coverage.rows.find((entry) => entry.ref === ref)!;
   assert.equal(SCUBA.edition, "ScubaGear v2.0.0");
-  assert.equal(coverage.total, 46);
-  assert.equal(coverage.checked, 46, "every policy has the rule that checks it");
+  assert.equal(coverage.total, 109);
+  assert.equal(coverage.checked, 109, "every policy has the rule that checks it");
   assert.ok(SCUBA.refs.every((entry) => entry.controls.length === 1 && entry.controls[0].controlId === scuba(entry.ref) && entry.controls[0].match === "full"));
   assert.equal(row("MS.AAD.1.1v1").result, "failing");
   assert.equal(row("MS.AAD.3.2v2").result, "passing");
@@ -58,7 +58,7 @@ test("CISA SCuBA lists every ScubaGear rule that runs, each checked by its own r
   assert.equal(coverageReason(row("MS.AAD.2.2v1")), "CISA lists this as a check to do by hand.");
   assert.equal(coverageReason(row("MS.AAD.9.1v1")), "It runs after the next backup.");
   assert.equal(coverageReason(row("MS.AAD.1.1v1")), null);
-  assert.equal(coverageSentence(SCUBA, coverage), "Keel checks 46 of 46 CISA SCuBA policies: 2 pass, 1 does not, 43 could not be checked.");
+  assert.equal(coverageSentence(SCUBA, coverage), "Keel checks 109 of 109 CISA SCuBA policies: 2 pass, 1 does not, 106 could not be checked.");
   // Worst first: fails, then could not check, then passes, then not relevant; CISA's order within each.
   const ordered = orderCoverageRows(coverage.rows).map((entry) => entry.ref);
   assert.deepEqual(ordered.slice(0, 3), ["MS.AAD.1.1v1", "MS.AAD.2.1v1", "MS.AAD.2.2v1"]);

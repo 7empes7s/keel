@@ -20,9 +20,9 @@
 const ADMIN_COUNT = 'keel-custom.role-assignment.admin-count-at-most';
 const ADMIN_GROUPS = 'keel-custom.group.role-assignable-not-synced';
 
-// The ScubaGear release whose rules run (scubagear/pin.json), and the Entra ID (aad) and
-// Exchange Online (exo) rules it registers as controls (a test keeps the list equal to
-// the registered cisa-scuba controls).
+// The ScubaGear release whose rules run (scubagear/pin.json), and the rules of every
+// product it registers as controls (a test keeps the list equal to the registered
+// cisa-scuba controls).
 export const SCUBA_VERSION = '2.0.0';
 export const SCUBA_CONTROL_PREFIX = 'scubagear.';
 export const SCUBA_POLICY_IDS = Object.freeze([
@@ -34,6 +34,19 @@ export const SCUBA_POLICY_IDS = Object.freeze([
   'MS.AAD.8.1v1', 'MS.AAD.8.2v1', 'MS.AAD.8.3v1', 'MS.AAD.9.1v1', 'MS.EXO.1.1v2', 'MS.EXO.2.2v3',
   'MS.EXO.3.1v1', 'MS.EXO.4.1v1', 'MS.EXO.4.2v1', 'MS.EXO.4.3v1', 'MS.EXO.4.4v1', 'MS.EXO.5.1v1',
   'MS.EXO.6.1v1', 'MS.EXO.6.2v1', 'MS.EXO.7.1v1', 'MS.EXO.13.1v1',
+  'MS.POWERBI.1.1v1', 'MS.POWERBI.2.1v1', 'MS.POWERBI.3.1v1', 'MS.POWERBI.4.1v1', 'MS.POWERBI.4.2v1',
+  'MS.POWERBI.5.1v1', 'MS.POWERBI.6.1v1', 'MS.POWERBI.7.1v1', 'MS.POWERPLATFORM.1.1v1', 'MS.POWERPLATFORM.1.2v1',
+  'MS.POWERPLATFORM.2.1v1', 'MS.POWERPLATFORM.2.2v1', 'MS.POWERPLATFORM.3.1v1', 'MS.POWERPLATFORM.3.2v1', 'MS.POWERPLATFORM.4.1v1',
+  'MS.POWERPLATFORM.5.1v1', 'MS.POWERPLATFORM.6.1v1', 'MS.SECURITYSUITE.1.1v1', 'MS.SECURITYSUITE.1.2v1', 'MS.SECURITYSUITE.1.3v1',
+  'MS.SECURITYSUITE.1.4v1', 'MS.SECURITYSUITE.2.1v1', 'MS.SECURITYSUITE.2.2v1', 'MS.SECURITYSUITE.2.3v1', 'MS.SECURITYSUITE.2.4v1',
+  'MS.SECURITYSUITE.3.1v1', 'MS.SECURITYSUITE.3.2v1', 'MS.SECURITYSUITE.3.3v1', 'MS.SECURITYSUITE.3.4v1', 'MS.SECURITYSUITE.3.5v1',
+  'MS.SECURITYSUITE.4.1v1', 'MS.SECURITYSUITE.4.2v1', 'MS.SECURITYSUITE.5.1v1', 'MS.SECURITYSUITE.5.2v1', 'MS.SECURITYSUITE.6.1v1',
+  'MS.SECURITYSUITE.6.2v1', 'MS.SECURITYSUITE.7.1v1', 'MS.SECURITYSUITE.7.2v1', 'MS.SECURITYSUITE.7.3v1', 'MS.SECURITYSUITE.8.1v1',
+  'MS.SECURITYSUITE.8.2v1', 'MS.SHAREPOINT.1.1v1', 'MS.SHAREPOINT.1.2v1', 'MS.SHAREPOINT.1.3v1', 'MS.SHAREPOINT.2.1v1',
+  'MS.SHAREPOINT.2.2v1', 'MS.SHAREPOINT.3.1v1', 'MS.SHAREPOINT.3.2v1', 'MS.SHAREPOINT.3.3v2', 'MS.TEAMS.1.1v1',
+  'MS.TEAMS.1.2v2', 'MS.TEAMS.1.3v1', 'MS.TEAMS.1.4v1', 'MS.TEAMS.1.5v1', 'MS.TEAMS.1.6v1',
+  'MS.TEAMS.1.7v2', 'MS.TEAMS.2.1v2', 'MS.TEAMS.2.2v2', 'MS.TEAMS.2.3v2', 'MS.TEAMS.4.1v1',
+  'MS.TEAMS.5.1v2', 'MS.TEAMS.5.2v2', 'MS.TEAMS.5.3v2',
 ]);
 
 // Each SCuBA section in Keel's words. A section not named here shows by its code only.
@@ -55,6 +68,34 @@ const SCUBA_AREAS = Object.freeze({
   'MS.EXO.6': 'Exchange: calendar and contact sharing',
   'MS.EXO.7': 'Exchange: external sender warnings',
   'MS.EXO.13': 'Exchange: mailbox auditing',
+  'MS.SECURITYSUITE.1': 'Defender: malware protection',
+  'MS.SECURITYSUITE.2': 'Defender: impersonation protection',
+  'MS.SECURITYSUITE.3': 'Defender: data loss prevention',
+  'MS.SECURITYSUITE.4': 'Defender: alerts',
+  'MS.SECURITYSUITE.5': 'Defender: audit logging',
+  'MS.SECURITYSUITE.6': 'Defender: inbound spam protection',
+  'MS.SECURITYSUITE.7': 'Defender: link protection',
+  'MS.SECURITYSUITE.8': 'Defender: IP allow lists',
+  'MS.SHAREPOINT.1': 'SharePoint: external sharing',
+  'MS.SHAREPOINT.2': 'SharePoint: default sharing links',
+  'MS.SHAREPOINT.3': 'SharePoint: anyone links and guest codes',
+  'MS.TEAMS.1': 'Teams: meetings',
+  'MS.TEAMS.2': 'Teams: external access',
+  'MS.TEAMS.4': 'Teams: email into channels',
+  'MS.TEAMS.5': 'Teams: apps',
+  'MS.POWERPLATFORM.1': 'Power Platform: creating environments',
+  'MS.POWERPLATFORM.2': 'Power Platform: data loss prevention',
+  'MS.POWERPLATFORM.3': 'Power Platform: tenant isolation',
+  'MS.POWERPLATFORM.4': 'Power Platform: content security policy',
+  'MS.POWERPLATFORM.5': 'Power Platform: creating Power Pages sites',
+  'MS.POWERPLATFORM.6': 'Power Platform: sharing apps',
+  'MS.POWERBI.1': 'Power BI: publish to web',
+  'MS.POWERBI.2': 'Power BI: guest access',
+  'MS.POWERBI.3': 'Power BI: external invitations',
+  'MS.POWERBI.4': 'Power BI: service principals',
+  'MS.POWERBI.5': 'Power BI: resource key sign-in',
+  'MS.POWERBI.6': 'Power BI: Python and R visuals',
+  'MS.POWERBI.7': 'Power BI: sensitive data',
 });
 
 function scubaArea(ref) {
@@ -93,7 +134,7 @@ export const STANDARDS = freeze([
     name: 'CISA SCuBA',
     publisher: 'CISA (U.S. Cybersecurity and Infrastructure Security Agency)',
     edition: `ScubaGear v${SCUBA_VERSION}`,
-    scope: 'Entra ID and Exchange Online policies',
+    scope: 'Entra ID, Exchange, Defender, SharePoint, Teams, Power Platform and Power BI policies',
     licence: 'Public domain (CC0)',
     source: `https://github.com/cisagov/ScubaGear/tree/v${SCUBA_VERSION}`,
     how: 'Each policy is checked by CISA\'s own ScubaGear rule, run unchanged on Keel\'s backups.',

@@ -12477,8 +12477,12 @@ item that needs it stays untouched.
   app creation policies (still 403 even on read), so it only widens the Restorer's privileges. App creation policies stay a manual
   restore step (PR #752). Removing a role grants nothing.
 - Needs: nothing. **Quick.**
-- Status: todo
-- Result:
+- Status: blocked (needs a one-time admin click)
+- Result: blocked: needs a one-time admin click (2026-10-30 11:10 UTC, keel-operator). Restorer only; global admin not used; nothing changed.
+  - `DELETE v1.0 /roleManagement/directory/roleAssignments/egSMFQfJVkW370RlUaa198mZ0YxuqWZGkk-qDKaRDzI-1` as the Restorer → **400** `Request_BadRequest` "Removing self from Global Administrator built-in role is not allowed." (request-ids 84382e57-d9e5-4cd1-961d-8f8d864096a2, b131c2d7-f48f-4e5b-a03a-d332bb6f3e63). The message names Global Administrator, but the assignment is Cloud Application Administrator: Graph won't let an app remove its own directory role.
+  - Restorer roles now: the 8 from Q264 step 1 **plus Cloud Application Administrator** (still assigned).
+  - The Collector has no role-write permission, and global admin isn't listed for this item, so I stopped.
+  - **Marouane:** Entra admin center > Roles and administrators > Cloud Application Administrator > Assignments > **Keel Restorer** > Remove. Or say "use global admin for Q265" and I'll make the same DELETE with it.
 - Do: as the Restorer (as in Q264 step 2), `DELETE v1.0 /roleManagement/directory/roleAssignments/egSMFQfJVkW370RlUaa198mZ0YxuqWZGkk-qDKaRDzI-1`.
   Report the status. Then list the Restorer's directory roles and confirm they match Q264 step 1 (the same 8 roles).
   Touch nothing else.

@@ -13560,7 +13560,7 @@ item that needs it stays untouched.
   the field from step 3 that is missing or odd; that is the fix for the thread.
 - **Report:** the run line; the 8 rows; the 10 values; match or mismatch per rule.
 
-### Q287: Recheck the Teams voice network and device policy reads after the trims (read-only toward the tenant, after PR #825), about 10 minutes
+### Q291: Recheck the Teams voice network and device policy reads after the trims (read-only toward the tenant, after PR #825), about 10 minutes
 - Drafted by the "Fix Teams voice and device reads" thread (2026-10-30), from the Q279 Result. Code: PR #825 drops the
   `teams-voice-network.pstn-usages` read (Get-CsOnlinePstnUsages is not exposed in the app-only session) and drops
   `Description` from audioConferencingPolicy, vdiPolicy and feedbackPolicy.

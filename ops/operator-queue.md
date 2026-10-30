@@ -13481,3 +13481,53 @@ item that needs it stays untouched.
      delegateToDomain, delegateToWorkspace`. Names and counts only, never values.
 - **Expected:** both new reads proven; the run `complete`, or `partial` only for unknown fields.
 - **Report:** the four items above; the evidence branch and commit; anything left in the tenant (expected: nothing, reads only).
+
+### Q289: Live read check of the Conditional Access agent conditions (Graph beta), for ScubaGear MS.AAD.9.1 (read-only toward the tenant), about 5 minutes
+- Drafted by the "Read the input for ScubaGear rule AAD 9.1" thread (2026-10-30). Code: a PR after #804 adds catalogue kind
+  `conditionalAccessPolicyAgentConditions` (`GET /beta/identity/conditionalAccess/policies?$select=id,conditions`, keeping only the id,
+  `conditions.agentIdRiskLevels` and `conditions.clientApplications.include/excludeAgentIdServicePrincipals`), switched off with
+  `liveGate` until this check passes. While off, ScubaGear MS.AAD.9.1 stays "could not check". The fields were declared from
+  Microsoft Learn (beta `conditionalAccessConditionSet`), not a live answer.
+- Needs: none (it uses only `tools/tenant-probe/auth.mjs` and `graph.mjs`, present on any build).
+- Status: todo
+- Result:
+- **Tenant:** GET only, Collector credential from `/etc/keel/tenant.json` (`Policy.Read.All`, already held: the v1.0 Conditional
+  Access backup uses it). Grant, assign, create or change nothing. No Conditional Access change of any kind.
+- Do, from your clone (any commit):
+  ```bash
+  node --input-type=module -e '
+  import { readFileSync } from "node:fs";
+  import { getToken } from "./tools/tenant-probe/auth.mjs";
+  import { GraphReader } from "./tools/tenant-probe/graph.mjs";
+  const c = JSON.parse(readFileSync("/etc/keel/tenant.json", "utf8"));
+  const t = await getToken(c);
+  const r = new GraphReader(async () => t.accessToken);
+  const beta = await r.collect("beta", "/identity/conditionalAccess/policies?$select=id,conditions");
+  const v1 = await r.collect("v1.0", "/identity/conditionalAccess/policies?$select=id");
+  const items = beta.items ?? [];
+  const has = (f) => items.filter(f).length;
+  const kinds = (xs) => [...new Set(xs.map((x) => x === undefined ? "absent" : x === null ? "null" : Array.isArray(x) ? "array" : typeof x))].sort();
+  const ids = new Set((v1.items ?? []).map((p) => p.id));
+  console.log(JSON.stringify({
+    beta: { error: beta.error ? { status: beta.error.status ?? null, code: beta.error.code ?? null } : null, count: items.length, pages: beta.pages },
+    v1: { error: v1.error ? { status: v1.error.status ?? null } : null, count: v1.items?.length ?? 0 },
+    sameIds: items.length === ids.size && items.every((p) => ids.has(p.id)),
+    agentIdRiskLevels: { present: has((p) => p.conditions && "agentIdRiskLevels" in p.conditions), types: kinds(items.map((p) => p.conditions?.agentIdRiskLevels)),
+      values: [...new Set(items.map((p) => p.conditions?.agentIdRiskLevels).filter((v) => typeof v === "string"))].sort() },
+    clientApplications: { present: has((p) => p.conditions && "clientApplications" in p.conditions), types: kinds(items.map((p) => p.conditions?.clientApplications)) },
+    includeAgentIdServicePrincipals: { present: has((p) => p.conditions?.clientApplications && "includeAgentIdServicePrincipals" in p.conditions.clientApplications),
+      types: kinds(items.map((p) => p.conditions?.clientApplications?.includeAgentIdServicePrincipals)),
+      allCount: has((p) => (p.conditions?.clientApplications?.includeAgentIdServicePrincipals ?? []).includes?.("All")) },
+    excludeAgentIdServicePrincipals: { present: has((p) => p.conditions?.clientApplications && "excludeAgentIdServicePrincipals" in p.conditions.clientApplications),
+      types: kinds(items.map((p) => p.conditions?.clientApplications?.excludeAgentIdServicePrincipals)) },
+    clientApplicationsKeys: [...new Set(items.flatMap((p) => Object.keys(p.conditions?.clientApplications ?? {})))].sort(),
+    conditionsKeys: [...new Set(items.flatMap((p) => Object.keys(p.conditions ?? {})))].sort(),
+  }, null, 2));'
+  ```
+  Report the JSON verbatim (field names, counts, types and Microsoft enum values only: no policy names, ids or object ids).
+- **Pass if:** `beta.error` is null; `sameIds` is true; `agentIdRiskLevels.present` equals `beta.count` (null values are fine on a
+  tenant with no agent policy). `clientApplications` may be null on policies that target no apps or agents; say so. If the include
+  or exclude agent fields never appear, report `clientApplicationsKeys` so the builder thread can check the spelling.
+  A 400 on `$select` or a 403 is a result: report the status and Graph code.
+- **Report:** the JSON; anything left in the tenant (expected: nothing, reads only). The builder thread then removes `liveGate`
+  from `conditionalAccessPolicyAgentConditions` in a small PR, which turns the read and MS.AAD.9.1 on together.

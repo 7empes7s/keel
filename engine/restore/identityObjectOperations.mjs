@@ -102,6 +102,10 @@ function signInLockout(resource, ctx = {}) {
   if (keelAppIds.length === 0) {
     return 'KEEL cannot tell here which apps are its own, and turning off one of them would lock KEEL out, so a restore never turns sign-in off without that list';
   }
+  // The Engage writer's settings file is there but unreadable: its app is unknown.
+  if (ctx.deletionGuardOptions?.keelAppIdsUnknown) {
+    return `KEEL cannot tell here which apps are its own (${ctx.deletionGuardOptions.keelAppIdsUnknown}), and turning off one of them would lock KEEL out, so a restore never turns sign-in off until that is fixed`;
+  }
   if (keelAppIds.includes(appId)) return 'this is one of KEEL\'s own apps; turning its sign-in off would lock KEEL out, so a restore never does it';
   const type = live.servicePrincipalType ?? payload.servicePrincipalType;
   if (type !== 'Application') {

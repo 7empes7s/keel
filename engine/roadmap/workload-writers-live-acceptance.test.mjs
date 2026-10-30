@@ -34,7 +34,7 @@ import { SITE_PERMISSIONS_RECORD_FILE } from '../../tools/qualification/sharepoi
 import { STRUCTURE_WRITES_RECORD_FILE } from '../../tools/qualification/sharepointStructureWritesAcceptance.mjs';
 import { READ_FAMILIES, workloadReadsRecordFile } from '../../tools/qualification/workloadReadsAcceptance.mjs';
 import {
-  CAPTURE_CREATE_PREFIX, PUT_BACK_RETRIES, TENANT_WIDE_UNSAFE_SWITCHES, TENANT_WIDE_WRITES, WORKLOAD_WRITES_LIVE_GATE, WRITTEN_WORKLOADS, chooseCaptureChange, workloadWritesRecordFile,
+  CAPTURE_CREATE_PREFIX, PUT_BACK_RETRIES, TENANT_WIDE_UNSAFE_SWITCHES, TENANT_WIDE_WRITES, WORKLOAD_WRITES_LIVE_GATE, WRITTEN_WORKLOADS, chooseCaptureChange, narrowerValue, workloadWritesRecordFile,
 } from '../../tools/qualification/workloadWritesAcceptance.mjs';
 import {
   captureWorkloadWrites, ledgerEvidenceFromWorkloadWritesAcceptance, main, pinnedModuleVersions, workloadWritesCapturePlan, writeWorkloadWritesFiles,
@@ -46,10 +46,11 @@ import { FAMILIES as RETENTION_DLP_FAMILIES } from '../collect/workloads/purview
 import { FAMILIES as TEAMS_EXTENDED_FAMILIES } from '../collect/workloads/teamsExtended.mjs';
 import { FAMILIES as TEAMS_POLICY_FAMILIES } from '../collect/workloads/teamsPolicies.mjs';
 import { workloadWriteQualification } from '../coverage/qualification.mjs';
-import { writeFamilies } from '../restore/workloads/cmdletSettings.mjs';
+import { ONEDRIVE_FIELDS, oneDriveEnumName } from '../collect/workloads/onedrive.mjs';
+import { WORKLOAD_EFFECT_RULES, writeFamilies } from '../restore/workloads/cmdletSettings.mjs';
 import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
-import { fakeCmdletContainer } from '../test/fakeCmdletContainer.mjs';
+import { containerAllowlist, fakeCmdletContainer } from '../test/fakeCmdletContainer.mjs';
 
 const KEY = 'workload-writers-test-key';
 const TENANT = '00000000-0000-4000-8000-0000000000e1';
@@ -194,7 +195,8 @@ async function signedCapture(workload, live = fakeTenant(workload), extra = {}) 
 
 // ------------------------------------------------------------ every workload
 
-for (const workload of Object.keys(WRITTEN_WORKLOADS)) {
+// OneDrive has its own recipe (a narrowing on one named site), tested below.
+for (const workload of Object.keys(WORKLOADS)) {
   test(`${workload}: one write per family on KEEL-RT- fixtures only, put back, and it imports as write proof`, async () => {
     const live = fakeTenant(workload);
     const before = structuredClone(live.state);
@@ -660,11 +662,157 @@ test('a capture records the workload\'s own module version, the one the image pi
 
 test('the offline plan names every written family and sends nothing', () => {
   for (const workload of Object.keys(WRITTEN_WORKLOADS)) {
-    const plan = workloadWritesCapturePlan({ workload });
+    const plan = workloadWritesCapturePlan({ workload, site: ONEDRIVE_SITE });
     const operations = new Set(plan.map((step) => step.operationId).filter(Boolean));
     assert.deepEqual([...operations].sort(), [...WRITTEN_WORKLOADS[workload].operations].sort(), workload);
     assert.ok(plan.filter((step) => step.cmdlet).every((step) => step.credential === 'restorer' && /^(Set|New)-/.test(step.cmdlet)));
   }
   assert.ok(workloadWritesCapturePlan({ workload: 'teams-org-policies', includeCreates: false }).every((step) => !String(step.operationId).endsWith('.add')));
   assert.throws(() => workloadWritesCapturePlan({ workload: 'entra' }), /--workload must be one of/);
+});
+
+// ------------------------------------------------------------ OneDrive
+
+const ONEDRIVE_SITE = 'https://contoso-my.sharepoint.com/personal/keel-rt-alice_contoso_test';
+const BOB_SITE = 'https://contoso-my.sharepoint.com/personal/bob_contoso_test';
+const ONEDRIVE_GRANTS = { ...GRANTS, restorer: { permissions: ['Sites.FullControl.All'], roles: ['SharePoint Administrator'] } };
+const ONEDRIVE_ALLOWLIST = { ...containerAllowlist('AllowedPnP'), ...containerAllowlist('AllowedOneDriveWrites') };
+// As run-cmdlet.ps1 sends them: ConvertTo-Json writes PnP's enums as numbers (Edit is 2, Internal is 2).
+const oneDriveBody = (url, extra = {}) => ({
+  Url: url, Template: 'SPSPERS#10', Owner: 'keel-rt-alice@contoso.test', SharingCapability: 1, SharingDomainRestrictionMode: 0,
+  SharingAllowedDomainList: '', SharingBlockedDomainList: '', DefaultSharingLinkType: 2, DefaultLinkPermission: 2,
+  OverrideTenantExternalUserExpirationPolicy: false, ExternalUserExpirationInDays: 60, OverrideTenantAnonymousLinkExpirationPolicy: false,
+  AnonymousLinkExpirationInDays: 0, StorageQuota: 1048576, StorageQuotaWarningLevel: 943718, LockState: 'Unlock', ...extra,
+});
+
+function oneDriveTenant(sites = [oneDriveBody(ONEDRIVE_SITE), oneDriveBody(BOB_SITE)], { hooks = {} } = {}) {
+  const state = structuredClone(sites);
+  const writes = [];
+  const container = fakeCmdletContainer({
+    module: 'PnP.PowerShell',
+    allowlist: ONEDRIVE_ALLOWLIST,
+    answer(cmdlet, parameters) {
+      const hook = hooks.cmdlet?.({ cmdlet, parameters, state });
+      if (hook?.error || hook === 'crash') return hook;
+      const found = state.find((item) => item.Url.toLowerCase() === String(parameters.Identity).toLowerCase());
+      if (cmdlet === 'Get-PnPTenantSite') return found ? [found] : { error: { message: `Cannot get site ${parameters.Identity}`, category: 'InvalidOperation', errorId: 'EXCEPTION' } };
+      writes.push({ cmdlet, parameters });
+      const { Identity, ...values } = parameters;
+      if (!found) return { error: { message: `Cannot get site ${Identity}`, category: 'InvalidOperation', errorId: 'EXCEPTION' } };
+      Object.assign(found, values);
+      return [];
+    },
+  });
+  return { state, writes, powershell: container.powershell };
+}
+
+const ON_TEST = { testTenantRefs: [tenantRef] };
+const oneDriveCapture = (live, extra = {}) => captureWorkloadWrites({
+  workload: 'onedrive-site-settings', collector: live.powershell, restorer: live.powershell, directoryTenantId: TENANT,
+  configs: { collector: { tenantId: TENANT }, restorer: { tenantId: TENANT } }, tenantRef, build,
+  credentials: { collector: 'app:collector', restorer: 'app:restorer' }, grants: ONEDRIVE_GRANTS, moduleVersion: '3.4.1',
+  sleep: async () => {}, readBackAttempts: 2, readBackDelayMs: 0, site: ONEDRIVE_SITE, ...ON_TEST, ...extra,
+});
+async function signedOneDrive(live = oneDriveTenant(), extra = {}) {
+  const result = await oneDriveCapture(live, extra);
+  const dir = tempDir();
+  const { evidence } = writeWorkloadWritesFiles({ ...result, outPath: join(dir, workloadWritesRecordFile('onedrive-site-settings')), hmacKey: KEY });
+  return { ...result, evidence, dir, live };
+}
+
+test('onedrive-site-settings: narrows one default link setting on the KEEL-RT- OneDrive, puts it back, and imports as write proof', async () => {
+  const live = oneDriveTenant();
+  const before = structuredClone(live.state);
+  const { evidence, dir, needsManualRevert } = await signedOneDrive(live);
+
+  assert.deepEqual(verifyEvidence(evidence, verifyOptions(dir, ON_TEST)).failures, []);
+  assert.deepEqual(needsManualRevert, []);
+  // Edit (2) to View (1) on Alice's OneDrive, then Edit back; nothing else, and never Bob's.
+  assert.deepEqual(live.writes, [
+    { cmdlet: 'Set-PnPTenantSite', parameters: { Identity: ONEDRIVE_SITE, DefaultLinkPermission: 1 } },
+    { cmdlet: 'Set-PnPTenantSite', parameters: { Identity: ONEDRIVE_SITE, DefaultLinkPermission: 2 } },
+  ]);
+  assert.deepEqual(live.state, before);
+  const [write] = evidence.subject.writes;
+  assert.deepEqual({ field: write.field, type: write.type, before: write.before, target: write.target, final: write.final, contentEffects: write.contentEffects },
+    { field: 'DefaultLinkPermission', type: 'narrowing', before: 2, target: 1, final: 2, contentEffects: [] });
+  // The record names the site by its pseudonymized address, still a KEEL-RT- person's.
+  assert.match(write.fixture, /^https:\/\/t[0-9a-f]+-my\.sharepoint\.com\/personal\/keel-rt-u[0-9a-f]{12}_t[0-9a-f]{11}_example$/);
+  assert.equal(write.identity, write.fixture);
+
+  const seam = ledgerEvidenceFromWorkloadWritesAcceptance(evidence, { tenantRef, build, hmacKey: KEY, evidenceDir: dir, ...ON_TEST });
+  assert.deepEqual(seam.failures, []);
+  assert.deepEqual(seam.writes.map((item) => item.operationId), ['onedrive.site-settings.update']);
+  assert.deepEqual(seam.runtime, { modules: { 'PnP.PowerShell': '3.4.1' } });
+});
+
+test('onedrive-site-settings: a site already at View falls back to the link type, and one at View and Direct is skipped', async () => {
+  const linkType = oneDriveTenant([oneDriveBody(ONEDRIVE_SITE, { DefaultLinkPermission: 'View', DefaultSharingLinkType: 'AnonymousAccess' })]);
+  const { evidence, dir } = await signedOneDrive(linkType);
+  assert.deepEqual(verifyEvidence(evidence, verifyOptions(dir, ON_TEST)).failures, []);
+  assert.deepEqual(linkType.writes.map((item) => item.parameters), [
+    { Identity: ONEDRIVE_SITE, DefaultSharingLinkType: 'Direct' }, { Identity: ONEDRIVE_SITE, DefaultSharingLinkType: 'AnonymousAccess' },
+  ]);
+
+  const narrowest = oneDriveTenant([oneDriveBody(ONEDRIVE_SITE, { DefaultLinkPermission: 1, DefaultSharingLinkType: 1 })]);
+  const skipped = await oneDriveCapture(narrowest);
+  assert.deepEqual(narrowest.writes, []);
+  assert.match(skipped.record.subject.skipped[0].reason, /nothing on it can be narrowed: DefaultLinkPermission must be Edit/);
+  // A site following the tenant default (None) is not narrowed either: None to View could widen.
+  const inherited = oneDriveTenant([oneDriveBody(ONEDRIVE_SITE, { DefaultLinkPermission: 0, DefaultSharingLinkType: 0 })]);
+  await oneDriveCapture(inherited);
+  assert.deepEqual(inherited.writes, []);
+});
+
+test('onedrive-site-settings: only a KEEL-RT- person\'s OneDrive on the test tenant, and never a locked one', async () => {
+  const live = oneDriveTenant();
+  await assert.rejects(oneDriveCapture(live, { site: BOB_SITE }), /--site must be a KEEL-RT- person's OneDrive/);
+  await assert.rejects(oneDriveCapture(live, { site: 'https://contoso.sharepoint.com/sites/KEEL-RT-site' }), /--site must be/);
+  await assert.rejects(oneDriveCapture(live, { testTenantRefs: [] }), /test tenant only; nothing was sent/);
+  assert.deepEqual(live.writes, []);
+
+  const locked = oneDriveTenant([oneDriveBody(ONEDRIVE_SITE, { LockState: 'ReadOnly' })]);
+  const result = await oneDriveCapture(locked);
+  assert.deepEqual(locked.writes, []);
+  assert.match(result.record.subject.skipped[0].reason, /unusable/);
+});
+
+test('onedrive-site-settings: the gate refuses a narrowing off the test tenant, a widening, or another site', async () => {
+  const { evidence, dir } = await signedOneDrive();
+  const resign = (change) => signEvidence(change(structuredClone(evidence)), KEY);
+  const failures = (record, extra = ON_TEST) => verifyEvidence(record, verifyOptions(dir, extra)).failures.join(' | ');
+
+  assert.match(failures(evidence, { testTenantRefs: [] }), /narrowing capture is allowed on the test tenant only/);
+  // View to Edit is a widening, not a declared narrowing.
+  assert.match(failures(resign((record) => {
+    Object.assign(record.subject.writes[0], { before: 1, target: 2 });
+    for (const request of record.subject.requests) if (request.cmdlet) request.parameters.DefaultLinkPermission = request.parameters.DefaultLinkPermission === 1 ? 2 : 1;
+    return record;
+  })), /must write the declared narrower value/);
+  assert.match(failures(resign((record) => {
+    Object.assign(record.subject.writes[0], { field: 'SharingCapability' });
+    return record;
+  })), /SharingCapability is not a field a capture may write/);
+  assert.match(failures(resign((record) => {
+    record.subject.writes[0].fixture = BOB_SITE;
+    return record;
+  })), /not a KEEL-RT- fixture/);
+});
+
+test('OneDrive sharing settings read as numbers are judged as their names', () => {
+  const rules = (field) => WORKLOAD_EFFECT_RULES.onedriveSiteSettings.find((item) => item.field === field).when;
+  assert.equal(rules('DefaultLinkPermission')(2, 1), false, 'Edit to View narrows');
+  assert.equal(rules('DefaultLinkPermission')(1, 2), true, 'View to Edit widens');
+  assert.equal(rules('DefaultSharingLinkType')(2, 1), false, 'Internal to Direct narrows');
+  assert.equal(rules('DefaultSharingLinkType')(1, 3), true, 'Direct to AnonymousAccess widens');
+  assert.equal(rules('SharingCapability')(1, 3), false, 'ExternalUserSharingOnly to ExistingExternalUserSharingOnly narrows');
+  assert.equal(rules('SharingCapability')(0, 2), true, 'Disabled to ExternalUserAndGuestSharing widens');
+  assert.equal(rules('SharingDomainRestrictionMode')(1, 0), true, 'AllowList to None widens');
+  assert.equal(oneDriveEnumName('DefaultLinkPermission', 0), 'None');
+  assert.equal(oneDriveEnumName('DefaultLinkPermission', 'edit'), 'Edit');
+  assert.equal(oneDriveEnumName('DefaultLinkPermission', 9), null);
+  assert.equal(narrowerValue('onedriveSiteSettings', 'DefaultLinkPermission', '2'), '1');
+  // 0 is None: the site follows the tenant default, so the value is not its own.
+  assert.equal(ONEDRIVE_FIELDS.DefaultLinkPermission.inheritedWhen(0, {}), true);
+  assert.equal(ONEDRIVE_FIELDS.DefaultSharingLinkType.inheritedWhen(2, {}), false);
 });

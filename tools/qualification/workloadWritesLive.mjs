@@ -16,7 +16,14 @@
  *        [--build <sha>] [--powershell-image <tag>] [--no-create]
  *
  * Workloads: exchange-mail-flow, exchange-extended, teams-org-policies,
- * teams-voice-policies, purview-retention-dlp, purview-governance.
+ * teams-voice-policies, purview-retention-dlp, purview-governance, onedrive-site-settings.
+ *
+ * OneDrive (onedrive-site-settings) also takes --site https://<tenant>-my.sharepoint.com/personal/keel-rt-...,
+ * the one KEEL-RT- person's OneDrive it reads and writes, and runs on the test tenant only.
+ * Its writer sends sharing fields only, so its capture narrows one default link setting
+ * (DefaultLinkPermission Edit to View, or DefaultSharingLinkType to Direct), reads it back,
+ * puts the value it read back, and reads that back (workloadWritesAcceptance.mjs
+ * NARROWING_CAPTURES). A site already at View and Direct is skipped and says so.
  *
  * The record is bound to the version of the workload's own module (MicrosoftTeams for
  * the Teams workloads, ExchangeOnlineManagement for the rest) that ops/powershell/Dockerfile
@@ -56,6 +63,8 @@ import { basename, dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { exchangeCmdlet, structuredFailure } from '../../engine/collect/workloads/exchange.mjs';
+import { siteLocked } from '../../engine/collect/workloads/onedrive.mjs';
+import { oneDriveReader } from '../../engine/restore/workloads/onedriveSettings.mjs';
 import { readExchangeExtended } from '../../engine/collect/workloads/exchangeExtended.mjs';
 import { readMailFlow } from '../../engine/collect/workloads/mailFlow.mjs';
 import { lockState } from '../../engine/collect/workloads/purview.mjs';
@@ -87,9 +96,19 @@ export const WORKLOAD_READERS = Object.freeze({
   'teams-voice-policies': readTeamsExtended,
   'purview-retention-dlp': readRetentionDlp,
   'purview-governance': readPurviewExtended,
+  // The one KEEL-RT- OneDrive named with --site (captureWorkloadWrites `site`).
+  'onedrive-site-settings': null,
 });
+const ONEDRIVE_WORKLOAD = 'onedrive-site-settings';
 
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Why `site` is not a KEEL-RT- person's OneDrive address, or null. */
+export function oneDriveSiteProblem(site) {
+  const message = '--site must be a KEEL-RT- person\'s OneDrive: https://<tenant>-my.sharepoint.com/personal/keel-rt-...';
+  if (typeof site !== 'string' || !isFixtureName(site) || !/^https:\/\/[a-z0-9-]+-my\.sharepoint\.com\/personal\//i.test(site)) return message;
+  return null;
+}
 const MODULE_VERSION_RE = /^\d+\.\d+\.\d+(\.\d+)?$/;
 const sha256Hex = (text) => createHash('sha256').update(text).digest('hex');
 
@@ -99,8 +118,12 @@ function knownWorkload(workload) {
 }
 
 /** Offline: what a capture of `workload` would send, family by family. */
-export function workloadWritesCapturePlan({ workload, includeCreates = true, allowTenantWide = false }) {
+export function workloadWritesCapturePlan({ workload, includeCreates = true, allowTenantWide = false, site = null }) {
   knownWorkload(workload);
+  if (workload === ONEDRIVE_WORKLOAD) {
+    const problem = oneDriveSiteProblem(site);
+    if (problem) throw new Error(problem);
+  }
   const steps = [
     { step: 0, credential: 'none', refused: 'a Remove- cmdlet (KEEL never deletes; refused before sending)' },
     { step: 0, credential: 'none', refused: 'a declared write with an undeclared parameter (refused before sending)' },
@@ -117,6 +140,14 @@ export function workloadWritesCapturePlan({ workload, includeCreates = true, all
     steps.push({ step: 3, credential: 'collector', read: family, operationId: ops.update, note: tenantWide
       ? 'the first KEEL-RT- object with no lock; with none, the tenant-wide setting when it is the only object'
       : 'the first KEEL-RT- object with no lock; skipped when there is none' });
+    if (workload === ONEDRIVE_WORKLOAD) {
+      steps[steps.length - 1].note = `${site}: skipped when it is not a KEEL-RT- person's OneDrive, is locked, or is already at View and Direct`;
+      steps.push({ step: 3, credential: 'restorer', cmdlet: write.method, parameters: { Identity: site, 'DefaultLinkPermission or DefaultSharingLinkType': 'View or Direct (narrower)' }, operationId: ops.update });
+      steps.push({ step: 3, credential: 'collector', read: family, operationId: ops.update, note: 'read back' });
+      steps.push({ step: 3, credential: 'restorer', cmdlet: write.method, parameters: { Identity: site, '<the same field>': '<the value read in step 1>' }, operationId: ops.update, note: 'put back' });
+      steps.push({ step: 3, credential: 'collector', read: family, operationId: ops.update, note: 'read back' });
+      continue;
+    }
     steps.push({ step: 3, credential: 'restorer', cmdlet: write.method, parameters: { Identity: '<the fixture>', '<a comment, description or switch>': '<marker>' }, operationId: ops.update });
     steps.push({ step: 3, credential: 'collector', read: family, operationId: ops.update, note: 'read back' });
     steps.push({ step: 3, credential: 'restorer', cmdlet: write.method, parameters: { Identity: '<the fixture>', '<the same field>': '<original>' }, operationId: ops.update, note: 'put back' });
@@ -144,7 +175,8 @@ async function readUntil(readOnce, matches, { sleep, attempts, delayMs }) {
   return { found, matched: false, error };
 }
 
-const isLocked = (entry) => entry?.lock === 'locked' || lockState(entry?.fields) === 'locked';
+// A OneDrive's LockState (read-only or no access) counts too: KEEL never changes or unlocks a locked site.
+const isLocked = (entry) => entry?.lock === 'locked' || lockState(entry?.fields) === 'locked' || siteLocked(entry?.fields);
 
 /** Why `entry` cannot be written, or null. A rule's policy must be read and unlocked. */
 function lockProblem(entry, resources) {
@@ -159,6 +191,7 @@ function lockProblem(entry, resources) {
 
 /** The parameters naming an object to its Set- cmdlet (writeDeclarations.mjs `identity`). */
 function identityOf(write, entry) {
+  if (write.identity === 'url') return { Identity: entry.fields?.url ?? entry.url };
   if (write.identity === 'guid') return { Identity: entry.identity };
   if (write.identity === 'object-name') return { Identity: entry.fields.Name };
   if (write.identity === 'fixed') return { Identity: write.fixedIdentity };
@@ -176,7 +209,7 @@ function identityOf(write, entry) {
  */
 export async function captureWorkloadWrites({
   workload, collector, restorer, read = WORKLOAD_READERS[workload], directoryTenantId, configs = {}, tenantRef, build,
-  credentials, grants, moduleVersion, includeCreates = true, allowTenantWide = false, testTenantRefs, now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
+  credentials, grants, moduleVersion, includeCreates = true, allowTenantWide = false, testTenantRefs, site = null, now = () => new Date(), sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
   readBackAttempts = 5, readBackDelayMs = 2000, suffix = () => randomBytes(4).toString('hex'),
   // A Purview policy refuses its put-back while the capture's own write is still deploying
   // (Q260: about an hour when deployment times out), so the put-back waits, up to 90 minutes.
@@ -193,6 +226,14 @@ export async function captureWorkloadWrites({
   }
   if (!grants?.restorer || !Array.isArray(grants.restorer.permissions) || !Array.isArray(grants.restorer.roles)) problems.push('--grants must name the restorer\'s permissions and roles');
   if (allowTenantWide && tenantRef && !onTestTenant(tenantRef, testTenantRefs)) problems.push(`${TENANT_WIDE_OPTION} is allowed on the test tenant only; nothing was sent`);
+  // OneDrive: one named KEEL-RT- person's site, narrowed and put back, on the test tenant only.
+  const oneDrive = workload === ONEDRIVE_WORKLOAD;
+  if (oneDrive) {
+    const problem = oneDriveSiteProblem(site);
+    if (problem) problems.push(problem);
+    if (tenantRef && !onTestTenant(tenantRef, testTenantRefs)) problems.push('a OneDrive capture runs on the test tenant only; nothing was sent');
+    if (!read) read = ({ powershell }) => oneDriveReader()({ powershell, sites: [site] });
+  }
   if (problems.length) throw new Error(problems.join('; '));
   const tenant = directoryTenantId.toLowerCase();
   for (const role of ['collector', 'restorer']) {
@@ -378,7 +419,7 @@ export async function captureWorkloadWrites({
       continue;
     }
     const name = fixtureNameOf(pick.entry) ?? (scope === 'tenant-wide' ? pick.entry.fields?.Identity ?? null : null);
-    const change = chooseCaptureChange(write, pick.entry, { marker, tenantWide: scope === 'tenant-wide' });
+    const change = chooseCaptureChange(write, pick.entry, { marker, tenantWide: scope === 'tenant-wide', narrowing: oneDrive });
     if (change.reason) {
       skipped.push({ family, operationId: ops.update, fixture: name, reason: change.reason });
       continue;
@@ -431,6 +472,7 @@ async function captureUpdate({ write, capture, change, key, readFamily, writeCmd
     // Re-read just before writing: the original is what the object holds now.
     const now = await readEntry();
     if (!now) { capture.error = 'the fixture is gone; nothing was written'; return; }
+    if (isLocked(now)) { capture.error = 'the fixture is now locked; nothing was written'; return; }
     if (now.fieldCoverage?.[change.field]?.status !== 'observed') { capture.error = `${change.field} was not observed; nothing was written`; return; }
     const original = now.fields[change.field] ?? null;
     if (!sameValue(original, change.before)) { capture.error = `${change.field} changed since the first read; nothing was written`; return; }
@@ -439,6 +481,7 @@ async function captureUpdate({ write, capture, change, key, readFamily, writeCmd
     identity = identityOf(write, now);
     if (identity.Identity !== capture.identity || !identityNamesFixture(write, capture)) { capture.error = 'the fixture\'s identity changed since the first read; nothing was written'; return; }
     putBack = original ?? (change.type === 'text' ? '' : original);
+    if (change.type === 'narrowing') capture.contentEffects = [];
     try {
       await writeCmdlet(write.method, { ...identity, [change.field]: change.after });
     } catch (error) {
@@ -531,7 +574,7 @@ function parseArgs(argv) {
   const names = {
     '--workload': 'workload', '--tenant-ref': 'tenantRef', '--directory-tenant-id': 'directoryTenantId',
     '--collector-ref': 'collectorRef', '--restorer-ref': 'restorerRef', '--collector-config': 'collectorConfig', '--restorer-config': 'restorerConfig',
-    '--module-version': 'moduleVersion', '--grants': 'grants', '--out': 'out', '--build': 'build', '--powershell-image': 'image',
+    '--module-version': 'moduleVersion', '--grants': 'grants', '--out': 'out', '--build': 'build', '--powershell-image': 'image', '--site': 'site',
   };
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
@@ -616,6 +659,7 @@ export async function main(argv = process.argv.slice(2), {
     grants: JSON.parse(readFile(options.grants)),
     includeCreates: options.includeCreates,
     allowTenantWide: options.allowTenantWide,
+    ...(options.site ? { site: options.site } : {}),
   });
   const { evidence, logPath } = writeWorkloadWritesFiles({ record, captureLog, outPath, hmacKey: env.KEEL_QUALIFICATION_HMAC_KEY ?? null });
   const result = verifyEvidence(evidence, { gate: WORKLOAD_WRITES_LIVE_GATE, tenantRef: options.tenantRef, build, requireLive: true, evidenceDir: dirname(outPath) });

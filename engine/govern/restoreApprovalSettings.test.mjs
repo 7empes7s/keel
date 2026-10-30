@@ -88,6 +88,8 @@ test('every kind with a high-impact rule lands in the service its name says, so 
     : /^teams/.test(type) ? 'Teams'
       : /^(purview|retentionLabel$|ediscovery)/.test(type) ? 'Purview'
         : /^sharepoint/.test(type) ? 'SharePoint'
+          // Who may join or register devices is an Entra setting, despite its name.
+          : type === 'deviceRegistrationPolicy' ? 'Entra'
           : /^(device|configurationPolicy$|windowsManagedAppProtection$|managedAppPolicy$|mobileApp)/.test(type) ? 'Intune'
             : 'Entra');
   const types = [...Object.keys(CONTENT_EFFECT_RULES), ...Object.keys(WORKLOAD_EFFECT_RULES)];

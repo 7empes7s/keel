@@ -7,23 +7,23 @@
   "resourceType": "organizationalBranding",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "95c3a33522c0acfd36e269b699c39e9238f24b38",
+  "build": "e552b30c0162fed7e889f65ca927f0f4a70241e4",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-10-14T14:19:30.799Z",
-  "restoreRef": "84d37011-7331-8505-9bae-ee220d8057db",
-  "naturalKey": "organizationalBrandingLocalization:0",
+  "observedAt": "2026-10-29T23:59:29.621Z",
+  "restoreRef": "08221958-265f-8e43-b34a-dc0d5c2d3936",
+  "naturalKey": "organizationalBranding:organizationalBranding",
   "fixtureKind": "tenant-setting",
-  "captureSha256": "7bf41d837c1593736b53ff37740cc706575f531fb997b17f0217939c13fc864a",
+  "captureSha256": "07a6708dc1bd4de5aefc3da0f4f2e250d481be0f84367120a59e39588ead6b84",
   "proofRef": "docs/release/qualifications/entra-live/organizationalBranding.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "ccc14cf5e0457801020e54f98416cf439f34c048edd3acab7c485200f8516996"
+      "signature": "a474c8cee915a49c0d1c40d4175ad5f4066f596737703bf9e5f10d7157374fe2"
     }
   }
 }

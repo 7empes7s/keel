@@ -1,37 +1,37 @@
 {
-  "restoreRef": "5eae4f2c-d9ef-82a5-9113-c2bd36f32520",
+  "restoreRef": "e4176fac-b702-8771-be59-6ec884076ae5",
   "entry": {
-    "naturalKey": "claimsMappingPolicy:1dff3a2d-fc5c-8b39-b882-7020bf8d5ee7",
+    "naturalKey": "claimsMappingPolicy:c1adf28e-3e66-8841-9a67-437f7d266af0",
     "resourceType": "claimsMappingPolicy",
     "operation": "update",
-    "targetId": "1dff3a2d-fc5c-8b39-b882-7020bf8d5ee7",
+    "targetId": "c1adf28e-3e66-8841-9a67-437f7d266af0",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-15T10:30:24.406Z",
+    "recordedAt": "2026-10-30T00:38:03.715Z",
     "priorState": {
-      "id": "1dff3a2d-fc5c-8b39-b882-7020bf8d5ee7",
+      "id": "c1adf28e-3e66-8841-9a67-437f7d266af0",
       "definition": [
-        "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[{\"Source\":\"user\",\"ID\":\"employeeid\",\"SamlClaimType\":\"http://schemas.xmlsoap.org/ws/2005/05/identity/claims/employeeid\",\"JwtClaimType\":\"empid\"}]}}"
+        "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[]}}"
       ],
-      "displayName": "KEEL-RT-W2-claimsMappingPolicy-drift",
+      "displayName": "KEEL-RT-248-claims-drifted",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "intendedState": {
-      "id": "1dff3a2d-fc5c-8b39-b882-7020bf8d5ee7",
+      "id": "c1adf28e-3e66-8841-9a67-437f7d266af0",
       "definition": [
-        "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[{\"Source\":\"user\",\"ID\":\"employeeid\",\"SamlClaimType\":\"http://schemas.xmlsoap.org/ws/2005/05/identity/claims/employeeid\",\"JwtClaimType\":\"employeeid\"}]}}"
+        "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[]}}"
       ],
-      "displayName": "KEEL-RT-W2-claimsMappingPolicy",
+      "displayName": "KEEL-RT-248-claims",
       "deletedDateTime": null,
       "isOrganizationDefault": false
     },
     "postState": {
-      "id": "1dff3a2d-fc5c-8b39-b882-7020bf8d5ee7",
+      "id": "c1adf28e-3e66-8841-9a67-437f7d266af0",
       "definition": [
-        "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[{\"Source\":\"user\",\"ID\":\"employeeid\",\"SamlClaimType\":\"http://schemas.xmlsoap.org/ws/2005/05/identity/claims/employeeid\",\"JwtClaimType\":\"employeeid\"}]}}"
+        "{\"ClaimsMappingPolicy\":{\"Version\":1,\"IncludeBasicClaimSet\":\"true\",\"ClaimsSchema\":[]}}"
       ],
-      "displayName": "KEEL-RT-W2-claimsMappingPolicy",
+      "displayName": "KEEL-RT-248-claims",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/claimsMappingPolicies/$entity",
       "deletedDateTime": null,
       "isOrganizationDefault": false

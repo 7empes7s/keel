@@ -7,23 +7,23 @@
   "resourceType": "application",
   "operation": "restore-soft-deleted",
   "fieldProjectionContractVersion": 1,
-  "build": "e86afa9865da72964ce74567394eb41c3caf263a",
+  "build": "e552b30c0162fed7e889f65ca927f0f4a70241e4",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-10-14T14:19:33.412Z",
-  "restoreRef": "84d37011-7331-8505-9bae-ee220d8057db",
-  "naturalKey": "application:9bfe4769-68c7-8d26-ac0c-00f062e25be7",
+  "observedAt": "2026-10-30T00:08:50.033Z",
+  "restoreRef": "6dba1dd8-38e1-8ff1-b4f7-23efac8abb41",
+  "naturalKey": "application:30659b31-ea5f-866e-8684-9bc50e1d7114",
   "fixtureKind": "named-object",
-  "captureSha256": "7826607d8c540d1a86f6450c82696df1de47914950fb35e4b67db5ac7409ce96",
+  "captureSha256": "ab8ea40c857a2c83e157590aae9c5c0291ea62c561675c24ca3e9f6e40b23f12",
   "proofRef": "docs/release/qualifications/entra-live/application.restore-soft-deleted.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "32c3d3e67e87cea2a5199868f7d19afecc1eeb425c17a05f8722dde9ce2808dc"
+      "signature": "ac58613075b0bbe075eccc35d7e95d75adc1d7774b46834f2f132ad123c03823"
     }
   }
 }

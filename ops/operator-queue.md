@@ -11567,7 +11567,25 @@ item that needs it stays untouched.
     skipped. The create is in Microsoft's docs; **the PATCH is not** (docs list only Cloud PC, Intune and directory for update).
   - Not in this item: `exchangeRoleDefinition` and `defenderCustomAppScope` stay restored by hand: Graph has no write for either.
 - Needs: /opt/keel-live at the PR #693 merge or later (`grep -q defenderRoleRefusal /opt/keel-live/engine/restore/identityObjectOperations.mjs`).
-- Status: todo
+- Status: blocked: app creation policy 403; Defender roles refused (#742)
+- Result: blocked, nothing promoted (2026-10-30 02:05 UTC, keel-operator). B = **05a930b5** (`defenderRoleRefusal` present).
+  - Credentials: Restorer for writes, Collector for reads. Global admin not used; nothing granted. The Restorer's appRoleAssignments hold both declared permissions (Policy.ReadWrite.ApplicationConfiguration and RoleManagement.ReadWrite.Defender: yes). No CA, no break-glass.
+  - Written down first: 1 app creation policy, the built-in `microsoft-verified-publishers` (includes 2, excludes 0). 0 Defender custom roles.
+  - **servicePrincipalCreationPolicy (create and update): blocked by Graph.**
+    - `POST beta /policies/servicePrincipalCreationPolicies` as the Restorer answered **403** `Authorization_RequestDenied: Insufficient privileges to complete the operation.` (request-id 24075f32-43b6-48f2-ab15-d28eb68317ac), although the declared permission is held.
+    - The fixture was never created, so the create and update rounds could not run. Granting more was out of scope.
+  - **defenderRoleDefinition (create and update): refused by Keel (#742).**
+    - Fixture `KEEL-RT-defender-role` created (201, assigned to nobody). Graph stored the permission as `microsoft.xdr/secops/securitydata/basics/read`.
+    - S = `adf1a1bb`, exit 3 (incomplete only on todoSettings 500). Both kinds `complete`; the role is in S. The built-in policy in S holds `includes` 2 and `excludes` 0.
+    - Create round: role deleted (204, then 404). Dry run `d41e19ac`: skipped 1, 0 writes, status refused: `manual: the backup does not say whether this Defender role is built in, so KEEL does not write it`.
+    - Cause: the Defender RBAC API has no `isBuiltIn` (`$select=isBuiltIn` answers 400 `Could not find a property named 'isBuiltIn' …`), so the guard can never pass. **#742.**
+    - Update round not run: the role can't be restored, and the fixture was already deleted by the create round.
+  - Step 5: not run (nothing restorable).
+  - Step 6, built-in check: dry run `efa0b4fb` selecting `servicePrincipalCreationPolicy:microsoft-verified-publishers`, exit 0, status completed.
+    - It was **`applied` with no field list, not skipped as built-in** (closure also holds `organization:lxtj`).
+    - No write is listed, but the #720 caveat applies. Not enforced, not promoted.
+  - Step 7, cleanup: Defender role gone (0 KEEL roles); app creation policies after = the built-in only (includes 2, excludes 0), as before. **Left in the tenant: nothing.**
+  - Step 8: no records to commit, so no evidence branch and no PR.
 - **Test tenant only.** Same hard rules, capture tooling and requester/approver split as Q111. Under the 2026-10-14 standing
   authorization, approve these restores yourself and log every approval id. Restorer for writes, Collector for reads; global admin
   not used. Permissions the code declares: `Policy.ReadWrite.ApplicationConfiguration` and `RoleManagement.ReadWrite.Defender`

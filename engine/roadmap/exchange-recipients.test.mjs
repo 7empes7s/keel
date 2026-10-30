@@ -4,7 +4,7 @@
 //  - the reads are declared in workloadContract.mjs, pass the scope validator, are run by
 //    the read-only probe, and ship disabled (fixture proof never enables them);
 //  - only the declared Get cmdlets run, with KEEL's fixed values and -Identity only as a
-//    mailbox Guid read in the same run; the Node and container allowlists match; no writer;
+//    mailbox Guid read in the same run; the Node and container allowlists match; no new writer;
 //  - each object is one observation under its Guid; Full Access and booking rules sit
 //    under their mailbox; Send As is kept per recipient; inherited and SELF rights are left out;
 //  - a failed mailbox read leaves its permissions unread and the run partial, never empty;
@@ -31,6 +31,7 @@ import { WORKLOAD_COLLECTORS } from '../collect/workloads/registry.mjs';
 import { WORKLOAD_DESCRIPTORS, buildWorkloadLedger, descriptorProblems } from '../collect/workloadContract.mjs';
 import { listWorkloads } from '../collect/registry.mjs';
 import { WORKLOAD_WRITE_OPERATIONS } from '../coverage/qualification.mjs';
+import { DSC_WRITE_OPERATIONS } from '../restore/workloads/dscDeclarations.mjs';
 import { detectWorkloadDrift } from '../govern/workloadDrift.mjs';
 import { compareInService, typeInfo } from '../insights/taxonomy.mjs';
 import { runFixtureHarness } from '../../tools/qualification/workloads.mjs';
@@ -165,7 +166,11 @@ test('the reads are declared, in scope, probed, Get-only and ship disabled', asy
     assert.equal(workload.descriptor.readOnly, true);
     assert.ok(listWorkloads().some((descriptor) => descriptor.workload === workload.workload));
     assert.ok(WORKLOAD_COLLECTORS.some((entry) => entry.workload === workload.workload && entry.powershellFamily === 'exchange'));
-    assert.deepEqual(Object.values(WORKLOAD_WRITE_OPERATIONS).filter((operation) => operation.workload === workload.workload), [], 'no writer');
+    // These reads add no writer. Distribution lists already have the Microsoft365DSC writer,
+    // which restores from this read; nothing else writes either workload.
+    const writers = Object.entries(WORKLOAD_WRITE_OPERATIONS).filter(([, operation]) => operation.workload === workload.workload).map(([id]) => id);
+    const dscWriters = Object.keys(DSC_WRITE_OPERATIONS).filter((id) => DSC_WRITE_OPERATIONS[id].workload === workload.workload);
+    assert.deepEqual(writers.sort(), dscWriters.sort(), 'no writer beyond the DSC distribution list writer');
     // The read capture tool qualifies it, in the Exchange module, though it has no writes.
     assert.equal(readModule(workload.workload), MODULE);
     assert.deepEqual(workloadReads(workload.workload).map((read) => read.operationId), [...workload.operations]);

@@ -1239,3 +1239,23 @@ test('approval-held kinds: a restriction that carries trusted certificate author
     assert.equal(writesOf(graph).length, 0);
   }
 });
+
+test('approval-held kinds: a device registration setting the backup does not hold is never reset by the replace', async () => {
+  const { localAdminPassword, ...older } = DEVICE_REGISTRATION;
+  const live = { ...DEVICE_REGISTRATION, userDeviceQuota: 20 };
+  const resource = singleton('deviceRegistrationPolicy', older, live);
+  const graph = idoFakeGraph({ seed: { '/policies/deviceRegistrationPolicy': live } });
+  const result = await singletonWrite(graph, 'deviceRegistrationPolicy', older, live, { ...CUSTOMER, approvedContentEffects: approvedEffects(resource) });
+  assert.match(result.skipped?.reason ?? '', /does not hold localAdminPassword/);
+  assert.deepEqual(result.skipped.completion.map((item) => [item.requirement, item.fields]), [['wholeReplace', ['localAdminPassword']]]);
+  assert.equal(writesOf(graph).length, 0);
+});
+
+test('approval-held kinds: a restriction typed as trusting certificate authorities is never written, even without its id list', async () => {
+  const typed = { ...APP_RULES, applicationRestrictions: { passwordCredentials: [], keyCredentials: [{ restrictionType: 'trustedCertificateAuthority', restrictForAppsCreatedAfterDateTime: '2025-01-01T00:00:00Z' }] } };
+  const resource = singleton('tenantAppManagementPolicy', typed, APP_RULES);
+  const graph = idoFakeGraph({ seed: { '/policies/defaultAppManagementPolicy': APP_RULES } });
+  const result = await singletonWrite(graph, 'tenantAppManagementPolicy', typed, APP_RULES, { ...CUSTOMER, approvedContentEffects: approvedEffects(resource) });
+  assert.match(result.skipped?.reason ?? '', /never writes which certificate authorities are trusted/);
+  assert.equal(writesOf(graph).length, 0);
+});

@@ -15,6 +15,7 @@
 import { APPROVAL_HELD_FIELDS, classifyContentEffects } from '../safety/contentEffects.mjs';
 
 export const APPROVAL_HELD_KINDS = Object.freeze(Object.keys(APPROVAL_HELD_FIELDS));
+const LIVE_STATES = new Set(['present', 'soft-deleted']);
 
 const sameEffect = (approved, effect) => approved?.effect === effect.effect
   && approved.resourceType === effect.resourceType
@@ -33,11 +34,16 @@ export function unapprovedAccessEffects(resource, verb, approvedContentEffects =
 /**
  * A record `refusal` for an approval-held kind: null when the write may go ahead,
  * else a manual step. A dry run is never refused: it plans the write and lists the
- * effects for review. A delete carries no access effect here (the records do not
- * delete).
+ * effects for review. A delete carries no access effect here (the only delete is
+ * the undo of a role this restore created, which takes access away).
  */
 export function approvalHeldRefusal(resource, verb, ctx = {}) {
   if (verb === 'delete' || ctx.mode === 'dry-run') return null;
+  // An update is classified against the live object; without one nothing shows what
+  // it changes, so it is never written here.
+  if (verb === 'update' && !LIVE_STATES.has(resource.live?.state)) {
+    return Object.freeze({ outcome: 'failed', reason: `${resource.resourceType}: an update of a setting that decides access needs the live object read first, and it was not` });
+  }
   const open = unapprovedAccessEffects(resource, verb, ctx.approvedContentEffects);
   if (open.length === 0) return null;
   const fields = [...new Set(open.map((effect) => effect.field))];

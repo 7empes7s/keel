@@ -1125,8 +1125,17 @@ function builtInScopeTag(resource, verb) {
   return null;
 }
 
-/** An Intune role is written only when the backup says it is a custom role with at least one permission. */
-function intuneRoleRefusal(resource) {
+/**
+ * An Intune role is written only when the backup says it is a custom role with at
+ * least one permission. It is deleted only as the undo of a create by this restore.
+ */
+function intuneRoleRefusal(resource, verb) {
+  if (verb === 'delete') {
+    return undoesCreate(resource) ? null : {
+      outcome: 'skipped',
+      reason: 'manual: a restore deletes only an Intune role it created itself (when that restore is undone); delete this role by hand in the Intune admin center, under Tenant administration, Roles',
+    };
+  }
   const payload = resource.payload ?? {};
   if (payload.isBuiltIn !== false) {
     return {
@@ -1724,9 +1733,10 @@ export const INTUNE_EXTENDED_RECORDS = Object.freeze({
   // no flag) are never written. Who holds the role (deviceManagementRoleAssignment)
   // is not written. An enforce write is made only when its "changes admin access"
   // effects were approved with the restore's dry run, or approvals are off for Intune.
+  // A delete is only the undo of a role this restore created.
   deviceManagementRoleDefinition: defineRecord({
     resourceType: 'deviceManagementRoleDefinition', version: 'v1.0', collection: '/deviceManagement/roleDefinitions', odataType: 'keep',
-    operations: ['create', 'update'], writable: ['displayName', 'description', ...APPROVAL_HELD_FIELDS.deviceManagementRoleDefinition],
+    operations: ['create', 'update', 'delete'], writable: ['displayName', 'description', ...APPROVAL_HELD_FIELDS.deviceManagementRoleDefinition],
     refusal: withApprovalGate(intuneRoleRefusal), permission: 'DeviceManagementRBAC.ReadWrite.All',
   }),
   notificationMessageTemplate: defineRecord({

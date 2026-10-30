@@ -47,7 +47,12 @@ test('approval-held kinds: each has a reviewed rule per access field, all "acces
     assert.ok(record, `${kind} has a record`);
     for (const field of APPROVAL_HELD_FIELDS[kind]) assert.ok(record.writable.includes(field), `${kind} writes ${field}`);
     for (const verb of record.operations) assert.ok(writerFor(kind, verb), `${kind} ${verb} has a registered writer`);
-    assert.ok(!record.operations.includes('delete'), `${kind} is never deleted by a restore`);
+    // A delete is only the undo of a role this restore created (intuneRoleRefusal).
+    if (record.operations.includes('delete')) {
+      assert.equal(kind, 'deviceManagementRoleDefinition');
+      assert.match(record.refusal({ ...changed(kind), payload: null }, 'delete', { mode: 'enforce' })?.reason ?? '', /deletes only an Intune role it created itself/);
+      assert.equal(record.refusal({ ...changed(kind), undoes: 'create', compensates: ['entry-1'] }, 'delete', { mode: 'enforce' }), null);
+    }
   }
 });
 
@@ -78,6 +83,10 @@ test('approval-held kinds: an approval binds the object, field and both values',
   }
   assert.equal(unapprovedAccessEffects(resource, 'update', effects).length, 0);
   assert.equal(approvalHeldRefusal(resource, 'delete', { mode: 'enforce' }), null, 'a delete carries no access effect here');
+  // An update with no live object read is never written: nothing shows what it changes.
+  for (const live of [undefined, { state: 'absent' }]) {
+    assert.equal(approvalHeldRefusal({ ...resource, live }, 'update', { mode: 'enforce', approvedContentEffects: effects })?.outcome, 'failed');
+  }
 });
 
 test('approval-held kinds: a write that changes no access field needs no approval', () => {

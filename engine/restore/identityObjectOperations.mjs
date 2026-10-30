@@ -530,12 +530,31 @@ const beta = (page) => `${DOCS}/${page}?view=graph-rest-beta`;
 // setting, in the backup or live, is left as it is and listed for a person
 // (the record writer would otherwise leave it out without a word).
 const APP_RESTRICTION_FIELDS = ['applicationRestrictions', 'servicePrincipalRestrictions'];
+
+// The device registration policy is replaced whole (PUT): a setting the tenant has
+// that the backup does not hold (an older backup) would be reset, so that restore is
+// a manual step rather than an access change nobody saw as a reset.
+function deviceRegistrationReplaceRefusal(resource, verb) {
+  if (verb !== 'update') return null;
+  const live = resource.live?.payload ?? {};
+  const payload = resource.payload ?? {};
+  const unset = (value) => value === null || value === undefined;
+  const fields = APPROVAL_HELD_FIELDS.deviceRegistrationPolicy.filter((field) => unset(payload[field]) && !unset(live[field]));
+  if (fields.length === 0) return null;
+  const description = `The backup does not hold ${fields.join(', ')}, and the device registration policy is replaced whole, so a restore would reset ${fields.length === 1 ? 'it' : 'them'}. `
+    + 'Nothing was written: compare the backup with the current settings in the Entra admin center, under Devices, Device settings, and change them there.';
+  return Object.freeze({
+    outcome: 'skipped',
+    reason: `manual: ${description}`,
+    completion: Object.freeze([Object.freeze({ kind: 'manual-setting', requirement: 'wholeReplace', fields: Object.freeze(fields), description })]),
+  });
+}
 function appCredentialTrustRefusal(resource, verb) {
   if (verb !== 'update') return null;
   const live = resource.live?.payload ?? {};
   const payload = resource.payload ?? {};
-  const fields = APP_RESTRICTION_FIELDS.filter((field) => !sameValue(payload[field], live[field])
-    && (holdsNestedTrust('tenantAppManagementPolicy', payload[field]) || holdsNestedTrust('tenantAppManagementPolicy', live[field])));
+  const trusts = (value) => holdsNestedTrust('tenantAppManagementPolicy', value) || /trustedCertificateAuthority/i.test(JSON.stringify(value ?? null));
+  const fields = APP_RESTRICTION_FIELDS.filter((field) => !sameValue(payload[field], live[field]) && (trusts(payload[field]) || trusts(live[field])));
   if (fields.length === 0) return null;
   const description = `The default app credential rules differ in ${fields.join(' and ')}, where a restriction carries its trusted certificate authority setting. `
     + 'A restore never writes which certificate authorities are trusted, and Graph replaces these rules whole, so nothing was written. '
@@ -736,7 +755,7 @@ export const IDENTITY_RECORDS = Object.freeze({
   deviceRegistrationPolicy: defineRecord({
     resourceType: 'deviceRegistrationPolicy', tenantWide: true, version: 'v1.0', collection: '/policies/deviceRegistrationPolicy',
     singleton: true, operations: ['update'], updateMethod: 'PUT',
-    writable: ['displayName', 'description', ...APPROVAL_HELD_FIELDS.deviceRegistrationPolicy], refusal: withApprovalGate(),
+    writable: ['displayName', 'description', ...APPROVAL_HELD_FIELDS.deviceRegistrationPolicy], refusal: withApprovalGate(deviceRegistrationReplaceRefusal),
     permission: 'Policy.ReadWrite.DeviceConfiguration', docs: v1('deviceregistrationpolicy-update'),
   }),
   tenantAppManagementPolicy: defineRecord({

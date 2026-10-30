@@ -434,7 +434,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Device compliance policies | Yes (Tier 1, critical, every hour) | Full | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Settings catalog policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Enrollment restrictions | Yes (Tier 2, important, daily) | Incomplete | By hand (Microsoft limit) | None |
-| Intune admin roles | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Intune admin roles | Yes (Tier 1, critical, every hour) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
 | Device categories | Yes (Tier 3, low impact, weekly) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Terms and conditions | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 | Windows Autopilot profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |

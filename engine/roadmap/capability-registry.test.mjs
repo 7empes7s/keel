@@ -131,7 +131,7 @@ const REGISTERED = Object.freeze({
   // Approval-held kinds (restore/approvalHeld.mjs).
   deviceRegistrationPolicy: ['update'],
   tenantAppManagementPolicy: ['update'],
-  deviceManagementRoleDefinition: ['create', 'update'],
+  deviceManagementRoleDefinition: ['create', 'update', 'delete'],
   // Restore gaps, batch 10.
   userExperienceAnalyticsBaseline: ['create', 'update'],
   cartToClassAssociation: ['create', 'update'],

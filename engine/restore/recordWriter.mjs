@@ -268,31 +268,40 @@ export const recordTrustFieldStep = (record, payload, live, verb) => (record.wri
  * So a replace would clear such a field the live object holds, or a nested one
  * inside a field the write sends (a settings catalog setting whose definition
  * names one). The trust settings the backup or the live object holds: top-level
- * fields by name (isTrustField), nested keys by TRUST_FIELD_PATTERN, and the
- * definition id of a setting that names one. Only fields a replace touches
+ * fields by name (isTrustField), nested keys by TRUST_FIELD_PATTERN, the
+ * definition id of a setting that names one, and the setting around a nested
+ * text value that names one. Only fields a replace touches
  * count: what the body sends, and anything else that is not excluded or
  * server-owned.
  */
 export function wholeReplaceTrustSettings(resourceType, { payload, live, body, excluded = [] }) {
   const sent = new Set(Object.keys(body ?? {}));
   const found = new Set();
-  const walk = (value, top) => {
-    if (Array.isArray(value)) { for (const item of value) walk(item, false); return; }
+  // `setting` is the definition id of the nearest setting around a value, to name it.
+  const walk = (value, top, setting) => {
+    if (Array.isArray(value)) { for (const item of value) walk(item, false, setting); return; }
+    if (typeof value === 'string') {
+      // A nested value that names trust (a VPN profile's XML with its trusted root CA).
+      if (TRUST_FIELD_PATTERN.test(value)) found.add(setting);
+      return;
+    }
     if (!value || typeof value !== 'object') return;
+    const here = typeof value.settingDefinitionId === 'string' ? value.settingDefinitionId : setting;
     for (const [key, held] of Object.entries(value)) {
       if (key === '@odata.type' || isAnnotation(key)) continue;
       if (top && !sent.has(key) && (excluded.includes(key) || SERVER_OWNED_ALWAYS.has(key))) continue;
       if (top ? isTrustField(resourceType, key) : TRUST_FIELD_PATTERN.test(key)) {
         if (!isUnset(held)) found.add(key);
-      } else if (key === 'settingDefinitionId' && typeof held === 'string' && TRUST_FIELD_PATTERN.test(held)) {
-        found.add(held);
-      } else {
-        walk(held, false);
+      } else if (key === 'settingDefinitionId' && typeof held === 'string') {
+        if (TRUST_FIELD_PATTERN.test(held)) found.add(held);
+      } else if (!(top && typeof held === 'string')) {
+        // Top-level text (a name, a description) is the object's own label, not a setting.
+        walk(held, false, here ?? key);
       }
     }
   };
-  walk(payload, true);
-  walk(live, true);
+  walk(payload, true, null);
+  walk(live, true, null);
   return [...found];
 }
 

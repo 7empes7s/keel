@@ -72,6 +72,19 @@ test('the trust settings a replace would touch: top-level by name, nested by key
   assert.deepEqual(wholeReplaceTrustSettings('configurationPolicy', {
     payload: { ...catalogPolicy, templateReference: { templateId: '', signingCertificate: 'MIIBnested' } }, live: catalogPolicy, body,
   }), ['signingCertificate'], 'a nested key');
+  const vpnXml = '<EapHostConfig><TrustedRootCA>ab12</TrustedRootCA></EapHostConfig>';
+  const vpn = {
+    id: '2', settingInstance: {
+      '@odata.type': '#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance', settingDefinitionId: 'device_vendor_msft_vpnv2_eap_configuration',
+      simpleSettingValue: { '@odata.type': '#microsoft.graph.deviceManagementConfigurationStringSettingValue', value: vpnXml },
+    },
+  };
+  assert.deepEqual(wholeReplaceTrustSettings('configurationPolicy', {
+    payload: catalogPolicy, live: { ...catalogPolicy, settings: [REALTIME, vpn] }, body,
+  }), ['device_vendor_msft_vpnv2_eap_configuration'], 'a nested value that names a trusted root, named by its setting');
+  assert.deepEqual(wholeReplaceTrustSettings('configurationPolicy', {
+    payload: { ...catalogPolicy, description: 'Trusted certificate rollout' }, live: catalogPolicy, body,
+  }), [], 'the object\'s own name and description are labels, not settings');
   assert.deepEqual(wholeReplaceTrustSettings('configurationPolicy', {
     payload: { ...catalogPolicy, signingCertificate: null, issuerUri: '' }, live: catalogPolicy, body,
   }), [], 'empty values hold nothing a replace could clear');

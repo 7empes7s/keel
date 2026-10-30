@@ -13099,8 +13099,32 @@ item that needs it stays untouched.
 - Needs: PR #799 merged and deployed (build B). Check: `test -f /opt/keel-live/engine/collect/workloads/teamsCollaboration.mjs`.
   `run-cmdlet.ps1` has a new table (`$AllowedTeamsCollaboration`); as in Q266 the scripts are mounted from the checkout, so no image
   rebuild should be needed.
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-30 18:55 UTC, keel-operator). Build **B = 34af446e**. Reads only; nothing granted, created or changed; global admin not used. Collector `/etc/keel/tenant.json` (no `powershellConfigs.teams`); MicrosoftTeams 7.9.0; scripts mounted from the checkout, no image rebuild.
+  - **Step 1, capture:** both exit **0**, pseudonymize exit 0, verify ok, notProven `[]`.
+    - `teams-collaboration-policies`: outcome **partial**, proven all 8 (external-access-policies, channels-policies, files-policies, template-permission-policies, shifts-policies, upgrade-policies, upgrade-configuration, acs-federation-configuration).
+    - `teams-meeting-settings`: outcome **complete**, proven all 4 (enhanced-encryption-policies, compliance-recording-policies, meeting-template-permission-policies, meeting-configuration).
+  - **Step 2:** `claude/live-evidence-teams-collaboration` **2fab5b2d** (the 2 records only, secret scan 0). No PR.
+  - **Step 3, import:** exit **0**, imported **27**, refused `[]`, absent 6 (older records on evidence branches, listed only).
+  - **Step 4, `run`:** exit 3 (partials).
+    - `teams-collaboration-policies`: **partial**, "3 objects: returned without an identity, so they could not be kept". Families all `read`: externalAccessPolicy 1, channelsPolicy 2, filesPolicy 1, templatePermissionPolicy 1, shiftsPolicy 2, upgradePolicy 11, upgradeConfiguration 1, acsFederationConfiguration 1. fieldCounts `{"observed":97}`; **unknownFields `{}`**; discovery.empty none; failures none; unidentified 3.
+    - `teams-meeting-settings`: **complete**; enhancedEncryptionPolicy 3, complianceRecordingPolicy 1, meetingTemplatePermissionPolicy 2, meetingConfiguration 1; fieldCounts `{"observed":41}`; unknownFields `{}`.
+    - Live property names (first object, `Get-Member -MemberType Property`, read only):
+    - `Get-CsExternalAccessPolicy`: AllowedExternalDomains, BlockedExternalDomains, CommunicationWithExternalOrgs, Description, EnableAcsFederationAccess, EnableFederationAccess, EnableOutsideAccess, EnablePublicCloudAudioVideoAccess, EnableTeamsConsumerAccess, EnableTeamsConsumerInbound, EnableTeamsSmsAccess, EnableXmppAccess, FederatedBilateralChats, Identity, RestrictTeamsConsumerAccessToExternalUserProfiles
+    - `Get-CsTeamsChannelsPolicy`: AllowChannelSharingToExternalUser, AllowCreateChannel, AllowCreateClassicChannel, AllowCreatePrivateChannel, AllowCreateSharedChannel, AllowGuestsFromOutsideTeam, AllowGuestsFromOutsideTeamInPrivateChannel, AllowOrgWideTeamCreation, AllowPrivateChannelCreation, AllowSharedChannelCreation, AllowSharingPrivateChannelWithTeamInOrg, AllowSharingWithTeamInOrg, AllowUsersFromOutsideTeam, AllowUsersFromOutsideTeamInPrivateChannel, AllowUserToParticipateInExternalSharedChannel, CreateSharedChannelsByDefault, Description, EnablePrivateTeamDiscovery, Identity, ThreadedChannelCreation
+    - `Get-CsTeamsFilesPolicy`: DefaultFileUploadAppId, FileSharingInChatswithExternalUsers, Identity, NativeFileEntryPoints, SPChannelFilesTab
+    - `Get-CsTeamsTemplatePermissionPolicy`: Description, HiddenTemplates, Identity
+    - `Get-CsTeamsShiftsPolicy`: AccessGracePeriodMinutes, AccessType, EnableScheduleOwnerPermissions, Identity, ShiftNoticeFrequency, ShiftNoticeMessageCustom, ShiftNoticeMessageType
+    - `Get-CsTeamsUpgradePolicy`: (no properties: Get-Member on the first object returned nothing)
+    - `Get-CsTeamsUpgradeConfiguration`: BlockLegacyAuthorization, DownloadTeams, Identity, SfBMeetingJoinUx
+    - `Get-CsTeamsAcsFederationConfiguration`: AllowedAcsResources, EnableAcsUsers, HideBannerForAllowedAcsUsers, Identity, LabelForAllowedAcsUsers, RequireAcsFederationForMeeting
+    - `Get-CsTeamsEnhancedEncryptionPolicy`: (no properties: Get-Member on the first object returned nothing)
+    - `Get-CsTeamsComplianceRecordingPolicy`: ComplianceRecordingApplications, CustomBanner, CustomPromptsEnabled, CustomPromptsPackageId, Description, DisableComplianceRecordingAudioNotificationForCalls, Enabled, Identity, RecordReroutedCalls, WarnUserOnRemoval
+    - `Get-CsTeamsMeetingTemplatePermissionPolicy`: DefaultMeetingTemplateId, Description, HiddenMeetingTemplates, Identity
+    - `Get-CsTeamsMeetingConfiguration`: ClientAppSharingPort, ClientAppSharingPortRange, ClientAudioPort, ClientAudioPortRange, ClientMediaPortRangeEnabled, ClientVideoPort, ClientVideoPortRange, CustomFooterText, DisableAnonymousJoin, DisableAppInteractionForAnonymousUsers, EnableAttributedTranscripts, EnableGraphTranscriptAccess, EnableQoS, FeedbackSurveyForAnonymousUsers, HelpURL, Identity, LegalURL, LimitPresenterRolePermissions, LogoURL, PublishedEntraAuthenticationContexts, ReportMeeting
+    - **For the thread:** the digest does not say which family the 3 unidentified objects are in (discovery.unidentified is a count only). Get-CsTeamsUpgradePolicy (11 objects) and Get-CsTeamsEnhancedEncryptionPolicy gave no properties to Get-Member, so check those answer shapes first.
+  - **Step 5, `proof`:** both reads current (expire 2026-11-29).
+  - Tenant: nothing left, reads only.
 - **Tenant:** reads only, Collector credential. No `New-`, `Set-`, `Grant-`, `Add-` or `Remove-` cmdlet. Grant, assign or create nothing.
 - Do, from your clone checked out at B, with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print it) and
   `set -a; . /etc/keel/db.env; set +a`. Tenant ref as in the current records.
@@ -13322,8 +13346,14 @@ item that needs it stays untouched.
   bound to its declared API version, not a module version. `power-platform-settings` has been `disabled` only because no record could
   carry its reads; Q136 already showed all four answer 200.
 - Needs: /opt/keel-live at the #811 merge or later (`grep -q rest-read-only /opt/keel-live/tools/qualification/workloadReadsAcceptance.mjs`).
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-30 18:55 UTC, keel-operator). Build **B = 34af446e**. Reads only; nothing granted, created or changed; global admin not used. Collector `/etc/keel/tenant.json`, GETs only.
+  - **Step 1, capture** `power-platform-settings` (REST, no image): exit **0**, outcome **partial**, proven `powerplatform.environments`, `powerplatform.dlp-policies`, `powerplatform.connectors`, `powerbi.tenant-settings`; notProven `[]`; verify ok. pseudonymize exit 0. Connectors read was sent (1 environment listed).
+  - **Step 2:** `claude/live-evidence-power-platform` **fb1fa645** (that record only, secret scan 0). No PR.
+  - **Step 3, import:** exit **0**, imported **27**, refused `[]` (shared with Q278).
+  - **Step 4, `run`:** `power-platform-settings` **partial**: "1 object: returned without an identity, so it could not be kept; 1032 settings: not read (not returned)". Families all `read`: environment 1, dlpPolicy 0, connector 0, powerBiSetting 182. fieldCounts `{"unknown":1032,"observed":800}`. Unknown field names (count of objects): powerBiSetting `excludedSecurityGroups` 182, `enabledSecurityGroups` 181, `delegateToDomain` 175, `properties` 172, `delegateToWorkspace` 169, `delegateToCapacity` 151; environment `description` 1, `linkedEnvironmentMetadata` 1. (These look optional per setting; Q288 covers the Power BI optional fields.)
+  - **Step 5, `proof`:** `workload-reads-live-acceptance/power-platform-settings` current (expire 2026-11-29).
+  - Tenant: nothing left, reads only.
 - **Tenant:** reads only, Collector credential from `/etc/keel/tenant.json`. GETs only. Grant, register or change nothing.
 - Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
   `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
@@ -13356,8 +13386,11 @@ item that needs it stays untouched.
   No new cmdlet, no new parameter, no new permission, so no new capture or import is needed. If a live answer does not carry one
   of them, the run turns `partial` and names it in `unknownFields`; this item is what tells us.
 - Needs: /opt/keel-live at the #817 merge or later (`grep -q RecommendedPolicyType /opt/keel-live/engine/collect/workloads/mailFlow.mjs`).
-- Status: todo
-- Result:
+- Status: done
+- Result: done, passes (2026-10-30 18:55 UTC, keel-operator). Build **B = 34af446e**. Reads only; nothing granted, created or changed; global admin not used. Credentials as the workloads already use.
+  - **Step 1, `run`:** `exchange-mail-flow` **complete** (families all read: antiSpamPolicy 3, antiPhishPolicy 4, safeLinksPolicy 6, safeAttachmentPolicy 5, antiMalwarePolicy 5, transportRule 6, acceptedDomain 3, remoteDomain 2, dkimSigning 3, inbound/outboundConnector 1 each; fieldCounts `{"observed":847}`; unknownFields `{}`). `purview-retention-dlp` **complete** (retentionPolicy 2, retentionRule 2, dlpPolicy 3, dlpRule 3, alertPolicy 53; fieldCounts `{"observed":1430}`; unknownFields none).
+  - **Step 2 (DB):** antiSpamPolicy `RecommendedPolicyType` 3/3 (Custom 2, Standard 1); dlpPolicy `Enabled` 3/3 (true 3); dlpRule `IsAdvancedRule` 3/3 (false 2, true 1).
+  - Tenant: nothing left, reads only.
 - **Tenant:** reads only, the Collector credentials the two workloads already use. No `New-`, `Set-`, `Add-` or `Remove-` cmdlet.
   Grant, assign or create nothing.
 - Do, from your clone at the commit `/opt/keel-live` is deployed at, with `set -a; . /etc/keel/db.env; set +a`:
@@ -13489,8 +13522,12 @@ item that needs it stays untouched.
   `liveGate` until this check passes. While off, ScubaGear MS.AAD.9.1 stays "could not check". The fields were declared from
   Microsoft Learn (beta `conditionalAccessConditionSet`), not a live answer.
 - Needs: none (it uses only `tools/tenant-probe/auth.mjs` and `graph.mjs`, present on any build).
-- Status: todo
-- Result:
+- Status: done
+- Result: done, **check fails: the agent fields never appear** (2026-10-30 18:40 UTC, keel-operator). GET only, Collector `/etc/keel/tenant.json`; no CA change; global admin not used. JSON verbatim:
+  `{"beta":{"error":null,"count":24,"pages":1},"v1":{"error":null,"count":24},"sameIds":true,"agentIdRiskLevels":{"present":0,"types":["absent"],"values":[]},"clientApplications":{"present":24,"types":["null","object"]},"includeAgentIdServicePrincipals":{"present":0,"types":["absent"],"allCount":0},"excludeAgentIdServicePrincipals":{"present":0,"types":["absent"]},"clientApplicationsKeys":["excludeServicePrincipals","includeServicePrincipals"],"conditionsKeys":["agents","applications","authenticationFlows","clientAppTypes","clientApplications","deviceStates","devices","locations","platforms","servicePrincipalRiskLevels","signInRiskLevels","times","userRiskLevels","users"]}`
+  - Pass rule: `beta.error` null ✓, `sameIds` true ✓, `agentIdRiskLevels.present` 0 ≠ 24 ✗. `clientApplications` is null on some policies (no apps/agents targeted) and otherwise has only `excludeServicePrincipals`/`includeServicePrincipals`: no `include/excludeAgentIdServicePrincipals`.
+  - **For the thread:** beta `conditions` now has an **`agents`** key (null on all 24 policies here), not `agentIdRiskLevels`. The agent conditions seem to have moved under `conditions.agents`; its inner fields can't be seen on this tenant (no agent policy). Keep `liveGate` on until the field names are corrected.
+  - Tenant: nothing left.
 - **Tenant:** GET only, Collector credential from `/etc/keel/tenant.json` (`Policy.Read.All`, already held: the v1.0 Conditional
   Access backup uses it). Grant, assign, create or change nothing. No Conditional Access change of any kind.
 - Do, from your clone (any commit):

@@ -442,39 +442,71 @@ const isComplete = (outcome) => outcome === 'complete' || outcome === 'complete-
  *   unknown — no complete read has ever existed; targets is null
  */
 export async function loadRelationshipState(client, { tenantRef }) {
+  // Only two sets per (parent, family) can matter: the newest read, and the
+  // newest complete read (used when the newest one failed). Walk the distinct
+  // parents and families with an index skip scan, then take each of those two
+  // sets with LIMIT 1 on relationship_edge_set_newest_idx, and build targets
+  // for that set only. This replaces a scan of every set of every snapshot
+  // (about 585k on the live tenant). Rows come back in the same newest-first
+  // order the full scan used, so the Map keeps its order.
   const { rows } = await client.query(
-    `SELECT s.id, s.parent_type, s.parent_source_id, s.parent_natural_key, s.family, s.edge_type, s.direction,
-            s.outcome, s.completed_at, s.snapshot_id, s.graph_code, s.http_status, s.error, s.pages_completed, s.item_count,
-            COALESCE((SELECT jsonb_agg(jsonb_build_object('edgeKey', e.edge_key, 'targetId', e.target_source_id, 'targetType', e.target_type,
-                                                            'targetNaturalKey', e.target_natural_key, 'attributes', e.attributes)
-                                       ORDER BY e.edge_key)
-                        FROM relationship_edge e WHERE e.set_id = s.id AND e.tenant_ref = $1), '[]'::jsonb) AS targets
-       FROM relationship_edge_set s
-       JOIN snapshot sn ON sn.id = s.snapshot_id
-      WHERE s.tenant_ref = $1 AND sn.tenant_ref = $1 AND sn.status = 'complete'
-      ORDER BY s.completed_at DESC NULLS LAST, s.id DESC`,
+    `WITH RECURSIVE parents AS (
+       (SELECT parent_type, parent_source_id, family FROM relationship_edge_set
+         WHERE tenant_ref = $1 ORDER BY parent_type, parent_source_id, family LIMIT 1)
+       UNION ALL
+       SELECT nx.parent_type, nx.parent_source_id, nx.family FROM parents p
+        CROSS JOIN LATERAL (
+          SELECT parent_type, parent_source_id, family FROM relationship_edge_set
+           WHERE tenant_ref = $1 AND (parent_type, parent_source_id, family) > (p.parent_type, p.parent_source_id, p.family)
+           ORDER BY parent_type, parent_source_id, family LIMIT 1) nx
+     )
+     SELECT n.parent_type, n.parent_source_id, n.parent_natural_key, n.family, n.edge_type, n.direction,
+            n.outcome, n.completed_at, n.snapshot_id, n.graph_code, n.http_status, n.error,
+            c.completed_at AS complete_completed_at, c.snapshot_id AS complete_snapshot_id,
+            CASE WHEN c.id IS NULL THEN NULL ELSE
+              COALESCE((SELECT jsonb_agg(jsonb_build_object('edgeKey', e.edge_key, 'targetId', e.target_source_id, 'targetType', e.target_type,
+                                                              'targetNaturalKey', e.target_natural_key, 'attributes', e.attributes)
+                                         ORDER BY e.edge_key)
+                          FROM relationship_edge e WHERE e.set_id = c.id AND e.tenant_ref = $1), '[]'::jsonb)
+            END AS targets
+       FROM parents p
+      CROSS JOIN LATERAL (
+        SELECT s.* FROM relationship_edge_set s
+          JOIN snapshot sn ON sn.id = s.snapshot_id
+         WHERE s.tenant_ref = $1 AND sn.tenant_ref = $1 AND sn.status = 'complete'
+           AND s.parent_type = p.parent_type AND s.parent_source_id = p.parent_source_id AND s.family = p.family
+         ORDER BY s.completed_at DESC NULLS LAST, s.id DESC LIMIT 1) n
+       LEFT JOIN LATERAL (
+        SELECT s.id, s.completed_at, s.snapshot_id FROM relationship_edge_set s
+          JOIN snapshot sn ON sn.id = s.snapshot_id
+         WHERE s.tenant_ref = $1 AND sn.tenant_ref = $1 AND sn.status = 'complete'
+           AND s.parent_type = p.parent_type AND s.parent_source_id = p.parent_source_id AND s.family = p.family
+           AND s.outcome IN ('complete', 'complete-empty')
+         ORDER BY s.completed_at DESC NULLS LAST, s.id DESC LIMIT 1) c ON true
+      ORDER BY n.completed_at DESC NULLS LAST, n.id DESC`,
     [tenantRef],
   );
   const entries = new Map();
   for (const row of rows) {
     const key = `${row.parent_type}:${row.parent_source_id}|${row.family}`;
-    const existing = entries.get(key);
     const base = {
       parentType: row.parent_type, parentSourceId: row.parent_source_id, parentNaturalKey: row.parent_natural_key,
       family: row.family, edgeType: row.edge_type, direction: row.direction,
     };
-    if (!existing) {
-      if (isComplete(row.outcome)) {
-        entries.set(key, { ...base, state: 'current', latestOutcome: row.outcome, observedAt: row.completed_at, snapshotId: row.snapshot_id, targets: row.targets, failure: null });
-      } else {
-        entries.set(key, {
-          ...base, state: 'unknown', latestOutcome: row.outcome, observedAt: null, snapshotId: null, targets: null,
-          failure: { outcome: row.outcome, graphCode: row.graph_code, httpStatus: row.http_status, error: row.error, at: row.completed_at },
-        });
-      }
-    } else if (existing.state === 'unknown' && isComplete(row.outcome)) {
+    if (isComplete(row.outcome)) {
+      // The newest read is itself the newest complete read.
+      entries.set(key, { ...base, state: 'current', latestOutcome: row.outcome, observedAt: row.completed_at, snapshotId: row.snapshot_id, targets: row.targets, failure: null });
+      continue;
+    }
+    const failure = { outcome: row.outcome, graphCode: row.graph_code, httpStatus: row.http_status, error: row.error, at: row.completed_at };
+    if (row.complete_snapshot_id === null) {
+      entries.set(key, { ...base, state: 'unknown', latestOutcome: row.outcome, observedAt: null, snapshotId: null, targets: null, failure });
+    } else {
       // Newest read failed but an older complete read exists: last-known, stale.
-      entries.set(key, { ...existing, state: 'stale', observedAt: row.completed_at, snapshotId: row.snapshot_id, targets: row.targets });
+      entries.set(key, {
+        ...base, state: 'stale', latestOutcome: row.outcome, observedAt: row.complete_completed_at,
+        snapshotId: row.complete_snapshot_id, targets: row.targets, failure,
+      });
     }
   }
   return { tenantRef, entries };

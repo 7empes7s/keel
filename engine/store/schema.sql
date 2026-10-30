@@ -792,6 +792,10 @@ CREATE TABLE IF NOT EXISTS relationship_edge_set (
 );
 CREATE INDEX IF NOT EXISTS relationship_edge_set_parent_idx
   ON relationship_edge_set (tenant_ref, parent_type, parent_source_id, family, completed_at);
+-- loadRelationshipState takes the newest set per parent and family with
+-- ORDER BY completed_at DESC NULLS LAST, id DESC LIMIT 1; this index serves it.
+CREATE INDEX IF NOT EXISTS relationship_edge_set_newest_idx
+  ON relationship_edge_set (tenant_ref, parent_type, parent_source_id, family, completed_at DESC NULLS LAST, id DESC);
 
 CREATE TABLE IF NOT EXISTS relationship_edge (
   set_id             uuid NOT NULL REFERENCES relationship_edge_set(id) ON DELETE CASCADE,

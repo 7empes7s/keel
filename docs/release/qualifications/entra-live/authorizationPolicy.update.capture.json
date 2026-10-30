@@ -1,5 +1,5 @@
 {
-  "restoreRef": "84d37011-7331-8505-9bae-ee220d8057db",
+  "restoreRef": "1a8d76fc-89eb-848f-88d4-339c3d50387b",
   "entry": {
     "naturalKey": "authorizationPolicy:Authorization Policy",
     "resourceType": "authorizationPolicy",
@@ -7,7 +7,7 @@
     "targetId": "authorizationPolicy",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-14T14:19:43.140Z",
+    "recordedAt": "2026-10-30T10:26:25.350Z",
     "priorState": {
       "id": "authorizationPolicy",
       "description": "| What does this do? | Disallows third party integrated applications; restricts non-admin users from creating tenants; prevents guest users from inviting other guests. |\n| Why should you use this? | Prevents users from registering custom-developed applications and prevents the uncontrolled deployment of additional Entra resources. |\n| What is the end-user impact? | Users will need to use organizationally approved methods to provision new applications and tenants. Guests will be assigned a restricted role. |\n| Learn more | [How applications are added](https://learn.microsoft.com/en-us/entra/identity-platform/how-applications-are-added) [Users default permissions](https://learn.microsoft.com/en-us/azure/active-directory/fundamentals/users-default-permissions#restrict-member-users-default-permissions) [Configure user consent](https://learn.microsoft.com/en-us/azure/active-directory/manage-apps/configure-user-consent) |",

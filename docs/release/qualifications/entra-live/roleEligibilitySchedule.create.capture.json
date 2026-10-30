@@ -1,13 +1,13 @@
 {
-  "restoreRef": "84d37011-7331-8505-9bae-ee220d8057db",
+  "restoreRef": "f0d3cf0e-3b66-8329-bd3a-0938c6506eb1",
   "entry": {
-    "naturalKey": "roleEligibilitySchedule:a6a04688-4157-8065-857e-f9986290de76",
+    "naturalKey": "roleEligibilitySchedule:5c02150f-f83b-86be-b783-c05931149155",
     "resourceType": "roleEligibilitySchedule",
     "operation": "create",
-    "targetId": "604fcdac-4e03-812a-85cf-12743a3d10b6",
+    "targetId": "a8a1f2eb-6bbd-8f94-b102-c56df68b3dbf",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-14T14:19:56.914Z",
+    "recordedAt": "2026-10-30T10:13:26.204Z",
     "priorState": null,
     "intendedState": {
       "action": "adminAssign",
@@ -15,34 +15,34 @@
       "scheduleInfo": {
         "expiration": {
           "type": "afterDateTime",
-          "endDateTime": "2026-11-13T12:25:18.113Z"
+          "endDateTime": "2026-11-29T09:40:03.000Z"
         },
-        "startDateTime": "2026-10-14T14:19:56.152Z"
+        "startDateTime": "2026-10-30T10:13:25.750Z"
       },
       "justification": "Restored by KEEL from a backup snapshot",
-      "directoryScopeId": "/administrativeUnits/ef8cff4b-4c99-8afe-bbcf-0e5dc2742f8a",
-      "roleDefinitionId": "d59ba3a5-e551-85d9-aa2f-4d4f066b76cd"
+      "directoryScopeId": "/administrativeUnits/9f600f79-ae8d-8201-840e-6616d1ad62c9",
+      "roleDefinitionId": "8fe792ad-0b48-8d53-877a-3ac0f7ae29dd"
     },
     "postState": {
-      "id": "604fcdac-4e03-812a-85cf-12743a3d10b6",
+      "id": "a8a1f2eb-6bbd-8f94-b102-c56df68b3dbf",
       "status": "Provisioned",
       "appScopeId": null,
       "memberType": "Direct",
       "principalId": "a0fcb2f8-b0c3-8a88-9b94-319165913d40",
-      "createdUsing": "604fcdac-4e03-812a-85cf-12743a3d10b6",
+      "createdUsing": "a8a1f2eb-6bbd-8f94-b102-c56df68b3dbf",
       "scheduleInfo": {
         "expiration": {
           "type": "afterDateTime",
           "duration": null,
-          "endDateTime": "2026-11-13T12:25:18.113Z"
+          "endDateTime": "2026-11-29T09:40:03Z"
         },
         "recurrence": null,
-        "startDateTime": "2026-10-14T14:19:57.927Z"
+        "startDateTime": "2026-10-30T10:13:27.16Z"
       },
-      "createdDateTime": "2026-10-14T14:19:57.927Z",
-      "directoryScopeId": "/administrativeUnits/ef8cff4b-4c99-8afe-bbcf-0e5dc2742f8a",
+      "createdDateTime": "2026-10-30T10:13:27.16Z",
+      "directoryScopeId": "/administrativeUnits/9f600f79-ae8d-8201-840e-6616d1ad62c9",
       "modifiedDateTime": "0001-01-01T08:00:00Z",
-      "roleDefinitionId": "d59ba3a5-e551-85d9-aa2f-4d4f066b76cd"
+      "roleDefinitionId": "8fe792ad-0b48-8d53-877a-3ac0f7ae29dd"
     }
   }
 }

@@ -1258,8 +1258,8 @@ const HARNESS_NAMER = (key: string) => {
   const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   return `Person ${[0, 1, 2, 3].map((index) => letters[(hash >>> (index * 5)) % letters.length]).join("")}`;
 };
-// Restore approvals: on for most services and kinds, off for Purview, SharePoint and
-// content restores, changed by an admin.
+// Restore approvals: on for most services and kinds, off for Purview, SharePoint,
+// content restores and (high risk) organization-wide changes, changed by an admin.
 const RESTORE_APPROVALS: RestoreApprovalsView = {
   services: ["Entra", "Intune", "Exchange", "Teams", "SharePoint", "Purview", "Power Platform", "Defender"].map((service) => (
     service === "Purview" || service === "SharePoint"
@@ -1267,7 +1267,7 @@ const RESTORE_APPROVALS: RestoreApprovalsView = {
       : { service, approvalRequired: true, changedAt: null, changedBy: null }
   )),
   rules: RESTORE_APPROVAL_RULE_ORDER.map((rule) => (
-    rule === "content-restore"
+    rule === "content-restore" || rule === "tenant-wide"
       ? { rule, approvalRequired: false, changedAt: "2026-10-02T08:00:00Z", changedBy: personRef("8c1e0000-0000-4000-8000-0000000000a1", "admin@contoso.com") }
       : { rule, approvalRequired: true, changedAt: null, changedBy: null }
   )),

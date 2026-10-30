@@ -9,6 +9,8 @@ import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
 import { DATA_SURFACES, guardedRead } from "@/lib/read";
 import { guardedRestoreApprovalsRead, guardedRestoreApprovalsUpdate } from "@/lib/restore-approvals";
 import { evidenceSentence, personLabel } from "@/lib/sentences";
+import { HIGH_RISK_RESTORE_APPROVAL_RULES } from "@/lib/restore-approval-rules";
+import { HIGH_RISK_RESTORE_APPROVAL_RULES as ENGINE_HIGH_RISK } from "../../engine/govern/restoreApprovalSettings.mjs";
 
 // Restore approvals as a customer setting: anyone who can read sees how each service is
 // set; only someone with `policies` changes it; each change is in the audit record.
@@ -70,6 +72,36 @@ test("only someone who manages policies turns a service's restore approvals off 
     assert.deepEqual(
       rows.map((row: { actor: string; subject: { service?: string; rule?: string; approvalRequired: boolean } }) => [row.actor, row.subject.service ?? row.subject.rule, row.subject.approvalRequired]),
       [[ADMIN, "Purview", false], [ADMIN, "content-restore", false]],
+    );
+  } finally {
+    await client.end();
+    await db.cleanup();
+  }
+});
+
+test("a high-risk kind of restore turns off only with the risk warning confirmed; the portal and engine agree on which", async () => {
+  assert.deepEqual([...HIGH_RISK_RESTORE_APPROVAL_RULES], [...ENGINE_HIGH_RISK]);
+  const db = await createIsolatedTestDatabase(import.meta.url);
+  const client = await db.connect();
+  try {
+    await client.query(schemaSql());
+    await client.query("INSERT INTO principal(id, email, display_name) VALUES ($1, 'ada@test.example', 'Ada Admin')", [ADMIN]);
+    const deps = { connect: () => db.connect(), databaseUrl: () => db.url, tenantRef: () => "tenant-a" };
+    const update = guardedRestoreApprovalsUpdate(deps);
+    for (const rule of HIGH_RISK_RESTORE_APPROVAL_RULES) {
+      assert.equal((await update(request(ADMIN, ["policies"], { rule, approvalRequired: false }))).status, 400, rule);
+      assert.equal((await update(request(ADMIN, ["policies"], { rule, approvalRequired: false, riskAcknowledged: "yes" }))).status, 400, rule);
+    }
+    assert.equal((await client.query("SELECT count(*)::int AS n FROM restore_approval_rule")).rows[0].n, 0);
+    const off = await (await update(request(ADMIN, ["policies"], { rule: "other-tenant", approvalRequired: false, riskAcknowledged: true }))).json();
+    assert.equal(off.rules.find((row: { rule: string }) => row.rule === "other-tenant").approvalRequired, false);
+    // Back on needs no confirmation.
+    assert.equal((await update(request(ADMIN, ["policies"], { rule: "other-tenant", approvalRequired: true }))).status, 200);
+    const { rows } = await client.query("SELECT subject FROM evidence WHERE kind = 'restore-approval-setting' ORDER BY seq");
+    assert.deepEqual(rows[0].subject, { rule: "other-tenant", approvalRequired: false, previous: true, highRisk: true, riskAcknowledged: true });
+    assert.equal(
+      evidenceSentence({ kind: "restore-approval-setting", actor: ADMIN, subject: rows[0].subject }, "Ada Admin"),
+      "Ada Admin turned off restore approvals for restores into another tenant, so they no longer wait for a person. This is high risk; they confirmed the risk warning",
     );
   } finally {
     await client.end();

@@ -1300,7 +1300,7 @@ test("restore completion closes an item with a reference and refuses a pasted se
   // A skipped object had nothing written: it never reads as restored.
   const skipped = page.locator(".completion-resource").filter({ hasText: "KEEL-RT-Head office" });
   await expect(skipped.locator(".completion-badge-skipped")).toHaveText("Not restored: set it by hand");
-  await expect(skipped.locator(".completion-mechanism")).toHaveText("KEEL wrote nothing to this item");
+  await expect(skipped.locator(".completion-mechanism")).toHaveText("KEEL wrote nothing to it");
   await expect(skipped).not.toContainText("Configuration restored");
 });
 

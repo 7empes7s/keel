@@ -37,7 +37,7 @@ test("a skipped object never reads as restored: it says to set it by hand", () =
   assert.doesNotMatch(html, /Configuration restored|restored in full/);
   assert.match(html, /completion-badge-skipped/);
   assert.match(html, /Not restored: set it by hand/);
-  assert.match(html, /KEEL wrote nothing to this item/);
+  assert.match(html, /KEEL wrote nothing to it/);
   assert.match(html, /Add evidence/);
   assert.deepEqual(completionBadge({ mechanism: "skipped", state: "verified-complete" }), { label: "Set by hand, verified", tone: "fine", key: "skipped-verified" });
   // Every other mechanism keeps the state's own label.

@@ -73,7 +73,7 @@ export function completionBadge(resource: Pick<CompletionResource, "mechanism" |
 }
 
 function mechanismNote(mechanism: string): string {
-  return mechanism === "skipped" ? "KEEL wrote nothing to this item" : words(mechanism);
+  return mechanism === "skipped" ? "KEEL wrote nothing to it" : words(mechanism);
 }
 
 interface ChecklistProps {

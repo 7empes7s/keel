@@ -426,8 +426,9 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     note: 'Only a device action nobody uses on the test tenant; never cover role or policy changes, so the test tenant is never locked behind an approval.',
   },
   exchangeRoleAssignment: {
-    kind: 'named-object', fixture: `Exchange role View-Only Configuration given to the ${FIXTURE_PREFIX} fixture app's service principal (Graph /roleManagement/exchange/roleAssignments)`,
+    kind: 'by-reference', fixture: `Exchange role View-Only Configuration given to the ${FIXTURE_PREFIX} fixture app's service principal (Graph /roleManagement/exchange/roleAssignments)`,
     select: 'the assignment\'s id', drift: 'remove the assignment: the restore gives the role to the same app again',
+    breakGlass: 'Never a role group, a person or a privileged role: only a view-only role and the fixture app. An assignment has no name, so check the app is the KEEL-RT- fixture app before the run.',
     note: 'A role held by a role group is a manual step: check one is reported as such.',
   },
   defenderRoleAssignment: {

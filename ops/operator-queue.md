@@ -10683,8 +10683,11 @@ item that needs it stays untouched.
   `unifiedRoleManagementPolicy` u and `authorizationPolicy` u (11-13 14:19); `authenticationMethodsPolicy` u (11-13 18:55);
   `roleAssignment` delete (11-13 19:12) and c (11-13 19:23). Finish by **2026-11-10**.
 - Needs: Q246 done or blocked. Run at the deployed commit B, from your own checkout at B.
-- Status: todo
-- Result:
+- Status: blocked: waiting on Marouane (second GA session for lockout steps)
+- Result: blocked, not started (2026-10-30 00:38 UTC, keel-operator). B = 53cbe462. Nothing written in the tenant.
+  - **Waiting on Marouane, same as Q245.** All nine steps are lockout-sensitive in the checklist (namedLocation, roleAssignment, roleEligibilitySchedule, unifiedRoleManagementPolicy, authorizationPolicy, authenticationMethodsPolicy). Each has the precondition "Marouane keeps a second, separate Global Administrator session signed in to the test tenant for the whole step, and is reachable to undo the change by hand".
+  - Break-glass read **ready** at 23:45 UTC; it will be re-checked before each step.
+  - Deadline 2026-11-10; the earliest lapse is 2026-11-12 21:26.
 - **Test tenant only.** Same rules as Q245: break-glass report ready before each step (else stop, blocked), one step at a time,
   self-approve, log approval ids, never marouane.defili or a break-glass account, never a built-in privileged role, scope never
   tenant-wide. Tenant settings: write down, put back, check.

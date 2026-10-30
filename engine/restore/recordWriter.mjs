@@ -76,7 +76,7 @@ import { followUpSteps } from './bestEffortRecreate.mjs';
 import { TEST_TENANT_REFS, fixtureProblem } from './workloads/fixtureGuard.mjs';
 import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './rollbackJournal.mjs';
 import { ENGAGE_RESOURCE_TYPES } from './engageWriter.mjs';
-import { isTrustField } from './workloads/writeDeclarations.mjs';
+import { TRUST_FIELD_PATTERN, isTrustField } from './workloads/writeDeclarations.mjs';
 
 export const RECORD_WRITER_CONTRACT_VERSION = 1;
 
@@ -261,6 +261,64 @@ export function trustFieldStep(resourceType, payload, live, verb, { excluded = [
 export const recordTrustFieldStep = (record, payload, live, verb) => (record.writable ? null : trustFieldStep(record.resourceType, payload, live, verb, {
   excluded: record.excluded, same: (field, left, right) => sameRecordField(record, field, left, right),
 }));
+
+/**
+ * A write that replaces the whole object (PUT) clears every field its body
+ * leaves out, and the body never carries a trust, certificate or sign-in field.
+ * So a replace would clear such a field the live object holds, or a nested one
+ * inside a field the write sends (a settings catalog setting whose definition
+ * names one). The trust settings the backup or the live object holds: top-level
+ * fields by name (isTrustField), nested keys by TRUST_FIELD_PATTERN, and the
+ * definition id of a setting that names one. Only fields a replace touches
+ * count: what the body sends, and anything else that is not excluded or
+ * server-owned.
+ */
+export function wholeReplaceTrustSettings(resourceType, { payload, live, body, excluded = [] }) {
+  const sent = new Set(Object.keys(body ?? {}));
+  const found = new Set();
+  const walk = (value, top) => {
+    if (Array.isArray(value)) { for (const item of value) walk(item, false); return; }
+    if (!value || typeof value !== 'object') return;
+    for (const [key, held] of Object.entries(value)) {
+      if (key === '@odata.type' || isAnnotation(key)) continue;
+      if (top && !sent.has(key) && (excluded.includes(key) || SERVER_OWNED_ALWAYS.has(key))) continue;
+      if (top ? isTrustField(resourceType, key) : TRUST_FIELD_PATTERN.test(key)) {
+        if (!isUnset(held)) found.add(key);
+      } else if (key === 'settingDefinitionId' && typeof held === 'string' && TRUST_FIELD_PATTERN.test(held)) {
+        found.add(held);
+      } else {
+        walk(held, false);
+      }
+    }
+  };
+  walk(payload, true);
+  walk(live, true);
+  return [...found];
+}
+
+/**
+ * The refusal of a whole-object replace (PUT) when the backup or the live
+ * object holds a trust, certificate or sign-in setting (wholeReplaceTrustSettings),
+ * or when the live object was not read, so nothing shows the replace clears none.
+ * Nothing is written; a person restores the object by hand. Returns
+ * { outcome: 'skipped', reason, completion } or null.
+ */
+export function wholeReplaceTrustRefusal(resourceType, { payload, live, body, excluded = [] }) {
+  const held = live ? wholeReplaceTrustSettings(resourceType, { payload, live, body, excluded }) : null;
+  if (held && held.length === 0) return null;
+  const why = held
+    ? `it holds trust, certificate or sign-in settings (${held.join(', ')}), which a restore never writes`
+    : 'the live object was not read, so nothing shows it holds no trust, certificate or sign-in settings';
+  const description = `This object is written whole, so a restore would replace every setting it has, and ${why}. `
+    + 'Nothing was written: restore it by hand in the admin center and keep its trust settings as they are.';
+  return Object.freeze({
+    outcome: 'skipped',
+    reason: `manual: ${description}`,
+    completion: Object.freeze([Object.freeze({
+      kind: 'manual-setting', requirement: 'trustFields', fields: Object.freeze(held ?? []), description,
+    })]),
+  });
+}
 
 /** The fields of the desired body whose value live does not hold. */
 export function changedRecordFields(record, desired, live, verb = 'update') {
@@ -511,6 +569,11 @@ export async function applyRecordWrite(writer, record, resource, verb, ctx = {})
   // Trust fields are never sent: a difference in one is a step for a person.
   const trustStep = recordTrustFieldStep(record, payload, before, verb);
   const trustCompletion = trustStep ? { completion: [trustStep] } : {};
+  // A replace (PUT) would clear the trust settings its body leaves out: refused.
+  if (verb === 'update' && record.updateMethod === 'PUT' && fields.length > 0) {
+    const replace = wholeReplaceTrustRefusal(record.resourceType, { payload, live: before, body, excluded: record.excluded });
+    if (replace) return refusalEntry(naturalKey, replace);
+  }
 
   // A recreate lists the parts the backup cannot give back (ENTRA's
   // best-effort rule), worked out before anything is written.

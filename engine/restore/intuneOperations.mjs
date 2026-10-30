@@ -57,7 +57,7 @@ import { resolveSymbol } from '../graph/resolver.mjs';
 import { appGroupOf, appHasPackage, appKindName, appKindWords } from './intuneAppKinds.mjs';
 import {
   applyRecordWrite, defineRecord, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue, trustFieldStep,
-  undoesCreate, withoutTrustFields,
+  undoesCreate, wholeReplaceTrustRefusal, withoutTrustFields,
 } from './recordWriter.mjs';
 
 export const INTUNE_OPERATIONS_CONTRACT_VERSION = 1;
@@ -255,6 +255,19 @@ export function intuneWriteBody(resourceType, payload, verb) {
   if (entry.scheduledActions && verb === 'create') body.scheduledActionsForRule = scheduledActionsBody(payload?.scheduledActionsForRule);
   // A trust, certificate or sign-in field is never sent (intuneTrustFieldStep lists it for a person).
   return withoutTrustFields(resourceType, body);
+}
+
+/**
+ * The refusal of a policy update written whole (PUT) when the backup or the
+ * live policy holds a trust, certificate or sign-in setting, or null
+ * (recordWriter.mjs wholeReplaceTrustRefusal).
+ */
+export function intuneReplaceTrustRefusal(resourceType, desired, live) {
+  const entry = intuneRecordFor(resourceType);
+  if (entry?.updateMethod !== 'PUT') return null;
+  return wholeReplaceTrustRefusal(resourceType, {
+    payload: desired, live, body: intuneWriteBody(resourceType, desired, 'update'), excluded: entry.excluded,
+  });
 }
 
 /** The manual step for a policy's trust, certificate or sign-in fields the write leaves out, or null. */

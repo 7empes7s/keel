@@ -35,7 +35,7 @@ import {
 } from './userOperations.mjs';
 import {
   ASSIGNMENT_FILTER_PATH, assignRequest, assignmentChange, assignmentPlan, assignmentsReadPath, changedIntuneFields, intuneReadPath,
-  intunePostStateRefusal, intuneRecordFor, intuneTrustFieldStep, intuneWriteBody, intuneWriteRefusal, isIntuneGoverned, liveAssignmentIdentities,
+  intunePostStateRefusal, intuneRecordFor, intuneReplaceTrustRefusal, intuneTrustFieldStep, intuneWriteBody, intuneWriteRefusal, isIntuneGoverned, liveAssignmentIdentities,
   backupHoldsActions, sameIdentities, scheduledActionsBody, scheduledActionsDiffer, unreadAssignmentsStep,
 } from './intuneOperations.mjs';
 import {
@@ -675,6 +675,7 @@ export async function applyWave(writer, governor, wave, {
         mode, retryOperation, referenceContext, rollbackClient, runId, restoreRef, existingTargetIds,
       });
       if (outcome.applied) applied.push(outcome.applied);
+      if (outcome.skipped) skipped.push(outcome.skipped);
       if (outcome.failed) failed.push(outcome.failed);
       return;
     }
@@ -1482,6 +1483,11 @@ async function applyIntuneWrite(writer, resource, verb, {
   // Trust, certificate and sign-in fields are never sent: a difference is a step for a person.
   const trustStep = intuneTrustFieldStep(resourceType, desired, before, verb);
   const trustCompletion = trustStep ? { completion: [trustStep] } : {};
+  // A replace (PUT) would clear the trust settings its body leaves out: refused.
+  if (verb === 'update' && fields.length > 0) {
+    const replace = intuneReplaceTrustRefusal(resourceType, desired, before);
+    if (replace) return { skipped: { naturalKey, reason: replace.reason, completion: replace.completion } };
+  }
   // A backup taken before actions were backed up leaves the live actions alone:
   // an absent list is never sent as an empty one (that would remove them).
   const actionsInBackup = backupHoldsActions(desired);

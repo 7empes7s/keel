@@ -486,9 +486,9 @@ export async function loadGroupMembership(client, tenantRef, inventory) {
     }
   }
   const membership = new Map();
-  if (!groups.size) return () => null;
+  if (!groups.size) return Object.assign(() => null, { membersOf: () => null });
   const { rows } = await client.query(
-    `SELECT DISTINCT ON (lower(s.parent_source_id), s.family) lower(s.parent_source_id) AS group_id, s.family, s.outcome,
+    `SELECT DISTINCT ON (lower(s.parent_source_id), s.family) lower(s.parent_source_id) AS group_id, s.family, s.outcome, s.completed_at,
             ARRAY(SELECT lower(e.target_source_id) FROM relationship_edge e WHERE e.set_id = s.id AND e.tenant_ref = $1) AS members
        FROM relationship_edge_set s JOIN snapshot sn ON sn.id = s.snapshot_id
       WHERE s.tenant_ref = $1 AND sn.tenant_ref = $1 AND sn.status = 'complete' AND s.parent_type = 'group'
@@ -498,10 +498,13 @@ export async function loadGroupMembership(client, tenantRef, inventory) {
   );
   for (const row of rows) {
     const entry = membership.get(row.group_id) ?? {};
-    entry[row.family] = { complete: ['complete', 'complete-empty'].includes(row.outcome), members: new Set(row.members) };
+    entry[row.family] = {
+      complete: ['complete', 'complete-empty'].includes(row.outcome), members: new Set(row.members),
+      completedAt: row.completed_at ? new Date(row.completed_at).getTime() : null,
+    };
     membership.set(row.group_id, entry);
   }
-  return (group, accountId) => {
+  const isMember = (group, accountId) => {
     const entry = membership.get(group);
     if (!entry) return null;
     if (entry.transitiveMember?.complete) return entry.transitiveMember.members.has(accountId);
@@ -510,6 +513,17 @@ export async function loadGroupMembership(client, tenantRef, inventory) {
     if (entry.member?.complete && entry.member.members.has(accountId)) return true;
     return null;
   };
+  // Every member of a group from its newest complete read finished at or after
+  // `notBefore` (nested members included in a transitive read; a direct read lists a
+  // nested group by its own id), or null when there is no such read.
+  const membersOf = (group, { notBefore = -Infinity } = {}) => {
+    const entry = membership.get(String(group).toLowerCase()) ?? {};
+    const reads = [entry.transitiveMember, entry.member]
+      .filter((read) => read?.complete && read.completedAt !== null && read.completedAt >= notBefore)
+      .sort((a, b) => b.completedAt - a.completedAt);
+    return reads.length ? new Set(reads[0].members) : null;
+  };
+  return Object.assign(isMember, { membersOf });
 }
 
 async function loadAccounts(client, tenantRef) {
@@ -598,7 +612,9 @@ async function activeBreakGlassAlerts(client, tenantRef) {
  * newest covered inventory and group membership).
  */
 export async function loadLockoutGateInputs(client, { tenantRef, now = new Date() }) {
-  if (!await tableExists(client, 'breakglass_account')) return { configured: false, accounts: [], inventory: {}, groupMembers: () => null, now };
+  if (!await tableExists(client, 'breakglass_account')) {
+    return { configured: false, accounts: [], inventory: {}, groupMembers: Object.assign(() => null, { membersOf: () => null }), now };
+  }
   const accounts = await loadAccounts(client, tenantRef);
   const inventory = await loadInventory(client, tenantRef);
   const groupMembers = await loadGroupMembership(client, tenantRef, inventory);

@@ -19,6 +19,7 @@
 import { can } from '../../authz/can.mjs';
 import { findPrincipalById } from '../../authz/principals.mjs';
 import { appendEvidence } from '../../govern/evidence.mjs';
+import { loadLockoutGateInputs } from '../../safety/breakGlassReadiness.mjs';
 import { assertTenantRef } from '../../store/tenantRef.mjs';
 
 export const SCUBA_CONFIG_LIST_EVIDENCE_KIND = 'scuba-config-list';
@@ -124,11 +125,14 @@ export async function getScubaConfigLists(client, { tenantRef }) {
  * partner domains for their rules, and the emergency accounts left out of every
  * sign-in rule that allows it and allowed a permanent admin role. Pure.
  */
-export function scubaConfigFrom({ lists = [], emergencyAccounts: accounts = [] } = {}) {
+export function scubaConfigFrom({ lists = [], emergencyAccounts: accounts = [], emergencyGroups: groups = [] } = {}) {
   const config = { M365Environment: DEFAULT_SCUBA_CONFIG.M365Environment, Aad: {}, Exo: {} };
   const users = [...new Set(accounts.map((account) => account.accountId))].sort();
   if (users.length) {
-    for (const policyId of SIGN_IN_EXCLUSION_RULES) config.Aad[policyId] = { CapExclusions: { Users: users } };
+    // Groups only with users: a group is an emergency group only through them. An empty
+    // list is left out, so the config is exactly ScubaGear's for that list.
+    const cap = groups.length ? { Users: users, Groups: [...groups] } : { Users: users };
+    for (const policyId of SIGN_IN_EXCLUSION_RULES) config.Aad[policyId] = { CapExclusions: cap };
     for (const policyId of ROLE_EXCLUSION_RULES) config.Aad[policyId] = { RoleExclusions: { Users: users } };
   }
   for (const { list, entries } of lists) {
@@ -140,9 +144,84 @@ export function scubaConfigFrom({ lists = [], emergencyAccounts: accounts = [] }
   return config;
 }
 
+/**
+ * The groups a sign-in rule leaves out that hold only emergency accounts: at least one
+ * member, and every member a registered account, in Keel's newest complete membership
+ * read (`membersOf(groupId)`: a Set of lower-case ids, or null when there is no recent
+ * one). A group holding anyone else, or whose members Keel has not read lately, is
+ * not one, so a rule that leaves it out still fails. Each group is given in every
+ * spelling the policies use, since ScubaGear compares ids as text. Pure.
+ */
+export function emergencyGroupsFrom({ accounts = [], policies = [], membersOf = () => null }) {
+  const accountIds = new Set(accounts.map((account) => String(account.accountId).toLowerCase()));
+  if (!accountIds.size) return [];
+  const spellings = new Map();
+  for (const policy of policies) {
+    const excluded = policy?.conditions?.users?.excludeGroups;
+    for (const id of Array.isArray(excluded) ? excluded : []) {
+      const key = String(id).toLowerCase();
+      spellings.set(key, (spellings.get(key) ?? new Set([key])).add(String(id)));
+    }
+  }
+  return [...spellings.keys()]
+    .filter((group) => {
+      const members = membersOf(group);
+      return members instanceof Set && members.size > 0 && [...members].every((member) => accountIds.has(String(member).toLowerCase()));
+    })
+    .flatMap((group) => [...spellings.get(group)])
+    .sort();
+}
+
+// A membership read older than this cannot vouch for a group: the same age limit as the
+// sign-in rules' own backup (adapters.mjs GRAPH_MAX_AGE_MS).
+const MEMBERSHIP_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * The tenant's run settings for ScubaGear: its `scuba_config`, and `emergencyAccess`
+ * (the emergency account names, the number of emergency groups and every id passed)
+ * so a result that relied on them can say so.
+ */
+export async function loadScubaSettings(client, { tenantRef, now = new Date() }) {
+  const lists = await getScubaConfigLists(client, { tenantRef });
+  let groups = [];
+  if (lists.emergencyAccounts.length) {
+    const { inventory, groupMembers } = await loadLockoutGateInputs(client, { tenantRef, now });
+    const notBefore = new Date(now).getTime() - MEMBERSHIP_MAX_AGE_MS;
+    groups = emergencyGroupsFrom({
+      accounts: lists.emergencyAccounts,
+      policies: (inventory.conditionalAccessPolicy?.resources ?? []).map((resource) => resource.payload),
+      membersOf: (group) => groupMembers.membersOf(group, { notBefore }),
+    });
+  }
+  return {
+    scubaConfig: scubaConfigFrom({ ...lists, emergencyGroups: groups }),
+    emergencyAccess: {
+      accountLabels: lists.emergencyAccounts.map((account) => account.label).sort(),
+      groupCount: new Set(groups.map((group) => group.toLowerCase())).size,
+      ids: [...lists.emergencyAccounts.map((account) => account.accountId), ...groups],
+    },
+  };
+}
+
 /** The tenant's `scuba_config`, for a compliance run. */
-export async function loadScubaConfig(client, { tenantRef }) {
-  return scubaConfigFrom(await getScubaConfigLists(client, { tenantRef }));
+export async function loadScubaConfig(client, { tenantRef, now = new Date() }) {
+  return (await loadScubaSettings(client, { tenantRef, now })).scubaConfig;
+}
+
+/**
+ * The detail line saying which emergency accounts a rule was allowed to leave out, or
+ * null when the rule reads no exclusion list or its input names none of them. `document`
+ * is the rule's input; its config is not searched.
+ */
+export function emergencyAccessLine(emergencyAccess, policyId, document, verdict) {
+  if (!emergencyAccess?.ids?.length || (!SIGN_IN_EXCLUSION_RULES.includes(policyId) && !ROLE_EXCLUSION_RULES.includes(policyId))) return null;
+  const { scuba_config: config, ...tenant } = document;
+  const text = JSON.stringify(tenant);
+  if (!emergencyAccess.ids.some((id) => text.includes(`"${id}"`))) return null;
+  const { accountLabels: names, groupCount } = emergencyAccess;
+  const accounts = `${names.length} emergency account${names.length === 1 ? '' : 's'} (${names.join(', ')})`;
+  const value = groupCount ? `${accounts} and ${groupCount} group${groupCount === 1 ? '' : 's'} holding only them` : accounts;
+  return { subject: 'Emergency access', setting: 'Left out on purpose', value, expected: 'Only emergency accounts', ok: verdict !== 'fail' };
 }
 
 /** Whether `config` holds the list a rule needs (a rule that needs none always does). */

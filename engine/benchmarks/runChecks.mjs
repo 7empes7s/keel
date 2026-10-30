@@ -21,7 +21,7 @@
  */
 import { readObservation } from '../contracts/observation.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
-import { loadScubaConfig } from './scubagear/config.mjs';
+import { loadScubaSettings } from './scubagear/config.mjs';
 import { evaluateControl, recordEvaluation } from './evaluate.mjs';
 import { listOwnControls } from './ownChecks.mjs';
 import { WORKLOAD_FACT_TYPES, listControls } from './registry.mjs';
@@ -142,8 +142,8 @@ export async function runComplianceChecks(client, { tenantRef, actor, now = new 
     [tenantRef, now],
   );
 
-  // The tenant's run settings, read once: its ScubaGear lists.
-  const settings = { scubaConfig: await loadScubaConfig(client, { tenantRef }) };
+  // The tenant's run settings, read once: its ScubaGear lists and emergency accounts.
+  const settings = await loadScubaSettings(client, { tenantRef, now });
   const reads = new Map();
   const evaluations = [];
   for (const control of controls) {

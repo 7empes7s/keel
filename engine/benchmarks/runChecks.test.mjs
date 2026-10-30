@@ -235,5 +235,9 @@ test('a Conditional Access read with no legacy block is recorded as not set up y
   const { findings, summary } = await complianceFindings(client, { tenantRef, now });
   assert.equal(findings.find((finding) => finding.controlId === legacy.control_id).reason, 'not-configured');
   assert.equal(summary.notConfigured, 1);
-  assert.equal(summary.exposed, 1);
+  // CISA ScubaGear's sign-in rules run on the same backup and fail here too (no legacy
+  // block, no phishing-resistant MFA...); of Keel's own controls only this one is exposed.
+  assert.equal(findings.filter((finding) => finding.exposed && !finding.controlId.startsWith('scubagear.')).length, 1);
+  assert.equal(summary.exposed, findings.filter((finding) => finding.exposed).length);
+  assert.ok(findings.some((finding) => finding.controlId === 'scubagear.MS.AAD.1.1v1' && finding.verdict === 'fail'));
 });

@@ -134,7 +134,18 @@ export function parseRegoFile(source, { file = 'rego' } = {}) {
     for (const match of withoutStrings.replace(/\bdata\.[A-Za-z0-9_.]+/g, ' ').matchAll(IDENT)) {
       if (!KEYWORDS.has(match[0])) identifiers.add(match[0]);
     }
-    const entry = { name, keys: inputKeys(statement, strings), identifiers, qualified };
+    // Member names: what follows a `.` (Policy.State), plus the keys object.get() is
+    // given as strings. Built-in namespaces (object.get, regex.match) are not members.
+    const members = new Set();
+    const memberCode = statement
+      .replace(/\bdata\.[A-Za-z0-9_.]+/g, ' ')
+      .replace(/\b(?:object|regex|time|array|json|strings|units|crypto|net|io|rego|future|glob|graph|semver|uuid|base64|urlquery|yaml|numbers|bits)\.[A-Za-z_]\w*/g, ' ');
+    for (const match of memberCode.matchAll(/\.\s*([A-Za-z_]\w*)/g)) members.add(match[1]);
+    for (const match of statement.matchAll(/\bobject\.get\(\s*[^,()]+,\s*(?:"\u0000(\d+)"|\[([^\]]*)\])/g)) {
+      if (match[1] !== undefined) members.add(strings[Number(match[1])]);
+      else for (const quoted of match[2].matchAll(/"\u0000(\d+)"/g)) members.add(strings[Number(quoted[1])]);
+    }
+    const entry = { name, keys: inputKeys(statement, strings), identifiers, qualified, members };
     if (name === 'tests') {
       const policyIds = new Set([
         ...[...text.matchAll(/"PolicyId"\s*:\s*"([^"]+)"/g)].map((m) => m[1]),
@@ -154,7 +165,9 @@ export function parseRegoFile(source, { file = 'rego' } = {}) {
 
 /**
  * For every rule id in the product files, the input keys it reads (directly or through
- * helpers) and the criticality of each statement that reports it.
+ * helpers), the member names its code uses anywhere on the way (`members`: a superset
+ * of the fields it reads from those inputs) and the criticality of each statement that
+ * reports it.
  * `files` is a list of { file, source }; product and util files together.
  */
 export function regoRuleInputs(files) {
@@ -181,8 +194,9 @@ export function regoRuleInputs(files) {
   };
   // Everything reachable from a statement, walked breadth-first (a name that only looks
   // like a call can make a loop; the visited set ends it).
-  const reachableKeys = (unit, statement) => {
+  const reachable = (unit, statement) => {
     const keys = new Set(statement.keys);
+    const members = new Set(statement.members);
     const visited = new Set();
     const queue = [...resolve(unit, statement)];
     while (queue.length) {
@@ -191,19 +205,22 @@ export function regoRuleInputs(files) {
       visited.add(id);
       for (const definition of definitions.get(id)) {
         for (const key of definition.statement.keys) keys.add(key);
+        for (const member of definition.statement.members) members.add(member);
         queue.push(...resolve(definition.unit, definition.statement));
       }
     }
-    return keys;
+    return { keys, members };
   };
 
   const rules = new Map();
   for (const unit of parsed) {
     for (const statement of unit.statements) {
       if (statement.name !== 'tests') continue;
-      const rule = rules.get(statement.policyId) ?? { policyId: statement.policyId, file: unit.file, inputs: new Set(), criticalities: new Set() };
+      const rule = rules.get(statement.policyId) ?? { policyId: statement.policyId, file: unit.file, inputs: new Set(), members: new Set(), criticalities: new Set() };
       if (rule.file !== unit.file) throw new Error(`${statement.policyId} is reported from two files`);
-      for (const key of reachableKeys(unit, statement)) rule.inputs.add(key);
+      const found = reachable(unit, statement);
+      for (const key of found.keys) rule.inputs.add(key);
+      for (const member of found.members) rule.members.add(member);
       rule.criticalities.add(statement.criticality);
       rules.set(statement.policyId, rule);
     }

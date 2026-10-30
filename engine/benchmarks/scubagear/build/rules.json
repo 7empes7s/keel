@@ -1,0 +1,49 @@
+{
+  "scubaGearVersion": "2.0.0",
+  "scubaGearCommit": "6e5a1a421b36c5a1fb3fd983b8c4bcd5b7a6c61d",
+  "opa": {
+    "version": "1.20.2",
+    "url": "https://github.com/open-policy-agent/opa/releases/download/v1.20.2/opa_linux_amd64_static",
+    "sha256": "69da5179ee403d10fa11bab6cfb4ffb0d23dba5f9b682fa977db772a1da5670f"
+  },
+  "products": [
+    "aad",
+    "exo"
+  ],
+  "entrypoints": [
+    "aad/tests",
+    "exo/tests"
+  ],
+  "sources": [
+    {
+      "path": "Rego/AADConfig.rego",
+      "sha256": "203124af49697d1f9a6b3343e608f5c9916e9f4cb18f6894272dc9bc41accf81"
+    },
+    {
+      "path": "Rego/EXOConfig.rego",
+      "sha256": "5ebb12e897cd3915214f31f6b10ab8f890591c7512b90bbd11a527ab72746efb"
+    },
+    {
+      "path": "Rego/Utils/AAD.rego",
+      "sha256": "686d126e264e9e843b8930a98880cd207979c75e1b67bd8841978b74b72f9ca9"
+    },
+    {
+      "path": "Rego/Utils/KeyFunctions.rego",
+      "sha256": "93a2a30a7f102276d24fec6cd06d0c54ea1465bca657735de8fa73b824870d1c"
+    },
+    {
+      "path": "Rego/Utils/ReportDetails.rego",
+      "sha256": "bf766d924ae97d6601d6824253835abb56718375ec9cd64a917b22b2c19bf905"
+    },
+    {
+      "path": "Rego/Utils/SecuritySuite.rego",
+      "sha256": "c65b9b0f2041ec2c8688c8b8afe46aaac9d8fddad80c0632fc1cab93d719f6da"
+    },
+    {
+      "path": "Rego/Utils/TestAssertions.rego",
+      "sha256": "34873c4cb43a4feaf49e1de09230069cc1d2ae23690801abc3d55398cd6ff47f"
+    }
+  ],
+  "module": "rules.wasm",
+  "moduleSha256": "a814c3b65669536188a882bc3923ba45af24845b37f20816fbac9faceaaeb978"
+}

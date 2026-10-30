@@ -230,3 +230,50 @@ test('batch 2: the backup keeps each Intune assignment\'s role as one object wit
   assert.equal('roleDefinition' in items[1], false, 'no role read leaves the field out');
   assert.match((await withItemReadsForTest(reader, entry, [{ id: 'two' }])).error.error, /more than one object/);
 });
+
+test('batch 2 review: an Intune assignment with the same name and groups but another role is not taken as done', async () => {
+  const first = await restore('deviceManagementRoleAssignment');
+  const [key, made] = [...first.graph.objects.entries()].find(([path]) => path.startsWith('/deviceManagement/roleAssignments/'));
+  first.graph.objects.set(key, { ...made, 'roleDefinition@odata.bind': 'https://graph.microsoft.com/beta/deviceManagement/roleDefinitions/other-role' });
+  const second = await restore('deviceManagementRoleAssignment', { graph: first.graph });
+  assert.equal(second.created.length, 1, 'no second object');
+  assert.equal(second.result.failed.length, 1);
+  assert.match(second.result.failed[0].error, /already exists with other access/);
+});
+
+test('batch 2 review: an Intune assignment update never changes its role, and the approval does not list one', async () => {
+  const graph = fakeGraph();
+  const resource = { ...resourceFor('deviceManagementRoleAssignment'), verb: 'update', references: [] };
+  resource.payload.members = [TARGET_GROUP];
+  resource.payload.resourceScopes = [TARGET_GROUP];
+  resource.payload.roleDefinition = { id: TARGET_ROLE };
+  const live = { ...resource.payload, id: 'live-1', displayName: 'Drifted', roleDefinition: { id: 'other-role' } };
+  graph.objects.set('/deviceManagement/roleAssignments/live-1', live);
+  resource.live = { state: 'present', targetId: 'live-1', payload: { ...live, roleDefinition: undefined } };
+  const effects = classifyContentEffects([resource]).effects;
+  assert.ok(!effects.some((effect) => effect.field === 'roleDefinition'));
+  const result = await applyWave(graph, governor, [resource], {
+    targetTenant: 'fixture-tenant', mode: 'enforce', existingTargetIds: new Map([[resource.naturalKey, 'live-1']]), approvedContentEffects: effects,
+  });
+  assert.equal(result.skipped.length, 1);
+  assert.match(result.skipped[0].reason, /gives a different role/);
+  assert.equal(graph.objects.get('/deviceManagement/roleAssignments/live-1').displayName, 'Drifted', 'nothing written');
+});
+
+test('batch 2 review: the same Exchange principal and role over another scope is a separate assignment', async () => {
+  const graph = fakeGraph();
+  graph.objects.set('/roleManagement/exchange/roleAssignments/other', {
+    id: 'other', principalId: `/Users/${TARGET_USER}`, roleDefinitionId: TARGET_ROLE, directoryScopeId: '/', appScopeId: '/AdministrativeUnits/x',
+  });
+  const { result, created } = await restore('exchangeRoleAssignment', { graph });
+  assert.deepEqual(result.failed, []);
+  assert.equal(created.length, 2);
+});
+
+test('batch 2 review: a role read that finds the assignment gone leaves the role out, and the backup goes on', async () => {
+  const entry = { type: 'deviceManagementRoleAssignment', version: 'beta', itemReads: { as: 'roleDefinition', path: '/x/{item}/roleDefinition', single: true, fields: ['id'] } };
+  const reader = { async collect() { return { error: { status: 404, error: 'gone' }, pages: 0 }; } };
+  const items = [{ id: 'a1' }];
+  assert.equal((await withItemReadsForTest(reader, entry, items)).error, null);
+  assert.equal('roleDefinition' in items[0], false);
+});

@@ -283,6 +283,9 @@ async function withItemReads(reader, entry, items, { dropWhenNotFound = false } 
       items.splice(items.indexOf(item), 1);
       continue;
     }
+    // A single related object that is not there (the object went between the list and
+    // this read) is left out, like one with none, and never fails the kind.
+    if (single && result?.error?.status === 404) continue;
     if (result?.error) return { error: result.error };
     if (result?.capped || !Array.isArray(result?.items)) return { error: { error: `reading ${entry.type}: ${as} of ${item.id} was incomplete` } };
     pages += Number.isSafeInteger(result.pages) ? result.pages : 0;

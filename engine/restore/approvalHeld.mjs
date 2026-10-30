@@ -119,7 +119,11 @@ export const createdOnce = ({ version, path, label, matches, same }) => async (i
   if (listed.error) return `could not list the ${label}s to look for one made before (${listed.error})`;
   const found = listed.value.filter((row) => matches(row, payload));
   if (found.length === 0) return null;
-  const done = found.find((row) => same(row, payload));
+  let done = null;
+  for (const row of found) {
+    // `same` may read more of the row (an Intune assignment's role).
+    if (await same(row, payload, io)) { done = row; break; }
+  }
   if (done) return { skipped: `the ${label} is already there with the backup's access (${done.id}), so nothing is written` };
   return `a ${label} like this one already exists with other access; KEEL does not make a second one, so check it by hand`;
 };

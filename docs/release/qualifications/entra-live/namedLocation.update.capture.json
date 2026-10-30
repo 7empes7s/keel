@@ -1,34 +1,30 @@
 {
-  "restoreRef": "84d37011-7331-8505-9bae-ee220d8057db",
+  "restoreRef": "4aadf2af-c521-8da2-8112-08195359ddbc",
   "entry": {
-    "naturalKey": "namedLocation:KEEL-RT-148-location",
+    "naturalKey": "namedLocation:KEEL-RT-247-location",
     "resourceType": "namedLocation",
     "operation": "update",
-    "targetId": "4b5f7bdd-4f1e-84b1-8162-9cd811c6897f",
+    "targetId": "c9db4c38-ebe7-8493-8b9b-f2c7c6359f3e",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-14T14:19:12.061Z",
+    "recordedAt": "2026-10-30T09:48:59.170Z",
     "priorState": {
-      "id": "4b5f7bdd-4f1e-84b1-8162-9cd811c6897f",
+      "id": "c9db4c38-ebe7-8493-8b9b-f2c7c6359f3e",
       "ipRanges": [
         {
           "@odata.type": "#microsoft.graph.iPv4CidrRange",
           "cidrAddress": "203.0.113.0/24"
-        },
-        {
-          "@odata.type": "#microsoft.graph.iPv4CidrRange",
-          "cidrAddress": "198.51.100.0/24"
         }
       ],
       "isTrusted": false,
       "@odata.type": "#microsoft.graph.ipNamedLocation",
-      "displayName": "KEEL-RT-148-location",
-      "createdDateTime": "2026-10-14T12:25:19.8349135Z",
+      "displayName": "KEEL-RT-247-location-drifted",
+      "createdDateTime": "2026-10-30T09:18:45.1106128Z",
       "deletedDateTime": null,
-      "modifiedDateTime": "2026-10-14T12:29:28.8423468Z"
+      "modifiedDateTime": "2026-10-30T09:45:18.1891705Z"
     },
     "intendedState": {
-      "id": "4b5f7bdd-4f1e-84b1-8162-9cd811c6897f",
+      "id": "c9db4c38-ebe7-8493-8b9b-f2c7c6359f3e",
       "ipRanges": [
         {
           "@odata.type": "#microsoft.graph.iPv4CidrRange",
@@ -37,10 +33,10 @@
       ],
       "isTrusted": false,
       "@odata.type": "#microsoft.graph.ipNamedLocation",
-      "displayName": "KEEL-RT-148-location",
-      "createdDateTime": "2026-10-14T12:25:19.8349135Z",
+      "displayName": "KEEL-RT-247-location",
+      "createdDateTime": "2026-10-30T09:18:45.1106128Z",
       "deletedDateTime": null,
-      "modifiedDateTime": "2026-10-14T12:25:19.8349135Z"
+      "modifiedDateTime": "2026-10-30T09:18:45.1106128Z"
     },
     "postState": {
       "ipRanges": [
@@ -49,7 +45,7 @@
         }
       ],
       "isTrusted": false,
-      "displayName": "KEEL-RT-148-location"
+      "displayName": "KEEL-RT-247-location"
     }
   }
 }

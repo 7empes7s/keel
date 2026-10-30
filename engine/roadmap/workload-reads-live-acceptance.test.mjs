@@ -28,6 +28,7 @@ import { main as pseudonymizeCheck } from '../../tools/qualification/pseudonymiz
 import { readModule } from '../../tools/qualification/workloadReadsAcceptance.mjs';
 import { WORKLOAD_DESCRIPTORS, buildWorkloadLedger } from '../collect/workloadContract.mjs';
 import { exchangeExtendedActivation } from '../collect/workloads/exchangeExtended.mjs';
+import { exchangeDistributionGroupsActivation, exchangeRecipientsActivation } from '../collect/workloads/exchangeRecipients.mjs';
 import { exchangeRoleGroupsActivation } from '../collect/workloads/exchangeRoleGroups.mjs';
 import { mailFlowActivation } from '../collect/workloads/mailFlow.mjs';
 import { siteSharingActivation } from '../collect/workloads/sharepoint.mjs';
@@ -50,6 +51,8 @@ const ACTIVATION = {
   'exchange-mail-flow': mailFlowActivation,
   'exchange-extended': exchangeExtendedActivation,
   'exchange-role-groups': exchangeRoleGroupsActivation,
+  'exchange-distribution-groups': exchangeDistributionGroupsActivation,
+  'exchange-recipients': exchangeRecipientsActivation,
   'teams-org-policies': teamsPolicyActivation,
   'teams-voice-policies': teamsExtendedActivation,
   'purview-retention-dlp': retentionDlpActivation,
@@ -59,7 +62,7 @@ const ACTIVATION = {
   'sharepoint-structure': sharePointStructureActivation,
 };
 const TABLES = {
-  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
+  ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedExchangeRecipients', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
   MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended'],
   'PnP.PowerShell': ['AllowedPnP', 'AllowedPnPStructure'],
 };
@@ -70,7 +73,11 @@ function containerAllowlist(variable) {
   return Object.fromEntries([...block.matchAll(/'([A-Za-z0-9-]+)'\s*=\s*@\(([^)]*)\)/g)]
     .map(([, name, entries]) => [name, [...entries.matchAll(/'([A-Za-z0-9]+)'/g)].map((match) => match[1])]));
 }
-const allowlistFor = (module) => Object.assign({}, ...TABLES[module].map(containerAllowlist));
+// A cmdlet in two tables (Get-Mailbox) may take either table's parameters, as run-cmdlet.ps1 allows.
+const allowlistFor = (module) => TABLES[module].map(containerAllowlist).reduce((all, table) => {
+  for (const [cmdlet, names] of Object.entries(table)) all[cmdlet] = [...new Set([...(all[cmdlet] ?? []), ...names])];
+  return all;
+}, {});
 
 // A site template is never empty: a site always answers with its template.
 const TEMPLATE = '<pnp:Provisioning xmlns:pnp="http://schemas.dev.office.com/PnP/2022/09/ProvisioningSchema"><pnp:Templates><pnp:ProvisioningTemplate ID="TEMPLATE-1"/></pnp:Templates></pnp:Provisioning>';

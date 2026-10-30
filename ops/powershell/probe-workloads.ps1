@@ -307,6 +307,21 @@ if ($Workloads -contains 'exo' -and (Test-KeelPrereq -Workload 'exo' -Value $Org
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AtpPolicyForO365' -Block { Get-AtpPolicyForO365 }
         # Exchange admin role groups (engine/collect/workloads/exchangeRoleGroups.mjs): reads only.
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-RoleGroup' -Block { Get-RoleGroup }
+        # Exchange recipients and mailbox permissions (engine/collect/workloads/exchangeRecipients.mjs): reads only.
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-DistributionGroup' -Block { Get-DistributionGroup -ResultSize Unlimited }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-DynamicDistributionGroup' -Block { Get-DynamicDistributionGroup -ResultSize Unlimited }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-UnifiedGroup' -Block { Get-UnifiedGroup -ResultSize Unlimited }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-Mailbox -RecipientTypeDetails SharedMailbox' -Block { Get-Mailbox -RecipientTypeDetails SharedMailbox -ResultSize Unlimited }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-Mailbox -RecipientTypeDetails RoomMailbox' -Block { Get-Mailbox -RecipientTypeDetails RoomMailbox -ResultSize Unlimited }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-Mailbox -RecipientTypeDetails EquipmentMailbox' -Block { Get-Mailbox -RecipientTypeDetails EquipmentMailbox -ResultSize Unlimited }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-MailContact' -Block { Get-MailContact -ResultSize Unlimited }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-RecipientPermission' -Block { Get-RecipientPermission -ResultSize 100 }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-MailboxPermission -Identity' -Block {
+            @(Get-Mailbox -RecipientTypeDetails SharedMailbox,RoomMailbox,EquipmentMailbox -ResultSize 1) | ForEach-Object { Get-MailboxPermission -Identity $_.Guid.ToString() }
+        }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-CalendarProcessing -Identity' -Block {
+            @(Get-Mailbox -RecipientTypeDetails RoomMailbox,EquipmentMailbox -ResultSize 1) | ForEach-Object { Get-CalendarProcessing -Identity $_.Guid.ToString() }
+        }
     } catch {
         Add-Result -Workload 'exo' -Connected $false -Cmdlet $null -Ok $false -Count $null -ErrorText $_.Exception.Message
         Write-Diag "exo connect FAILED: $($_.Exception.Message)"

@@ -1,0 +1,37 @@
+{
+  "restoreRef": "ccc086a1-8211-8b54-aa04-0b12cdbb86e4",
+  "entry": {
+    "naturalKey": "mobileAppRelationship:4d38c7d3-704f-8ce8-ac0a-972ed051fbb4_8cd51502-2d67-830c-a0fc-3dfb7ffd143d",
+    "resourceType": "mobileAppRelationship",
+    "operation": "create",
+    "targetId": "4d38c7d3-704f-8ce8-ac0a-972ed051fbb4_8cd51502-2d67-830c-a0fc-3dfb7ffd143d",
+    "outcome": "succeeded",
+    "outcomeDetail": null,
+    "recordedAt": "2026-10-30T13:45:18.263Z",
+    "priorState": null,
+    "intendedState": {
+      "sourceId": "4d38c7d3-704f-8ce8-ac0a-972ed051fbb4",
+      "targetId": "8cd51502-2d67-830c-a0fc-3dfb7ffd143d",
+      "targetType": "child",
+      "@odata.type": "#microsoft.graph.mobileAppDependency",
+      "dependencyType": "detect"
+    },
+    "postState": {
+      "id": "4d38c7d3-704f-8ce8-ac0a-972ed051fbb4_8cd51502-2d67-830c-a0fc-3dfb7ffd143d",
+      "sourceId": "4d38c7d3-704f-8ce8-ac0a-972ed051fbb4",
+      "targetId": "8cd51502-2d67-830c-a0fc-3dfb7ffd143d",
+      "targetType": "child",
+      "@odata.type": "#microsoft.graph.mobileAppDependency",
+      "dependencyType": "detect",
+      "targetPublisher": "KEEL",
+      "dependentAppCount": 0,
+      "dependsOnAppCount": 0,
+      "sourceDisplayName": "KEEL-RT-212-a-main",
+      "targetDisplayName": "KEEL-RT-212-a-dep",
+      "sourceDisplayVersion": null,
+      "targetDisplayVersion": null,
+      "sourcePublisherDisplayName": "KEEL",
+      "targetPublisherDisplayName": "KEEL"
+    }
+  }
+}

@@ -83,7 +83,7 @@ group 3.
   - administrative templates and imported template files;
   - enrollment restrictions, device categories and terms and conditions.
 - **Exchange, Teams and Purview:**
-  - settings KEEL doesn't write yet, such as domains, anti-spam, anti-phish, malware, DKIM, Safe Links and Safe Attachments;
+  - settings KEEL doesn't write yet, such as accepted and remote domains, DKIM signing and Safe Attachments policies;
   - deleted rules and connectors;
   - Teams policy assignments;
   - deleted retention and sensitivity labels, auto-labeling and eDiscovery case settings.

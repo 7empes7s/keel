@@ -47,6 +47,7 @@ import { SHAREPOINT_STRUCTURE_WORKLOAD } from '../../collect/workloads/sharepoin
 import { sharePointStructureRestore } from './sharepointStructure.mjs';
 import { DISTRIBUTION_GROUPS_WORKLOAD, distributionGroupRestore } from './dscDistributionGroups.mjs';
 import { loadWorkloadSource, workloadSettingsRestore } from './cmdletSettings.mjs';
+import { EXCHANGE_ROLES_WORKLOAD, exchangeRoleRestore } from './exchangeRoleDefinitions.mjs';
 
 export const WORKLOAD_CONFIG_PREFIX = 'workload:';
 
@@ -187,6 +188,9 @@ export const WORKLOAD_RESTORES = Object.freeze({
   // Distribution lists and mail-enabled security groups, through Microsoft365DSC in the
   // keel-dsc profile (dscDistributionGroups.mjs): settings, and a list that is gone.
   [DISTRIBUTION_GROUPS_WORKLOAD]: distributionGroupRestore({ load: loadWorkloadSource }),
+  // Custom Exchange admin roles that no longer exist, from a Graph backup, through Exchange
+  // Online PowerShell (exchangeRoleDefinitions.mjs): New-ManagementRole, then trim its entries.
+  [EXCHANGE_ROLES_WORKLOAD]: exchangeRoleRestore(),
 });
 
 /** The table entry for a workload name, or a usage error naming the ones that exist. */

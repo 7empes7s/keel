@@ -39,6 +39,7 @@ import {
 import { WKLD_WRITE_OPERATIONS } from '../restore/workloads/writeDeclarations.mjs';
 import { SHAREPOINT_STRUCTURE_WRITE_OPERATIONS } from '../restore/workloads/sharepointStructureWrites.mjs';
 import { DSC_WRITE_OPERATIONS } from '../restore/workloads/dscDeclarations.mjs';
+import { EXCHANGE_ROLE_WRITE_OPERATIONS } from '../restore/workloads/exchangeRoleDeclarations.mjs';
 
 export const LEDGER_CONTRACT_VERSION = 1;
 // Coverage plan v3: no type is left 'unknown'. A type with no writer is
@@ -231,7 +232,7 @@ export const TYPE_DECISIONS = Object.freeze({
   authenticationEventListener: manual('no writer yet; it points to a custom authentication extension, which is not restored yet'),
   externalDomainFederation: automated('samlorwsfedexternaldomainfederation', 'restore gaps batch 3: update in place of the federation name and protocol; its sign-in addresses and signing certificate are a manual step, and its domains are backed up but not written, so a deleted federation is set up again by hand'),
   // Remaining kinds, batch 5: Exchange and Defender admin roles, backed up read-only; no writer is built yet.
-  exchangeRoleDefinition: manual('Graph has no write for Exchange roles (only list and get); a writer needs Exchange Online PowerShell (New-ManagementRole), and built-in roles are Microsoft-managed'),
+  exchangeRoleDefinition: manual('recreated through Exchange Online PowerShell by the exchange-role-definitions workload restore (a role that is gone only, off until live-qualified); an existing role is never changed, and built-in roles are Microsoft-managed'),
   exchangeRoleAssignment: manual('Exchange admin access needs a privilege review before it is granted again'),
   exchangeCustomAppScope: automated('customappscope', 'restore gaps batch 9: create and update of the name and recipient filter through Graph beta; the app role assignments that use it are not written', { view: 'graph-rest-beta' }),
   defenderRoleDefinition: automated('unifiedroledefinition', 'restore gaps batch 21: create and update through Graph beta of custom Defender roles (name, description and permissions); built-in roles are skipped; who holds the role is restored by hand', { view: 'graph-rest-beta' }),
@@ -718,6 +719,9 @@ export const WORKLOAD_WRITE_OPERATIONS = Object.freeze({
   // Distribution lists through Microsoft365DSC (the keel-dsc profile): settings of a list
   // that exists, and a list that no longer does (restore/workloads/dscDistributionGroups.mjs).
   ...DSC_WRITE_OPERATIONS,
+  // Custom Exchange admin roles that no longer exist, through Exchange Online PowerShell
+  // (restore/workloads/exchangeRoleDefinitions.mjs): New-ManagementRole, then trim its entries.
+  ...EXCHANGE_ROLE_WRITE_OPERATIONS,
 });
 
 /**
@@ -1126,7 +1130,7 @@ export const EXPANSION_INVENTORY = Object.freeze({
     'update in place is fixture-tested; its domains are backed up but not written, so a deleted federation is not recreated'),
   // Remaining kinds, batch 5: Exchange and Defender admin roles, backed up read-only; manual until a writer is built.
   exchangeRoleDefinition: byHand('identity-application', 'New-ManagementRole (Exchange Online PowerShell)', 'Exchange Organization Management role',
-    'backed up; Graph lists Exchange roles but cannot write them; built-in roles are listed beside custom ones'),
+    'backed up; a custom role that is gone is recreated by the exchange-role-definitions workload restore; built-in roles are listed beside custom ones'),
   exchangeRoleAssignment: byHand('identity-application', 'POST /roleManagement/exchange/roleAssignments (beta)', 'RoleManagement.ReadWrite.Exchange',
     'backed up; a privilege review comes before any grant'),
   exchangeCustomAppScope: subset('identity-application', 'POST /roleManagement/exchange/customAppScopes (beta); PATCH .../{id} (beta)', 'RoleManagement.ReadWrite.Exchange',

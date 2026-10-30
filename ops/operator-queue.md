@@ -9823,7 +9823,7 @@ item that needs it stays untouched.
   that failed (status and message verbatim, no tokens). A `manual: the policy is assigned` step in step 3 means the restore wrote
   assignments: report the assignments it wrote.
 
-### Q212: Live link restore and link undo for Intune apps, with a harmless test package (after PR #654, unblocks Q209 links and Q210, #653)
+### Q212: Live link restore and link undo for Intune apps, with a harmless test package (after PR #654, unblocks Q209 links and Q210, #653; do first)
 - Drafted by the "Live test Intune app links with test package" thread (2026-10-28). Q209 found that Intune refuses any link or change
   on a Win32 app with no package: `400 "Invalid operation: app's PublishingState is not 'Published'."` (#653). On 2026-10-28 16:02 UTC
   the human operator approved uploading a harmless test package to KEEL-RT- Win32 apps, so the link parts of Q209 and all of Q210 can

@@ -9,6 +9,7 @@
 // node keel-govern.mjs evidence verify
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { engageWriterAppId } from '../engine/restore/engageWriter.mjs';
 import { readConfigFile } from '../engine/config/configFile.mjs';
 import { getToken } from '../tools/tenant-probe/auth.mjs';
 import { GraphReader } from '../tools/tenant-probe/graph.mjs';
@@ -286,9 +287,12 @@ async function executeRollback(plan, { driftId, client }) {
   const { accessToken: restorerToken } = await getToken(restorer);
   const writer = new GraphWriter(async () => restorerToken);
   const breakGlassUserIds = globalAdministratorPrincipalIds(liveResources.values());
+  // KEEL's own apps, the Engage writer included when it is set up (see keel-restore.mjs).
+  const engage = engageWriterAppId({ readFile: readFileSync });
   const deletionGuardOptions = {
     breakGlassUserIds,
-    keelAppIds: [collector.clientId, restorer.clientId],
+    keelAppIds: [collector.clientId, restorer.clientId, engage.appId].filter(Boolean),
+    ...(engage.unreadable ? { keelAppIdsUnknown: engage.unreadable } : {}),
     caPolicies: [...liveResources.values()]
       .filter((resource) => resource.resourceType === 'conditionalAccessPolicy'),
   };

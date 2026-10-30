@@ -12043,8 +12043,24 @@ item that needs it stays untouched.
   Microsoft does not document the API. These checks tell apart (a) a permission missing from the token, (b) a refused part of
   the request body, and (c) Graph refusing app-only writes to this API. The answer decides the code change.
 - Needs: nothing (any build). **Quick; fine to take between other items.**
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-30 02:40 UTC, keel-operator). B = 03132a5d. Restorer for the writes, Collector for reads; global admin not used; nothing granted. **Answer: none of (a) or (b). The API ignores application permissions and is gated by Entra *directory roles*.** The Restorer can't even *read* it, although its token has every plausible permission. The Collector can read it only because it holds Global Reader.
+  1. Before and after: `[{"id":"microsoft-verified-publishers","isBuiltIn":true,"includes":2,"excludes":0}]` (unchanged).
+  2. Token (Restorer, app-only, decoded locally): `aud` https://graph.microsoft.com, `tid` 73b6beef…, `idtyp` app, 64 roles.
+     - Roles held: Policy.ReadWrite.ApplicationConfiguration **true**, Policy.ReadWrite.PermissionGrant **true**, Application.ReadWrite.All **true**, Directory.ReadWrite.All **true**, Policy.Read.All **true**.
+     - Restorer directory roles: Exchange Administrator, Compliance Administrator, Teams Administrator, SharePoint Administrator, Intune Administrator, Compliance Data Administrator, Security Administrator, Knowledge Administrator. **No Global Reader, Application Administrator or Cloud Application Administrator.**
+     - For comparison, the Collector token also has Policy.Read.All (56 roles), and its directory roles include **Global Reader**.
+  3. Reads as the Restorer:
+     - `GET beta /policies/servicePrincipalCreationPolicies`: **403** `Authorization_RequestDenied: Insufficient privileges to complete the operation.` (request-id 5bcba4c2-fcce-4746-866b-a7ad214741e7). The same GET as the Collector answers 200.
+     - `GET v1.0 …`: **400** `BadRequest: Resource not found for the segment 'servicePrincipalCreationPolicies'.` (request-id b824f357-080d-4d32-94d8-a2edb3f1e407; beta only).
+  4. Minimal create `{"displayName":"KEEL-RT-256-app-creation","description":"KEEL-RT test fixture"}`: **403** `Authorization_RequestDenied: Insufficient privileges to complete the operation.` (request-id 26d789f8-935d-4736-87fa-b5bfcea5f45d, date `Fri, 30 Oct 2026 02:37:47 GMT`).
+     - With an explicit `"id":"keel-rt-256-app-creation"`: the same 403 (request-id 449f98d7-c058-46c9-9f1a-d00fcaf0aa95). Nothing created.
+  5. Control, same token: `POST v1.0 /policies/permissionGrantPolicies` `keel-rt-256-pgp` answered **201** (request-id 802c562d-85ac-4c13-905f-34afdccff6cb), then DELETE **204**. So the token can write policies.
+  6. Cleanup: no KEEL-RT-256 app creation policy (list as before); `keel-rt-256-pgp` reads 404. **Left in the tenant: nothing.**
+  - **What this decides (inference from steps 2–5):** Keel can't write servicePrincipalCreationPolicy with an app-only token holding only Graph application permissions.
+    - The likely fix is a directory role on the Restorer: Cloud Application Administrator or Application Administrator for writes, which also covers reads, as Global Reader does for the Collector.
+    - Or keep the kind manual.
+    - Adding a directory role widens the Restorer's privileges, so it is **Marouane's decision**; not done here.
 - **Test tenant only.** Restorer for the writes, Collector for reads; global admin not used; grant nothing. Never change the
   built-in `microsoft-verified-publishers` policy. Never print a token: decode it locally and report only the claim values asked for.
   Tenant-wide write covered by Marouane's 2026-10-22 approval, as in Q239: put the tenant back right after.

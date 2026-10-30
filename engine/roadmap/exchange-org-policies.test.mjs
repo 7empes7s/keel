@@ -241,6 +241,32 @@ test('each policy is one observation under its identity, with declared fields on
   assert.deepEqual(denied.failures.map((failure) => [failure.family, failure.status]), [['applicationAccessPolicy', 'denied']]);
 });
 
+test('a tenant that never had an application access policy reads as empty, other not-found errors still fail', async () => {
+  // What Exchange Online answered in the Q280 live check (tenant and DC redacted).
+  const noPolicyYet = {
+    message: "||The operation couldn't be performed because object 'OU=contoso.onmicrosoft.com,OU=Microsoft Exchange Hosted Organizations,DC=EURPR04A012,DC=PROD,DC=OUTLOOK,DC=COM\\*' couldn't be found on 'DB8PR04A012DC01.EURPR04A012.PROD.OUTLOOK.COM'.",
+    category: 'NotSpecified', errorId: '[],Write-ErrorMessage',
+  };
+  const exchange = fakeExchange({ output: healthyTenant(), errors: { 'Get-ApplicationAccessPolicy': noPolicyYet } });
+  const access = await readExchangeOrgAccess({ powershell: exchange.powershell, now: () => NOW });
+  assert.equal(access.outcome, 'complete', JSON.stringify(access.discovery));
+  assert.deepEqual(access.failures, []);
+  assert.deepEqual(access.discovery.families.applicationAccessPolicy, { status: 'read', objects: 0 });
+  assert.equal(access.resources.some((resource) => resource.kind === 'applicationAccessPolicy'), false);
+
+  // A named object that is missing is not the empty-list answer: it stays a failure.
+  const named = { ...noPolicyYet, message: "The operation couldn't be performed because object 'KEEL-RT-policy' couldn't be found on 'DC01'." };
+  for (const error of [named, { message: 'Something else went wrong', category: 'NotSpecified', errorId: 'x' }]) {
+    const failed = await readExchangeOrgAccess({ powershell: fakeExchange({ output: healthyTenant(), errors: { 'Get-ApplicationAccessPolicy': error } }).powershell });
+    assert.equal(failed.outcome, 'partial');
+    assert.deepEqual(failed.failures.map((failure) => [failure.family, failure.status]), [['applicationAccessPolicy', 'failed']]);
+  }
+
+  // Only the application access policy read has this rule; the same answer elsewhere is a failure.
+  const sharing = await readExchangeOrgAccess({ powershell: fakeExchange({ output: healthyTenant(), errors: { 'Get-SharingPolicy': noPolicyYet } }).powershell });
+  assert.deepEqual(sharing.failures.map((failure) => [failure.family, failure.status]), [['sharingPolicy', 'failed']]);
+});
+
 test('collection stays off until Exchange and the reads are qualified, then SMTP AUTH turned on is a change', async (t) => {
   const client = await schemaClient(t);
   const tenantRef = nextTenant();

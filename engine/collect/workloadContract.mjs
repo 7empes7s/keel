@@ -96,10 +96,13 @@ const cmdlet = (name, module, { parameters = [], probeName = name } = {}) => Obj
 // the few read actions Microsoft only offers as a POST with no body (REST_READ_ACTIONS).
 const rest = (host, endpoint, version, { audience, items = 'value', method = 'GET' }) => Object.freeze({ kind: 'rest', method, host, endpoint, version, audience, items });
 export const REST_HOSTS = Object.freeze(['api.bap.microsoft.com', 'api.powerapps.com', 'api.fabric.microsoft.com']);
-// Read actions that Microsoft's admin API takes as a POST with no body. A POST to any
-// other path is a write and stays refused. The last path segment must match, any case.
-export const REST_READ_ACTIONS = Object.freeze(['listtenantsettings']);
-const restReadAction = (endpoint) => REST_READ_ACTIONS.includes(String(endpoint).split('?')[0].split('/').filter(Boolean).pop()?.toLowerCase());
+// Read actions that Microsoft's admin API takes as a POST with no body, as host and exact
+// path (any case). A POST to anything else is a write and stays refused.
+export const REST_READ_ACTIONS = Object.freeze([
+  Object.freeze({ host: 'api.bap.microsoft.com', path: '/providers/microsoft.businessappplatform/listtenantsettings' }),
+]);
+const restReadAction = (host, endpoint) => REST_READ_ACTIONS
+  .some((action) => action.host === host && action.path === String(endpoint).split('?')[0].toLowerCase());
 // Path segments of those APIs that address apps, flows, user connections or Power BI
 // content rather than tenant configuration.
 const REST_CONTENT_SEGMENTS = new Set([
@@ -559,7 +562,7 @@ export function scopeProblems(operation, { identity = null } = {}) {
       .filter((segment, index) => CONTENT_SEGMENTS.has(segment) && !(sitePermissions && index === 2));
     if (content.length && !contentReader) problems.push(`${operation.endpoint} reads content (${[...new Set(content)].join(', ')}), not configuration`);
   } else if (operation?.kind === 'rest') {
-    if (operation.method !== 'GET' && !(operation.method === 'POST' && restReadAction(operation.endpoint))) problems.push(`${operation.method} is not a read`);
+    if (operation.method !== 'GET' && !(operation.method === 'POST' && restReadAction(operation.host, operation.endpoint))) problems.push(`${operation.method} is not a read`);
     if (!REST_HOSTS.includes(operation.host)) problems.push(`${operation.host} is not an admin API KEEL reads`);
     if (typeof operation.endpoint !== 'string' || !operation.endpoint.startsWith('/')) {
       problems.push('a REST endpoint must be a path starting with /');

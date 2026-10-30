@@ -7,23 +7,23 @@
   "resourceType": "authenticationMethodsPolicy",
   "operation": "update",
   "fieldProjectionContractVersion": 1,
-  "build": "be3d29984d2ee61b585e69b6cc477cd63323d310",
+  "build": "ad608b360c42e83dbf1289d616b8da0a4b7c24e4",
   "synthetic": false,
   "evidenceLevel": "live-qualified",
   "ok": true,
   "outcome": "succeeded",
   "outcomeDetail": null,
   "readBackVerified": true,
-  "observedAt": "2026-10-14T18:55:22.408Z",
-  "restoreRef": "bf8eef95-ca9d-8c0a-96c1-d4d1e39bc6ff",
+  "observedAt": "2026-10-30T10:36:36.004Z",
+  "restoreRef": "6434d5bc-a0d7-8329-af3e-8c78b20a44d8",
   "naturalKey": "authenticationMethodsPolicy:Authentication Methods Policy",
   "fixtureKind": "tenant-setting",
-  "captureSha256": "d4d2a84f4962599ec976b40259ec54719dd8f9818d5adc28012cae3ee1c339d5",
+  "captureSha256": "8d87f7c90352267e1f46d51c2d6f0e62901313f80f15c8db268cebaadba622da",
   "proofRef": "docs/release/qualifications/entra-live/authenticationMethodsPolicy.update.json",
   "proof": {
     "runner": {
       "identity": "keel-release-runner",
-      "signature": "737ab6ca1bfe48d65c3a13ceefdf89e83bf93b0ca29dc1d27c85a4a70192b2cc"
+      "signature": "47449cd6c03b80ffc77eb66322e21f030f794ac951c4e759da7947c9d561e567"
     }
   }
 }

@@ -64,7 +64,7 @@ function keyFor(type, obj, ctx) {
  * their ids are global constants, not tenant identity, and resolving them
  * from history would bypass classify()'s global handling.
  */
-export const CONTEXT_EXCLUDED_TYPES = new Set(['directoryRoleTemplate', 'directorySettingTemplate']);
+export const CONTEXT_EXCLUDED_TYPES = new Set(['directoryRoleTemplate', 'directorySettingTemplate', 'deviceManagementTemplate']);
 
 // Types whose id is shared vocabulary, not an identifier: a branding
 // localization's id is its language ("0" for the default, "fr-FR", ...).

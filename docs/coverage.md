@@ -4,7 +4,7 @@
 
 For every kind of Microsoft 365 setting, this page says whether KEEL backs it up, what KEEL can restore, how well that restore is proven, and what you do yourself.
 
-KEEL tracks 180 kinds of Entra ID and Intune settings and backs up everything it can read of each one (one kind waits for a live read check first). 45 are full, 127 incomplete, 8 Microsoft-managed and 0 not readable. KEEL can restore 98 at least in part; the other 82 are restored by hand from the backup.
+KEEL tracks 180 kinds of Entra ID and Intune settings and backs up everything it can read of each one. 45 are full, 127 incomplete, 8 Microsoft-managed and 0 not readable. KEEL can restore 98 at least in part; the other 82 are restored by hand from the backup.
 
 ## How to read this page
 
@@ -442,7 +442,7 @@ KEEL tracks 180 kinds of Entra ID and Intune settings and backs up everything it
 | Terms and conditions | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (Microsoft limit) | None |
 | Windows Autopilot profiles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Security baselines (older format) | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
-| Endpoint security templates | Not yet (waiting for a live read check) | Microsoft-managed | Nothing to restore | None |
+| Endpoint security templates | Yes (Tier 3, low impact, weekly) | Microsoft-managed | Nothing to restore | None |
 | Enrolled devices | Yes (Tier 3, low impact, weekly) | Microsoft-managed | Nothing to restore | None |
 | Apps | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | App protection policies | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back; remove ones added since | Tested against a simulated tenant |
@@ -526,7 +526,7 @@ KEEL tracks 180 kinds of Entra ID and Intune settings and backs up everything it
 - **Security baselines (older format)** (KEEL choice). This older format is preview-only and replaced by the settings catalog, and its settings are stored separately and not backed up.
   - *Not brought back:* the baseline's settings (stored separately and not in the backup yet).
   - *You do:* Rebuild the baseline in the settings catalog. KEEL restores settings catalog policies.
-- **Endpoint security templates** (Microsoft limit). Microsoft publishes these templates. They are the same in every tenant. KEEL will read them only to show which area an older endpoint security policy covers, once a live read check passes.
+- **Endpoint security templates** (Microsoft limit). Microsoft publishes these templates. They are the same in every tenant. KEEL reads them only to show which area an older endpoint security policy covers.
   - *You do:* Nothing to restore.
 - **Enrolled devices** (Microsoft limit). A device record is created by the device when it enrolls. It is state, not configuration.
   - *You do:* Nothing to restore. Devices enroll again on their own once enrollment settings are back.

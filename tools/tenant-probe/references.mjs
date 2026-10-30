@@ -210,6 +210,9 @@ export function naturalKey(type, obj) {
     case 'servicePrincipal':
       return obj.appId ?? obj.displayName ?? obj.id;
     case 'domain':
+    // An Intune template is named by its id, the same in every tenant, so a
+    // policy's templateId reads the same whether or not the templates were read.
+    case 'deviceManagementTemplate':
       return obj.id;
     case 'subscribedSku':
       return obj.skuPartNumber ?? obj.id;
@@ -224,9 +227,15 @@ export function naturalKey(type, obj) {
   }
 }
 
+const TEMPLATE_KINDS = Object.freeze({
+  directoryRoleTemplate: 'roleTemplate',
+  directorySettingTemplate: 'settingTemplate',
+  deviceManagementTemplate: 'deviceTemplate',
+});
+
 /** Index kinds whose ids are a Microsoft-published catalog: the same GUID in
  * every tenant, preserved verbatim rather than remapped to a natural key. */
-const CATALOG_KINDS = new Set(['roleTemplate', 'settingTemplate']);
+const CATALOG_KINDS = new Set(['roleTemplate', 'settingTemplate', 'deviceTemplate']);
 
 /**
  * Build every resolution target the tenant offers.
@@ -252,9 +261,10 @@ export function buildIndex(collected) {
       // means the same role in every tenant. Indexed distinctly from ordinary
       // objects so classify() can report them as verbatim, not remapped. The
       // same is true of directory setting templates (e.g. Group.Unified),
-      // whose ids are also identical across tenants.
-      if (type === 'directoryRoleTemplate' || type === 'directorySettingTemplate') {
-        const kind = type === 'directoryRoleTemplate' ? 'roleTemplate' : 'settingTemplate';
+      // whose ids are also identical across tenants, and of the Intune
+      // templates older endpoint security policies are made from.
+      if (TEMPLATE_KINDS[type]) {
+        const kind = TEMPLATE_KINDS[type];
         add(obj?.id, { type, key: naturalKey(type, obj), kind });
         continue;
       }

@@ -22,10 +22,10 @@ export default [
   // made from. An intent names only its templateId; the template's
   // templateSubtype says which Defender area it is (antivirus, firewall, ...).
   // Read-only reference data. intentCount moves whenever a policy is made, so
-  // it is not selected. Off (liveGate) until a live read passes.
+  // it is not selected. Live read checked 2026-10-30 (operator queue Q283):
+  // 16 templates, every selected field present.
   { type: 'deviceManagementTemplate', path: '/deviceManagement/templates', version: 'beta', criticality: 'tier3', blastRadius: 'cosmetic',
     select: 'id,displayName,description,versionInfo,isDeprecated,templateType,templateSubtype,platformType,publishedDateTime',
-    liveGate: 'endpoint security templates: off until a live read of /beta/deviceManagement/templates passes',
     note: 'Reference catalogue of Microsoft templates. Used to file older endpoint security policies by area; never restored.' },
   { type: 'managedDevice', path: '/deviceManagement/managedDevices', version: 'v1.0', criticality: 'tier3', blastRadius: 'cosmetic', pageCap: 5,
     note: 'Device records are re-enrolled, not restored. Counted for scale only.' },

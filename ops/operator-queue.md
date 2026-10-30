@@ -12715,3 +12715,58 @@ item that needs it stays untouched.
   and `pseudonymize.mjs check` first), open the PR the usual way, and run `node tools/qualification/operations.mjs --live-evidence <dir>`.
 - **Report:** B and S; Step 0 and Step 1 results; per operation promoted / refused (exact message) / skipped; dry run and approval
   ids; whether the dry run named groups and roles (not ids); evidence branch, commit and PR; anything left in the tenant.
+
+### Q272: Live proof of the OneDrive site settings restore (narrow one default link setting on alice's OneDrive and put it back), then turn it on (after PR #782), about 15 minutes
+- Drafted by the "Prove OneDrive settings restore live" thread (2026-10-30). PR #776 added write `onedrive.site-settings.update`
+  (`Set-PnPTenantSite` on one personal OneDrive). It ships off until this capture. PR #782 adds its capture recipe to
+  `workloadWritesLive.mjs` (`--workload onedrive-site-settings --site <OneDrive>`): every field it writes is a sharing field, so the
+  capture **narrows** one default link setting (`DefaultLinkPermission` Edit to View, else `DefaultSharingLinkType` to Direct), reads it
+  back, puts back the exact value it read, and reads that back. Test tenant only; a locked site is skipped.
+- Needs: PR #782 merged and deployed (build B). Check: `grep -q NARROWING_CAPTURES /opt/keel-live/tools/qualification/workloadWritesAcceptance.mjs`.
+  The `keel-powershell` image at B (no change to `run-cmdlet.ps1` since #776, so rebuild only if it is older than #776).
+- Status: todo
+- Result:
+- **Tenant (test tenant only, standing authorizations of 2026-10-14/-16/-22/-27; nothing to ask the user):** only alice's OneDrive
+  (the KEEL-RT- person's OneDrive used as `--fixture-site` in the 123 capture, `https://<tenant>-my.sharepoint.com/personal/keel-rt-alice_...`)
+  is written. Restorer for writes, Collector for reads, the PnP configs used for 123 and for the structure writes (Q194): collector
+  `powershellConfigs.sharepoint`, restorer `/etc/keel/purview-restorer.json` (it must name `sharePointAdminUrl`). Global admin not used.
+  Nothing granted. No CA, no break-glass. The put-back returns the site's own value (a widening back to where it was): self-approved under
+  the standing test-tenant content-effect authorization; log it in the Result.
+- Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print it):
+  1. **Before:** as the Collector, `Get-PnPTenantSite -Identity <alice's OneDrive> | Select DefaultLinkPermission,DefaultSharingLinkType,LockState`.
+     Report the values (numbers are fine: DefaultLinkPermission 0 None, 1 View, 2 Edit; DefaultSharingLinkType 0 None, 1 Direct, 2 Internal,
+     3 AnonymousAccess). LockState must be `Unlock`.
+     **Fixture prep, only if neither can be narrowed** (permission is not Edit **and** link type is not Internal or AnonymousAccess): as the Restorer,
+     `Set-PnPTenantSite -Identity <alice's OneDrive> -DefaultLinkPermission Edit`, read it back, and note the old value P. Step 6 puts P back.
+  2. **Plan (offline):** `node tools/qualification/workloadWritesLive.mjs plan --workload onedrive-site-settings --site <alice's OneDrive>`.
+     Expect 2 refusals, 1 read, then one narrowing write, its read-back, the put-back and its read-back.
+  3. **Capture:**
+     ```bash
+     node tools/qualification/workloadWritesLive.mjs capture --confirm-live-tenant-write \
+       --workload onedrive-site-settings --site <alice's OneDrive> \
+       --tenant-ref <tenant ref> --directory-tenant-id <tenant id> \
+       --collector-ref app:<collector clientId> --restorer-ref app:<restorer clientId> \
+       --collector-config <powershellConfigs.sharepoint> --restorer-config /etc/keel/purview-restorer.json \
+       --grants <grants.json: {"restorer":{"permissions":["Sites.FullControl.All"],"roles":["SharePoint Administrator"]}}> --build "$B" \
+       --out docs/release/qualifications/workload-writers-onedrive-site-settings-live-acceptance.json
+     node tools/release/qualification.mjs verify --require-live --gate workload-writers-live-acceptance \
+       --evidence docs/release/qualifications/workload-writers-onedrive-site-settings-live-acceptance.json --tenant <tenant ref> --build "$B"
+     node tools/qualification/pseudonymize.mjs check docs/release/qualifications/workload-writers-onedrive-site-settings-live-acceptance.json \
+       docs/release/qualifications/workload-writers-onedrive-site-settings-live-acceptance.capture.json
+     ```
+     The grants file states what the Restorer holds: check it (Sites.FullControl.All and the SharePoint Administrator role, as in the 120
+     record) and write only what it holds. **Exit 3 = the value may not be back:** set the field named in `needsManualRevert` back to its
+     `before` value with `Set-PnPTenantSite` as the Restorer, read it back, and report it.
+     Report exit codes, `proven`, `notProven` (exact errors), `skipped` and the verify result verbatim.
+  4. **Only if it proves `onedrive.site-settings.update`:** commit the two files on a new branch `claude/live-evidence-onedrive-restore`
+     from `origin/master` (secret scan first), push, no PR. Then `node cli/keel-workload-collect.mjs import --dir <checkout>/docs/release/qualifications`
+     and report the `workload-writers-onedrive-site-settings` line and `refused`. Confirm `onedrive.site-settings.update` is now enabled for
+     the tenant (the Restore page offers OneDrive settings as ready, not "off until proven").
+  5. **Round trip:** take a OneDrive backup of alice's OneDrive (collection S). As the Restorer, narrow one setting by hand
+     (`-DefaultLinkPermission View` if it is Edit, else `-DefaultSharingLinkType Direct`). Dry run:
+     `node /opt/keel-live/cli/keel-restore.mjs --workload onedrive-site-settings --collection S --target onedrive:<alice's OneDrive in lower case>`.
+     Expect one update with an `externally-sharing` content effect (it widens back), 0 refused. Promote: expect `blocked-content-effect`.
+     Approve the effect (someone other than the requester), promote again: expect `verified`, and a Collector read equal to S.
+  6. **After:** if step 1 changed the fixture, put `DefaultLinkPermission` back to P and read it back.
+- **Report:** B; step 1 values (and P if prepped); steps 2 to 5 with exit codes; proven / not proven; `needsManualRevert`; approval id;
+  evidence branch and commit; import lines; what is left changed in the tenant (expected: nothing).

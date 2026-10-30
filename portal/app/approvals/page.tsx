@@ -5,13 +5,15 @@ import { AnonymityNote } from "@/components/anonymity-note";
 import { ApprovalInbox } from "@/components/approval-inbox";
 import { DataUnavailable } from "@/components/data-unavailable";
 import { PageHeader } from "@/components/page-header";
+import { RestoreApprovalSettingsCard } from "@/components/restore-approval-settings";
 import {
   getApprovalInboxData,
   requireApprovalInboxAccess,
 } from "@/lib/approval-inbox";
 import { getAnonymitySetting } from "@/lib/anonymity";
 import { approvalCounts, approvalsStatus } from "@/lib/approval-view";
-import { PRINCIPAL_ID_HEADER } from "@/lib/principal";
+import { CAPABILITIES_HEADER, PRINCIPAL_ID_HEADER } from "@/lib/principal";
+import { getRestoreApprovalSettingsView } from "@/lib/restore-approvals";
 
 const TITLE = "Approvals";
 const DESCRIPTION = "Restores, undo changes and approved-setup switches wait here for someone other than the person who asked.";
@@ -22,12 +24,16 @@ export default async function ApprovalsPage() {
   // database connection or approval-detail signal.
   const scope = await requireApprovalInboxAccess();
   await connection();
-  const viewerId = (await headers()).get(PRINCIPAL_ID_HEADER);
+  const requestHeaders = await headers();
+  const viewerId = requestHeaders.get(PRINCIPAL_ID_HEADER);
+  // Turning a service's restore approval on or off needs `policies`, as the route checks.
+  const canChangeApprovals = (requestHeaders.get(CAPABILITIES_HEADER) ?? "").split(/\s+/).includes("policies");
 
   try {
     const data = await getApprovalInboxData(scope);
     const status = approvalsStatus(approvalCounts(data, data.generatedAt));
     const anonymity = await getAnonymitySetting();
+    const restoreApprovals = await getRestoreApprovalSettingsView();
     return (
       <>
         <PageHeader
@@ -37,6 +43,7 @@ export default async function ApprovalsPage() {
           status={status}
           title={TITLE}
         />
+        <RestoreApprovalSettingsCard canChange={canChangeApprovals} now={data.generatedAt} settings={restoreApprovals} />
         <ApprovalInbox
           awaitingContentEffects={data.awaitingContentEffects}
           history={data.history}

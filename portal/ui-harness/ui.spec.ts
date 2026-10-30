@@ -39,6 +39,7 @@ const PAGES = [
   { name: "policy", hash: "/policies/p1" },
   { name: "policy-activation", hash: "/policies/p2" },
   { name: "approvals", hash: "/approvals" },
+  { name: "approvals-settings", hash: "/approvals/settings" },
   { name: "baselines", hash: "/baselines" },
   { name: "baselines-new", hash: "/baselines/new" },
   { name: "benchmarks", hash: "/benchmarks" },

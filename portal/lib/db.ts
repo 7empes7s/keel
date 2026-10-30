@@ -33,6 +33,18 @@ export class DatabaseBusyError extends Error {
   }
 }
 
+// When each pooled connection was handed out, so a full pool can say how long the
+// holders have had theirs: many short holds mean too many requests at once, one very
+// old hold means a caller that never gave its connection back.
+const leases: Set<{ at: number }> = ((globalThis as { __keelPortalLeases?: Set<{ at: number }> }).__keelPortalLeases ??= new Set());
+
+/** How many pooled connections are handed out, and the oldest one's age in ms. */
+export function leaseSummary(now = Date.now()): { held: number; oldestMs: number | null } {
+  let oldest: number | null = null;
+  for (const { at } of leases) oldest = oldest === null ? at : Math.min(oldest, at);
+  return { held: leases.size, oldestMs: oldest === null ? null : now - oldest };
+}
+
 // Kept on globalThis so a development reload reuses the pools instead of leaking them.
 const registry: PoolRegistry = ((globalThis as { __keelPortalPools?: PoolRegistry }).__keelPortalPools ??= new Map());
 
@@ -41,6 +53,8 @@ function poolFor(url: string): pg.Pool {
   if (!pool) {
     pool = new pg.Pool({
       connectionString: url,
+      // Names the portal's connections in pg_stat_activity.
+      application_name: "keel-portal",
       max: POOL_MAX,
       idleTimeoutMillis: 30_000,
       // Without this, a caller waits forever when all connections are in use.
@@ -69,11 +83,15 @@ export async function connect(url: string): Promise<DbClient> {
     // pg-pool's message when no connection came free in time. A slow new connection
     // fails with its own error and is passed on as it is.
     if (/timeout exceeded when trying to connect/i.test(String((error as Error)?.message))) {
-      console.error("[keel-portal] database pool full: gave up waiting for a connection");
+      const { held, oldestMs } = leaseSummary();
+      console.error(`[keel-portal] database pool full: gave up waiting for a connection (${held} held, oldest ${oldestMs ?? 0} ms, ${pool.waitingCount} waiting)`);
       throw new DatabaseBusyError(error);
     }
     throw error;
   }
+  const lease = { at: Date.now() };
+  leases.add(lease);
+  let released = false;
   let discard = false;
   let inTransaction = false;
   return {
@@ -90,6 +108,9 @@ export async function connect(url: string): Promise<DbClient> {
       }
     },
     async end() {
+      if (released) return;
+      released = true;
+      leases.delete(lease);
       leased.release(discard || inTransaction);
     },
   };

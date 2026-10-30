@@ -43,7 +43,7 @@ import { orderGroups } from "@/lib/selection";
 import { personLabel } from "@/lib/sentences";
 import { toast } from "@/lib/toast";
 import { pushUrl } from "@/lib/url-history";
-import { usePoll } from "@/lib/use-poll";
+import { useRefreshPoll } from "@/lib/use-poll";
 import { readList, useViewState } from "@/lib/use-view-state";
 
 // Approvals (portal audit, pick B): one card per request, opened in place. Four tiles
@@ -290,7 +290,7 @@ export function ApprovalInbox({
 
   // New requests appear without a reload: the page re-reads quietly, and a request that
   // was not on screen before is marked so it fades in.
-  usePoll(() => router.refresh(), 5_000);
+  useRefreshPoll(5_000);
   const known = useRef<Set<string> | null>(null);
   const [fresh, setFresh] = useState<ReadonlySet<string>>(new Set());
   useLayoutEffect(() => {

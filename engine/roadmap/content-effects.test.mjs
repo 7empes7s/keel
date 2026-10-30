@@ -623,6 +623,9 @@ test('restore approvals: every held-back direction is an effect in a service the
   const loosen = classifyContentEffects([update('sharepointSettings', { isLegacyAuthProtocolsEnabled: false }, { isLegacyAuthProtocolsEnabled: true })]);
   assert.deepEqual(loosen.effects.map((e) => `${e.field}:${e.effect}`), ['isLegacyAuthProtocolsEnabled:weakens-protection']);
   assert.match(loosen.effects[0].disclosure, /less strict/);
+  // A live null is a value the writer would loosen too, so it is an effect to approve (review of PR #764).
+  const fromNull = classifyContentEffects([update('sharepointSettings', { isLegacyAuthProtocolsEnabled: null, isUnmanagedSyncAppForTenantRestricted: true }, { isLegacyAuthProtocolsEnabled: true, isUnmanagedSyncAppForTenantRestricted: false })]);
+  assert.deepEqual(fromNull.effects.map((e) => e.field).sort(), ['isLegacyAuthProtocolsEnabled', 'isUnmanagedSyncAppForTenantRestricted']);
   const tighten = classifyContentEffects([update('sharepointSettings', { isLegacyAuthProtocolsEnabled: true }, { isLegacyAuthProtocolsEnabled: false })]);
   assert.deepEqual(tighten.effects, []);
   // A field a protection rule reviews is not refused by its name (Forms external sharing).

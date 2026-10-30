@@ -15,7 +15,7 @@ export default Object.freeze({
     { key: 'mail-flow', name: 'Mail flow and protection', types: ['exchange-mail-flow'], match: /mailflow|transport|connector|connectionfilter|defenderforoffice|journal|accepteddomain|remotedomain|dkim|dmarc|spam|phish|malware|safelink|safeattachment|quarantine|protection|threat/ },
     { key: 'access', name: 'Sharing and client access', types: [], match: /sharing|organizationrelationship|federation|owa|outlook|clientaccess|authpolicy|authenticationpolicy|addin/ },
     { key: 'tenant', name: 'Filtering, retention and mobile', types: ['exchange-extended'], match: /extended|filter|hygiene|retention|mobile|activesync|deviceaccess/ },
-    { key: 'organization', name: 'Organization settings', types: [], match: /organization|orgconfig|setting|config/ },
+    { key: 'organization', name: 'Organization settings', types: ['exchange-org-config'], match: /organization|orgconfig|setting|config/ },
   ]),
   entries: Object.freeze({
     // Exchange admin roles, read from Microsoft Graph (catalogue types take their tier's priority).
@@ -48,6 +48,12 @@ export default Object.freeze({
       name: 'Exchange mail flow or protection rule',
       priority: 'high',
       reason: 'Can reroute, copy or let through mail for the whole organization.',
+    },
+    // Read with Get-AdminAuditLogConfig, Get-IRMConfiguration and other org-wide Get cmdlets.
+    'exchange-org-config': {
+      name: 'Exchange audit, encryption or organization setting',
+      priority: 'high',
+      reason: 'Can switch off the audit log or message encryption for the whole organization.',
     },
     'exchange-extended': {
       name: 'Exchange filtering, retention or mobile setting',

@@ -232,6 +232,11 @@ export const CONCEPT_WORDS = Object.freeze([
     kinds: ['exchange-distribution-groups', 'exchange-recipients'],
   },
   {
+    pattern: /\b(?:(?:unified |admin )?audit log(?:ging)? (?:settings?|config(?:uration)?)|audit log(?:ging)? (?:on|off|enabled|disabled)|message encryption|ome|irm|information rights management|free\/busy|availability (?:settings?|address spaces?)|message classifications?|policy tips?|partner applications?|hybrid (?:configuration|organization))\b/i,
+    label: 'Exchange audit, encryption and organization settings',
+    kinds: ['exchange-org-config'],
+  },
+  {
     pattern: /\b(?:activesync|mobile device access|owa polic(?:y|ies)|outlook on the web)\b/i,
     label: 'Exchange filtering, retention and mobile settings',
     kinds: ['exchange-extended'],

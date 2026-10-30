@@ -322,6 +322,18 @@ if ($Workloads -contains 'exo' -and (Test-KeelPrereq -Workload 'exo' -Value $Org
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-CalendarProcessing -Identity' -Block {
             @(Get-Mailbox -RecipientTypeDetails RoomMailbox,EquipmentMailbox -ResultSize 1) | ForEach-Object { Get-CalendarProcessing -Identity $_.Guid.ToString() }
         }
+        # Exchange audit, encryption and organization settings (engine/collect/workloads/exchangeOrgConfig.mjs): reads only.
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AdminAuditLogConfig' -Block { Get-AdminAuditLogConfig }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-IRMConfiguration' -Block { Get-IRMConfiguration }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-OMEConfiguration' -Block { Get-OMEConfiguration }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-PerimeterConfig' -Block { Get-PerimeterConfig }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AvailabilityConfig' -Block { Get-AvailabilityConfig }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AvailabilityAddressSpace' -Block { Get-AvailabilityAddressSpace }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-MessageClassification' -Block { Get-MessageClassification }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-PolicyTipConfig' -Block { Get-PolicyTipConfig }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ResourceConfig' -Block { Get-ResourceConfig }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-PartnerApplication' -Block { Get-PartnerApplication }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-OnPremisesOrganization' -Block { Get-OnPremisesOrganization }
     } catch {
         Add-Result -Workload 'exo' -Connected $false -Cmdlet $null -Ok $false -Count $null -ErrorText $_.Exception.Message
         Write-Diag "exo connect FAILED: $($_.Exception.Message)"

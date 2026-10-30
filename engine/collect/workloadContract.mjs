@@ -47,6 +47,7 @@ export const WORKLOADS = Object.freeze([
   'exchange-extended',
   'exchange-role-groups',
   'exchange-distribution-groups', 'exchange-recipients',
+  'exchange-org-config',
   'sharepoint-structure',
   'teams-voice-policies', 'purview-governance',
   'power-platform-settings',
@@ -73,8 +74,9 @@ const CONTENT_SEGMENTS = new Set([
   'extractsensitivitylabels', 'assignsensitivitylabel', 'sensitivitylabel', 'permissions', 'invite', 'createlink',
 ]);
 // Cmdlets: read verbs only, and no noun that reads content. A noun naming a policy,
-// rule or configuration about content (Get-SafeAttachmentPolicy) is configuration.
-const CONTENT_NOUN = /(File|ListItem|FolderItem|Folder|Message(?!ing)|Attachment|ComplianceSearch|MailboxExport|SearchResult|Page)/;
+// rule or configuration about content (Get-SafeAttachmentPolicy) is configuration, and
+// so is a message classification (the tenant's list of labels, Get-MessageClassification).
+const CONTENT_NOUN = /(File|ListItem|FolderItem|Folder|Message(?!ing|Classification)|Attachment|ComplianceSearch|MailboxExport|SearchResult|Page)/;
 const CONFIGURATION_NOUN = /(Policy|Rule|Configuration|Config|Settings)$/;
 const AUTHZ_FAILURE = /\b(401|403)\b|forbidden|access (is )?denied|insufficient privileges|unauthori[sz]ed|not authorized|does not have permission/i;
 
@@ -352,6 +354,29 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
     source: doc('/en-us/powershell/module/exchange/get-rolegroup'),
   },
+  // Exchange organization settings (audit, encryption, availability, classifications,
+  // hybrid), in the Exchange Online session with no parameters.
+  // engine/collect/workloads/exchangeOrgConfig.mjs holds the fields and identities.
+  ...[
+    ['exchange-org-config.admin-audit-log', 'Audit log settings', 'Get-AdminAuditLogConfig'],
+    ['exchange-org-config.irm', 'Information Rights Management settings', 'Get-IRMConfiguration'],
+    ['exchange-org-config.message-encryption', 'Message encryption branding and options', 'Get-OMEConfiguration'],
+    ['exchange-org-config.perimeter', 'Perimeter (gateway IP) settings', 'Get-PerimeterConfig'],
+    ['exchange-org-config.availability', 'Free/busy access settings', 'Get-AvailabilityConfig'],
+    ['exchange-org-config.availability-address-spaces', 'Free/busy address spaces', 'Get-AvailabilityAddressSpace'],
+    ['exchange-org-config.message-classifications', 'Message classifications', 'Get-MessageClassification'],
+    ['exchange-org-config.policy-tips', 'Custom policy tips', 'Get-PolicyTipConfig'],
+    ['exchange-org-config.resource-config', 'Room and equipment properties', 'Get-ResourceConfig'],
+    ['exchange-org-config.partner-applications', 'Partner applications', 'Get-PartnerApplication'],
+    ['exchange-org-config.on-premises-organizations', 'On-premises organization (hybrid)', 'Get-OnPremisesOrganization'],
+  ].map(([id, resource, name]) => ({
+    id, workload: 'exchange-org-config', resource,
+    operation: cmdlet(name, 'ExchangeOnlineManagement'),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
+  })),
   // Exchange recipients and mailbox permissions, in the Exchange Online session.
   // engine/collect/workloads/exchangeRecipients.mjs holds the fields and identities.
   ...[

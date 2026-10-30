@@ -43,7 +43,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Access packages | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Connected organizations | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
 | Lifecycle workflows | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
-| Lifecycle workflow extensions | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
+| Lifecycle workflow extensions | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Lifecycle workflow settings | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | Custom security attribute sets | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |
 | Custom security attributes | Yes (Tier 2, important, daily) | Incomplete | Yes: put changed settings back | Tested against a simulated tenant |

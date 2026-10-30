@@ -130,26 +130,6 @@ function federationAfterWrite(_io, { resource }) {
   };
 }
 
-// ------------------------------------------------ Lifecycle workflow custom extensions
-
-// Which Logic App an extension calls and how Entra signs in to it are trust fields
-// (TRUST_FIELDS): an update sends the rest and lists them as a step. Graph needs both
-// to create one, so a create is a step for a person instead of a POST that would fail.
-const CUSTOM_TASK_EXTENSION_PORTAL_PATH = 'Microsoft Entra admin center > Identity Governance > Lifecycle workflows > Custom extensions';
-
-function customTaskExtensionRefusal(resource, verb, ctx = {}) {
-  // An object with this key already in the target is matched by the record writer, not recreated.
-  if (verb !== 'create' || ctx.existingTargetIds?.get(resource.naturalKey)) return null;
-  const fields = TRUST_FIELDS.lifecycleWorkflowCustomTaskExtension.filter((field) => resource.payload?.[field] !== undefined);
-  const description = `Recreate this custom extension by hand in ${CUSTOM_TASK_EXTENSION_PORTAL_PATH}. `
-    + 'A restore never sets which Logic App it calls or how it signs in, so a changed backup cannot point a workflow at another app: '
-    + 'confirm the Logic App with its owner, then copy its other settings from the backup.';
-  return {
-    outcome: 'skipped', reason: `manual: ${description}`,
-    completion: [{ kind: 'manual-setting', requirement: 'trustFields', ...(fields.length ? { fields } : {}), description }],
-  };
-}
-
 // ------------------------------------------------ Exchange app access scope
 
 const EXCHANGE_ROLE_ASSIGNMENTS = '/roleManagement/exchange/roleAssignments';
@@ -558,7 +538,8 @@ export const IDENTITY_RECORDS = Object.freeze({
   }),
   lifecycleWorkflowCustomTaskExtension: defineRecord({
     resourceType: 'lifecycleWorkflowCustomTaskExtension', version: 'v1.0', collection: '/identityGovernance/lifecycleWorkflows/customTaskExtensions',
-    operations: ['create', 'update'], excluded: ['createdBy', 'lastModifiedBy'], odataType: 'keep', refusal: customTaskExtensionRefusal,
+    // Update only: Graph needs the Logic App and its sign-in (trust fields, never written) to create one.
+    operations: ['update'], excluded: ['createdBy', 'lastModifiedBy'], odataType: 'keep',
     permission: 'LifecycleWorkflows.ReadWrite.All', docs: v1('identitygovernance-lifecycleworkflowscontainer-post-customtaskextensions'),
   }),
   lifecycleManagementSettings: defineRecord({

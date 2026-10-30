@@ -71,7 +71,7 @@ const REGISTERED = Object.freeze({
   configurationPolicy: ['create', 'update', 'delete'],
   // Wave 2 IDO: identity governance objects and settings, app credential policies.
   lifecycleWorkflow: ['create', 'update'],
-  lifecycleWorkflowCustomTaskExtension: ['create', 'update'],
+  lifecycleWorkflowCustomTaskExtension: ['update'],
   lifecycleManagementSettings: ['update'],
   attributeSet: ['update'],
   customSecurityAttributeDefinition: ['update'],

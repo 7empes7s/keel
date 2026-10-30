@@ -246,25 +246,24 @@ export async function requestApproval(client, {
  */
 async function approveIfRestoreApprovalsOff(client, { tenantRef, request, artifact }) {
   if (!validateArtifactForApproval(artifact).ok) return null;
-  let need;
-  try {
-    need = await restoreNeedsApproval(client, { artifact });
-    if (!need.required && (artifact.contentEffects ?? []).length > 0) {
-      const effects = await effectsNeedApproval(client, { tenantRef: artifact.tenantRef, effects: artifact.contentEffects });
-      if (effects.required) return null;
-    }
-  } catch {
-    return null;
-  }
-  if (need.required) return null;
-  const reason = `Restore approvals are off for ${need.services.join(', ')}`;
   const jobParams = restoreJobParams(artifact);
   let decided;
+  let need;
   await client.query('BEGIN');
   let committed = false;
   try {
     const locked = await lockRequest(client, request.id);
     if (!locked || locked.status !== 'pending') return null;
+    // Read the setting inside the transaction, holding its rows, so a service turned
+    // back on at the same moment is never missed.
+    await client.query('SELECT 1 FROM restore_approval_setting WHERE tenant_ref = $1 FOR SHARE', [artifact.tenantRef]);
+    need = await restoreNeedsApproval(client, { artifact });
+    if (need.required) return null;
+    if ((artifact.contentEffects ?? []).length > 0) {
+      const effects = await effectsNeedApproval(client, { tenantRef: artifact.tenantRef, effects: artifact.contentEffects });
+      if (effects.required) return null;
+    }
+    const reason = `Restore approvals are off for ${need.services.join(', ')}`;
     const job = locked.executor === 'cli' ? null : await enqueue(client, {
       kind: 'restore',
       params: jobParams,
@@ -283,9 +282,13 @@ async function approveIfRestoreApprovalsOff(client, { tenantRef, request, artifa
     decided = { request: rows[0], job };
     await client.query('COMMIT');
     committed = true;
+  } catch {
+    // Anything that goes wrong before the commit leaves the request waiting for a person.
+    return null;
   } finally {
     if (!committed) await client.query('ROLLBACK');
   }
+  // After the commit, as a person's approval is recorded (approveRequest).
   await appendEvidence(client, {
     tenantRef,
     kind: APPROVAL_DECISION_EVIDENCE_KIND,

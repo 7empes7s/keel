@@ -183,6 +183,7 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sentIds = useRef<Set<string>>(new Set());
+  const sentNotices = useRef<Map<string, RestoreSentNotice>>(new Map());
   const headingId = `workload-restore-${workload}`;
 
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
@@ -299,7 +300,6 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
     setBusy(true);
     setError(null);
     let sent = 0;
-    const notices: RestoreSentNotice[] = [];
     try {
       for (const [index, run] of sendable.entries()) {
         // A retry after a partial failure skips the ones already sent.
@@ -310,24 +310,29 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
           sendable.length === 1 ? idempotencyKey : `${idempotencyKey}:${index}`,
         );
         if (!payload.approvalRequest) throw new Error("no approval");
-        notices.push(restoreSentNotice(payload.approvalRequest));
+        // Kept for every run sent, across retries, so the summary covers them all.
+        sentNotices.current.set(run.artifactId, restoreSentNotice(payload.approvalRequest));
         sentIds.current.add(run.artifactId);
         sent += 1;
       }
       setIdempotencyKey(crypto.randomUUID());
       setStep("track");
+      const notices = sendable.map((run) => sentNotices.current.get(run.artifactId)).filter((notice): notice is RestoreSentNotice => Boolean(notice));
       const started = notices.filter((notice) => notice.started).length;
-      setAllStarted(notices.length > 0 && started === notices.length);
-      if (notices.length > 0 && started === notices.length) {
+      const everyStarted = notices.length > 0 && started === notices.length;
+      setAllStarted(everyStarted);
+      if (everyStarted) {
         const notice = notices[0];
         toast({ tone: "success", title: started === 1 ? notice.title : `${started} restores started`, detail: notice.detail, href: notice.href, hrefLabel: notice.hrefLabel });
       } else {
-        toast({ tone: "info", title: sent === 1 ? "Sent to approvers" : `${sent} restores sent to approvers`, detail: started ? `${started} started without an approver because restore approvals are off. Nothing else changes until an approver approves.` : "Nothing changes until one of them approves.", href: "/approvals", hrefLabel: "Open approvals" });
+        const waiting = notices.length - started;
+        toast({ tone: "info", title: waiting === 1 ? "Sent to approvers" : `${waiting} restores sent to approvers`, detail: started ? `${started} more started without an approver because restore approvals are off. The rest wait until an approver approves.` : "Nothing changes until one of them approves.", href: "/approvals", hrefLabel: "Open approvals" });
       }
     } catch {
+      const started = [...sentNotices.current.values()].filter((notice) => notice.started).length;
       setError(sent
-        ? `KEEL sent ${sent} of ${sendable.length} for approval and could not send the rest. Try again in a minute.`
-        : "KEEL could not send the restore for approval. Try again in a minute.");
+        ? `KEEL sent ${sent} of ${sendable.length}${started ? ` (${started} started without an approver)` : ""} and could not send the rest. Try again in a minute.`
+        : "KEEL could not send the restore. Try again in a minute.");
     } finally {
       setBusy(false);
     }
@@ -337,6 +342,7 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
     if (timer.current) clearTimeout(timer.current);
     setRuns([]);
     sentIds.current = new Set();
+    sentNotices.current = new Map();
     setJustification("");
     setAllStarted(false);
     setStep("select");
@@ -351,7 +357,7 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
   const title = step === "select" ? "Step 1 of 4: choose what to put back."
     : step === "dry-run" ? "Step 2 of 4: KEEL is checking what would change. Nothing is written."
     : step === "review" ? (reviewOk ? "Step 3 of 4: review what will change, then send it for approval." : "Step 3 of 4: the check found problems, so nothing can be put back from it.")
-    : allStarted ? "Step 4 of 4: approved without an approver, because restore approvals are off for this service."
+    : allStarted ? "Step 4 of 4: approved without an approver, because restore approvals are off for the services it changes."
     : "Step 4 of 4: sent to approvers. Nothing changes until one of them approves.";
   const perItem = PER_ITEM_WORKLOADS.includes(workload);
   const unit = workload === "teams-settings" ? "team" : workload === "exchange-mailbox-settings" ? "mailbox" : "setting";
@@ -505,7 +511,7 @@ export function WorkloadRestore({ workload, name, canRestore, canApprove, now, o
           <ol className="track-timeline">
             <li className="track-done">Check finished</li>
             {allStarted ? (
-              <li className="track-done">No approver needed: restore approvals are off for this service</li>
+              <li className="track-done">No approver needed: restore approvals are off for the services it changes</li>
             ) : (
               <>
                 <li className="track-done">Approval requested</li>

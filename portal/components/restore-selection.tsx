@@ -207,7 +207,7 @@ export function restoreStepVerdict(step: Exclude<RestoreStep, "select">, failed:
       : { text: "Step 3 of 4: review what will change.", tone: "good" };
     case "confirm": return { text: "Step 3 of 4: review what will change, then send it for approval.", tone: "attention" };
     case "track": return started
-      ? { text: "Step 4 of 4: approved without an approver, because restore approvals are off for this service.", tone: "good" }
+      ? { text: "Step 4 of 4: approved without an approver, because restore approvals are off for the services it changes.", tone: "good" }
       : { text: "Step 4 of 4: sent to approvers. Nothing changes until one of them approves.", tone: "good" };
   }
 }
@@ -737,7 +737,7 @@ export function RestoreSelection({
           <ol className="track-timeline">
             <li className="track-done">Check finished</li>
             {sentStarted ? (
-              <li className="track-done">No approver needed: restore approvals are off for this service</li>
+              <li className="track-done">No approver needed: restore approvals are off for the services it changes</li>
             ) : (
               <>
                 <li className="track-done">Approval requested</li>

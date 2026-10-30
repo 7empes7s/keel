@@ -13,6 +13,7 @@
 // endpoint rule stay as they are whatever this setting says.
 import { appendEvidence } from './evidence.mjs';
 import { SERVICES, typeInfo } from '../insights/taxonomy.mjs';
+import { tenantRefFor } from '../store/tenantRef.mjs';
 
 export const RESTORE_APPROVAL_SERVICES = SERVICES;
 export const RESTORE_APPROVAL_SETTING_EVIDENCE_KIND = 'restore-approval-setting';
@@ -125,11 +126,19 @@ const WORKLOAD_PATH_PREFIX = 'workload:';
 
 /**
  * The services a restore's dry run writes to, or null when Keel cannot place every
- * object in one (then the restore waits for an approver). Turning a Conditional
- * Access policy on is always null: it can lock people out, so a person approves it.
+ * object in one (then the restore waits for an approver). Always null for turning a
+ * Conditional Access policy on (it can lock people out), a compliance fix, a
+ * tenant-wide workload write, and a restore into another tenant.
  */
 export async function restoreArtifactServices(client, artifact) {
   if (!artifact || artifact.conditionalAccessEnforcement) return null;
+  // A compliance fix writes the value a control asks for, not the backup's: not a restore.
+  if (artifact.complianceFix) return null;
+  // A tenant-wide workload write goes beyond the KEEL-RT- fixtures: a person approves it (issue #317).
+  if (artifact.workloadRestore?.allowTenantWide === true) return null;
+  // The setting is the source tenant's; a restore into another tenant waits for a person.
+  if (typeof artifact.targetTenantId !== 'string' || artifact.targetTenantId.length === 0
+    || tenantRefFor(artifact.targetTenantId) !== artifact.tenantRef) return null;
   const workload = artifact.workloadRestore?.workload
     ?? (String(artifact.collectorConfigPath ?? '').startsWith(WORKLOAD_PATH_PREFIX)
       ? String(artifact.collectorConfigPath).slice(WORKLOAD_PATH_PREFIX.length)
@@ -155,7 +164,9 @@ export async function restoreArtifactServices(client, artifact) {
   }
   const services = new Set();
   for (const key of keys) {
-    const service = types.has(key) ? serviceForResourceType(types.get(key)) : null;
+    // Only a kind Keel has mapped counts as placed; a service guessed from a name does not.
+    const type = types.get(key);
+    const service = type !== undefined && typeInfo(type).known ? serviceForResourceType(type) : null;
     if (!service) return null;
     services.add(service);
   }

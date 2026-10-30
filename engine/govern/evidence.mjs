@@ -68,15 +68,48 @@ export async function appendEvidence(client, {
 }
 
 // Walks the chain from `start` (a prefix verified earlier: { seq, hash, count }) or from
-// the first record, and checks the stored head against the walked tip.
-async function walkChain(client, tenantRef, start = null) {
-  const { rows } = await client.query(
-    `SELECT seq, tenant_ref, occurred_at, kind, subject, actor, prev_hash, record_hash
-     FROM evidence
-     WHERE tenant_ref = $1 AND ($2::bigint IS NULL OR seq > $2)
-     ORDER BY seq`,
-    [tenantRef, start?.seq ?? null],
-  );
+// the first record, and checks the stored head against the walked tip. Records are read
+// and hashed a page at a time, yielding between pages, so a full walk of a large record
+// never holds the event loop (or memory) for the whole chain at once.
+export const CHAIN_WALK_PAGE = 2000;
+
+async function walkChain(client, tenantRef, start = null, { pageSize = CHAIN_WALK_PAGE } = {}) {
+  const limit = Math.max(1, Math.trunc(Number(pageSize)) || CHAIN_WALK_PAGE);
+  let prevHash = start?.hash ?? null;
+  let walked = 0n;
+  let last = null;
+  let after = start?.seq ?? null;
+  for (;;) {
+    const { rows } = await client.query(
+      `SELECT seq, tenant_ref, occurred_at, kind, subject, actor, prev_hash, record_hash
+       FROM evidence
+       WHERE tenant_ref = $1 AND ($2::bigint IS NULL OR seq > $2)
+       ORDER BY seq
+       LIMIT ${limit}`,
+      [tenantRef, after],
+    );
+    for (const row of rows) {
+      const expectedHash = evidenceHash({
+        prevHash,
+        tenantRef: row.tenant_ref,
+        occurredAt: row.occurred_at,
+        kind: row.kind,
+        subject: row.subject,
+        actor: row.actor,
+      });
+      if (row.prev_hash !== prevHash || row.record_hash !== expectedHash) {
+        return { result: { ok: false, brokenAtSeq: row.seq }, tip: null };
+      }
+      prevHash = row.record_hash;
+    }
+    walked += BigInt(rows.length);
+    if (rows.length) {
+      last = rows.at(-1);
+      after = last.seq;
+    }
+    if (rows.length < limit) break;
+    await new Promise((resolve) => setImmediate(resolve));
+  }
   const { rows: headRows } = await client.query(
     `SELECT head_seq, head_hash, record_count
      FROM evidence_head
@@ -84,24 +117,7 @@ async function walkChain(client, tenantRef, start = null) {
     [tenantRef],
   );
 
-  let prevHash = start?.hash ?? null;
-  for (const row of rows) {
-    const expectedHash = evidenceHash({
-      prevHash,
-      tenantRef: row.tenant_ref,
-      occurredAt: row.occurred_at,
-      kind: row.kind,
-      subject: row.subject,
-      actor: row.actor,
-    });
-    if (row.prev_hash !== prevHash || row.record_hash !== expectedHash) {
-      return { result: { ok: false, brokenAtSeq: row.seq }, tip: null };
-    }
-    prevHash = row.record_hash;
-  }
-
-  const count = BigInt(start?.count ?? 0) + BigInt(rows.length);
-  const last = rows.at(-1);
+  const count = BigInt(start?.count ?? 0) + walked;
   const tip = last ? { seq: String(last.seq), hash: last.record_hash, count: String(count) } : start;
   const head = headRows[0];
   if (
@@ -134,43 +150,114 @@ export async function verifyChain(client, { tenantRef }) {
 // not re-hash the whole chain each time. After one full walk, a later call hashes only the
 // records added since, provided the verified prefix is unchanged. "Unchanged" is checked
 // by the database without loading any record: every UPDATE, or DELETE and re-INSERT,
-// gives a row a new xmin, so the ordered list of xmins (and the row count) up to the
-// verified tip is a fingerprint of the stored prefix. Any mismatch, or a cache older than
-// `fullEveryMs`, falls back to a full walk; a broken result is never cached.
+// gives a row a new xmin, so the row count and a sum of per-row hashes of (seq, xmin) up
+// to the verified tip fingerprint the stored prefix. The sum is additive, so moving the
+// tip forward adds the new records' part instead of re-reading the whole prefix, and it
+// needs no sort. Any mismatch, or a cache older than `fullEveryMs`, falls back to a full
+// walk; a broken result is never cached.
 //
 // Call it inside one REPEATABLE READ transaction (verifyAnchoredChain does), so the
 // fingerprint and the walk see the same rows.
+//
+// A long-lived caller (the portal) also runs refreshChainCache on a timer with a shorter
+// `fullEveryMs`, so the periodic full walk happens there and never on a page load.
 export const CHAIN_FULL_VERIFY_MS = 10 * 60 * 1000;
 
-async function prefixFingerprint(client, tenantRef, throughSeq) {
+async function rangeFingerprint(client, tenantRef, afterSeq, throughSeq) {
   const { rows } = await client.query(
-    `SELECT count(*)::text AS count, md5(string_agg(xmin::text, ',' ORDER BY seq)) AS versions
+    `SELECT count(*)::text AS count,
+            coalesce(sum(hashtextextended(seq::text || ':' || xmin::text, 0)), 0)::text AS versions
      FROM evidence
-     WHERE tenant_ref = $1 AND seq <= $2`,
-    [tenantRef, throughSeq],
+     WHERE tenant_ref = $1 AND ($2::bigint IS NULL OR seq > $2) AND seq <= $3`,
+    [tenantRef, afterSeq, throughSeq],
   );
-  return `${rows[0].count}:${rows[0].versions ?? ''}`;
+  return { count: rows[0].count, versions: rows[0].versions };
 }
 
-export async function verifyChainCached(client, {
-  tenantRef, cache, now = Date.now(), fullEveryMs = CHAIN_FULL_VERIFY_MS,
-}) {
+function addFingerprints(a, b) {
+  return {
+    count: String(BigInt(a.count) + BigInt(b.count)),
+    versions: String(BigInt(a.versions) + BigInt(b.versions)),
+  };
+}
+
+const sameFingerprint = (a, b) => a?.count === b?.count && a?.versions === b?.versions;
+
+// Per cache: a generation per tenant, bumped whenever a broken result drops the entry, so
+// a check that started before the break never writes a stale "ok" back; and the full
+// walk in progress per tenant, so callers that find no entry share one walk instead of
+// each walking the whole chain (the portal's warm-up at start and the first page loads).
+const generations = new WeakMap();
+const fullWalks = new WeakMap();
+
+function perCache(store, cache) {
+  let map = store.get(cache);
+  if (!map) store.set(cache, map = new Map());
+  return map;
+}
+
+function invalidate(cache, tenantRef) {
+  cache.delete(tenantRef);
+  const gens = perCache(generations, cache);
+  gens.set(tenantRef, (gens.get(tenantRef) ?? 0) + 1);
+  perCache(fullWalks, cache).delete(tenantRef);
+}
+
+async function checkChain(client, { tenantRef, cache, now, fullEveryMs, pageSize }) {
+  const generation = perCache(generations, cache).get(tenantRef) ?? 0;
   const entry = cache.get(tenantRef);
   let start = null;
   if (entry?.tip && now - entry.fullAt < fullEveryMs
-    && await prefixFingerprint(client, tenantRef, entry.tip.seq) === entry.fingerprint) {
+    && sameFingerprint(await rangeFingerprint(client, tenantRef, null, entry.tip.seq), entry.fingerprint)) {
     start = entry.tip;
   }
-  const { result, tip } = await walkChain(client, tenantRef, start);
+  const { result, tip } = await walkChain(client, tenantRef, start, { pageSize });
   if (!result.ok || !tip) {
-    cache.delete(tenantRef);
+    invalidate(cache, tenantRef);
     return result;
   }
-  const fingerprint = start && tip.seq === start.seq
-    ? entry.fingerprint
-    : await prefixFingerprint(client, tenantRef, tip.seq);
+  if ((perCache(generations, cache).get(tenantRef) ?? 0) !== generation) return result;
+  let fingerprint;
+  if (!start) fingerprint = await rangeFingerprint(client, tenantRef, null, tip.seq);
+  else if (tip.seq === start.seq) fingerprint = entry.fingerprint;
+  else fingerprint = addFingerprints(entry.fingerprint, await rangeFingerprint(client, tenantRef, start.seq, tip.seq));
   cache.set(tenantRef, { tip, fingerprint, fullAt: start ? entry.fullAt : now });
   return result;
+}
+
+export async function verifyChainCached(client, {
+  tenantRef, cache, now = Date.now(), fullEveryMs = CHAIN_FULL_VERIFY_MS, pageSize = CHAIN_WALK_PAGE,
+}) {
+  const walks = perCache(fullWalks, cache);
+  const cold = !cache.has(tenantRef);
+  const running = walks.get(tenantRef);
+  if (cold && running) return running;
+  const check = checkChain(client, { tenantRef, cache, now, fullEveryMs, pageSize });
+  if (!cold) return check;
+  walks.set(tenantRef, check);
+  try { return await check; } finally { if (walks.get(tenantRef) === check) walks.delete(tenantRef); }
+}
+
+// The timer side of the cache, for a long-lived caller: one check in its own snapshot, with
+// the full walk due `2 * refreshEveryMs` before a page load would fall back to doing it,
+// so while the timer runs every refreshEveryMs no page load waits on a full walk.
+export const CHAIN_REFRESH_MS = 60 * 1000;
+
+export async function refreshChainCache(client, {
+  tenantRef, cache, now = Date.now(), refreshEveryMs = CHAIN_REFRESH_MS, pageSize = CHAIN_WALK_PAGE,
+}) {
+  await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+  try {
+    const result = await verifyChainCached(client, {
+      tenantRef, cache, now, pageSize,
+      fullEveryMs: Math.max(0, CHAIN_FULL_VERIFY_MS - 2 * refreshEveryMs),
+    });
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
 }
 
 // This checks internal consistency only. Operator-facing verification uses

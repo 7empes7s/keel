@@ -12981,7 +12981,7 @@ item that needs it stays untouched.
 - **Report:** capture exit code and proven/notProven; evidence branch and commit; import counts; the run table; unknown
   fields per family; anything left in the tenant (expected: nothing, reads only).
 
-### Q275: Live read check of the SharePoint and OneDrive tenant settings and the extra per-site fields, then turn them on (read-only toward the tenant, after PR #797), about 15 minutes
+### Q276: Live read check of the SharePoint and OneDrive tenant settings and the extra per-site fields, then turn them on (read-only toward the tenant, after PR #797), about 15 minutes
 - Drafted by the "Back up SharePoint tenant settings" thread (2026-10-30). Code: PR #797. Both parts ship `disabled` until a live
   read record is imported:
   - new workload `sharepoint-tenant`: Get-PnPTenant, Get-PnPTenantSyncClientRestriction, Get-PnPBrowserIdleSignout,

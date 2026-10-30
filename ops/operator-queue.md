@@ -12593,3 +12593,49 @@ item that needs it stays untouched.
      `pseudonymize.mjs check` first). Push. No PR. Run `operations.mjs --live-evidence` on that directory and report the line.
 - **Report:** B; the values before and after; the dry run's planned fields; approval id; new `observedAt`; the step 3 count; the
   evidence branch and commit.
+
+### Q270: Live proof of removing a label from a Purview label policy, then one approved restore round trip (after PR #775), about 20 minutes
+- Drafted by the "Restore Purview label removal with approval" thread (2026-10-30). PR #775 (stacked on #762 and #764) adds write
+  `purview.label-policy.remove-labels` (`Set-LabelPolicy -RemoveLabels`). It ships off until this capture. A restore sends it only
+  after a second person approves the `weakens-protection` effect, or when restore approvals are off for Purview.
+- Needs: PRs #762, #764 and #775 merged and deployed (build B). Check: `grep -q RemoveLabels /opt/keel-live/ops/powershell/run-cmdlet.ps1`.
+  The `keel-powershell` image at B (rebuild it: `run-cmdlet.ps1` changed).
+- Status: todo
+- Result:
+- **Tenant (test tenant only, standing authorizations of 2026-10-14/-16/-22/-27; nothing to ask the user):** Restorer
+  (`/etc/keel/purview-restorer.json`) for writes, Collector (`/etc/keel/purview-collector.json`) for reads. Only a `KEEL-RT-` label
+  policy and a `KEEL-RT-` label are written; every change is put back. Global admin not used. Nothing granted. No CA, no break-glass.
+  Self-approve the step 4 content effect (log the approval id).
+- Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env`:
+  1. **Before:** as the Collector, `Get-LabelPolicy | ? Name -like 'KEEL-RT-*' | Select Name,Labels,ExchangeLocation` and
+     `Get-Label | ? Name -like 'KEEL-RT-*' | Select Name`. The capture picks the first `KEEL-RT-` policy by name with no lock and no
+     `All` location, and a `KEEL-RT-` label (preferring one that policy publishes). If there is no such policy, stop and report.
+  2. **Plan (offline):** `node tools/qualification/purviewUnpublishLive.mjs plan`. Expect 2 refusals, the reads, then
+     AddLabels (only if not published), RemoveLabels, AddLabels (only if published), and the read-backs.
+  3. **Capture:**
+     ```bash
+     node tools/qualification/purviewUnpublishLive.mjs capture --confirm-live-tenant-write \
+       --tenant-ref <tenant ref> --collector-ref app:<purview collector clientId> --restorer-ref app:<purview restorer clientId> \
+       --collector-config /etc/keel/purview-collector.json --restorer-config /etc/keel/purview-restorer.json \
+       --grants <grants.json: {"restorer":{"permissions":["Exchange.ManageAsApp"],"roles":["Compliance Administrator"]}}> --build "$B" \
+       --out docs/release/qualifications/purview-label-unpublish-live-acceptance.json
+     node tools/qualification/pseudonymize.mjs check docs/release/qualifications/purview-label-unpublish-live-acceptance.json \
+       docs/release/qualifications/purview-label-unpublish-live-acceptance.capture.json
+     ```
+     **Exit 3 = the policy may not be back:** the output's `needsManualRevert` names the label to publish again
+     (`Set-LabelPolicy <policy> -AddLabels <label>`) or remove; do it as the Restorer, read it back, report it.
+     Report the exit code, `proven`, `notProven` (exact errors), `skipped` and the verify result verbatim.
+  4. **Round trip** (only if step 3 proved the write):
+     a. Commit the record and `.capture.json` on `claude/live-evidence-purview-unpublish` from `origin/master` (secret scan first).
+        Push, no PR. `node cli/keel-workload-collect.mjs import --dir <checkout>/docs/release/qualifications`; report the
+        `purview-label-unpublish` line and `refused`. Confirm `purview.label-policy.remove-labels` is enabled for the tenant.
+     b. Take a Purview labels backup S (the `purview-labels` collection). Then as the Restorer publish one more `KEEL-RT-` label on
+        the step 1 policy (`Set-LabelPolicy <policy> -AddLabels <a KEEL-RT- label it does not publish>`; create
+        `KEEL-RT-270-label` first if none is free, disabled-safe: no encryption, no marking).
+     c. Dry run: `keel-restore.mjs --workload purview-labels --collection S --target label-policy:<policy id>`. Expect one
+        `unpublish` operation and one `weakens-protection` effect on `Labels`; 0 refused.
+     d. Promote it with restore approvals on for Purview (the default): expect the unpublish `blocked-content-effect`, no write.
+     e. Approve the content effect (someone other than the requester), promote again: expect `verified`; Collector read shows the
+        label gone and the policy equal to S. Report the evidence row outcomes.
+- **Report:** B; step 1 lists; steps 2 to 4 with exit codes; proven / not proven; `needsManualRevert`; approval id; the evidence
+  branch and commit; import lines; what is left changed in the tenant (expected: nothing, plus `KEEL-RT-270-label` if created).

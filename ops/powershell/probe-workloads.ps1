@@ -442,7 +442,6 @@ if ($Workloads -contains 'teams') {
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsOnlineUser' -Block { Get-CsOnlineUser -ResultSize 10 }
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsGroupPolicyAssignment' -Block { Get-CsGroupPolicyAssignment }
         # Teams voice network, call flows and device policies (engine/collect/workloads/teamsVoiceNetwork.mjs): reads only.
-        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsOnlinePstnUsages' -Block { Get-CsOnlinePstnUsages }
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsOnlineVoiceRoute' -Block { Get-CsOnlineVoiceRoute }
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsOnlinePSTNGateway' -Block { Get-CsOnlinePSTNGateway }
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsTranslationRule' -Block { Get-CsTeamsTranslationRule }

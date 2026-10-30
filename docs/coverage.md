@@ -1089,7 +1089,6 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 
 **Backed up:**
 
-- Teams PSTN usages
 - Teams voice routes
 - Teams Direct Routing gateways (SBCs)
 - Teams number translation rules

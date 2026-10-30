@@ -127,6 +127,19 @@ test('the Node and container allowlists match, and only paging parameters are ac
   assert.throws(() => DEVICE_POLICIES.assertCmdlet({ cmdlet: 'Get-CsCallQueue' }), TeamsVoiceNetworkScopeError);
 });
 
+test('reads and fields the Q279 live check did not prove are not declared', () => {
+  // Get-CsOnlinePstnUsages is not exposed in the app-only MicrosoftTeams session.
+  const cmdlets = [...Object.values(VOICE_NETWORK_FAMILIES), ...Object.values(DEVICE_POLICY_FAMILIES)].map((spec) => spec.cmdlet);
+  assert.ok(!cmdlets.includes('Get-CsOnlinePstnUsages'));
+  assert.ok(!WORKLOAD_DESCRIPTORS.some((entry) => entry.id === 'teams-voice-network.pstn-usages'));
+  // The voice routes still carry the usages they use.
+  assert.ok(VOICE_NETWORK_FAMILIES.voiceRoute.fields.includes('OnlinePstnUsages'));
+  // These policies' live answers carried no Description.
+  for (const spec of [VOICE_NETWORK_FAMILIES.audioConferencingPolicy, DEVICE_POLICY_FAMILIES.vdiPolicy, DEVICE_POLICY_FAMILIES.feedbackPolicy]) {
+    assert.ok(!spec.fields.includes('Description'), spec.operation);
+  }
+});
+
 test('each object is kept once under its identity, with declared fields only', async () => {
   const live = fakeTeams();
   const result = await readTeamsVoiceNetwork({ powershell: live.powershell, now });
@@ -134,7 +147,7 @@ test('each object is kept once under its identity, with declared fields only', a
   assert.ok(live.calls.every((call) => call.cmdlet.startsWith('Get-')));
   const byKind = Object.fromEntries(result.resources.map((resource) => [resource.kind, resource]));
   assert.deepEqual(Object.keys(byKind), Object.keys(VOICE_NETWORK_FAMILIES));
-  assert.equal(byKind.pstnUsage.resourceKey, 'pstn-usages:global');
+  assert.equal(byKind.dialInConferencing.resourceKey, 'dial-in-conferencing:global');
   assert.equal(byKind.networkRoamingPolicy.resourceKey, 'network-roaming-policy:global');
   assert.equal(byKind.voiceRoute.resourceKey, 'voice-route:keel-rt-1');
   assert.equal(byKind.callQueue.resourceKey, `call-queue:${guid(1)}`);
@@ -194,12 +207,12 @@ test('a page that fails fails the whole family, never a short list', async () =>
   const live = fakeTeams({
     'Get-CsCallQueue': ({ Skip = 0 }) => (Skip === 0 ? queues.slice(0, 100) : { error: { message: 'throttled', category: 'LimitsExceeded', errorId: 'Throttled' } }),
   });
-  const result = await readTeamsVoiceNetwork({ powershell: live.powershell, families: ['callQueue', 'pstnUsage'], now });
+  const result = await readTeamsVoiceNetwork({ powershell: live.powershell, families: ['callQueue', 'dialInConferencing'], now });
   assert.equal(result.outcome, 'partial');
   assert.equal(result.discovery.families.callQueue.status, 'failed');
   assert.equal(result.discovery.families.callQueue.objects, 0);
   assert.equal(result.failures[0].page, 2);
-  assert.equal(result.discovery.families.pstnUsage.status, 'read');
+  assert.equal(result.discovery.families.dialInConferencing.status, 'read');
 });
 
 test('collection stays off until Teams is qualified, then each read switches on with its own proof', async (t) => {

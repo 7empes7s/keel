@@ -218,7 +218,6 @@ $AllowedTeamsCollaboration = @{
 # Only the auto attendant and call queue reads take parameters: -First 100 and -Skip
 # (a whole number of pages), which the Node side fixes to page through them. Reads only.
 $AllowedTeamsVoiceNetwork = @{
-    'Get-CsOnlinePstnUsages'                       = @()
     'Get-CsOnlineVoiceRoute'                       = @()
     'Get-CsOnlinePSTNGateway'                      = @()
     'Get-CsTeamsTranslationRule'                   = @()

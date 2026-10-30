@@ -25,7 +25,7 @@ import { resolveOwnership } from '../identity/ownership.mjs';
 import { ANSWER_VERSION, TEMPLATE_INTENTS, answerQuestion, executePlan, readOnly } from '../query/execute.mjs';
 import { BUDGET, INTENTS, KNOWN_KINDS, periodWindow, planQuestion, readQuestion, validateRequest } from '../query/intent.mjs';
 import { CONCEPT_WORDS, TYPE_WORDS } from '../query/vocabulary.mjs';
-import { TAXONOMY } from '../insights/taxonomy.mjs';
+import { TAXONOMY, typeInfo } from '../insights/taxonomy.mjs';
 import { recordLineage } from '../store/resourceLineage.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
@@ -188,7 +188,7 @@ test('the plan comes from a fixed set: intents, types, entities and periods are 
   assert.deepEqual(unread.ignored, ['printers', 'scanners']);
   // A service with a broad word it has no kind for is answered for the whole service, and says so.
   const defender = readQuestion('What Defender labels changed this week?', { now });
-  assert.ok(defender.params.resourceTypes.every((type) => TAXONOMY[type].service === 'Defender'), JSON.stringify(defender));
+  assert.ok(defender.params.resourceTypes.every((type) => typeInfo(type).service === 'Defender'), JSON.stringify(defender));
   assert.match(defender.assumed.join(' '), /no labels in Defender/);
 
   const plan = validateRequest({ intent: read.intent, params: read.params }, { now, knownEntities: known, scope: SALES_SCOPE });

@@ -110,6 +110,26 @@ export function settingKind(type, templateFamily) {
   return sub ? sub.kind : type;
 }
 
+/**
+ * Which stored objects a subkind holds, by the field that tells them apart: for each
+ * stored type, each template family and the subkind it files under. Fixed by the
+ * taxonomy, so a query can take it as a bind parameter.
+ * @returns {Record<string, Record<string, string>>}
+ */
+export function subkindFamilies() {
+  const map = {};
+  for (const { kind, of, families } of SUBKINDS) {
+    map[of] ??= {};
+    for (const family of Object.keys(families)) map[of][family] = kind;
+  }
+  return map;
+}
+
+/** The stored type a kind is read from: a subkind's `of`, else the kind itself. */
+export function storedTypeOf(kind) {
+  return SUBKINDS.find((entry) => entry.kind === kind)?.of ?? kind;
+}
+
 /** The plain name of the area a subkind object covers ("Antivirus"), or null. */
 export function settingArea(type, templateFamily) {
   if (!templateFamily) return null;

@@ -194,7 +194,9 @@ export const CONCEPT_WORDS = Object.freeze([
   {
     pattern: /\b(?:mde|defender for endpoint|antivirus|anti-virus|edr|endpoint detection|attack surface reduction|asr(?: rules)?|firewall|bitlocker|disk encryption|endpoint security)\b/i,
     label: 'Defender for Endpoint settings managed in Intune: endpoint security and baseline policies, and the threat defense connector',
-    kinds: ['configurationPolicy', 'deviceManagementIntent', 'mobileThreatDefenseConnector'],
+    // Endpoint security policies made from a settings catalog template (antivirus,
+    // firewall…), not every settings catalog policy: the rest are Intune device settings.
+    kinds: ['defenderEndpointSecurityPolicy', 'deviceManagementIntent', 'mobileThreatDefenseConnector'],
   },
   {
     pattern: /\b(?:mdo|defender for office(?: 365)?|atp|eop|exchange online protection|safe links|safe attachments|anti-?spam|anti-?phishing|anti-?malware|spam filters?|phishing protection|quarantine)\b/i,

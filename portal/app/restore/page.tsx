@@ -1,14 +1,14 @@
+import Link from "next/link";
 import { connection } from "next/server";
 import { headers } from "next/headers";
 
 import { DataUnavailable } from "@/components/data-unavailable";
 import { JobRefresher } from "@/components/job-refresher";
-import { JobTable } from "@/components/job-table";
 import { PageHeader } from "@/components/page-header";
-import { RestoreFollowUps } from "@/components/restore-follow-ups";
+import { RestoreFollowUpsAlert } from "@/components/restore-follow-ups";
 import { RestoreSelection } from "@/components/restore-selection";
+import { RecordField, TechnicalDetails } from "@/components/technical-details";
 import { Verdict } from "@/components/verdict";
-import { WorkloadServices } from "@/components/restore/workload-services";
 import { CAPABILITIES_HEADER } from "@/lib/principal";
 import {
   getIncidentSummary,
@@ -25,10 +25,10 @@ import {
 import { DATA_SURFACES, requireReadAccess } from "@/lib/read";
 import { getRestoreChanges, type RestoreChangesData } from "@/lib/restore-changes";
 import { lastRestoreTile } from "@/lib/restore-view";
-import { getRestoreWorkloads, type RestoreWorkload } from "@/lib/restore-workloads";
 import type { RestoreFollowUp } from "@/lib/types";
 
 const RESTORE_JOB_KINDS = ["restore"];
+const TITLE = "Restore configurations";
 const DESCRIPTION = "Put settings back as they were in a backup. Pick the day, choose what to undo, and someone else approves before anything changes.";
 
 // Plan task 17 (portal-design §4.1): the restore surface. Selection here is
@@ -75,7 +75,7 @@ export default async function RestorePage({
           description={DESCRIPTION}
           section="Restore"
           marker={canRestore ? "Actionable" : "Read-only"}
-          title="Restore"
+          title={TITLE}
         />
         <DataUnavailable surface="Restore data" />
       </>
@@ -93,16 +93,7 @@ export default async function RestorePage({
     }
   }
 
-  // Secondary: the other Microsoft 365 services (Exchange, SharePoint, Teams, Purview,
-  // Power Platform) are backed up as workload collections, not in the snapshot.
-  let workloads: RestoreWorkload[] | null;
-  try {
-    workloads = await getRestoreWorkloads();
-  } catch {
-    workloads = null;
-  }
-
-  // Secondary: if it cannot be read, the page still works and says so.
+  // Secondary: open follow-up steps show first, as one alert that links to their page.
   let followUps: RestoreFollowUp[] | null;
   try {
     followUps = await getRestoreFollowUps();
@@ -130,8 +121,12 @@ export default async function RestorePage({
         generatedAt={now}
         marker={canRestore ? undefined : "Read-only"}
         status={status}
-        title="Restore"
+        title={TITLE}
       />
+
+      {followUps === null
+        ? <p className="action-error">KEEL could not read the follow-up steps restores left open. Reload in a minute.</p>
+        : <RestoreFollowUpsAlert followUps={followUps} />}
 
       {/* Roadmap task-71: incident recovery belongs to Restore in the portal map. */}
       {incident ? null : (
@@ -168,20 +163,15 @@ export default async function RestorePage({
         </>
       )}
 
-      <WorkloadServices canApprove={capabilities.includes("approve")} canRestore={canRestore} now={now} workloads={workloads} />
-
-      <div data-layer="explanation">
-        {followUps === null
-          ? <p className="action-error">KEEL could not read the follow-up steps restores left open. Reload in a minute.</p>
-          : <RestoreFollowUps followUps={followUps} now={resourceData?.generatedAt ?? new Date().toISOString()} />}
-        <JobTable
-          headingId="restore-jobs-heading"
-          jobs={jobs}
-         
-          now={now}
-          title="Restores and checks"
-        />
-      </div>
+      <p className="restore-incident-link" data-layer="explanation">
+        Exchange, SharePoint, OneDrive, Teams, Purview and Power Platform settings have their own page: <Link href="/restore/services">Exchange, Teams and more</Link>.
+      </p>
+      {snapshotId ? (
+        <TechnicalDetails>
+          <RecordField label="Snapshot ID" value={snapshotId} />
+          {followUps?.map((entry) => <RecordField key={entry.restoreRef} label="Restore reference" value={entry.restoreRef} />)}
+        </TechnicalDetails>
+      ) : null}
       <JobRefresher active={jobsActive} />
     </>
   );

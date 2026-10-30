@@ -102,7 +102,7 @@ test("open alerts, open incidents and open restore follow-up steps are counted; 
 
 test("the Overview shows a row for each kind of open work, linked to where it is done, and counts it on the Waiting tile", () => {
   const none = renderToStaticMarkup(createElement(DashboardView, { data: DASHBOARD, pendingApprovals: null }));
-  assert.doesNotMatch(none, /href="\/alerts"|href="\/incidents"|href="\/restore#follow-up"/, "nothing waits, so no rows");
+  assert.doesNotMatch(none, /href="\/alerts"|href="\/incidents"|href="\/restore\/follow-ups"/, "nothing waits, so no rows");
   assert.doesNotMatch(none, /Waiting on you/, "a viewer who cannot approve and has nothing waiting sees no Waiting tile");
 
   const waiting = renderToStaticMarkup(createElement(DashboardView, {
@@ -110,7 +110,7 @@ test("the Overview shows a row for each kind of open work, linked to where it is
   }));
   assert.match(waiting, /class="ov-row"[^>]*href="\/alerts"[\s\S]*?<b>3 alerts are not acknowledged<\/b>/);
   assert.match(waiting, /class="ov-row"[^>]*href="\/incidents"[\s\S]*?<b>1 incident is open<\/b>/);
-  assert.match(waiting, /class="ov-row"[^>]*href="\/restore#follow-up"[\s\S]*?<b>2 restore steps are still open<\/b>/);
+  assert.match(waiting, /class="ov-row"[^>]*href="\/restore\/follow-ups"[\s\S]*?<b>2 restore steps are still open<\/b>/);
   assert.match(waiting, /data-tile="waiting"[^>]*href="\/alerts"[\s\S]*?<b class="ov-tile-count">6<\/b>/, "the tile adds them up and opens the first");
 
   const approver = renderToStaticMarkup(createElement(DashboardView, { data: DASHBOARD, pendingApprovals: 0 }));

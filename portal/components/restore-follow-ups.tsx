@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { AlertRow } from "@/components/ui/alert-list";
 import { ago, formatTimestamp } from "@/lib/presentation";
 import type { RestoreFollowUp } from "@/lib/types";
 
@@ -44,5 +45,31 @@ export function RestoreFollowUps({ followUps, now }: { followUps: RestoreFollowU
         ))}
       </ul>
     </section>
+  );
+}
+
+/** The open steps in one count, for the top of the other Restore pages. */
+export function followUpTotals(followUps: RestoreFollowUp[]): { steps: number; restores: number } {
+  return { steps: followUps.reduce((sum, entry) => sum + entry.pending, 0), restores: followUps.length };
+}
+
+/** One alert at the top of Restore configurations while steps are open; nothing otherwise. */
+export function RestoreFollowUpsAlert({ followUps }: { followUps: RestoreFollowUp[] }) {
+  const { steps, restores } = followUpTotals(followUps);
+  if (steps === 0) return null;
+  return (
+    <div className="ui-alerts restore-follow-ups-alert">
+      <AlertRow
+        as="div"
+        item={{
+          key: "restore-follow-ups",
+          tone: "soon",
+          icon: "clock",
+          title: `${steps} follow-up ${steps === 1 ? "step is" : "steps are"} still open from ${restores === 1 ? "a past restore" : `${restores} past restores`}`,
+          todo: "Finish them by hand, such as a new secret or a service check, so each restore counts as done.",
+          action: { label: "See follow-up steps", href: "/restore/follow-ups" },
+        }}
+      />
+    </div>
   );
 }

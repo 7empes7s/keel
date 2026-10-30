@@ -272,7 +272,7 @@ function Everything({ capabilities, statuses, pathname, onNavigate }: { capabili
                   <ul className="menu-sub" id={subId}>
                     {subs.map((sub) => (
                       <li className="menu-row" key={sub.href}>
-                        <Link aria-current={isCurrentPath(pathname, sub.href) ? "page" : undefined} className="menu-sublink" href={sub.href} onClick={onNavigate} prefetch={false}>
+                        <Link aria-current={isCurrentPath(pathname, sub.href, sub.exact) ? "page" : undefined} className="menu-sublink" href={sub.href} onClick={onNavigate} prefetch={false}>
                           <span aria-hidden="true" className="menu-tick" />
                           <span className="menu-label">{sub.label}</span>
                         </Link>

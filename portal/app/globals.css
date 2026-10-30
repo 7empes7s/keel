@@ -5213,6 +5213,7 @@ section.wizard-panel {
 .incident-qualification [data-layer="explanation"] > * { margin: 0; }
 .incident-qualification [data-layer="explanation"] { display: grid; gap: var(--space-xs); }
 .restore-incident-link { margin: 0 0 var(--space-md); color: var(--text-soft); }
+.restore-follow-ups-alert { margin: 0 0 var(--space-md); }
 .incident-qualification-qualified { border-left-color: var(--protected); background: var(--protected-bg); }
 
 /* Portal experience contract: the verdict layer (one sentence, one primary action)

@@ -43,7 +43,7 @@ import { PolicyPage } from "@/components/policies/policy-page";
 import { usePathname, useSearchParams } from "next/navigation";
 import { RestoreSelection } from "@/components/restore-selection";
 import type { RestoreChange } from "@/lib/restore-changes";
-import { lastRestoreTile } from "@/lib/restore-view";
+import { lastRestoreTile, pastRestoresVerdict } from "@/lib/restore-view";
 import { changesVerdict } from "@/lib/changes-view";
 import { JobPageBody } from "@/components/job-page-body";
 import { ContentEffectsPanel, type ContentEffect } from "@/components/content-effects";
@@ -51,7 +51,7 @@ import { IncidentsPage } from "@/components/incidents/incidents-page";
 import { DESCRIPTION as INCIDENTS_DESCRIPTION, incidentStatus } from "@/lib/incidents-view";
 import type { IncidentDetail } from "@/lib/portal-data";
 import { DashboardView } from "@/components/dashboard/dashboard-view";
-import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, ComplianceFinding, CoverageData, CoverageType, DashboardData, DriftRecord, KnownStandard, OwnCheckChoices } from "@/lib/types";
+import type { BaselineCapture, BaselineChanges, BaselineRecord, ComplianceData, ComplianceFinding, CoverageData, CoverageType, DashboardData, DriftRecord, KnownStandard, OwnCheckChoices, RestoreFollowUp } from "@/lib/types";
 import { STANDARDS } from "../../engine/benchmarks/standards.mjs";
 import { CompliancePage, ExportEvidence } from "@/components/compliance/compliance-page";
 import { complianceCounts, complianceStatus } from "@/lib/compliance-view";
@@ -95,7 +95,10 @@ import { changeIntentsVerdict, intentAlerts, intentsStatus, type ChangeIntent, t
 import { SiteDetail, SiteList } from "@/components/site-permissions";
 import { sitePermissionsFrom, siteName, siteVerdict, sitesVerdict, type PeopleSummary, type SitePermissionsData } from "@/lib/site-permissions-view";
 import { WorkloadServices } from "@/components/restore/workload-services";
-import type { RestoreWorkload } from "@/lib/restore-workloads-view";
+import { RestoreFollowUps, RestoreFollowUpsAlert, followUpTotals } from "@/components/restore-follow-ups";
+import Link from "next/link";
+import { RecordField, TechnicalDetails } from "@/components/technical-details";
+import { servicesVerdict, type RestoreWorkload } from "@/lib/restore-workloads-view";
 
 // UI harness: the real portal components with fixture data (see build.mjs).
 // Each API the restore wizard calls gets a plausible answer after
@@ -2493,7 +2496,13 @@ const RESTORE_CHANGES: RestoreChange[] = [
     [{ path: "state", before: "enabled", after: "disabled" }], { names: ["Sam Ortiz"], certain: true }),
 ];
 
-function HarnessRestore({ jobs }: { jobs: Job[] }) {
+// Restore follow-up steps: restore r9 left two, an older restore one. /restore/follow-ups/none has none.
+const RESTORE_FOLLOW_UPS: RestoreFollowUp[] = [
+  { restoreRef: "r9", pending: 2, since: "2026-10-02T08:10:00Z", jobId: "r9" },
+  { restoreRef: "r7", pending: 1, since: "2026-09-28T15:00:00Z", jobId: null },
+];
+
+function HarnessRestore({ jobs, followUps = RESTORE_FOLLOW_UPS }: { jobs: Job[]; followUps?: RestoreFollowUp[] }) {
   const params = useSearchParams();
   const chosen = RESTORE_SNAPSHOTS.find((snapshot) => snapshot.id === params.get("snapshot")) ?? RESTORE_SNAPSHOTS[3];
   const isNewest = chosen.id === RESTORE_SNAPSHOTS[0].id;
@@ -2503,12 +2512,49 @@ function HarnessRestore({ jobs }: { jobs: Job[] }) {
   const count = changes.length;
   return <>
     <PageHeader description="Put settings back as they were in a backup. Pick the day, choose what to undo, and someone else approves before anything changes." generatedAt={now} section="Restore"
-      status={count ? { tone: "soon", label: "Changes to review" } : { tone: "fine", label: "Backups ready" }} title="Restore" />
+      status={count ? { tone: "soon", label: "Changes to review" } : { tone: "fine", label: "Backups ready" }} title="Restore configurations" />
+    <RestoreFollowUpsAlert followUps={followUps} />
+    <p className="restore-incident-link" data-layer="explanation">
+      Recovering from a security incident? <a href="/incidents">Choose a backup an investigator has checked</a>.
+    </p>
     <RestoreSelection canApprove canRestore changes={data} key={chosen.id} lastRestore={lastRestoreTile(jobs, now)} now={now}
       resources={RESTORE_RESOURCES.map(([naturalKey, blastRadius, service]) => ({ naturalKey, resourceType: naturalKey.split(":")[0], blastRadius, service }))}
       snapshotId={chosen.id} snapshots={RESTORE_SNAPSHOTS} />
+    <p className="restore-incident-link" data-layer="explanation">
+      Exchange, SharePoint, OneDrive, Teams, Purview and Power Platform settings have their own page: <Link href="/restore/services">Exchange, Teams and more</Link>.
+    </p>
+    <TechnicalDetails>
+      <RecordField label="Snapshot ID" value={chosen.id} />
+      {followUps.map((entry) => <RecordField key={entry.restoreRef} label="Restore reference" value={entry.restoreRef} />)}
+    </TechnicalDetails>
+  </>;
+}
+
+function HarnessRestoreServices() {
+  return <>
+    <PageHeader description="Put back Exchange, SharePoint, OneDrive, Teams, Purview and Power Platform settings. Each service is backed up on its own, and someone else approves before anything changes." generatedAt={now} section="Restore" title="Exchange, Teams and more" />
+    <Verdict text={servicesVerdict(RESTORE_WORKLOADS).text} tone={servicesVerdict(RESTORE_WORKLOADS).tone} />
     <WorkloadServices canApprove canRestore now={now} workloads={RESTORE_WORKLOADS} />
-    <div data-layer="explanation"><JobTable headingId="restore-jobs-heading" jobs={jobs.filter((item) => item.kind.startsWith("restore"))} now={now} title="Restores and checks" /></div>
+  </>;
+}
+
+function HarnessRestoreFollowUps({ followUps }: { followUps: RestoreFollowUp[] }) {
+  const { steps, restores } = followUpTotals(followUps);
+  return <>
+    <PageHeader description="Work a restore leaves for a person, such as a new secret, a consent or a service check. Open a restore to finish its steps." generatedAt={now} section="Restore"
+      status={steps ? { tone: "soon", label: `${steps} open` } : { tone: "fine", label: "All done" }} title="Follow-up steps" />
+    <Verdict text={steps ? `${steps} ${steps === 1 ? "step is" : "steps are"} still open from ${restores === 1 ? "1 restore" : `${restores} restores`}. Open each restore to finish them.` : "Nothing to finish: no restore is waiting on a step by hand."} tone={steps ? "soon" : "fine"} />
+    <div data-layer="explanation"><RestoreFollowUps followUps={followUps} now={now} /></div>
+  </>;
+}
+
+function HarnessRestoreHistory({ jobs }: { jobs: Job[] }) {
+  const restores = jobs.filter((item) => item.kind.startsWith("restore"));
+  const verdict = pastRestoresVerdict(restores, now);
+  return <>
+    <PageHeader description="Every restore and every check before one, newest first, with who asked and how it ended." generatedAt={now} section="Restore" title="Past restores" />
+    <Verdict action={verdict.href ? { label: "Open it", href: verdict.href } : null} text={verdict.text} tone={verdict.tone} />
+    <div data-layer="explanation"><JobTable headingId="restore-jobs-heading" jobs={restores} now={now} title="Restores and checks" /></div>
   </>;
 }
 
@@ -2573,6 +2619,11 @@ function Page({ path, jobs, posture }: { path: string; jobs: Job[]; posture: num
         <SchedulesPage canEdit={!viewer} canRun={!viewer} deferrals={SCHEDULE_DEFERRALS} forecasts={SCHEDULE_FORECASTS} now={now} schedules={SCHEDULES} timeZone="Europe/Paris" /></>;
     }
     case "/restore": return <HarnessRestore jobs={jobs} />;
+    case "/restore/calm": return <HarnessRestore followUps={[]} jobs={jobs} />;
+    case "/restore/services": return <HarnessRestoreServices />;
+    case "/restore/follow-ups": return <HarnessRestoreFollowUps followUps={RESTORE_FOLLOW_UPS} />;
+    case "/restore/follow-ups/none": return <HarnessRestoreFollowUps followUps={[]} />;
+    case "/restore/history": return <HarnessRestoreHistory jobs={jobs} />;
     case "/incidents": case "/incidents/viewer": return <IncidentsRoute viewer={path === "/incidents/viewer"} />;
     case "/resilience": return resiliencePage(RESILIENCE);
     case "/resilience/unmeasured": return resiliencePage(RESILIENCE_EMPTY);

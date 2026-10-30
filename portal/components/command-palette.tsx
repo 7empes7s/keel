@@ -174,7 +174,7 @@ export function CommandPalette(capabilities: NavCapabilities) {
       section.links.map((link) => ({
         id: `page:${link.href}`,
         label: link.label,
-        hint: isCurrentPath(pathname, link.href) ? "Current page" : section.group,
+        hint: isCurrentPath(pathname, link.href, link.exact) ? "Current page" : section.group,
         keywords: [section.group, link.aliases ?? ""].join(" ").trim(),
         group: "Pages" as const,
         icon: SECTION_ICONS[section.group as NavSection] ?? "page",

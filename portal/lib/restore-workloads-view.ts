@@ -77,6 +77,18 @@ export function groupWorkloadsByService(workloads: RestoreWorkload[], order: (se
   return [...groups.values()].sort((a, b) => order(a.service) - order(b.service));
 }
 
+/** The services page's one sentence: what can be put back, and which backups failed. */
+export function servicesVerdict(workloads: RestoreWorkload[]): { text: string; tone: "fine" | "soon" | "neutral" } {
+  const shown = workloads.filter(hasBackupData);
+  const ready = shown.filter((workload) => workload.backup !== null).length;
+  const failed = shown.filter((workload) => workload.lastRun?.outcome === "failed").length;
+  const services = new Set(shown.map((workload) => workload.service ?? "")).size;
+  if (!shown.length) return { text: "No other service has a backup yet, so there is nothing to put back here.", tone: "neutral" };
+  const readyWords = `${count(ready, "kind")} of setting across ${count(services, "service")} can be put back`;
+  if (failed) return { text: `${readyWords}. The newest backup of ${count(failed, "kind")} failed: check them below.`, tone: "soon" };
+  return { text: `${readyWords}.`, tone: "fine" };
+}
+
 // Starting a restore for one of these services from the Restore page.
 
 // The same list as engine/restore/workloads/restoreChoices.mjs PAGE_RESTORE_WORKLOADS

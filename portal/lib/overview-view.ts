@@ -108,7 +108,7 @@ export function riskRows(items: DashboardData["openDriftByBlastRadius"]): { key:
 export const WAITING_ROWS: { key: keyof DashboardWaiting; href: string; icon: IconName; one: string; many: string; detail: string }[] = [
   { key: "openAlerts", href: "/alerts", icon: "bell", one: "alert is not acknowledged", many: "alerts are not acknowledged", detail: "Each one needs an owner to acknowledge it." },
   { key: "openIncidents", href: "/incidents", icon: "alert", one: "incident is open", many: "incidents are open", detail: "Recovery from each one is still in progress." },
-  { key: "restoreFollowUps", href: "/restore#follow-up", icon: "restore", one: "restore step is still open", many: "restore steps are still open", detail: "Restores left work Keel cannot do itself, such as new secrets or a service check." },
+  { key: "restoreFollowUps", href: "/restore/follow-ups", icon: "restore", one: "restore step is still open", many: "restore steps are still open", detail: "Restores left work Keel cannot do itself, such as new secrets or a service check." },
 ];
 
 export interface AttentionRow { key: string; tone: BadgeTone; icon: IconName; title: string; detail: string; href: string }

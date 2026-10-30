@@ -732,10 +732,10 @@ export function RestoreSelection({
             <li className="track-done">Check finished</li>
             <li className="track-done">Approval requested</li>
             <li className="track-current">Another person reviews this same plan</li>
-            <li>KEEL checks the tenant again, then restores; the job appears below</li>
+            <li>KEEL checks the tenant again, then restores; the job appears in Past restores</li>
           </ol>
           <div className="form-actions">
-            <a className="btn btn-secondary" href="#restore-jobs-heading">View restore jobs</a>
+            <Link className="btn btn-secondary" href="/restore/history">See past restores</Link>
             <button
               className="btn btn-ghost"
               disabled={submitting || planning}

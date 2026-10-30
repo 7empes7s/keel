@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 
 import { MENU_SECTIONS, NAV_SECTIONS, SECTION_ICONS, type MenuSection, type NavSection } from "@/lib/nav-sections";
 
@@ -28,6 +29,9 @@ interface SectionRoute {
   // A route that belongs to the section but is not a sub-item of its own (a redirect
   // or a detail page reached from the section's main page).
   hidden?: boolean;
+  // Current only on this exact path, for a page whose sub-pages sit beside it in the
+  // menu (/restore and /restore/services).
+  exact?: boolean;
 }
 
 // What each section is for, in one line: the menu's tooltip and the palette's hint.
@@ -53,7 +57,12 @@ export const NAV_MAP: Record<NavSection, SectionRoute[]> = {
     { href: "/coverage", label: "Configuration types", gate: null, hidden: true },
   ],
   Restore: [
-    { href: "/restore", label: "Restore", gate: null },
+    // The restore areas in the order people use them: start a restore, finish its
+    // follow-up steps, look back at past ones.
+    { href: "/restore", label: "Configurations", gate: null, exact: true, aliases: "restore settings configurations put back undo entra intune" },
+    { href: "/restore/services", label: "Exchange, Teams and more", gate: null, aliases: "other services exchange mail flow mailboxes sharepoint onedrive teams purview power platform" },
+    { href: "/restore/follow-ups", label: "Follow-up steps", gate: null, aliases: "follow-ups manual steps by hand new secrets finish restore" },
+    { href: "/restore/history", label: "Past restores", gate: null, aliases: "restore jobs history checks dry runs" },
     { href: "/incidents", label: "Incidents", gate: null },
     { href: "/resilience", label: "Resilience", gate: "canRead", aliases: "recovery point recovery time drills off-site copy" },
     { href: "/readiness", label: "Emergency access", gate: "canRead", aliases: "break glass emergency accounts readiness sign-in test" },
@@ -94,6 +103,7 @@ export interface NavLink {
   label: string;
   group: NavSection;
   aliases?: string;
+  exact?: boolean;
 }
 
 function allowed(gate: Gate, capabilities: NavCapabilities): boolean {
@@ -104,7 +114,7 @@ function allowed(gate: Gate, capabilities: NavCapabilities): boolean {
 export function sectionLinks(section: NavSection, capabilities: NavCapabilities): NavLink[] {
   return NAV_MAP[section]
     .filter((route) => !route.hidden && allowed(route.gate, capabilities))
-    .map((route) => ({ href: route.href, label: route.label, group: section, aliases: route.aliases }));
+    .map((route) => ({ href: route.href, label: route.label, group: section, aliases: route.aliases, exact: route.exact }));
 }
 
 /** Every page the viewer may open, each tagged with its section (palette, tests). */
@@ -135,9 +145,11 @@ export function sectionForPath(pathname: string | null): NavSection | null {
   return NAV_SECTIONS.find((section) => NAV_MAP[section].some((route) => routeMatches(pathname, route.href))) ?? null;
 }
 
-export function isCurrentPath(pathname: string | null, href: string): boolean {
+/** Whether a menu entry is the page you are on. An `exact` entry matches its own path
+ * only, so /restore is not also current on /restore/services. */
+export function isCurrentPath(pathname: string | null, href: string, exact = false): boolean {
   if (!pathname) return false;
-  return routeMatches(pathname, href);
+  return exact ? pathname === href : routeMatches(pathname, href);
 }
 
 /** The pages a section absorbs, as one scrolling row of tabs. On a desktop the menu
@@ -145,15 +157,25 @@ export function isCurrentPath(pathname: string | null, href: string): boolean {
  * bell's inbox only. */
 export function SectionTabs(capabilities: NavCapabilities) {
   const pathname = usePathname();
+  const rowRef = useRef<HTMLElement>(null);
+  // A long row (Restore has seven pages) keeps the open page's tab in sight on a phone.
+  useEffect(() => {
+    const row = rowRef.current;
+    const current = row?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!row || !current) return;
+    const box = row.getBoundingClientRect();
+    const tab = current.getBoundingClientRect();
+    if (tab.left < box.left || tab.right > box.right) row.scrollLeft += tab.left - box.left - 16;
+  }, [pathname]);
   const section = sectionForPath(pathname);
   if (!section) return null;
   const routes = sectionLinks(section, capabilities);
   if (routes.length < 2) return null;
   return (
-    <nav aria-label={`${section} pages`} className="section-tabs" data-section={section === "Inbox" ? "inbox" : undefined}>
+    <nav aria-label={`${section} pages`} className="section-tabs" ref={rowRef} data-section={section === "Inbox" ? "inbox" : undefined}>
       {routes.map((route) => (
         <Link
-          aria-current={isCurrentPath(pathname, route.href) ? "page" : undefined}
+          aria-current={isCurrentPath(pathname, route.href, route.exact) ? "page" : undefined}
           className="section-tab"
           href={route.href}
           key={route.href}

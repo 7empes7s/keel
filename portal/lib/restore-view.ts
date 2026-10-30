@@ -238,3 +238,14 @@ export function plannedWords(reason: string | undefined): string {
   if (count) return `${plural(Number(count[1]), "setting")} go back`;
   return "will be put back";
 }
+
+/** Past restores' one sentence: how the newest restore or check went. */
+export function pastRestoresVerdict(jobs: JobRecord[], now: string): { text: string; tone: RiskTone | "neutral"; href: string | null } {
+  const job = jobs.find((entry) => entry.kind === "restore");
+  if (!job) return { text: "No restore has run on this tenant yet.", tone: "neutral", href: null };
+  const params = (job.params ?? {}) as Record<string, unknown>;
+  const what = params.mode === "enforce" ? "restore" : "check before a restore";
+  const tone = JOB_TONES[job.status] ?? "low";
+  if (job.status === "failed") return { text: `The newest ${what} failed. Open it to see why and plan it again.`, tone, href: `/jobs/${job.id}` };
+  return { text: `The newest ${what}: ${jobStatusSentence(job, now).replace(/^./, (first) => first.toLowerCase())}.`, tone, href: null };
+}

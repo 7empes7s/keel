@@ -36,6 +36,7 @@ import { siteSharingActivation } from '../collect/workloads/sharepoint.mjs';
 import { sharePointStructureActivation } from '../collect/workloads/sharepointStructure.mjs';
 import { purviewExtendedActivation } from '../collect/workloads/purviewExtended.mjs';
 import { retentionDlpActivation } from '../collect/workloads/purviewRetentionDlp.mjs';
+import { teamsCollaborationActivation, teamsMeetingSettingsActivation } from '../collect/workloads/teamsCollaboration.mjs';
 import { teamsExtendedActivation } from '../collect/workloads/teamsExtended.mjs';
 import { teamsPolicyActivation } from '../collect/workloads/teamsPolicies.mjs';
 import { teamsDevicePoliciesActivation, teamsVoiceNetworkActivation } from '../collect/workloads/teamsVoiceNetwork.mjs';
@@ -61,6 +62,8 @@ const ACTIVATION = {
   'teams-voice-policies': teamsExtendedActivation,
   'teams-voice-network': teamsVoiceNetworkActivation,
   'teams-device-policies': teamsDevicePoliciesActivation,
+  'teams-collaboration-policies': teamsCollaborationActivation,
+  'teams-meeting-settings': teamsMeetingSettingsActivation,
   'purview-retention-dlp': retentionDlpActivation,
   'purview-governance': purviewExtendedActivation,
   // SharePoint's per-site sharing read: the rest of the SharePoint read never waits for it.
@@ -68,7 +71,7 @@ const ACTIVATION = {
   'sharepoint-structure': sharePointStructureActivation,
 };
 const TABLES = {
-  MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended', 'AllowedTeamsVoiceNetwork'],
+  MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended', 'AllowedTeamsVoiceNetwork', 'AllowedTeamsCollaboration'],
   ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedExchangeRecipients', 'AllowedExchangeOrgPolicies', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
   'PnP.PowerShell': ['AllowedPnP', 'AllowedPnPStructure'],
 };

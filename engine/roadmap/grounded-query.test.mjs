@@ -177,7 +177,7 @@ test('the plan comes from a fixed set: intents, types, entities and periods are 
   // Real phrasings: a service with a broad word, a kind's own name, a quoted name, and a
   // word the rules do not know, which is reported instead of dropped.
   const teams = readQuestion('What Teams policies changed this week?', { now, knownEntities: known });
-  assert.deepEqual(teams, { intent: 'changes', params: { resourceTypes: ['teams-device-policies', 'teams-org-policies', 'teams-voice-policies'], period: 'this-week' }, ignored: [] });
+  assert.deepEqual(teams, { intent: 'changes', params: { resourceTypes: ['teams-collaboration-policies', 'teams-device-policies', 'teams-meeting-settings', 'teams-org-policies', 'teams-voice-policies'], period: 'this-week' }, ignored: [] });
   const exchange = readQuestion('Which Exchange admin roles were removed yesterday?', { now, knownEntities: known });
   assert.deepEqual(exchange, { intent: 'changes', params: { resourceType: 'exchangeRoleDefinition', changeType: 'removed', period: 'yesterday' }, ignored: [] });
   const service = readQuestion('What changed in Exchange in the last 7 days?', { now, knownEntities: known });
@@ -469,7 +469,7 @@ test('a Sales reader asking about this week gets only Sales records, each with i
   assert.equal(named.plan.params.name, 'Sales Admins');
   assert.deepEqual(named.ignored, []);
   const teams = await answerQuestion(client, { tenantRef, scope: CENTRAL, question: 'What Teams policies changed this week?' });
-  assert.deepEqual([...teams.plan.params.resourceTypes], ['teams-device-policies', 'teams-org-policies', 'teams-voice-policies']);
+  assert.deepEqual([...teams.plan.params.resourceTypes], ['teams-collaboration-policies', 'teams-device-policies', 'teams-meeting-settings', 'teams-org-policies', 'teams-voice-policies']);
   assert.equal(teams.total, 0, 'group changes are not Teams policies');
   const printers = await answerQuestion(client, { tenantRef, scope: CENTRAL, question: 'What changed with the printers this week?' });
   assert.deepEqual(printers.ignored, ['printers']);

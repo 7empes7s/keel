@@ -463,6 +463,19 @@ if ($Workloads -contains 'teams') {
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsVdiPolicy' -Block { Get-CsTeamsVdiPolicy }
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsFeedbackPolicy' -Block { Get-CsTeamsFeedbackPolicy }
         Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsWorkLoadPolicy' -Block { Get-CsTeamsWorkLoadPolicy }
+        # Teams collaboration policies and meeting settings (teamsCollaboration.mjs): reads only.
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsExternalAccessPolicy' -Block { Get-CsExternalAccessPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsChannelsPolicy' -Block { Get-CsTeamsChannelsPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsFilesPolicy' -Block { Get-CsTeamsFilesPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsTemplatePermissionPolicy' -Block { Get-CsTeamsTemplatePermissionPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsShiftsPolicy' -Block { Get-CsTeamsShiftsPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsUpgradePolicy' -Block { Get-CsTeamsUpgradePolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsUpgradeConfiguration' -Block { Get-CsTeamsUpgradeConfiguration }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsAcsFederationConfiguration' -Block { Get-CsTeamsAcsFederationConfiguration }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsEnhancedEncryptionPolicy' -Block { Get-CsTeamsEnhancedEncryptionPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsComplianceRecordingPolicy' -Block { Get-CsTeamsComplianceRecordingPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsMeetingTemplatePermissionPolicy' -Block { Get-CsTeamsMeetingTemplatePermissionPolicy }
+        Invoke-ProbeCmdlet -Workload 'teams' -Name 'Get-CsTeamsMeetingConfiguration' -Block { Get-CsTeamsMeetingConfiguration }
     } catch {
         Add-Result -Workload 'teams' -Connected $false -Cmdlet $null -Ok $false -Count $null -ErrorText $_.Exception.Message
         Write-Diag "teams connect FAILED: $($_.Exception.Message)"

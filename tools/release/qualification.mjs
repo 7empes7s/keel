@@ -10,7 +10,8 @@
  * and proof. Proof is either a trusted runner identity with an HMAC signature
  * (key from KEEL_QUALIFICATION_HMAC_KEY, never from git) or an independently
  * verifiable artifact digest recomputed from the artifact bytes. Missing
- * proof exits nonzero. --require-live additionally rejects synthetic
+ * proof exits nonzero: any result with ok false exits 1, and a gate that
+ * needs the expected identity names a missing --tenant or --build. --require-live additionally rejects synthetic
  * fixtures, fixture-tested levels and synthetic runner identities.
  *
  * Gate-specific validators are registered additively in GATE_VALIDATORS by
@@ -23,6 +24,7 @@ import { SITE_GRANTS_LIVE_GATE, validateSiteGrantsLiveSubject } from '../qualifi
 import { SITE_PERMISSIONS_LIVE_GATE, validateSitePermissionsLiveSubject } from '../qualification/sharepointSitePermissionsAcceptance.mjs';
 import { STRUCTURE_WRITES_LIVE_GATE, validateStructureWritesLiveSubject } from '../qualification/sharepointStructureWritesAcceptance.mjs';
 import { DSC_WRITES_LIVE_GATE, validateDscWritesLiveSubject } from '../qualification/dscDistributionGroupsAcceptance.mjs';
+import { ROLE_WRITES_LIVE_GATE, validateRoleWritesLiveSubject } from '../qualification/exchangeRoleDefinitionsAcceptance.mjs';
 import { TEAMS_LIVE_GATE, validateTeamsLiveSubject } from '../qualification/teamsAcceptance.mjs';
 import { EXCHANGE_LIVE_GATE, validateExchangeLiveSubject } from '../qualification/exchangeAcceptance.mjs';
 import { ONEDRIVE_PURVIEW_LIVE_GATE, validateOneDrivePurviewLiveSubject } from '../qualification/onedrivePurviewAcceptance.mjs';
@@ -749,6 +751,9 @@ const GATE_VALIDATORS = {
   // Distribution list writes through Microsoft365DSC (the keel-dsc profile); needs both proofs.
   [DSC_WRITES_LIVE_GATE]: (evidence, context) => validateDscWritesLiveSubject(evidence, {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
+  // Custom Exchange admin roles recreated through Exchange Online PowerShell; needs both proofs.
+  [ROLE_WRITES_LIVE_GATE]: (evidence, context) => validateRoleWritesLiveSubject(evidence, {
+    ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
   // Task-121: Teams live acceptance; needs both proofs and a verified task-120 record.
   [TEAMS_LIVE_GATE]: (evidence, context) => validateTeamsLiveSubject(evidence, {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context), verifyEvidence }),
@@ -1009,17 +1014,44 @@ function main() {
     process.exit(2);
   }
   const gate = arg('gate');
+  const tenantRef = arg('tenant', process.env.KEEL_QUALIFICATION_TENANT_REF
+    ?? ([DEPLOYED_ACCEPTANCE_GATE, STORAGE_LIVE_GATE].includes(gate) ? configuredTenantRef() : undefined)) || null;
+  const build = arg('build', process.env.KEEL_QUALIFICATION_BUILD ?? checkoutBuild()) || null;
   const result = verifyEvidenceFile(evidencePath, {
     gate,
-    tenantRef: arg('tenant', process.env.KEEL_QUALIFICATION_TENANT_REF
-      ?? ([DEPLOYED_ACCEPTANCE_GATE, STORAGE_LIVE_GATE].includes(gate) ? configuredTenantRef() : undefined)),
-    build: arg('build', process.env.KEEL_QUALIFICATION_BUILD ?? execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()),
+    tenantRef,
+    build,
     requireLive: process.argv.includes('--require-live'),
     maxAgeHours: Number(arg('max-age-hours', DEFAULT_MAX_AGE_HOURS)),
   });
+  // No build to check against fails closed, as it did before; a gate that needs the expected
+  // identity says which one was missing, so the fix is one flag away.
+  if (!build || result.failures.some((failure) => /identity required|expected tenant and build/.test(failure))) {
+    result.failures.push(...missingIdentityHints({ tenantRef, build }));
+    result.ok = false;
+  }
   // The result carries verdicts and failure reasons only — no key material.
   console.log(JSON.stringify(result, null, 2));
-  process.exit(result.ok ? 0 : 1);
+  if (!result.ok) console.error(`verify: NOT OK (${result.failures.length} failure${result.failures.length === 1 ? '' : 's'}), exit 1`);
+  // exitCode, not exit(): stdout is flushed before the process ends, even into a pipe.
+  process.exitCode = result.ok ? 0 : 1;
+}
+
+/** The commit checked out here, or null outside a git checkout. */
+function checkoutBuild() {
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return null;
+  }
+}
+
+/** Plain hints for a verify that had no expected tenant or build to check the record against. */
+export function missingIdentityHints({ tenantRef, build }) {
+  const hints = [];
+  if (!tenantRef) hints.push('no expected tenant: pass --tenant <tenant ref> (or set KEEL_QUALIFICATION_TENANT_REF)');
+  if (!build) hints.push('no expected build: pass --build <commit> (or set KEEL_QUALIFICATION_BUILD)');
+  return hints;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

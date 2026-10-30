@@ -29,6 +29,9 @@ const CONFIG_DIR = '/etc/keel/';
 export const POWERSHELL_FAMILY = Object.freeze(Object.fromEntries(WORKLOAD_COLLECTORS
   .filter((entry) => entry.powershellFamily).map((entry) => [entry.workload, entry.powershellFamily])));
 export const POWERSHELL_FAMILIES = Object.freeze([...new Set(Object.values(POWERSHELL_FAMILY))]);
+// Restores with no collector of their own: the family their PowerShell connects with.
+// The Exchange admin role restore reads a Graph backup and writes through Exchange Online.
+export const RESTORE_POWERSHELL_FAMILY = Object.freeze({ 'exchange-role-definitions': 'exchange' });
 
 const FAMILY_NAMES = { exchange: 'Exchange', onedrive: 'OneDrive', purview: 'Purview' };
 
@@ -136,5 +139,5 @@ export function familyConfigPath(family, { role, scope = {}, tenantId, readFile,
 
 /** The config path a workload's PowerShell connects with, or null (see familyConfigPath). */
 export function workloadPowershellConfigPath(workload, options) {
-  return familyConfigPath(POWERSHELL_FAMILY[workload] ?? null, options);
+  return familyConfigPath(POWERSHELL_FAMILY[workload] ?? RESTORE_POWERSHELL_FAMILY[workload] ?? null, options);
 }

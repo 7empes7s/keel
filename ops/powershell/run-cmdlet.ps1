@@ -140,6 +140,21 @@ $AllowedExchangeRecipients = @{
     'Get-CalendarProcessing'       = @('Identity')
 }
 
+# Custom Exchange admin role restore (engine/restore/workloads/exchangeRoleDeclarations.mjs),
+# in the Exchange Online session. Reads list every role, or one role's entries ('<role>\*').
+# Writes create one role from its parent and trim the entries of that role, one entry at a
+# time ('<role>\<cmdlet>'): the engine sends Set- and Remove-ManagementRoleEntry only for a
+# role it created in the same operation. A test keeps these lists equal to the engine's.
+$AllowedExchangeRoleReads = @{
+    'Get-ManagementRole'      = @()
+    'Get-ManagementRoleEntry' = @('Identity')
+}
+$AllowedExchangeRoleWrites = @{
+    'New-ManagementRole'         = @('Name', 'Parent', 'Description', 'EnabledCmdlets')
+    'Set-ManagementRoleEntry'    = @('Identity', 'Parameters', 'RemoveParameter')
+    'Remove-ManagementRoleEntry' = @('Identity', 'Confirm')
+}
+
 # Wave 1 READ-TEAMS-PV: Teams calling, voice and live event policies and policy
 # assignments, read in the MicrosoftTeams session. Only Get-CsOnlineUser takes a
 # parameter (-ResultSize, a bound). Reads only.
@@ -364,6 +379,8 @@ elseif ($AllowedMailFlow.ContainsKey($name) -and $module -eq 'ExchangeOnlineMana
 elseif ($AllowedExchangeExtended.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeExtended[$name] }
 elseif ($AllowedExchangeRoleGroups.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRoleGroups[$name] }
 elseif ($AllowedExchangeRecipients.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRecipients[$name] }
+elseif ($AllowedExchangeRoleReads.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRoleReads[$name] }
+elseif ($AllowedExchangeRoleWrites.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'exo'; $permitted = $AllowedExchangeRoleWrites[$name] }
 elseif ($AllowedPurview.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurview[$name] }
 elseif ($AllowedPurviewRetentionDlp.ContainsKey($name) -and $module -eq 'ExchangeOnlineManagement') { $session = 'ipps'; $permitted = $AllowedPurviewRetentionDlp[$name] }
 elseif ($AllowedPnP.ContainsKey($name) -and $module -eq 'PnP.PowerShell') { $session = 'pnp'; $permitted = $AllowedPnP[$name] }
@@ -386,6 +403,16 @@ if ($null -ne $job['parameters']) {
     }
 }
 
+# A role entry identity names one entry of one role; a read names one role's entries. Never a
+# wildcard role, and a removal never touches a whole role. A role name never holds a wildcard.
+if ($name -like '*-ManagementRoleEntry') {
+    $entryId = [string]$params['Identity']
+    $entryPattern = if ($name -eq 'Get-ManagementRoleEntry') { '^[^\\*?]{1,64}\\\*\z' } else { '^[^\\*?]{1,64}\\[A-Za-z]+-[A-Za-z0-9]+\z' }
+    if ($entryId -notmatch $entryPattern) { Out-Failure -Message "$name takes one role entry identity, not $entryId" -ErrorId 'IdentityNotAllowed' }
+}
+if ($name -eq 'New-ManagementRole' -and (([string]$params['Name']) -match '[\\*?]' -or -not $params['Parent'] -or ([string]$params['Parent']) -match '[\\*?]')) {
+    Out-Failure -Message 'New-ManagementRole takes a plain role name and a parent role' -ErrorId 'IdentityNotAllowed'
+}
 if ($NoConfirmPrompt -contains $name) { $params['Confirm'] = $false }
 
 $tenantConfigPath = if ($job['tenantConfigPath']) { [string]$job['tenantConfigPath'] } else { '/etc/keel/tenant.json' }

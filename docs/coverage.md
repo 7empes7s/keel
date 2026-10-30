@@ -61,7 +61,7 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
 | Admin role access review defaults | Yes (Tier 3, low impact, weekly) | Full | Yes: put changed settings back | Tested against a simulated tenant |
 | User flow attributes | Yes (Tier 3, low impact, weekly) | Incomplete | By hand (not built yet) | None |
 | Authentication event listeners | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
-| Exchange admin roles | Yes (Tier 2, important, daily) | Incomplete | By hand (not built yet) | None |
+| Exchange admin roles | Yes (Tier 2, important, daily) | Incomplete | By hand (KEEL choice) | None |
 | Exchange admin role assignments | Yes (Tier 1, critical, every hour) | Incomplete | By hand (not built yet) | None |
 | Exchange app access scopes | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
 | Defender admin roles | Yes (Tier 2, important, daily) | Incomplete | Yes: recreate if deleted; put changed settings back | Tested against a simulated tenant |
@@ -170,9 +170,9 @@ KEEL tracks 177 kinds of Entra ID and Intune settings and backs up everything it
   - *You do:* Recreate each custom attribute in the Entra admin center, under External Identities, Custom user attributes, from the backup, before the user flows that collect it.
 - **Authentication event listeners** (not built yet). KEEL backs these up but does not restore them yet. Each one points to a custom authentication extension.
   - *You do:* Recreate the custom authentication extension first, then the listener with PowerShell from the backup, for the same apps.
-- **Exchange admin roles** (not built yet). KEEL backs up the custom roles but does not restore them yet: the Microsoft interface KEEL uses can list Exchange roles but not create or change them, so this needs Exchange Online PowerShell. The built-in roles are set by Microsoft.
+- **Exchange admin roles** (KEEL choice). KEEL backs up the custom roles. Microsoft offers no way to create them outside Exchange, so KEEL recreates a custom role that is gone through Exchange Online PowerShell, from its parent role, with the same entries (the Exchange admin role restore, off until its live proof passes). It never changes a role that still exists. The built-in roles are set by Microsoft.
   - *Not brought back:* built-in roles (set by Microsoft).
-  - *You do:* Recreate each custom role with Exchange Online PowerShell from the backup, from the same parent role, before the role groups or apps that use it.
+  - *You do:* For a custom role that still exists but differs from the backup, the restore lists what differs: fix its entries with Exchange Online PowerShell. Then give recreated roles back to their role groups or apps, after a privilege review.
 - **Exchange admin role assignments** (not built yet). KEEL backs up who holds each Exchange role and over which scope, but does not restore them yet. Admin access needs a privilege review first.
   - *You do:* Check the backup with the person who approves admin access, then add the role groups, people or apps again in the Exchange admin center, under Roles, Admin roles, or with Exchange Online PowerShell.
 - **Exchange app access scopes.** Recreates scopes and puts back their name and which mailboxes they cover (the recipient filter).
@@ -792,7 +792,7 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 - Put back: Anti-malware policies (switched on only after the restore of mailbox client access settings is proven)
 - Put back: Safe Links policies (switched on only after the restore of mailbox client access settings is proven)
 
-**You do:** Domains, anti-spam, anti-phish, malware, DKIM, Safe Links and Safe Attachments policies, a rule turned on or off, and a deleted rule or connector are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a mail flow rule other than its comment needs a second approver. Safe Links and Safe Attachments are backed up only when the tenant has Defender for Office 365.
+**You do:** Accepted and remote domains, DKIM signing, Safe Attachments policies, policy settings KEEL does not restore, a rule turned on or off, and a deleted rule, connector or policy are changed by hand in the Exchange admin center or Microsoft Defender portal using the backup. Any change to a mail flow rule other than its comment needs a second approver. Safe Links and Safe Attachments are backed up only when the tenant has Defender for Office 365.
 
 ### Teams organization policies
 

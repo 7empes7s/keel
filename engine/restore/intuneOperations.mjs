@@ -244,7 +244,9 @@ export function omaTrustRefusal(resource, verb) {
   }
   // Without the live profile nothing shows its custom settings hold no trust setting the list would remove.
   const writesWhole = Array.isArray(resource?.payload?.omaSettings) || appleProfileField(resource?.payload) !== null;
-  if (names.size === 0 && unreadable.size === 0 && verb === 'update' && writesWhole && !resource?.live?.payload) {
+  // A live Apple profile read without its file cannot show the backup's file removes no trust payload.
+  const liveFileMissing = appleProfileField(resource?.payload) !== null && appleProfileField(resource?.live?.payload) === null;
+  if (names.size === 0 && unreadable.size === 0 && verb === 'update' && writesWhole && (!resource?.live?.payload || liveFileMissing)) {
     return namedTrustSkip([], () => 'the live profile was not read, so nothing shows its custom settings hold no trust, certificate or sign-in setting the restore would remove; restore the profile by hand in the Intune admin center');
   }
   if (names.size === 0 && unreadable.size > 0) {

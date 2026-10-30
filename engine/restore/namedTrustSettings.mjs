@@ -63,27 +63,56 @@ export function decodeBase64(value) {
 }
 
 /**
- * The text bytes hold (UTF-8, or UTF-16 with a byte order mark), or null when
- * they are binary: a control character or an invalid UTF-8 sequence.
+ * Which byte of each pair is zero in UTF-16 text without a byte order mark
+ * (ASCII-range text: 1 for little-endian, 0 for big-endian), or null.
+ */
+function utf16ZeroByte(bytes) {
+  if (bytes.length < 4 || bytes.length % 2 !== 0) return null;
+  const pairs = Math.min(bytes.length / 2, 256);
+  for (const zero of [1, 0]) {
+    let count = 0;
+    for (let i = 0; i < pairs; i += 1) if (bytes[2 * i + zero] === 0 && bytes[2 * i + 1 - zero] !== 0) count += 1;
+    if (count >= pairs * 0.9) return zero;
+  }
+  return null;
+}
+
+/**
+ * The text bytes hold (UTF-8, UTF-16 with or without a byte order mark, or a
+ * single-byte encoding such as ISO-8859-1 when they are not UTF-8), or null
+ * when they are binary: a control character.
  */
 export function bytesAsText(bytes) {
   if (!bytes || bytes.length === 0) return null;
   let text;
+  const zero = utf16ZeroByte(bytes);
   if (bytes[0] === 0xff && bytes[1] === 0xfe) text = bytes.subarray(2).toString('utf16le');
   else if (bytes[0] === 0xfe && bytes[1] === 0xff) text = Buffer.from(bytes.subarray(2)).swap16().toString('utf16le');
-  else text = bytes.toString('utf8');
+  else if (zero === 1) text = bytes.toString('utf16le');
+  else if (zero === 0) text = Buffer.from(bytes).swap16().toString('utf16le');
+  else {
+    text = bytes.toString('utf8');
+    if (text.includes('\uFFFD')) text = bytes.toString('latin1');
+  }
   text = text.replace(/^\uFEFF/, '');
   return /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/.test(text) ? null : text;
 }
 
-/** Whether bytes are a certificate: PEM text, or DER (an ASN.1 sequence whose length fits). */
+/**
+ * Whether bytes are a certificate or a certificate container: PEM text, DER
+ * (an ASN.1 sequence whose long-form length fits), or BER with an indefinite
+ * length (PKCS #12 and CMS files start this way).
+ */
 export function isCertificateBytes(bytes) {
   if (!bytes || bytes.length < 4) return false;
   if (/-----BEGIN [A-Z0-9 ]*CERTIFICATE-----/.test(bytes.toString('latin1'))) return true;
   if (bytes[0] !== 0x30) return false;
-  if (bytes[1] === 0x82) return bytes.length >= 4 + ((bytes[2] << 8) | bytes[3]);
-  if (bytes[1] === 0x83) return bytes.length >= 5 + ((bytes[2] << 16) | (bytes[3] << 8) | bytes[4]);
-  return false;
+  if (bytes[1] === 0x80) return bytes[2] === 0x02 || bytes[2] === 0x06 || bytes[2] === 0x30;
+  const size = bytes[1] - 0x80;
+  if (size < 2 || size > 4 || bytes.length < 2 + size) return false;
+  let length = 0;
+  for (let i = 0; i < size; i += 1) length = length * 256 + bytes[2 + i];
+  return bytes.length >= 2 + size + length;
 }
 
 /** Whether a custom setting's value holds a trust setting, read as text or decoded from base64. */
@@ -92,11 +121,10 @@ function omaValueHoldsTrust(node) {
   const value = node.value;
   if (typeof value !== 'string') return false;
   if (type === '#microsoft.graph.omaSettingString') return isTrustSettingName(value);
-  // A StringXml value written as XML (older backups) is read as it is.
-  if (type === '#microsoft.graph.omaSettingStringXml' && value.trimStart().startsWith('<')) return isTrustSettingName(value);
   if (!BASE64_VALUE.test(type)) return false;
   const bytes = decodeBase64(value);
-  if (!bytes) return false;
+  // A StringXml value that is not base64 (older backups hold the XML as written) is read as it is.
+  if (!bytes) return type === '#microsoft.graph.omaSettingStringXml' && isTrustSettingName(value);
   if (isCertificateBytes(bytes)) return true;
   const text = bytesAsText(bytes);
   return text !== null && isTrustSettingName(text);
@@ -142,7 +170,7 @@ export function appleProfileField(payload) {
   return field && typeof payload[field] === 'string' && payload[field].trim().length > 0 ? field : null;
 }
 
-const PAYLOAD_TYPE = /<key>\s*PayloadType\s*<\/key>\s*<string>\s*([^<]*?)\s*<\/string>/g;
+const PAYLOAD_TYPE = /<key>\s*PayloadType\s*<\/key>\s*<string>([^<]*)<\/string>/g;
 const DATA_BLOCK = /<data>([^<]*)<\/data>/g;
 
 /** The property list text in bytes: the file itself, or the one a signature wraps. */
@@ -173,7 +201,10 @@ export function appleProfileTrust(payload) {
   const text = bytes ? propertyListText(bytes) : value.trimStart().startsWith('<') ? value : null;
   if (text === null) return { trust: [], unreadable: [field] };
   const trust = new Set();
-  for (const [, type] of text.matchAll(PAYLOAD_TYPE)) if (isTrustSettingName(type)) trust.add(type);
+  for (const [, raw] of text.matchAll(PAYLOAD_TYPE)) {
+    const type = raw.trim();
+    if (isTrustSettingName(type)) trust.add(type);
+  }
   // Data blocks are base64: read only for a certificate, never as text.
   let certificate = false;
   for (const [, data] of text.matchAll(DATA_BLOCK)) if (isCertificateBytes(decodeBase64(data))) certificate = true;

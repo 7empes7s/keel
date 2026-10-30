@@ -109,6 +109,13 @@ test('a base64 custom value is decoded: trust text or a certificate is found und
   for (const value of [b64('<Config><Volume>3</Volume></Config>'), b64(Buffer.from([0x00, 0x01, 0xfe, 0x30, 0x82])), 'not base64 at all, trust']) {
     assert.deepEqual(trustOmaUris(customProfile([base64Setting(value)])), [], value);
   }
+  // Other encodings: ISO-8859-1 XML, UTF-16 without a byte order mark, and a PKCS #12 file (BER, indefinite length).
+  const wlan = '<?xml version="1.0" encoding="ISO-8859-1"?><WLANProfile><name>Caf\u00e9</name><TrustedRootCA>ab cd</TrustedRootCA></WLANProfile>';
+  for (const value of [b64(Buffer.from(wlan, 'latin1')), b64(Buffer.from(wlan, 'utf16le')), b64(Buffer.from(wlan, 'utf16le').swap16()), b64(Buffer.from([0x30, 0x80, 0x02, 0x01, 0x03, 0x30, 0x80]))]) {
+    assert.deepEqual(trustOmaUris(customProfile([base64Setting(value)])), [NEUTRAL], value);
+  }
+  // A StringXml value that is not base64 is read as written, XML or not.
+  assert.deepEqual(trustOmaUris(customProfile([base64Setting('ServerNames: TrustedRootCA x', '#microsoft.graph.omaSettingStringXml')])), [NEUTRAL]);
   const refusal = intuneWriteRefusal(resourceOf('deviceConfiguration', customProfile([base64Setting(b64(DER))])), 'create');
   assert.equal(refusal?.outcome, 'skipped');
   assert.deepEqual(refusal.completion[0].fields, [NEUTRAL]);
@@ -149,6 +156,10 @@ test('an Apple custom profile file is read: trust payload types and trust conten
   // A signed profile wraps the XML in binary CMS.
   const signed = Buffer.concat([Buffer.from([0x30, 0x80, 0x06, 0x09, 0x2a, 0x86, 0x48]), Buffer.from(plist(payloadOf('com.apple.security.root'))), Buffer.from([0x00, 0x00, 0xa0, 0x82])]);
   assert.deepEqual(appleProfileTrust(appleProfile(b64(signed))).trust, ['com.apple.security.root']);
+  // A file that never closes its payload type is read in linear time.
+  const started = Date.now();
+  assert.deepEqual(appleProfileTrust(appleProfile(b64(`<plist><key>PayloadType</key><string>${' '.repeat(50000)}x`))).trust, []);
+  assert.ok(Date.now() - started < 2000, 'payload type scan is linear');
   // A binary property list cannot be read.
   assert.deepEqual(appleProfileTrust(appleProfile(b64(Buffer.concat([Buffer.from('bplist00'), Buffer.from([0xd1, 0x01, 0x02, 0x00])])))), { trust: [], unreadable: ['payload'] });
   // iOS custom profiles and macOS preference files are read the same way.
@@ -172,6 +183,9 @@ test('an Apple custom profile holding trust content is manual on create and upda
   // The file is written whole, so a backup without the trust payload would remove the live one.
   assert.ok(intuneWriteRefusal(resourceOf('deviceConfiguration', plain, live(trusted)), 'update')?.reason.includes('com.apple.security.root'));
   assert.match(intuneWriteRefusal(resourceOf('deviceConfiguration', plain), 'update')?.reason ?? '', /^manual: the live profile was not read/);
+  // So is a live profile read without its file.
+  const { payload: _file, ...withoutFile } = plain;
+  assert.match(intuneWriteRefusal(resourceOf('deviceConfiguration', plain, live(withoutFile)), 'update')?.reason ?? '', /^manual: the live profile was not read/);
   const binary = appleProfile(b64(Buffer.concat([Buffer.from('bplist00'), Buffer.from([0xd1, 0x01])])));
   const unreadable = intuneWriteRefusal(resourceOf('deviceConfiguration', binary), 'create');
   assert.match(unreadable?.reason ?? '', /^manual: the profile file \(payload\) could not be read/);

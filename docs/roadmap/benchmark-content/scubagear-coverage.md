@@ -208,7 +208,7 @@ Each of these rules shows on the Compliance page as "could not check", with its 
 | MS.AAD.5.2v1 | Keel does not read `risky_delegated_permission_classifications`. |
 | MS.AAD.7.5v1 | Keel's read of `privileged_roles` does not keep `StartDateTime`. |
 | MS.AAD.8.3v1 | CISA marks it as a check to do by hand. |
-| MS.AAD.9.1v1 | Keel's read of `conditional_access_policies` does not keep `AgentIdRiskLevels`, `ExcludeAgentIdServicePrincipals`, `IncludeAgentIdServicePrincipals`. |
+| MS.AAD.9.1v1 | Microsoft offers `AgentIdRiskLevels`, `ExcludeAgentIdServicePrincipals`, `IncludeAgentIdServicePrincipals` of `conditional_access_policies` only in a preview, which Keel does not back up. |
 | MS.EXO.2.2v3 | Keel does not read `spf_records`. |
 | MS.EXO.3.1v1 | Keel does not read `dkim_records`. |
 | MS.EXO.4.1v1 | Keel does not read `dmarc_records`. |

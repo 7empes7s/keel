@@ -13203,3 +13203,40 @@ item that needs it stays untouched.
      `attackSimulationLoginPage`, `attackSimulationLandingPage` and `attackSimulationNotification` (counts only).
 - **Report:** B; capture exit code and proven/notProven; evidence branch and commit; import counts; the run table; family
   statuses and unknown fields; the four Graph kinds' status and counts; anything left in the tenant (expected: nothing, reads only).
+
+### Q280: Add the Defender read permissions to the KEEL Collector, then check the Defender for Identity sensor and Secure Score reads live (after PR #807), about 15 minutes
+- Drafted by the "Back up Defender endpoint and identity settings" thread (2026-10-30). Code: PR #807 (two read-only Graph
+  catalogue kinds: `defenderIdentitySensor`, v1.0 `/security/identities/sensors`; `secureScoreControlProfile`, v1.0
+  `/security/secureScoreControlProfiles`). A third read (Defender for Endpoint indicators, `api.securitycenter.microsoft.com
+  /api/indicators`) comes in a later PR; its permission is added here too so Marouane gives one consent click for all three.
+  Under the 2026-10-28 rule, keel-operator adds permissions to the app registration; Marouane only clicks "Grant admin consent".
+- Needs: steps 1 and 2 none. Step 3: /opt/keel-live at the #807 merge or later
+  (`test -f /opt/keel-live/tools/tenant-probe/catalog.d/defender-xdr.mjs`) and Marouane's consent on KEEL Collector.
+- Status: todo
+- Result:
+- **Tenant:** reads only, plus one app registration PATCH on **KEEL Collector** (as in Q217: as the Restorer, global admin not
+  used). Keep every existing resource and entry; remove nothing. Never create an appRoleAssignment or grant consent. Never touch
+  break-glass or `marouane.defili`. Never print a token: report role names only.
+- Do:
+  1. Get a Collector token from `/etc/keel/tenant.json` (`tools/tenant-probe/auth.mjs`) and report yes/no for each of
+     `SecurityIdentitiesSensors.Read.All` and `SecurityEvents.Read.All` in its `roles` claim. Then get a Collector token for the
+     scope `https://api.securitycenter.microsoft.com/.default` and report yes/no for `Ti.Read.All` in its `roles` (a token error
+     that says the app has no permission on that resource counts as "no"; report its error code).
+  2. **Manifest:** add each permission that step 1 found missing to the **KEEL Collector** app registration's
+     `requiredResourceAccess`, as an **application** permission, resolving each name to its id from the resource's service
+     principal `appRoles` (type Role):
+     - Microsoft Graph: `SecurityIdentitiesSensors.Read.All`, `SecurityEvents.Read.All`.
+     - WindowsDefenderATP (appId `fc780465-2017-40d4-a0c5-307022471b92`; it may be listed as "Microsoft Threat Protection" or
+       "WindowsDefenderATP"): `Ti.Read.All`. If that service principal does not exist in the tenant (no Defender for Endpoint
+       licence), skip it and report that.
+     Skip and report any name with no appRole. Write in the Result which were added, already held, skipped, and that the
+     **"Grant admin consent" click on KEEL Collector** is pending.
+  3. **After consent and deploy:** run one backup by hand (`node cli/keel-collect.mjs` as the hourly unit runs it, or the unit
+     itself with `systemctl start`), then from the live DB report, for the newest snapshot, the coverage entry of
+     `defenderIdentitySensor` and `secureScoreControlProfile` (outcome, httpStatus, pages, object count) and, for each kind, the
+     top-level field names of one stored object (names only, never values). For `secureScoreControlProfile` also report how many
+     objects have a non-empty `controlStateUpdates`. A 403 with the permission consented, or a 400 on `$select`, is a result:
+     report the Graph error code and message.
+- **Expected:** step 1 `SecurityIdentitiesSensors.Read.All` no; step 3 sensors `complete-empty` if the tenant has no Defender
+  for Identity sensor (fine), Secure Score actions complete with a few hundred objects.
+- **Report:** each step as above. Short ids only.

@@ -450,7 +450,7 @@ export function ChangeList({
       ) : null}
 
 
-      {undoingItem?.serviceRead ? (
+      {undoingItem?.serviceRead?.undoFrom.collectionId ? (
         <DetailsSheet
           kicker={<><RiskChip tone={toneOf(undoingItem)}>{impactWords(undoingItem.blastRadius)}</RiskChip><span>{changeName(undoingItem)}</span></>}
           onClose={() => setUndoing(null)}
@@ -464,7 +464,7 @@ export function ChangeList({
             name={workloadLabel(undoingItem.serviceRead.workload)}
             now={now}
             onClose={() => setUndoing(null)}
-            start={{ collectionId: undoingItem.serviceRead.undoFrom.collectionId, targets: [undoingItem.serviceRead.resourceKey] }}
+            start={{ collectionId: undoingItem.serviceRead.undoFrom.collectionId ?? "", targets: [undoingItem.serviceRead.resourceKey] }}
             workload={undoingItem.serviceRead.workload}
           />
         </DetailsSheet>

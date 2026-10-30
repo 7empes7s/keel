@@ -38,12 +38,13 @@ export async function loadServiceChanges(
     `SELECT * FROM (
        SELECT DISTINCT ON (d.workload, d.resource_key)
               d.id, d.workload, d.resource_key, d.change_type, d.fields, d.blast_radius, d.collection_id, d.previous_collection_id, d.compared_with,
-              c.observed_to, pc.observed_to AS previous_observed_to, ap.collection_id AS approved_collection_id, apc.observed_to AS approved_observed_to, cur.fields - $5::text[] AS current_fields, prev.fields - $5::text[] AS previous_fields, a.id AS alert_id, a.state AS alert_state
+              c.observed_to, pc.observed_to AS previous_observed_to, ap.collection_id AS approved_collection_id, apc.observed_to AS approved_observed_to, aps.workload IS NOT NULL AS has_approved_setup, cur.fields - $5::text[] AS current_fields, prev.fields - $5::text[] AS previous_fields, a.id AS alert_id, a.state AS alert_state
          FROM workload_drift d
          JOIN workload_collection c ON c.id = d.collection_id
          LEFT JOIN workload_collection pc ON pc.id = d.previous_collection_id
          LEFT JOIN workload_approved ap ON ap.tenant_ref = d.tenant_ref AND ap.workload = d.workload AND ap.resource_key = d.resource_key
          LEFT JOIN workload_collection apc ON apc.id = ap.collection_id
+         LEFT JOIN workload_approved_setup aps ON aps.tenant_ref = d.tenant_ref AND aps.workload = d.workload
          LEFT JOIN workload_observation cur ON cur.collection_id = d.collection_id AND cur.resource_key = d.resource_key
          LEFT JOIN workload_observation prev ON prev.collection_id = d.previous_collection_id AND prev.resource_key = d.resource_key
          LEFT JOIN alert a ON a.tenant_ref = d.tenant_ref AND a.resource_key = d.workload || ':' || d.resource_key
@@ -78,9 +79,10 @@ async function undoChoices(client: KeelClient, tenant: string, rows: Record<stri
   const found = new Map<string, UndoChoice | null>();
   for (const row of rows) {
     const workload = String(row.workload);
-    if (!PAGE_RESTORE_WORKLOADS.includes(workload) || row.change_type === "added") continue;
+    const source = undoSource(row).collectionId;
+    if (!PAGE_RESTORE_WORKLOADS.includes(workload) || row.change_type === "added" || !source) continue;
     try {
-      const before = await observations(workload, undoSource(row).collectionId);
+      const before = await observations(workload, source);
       if (!before) { found.set(String(row.id), null); continue; }
       const now = await observations(workload, String(row.collection_id));
       const groups = workloadChoices(workload, before, now as null) as ChoiceGroup[];

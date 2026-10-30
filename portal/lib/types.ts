@@ -484,8 +484,10 @@ export interface ServiceRead {
   previousReadAt: string | null;
   // The read an undo restores from, and when it was taken: the active approved setup's
   // read for this resource, so a newer baseline version's value wins over previousCollectionId.
-  // `approved` is false when there is no approved row and undo falls back to previousCollectionId.
-  undoFrom: { collectionId: string; readAt: string | null; approved: boolean };
+  // collectionId is null when the service's approved setup does not hold this resource
+  // (nothing to put back); `approved` is false only when the service has no approved setup
+  // at all and undo falls back to previousCollectionId.
+  undoFrom: { collectionId: string | null; readAt: string | null; approved: boolean };
   // What the read was compared with: the service's approved setup, or (older changes)
   // the read before it.
   comparedWith: "approved" | "previous";

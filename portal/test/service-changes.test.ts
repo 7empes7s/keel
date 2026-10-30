@@ -205,17 +205,28 @@ test("undo restores the active baseline's value, not the one stored with an olde
     const [gone] = await loadServiceChanges(client, { tenantRef: TENANT, now });
     assert.equal(gone.serviceRead?.undoFrom.collectionId, empty);
     assert.equal(gone.serviceRead?.undo.possible, false);
+
+    // An active baseline that does not hold the rule at all (an older version without it was
+    // reinstated) leaves no approved value: undo never falls back to the value stored with the change.
+    await client.query("DELETE FROM workload_approved WHERE tenant_ref = $1 AND workload = 'exchange-mail-flow'", [TENANT]);
+    const [unheld] = await loadServiceChanges(client, { tenantRef: TENANT, now });
+    assert.equal(unheld.serviceRead?.undoFrom.collectionId, null);
+    assert.equal(unheld.serviceRead?.undo.possible, false);
+    assert.match(unheld.serviceRead?.undo.reason ?? "", /active baseline does not hold this setting/);
   } finally {
     await client.end();
     await database.cleanup();
   }
 });
 
-test("with no approved row, undo falls back to the read the change was compared with", () => {
+test("undo falls back to the read the change was compared with only when the service has no approved setup", () => {
   const row = { previous_collection_id: "c1", previous_observed_to: "2026-10-10T03:00:00.000Z" };
   assert.deepEqual(undoSource(row), { collectionId: "c1", readAt: "2026-10-10T03:00:00.000Z", approved: false });
   assert.deepEqual(undoSource({ ...row, approved_collection_id: "c3", approved_observed_to: "2026-10-12T03:00:00.000Z" }),
     { collectionId: "c3", readAt: "2026-10-12T03:00:00.000Z", approved: true });
+  assert.deepEqual(undoSource({ ...row, has_approved_setup: true }), { collectionId: null, readAt: null, approved: true });
+  assert.match(serviceRow({ has_approved_setup: true }).serviceRead?.undo.reason ?? "", /active baseline does not hold/);
+  assert.equal(serviceRow({ has_approved_setup: true, change_type: "added" }).serviceRead?.undo.reason?.includes("never deletes settings"), true);
 });
 
 const NOW = "2026-10-15T12:00:00.000Z";

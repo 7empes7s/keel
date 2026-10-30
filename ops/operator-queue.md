@@ -11679,3 +11679,40 @@ item that needs it stays untouched.
   - the second dry run's planned writes;
   - the capture result and commit;
   - anything left in the tenant.
+
+### Q255: Rerun Q229's managed devices app configuration create now that setting values are not read as scope tags (after PR #721, fixes #704)
+- Drafted by the "Fix app config values saved as scope tags" thread (2026-10-30). In Q229 step 3 the `mobileAppConfiguration` create
+  dry run (`7ef354bc`) failed: `cannot resolve reference at "settings[0].appConfigKeyValue" (symbol roleScopeTag:1):
+  not-found-in-target`. The Collector took the setting value "1" as the scope tag with id 1. PR #721 (merge `98c20b1`) stops
+  that: typed text fields (displayName, description, appConfigKey, appConfigKeyValue) are never references, and an all-digit id is
+  a reference only under an id field (`roleScopeTagIds`, `roleScopeTags`, `...Id`, `...Ids`).
+- Needs: the deployed build B at or after `98c20b1`. Check: `git -C /opt/keel-live merge-base --is-ancestor 98c20b1 HEAD`.
+  Only the managed devices app configuration create is in scope. Its update is already promoted (Q229).
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q229 (log every approval
+  id). Never assign any fixture. Grant nothing. Global admin not used. Never touch the built-in Default scope tag.
+- Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Write down that no `KEEL-RT-255` object exists.
+  2. Create the fixtures, all assigned to nobody:
+     - scope tag `KEEL-RT-255-scope-tag`, description `KEEL-RT test fixture`. Write down its id. **The point of the test is that
+       the setting value equals a scope tag id**, so if the new tag's id is not "1", use that id as the value below;
+     - iOS store app `KEEL-RT-255-ios-app` (Outlook, as in Q229);
+     - managed devices app configuration `KEEL-RT-255-device-config` targeting that app, one setting `KEELRT` (string) = the scope
+       tag's id (for example `1`).
+  3. Take snapshot S. Confirm S's app configuration has **no reference at `settings[0].appConfigKeyValue`** (quote its references).
+  4. Delete the app configuration and keep the app and the tag. Restore from S, selecting only the app configuration. Expect the dry
+     run to plan one `create` with no unresolved reference. Approve, then `--enforce`. Expect `create succeeded` with a new id, and a
+     read back equal to S: the setting value is still the same text (not a different tag id), targeting `KEEL-RT-255-ios-app`, nothing
+     assigned. If the dry run fails again, quote it and comment on #704.
+  5. Run a second dry run from S. Expect 0 planned writes for the app configuration.
+  6. Capture the `mobileAppConfiguration.create` record (natural key as `--fixture`). Run `pseudonymize.mjs check`, the secret scan
+     and `operations.mjs --live-evidence`. Commit to `claude/live-evidence-q255`, branched from `origin/master` (no PR).
+  7. Cleanup: delete every `KEEL-RT-255-*` object (app configuration, iOS app, scope tag). Report anything left.
+- **Report:**
+  - B and S, and the scope tag id used as the value;
+  - S's references for the app configuration;
+  - the dry run id and status; the approval id; the enforce exit code and the new id; the read-back value;
+  - the second dry run's planned writes;
+  - the capture result and commit;
+  - anything left in the tenant.

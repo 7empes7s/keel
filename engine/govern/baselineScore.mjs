@@ -13,6 +13,7 @@ export { kindMatch, matchPercent, overallCount, scoreByService } from './baselin
 import { matchPercent, overallCount, scoreByService } from './baselineScoreRules.mjs';
 import { listLatestOpenDrift, getActiveBaseline } from '../store/governance.mjs';
 import { assertTenantRef } from '../store/tenantRef.mjs';
+import { WORKLOAD_COLLECTORS } from '../collect/workloads/registry.mjs';
 
 // Alert states of a service read change still waiting for a person (as listed on the
 // Changes page, portal/lib/service-changes.ts).
@@ -87,15 +88,24 @@ export async function computeBaselineScore(client, { tenantRef }) {
     const tally = changes[row.resource_type] ??= { added: 0, modified: 0, removed: 0 };
     tally[Object.hasOwn(tally, row.change_type) ? row.change_type : 'modified'] += 1;
   }
-  const reads = latestReads.map((row) => ({
+  // Only the services Keel reads today, as What's protected lists them; a retired one's
+  // old rows are left out.
+  const known = new Set(WORKLOAD_COLLECTORS.map((collector) => collector.workload));
+  const reads = latestReads.filter((row) => known.has(row.workload)).map((row) => ({
     type: String(row.workload),
     read: USABLE_READS.includes(row.outcome),
     itemCount: totals.held[row.workload] ?? null,
     open: totals.open[row.workload] ?? { added: 0, modified: 0, removed: 0 },
   }));
+  const held = Object.fromEntries(heldRows.map((row) => [String(row.resource_type), Number(row.count ?? 0)]));
+  // As the page reads a setup's scope (baselineCompliance.mjs captureOf): its recorded
+  // scope, or for a setup from before scopes were recorded, the kinds it holds.
+  const captured = baseline.captured_at
+    ? (Array.isArray(baseline.observation_scope?.types) ? baseline.observation_scope.types : [])
+    : Object.keys(held);
   const counts = scoreByService({
-    captured: Array.isArray(baseline.observation_scope?.types) ? baseline.observation_scope.types : [],
-    held: Object.fromEntries(heldRows.map((row) => [String(row.resource_type), Number(row.count ?? 0)])),
+    captured,
+    held,
     changes,
     reads,
   });

@@ -132,6 +132,11 @@ const REGISTERED = Object.freeze({
   deviceRegistrationPolicy: ['update'],
   tenantAppManagementPolicy: ['update'],
   deviceManagementRoleDefinition: ['create', 'update', 'delete'],
+  // Approval-held kinds, batch 2.
+  deviceManagementRoleAssignment: ['create', 'update', 'delete'],
+  operationApprovalPolicy: ['create', 'update', 'delete'],
+  exchangeRoleAssignment: ['create', 'delete'],
+  defenderRoleAssignment: ['create', 'update', 'delete'],
   // Restore gaps, batch 10.
   userExperienceAnalyticsBaseline: ['create', 'update'],
   cartToClassAssociation: ['create', 'update'],

@@ -218,16 +218,48 @@ export function recordWriteBody(record, payload, verb) {
  * sends: a writer that sends the payload minus a few fields (a record with no
  * `writable` list, the built-in Intune policy writer) must not carry a trust,
  * certificate or sign-in field through. defineRecord() refuses such a field in
- * `writable`; this covers the rest. Top-level fields, as isTrustField names them.
+ * `writable`; this covers the rest, at any depth: a field inside a nested
+ * object or a list of objects (a profile's settings block, a list of servers)
+ * is dropped the same way as a top-level one.
  */
 export function withoutTrustFields(resourceType, body) {
-  if (!body || typeof body !== 'object') return body;
-  const trust = Object.keys(body).filter((key) => key !== '@odata.type' && isTrustField(resourceType, key));
-  if (trust.length === 0) return body;
-  const kept = { ...body };
-  for (const key of trust) delete kept[key];
-  return kept;
+  return stripTrust(resourceType, body);
 }
+
+const isTrustKey = (resourceType, key) => key !== '@odata.type' && !isAnnotation(key) && isTrustField(resourceType, key);
+
+// The value without its trust fields; the same value when it holds none.
+function stripTrust(resourceType, value) {
+  if (Array.isArray(value)) {
+    const items = value.map((item) => stripTrust(resourceType, item));
+    return items.every((item, index) => item === value[index]) ? value : items;
+  }
+  if (!value || typeof value !== 'object') return value;
+  let changed = false;
+  const kept = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (isTrustKey(resourceType, key)) {
+      changed = true;
+      continue;
+    }
+    const stripped = stripTrust(resourceType, child);
+    if (stripped !== child) changed = true;
+    kept[key] = stripped;
+  }
+  return changed ? kept : value;
+}
+
+// The path of every trust field below a value, as segments (keys and list indexes).
+function nestedTrustPaths(resourceType, value, prefix = []) {
+  if (Array.isArray(value)) return value.flatMap((item, index) => nestedTrustPaths(resourceType, item, [...prefix, index]));
+  if (!value || typeof value !== 'object') return [];
+  return Object.entries(value).flatMap(([key, child]) => (isTrustKey(resourceType, key)
+    ? [[...prefix, key]]
+    : nestedTrustPaths(resourceType, child, [...prefix, key])));
+}
+
+const valueAt = (value, segments) => segments.reduce((held, segment) => (held && typeof held === 'object' ? held[segment] : undefined), value);
+const pathText = (segments) => segments.reduce((text, segment) => (typeof segment === 'number' ? `${text}[${segment}]` : text ? `${text}.${segment}` : segment), '');
 
 /**
  * The manual step for the trust fields a write leaves out, or null: on a create
@@ -241,10 +273,16 @@ const isUnset = (value) => value === false || value === 0 || value === '' || sam
   || (Array.isArray(value) && value.length === 0) || (value && typeof value === 'object' && Object.keys(normalised(value)).length === 0);
 
 export function trustFieldStep(resourceType, payload, live, verb, { excluded = [], same = (_field, left, right) => sameValue(left, right) } = {}) {
+  // Top-level fields compare with the writer's own equality; a nested one by value at the same path.
+  const sameAt = (segments, left, right) => (segments.length === 1 ? same(segments[0], left, right) : sameValue(left, right));
   const differing = Object.keys(payload ?? {})
     .filter((key) => key !== '@odata.type' && !isAnnotation(key) && !SERVER_OWNED_ALWAYS.has(key) && !excluded.includes(key))
-    .filter((key) => isTrustField(resourceType, key))
-    .filter((key) => (verb === 'create' || !live ? !isUnset(payload[key]) : !same(key, payload[key], live[key])));
+    .flatMap((key) => (isTrustField(resourceType, key) ? [[key]] : nestedTrustPaths(resourceType, payload[key], [key])))
+    .filter((segments) => {
+      const desired = valueAt(payload, segments);
+      return verb === 'create' || !live ? !isUnset(desired) : !sameAt(segments, desired, valueAt(live, segments));
+    })
+    .map(pathText);
   if (differing.length === 0) return null;
   return Object.freeze({
     kind: 'manual-setting', requirement: 'trustFields', fields: Object.freeze(differing),

@@ -15,7 +15,7 @@ export default Object.freeze({
     // Endpoint security pages and stored as Intune settings catalog policies, but they
     // are Defender for Endpoint settings, so lists file them here (see `subkinds`).
     { key: 'endpoint', name: 'Endpoint security', types: ['defenderEndpointSecurityPolicy'], match: /endpointsecurity|antivirus|firewall|attacksurface|diskencryption|accountprotection|applicationcontrol/ },
-    { key: 'threat', name: 'Threat policies and rules', types: ['defenderDetectionRule'], match: /foroffice|polic|rule|detection|indicator|alert/ },
+    { key: 'threat', name: 'Threat policies and rules', types: ['defenderDetectionRule', 'defender-endpoint-indicators'], match: /foroffice|polic|rule|detection|indicator|alert/ },
     { key: 'sensors', name: 'Sensors and coverage', types: ['defenderIdentitySensor'], match: /sensor|coverage/ },
     { key: 'simulation', name: 'Attack simulation', types: ['attackSimulation', 'simulationAutomation'], match: /simulation|training|payload/ },
     { key: 'exposure', name: 'Exposure management', types: ['securityZone', 'secureScoreControlProfile'], match: /exposure|zone|vulnerab|securescore/ },
@@ -35,6 +35,12 @@ export default Object.freeze({
     // Defender XDR beyond email (baselines gap audit, section E).
     defenderIdentitySensor: { name: 'Defender for Identity sensor' },
     secureScoreControlProfile: { name: 'Secure Score improvement action' },
+    // Workload read (engine/collect/workloads/defenderIndicators.mjs).
+    'defender-endpoint-indicators': {
+      name: 'Defender for Endpoint indicator',
+      priority: 'high',
+      reason: 'An allow indicator lets a file, site or certificate past Defender; a removed block indicator lets a known threat back in.',
+    },
   }),
   // Kinds that are a part of a catalogued type of another service, told apart by a field
   // of each object (see settingKind in ../taxonomy.mjs). The object stays stored, backed

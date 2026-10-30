@@ -4,7 +4,7 @@
  * org-wide, Teams voice and live events, Purview retention and DLP, retention labels),
  * for SharePoint's per-site sharing read (`--workload sharepoint-site-settings`,
  * one `Get-PnPTenantSite` with the PnP collector config), and for the admin REST
- * workloads (`--workload power-platform-settings`), which read through their own
+ * workloads (`--workload power-platform-settings`, `--workload defender-endpoint-indicators`), which read through their own
  * read-only transport with the collector's certificate config (/etc/keel/tenant.json).
  *
  * Their reads ship disabled until each one is live-qualified in the task-101 ledger, and
@@ -56,6 +56,7 @@ import {
   declaredRestVersion, isRestWorkload, knownWorkload, provenReads, readModule, readTransport, workloadReads, workloadReadsCapturePlan,
   workloadReadsRecordFile,
 } from './workloadReadsAcceptance.mjs';
+import { DEFENDER_INDICATORS_WORKLOAD, defenderIndicatorsTransportFor, readDefenderIndicators } from '../../engine/collect/workloads/defenderIndicators.mjs';
 import { POWER_PLATFORM_WORKLOAD, powerPlatformTransportFor, readPowerPlatform } from '../../engine/collect/workloads/powerPlatform.mjs';
 import { SHAREPOINT_WORKLOAD, readSiteSharing } from '../../engine/collect/workloads/sharepoint.mjs';
 import { SHAREPOINT_STRUCTURE_WORKLOAD, readSharePointStructure } from '../../engine/collect/workloads/sharepointStructure.mjs';
@@ -86,7 +87,7 @@ export const WORKLOAD_READERS = Object.freeze({
   [TEAMS_VOICE_NETWORK_WORKLOAD]: readTeamsVoiceNetwork, [TEAMS_DEVICE_POLICIES_WORKLOAD]: readTeamsDevicePolicies,
   [EXCHANGE_ORG_ACCESS_WORKLOAD]: readExchangeOrgAccess, [EXCHANGE_ORG_DEFAULTS_WORKLOAD]: readExchangeOrgDefaults,
   [TEAMS_COLLABORATION_WORKLOAD]: readTeamsCollaboration, [TEAMS_MEETING_SETTINGS_WORKLOAD]: readTeamsMeetingSettings,
-  [POWER_PLATFORM_WORKLOAD]: readPowerPlatform,
+  [POWER_PLATFORM_WORKLOAD]: readPowerPlatform, [DEFENDER_INDICATORS_WORKLOAD]: readDefenderIndicators,
 });
 
 /**
@@ -95,6 +96,7 @@ export const WORKLOAD_READERS = Object.freeze({
  */
 export const REST_READ_TRANSPORTS = Object.freeze({
   [POWER_PLATFORM_WORKLOAD]: (collectorConfig) => powerPlatformTransportFor(collectorConfig),
+  [DEFENDER_INDICATORS_WORKLOAD]: (collectorConfig) => defenderIndicatorsTransportFor(collectorConfig),
 });
 
 /**

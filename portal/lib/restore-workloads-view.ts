@@ -69,6 +69,7 @@ export const WORKLOAD_ORDER: readonly string[] = [
   "sharepoint-site-settings", "sharepoint-structure", "onedrive-site-settings",
   "teams-settings", "teams-org-policies", "teams-collaboration-policies", "teams-meeting-settings", "teams-voice-policies", "teams-voice-network", "teams-device-policies",
   "power-platform-settings",
+  "defender-endpoint-indicators",
   "purview-labels", "purview-governance", "purview-retention-dlp",
 ];
 

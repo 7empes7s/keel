@@ -52,6 +52,7 @@ export const WORKLOADS = Object.freeze([
   'teams-voice-policies', 'teams-collaboration-policies', 'teams-meeting-settings', 'purview-governance',
   'teams-voice-network', 'teams-device-policies',
   'power-platform-settings',
+  'defender-endpoint-indicators',
 ]);
 export const WORKLOAD_STATES = Object.freeze(['refused', 'disabled', 'fixture-tested', 'pending-prerequisite', 'live-qualified']);
 export const GRAPH_VERSIONS = Object.freeze(['v1.0', 'beta']);
@@ -84,6 +85,9 @@ const AUTHZ_FAILURE = /\b(401|403)\b|forbidden|access (is )?denied|insufficient 
 export const POWER_PLATFORM_SETUP = Object.freeze([
   'register the collector app as a Power Platform management app (New-PowerAppManagementApp)',
 ]);
+export const DEFENDER_INDICATORS_SETUP = Object.freeze([
+  'grant the collector app the WindowsDefenderATP application permission Ti.Read.All (Read all IOCs) and admin consent',
+]);
 export const FABRIC_READ_ONLY_ADMIN_SETUP = Object.freeze([
   'turn on the Fabric setting "Service principals can access read-only admin APIs" for a security group whose only member is the collector app',
   'keep every Power BI permission off the collector app',
@@ -91,10 +95,10 @@ export const FABRIC_READ_ONLY_ADMIN_SETUP = Object.freeze([
 const doc = (path) => Object.freeze({ url: `${LEARN}${path}`, retrievedAt: null });
 const graph = (endpoint, version = 'v1.0') => Object.freeze({ kind: 'graph', method: 'GET', endpoint, version });
 const cmdlet = (name, module, { parameters = [], probeName = name } = {}) => Object.freeze({ kind: 'cmdlet', cmdlet: name, parameters, module, probeName });
-// A read from a Microsoft admin REST API outside Graph (Power Platform, Fabric). Only the
+// A read from a Microsoft admin REST API outside Graph (Power Platform, Fabric, Defender for Endpoint). Only the
 // hosts in REST_HOSTS are in scope. `items` names the array the answer lists objects in.
 const rest = (host, endpoint, version, { audience, items = 'value' }) => Object.freeze({ kind: 'rest', method: 'GET', host, endpoint, version, audience, items });
-export const REST_HOSTS = Object.freeze(['api.bap.microsoft.com', 'api.powerapps.com', 'api.fabric.microsoft.com']);
+export const REST_HOSTS = Object.freeze(['api.bap.microsoft.com', 'api.powerapps.com', 'api.fabric.microsoft.com', 'api.security.microsoft.com']);
 // Path segments of those APIs that address apps, flows, user connections or Power BI
 // content rather than tenant configuration.
 const REST_CONTENT_SEGMENTS = new Set([
@@ -562,6 +566,20 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     paging, throttle: 'rest-429-retry-after', consistency: 'eventual',
     source: doc(path),
   })),
+  // READ-MDE-IOC: Defender for Endpoint indicators (custom allow and block lists). The API
+  // has no version in its path; 'api' names that unversioned surface. Its permission is on
+  // the WindowsDefenderATP resource, which observed (Graph) grants never list, so it is a
+  // setup step that a capture proves, like Power Platform's. Tokens use the legacy
+  // audience, which the API still requires on the api.security.microsoft.com host.
+  // engine/collect/workloads/defenderIndicators.mjs holds the fields and identities.
+  {
+    id: 'defender.endpoint-indicators', workload: 'defender-endpoint-indicators', resource: 'Defender for Endpoint indicators',
+    operation: rest('api.security.microsoft.com', '/api/indicators?$top=10000', 'api', { audience: 'https://api.securitycenter.microsoft.com/' }),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: [], roles: [], setup: DEFENDER_INDICATORS_SETUP },
+    paging: 'next-link', throttle: 'rest-429-retry-after', consistency: 'eventual',
+    source: doc('/en-us/defender-endpoint/api/get-ti-indicators-collection'),
+  },
 ].map((descriptor) => Object.freeze(descriptor)));
 
 function graphSegments(endpoint) {

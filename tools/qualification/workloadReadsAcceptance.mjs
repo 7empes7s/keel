@@ -27,6 +27,7 @@ import { SHAREPOINT_WORKLOAD, SITE_SHARING_FAMILIES, SITE_SHARING_MODULE } from 
 import {
   FAMILIES as SHAREPOINT_STRUCTURE, SHAREPOINT_STRUCTURE_MODULE, SHAREPOINT_STRUCTURE_WORKLOAD,
 } from '../../engine/collect/workloads/sharepointStructure.mjs';
+import { DEFENDER_INDICATORS_WORKLOAD, FAMILIES as DEFENDER_INDICATORS } from '../../engine/collect/workloads/defenderIndicators.mjs';
 import { FAMILIES as POWER_PLATFORM, POWER_PLATFORM_WORKLOAD } from '../../engine/collect/workloads/powerPlatform.mjs';
 import { WORKLOAD_DESCRIPTORS } from '../../engine/collect/workloadContract.mjs';
 import { WRITTEN_WORKLOADS } from './workloadWritesAcceptance.mjs';
@@ -35,7 +36,7 @@ export const WORKLOAD_READS_LIVE_GATE = 'workload-reads-live-acceptance';
 export const WORKLOAD_READS_LIVE_OPERATION = 'workload-reads';
 export const WORKLOAD_READS_CREDENTIAL_MODE = 'collector-only';
 export const WORKLOAD_READS_TRANSPORT = 'powershell-cmdlet-job';
-// Admin REST workloads read through their own read-only transport (GETs of declared shapes only).
+// Admin REST workloads (Power Platform, Defender for Endpoint indicators) read through their own read-only transport (GETs of declared shapes only).
 export const WORKLOAD_READS_REST_TRANSPORT = 'rest-read-only';
 
 /** The record file for one workload, beside the other live acceptance records. */
@@ -64,11 +65,12 @@ export const READ_FAMILIES = Object.freeze({
   [SHAREPOINT_STRUCTURE_WORKLOAD]: SHAREPOINT_STRUCTURE,
   // Admin REST, not PowerShell: see REST_WORKLOADS.
   [POWER_PLATFORM_WORKLOAD]: POWER_PLATFORM,
+  [DEFENDER_INDICATORS_WORKLOAD]: DEFENDER_INDICATORS,
 });
 
 // Workloads read from an admin REST API rather than a PowerShell module. Their proof is bound
 // to each read's declared API version (the version the ledger checks), not to a module version.
-const REST_WORKLOADS = new Set([POWER_PLATFORM_WORKLOAD]);
+const REST_WORKLOADS = new Set([POWER_PLATFORM_WORKLOAD, DEFENDER_INDICATORS_WORKLOAD]);
 export const isRestWorkload = (workload) => REST_WORKLOADS.has(workload);
 
 /** How a workload's reads are sent: the bounded cmdlet job, or the workload's own REST transport. */

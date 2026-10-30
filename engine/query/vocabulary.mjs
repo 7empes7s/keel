@@ -319,6 +319,11 @@ export const CONCEPT_WORDS = Object.freeze([
     kinds: ['power-platform-settings'],
   },
   {
+    pattern: /\b(?:(?:defender |endpoint |custom )?indicators?(?: of compromise)?|iocs?|(?:file|url|ip|domain|certificate) (?:allow|block) ?lists?)\b/i,
+    label: 'Defender for Endpoint indicators',
+    kinds: ['defender-endpoint-indicators'],
+  },
+  {
     pattern: /\bcompliance\b/i,
     label: 'Purview labels, retention, data loss prevention and eDiscovery settings, and Intune device compliance policies',
     kinds: ['purview-labels', 'purview-retention-dlp', 'purview-governance', 'deviceCompliancePolicy', 'deviceManagementCompliancePolicy'],

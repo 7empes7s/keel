@@ -12097,8 +12097,16 @@ item that needs it stays untouched.
   principal then plans cleanly, and the enforce run writes it with the new app's real appId, read from the create in wave 1.
 - Needs: the deployed build B at or after `6d0fe0a1`. Check: `git -C /opt/keel-live merge-base --is-ancestor 6d0fe0a1 HEAD`.
   This item does not need PR #740 (the two-run case). Run it even if #740 is not merged yet.
-- Status: todo
-- Result:
+- Status: done
+- Result: done (2026-10-30 04:00 UTC, keel-operator). Build **B = 23ee4df9** (has #743 `6d0fe0a1`; #740 not merged). Restorer for writes, Collector for reads; global admin not used; nothing granted or consented, no secrets or certificates added.
+  - Step 1: no `KEEL-RT-257` app, principal or deleted item existed.
+  - Step 2: created `KEEL-RT-257-app` (single tenant, 0 secrets, 0 certificates, no API permissions; appId `3dc4307c…`) and its principal (`f89e2c31…`), assigned to nobody. Graph refused the first principal POST with `NoBackingApplicationObject` (app not replicated yet); a retry 10 s later gave 201.
+  - Step 3: snapshot **S = e4283fdb** (collect exit 3 only for the known todoSettings 500). S holds `application:3dc4307c…` and `servicePrincipal:3dc4307c…`.
+  - Step 4: both deleted and purged. The app DELETE first returned 404 right after a 200 read (replication); a retry gave 204, then purge 204. Confirmed absent from live and from deleted items.
+  - Step 5: dry run **48a57550**, status **completed**. Waves: 1 `domain:techinsiderbytes.com` noop (pulled in by the closure), 2 `application` **create**, 3 `servicePrincipal` **create**. No `cannot resolve reference`. Approval request **1304d80f-077e-4734-80c9-3eee8fd075d8** (approved). Enforce **exit 0**: `application create succeeded` (new id `56c514a9…`, new appId **`c6b2e271…`**), then `servicePrincipal create succeeded` (id `abf94636…`). Read back: the principal's appId is **`c6b2e271…`, the new app's**, not the backup's. 9 completion items opened (credential, certificate, consent, integration and service-validation for the app; consent, 2 integration and service-validation for the principal).
+  - Step 6: second dry run **013b1083**, completed (not failed). It found both recreated objects and planned `application` **update** with `fields: ["appId"]` and `servicePrincipal` **update** with `fields: []`. Not enforced. Not the #726 failure, but a spurious appId diff; noted on #726 (https://github.com/7empes7s/keel/issues/726#issuecomment-6514558404) so #740 can cover it.
+  - Step 7: captured `servicePrincipal.create` from 48a57550 (`--fixture servicePrincipal:3dc4307c…`). `pseudonymize.mjs check`: every id a pseudonym. Secret scan: 0 hits. `operations.mjs --live-evidence`: `servicePrincipal.create.json: fixture-tested -> live-qualified`. Commit **5416d50f** on `claude/live-evidence-q257` (from origin/master, no PR).
+  - Step 8: deleted and purged the recreated principal and app (the app DELETE again needed one retry after a 404). Nothing named `KEEL-RT-257` is left live or in deleted items.
 - **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q246. Log every approval id.
   Grant nothing, consent to nothing, add no secrets or certificates. Global admin not used.
 - Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
@@ -12165,7 +12173,17 @@ item that needs it stays untouched.
   check cheaper (additive fingerprint, paged walk). This gives the after numbers for Q251 (full walk 4099 ms, repeat 140/139 ms).
 - Needs: PR #748 merged and deployed. Check: `git -C /opt/keel-live log --oneline -1` and
   `git -C /opt/keel-live merge-base --is-ancestor <#748 merge commit> HEAD`. **Quick: fine to take between other items.**
-- Status: todo
+- Status: done
+- Result: done (2026-10-30 03:45 UTC, keel-operator). Read-only: no tenant calls, no writes. Timed at deployed commit **4c8ba6dd** (merge of #748); the box then deployed **23ee4df9** (#751, restore writers only, no change to `govern/evidence.mjs`), so the numbers stand for B.
+  - Record count: **388,512** (`evidence_head`, tenant `sha256:f7b3959300856957`).
+  - `verifyChainCached`, one process, one shared `cache = new Map()`, each run in `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY` / `COMMIT`:
+    - run 1 (full walk): **4067 ms**, ok true;
+    - run 2: **61 ms**, ok true; run 3: **60 ms**, ok true;
+    - run 4: **56 ms**, ok true. No new audit record arrived in a 4-minute wait, so run 4 is another no-new-records check.
+  - Event loop during run 1: `monitorEventLoopDelay` max **33.9 ms** (Q251-era ~1.2 s; target under ~50 ms: met).
+  - Before → after vs Q251: full walk 4099 → 4067 ms (unchanged, now off page loads); repeat check 140 → ~60 ms (about 2.3× faster).
+  - Step 4: `journalctl -u keel-portal --since 03:10` has **no** "background audit check failed" line. Memory peak lines: 110.4M (the run stopped 03:22:36), **288.1M** (the run that held #748, stopped 03:38:25 for the #751 deploy). Inference: the higher peak is the background check holding the chain walk in memory; worth watching, not a failure.
+  - Step 5: **skipped.** `curl http://127.0.0.1:3600/` returns 401 (no local auth bypass), and I have no Cloudflare Access login on the box.
 - Do (read-only: no tenant calls, no writes), from your own checkout at the deployed commit B, never `/opt/keel`:
   1. Report B and the record count (`SELECT record_count FROM evidence_head`).
   2. In one node process with one shared `const cache = new Map()`, time `verifyChainCached` four times, each wrapped in

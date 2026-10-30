@@ -9465,8 +9465,8 @@ item that needs it stays untouched.
 
 ### Q204: Round trip of a distribution list restore through Microsoft365DSC (after Q203, PR #602 and its read capture)
 - Drafted by the "Restore distribution lists with Microsoft365DSC" thread (2026-10-28).
-- Needs: Q203 done; PR #602 merged and deployed; the `exchange-distribution-groups` reads captured, imported and switched on (the Q157-style
-  item for #602). Check: `node /opt/keel-live/cli/keel-workload-collect.mjs proof` lists the `exchange-distribution-groups` reads as current.
+- Needs: Q203 done; PR #602 merged (2026-10-30, 2290d9b6) and deployed; Q266 done (the `exchange-distribution-groups` reads captured,
+  imported and switched on). Check: `node /opt/keel-live/cli/keel-workload-collect.mjs proof` lists the `exchange-distribution-groups` reads as current.
 - Status: todo
 - Result:
 - **Test tenant only.** Same hard rules and standing authorization as Q80; log every approval id.
@@ -12437,3 +12437,38 @@ item that needs it stays untouched.
 - Do: as the Restorer (as in Q264 step 2), `DELETE v1.0 /roleManagement/directory/roleAssignments/egSMFQfJVkW370RlUaa198mZ0YxuqWZGkk-qDKaRDzI-1`.
   Report the status. Then list the Restorer's directory roles and confirm they match Q264 step 1 (the same 8 roles).
   Touch nothing else.
+
+### Q266: Capture, import and turn on the Exchange distribution list and recipient reads (read-only toward the tenant, after PR #602)
+- Drafted by the "Get stalled PRs 602, 654, 694 merged" thread (2026-10-30). Code: PR #602 (merged as 2290d9b6). Two new read-only
+  workloads, both shipped `disabled` until a live read record is imported: `exchange-distribution-groups` (Get-DistributionGroup,
+  Get-DynamicDistributionGroup, Get-UnifiedGroup) and `exchange-recipients` (Get-Mailbox for shared, room and equipment mailboxes,
+  Get-MailContact, Get-MailboxPermission and Get-CalendarProcessing per mailbox Guid, Get-RecipientPermission). Q178 already ran
+  these cmdlets by hand and made the KEEL-RT- recipient fixtures. This item is the Q157-style capture Q204 needs.
+- Needs: /opt/keel-live at 2290d9b6 or later (`test -f /opt/keel-live/engine/collect/workloads/exchangeRecipients.mjs`), and the
+  `keel-powershell` image rebuilt at that build if `ops/powershell` changed since the last build (`run-cmdlet.ps1` has a new table).
+- Status: todo
+- Result:
+- **Tenant:** reads only, Collector credential (Exchange Administrator, already held). No `New-`, `Set-`, `Add-` or `Remove-` cmdlet.
+  Grant, assign or create nothing.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Capture** each workload, with the Exchange config the workloads use (`powershellConfigs.exchange` in
+     `/etc/keel/workload-scope.json`, else `/etc/keel/tenant.json`), as in Q157 step 1:
+     ```bash
+     for w in exchange-distribution-groups exchange-recipients; do
+       node tools/qualification/workloadReadsLive.mjs capture --workload "$w" --tenant-ref <tenant ref> \
+         --collector-ref app:<that config's clientId> --collector-config <that config> \
+         --build "$(git -C /opt/keel-live rev-parse HEAD)" \
+         --out "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+       node tools/qualification/pseudonymize.mjs check "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+     done
+     ```
+     Report each exit code, `outcome`, `proven` and `notProven` verbatim. If a check is not exit 0, stop and file an issue.
+  2. **Evidence:** commit both records to `claude/live-evidence-exchange-recipients` (from `origin/master`, those files only, checked
+     for secrets) and push. No PR.
+  3. **Import** with `--dir` a checkout holding these records and the other read records (as Q157 step 3):
+     `node cli/keel-workload-collect.mjs import --dir <dir>`. Report exit code and `imported` / `refused` / `absent`.
+  4. `node cli/keel-workload-collect.mjs run` once by hand. Report the per-workload table (outcome, n_reasons, observations) and, for
+     the two new workloads, their reasons and `fieldCounts` / unknown fields if not `complete`. A mailbox whose rights could not be
+     read shows as a gap with a reason, not an empty list: report those reasons verbatim.
+  5. `node cli/keel-workload-collect.mjs proof`: confirm both workloads' reads are listed as current. That unblocks Q204.

@@ -1,18 +1,18 @@
 {
-  "restoreRef": "48e91572-fff2-8811-bd96-4ccb17ad39e6",
+  "restoreRef": "20fce489-750b-8702-b181-a0e782c90137",
   "entry": {
-    "naturalKey": "appleUserInitiatedEnrollmentProfile:e571b678-1add-837c-98c9-65b2939b5cd0",
+    "naturalKey": "appleUserInitiatedEnrollmentProfile:00826a6f-3253-881c-93a9-51cc829a73f5",
     "resourceType": "appleUserInitiatedEnrollmentProfile",
     "operation": "create",
-    "targetId": "ec980ea2-ede1-85df-a094-bcaa5386b5e0",
+    "targetId": "b986b167-ee9e-8d61-afc6-0f8eb9f429b3",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-22T08:49:05.770Z",
+    "recordedAt": "2026-10-30T01:25:20.519Z",
     "priorState": null,
     "intendedState": {
       "platform": "iOS",
-      "description": "KEEL restore fixture",
-      "displayName": "KEEL-RT-apple-enroll",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-237-apple-enroll",
       "defaultEnrollmentType": "device",
       "availableEnrollmentTypeOptions": [
         {
@@ -26,14 +26,14 @@
       ]
     },
     "postState": {
-      "id": "ec980ea2-ede1-85df-a094-bcaa5386b5e0",
+      "id": "b986b167-ee9e-8d61-afc6-0f8eb9f429b3",
       "platform": "iOS",
       "priority": 0,
-      "description": "KEEL restore fixture",
-      "displayName": "KEEL-RT-apple-enroll",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-237-apple-enroll",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/appleUserInitiatedEnrollmentProfiles/$entity",
-      "createdDateTime": "2026-10-22T08:49:05.846624Z",
-      "lastModifiedDateTime": "2026-10-22T08:49:05Z",
+      "createdDateTime": "2026-10-30T01:25:20.65183Z",
+      "lastModifiedDateTime": "2026-10-30T01:25:20Z",
       "defaultEnrollmentType": "device",
       "availableEnrollmentTypeOptions": [
         {

@@ -1,19 +1,19 @@
 {
-  "restoreRef": "a0cbe3b8-4296-87cd-8bfd-d26f58a06879",
+  "restoreRef": "fd4b6542-011c-8980-9b62-5a111e551ff0",
   "entry": {
-    "naturalKey": "permissionGrantPolicy:KEEL-RT-W2-consent",
+    "naturalKey": "permissionGrantPolicy:KEEL-RT-235-consent",
     "resourceType": "permissionGrantPolicy",
     "operation": "update",
-    "targetId": "keel-rt-w2-consent",
+    "targetId": "keel-rt-235-consent",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-15T14:33:39.848Z",
+    "recordedAt": "2026-10-29T23:36:29.039Z",
     "priorState": {
-      "id": "keel-rt-w2-consent",
+      "id": "keel-rt-235-consent",
       "excludes": [],
       "includes": [
         {
-          "id": "b5ae5c11-04b7-897b-a61a-818e998f0f1f",
+          "id": "36263876-4b31-8d46-8572-c81b366b0db7",
           "permissions": [
             "all"
           ],
@@ -32,17 +32,17 @@
           "clientApplicationsFromVerifiedPublisherOnly": false
         }
       ],
-      "description": "KEEL-RT-W2 fixture (Q79); not referenced by any authorization policy",
-      "displayName": "KEEL-RT-W2-consent",
-      "excludes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-w2-consent')/excludes",
-      "includes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-w2-consent')/includes"
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-235-consent",
+      "excludes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-235-consent')/excludes",
+      "includes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-235-consent')/includes"
     },
     "intendedState": {
-      "id": "keel-rt-w2-consent",
+      "id": "keel-rt-235-consent",
       "excludes": [],
       "includes": [
         {
-          "id": "3d7c9970-8cf6-8dbf-bdfa-bd3977831dcf",
+          "id": "5f0d083a-64e3-872f-abad-3d988f178b4b",
           "permissions": [
             "all"
           ],
@@ -61,36 +61,17 @@
           "clientApplicationsFromVerifiedPublisherOnly": false
         }
       ],
-      "description": "KEEL-RT-W2 fixture (Q79); not referenced by any authorization policy",
-      "displayName": "KEEL-RT-W2-consent",
-      "excludes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-w2-consent')/excludes",
-      "includes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-w2-consent')/includes"
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-235-consent",
+      "excludes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-235-consent')/excludes",
+      "includes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-235-consent')/includes"
     },
     "postState": {
-      "id": "keel-rt-w2-consent",
+      "id": "keel-rt-235-consent",
       "excludes": [],
       "includes": [
         {
-          "id": "b5ae5c11-04b7-897b-a61a-818e998f0f1f",
-          "permissions": [
-            "all"
-          ],
-          "permissionType": "delegated",
-          "resourceApplication": "any",
-          "clientApplicationIds": [
-            "all"
-          ],
-          "permissionClassification": "medium",
-          "clientApplicationTenantIds": [
-            "all"
-          ],
-          "clientApplicationPublisherIds": [
-            "all"
-          ],
-          "clientApplicationsFromVerifiedPublisherOnly": false
-        },
-        {
-          "id": "ba192c59-f442-8a85-8f7a-8319acbeea61",
+          "id": "9cb39f68-99cf-866e-ac31-1fc6b3d4047f",
           "permissions": [
             "all"
           ],
@@ -109,11 +90,11 @@
           "clientApplicationsFromVerifiedPublisherOnly": false
         }
       ],
-      "description": "KEEL-RT-W2 fixture (Q79); not referenced by any authorization policy",
-      "displayName": "KEEL-RT-W2-consent",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-235-consent",
       "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies/$entity",
-      "excludes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-w2-consent')/excludes",
-      "includes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-w2-consent')/includes"
+      "excludes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-235-consent')/excludes",
+      "includes@odata.context": "https://graph.microsoft.com/v1.0/$metadata#policies/permissionGrantPolicies('keel-rt-235-consent')/includes"
     }
   }
 }

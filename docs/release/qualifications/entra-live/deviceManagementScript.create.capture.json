@@ -1,19 +1,19 @@
 {
-  "restoreRef": "70bc0535-6464-8b6d-b0ab-bfa8c3755eed",
+  "restoreRef": "89d6fe01-42df-8784-8e64-127c01644b38",
   "entry": {
-    "naturalKey": "deviceManagementScript:bedb567e-b529-8dbd-82dc-0aedc8021e21",
+    "naturalKey": "deviceManagementScript:050755f7-b5c3-8f71-8043-e226f0b66d08",
     "resourceType": "deviceManagementScript",
     "operation": "create",
-    "targetId": "ae3ebed4-3dd4-89ae-810e-97cd826b16dd",
+    "targetId": "d5390934-36eb-8393-a09a-102c0b984fd4",
     "outcome": "succeeded",
     "outcomeDetail": null,
-    "recordedAt": "2026-10-22T17:53:30.852Z",
+    "recordedAt": "2026-10-30T01:10:22.544Z",
     "priorState": null,
     "intendedState": {
-      "fileName": "keel-rt-152.ps1",
+      "fileName": "keel-rt-236.ps1",
       "runAs32Bit": false,
-      "description": "KEEL restore fixture",
-      "displayName": "KEEL-RT-152-script",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-236-script",
       "runAsAccount": "system",
       "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
       "roleScopeTagIds": [
@@ -22,19 +22,19 @@
       "enforceSignatureCheck": false
     },
     "postState": {
-      "id": "ae3ebed4-3dd4-89ae-810e-97cd826b16dd",
-      "fileName": "keel-rt-152.ps1",
+      "id": "d5390934-36eb-8393-a09a-102c0b984fd4",
+      "fileName": "keel-rt-236.ps1",
       "runAs32Bit": false,
-      "description": "KEEL restore fixture",
-      "displayName": "KEEL-RT-152-script",
+      "description": "KEEL-RT test fixture",
+      "displayName": "KEEL-RT-236-script",
       "runAsAccount": "system",
       "scriptContent": "V3JpdGUtT3V0cHV0ICdLRUVMLVJUJw==",
       "@odata.context": "https://graph.microsoft.com/beta/$metadata#deviceManagement/deviceManagementScripts/$entity",
-      "createdDateTime": "2026-10-22T17:53:30.9588796Z",
+      "createdDateTime": "2026-10-30T01:10:22.7085197Z",
       "roleScopeTagIds": [
         "0"
       ],
-      "lastModifiedDateTime": "2026-10-22T17:53:30.9588796Z",
+      "lastModifiedDateTime": "2026-10-30T01:10:22.7085197Z",
       "enforceSignatureCheck": false
     }
   }

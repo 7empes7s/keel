@@ -13,6 +13,7 @@ import {
 import { defineRecord } from './recordWriter.mjs';
 import { TRUST_FIELDS, isTrustField } from './workloads/writeDeclarations.mjs';
 import { idoFakeGraph } from '../test/idoFakeGraph.mjs';
+import { APPROVAL_HELD_FIELDS, classifyContentEffects, disclosureFor } from '../safety/contentEffects.mjs';
 
 const FAST = { readAfterWriteOptions: { attempts: 1, delayMs: 0 } };
 const GUARD = { breakGlassUserIds: ['break-glass-1'], keelAppIds: ['keel-app-id'], caPolicies: [] };
@@ -740,8 +741,10 @@ test('an attribute set is only updated: a create waits for a review step', async
   const created = await applyIdentityObjectWrite(idoFakeGraph(), resourceOf('attributeSet', desired), 'create', FAST);
   assert.match(created.failed.error, /unsupported operation/);
   for (const type of ['attributeSet', 'customSecurityAttributeDefinition']) assert.deepEqual(IDENTITY_RECORDS[type].operations, ['update']);
-  for (const type of ['tenantAppManagementPolicy', 'crossTenantIdentitySyncPolicyPartner']) assert.equal(IDENTITY_RECORDS[type], undefined);
-  assert.ok(Object.keys(IDENTITY_NEEDS_REVIEW).length === 4);
+  assert.equal(IDENTITY_RECORDS.crossTenantIdentitySyncPolicyPartner, undefined);
+  // The default app credential rules moved behind the restore approval (approvalHeld.mjs).
+  assert.equal(IDENTITY_NEEDS_REVIEW.tenantAppManagementPolicy, undefined);
+  assert.ok(Object.keys(IDENTITY_NEEDS_REVIEW).length === 3);
 });
 
 test('every record operation is in the ledger, and best-effort types have no record', () => {
@@ -928,9 +931,9 @@ const TENANT_WIDE_CASES = Object.freeze([
 ]);
 const TEST_TENANT = Object.freeze({ ...FAST, tenantRef: 'sha256:keeltesttenant0', testTenantRefs: ['sha256:keeltesttenant0'] });
 
-test('restore gaps batch 20: the five admin center settings are marked tenant-wide, and only they are', () => {
+test('restore gaps batch 20: the five admin center settings are marked tenant-wide, and only they and the two approval-held tenant settings are', () => {
   const marked = Object.values(IDENTITY_RECORDS).filter((record) => record.tenantWide).map((record) => record.resourceType).sort();
-  assert.deepEqual(marked, ['adminReportSettings', 'appsAndServicesSettings', 'formsSettings', 'microsoft365AppsInstallationOptions', 'pronounsSettings']);
+  assert.deepEqual(marked, ['adminReportSettings', 'appsAndServicesSettings', 'deviceRegistrationPolicy', 'formsSettings', 'microsoft365AppsInstallationOptions', 'pronounsSettings', 'tenantAppManagementPolicy']);
   assert.equal(IDENTITY_RECORDS.engageCommunity.tenantWide, false, 'a community is one object, not a tenant setting');
 });
 
@@ -1115,4 +1118,144 @@ test('restore gaps batch 21: a second create of a Defender role finds the first 
   const other = await applyIdentityObjectWrite(graph, { naturalKey: 'role-src', resourceType: 'defenderRoleDefinition', payload: defenderRole({ description: 'Other' }), references: [] }, 'create', FAST);
   assert.match(other.failed?.error ?? '', /already exists with other settings/);
   assert.equal(posts(), 1, 'a role with the same name and other settings is never duplicated');
+});
+
+// ------------------------------------------- approval-held kinds (restore/approvalHeld.mjs)
+
+const DEVICE_REGISTRATION = Object.freeze({
+  id: 'deviceRegistrationPolicy', displayName: 'Device Registration Policy', description: 'Tenant-wide policy that manages initial provisioning controls',
+  userDeviceQuota: 50, multiFactorAuthConfiguration: 'required',
+  azureADRegistration: { isAdminConfigurable: false, allowedToRegister: { '@odata.type': '#microsoft.graph.allDeviceRegistrationMembership' } },
+  azureADJoin: { isAdminConfigurable: true, allowedToJoin: { '@odata.type': '#microsoft.graph.enumeratedDeviceRegistrationMembership', users: [], groups: ['group-joiners'] } },
+  localAdminPassword: { isEnabled: true },
+});
+const APP_RULES = Object.freeze({
+  id: '00000000-0000-0000-0000-000000000000', displayName: 'Default app management tenant policy', isEnabled: true,
+  applicationRestrictions: { passwordCredentials: [{ restrictionType: 'passwordLifetime', maxLifetime: 'P90D', restrictForAppsCreatedAfterDateTime: '2025-01-01T00:00:00Z' }], keyCredentials: [] },
+  servicePrincipalRestrictions: { passwordCredentials: [], keyCredentials: [] },
+});
+// A promotion hands the writers the content effects its approval check covered (or that need none).
+const approvedEffects = (resource, verb = 'update') => classifyContentEffects([{ ...resource, verb }]).effects;
+const singleton = (resourceType, payload, live) => ({ naturalKey: resourceType, resourceType, payload, references: [], live: { state: 'present', payload: live } });
+
+test('approval-held kinds: device registration and default app credential rules are tenant-wide singletons, updated in place only', () => {
+  const registration = IDENTITY_RECORDS.deviceRegistrationPolicy;
+  assert.deepEqual([registration.version, registration.collection, registration.updateMethod, registration.permission],
+    ['v1.0', '/policies/deviceRegistrationPolicy', 'PUT', 'Policy.ReadWrite.DeviceConfiguration']);
+  assert.deepEqual(registration.operations, ['update']);
+  assert.deepEqual([...registration.writable], ['displayName', 'description', ...APPROVAL_HELD_FIELDS.deviceRegistrationPolicy]);
+  const rules = IDENTITY_RECORDS.tenantAppManagementPolicy;
+  assert.deepEqual([rules.version, rules.collection, rules.updateMethod, rules.permission],
+    ['v1.0', '/policies/defaultAppManagementPolicy', 'PATCH', 'Policy.ReadWrite.ApplicationConfiguration']);
+  assert.deepEqual([...rules.writable], [...APPROVAL_HELD_FIELDS.tenantAppManagementPolicy]);
+  for (const record of [registration, rules]) assert.equal(record.tenantWide, true, record.resourceType);
+});
+
+test('approval-held kinds: a change is a "changes admin access" content effect, one per field, and no change is none', () => {
+  const live = { ...DEVICE_REGISTRATION, userDeviceQuota: 20, multiFactorAuthConfiguration: 'notRequired' };
+  const { effects, refusals } = classifyContentEffects([{ ...singleton('deviceRegistrationPolicy', DEVICE_REGISTRATION, live), verb: 'update' }]);
+  assert.deepEqual(refusals, []);
+  assert.deepEqual(effects.map((effect) => [effect.field, effect.effect, effect.before, effect.after]),
+    [['multiFactorAuthConfiguration', 'access-changing', 'notRequired', 'required'], ['userDeviceQuota', 'access-changing', 20, 50]]);
+  assert.ok(effects.every((effect) => effect.disclosure === disclosureFor('access-changing')));
+  // Key order and empty fields Graph adds are no change.
+  const reordered = { ...DEVICE_REGISTRATION, azureADJoin: { allowedToJoin: { groups: ['group-joiners'], users: [], '@odata.type': '#microsoft.graph.enumeratedDeviceRegistrationMembership' }, isAdminConfigurable: true, localAdmins: null } };
+  assert.deepEqual(classifyContentEffects([{ ...singleton('deviceRegistrationPolicy', DEVICE_REGISTRATION, reordered), verb: 'update' }]).effects, []);
+  // Who may join, as a list of groups, is compared whole.
+  const widened = { ...DEVICE_REGISTRATION, azureADJoin: { isAdminConfigurable: true, allowedToJoin: { '@odata.type': '#microsoft.graph.allDeviceRegistrationMembership' } } };
+  assert.deepEqual(classifyContentEffects([{ ...singleton('deviceRegistrationPolicy', DEVICE_REGISTRATION, widened), verb: 'update' }]).effects.map((effect) => effect.field), ['azureADJoin']);
+});
+
+test('approval-held kinds: an enforce write without the approved effects writes nothing and lists a step; a dry run plans it', async () => {
+  const live = { ...DEVICE_REGISTRATION, userDeviceQuota: 20 };
+  for (const approved of [undefined, [], approvedEffects(singleton('deviceRegistrationPolicy', { ...DEVICE_REGISTRATION, userDeviceQuota: 30 }, live))]) {
+    const graph = idoFakeGraph({ seed: { '/policies/deviceRegistrationPolicy': live } });
+    const result = await singletonWrite(graph, 'deviceRegistrationPolicy', DEVICE_REGISTRATION, live, { ...CUSTOMER, approvedContentEffects: approved });
+    assert.match(result.skipped?.reason ?? '', /changes admin access \(userDeviceQuota\)/, JSON.stringify(approved));
+    assert.deepEqual(result.skipped.completion.map((item) => [item.requirement, item.fields]), [['accessApproval', ['userDeviceQuota']]]);
+    assert.equal(graph.calls.length, 0, 'an effect the reviewed dry run did not hold (another value) unlocks nothing');
+  }
+  const graph = idoFakeGraph({ seed: { '/policies/deviceRegistrationPolicy': live } });
+  const planned = await singletonWrite(graph, 'deviceRegistrationPolicy', DEVICE_REGISTRATION, live, { ...CUSTOMER, mode: 'dry-run' });
+  assert.deepEqual(planned.applied?.changes.fields, ['userDeviceQuota'], JSON.stringify(planned));
+  assert.equal(writesOf(graph).length, 0);
+});
+
+test('approval-held kinds: with its approved effects the device registration policy is replaced whole and read back', async () => {
+  const live = { ...DEVICE_REGISTRATION, multiFactorAuthConfiguration: 'notRequired' };
+  const resource = singleton('deviceRegistrationPolicy', DEVICE_REGISTRATION, live);
+  const graph = idoFakeGraph({ seed: { '/policies/deviceRegistrationPolicy': live } });
+  const result = await singletonWrite(graph, 'deviceRegistrationPolicy', DEVICE_REGISTRATION, live, { ...CUSTOMER, approvedContentEffects: approvedEffects(resource) });
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  const writes = writesOf(graph);
+  assert.deepEqual(writes.map((write) => [write.method, write.version, write.path]), [['PUT', 'v1.0', '/policies/deviceRegistrationPolicy']]);
+  const { id, ...body } = DEVICE_REGISTRATION;
+  assert.deepEqual(writes[0].body, body, 'every writable field, with the membership kinds; never the id');
+  assert.deepEqual(result.applied.changes.fields, ['multiFactorAuthConfiguration']);
+});
+
+test('approval-held kinds: on the test tenant the two tenant settings still need the tenant-wide option', async () => {
+  const live = { ...DEVICE_REGISTRATION, userDeviceQuota: 20 };
+  const resource = singleton('deviceRegistrationPolicy', DEVICE_REGISTRATION, live);
+  const approvedContentEffects = approvedEffects(resource);
+  let graph = idoFakeGraph({ seed: { '/policies/deviceRegistrationPolicy': live } });
+  let result = await singletonWrite(graph, 'deviceRegistrationPolicy', DEVICE_REGISTRATION, live, { ...TEST_TENANT, approvedContentEffects });
+  assert.match(result.skipped?.reason ?? '', /tenant-wide/);
+  assert.equal(writesOf(graph).length, 0);
+  graph = idoFakeGraph({ seed: { '/policies/deviceRegistrationPolicy': live } });
+  result = await singletonWrite(graph, 'deviceRegistrationPolicy', DEVICE_REGISTRATION, live, { ...TEST_TENANT, allowTenantWide: true, approvedContentEffects });
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.equal(writesOf(graph).length, 1);
+});
+
+test('approval-held kinds: the default app credential rules send only what changed, once approved', async () => {
+  const live = { ...APP_RULES, isEnabled: false };
+  const resource = singleton('tenantAppManagementPolicy', APP_RULES, live);
+  let graph = idoFakeGraph({ seed: { '/policies/defaultAppManagementPolicy': live } });
+  let result = await singletonWrite(graph, 'tenantAppManagementPolicy', APP_RULES, live);
+  assert.match(result.skipped?.reason ?? '', /changes admin access \(isEnabled\)/);
+  assert.equal(writesOf(graph).length, 0);
+  graph = idoFakeGraph({ seed: { '/policies/defaultAppManagementPolicy': live } });
+  result = await singletonWrite(graph, 'tenantAppManagementPolicy', APP_RULES, live, { ...CUSTOMER, approvedContentEffects: approvedEffects(resource) });
+  assert.equal(result.failed ?? result.skipped, undefined, JSON.stringify(result));
+  assert.deepEqual(writesOf(graph).map((write) => [write.method, write.version, write.path, write.body]),
+    [['PATCH', 'v1.0', '/policies/defaultAppManagementPolicy', { isEnabled: true }]]);
+});
+
+test('approval-held kinds: a restriction that carries trusted certificate authorities is never written, even approved', async () => {
+  const trusted = { restrictionType: 'trustedCertificateAuthority', certificateBasedApplicationConfigurationIds: ['cbac-1'], restrictForAppsCreatedAfterDateTime: '2025-01-01T00:00:00Z' };
+  const cases = [
+    // The backup trusts a certificate authority the tenant does not.
+    [{ ...APP_RULES, applicationRestrictions: { ...APP_RULES.applicationRestrictions, keyCredentials: [trusted] } }, APP_RULES],
+    // The tenant trusts one now; the backup's list would replace it whole.
+    [APP_RULES, { ...APP_RULES, applicationRestrictions: { passwordCredentials: [], keyCredentials: [trusted] } }],
+  ];
+  for (const [backup, live] of cases) {
+    const resource = singleton('tenantAppManagementPolicy', backup, live);
+    const graph = idoFakeGraph({ seed: { '/policies/defaultAppManagementPolicy': live } });
+    const result = await singletonWrite(graph, 'tenantAppManagementPolicy', backup, live, { ...CUSTOMER, approvedContentEffects: approvedEffects(resource) });
+    assert.match(result.skipped?.reason ?? '', /never writes which certificate authorities are trusted/);
+    assert.deepEqual(result.skipped.completion.map((item) => [item.requirement, item.fields]), [['trustFields', ['applicationRestrictions']]]);
+    assert.equal(writesOf(graph).length, 0);
+  }
+});
+
+test('approval-held kinds: a device registration setting the backup does not hold is never reset by the replace', async () => {
+  const { localAdminPassword, ...older } = DEVICE_REGISTRATION;
+  const live = { ...DEVICE_REGISTRATION, userDeviceQuota: 20 };
+  const resource = singleton('deviceRegistrationPolicy', older, live);
+  const graph = idoFakeGraph({ seed: { '/policies/deviceRegistrationPolicy': live } });
+  const result = await singletonWrite(graph, 'deviceRegistrationPolicy', older, live, { ...CUSTOMER, approvedContentEffects: approvedEffects(resource) });
+  assert.match(result.skipped?.reason ?? '', /does not hold localAdminPassword/);
+  assert.deepEqual(result.skipped.completion.map((item) => [item.requirement, item.fields]), [['wholeReplace', ['localAdminPassword']]]);
+  assert.equal(writesOf(graph).length, 0);
+});
+
+test('approval-held kinds: a restriction typed as trusting certificate authorities is never written, even without its id list', async () => {
+  const typed = { ...APP_RULES, applicationRestrictions: { passwordCredentials: [], keyCredentials: [{ restrictionType: 'trustedCertificateAuthority', restrictForAppsCreatedAfterDateTime: '2025-01-01T00:00:00Z' }] } };
+  const resource = singleton('tenantAppManagementPolicy', typed, APP_RULES);
+  const graph = idoFakeGraph({ seed: { '/policies/defaultAppManagementPolicy': APP_RULES } });
+  const result = await singletonWrite(graph, 'tenantAppManagementPolicy', typed, APP_RULES, { ...CUSTOMER, approvedContentEffects: approvedEffects(resource) });
+  assert.match(result.skipped?.reason ?? '', /never writes which certificate authorities are trusted/);
+  assert.equal(writesOf(graph).length, 0);
 });

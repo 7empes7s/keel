@@ -32,6 +32,7 @@ import { TENANT_POLICY_RECORDS, tenantPolicyRecordFor, tenantPolicyRoute } from 
 
 const TENANT_POLICY_TYPES = new Set(TENANT_POLICY_RECORDS.map((entry) => entry.resourceType));
 import { applyWave } from '../../engine/restore/applyEngine.mjs';
+import { classifyContentEffects } from '../../engine/safety/contentEffects.mjs';
 import { IDENTITY_RECORDS } from '../../engine/restore/identityObjectOperations.mjs';
 import { INTUNE_EXTENDED_RECORDS } from '../../engine/restore/intuneOperations.mjs';
 import { recordObjectPath } from '../../engine/restore/recordWriter.mjs';
@@ -298,6 +299,11 @@ export const FIXTURE_PAYLOADS = Object.freeze({
     type: 'RecipientScope', displayName: 'Fixture app scope',
     customAttributes: { Exclusive: false, RecipientFilter: "PrimarySmtpAddress -like 'keel-rt-fixture*'" },
   },
+  // Approval-held kinds: a custom Intune role with one read permission.
+  deviceManagementRoleDefinition: {
+    '@odata.type': '#microsoft.graph.deviceAndAppManagementRoleDefinition', displayName: 'Fixture Intune role', description: 'Fixture', isBuiltIn: false,
+    rolePermissions: [{ resourceActions: [{ allowedResourceActions: ['Microsoft.Intune_Organization_Read'], notAllowedResourceActions: [] }] }],
+  },
   // Restore gaps, batch 21: a custom Defender XDR role with one read permission.
   defenderRoleDefinition: {
     displayName: 'Fixture Defender role', description: 'Fixture', isBuiltIn: false,
@@ -354,6 +360,18 @@ export const FIXTURE_PAYLOADS = Object.freeze({
   appsAndServicesSettings: { settings: { isOfficeStoreEnabled: false, isAppAndServicesTrialEnabled: true } },
   adminReportSettings: { displayConcealedNames: true },
   pronounsSettings: { isEnabledInOrganization: true },
+  // Approval-held kinds: device join settings, the default app credential rules and a custom Intune role.
+  deviceRegistrationPolicy: {
+    userDeviceQuota: 50, multiFactorAuthConfiguration: 'notRequired',
+    azureADRegistration: { isAdminConfigurable: false, allowedToRegister: { '@odata.type': '#microsoft.graph.allDeviceRegistrationMembership' } },
+    azureADJoin: { isAdminConfigurable: true, allowedToJoin: { '@odata.type': '#microsoft.graph.allDeviceRegistrationMembership' }, localAdmins: { enableGlobalAdmins: true, registeringUsers: { '@odata.type': '#microsoft.graph.allDeviceRegistrationMembership' } } },
+    localAdminPassword: { isEnabled: false },
+  },
+  tenantAppManagementPolicy: {
+    isEnabled: false,
+    applicationRestrictions: { passwordCredentials: [{ restrictionType: 'passwordLifetime', maxLifetime: 'P365D', restrictForAppsCreatedAfterDateTime: '2099-01-01T00:00:00Z' }], keyCredentials: [] },
+    servicePrincipalRestrictions: { passwordCredentials: [], keyCredentials: [] },
+  },
   engageCommunity: { id: 'fixture-community', displayName: 'Fixture community', description: 'Fixture', privacy: 'private', groupId: 'fixture-group' },
   // Restore gaps, batch 18: a web link app, the kind recreated in full.
   mobileApp: {
@@ -433,6 +451,9 @@ const FIXTURE_DRIFT = Object.freeze({
   adminReportSettings: () => ({ displayConcealedNames: false }),
   pronounsSettings: () => ({ isEnabledInOrganization: false }),
   engageCommunity: () => ({ description: 'Drifted' }),
+  // Approval-held kinds: each drifts one access setting its restore puts back.
+  deviceRegistrationPolicy: () => ({ userDeviceQuota: 20 }),
+  tenantAppManagementPolicy: () => ({ isEnabled: true }),
   // Restore gaps, batch 2: each singleton drifts one writable setting.
   externalIdentitiesPolicy: () => ({ allowExternalIdentitiesToLeave: false }),
   accessReviewPolicy: () => ({ isGroupOwnerManagementEnabled: false }),
@@ -707,7 +728,7 @@ export function fakeGraph() {
 const governor = { async acquire() {}, observeRetryAfter() {} };
 
 // Types whose delete is only the undo of a create a restore made (an app's link).
-const UNDO_ONLY_DELETES = new Set(['mobileAppRelationship']);
+const UNDO_ONLY_DELETES = new Set(['mobileAppRelationship', 'deviceManagementRoleDefinition']);
 
 function fixtureFor(resourceType, operation, graph) {
   const collection = graphPathFor(resourceType);
@@ -770,6 +791,9 @@ export async function runFixtureHarness({ types = Object.keys(FIXTURE_PAYLOADS) 
           targetTenant: FIXTURE_TENANT, mode: 'enforce', simulationPassed: true, lockoutGate: FIXTURE_LOCKOUT_GATE,
           existingTargetIds: new Map(FIXTURE_TARGET_IDS[resourceType] ?? []),
           observedCoverage: FIXTURE_COVERAGE,
+          // As a promotion whose dry run's content effects were approved (or need no
+          // approval): the approval-held kinds write only those (restore/approvalHeld.mjs).
+          approvedContentEffects: classifyContentEffects([resource]).effects,
           // The deletion guard verifies a policy against the CURRENT target state;
           // the fixture's live object is that state (it excludes no break-glass id).
           deletionGuardOptions: {

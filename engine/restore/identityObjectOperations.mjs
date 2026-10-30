@@ -34,9 +34,11 @@ import { randomBytes } from 'node:crypto';
 
 import { classifyWriteOutcome, recordPriorState, recordWriteOutcome } from './rollbackJournal.mjs';
 import {
-  applyRecordWrite, defineRecord, graphFailure, isNotFound, outcomeDetail, readUntil, recordLedger, sameValue, stripGraph,
+  applyRecordWrite, defineRecord, graphFailure, holdsNestedTrust, isNotFound, outcomeDetail, readUntil, recordLedger, sameValue, stripGraph,
 } from './recordWriter.mjs';
 import { TRUST_FIELDS } from './workloads/writeDeclarations.mjs';
+import { APPROVAL_HELD_FIELDS } from '../safety/contentEffects.mjs';
+import { withApprovalGate } from './approvalHeld.mjs';
 import {
   USER_WRITABLE_FIELDS, assignLicenseBody, isSyncedUser, licencePlan, userPostStateRefusal, userReadPath,
 } from './userOperations.mjs';
@@ -522,6 +524,48 @@ async function defenderRoleCreatePreflight(io, { payload, verb }) {
 const v1 = (page) => `${DOCS}/${page}?view=graph-rest-1.0`;
 const beta = (page) => `${DOCS}/${page}?view=graph-rest-beta`;
 
+// Approval-held kinds: which certificate authorities a key credential restriction
+// trusts (certificateBasedApplicationConfigurationIds) is a trust field, never
+// written. Graph replaces a restriction list whole, so a list that carries that
+// setting, in the backup or live, is left as it is and listed for a person
+// (the record writer would otherwise leave it out without a word).
+const APP_RESTRICTION_FIELDS = ['applicationRestrictions', 'servicePrincipalRestrictions'];
+
+// The device registration policy is replaced whole (PUT): a setting the tenant has
+// that the backup does not hold (an older backup) would be reset, so that restore is
+// a manual step rather than an access change nobody saw as a reset.
+function deviceRegistrationReplaceRefusal(resource, verb) {
+  if (verb !== 'update') return null;
+  const live = resource.live?.payload ?? {};
+  const payload = resource.payload ?? {};
+  const unset = (value) => value === null || value === undefined;
+  const fields = APPROVAL_HELD_FIELDS.deviceRegistrationPolicy.filter((field) => unset(payload[field]) && !unset(live[field]));
+  if (fields.length === 0) return null;
+  const description = `The backup does not hold ${fields.join(', ')}, and the device registration policy is replaced whole, so a restore would reset ${fields.length === 1 ? 'it' : 'them'}. `
+    + 'Nothing was written: compare the backup with the current settings in the Entra admin center, under Devices, Device settings, and change them there.';
+  return Object.freeze({
+    outcome: 'skipped',
+    reason: `manual: ${description}`,
+    completion: Object.freeze([Object.freeze({ kind: 'manual-setting', requirement: 'wholeReplace', fields: Object.freeze(fields), description })]),
+  });
+}
+function appCredentialTrustRefusal(resource, verb) {
+  if (verb !== 'update') return null;
+  const live = resource.live?.payload ?? {};
+  const payload = resource.payload ?? {};
+  const trusts = (value) => holdsNestedTrust('tenantAppManagementPolicy', value) || /trustedCertificateAuthority/i.test(JSON.stringify(value ?? null));
+  const fields = APP_RESTRICTION_FIELDS.filter((field) => !sameValue(payload[field], live[field]) && (trusts(payload[field]) || trusts(live[field])));
+  if (fields.length === 0) return null;
+  const description = `The default app credential rules differ in ${fields.join(' and ')}, where a restriction carries its trusted certificate authority setting. `
+    + 'A restore never writes which certificate authorities are trusted, and Graph replaces these rules whole, so nothing was written. '
+    + 'Compare the backup with the current rules and set them by hand with Microsoft Graph (PATCH /policies/defaultAppManagementPolicy).';
+  return Object.freeze({
+    outcome: 'skipped',
+    reason: `manual: ${description}`,
+    completion: Object.freeze([Object.freeze({ kind: 'manual-setting', requirement: 'trustFields', fields: Object.freeze(fields), description })]),
+  });
+}
+
 const FEDERATIONS = '/directory/federationConfigurations/graph.samlOrWsFedExternalDomainFederation';
 
 /** The records, one per type this module writes through recordWriter. */
@@ -701,6 +745,25 @@ export const IDENTITY_RECORDS = Object.freeze({
     operations: ['update'], writable: ['displayName', 'description', 'privacy'], refusal: adminCenterLooseningRefusal,
     permission: 'Community.ReadWrite.All', docs: v1('community-update'),
   }),
+  // Approval-held kinds (restore/approvalHeld.mjs). Each was backed up only,
+  // because a change decides who has access. They are written now, and an
+  // enforce write is made only when the restore's dry run listed its
+  // "changes admin access" effects and they were approved (or the customer
+  // turned restore approvals off for Entra ID). Both are one object per tenant.
+  // The device registration policy is replaced whole (Graph routes PUT only);
+  // its name and description are Microsoft's and read back unchanged.
+  deviceRegistrationPolicy: defineRecord({
+    resourceType: 'deviceRegistrationPolicy', tenantWide: true, version: 'v1.0', collection: '/policies/deviceRegistrationPolicy',
+    singleton: true, operations: ['update'], updateMethod: 'PUT',
+    writable: ['displayName', 'description', ...APPROVAL_HELD_FIELDS.deviceRegistrationPolicy], refusal: withApprovalGate(deviceRegistrationReplaceRefusal),
+    permission: 'Policy.ReadWrite.DeviceConfiguration', docs: v1('deviceregistrationpolicy-update'),
+  }),
+  tenantAppManagementPolicy: defineRecord({
+    resourceType: 'tenantAppManagementPolicy', tenantWide: true, version: 'v1.0', collection: '/policies/defaultAppManagementPolicy',
+    singleton: true, operations: ['update'], writable: APPROVAL_HELD_FIELDS.tenantAppManagementPolicy,
+    refusal: withApprovalGate(appCredentialTrustRefusal),
+    permission: 'Policy.ReadWrite.ApplicationConfiguration', docs: v1('tenantappmanagementpolicy-update'),
+  }),
 });
 
 /**
@@ -710,7 +773,6 @@ export const IDENTITY_RECORDS = Object.freeze({
 export const IDENTITY_NEEDS_REVIEW = Object.freeze({
   attributeSet: 'create only: an attribute set can never be deleted once created (update is written)',
   customSecurityAttributeDefinition: 'create only: a definition can never be deleted once created (update is written)',
-  tenantAppManagementPolicy: 'a stricter default can stop every app from adding a secret or certificate',
   crossTenantIdentitySyncPolicyPartner: 'it lets a partner tenant sync its users into this one',
 });
 

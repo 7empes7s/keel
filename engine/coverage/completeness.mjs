@@ -173,7 +173,7 @@ export const COMPLETENESS = Object.freeze({
   crossTenantAccessPolicy: {},
   crossTenantAccessPolicyConfigurationDefault: {},
   crossTenantAccessPolicyPartner: {},
-  deviceRegistrationPolicy: { whole: 'not-written' },
+  deviceRegistrationPolicy: {},
   authenticationFlowsPolicy: {},
   permissionGrantPolicy: { missing: [part('The include and exclude rules of a custom policy', 'other-route', heldUnless(['includes', 'excludes'])), part('A built-in app consent policy', 'microsoft-managed', builtInGrantPolicy)] },
   adminConsentRequestPolicy: {},
@@ -185,7 +185,7 @@ export const COMPLETENESS = Object.freeze({
   featureRolloutPolicy: { whole: 'not-written', missing: [part('Which groups the rollout covers', 'other-route')] },
   // Wave 1 CAT-ENTRA: app credential rules and cross-tenant sync.
   appManagementPolicy: { missing: [part('Which apps the policy is assigned to', 'other-route')] },
-  tenantAppManagementPolicy: { whole: 'not-written' },
+  tenantAppManagementPolicy: {},
   multiTenantOrganization: { missing: [part('Each member tenant\'s acceptance', 'read-only')] },
   crossTenantIdentitySyncPolicyPartner: { whole: 'not-written' },
 
@@ -194,7 +194,8 @@ export const COMPLETENESS = Object.freeze({
   deviceCompliancePolicy: {},
   configurationPolicy: { missing: [part('Secret settings', 'secret', secretSettings)] },
   deviceEnrollmentConfiguration: { whole: 'not-written' },
-  deviceManagementRoleDefinition: { whole: 'not-written' },
+  // Approval-held kinds: custom roles written; built-in ones are Microsoft's.
+  deviceManagementRoleDefinition: { missing: [part('A built-in Intune role', 'microsoft-managed', builtInFlag)] },
   deviceCategory: { missing: [part('Which devices are in the category', 'read-only')] },
   termsAndConditions: { whole: 'not-written', missing: [part('Who accepted the terms', 'read-only')] },
   windowsAutopilotDeploymentProfile: { missing: [part('The registered device hardware it applies to', 'other-route')] },

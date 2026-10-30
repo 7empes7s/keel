@@ -1756,7 +1756,10 @@ async function executeCompensationRun({ client, artifact, collectorConfig, targe
   if (waiting.length > 0) {
     throw new Error(`compensation promotion refused: ${waiting.length} assigned polic${waiting.length === 1 ? 'y waits' : 'ies wait'} for a choice to delete or skip (${waiting.join(', ')}); plan the undo again with the choices`);
   }
-  await deps.assertContentEffectApprovalFn(client, { artifact, effects: ctx.contentEffects.effects });
+  const contentEffectApproval = await deps.assertContentEffectApprovalFn(client, { artifact, effects: ctx.contentEffects.effects });
+  // As on a forward promotion, only effects whose approval was just checked unlock a
+  // write a guard otherwise refuses (an undo that changes admin access).
+  const approvedContentEffects = contentEffectApproval ? ctx.contentEffects.effects : [];
   logCompensation(logger, ctx.plan);
 
   const results = { applied: [], skipped: [], failed: [], notRemediable: [] };
@@ -1778,6 +1781,7 @@ async function executeCompensationRun({ client, artifact, collectorConfig, targe
       runId: `run-compensation-${artifact.id}`,
       restoreRef: artifact.id,
       deletionGuardOptions: ctx.deletionGuardOptions,
+      approvedContentEffects,
       signInPathGate: { reader: ctx.targetReader, protectedPrincipalIds: ctx.protectedPrincipalIds },
     });
     results.applied.push(...result.applied);

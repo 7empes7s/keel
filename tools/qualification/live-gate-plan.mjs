@@ -404,6 +404,25 @@ export const FIXTURE_GUIDANCE = Object.freeze({
     select: `${FIXTURE_PREFIX}-filter`, drift: 'delete it: the restore recreates it with the same platform and rule; then change its rule: the restore puts it back',
     note: 'The platform is never changed on update. No assignment uses the filter, so no policy targets change.',
   },
+  // Approval-held kinds: written only with an approved "Changes admin access" effect
+  // (or with restore approvals off for the service), so each proof runs the dry run,
+  // approves its effects as a second person (operator self-approval on the test
+  // tenant), then promotes. The two tenant-wide settings need the tenant-wide option.
+  deviceManagementRoleDefinition: {
+    kind: 'named-object', fixture: `custom Intune role ${FIXTURE_PREFIX}-intune-role with one read permission (Microsoft.Intune_Organization_Read), assigned to nobody`,
+    select: `${FIXTURE_PREFIX}-intune-role`, drift: 'delete it: the restore recreates it with the same permission; then add a second read permission (Microsoft.Intune_Audit_Read): the restore takes it away again',
+    note: 'No assignment, so nobody gains access. Also check that a promotion without the approval skips it with "Changes admin access".',
+  },
+  deviceRegistrationPolicy: {
+    kind: 'tenant-setting', fixture: 'the device registration policy (Devices, Device settings)',
+    select: 'deviceRegistrationPolicy', drift: 'change userDeviceQuota (Maximum number of devices per user) to another allowed value; write the original down first. Never change who may join or MFA to join.',
+    note: 'Set the original value back right after the run. Graph routes PUT only: record its answer if the replace is refused.',
+  },
+  tenantAppManagementPolicy: {
+    kind: 'tenant-setting', fixture: 'the default app management policy (no admin center page; Graph /policies/defaultAppManagementPolicy)',
+    select: 'tenantAppManagementPolicy', drift: 'if isEnabled is false, set it to true with no restrictions (nothing is enforced); write the original down first',
+    note: 'Set the original value back right after the run. Never add a trusted certificate authority restriction. If the restore reports a trust-field step for an empty certificate authority list, record it.',
+  },
   roleScopeTag: {
     kind: 'named-object', fixture: `scope tag ${FIXTURE_PREFIX}-scope-tag, on no object and in no role assignment`,
     select: `${FIXTURE_PREFIX}-scope-tag`, drift: 'delete it: the restore recreates it with the same description; then change its description: the restore puts it back',

@@ -1,0 +1,98 @@
+/** The PIM check compares Keel's assignment list with ScubaGear's schedule instances
+ * without printing an id, name or date, and reads with GET only. No tenant is touched. */
+import { strict as assert } from 'node:assert';
+import { test } from 'node:test';
+
+import { FIXTURE_BACKUPS } from '../engine/benchmarks/scubagear/fixtureTenant.mjs';
+import { KEEL_READS, SCUBA_READ, comparePim, readPimLive } from './scubagear-pim-check.mjs';
+
+const facts = {
+  roleDefinition: FIXTURE_BACKUPS.roleDefinition,
+  roleAssignment: FIXTURE_BACKUPS.roleAssignment,
+  roleAssignmentSchedule: FIXTURE_BACKUPS.roleAssignmentSchedule,
+};
+
+/** What ScubaGear's read would list when it agrees with Keel's backup. */
+function matchingInstances() {
+  const instances = facts.roleAssignmentSchedule.map((schedule) => ({
+    principalId: schedule.principalId, roleDefinitionId: schedule.roleDefinitionId, directoryScopeId: schedule.directoryScopeId ?? '/',
+    memberType: schedule.memberType ?? 'Direct', assignmentType: 'Assigned',
+    startDateTime: schedule.scheduleInfo?.startDateTime ?? null,
+    endDateTime: schedule.scheduleInfo?.expiration?.type === 'noExpiration' ? null : schedule.scheduleInfo?.expiration?.endDateTime ?? null,
+  }));
+  for (const active of facts.roleAssignment) {
+    const scheduled = facts.roleAssignmentSchedule.some((schedule) => schedule.principalId === active.principalId
+      && schedule.roleDefinitionId === active.roleDefinitionId && (schedule.directoryScopeId ?? '/') === (active.directoryScopeId ?? '/'));
+    if (!scheduled) {
+      instances.push({
+        principalId: active.principalId, roleDefinitionId: active.roleDefinitionId, directoryScopeId: active.directoryScopeId ?? '/',
+        memberType: 'Direct', assignmentType: 'Assigned', startDateTime: null, endDateTime: null,
+      });
+    }
+  }
+  return instances;
+}
+
+test('the two reads agree when the instances match the backup', () => {
+  const result = comparePim({ facts, instances: matchingInstances() });
+  assert.equal(result.agree, true, JSON.stringify(result.roles, null, 2));
+  const ga = result.roles.find((role) => role.role === 'Global Administrator');
+  assert.ok(ga.keel > 0);
+  assert.equal(ga.keel, ga.scubaGear);
+  assert.deepEqual(ga.keelSays, ga.scubaGearSays);
+});
+
+test('a schedule start date where ScubaGear sees none is a difference, and changes the 7.5 answer', () => {
+  // Every assignment went through PIM in Keel's backup; ScubaGear's read sees no start date.
+  const instances = matchingInstances().filter((instance) => facts.roleAssignmentSchedule
+    .some((schedule) => schedule.principalId === instance.principalId && schedule.roleDefinitionId === instance.roleDefinitionId))
+    .map((instance) => ({ ...instance, startDateTime: null }));
+  const scheduled = { ...facts, roleAssignment: [], roleAssignmentSchedule: facts.roleAssignmentSchedule.map((schedule) => ({
+    ...schedule, scheduleInfo: { ...schedule.scheduleInfo, startDateTime: '2026-01-01T00:00:00Z' },
+  })) };
+  const result = comparePim({ facts: scheduled, instances });
+  assert.equal(result.agree, false);
+  const differing = result.roles.filter((role) => role.differences.length);
+  assert.ok(differing.length > 0);
+  assert.ok(differing.every((role) => role.differences.every((text) => text === 'start date: Keel set, ScubaGear not set')));
+  assert.ok(differing.some((role) => role.keelSays['7.5 any assignment with no start date'] !== role.scubaGearSays['7.5 any assignment with no start date']));
+});
+
+test('missing and extra assignments are named, a group holder is only counted, and no id, name or date is printed', () => {
+  const instances = matchingInstances();
+  const dropped = instances.shift();
+  instances.push({ ...dropped, principalId: 'aaaaaaaa-0000-4000-8000-0000000000ff' });
+  instances.push({ ...dropped, principalId: 'bbbbbbbb-0000-4000-8000-0000000000ff', memberType: 'Group' });
+  const result = comparePim({ facts, instances });
+  assert.equal(result.agree, false);
+  const all = result.roles.flatMap((role) => role.differences);
+  assert.ok(all.includes('an assignment Keel lists that ScubaGear does not'));
+  assert.ok(all.includes('an assignment ScubaGear lists that Keel does not'));
+  assert.equal(result.roles.reduce((sum, role) => sum + role.throughGroup, 0), 1);
+  const text = JSON.stringify(result);
+  assert.doesNotMatch(text, /[0-9a-f]{8}-[0-9a-f]{4}-/i, 'no object id');
+  assert.doesNotMatch(text, /KEEL-RT-|\d{4}-\d{2}-\d{2}T/, 'no name or date');
+});
+
+test('the live read sends GET only, to the reads each side makes, and follows next pages', async () => {
+  const calls = [];
+  const pages = {
+    [`https://graph.microsoft.com${KEEL_READS.roleDefinition}`]: { value: facts.roleDefinition },
+    [`https://graph.microsoft.com${KEEL_READS.roleAssignment}`]: { value: facts.roleAssignment.slice(0, 1), '@odata.nextLink': 'https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?$skiptoken=x' },
+    'https://graph.microsoft.com/v1.0/roleManagement/directory/roleAssignments?$skiptoken=x': { value: facts.roleAssignment.slice(1) },
+    [`https://graph.microsoft.com${KEEL_READS.roleAssignmentSchedule}`]: { value: facts.roleAssignmentSchedule },
+    [`https://graph.microsoft.com${SCUBA_READ}`]: { value: matchingInstances() },
+  };
+  const transport = async (url, init) => {
+    calls.push([init?.method, url]);
+    return pages[url] ? { status: 200, body: pages[url] } : { status: 404, body: null };
+  };
+  const read = await readPimLive(transport);
+  assert.ok(calls.every(([method]) => method === 'GET'));
+  assert.equal(read.facts.roleAssignment.length, facts.roleAssignment.length);
+  assert.equal(comparePim(read).agree, true);
+
+  await assert.rejects(readPimLive(async () => ({ status: 403, body: null })), /HTTP 403/);
+  const outside = async (url) => ({ status: 200, body: { value: [], '@odata.nextLink': url.includes('evil') ? null : 'https://evil.example/next' } });
+  await assert.rejects(readPimLive(outside), /outside Microsoft Graph/);
+});

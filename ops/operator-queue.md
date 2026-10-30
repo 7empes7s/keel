@@ -13066,3 +13066,47 @@ item that needs it stays untouched.
   5. `node cli/keel-workload-collect.mjs proof`: confirm `purview.alert-policies` is listed as current.
 - **Report:** capture exit code and proven/notProven; evidence branch and commit; import counts; the run outcome; alert policy
   count and unknown fields; anything left in the tenant (expected: nothing, reads only).
+
+### Q278: Capture, import and turn on the Teams collaboration and meeting settings reads (read-only toward the tenant, after PR #799), about 15 minutes
+- Drafted by the "Back up Teams collaboration policies" thread (2026-10-30). Code: PR #799. Two new read-only workloads, both shipped
+  `disabled` until a live read record is imported, in the MicrosoftTeams session (Teams Administrator, already held), every cmdlet
+  run with **no parameters**:
+  - `teams-collaboration-policies`: Get-CsExternalAccessPolicy, Get-CsTeamsChannelsPolicy, Get-CsTeamsFilesPolicy,
+    Get-CsTeamsTemplatePermissionPolicy, Get-CsTeamsShiftsPolicy, Get-CsTeamsUpgradePolicy, Get-CsTeamsUpgradeConfiguration,
+    Get-CsTeamsAcsFederationConfiguration.
+  - `teams-meeting-settings`: Get-CsTeamsEnhancedEncryptionPolicy, Get-CsTeamsComplianceRecordingPolicy,
+    Get-CsTeamsMeetingTemplatePermissionPolicy, Get-CsTeamsMeetingConfiguration.
+  The declared fields come from Microsoft's docs and have **not** been checked against the live module: step 4 is what tells us.
+- Needs: PR #799 merged and deployed (build B). Check: `test -f /opt/keel-live/engine/collect/workloads/teamsCollaboration.mjs`.
+  `run-cmdlet.ps1` has a new table (`$AllowedTeamsCollaboration`); as in Q266 the scripts are mounted from the checkout, so no image
+  rebuild should be needed.
+- Status: todo
+- Result:
+- **Tenant:** reads only, Collector credential. No `New-`, `Set-`, `Grant-`, `Add-` or `Remove-` cmdlet. Grant, assign or create nothing.
+- Do, from your clone checked out at B, with `KEEL_QUALIFICATION_HMAC_KEY` from `/etc/keel/qualification.env` (never print it) and
+  `set -a; . /etc/keel/db.env; set +a`. Tenant ref as in the current records.
+  1. **Capture** each workload with the Teams config the workloads use (`powershellConfigs.teams` in `/etc/keel/workload-scope.json`,
+     else `/etc/keel/tenant.json`), as in Q266 step 1:
+     ```bash
+     for w in teams-collaboration-policies teams-meeting-settings; do
+       node tools/qualification/workloadReadsLive.mjs capture --workload "$w" --tenant-ref <tenant ref> \
+         --collector-ref app:<that config's clientId> --collector-config <that config> \
+         --build "$(git -C /opt/keel-live rev-parse HEAD)" \
+         --out "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+       node tools/qualification/pseudonymize.mjs check "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+     done
+     ```
+     Report each exit code, `outcome`, `proven` and `notProven` verbatim. A cmdlet the session does not expose (CommandNotFound) or
+     that is denied: quote the error, keep going with the other workload, and say which one.
+  2. **Evidence:** commit both records to `claude/live-evidence-teams-collaboration` (from `origin/master`, those files only, checked
+     for secrets) and push. No PR.
+  3. **Import:** `node cli/keel-workload-collect.mjs import --dir <checkout with these and the other read records>/docs/release/qualifications`.
+     Report exit code and `imported` / `refused` / `absent`.
+  4. `node cli/keel-workload-collect.mjs run` once by hand. Report the per-workload table (outcome, n_reasons, observations). For the
+     two new workloads, if not `complete`, report `discovery.empty`, `failures` and **`unknownFields` verbatim** (the declared field
+     names the live answers lack), from `workload_collection.digest`. Also list, for one object of each new family, the property
+     names the live cmdlet answers (`Get-CsX | Select-Object -First 1 | Get-Member -MemberType Property | Select -Expand Name`, read
+     only), so the thread can correct the declared fields.
+  5. `node cli/keel-workload-collect.mjs proof`: confirm both workloads' reads are listed as current.
+- **Report:** B; steps 1 to 5 with exit codes; proven / not proven; unknown fields and live property names per family; evidence
+  branch and commit; what is left changed in the tenant (expected: nothing).

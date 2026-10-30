@@ -82,6 +82,7 @@ function healthyTenant() {
   })];
   output['Get-ExternalInOutlook'] = [answer(ACCESS_FAMILIES.externalInOutlook, { Identity: guid(93), Enabled: true, AllowList: [] })];
   output['Get-TransportConfig'] = [answer(DEFAULTS_FAMILIES.transportConfig, { SmtpClientAuthenticationDisabled: true })];
+  output['Get-OrganizationConfig'] = [answer(DEFAULTS_FAMILIES.organizationConfig, { Name: 'contoso.onmicrosoft.com', AuditDisabled: false, MailTipsLargeAudienceThreshold: 25 })];
   return output;
 }
 
@@ -218,8 +219,12 @@ test('each policy is one observation under its identity, with declared fields on
   const defaults = await readExchangeOrgDefaults({ powershell: exchange.powershell, now: () => NOW });
   assert.equal(defaults.outcome, 'complete');
   assert.deepEqual(defaults.resources.map((resource) => resource.resourceKey), [
-    'transport-config:organization', `email-address-policy:${guid(10)}`, `cas-mailbox-plan:${guid(11)}`, `mailbox-plan:${guid(12)}`,
+    'transport-config:organization', 'organization-config:organization', `email-address-policy:${guid(11)}`, `cas-mailbox-plan:${guid(12)}`,
+    `mailbox-plan:${guid(13)}`,
   ]);
+  const organization = defaults.resources.find((resource) => resource.kind === 'organizationConfig');
+  assert.deepEqual(Object.keys(organization.fields), ['Name', 'AuditDisabled', 'WhenChangedUTC']);
+  assert.equal(organization.fields.MailTipsLargeAudienceThreshold, undefined, 'the mailbox workload keeps its own organization settings');
 
   // A tenant with no hybrid, no relationship and no app policy is complete; one that
   // answers no Outlook on the web policy, or a field it should carry, is a gap.
@@ -293,9 +298,10 @@ test('collection stays off until Exchange and the reads are qualified, then SMTP
   assert.equal(first.run.outcome, 'complete');
   const { rows } = await client.query('SELECT resource_key, fields FROM workload_observation WHERE collection_id = $1 ORDER BY resource_key', [first.run.id]);
   assert.deepEqual(rows.map((row) => [row.resource_key, row.fields.kind]), [
-    [`cas-mailbox-plan:${guid(11)}`, 'casMailboxPlan'],
-    [`email-address-policy:${guid(10)}`, 'emailAddressPolicy'],
-    [`mailbox-plan:${guid(12)}`, 'mailboxPlan'],
+    [`cas-mailbox-plan:${guid(12)}`, 'casMailboxPlan'],
+    [`email-address-policy:${guid(11)}`, 'emailAddressPolicy'],
+    [`mailbox-plan:${guid(13)}`, 'mailboxPlan'],
+    ['organization-config:organization', 'organizationConfig'],
     ['transport-config:organization', 'transportConfig'],
   ]);
 

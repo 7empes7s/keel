@@ -29,7 +29,9 @@
  */
 import { FAMILIES } from '../../collect/workloads/mailFlow.mjs';
 import { FAMILIES as EXTENDED } from '../../collect/workloads/exchangeExtended.mjs';
-import { ORGANIZATION_FIELDS } from '../../collect/workloads/exchange.mjs';
+import {
+  ACCESS_FAMILIES, DEFAULTS_FAMILIES, EXCHANGE_ORG_ACCESS_WORKLOAD, EXCHANGE_ORG_DEFAULTS_WORKLOAD,
+} from '../../collect/workloads/exchangeOrgPolicies.mjs';
 import { FAMILIES as PURVIEW } from '../../collect/workloads/purviewRetentionDlp.mjs';
 import { FAMILIES as POWER_PLATFORM } from '../../collect/workloads/powerPlatform.mjs';
 import { FAMILIES as TEAMS } from '../../collect/workloads/teamsPolicies.mjs';
@@ -102,6 +104,22 @@ const ofKind = (facts, kind, type = MAIL_FLOW) => list(facts, type).filter((fact
  */
 const named = (facts, kind, type) => ofKind(facts, kind, type).map((fields) => ({ ...fields, Identity: fields.Name ?? null }));
 const namedFields = (family) => Object.freeze([...family.fields, 'Identity']);
+
+/**
+ * Get-SharingPolicy as the provider passes it: each Domains entry is text such as
+ * "*:CalendarSharingFreeBusySimple", which the rules search for "*" and the folder.
+ * An entry stored as anything else would never match and read as a pass, so then the
+ * input cannot be built.
+ */
+function sharingPolicies(facts) {
+  const policies = ofKind(facts, 'sharingPolicy', EXCHANGE_ORG_ACCESS_WORKLOAD);
+  for (const policy of policies) {
+    if (policy.Domains != null && (!Array.isArray(policy.Domains) || policy.Domains.some((domain) => typeof domain !== 'string'))) {
+      throw new CouldNotBuild('sharing_policy', 'a sharing policy lists its domains in a form the rules cannot read');
+    }
+  }
+  return policies;
+}
 
 function premium(facts) {
   return list(facts, 'subscribedSku').some((sku) => (sku.servicePlans ?? [])
@@ -447,9 +465,20 @@ export const ADAPTERS = Object.freeze({
   accepted_domains: Object.freeze({ reads: [mailFlow('acceptedDomain')], fields: FAMILIES.acceptedDomain.fields, build: (facts) => ofKind(facts, 'acceptedDomain') }),
   dkim_config: Object.freeze({ reads: [mailFlow('dkimSigning')], fields: FAMILIES.dkimSigning.fields, build: (facts) => ofKind(facts, 'dkimSigning') }),
   transport_rule: Object.freeze({ reads: [mailFlow('transportRule')], fields: FAMILIES.transportRule.fields, build: (facts) => ofKind(facts, 'transportRule') }),
-  // Keel's organization read keeps a few settings only, and is not wired here yet: a
-  // rule that needs only these fields fails registration until it is.
-  org_config: Object.freeze({ reads: null, fields: ORGANIZATION_FIELDS, build: null }),
+  // Get-TransportConfig, Get-SharingPolicy and Get-OrganizationConfig, as the
+  // exchange-org-defaults and exchange-org-access reads keep them. Those reads stay off
+  // until their live read check passes; until then these rules read "could not check".
+  transport_config: Object.freeze({
+    reads: [service(EXCHANGE_ORG_DEFAULTS_WORKLOAD, 'transportConfig')], fields: DEFAULTS_FAMILIES.transportConfig.fields,
+    build: (facts) => ofKind(facts, 'transportConfig', EXCHANGE_ORG_DEFAULTS_WORKLOAD),
+  }),
+  sharing_policy: Object.freeze({
+    reads: [service(EXCHANGE_ORG_ACCESS_WORKLOAD, 'sharingPolicy')], fields: ACCESS_FAMILIES.sharingPolicy.fields, build: sharingPolicies,
+  }),
+  org_config: Object.freeze({
+    reads: [service(EXCHANGE_ORG_DEFAULTS_WORKLOAD, 'organizationConfig')], fields: DEFAULTS_FAMILIES.organizationConfig.fields,
+    build: (facts) => ofKind(facts, 'organizationConfig', EXCHANGE_ORG_DEFAULTS_WORKLOAD),
+  }),
 
   // Security Suite (Defender for Office 365, Exchange Online Protection, Purview)
   ...cmdletKeys(MAIL_FLOW, FAMILIES, {

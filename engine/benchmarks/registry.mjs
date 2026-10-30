@@ -74,7 +74,7 @@ export const SENSITIVE_MASK = '(hidden)';
 // stored object carries its `kind` (the family it was read from).
 export const WORKLOAD_FACT_TYPES = Object.freeze(new Set([
   'exchange-mail-flow', 'exchange-extended', 'purview-retention-dlp', 'teams-org-policies', 'teams-voice-policies',
-  'power-platform-settings', 'sharepoint-site-settings',
+  'power-platform-settings', 'sharepoint-site-settings', 'exchange-org-access', 'exchange-org-defaults',
 ]));
 
 const PREDICATES = new Map();

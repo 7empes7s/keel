@@ -963,6 +963,7 @@ Each workload ships switched off. KEEL turns a backup on for your tenant only af
 **Backed up:**
 
 - Organization transport settings (SMTP AUTH, TLS, journaling)
+- Mailbox auditing for the whole organization
 - Email address policies
 - Client access defaults for new mailboxes
 - Mailbox defaults for new mailboxes

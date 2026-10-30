@@ -157,6 +157,7 @@ $AllowedExchangeOrgPolicies = @{
     'Get-ApplicationAccessPolicy'    = @()
     'Get-ExternalInOutlook'          = @()
     'Get-TransportConfig'            = @()
+    'Get-OrganizationConfig'         = @()
     'Get-EmailAddressPolicy'         = @()
     'Get-CASMailboxPlan'             = @()
     'Get-MailboxPlan'                = @()

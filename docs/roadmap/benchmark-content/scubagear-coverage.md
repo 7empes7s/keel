@@ -9,26 +9,26 @@ Generated from CISA ScubaGear 2.0.0 (commit `6e5a1a4`, public domain) by `node t
 | Product | Rules | Run | Could not check |
 |---|---:|---:|---:|
 | Entra ID | 34 | 28 | 6 |
-| Exchange Online | 12 | 2 | 10 |
+| Exchange Online | 12 | 6 | 6 |
 | Security Suite (Defender and Purview) | 24 | 13 | 11 |
 | SharePoint and OneDrive | 8 | 2 | 6 |
 | Teams | 14 | 11 | 3 |
 | Power Platform | 9 | 2 | 7 |
 | Power BI | 8 | 8 | 0 |
-| **All** | **109** | **66** | **43** |
+| **All** | **109** | **70** | **39** |
 
 ## Summary
 
 | Product | Rules | SHALL | SHOULD | 🟢 Ready | 🟡 Partly read | 🔴 Could not check | ⚪ Check by hand |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Entra ID | 34 | 23 | 11 | 30 | 0 | 1 | 3 |
-| Exchange Online | 12 | 10 | 2 | 3 | 0 | 9 | 0 |
+| Exchange Online | 12 | 10 | 2 | 6 | 0 | 6 | 0 |
 | Security Suite (Defender and Purview) | 24 | 9 | 15 | 19 | 0 | 2 | 3 |
 | SharePoint and OneDrive | 8 | 8 | 0 | 0 | 8 | 0 | 0 |
 | Teams | 14 | 4 | 10 | 11 | 0 | 3 | 0 |
 | Power Platform | 9 | 5 | 4 | 2 | 0 | 5 | 2 |
 | Power BI | 8 | 0 | 8 | 8 | 0 | 0 | 0 |
-| **All** | **109** | **59** | **50** | **73** | **8** | **20** | **8** |
+| **All** | **109** | **59** | **50** | **76** | **8** | **17** | **8** |
 
 - 🟢 Ready: Keel reads everything it needs.
 - 🟡 Partly read: Keel reads it through another API, some fields may be missing.
@@ -44,14 +44,12 @@ Each row is one input. Reading it would move every listed rule out of "Could not
 | `dmarc_records` | DNS TXT lookup (DMARC) | 4: MS.EXO.4.1v1, MS.EXO.4.2v1, MS.EXO.4.3v1, MS.EXO.4.4v1 | Public DNS. Keel does not do DNS lookups. |
 | `environment_creation` | Get-PowerPlatformTenantSettingsRest | 4: MS.POWERPLATFORM.1.1v1, MS.POWERPLATFORM.1.2v1, MS.POWERPLATFORM.5.1v1, MS.POWERPLATFORM.6.1v1 | Keel does not read the Power Platform tenant settings. |
 | `tenant_app_settings` | Teams org-wide app settings (unified app management API) | 3: MS.TEAMS.5.1v2, MS.TEAMS.5.2v2, MS.TEAMS.5.3v2 | Keel does not read the org-wide Teams app settings. ScubaGear itself can only read them with an interactive sign-in. |
-| `sharing_policy` | Get-SharingPolicy | 2: MS.EXO.6.1v1, MS.EXO.6.2v1 | Keel does not run Get-SharingPolicy. |
 | `spf_records` | DNS TXT lookup (SPF) | 2: MS.EXO.2.2v3, MS.EXO.3.1v1 | Public DNS. Keel does not do DNS lookups. |
 | `admin_audit_log_config` | Get-AdminAuditLogConfig | 1: MS.SECURITYSUITE.5.1v1 | Keel does not run Get-AdminAuditLogConfig. |
 | `built_in_protection_rules` | Get-ATPBuiltInProtectionRule | 1: MS.SECURITYSUITE.1.3v1 | Keel does not run Get-ATPBuiltInProtectionRule. |
 | `dkim_records` | DNS TXT lookup (DKIM selectors) | 1: MS.EXO.3.1v1 | Public DNS. Keel does not do DNS lookups. |
 | `risky_delegated_permission_classifications` | Get-ServicePrincipalsWithRiskyDelegatedPermissionClassifications | 1: MS.AAD.5.2v1 | Needs each service principal's delegated permission classifications, which Keel does not read. |
 | `tenant_isolation` | Get-PowerPlatformTenantIsolationRest | 1: MS.POWERPLATFORM.3.1v1 | Keel does not read Power Platform tenant isolation. |
-| `transport_config` | Get-TransportConfig | 1: MS.EXO.5.1v1 | Keel does not run Get-TransportConfig. |
 
 ## Entra ID
 
@@ -103,9 +101,9 @@ Each row is one input. Reading it would move every listed rule out of "Could not
 | MS.EXO.4.2v1 | SHALL | 🔴 Could not check | The DMARC message rejection option SHALL be p=reject. | `dmarc_records` (not read) |
 | MS.EXO.4.3v1 | SHALL | 🔴 Could not check | The DMARC point of contact for aggregate reports SHALL include `reports@dmarc.cyber.dhs.gov`. | `dmarc_records` (not read) |
 | MS.EXO.4.4v1 | SHOULD | 🔴 Could not check | An agency point of contact SHOULD be included for aggregate and failure reports. | `dmarc_records` (not read) |
-| MS.EXO.5.1v1 | SHALL | 🔴 Could not check | SMTP AUTH SHALL be disabled. | `transport_config` (not read) |
-| MS.EXO.6.1v1 | SHALL | 🔴 Could not check | Contact folders SHALL NOT be shared with all domains. | `sharing_policy` (not read) |
-| MS.EXO.6.2v1 | SHALL | 🔴 Could not check | Calendar details SHALL NOT be shared with all domains. | `sharing_policy` (not read) |
+| MS.EXO.5.1v1 | SHALL | 🟢 Ready | SMTP AUTH SHALL be disabled. | `transport_config` |
+| MS.EXO.6.1v1 | SHALL | 🟢 Ready | Contact folders SHALL NOT be shared with all domains. | `sharing_policy` |
+| MS.EXO.6.2v1 | SHALL | 🟢 Ready | Calendar details SHALL NOT be shared with all domains. | `sharing_policy` |
 | MS.EXO.7.1v1 | SHALL | 🟢 Ready | External sender warnings SHALL be implemented. | `transport_rule` |
 | MS.EXO.13.1v1 | SHALL | 🟢 Ready | Mailbox auditing SHALL be enabled. | `org_config` |
 
@@ -215,10 +213,6 @@ Each of these rules shows on the Compliance page as "could not check", with its 
 | MS.EXO.4.2v1 | Keel does not read `dmarc_records`. |
 | MS.EXO.4.3v1 | Keel does not read `dmarc_records`. |
 | MS.EXO.4.4v1 | Keel does not read `dmarc_records`. |
-| MS.EXO.5.1v1 | Keel does not read `transport_config`. |
-| MS.EXO.6.1v1 | Keel does not read `sharing_policy`. |
-| MS.EXO.6.2v1 | Keel does not read `sharing_policy`. |
-| MS.EXO.13.1v1 | Keel's read of `org_config` does not keep `AuditDisabled`, `Name`. |
 | MS.POWERPLATFORM.1.1v1 | Keel does not read `environment_creation`. |
 | MS.POWERPLATFORM.1.2v1 | Keel does not read `environment_creation`. |
 | MS.POWERPLATFORM.3.1v1 | Keel does not read `tenant_isolation`. |

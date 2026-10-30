@@ -110,7 +110,7 @@ test('every rule of every product is a control, and each gets an answer on the f
   // Every rule Keel can check has a worked-out answer, and gets exactly it.
   const checked = Object.fromEntries(Object.entries(verdicts).filter(([, verdict]) => verdict !== 'unknown'));
   assert.deepEqual(checked, { ...FIXTURE_EXPECTED });
-  assert.equal(Object.keys(checked).length, 64);
+  assert.equal(Object.keys(checked).length, 68);
 });
 
 test('a rule Keel cannot check says why, and is never a pass', () => {
@@ -120,7 +120,6 @@ test('a rule Keel cannot check says why, and is never a pass', () => {
   assert.equal(reason('MS.AAD.7.5v1'), 'scubagear:field-not-read:privileged_roles.StartDateTime');
   assert.match(reason('MS.AAD.9.1v1'), /^scubagear:field-not-read:conditional_access_policies\.AgentIdRiskLevels,/);
   assert.equal(reason('MS.EXO.2.2v3'), 'scubagear:not-read:spf_records');
-  assert.equal(reason('MS.EXO.13.1v1'), 'scubagear:field-not-read:org_config.AuditDisabled,Name');
   assert.equal(reason('MS.SECURITYSUITE.1.3v1'), 'scubagear:not-read:built_in_protection_rules');
   assert.equal(reason('MS.SECURITYSUITE.2.1v1'), 'scubagear:needs-setting:sensitive-users');
   assert.equal(reason('MS.SECURITYSUITE.2.3v1'), 'scubagear:needs-setting:partner-domains');
@@ -130,8 +129,8 @@ test('a rule Keel cannot check says why, and is never a pass', () => {
   assert.equal(reason('MS.TEAMS.5.1v2'), 'scubagear:not-read:tenant_app_settings');
   assert.equal(reason('MS.POWERPLATFORM.1.1v1'), 'scubagear:not-read:environment_creation');
   const unchecked = scuba().filter((control) => control.unchecked);
-  // 43 cannot run at all; the two that need a tenant's list run once it is set (config.test.mjs).
-  assert.equal(unchecked.length, 43);
+  // 39 cannot run at all; the two that need a tenant's list run once it is set (config.test.mjs).
+  assert.equal(unchecked.length, 39);
   for (const control of unchecked) assert.deepEqual(control.requiredObservations, []);
 });
 
@@ -154,6 +153,26 @@ test('a missing or old backup is could not check, not a pass', () => {
 
   const stale = evaluateControl({ controlId: id('MS.AAD.1.1v1'), tenantRef: TENANT, observations: observations(), now: new Date(NOW.getTime() + 48 * HOUR) });
   assert.equal(stale.verdict, 'unknown');
+});
+
+test('mailbox auditing is checked from the organization settings backup, and without it the rule cannot be checked', () => {
+  const control = scuba().find((candidate) => candidate.controlId === id('MS.EXO.13.1v1'));
+  assert.deepEqual(control.requiredObservations.map(({ resourceType, parts }) => [resourceType, parts]), [['exchange-org-defaults', ['organizationConfig']]]);
+  assert.equal(run(control.controlId).verdict, 'fail');
+  const on = FIXTURE_BACKUPS['exchange-org-defaults'].map((config) => ({ ...config, AuditDisabled: false }));
+  assert.equal(run(control.controlId, { ...FIXTURE_BACKUPS, 'exchange-org-defaults': on }).verdict, 'pass');
+  const withoutDefaults = { ...FIXTURE_BACKUPS };
+  delete withoutDefaults['exchange-org-defaults'];
+  const missing = run(control.controlId, withoutDefaults);
+  assert.equal(missing.verdict, 'unknown');
+  assert.match(missing.reason, /^exchange-org-defaults:/);
+});
+
+test('a sharing policy whose domains are not text cannot be checked, rather than reading as a pass', () => {
+  const objects = FIXTURE_BACKUPS['exchange-org-access'].map((policy) => ({ ...policy, Domains: [{ Domain: '*', Actions: ['CalendarSharingFreeBusySimple'] }] }));
+  const result = run(id('MS.EXO.6.2v1'), { ...FIXTURE_BACKUPS, 'exchange-org-access': objects });
+  assert.equal(result.verdict, 'unknown');
+  assert.equal(result.reason, 'scubagear:incomplete:sharing_policy');
 });
 
 test('a role held through a group is could not check, since Keel does not back up group members', () => {

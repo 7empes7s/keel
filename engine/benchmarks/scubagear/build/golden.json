@@ -184,9 +184,29 @@
       "RequirementMet": true
     },
     {
+      "PolicyId": "MS.EXO.5.1v1",
+      "Criticality": "Shall",
+      "RequirementMet": true
+    },
+    {
+      "PolicyId": "MS.EXO.6.1v1",
+      "Criticality": "Shall",
+      "RequirementMet": true
+    },
+    {
+      "PolicyId": "MS.EXO.6.2v1",
+      "Criticality": "Shall",
+      "RequirementMet": false
+    },
+    {
       "PolicyId": "MS.EXO.7.1v1",
       "Criticality": "Shall",
       "RequirementMet": true
+    },
+    {
+      "PolicyId": "MS.EXO.13.1v1",
+      "Criticality": "Shall",
+      "RequirementMet": false
     }
   ],
   "securitysuite": [

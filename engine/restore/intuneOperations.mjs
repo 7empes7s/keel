@@ -56,7 +56,7 @@ import { SCRIPT_BODY_FIELDS } from '../safety/scriptBodies.mjs';
 import { resolveSymbol } from '../graph/resolver.mjs';
 import { appGroupOf, appHasPackage, appKindName, appKindWords } from './intuneAppKinds.mjs';
 import { trustSettingIds } from './workloads/writeDeclarations.mjs';
-import { groupPolicyTrustSettings, trustOmaUris } from './namedTrustSettings.mjs';
+import { groupPolicyTrustSettings, namedTrustSkip, trustOmaUris } from './namedTrustSettings.mjs';
 import {
   applyRecordWrite, defineRecord, holdsNestedTrust, isNotFound as recordNotFound, outcomeDetail, readUntil, recordLedger, recordObjectPath, sameValue, trustFieldStep,
   undoesCreate, wholeReplaceTrustRefusal, withoutTrustFields,
@@ -230,10 +230,7 @@ export function omaTrustRefusal(resource, verb) {
   const uris = new Set(trustOmaUris(resource?.payload));
   if (verb === 'update') for (const uri of trustOmaUris(resource?.live?.payload)) uris.add(uri);
   if (uris.size === 0) return null;
-  return {
-    outcome: 'skipped',
-    reason: `manual: this profile holds custom settings for trust, certificates or sign-in (${[...uris].sort().join(', ')}); a restore never writes them, and the custom settings are written as one list, so restore the profile by hand in the Intune admin center`,
-  };
+  return namedTrustSkip(uris, (names) => `this profile holds custom settings for trust, certificates or sign-in (${names}); a restore never writes them, and the custom settings are written as one list, so restore the profile by hand in the Intune admin center`);
 }
 
 // ------------------------------------------------------------------- bodies
@@ -1231,10 +1228,7 @@ function groupPolicyRefusal(resource, verb) {
  */
 function groupPolicyTrustRefusal(names) {
   if (names.length === 0) return null;
-  return {
-    outcome: 'skipped',
-    reason: `manual: this template holds trust, certificate or sign-in settings (${[...new Set(names)].sort().join(', ')}); a restore never writes them, and the template's settings are written as one set, so restore it by hand in the Intune admin center`,
-  };
+  return namedTrustSkip(names, (list) => `this template holds trust, certificate or sign-in settings (${list}); a restore never writes them, and the template's settings are written as one set, so restore it by hand in the Intune admin center`);
 }
 
 /** On update, the live template's own settings are read: one that is a trust setting makes the write manual. */
@@ -1243,7 +1237,7 @@ async function groupPolicyLiveTrust(io, { verb, targetId }) {
   const read = await readGroupPolicySettings(io, targetId);
   if (read.error) return `${read.error}, so they could not be checked for trust, certificate or sign-in settings`;
   const refusal = groupPolicyTrustRefusal(groupPolicyTrustSettings(read.settings).trust);
-  return refusal ? { skipped: refusal.reason } : null;
+  return refusal ? { skipped: refusal.reason, completion: refusal.completion } : null;
 }
 
 /** The template's preflights, one after another; the first that finds something stops them. */

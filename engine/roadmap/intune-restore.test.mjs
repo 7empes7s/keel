@@ -368,6 +368,8 @@ test('mutation: a policy holding a password, key, certificate or encrypted setti
       const outcome = await run(graph, [resource]);
       assert.equal(outcome.skipped.length, 1, `${payload['@odata.type'] ?? resourceType} ${verb} is skipped`);
       assert.match(outcome.skipped[0].reason, /^manual: /);
+      // A trust setting named by its OMA-URI stays open as a manual completion item.
+      if (JSON.stringify(payload).includes('RootCATrustedCertificates')) assert.equal(outcome.skipped[0].completion?.[0]?.requirement, 'trustFields');
       assert.deepEqual(graph.bodies, [], 'nothing is written as a blank');
     }
   }

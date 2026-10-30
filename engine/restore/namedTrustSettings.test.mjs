@@ -58,6 +58,8 @@ test('a custom profile holding a trust OMA-URI is manual on create and update, a
     assert.equal(refusal?.outcome, 'skipped', verb);
     assert.match(refusal.reason, /^manual: this profile holds custom settings for trust, certificates or sign-in/, verb);
     assert.ok(refusal.reason.includes(ROOT_CA), verb);
+    // The manual step stays open as a completion item naming the setting.
+    assert.deepEqual(refusal.completion.map(({ kind, requirement, fields }) => ({ kind, requirement, fields })), [{ kind: 'manual-setting', requirement: 'trustFields', fields: [ROOT_CA] }], verb);
   }
   // The custom settings are written as one list, so a backup without the setting would remove the live one.
   const removes = intuneWriteRefusal(resourceOf('deviceConfiguration', plain, live(trusted)), 'update');
@@ -107,6 +109,7 @@ test('an administrative template holding a trust setting is never written', asyn
     assert.equal(result.failed, undefined, result.failed?.error);
     assert.match(result.skipped?.reason ?? '', /^manual: this template holds trust, certificate or sign-in settings/);
     assert.ok(result.skipped.reason.includes(definition.displayName));
+    assert.deepEqual(result.skipped.completion?.[0]?.fields, [definition.displayName]);
     assert.equal(graph.calls.length, 0, 'nothing is read or written');
   }
   // A setting the backup does not describe cannot be checked, so it is not written either.
@@ -133,6 +136,7 @@ test('an administrative template update is manual when the live template holds a
   assert.equal(result.failed, undefined, result.failed?.error);
   assert.match(result.skipped?.reason ?? '', /^manual: this template holds trust, certificate or sign-in settings \(Configure list of allowed authentication servers\)/);
   assert.deepEqual(graph.calls.filter((call) => call.method !== 'GET'), [], 'nothing is written');
+  assert.deepEqual(result.skipped.completion?.[0]?.fields, [AUTH_SERVERS.displayName]);
 
   // A live payload that holds the settings is checked before any read.
   const known = idoFakeGraph({ seed: seed([AUTH_SERVERS]) });

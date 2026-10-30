@@ -72,3 +72,17 @@ export function groupPolicyTrustSettings(definitionValues) {
   }
   return { trust: [...trust].sort(), unknown: [...unknown].sort() };
 }
+
+/**
+ * A skipped write for trust settings named by a value, with the open
+ * completion item a person works from (the same shape the whole-object
+ * refusal uses: kind manual-setting, requirement trustFields).
+ */
+export function namedTrustSkip(names, description) {
+  const fields = Object.freeze([...new Set(names)].sort());
+  return Object.freeze({
+    outcome: 'skipped',
+    reason: `manual: ${description(fields.join(', '))}`,
+    completion: Object.freeze([Object.freeze({ kind: 'manual-setting', requirement: 'trustFields', fields, description: description(fields.join(', ')) })]),
+  });
+}

@@ -87,7 +87,7 @@ import { assessDeletePlan } from '../engine/graph/impact.mjs';
 import { buildReconciliationPlan } from '../engine/reconcile/reconciliationPlan.mjs';
 import { ThrottleGovernor } from '../engine/restore/throttleGovernor.mjs';
 import { GraphWriter } from '../engine/restore/graphWriter.mjs';
-import { applyWave, applyPatches, retryThrottledGraphOperation } from '../engine/restore/applyEngine.mjs';
+import { applyWave, applyPatches, recordLiveIdentifiers, retryThrottledGraphOperation } from '../engine/restore/applyEngine.mjs';
 import { recordTrustSkippedLocations } from '../engine/restore/namedLocationTrust.mjs';
 import { breakGlassLockoutGate, closedLockoutGate } from '../engine/safety/lockoutGate.mjs';
 import { loadGroupMembership, loadLockoutGateInputs } from '../engine/safety/breakGlassReadiness.mjs';
@@ -1193,7 +1193,9 @@ export async function runRestore({
     };
     const governor = new ThrottleGovernorClass(seeds);
     const runId = planId !== undefined ? `run-${planId}` : `run-selection-${sourceSnapshot}`;
-    const appliedIds = new Map();
+    // Issue #726: a live app's own appId, so a service principal names the app
+    // an earlier restore recreated by its new appId.
+    const appliedIds = recordLiveIdentifiers(new Map(), resources);
     // Named locations skipped on trust: a later policy that names one is skipped too.
     const trustSkippedLocations = new Set();
     // Accumulated across every wave and the deferred-patch phase. Ordinarily a

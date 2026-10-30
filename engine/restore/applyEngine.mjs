@@ -147,6 +147,24 @@ export function rewriteReferences(payload, references, ctx, naturalKey, resource
   return rewritten;
 }
 
+/** Issue #726: the alternate identifiers (an application's appId) of every
+ * planned resource matched to a live object, recorded as `<naturalKey>#<name>`
+ * — the key rewriteReferences reads for an explicit identifier reference. An app
+ * an earlier restore recreated keeps the backup's key but has a new appId, so a
+ * service principal restored in a later run must carry the live appId, never the
+ * one the key encodes. A value this run already holds (a create) is kept. */
+export function recordLiveIdentifiers(appliedIds, resources) {
+  for (const resource of resources ?? []) {
+    if (resource?.live?.state !== 'present') continue;
+    for (const name of ALTERNATE_IDENTIFIERS[resource.resourceType] ?? []) {
+      const value = resource.live.payload?.[name];
+      const key = `${resource.naturalKey}#${name}`;
+      if (typeof value === 'string' && value.length > 0 && !appliedIds.has(key)) appliedIds.set(key, value);
+    }
+  }
+  return appliedIds;
+}
+
 /** Empirically observed on this tenant: a read immediately after a write to the same object can
  * return 404 or a stale body for up to ~15-20s. Retries only the specific staleness signature the
  * caller names — never masks a genuine error. */

@@ -1,0 +1,73 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-reads-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "34af446e934526745ac105acaef613ac28e2fbe3",
+  "operation": "workload-reads",
+  "credentialMode": "collector-only",
+  "observedAt": "2026-10-30T18:39:02.022Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "power-platform-settings",
+    "execution": {
+      "transport": "rest-read-only"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c"
+    },
+    "outcome": "partial",
+    "reads": [
+      {
+        "operationId": "powerplatform.environments",
+        "family": "environment",
+        "version": "2020-10-01",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T18:39:02.022Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "powerplatform.dlp-policies",
+        "family": "dlpPolicy",
+        "version": "v2",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T18:39:02.022Z",
+        "ok": true,
+        "status": "read",
+        "objects": 0,
+        "error": null
+      },
+      {
+        "operationId": "powerplatform.connectors",
+        "family": "connector",
+        "version": "2016-11-01",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T18:39:02.022Z",
+        "ok": true,
+        "status": "read",
+        "objects": 0,
+        "error": null
+      },
+      {
+        "operationId": "powerbi.tenant-settings",
+        "family": "powerBiSetting",
+        "version": "v1",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T18:39:02.022Z",
+        "ok": true,
+        "status": "read",
+        "objects": 182,
+        "error": null
+      }
+    ]
+  },
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "b60db41d88d73a68b71a75d3405d1f223ca2979e80447b8d4d7f4623f2dbf0bd"
+    }
+  }
+}

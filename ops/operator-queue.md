@@ -13204,7 +13204,7 @@ item that needs it stays untouched.
 - **Report:** B; capture exit code and proven/notProven; evidence branch and commit; import counts; the run table; family
   statuses and unknown fields; the four Graph kinds' status and counts; anything left in the tenant (expected: nothing, reads only).
 
-### Q280: Add the Defender read permissions to the KEEL Collector, then check the Defender for Identity sensor and Secure Score reads live (after PR #807), about 15 minutes
+### Q282: Add the Defender read permissions to the KEEL Collector, then check the Defender for Identity sensor and Secure Score reads live (after PR #807), about 15 minutes
 - Drafted by the "Back up Defender endpoint and identity settings" thread (2026-10-30). Code: PR #807 (two read-only Graph
   catalogue kinds: `defenderIdentitySensor`, v1.0 `/security/identities/sensors`; `secureScoreControlProfile`, v1.0
   `/security/secureScoreControlProfiles`). A third read (Defender for Endpoint indicators, `api.securitycenter.microsoft.com

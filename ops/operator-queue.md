@@ -12501,3 +12501,41 @@ item that needs it stays untouched.
   6. Say which of your own runs (Q245–Q249, Q264 or others) were running between 09:30 and 09:50 UTC today, and whether they go
      through the portal's HTTP API or run engine CLIs directly.
 - **Report:** steps 1 to 6 (tables fine), each exit code. Do not change anything, even if a fix looks obvious.
+
+### Q268: Live proofs for the approval-held writers: custom Intune role, device registration policy, default app credential rules (after PR #767), about 45 minutes
+- Drafted by the "Add writers for approval-held setting kinds" thread (2026-10-30). PR #767 restores three kinds that were backed up
+  only, behind a new "Changes admin access" content effect: a promotion writes them only when the dry run's access effects were
+  approved (second person; your standing self-approval on the test tenant covers it, log each approval id), or restore approvals
+  are off for the service (PR #762, if merged).
+- Needs: PR #767 merged and deployed (build B). Check: `grep -q 'approvalHeldRefusal' /opt/keel-live/engine/restore/approvalHeld.mjs`.
+- Status: todo
+- Result:
+- **Test tenant only.** Restorer for writes, Collector for reads; global admin not used. No CA, no break-glass, never Marouane's
+  account. Tenant-wide writes are covered by the 2026-10-22 approval: put each value back right after (dry runs for the two tenant
+  settings need `--allow-tenant-wide-test-writes`).
+- **Step 0, permissions (Restorer app roles):** check the KEEL Restorer holds `Policy.ReadWrite.DeviceConfiguration`,
+  `Policy.ReadWrite.ApplicationConfiguration` and `DeviceManagementRBAC.ReadWrite.All`. If `Policy.ReadWrite.DeviceConfiguration`
+  is missing, add it to the **KEEL Restorer** app registration yourself (Microsoft Graph, application permission), set this item
+  `blocked: needs admin consent on KEEL Restorer`, and run parts A and C meanwhile. Grant nothing else.
+- **A. Custom Intune role** (`deviceManagementRoleDefinition`): fixture `KEEL-RT-268-intune-role`, one permission
+  `Microsoft.Intune_Organization_Read`, assigned to nobody. Take snapshot S.
+  1. Gate check: delete the role; restore from S selecting it; dry run (expect one `create` and a "Changes admin access" effect on
+     `rolePermissions`). Promote **without** approving the effects: expect it refused or skipped with "Changes admin access". Quote it.
+  2. Create round: approve the effects (log the id), promote, capture `deviceManagementRoleDefinition.create`. Expect a new id, read
+     back equal to S.
+  3. Update round: add `Microsoft.Intune_Audit_Read` to the recreated role; restore from S, approve, promote, capture
+     `deviceManagementRoleDefinition.update`. Expect the extra permission gone.
+  4. Re-run: dry run from S, expect 0 planned writes. Cleanup: delete the role.
+- **B. Device registration policy** (`deviceRegistrationPolicy`): write the current policy down. Snapshot S. Change only
+  `userDeviceQuota` to another allowed value. Restore from S (tenant-wide option), approve the effect, promote, capture
+  `deviceRegistrationPolicy.update`. Expect the original value back. Never change who may join or MFA to join. If Graph refuses the
+  PUT, quote its answer and do not retry with another method. Confirm the policy matches what you wrote down.
+- **C. Default app credential rules** (`tenantAppManagementPolicy`): write the current policy down. Snapshot S. If `isEnabled` is
+  false, set it true with no restrictions added (nothing is enforced); otherwise set false. Restore from S (tenant-wide option),
+  approve, promote, capture `tenantAppManagementPolicy.update`. Expect the original value back. Never add a trusted certificate
+  authority restriction. If the restore reports a trust-field step although no certificate authority is listed, quote it (it means
+  Graph returns an empty `certificateBasedApplicationConfigurationIds`). Confirm the policy matches what you wrote down.
+- Evidence: commit the records and `.capture.json` files on `claude/live-evidence-q268`, branched from `origin/master` (secret scan and
+  `pseudonymize.mjs check` first), open the PR the usual way, and run `node tools/qualification/operations.mjs --live-evidence <dir>`.
+- **Report:** B and S; per operation promoted / refused (exact message) / skipped; dry run and approval ids; the step A1 gate result;
+  Step 0 result; evidence branch, commit and PR; anything left in the tenant.

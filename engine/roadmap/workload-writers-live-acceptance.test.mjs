@@ -27,6 +27,7 @@ import { after, test } from 'node:test';
 
 import { DSC_WRITES_RECORD_FILE } from '../../tools/qualification/dscDistributionGroupsAcceptance.mjs';
 import { ROLE_WRITES_RECORD_FILE } from '../../tools/qualification/exchangeRoleDefinitionsAcceptance.mjs';
+import { UNPUBLISH_RECORD_FILE } from '../../tools/qualification/purviewUnpublishAcceptance.mjs';
 import { importLedgerInputs, importSeams } from '../../cli/keel-workload-collect.mjs';
 import { signEvidence, verifyEvidence } from '../../tools/release/qualification.mjs';
 import { SITE_GRANTS_RECORD_FILE } from '../../tools/qualification/sharepointSiteGrantsAcceptance.mjs';
@@ -302,7 +303,7 @@ test('the import stores the proven writes, skips absent writer records, and refu
   assert.deepEqual(result.imported.map(({ file, writes }) => ({ file, writes })), [{ file: workloadWritesRecordFile('exchange-mail-flow'), writes: 4 }]);
   assert.deepEqual(result.absent.sort(), [
     ...Object.keys(WRITTEN_WORKLOADS).filter((w) => w !== 'exchange-mail-flow').map(workloadWritesRecordFile), SITE_GRANTS_RECORD_FILE, SITE_PERMISSIONS_RECORD_FILE, STRUCTURE_WRITES_RECORD_FILE,
-    DSC_WRITES_RECORD_FILE, ROLE_WRITES_RECORD_FILE, ...Object.keys(READ_FAMILIES).map(workloadReadsRecordFile),
+    DSC_WRITES_RECORD_FILE, ROLE_WRITES_RECORD_FILE, UNPUBLISH_RECORD_FILE, ...Object.keys(READ_FAMILIES).map(workloadReadsRecordFile),
   ].sort());
   const inserted = saved.filter(({ sql }) => /INSERT INTO workload_ledger_evidence/.test(sql));
   assert.equal(inserted.length, 4);

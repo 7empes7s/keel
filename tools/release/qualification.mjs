@@ -25,6 +25,7 @@ import { SITE_PERMISSIONS_LIVE_GATE, validateSitePermissionsLiveSubject } from '
 import { STRUCTURE_WRITES_LIVE_GATE, validateStructureWritesLiveSubject } from '../qualification/sharepointStructureWritesAcceptance.mjs';
 import { DSC_WRITES_LIVE_GATE, validateDscWritesLiveSubject } from '../qualification/dscDistributionGroupsAcceptance.mjs';
 import { ROLE_WRITES_LIVE_GATE, validateRoleWritesLiveSubject } from '../qualification/exchangeRoleDefinitionsAcceptance.mjs';
+import { UNPUBLISH_LIVE_GATE, validateUnpublishLiveSubject } from '../qualification/purviewUnpublishAcceptance.mjs';
 import { TEAMS_LIVE_GATE, validateTeamsLiveSubject } from '../qualification/teamsAcceptance.mjs';
 import { EXCHANGE_LIVE_GATE, validateExchangeLiveSubject } from '../qualification/exchangeAcceptance.mjs';
 import { ONEDRIVE_PURVIEW_LIVE_GATE, validateOneDrivePurviewLiveSubject } from '../qualification/onedrivePurviewAcceptance.mjs';
@@ -753,6 +754,9 @@ const GATE_VALIDATORS = {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
   // Custom Exchange admin roles recreated through Exchange Online PowerShell; needs both proofs.
   [ROLE_WRITES_LIVE_GATE]: (evidence, context) => validateRoleWritesLiveSubject(evidence, {
+    ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
+  // Removing labels from a Purview label policy, then putting them back; needs both proofs.
+  [UNPUBLISH_LIVE_GATE]: (evidence, context) => validateUnpublishLiveSubject(evidence, {
     ...context, runner: verifyRunnerProof(evidence, evidence.proof?.runner, context) }),
   // Task-121: Teams live acceptance; needs both proofs and a verified task-120 record.
   [TEAMS_LIVE_GATE]: (evidence, context) => validateTeamsLiveSubject(evidence, {

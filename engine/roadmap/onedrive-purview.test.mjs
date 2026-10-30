@@ -27,7 +27,8 @@ import {
   oneDriveActivation, readOneDrive, siteKey,
 } from '../collect/workloads/onedrive.mjs';
 import {
-  LABEL_ACTION_FIELDS, PURVIEW_CMDLET_PARAMETERS, PURVIEW_OPERATIONS, PurviewScopeError, assertPurviewCmdlet, collectPurview,
+  LABEL_ACTION_FIELDS, PURVIEW_CMDLET_PARAMETERS, PURVIEW_OPERATIONS, PURVIEW_UNPUBLISH_PARAMETERS, PurviewScopeError, assertPurviewCmdlet,
+  assertPurviewUnpublish, collectPurview,
   labelActionFields, loadPurviewCollection, purviewActivation, readPurview, trackLabelChanges,
 } from '../collect/workloads/purview.mjs';
 import { SHAREPOINT_OPERATIONS } from '../collect/workloads/sharepoint.mjs';
@@ -38,9 +39,12 @@ import { buildCoverageReport } from '../coverage/report.mjs';
 import { WORKLOAD_WRITE_OPERATIONS, workloadWriteQualification } from '../coverage/qualification.mjs';
 import { planDeletionWaves, planWaves } from '../restore/wavePlanner.mjs';
 import {
-  PURVIEW_LABEL_WRITE, PURVIEW_POLICY_WRITE, PURVIEW_RESTORE_EVIDENCE_KIND, PURVIEW_WRITE_OPERATIONS, createPurviewRestoreArtifact,
+  PURVIEW_LABEL_WRITE, PURVIEW_POLICY_WRITE, PURVIEW_RESTORE_EVIDENCE_KIND, PURVIEW_UNPUBLISH_WRITE, PURVIEW_WRITE_OPERATIONS, createPurviewRestoreArtifact,
   executePurviewRestore, planPurviewRestore,
 } from '../restore/workloads/purview.mjs';
+import { grantRole } from '../authz/administration.mjs';
+import { setRestoreApprovalSetting } from '../govern/restoreApprovalSettings.mjs';
+import { approveContentEffects, contentEffectsDigest } from '../safety/contentEffects.mjs';
 import { createIsolatedTestDatabase } from '../test/dbTestHelper.mjs';
 import { schemaSql } from '../store/loadSchema.mjs';
 
@@ -164,7 +168,8 @@ function fakeTenant({ sites = { [ALICE]: SITE }, labels = [label(CONFIDENTIAL, '
       }
       if (job.cmdlet === 'Set-LabelPolicy') {
         const target = state.policies.find((item) => item.ImmutableId === parameters.Identity);
-        target.Labels = [...target.Labels, ...parameters.AddLabels];
+        if (parameters.AddLabels) target.Labels = [...target.Labels, ...parameters.AddLabels];
+        if (parameters.RemoveLabels) target.Labels = target.Labels.filter((name) => !parameters.RemoveLabels.includes(name));
         return envelope({ ok: true, output: [] });
       }
       return fail(`${job.cmdlet} has no fake`, 'NoFake');
@@ -428,7 +433,16 @@ test('label definitions and their publication are read and change-tracked withou
   }
   assert.throws(() => assertPurviewCmdlet({ cmdlet: 'Set-LabelPolicy', parameters: { Identity: POLICY, RemoveLabels: ['Public'] } }), /does not take RemoveLabels/);
   assert.throws(() => assertPurviewCmdlet({ cmdlet: 'Set-Label', parameters: { Identity: CONFIDENTIAL, EncryptionEnabled: false } }), /does not take EncryptionEnabled/);
-  assert.deepEqual(Object.fromEntries(Object.entries(PURVIEW_CMDLET_PARAMETERS).map(([name, list]) => [name, [...list]])), ALLOWED['ExchangeOnlineManagement:ipps']);
+  // The container also lets RemoveLabels through for the one call that unpublishes
+  // (purviewUnpublishCmdlet); KEEL's own allowlist never does.
+  const container = Object.fromEntries(Object.entries(PURVIEW_CMDLET_PARAMETERS).map(([name, list]) => [name, [...list]]));
+  container['Set-LabelPolicy'] = [...new Set([...container['Set-LabelPolicy'], ...PURVIEW_UNPUBLISH_PARAMETERS])];
+  assert.deepEqual(container, ALLOWED['ExchangeOnlineManagement:ipps']);
+  assert.ok(assertPurviewUnpublish({ cmdlet: 'Set-LabelPolicy', parameters: { Identity: POLICY, RemoveLabels: ['Public'] } }));
+  for (const parameters of [{ Identity: POLICY, RemoveLabels: [] }, { Identity: POLICY }, { RemoveLabels: ['Public'] }, { Identity: POLICY, RemoveLabels: ['Public'], AddLabels: ['Secret'] }]) {
+    assert.throws(() => assertPurviewUnpublish({ cmdlet: 'Set-LabelPolicy', parameters }), PurviewScopeError, JSON.stringify(parameters));
+  }
+  assert.throws(() => assertPurviewUnpublish({ cmdlet: 'Remove-Label', parameters: { Identity: POLICY, RemoveLabels: ['Public'] } }), PurviewScopeError);
   // Every read cmdlet the workloads run passes the task-101 configuration-scope validator.
   for (const cmdlet of [...Object.keys(PURVIEW_CMDLET_PARAMETERS), ...Object.keys(ONEDRIVE_CMDLET_PARAMETERS)].filter((name) => name.startsWith('Get-'))) {
     assert.deepEqual(scopeProblems({ kind: 'cmdlet', cmdlet, module: 'x' }), [], cmdlet);
@@ -546,7 +560,10 @@ test('proof for another family cannot enable OneDrive or Purview reads or writes
   assert.equal(qualifications(tenantRef, { runtime: { modules: { ...RUNTIME.modules, ExchangeOnlineManagement: '3.6.0' } } })[PURVIEW_LABEL_WRITE].enabled, false);
   assert.equal(qualifications(tenantRef, { reads: [...PREDECESSOR_READS, 'onedrive.site-settings'] })[PURVIEW_LABEL_WRITE].enabled, false, 'the read-back must be enabled');
   const all = qualifications(tenantRef);
-  assert.deepEqual(PURVIEW_WRITE_OPERATIONS.map((id) => all[id].enabled), [true, true]);
+  assert.deepEqual(PURVIEW_WRITE_OPERATIONS.map((id) => all[id].enabled), [true, true, true]);
+  // Removing labels needs its own proof, and adding labels qualified first.
+  assert.equal(qualifications(tenantRef, { writes: [...PREDECESSOR_WRITES, PURVIEW_LABEL_WRITE, PURVIEW_POLICY_WRITE] })[PURVIEW_UNPUBLISH_WRITE].enabled, false);
+  assert.equal(qualifications(tenantRef, { writes: [...PREDECESSOR_WRITES, PURVIEW_LABEL_WRITE, PURVIEW_UNPUBLISH_WRITE] })[PURVIEW_UNPUBLISH_WRITE].enabled, false);
 
   // A restore with proof for the policy write only sends only Set-LabelPolicy.
   const live = fakeTenant({
@@ -574,7 +591,7 @@ test('proof for another family cannot enable OneDrive or Purview reads or writes
 
 // ------------------------------------------------------------- restores
 
-test('a Purview restore writes only display text and added labels, never weakens protection, and verifies by read-back', async (t) => {
+test('a Purview restore writes display text and added labels, holds a label removal for its approval, never weakens a label, and verifies by read-back', async (t) => {
   const client = await schemaClient(t);
   const tenantRef = nextTenant();
   // Live drift: renamed with a new tooltip, encryption turned ON, a label removed from
@@ -592,12 +609,17 @@ test('a Purview restore writes only display text and added labels, never weakens
   assert.deepEqual(plan.operations.map((op) => [op.cmdlet, op.parameters]), [
     ['Set-Label', { Identity: CONFIDENTIAL, DisplayName: 'Confidential', Tooltip: 'Confidential information' }],
     ['Set-LabelPolicy', { Identity: POLICY, AddLabels: ['Public'] }],
+    ['Set-LabelPolicy', { Identity: POLICY, RemoveLabels: ['Secret'] }],
   ]);
   const manual = (field) => plan.manual.find((item) => item.field === field);
   // Turning encryption back off would weaken protection: listed, never written.
   assert.equal(manual('EncryptionEnabled').weakensProtection, true);
-  // Removing Secret from the policy would unpublish it: never written.
-  assert.match(manual('Labels').reason, /removing Secret .*never does that/);
+  // Removing Secret from the policy unpublishes it: a high-impact effect, not a manual step.
+  assert.equal(manual('Labels'), undefined);
+  assert.deepEqual(plan.contentEffects.map(({ naturalKey, field, effect, before, after }) => ({ naturalKey, field, effect, before, after })), [{
+    naturalKey: `purview:label-policy:${POLICY}`, field: 'Labels', effect: 'weakens-protection',
+    before: ['Confidential', 'Secret'], after: ['Confidential', 'Public'],
+  }]);
   // Putting the location back drops an entry the live policy names: counted as
   // weakening (conservative, entries are not interpreted), never written.
   assert.equal(manual('ExchangeLocation').weakensProtection, true);
@@ -608,8 +630,11 @@ test('a Purview restore writes only display text and added labels, never weakens
   assert.match(plan.manual.find((item) => item.resourceKey === `label:${SECRET}`).reason, /never deletes a label/);
   assert.ok(plan.excluded.some((item) => item.field === 'itemAppliedLabels'));
 
+  // Restore approvals are on by default: only the removal waits; the rest is written.
   const result = await executePurviewRestore(client, { tenantRef, artifactId: artifact.id, tenantId: TENANT, powershell: live.powershell, qualifications: qualifications(tenantRef) });
-  assert.equal(result.outcome, 'verified');
+  assert.equal(result.outcome, 'partial');
+  assert.deepEqual(result.operations.map((op) => [op.kind, op.outcome]), [['label', 'verified'], ['policy', 'verified'], ['unpublish', 'blocked-content-effect']]);
+  assert.match(result.operations[2].reasons[0], /blocked-content-effect: .*weakens-protection/);
   assert.deepEqual(live.writes(), ['Set-Label', 'Set-LabelPolicy']);
   assert.equal(live.contentCalls(), 0);
   const confidential = live.state.labels.find((item) => item.ImmutableId === CONFIDENTIAL);
@@ -617,7 +642,10 @@ test('a Purview restore writes only display text and added labels, never weakens
   assert.equal(confidential.EncryptionEnabled, true, 'protection KEEL found stays in place');
   assert.deepEqual(live.state.policies[0].Labels, ['Confidential', 'Secret', 'Public']);
   const rows = await evidenceRows(client, tenantRef);
-  assert.deepEqual(rows.map((row) => [row.operationId, row.outcome]), [[PURVIEW_LABEL_WRITE, 'verified'], [PURVIEW_POLICY_WRITE, 'verified'], ['purview.restore', 'verified']]);
+  assert.deepEqual(rows.map((row) => [row.operationId, row.outcome]), [
+    [PURVIEW_UNPUBLISH_WRITE, 'blocked-content-effect'], [PURVIEW_LABEL_WRITE, 'verified'], [PURVIEW_POLICY_WRITE, 'verified'], ['purview.restore', 'partial'],
+  ]);
+  rows.shift();
   assert.deepEqual(rows[0].verified, ['DisplayName', 'Tooltip']);
 
   // A change after the plan makes only that operation stale; a lost answer is never resent.
@@ -719,6 +747,91 @@ test('on the test tenant only KEEL-RT- labels and policies are written, and a po
   assert.deepEqual(mixed.plan.operations, []);
   assert.match(mixed.plan.refusals[0].reason, /a label published \(Public\) is not one/);
   assert.throws(() => planPurviewRestore({ source, live: { resources: [], failures: [] }, tenantId: TENANT, targets }), /needs the tenant/);
+});
+
+// ------------------------------------------------------ label removal
+
+test('removing a label from a policy waits for its approval, or the Purview waiver, and is verified by read-back', async (t) => {
+  const client = await schemaClient(t);
+  const drifted = () => fakeTenant({
+    labels: [label(CONFIDENTIAL, 'Confidential'), label(PUBLIC, 'Public'), label(SECRET, 'Secret')],
+    policies: [policy({ Labels: ['Confidential', 'Public', 'Secret'] })],
+  });
+  const targets = [`label-policy:${POLICY}`];
+
+  // Approved by a second person: Secret is unpublished and read back gone.
+  const tenantRef = nextTenant();
+  const live = drifted();
+  const { plan, artifact } = await planned(client, tenantRef, live, targets);
+  assert.deepEqual(plan.operations.map((op) => [op.kind, op.parameters]), [['unpublish', { Identity: POLICY, RemoveLabels: ['Secret'] }]]);
+  const approver = await principal(client, 'approver');
+  await grantRole(client, { principalId: approver, role: 'approver', grantedBy: approver });
+  await approveContentEffects(client, { tenantRef, artifactId: artifact.id, approverId: approver, effectsDigest: contentEffectsDigest(plan.contentEffects), justification: 'The backup did not publish Secret' });
+  const approved = await executePurviewRestore(client, { tenantRef, artifactId: artifact.id, tenantId: TENANT, powershell: live.powershell, qualifications: qualifications(tenantRef) });
+  assert.equal(approved.outcome, 'verified');
+  assert.deepEqual(live.calls.filter((call) => call.cmdlet === 'Set-LabelPolicy').map((call) => call.args), [[['Identity', POLICY], ['RemoveLabels', ['Secret']]]]);
+  assert.deepEqual(live.state.policies[0].Labels, ['Confidential', 'Public']);
+  assert.deepEqual((await evidenceRows(client, tenantRef))[0].verified, ['RemoveLabels']);
+
+  // Restore approvals turned off for Purview: written with the restore, no approver.
+  const tenant2 = nextTenant();
+  const waived = drifted();
+  const second = await planned(client, tenant2, waived, targets);
+  await setRestoreApprovalSetting(client, { tenantRef: tenant2, service: 'Purview', approvalRequired: false, actor: await principal(client, 'admin') });
+  const result = await executePurviewRestore(client, { tenantRef: tenant2, artifactId: second.artifact.id, tenantId: TENANT, powershell: waived.powershell, qualifications: qualifications(tenant2) });
+  assert.equal(result.outcome, 'verified');
+  assert.deepEqual(waived.state.policies[0].Labels, ['Confidential', 'Public']);
+
+  // Not live-proven yet: the removal stays off, and a label added in the same restore
+  // does not wait for anyone.
+  const tenant3 = nextTenant();
+  const unproven = fakeTenant({
+    labels: [label(CONFIDENTIAL, 'Confidential'), label(PUBLIC, 'Public'), label(SECRET, 'Secret')],
+    policies: [policy({ Labels: ['Confidential', 'Secret'] })],
+  });
+  const third = await planned(client, tenant3, unproven, targets);
+  assert.deepEqual(third.plan.operations.map((op) => op.kind), ['policy', 'unpublish']);
+  const noProof = qualifications(tenant3, { writes: [...PREDECESSOR_WRITES, PURVIEW_LABEL_WRITE, PURVIEW_POLICY_WRITE] });
+  const partial = await executePurviewRestore(client, { tenantRef: tenant3, artifactId: third.artifact.id, tenantId: TENANT, powershell: unproven.powershell, qualifications: noProof });
+  assert.deepEqual(partial.operations.map((op) => [op.kind, op.outcome]), [['policy', 'verified'], ['unpublish', 'disabled']]);
+  assert.deepEqual(unproven.state.policies[0].Labels, ['Confidential', 'Secret', 'Public']);
+
+  // A lost answer is reconciled by re-reading, never resent.
+  const tenant4 = nextTenant();
+  const lost = fakeTenant({
+    labels: [label(CONFIDENTIAL, 'Confidential'), label(PUBLIC, 'Public'), label(SECRET, 'Secret')],
+    policies: [policy({ Labels: ['Confidential', 'Public', 'Secret'] })],
+    hooks: { cmdlet: ({ cmdlet }) => (cmdlet === 'Set-LabelPolicy' ? 'apply-then-timeout' : null) },
+  });
+  const fourth = await planned(client, tenant4, lost, targets);
+  await setRestoreApprovalSetting(client, { tenantRef: tenant4, service: 'Purview', approvalRequired: false, actor: await principal(client, 'admin') });
+  const reconciled = await executePurviewRestore(client, { tenantRef: tenant4, artifactId: fourth.artifact.id, tenantId: TENANT, powershell: lost.powershell, qualifications: qualifications(tenant4) });
+  assert.deepEqual(reconciled.operations.map((op) => op.outcome), ['verified']);
+  assert.match(reconciled.operations[0].reasons[0], /unknown .*not resent/);
+  assert.deepEqual(lost.writes(), ['Set-LabelPolicy']);
+});
+
+test('on the test tenant a policy unpublishes only KEEL-RT- labels', async (t) => {
+  const client = await schemaClient(t);
+  const tenantRef = nextTenant();
+  const guard = { testTenantRefs: [tenantRef] };
+  const labels = [label(CONFIDENTIAL, 'KEEL-RT-Confidential'), label(PUBLIC, 'Public'), label(SECRET, 'KEEL-RT-Secret')];
+  const fixturePolicy = (names) => policy({ Name: 'KEEL-RT-Policy', Labels: names });
+  const source = await recordedSource(client, tenantRef, fakeTenant({ labels, policies: [fixturePolicy(['KEEL-RT-Confidential'])] }));
+
+  // Public is not a fixture: nothing is planned for the policy.
+  const real = await planned(client, tenantRef, fakeTenant({ labels, policies: [fixturePolicy(['KEEL-RT-Confidential', 'Public'])] }), [`label-policy:${POLICY}`], source, guard);
+  assert.deepEqual(real.plan.operations, []);
+  assert.match(real.plan.refusals[0].reason, /^not-a-fixture: .*a label unpublished \(Public\) is not one/);
+
+  // A fixture label is planned, and written once restore approvals are off for Purview.
+  const live = fakeTenant({ labels, policies: [fixturePolicy(['KEEL-RT-Confidential', 'KEEL-RT-Secret'])] });
+  const { plan, artifact } = await planned(client, tenantRef, live, [`label-policy:${POLICY}`], source, guard);
+  assert.deepEqual(plan.operations.map((op) => op.parameters.RemoveLabels), [['KEEL-RT-Secret']]);
+  await setRestoreApprovalSetting(client, { tenantRef, service: 'Purview', approvalRequired: false, actor: await principal(client, 'admin') });
+  const result = await executePurviewRestore(client, { tenantRef, artifactId: artifact.id, tenantId: TENANT, powershell: live.powershell, qualifications: qualifications(tenantRef), testTenantRefs: [tenantRef] });
+  assert.equal(result.outcome, 'verified');
+  assert.deepEqual(live.state.policies[0].Labels, ['KEEL-RT-Confidential']);
 });
 
 test('on the test tenant the guard runs again before each Purview write', async (t) => {

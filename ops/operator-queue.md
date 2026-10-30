@@ -10770,7 +10770,7 @@ item that needs it stays untouched.
   back to back. Finish by **2026-11-12**.
 - Needs: Q247 done or blocked. Run at the deployed commit B, from your own checkout at B.
 - **Go from Marouane (2026-10-30 08:27 UTC, in the "Rerun restores for older Entra records" thread: "go now").** He is signed in to the test tenant as a second Global Administrator and reachable to undo a change, as the lockout steps require (08:29 UTC: signed in as his Entra admin account and staying signed in all day). Run the lockout items now, back to back: Q245, Q247, the home realm part of Q248, then Q249. If a step needs him to act (a CA purge in the portal, an undo), say so in the Result at once.
-- Status: todo (only the home realm discovery create and update are left; 6 promoted earlier)
+- Status: done (8/8; HRD done 2026-10-30 11:00 UTC)
 - Result: done in part (2026-10-30 00:45 UTC, keel-operator). **6 of 8 promoted**: claimsMappingPolicy, tokenIssuancePolicy and tokenLifetimePolicy, create and update. **homeRealmDiscoveryPolicy c and u: blocked, not run.** HRD is lockout-sensitive in the checklist (steps 180/181), so it waits on the same second-GA precondition as Q245 and Q247.
   - B = **53cbe462**.
   - Credentials: Restorer for writes, Collector for reads. Global admin not used; nothing granted. Self-approved: requester Gmail, approver Entra.
@@ -10798,6 +10798,15 @@ item that needs it stays untouched.
       | tokenLifetimePolicy.create | 00:41:59 |
 
   - HRD (lapses 2026-11-14 10:40) runs with Q245/Q247 once Marouane confirms the second GA session.
+  - **HRD done (2026-10-30 11:00 UTC, keel-operator), on Marouane's go of 08:27 (second GA session). Now 8 of 8 promoted.** Build **B = ad608b36**. Restorer for writes, Collector for reads; global admin not used. Break-glass **ready** before every step.
+    - Before: only `KEEL-RT-20260908 Home Realm Discovery — Partner Portal`; no KEEL-RT-248 HRD policy.
+    - Fixture `KEEL-RT-248-hrd` (`a7c36e3f…`), definition `{"HomeRealmDiscoveryPolicy":{"AccelerateToFederatedDomain":false}}`, isOrganizationDefault false, **appliesTo empty** (assigned to nothing). Snapshot S **ce3199aa** (taken alone).
+    - Update round 1: renamed `-drifted`; dry run bfaa1599 update (displayName); approval **4d653ad4-db20-4f4c-a116-a2b473779ef6**; enforce exit 0; journal postState `KEEL-RT-248-hrd`. But a Collector read about a minute later still showed `-drifted` (likely a stale replica), so I repeated the round below and used that one for the record.
+    - **Create:** deleted and purged (deletedItems 404); dry run 3e0568cf create; approval **e1595767-b68d-4d81-8358-db8ceae4e815**; new id `d8123fde…`; both apps read back name and definition equal to S, isOrganizationDefault false, appliesTo empty. **Promoted** (observedAt 10:51:27).
+    - **Update (round 2):** renamed `-drifted` on the recreated policy; dry run 9f5bbae1 update; approval **62afa02e-7b9a-456d-a9f2-47b94989d4d1**; enforce exit 0; Collector and Restorer both read `KEEL-RT-248-hrd` after 10 s and 60 s. **Promoted** (observedAt 10:55:04).
+    - Re-run: dry run b2c94bde: **noop** (0 planned writes).
+    - Cleanup: deleted and purged (deletedItems 404). Nothing left.
+    - Evidence: commit **4c41482d** on `claude/live-evidence-q248`; pseudonymize check passes, secret scan 0; both `fixture-tested -> live-qualified`.
 - **Test tenant only.** Same rules and tooling as Q67. Restorer only; self-approve; log every approval id; grant nothing.
 - **Fixtures** (write down that none with the `KEEL-RT-248` prefix existed before): one each of `KEEL-RT-248-claims`,
   `KEEL-RT-248-issuance`, `KEEL-RT-248-lifetime`, `KEEL-RT-248-hrd`, minimal valid definitions (Graph docs examples),

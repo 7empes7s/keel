@@ -98,6 +98,8 @@ export interface ServiceSummary {
   // Kinds Keel backs up that the approved setup does not hold yet; for a service read,
   // the kinds whose latest read failed or has not run.
   notCovered: string[];
+  // Of those, kinds the approved setup holds whose latest read failed or has not run.
+  notRead?: string[];
   tone: RiskTone;
   // Settings that match the approved setup out of every setting judged (matchScore);
   // null when the setting counts are not known.
@@ -203,6 +205,7 @@ export function serviceSummaries(
     const summary = entry(read.type);
     const bucket = read.read ? summary.inLine : summary.notCovered;
     if (!bucket.includes(read.type)) bucket.push(read.type);
+    if (!read.read && heldServices.has(read.type)) summary.notRead = [...(summary.notRead ?? []), read.type];
   }
   if (held) {
     // Each kind is scored on its own, then added up under its service. Kinds not covered
@@ -270,7 +273,7 @@ export function coverageWords(baseline: BaselineRecord): string {
   const kinds = baseline.capture?.types.length ?? 0;
   const graph = `${plural(baseline.resourceCount, "setting")}${kinds ? ` in ${plural(kinds, "kind")}` : ""}`;
   const services = baseline.capture?.services?.length ?? 0;
-  return services ? `${graph}, and ${plural(baseline.serviceSettingCount ?? 0, "service setting")}` : graph;
+  return services && baseline.serviceSettingCount ? `${graph}, and ${plural(baseline.serviceSettingCount, "service setting")}` : graph;
 }
 
 /** What the setup holds of Exchange, SharePoint, Teams, Purview and Power Platform, in a

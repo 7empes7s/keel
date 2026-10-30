@@ -70,6 +70,18 @@ export default async function BaselinesPage() {
       open: readTotals ? readTotals.open[kind.type] ?? { added: 0, modified: 0, removed: 0 } : null }))
     : [];
 
+  // Service settings are tenant-wide, so an entity-scoped reader does not see what the
+  // approved setup holds of them either.
+  if (!access.scope.central) {
+    data = {
+      ...data,
+      baselines: data.baselines.map((baseline) => ({
+        ...baseline,
+        serviceSettingCount: undefined,
+        capture: baseline.capture ? { ...baseline.capture, services: undefined, servicesNotRead: undefined } : baseline.capture,
+      })),
+    };
+  }
   const verdict = setupVerdict(active, items, data.generatedAt);
   const jobsActive = jobs.some((job) => job.status === "queued" || job.status === "running");
 

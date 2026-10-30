@@ -98,9 +98,12 @@ function serviceNote(summary: ServiceSummary) {
       ? `Matches its approved setup: ${kindsWords(summary.inLine)}.`
       : `The latest backup could not read ${kindsWords(summary.notCovered)}.`;
   }
-  return summary.inLine.length
-    ? `Matches the approved setup: ${kindsWords(summary.inLine)}.`
-    : `Not in the approved setup yet: ${kindsWords(summary.notCovered)}.`;
+  if (summary.inLine.length) return `Matches the approved setup: ${kindsWords(summary.inLine)}.`;
+  const notRead = summary.notRead ?? [];
+  const missing = summary.notCovered.filter((type) => !notRead.includes(type));
+  return missing.length
+    ? `Not in the approved setup yet: ${kindsWords(missing)}.`
+    : `The latest backup could not read ${kindsWords(notRead)}.`;
 }
 
 function plural(count: number, one: string, many = `${one}s`): string {

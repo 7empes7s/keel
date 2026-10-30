@@ -115,11 +115,13 @@ test("service reads the approved setup holds are measured against it, the rest a
   const by = new Map(summaries.map((summary) => [summary.service.name, summary]));
   const exchange = by.get("Exchange Online")!;
   assert.equal(exchange.basis, "approved-setup");
-  assert.deepEqual([exchange.changed, exchange.inLine, exchange.notCovered], [1, [], ["exchange-mailbox-settings"]]);
+  assert.deepEqual([exchange.changed, exchange.inLine, exchange.notCovered, exchange.notRead], [1, [], ["exchange-mailbox-settings"], ["exchange-mailbox-settings"]]);
   assert.equal(by.get("Teams")!.basis, "previous-backup");
   assert.equal(coverageWords(holding), "10 settings in 3 kinds, and 42 service settings");
   assert.match(serviceSettingsWords(holding)!, /^Includes 2 service reads \(.+\)\. Never read when captured: .+\.$/);
   assert.equal(coverageWords(active), "10 settings in 3 kinds");
+  // Accept removed every held service setting: no "and 0 service settings".
+  assert.equal(coverageWords({ ...holding, serviceSettingCount: 0 } as BaselineRecord), "10 settings in 3 kinds");
   assert.equal(serviceSettingsWords(active), null);
   // A held service is scored against the settings the approved setup holds for it.
   const scored = serviceSummaries(holding, [], [], [

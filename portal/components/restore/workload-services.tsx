@@ -26,7 +26,7 @@ export function WorkloadServices({ workloads, now, canRestore = false, canApprov
   const [open, setOpen] = useState<string | null>(null);
   const heading = (
     <div className="section-heading-row report-heading">
-      <h2 id="restore-services-heading">Other services</h2>
+      <h2 id="restore-services-heading">Services with a backup</h2>
     </div>
   );
   if (workloads === null) {

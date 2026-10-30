@@ -17,6 +17,9 @@ const PAGES = [
   { name: "drift-feed", hash: "/drift/feed" },
   { name: "drift-feed-empty", hash: "/drift/feed-empty" },
   { name: "restore", hash: "/restore" },
+  { name: "restore-services", hash: "/restore/services" },
+  { name: "restore-follow-ups", hash: "/restore/follow-ups" },
+  { name: "restore-history", hash: "/restore/history" },
   { name: "incidents", hash: "/incidents" },
   { name: "incidents-closed", hash: "/incidents?incident=1c1d0000-0000-4000-8000-000000000070" },
   { name: "incidents-viewer", hash: "/incidents/viewer" },
@@ -764,9 +767,9 @@ test("restore leads with what changed, by service, and undoes a change or a grou
 });
 
 test("restore lists the backups of other services, and only those", async ({ page }) => {
-  await open(page, "/restore");
+  await open(page, "/restore/services");
   const section = page.locator(".restore-services");
-  await expect(section.locator("h2")).toHaveText("Other services");
+  await expect(section.locator("h2")).toHaveText("Services with a backup");
   // Only services with a backup or a failed backup run; Power Platform (not switched on)
   // and Purview (no backup) are left out.
   await expect(section.locator(".restore-service h3")).toHaveText(["Exchange Online", "SharePoint and OneDrive", "Teams"]);
@@ -787,7 +790,7 @@ test("restore lists the backups of other services, and only those", async ({ pag
 for (const theme of ["dark", "light"] as const) {
   test(`restore puts back another service through the same steps and Approvals · ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
-    await open(page, "/restore", theme);
+    await open(page, "/restore/services", theme);
     // Only kinds KEEL can put back from the page get the button.
     await expect(page.locator(".restore-workload", { hasText: "OneDrive settings" }).getByRole("button", { name: "Choose what to put back" })).toHaveCount(0);
     await expect(page.locator(".restore-workload", { hasText: "SharePoint settings" }).getByRole("button", { name: "Choose what to put back" })).toHaveCount(0);
@@ -823,7 +826,7 @@ for (const theme of ["dark", "light"] as const) {
 
 test("restore puts back several mailboxes at once, each as its own request", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await open(page, "/restore");
+  await open(page, "/restore/services");
   await page.locator(".restore-workload", { hasText: "Exchange mailbox settings" }).getByRole("button", { name: "Choose what to put back" }).click();
   const panel = page.locator(".workload-restore");
   await expect(panel.locator("h3")).toHaveText("Step 1 of 4: choose what to put back.");
@@ -851,7 +854,7 @@ test("restore puts back several mailboxes at once, each as its own request", asy
 for (const [theme, width] of [["dark", 1440], ["light", 390]] as const) {
   test(`restore puts back SharePoint site structure from the page · ${theme} ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
-    await open(page, "/restore", theme);
+    await open(page, "/restore/services", theme);
     await page.locator(".restore-workload", { hasText: "SharePoint site structure" }).getByRole("button", { name: "Choose what to put back" }).click();
     const panel = page.locator(".workload-restore");
     await expect(panel.locator("h3")).toHaveText("Step 1 of 4: choose what to put back.");
@@ -875,7 +878,7 @@ for (const [theme, width] of [["dark", 1440], ["light", 390]] as const) {
 
 test("restore of another service fits a phone", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await open(page, "/restore");
+  await open(page, "/restore/services");
   await page.locator(".restore-workload", { hasText: "Exchange mail flow and protection" }).getByRole("button", { name: "Choose what to put back" }).click();
   await expect(page.locator(".workload-restore h3")).toHaveText("Step 1 of 4: choose what to put back.");
   await expect(page.locator(".workload-choice").first()).toBeVisible();
@@ -2025,7 +2028,8 @@ const RECORD_IDS: Record<string, string[]> = {
   policy: ["7a1d0f3e-0000-4000-8000-000000000001", "3f9c2b1e-0000-4000-8000-000000000002"],
   policies: ["7a1d0f3e-0000-4000-8000-000000000001", "7a1d0f3e-0000-4000-8000-000000000003"],
   "policy-activation": ["9a0c0000-0000-4000-8000-000000000092", "7a1d0f3e-0000-4000-8000-000000000004", "d9200000-0000-4000-8000-000000000001", "d9200000-0000-4000-8000-000000000002", "group:Privileged approvers tenant-lockout over-ceiling", "6a000000-0000-4000-8000-000000000092", "0e900000-0000-4000-8000-000000000092", "e7a10000-0000-4000-8000-0000000000e1", "2e".repeat(32)],
-  restore: ["a3"],
+  restore: ["r9"],
+  "restore-history": ["a3"],
   drift: ["conditionalAccessPolicy:Block legacy auth", "group:Old project team", "dr6", "b1180000-0000-4000-8000-000000000118"],
   "drift-services": ["conditionalAccessPolicy:Block legacy auth", "d1a00000-0000-4000-8000-0000000000d1", "exchange-mail-flow:transport-rule:Forward finance mail"],
   approvals: ["a9e10000-0000-4000-8000-000000000100", "8c1e0000-0000-4000-8000-0000000000a1"],

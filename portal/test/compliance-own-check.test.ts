@@ -13,7 +13,9 @@ import { readValue } from "@/components/compliance/own-check-sheet";
 import { guardedOwnCheckCreate, guardedOwnCheckRemove } from "@/lib/compliance-own-check";
 import {
   controlWhat,
+  coverageReason,
   coverageSentence,
+  orderCoverageRows,
   ownStandards,
   ownCheckSentence,
   standardCoverage,
@@ -34,30 +36,54 @@ const finding = (controlId: string, verdict: ComplianceFinding["verdict"], extra
 const SCUBA = (STANDARDS as { id: string }[]).find((standard) => standard.id === "cisa-scuba") as unknown as KnownStandard;
 const NIST = (STANDARDS as { id: string }[]).find((standard) => standard.id === "nist-800-53") as unknown as KnownStandard;
 
-test("a known standard's policies take the worst result of the checks mapped to them", () => {
+test("CISA SCuBA lists every ScubaGear rule that runs, each checked by its own rule", () => {
+  const scuba = (ref: string) => `scubagear.${ref}`;
   const findings = [
-    finding("keel-custom.conditional-access.block-legacy", "pass"),
-    finding("keel-custom.role-assignment.admin-count-at-most", "fail"),
+    finding(scuba("MS.AAD.1.1v1"), "fail", { framework: "cisa-scuba" }),
+    finding(scuba("MS.AAD.3.2v2"), "pass", { framework: "cisa-scuba" }),
+    finding(scuba("MS.AAD.2.2v1"), "unknown", { framework: "cisa-scuba", reason: "scubagear:check-by-hand" }),
+    finding(scuba("MS.EXO.1.1v2"), "not-applicable", { framework: "cisa-scuba" }),
   ];
   const coverage = standardCoverage(SCUBA, findings);
   const row = (ref: string) => coverage.rows.find((entry) => entry.ref === ref)!;
-  assert.equal(coverage.total, 43);
-  assert.equal(coverage.checked, 3);
-  assert.equal(row("MS.AAD.1.1v1").result, "passing");
-  assert.equal(row("MS.AAD.7.1v1").result, "failing");
-  assert.equal(row("MS.AAD.7.3v1").result, "unknown", "a mapped check with no result is never a pass");
-  assert.equal(row("MS.EXO.1.1v2").result, "not-checked");
-  assert.equal(row("MS.AAD.7.1v1").mapped[0].match, "partial");
-  assert.equal(coverageSentence(SCUBA, coverage), "Keel checks 3 of 43 CISA SCuBA policies: 1 passes, 1 does not, 1 could not be checked.");
+  assert.equal(SCUBA.edition, "ScubaGear v2.0.0");
+  assert.equal(coverage.total, 46);
+  assert.equal(coverage.checked, 46, "every policy has the rule that checks it");
+  assert.ok(SCUBA.refs.every((entry) => entry.controls.length === 1 && entry.controls[0].controlId === scuba(entry.ref) && entry.controls[0].match === "full"));
+  assert.equal(row("MS.AAD.1.1v1").result, "failing");
+  assert.equal(row("MS.AAD.3.2v2").result, "passing");
+  assert.equal(row("MS.EXO.1.1v2").result, "not-relevant");
+  assert.equal(row("MS.AAD.9.1v1").result, "unknown", "a rule that has not run is never a pass");
+  assert.equal(row("MS.AAD.9.1v1").areaName, "Entra ID: AI agents");
+  assert.equal(coverageReason(row("MS.AAD.2.2v1")), "CISA lists this as a check to do by hand.");
+  assert.equal(coverageReason(row("MS.AAD.9.1v1")), "It runs after the next backup.");
+  assert.equal(coverageReason(row("MS.AAD.1.1v1")), null);
+  assert.equal(coverageSentence(SCUBA, coverage), "Keel checks 46 of 46 CISA SCuBA policies: 2 pass, 1 does not, 43 could not be checked.");
+  // Worst first: fails, then could not check, then passes, then not relevant; CISA's order within each.
+  const ordered = orderCoverageRows(coverage.rows).map((entry) => entry.ref);
+  assert.deepEqual(ordered.slice(0, 3), ["MS.AAD.1.1v1", "MS.AAD.2.1v1", "MS.AAD.2.2v1"]);
+  assert.deepEqual(ordered.slice(-2), ["MS.AAD.3.2v2", "MS.EXO.1.1v2"]);
+  assert.equal(standardName(findings[0]), "CISA SCuBA");
+});
+
+test("a known standard's policies take the worst result of the checks mapped to them", () => {
+  const coverage = standardCoverage(NIST, [
+    finding("keel-custom.role-assignment.admin-count-at-most", "fail"),
+    finding("keel-custom.named-location.no-untrusted-all-countries", "pass"),
+  ]);
+  const row = (ref: string) => coverage.rows.find((entry) => entry.ref === ref)!;
+  assert.equal(row("AC-6").result, "failing");
+  assert.equal(row("AC-2").result, "unknown", "a mapped check with no result is never a pass");
+  assert.equal(row("AC-6").mapped[0].match, "partial");
   assert.equal(coverageSentence(NIST, standardCoverage(NIST, [])), "Keel maps 3 NIST SP 800-53 controls: 3 could not be checked.");
   // An exception counts as not passing, as on the score.
-  const excepted = standardCoverage(SCUBA, [finding("keel-custom.conditional-access.block-legacy", "fail", { exposed: false, exceptionState: "authorized" })]);
-  assert.equal(excepted.rows.find((entry) => entry.ref === "MS.AAD.1.1v1")!.result, "excepted");
+  const excepted = standardCoverage(NIST, [finding("keel-custom.role-assignment.admin-count-at-most", "fail", { exposed: false, exceptionState: "authorized" })]);
+  assert.equal(excepted.rows.find((entry) => entry.ref === "AC-6")!.result, "excepted");
   assert.equal(excepted.notPassing, 1);
   // A policy only part-checked never counts as a full pass.
-  const part = standardCoverage(SCUBA, [finding("keel-custom.role-assignment.admin-count-at-most", "pass")]);
+  const part = standardCoverage(NIST, [finding("keel-custom.role-assignment.admin-count-at-most", "pass")]);
   assert.deepEqual([part.passing, part.partlyPassing], [0, 1]);
-  assert.match(coverageSentence(SCUBA, part), /1 passes in part/);
+  assert.match(coverageSentence(NIST, part), /1 passes in part/);
 });
 
 test("an own check is said in words and filed under its standard", () => {

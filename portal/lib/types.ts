@@ -425,6 +425,8 @@ export interface KnownStandard {
   scope: string;
   licence: string;
   source: string;
+  // How its policies are checked, in plain words.
+  how: string;
   // Whether `refs` is the whole published list, or only the policies Keel maps.
   complete: boolean;
   refs: { ref: string; area: string; areaName: string | null; controls: KnownStandardControl[] }[];

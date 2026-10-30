@@ -4845,21 +4845,46 @@ test("Compliance · measure against a known standard, write your own check, remo
   type Call = { url: string; method: string; body: string | null };
   const calls = () => page.evaluate(() => (window as unknown as { __harnessCalls: Call[] }).__harnessCalls);
 
-  // Known standards: SCuBA first, with the policies Keel checks and the gaps listed apart.
+  // Known standards: SCuBA first, every ScubaGear v2.0.0 rule checked by CISA's own rule,
+  // worst first, 25 to a page.
   const known = page.locator(".cp-known");
+  const rows = known.locator(".cp-known-table tbody tr");
   await expect(known.locator("h2")).toHaveText("Measure against a known standard");
-  await expect(known).toContainText("Keel checks 3 of 43 CISA SCuBA policies");
-  await expect(known.locator(".cp-known-table tbody tr")).toHaveCount(3);
-  await expect(known.locator(".cp-known-table tbody tr", { hasText: "MS.AAD.7.1v1" })).toContainText("Checks part of this");
-  await expect(known.locator(".cp-known-gaps summary")).toHaveText("40 policies Keel does not check yet");
+  await expect(known).toContainText("Keel checks 46 of 46 CISA SCuBA policies: 1 passes, 1 does not, 44 could not be checked.");
+  await expect(known).toContainText("ScubaGear v2.0.0");
+  await expect(known.locator(".cp-known-gaps")).toHaveCount(0);
+  await expect(known.locator(".cp-known-table thead")).not.toContainText("How much");
+  await expect(rows).toHaveCount(25);
+  await expect(rows.first()).toContainText("MS.AAD.1.1v1");
+  await expect(rows.first()).toContainText("Fails");
+  await expect(rows.nth(1)).toContainText("MS.AAD.2.1v1");
+  await expect(rows.nth(1)).toContainText("It runs after the next backup.");
+  await expect(rows.filter({ hasText: "MS.AAD.2.2v1" })).toContainText("CISA lists this as a check to do by hand.");
+  await expect(known.locator(".list-pager").getByRole("status")).toHaveText("Showing 1–25 of 46 policies");
+  // The result chips add up: Fails and Passes together show both.
+  const chips = known.getByRole("group", { name: "Show results" });
+  await chips.getByRole("button", { name: /Fails/ }).click();
+  await expect(rows).toHaveCount(1);
+  await chips.getByRole("button", { name: /Passes/ }).click();
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(1)).toContainText("MS.AAD.3.2v2");
+  await chips.getByRole("button", { name: /Passes/ }).click();
   await known.getByRole("button", { name: "NIST SP 800-53" }).click();
   await expect(known).toContainText("Keel maps 3 NIST SP 800-53 controls");
+  await expect(known.locator(".cp-known-table tbody tr", { hasText: "AC-6" })).toContainText("Checks part of this");
   await expect(known.locator(".cp-known-gaps")).toHaveCount(0);
   // A policy's check opens that control's panel.
   await known.getByRole("button", { name: "CISA SCuBA" }).click();
-  await known.locator(".cp-known-table").getByRole("link", { name: "No more than 5 people hold the top admin role" }).click();
-  await expect(page.locator(".bl-sheet h2")).toContainText("No more than 5 people hold the top admin role");
+  await known.locator(".cp-known-table").getByRole("link", { name: "Legacy authentication SHALL be blocked." }).click();
+  await expect(page.locator(".bl-sheet h2")).toContainText("Legacy authentication SHALL be blocked.");
   await page.keyboard.press("Escape");
+  // The picked standard is kept in the address, and a result with no policy says so.
+  await open(page, "/benchmarks/own?std=nist-800-53");
+  await expect(known).toContainText("Keel maps 3 NIST SP 800-53 controls");
+  await open(page, "/benchmarks/own?std-result=excepted");
+  await expect(known.locator(".cp-known-table")).toHaveCount(0);
+  await expect(known).toContainText("No policy has these results.");
+  await open(page, "/benchmarks/own");
 
   // The tenant's own check sits beside Keel's, filed under its own standard.
   await expect(page.locator(".cp-score-list", { hasText: "By standard" })).toContainText("Contoso hardening");

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, type MouseEvent } from "react";
+import { useMemo, type MouseEvent } from "react";
 
 import { ListPager, SortControl, useListPaging, type ListSort } from "@/components/list/list-paging";
 import { Icon } from "@/components/shell/icons";
@@ -32,6 +32,7 @@ const SORTS: ListSort<CoverageRow>[] = [
 ];
 const PREFIX = "std-";
 const RESULT_KEY = `${PREFIX}result`;
+const STANDARD_KEY = "std";
 
 // Measure against a known standard (CISA SCuBA, NIST SP 800-53): for each published
 // policy, the Keel checks that cover it and how they stand, worst first. Policies no
@@ -44,8 +45,9 @@ export function KnownStandards({ standards, findings, openHref, follow }: {
 }) {
   const view = useViewState();
   const paging = useListPaging<CoverageRow>({ prefix: PREFIX, sorts: SORTS });
-  const [picked, setPicked] = useState(standards[0]?.id ?? "");
-  const standard = standards.find((entry) => entry.id === picked) ?? standards[0];
+  // The picked standard sits in the address with its filter, sort and page, so a link or
+  // Back opens the same view.
+  const standard = standards.find((entry) => entry.id === view.get(STANDARD_KEY)) ?? standards[0];
   const coverage = useMemo(() => (standard ? standardCoverage(standard, findings) : null), [standard, findings]);
   const checked = useMemo(() => orderCoverageRows(coverage?.rows.filter((row) => row.result !== "not-checked") ?? []), [coverage]);
   const filter = readPicked(RESULT_CHIPS, view.get(RESULT_KEY));
@@ -63,8 +65,8 @@ export function KnownStandards({ standards, findings, openHref, follow }: {
   const anyPartial = checked.some((row) => row.mapped.some((item) => item.match === "partial"));
   const { start, end } = pageWindow(paging.pageOf(shown.length), shown.length, paging.size);
   const pick = (id: string) => {
-    setPicked(id);
-    view.set({ [RESULT_KEY]: null, ...paging.resetPage });
+    if (id === standard.id) return;
+    view.set({ [STANDARD_KEY]: id === standards[0]?.id ? null : id, [RESULT_KEY]: null, ...paging.resetPage });
   };
 
   return (
@@ -106,12 +108,14 @@ export function KnownStandards({ standards, findings, openHref, follow }: {
             ) : null}
             <SortControl paging={paging} sorts={SORTS} />
           </div>
+          {shown.length ? (
           <table className="cp-misses cp-known-table">
             <thead><tr><th scope="col">Policy</th><th scope="col">Keel check</th>{anyPartial ? <th scope="col">How much</th> : null}<th scope="col">Result</th></tr></thead>
             <tbody>
               {shown.slice(start, end).map((row) => <CoveredRow follow={follow} key={row.ref} openHref={openHref} row={row} showMatch={anyPartial} />)}
             </tbody>
           </table>
+          ) : <p className="cp-muted">No policy has these results. Pick another result above.</p>}
           <ListPager label={`${standard.name} policies`} noun={{ one: "policy", many: "policies" }} paging={paging} total={shown.length} />
         </>
       ) : <p className="cp-muted">No Keel check covers a policy of this standard yet.</p>}

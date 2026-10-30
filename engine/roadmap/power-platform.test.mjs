@@ -170,6 +170,9 @@ test('each Power Platform read is declared, in scope, read-only and ships disabl
   assert.deepEqual(scopeProblems(rest({ method: 'POST', endpoint: '/providers/Microsoft.BusinessAppPlatform/updateTenantSettings?api-version=2020-10-01' })), ['POST is not a read']);
   assert.deepEqual(scopeProblems(rest({ method: 'POST', endpoint: '/providers/Microsoft.BusinessAppPlatform/listTenantSettings?api-version=2020-10-01' })), []);
   assert.deepEqual(scopeProblems(rest({ method: 'PATCH', endpoint: '/providers/Microsoft.BusinessAppPlatform/listTenantSettings' })), ['PATCH is not a read']);
+  // Only that exact host and path: the same last segment anywhere else is still a write.
+  assert.deepEqual(scopeProblems(rest({ method: 'POST', host: 'api.fabric.microsoft.com', endpoint: '/v1/admin/listTenantSettings' })), ['POST is not a read']);
+  assert.deepEqual(scopeProblems(rest({ method: 'POST', endpoint: '/providers/x/updateTenantSettings/listTenantSettings/' })), ['POST is not a read']);
   assert.notEqual(scopeProblems(rest({ host: 'management.azure.com' })).length, 0);
   for (const endpoint of [
     '/providers/Microsoft.PowerApps/scopes/admin/environments/e/apps', '/providers/Microsoft.ProcessSimple/scopes/admin/environments/e/flows',
@@ -231,6 +234,14 @@ test('the transport sends only GETs of the declared shapes, and the one POST tha
   await transport(`${BAP}${ISOLATION}?api-version=2020-06-01`);
   assert.deepEqual(sent.map((item) => item.init.method), ['GET', 'GET', 'GET', 'POST', 'GET']);
   assert.ok(sent.every((item) => item.init.body === undefined), 'no request carries a body');
+  assert.ok(sent.every((item) => item.init.redirect === 'manual'), 'a redirect is never followed to a URL nobody checked');
+
+  // An answer that is not JSON is a failure, not an empty answer.
+  const html = readOnlyPowerPlatformTransport(async () => 'x', async () => new Response('<html>proxy error</html>', { status: 200 }));
+  await assert.rejects(html(`${BAP}${ISOLATION}?api-version=2020-06-01`), /not JSON/);
+  const notJson = await readPowerPlatform({ transport: html, families: ['tenantIsolation'], tenantId: TENANT, now: () => NOW });
+  assert.equal(notJson.outcome, 'failed');
+  assert.deepEqual(notJson.resources, []);
   assert.equal(sent[0].init.headers.authorization, 'Bearer token-for-https://service.powerapps.com/');
   assert.equal(sent[2].init.headers.authorization, 'Bearer token-for-https://api.fabric.microsoft.com/');
   assert.deepEqual(audiences, ['https://service.powerapps.com/', 'https://api.fabric.microsoft.com/'], 'one token per API, fetched once');
@@ -277,6 +288,7 @@ test('every object is one observation keyed by its name, with declared fields on
   assert.equal(tenantSettings.fields.disableTrialEnvironmentCreationByNonAdminUsers, false);
   assert.equal(tenantSettings.fields.powerPlatform.powerApps.disableShareWithEveryone, true);
   assert.equal(tenantSettings.fields.walkMeOptOut, undefined);
+  assert.deepEqual(tenantSettings.fields.powerPlatform, { powerApps: { disableShareWithEveryone: true } }, 'only the nested setting the rules judge is kept');
   const isolation = result.resources.find((resource) => resource.kind === 'tenantIsolation');
   assert.equal(isolation.fields.isDisabled, false);
   assert.equal(isolation.fields.allowedTenants.length, 1);

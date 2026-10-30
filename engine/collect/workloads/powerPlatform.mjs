@@ -72,6 +72,7 @@ export const FAMILIES = Object.freeze({
   }),
   // One object per tenant. Only the settings ScubaGear's rules judge are kept: the rest
   // of the answer is optional per tenant, and a missing one would make every run partial.
+  // Of the nested powerPlatform settings, only "share with everyone" is kept (`trim`).
   tenantSettings: Object.freeze({
     operation: 'powerplatform.tenant-settings', prefix: 'tenant-settings', singleton: 'tenant',
     top: Object.freeze([
@@ -79,6 +80,10 @@ export const FAMILIES = Object.freeze({
       'powerPlatform',
     ]),
     properties: Object.freeze([]),
+    trim: Object.freeze({
+      powerPlatform: (value) => (value?.powerApps && Object.hasOwn(value.powerApps, 'disableShareWithEveryone')
+        ? { powerApps: { disableShareWithEveryone: value.powerApps.disableShareWithEveryone } } : undefined),
+    }),
   }),
   // One object per tenant, addressed by the tenant id. A null answer means isolation was
   // never set up; it is kept as { neverConfigured: true }, the way ScubaGear reads it.
@@ -165,10 +170,19 @@ export function readOnlyPowerPlatformTransport(tokenFor, fetchImpl = globalThis.
     const method = assertPowerPlatformRequest(url, init);
     const audience = AUDIENCE[new URL(url).hostname];
     if (!tokens.has(audience)) tokens.set(audience, await tokenFor(audience));
-    const response = await fetchImpl(url, { method, headers: { authorization: `Bearer ${tokens.get(audience)}`, accept: 'application/json' } });
+    // A redirect is not followed: its target was never checked, and a 307 would carry a POST on.
+    const response = await fetchImpl(url, { method, redirect: 'manual', headers: { authorization: `Bearer ${tokens.get(audience)}`, accept: 'application/json' } });
     const text = await response.text();
     let body = null;
-    try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+    // An answer that is not JSON (a proxy's error page, a cut-off body) is a failure, never
+    // an empty answer: an empty tenant isolation answer means "never set up".
+    try { body = text ? JSON.parse(text) : null; } catch {
+      if (response.status >= 200 && response.status < 300) {
+        const error = new Error(`${new URL(url).pathname}: the answer is not JSON`);
+        error.status = response.status;
+        throw error;
+      }
+    }
     return { status: response.status, headers: Object.fromEntries(response.headers.entries()), body };
   };
 }
@@ -193,9 +207,10 @@ export function objectIdentity(family, body) {
 export const powerPlatformKey = (family, identity) => `${FAMILIES[family].prefix}:${identity}`;
 
 function observeObject(family, body) {
-  const { top, properties, operation: op } = FAMILIES[family];
+  const { top, properties, operation: op, trim = {} } = FAMILIES[family];
   const entry = { fields: {}, fieldCoverage: {} };
-  const sources = [...top.map((field) => [field, body[field]]), ...properties.map((field) => [field, body.properties?.[field]])];
+  const sources = [...top.map((field) => [field, body[field]]), ...properties.map((field) => [field, body.properties?.[field]])]
+    .map(([field, value]) => [field, trim[field] && value !== undefined ? trim[field](value) : value]);
   for (const [field, value] of sources) {
     if (value === undefined) {
       entry.fieldCoverage[field] = { status: 'unknown', operation: op };

@@ -13314,3 +13314,37 @@ item that needs it stays untouched.
   A 400 on `$select` or a 403 is a result: report the Graph code and message.
 - **Report:** the JSON; anything left in the tenant (expected: nothing, reads only). The builder thread then removes
   `liveGate` in a small PR.
+
+### Q284: Live read check of the Power Platform and Power BI reads, then turn them on (read-only toward the tenant, after PR #811), about 10 minutes
+- Drafted by the "Back up Defender for Endpoint indicators" thread (2026-10-30). Code: PR #811. The live read capture tool
+  (`tools/qualification/workloadReadsLive.mjs`) now captures admin REST workloads, not only PowerShell ones. A REST capture runs the
+  workload's own read-only transport (GETs of its declared request shapes only) with the Collector certificate config; each read is
+  bound to its declared API version, not a module version. `power-platform-settings` has been `disabled` only because no record could
+  carry its reads; Q136 already showed all four answer 200.
+- Needs: /opt/keel-live at the #811 merge or later (`grep -q rest-read-only /opt/keel-live/tools/qualification/workloadReadsAcceptance.mjs`).
+- Status: todo
+- Result:
+- **Tenant:** reads only, Collector credential from `/etc/keel/tenant.json`. GETs only. Grant, register or change nothing.
+- Do, from your clone at the commit `/opt/keel-live` is deployed at, with `KEEL_QUALIFICATION_HMAC_KEY` from
+  `/etc/keel/qualification.env` (never print it) and `set -a; . /etc/keel/db.env; set +a`:
+  1. **Capture** (no `--powershell-image`, no `--site`):
+     ```bash
+     w=power-platform-settings
+     node tools/qualification/workloadReadsLive.mjs capture --workload "$w" --tenant-ref <tenant ref> \
+       --collector-ref app:<tenant.json clientId> --collector-config /etc/keel/tenant.json \
+       --build "$(git -C /opt/keel-live rev-parse HEAD)" \
+       --out "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+     node tools/qualification/pseudonymize.mjs check "docs/release/qualifications/workload-reads-$w-live-acceptance.json"
+     ```
+     Report the exit code, `outcome`, `proven` and `notProven` verbatim. A `not-sent` connectors read means no environment was
+     listed: report it. If the pseudonymize check is not exit 0, stop and file an issue.
+  2. **Evidence:** commit the record to `claude/live-evidence-power-platform` (from `origin/master`, that file only, checked for
+     secrets) and push. No PR.
+  3. **Import** with `--dir` a checkout holding this record and the other read records (as Q280 step 3):
+     `node cli/keel-workload-collect.mjs import --dir <dir>`. Report exit code and `imported` / `refused` / `absent`.
+  4. `node cli/keel-workload-collect.mjs run` once by hand. Report the power-platform-settings outcome, its per-family
+     `discovery.families` statuses, `fieldCounts` and the names of fields with status `unknown` (names only, never values).
+  5. `node cli/keel-workload-collect.mjs proof`: confirm the four Power Platform reads are listed as current.
+- **Expected:** all four reads proven; the run `complete` or `partial` only for unknown fields.
+- **Report:** capture exit code and proven/notProven; evidence branch and commit; import counts; the run line and unknown fields;
+  anything left in the tenant (expected: nothing, reads only).

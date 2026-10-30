@@ -12158,3 +12158,23 @@ item that needs it stays untouched.
      the usual way. Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
 - **Report:** B and S; per operation: promoted / refused (exact message) / skipped; dry run ids and approval ids; step 5 result;
   the evidence branch, commit and PR; anything left in the tenant.
+
+### Q259: After PR #748 deploys, time the audit check again (read-only, no tenant), about 5 minutes
+- Drafted by the "Move audit full check off page loads" thread (2026-10-30). PR #748 moves the audit record's full walk to a
+  background timer in keel-portal (one check at start, then every minute; full walk due at 8 minutes) and makes the per-load
+  check cheaper (additive fingerprint, paged walk). This gives the after numbers for Q251 (full walk 4099 ms, repeat 140/139 ms).
+- Needs: PR #748 merged and deployed. Check: `git -C /opt/keel-live log --oneline -1` and
+  `git -C /opt/keel-live merge-base --is-ancestor <#748 merge commit> HEAD`. **Quick: fine to take between other items.**
+- Status: todo
+- Do (read-only: no tenant calls, no writes), from your own checkout at the deployed commit B, never `/opt/keel`:
+  1. Report B and the record count (`SELECT record_count FROM evidence_head`).
+  2. In one node process with one shared `const cache = new Map()`, time `verifyChainCached` four times, each wrapped in
+     `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY` / `COMMIT`: run 1 (full walk), runs 2-3 (nothing new expected),
+     and run 4 after at least one new audit record exists (or note none arrived). Report each time and `ok`.
+  3. During run 1, measure the longest event-loop stall with `perf_hooks.monitorEventLoopDelay({ resolution: 10 })`
+     (report `max` in ms). Q251-era code stalled ~1.2 s locally; expected now: under ~50 ms.
+  4. `journalctl -u keel-portal --since <deploy time>`: confirm there is no "background audit check failed" line, and report
+     the memory peak line if any.
+  5. Time 5 Overview loads through the portal if you have a way to do it without Playwright on the box (for example `curl`
+     with the service's local port and your usual auth bypass for health checks); otherwise skip and say so.
+- **Report:** B; record count; the four timings and `ok`; the event-loop max; step 4 result; step 5 timings or "skipped".

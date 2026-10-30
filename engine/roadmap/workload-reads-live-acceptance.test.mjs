@@ -38,6 +38,7 @@ import { purviewExtendedActivation } from '../collect/workloads/purviewExtended.
 import { retentionDlpActivation } from '../collect/workloads/purviewRetentionDlp.mjs';
 import { teamsExtendedActivation } from '../collect/workloads/teamsExtended.mjs';
 import { teamsPolicyActivation } from '../collect/workloads/teamsPolicies.mjs';
+import { teamsDevicePoliciesActivation, teamsVoiceNetworkActivation } from '../collect/workloads/teamsVoiceNetwork.mjs';
 import { tenantRefFor } from '../store/tenantRef.mjs';
 import { GRANTS, MODULE_VERSIONS, RUNTIME, fakeCmdletContainer } from '../test/fakeCmdletContainer.mjs';
 
@@ -58,6 +59,8 @@ const ACTIVATION = {
   'exchange-org-defaults': exchangeOrgDefaultsActivation,
   'teams-org-policies': teamsPolicyActivation,
   'teams-voice-policies': teamsExtendedActivation,
+  'teams-voice-network': teamsVoiceNetworkActivation,
+  'teams-device-policies': teamsDevicePoliciesActivation,
   'purview-retention-dlp': retentionDlpActivation,
   'purview-governance': purviewExtendedActivation,
   // SharePoint's per-site sharing read: the rest of the SharePoint read never waits for it.
@@ -65,8 +68,8 @@ const ACTIVATION = {
   'sharepoint-structure': sharePointStructureActivation,
 };
 const TABLES = {
+  MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended', 'AllowedTeamsVoiceNetwork'],
   ExchangeOnlineManagement: ['Allowed', 'AllowedMailFlow', 'AllowedExchangeExtended', 'AllowedExchangeRoleGroups', 'AllowedExchangeRecipients', 'AllowedExchangeOrgPolicies', 'AllowedPurviewRetentionDlp', 'AllowedPurviewExtended'],
-  MicrosoftTeams: ['AllowedTeamsPolicy', 'AllowedTeamsExtended'],
   'PnP.PowerShell': ['AllowedPnP', 'AllowedPnPStructure'],
 };
 // The run-cmdlet.ps1 allowlists, cmdlet names with digits included (Get-AtpPolicyForO365).

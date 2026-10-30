@@ -12111,3 +12111,34 @@ item that needs it stays untouched.
   - what the second dry run planned;
   - the capture result and commit;
   - anything left in the tenant.
+
+### Q258: Rerun Q239's Defender role part now that custom roles are no longer skipped (after PR #747, fixes #742)
+- Drafted by the "Fix Defender custom roles always skipped" thread (2026-10-30). In Q239 the `defenderRoleDefinition` create was
+  skipped (`manual: the backup does not say whether this Defender role is built in`, dry run `d41e19ac`): the Defender role API has
+  no `isBuiltIn`. PR #747 treats a Defender role as custom unless the backup or the live role says `isBuiltIn: true` (the Defender
+  role list holds only roles an admin made or imported). Only the Defender part of Q239 is in scope. The app creation policy part
+  is Q256; not run here.
+- Needs: PR #747 merged and deployed (build B). Check: `grep -q 'lists only roles an admin made' /opt/keel-live/engine/restore/identityObjectOperations.mjs`.
+- Status: todo
+- Result:
+- **Test tenant only.** Same hard rules, capture tooling, Restorer/Collector split and self-approval as Q239 (log every approval
+  id). Restorer for writes (`RoleManagement.ReadWrite.Defender`, held per Q239), Collector for reads. Global admin not used. Grant
+  nothing. The role is **assigned to nobody**. No CA, no break-glass.
+- **Fixture:** custom Defender XDR role `KEEL-RT-258-defender-role`, one permission `microsoft.xdr/secops/securitydata/read`
+  (Graph stores it as `.../securitydata/basics/read`, as seen in Q239), assigned to nobody.
+- Do, at B, from your own checkout (never `/opt/keel`), with `KEEL_QUALIFICATION_HMAC_KEY` set:
+  1. Write down the tenant's Defender roles (expected: no `KEEL-RT-` role).
+  2. Create the fixture, then take snapshot S. Confirm the role is in S and report its stored `rolePermissions`.
+  3. **Create round:** delete the role (expect 204, then 404). Restore from S selecting it: dry run (expect **not refused**, one
+     `create`), approve, enforce, capture `defenderRoleDefinition.create`. Expect a new id, read back equal to S (name, description,
+     permissions). If refused or skipped, quote it and comment on #742.
+  4. **Update round:** change the recreated role's description. Restore from S, approve, enforce, capture
+     `defenderRoleDefinition.update`. Expect the description back. The PATCH is not in Microsoft's docs: if Graph refuses it, report
+     its exact answer and do not promote the update.
+  5. **Re-run check:** dry run from S again. Expect 0 planned writes for the role.
+  6. Cleanup: delete the role. Confirm the Defender role list matches step 1.
+  7. Commit the records and `.capture.json` files under `docs/release/qualifications/entra-live/` on
+     `claude/live-evidence-q258`, branched from `origin/master` (secret scan and `pseudonymize.mjs check` first), and open the PR
+     the usual way. Run `node tools/qualification/operations.mjs --live-evidence <that directory>` and report the `live evidence` lines.
+- **Report:** B and S; per operation: promoted / refused (exact message) / skipped; dry run ids and approval ids; step 5 result;
+  the evidence branch, commit and PR; anything left in the tenant.

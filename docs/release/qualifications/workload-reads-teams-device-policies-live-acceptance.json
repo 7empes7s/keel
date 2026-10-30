@@ -1,0 +1,97 @@
+{
+  "contractVersion": 1,
+  "gate": "workload-reads-live-acceptance",
+  "tenantRef": "sha256:f7b3959300856957",
+  "build": "41a460a901f87c80d44f96beb929f5e5536373a0",
+  "operation": "workload-reads",
+  "credentialMode": "collector-only",
+  "observedAt": "2026-10-30T19:38:45.398Z",
+  "evidenceLevel": "live-qualified",
+  "synthetic": false,
+  "subject": {
+    "workload": "teams-device-policies",
+    "execution": {
+      "transport": "powershell-cmdlet-job",
+      "module": "MicrosoftTeams",
+      "moduleVersion": "7.9.0"
+    },
+    "credentials": {
+      "collector": "app:cfbf7209-711b-87f6-b79b-4e8c0405446c"
+    },
+    "outcome": "complete",
+    "reads": [
+      {
+        "operationId": "teams-device-policies.ip-phone-policies",
+        "family": "ipPhonePolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T19:38:45.398Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "teams-device-policies.update-management-policies",
+        "family": "updateManagementPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T19:38:45.398Z",
+        "ok": true,
+        "status": "read",
+        "objects": 2,
+        "error": null
+      },
+      {
+        "operationId": "teams-device-policies.mobility-policies",
+        "family": "mobilityPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T19:38:45.398Z",
+        "ok": true,
+        "status": "read",
+        "objects": 2,
+        "error": null
+      },
+      {
+        "operationId": "teams-device-policies.vdi-policies",
+        "family": "vdiPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T19:38:45.398Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      },
+      {
+        "operationId": "teams-device-policies.feedback-policies",
+        "family": "feedbackPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T19:38:45.398Z",
+        "ok": true,
+        "status": "read",
+        "objects": 4,
+        "error": null
+      },
+      {
+        "operationId": "teams-device-policies.workload-policies",
+        "family": "workLoadPolicy",
+        "version": "7.9.0",
+        "synthetic": false,
+        "capturedAt": "2026-10-30T19:38:45.398Z",
+        "ok": true,
+        "status": "read",
+        "objects": 1,
+        "error": null
+      }
+    ]
+  },
+  "proof": {
+    "runner": {
+      "identity": "keel-release-runner",
+      "signature": "373c9916c7df06bba0a0610ac1c3ededa5b7b2863e8050fe407262e575aa14e9"
+    }
+  }
+}

@@ -715,6 +715,28 @@ async function scopedBaselineCount(client: KeelClient, ref: string, baselineId: 
   return Number(rows[0]?.count ?? 0);
 }
 
+/** How many settings the approved setup holds, per kind, for the settings this reader
+ * may see (the same entity filter as its setting count). Feeds the match percentage on
+ * the Approved setup page. */
+export async function getBaselineTypeCounts(baselineId: string, scope: EntityScope = CENTRAL_SCOPE): Promise<Record<string, number>> {
+  const ref = tenantRef();
+  return withClient(async (client) => {
+    const visible = scopePredicate(scope, {
+      tenantRef: ref, typeExpr: "rv.resource_type", keyExpr: "br.natural_key",
+      asOfExpr: "COALESCE(s.completed_at, s.started_at)", nextParam: 2,
+    }) as { sql: string; values: unknown[] };
+    const { rows } = await client.query(
+      `SELECT rv.resource_type, count(*)::int AS count FROM baseline_resource br
+         JOIN resource_version rv ON rv.id = br.resource_version_id
+         JOIN snapshot s ON s.id = rv.snapshot_id
+        WHERE br.baseline_id = $1 AND ${visible.sql}
+        GROUP BY rv.resource_type`,
+      [baselineId, ...visible.values],
+    );
+    return Object.fromEntries(rows.map((row) => [String(row.resource_type), Number(row.count ?? 0)]));
+  });
+}
+
 // Task 91: who made each open change, from Microsoft's audit logs (engine/identity/
 // attribution.mjs, read in by each collection through auditSources.mjs), and where a roll
 // back of it would be routed (approvals.mjs#routeApproval), computed server-side for the

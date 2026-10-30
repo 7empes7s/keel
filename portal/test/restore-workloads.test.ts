@@ -123,10 +123,11 @@ test("every kind KEEL backs up on its own has a place in its service's order", a
   assert.deepEqual([...WORKLOAD_ORDER].sort(), [...WORKLOADS].sort());
   const groups = groupWorkloadsByService(await getRestoreWorkloads(), serviceOrder);
   const exchange = groups.find((group) => group.service === "Exchange")!.workloads.map((workload) => workload.workload);
-  // Mailboxes first, then groups, roles, and the mail flow and protection policies.
+  // Mailboxes first, then groups, roles, the mail flow and protection policies, sharing
+  // and client access, and organization-wide settings last.
   assert.deepEqual(exchange, [
     "exchange-mailbox-settings", "exchange-recipients", "exchange-distribution-groups", "exchange-role-groups",
-    "exchange-mail-flow", "exchange-extended",
+    "exchange-mail-flow", "exchange-org-access", "exchange-extended", "exchange-org-defaults",
   ]);
   for (const group of groups) {
     const order = group.workloads.map((workload) => WORKLOAD_ORDER.indexOf(workload.workload));

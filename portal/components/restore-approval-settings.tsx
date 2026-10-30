@@ -9,7 +9,7 @@ import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Person } from "@/components/ui/person";
 import { postAction } from "@/lib/action-client";
 import { ago, formatTimestamp } from "@/lib/presentation";
-import { RESTORE_APPROVAL_RULE_INFO, ruleOrder } from "@/lib/restore-approval-rules";
+import { HIGH_RISK_INFO, isHighRiskRule, RESTORE_APPROVAL_RULE_INFO, ruleOrder } from "@/lib/restore-approval-rules";
 import type { RestoreApprovalsView } from "@/lib/restore-approvals";
 import { serviceFor, serviceOrder } from "@/lib/services";
 import { toast } from "@/lib/toast";
@@ -18,7 +18,11 @@ import type { EngineRef } from "@/lib/sentences";
 // Approvals page: whether a restore waits for a person, per service and per kind of
 // restore (content restores, turning a Conditional Access policy on, compliance fixes,
 // ...). On for every one until someone with `policies` turns it off. Each change is
-// written to the audit record, so Activity shows who changed it and when.
+// written to the audit record, so Activity shows who changed it and when. Three kinds
+// are high risk (organization-wide changes, turning Conditional Access on, restores
+// into another tenant): they carry a "High risk" badge, turning one off spells out what
+// can go wrong and needs a tick that the admin understands, and while one is off a red
+// notice at the top of the card says so, with who turned it off and when.
 
 interface Row {
   key: string;
@@ -30,6 +34,8 @@ interface Row {
   changedAt: string | null;
   changedBy: EngineRef | null;
   offWarning: ReactNode;
+  highRisk: boolean;
+  acknowledge?: string;
 }
 
 export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
@@ -48,27 +54,41 @@ export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
       key: `service:${row.service}`, body: { service: row.service }, name: service.name, detail: null, icon: service.icon,
       approvalRequired: row.approvalRequired, changedAt: row.changedAt, changedBy: row.changedBy,
       offWarning: <p>Restores in {service.name}, and their high-impact changes, will be made without a second person approving them. Content that is deleted or shared because of them cannot be brought back by Keel. The change is written to the audit record with your name.</p>,
+      highRisk: false,
     };
   }).sort((a, b) => offFirst(a, b) || serviceOrder((a.body as { service: string }).service) - serviceOrder((b.body as { service: string }).service));
   const kinds: Row[] = (settings?.rules ?? []).map((row) => {
     const info = RESTORE_APPROVAL_RULE_INFO[row.rule];
+    const plain = <p>{info.name} will start without a person approving them when the services they touch have approvals off too. Lockout checks still run first. The change is written to the audit record with your name.</p>;
+    const risk = isHighRiskRule(row.rule) ? HIGH_RISK_INFO[row.rule] : null;
     return {
       key: `rule:${row.rule}`, body: { rule: row.rule }, name: info.name, detail: info.detail, icon: info.icon,
       approvalRequired: row.approvalRequired, changedAt: row.changedAt, changedBy: row.changedBy,
-      offWarning: <p>{info.name} will start without a person approving them when the services they touch have approvals off too. Lockout checks still run first. The change is written to the audit record with your name.</p>,
+      highRisk: risk !== null,
+      acknowledge: risk?.acknowledge,
+      offWarning: risk ? (
+        <div className="ra-risk-warning">
+          <p className="ra-risk-lead"><Badge tone="urgent" icon="alert">High risk</Badge> Keel recommends keeping approvals on for this.</p>
+          <p>Without approvals, here is what can go wrong:</p>
+          <ul>{risk.risks.map((line) => <li key={line}>{line}</li>)}</ul>
+          <p>Lockout checks still run first. The change and your confirmation are written to the audit record with your name. You can turn approvals back on at any time.</p>
+        </div>
+      ) : plain,
     };
   }).sort((a, b) => offFirst(a, b) || ruleOrder((a.body as { rule: string }).rule) - ruleOrder((b.body as { rule: string }).rule));
   const all = [...services, ...kinds];
   const off = all.filter((row) => !row.approvalRequired);
+  const riskyOff = kinds.filter((row) => row.highRisk && !row.approvalRequired);
 
   async function change(row: Row, approvalRequired: boolean) {
     setBusy(row.key);
     setError(null);
     try {
-      await postAction("/api/restore-approvals", { ...row.body, approvalRequired }, crypto.randomUUID());
+      const confirmed = row.highRisk && !approvalRequired;
+      await postAction("/api/restore-approvals", { ...row.body, approvalRequired, ...(confirmed ? { riskAcknowledged: true } : {}) }, crypto.randomUUID());
       toast({
         title: approvalRequired ? `Approvals on for ${row.name}` : `Approvals off for ${row.name}`,
-        detail: "The change is in the audit record.",
+        detail: confirmed ? "The change and your confirmation of the risk are in the audit record." : "The change is in the audit record.",
       });
       router.refresh();
     } catch {
@@ -81,10 +101,13 @@ export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
   const list = (rows: Row[], label: string) => (
     <ul aria-label={label} className="ra-list">
       {rows.map((row) => (
-        <li className="ra-row" data-off={row.approvalRequired ? undefined : ""} key={row.key}>
+        <li className="ra-row" data-high-risk={row.highRisk ? "" : undefined} data-off={row.approvalRequired ? undefined : ""} key={row.key}>
           <span aria-hidden="true" className="ra-service-icon"><Icon name={row.icon} /></span>
           <span className="ra-name">
-            <strong>{row.name}</strong>
+            <span className="ra-name-line">
+              <strong>{row.name}</strong>
+              {row.highRisk ? <Badge tone="urgent" icon="alert">High risk</Badge> : null}
+            </span>
             {row.detail ? <small>{row.detail}</small> : null}
             {row.changedAt ? (
               <small>
@@ -98,6 +121,7 @@ export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
             : <Badge tone="soon">No approval</Badge>}
           {canChange ? (row.approvalRequired ? (
             <ConfirmButton
+              acknowledge={row.acknowledge}
               cancelLabel="Keep approvals"
               size="sm"
               confirmLabel="Turn off"
@@ -116,7 +140,31 @@ export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
   );
 
   return (
-    <section aria-labelledby="restore-approvals-heading" className="ra-card" data-off={off.length ? "" : undefined}>
+    <section aria-labelledby="restore-approvals-heading" className="ra-card" data-off={off.length ? "" : undefined} data-risk={riskyOff.length ? "" : undefined}>
+      {riskyOff.length ? (
+        <div className="ra-risk" role="status">
+          <span aria-hidden="true" className="ra-risk-icon"><Icon name="alert" /></span>
+          <div>
+            <strong>
+              Approvals are off for {riskyOff.length === 1 ? "1 high-risk kind" : `${riskyOff.length} high-risk kinds`} of restore
+            </strong>
+            <p>These restores now start without anyone checking them first. Keel recommends turning approvals back on unless you are sure.</p>
+            <ul>
+              {riskyOff.map((row) => (
+                <li key={row.key}>
+                  <strong>{row.name}</strong>
+                  {row.changedAt ? (
+                    <>
+                      {": turned off by "}<Person person={row.changedBy} />{" "}
+                      <time dateTime={row.changedAt} title={formatTimestamp(row.changedAt)}>{ago(row.changedAt, now)}</time>
+                    </>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : null}
       <div className="ra-card-head">
         <span aria-hidden="true" className="ra-card-icon"><Icon name={off.length ? "alert" : "check-circle"} /></span>
         <div>
@@ -125,7 +173,7 @@ export function RestoreApprovalSettingsCard({ settings, canChange, now }: {
             {settings === null
               ? <Badge tone="soon">Could not check</Badge>
               : off.length
-                ? <Badge tone="soon">Off for {off.length} of {all.length}</Badge>
+                ? <Badge tone={riskyOff.length ? "urgent" : "soon"}>Off for {off.length} of {all.length}</Badge>
                 : <Badge tone="fine">On for everything</Badge>}
           </h2>
           <p>

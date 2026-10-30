@@ -322,6 +322,19 @@ if ($Workloads -contains 'exo' -and (Test-KeelPrereq -Workload 'exo' -Value $Org
         Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-CalendarProcessing -Identity' -Block {
             @(Get-Mailbox -RecipientTypeDetails RoomMailbox,EquipmentMailbox -ResultSize 1) | ForEach-Object { Get-CalendarProcessing -Identity $_.Guid.ToString() }
         }
+        # Exchange organisation policies (engine/collect/workloads/exchangeOrgPolicies.mjs): reads only.
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-AuthenticationPolicy' -Block { Get-AuthenticationPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-SharingPolicy' -Block { Get-SharingPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-OrganizationRelationship' -Block { Get-OrganizationRelationship }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-IntraOrganizationConnector' -Block { Get-IntraOrganizationConnector }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-OwaMailboxPolicy' -Block { Get-OwaMailboxPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-RoleAssignmentPolicy' -Block { Get-RoleAssignmentPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ApplicationAccessPolicy' -Block { Get-ApplicationAccessPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-ExternalInOutlook' -Block { Get-ExternalInOutlook }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-TransportConfig' -Block { Get-TransportConfig }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-EmailAddressPolicy' -Block { Get-EmailAddressPolicy }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-CASMailboxPlan' -Block { Get-CASMailboxPlan }
+        Invoke-ProbeCmdlet -Workload 'exo' -Name 'Get-MailboxPlan' -Block { Get-MailboxPlan }
     } catch {
         Add-Result -Workload 'exo' -Connected $false -Cmdlet $null -Ok $false -Count $null -ErrorText $_.Exception.Message
         Write-Diag "exo connect FAILED: $($_.Exception.Message)"

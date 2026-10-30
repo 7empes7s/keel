@@ -8,6 +8,7 @@ import { worstTone, type RiskTone } from "@/lib/menu-status";
 import { RESOURCE_TYPE_LABELS, ago, displayEnum } from "@/lib/presentation";
 import { typeName } from "@/lib/protect-view";
 import { madeInSharePoint, serviceFor, serviceOrder, type CloudService } from "@/lib/services";
+import type { ComplianceScore } from "@/lib/compliance-view";
 import type { BaselineRecord, DriftRecord } from "@/lib/types";
 
 function plural(count: number, one: string, many = `${one}s`): string {
@@ -98,6 +99,9 @@ export interface ServiceSummary {
   // the kinds whose latest read failed or has not run.
   notCovered: string[];
   tone: RiskTone;
+  // Settings that match the approved setup out of every setting judged (matchScore);
+  // null when the setting counts are not known.
+  score: ComplianceScore | null;
 }
 
 /** A service read Keel lists on What's protected: the workload code, and whether its
@@ -105,6 +109,50 @@ export interface ServiceSummary {
 export interface ServiceReadKind {
   type: string;
   read: boolean;
+  // Settings the latest read found, and its open changes by kind, counted in full (not
+  // the page's list of recent ones); absent or null when not known, and then the read
+  // gets no score.
+  itemCount?: number | null;
+  open?: ChangeTally | null;
+}
+
+/** Settings judged and settings that match, before they become a percentage. */
+export interface MatchCount {
+  matching: number;
+  judged: number;
+}
+
+/** Matching ÷ judged as a score, rounded down so it never reads 100% with a change left
+ * (the same rule as the Compliance score). */
+export function matchScore({ matching, judged }: MatchCount): ComplianceScore {
+  return { passed: matching, evaluated: judged, excepted: 0, percent: judged ? Math.floor((matching / judged) * 100) : null };
+}
+
+/** The open changes to one kind of setting, by what they did. */
+export type ChangeTally = Record<DriftRecord["changeType"], number>;
+
+/**
+ * How many settings of one kind match the approved setup.
+ * - A kind the approved setup holds: it holds `held` settings. Each one changed or
+ *   removed since no longer matches, and each one added is a setting it does not hold.
+ * - A service read: the latest read found `held` settings. Each one added or changed since
+ *   the read before does not match, and each one removed is a setting that is missing.
+ */
+export function kindMatch(held: number, changes: ChangeTally, basis: ServiceSummary["basis"]): MatchCount {
+  if (basis === "approved-setup") {
+    return { judged: held + changes.added, matching: Math.max(0, held - changes.modified - changes.removed) };
+  }
+  return { judged: held + changes.removed, matching: Math.max(0, held - changes.added - changes.modified) };
+}
+
+/** Every service's match counts added up: the overall score. */
+export function overallScore(summaries: Pick<ServiceSummary, "score">[]): ComplianceScore | null {
+  const scored = summaries.filter((summary) => summary.score);
+  if (!scored.length) return null;
+  return matchScore({
+    matching: scored.reduce((sum, summary) => sum + summary.score!.passed, 0),
+    judged: scored.reduce((sum, summary) => sum + summary.score!.evaluated, 0),
+  });
 }
 
 /** One line per service: in line, changed, not covered. Services that need action come
@@ -112,9 +160,12 @@ export interface ServiceReadKind {
  * carry `serviceRead`) join the Entra ID and Intune kinds, so every service shows. */
 export function serviceSummaries(
   baseline: Pick<BaselineRecord, "capture"> | null,
-  items: (Pick<DriftRecord, "resourceType" | "blastRadius"> & Partial<Pick<DriftRecord, "serviceRead" | "name">>)[],
+  items: (Pick<DriftRecord, "resourceType" | "blastRadius"> & Partial<Pick<DriftRecord, "serviceRead" | "name" | "changeType">>)[],
   backedUp: string[],
   serviceReads: ServiceReadKind[] = [],
+  // Settings the approved setup holds, per kind (portal-data getBaselineTypeCounts). Without
+  // it no service gets a score.
+  held: Record<string, number> | null = null,
 ): ServiceSummary[] {
   const reads = new Set([
     ...serviceReads.map((read) => read.type),
@@ -126,7 +177,7 @@ export function serviceSummaries(
   const entry = (type: string, service: CloudService = typeService(type)) => {
     let summary = byCode.get(service.code);
     if (!summary) {
-      summary = { service, basis: "previous-backup", inLine: [], changed: 0, changedKinds: [], notCovered: [], tone: "fine" };
+      summary = { service, basis: "previous-backup", inLine: [], changed: 0, changedKinds: [], notCovered: [], tone: "fine", score: null };
       byCode.set(service.code, summary);
     }
     // One kind held in the approved setup makes the service measured against it.
@@ -148,6 +199,34 @@ export function serviceSummaries(
     const summary = entry(read.type);
     const bucket = read.read ? summary.inLine : summary.notCovered;
     if (!bucket.includes(read.type)) bucket.push(read.type);
+  }
+  if (held) {
+    // Each kind is scored on its own, then added up under its service. Kinds not covered
+    // or not read are left out: nothing is known about them.
+    const tallies = new Map<string, ChangeTally>();
+    for (const item of items) {
+      const tally = tallies.get(item.resourceType) ?? { added: 0, modified: 0, removed: 0 };
+      tally[item.changeType ?? "modified"] += 1;
+      tallies.set(item.resourceType, tally);
+    }
+    const readCounts = new Map(serviceReads.map((read) => [read.type, read.read && read.open ? read.itemCount ?? null : null]));
+    const readOpen = new Map(serviceReads.map((read) => [read.type, read.open ?? null]));
+    const scored = new Set([...captured, ...changedTypes, ...serviceReads.filter((read) => read.read).map((read) => read.type)]);
+    const counts = new Map<string, MatchCount>();
+    for (const type of scored) {
+      const basis = reads.has(type) ? "previous-backup" : "approved-setup";
+      const count = basis === "approved-setup" ? held[type] ?? 0 : readCounts.get(type);
+      // A service read whose size is not known cannot be scored.
+      if (count === null || count === undefined) continue;
+      // A service read counts its open changes in full; the list of changes may hold only recent ones.
+      const changes = (basis === "previous-backup" ? readOpen.get(type) : null) ?? tallies.get(type) ?? { added: 0, modified: 0, removed: 0 };
+      const match = kindMatch(count, changes, basis);
+      if (!match.judged) continue;
+      const code = entry(type).service.code;
+      const sum = counts.get(code) ?? { matching: 0, judged: 0 };
+      counts.set(code, { matching: sum.matching + match.matching, judged: sum.judged + match.judged });
+    }
+    for (const [code, count] of counts) byCode.get(code)!.score = matchScore(count);
   }
   const rank: Record<RiskTone, number> = { urgent: 0, soon: 1, low: 2, fine: 3 };
   return [...byCode.values()]

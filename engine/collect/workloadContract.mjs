@@ -47,6 +47,7 @@ export const WORKLOADS = Object.freeze([
   'exchange-extended',
   'exchange-role-groups',
   'exchange-distribution-groups', 'exchange-recipients',
+  'exchange-org-access', 'exchange-org-defaults',
   'sharepoint-structure',
   'teams-voice-policies', 'teams-collaboration-policies', 'teams-meeting-settings', 'purview-governance',
   'power-platform-settings',
@@ -352,6 +353,30 @@ export const WORKLOAD_DESCRIPTORS = Object.freeze([
     paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
     source: doc('/en-us/powershell/module/exchange/get-rolegroup'),
   },
+  // Exchange organisation policies: sharing and client access, then transport and new
+  // mailbox defaults, in the Exchange Online session with no parameters.
+  // engine/collect/workloads/exchangeOrgPolicies.mjs holds the fields and identities.
+  ...[
+    ['exchange-org-access.authentication-policies', 'exchange-org-access', 'Authentication policies (legacy sign-in blocks)', 'Get-AuthenticationPolicy'],
+    ['exchange-org-access.sharing-policies', 'exchange-org-access', 'Calendar sharing policies', 'Get-SharingPolicy'],
+    ['exchange-org-access.organization-relationships', 'exchange-org-access', 'Organization relationships (free/busy with other organizations)', 'Get-OrganizationRelationship'],
+    ['exchange-org-access.intra-organization-connectors', 'exchange-org-access', 'Hybrid organization connectors', 'Get-IntraOrganizationConnector'],
+    ['exchange-org-access.owa-mailbox-policies', 'exchange-org-access', 'Outlook on the web policies', 'Get-OwaMailboxPolicy'],
+    ['exchange-org-access.role-assignment-policies', 'exchange-org-access', 'What people may change on their own mailbox', 'Get-RoleAssignmentPolicy'],
+    ['exchange-org-access.application-access-policies', 'exchange-org-access', 'Which apps may open which mailboxes', 'Get-ApplicationAccessPolicy'],
+    ['exchange-org-access.external-in-outlook', 'exchange-org-access', 'The External sender tag in Outlook', 'Get-ExternalInOutlook'],
+    ['exchange-org-defaults.transport-config', 'exchange-org-defaults', 'Organization transport settings (SMTP AUTH, TLS, journaling)', 'Get-TransportConfig'],
+    ['exchange-org-defaults.email-address-policies', 'exchange-org-defaults', 'Email address policies', 'Get-EmailAddressPolicy'],
+    ['exchange-org-defaults.cas-mailbox-plans', 'exchange-org-defaults', 'Client access defaults for new mailboxes', 'Get-CASMailboxPlan'],
+    ['exchange-org-defaults.mailbox-plans', 'exchange-org-defaults', 'Mailbox defaults for new mailboxes', 'Get-MailboxPlan'],
+  ].map(([id, workload, resource, name]) => ({
+    id, workload, resource,
+    operation: cmdlet(name, 'ExchangeOnlineManagement'),
+    auth: { application: true, delegated: true },
+    rbac: { permissions: ['Exchange.ManageAsApp'], roles: ['Exchange Administrator'] },
+    paging: 'cmdlet-unbounded', throttle: 'exchange-budget', consistency: 'eventual',
+    source: doc(`/en-us/powershell/module/exchange/${name.toLowerCase()}`),
+  })),
   // Exchange recipients and mailbox permissions, in the Exchange Online session.
   // engine/collect/workloads/exchangeRecipients.mjs holds the fields and identities.
   ...[
